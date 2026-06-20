@@ -15,13 +15,19 @@ import { isAbsolute, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { findRepoRoot } from '../config/repo-root-detection.js';
+import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../cli/vote-types.js';
 
-vi.mock('../config/repo-root-detection.js', () => ({
-  findRepoRoot: vi.fn(() => null),
+// #3991: the store now resolves the runtime ledger via nexusDataPath (governance
+// category) instead of findRepoRoot. Mock the resolver so each test pins the
+// data root without touching the real homedir/sandbox/repo layout.
+vi.mock('../config/nexus-data-dir.js', () => ({
+  getNexusDataDir: vi.fn(() => '/data-root/.nexus-agents'),
+  nexusDataPath: vi.fn((...segments: string[]) =>
+    ['/data-root/.nexus-agents', ...segments].join('/')
+  ),
 }));
 
 import { verifyVoteRecordSet } from './vote-record.js';
@@ -244,17 +250,24 @@ describe('persistVoteRecord', () => {
   });
 });
 
-describe('vote-record path resolution / persistence escape hatch (#3927)', () => {
+describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)', () => {
   let dir: string;
+  let dataRoot: string;
   let envFilePath: string;
   let optsFilePath: string;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'vote-records-env-'));
+    dataRoot = join(dir, 'data-root', '.nexus-agents');
     envFilePath = join(dir, 'env', 'vote-records.jsonl');
     optsFilePath = join(dir, 'opts', 'vote-records.jsonl');
-    // findRepoRoot is mocked to null by default → no cwd-based resolution.
-    vi.mocked(findRepoRoot).mockReturnValue(null);
+    // Default mock: nexusDataPath roots under a real temp data dir so persists
+    // actually write. getNexusDataDir returns the same root for the in-data-dir
+    // traversal validation in resolveVoteRecordsPath().
+    vi.mocked(getNexusDataDir).mockReturnValue(dataRoot);
+    vi.mocked(nexusDataPath).mockImplementation((...segments: string[]) =>
+      join(dataRoot, ...segments)
+    );
   });
   afterEach(() => {
     vi.unstubAllEnvs(); // restore any process.env mutations made via vi.stubEnv
@@ -278,11 +291,10 @@ describe('vote-record path resolution / persistence escape hatch (#3927)', () =>
     expect(invalidLines).toEqual([]);
     expect(records).toHaveLength(1);
     expect(records[0]).toEqual(written);
-  });
-
-  it('treats an empty/whitespace env var as unset (falls back to root detection)', () => {
-    vi.stubEnv(VOTE_RECORDS_PATH_ENV, '   ');
-    expect(resolveVoteRecordsPath()).toBeUndefined();
+    // The default nexusDataPath location was NOT used.
+    expect(readVoteRecords(join(dataRoot, 'governance', 'vote-records.jsonl')).records).toHaveLength(
+      0
+    );
   });
 
   it('returns an absolute override unchanged (#3963)', () => {
@@ -294,16 +306,35 @@ describe('vote-record path resolution / persistence escape hatch (#3927)', () =>
   });
 
   it('resolves a RELATIVE override to an absolute path against cwd (#3963)', () => {
-    // The JSDoc contract says the override is treated as an absolute path; a
-    // relative value used verbatim would silently write under process.cwd().
-    // Honor the contract: resolve it to an absolute path against cwd.
-    const relative = 'governance/custom-vote-records.jsonl';
-    vi.stubEnv(VOTE_RECORDS_PATH_ENV, relative);
+    // A relative override is resolved against cwd to an absolute path rather than
+    // written verbatim. Use a value that stays under cwd so it is NOT rejected by
+    // the path-traversal guard.
+    const rel = 'governance/custom-vote-records.jsonl';
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, rel);
     const resolved = resolveVoteRecordsPath();
-    expect(resolved).toBe(resolve(relative));
+    expect(resolved).toBe(resolve(rel));
     expect(isAbsolute(resolved as string)).toBe(true);
-    // It must NOT be returned verbatim (the pre-fix bug).
-    expect(resolved).not.toBe(relative);
+    expect(resolved).not.toBe(rel);
+  });
+
+  it('rejects (fail-closed) a relative override that escapes cwd via `..` (security #3991)', () => {
+    // A relative override resolving outside cwd is a path-traversal attempt → the
+    // resolver returns undefined rather than writing astray.
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, '../../../../../../tmp/evil-vote-records.jsonl');
+    expect(resolveVoteRecordsPath()).toBeUndefined();
+  });
+
+  it('treats an empty/whitespace env var as unset (falls through to nexusDataPath)', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, '   ');
+    // Post-#3991 the fall-through is the canonical data-dir path, NOT undefined.
+    expect(resolveVoteRecordsPath()).toBe(join(dataRoot, 'governance', 'vote-records.jsonl'));
+  });
+
+  it('falls through to nexusDataPath(governance, ...) when no override is set', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
+    const resolved = resolveVoteRecordsPath();
+    expect(resolved).toBe(join(dataRoot, 'governance', 'vote-records.jsonl'));
+    expect(vi.mocked(nexusDataPath)).toHaveBeenCalledWith('governance', 'vote-records.jsonl');
   });
 
   it('lets opts.filePath take precedence over the env var', () => {
@@ -324,8 +355,60 @@ describe('vote-record path resolution / persistence escape hatch (#3927)', () =>
     expect(readVoteRecords(envFilePath).records).toHaveLength(0);
   });
 
-  it('returns undefined and does not throw when no root resolves and no override is set', () => {
-    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined); // ensure no override
+  it('#3991 regression: global install (no override, cwd not a repo) resolves a valid .nexus-agents path and persists there', () => {
+    // The pre-#3991 bug: resolveVoteRecordsPath() returned undefined when cwd was
+    // not a repo and no override was set → the producer silently skipped. Now the
+    // canonical resolver always yields a writable data-dir path, so a persist
+    // writes a record there.
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
+    const resolved = resolveVoteRecordsPath();
+    expect(resolved).toBeDefined();
+    expect(resolved).toBe(join(dataRoot, 'governance', 'vote-records.jsonl'));
+
+    const written = persistVoteRecord({
+      id: 'vote-global',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+    });
+    expect(written).toBeDefined();
+    const { records } = readVoteRecords(resolved as string);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(written);
+  });
+
+  it('routes under a per-repo .nexus-agents/governance/ location when nexusDataPath does (NEXUS_REPO_PREFERRED)', () => {
+    // Simulate nexusDataPath choosing the per-repo tier: the resolved path sits
+    // under <repo>/.nexus-agents/governance/, which differs from getNexusDataDir
+    // (the homedir root). The store's defense-in-depth validation must still
+    // accept it via the `.nexus-agents/governance/` segment check.
+    const repoGovDir = join(dir, 'repo', '.nexus-agents', 'governance');
+    vi.mocked(nexusDataPath).mockImplementation((...segments: string[]) =>
+      join(dir, 'repo', '.nexus-agents', ...segments)
+    );
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
+    const resolved = resolveVoteRecordsPath();
+    expect(resolved).toBe(join(repoGovDir, 'vote-records.jsonl'));
+
+    const written = persistVoteRecord({
+      id: 'vote-repo',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+    });
+    expect(written).toBeDefined();
+    expect(readVoteRecords(resolved as string).records).toHaveLength(1);
+  });
+
+  it('does not throw on a fail-closed resolution; persist returns undefined', () => {
+    // Force resolveVoteRecordsPath() to fail closed: nexusDataPath returns a path
+    // that neither sits under getNexusDataDir nor contains the canonical
+    // .nexus-agents/governance/ segment → defense-in-depth rejects it.
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
+    vi.mocked(nexusDataPath).mockReturnValue('/somewhere/else/governance/vote-records.jsonl');
+    vi.mocked(getNexusDataDir).mockReturnValue('/data-root/.nexus-agents');
     expect(resolveVoteRecordsPath()).toBeUndefined();
 
     let written: ReturnType<typeof persistVoteRecord>;

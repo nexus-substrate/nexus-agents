@@ -1,13 +1,28 @@
 /**
  * nexus-agents/audit - Authentic Vote Record Store (#3897, model revised #3927)
  *
- * Persists a completed `consensus_vote` to a COMMITTABLE, append-only,
- * tamper-evident artifact at vote time, distinct from the per-developer home-dir
- * stores (`~/.nexus-agents/voting`, `~/.nexus-agents/learning`) a CI gate cannot
- * read. The artifact lives at `<repo-root>/governance/vote-records.jsonl` so the
- * promotion gate (#3895) can read it from CI; authenticity rests on a
- * payload-covering tamper-evident record set + monotonic sequence
- * ({@link verifyVoteRecordSet}), not on manual YAML transcription.
+ * Persists a completed `consensus_vote` to an append-only, tamper-evident
+ * artifact at vote time. Authenticity rests on a payload-covering tamper-evident
+ * record set + monotonic sequence ({@link verifyVoteRecordSet}), not on manual
+ * YAML transcription.
+ *
+ * PATH RESOLUTION (#3991, design vote 7-0 Option B). The RUNTIME ledger now
+ * routes through the canonical {@link nexusDataPath} resolver under the
+ * `governance/` category, consistent with the 10+ other runtime stores — so it
+ * works for sandbox and global-install layouts and always has a writable home:
+ *   - `NEXUS_VOTE_RECORDS_PATH` explicit override (absolute used as-is; relative
+ *     resolved against cwd per #3963) — the escape hatch, and the ONLY way to
+ *     reach the committed `<repo>/governance/vote-records.jsonl` ledger the
+ *     promotion gate (#3895) reads (a separate caller-commits/governor-gate
+ *     artifact, deferred — never auto-written);
+ *   - otherwise `nexusDataPath('governance', 'vote-records.jsonl')` →
+ *     `<sandbox-root>/.nexus-agents/governance/...` (sandbox),
+ *     `<repo>/.nexus-agents/governance/...` (repo-preferred, gitignored), or
+ *     `~/.nexus-agents/governance/vote-records.jsonl` (default / global install).
+ * The pre-#3991 `findRepoRoot(cwd)/governance/...` default is GONE — it caused
+ * the #3991 silent-skip on global installs (cwd not a repo → undefined → no
+ * persist) AND tracked-file churn. The resolver now essentially always returns a
+ * path, so the producer essentially always persists into `.nexus-agents`.
  *
  * DRY/drift hazard (DevEx, #3897). This is the AUTOMATED authoring path: the
  * record is written as a side effect of the live vote, so the committed artifact
@@ -25,26 +40,42 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
-import { findRepoRoot } from '../config/repo-root-detection.js';
+import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 
 import type { VoteRecord, VoterSummary } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-record.js';
 
-/** Repo-relative committable artifact path (read by the gate/CI). */
+/**
+ * Repo-relative path of the COMMITTED governance ledger the promotion gate
+ * (#3895) reads. As of #3991 the runtime store no longer auto-writes here — this
+ * committed artifact is reached only via the {@link VOTE_RECORDS_PATH_ENV}
+ * override (the separate caller-commits/governor-gate path, deferred). Kept
+ * exported as the canonical relative location for the gate + override guidance.
+ */
 export const VOTE_RECORDS_REL_PATH = 'governance/vote-records.jsonl';
 
 /**
- * Env var to force the artifact path (#3927). When set non-empty it is used
- * directly (resolved to an absolute path — see {@link resolveVoteRecordsPath})
- * and the cwd/{@link findRepoRoot} detection is skipped — the escape hatch for
- * running the MCP server outside the repo (e.g. co-located/CI contexts) so
- * server-side persistence is reliable.
+ * {@link nexusDataPath} category + filename for the RUNTIME ledger (#3991).
+ * `governance` is a per-repo category in `nexus-data-dir.ts`, so with
+ * `NEXUS_REPO_PREFERRED=1` (default) the runtime ledger lands in
+ * `<repo>/.nexus-agents/governance/` (gitignored), under a sandbox root when
+ * `NEXUS_SANDBOX` is set, and `~/.nexus-agents/governance/` otherwise.
+ */
+const VOTE_RECORDS_DATA_CATEGORY = 'governance';
+const VOTE_RECORDS_FILENAME = 'vote-records.jsonl';
+
+/**
+ * Env var to force the artifact path. When set non-empty it is used directly
+ * (resolved to an absolute path — see {@link resolveVoteRecordsPath}) and the
+ * canonical {@link nexusDataPath} resolution is skipped — the escape hatch for
+ * targeting a specific location (e.g. the committed `<repo>/governance/...`
+ * ledger the promotion gate reads, or a co-located/CI path).
  */
 export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 
@@ -52,19 +83,19 @@ export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 const MAX_PROPOSAL_RECORD_CHARS = 500;
 
 /**
- * Actionable message for the no-committable-location skip (#3927, surfaced to
- * MCP callers in #3991). Exported so the `consensus_vote` result note can reuse
- * the EXACT text the server WARN logs — one source of truth for the
- * "how to fix" guidance (set {@link VOTE_RECORDS_PATH_ENV} or commit the
- * returned bytes). Previously this guidance only reached server stderr.
+ * Actionable message for a write FAILURE (#3991). Since the runtime path now
+ * routes through {@link nexusDataPath} it essentially always resolves; the
+ * remaining failure mode is an unwritable data dir. Exported so the
+ * `consensus_vote` result note can reuse the EXACT guidance the server WARN logs
+ * — one source of truth. (Pre-#3991 this covered a no-repo-root skip; that case
+ * no longer exists because the resolver always returns a path.)
  */
-export function voteRecordNoRootMessage(): string {
+export function voteRecordWriteFailedMessage(path: string): string {
   return (
-    'Authentic vote record NOT persisted: no repo root found from process.cwd() ' +
-    'and no override set. Per #3927 the authoritative population path is ' +
-    'caller-commits — commit the returned record bytes into ' +
-    `${VOTE_RECORDS_REL_PATH} in the promotion PR. To force a server-side ` +
-    `write, set ${VOTE_RECORDS_PATH_ENV} to an absolute file path.`
+    'Authentic vote record NOT persisted: the resolved data directory is not ' +
+    `writable (${path}). Check filesystem permissions on the .nexus-agents data ` +
+    `dir, or set ${VOTE_RECORDS_PATH_ENV} to a writable absolute file path. See ` +
+    'server logs for the underlying filesystem error.'
   );
 }
 
@@ -170,17 +201,41 @@ function readLedgerTip(
 }
 
 /**
- * Resolve the committable artifact path (#3927). Precedence:
+ * Fail-closed path-traversal guard (#3991 security condition, 7-0 vote). Returns
+ * `true` iff `target` resolves to an absolute path under `root` (or equal to it)
+ * with no `..` segment escaping it. Both inputs are `resolve`d first so a
+ * `..` embedded in the override (e.g. `<root>/../../etc/x`) is normalized and
+ * caught: if the relative path from `root` to `target` starts with `..` (or is
+ * itself absolute on a different volume), the target escaped and we reject.
+ */
+function isWithin(root: string, target: string): boolean {
+  const resolvedRoot = resolve(root);
+  const resolvedTarget = resolve(target);
+  if (resolvedTarget === resolvedRoot) return true;
+  const rel = relative(resolvedRoot, resolvedTarget);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/**
+ * Resolve the RUNTIME vote-records ledger path (#3991, design vote 7-0). Routes
+ * through the canonical {@link nexusDataPath} resolver so it supports sandbox and
+ * global-install layouts and always has a writable home. Precedence:
+ *
  *  1. {@link VOTE_RECORDS_PATH_ENV} (`NEXUS_VOTE_RECORDS_PATH`) when set
- *     non-empty — `resolve`d to an absolute path, skipping cwd detection. A
- *     RELATIVE value is resolved against `process.cwd()` to an absolute path
- *     (#3963) so the write target is unambiguous and not silently
- *     cwd-dependent; an already-absolute value is returned unchanged.
- *  2. otherwise `<repo-root>/governance/vote-records.jsonl` resolved from
- *     {@link findRepoRoot}(`process.cwd()`).
- * Returns `undefined` when neither yields a path (server running outside the
- * repo with no override) — the caller surfaces this as an observable WARN. A
- * whitespace-only override is treated as unset (falls through to root detection).
+ *     non-empty — resolved to an absolute path (an already-absolute value is
+ *     returned unchanged; a RELATIVE value is resolved against `process.cwd()`,
+ *     #3963). This is the explicit escape hatch and the ONLY way to target the
+ *     committed `<repo>/governance/vote-records.jsonl` ledger. The resolved
+ *     override is path-traversal validated against its own join base
+ *     (fail-closed): a relative override that escapes cwd via `..` is rejected.
+ *  2. otherwise `nexusDataPath('governance', 'vote-records.jsonl')` →
+ *     a sandbox / repo-preferred / homedir `.nexus-agents/governance/` location.
+ *     Validated to stay within the resolved data root (fail-closed).
+ *
+ * Returns `undefined` only on a genuine resolver failure or a fail-closed
+ * traversal rejection — NOT for the former "no repo root" case, which no longer
+ * exists (#3991). The caller treats `undefined` as a write-failed/skip and
+ * surfaces an actionable note. A whitespace-only override is treated as unset.
  */
 export function resolveVoteRecordsPath(): string | undefined {
   const envPath = process.env[VOTE_RECORDS_PATH_ENV];
@@ -188,11 +243,39 @@ export function resolveVoteRecordsPath(): string | undefined {
     // Honor the absolute-path contract: a relative override is resolved against
     // process.cwd() rather than written verbatim (#3963). isAbsolute short-
     // circuits the common already-absolute case to a no-op for clarity.
-    return isAbsolute(envPath) ? envPath : resolve(envPath);
+    const resolved = isAbsolute(envPath) ? envPath : resolve(envPath);
+    // Path-traversal validation (#3991): a relative override must not escape the
+    // cwd it is joined against via `..`. An absolute override is the operator's
+    // explicit choice (e.g. the committed governance ledger) and is honored as-is
+    // — there is no enclosing data root to validate it against.
+    if (!isAbsolute(envPath) && !isWithin(process.cwd(), resolved)) {
+      return undefined;
+    }
+    return resolved;
   }
-  const root = findRepoRoot(process.cwd());
-  if (root === null) return undefined;
-  return join(root, VOTE_RECORDS_REL_PATH);
+  // Canonical resolver: handles sandbox, repo-preferred, and homedir layouts.
+  // nexusDataPath may root the result under the homedir/sandbox data dir OR,
+  // when `governance` routes per-repo (NEXUS_REPO_PREFERRED), under
+  // `<repo>/.nexus-agents` — so the base differs by layout.
+  const resolved = nexusDataPath(VOTE_RECORDS_DATA_CATEGORY, VOTE_RECORDS_FILENAME);
+  // Defense-in-depth (#3991): nexusDataPath joins a FIXED category + filename
+  // (no caller/user input) so traversal is structurally impossible. But fail
+  // closed against a future resolver regression: the result must be absolute,
+  // end with the expected `governance/<file>` suffix, and live under a
+  // recognized `.nexus-agents` data root — either the homedir/sandbox data dir
+  // or, when `governance` routes per-repo, a `<repo>/.nexus-agents/governance/`
+  // location (the base differs by layout, so we accept either).
+  const expectedSuffix = `${VOTE_RECORDS_DATA_CATEGORY}${sep}${VOTE_RECORDS_FILENAME}`;
+  const underHomedirRoot = isWithin(getNexusDataDir(), resolved);
+  const underRepoDataDir = resolved.includes(`.nexus-agents${sep}${VOTE_RECORDS_DATA_CATEGORY}${sep}`);
+  if (
+    !isAbsolute(resolved) ||
+    !resolved.endsWith(expectedSuffix) ||
+    !(underHomedirRoot || underRepoDataDir)
+  ) {
+    return undefined;
+  }
+  return resolved;
 }
 
 /** Options for {@link persistVoteRecord}. `sequence`/`previousHash` are assigned by the store. */
@@ -200,36 +283,40 @@ export interface PersistVoteRecordOptions
   extends Omit<BuildVoteRecordInput, 'previousHash' | 'sequence'> {
   /**
    * Override the artifact path; takes precedence over {@link VOTE_RECORDS_PATH_ENV}
-   * and the repo-root resolution (see {@link resolveVoteRecordsPath}).
+   * and the {@link nexusDataPath} resolution (see {@link resolveVoteRecordsPath}).
    */
   readonly filePath?: string | undefined;
   readonly logger?: ILogger | undefined;
 }
 
 /**
- * Persist an authentic vote record to the committable artifact at vote time.
- * Best-effort and append-only: reads the ledger tip (max sequence + advisory
- * last hash), assigns the next monotonic `sequence`, builds a self-hashed
- * record, and appends one JSON line. Returns the written record (or undefined
- * when no committable location exists / the write failed) — persistence never
- * throws into the vote path (an audit sink must not break the operation it
- * observes).
+ * Persist an authentic vote record at vote time. Best-effort and append-only:
+ * reads the ledger tip (max sequence + advisory last hash), assigns the next
+ * monotonic `sequence`, builds a self-hashed record, and appends one JSON line.
+ * Returns the written record (or undefined when the path could not be resolved /
+ * the write failed) — persistence never throws into the vote path (an audit sink
+ * must not break the operation it observes).
  *
- * AUTHORITATIVE POPULATION PATH (#3927, design vote 7-0): caller-commits. The
- * proposer commits the RETURNED record bytes into
- * `governance/vote-records.jsonl` in the promotion PR; that is what the gate
- * reads. This server-side auto-write is only a best-effort convenience and
- * no-ops when the server runs outside the repo and no override is set — hence
- * the WARN below and the {@link VOTE_RECORDS_PATH_ENV} escape hatch.
+ * RUNTIME LEDGER (#3991, design vote 7-0): the default path now routes through
+ * {@link nexusDataPath} under `governance/`, so it essentially always resolves to
+ * a writable `.nexus-agents/governance/` location (sandbox / repo-preferred /
+ * homedir) and the server-side write essentially always succeeds. The committed
+ * `<repo>/governance/vote-records.jsonl` ledger the promotion gate (#3895) reads
+ * is a SEPARATE caller-commits artifact (deferred), reached only via the
+ * {@link VOTE_RECORDS_PATH_ENV} override.
  *
  * Path precedence: `opts.filePath` > {@link VOTE_RECORDS_PATH_ENV} >
- * {@link findRepoRoot}(`process.cwd()`).
+ * `nexusDataPath('governance', 'vote-records.jsonl')`.
  */
 export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | undefined {
   const logger = opts.logger ?? createLogger({ component: 'vote-record-store' });
   const filePath = opts.filePath ?? resolveVoteRecordsPath();
   if (filePath === undefined) {
-    logger.warn(voteRecordNoRootMessage(), { id: opts.id });
+    // Post-#3991 this is rare: the canonical resolver almost always returns a
+    // path. It happens only on a fail-closed traversal rejection or resolver
+    // failure — surface the write-failed guidance rather than the obsolete
+    // "no repo root" message.
+    logger.warn(voteRecordWriteFailedMessage('<unresolved>'), { id: opts.id });
     return undefined;
   }
   try {

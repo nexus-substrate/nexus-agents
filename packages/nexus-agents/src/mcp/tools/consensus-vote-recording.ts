@@ -20,7 +20,7 @@ import type { VoteRecord } from '../../audit/vote-record.js';
 import {
   persistVoteRecord,
   resolveVoteRecordsPath,
-  voteRecordNoRootMessage,
+  voteRecordWriteFailedMessage,
 } from '../../audit/vote-record-store.js';
 import { getToolMemory } from './tool-memory.js';
 import {
@@ -104,34 +104,41 @@ function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
 /**
  * Structured outcome of the best-effort authentic-vote-record persistence
  * (#3991). Surfaced in the `consensus_vote` result so an MCP caller can SEE
- * whether the committable record was written and, when not, WHY + how to fix —
- * previously a skipped/failed persist was only a server-side WARN invisible to
- * MCP clients (a live 2.135.0 vote produced no persisted record with no visible
- * signal). Observability only: the persistence/cwd-resolution logic is unchanged.
+ * whether the record was written and, when not, WHY + how to fix — previously a
+ * skipped/failed persist was only a server-side WARN invisible to MCP clients.
+ *
+ * Reason vocabulary (#3991, Option B). Since the runtime ledger now routes
+ * through `nexusDataPath` under `governance/`, the path essentially always
+ * resolves to a writable `.nexus-agents/governance/` location — so the normal
+ * case is `persisted: true`. The former `'no-repo-root'` reason is OBSOLETE
+ * (there is always a homedir/sandbox/repo fallback): a non-persist is now either
+ * `'all-simulated'` (skipped by design) or `'write-failed'` (the data dir was
+ * unwritable, or a fail-closed traversal rejection). Observability only.
  */
 export type VoteRecordPersistOutcome =
   | { readonly persisted: true; readonly record: VoteRecord }
   | {
       readonly persisted: false;
-      readonly reason: 'all-simulated' | 'no-repo-root' | 'write-failed';
+      readonly reason: 'all-simulated' | 'write-failed';
       readonly detail: string;
     };
 
 /**
  * Persist an authentic, self-hashed vote record (tamper-evident record set +
- * monotonic sequence, #3927) to the committable governance
- * artifact at vote time (#3897). Best-effort: a persist failure must never fail
- * the vote, so the store swallows + logs. Skips all-simulated runs (random
- * output must not seed a committed record).
+ * monotonic sequence, #3927) at vote time (#3897). Best-effort: a persist
+ * failure must never fail the vote, so the store swallows + logs. Skips
+ * all-simulated runs (random output must not seed a committed record).
  *
- * Returns a structured {@link VoteRecordPersistOutcome} (#3991) so the caller
- * can surface the result to MCP clients instead of leaving a skip invisible:
+ * RUNTIME LEDGER (#3991, design vote 7-0 Option B): the path routes through
+ * `nexusDataPath('governance', ...)`, landing in a writable
+ * `.nexus-agents/governance/` location (sandbox / repo-preferred / homedir), so
+ * `persisted: true` is the normal case. Returns a structured
+ * {@link VoteRecordPersistOutcome} so the caller can surface a non-persist to MCP
+ * clients:
  *  - `all-simulated` — every vote was simulated; a committed record would seed
  *    governance from random output (#2319);
- *  - `no-repo-root` — no committable location (server outside the repo, no
- *    override); `detail` reuses the server WARN's actionable guidance;
- *  - `write-failed` — a location resolved but the append threw.
- * Persistence remains best-effort; this only reports what happened.
+ *  - `write-failed` — the data dir was unwritable (or a fail-closed traversal
+ *    rejection); `detail` carries the actionable unwritable-data-dir guidance.
  */
 export function recordAuthenticVote(args: {
   proposal: string;
@@ -151,16 +158,17 @@ export function recordAuthenticVote(args: {
         'from random output (#2319), so persistence is skipped by design.',
     };
   }
-  // Resolve the committable location up front (mirrors the store's own
-  // precedence: env override > repo-root detection) so a no-root skip surfaces
-  // a DISTINCT, actionable reason vs a genuine write failure. The persist path
-  // and cwd-resolution logic are unchanged — this only classifies the outcome.
-  if (resolveVoteRecordsPath() === undefined) {
-    const detail = voteRecordNoRootMessage();
-    // Defense-in-depth: keep the server-side WARN (#3991). persistVoteRecord
-    // won't be reached below to log its own, so emit it here.
+  // Resolve the data-dir path up front (mirrors the store's own precedence: env
+  // override > nexusDataPath) so a fail-closed/unwritable case surfaces an
+  // actionable note carrying the resolved path. Post-#3991 this almost always
+  // returns a path; `undefined` is the rare traversal-rejection/resolver-failure
+  // case and is classified as write-failed.
+  const resolvedPath = resolveVoteRecordsPath();
+  if (resolvedPath === undefined) {
+    const detail = voteRecordWriteFailedMessage('<unresolved>');
+    // persistVoteRecord won't be reached below to log its own WARN, so emit here.
     logger.warn(detail);
-    return { persisted: false, reason: 'no-repo-root', detail };
+    return { persisted: false, reason: 'write-failed', detail };
   }
   const id = `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
   const record = persistVoteRecord({
@@ -173,12 +181,13 @@ export function recordAuthenticVote(args: {
     logger,
   });
   if (record === undefined) {
-    // Location resolved but the append threw — persistVoteRecord already WARNed
-    // with the underlying error + path.
+    // The path resolved but the append threw (data dir unwritable) —
+    // persistVoteRecord already WARNed with the underlying error + path. Surface
+    // the actionable unwritable-data-dir guidance with the concrete path.
     return {
       persisted: false,
       reason: 'write-failed',
-      detail: 'Vote record write failed; see server logs for the underlying filesystem error.',
+      detail: voteRecordWriteFailedMessage(resolvedPath),
     };
   }
   return { persisted: true, record };

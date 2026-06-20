@@ -11,21 +11,26 @@
  * @module mcp/tools/consensus-vote-recording.test
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { findRepoRoot } from '../../config/repo-root-detection.js';
-import { VOTE_RECORDS_PATH_ENV, VOTE_RECORDS_REL_PATH } from '../../audit/vote-record-store.js';
+import { getNexusDataDir, nexusDataPath } from '../../config/nexus-data-dir.js';
+import { VOTE_RECORDS_PATH_ENV } from '../../audit/vote-record-store.js';
 import type { ConsensusResult, Vote } from '../../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 
 import { recordAuthenticVote } from './consensus-vote-recording.js';
 
-vi.mock('../../config/repo-root-detection.js', () => ({
-  findRepoRoot: vi.fn(() => null),
+// #3991: the runtime ledger resolves via nexusDataPath (governance category)
+// instead of findRepoRoot. Mock the resolver so each test pins the data root.
+vi.mock('../../config/nexus-data-dir.js', () => ({
+  getNexusDataDir: vi.fn(() => '/data-root/.nexus-agents'),
+  nexusDataPath: vi.fn((...segments: string[]) =>
+    ['/data-root/.nexus-agents', ...segments].join('/')
+  ),
 }));
 
 function vote(decision: Vote['decision'], confidence: number): Vote {
@@ -65,10 +70,16 @@ const realVotes: readonly AgentVoteResult[] = [
 
 describe('recordAuthenticVote persistence outcome (#3991)', () => {
   let dir: string;
+  let dataRoot: string;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'vote-outcome-'));
-    vi.mocked(findRepoRoot).mockReturnValue(null);
+    dataRoot = join(dir, 'data-root', '.nexus-agents');
+    // Default: nexusDataPath roots under a real temp data dir so persists write.
+    vi.mocked(getNexusDataDir).mockReturnValue(dataRoot);
+    vi.mocked(nexusDataPath).mockImplementation((...segments: string[]) =>
+      join(dataRoot, ...segments)
+    );
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -92,9 +103,18 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     }
   });
 
-  it('reports no-repo-root with an actionable NEXUS_VOTE_RECORDS_PATH detail when no location resolves', () => {
-    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined); // no override
-    // findRepoRoot mocked to null → no committable location.
+  it('reports write-failed with an actionable note when the data dir is unwritable', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined); // no override → nexusDataPath
+    // Make the resolved path unwritable: put a regular FILE where a directory
+    // component must be, so persistVoteRecord's mkdirSync throws ENOTDIR and the
+    // outcome is classified write-failed. The path still passes the resolver's
+    // defense-in-depth check because it sits under getNexusDataDir.
+    const fileAsDir = join(dir, 'not-a-dir');
+    writeFileSync(fileAsDir, 'x', 'utf-8');
+    const unwritable = join(fileAsDir, 'governance', 'vote-records.jsonl');
+    vi.mocked(getNexusDataDir).mockReturnValue(fileAsDir);
+    vi.mocked(nexusDataPath).mockReturnValue(unwritable);
+
     const outcome = recordAuthenticVote({
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
@@ -103,9 +123,8 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     });
     expect(outcome.persisted).toBe(false);
     if (!outcome.persisted) {
-      expect(outcome.reason).toBe('no-repo-root');
+      expect(outcome.reason).toBe('write-failed');
       expect(outcome.detail).toContain(VOTE_RECORDS_PATH_ENV);
-      expect(outcome.detail).toContain(VOTE_RECORDS_REL_PATH);
     }
   });
 
@@ -130,9 +149,8 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     expect(written.length).toBeGreaterThan(0);
   });
 
-  it('persists to <repo-root>/governance/... when a repo root resolves (no override)', () => {
+  it('#3991: persists to the .nexus-agents/governance/ data-dir path when no override is set', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
-    vi.mocked(findRepoRoot).mockReturnValue(dir); // simulate a committable repo root
 
     const outcome = recordAuthenticVote({
       proposal: 'p',
@@ -141,7 +159,12 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
       votes: realVotes,
     });
     expect(outcome.persisted).toBe(true);
-    const written = readFileSync(join(dir, VOTE_RECORDS_REL_PATH), 'utf-8').trim();
+    // Landed under the canonical nexusDataPath governance location — the global-
+    // install / sandbox-robust path, NOT a repo-root committed ledger.
+    const written = readFileSync(
+      join(dataRoot, 'governance', 'vote-records.jsonl'),
+      'utf-8'
+    ).trim();
     expect(written.length).toBeGreaterThan(0);
   });
 });

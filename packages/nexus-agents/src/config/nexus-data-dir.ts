@@ -88,6 +88,16 @@ const PER_REPO_SUBDIRS: ReadonlySet<string> = new Set([
   // reported via `ci_health_check({ repo })` are repo-correlated; a wedge
   // on repo A's queue does not predict repo B's health.
   'ci-health',
+  // Governance artifacts — the runtime authentic-vote-record ledger
+  // (`governance/vote-records.jsonl`, #3897/#3927/#3991). Per-repo because a
+  // promotion proposal is scoped to the codebase being changed; with
+  // `NEXUS_REPO_PREFERRED=1` (default) these route to
+  // `<repo>/.nexus-agents/governance/` (gitignored), and to
+  // `~/.nexus-agents/governance/` otherwise (global / non-repo install). This
+  // is DISTINCT from the committed `<repo>/governance/vote-records.jsonl`
+  // ledger the promotion gate reads — that artifact is reached only via the
+  // explicit `NEXUS_VOTE_RECORDS_PATH` override (#3991).
+  'governance',
 ]);
 
 /** Returns the absolute path to the nexus-agents data directory. */
