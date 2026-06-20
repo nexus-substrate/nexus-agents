@@ -11,6 +11,7 @@ import {
   FitnessScoreCalculator,
   createFitnessScoreCalculator,
   calculateFitnessScore,
+  FITNESS_DIMENSION_MAX,
 } from './fitness-score.js';
 
 describe('FitnessScoreCalculator', () => {
@@ -38,6 +39,19 @@ describe('FitnessScoreCalculator', () => {
         0
       );
       expect(audit.score).toBe(dimensionSum);
+    });
+
+    it('FITNESS_DIMENSION_MAX is the source of truth: sums to 100 and bounds each dimension (#3227)', () => {
+      const total = Object.values(FITNESS_DIMENSION_MAX).reduce((sum, val) => sum + val, 0);
+      expect(total).toBe(100);
+
+      const calculator = new FitnessScoreCalculator();
+      const audit = calculator.audit('test');
+      for (const [dim, max] of Object.entries(FITNESS_DIMENSION_MAX)) {
+        const score = audit.dimensions[dim as keyof typeof FITNESS_DIMENSION_MAX];
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(max);
+      }
     });
 
     it('should have score between 0 and 100', () => {

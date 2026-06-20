@@ -14,6 +14,8 @@ export {
   FitnessScoreCalculator,
   createFitnessScoreCalculator,
   calculateFitnessScore,
+  FITNESS_DIMENSION_MAX,
+  type FitnessDimension,
   type FitnessDimensions,
   type FitnessAudit,
   type FitnessFinding,
