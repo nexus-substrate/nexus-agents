@@ -454,7 +454,9 @@ describe('startServer', () => {
     vi.mocked(mcpModule.createServer).mockReturnValue({
       ok: true,
       value: {
-        server: { connect: vi.fn() },
+        // `.server` mirrors the real McpServer's low-level Server handle, which
+        // cli-server wires `oninitialized` onto for MCP-roots resolution (#3991).
+        server: { connect: vi.fn(), server: {} },
         logger: createMockLogger(),
       },
     } as never);
