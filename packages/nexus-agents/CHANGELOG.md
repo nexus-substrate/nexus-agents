@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.137.0
+
+### Minor Changes
+
+- [#4001](https://github.com/nexus-substrate/nexus-agents/pull/4001) [`d650156`](https://github.com/nexus-substrate/nexus-agents/commit/d650156236faa9905ad018f32bd7fb6fd8b8fcec) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - MCP server now resolves the active workspace root from the client's declared
+  `roots` (MCP standard) so per-repo `.nexus-agents/` state lands in the repo
+  being worked on ([#3991](https://github.com/nexus-substrate/nexus-agents/issues/3991)).
+
+  A globally-installed MCP server runs with `process.cwd()` outside the project,
+  so the per-repo data resolver previously routed governance vote-records,
+  checkpoints, audit, and session state to `~/.nexus-agents/` instead of
+  `<repo>/.nexus-agents/`. The server now asks the client for its workspace
+  `roots` after the initialize handshake and bases per-repo subdirs there via a
+  new `setActiveWorkspaceRoot()` resolver hook. The client-supplied path is
+  canonicalized and validated (absolute, existing directory) before use.
+
+  Purely additive and standards-based — no new env var. Clients that don't
+  declare the `roots` capability keep the existing `findRepoRoot(cwd)` → homedir
+  fallback, so CLI and in-repo callers are unchanged.
+
 ## 2.136.0
 
 ### Minor Changes
