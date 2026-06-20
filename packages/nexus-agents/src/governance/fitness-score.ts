@@ -118,6 +118,35 @@ export interface FitnessDimensions {
 }
 
 /**
+ * The closed set of known fitness dimensions. Use this (not a free string) when
+ * validating a dimension carried in untrusted/serialized data — e.g. a finding's
+ * `dimension` flowing into a signal payload (#3227, findings-as-data).
+ */
+export type FitnessDimension = keyof FitnessDimensions;
+
+/**
+ * Maximum points each dimension can score — the SINGLE SOURCE OF TRUTH for
+ * per-dimension maxima (#3227). {@link FitnessScoreCalculator.registerDefaultChecks}
+ * registers each check with `FITNESS_DIMENSION_MAX[dimension]` so the registered
+ * `maxPoints` can never silently drift from this table, and downstream consumers
+ * (e.g. the per-dimension fitness-remediation signal) compute a below-target
+ * threshold as a fraction of the dimension's OWN max rather than a global floor.
+ *
+ * The maxima sum to 100 (the `score` range). Mirrors the `0-N` ranges documented
+ * on each {@link FitnessDimensions} field.
+ */
+export const FITNESS_DIMENSION_MAX: Readonly<Record<FitnessDimension, number>> = {
+  canonicalPaths: 20,
+  explicitBehavior: 15,
+  determinism: 15,
+  observability: 15,
+  configSimplicity: 10,
+  layerSeparation: 10,
+  operatorErgonomics: 10,
+  governanceIntegration: 5,
+};
+
+/**
  * Detailed fitness audit result.
  */
 export interface FitnessAudit {
@@ -197,22 +226,23 @@ export class FitnessScoreCalculator {
 
   /** Register default fitness checks. */
   private registerDefaultChecks(): void {
+    // maxPoints is sourced from FITNESS_DIMENSION_MAX (the single source of truth,
+    // #3227) so a registered check's max can never drift from the published table.
     const reg = (
       dimension: keyof FitnessDimensions,
-      maxPoints: number,
       name: string,
       check: () => FitnessCheckResult
     ): void => {
-      this.checks.push({ dimension, maxPoints, name, check });
+      this.checks.push({ dimension, maxPoints: FITNESS_DIMENSION_MAX[dimension], name, check });
     };
-    reg('canonicalPaths', 20, 'Canonical Paths', () => this.checkCanonicalPaths());
-    reg('explicitBehavior', 15, 'Explicit Behavior', () => this.checkExplicitBehavior());
-    reg('determinism', 15, 'Determinism', () => this.checkDeterminism());
-    reg('observability', 15, 'Observability', () => this.checkObservability());
-    reg('configSimplicity', 10, 'Config Simplicity', () => this.checkConfigSimplicity());
-    reg('layerSeparation', 10, 'Layer Separation', () => this.checkLayerSeparation());
-    reg('operatorErgonomics', 10, 'Operator Ergonomics', () => this.checkOperatorErgonomics());
-    reg('governanceIntegration', 5, 'Governance Integration', () =>
+    reg('canonicalPaths', 'Canonical Paths', () => this.checkCanonicalPaths());
+    reg('explicitBehavior', 'Explicit Behavior', () => this.checkExplicitBehavior());
+    reg('determinism', 'Determinism', () => this.checkDeterminism());
+    reg('observability', 'Observability', () => this.checkObservability());
+    reg('configSimplicity', 'Config Simplicity', () => this.checkConfigSimplicity());
+    reg('layerSeparation', 'Layer Separation', () => this.checkLayerSeparation());
+    reg('operatorErgonomics', 'Operator Ergonomics', () => this.checkOperatorErgonomics());
+    reg('governanceIntegration', 'Governance Integration', () =>
       this.checkGovernanceIntegration()
     );
   }

@@ -13,9 +13,12 @@ import {
   detectCliPerformanceFloor,
   detectFailureCategoryConcentration,
   detectFitnessSignals,
+  detectFitnessDimensionSignals,
   detectConsensusRejectionSignals,
   issueLabelsForSignal,
 } from './improvement-review.js';
+import { FITNESS_DIMENSION_MAX } from '../../governance/fitness-score.js';
+import type { FitnessFinding } from '../../governance/fitness-score.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
@@ -361,6 +364,176 @@ describe('detectFitnessSignals', () => {
     );
     expect(criticalFindings).toHaveLength(1);
     expect(criticalFindings[0]?.signalKey).toBe('tech-debt:fitness-critical:layerSeparation');
+  });
+});
+
+// ============================================================================
+// detectFitnessDimensionSignals — per-dimension fitness-remediation (#3227)
+// ============================================================================
+
+describe('detectFitnessDimensionSignals (#3227)', () => {
+  /** All dimensions at max by default; override only the ones a test cares about. */
+  function fullDimensions(
+    overrides: Partial<Record<keyof typeof FITNESS_DIMENSION_MAX, number>> = {}
+  ): FitnessAudit['dimensions'] {
+    return { ...FITNESS_DIMENSION_MAX, ...overrides };
+  }
+
+  function dimAudit(
+    dimensions: FitnessAudit['dimensions'],
+    findings: readonly FitnessFinding[] = []
+  ): FitnessAudit {
+    return {
+      score: 100,
+      dimensions,
+      findings,
+      timestamp: new Date(NOW).toISOString(),
+      version: 'test',
+    };
+  }
+
+  const finding = (over: Partial<FitnessFinding> & Pick<FitnessFinding, 'dimension'>): FitnessFinding => ({
+    severity: 'warning',
+    description: 'desc',
+    pointsDeducted: 1,
+    ...over,
+  });
+
+  it('emits exactly ONE aggregated signal for a dimension at 12/20 (< 0.6×20=12 is false, so just under)', () => {
+    // operatorErgonomics max 10, target 6 — at 5/10 it is below target.
+    const audit = dimAudit(fullDimensions({ operatorErgonomics: 5 }), [
+      finding({ dimension: 'operatorErgonomics', description: 'missing doctor' }),
+    ]);
+    const signals = detectFitnessDimensionSignals(audit);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.signalKey).toMatch(/^tech-debt:fitness-dimension:operatorErgonomics:/);
+  });
+
+  it('boundary: canonicalPaths at exactly 12/20 (= 0.6×20) is on-target → emits NOTHING (exclusive)', () => {
+    const audit = dimAudit(fullDimensions({ canonicalPaths: 12 }));
+    expect(detectFitnessDimensionSignals(audit)).toEqual([]);
+  });
+
+  it('boundary: canonicalPaths just below target at 11/20 → emits ONE signal', () => {
+    const audit = dimAudit(fullDimensions({ canonicalPaths: 11 }));
+    const signals = detectFitnessDimensionSignals(audit);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.signalKey).toMatch(/^tech-debt:fitness-dimension:canonicalPaths:/);
+  });
+
+  it('a dimension at 16/20 (≥ target) emits nothing', () => {
+    const audit = dimAudit(fullDimensions({ canonicalPaths: 16 }));
+    expect(detectFitnessDimensionSignals(audit)).toEqual([]);
+  });
+
+  it('top-3 cap: with 5 below-target dimensions only the 3 worst emit', () => {
+    // points-below-target (target − score): the 3 worst should win.
+    const audit = dimAudit(
+      fullDimensions({
+        canonicalPaths: 2, // target 12 → 10 below  (worst)
+        explicitBehavior: 2, // target 9  → 7 below
+        determinism: 3, // target 9  → 6 below
+        observability: 5, // target 9  → 4 below
+        configSimplicity: 5, // target 6  → 1 below  (least)
+      })
+    );
+    const signals = detectFitnessDimensionSignals(audit);
+    expect(signals).toHaveLength(3);
+    const dims = signals.map((s) => s.signalKey.split(':')[2]);
+    expect(dims).toEqual(['canonicalPaths', 'explicitBehavior', 'determinism']);
+  });
+
+  it('aggregation: a dimension with 3 findings → 1 signal carrying all 3', () => {
+    const audit = dimAudit(fullDimensions({ determinism: 3 }), [
+      finding({ dimension: 'determinism', description: 'finding A' }),
+      finding({ dimension: 'determinism', description: 'finding B' }),
+      finding({ dimension: 'determinism', description: 'finding C' }),
+    ]);
+    const signals = detectFitnessDimensionSignals(audit);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.body).toContain('Findings in this dimension: 3');
+    expect(signals[0]?.body).toContain('finding A');
+    expect(signals[0]?.body).toContain('finding B');
+    expect(signals[0]?.body).toContain('finding C');
+  });
+
+  it('dedup: an identical audit across two runs yields the SAME stable signalKey', () => {
+    const make = (): FitnessAudit =>
+      dimAudit(fullDimensions({ determinism: 3 }), [
+        finding({ dimension: 'determinism', description: 'unseeded Math.random' }),
+      ]);
+    const keyA = detectFitnessDimensionSignals(make())[0]?.signalKey;
+    const keyB = detectFitnessDimensionSignals(make())[0]?.signalKey;
+    expect(keyA).toBeDefined();
+    expect(keyA).toBe(keyB);
+  });
+
+  it('dedup key CHANGES when the dimension findings change (re-emit on real change)', () => {
+    const a = detectFitnessDimensionSignals(
+      dimAudit(fullDimensions({ determinism: 3 }), [
+        finding({ dimension: 'determinism', description: 'finding X' }),
+      ])
+    )[0]?.signalKey;
+    const b = detectFitnessDimensionSignals(
+      dimAudit(fullDimensions({ determinism: 3 }), [
+        finding({ dimension: 'determinism', description: 'finding Y' }),
+      ])
+    )[0]?.signalKey;
+    expect(a).not.toBe(b);
+  });
+
+  it('determinism: same input → identical signal set + stable ordering', () => {
+    const audit = dimAudit(
+      fullDimensions({ canonicalPaths: 2, explicitBehavior: 3, determinism: 4 })
+    );
+    const run1 = detectFitnessDimensionSignals(audit);
+    const run2 = detectFitnessDimensionSignals(audit);
+    expect(run1.map((s) => s.signalKey)).toEqual(run2.map((s) => s.signalKey));
+  });
+
+  it('does NOT fire for a non-auditable result', () => {
+    const audit: FitnessAudit = {
+      ...dimAudit(fullDimensions({ canonicalPaths: 2 })),
+      score: 0,
+      auditable: false,
+    };
+    expect(detectFitnessDimensionSignals(audit)).toEqual([]);
+  });
+
+  it('ignores a finding whose dimension is not in the known closed set (findings-as-data)', () => {
+    const poisoned = {
+      dimension: 'evilInjected' as keyof typeof FITNESS_DIMENSION_MAX,
+      severity: 'warning' as const,
+      description: 'rm -rf /',
+      pointsDeducted: 1,
+    };
+    const audit = dimAudit(fullDimensions({ determinism: 3 }), [poisoned]);
+    const signals = detectFitnessDimensionSignals(audit);
+    // determinism is below target and emits, but the poisoned finding is dropped:
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.body).not.toContain('rm -rf');
+  });
+
+  it('cross-reference with floor: a single critical finding does not produce two redundant remediations at the same key', () => {
+    // determinism below target with a critical finding. detectFitnessSignals
+    // emits: a floor signal (aggregate), a fitness-critical signal, AND a
+    // dimension signal. The dimension signal's key is distinct from the
+    // critical-finding key, and the floor signal addresses the aggregate score —
+    // they are complementary, not the same remediation at the same key.
+    const audit: FitnessAudit = {
+      ...dimAudit(fullDimensions({ determinism: 3 }), [
+        finding({ dimension: 'determinism', severity: 'critical', description: 'crit' }),
+      ]),
+      score: 80,
+    };
+    const signals = detectFitnessSignals(audit, 90);
+    const keys = signals.map((s) => s.signalKey);
+    expect(keys).toContain('tech-debt:fitness-below-floor');
+    expect(keys).toContain('tech-debt:fitness-critical:determinism');
+    const dimKeys = keys.filter((k) => k.startsWith('tech-debt:fitness-dimension:determinism:'));
+    expect(dimKeys).toHaveLength(1);
+    // No two signals share a signalKey → no duplicate remediation at one key.
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 
