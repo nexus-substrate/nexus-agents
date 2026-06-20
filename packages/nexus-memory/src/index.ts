@@ -36,6 +36,7 @@ export {
   MemoryRegistry,
   getMemoryRegistry,
   setMemoryRegistry,
+  hasMemoryRegistry,
   closeMemoryRegistry,
 } from './registry.js';
 export type { MemoryRegistryOptions, RegisterBackendOptions } from './registry.js';

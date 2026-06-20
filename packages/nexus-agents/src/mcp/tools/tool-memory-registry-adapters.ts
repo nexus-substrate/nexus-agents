@@ -13,7 +13,10 @@
  * @module mcp/tools/tool-memory-registry-adapters
  */
 
+import { MemoryRegistry, hasMemoryRegistry, setMemoryRegistry } from 'nexus-memory';
 import type { BackendStats, CliName, IMemoryBackend, QueryFilter, WriteMeta } from 'nexus-memory';
+
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 
 /** Default cap when a consumer omits `limit` in `query()`. */
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -142,3 +145,38 @@ function extractCount(value: unknown): number {
 
 /** Convenience tag the adapter passes to `WriteMeta.cli` for future writes. */
 export type AdapterCli = CliName;
+
+// ============================================================================
+// Shared MemoryRegistry path injection (#3995)
+// ============================================================================
+
+/**
+ * Ensure the process-wide shared {@link MemoryRegistry} is constructed with
+ * the canonical nexus-agents data path (#3995).
+ *
+ * nexus-memory ships a dep-free `resolveDefaultDbPath()` fallback that
+ * re-implements `~/.nexus-agents/memory/memory.db` inline so the package stays
+ * free of inter-package imports (it is reused by `nexus-eval-*`). In
+ * production nexus-agents we want the canonical {@link nexusDataPath} resolver
+ * instead — it adds sandbox detection, the per-repo/cross-repo split, the
+ * homedir-unwritable fallback, and `.gitignore` auto-wiring that the dep-free
+ * fallback cannot know about. We keep nexus-memory dep-free by doing the
+ * resolution HERE (on the nexus-agents side) and injecting the resolved path
+ * as a plain string via `setMemoryRegistry`.
+ *
+ * No-op when a registry is already present (`hasMemoryRegistry()`): that means
+ * either a test injected an in-memory registry, or a prior call already wired
+ * the canonical path. Checking presence — rather than calling
+ * `getMemoryRegistry()` — is what lets us win the race against nexus-memory's
+ * lazy default-path initialization without ever triggering it. Call this
+ * before the first `getMemoryRegistry()` in any production path that attaches
+ * a backend.
+ */
+export function ensureSharedMemoryRegistry(): void {
+  if (hasMemoryRegistry()) return;
+  // `memory` is intentionally cross-repo (not in PER_REPO_SUBDIRS), so this
+  // resolves to `~/.nexus-agents/memory/memory.db` on a normal machine and to
+  // the sandbox / per-repo-fallback root under those modes.
+  const dbPath = nexusDataPath('memory', 'memory.db');
+  setMemoryRegistry(new MemoryRegistry({ dbPath }));
+}

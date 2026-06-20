@@ -13,11 +13,12 @@
  * @module nexus-memory/backends/sqlite
  */
 
-import Database, { type Database as DatabaseType, type Statement } from 'better-sqlite3';
+import { type Database as DatabaseType, type Statement } from 'better-sqlite3';
 import type { z } from 'zod';
 import { recordMemoryEvent } from '../telemetry.js';
 import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
 import { MemoryValidationError } from './memory.js';
+import { openSqliteDatabase } from './open-database.js';
 
 export interface SqliteBackendOptions<TValue> {
   readonly domain: string;
@@ -115,9 +116,9 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
       this.db = options.db;
       this.ownsDb = false;
     } else {
-      const db = new Database(options.dbPath);
-      (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
-      this.db = db;
+      // #3995: open via the shared helper, which creates the parent dir
+      // first (fresh-install robustness) and enables WAL mode.
+      this.db = openSqliteDatabase(options.dbPath);
       this.ownsDb = true;
     }
     if (options.schema !== undefined) {

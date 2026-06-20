@@ -18,6 +18,7 @@ import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
 
 type DatabaseType = InstanceType<typeof Database>;
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { createLogger } from '../core/logger.js';
 import type { IMobiMem, MobiMemConfig, MobiMemStats } from './mobimem-types.js';
 import { DEFAULT_MOBIMEM_CONFIG, MobiMemConfigSchema } from './mobimem-types.js';
@@ -173,7 +174,17 @@ export function setSharedMobiMemDbPathResolver(resolver: () => string): void {
   resolveSharedDbPath = resolver;
 }
 
-function defaultSharedDbPath(): string {
-  const root = process.env['NEXUS_DATA_DIR'] ?? `${process.env['HOME'] ?? '/tmp'}/.nexus-agents`;
-  return `${root}/memory/mobimem.db`;
+/**
+ * Default resolver for the shared MobiMem SQLite path. Routes through the
+ * canonical {@link nexusDataPath} resolver (#3995) so it inherits sandbox
+ * detection, the per-repo/cross-repo split, the homedir-unwritable fallback,
+ * and `.gitignore` auto-wiring — instead of re-implementing `~/.nexus-agents`
+ * inline. `memory` is intentionally NOT in `PER_REPO_SUBDIRS`, so this stays
+ * cross-repo (homedir on normal machines). Exported for the resolver-routing
+ * regression test. Used only when no caller has overridden the resolver via
+ * {@link setSharedMobiMemDbPathResolver} (`tool-memory.ts` does override it
+ * with the equivalent `nexusDataPath('memory','mobimem.db')`).
+ */
+export function defaultSharedDbPath(): string {
+  return nexusDataPath('memory', 'mobimem.db');
 }

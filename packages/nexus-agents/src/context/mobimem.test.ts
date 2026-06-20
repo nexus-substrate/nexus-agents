@@ -7,8 +7,20 @@
  * (Source: Issue #149)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { MobiMem, createMobiMem, type ActionStep, type ExecutionOutcome } from './mobimem.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  MobiMem,
+  createMobiMem,
+  defaultSharedDbPath,
+  type ActionStep,
+  type ExecutionOutcome,
+} from './mobimem.js';
+
+/** Restore an env var to a saved value, or clear it if it was unset. */
+function restoreEnv(key: string, saved: string | undefined): void {
+  if (saved === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = saved;
+}
 
 describe('MobiMem', () => {
   let mobimem: MobiMem;
@@ -372,6 +384,49 @@ describe('MobiMem', () => {
       });
 
       expect(instance).toBeInstanceOf(MobiMem);
+    });
+  });
+
+  // #3995: the shared-DB default resolver must route through `nexusDataPath`
+  // instead of re-implementing `~/.nexus-agents` inline.
+  describe('defaultSharedDbPath (#3995)', () => {
+    let savedDataDir: string | undefined;
+    let savedRepoPreferred: string | undefined;
+    let savedSandbox: string | undefined;
+    let savedSandboxRoot: string | undefined;
+
+    beforeEach(() => {
+      savedDataDir = process.env['NEXUS_DATA_DIR'];
+      savedRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+      savedSandbox = process.env['NEXUS_SANDBOX'];
+      savedSandboxRoot = process.env['NEXUS_SANDBOX_ROOT'];
+    });
+
+    afterEach(() => {
+      restoreEnv('NEXUS_DATA_DIR', savedDataDir);
+      restoreEnv('NEXUS_REPO_PREFERRED', savedRepoPreferred);
+      restoreEnv('NEXUS_SANDBOX', savedSandbox);
+      restoreEnv('NEXUS_SANDBOX_ROOT', savedSandboxRoot);
+    });
+
+    it('resolves under NEXUS_DATA_DIR/memory/mobimem.db when that env is set', () => {
+      process.env['NEXUS_DATA_DIR'] = '/var/lib/nexus-test';
+      // env override wins regardless of repo-preferred.
+      expect(defaultSharedDbPath()).toBe('/var/lib/nexus-test/memory/mobimem.db');
+    });
+
+    it('resolves under the sandbox root when NEXUS_SANDBOX is active', () => {
+      delete process.env['NEXUS_DATA_DIR'];
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      expect(defaultSharedDbPath()).toBe('/projects/.nexus-agents/memory/mobimem.db');
+    });
+
+    it('always ends in the cross-repo memory subdir', () => {
+      // `memory` is intentionally NOT a per-repo subdir, so the path always
+      // carries the `memory/mobimem.db` tail regardless of resolution tier.
+      process.env['NEXUS_DATA_DIR'] = '/tmp/nexus-x';
+      expect(defaultSharedDbPath().endsWith('/memory/mobimem.db')).toBe(true);
     });
   });
 });
