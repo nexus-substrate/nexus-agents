@@ -44,7 +44,7 @@ jobs:
   # (#2027)
   typedoc-check:
     name: TypeDoc Verification
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -77,7 +77,7 @@ jobs:
   # Job 3: Documentation Coverage Check (non-blocking warning per DevEx amendment)
   docs-coverage:
     name: Documentation Coverage
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
     continue-on-error: true
@@ -261,7 +261,7 @@ jobs:
   # Job 5: Secrets Guardrails
   secrets-scan:
     name: Documentation Secrets Scan
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -277,7 +277,7 @@ jobs:
   # Job 6: Repository Index Check
   repo-index:
     name: Repository Index Verification
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -301,7 +301,7 @@ jobs:
   # memory and fail if the committed output differs.
   tool-reference-drift:
     name: Tool Reference Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -334,7 +334,7 @@ jobs:
   # drift gate: regenerate in memory and fail if the committed output differs.
   strategy-reference-drift:
     name: Strategy Reference Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -355,7 +355,7 @@ jobs:
   # Job 8: DocOps Skill Synchronization
   docops-skill-sync:
     name: DocOps Skill Sync
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
@@ -381,7 +381,7 @@ jobs:
   # Job 8b: Registry-Coverage Gate (#2406)
   registry-coverage:
     name: Registry-Coverage Check
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
@@ -400,7 +400,7 @@ jobs:
   # must agree with the TOOL_DESCRIPTIONS doc-table source.
   mcp-description-drift:
     name: MCP Description Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
@@ -416,7 +416,7 @@ jobs:
   # Job 8d: Orphan Detection (#2410) — audit-only v1
   orphan-detection:
     name: Orphan Detection
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     if: github.event_name == 'pull_request'
 
@@ -432,7 +432,7 @@ jobs:
   # Job 9: Canonical Index Validation
   canonical-index:
     name: Canonical Index Check
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -457,7 +457,7 @@ jobs:
   # option-B federation invariant: redirects, never duplication.
   harness-alignment:
     name: Harness Alignment Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -470,7 +470,7 @@ jobs:
   # Job 10: Markdown Linting
   markdown-lint:
     name: Markdown Lint
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -491,7 +491,7 @@ jobs:
   # Job 10.5: Documentation Content Drift Detection
   docs-content-drift:
     name: Docs Content Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -655,7 +655,7 @@ jobs:
   # Job 10.6: Skills Index Freshness (#1828)
   skills-index-check:
     name: Skills Index Freshness
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -674,7 +674,7 @@ jobs:
   # Job 10.7: Agents Index Freshness + Gap Coverage (#1825 follow-up)
   agents-index-check:
     name: Agents Index Freshness
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -693,7 +693,7 @@ jobs:
   # Job 11: Governance Registry Drift Detection
   governance-drift:
     name: Governance Drift Check
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -744,7 +744,7 @@ jobs:
   # high-precision via a closed set of sentinel regexes (low false positives).
   claims-check:
     name: Claims Registry Drift
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -765,7 +765,7 @@ jobs:
   # Job 13: Spell Check (Warning Only)
   spell-check:
     name: Spell Check
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # Non-blocking - reports warnings only
     continue-on-error: true

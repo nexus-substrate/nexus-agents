@@ -31,7 +31,7 @@ permissions: read-all
 jobs:
   link-check:
     name: Check Links
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # #3778 (Rule-of-Two CI leg): skip on auto-remediation bot-branch PRs — the
     # plan doc is markdown (matches the path filter) and this job carries
