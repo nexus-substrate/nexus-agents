@@ -27,6 +27,7 @@ import {
 import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
+import type { VoteRecord } from '../../audit/vote-record.js';
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -442,6 +443,7 @@ describe('ConsensusVoteResponse structure', () => {
       ],
       durationMs: 5000,
       simulateVotes: false,
+      voteRecordPersisted: true,
     };
 
     expect(response.decision).toBe('approved');
@@ -469,6 +471,7 @@ describe('ConsensusVoteResponse structure', () => {
       votes: [],
       durationMs: 4500,
       simulateVotes: false,
+      voteRecordPersisted: false,
     };
 
     expect(response.decision).toBe('rejected');
@@ -829,6 +832,54 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
       policyReason: 'fail_closed: 1 voter(s) errored',
     };
   }
+});
+
+describe('buildResponse surfaces vote-record persistence outcome (#3991)', () => {
+  function makeResult(): ExtendedVotingResult {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+    ];
+    return {
+      proposal: 'Test',
+      threshold: 'simple_majority',
+      result: createPolicyFailedResult('Test', 'simple_majority', 'x', votes),
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+    };
+  }
+  const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+
+  it('reports voteRecordPersisted=true with no note when the record was written', () => {
+    const response = buildResponse(input, makeResult(), undefined, {
+      persisted: true,
+      record: { id: 'vote-1', decision: 'approved' } as unknown as VoteRecord,
+    });
+    expect(response.voteRecordPersisted).toBe(true);
+    expect(response.voteRecordNote).toBeUndefined();
+  });
+
+  it('reports voteRecordPersisted=false + an actionable note on a no-repo-root skip', () => {
+    const response = buildResponse(input, makeResult(), undefined, {
+      persisted: false,
+      reason: 'no-repo-root',
+      detail: 'set NEXUS_VOTE_RECORDS_PATH to an absolute file path.',
+    });
+    expect(response.voteRecordPersisted).toBe(false);
+    expect(response.voteRecordNote).toContain('NEXUS_VOTE_RECORDS_PATH');
+  });
+
+  it('defaults voteRecordPersisted=false (no note) when no outcome is supplied', () => {
+    const response = buildResponse(input, makeResult());
+    expect(response.voteRecordPersisted).toBe(false);
+    expect(response.voteRecordNote).toBeUndefined();
+  });
 });
 
 describe('shouldEscalateLowPosterior (#3174)', () => {

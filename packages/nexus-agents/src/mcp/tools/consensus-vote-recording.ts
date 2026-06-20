@@ -17,7 +17,11 @@ import {
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
 import type { VoteRecord } from '../../audit/vote-record.js';
-import { persistVoteRecord } from '../../audit/vote-record-store.js';
+import {
+  persistVoteRecord,
+  resolveVoteRecordsPath,
+  voteRecordNoRootMessage,
+} from '../../audit/vote-record-store.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
@@ -98,12 +102,36 @@ function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
 }
 
 /**
+ * Structured outcome of the best-effort authentic-vote-record persistence
+ * (#3991). Surfaced in the `consensus_vote` result so an MCP caller can SEE
+ * whether the committable record was written and, when not, WHY + how to fix —
+ * previously a skipped/failed persist was only a server-side WARN invisible to
+ * MCP clients (a live 2.135.0 vote produced no persisted record with no visible
+ * signal). Observability only: the persistence/cwd-resolution logic is unchanged.
+ */
+export type VoteRecordPersistOutcome =
+  | { readonly persisted: true; readonly record: VoteRecord }
+  | {
+      readonly persisted: false;
+      readonly reason: 'all-simulated' | 'no-repo-root' | 'write-failed';
+      readonly detail: string;
+    };
+
+/**
  * Persist an authentic, self-hashed vote record (tamper-evident record set +
  * monotonic sequence, #3927) to the committable governance
  * artifact at vote time (#3897). Best-effort: a persist failure must never fail
  * the vote, so the store swallows + logs. Skips all-simulated runs (random
- * output must not seed a committed record). Returns the written record (or
- * undefined when skipped / no committable location).
+ * output must not seed a committed record).
+ *
+ * Returns a structured {@link VoteRecordPersistOutcome} (#3991) so the caller
+ * can surface the result to MCP clients instead of leaving a skip invisible:
+ *  - `all-simulated` — every vote was simulated; a committed record would seed
+ *    governance from random output (#2319);
+ *  - `no-repo-root` — no committable location (server outside the repo, no
+ *    override); `detail` reuses the server WARN's actionable guidance;
+ *  - `write-failed` — a location resolved but the append threw.
+ * Persistence remains best-effort; this only reports what happened.
  */
 export function recordAuthenticVote(args: {
   proposal: string;
@@ -111,14 +139,31 @@ export function recordAuthenticVote(args: {
   result: ConsensusResult;
   votes: readonly AgentVoteResult[];
   correlationId?: string | undefined;
-}): VoteRecord | undefined {
+}): VoteRecordPersistOutcome {
   const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
     logger.debug('Skipping authentic vote record — all votes simulated');
-    return undefined;
+    return {
+      persisted: false,
+      reason: 'all-simulated',
+      detail:
+        'All votes were simulated; a committed vote record would seed governance ' +
+        'from random output (#2319), so persistence is skipped by design.',
+    };
+  }
+  // Resolve the committable location up front (mirrors the store's own
+  // precedence: env override > repo-root detection) so a no-root skip surfaces
+  // a DISTINCT, actionable reason vs a genuine write failure. The persist path
+  // and cwd-resolution logic are unchanged — this only classifies the outcome.
+  if (resolveVoteRecordsPath() === undefined) {
+    const detail = voteRecordNoRootMessage();
+    // Defense-in-depth: keep the server-side WARN (#3991). persistVoteRecord
+    // won't be reached below to log its own, so emit it here.
+    logger.warn(detail);
+    return { persisted: false, reason: 'no-repo-root', detail };
   }
   const id = `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
-  return persistVoteRecord({
+  const record = persistVoteRecord({
     id,
     proposal: args.proposal,
     strategy: toRecordStrategy(args.strategy),
@@ -127,6 +172,16 @@ export function recordAuthenticVote(args: {
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
     logger,
   });
+  if (record === undefined) {
+    // Location resolved but the append threw — persistVoteRecord already WARNed
+    // with the underlying error + path.
+    return {
+      persisted: false,
+      reason: 'write-failed',
+      detail: 'Vote record write failed; see server logs for the underlying filesystem error.',
+    };
+  }
+  return { persisted: true, record };
 }
 
 /** Records a failed consensus vote to session memory. Best-effort. */

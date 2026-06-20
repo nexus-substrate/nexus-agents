@@ -51,6 +51,23 @@ export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 /** Max proposal chars retained in the human record (full text is hashed). */
 const MAX_PROPOSAL_RECORD_CHARS = 500;
 
+/**
+ * Actionable message for the no-committable-location skip (#3927, surfaced to
+ * MCP callers in #3991). Exported so the `consensus_vote` result note can reuse
+ * the EXACT text the server WARN logs — one source of truth for the
+ * "how to fix" guidance (set {@link VOTE_RECORDS_PATH_ENV} or commit the
+ * returned bytes). Previously this guidance only reached server stderr.
+ */
+export function voteRecordNoRootMessage(): string {
+  return (
+    'Authentic vote record NOT persisted: no repo root found from process.cwd() ' +
+    'and no override set. Per #3927 the authoritative population path is ' +
+    'caller-commits — commit the returned record bytes into ' +
+    `${VOTE_RECORDS_REL_PATH} in the promotion PR. To force a server-side ` +
+    `write, set ${VOTE_RECORDS_PATH_ENV} to an absolute file path.`
+  );
+}
+
 /** Map a consensus outcome to the recorded decision vocabulary. */
 function outcomeToDecision(result: ConsensusResult): VoteRecord['decision'] {
   if (result.outcome === 'approved') return 'approved';
@@ -212,14 +229,7 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
   const logger = opts.logger ?? createLogger({ component: 'vote-record-store' });
   const filePath = opts.filePath ?? resolveVoteRecordsPath();
   if (filePath === undefined) {
-    logger.warn(
-      'Authentic vote record NOT persisted: no repo root found from process.cwd() ' +
-        'and no override set. Per #3927 the authoritative population path is ' +
-        'caller-commits — commit the returned record bytes into ' +
-        `${VOTE_RECORDS_REL_PATH} in the promotion PR. To force a server-side ` +
-        `write, set ${VOTE_RECORDS_PATH_ENV} to an absolute file path.`,
-      { id: opts.id }
-    );
+    logger.warn(voteRecordNoRootMessage(), { id: opts.id });
     return undefined;
   }
   try {
