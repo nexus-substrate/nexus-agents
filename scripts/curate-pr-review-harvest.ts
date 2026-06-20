@@ -46,7 +46,13 @@ const REPO = 'nexus-substrate/nexus-agents';
 // gh fetch (the only I/O)
 // ============================================================================
 
-interface RawPr {
+/**
+ * The minimal merged-PR shape the pure signal-extraction helpers (`signalsFor`,
+ * `followUpFixesFor`, `sourceFilesOf`) consume. Exported as `RawPrLike` so the
+ * candidate-mining pipeline (mine-pr-review-candidates-*) can reuse the same
+ * signal extraction rather than duplicate it (#3847).
+ */
+export interface RawPrLike {
   readonly number: number;
   readonly title: string;
   readonly body: string;
@@ -54,6 +60,8 @@ interface RawPr {
   readonly files: ReadonlyArray<{ readonly path: string }>;
   readonly reviewDecision?: string;
 }
+
+type RawPr = RawPrLike;
 
 /** A merged-PR page from `gh pr list --json …`. Throws on gh failure. */
 function fetchMergedPrs(limit: number): readonly RawPr[] {
