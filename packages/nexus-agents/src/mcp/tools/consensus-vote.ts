@@ -59,6 +59,7 @@ import {
   recordVoteError,
   recordAuthenticVote,
 } from './consensus-vote-recording.js';
+import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
@@ -684,18 +685,25 @@ function finalizeVotingResult(args: {
  * under the per-function line cap. Persists the authentic hash-chained vote
  * record (#3897) and rolls up per-decision cost (#3855), sharing one decision
  * id as the correlation key. Neither must fail the vote — both are guarded.
+ *
+ * Returns both the cost rollup and the structured vote-record persistence
+ * outcome (#3991) so the handler can surface persistence visibility in the
+ * result instead of leaving a skip as a server-only WARN.
  */
 function recordVoteSideEffects(
   proposal: string,
   strategy: string,
   result: ExtendedVotingResult,
   logger: ILogger
-): ReturnType<typeof recordDecisionCost> | undefined {
+): {
+  costSummary: ReturnType<typeof recordDecisionCost> | undefined;
+  voteRecord: VoteRecordPersistOutcome;
+} {
   const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
   // #3897: persist an authentic, hash-chained vote record to the committable
   // governance artifact at vote time so the promotion gate/CI can rest
   // authenticity on the chain, not on hand-transcribed YAML.
-  recordAuthenticVote({
+  const voteRecord = recordAuthenticVote({
     proposal,
     strategy,
     result: result.result,
@@ -704,14 +712,16 @@ function recordVoteSideEffects(
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
+  let costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   try {
-    return recordDecisionCost({ decisionId, gate: 'consensus_vote', votes: result.votes });
+    costSummary = recordDecisionCost({ decisionId, gate: 'consensus_vote', votes: result.votes });
   } catch (costError) {
     logger.warn('Per-decision cost rollup failed (non-fatal)', {
       error: getErrorMessage(costError),
     });
-    return undefined;
+    costSummary = undefined;
   }
+  return { costSummary, voteRecord };
 }
 
 async function handleConsensusVote(
@@ -743,11 +753,16 @@ async function handleConsensusVote(
       result.totalTimeMs,
       result.votes
     );
-    const costSummary = recordVoteSideEffects(args.proposal, strategy, result, logger);
+    const { costSummary, voteRecord } = recordVoteSideEffects(
+      args.proposal,
+      strategy,
+      result,
+      logger
+    );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
-    return { ok: true, value: buildResponse(args, result, costSummary) };
+    return { ok: true, value: buildResponse(args, result, costSummary, voteRecord) };
   } catch (error) {
     const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(message);
@@ -920,6 +935,12 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // #3124: explains a `rejected` decision that coexists with a high
   // approvalPercentage (an error-policy short-circuit, e.g. fail_closed).
   policyReason: z.string().max(200).optional(),
+  // #3991: whether the authentic, committable vote record was persisted at vote
+  // time. False when skipped (all-simulated / no committable repo root) or the
+  // write failed — voteRecordNote carries the actionable reason. Makes a
+  // previously WARN-only skip visible to MCP callers.
+  voteRecordPersisted: z.boolean(),
+  voteRecordNote: z.string().max(500).optional(),
 };
 
 /**

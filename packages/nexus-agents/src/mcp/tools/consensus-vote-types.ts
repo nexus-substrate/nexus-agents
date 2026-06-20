@@ -10,6 +10,7 @@ import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
+import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 
 /** Maximum proposal length (memory bounds per Issue #435). */
 export const MAX_PROPOSAL_LENGTH = 4000;
@@ -285,6 +286,20 @@ export interface ConsensusVoteResponse {
    * adapter reported no usage are counted as unmeasured, not a measured $0).
    */
   costSummary?: DecisionCostSummary;
+  /**
+   * #3991: whether the authentic, committable vote record (#3897) was persisted
+   * at vote time. `false` when the persist was skipped (all votes simulated, or
+   * no committable repo root) or the write failed — see {@link voteRecordNote}.
+   * Surfaces to the MCP caller what was previously only a server-side WARN.
+   * Observability only: the persistence/cwd-resolution logic is unchanged.
+   */
+  voteRecordPersisted: boolean;
+  /**
+   * #3991: present only when {@link voteRecordPersisted} is `false` — the
+   * actionable reason the record was not written (e.g. no committable repo root
+   * → set `NEXUS_VOTE_RECORDS_PATH` or commit the returned bytes).
+   */
+  voteRecordNote?: string;
 }
 
 /** Extended voting result with optional Higher-Order metadata. */
@@ -343,11 +358,18 @@ function panelDegradationWarning(errorCount: number, total: number): string | un
   );
 }
 
-/** Builds the response from voting result. */
+/**
+ * Builds the response from voting result.
+ *
+ * `voteRecord` (#3991) is the structured authentic-vote-record persistence
+ * outcome; when omitted (direct unit calls) `voteRecordPersisted` defaults to
+ * `false` with no note. The live handler always supplies it.
+ */
 export function buildResponse(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
-  costSummary?: DecisionCostSummary
+  costSummary?: DecisionCostSummary,
+  voteRecord?: VoteRecordPersistOutcome
 ): ConsensusVoteResponse {
   const proposalTruncated =
     input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
@@ -374,7 +396,13 @@ export function buildResponse(
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
+    // #3991: surface the authentic-vote-record persistence outcome so a skipped
+    // or failed persist is visible to the MCP caller (was WARN-only).
+    voteRecordPersisted: voteRecord?.persisted ?? false,
   };
+  if (voteRecord !== undefined && !voteRecord.persisted) {
+    response.voteRecordNote = voteRecord.detail;
+  }
 
   applyOptionalResponseFields(response, input, result, errorCount, costSummary);
   return response;
