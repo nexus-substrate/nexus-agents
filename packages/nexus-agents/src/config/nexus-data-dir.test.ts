@@ -678,3 +678,122 @@ describe('sessionsDbPath (#2902)', () => {
     expect(existsSync(join(tmp, 'sessions', 'sessions.db'))).toBe(false);
   });
 });
+
+// #3991 — a globally-installed MCP server runs with cwd OUTSIDE the repo, so
+// the active workspace root (set from the client's MCP `roots`) must take the
+// place of findRepoRoot(cwd) when resolving per-repo data dirs.
+describe('active workspace root (#3991 — MCP roots)', () => {
+  let originalCwd: string;
+  let originalRepoPreferred: string | undefined;
+  let originalDataDir: string | undefined;
+  let originalGitignoreAuto: string | undefined;
+  let repoDir: string;
+  let cwdOutsideRepo: string;
+
+  beforeEach(async () => {
+    originalCwd = process.cwd();
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    originalDataDir = process.env['NEXUS_DATA_DIR'];
+    originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    delete process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
+
+    const { mkdtempSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    // A repo (has .git) that is NOT an ancestor of cwd — mirrors the global
+    // install where the server's cwd is the npm bin dir, not the project.
+    repoDir = mkdtempSync(join(tmpdir(), 'nexus-ws-repo-'));
+    mkdirSync(join(repoDir, '.git'));
+    cwdOutsideRepo = mkdtempSync(join(tmpdir(), 'nexus-ws-cwd-'));
+
+    const { _resetActiveWorkspaceRootForTests, _resetGitignoreMemoForTests } =
+      await import('./nexus-data-dir.js');
+    _resetActiveWorkspaceRootForTests();
+    _resetGitignoreMemoForTests();
+    process.chdir(cwdOutsideRepo);
+  });
+
+  afterEach(async () => {
+    process.chdir(originalCwd);
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
+    else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
+    const { _resetActiveWorkspaceRootForTests } = await import('./nexus-data-dir.js');
+    _resetActiveWorkspaceRootForTests();
+    const { rmSync } = await import('node:fs');
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(cwdOutsideRepo, { recursive: true, force: true });
+  });
+
+  it('without an active root, a cwd outside any repo falls back to homedir (null repo dir)', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it('setActiveWorkspaceRoot makes getNexusRepoDir resolve to <root>/.nexus-agents despite cwd', async () => {
+    const { setActiveWorkspaceRoot, getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    expect(setActiveWorkspaceRoot(repoDir)).toBe(true);
+    expect(getNexusRepoDir()).toBe(join(realpathSync(repoDir), '.nexus-agents'));
+  });
+
+  it('routes per-repo subdirs to the active root (governance vote-records land in <repo>)', async () => {
+    const { setActiveWorkspaceRoot, nexusDataPath } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    setActiveWorkspaceRoot(repoDir);
+    expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+      join(realpathSync(repoDir), '.nexus-agents', 'governance', 'vote-records.jsonl')
+    );
+  });
+
+  it('canonicalizes the stored root (realpath) and getActiveWorkspaceRoot reflects it', async () => {
+    const { setActiveWorkspaceRoot, getActiveWorkspaceRoot } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    setActiveWorkspaceRoot(repoDir);
+    expect(getActiveWorkspaceRoot()).toBe(realpathSync(repoDir));
+  });
+
+  it('rejects a nonexistent path and leaves any prior root untouched', async () => {
+    const { setActiveWorkspaceRoot, getActiveWorkspaceRoot } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    setActiveWorkspaceRoot(repoDir);
+    expect(setActiveWorkspaceRoot(join(repoDir, 'does-not-exist'))).toBe(false);
+    expect(getActiveWorkspaceRoot()).toBe(realpathSync(repoDir)); // prior root preserved
+  });
+
+  it('rejects a path that points at a file rather than a directory', async () => {
+    const { setActiveWorkspaceRoot } = await import('./nexus-data-dir.js');
+    const { writeFileSync } = await import('node:fs');
+    const filePath = join(cwdOutsideRepo, 'a-file');
+    writeFileSync(filePath, 'x');
+    expect(setActiveWorkspaceRoot(filePath)).toBe(false);
+  });
+
+  it('clears the active root when passed null or empty', async () => {
+    const { setActiveWorkspaceRoot, getActiveWorkspaceRoot } = await import('./nexus-data-dir.js');
+    setActiveWorkspaceRoot(repoDir);
+    expect(setActiveWorkspaceRoot(null)).toBe(false);
+    expect(getActiveWorkspaceRoot()).toBe(undefined);
+    setActiveWorkspaceRoot(repoDir);
+    expect(setActiveWorkspaceRoot('   ')).toBe(false);
+    expect(getActiveWorkspaceRoot()).toBe(undefined);
+  });
+
+  it('NEXUS_REPO_PREFERRED=0 still opts out even with an active root set', async () => {
+    const { setActiveWorkspaceRoot, getNexusRepoDir } = await import('./nexus-data-dir.js');
+    setActiveWorkspaceRoot(repoDir);
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it('NEXUS_DATA_DIR explicit override still wins over an active root', async () => {
+    const { setActiveWorkspaceRoot, getNexusRepoDir } = await import('./nexus-data-dir.js');
+    setActiveWorkspaceRoot(repoDir);
+    process.env['NEXUS_DATA_DIR'] = '/tmp/explicit-wins';
+    expect(getNexusRepoDir()).toBe(null);
+  });
+});

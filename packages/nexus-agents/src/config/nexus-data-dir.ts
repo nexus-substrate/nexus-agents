@@ -20,10 +20,15 @@
  *    `${NEXUS_SANDBOX_ROOT ?? '/'}/.nexus-agents`. Sandboxed deployments
  *    typically mount a multi-repo root; state goes there, shared across
  *    repo subfolders rather than buried inside one.
- * 3. Per-repo subdirs (when `findRepoRoot(cwd)` succeeds AND
- *    `NEXUS_REPO_PREFERRED` is not explicitly `'0'`):
- *    `<repo-root>/.nexus-agents/<subdir>/`. Auto-adds `.nexus-agents/`
- *    to the repo's `.gitignore` on first resolution (fail-closed).
+ * 3. Per-repo subdirs (when a repo root is known AND `NEXUS_REPO_PREFERRED`
+ *    is not explicitly `'0'`): `<repo-root>/.nexus-agents/<subdir>/`. The
+ *    repo root is the active workspace root when one has been set via
+ *    `setActiveWorkspaceRoot()` (the MCP server derives it from the client's
+ *    declared `roots`, MCP spec — see #3991), otherwise `findRepoRoot(cwd)`.
+ *    The active-root path exists because a globally-installed MCP server runs
+ *    with `process.cwd()` outside the repo, so cwd-based detection would
+ *    wrongly route per-repo state to homedir. Auto-adds `.nexus-agents/` to
+ *    the repo's `.gitignore` on first resolution (fail-closed).
  * 4. Cross-repo subdirs when `~/.nexus-agents/` is unwritable AND we're
  *    in a repo: per-repo fallback at `<repo-root>/.nexus-agents/<subdir>/`
  *    with one-time stderr announce. Issue #2888 — gives sandbox users
@@ -50,11 +55,13 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  realpathSync,
   renameSync,
+  statSync,
   unlinkSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { detectSandbox } from './sandbox-detection.js';
 import { findRepoRoot } from './repo-root-detection.js';
@@ -137,11 +144,61 @@ export function _resetGitignoreMemoForTests(): void {
 }
 
 /**
+ * Active workspace root, when known from a source more authoritative than
+ * `process.cwd()`. Set by the MCP server (#3991) from the client's declared
+ * `roots` (MCP spec) once the initialize handshake completes, because a
+ * globally-installed server runs with cwd OUTSIDE the repo being worked on —
+ * so cwd-based repo detection would route per-repo `.nexus-agents` state to
+ * homedir instead of `<repo>/.nexus-agents/`. CLI / in-repo callers never set
+ * this, so they keep resolving via `findRepoRoot(cwd)` exactly as before.
+ */
+let activeWorkspaceRoot: string | undefined;
+
+/**
+ * Records the active workspace root for repo-scoped data resolution. The
+ * value is cross-trust-boundary input (it arrives over the MCP transport from
+ * the client), so it is validated before use: resolved to an absolute path,
+ * canonicalized via `realpathSync` (defeats symlink games), and required to
+ * be an existing directory. Returns `true` when accepted, `false` when the
+ * value is empty/invalid (in which case the previous root is left untouched).
+ * Passing `null`/empty explicitly clears any previously-set root.
+ */
+export function setActiveWorkspaceRoot(root: string | null | undefined): boolean {
+  const trimmed = root?.trim();
+  if (trimmed === undefined || trimmed === '') {
+    activeWorkspaceRoot = undefined;
+    return false;
+  }
+  try {
+    const canonical = realpathSync(resolve(trimmed));
+    if (!isAbsolute(canonical) || !statSync(canonical).isDirectory()) return false;
+    activeWorkspaceRoot = canonical;
+    return true;
+  } catch {
+    // Nonexistent path, permission error, or broken symlink — reject and keep
+    // whatever was set before so a bad late signal can't corrupt resolution.
+    return false;
+  }
+}
+
+/** Returns the active workspace root if one has been set, else `undefined`. */
+export function getActiveWorkspaceRoot(): string | undefined {
+  return activeWorkspaceRoot;
+}
+
+/** Test helper — clears the active workspace root memo. */
+export function _resetActiveWorkspaceRootForTests(): void {
+  activeWorkspaceRoot = undefined;
+}
+
+/**
  * Returns the repo-scoped `.nexus-agents/` directory if all of the
  * following hold: `NEXUS_REPO_PREFERRED` is NOT explicitly `'0'` (it
  * defaults ON as of vote #2876), `NEXUS_DATA_DIR` is not explicitly set
- * (explicit override always wins), no sandbox is active, and
- * `findRepoRoot(cwd)` finds an ancestor `.git`.
+ * (explicit override always wins), no sandbox is active, and a repo root is
+ * known — either the active workspace root (set via
+ * `setActiveWorkspaceRoot()`) or an ancestor `.git` found by
+ * `findRepoRoot(cwd)`.
  *
  * Side effect: on the first successful resolution per process per repo,
  * appends `.nexus-agents/` to the repo's `.gitignore` if not already
@@ -156,7 +213,9 @@ export function getNexusRepoDir(): string | null {
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') return null;
   if (detectSandbox().active) return null;
-  const root = findRepoRoot(process.cwd());
+  // Prefer the MCP-client-declared workspace root (#3991) when the server has
+  // set it; fall back to walking up from cwd for CLI / in-repo callers.
+  const root = activeWorkspaceRoot ?? findRepoRoot(process.cwd());
   if (root === null) return null;
   maybeAutoGitignore(root);
   return join(root, '.nexus-agents');

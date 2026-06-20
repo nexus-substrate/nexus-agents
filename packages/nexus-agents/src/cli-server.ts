@@ -21,6 +21,7 @@ import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger } from './core/index.js';
+import { resolveWorkspaceRootFromClient } from './mcp/workspace-roots.js';
 import { VERSION } from './version.js';
 import { warnIfVersionStale } from './cli/version-check.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
@@ -321,6 +322,13 @@ async function connectToStdioTransport(
   logger.setDestination?.('stderr');
   serverLogger.setDestination?.('stderr');
   logger.info('Connecting to stdio transport');
+  // Resolve the active workspace root from the client's declared MCP `roots`
+  // (#3991) once the handshake completes, so per-repo `.nexus-agents/` state
+  // lands in the repo being worked on rather than homedir. Set before connect
+  // so the hook is in place when `notifications/initialized` arrives; fail-soft.
+  server.server.oninitialized = () => {
+    void resolveWorkspaceRootFromClient(server, serverLogger);
+  };
   const transport = new StdioServerTransport();
   const connectResult = await connectTransport(server, transport, serverLogger);
 
