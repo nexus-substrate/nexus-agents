@@ -935,10 +935,11 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // #3124: explains a `rejected` decision that coexists with a high
   // approvalPercentage (an error-policy short-circuit, e.g. fail_closed).
   policyReason: z.string().max(200).optional(),
-  // #3991: whether the authentic, committable vote record was persisted at vote
-  // time. False when skipped (all-simulated / no committable repo root) or the
-  // write failed — voteRecordNote carries the actionable reason. Makes a
-  // previously WARN-only skip visible to MCP callers.
+  // #3991: whether the authentic vote record was persisted at vote time. Post-
+  // #3991 it routes through nexusDataPath under governance/, so true is the
+  // normal case; false means all-simulated (skipped by design) or write-failed
+  // (data dir unwritable) — voteRecordNote carries the actionable reason. Makes
+  // a previously WARN-only skip visible to MCP callers.
   voteRecordPersisted: z.boolean(),
   voteRecordNote: z.string().max(500).optional(),
 };

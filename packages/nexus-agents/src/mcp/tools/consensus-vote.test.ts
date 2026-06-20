@@ -865,11 +865,11 @@ describe('buildResponse surfaces vote-record persistence outcome (#3991)', () =>
     expect(response.voteRecordNote).toBeUndefined();
   });
 
-  it('reports voteRecordPersisted=false + an actionable note on a no-repo-root skip', () => {
+  it('reports voteRecordPersisted=false + an actionable note on a write-failed skip', () => {
     const response = buildResponse(input, makeResult(), undefined, {
       persisted: false,
-      reason: 'no-repo-root',
-      detail: 'set NEXUS_VOTE_RECORDS_PATH to an absolute file path.',
+      reason: 'write-failed',
+      detail: 'data dir not writable; set NEXUS_VOTE_RECORDS_PATH to a writable path.',
     });
     expect(response.voteRecordPersisted).toBe(false);
     expect(response.voteRecordNote).toContain('NEXUS_VOTE_RECORDS_PATH');

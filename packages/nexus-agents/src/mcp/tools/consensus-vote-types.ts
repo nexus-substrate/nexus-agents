@@ -287,17 +287,19 @@ export interface ConsensusVoteResponse {
    */
   costSummary?: DecisionCostSummary;
   /**
-   * #3991: whether the authentic, committable vote record (#3897) was persisted
-   * at vote time. `false` when the persist was skipped (all votes simulated, or
-   * no committable repo root) or the write failed — see {@link voteRecordNote}.
-   * Surfaces to the MCP caller what was previously only a server-side WARN.
-   * Observability only: the persistence/cwd-resolution logic is unchanged.
+   * #3991: whether the authentic vote record (#3897) was persisted at vote time.
+   * Post-#3991 the runtime ledger routes through `nexusDataPath` under
+   * `governance/`, so a writable `.nexus-agents/governance/` location almost
+   * always exists and `true` is the normal case. `false` means the persist was
+   * skipped (all votes simulated) or the write failed (data dir unwritable) —
+   * see {@link voteRecordNote}. Surfaces to the MCP caller what was previously
+   * only a server-side WARN.
    */
   voteRecordPersisted: boolean;
   /**
    * #3991: present only when {@link voteRecordPersisted} is `false` — the
-   * actionable reason the record was not written (e.g. no committable repo root
-   * → set `NEXUS_VOTE_RECORDS_PATH` or commit the returned bytes).
+   * actionable reason the record was not written (e.g. the data dir is unwritable
+   * → fix permissions or set `NEXUS_VOTE_RECORDS_PATH` to a writable path).
    */
   voteRecordNote?: string;
 }

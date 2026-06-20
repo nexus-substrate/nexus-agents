@@ -152,6 +152,7 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
   let originalNexusDataDir: string | undefined;
   let originalRepoPreferred: string | undefined;
   let originalSandbox: string | undefined;
+  let originalSandboxRoot: string | undefined;
   let originalGitignoreAuto: string | undefined;
   let tempRepo: string;
 
@@ -160,10 +161,12 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
     originalNexusDataDir = process.env['NEXUS_DATA_DIR'];
     originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
     originalSandbox = process.env['NEXUS_SANDBOX'];
+    originalSandboxRoot = process.env['NEXUS_SANDBOX_ROOT'];
     originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
     delete process.env['NEXUS_DATA_DIR'];
     delete process.env['NEXUS_REPO_PREFERRED'];
     delete process.env['NEXUS_SANDBOX'];
+    delete process.env['NEXUS_SANDBOX_ROOT'];
     // Silence the auto-gitignore side-effect by default — tests that want
     // to exercise it re-enable per-test.
     process.env['NEXUS_GITIGNORE_AUTO'] = '0';
@@ -185,6 +188,8 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
     else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
     if (originalSandbox === undefined) delete process.env['NEXUS_SANDBOX'];
     else process.env['NEXUS_SANDBOX'] = originalSandbox;
+    if (originalSandboxRoot === undefined) delete process.env['NEXUS_SANDBOX_ROOT'];
+    else process.env['NEXUS_SANDBOX_ROOT'] = originalSandboxRoot;
     if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
     else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
     const { rmSync } = await import('node:fs');
@@ -266,9 +271,41 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
       'audit',
       'pipeline',
       'tasks',
+      // #3991: the runtime vote-records ledger is per-repo governance state.
+      'governance',
     ]) {
       expect(nexusDataPath(subdir, 'x.jsonl')).toBe(join(repoBase, subdir, 'x.jsonl'));
     }
+  });
+
+  it('#3991: routes governance (vote-records) to <repo>/.nexus-agents/governance by default inside a repo', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.chdir(tempRepo);
+    const { realpathSync } = await import('node:fs');
+    expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+      join(realpathSync(tempRepo), '.nexus-agents', 'governance', 'vote-records.jsonl')
+    );
+  });
+
+  it('#3991: routes governance to homedir when NEXUS_REPO_PREFERRED=0 (global install)', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
+    process.chdir(tempRepo);
+    expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+      join(homedir(), '.nexus-agents', 'governance', 'vote-records.jsonl')
+    );
+  });
+
+  it('#3991: routes governance under the sandbox root when NEXUS_SANDBOX is set', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_SANDBOX'] = '1';
+    process.env['NEXUS_SANDBOX_ROOT'] = '/sandbox';
+    process.chdir(tempRepo);
+    // Sandbox short-circuits getNexusRepoDir (detectSandbox().active) so the
+    // governance ledger lands under <sandbox-root>/.nexus-agents/governance/.
+    expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+      join('/sandbox', '.nexus-agents', 'governance', 'vote-records.jsonl')
+    );
   });
 
   it('routes per-repo subdir to HOMEDIR when NEXUS_REPO_PREFERRED=0 (opt-out)', async () => {
