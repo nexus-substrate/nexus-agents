@@ -12,6 +12,8 @@ A focused tutorial: install → verify → run a real consensus vote → wire it
 
 This is the canonical new-user path. If you want platform-specific install details, jump to [INSTALLATION.md](./INSTALLATION.md). If you want every knob enumerated, jump to [CONFIGURATION.md](./CONFIGURATION.md). For Claude Code plugin install specifically, see [PLUGIN_INSTALL.md](./PLUGIN_INSTALL.md). Everything below stays on the canonical "first 5 minutes" path.
 
+> **CLI vs MCP — read this first.** The standalone CLI surface (`vote`, `orchestrate`, `review`) is a useful subset you can run from any terminal. The full control plane — the `run` entry point plus the 46 MCP tools — lives behind `setup` and an MCP-aware editor (Claude Code, Cursor, etc.). If you're an MCP user, the one command to learn is `run "<goal>"`: it's read-only by default (pass `execute: true` to actually run), and the MetaOrchestrator picks the strategy for you, so you rarely pick a pipeline tool by hand. Note `run` is **MCP-only** — it is not a CLI command.
+
 ---
 
 ## 1. Install
@@ -36,7 +38,7 @@ For Claude Code, you can install as a plugin instead:
 nexus-agents doctor
 ```
 
-Prints a health table:
+Prints a health table (illustrative example output — your versions and counts will differ):
 
 ```
 Nexus Agents Doctor
@@ -124,7 +126,9 @@ Or via the MCP tool (after `setup`):
 In Claude Code: /orchestrate "Explain the architecture of this codebase"
 ```
 
-The 12-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `<repo>/.nexus-agents/traces/` for later replay (`traces/` is per-repo state — epic #2872).
+The multi-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `<repo>/.nexus-agents/traces/` for later replay (`traces/` is per-repo state — epic #2872).
+
+nexus-agents writes per-repo state to `<repo>/.nexus-agents/` (auto-gitignored and created on first use) and shared, cross-repo state to `~/.nexus-agents/`. Run `nexus-agents doctor` to see the resolved paths for your environment.
 
 ---
 

@@ -29,8 +29,9 @@ and a promotion audit event is **invalid without a linked ratification vote**.
 
 This ADR formalizes the semantics of the `authorityTier` field already carried by
 the strategy manifest schema (`packages/nexus-agents/src/orchestration/strategy-manifest.ts`).
-It is the human-readable contract; #3841 makes it machine-enforced (router refusal
-plus CI gate), and #3842 wires the tier-transition audit events + ratification gate.
+It is the human-readable contract; #3841 made it machine-enforced (router refusal
+plus CI gate) and #3842 wired the tier-transition audit events + ratification gate —
+both are now shipped (see [Implemented](#implemented)).
 
 ## Context
 
@@ -249,13 +250,15 @@ The contract above is realized through the manifest field:
   `authorityTier` value on its strategy manifest
   (`AuthorityTierSchema = z.enum(['observe','suggest','advisory','enforce'])`,
   `packages/nexus-agents/src/orchestration/strategy-manifest.ts`). The field is
-  optional in the schema today (forward-compat from Epic C); #3843 makes it explicit
-  for every loop, and #3841 makes it **required** at enforcement time.
-- **Router refusal (#3841).** The MetaOrchestrator router consumes `authorityTier`:
-  it refuses to let a loop's output take an action above its declared tier. An
-  `advisory` loop attempting an `enforce`-class action is refused at the router, not
-  caught after the fact. This is the machine consumer the ratification panel required.
-- **CI gate (#3841).** A CI check validates, on every PR that changes a manifest's
+  optional in the schema today (forward-compat from Epic C); #3843 will make it explicit
+  for every loop, and #3841 made it **required** at enforcement time.
+- **Router refusal (#3841 — shipped).** The MetaOrchestrator router consumes
+  `authorityTier` via `guardAuthority` (`authority-tier-guard.ts`, wired into
+  `meta-orchestrator.ts`): it refuses to let a loop's output take an action above its
+  declared tier. An `advisory` loop attempting an `enforce`-class action is refused at
+  the router, not caught after the fact. This is the machine consumer the ratification
+  panel required.
+- **CI gate (#3841 — shipped, `check-authority-tier-drift.ts`).** A CI check validates, on every PR that changes a manifest's
   `authorityTier`, that (a) the change is at most one tier and in a valid direction,
   (b) a promotion is backed by an evidence record meeting the per-tier floor, and
   (c) a promotion's tier-transition audit event links a ratification `consensus_vote`
@@ -301,10 +304,18 @@ Each is an unbundled, per-loop migration governed by this ADR — not new behavi
 - The CI gate adds a manifest-diff check that must stay in lockstep with this schema;
   schema drift (this ADR vs. #3841's validator) is a maintenance surface.
 
+### Implemented
+
+- #3841 — **shipped.** Machine-enforce the tier field: router refusal via
+  `guardAuthority` (`packages/nexus-agents/src/orchestration/authority-tier-guard.ts`,
+  wired into `meta-orchestrator.ts`) plus the CI drift gate
+  (`scripts/check-authority-tier-drift.ts`).
+- #3842 — **shipped.** Tier-transition audit events + ratification gate, with the
+  hash-covered tier-transition projection (`packages/nexus-agents/src/audit/tier-transition-hash.ts`;
+  see the [audit hash-chain threat model](../security/audit-hash-chain-threat-model.md)).
+
 ### Future Work
 
-- #3841: machine-enforce the tier field (router refusal + CI gate).
-- #3842: tier-transition audit events + ratification gate.
 - #3843: migrate the four un-issued loops (declare current tiers).
 - #3844: per-loop promotion-criteria docs (stricter-only thresholds).
 

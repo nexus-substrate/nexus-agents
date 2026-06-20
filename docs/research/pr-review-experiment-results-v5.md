@@ -1,6 +1,6 @@
 ---
 title: pr_review experiment v5 — JSON-native findings unlock the verification gate
-description: Fifth empirical run of pr_review with #2254 JSON-native findings. Bug-catch 100%, known-bug location-match 83%, false-positive 50% (but most "FPs" are real findings the voters caught). Recommendation - update dataset, file caught bugs as issues, ship.
+description: Fifth run of pr_review with #2254 JSON-native findings. Bug-catch 100%, known-bug location-match 83%, false-positive 50% on a focused synthetic dataset (n=10) — directional, not statistically significant. Recommendation - update dataset, file caught bugs as issues, ship.
 tier: 2
 keywords: [pr-review, experiment, results, json-findings, autonomous-sdlc]
 ---
@@ -83,9 +83,16 @@ If we re-classify the data:
 The 50% headline "FP rate" is mostly the dataset, not the tool. The tool is finding things.
 
 > **Metric-honesty guardrail (#3903, required by the #3901 6-1 ratification).**
-> These v5 FP figures are directional only — do **not** cite them as measured
-> rates. Specifically:
+> These v5 figures — **including the 100% bug-catch headline** — are directional
+> only on a small synthetic dataset (n=10); do **not** cite any of them as
+> measured rates, and do **not** describe the run as "conclusively" or
+> "empirically validated." The honest framing is "directionally supports (small
+> n, not statistically significant)." Specifically:
 >
+> - The 100% bug-catch figure is **6/6 on a focused synthetic dataset (n=10)**,
+>   not a measured detection rate; always carry the n and the synthetic-dataset
+>   caveat. Statistically meaningful numbers await #3847 (curate to n ≥ 50 with
+>   real PR data).
 > - The honest reading is **"the 50% headline was an artifact of n and
 >   adjudication noise,"** NOT "pr_review has a 0% FP rate." The strict-FP figure
 >   the v1 rubric derives is **0/2 (n=2 clean cases, 1 borderline excluded)** —
@@ -143,7 +150,7 @@ Known-bug location-match (file:line within ±5): **5 of 6 buggy PRs** had findin
 - **The verification gate works as a structured-finding contract** — voters now emit citation-backed claims with named assertions instead of free-form prose. This is the load-bearing differentiator vs other multi-agent code-review tools.
 - **The system catches real bugs human reviewers miss.** The #2235 finding is the strongest possible empirical evidence: the tool flagged a bug that shipped to main without anyone (including me, who wrote the code) noticing.
 
-Five iterations from "0 verified findings, 0% bug catch" to "26 findings, 100% bug catch + caught a shipped bug." The thesis is empirically validated.
+Five iterations from "0 verified findings, 0% bug catch" to "26 findings, 100% bug catch on the synthetic set + caught a shipped bug." The result **directionally supports** the multi-voter PR-review thesis (small n, not statistically significant); see the metric-honesty guardrail above and #3847.
 
 ## Next actions
 
@@ -156,12 +163,12 @@ In rough priority order:
 
 ## Status against the #2233 epic — final final
 
-| Item                                                   | Status                                                             |
-| ------------------------------------------------------ | ------------------------------------------------------------------ |
-| Children 1-5 + Child 7 + #2244 + #2245 + #2246 + #2254 | ✓ shipped                                                          |
-| Child 6 (#2242)                                        | recommend reopen + ship                                            |
-| #2245 (CLI passthrough verification)                   | partially closed — root cause was JSON encoding, not CLI stripping |
-| Bug-catch capability                                   | **empirically validated at 100% on synthetic dataset**             |
-| Real-world bug catch                                   | **#2235 — proves the tool finds things humans miss**               |
+| Item                                                   | Status                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Children 1-5 + Child 7 + #2244 + #2245 + #2246 + #2254 | ✓ shipped                                                                             |
+| Child 6 (#2242)                                        | recommend reopen + ship                                                               |
+| #2245 (CLI passthrough verification)                   | partially closed — root cause was JSON encoding, not CLI stripping                    |
+| Bug-catch capability                                   | **100% on the synthetic dataset (n=10) — directional, not statistically significant** |
+| Real-world bug catch                                   | **#2235 — one real bug caught that humans missed (existence proof, n=1)**             |
 
-The experiment is **conclusively validated.** The remaining work is operational rollout, not design.
+The experiment **directionally supports the design** (small n, not statistically significant). The remaining work is statistically meaningful evaluation (#3847, n ≥ 50 on real PRs) plus operational rollout.

@@ -13,7 +13,7 @@ keywords: [consensus, voting, multi-agent, catfish, rejection, protocols, archit
 
 ## Overview
 
-The consensus system implements 6 core voting algorithms for multi-agent decisions:
+The consensus system exposes 6 core voting algorithm names (five distinct strategies — `higher_order` is an alias for `opinion_wise`, #514) for multi-agent decisions:
 
 **Implemented Algorithms:**
 
@@ -21,7 +21,7 @@ The consensus system implements 6 core voting algorithms for multi-agent decisio
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
 - **proof_of_learning**: Weighted by agent performance
-- **higher_order**: Bayesian-optimal aggregation with correlation awareness (Issue #514)
+- **higher_order**: Bayesian-optimal aggregation with correlation awareness — alias for `opinion_wise` (#514)
 - **opinion_wise**: Opinion-based aggregation
 
 **Research-Based Protocols (Referenced):**
@@ -62,8 +62,8 @@ type ConsensusAlgorithm =
   | 'supermajority' // ≥67%
   | 'unanimous' // 100%
   | 'proof_of_learning' // Weighted by agent performance
-  | 'higher_order' // Bayesian-optimal with correlation awareness
-  | 'opinion_wise'; // Opinion-based aggregation
+  | 'higher_order' // alias for 'opinion_wise' (#514)
+  | 'opinion_wise'; // Opinion-based aggregation (Bayesian-optimal, correlation-aware)
 
 interface Vote {
   agentId: string;

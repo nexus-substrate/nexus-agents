@@ -400,7 +400,7 @@ After installation, run the doctor command:
 nexus-agents doctor
 ```
 
-Expected output for a complete setup:
+Illustrative example output for a complete setup (your versions and details will differ):
 
 ```
 Nexus Agents Doctor
