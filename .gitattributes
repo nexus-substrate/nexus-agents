@@ -21,3 +21,10 @@
 # independent lines, so a union merge concatenates them conflict-free —
 # duplicate sequences are a benign fork signal, not corruption.
 governance/vote-records.jsonl merge=union
+
+# PR-review audit ledger (#3831, Epic B). Same tamper-evident record SET +
+# monotonic sequence model as the vote-record ledger above (mirrors #3927):
+# each line is a self-hashed, SHA-BOUND, position-independent record. Concurrent
+# branches that each append a review produce independent lines, so a union merge
+# concatenates them conflict-free — duplicate sequences are a benign fork signal.
+governance/pr-review-records.jsonl merge=union
