@@ -116,14 +116,28 @@ export function writeJobPending(jobId: string, toolName: string): void {
  * Replace the record with a terminal `complete` status carrying the
  * structured payload. Caller writes the SAME shape the sync mode would
  * have returned, so a polling client can use the result interchangeably.
+ *
+ * COMPLETE-AFTER-CANCEL guard (#4017): if the job was already `cancelled`
+ * (e.g. `cancel_job` landed while the work was in-flight — `runAsJob` does not
+ * yet abort the underlying work), this is a NO-OP so the cancellation is not
+ * silently rewritten back to `complete`. Symmetric with the caller-side
+ * cancel-after-complete guard documented on {@link writeJobCancelled}.
  */
 export function writeJobComplete(jobId: string, toolName: string, result: unknown): void {
+  const existing = readJobResult(jobId);
+  if (existing?.status === 'cancelled') {
+    logger.debug('Skipping complete write — job already cancelled (preserving cancellation)', {
+      jobId,
+      toolName,
+    });
+    return;
+  }
   const record: JobResult = {
     v: 1,
     jobId,
     toolName,
     status: 'complete',
-    createdAt: readJobResult(jobId)?.createdAt ?? new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     result,
   };
@@ -131,14 +145,26 @@ export function writeJobComplete(jobId: string, toolName: string, result: unknow
   logger.debug('Wrote complete job record', { jobId, toolName });
 }
 
-/** Terminal `failed` status. `error` is the human-readable failure message. */
+/**
+ * Terminal `failed` status. `error` is the human-readable failure message.
+ * Like {@link writeJobComplete}, a NO-OP when the job is already `cancelled`
+ * (#4017) so a post-cancel failure cannot rewrite the cancellation.
+ */
 export function writeJobFailed(jobId: string, toolName: string, error: string): void {
+  const existing = readJobResult(jobId);
+  if (existing?.status === 'cancelled') {
+    logger.debug('Skipping failed write — job already cancelled (preserving cancellation)', {
+      jobId,
+      toolName,
+    });
+    return;
+  }
   const record: JobResult = {
     v: 1,
     jobId,
     toolName,
     status: 'failed',
-    createdAt: readJobResult(jobId)?.createdAt ?? new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     error,
   };

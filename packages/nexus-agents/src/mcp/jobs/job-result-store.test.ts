@@ -110,6 +110,28 @@ describe('job-result-store', () => {
     expect(readJobResult('does-not-exist')).toBeNull();
   });
 
+  // #4017: complete/fail-after-cancel must NOT rewrite a cancellation. A
+  // runAsJob-dispatched job's work keeps running after cancel_job (no abort
+  // wiring), so the terminal writers must preserve the `cancelled` record.
+  it('writeJobComplete is a NO-OP once the job is cancelled (#4017)', () => {
+    writeJobPending('job-cancel-complete', 'run');
+    writeJobCancelled('job-cancel-complete', 'run', 'user cancelled');
+    writeJobComplete('job-cancel-complete', 'run', { ok: true });
+    const record = readJobResult('job-cancel-complete');
+    expect(record?.status).toBe('cancelled');
+    expect(record?.result).toBeUndefined();
+    expect(record?.error).toBe('user cancelled');
+  });
+
+  it('writeJobFailed is a NO-OP once the job is cancelled (#4017)', () => {
+    writeJobPending('job-cancel-fail', 'run');
+    writeJobCancelled('job-cancel-fail', 'run', 'user cancelled');
+    writeJobFailed('job-cancel-fail', 'run', 'late failure');
+    const record = readJobResult('job-cancel-fail');
+    expect(record?.status).toBe('cancelled');
+    expect(record?.error).toBe('user cancelled');
+  });
+
   it('writeJobPending is idempotent — re-call does not overwrite a completed record', () => {
     writeJobPending('job-test-5', 'orchestrate');
     writeJobComplete('job-test-5', 'orchestrate', { done: true });
