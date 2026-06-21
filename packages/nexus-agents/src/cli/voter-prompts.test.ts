@@ -171,12 +171,19 @@ describe('voter-prompts', () => {
         expect(prompt).toContain('USB flasher');
       });
 
-      it('includes all 5 mandatory checks', () => {
+      it('includes all 6 mandatory checks', () => {
         expect(prompt).toContain('Existing-tool check');
         expect(prompt).toContain('Build-vs-buy math');
         expect(prompt).toContain('Mission alignment');
         expect(prompt).toContain('Kill-the-feature option');
         expect(prompt).toContain('Sprawl audit');
+        expect(prompt).toContain('Reuse ladder');
+      });
+
+      it('gates implementation altitude without cutting safety (the reuse ladder)', () => {
+        expect(prompt).toContain('first rung that holds');
+        // The hard caveat: laziness never cuts validation/security/etc.
+        expect(prompt).toContain('NEVER the thing cut');
       });
 
       it('biases default toward not shipping', () => {
