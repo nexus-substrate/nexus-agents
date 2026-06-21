@@ -33,8 +33,8 @@ this runbook [#3853](https://github.com/nexus-substrate/nexus-agents/issues/3853
 > ## EPIC F INVARIANT — removal is NEVER autonomous
 >
 > No code path may remove or merge a tool registration on its own. The
-> tool-fitness pipeline is **suggest-tier only**: it produces *candidates for a
-> human to consider*, never an instruction to prune. A deprecation or
+> tool-fitness pipeline is **suggest-tier only**: it produces _candidates for a
+> human to consider_, never an instruction to prune. A deprecation or
 > consolidation signal is **advisory input to a human, never an actuator**.
 > Every actual removal or consolidation is a **governed change** that must travel
 > the authority-ladder ratification path (`consensus_vote`, `higher_order`) plus
@@ -94,7 +94,7 @@ These signals are **suggest-tier by construction**:
   signal toward an auto-remediation tier.
 - `improvement_review` keeps `fileIssues=false` by default with a rate cap of 5
   (`improvement-review.ts`). A candidate becomes a filed issue only with an
-  explicit human opt-in, and even then it is a rate-capped *issue to review*, not
+  explicit human opt-in, and even then it is a rate-capped _issue to review_, not
   an action.
 - The strings are deliberately worded as **CANDIDATE … for human review, NOT an
   automatic removal**.
@@ -106,7 +106,7 @@ These are the Contrarian's signal-quality concerns from the
 tracked as follow-up
 [#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902). They are
 tolerable **only because** the tier is suggest and a human reviews every candidate.
-Treat a raw signal as a *prompt to investigate*, not a verdict:
+Treat a raw signal as a _prompt to investigate_, not a verdict:
 
 1. **Shared name-prefix ≠ substitutable.** A consolidation candidate is grouped by
    prefix family (e.g. `research_*`). But `git_commit` vs `git_init`, or `db_read`
@@ -116,16 +116,16 @@ Treat a raw signal as a *prompt to investigate*, not a verdict:
    **weak hint** and confirm actual functional overlap by hand.
 2. **Break-glass / rare-but-critical tools are NOT deprecation candidates.** The
    `≤ 2 invocations` rule will flag rollback, recovery, and emergency-admin tools
-   precisely *because* they are low-usage **by design**. A tool that exists for the
+   precisely _because_ they are low-usage **by design**. A tool that exists for the
    rare critical moment is not dead weight. Until #3902 adds a never-deprecate tag
    / criticality weighting, the reviewer MUST manually exempt break-glass tools.
 3. **Workspace-localized vs global signals.** The ledger is homedir-global. The
    consumer already suppresses a reliability flag when a tool is healthy in any
-   *other* workspace (defeating context-poisoning — a one-workspace misconfiguration must
+   _other_ workspace (defeating context-poisoning — a one-workspace misconfiguration must
    not globally mis-flag a healthy tool). The residual is that a genuinely useful
-   *localized* "failing here" warning may be discarded. A global deprecation signal
+   _localized_ "failing here" warning may be discarded. A global deprecation signal
    therefore means "unhealthy across workspaces", and the **absence** of one does
-   not mean a tool is healthy in *your* workspace.
+   not mean a tool is healthy in _your_ workspace.
 
 > The LinUCB exploration floor (ADR-0017 §"Anti-Degenerate-Loop Guarantees";
 > `linucb-bandit.ts`) guarantees a low-usage tool still accrues exploration traffic
@@ -135,7 +135,7 @@ Treat a raw signal as a *prompt to investigate*, not a verdict:
 
 ## Stage 1 — Human review / validation (before anything is even proposed)
 
-A surfaced candidate is the *input* to this stage, not a green light. Before a
+A surfaced candidate is the _input_ to this stage, not a green light. Before a
 removal or consolidation is so much as proposed, the reviewer validates the signal
 against the known limitations above. Do all of the following and record the
 findings on the candidate issue:
@@ -169,7 +169,7 @@ broad and most candidates should not become removals.
 ## Stage 2 — The ratification path (a removal is a governed change)
 
 If and only if Stage 1 validates the candidate does a removal/consolidation become
-a *proposal*. It is then a governed change with the same discipline ADR-0017 applies
+a _proposal_. It is then a governed change with the same discipline ADR-0017 applies
 to a tier transition. **The signal does not trigger this stage; a human opens it.**
 
 1. **File a dedicated removal/consolidation issue** (separate from the candidate
@@ -182,8 +182,9 @@ to a tier transition. **The signal does not trigger this stage; a human opens it
    a removal.
 3. **Ratify via `consensus_vote`.** Hold a `higher_order` ratification
    `consensus_vote` on the removal/consolidation, mirroring the authority-ladder
-   promotion gate. Record it in
-   [`governance/ratification-votes.yaml`](../../governance/ratification-votes.yaml).
+   promotion gate. Cast it with `ratifies=<subject>` (#4004) so the authentic
+   record lands in
+   [`governance/vote-records.jsonl`](../../governance/vote-records.jsonl) (#4005).
    A removal is **invalid without a recorded, approved, subject-matching vote** —
    exactly as a promotion audit event is invalid without a linked ratification vote.
 4. **CODEOWNERS review on the removal PR.** The PR that drops the tool registration
@@ -267,4 +268,4 @@ The signal is advisory input to a human at every step. It is **never** an actuat
   — `tool-fitness` SignalCategory, `mcp/tools/improvement-review-tool-fitness.ts`
 - Heuristic-refinement follow-up: [#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902)
   — shared-prefix ≠ substitutable, break-glass exemption, workspace-localized signals
-- Ratification ledger: [`governance/ratification-votes.yaml`](../../governance/ratification-votes.yaml)
+- Ratification ledger: [`governance/vote-records.jsonl`](../../governance/vote-records.jsonl) (#4005; replaced `ratification-votes.yaml`, removed in #4010)
