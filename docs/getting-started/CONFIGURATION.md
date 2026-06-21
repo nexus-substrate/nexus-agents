@@ -205,14 +205,14 @@ All configuration can be overridden with environment variables:
 
 ### Security Variables
 
-| Variable               | Description                                                                              | Default |
-| ---------------------- | ---------------------------------------------------------------------------------------- | ------- |
-| `NEXUS_SANDBOX`        | Sandbox flavor; passed through to subprocess adapters (epic #2500)                       | unset   |
-| `NEXUS_SANDBOX_ROOT`   | Sandbox root directory for the sandbox executor                                          | unset   |
-| `NEXUS_RATE_LIMIT`     | Requests per minute                                                                      | `60`    |
-| `NEXUS_AUTH_ENABLED`   | Enable MCP auth (applies only to network transports; no effect on the default stdio MCP) | `true`  |
-| `NEXUS_AUTH_METHOD`    | Auth method                                                                              | `token` |
-| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: `1`=advisory (warn), `0`=blocking (#2199)                    | `0`     |
+| Variable               | Description                                                                                                                       | Default          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `NEXUS_SANDBOX`        | Sandbox flavor; passed through to subprocess adapters (epic #2500)                                                                | unset            |
+| `NEXUS_SANDBOX_ROOT`   | Sandbox root directory for the sandbox executor                                                                                   | unset            |
+| `NEXUS_RATE_LIMIT`     | Requests per minute                                                                                                               | `60`             |
+| `NEXUS_AUTH_ENABLED`   | Enable MCP auth (applies only to network transports; no effect on the default stdio MCP)                                          | `true`           |
+| `NEXUS_AUTH_METHOD`    | Auth method                                                                                                                       | `token`          |
+| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: any value except `0` (incl. unset) = advisory (warn); `0` = blocking (#2199). CI sets `0` to enforce. | unset (advisory) |
 
 ### Orchestration Variables
 

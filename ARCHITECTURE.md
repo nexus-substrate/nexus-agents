@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 2.72.0
-**Last Updated:** 2026-05-12 (ET)
+**Version:** 2.137.0
+**Last Updated:** 2026-06-21 (ET)
 **Status:** Current
 
 ---
@@ -30,9 +30,9 @@ Nexus Agents is an intelligent orchestration platform for AI coding tools. It co
 - **Expert System**: Specialized agents (Code, Architecture, Security, etc.)
 - **Workflow Engine**: YAML-defined automated workflows
 - **MCP Protocol**: Claude Desktop integration via Model Context Protocol
-- **11 Consensus Protocols**: Byzantine fault tolerant multi-agent decisions
-- **8-Type Memory**: MIRIX-inspired memory architecture
-- **Intelligent Routing**: Budget→TOPSIS→LinUCB pipeline
+- **5 Consensus Strategies** (6 names — `higher_order` aliases the Bayesian path): multi-agent decisions with Byzantine-pattern detection in weighted voting (see [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md))
+- **7-Type Memory**: MIRIX-inspired memory architecture (see [MEMORY_SYSTEM.md](./docs/architecture/MEMORY_SYSTEM.md))
+- **Intelligent Routing**: Budget → parallel scoring → TOPSIS → LinUCB pipeline (full chain in [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md))
 
 ---
 
@@ -324,7 +324,7 @@ security:
 
 ### Pre-Merge
 
-- 80% test coverage
+- Coverage thresholds met (60% statements/functions/lines, 50% branches — `vitest.config.ts`)
 - Security audit clean
 - No deprecated dependencies
 
@@ -339,5 +339,5 @@ security:
 
 ---
 
-_Last updated: 2026-01-15 (ET)_
+_Last updated: 2026-06-21 (ET)_
 _MCP Protocol: 2025-11-25_

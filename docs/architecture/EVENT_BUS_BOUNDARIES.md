@@ -94,10 +94,10 @@ The dev-pipeline consensus→execute policy gate
 (`pipeline/policy-evaluator.ts → evaluatePipelinePolicy`) **dual-emits** each
 `policy.evaluated` decision:
 
-| Sink                           | Path                                                                      | Lifetime                                            | Role                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Bus A (observability)**      | `IEventBus.emit` → `TraceWriter` → per-run `trace.jsonl`                  | Per-run, bounded ring buffer, dropped on no session | **Observability only.** Replay/debug a single run.                                      |
-| **Durable hash-chained audit** | `AuditTrail` → `createDurableAuditSink(auditLogger)` → `FileAuditStorage` | Immutable, process-spanning, `verify_audit_chain`   | **Canonical source** for tune/readiness aggregation (soak-vs-enforce evidence — #3653). |
+| Sink                           | Path                                                                      | Lifetime                                                                                     | Role                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Bus A (observability)**      | `IEventBus.emit` → `TraceWriter` → per-run `trace.jsonl`                  | Per-run, bounded ring buffer, dropped on no session                                          | **Observability only.** Replay/debug a single run.                                      |
+| **Durable hash-chained audit** | `AuditTrail` → `createDurableAuditSink(auditLogger)` → `FileAuditStorage` | Tamper-evident (not tamper-proof — see threat model), process-spanning, `verify_audit_chain` | **Canonical source** for tune/readiness aggregation (soak-vs-enforce evidence — #3653). |
 
 The durable `policy_gate` record carries `mode` (`warn`=soak vs `block`=enforce),
 `ruleIds`, and `stageType` in its metadata — exactly what the tune/readiness

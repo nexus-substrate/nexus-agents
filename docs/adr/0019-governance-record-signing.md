@@ -27,7 +27,7 @@ keywords:
 **Date:** 2026-06-20
 **Context:** #3897 — "Ratification ledger verifies presence, not authenticity." Residual
 flagged by every voter on the #3895 (7/7) ratification: governance records are
-tamper-evident but hand-committable, so a gate verifies *presence*, not *authenticity*.
+tamper-evident but hand-committable, so a gate verifies _presence_, not _authenticity_.
 **Ratification:** `consensus_vote`, **APPROVED 7/0**, recording the keyless
 OIDC/Sigstore direction (Architecture A) and the deferred build trigger below.
 
@@ -52,15 +52,15 @@ governance record it relies on:
    any other workflow, or any other repository fails.
 2. **Payload binding** — the signed payload bytes are **byte-identical** to the
    committed record bytes (this preserves the Option-C content-diff binding ratified
-   for the producer; the signature attests *this exact record*, not a paraphrase).
+   for the producer; the signature attests _this exact record_, not a paraphrase).
 3. **Rekor inclusion** — the record's entry is present and verifiable in the Rekor
-   transparency log (external witness; see *Honest value assessment*).
+   transparency log (external witness; see _Honest value assessment_).
 
 A record that lacks a valid bundle satisfying all three is not authentic to the gate.
 
 ### Rejected alternatives
 
-- **B — Interactive per-produce keyless login.** Sign at *local production* time via an
+- **B — Interactive per-produce keyless login.** Sign at _local production_ time via an
   interactive OIDC login (`cosign sign` against the developer's identity). Rejected:
   the records are produced locally where there is **no CI OIDC identity**, an
   interactive browser login per produce is high-friction, and — decisively — it is
@@ -69,7 +69,7 @@ A record that lacks a valid bundle satisfying all three is not authentic to the 
   ledger through sanctioned CI."
 - **C — Hybrid (local content-hash + CI signature + a second human-attestation layer).**
   Rejected as **premature**: there is no multi-reviewer / external-contributor consumer
-  today to attest *to*, so the second layer would be machinery with no reader. Revisit
+  today to attest _to_, so the second layer would be machinery with no reader. Revisit
   only if the build trigger's threat model materializes.
 
 ## Context
@@ -79,9 +79,9 @@ over the record bytes, so any post-hoc edit to a committed record is detectable 
 its hash (the same tamper-evident-not-tamper-proof posture as the
 [audit hash-chain](../security/audit-hash-chain-threat-model.md)). What they are **not**
 is **forgery-proof**: as #3897 found, the ledger is **hand-committable**, so any actor
-who can land a commit can author a *conforming* entry. A content hash proves the bytes
-have not changed since *someone* wrote them; it does not prove *who* wrote them or
-*how* they entered the ledger. The gate therefore verifies **structural presence** of
+who can land a commit can author a _conforming_ entry. A content hash proves the bytes
+have not changed since _someone_ wrote them; it does not prove _who_ wrote them or
+_how_ they entered the ledger. The gate therefore verifies **structural presence** of
 an approved record, not its **authenticity**. The trust anchor today is PR review of
 the record (CODEOWNERS on `governance/` + branch protection) — a human, not a machine.
 
@@ -94,27 +94,27 @@ Two facts shape the design:
 - **Records are produced locally but committed via caller-commits.** Production happens
   on a developer machine that has **no CI OIDC identity** to sign under; the record then
   reaches the repository through the **caller-commits** path (the producer writes the
-  record set locally; a PR commits it). The only place a *sanctioned, attestable*
+  record set locally; a PR commits it). The only place a _sanctioned, attestable_
   identity exists in this flow is **CI at commit time** — which is exactly where
   Architecture A signs.
 - **The producer is deferred.** The record producer itself — the component that would
   emit `vote-records.jsonl` / `pr-review-records.jsonl` at vote/review time as a
-  tamper-evident keyless-hash record *set* (Option C content-diff binding ratified) — is
+  tamper-evident keyless-hash record _set_ (Option C content-diff binding ratified) — is
   **deferred** (#3831 / #3927). There is, today, **no populated record stream** to sign.
 
 ## What it attests (explicit and honest)
 
 A CI-commit-time signature attests exactly one thing: **provenance-through-CI** —
 
-> *this exact record entered the ledger through this repository's sanctioned CI,
-> under identity X.*
+> _this exact record entered the ledger through this repository's sanctioned CI,
+> under identity X._
 
 It does **NOT** attest **who reviewed** anything, and — stated plainly — **it does not
 prove that a human reviewed the record at all.** A signature proves the record's bytes
 passed through the repo's CI identity; it says nothing about whether a person read,
 judged, or approved the underlying vote or PR review. Conflating "signed by CI" with
 "reviewed by a human" is the failure mode this ADR refuses to commit: the attestation
-is about *the path into the ledger*, not *the judgment behind the content*. The
+is about _the path into the ledger_, not _the judgment behind the content_. The
 ADR/docs MUST state this (binding condition 4).
 
 ## Honest value assessment
@@ -134,18 +134,18 @@ The genuine delta requires **both** of:
   a forged or rewritten ledger entry is detectable after the fact because the authentic
   entries are publicly logged and the forged one is not. This is why Rekor verification
   is **mandatory**, not optional — it is the part that carries the real security value.
-- **(ii) Multi-party / external-contributor review.** Provenance-through-CI is *real*
+- **(ii) Multi-party / external-contributor review.** Provenance-through-CI is _real_
   value precisely when the producer/committer is **not** the sole trust anchor — when an
   external contributor or a second reviewer is in the loop and "did this record actually
   enter through our sanctioned CI, or was it hand-forged into the PR?" is a question with
   a non-trivial answer.
 
 Absent (i), there is no external witness; absent (ii), there is no adversary the
-provenance defends against. The build is gated on **both** appearing (see *Sequencing*).
+provenance defends against. The build is gated on **both** appearing (see _Sequencing_).
 
 ## Sequencing / build trigger
 
-**DESIGN NOW (this ADR) / BUILD WITH THE PRODUCER.** This ADR is the *design-of-record*;
+**DESIGN NOW (this ADR) / BUILD WITH THE PRODUCER.** This ADR is the _design-of-record_;
 it ships no code.
 
 The **build trigger** is the conjunction of:
@@ -172,11 +172,11 @@ When the trigger fires, the implementation MUST satisfy all of:
    fails verification. Identity match is not advisory — it is the gate.
 2. **Payload-bytes binding.** The gate verifies the **signed-payload bytes ==
    committed-record bytes**, preserving the Option-C content-diff binding (the signature
-   attests *this exact record*, not a re-serialization or a paraphrase).
+   attests _this exact record_, not a re-serialization or a paraphrase).
 3. **Mandatory Rekor inclusion verification.** Rekor transparency-log inclusion
    verification is **required**; a bundle without verifiable Rekor inclusion is rejected.
-   Without it the design is an ephemeral cert with no external witness (see *Honest value
-   assessment*).
+   Without it the design is an ephemeral cert with no external witness (see _Honest value
+   assessment_).
 4. **Honest attestation wording.** The ADR/docs state that the signature attests
    **provenance-through-CI, not human review** — the build does not market it as proof a
    human reviewed.
@@ -198,8 +198,12 @@ When the trigger fires, the implementation MUST satisfy all of:
 ### Negative
 
 - The authenticity gap **remains open until the build trigger fires** — until then the
-  trust anchor is still PR review of the record (CODEOWNERS + branch protection), and
-  `governance/ratification-votes.yaml` MUST stay under CODEOWNERS review (per #3897).
+  trust anchor is still PR review of the record (CODEOWNERS + branch protection).
+  <br>**Update (#4005/#4010):** the resolution source moved from the hand-committable
+  `governance/ratification-votes.yaml` (now **removed**) to the authentic, tamper-evident
+  `governance/vote-records.jsonl` (verified by `verifyVoteRecordSet`); CODEOWNERS review on
+  `governance/` is the trust anchor that must stay in place. The original #3897 reasoning below
+  is preserved as the historical record.
 - A future build carries real cost: a signing workflow, bundle verification in the gate,
   Rekor availability as a CI dependency, and the operational story for Rekor/Fulcio
   outages — costs this ADR defers but does not remove.
