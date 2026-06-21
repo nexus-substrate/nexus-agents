@@ -79,8 +79,14 @@ export type VoteRecordCounts = z.infer<typeof VoteRecordCountsSchema>;
  */
 export const VoteRecordSchema = z
   .object({
-    /** Schema version. '1.1' marks the chain→record-set+sequence model (#3927). */
-    version: z.literal('1.1'),
+    /**
+     * Schema version. '1.1' marked the chain→record-set+sequence model (#3927);
+     * '1.2' adds the optional `ratifies` subject-binding field (#3927 item 1).
+     * Both are accepted — a 1.1 record (no `ratifies`) verifies unchanged because
+     * `ratifies` is folded into the self-hash ONLY when present (see
+     * {@link computeVoteRecordHash}).
+     */
+    version: z.enum(['1.1', '1.2']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -121,6 +127,16 @@ export const VoteRecordSchema = z
     /** Optional correlation/decision id linking to the cost rollup / trace. */
     correlationId: z.string().min(1).optional(),
     /**
+     * The loop/strategy subject this vote RATIFIES (#3927 item 1). Present only on
+     * a ratification vote; set at vote time and bound into the self-hash (so it is
+     * tamper-evident). The authority-tier promotion gate
+     * (`scripts/check-authority-tier-drift.ts`) resolves a transition's
+     * `ratificationVoteRef` to a record and requires `ratifies === transition.subject`
+     * (with `decision === 'approved'` and `strategy === 'higher_order'`). Absent on
+     * an ordinary (non-ratification) vote; a 1.1 record never carries it.
+     */
+    ratifies: z.string().min(1).optional(),
+    /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
      * the record-set model is position-independent (#3927).
@@ -150,7 +166,7 @@ type VoteRecordPayload = Omit<VoteRecord, 'hash'>;
  * `hash_mismatch`: the hash is independent of key insertion order at every level.
  */
 export function computeVoteRecordHash(payload: VoteRecordPayload): string {
-  const canonical = JSON.stringify({
+  const base = {
     version: payload.version,
     id: payload.id,
     sequence: payload.sequence,
@@ -174,7 +190,16 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
       confidence: v.confidence,
     })),
     correlationId: payload.correlationId ?? null,
-  });
+  };
+  // `ratifies` (#3927) is folded in ONLY when present, appended after the stable
+  // base fields. This keeps the projection BYTE-IDENTICAL to the pre-1.2 form for
+  // any record without it — so every historical 1.1 record (which never carried
+  // `ratifies`) re-hashes unchanged (back-compat). It stays fully tamper-evident:
+  // adding, removing, or editing `ratifies` on a persisted record flips the hash
+  // (an absent field re-hashes one way, a present field the other).
+  const canonical = JSON.stringify(
+    payload.ratifies !== undefined ? { ...base, ratifies: payload.ratifies } : base
+  );
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 

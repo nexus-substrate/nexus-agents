@@ -56,12 +56,30 @@ and any **stricter** bound.
 
 The evidence record each promotion is earned against is the
 `PromotionEvidence` tuple (`strategy-manifest.ts`), recorded in
-[`governance/authority-tier-evidence.yaml`](../../governance/authority-tier-evidence.yaml),
-and the ratification vote is recorded in
-[`governance/ratification-votes.yaml`](../../governance/ratification-votes.yaml).
-The CI gate (`scripts/check-authority-tier-drift.ts`, under `governance:check`)
-fails any promotion that lacks a floor-meeting record + an approved,
-`higher_order`, subject-matching ratification vote.
+[`governance/authority-tier-evidence.yaml`](../../governance/authority-tier-evidence.yaml).
+The ratification vote is resolved against the **authentic, tamper-evident**
+[`governance/vote-records.jsonl`](../../governance/vote-records.jsonl) ledger
+(#3927 item 1) — the hand-committable `ratification-votes.yaml` is **deprecated**
+and no longer read by the gate. The CI gate
+(`scripts/check-authority-tier-drift.ts`, under `governance:check`) fails any
+promotion that lacks a floor-meeting record + a vote record whose `decision` is
+`approved`, `strategy` is `higher_order`, and `ratifies` matches the transition
+subject. It fails **closed** on a tampered/malformed ledger, on a sequence gap
+(an omitted record), and on an ambiguous subject (records that disagree on the
+decision — no ref may cherry-pick the approving fork).
+
+**Authoring a ratification record.** The record is produced at vote time by the
+`consensus_vote` store (`audit/vote-record-store.ts`) carrying `ratifies = <subject>`,
+and committed to `governance/vote-records.jsonl` alongside the tier-transition
+audit event in the promoting PR. (Wiring the `ratifies` argument through the
+`consensus_vote` MCP tool — the last-mile authoring ergonomics — is tracked in the
+#3927 follow-up.)
+
+**Residual trust (tamper-evident, not tamper-proof).** The self-hash detects
+post-hoc edits, but a record is authored in the same PR that performs the
+promotion, so authenticity still rests on CODEOWNERS review + branch protection
+on `governance/`. Cryptographic signing (CI/OIDC, cosign/gitsign, in-toto/SLSA)
+is tracked as #3927 item 4.
 
 ---
 

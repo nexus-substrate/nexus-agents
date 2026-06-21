@@ -127,6 +127,12 @@ export interface BuildVoteRecordInput {
   readonly correlationId?: string | undefined;
   readonly recordedAt?: string | undefined;
   /**
+   * The loop/strategy subject this vote RATIFIES (#3927 item 1). Set ONLY for a
+   * ratification vote that backs an authority-tier promotion; bound into the
+   * self-hash so the gate can trust it. Omitted on an ordinary vote.
+   */
+  readonly ratifies?: string | undefined;
+  /**
    * Monotonic sequence number for this record (#3927). Defaults to 0 (first
    * record) when omitted; the producer ({@link persistVoteRecord}) supplies
    * (max existing sequence)+1.
@@ -152,7 +158,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
       ? input.proposal.slice(0, MAX_PROPOSAL_RECORD_CHARS) + '...'
       : input.proposal;
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: '1.1',
+    version: '1.2',
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -169,6 +175,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     },
     voters: toVoterSummaries(input.votes),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
+    ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };
@@ -267,7 +274,9 @@ export function resolveVoteRecordsPath(): string | undefined {
   // location (the base differs by layout, so we accept either).
   const expectedSuffix = `${VOTE_RECORDS_DATA_CATEGORY}${sep}${VOTE_RECORDS_FILENAME}`;
   const underHomedirRoot = isWithin(getNexusDataDir(), resolved);
-  const underRepoDataDir = resolved.includes(`.nexus-agents${sep}${VOTE_RECORDS_DATA_CATEGORY}${sep}`);
+  const underRepoDataDir = resolved.includes(
+    `.nexus-agents${sep}${VOTE_RECORDS_DATA_CATEGORY}${sep}`
+  );
   if (
     !isAbsolute(resolved) ||
     !resolved.endsWith(expectedSuffix) ||
@@ -279,8 +288,10 @@ export function resolveVoteRecordsPath(): string | undefined {
 }
 
 /** Options for {@link persistVoteRecord}. `sequence`/`previousHash` are assigned by the store. */
-export interface PersistVoteRecordOptions
-  extends Omit<BuildVoteRecordInput, 'previousHash' | 'sequence'> {
+export interface PersistVoteRecordOptions extends Omit<
+  BuildVoteRecordInput,
+  'previousHash' | 'sequence'
+> {
   /**
    * Override the artifact path; takes precedence over {@link VOTE_RECORDS_PATH_ENV}
    * and the {@link nexusDataPath} resolution (see {@link resolveVoteRecordsPath}).
@@ -354,12 +365,25 @@ export function readVoteRecords(filePath: string): {
   readonly records: VoteRecord[];
   readonly invalidLines: number[];
 } {
+  if (!existsSync(filePath)) return { records: [], invalidLines: [] };
+  return parseVoteRecordsText(readFileSync(filePath, 'utf-8'));
+}
+
+/**
+ * Parse JSONL vote-record text into records + the 1-based line numbers that
+ * failed to parse/validate. The disk-free core of {@link readVoteRecords}, split
+ * out (#3927) so the authority-tier gate (`scripts/check-authority-tier-drift.ts`)
+ * can resolve `ratificationVoteRef` against the committed ledger TEXT in a pure,
+ * unit-testable path without touching the filesystem. Blank lines are skipped.
+ * Order is NOT significant — the set is verified by {@link verifyVoteRecordSet}.
+ */
+export function parseVoteRecordsText(text: string): {
+  readonly records: VoteRecord[];
+  readonly invalidLines: number[];
+} {
   const records: VoteRecord[] = [];
   const invalidLines: number[] = [];
-  if (!existsSync(filePath)) return { records, invalidLines };
-  const lines = readFileSync(filePath, 'utf-8')
-    .split('\n')
-    .filter((l) => l.trim() !== '');
+  const lines = text.split('\n').filter((l) => l.trim() !== '');
   for (const [i, line] of lines.entries()) {
     try {
       const parsed = VoteRecordSchema.safeParse(JSON.parse(line));

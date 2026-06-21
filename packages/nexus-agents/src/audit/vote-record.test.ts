@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createHash } from 'node:crypto';
 
 import type { VoteRecord } from './vote-record.js';
 import { computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
@@ -185,5 +186,79 @@ describe('verifyVoteRecordSet', () => {
       expect(result.recordCount).toBe(3);
       expect(result.forks).toEqual([1]);
     }
+  });
+});
+
+describe('ratifies subject-binding field (#3927 item 1, schema 1.2)', () => {
+  it('verifies a 1.2 record that carries ratifies', () => {
+    const record = makeRecord('vote-1', 0, { version: '1.2', ratifies: 'loop:dev-pipeline' });
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('folds ratifies into the self-hash — editing it is a hash_mismatch', () => {
+    const record = makeRecord('vote-1', 0, { version: '1.2', ratifies: 'loop:dev-pipeline' });
+    // An attacker repoints the ratified subject without recomputing the hash.
+    const tampered: VoteRecord = { ...record, ratifies: 'loop:some-other-loop' };
+    const result = verifyVoteRecordSet([tampered]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('detects ADDING a ratifies field to a record that had none (forgery)', () => {
+    const record = makeRecord('vote-1', 0); // no ratifies — hash computed without it
+    const forged: VoteRecord = { ...record, ratifies: 'loop:promote-me' };
+    const result = verifyVoteRecordSet([forged]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('detects REMOVING a ratifies field from a record that had one (forgery)', () => {
+    const record = makeRecord('vote-1', 0, { version: '1.2', ratifies: 'loop:promote-me' });
+    const forged: VoteRecord = { ...record };
+    delete forged.ratifies; // strip the field the hash was computed over
+    const result = verifyVoteRecordSet([forged]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('back-compat: a record WITHOUT ratifies hashes byte-identically to the pre-1.2 projection', () => {
+    // The hash of a no-ratifies payload must not change when the `ratifies`
+    // capability is added — historical 1.1 records must re-verify unchanged. We
+    // prove the canonical projection omits the key entirely (not `ratifies:null`).
+    const payload: Omit<VoteRecord, 'hash'> = {
+      version: '1.1',
+      id: 'vote-legacy',
+      sequence: 0,
+      recordedAt: '2026-06-15T00:00:00.000Z',
+      proposalHash: 'b'.repeat(64),
+      proposal: 'legacy proposal',
+      strategy: 'higher_order',
+      decision: 'approved',
+      approvalPercentage: 85.7,
+      voteCounts: { approve: 6, reject: 1, abstain: 0, total: 7 },
+      voters: [{ role: 'architect', decision: 'approve', confidence: 0.9 }],
+    };
+    // Recompute the expected hash from the exact pre-1.2 canonical projection
+    // (correlationId folded as null, NO ratifies key).
+    const expectedCanonical = JSON.stringify({
+      version: '1.1',
+      id: 'vote-legacy',
+      sequence: 0,
+      recordedAt: '2026-06-15T00:00:00.000Z',
+      proposalHash: 'b'.repeat(64),
+      proposal: 'legacy proposal',
+      strategy: 'higher_order',
+      decision: 'approved',
+      approvalPercentage: 85.7,
+      voteCounts: { approve: 6, reject: 1, abstain: 0, total: 7 },
+      voters: [{ role: 'architect', decision: 'approve', confidence: 0.9 }],
+      correlationId: null,
+    });
+    const expected = createHash('sha256').update(expectedCanonical).digest('hex');
+    expect(computeVoteRecordHash(payload)).toBe(expected);
+    expect(verifyVoteRecordSet([{ ...payload, hash: expected }])).toEqual({
+      ok: true,
+      recordCount: 1,
+    });
   });
 });

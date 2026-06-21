@@ -16,19 +16,22 @@ import {
   analyzeTierDeclarations,
   analyzeLoopTierDeclarations,
   analyzeTierTransitionEvents,
-  buildRatificationResolver,
+  buildVoteRecordRatificationResolver,
   buildEnforceEvidenceMap,
   recoverTransitions,
   checkAuthorityTierDeclarations,
   soakDays,
   ENFORCE_FLOOR,
   type RatificationResolver,
-  type RatificationVote,
 } from './check-authority-tier-drift.js';
 import type { AuthorityTier } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
 import type { LoopTierManifest } from '../packages/nexus-agents/src/orchestration/loop-tier-manifest.js';
 import { LOOP_TIER_REGISTRY } from '../packages/nexus-agents/src/orchestration/loop-tier-registry.js';
 import type { TierTransitionPayload } from '../packages/nexus-agents/src/audit/audit-types.js';
+import {
+  computeVoteRecordHash,
+  type VoteRecord,
+} from '../packages/nexus-agents/src/audit/vote-record.js';
 import { AuditLogger } from '../packages/nexus-agents/src/audit/audit-logger.js';
 import { InMemoryAuditStorage } from '../packages/nexus-agents/src/audit/audit-storage.js';
 
@@ -271,20 +274,51 @@ function transition(
   };
 }
 
-/** An approved higher_order ratification vote for `auto-remediation`. */
-function approvedVote(id: string): RatificationVote {
-  return {
+/**
+ * Build a properly self-hashed authentic {@link VoteRecord} (#3927). `ratifies`
+ * defaults to `auto-remediation` (the subject `transition()` promotes). Pass
+ * `ratifies: null` to omit the field (an ordinary, non-ratifying vote).
+ */
+function voteRecord(
+  id: string,
+  opts: {
+    ratifies?: string | null;
+    decision?: VoteRecord['decision'];
+    strategy?: VoteRecord['strategy'];
+    sequence?: number;
+  } = {}
+): VoteRecord {
+  const ratifies = opts.ratifies === null ? undefined : (opts.ratifies ?? 'auto-remediation');
+  const payload: Omit<VoteRecord, 'hash'> = {
+    version: '1.2',
     id,
-    subject: 'auto-remediation',
-    decision: 'approved',
-    strategy: 'higher_order',
-    votedAt: '2026-06-15T00:00:00.000Z',
+    sequence: opts.sequence ?? 0,
+    recordedAt: '2026-06-15T00:00:00.000Z',
+    proposalHash: 'a'.repeat(64),
+    proposal: 'Promote auto-remediation from advisory to enforce',
+    strategy: opts.strategy ?? 'higher_order',
+    decision: opts.decision ?? 'approved',
+    approvalPercentage: 85.7,
+    voteCounts: { approve: 6, reject: 1, abstain: 0, total: 7 },
+    voters: [{ role: 'architect', decision: 'approve', confidence: 0.9 }],
+    ...(ratifies !== undefined ? { ratifies } : {}),
   };
+  return { ...payload, hash: computeVoteRecordHash(payload) };
 }
 
-/** A resolver backed by the given recorded votes (keyed by id). */
-function resolverOf(...votes: RatificationVote[]): RatificationResolver {
-  const byId = new Map(votes.map((v) => [v.id, v]));
+/** An approved higher_order record ratifying `auto-remediation`. */
+function approvedVote(id: string): VoteRecord {
+  return voteRecord(id);
+}
+
+/** Serialize records to committed-ledger JSONL text (one record per line). */
+function jsonl(...records: VoteRecord[]): string {
+  return records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+}
+
+/** A resolver backed by the given authentic records (keyed by id). */
+function resolverOf(...records: VoteRecord[]): RatificationResolver {
+  const byId = new Map(records.map((r) => [r.id, r]));
   return (ref) => byId.get(ref);
 }
 
@@ -313,43 +347,57 @@ describe('analyzeTierTransitionEvents — ratification gate (#3842, hardened #38
     expect(findings[0]?.message).toContain("ratificationVoteRef='x'");
   });
 
-  it('FAILS a promotion whose ref resolves to a REJECTED vote (#3894)', () => {
-    const rejected: RatificationVote = { ...approvedVote('cv_no'), decision: 'rejected' };
+  it('FAILS a promotion whose ref resolves to a REJECTED record (#3894)', () => {
     const findings = analyzeTierTransitionEvents(
       [transition('promotion', 'cv_no')],
-      resolverOf(rejected)
+      resolverOf(voteRecord('cv_no', { decision: 'rejected' }))
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
     expect(findings[0]?.message).toContain("'rejected'");
   });
 
-  it('FAILS a promotion whose ref resolves to a NON-higher_order vote (#3894)', () => {
-    const wrongStrategy: RatificationVote = {
-      ...approvedVote('cv_maj'),
-      strategy: 'simple_majority',
-    };
+  it('FAILS a promotion whose ref resolves to a NON-higher_order record (#3894)', () => {
     const findings = analyzeTierTransitionEvents(
       [transition('promotion', 'cv_maj')],
-      resolverOf(wrongStrategy)
+      resolverOf(voteRecord('cv_maj', { strategy: 'simple_majority' }))
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
     expect(findings[0]?.message).toContain('higher_order');
   });
 
-  it('FAILS a promotion whose ref resolves to a vote for a DIFFERENT subject (#3894)', () => {
-    const otherSubject: RatificationVote = {
-      ...approvedVote('cv_other'),
-      subject: 'some-other-loop',
-    };
+  it('FAILS a promotion whose ref resolves to a record ratifying a DIFFERENT subject (#3894)', () => {
     const findings = analyzeTierTransitionEvents(
       [transition('promotion', 'cv_other')],
-      resolverOf(otherSubject)
+      resolverOf(voteRecord('cv_other', { ratifies: 'some-other-loop' }))
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
-    expect(findings[0]?.message).toContain('does not match');
+    expect(findings[0]?.message).toContain('not the transition subject');
+  });
+
+  it('FAILS a promotion whose ref resolves to a record with NO ratifies field (#3927)', () => {
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_plain')],
+      resolverOf(voteRecord('cv_plain', { ratifies: null }))
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
+    expect(findings[0]?.message).toContain('(no ratifies field)');
+  });
+
+  it('FAILS a promotion of an AMBIGUOUS subject (conflicting decisions) closed (#3927)', () => {
+    // The subject has both an approved and a rejected record; even with a ref to
+    // the approving one, the conflict must block the promotion.
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_ok')],
+      resolverOf(voteRecord('cv_ok')),
+      new Set(['auto-remediation'])
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-ambiguous');
+    expect(findings[0]?.message).toContain('CONFLICTING');
   });
 
   it('PASSES a promotion whose ref RESOLVES to an approved higher_order vote (#3894)', () => {
@@ -387,30 +435,123 @@ describe('analyzeTierTransitionEvents — ratification gate (#3842, hardened #38
   });
 });
 
-describe('buildRatificationResolver — the committed ledger (#3894)', () => {
-  it('resolves an id present in a valid ledger', () => {
-    const yaml = toYaml({
-      version: 1,
-      votes: [approvedVote('cv_resolved')],
-    });
-    const { resolver, findings } = buildRatificationResolver(yaml);
+describe('buildVoteRecordRatificationResolver — the authentic ledger (#3927 item 1)', () => {
+  it('resolves an id present in a valid, verified ledger', () => {
+    const { resolver, conflictSubjects, findings } = buildVoteRecordRatificationResolver(
+      jsonl(voteRecord('cv_resolved'))
+    );
     expect(findings).toEqual([]);
+    expect(conflictSubjects.size).toBe(0);
     expect(resolver('cv_resolved')?.decision).toBe('approved');
+    expect(resolver('cv_resolved')?.ratifies).toBe('auto-remediation');
     expect(resolver('missing')).toBeUndefined();
   });
 
-  it('resolves NOTHING (fail-closed) for an absent ledger', () => {
-    const { resolver, findings } = buildRatificationResolver(undefined);
+  it('resolves NOTHING (fail-closed) for an absent ledger, no findings', () => {
+    const { resolver, conflictSubjects, findings } = buildVoteRecordRatificationResolver(undefined);
+    expect(findings).toEqual([]);
+    expect(conflictSubjects.size).toBe(0);
+    expect(resolver('anything')).toBeUndefined();
+  });
+
+  it('resolves NOTHING for an empty ledger (no records), no findings', () => {
+    const { resolver, findings } = buildVoteRecordRatificationResolver('');
     expect(findings).toEqual([]);
     expect(resolver('anything')).toBeUndefined();
   });
 
-  it('FAILS ratification-ledger-invalid and resolves nothing on a schema-invalid ledger', () => {
-    const yaml = toYaml({ version: 1, votes: [{ id: 'x' /* missing fields */ }] });
-    const { resolver, findings } = buildRatificationResolver(yaml);
+  it('FAILS vote-records-ledger-invalid and resolves nothing on an UNPARSEABLE line', () => {
+    const { resolver, findings } = buildVoteRecordRatificationResolver(
+      `${JSON.stringify(voteRecord('cv_ok'))}\n{ not json\n`
+    );
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.code).toBe('ratification-ledger-invalid');
-    expect(resolver('x')).toBeUndefined();
+    expect(findings[0]?.code).toBe('vote-records-ledger-invalid');
+    expect(findings[0]?.message).toContain('line(s)');
+    expect(resolver('cv_ok')).toBeUndefined(); // whole ledger fails closed
+  });
+
+  it('FAILS vote-records-ledger-invalid on a TAMPERED record (hash_mismatch)', () => {
+    const good = voteRecord('cv_tampered');
+    // Flip the decision on the persisted line WITHOUT recomputing the hash.
+    const tampered = JSON.stringify({ ...good, decision: 'rejected' });
+    const { resolver, findings } = buildVoteRecordRatificationResolver(`${tampered}\n`);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('vote-records-ledger-invalid');
+    expect(findings[0]?.message).toContain('hash_mismatch');
+    expect(resolver('cv_tampered')).toBeUndefined();
+  });
+
+  it('FAILS vote-records-ledger-invalid on a SEQUENCE GAP (omitted record)', () => {
+    // sequences {0, 2} — record at sequence 1 was deleted.
+    const { findings } = buildVoteRecordRatificationResolver(
+      jsonl(voteRecord('cv_a', { sequence: 0 }), voteRecord('cv_c', { sequence: 2 }))
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('vote-records-ledger-invalid');
+    expect(findings[0]?.message).toContain('sequence_gap');
+  });
+
+  it('FAILS vote-records-ledger-invalid on DUPLICATE record ids (ambiguous ref)', () => {
+    const { resolver, findings } = buildVoteRecordRatificationResolver(
+      jsonl(
+        voteRecord('dup', { sequence: 0 }),
+        voteRecord('dup', { sequence: 1, decision: 'rejected' })
+      )
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('vote-records-ledger-invalid');
+    expect(findings[0]?.message).toContain("'dup'");
+    expect(resolver('dup')).toBeUndefined();
+  });
+
+  it('surfaces a CONFLICTING-decision subject in conflictSubjects (benign fork, ambiguous basis)', () => {
+    // Two records ratify the same subject but disagree on decision — a union-merge
+    // fork. Sequences differ so the SET verifies; the conflict is reported.
+    const { conflictSubjects, findings } = buildVoteRecordRatificationResolver(
+      jsonl(
+        voteRecord('cv_yes', { sequence: 0, decision: 'approved' }),
+        voteRecord('cv_no', { sequence: 1, decision: 'rejected' })
+      )
+    );
+    expect(findings).toEqual([]); // the set is valid; conflict is not a ledger error
+    expect([...conflictSubjects]).toEqual(['auto-remediation']);
+  });
+
+  it('does NOT flag a subject with multiple AGREEING records as conflicting', () => {
+    const { conflictSubjects, findings } = buildVoteRecordRatificationResolver(
+      jsonl(
+        voteRecord('cv_1', { sequence: 0, decision: 'approved' }),
+        voteRecord('cv_2', { sequence: 1, decision: 'approved' })
+      )
+    );
+    expect(findings).toEqual([]);
+    expect(conflictSubjects.size).toBe(0);
+  });
+
+  it('END-TO-END: a conflicting ledger fails the matching promotion closed', () => {
+    const ledger = buildVoteRecordRatificationResolver(
+      jsonl(
+        voteRecord('cv_yes', { sequence: 0, decision: 'approved' }),
+        voteRecord('cv_no', { sequence: 1, decision: 'rejected' })
+      )
+    );
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_yes')],
+      ledger.resolver,
+      ledger.conflictSubjects
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-ambiguous');
+  });
+
+  it('END-TO-END: a clean ledger PASSES the matching promotion', () => {
+    const ledger = buildVoteRecordRatificationResolver(jsonl(voteRecord('cv_clean')));
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_clean')],
+      ledger.resolver,
+      ledger.conflictSubjects
+    );
+    expect(findings).toEqual([]);
   });
 });
 
@@ -475,13 +616,7 @@ describe('recoverTransitions — reads the chained transition log (#3842)', () =
     const { transitions, findings } = recoverTransitions(jsonl);
     expect(findings).toEqual([]);
     expect(transitions).toHaveLength(2);
-    const resolver = resolverOf({
-      id: 'cv_2077',
-      subject: 'clawguard',
-      decision: 'approved',
-      strategy: 'higher_order',
-      votedAt: '2026-06-15T00:00:00.000Z',
-    });
+    const resolver = resolverOf(voteRecord('cv_2077', { ratifies: 'clawguard' }));
     expect(analyzeTierTransitionEvents(transitions, resolver)).toEqual([]);
   });
 

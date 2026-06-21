@@ -1,13 +1,21 @@
 # Ratification-vote ledger (Epic D, #3894 — ADR-0017).
 #
-# The COMMITTED resolution source the promotion gate
-# (scripts/check-authority-tier-drift.ts, under governance:check) resolves a
-# tier-transition's `ratificationVoteRef` against. #3842 only checked the ref was
-# non-empty — a bogus `ratificationVoteRef:'x'` passed, so "ratification-LINKED"
-# was only as strong as a non-empty string. #3894 makes the link genuine: a
-# `promotion` transition's ref must RESOLVE to a record HERE whose `decision` is
-# `approved` and whose `strategy` is `higher_order` (a promotion is
-# governance-of-the-governor), with a `subject` matching the transition.
+# DEPRECATED as the promotion-gate resolution source (#3927 item 1). The gate
+# (scripts/check-authority-tier-drift.ts, under governance:check) NO LONGER reads
+# this hand-committable YAML. It now resolves a tier-transition's
+# `ratificationVoteRef` against the AUTHENTIC, tamper-evident
+# `governance/vote-records.jsonl` — each record self-hashed at vote time and the
+# whole set verified before any ref resolves, so a forged/edited/omitted record
+# fails the gate closed. The subject is bound via the record's `ratifies` field.
+# This file is retained only to avoid churn while its full removal is tracked
+# separately; do NOT add new entries here — they have no effect on the gate.
+#
+# HISTORICAL (why the YAML existed): #3842 only checked the ref was non-empty — a
+# bogus `ratificationVoteRef:'x'` passed; #3894 resolved the ref against a record
+# HERE whose `decision` is `approved`, `strategy` is `higher_order`, with a
+# `subject` matching the transition. #3927 re-anchored that resolution to the
+# authentic ledger because this YAML is hand-committable (forgeable by anyone who
+# can land a commit), which the #3897 ratification panel flagged.
 #
 # Each record is a RatificationVote (schema: check-authority-tier-drift.ts
 # RatificationVoteSchema):
