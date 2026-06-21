@@ -131,7 +131,12 @@ export class SemanticMemoryImpl implements ISemanticMemory {
       tags: ['semantic', fact.domain, fact.subject],
     };
     if (fact.validUntil !== undefined) {
-      meta.ttl = fact.validUntil.getTime() - getTimeProvider().now();
+      // #4018: clamp to ≥1ms. A past/now `validUntil` (e.g. invalidateFact sets
+      // it to now) yields a non-positive ttl that MemoryMetadataSchema.positive()
+      // REJECTS — silently failing the whole store with 'Invalid metadata'. ttl=1
+      // expires the entry on the next retrieve, the closest we get to immediate
+      // invalidation without a backend delete method.
+      meta.ttl = Math.max(1, fact.validUntil.getTime() - getTimeProvider().now());
     }
     return this.backend.store(`semantic:${fact.factId}`, fact, meta);
   }
@@ -309,7 +314,9 @@ export class KnowledgeVaultImpl implements IKnowledgeVault {
     const tags = ['vault', entry.category, entry.importance, ...(entry.tags ?? [])];
     const meta: MemoryMetadata = { importance, tags };
     if (entry.expiresAt !== undefined) {
-      meta.ttl = entry.expiresAt.getTime() - getTimeProvider().now();
+      // #4018: clamp to ≥1ms — a past/now expiry would make a non-positive ttl
+      // that MemoryMetadataSchema.positive() rejects, silently failing the store.
+      meta.ttl = Math.max(1, entry.expiresAt.getTime() - getTimeProvider().now());
     }
     return this.backend.store(`vault:${entry.vaultId}`, entry, meta);
   }

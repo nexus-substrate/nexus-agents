@@ -14,7 +14,38 @@ import type {
   ModelStatsRow,
 } from './outcome-storage-types.js';
 import { OutcomeStorageError } from './outcome-storage-types.js';
-import { SQLiteOutcomeStorage, createOutcomeStorage } from './outcome-storage.js';
+import {
+  SQLiteOutcomeStorage,
+  createOutcomeStorage,
+  sanitizeErrorMessage,
+} from './outcome-storage.js';
+
+describe('sanitizeErrorMessage — secret redaction (security hardening)', () => {
+  it('redacts the original sk- and keyword=value forms', () => {
+    expect(sanitizeErrorMessage('failed with sk-abcdefghijklmnopqrstuvwxyz123')).toContain(
+      '[REDACTED]'
+    );
+    expect(sanitizeErrorMessage('api_key=supersecretvalue123')).toContain('[REDACTED]');
+  });
+
+  it('redacts GitHub PATs, AWS keys, and space-separated Bearer tokens (newly covered)', () => {
+    expect(sanitizeErrorMessage('token ghp_0123456789abcdefghijklmnopqrstuvwx')).toContain(
+      '[REDACTED]'
+    );
+    expect(sanitizeErrorMessage('github_pat_11ABCDEFG0abcdefghij_KLMNOP')).toContain('[REDACTED]');
+    expect(sanitizeErrorMessage('AWS key AKIAIOSFODNN7EXAMPLE denied')).toContain('[REDACTED]');
+    expect(sanitizeErrorMessage('Authorization: Bearer eyJhbGciOi.JIUzI1.NiIs')).toContain(
+      '[REDACTED]'
+    );
+  });
+
+  it('leaves benign messages untouched', () => {
+    expect(sanitizeErrorMessage('connection timed out after 30s')).toBe(
+      'connection timed out after 30s'
+    );
+    expect(sanitizeErrorMessage(undefined)).toBeUndefined();
+  });
+});
 
 // ============================================================================
 // Mocks

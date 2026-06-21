@@ -274,6 +274,29 @@ describe('SemanticMemoryImpl', () => {
     expect(result.ok).toBe(true);
   });
 
+  // #4018: invalidateFact set validUntil=now → storeFact computed ttl≤0 →
+  // MemoryMetadataSchema.positive() rejected it → silent 'Invalid metadata'.
+  // The mock backend ignores ttl, so assert the CLAMPED ttl (≥1) is what reaches
+  // the backend — the property the real backend's positive() schema requires.
+  it('invalidateFact passes a POSITIVE ttl to the backend (clamped) (#4018)', async () => {
+    await semantic.storeFact(makeFact());
+    (backend.store as ReturnType<typeof vi.fn>).mockClear();
+    await semantic.invalidateFact('fact-1');
+    const meta = (backend.store as ReturnType<typeof vi.fn>).mock.calls[0]?.[2] as {
+      ttl?: number;
+    };
+    expect(meta.ttl).toBeGreaterThanOrEqual(1);
+  });
+
+  it('storeFact with a PAST validUntil still passes a positive ttl (#4018)', async () => {
+    const past = new Date(Date.now() - 60_000);
+    await semantic.storeFact(makeFact({ validUntil: past }));
+    const meta = (backend.store as ReturnType<typeof vi.fn>).mock.calls[0]?.[2] as {
+      ttl?: number;
+    };
+    expect(meta.ttl).toBeGreaterThanOrEqual(1);
+  });
+
   it('invalidateFact succeeds for unknown fact', async () => {
     const result = await semantic.invalidateFact('unknown');
     expect(result.ok).toBe(true);
