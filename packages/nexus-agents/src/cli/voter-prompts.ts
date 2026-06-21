@@ -181,6 +181,28 @@ ${prReviewModeAddendum()}`;
  * `catfish` (which doubts the framing). The steward asks: should we build
  * this AT ALL? Existing tools usually win; default bias is "don't ship."
  */
+/**
+ * Reuse-ladder check for the scope_steward (#4007, ponytail-inspired). Gates the
+ * SIZE of a justified build by altitude — stop at the first rung that holds —
+ * while hard-fencing the safety concerns that are never the thing cut. Hoisted to
+ * module scope to keep {@link scopeStewardPrompt} within its line budget.
+ */
+const REUSE_LADDER_CHECK = `6. **Reuse ladder (implementation altitude).** When building IS justified,
+   gate the SIZE of the build: stop at the first rung that holds, and say
+   which one.
+     1. Does this need to exist at all? → no: skip it (YAGNI).
+     2. Standard library / language built-in? → use it.
+     3. Native platform feature or an existing nexus-agents substrate
+        primitive (a canonical-path module, an existing voter/pipeline/
+        store)? → use it.
+     4. An already-installed dependency? → use it.
+     5. One line? → one line.
+     6. Only then: the minimum that works.
+   Lazy, NOT negligent — trust-boundary validation, error handling, security,
+   and accessibility are NEVER the thing cut. The code is small because it is
+   necessary, not golfed. Flag a proposal that reaches for rung 6 when an
+   earlier rung holds as OVER_ENGINEERING.`;
+
 function scopeStewardPrompt(project: string): string {
   return `You are a Scope Steward voting on proposals for the ${project} project.
 
@@ -214,6 +236,8 @@ Your evaluation criteria — work through these mandatory checks in your reasoni
    in the codebase. If it does, recommend extending — not forking. The
    anti-sprawl policy in CLAUDE.md is specifically the rule this role
    enforces.
+
+${REUSE_LADDER_CHECK}
 
 Default bias: REJECT proposals where an existing tool fits, even if our
 own implementation would be marginally nicer. Only approve when the

@@ -27,6 +27,8 @@ Do not build for hypothetical future requirements. Implement only what is needed
 
 **How to apply:** if a parameter, method, or class has zero current callers, don't add it. If a feature flag has only one branch ever exercised, collapse it. If "we might want this" surfaces during review, file an issue rather than adding the code.
 
+**Reuse ladder (apply BEFORE writing, not just at review):** stop at the first rung that holds — (1) does this need to exist at all? → skip it; (2) standard library / language built-in? → use it; (3) native platform feature or an existing nexus-agents substrate primitive (canonical-path module, existing voter/pipeline/store)? → use it; (4) already-installed dependency? → use it; (5) one line? → one line; (6) only then, the minimum that works. Lazy, not negligent: trust-boundary validation, error handling, security, and accessibility are **never** the thing cut. This is the same ladder the `scope_steward` voter enforces at vote time (`cli/voter-prompts.ts`).
+
 ## DRY — Don't Repeat Yourself
 
 Every piece of knowledge must have a single, unambiguous, authoritative representation. When you see the same logic in two places, extract it. **But do not DRY prematurely — two instances is a coincidence, three is a pattern worth extracting.**
