@@ -99,20 +99,22 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 The Orchestrator agent analyzes incoming tasks and delegates to specialized experts:
 
-| Expert                    | Specialization                                         |
-| ------------------------- | ------------------------------------------------------ |
-| **Code Expert**           | Implementation, debugging, optimization, refactoring   |
-| **Architecture Expert**   | System design, patterns, trade-offs, scalability       |
-| **Security Expert**       | Vulnerability analysis, secure coding, threat modeling |
-| **Documentation Expert**  | Technical writing, API docs, code comments             |
-| **Testing Expert**        | Test strategies, coverage analysis, test generation    |
-| **DevOps Expert**         | CI/CD, deployment, containerization                    |
-| **Research Expert**       | Literature review, state-of-the-art analysis           |
-| **PM Expert**             | Product management, requirements, priorities           |
-| **UX Expert**             | User experience, usability, accessibility              |
-| **Infrastructure Expert** | Server management, bare metal, networking              |
+| Expert                        | Specialization                                         |
+| ----------------------------- | ------------------------------------------------------ |
+| **Code Expert**               | Implementation, debugging, optimization, refactoring   |
+| **Architecture Expert**       | System design, patterns, trade-offs, scalability       |
+| **Security Expert**           | Vulnerability analysis, secure coding, threat modeling |
+| **Documentation Expert**      | Technical writing, API docs, code comments             |
+| **Testing Expert**            | Test strategies, coverage analysis, test generation    |
+| **DevOps Expert**             | CI/CD, deployment, containerization                    |
+| **Research Expert**           | Literature review, state-of-the-art analysis           |
+| **PM Expert**                 | Product management, requirements, priorities           |
+| **UX Expert**                 | User experience, usability, accessibility              |
+| **Infrastructure Expert**     | Server management, bare metal, networking              |
+| **QA Expert**                 | Quality gates, test-plan review, defect triage         |
+| **Data-Visualization Expert** | Charts, diagrams, dashboards, data presentation        |
 
-Experts can collaborate on complex tasks. The Orchestrator combines their outputs into a single response.
+All twelve expert types can collaborate on complex tasks. The Orchestrator combines their outputs into a single response.
 
 ### Model Adapters
 
@@ -155,7 +157,7 @@ steps:
 
 ### MCP Tools
 
-The server exposes 42 MCP tools for integration. Key tools include:
+The server exposes 46 MCP tools for integration. Key tools include:
 
 | Tool                 | Description                                    |
 | -------------------- | ---------------------------------------------- |
@@ -171,7 +173,7 @@ The server exposes 42 MCP tools for integration. Key tools include:
 | `repo_analyze`       | Analyze GitHub repository structure            |
 | `repo_security_plan` | Generate security scanning pipeline for a repo |
 
-See the root [README](../../README.md) for the complete tool list.
+See the [root README](https://github.com/nexus-substrate/nexus-agents/blob/main/README.md) for the complete tool list.
 
 ---
 
@@ -204,7 +206,7 @@ nexus-agents/
 └── pnpm-workspace.yaml
 ```
 
-See [docs/architecture/README.md](../../docs/architecture/README.md) for detailed module descriptions.
+See [docs/architecture/README.md](https://github.com/nexus-substrate/nexus-agents/blob/main/docs/architecture/README.md) for detailed module descriptions.
 
 ### Dependency Flow
 
@@ -280,7 +282,7 @@ import {
 // Create individual adapters
 const claude = createClaudeAdapter({ model: 'claude-sonnet-4-6' });
 const openai = createOpenAIAdapter({ model: 'gpt-4o' });
-const gemini = createGeminiAdapter({ model: 'gemini-1.5-pro' });
+const gemini = createGeminiAdapter({ model: 'gemini-3-pro' });
 const ollama = createOllamaAdapter({ model: 'llama3:8b' });
 
 // Or use the factory
@@ -379,11 +381,11 @@ We welcome contributions! Please see our guidelines:
 
 - Files must be under 400 lines
 - Functions must be under 50 lines
-- Test coverage must be at least 80%
+- Coverage thresholds: 60% statements/functions/lines, 50% branches (`vitest.config.ts`)
 - All code must pass linting and type checking
 
-See [CODING_STANDARDS.md](../../CODING_STANDARDS.md) for detailed guidelines.
-See [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution workflow.
+See [CODING_STANDARDS.md](https://github.com/nexus-substrate/nexus-agents/blob/main/CODING_STANDARDS.md) for detailed guidelines.
+See [CONTRIBUTING.md](https://github.com/nexus-substrate/nexus-agents/blob/main/CONTRIBUTING.md) for contribution workflow.
 
 ### Commit Convention
 
@@ -402,7 +404,7 @@ chore(scope): maintenance tasks
 
 ## License
 
-MIT - See [LICENSE](../../LICENSE) for details.
+MIT - See [LICENSE](https://github.com/nexus-substrate/nexus-agents/blob/main/LICENSE) for details.
 
 ---
 
