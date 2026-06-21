@@ -149,6 +149,27 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     expect(written.length).toBeGreaterThan(0);
   });
 
+  it('#4004: binds the ratifies subject into the persisted record', () => {
+    const filePath = join(dir, 'ratify', 'vote-records.jsonl');
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
+
+    const outcome = recordAuthenticVote({
+      proposal: 'Promote auto-remediation to enforce',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes: realVotes,
+      correlationId: 'corr-ratify',
+      ratifies: 'auto-remediation',
+    });
+    expect(outcome.persisted).toBe(true);
+    if (outcome.persisted) {
+      expect(outcome.record.ratifies).toBe('auto-remediation');
+      // ratifies is covered by the self-hash, so the on-disk line carries it.
+      const written = readFileSync(filePath, 'utf-8').trim();
+      expect(JSON.parse(written).ratifies).toBe('auto-remediation');
+    }
+  });
+
   it('#3991: persists to the .nexus-agents/governance/ data-dir path when no override is set', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
 

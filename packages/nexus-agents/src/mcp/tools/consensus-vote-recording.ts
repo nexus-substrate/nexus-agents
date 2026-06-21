@@ -146,6 +146,8 @@ export function recordAuthenticVote(args: {
   result: ConsensusResult;
   votes: readonly AgentVoteResult[];
   correlationId?: string | undefined;
+  /** Authority-tier ratification subject (#4004) — bound into the record's self-hash. */
+  ratifies?: string | undefined;
 }): VoteRecordPersistOutcome {
   const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
@@ -178,6 +180,7 @@ export function recordAuthenticVote(args: {
     result: args.result,
     votes: args.votes,
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
+    ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     logger,
   });
   if (record === undefined) {

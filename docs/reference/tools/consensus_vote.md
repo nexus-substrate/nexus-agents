@@ -24,3 +24,4 @@ Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 
 | `simulateVotes` | boolean | no | default false | TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319) |
 | `mode` | enum | no | one of: sync \| async | Dispatch mode (default: sync). Use "async" for higher-order strategies with 7 voters. |
 | `idempotencyKey` | string | no | minLength 1; maxLength 256 | Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId. |
+| `ratifies` | string | no | minLength 1; maxLength 256 | Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes. |
