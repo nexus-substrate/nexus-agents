@@ -83,7 +83,7 @@ describe('buildVoteRecord', () => {
       result: consensusResult(),
       votes,
     });
-    expect(record.version).toBe('1.1');
+    expect(record.version).toBe('1.2');
     expect(record.sequence).toBe(0); // default first sequence
     expect(record.decision).toBe('approved');
     expect(record.proposalHash).toHaveLength(64);
@@ -292,9 +292,9 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     expect(records).toHaveLength(1);
     expect(records[0]).toEqual(written);
     // The default nexusDataPath location was NOT used.
-    expect(readVoteRecords(join(dataRoot, 'governance', 'vote-records.jsonl')).records).toHaveLength(
-      0
-    );
+    expect(
+      readVoteRecords(join(dataRoot, 'governance', 'vote-records.jsonl')).records
+    ).toHaveLength(0);
   });
 
   it('returns an absolute override unchanged (#3963)', () => {

@@ -83,6 +83,7 @@ export {
   persistVoteRecord,
   resolveVoteRecordsPath,
   readVoteRecords,
+  parseVoteRecordsText,
 } from './vote-record-store.js';
 export type { BuildVoteRecordInput, PersistVoteRecordOptions } from './vote-record-store.js';
 

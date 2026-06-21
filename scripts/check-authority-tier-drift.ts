@@ -35,23 +35,29 @@
  * envelope nor a floor-meeting evidence record
  * (`loop-enforce-without-envelope-or-evidence`).
  *
- * Tier-transition ratification gate (#3842, hardened by #3894): in addition to the
- * declaration + evidence-floor checks, this gate also reads the hash-chained
- * tier-transition AUDIT EVENTS (Epic D / ADR-0017 §"Transition Rules") and FAILS a
- * PROMOTION transition event whose `ratificationVoteRef` does not RESOLVE to a
- * recorded, approved `higher_order` ratification vote. #3842 only checked the ref
- * was non-empty (cosmetic — a bogus `ratificationVoteRef:'x'` passed); #3894 makes
- * the link genuine by resolving the ref against a committed ratification ledger
- * (`governance/ratification-votes.yaml`, see {@link RatificationVoteSchema}) and
- * failing `promotion-ratification-unresolved` / `promotion-ratification-not-approved`.
- * Promotions must be ratification-linked (ADR-0017); demotions are automatic and
- * need no vote. The transition log lives at
- * `governance/authority-tier-transitions.jsonl` (optional — empty when no
- * transition has occurred); each line is a persisted `AuditEvent`. The pure
- * analysis ({@link analyzeTierTransitionEvents}) is unit-tested in isolation.
+ * Tier-transition ratification gate (#3842, hardened #3894, re-anchored #3927):
+ * in addition to the declaration + evidence-floor checks, this gate also reads the
+ * hash-chained tier-transition AUDIT EVENTS (Epic D / ADR-0017 §"Transition Rules")
+ * and FAILS a PROMOTION transition event whose `ratificationVoteRef` does not
+ * RESOLVE to a recorded, approved `higher_order` vote. #3842 only checked the ref
+ * was non-empty (cosmetic); #3894 resolved it against a committed ledger; #3927
+ * item 1 re-anchors that resolution to the AUTHENTIC, tamper-evident
+ * `governance/vote-records.jsonl` (self-hashed at vote time, verified as a set by
+ * {@link verifyVoteRecordSet}) — REPLACING the former hand-committable
+ * `governance/ratification-votes.yaml`. The gate now fails closed on a tampered or
+ * malformed ledger (`vote-records-ledger-invalid`), on an ambiguous
+ * conflicting-decision subject (`promotion-ratification-ambiguous`), and on the
+ * pre-existing `promotion-ratification-unresolved` / `-not-approved` reasons (the
+ * subject is matched via the record's `ratifies` field). It remains tamper-EVIDENT,
+ * not tamper-PROOF — cryptographic signing is tracked as #3927 item 4. Promotions
+ * must be ratification-linked (ADR-0017); demotions are automatic and need no vote.
+ * The transition log lives at `governance/authority-tier-transitions.jsonl`
+ * (optional — empty when no transition has occurred); each line is a persisted
+ * `AuditEvent`. The pure analysis ({@link analyzeTierTransitionEvents}) is
+ * unit-tested in isolation.
  *
  * @module scripts/check-authority-tier-drift
- * (Source: ADR-0017, Issue #3839, #3841, #3842, #3894)
+ * (Source: ADR-0017, Issue #3839, #3841, #3842, #3894, #3927)
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -75,15 +81,28 @@ import {
 } from '../packages/nexus-agents/src/audit/audit-logger.js';
 import {
   AuditEventSchema,
-  RatificationVoteLedgerSchema,
   type AuditEvent,
-  type RatificationVote,
   type TierTransitionPayload,
 } from '../packages/nexus-agents/src/audit/audit-types.js';
+import {
+  buildVoteRecordRatificationResolver,
+  ratificationFindingFor,
+  type RatificationResolver,
+} from './vote-record-ratification.js';
 
 const EVIDENCE_LEDGER = join(ROOT, 'governance/authority-tier-evidence.yaml');
 const TRANSITION_LOG = join(ROOT, 'governance/authority-tier-transitions.jsonl');
-const RATIFICATION_LEDGER = join(ROOT, 'governance/ratification-votes.yaml');
+/**
+ * The AUTHENTIC resolution source (#3927 item 1). The promotion gate resolves a
+ * transition's `ratificationVoteRef` against this committed, tamper-evident
+ * vote-record set — NOT the former hand-committable `governance/ratification-votes.yaml`,
+ * whose YAML resolution path was removed here (that file is deprecated; its
+ * removal is tracked separately). A record is produced at vote time
+ * (`audit/vote-record-store.ts`) and committed alongside the transition; the
+ * gate fails closed on any tamper/omission/ambiguity (see
+ * {@link buildVoteRecordRatificationResolver}).
+ */
+const VOTE_RECORDS_LEDGER = join(ROOT, 'governance/vote-records.jsonl');
 const LOOP_TIER_REGISTRY_FILE = join(ROOT, 'governance/loop-tiers.yaml');
 
 /**
@@ -112,75 +131,18 @@ export interface TierDriftFinding {
     | 'promotion-without-ratification'
     | 'promotion-ratification-unresolved'
     | 'promotion-ratification-not-approved'
-    | 'ratification-ledger-invalid'
+    | 'promotion-ratification-ambiguous'
+    | 'vote-records-ledger-invalid'
     | 'transition-log-invalid'
     | 'transition-log-chain-broken';
   readonly message: string;
 }
 
-// ============================================================================
-// Ratification-vote ledger (#3894) — the resolution source of truth
-// ============================================================================
-
-/**
- * A resolver: ref → recorded ratification vote (or undefined when unresolved).
- *
- * The committed ratification-vote ledger (`governance/ratification-votes.yaml`,
- * schema {@link RatificationVoteLedgerSchema} in `src/audit/audit-types.ts`) is the
- * resolution source. #3894 item 1: the promotion gate previously failed a
- * `promotion` only when its `ratificationVoteRef` was *empty* — a bogus
- * `ratificationVoteRef:'x'` passed, so the "ratification-LINKED" guarantee was
- * only as strong as a non-empty string. Resolving the ref against this ledger
- * makes the link genuine.
- *
- * RESOLUTION SOURCE & RESIDUAL GAP. Live `consensus_vote` results are persisted
- * only to per-developer home-dir stores (`~/.nexus-agents/voting/correlations.jsonl`,
- * `~/.nexus-agents/learning/outcomes.jsonl`) that a CI gate — running with no live
- * server and no developer home dir — cannot read. There is no other committed,
- * queryable source of truth for "did ratification vote X happen and pass". So the
- * honest mechanism is this committed ledger: a ratification vote must be recorded
- * HERE (a higher_order consensus_vote whose decision is `approved`) for a
- * promotion's ref to resolve. The gate verifies STRUCTURAL PRESENCE of an
- * approved, higher_order vote in a committed record — it does not (and cannot
- * from CI) re-execute the vote. Tampering with the ledger is itself a reviewable
- * governance change.
- */
-export type RatificationResolver = (ref: string) => RatificationVote | undefined;
-
-/** Re-exported for tests/callers that build resolvers. */
-export type { RatificationVote };
-
-/**
- * Build a {@link RatificationResolver} from the ledger YAML text (or undefined
- * when the file is absent). Returns the resolver plus a single
- * `ratification-ledger-invalid` finding when the ledger fails schema validation —
- * in which case the resolver resolves NOTHING (fail-closed: every promotion ref
- * is then unresolved and FAILS, rather than silently passing).
- */
-export function buildRatificationResolver(ledgerYaml: string | undefined): {
-  readonly resolver: RatificationResolver;
-  readonly findings: TierDriftFinding[];
-} {
-  if (ledgerYaml === undefined) {
-    return { resolver: () => undefined, findings: [] };
-  }
-  const parsed = RatificationVoteLedgerSchema.safeParse(parseYaml(ledgerYaml));
-  if (!parsed.success) {
-    return {
-      resolver: () => undefined,
-      findings: [
-        {
-          code: 'ratification-ledger-invalid',
-          message: `governance/ratification-votes.yaml failed schema validation: ${parsed.error.issues
-            .map((i) => i.message)
-            .join('; ')}`,
-        },
-      ],
-    };
-  }
-  const byId = new Map(parsed.data.votes.map((v) => [v.id, v]));
-  return { resolver: (ref) => byId.get(ref), findings: [] };
-}
+// The authentic vote-record resolver + per-transition verdict live in
+// ./vote-record-ratification.ts (imported above); re-exported here so existing
+// callers/tests keep importing them from the gate module.
+export { buildVoteRecordRatificationResolver };
+export type { RatificationResolver };
 
 /**
  * Parse the day-count of a simple ISO-8601 duration for the soak floor compare.
@@ -355,75 +317,45 @@ export function analyzeLoopTierDeclarations(inputs: LoopDriftInputs): TierDriftF
 }
 
 /**
- * The ratification gate (#3842, hardened by #3894). Pure analysis (no disk/process
- * I/O) over the recovered tier-transition payloads so it is unit-testable with
- * fixtures both ways. ADR-0017 §"Promotions are ratification-linked": a `promotion`
- * transition is valid only if it carries a linked ratification vote that genuinely
- * happened and PASSED; a `demotion` is automatic and needs none.
+ * The ratification gate (#3842, hardened #3894, re-anchored to authentic vote
+ * records #3927 item 1). Pure analysis (no disk/process I/O) over the recovered
+ * tier-transition payloads so it is unit-testable with fixtures. ADR-0017
+ * §"Promotions are ratification-linked": a `promotion` transition is valid only if
+ * it carries a linked ratification vote that genuinely happened and PASSED; a
+ * `demotion` is automatic and needs none.
  *
- * #3894 hardens the link from non-emptiness to RESOLVABILITY. A promotion FAILS when:
- *   - `promotion-without-ratification` — `ratificationVoteRef` is absent/empty
- *     (the #3842 cosmetic check; kept as the first gate).
- *   - `promotion-ratification-unresolved` — the ref does NOT resolve to any
- *     recorded vote in the committed ratification ledger (a bogus
- *     `ratificationVoteRef:'x'` no longer passes).
- *   - `promotion-ratification-not-approved` — the ref resolves, but the recorded
- *     vote's decision is not `approved`, it was not a `higher_order` vote (a
- *     promotion is governance-of-the-governor), or its `subject` does not match
- *     the transition subject.
+ * A promotion FAILS when (each fail-closed):
+ *   - `promotion-ratification-ambiguous` — the subject has CONFLICTING records in
+ *     the ledger (e.g. an `approved` and a `rejected` record both ratify it). No
+ *     ref may cherry-pick the approving fork; the conflict must be resolved in the
+ *     ledger first. Checked FIRST, before ref resolution (#3927, Contrarian).
+ *   - `promotion-without-ratification` — `ratificationVoteRef` is absent/empty.
+ *   - `promotion-ratification-unresolved` — the ref does NOT resolve to any record
+ *     in the committed `governance/vote-records.jsonl` (a bogus
+ *     `ratificationVoteRef:'x'` does not pass).
+ *   - `promotion-ratification-not-approved` — the ref resolves, but the record's
+ *     `decision` is not `approved`, its `strategy` is not `higher_order` (a
+ *     promotion is governance-of-the-governor), or its `ratifies` subject-binding
+ *     does not match the transition subject.
  *
  * @param transitions - tier-transition payloads recovered from the chained audit log
- * @param resolve - resolves a `ratificationVoteRef` to its recorded vote (see
- *   {@link buildRatificationResolver}); a resolver that resolves nothing makes
- *   every non-empty ref `promotion-ratification-unresolved` (fail-closed).
+ * @param resolve - resolves a `ratificationVoteRef` to its authentic record (see
+ *   {@link buildVoteRecordRatificationResolver}); a resolver that resolves nothing
+ *   makes every non-empty ref `promotion-ratification-unresolved` (fail-closed).
+ * @param conflictSubjects - subjects with conflicting-decision records; a promotion
+ *   of any such subject fails `promotion-ratification-ambiguous`.
  * @returns one finding per offending promotion
  */
 export function analyzeTierTransitionEvents(
   transitions: readonly TierTransitionPayload[],
-  resolve: RatificationResolver
+  resolve: RatificationResolver,
+  conflictSubjects: ReadonlySet<string> = new Set<string>()
 ): TierDriftFinding[] {
   const findings: TierDriftFinding[] = [];
   for (const t of transitions) {
     if (t.kind !== 'promotion') continue; // demotions are automatic — no vote required
-    const ref = t.ratificationVoteRef;
-    const where = `'${t.subject}' (${t.fromTier} → ${t.toTier}, evidenceRef='${t.evidenceRef}')`;
-
-    if (ref === undefined || ref.trim() === '') {
-      findings.push({
-        code: 'promotion-without-ratification',
-        message: `tier-transition promotion of ${where} has NO linked ratificationVoteRef. Promotions MUST be ratification-linked (ADR-0017 §"Promotions are ratification-linked") — record the consensus_vote ref on the transition audit event.`,
-      });
-      continue;
-    }
-
-    const vote = resolve(ref.trim());
-    if (vote === undefined) {
-      findings.push({
-        code: 'promotion-ratification-unresolved',
-        message: `tier-transition promotion of ${where} carries ratificationVoteRef='${ref}' that does NOT resolve to any recorded vote in governance/ratification-votes.yaml. A non-empty ref is not enough (#3894) — the vote must be a recorded, approved higher_order consensus_vote.`,
-      });
-      continue;
-    }
-
-    const reasons: string[] = [];
-    if (vote.decision !== 'approved')
-      reasons.push(`decision is '${vote.decision}', not 'approved'`);
-    if (vote.strategy !== 'higher_order') {
-      reasons.push(
-        `strategy is '${vote.strategy}', not 'higher_order' (a promotion is governance-of-the-governor)`
-      );
-    }
-    if (vote.subject !== t.subject) {
-      reasons.push(
-        `vote subject '${vote.subject}' does not match the transition subject '${t.subject}'`
-      );
-    }
-    if (reasons.length > 0) {
-      findings.push({
-        code: 'promotion-ratification-not-approved',
-        message: `tier-transition promotion of ${where} resolves ratificationVoteRef='${ref}' but that vote does not ratify the promotion: ${reasons.join('; ')}.`,
-      });
-    }
+    const finding = ratificationFindingFor(t, resolve, conflictSubjects);
+    if (finding !== null) findings.push(finding);
   }
   return findings;
 }
@@ -537,6 +469,32 @@ function enforceFloorShortfalls(e: PromotionEvidence): string[] {
  * the optional evidence ledger from disk, runs the analysis, and prints
  * structured errors. Returns true when every declaration is honest. Fails closed.
  */
+/**
+ * #3842/#3894/#3927 ratification gate: read the hash-chained tier-transition log
+ * (if any) and fail any PROMOTION event whose ratificationVoteRef does not RESOLVE
+ * to an approved higher_order record in the AUTHENTIC, tamper-evident committed
+ * ledger `governance/vote-records.jsonl` (#3927 item 1 — replaces the former
+ * hand-committable `ratification-votes.yaml`). Fails closed on a tampered/malformed
+ * ledger and on ambiguous (conflicting-decision) subjects. Returns no findings when
+ * the transition log is absent (the no-promotions-yet happy path).
+ */
+function ratificationGateFindings(): TierDriftFinding[] {
+  if (!existsSync(TRANSITION_LOG)) return [];
+  const voteRecordsJsonl = existsSync(VOTE_RECORDS_LEDGER)
+    ? readFileSync(VOTE_RECORDS_LEDGER, 'utf-8')
+    : undefined;
+  const { resolver, conflictSubjects, findings } =
+    buildVoteRecordRatificationResolver(voteRecordsJsonl);
+  const { transitions, findings: logFindings } = recoverTransitions(
+    readFileSync(TRANSITION_LOG, 'utf-8')
+  );
+  return [
+    ...findings,
+    ...logFindings,
+    ...analyzeTierTransitionEvents(transitions, resolver, conflictSubjects),
+  ];
+}
+
 export function checkAuthorityTierDeclarations(): boolean {
   const declaredTiers = new Map<string, AuthorityTier | undefined>(
     STRATEGY_MANIFEST_REGISTRY.manifests.map((m) => [m.id, m.authorityTier])
@@ -561,23 +519,7 @@ export function checkAuthorityTierDeclarations(): boolean {
     })
   );
 
-  // #3842/#3894 ratification gate: read the hash-chained tier-transition log (if
-  // any) and fail any PROMOTION event whose ratificationVoteRef does not RESOLVE
-  // to an approved higher_order vote in the committed ratification ledger.
-  if (existsSync(TRANSITION_LOG)) {
-    const ratificationYaml = existsSync(RATIFICATION_LEDGER)
-      ? readFileSync(RATIFICATION_LEDGER, 'utf-8')
-      : undefined;
-    const { resolver, findings: ledgerFindings } = buildRatificationResolver(ratificationYaml);
-    const { transitions, findings: logFindings } = recoverTransitions(
-      readFileSync(TRANSITION_LOG, 'utf-8')
-    );
-    findings.push(
-      ...ledgerFindings,
-      ...logFindings,
-      ...analyzeTierTransitionEvents(transitions, resolver)
-    );
-  }
+  findings.push(...ratificationGateFindings());
 
   if (findings.length === 0) return true;
 
@@ -589,8 +531,9 @@ export function checkAuthorityTierDeclarations(): boolean {
   console.error('  back any `enforce` with a floor-meeting record in');
   console.error('  governance/authority-tier-evidence.yaml, and link every promotion transition');
   console.error(
-    '  to an approved higher_order vote recorded in governance/ratification-votes.yaml.'
+    '  to an approved higher_order record (matching ratifies==subject) in the authentic'
   );
+  console.error('  governance/vote-records.jsonl ledger.');
   console.error('  Re-run: pnpm authority-tier:check');
   return false;
 }
