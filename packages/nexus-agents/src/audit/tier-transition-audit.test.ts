@@ -16,11 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { AuditLogger, verifyChain, extractTierTransition } from './audit-logger.js';
 import { InMemoryAuditStorage } from './audit-storage.js';
 import type { AuditLogConfig, AuditEvent } from './audit-types.js';
-import {
-  TIER_TRANSITION_METADATA_KEY,
-  RatificationVoteSchema,
-  RatificationVoteLedgerSchema,
-} from './audit-types.js';
+import { TIER_TRANSITION_METADATA_KEY } from './audit-types.js';
 
 function makeLogger(): { logger: AuditLogger; storage: InMemoryAuditStorage } {
   const storage = new InMemoryAuditStorage();
@@ -454,50 +450,8 @@ describe('non-`tier.` governance event payload is hash-covered (#3961)', () => {
   );
 });
 
-describe('RatificationVoteSchema — the #3894 resolution-source schema', () => {
-  const approved = {
-    id: 'cv_2026-06-15_abc',
-    subject: 'auto-remediation',
-    decision: 'approved' as const,
-    strategy: 'higher_order' as const,
-    votedAt: '2026-06-15T00:00:00.000Z',
-  };
-
-  it('accepts a minimal approved higher_order vote', () => {
-    expect(RatificationVoteSchema.safeParse(approved).success).toBe(true);
-  });
-
-  it('accepts optional approvalPercentage + voteUri', () => {
-    const parsed = RatificationVoteSchema.safeParse({
-      ...approved,
-      approvalPercentage: 85,
-      voteUri: 'https://example.test/vote/abc',
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  it('rejects an unknown decision and an unknown strategy', () => {
-    expect(RatificationVoteSchema.safeParse({ ...approved, decision: 'maybe' }).success).toBe(
-      false
-    );
-    expect(RatificationVoteSchema.safeParse({ ...approved, strategy: 'coin_flip' }).success).toBe(
-      false
-    );
-  });
-
-  it('is strict — rejects an unknown extra field', () => {
-    expect(RatificationVoteSchema.safeParse({ ...approved, extra: 1 }).success).toBe(false);
-  });
-
-  it('ledger schema accepts an empty votes array (the committed default)', () => {
-    expect(RatificationVoteLedgerSchema.safeParse({ version: 1, votes: [] }).success).toBe(true);
-  });
-
-  it('ledger schema rejects a vote missing required fields', () => {
-    const parsed = RatificationVoteLedgerSchema.safeParse({
-      version: 1,
-      votes: [{ id: 'x' }],
-    });
-    expect(parsed.success).toBe(false);
-  });
-});
+// The RatificationVoteSchema tests were removed in #4010 alongside the schema
+// itself — #4005 re-anchored the promotion gate to the authentic
+// vote-records.jsonl, so the hand-committable YAML ledger schema is gone. The
+// authentic record-set verification is covered by audit/vote-record.test.ts and
+// scripts/vote-record-ratification (gate) tests.

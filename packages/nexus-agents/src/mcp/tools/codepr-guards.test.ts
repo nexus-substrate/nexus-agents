@@ -239,7 +239,7 @@ describe('classifyPath', () => {
 
   const sensitiveCases: Array<[string, string]> = [
     ['governance/x', 'governance'],
-    ['governance/ratification-votes.yaml', 'governance'],
+    ['governance/vote-records.jsonl', 'governance'],
     ['.github/workflows/ci.yml', 'workflow'],
     ['CODEOWNERS', 'codeowners'],
     ['.github/CODEOWNERS', 'codeowners'],
@@ -527,9 +527,7 @@ describe('evaluateWriteGuards', () => {
   });
 
   it('returns the sensitive_path denial (guard 2) for a sensitive file', () => {
-    const r = evaluateWriteGuards(
-      input({ changedFiles: [cf('/work/root/package.json', 1, 0)] })
-    );
+    const r = evaluateWriteGuards(input({ changedFiles: [cf('/work/root/package.json', 1, 0)] }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('sensitive_path');
   });

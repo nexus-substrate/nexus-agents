@@ -236,8 +236,9 @@ truth for pr_review's promotion bar.
 2. Record the `PromotionEvidence` tuple in
    [`governance/authority-tier-evidence.yaml`](../../governance/authority-tier-evidence.yaml)
    meeting the floor for the target tier (and any stricter bound stated above).
-3. Hold the `higher_order` ratification `consensus_vote`; record it in
-   [`governance/ratification-votes.yaml`](../../governance/ratification-votes.yaml).
+3. Hold the `higher_order` ratification `consensus_vote`, casting it with
+   `ratifies=<subject>` (#4004) so the authentic, self-hashed record lands in
+   [`governance/vote-records.jsonl`](../../governance/vote-records.jsonl) (#4005).
 4. Emit the `promotion` tier-transition audit event linking the ratification vote
    ref (ADR-0017 §"Transition Rules").
 5. Change the loop's declared tier (manifest or `governance/loop-tiers.yaml`) **one
@@ -251,5 +252,5 @@ truth for pr_review's promotion bar.
 - [ADR-0017: Authority Ladder](../adr/0017-authority-ladder.md) — the evidence-threshold schema this page instantiates
 - [`governance/loop-tiers.yaml`](../../governance/loop-tiers.yaml) — the four un-issued loops' declared tiers (#3843)
 - [`governance/authority-tier-evidence.yaml`](../../governance/authority-tier-evidence.yaml) — the promotion-evidence ledger
-- [`governance/ratification-votes.yaml`](../../governance/ratification-votes.yaml) — the ratification-vote ledger
+- [`governance/vote-records.jsonl`](../../governance/vote-records.jsonl) — the authentic, tamper-evident ratification record ledger (#4005; replaced the hand-committable `ratification-votes.yaml`, removed in #4010)
 - Absorbed promotion cases: [#3552](https://github.com/nexus-substrate/nexus-agents/issues/3552), [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769), [#3815](https://github.com/nexus-substrate/nexus-agents/issues/3815), [#2077](https://github.com/nexus-substrate/nexus-agents/issues/2077)
