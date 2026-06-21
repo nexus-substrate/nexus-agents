@@ -35,6 +35,22 @@ claims:
       subjectContains: '46 MCP tools'
     lastVerified: '2026-06-16'
 
+  - id: npm-readme-tool-count
+    claim: 'The published npm README states the system exposes 46 MCP tools.'
+    # The npm-rendered package README is a SEPARATE file from the root README; it
+    # drifted to a stale "42 MCP tools" (caught 2026-06-21). Guarding it here so
+    # claims:check enforces the count on the npm-facing doc too, instead of a
+    # fragile symlink to the root README (whose repo-relative links break on npm).
+    subject: packages/nexus-agents/README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: manifest-tool-count
+      path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
+      expected: 46
+      subjectContains: '46 MCP tools'
+    lastVerified: '2026-06-21'
+
   - id: consensus-strategy-count
     claim: 'README advertises six consensus strategy names backed by the algorithm enum.'
     subject: README.md
