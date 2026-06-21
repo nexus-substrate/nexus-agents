@@ -694,7 +694,8 @@ function recordVoteSideEffects(
   proposal: string,
   strategy: string,
   result: ExtendedVotingResult,
-  logger: ILogger
+  logger: ILogger,
+  ratifies?: string
 ): {
   costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   voteRecord: VoteRecordPersistOutcome;
@@ -702,13 +703,15 @@ function recordVoteSideEffects(
   const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
   // #3897: persist an authentic, hash-chained vote record to the committable
   // governance artifact at vote time so the promotion gate/CI can rest
-  // authenticity on the chain, not on hand-transcribed YAML.
+  // authenticity on the chain, not on hand-transcribed YAML. #4004: bind the
+  // authority-tier ratification subject into the record when provided.
   const voteRecord = recordAuthenticVote({
     proposal,
     strategy,
     result: result.result,
     votes: result.votes,
     correlationId: decisionId,
+    ...(ratifies !== undefined ? { ratifies } : {}),
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
@@ -757,7 +760,8 @@ async function handleConsensusVote(
       args.proposal,
       strategy,
       result,
-      logger
+      logger,
+      args.ratifies
     );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
@@ -944,6 +948,41 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   voteRecordNote: z.string().max(500).optional(),
 };
 
+/** Advertised MCP input schema for consensus_vote (hoisted to keep the register fn within its line budget). */
+const CONSENSUS_VOTE_TOOL_SCHEMA = {
+  proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
+  threshold: z
+    .enum(['majority', 'supermajority', 'unanimous'])
+    .optional()
+    .describe('Voting threshold (legacy). Use strategy instead.'),
+  strategy: VotingStrategySchema.optional().describe(
+    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
+  ),
+  quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 7'),
+  simulateVotes: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
+  ratifies: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
+    ),
+};
+
+/** Advertised MCP tool description for consensus_vote. */
+const CONSENSUS_VOTE_DESCRIPTION =
+  'Execute multi-model consensus voting on a proposal. ' +
+  'Uses 7 roles by default (architect, security, devex, ai_ml, pm, catfish, scope_steward) ' +
+  'or 3 with quickMode (architect, security, scope_steward), voting with configurable strategies. ' +
+  'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
+  "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
+  'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record.';
+
 /**
  * Registers the consensus_vote tool with the MCP server.
  * Uses createSecureHandler (Issue #531) with timeout protection (Issue #271).
@@ -953,29 +992,6 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   const notifier = deps.notifier ?? createMcpNotifier(server);
   const depsWithNotifier = { ...deps, notifier };
-  const toolSchema = {
-    proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
-    threshold: z
-      .enum(['majority', 'supermajority', 'unanimous'])
-      .optional()
-      .describe('Voting threshold (legacy). Use strategy instead.'),
-    strategy: VotingStrategySchema.optional().describe(
-      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
-    ),
-    quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 7'),
-    simulateVotes: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
-  };
-
-  const description =
-    'Execute multi-model consensus voting on a proposal. ' +
-    'Uses 7 roles by default (architect, security, devex, ai_ml, pm, catfish, scope_steward) ' +
-    'or 3 with quickMode (architect, security, scope_steward), voting with configurable strategies. ' +
-    'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
-    "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result.";
 
   const secureHandler = createSecureHandler(createConsensusVoteHandler(depsWithNotifier), {
     toolName: 'consensus_vote',
@@ -992,8 +1008,8 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
   server.registerTool(
     'consensus_vote',
     {
-      description,
-      inputSchema: toolSchema,
+      description: CONSENSUS_VOTE_DESCRIPTION,
+      inputSchema: CONSENSUS_VOTE_TOOL_SCHEMA,
       outputSchema: CONSENSUS_VOTE_OUTPUT_SCHEMA,
       annotations: getToolAnnotations('consensus_vote'),
     },

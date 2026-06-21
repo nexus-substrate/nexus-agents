@@ -219,6 +219,23 @@ export const ConsensusVoteInputSchema = z.object({
     .describe(
       'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
     ),
+  /**
+   * Authority-tier ratification subject (#4004). Set ONLY when this vote
+   * ratifies an authority-ladder promotion: the loop/strategy id (the
+   * tier-transition `subject`) this vote authorizes. It is bound into the
+   * persisted record's self-hash as `ratifies`, so the promotion gate
+   * (`check-authority-tier-drift.ts`) can resolve a `ratificationVoteRef` to this
+   * record and require `ratifies === transition.subject` (with decision=approved,
+   * strategy=higher_order). Omit on an ordinary vote.
+   */
+  ratifies: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
+    ),
 });
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;
