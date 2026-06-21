@@ -34,7 +34,6 @@ function makeGate(overrides: Partial<PolicyGateSpec> = {}): PolicyGateSpec {
     afterStage: 'analyze',
     beforeStage: 'execute',
     rules: [],
-    onFail: 'block',
     ...overrides,
   };
 }

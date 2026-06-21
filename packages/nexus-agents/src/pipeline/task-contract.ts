@@ -48,9 +48,6 @@ export const ARTIFACT_TYPES = [
   'analysis',
 ] as const;
 
-/** Valid policy gate failure actions. */
-const ON_FAIL_ACTIONS = ['block', 'warn', 'escalate'] as const;
-
 // ============================================================================
 // Derived Types
 // ============================================================================
@@ -58,7 +55,6 @@ const ON_FAIL_ACTIONS = ['block', 'warn', 'escalate'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type StageType = (typeof STAGE_TYPES)[number];
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
-// OnFailAction is used implicitly by z.enum(ON_FAIL_ACTIONS)
 
 // ============================================================================
 // Zod Schemas
@@ -133,13 +129,23 @@ export const StageSpecSchema = z.object({
   timeoutMs: z.number().int().min(0).optional(),
 });
 
-/** Policy gate inserted between pipeline stages. */
+/**
+ * Policy gate inserted between pipeline stages.
+ *
+ * NOTE on enforcement (#4019): the gate's effective enforcement mode is resolved
+ * SOLELY by the runtime enforcement bundle — `GatePolicyEnforcement.mode` (or
+ * `NEXUS_POLICY_GATE_MODE`, warn-by-default per #3177). There is intentionally NO
+ * per-gate fail-action field here: the former `onFail` enum was inert (consumed
+ * nowhere — verified) and required every gate to declare a fail action that did
+ * nothing, so authoring `onFail:'block'` gave a false sense of enforcement.
+ * Removed (7/0 higher_order vote) so the contract cannot promise enforcement the
+ * runtime won't deliver. Set the enforcement mode to make a gate block.
+ */
 export const PolicyGateSpecSchema = z.object({
   id: z.string().min(1),
   afterStage: z.string().min(1),
   beforeStage: z.string().min(1),
   rules: z.array(z.string().min(1)).min(1),
-  onFail: z.enum(ON_FAIL_ACTIONS),
 });
 
 /** Cost estimate for a pipeline execution plan. */

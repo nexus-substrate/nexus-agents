@@ -386,7 +386,6 @@ describe('blast radius — compilePlan default unchanged (#3703)', () => {
           afterStage: 'analyze',
           beforeStage: 'execute',
           rules: ['trust-tier'],
-          onFail: 'warn' as const,
         },
       ],
       estimatedCost: { totalTokensIn: 0, totalTokensOut: 0, estimatedCostUsd: 0, modelCalls: 0 },
