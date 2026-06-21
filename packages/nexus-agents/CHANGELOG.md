@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 2.138.0
+
+### Minor Changes
+
+- [#4005](https://github.com/nexus-substrate/nexus-agents/pull/4005) [`35d91f7`](https://github.com/nexus-substrate/nexus-agents/commit/35d91f7e439b4246e439bf53d04a1d88ab121562) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Re-anchor the authority-tier promotion gate to the authentic vote-record ledger ([#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) item 1)
+
+  The CI promotion gate (`scripts/check-authority-tier-drift.ts`) now resolves a tier-transition's `ratificationVoteRef` against the tamper-evident `governance/vote-records.jsonl` — verified as a set with `verifyVoteRecordSet` — instead of the hand-committable `governance/ratification-votes.yaml`. It fails **closed** on a tampered/malformed ledger (`vote-records-ledger-invalid`), on conflicting-decision subjects (`promotion-ratification-ambiguous`), and on the existing unresolved/not-approved reasons. The subject is bound via a new optional, self-hash-covered `ratifies` field on the vote record (schema 1.1 → 1.2); records without it re-verify unchanged (back-compat). The YAML resolution path is removed; the file is deprecated in place (its removal is tracked separately). The change is a no-op for current behaviour (both ledgers are empty / no promotions yet). Authored from a 7/7 `higher_order` design vote. Remains tamper-**evident**, not tamper-**proof** — cryptographic signing is tracked as [#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) item 4.
+
+- [#4009](https://github.com/nexus-substrate/nexus-agents/pull/4009) [`1d649cd`](https://github.com/nexus-substrate/nexus-agents/commit/1d649cdeca7c43a256d7552d8b848b1435550729) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `ratifies` param to the consensus_vote MCP tool — the authentic-record authoring last-mile ([#4004](https://github.com/nexus-substrate/nexus-agents/issues/4004))
+
+  `consensus_vote` now accepts an optional `ratifies` argument: the loop/strategy subject an authority-ladder ratification vote authorizes. It is threaded into the persisted authentic vote record's self-hash (`ratifies` field, [#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) item 1), so a real `higher_order` ratification vote cast with `ratifies=<subject>` lands a tamper-evident record the promotion gate (`check-authority-tier-drift.ts`) can resolve a `ratificationVoteRef` against and verify (`ratifies === transition.subject`, decision=approved, strategy=higher_order). Completes the authoring path so the first real authority-tier promotion can be ratified end-to-end. Omitted on ordinary votes (no behaviour change). Tool reference + repo index regenerated.
+
+### Patch Changes
+
+- [#4012](https://github.com/nexus-substrate/nexus-agents/pull/4012) [`3316b71`](https://github.com/nexus-substrate/nexus-agents/commit/3316b710d51a133ec90a345d3dc2a3d7ffc669fc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the dead ratification-votes.yaml ledger + its test-only schemas ([#4010](https://github.com/nexus-substrate/nexus-agents/issues/4010))
+
+  [#4005](https://github.com/nexus-substrate/nexus-agents/issues/4005) re-anchored the authority-tier promotion gate to the authentic, tamper-evident `governance/vote-records.jsonl` and removed the YAML resolution path. This deletes the now-orphaned `governance/ratification-votes.yaml` (zero live code reads) and the test-only `RatificationVoteSchema` / `RatificationVoteLedgerSchema` (+ types) from `audit/audit-types.ts`, drops the corresponding `tier-transition-audit.test.ts` block, and updates the `codepr-guards` governance-path example to the live `vote-records.jsonl`. Pure dead-code removal; the authentic record-set verification (`verifyVoteRecordSet`) and the gate are unchanged.
+
+- [#4008](https://github.com/nexus-substrate/nexus-agents/pull/4008) [`a69bdee`](https://github.com/nexus-substrate/nexus-agents/commit/a69bdee3838b8f06af704865ec96a0d902769f93) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add an explicit reuse-first ladder to the scope_steward voter ([#4007](https://github.com/nexus-substrate/nexus-agents/issues/4007), ponytail-inspired)
+
+  The `scope_steward` voter now gates the _implementation altitude_ of a justified build with an ordered ladder — YAGNI → stdlib → native/substrate primitive → installed dependency → one line → minimum that works — and flags reaching for a higher rung when an earlier one holds as `OVER_ENGINEERING`. The ladder hard-fences the safety concerns that are never cut (trust-boundary validation, error handling, security, accessibility). Mirrored as an author pre-write self-check in `.rules/development-disciplines.md`. Prompt-only change; no new tool/command surface.
+
 ## 2.137.0
 
 ### Minor Changes
