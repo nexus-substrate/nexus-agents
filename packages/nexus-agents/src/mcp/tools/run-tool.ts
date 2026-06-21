@@ -231,6 +231,13 @@ export function buildDefaultExecutors(trustTier?: string): StrategyExecutorMap {
     'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
       runDevPipelineForGoal(metaInput.goal, trustTier),
     pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
+    // #3988: `research` deliberately ALIASES the `pipeline` engine — it runs the
+    // SAME generic stage registry (selectStageRegistry only branches greenfield/
+    // audit), shaped by the goal text, NOT a distinct research stage registry.
+    // The registry's research `entrypointTool` already points at run_pipeline, so
+    // this is intended aliasing, not a distinct executor. A real research-shaped
+    // registry is a feature with no current consumer (YAGNI) — add it only when a
+    // named loop needs research-specific stages; until then research==pipeline.
     research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
     consensus: (_decision, metaInput: MetaOrchestratorInput) => runConsensusForGoal(metaInput.goal),
   };
