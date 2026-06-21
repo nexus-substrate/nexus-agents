@@ -20,7 +20,7 @@ gh search repos --owner williamzujkowski --topic nexus-agents-companion
 
 ## Test Projects (`nexus-agents-test`)
 
-Each exercises a specific subset of the 38 MCP tools end-to-end. Intended as regression harness — if a tool's contract changes, the corresponding test repo should fail.
+Each exercises a specific subset of the 46 MCP tools end-to-end. Intended as regression harness — if a tool's contract changes, the corresponding test repo should fail.
 
 | Repo                                                                         | Tools Under Test                                                                          | Description                                              |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------- |
