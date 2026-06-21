@@ -502,7 +502,6 @@ const TRUST_GATE: PolicyGateSpec = {
   afterStage: 'analyze',
   beforeStage: 'execute',
   rules: ['trust-tier'],
-  onFail: 'block',
 };
 
 function makeGatedPlan(): PlanContract {

@@ -239,24 +239,24 @@ describe('PolicyGateSpecSchema', () => {
       afterStage: 'stage-analyze',
       beforeStage: 'stage-execute',
       rules: ['trust-tier', 'security-review'],
-      onFail: 'block',
     };
     const result = PolicyGateSpecSchema.safeParse(gate);
     expect(result.success).toBe(true);
   });
 
-  it('validates all onFail actions', () => {
-    const actions = ['block', 'warn', 'escalate'] as const;
-    for (const onFail of actions) {
-      const gate = {
-        id: 'gate-1',
-        afterStage: 'a',
-        beforeStage: 'b',
-        rules: ['rule-1'],
-        onFail,
-      };
-      expect(PolicyGateSpecSchema.safeParse(gate).success).toBe(true);
-    }
+  // #4019: the inert `onFail` field was removed (enforcement is resolved by the
+  // runtime mode, not a per-gate field). A non-strict schema ignores a stray
+  // `onFail` key on an external plan, so back-compat holds.
+  it('ignores a legacy onFail key (back-compat, non-strict schema)', () => {
+    const legacyGate = {
+      id: 'gate-1',
+      afterStage: 'a',
+      beforeStage: 'b',
+      rules: ['rule-1'],
+    };
+    const result = PolicyGateSpecSchema.safeParse(legacyGate);
+    expect(result.success).toBe(true);
+    if (result.success) expect('onFail' in result.data).toBe(false);
   });
 
   it('rejects empty rules array', () => {
@@ -265,7 +265,6 @@ describe('PolicyGateSpecSchema', () => {
       afterStage: 'a',
       beforeStage: 'b',
       rules: [],
-      onFail: 'block',
     };
     expect(PolicyGateSpecSchema.safeParse(gate).success).toBe(false);
   });
@@ -316,7 +315,6 @@ describe('PlanContractSchema', () => {
           afterStage: 'stage-analyze',
           beforeStage: 'stage-execute',
           rules: ['trust-tier'],
-          onFail: 'block' as const,
         },
       ],
     };

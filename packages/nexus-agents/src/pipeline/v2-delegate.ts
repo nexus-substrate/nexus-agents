@@ -258,15 +258,14 @@ const ROUTE_STAGE_ID = 'route-model';
 /**
  * Entry gate for the v2-delegate pipeline (#3703). Sits on the START boundary
  * before the route stage so policy is evaluated before any routing work runs.
- * `onFail: 'warn'` documents intent — the effective runtime mode is resolved by
- * the enforcement bundle (warn by default; block opt-in via env).
+ * Enforcement is resolved by the runtime enforcement bundle (warn by default;
+ * block opt-in via `NEXUS_POLICY_GATE_MODE`), NOT a per-gate field (#4019).
  */
 const ENTRY_GATE: PolicyGateSpec = {
   id: 'gate-delegate-entry',
   afterStage: START,
   beforeStage: ROUTE_STAGE_ID,
   rules: ['trust-tier'],
-  onFail: 'warn',
 };
 
 /**

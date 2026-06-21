@@ -122,7 +122,6 @@ describe('compilePlan', () => {
           afterStage: 'analyze',
           beforeStage: 'execute',
           rules: ['trust-tier'],
-          onFail: 'block',
         },
       ],
     });
@@ -192,7 +191,6 @@ const TRUST_GATE: PolicyGateSpec = {
   afterStage: 'analyze',
   beforeStage: 'execute',
   rules: ['trust-tier'],
-  onFail: 'block',
 };
 
 /** Plan with an analyze→[gate]→execute(execute-type) shape. */
@@ -366,7 +364,6 @@ const ENTRY_GATE: PolicyGateSpec = {
   afterStage: START,
   beforeStage: 'route-model',
   rules: ['trust-tier'],
-  onFail: 'warn',
 };
 
 /** Single-stage plan with an entry gate at START → route-model (#3703). */
