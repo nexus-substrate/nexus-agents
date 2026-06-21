@@ -72,8 +72,8 @@ decision — no ref may cherry-pick the approving fork).
 `consensus_vote` store (`audit/vote-record-store.ts`) carrying `ratifies = <subject>`,
 and committed to `governance/vote-records.jsonl` alongside the tier-transition
 audit event in the promoting PR. (Wiring the `ratifies` argument through the
-`consensus_vote` MCP tool — the last-mile authoring ergonomics — is tracked in the
-#3927 follow-up.)
+`consensus_vote` MCP tool — the last-mile authoring ergonomics — is tracked in
+the #3927 follow-up, #4004.)
 
 **Residual trust (tamper-evident, not tamper-proof).** The self-hash detects
 post-hoc edits, but a record is authored in the same PR that performs the
