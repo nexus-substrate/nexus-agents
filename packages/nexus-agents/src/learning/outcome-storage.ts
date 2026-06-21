@@ -47,15 +47,23 @@ import {
 /** Maximum length for persisted error messages. Truncates to prevent data leakage. */
 const MAX_ERROR_MESSAGE_LENGTH = 200;
 
-/** Sensitive patterns to redact from error messages before persisting. */
+/**
+ * Sensitive patterns to redact from error messages before persisting. Covers
+ * OpenAI/Anthropic-style `sk-…`, GitHub PATs (`ghp_/gho_/ghu_/ghs_/github_pat_`),
+ * AWS access keys (`AKIA…`), space-separated `Bearer <token>`, and the generic
+ * `keyword[=:]value` form. Each alternative is linear (no nested quantifiers) so
+ * the global match stays ReDoS-safe over untrusted-ish error strings.
+ */
 const SENSITIVE_PATTERNS =
-  /(?:sk-[a-zA-Z0-9]{20,}|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
+  /(?:sk-[a-zA-Z0-9]{20,}|gh[posu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|bearer\s+\S+|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
 
 /**
  * Sanitizes error messages before persisting to SQLite.
  * Truncates to MAX_ERROR_MESSAGE_LENGTH and redacts potential secrets.
+ * Exported for unit-testing the redaction coverage (the patterns are
+ * security-relevant — a missed credential format would persist a secret).
  */
-function sanitizeErrorMessage(msg: string | undefined): string | undefined {
+export function sanitizeErrorMessage(msg: string | undefined): string | undefined {
   if (msg === undefined) return undefined;
   const redacted = msg.replace(SENSITIVE_PATTERNS, '[REDACTED]');
   return redacted.length > MAX_ERROR_MESSAGE_LENGTH
