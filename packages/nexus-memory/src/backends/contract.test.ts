@@ -71,6 +71,18 @@ for (const [name, factory] of factories) {
       expect(await backend.read('k1')).toEqual({ text: 'hello', count: 1 });
     });
 
+    // #4021: both backends must REJECT write(key, undefined) identically. Before
+    // the fix, InMemoryBackend stored a phantom row while SqliteBackend threw a
+    // cryptic NOT NULL bind error — a contract divergence. Now both throw
+    // MemoryValidationError, and the key stays absent.
+    it('rejects write(key, undefined) uniformly and stores nothing', async () => {
+      // Cast through unknown to exercise the runtime undefined-guard (the type
+      // forbids undefined, but a caller bug or untyped JS path can still reach it).
+      const undefinedValue = undefined as unknown as SamplePayload;
+      await expect(backend.write('k-undef', undefinedValue)).rejects.toThrow(MemoryValidationError);
+      expect(await backend.read('k-undef')).toBeUndefined();
+    });
+
     it('write upserts on existing key', async () => {
       await backend.write('k1', { text: 'first', count: 1 });
       await backend.write('k1', { text: 'second', count: 2 });

@@ -107,6 +107,14 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
   }
 
   private validate(value: TValue): void {
+    // #4021: reject `undefined` uniformly (before the optional schema check) so
+    // both backends behave identically. Previously this backend stored a phantom
+    // row for `write(key, undefined)` while SqliteBackend threw a cryptic NOT NULL
+    // bind error — a contract divergence. `undefined` is the missing-key sentinel
+    // `read` returns; an explicit `undefined` write is a caller bug — use `null`.
+    if (value === undefined) {
+      throw new MemoryValidationError(this.domain, 'value must not be undefined (use null)');
+    }
     if (this.schema === undefined) return;
     const result = this.schema.safeParse(value);
     if (!result.success) {
