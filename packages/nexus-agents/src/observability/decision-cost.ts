@@ -35,6 +35,8 @@
  * @module observability/decision-cost
  */
 
+import { z } from 'zod';
+
 /** Billing mode in effect for a decision. Mirrors `NEXUS_BILLING_MODE`. */
 export type DecisionBillingMode = 'plan' | 'api';
 
@@ -120,6 +122,48 @@ export interface DecisionCostSummary {
   /** Per-model breakdown, sorted by total cost desc then total tokens desc. */
   readonly perModel: readonly ModelCostBreakdown[];
 }
+
+/**
+ * Zod schema for {@link DecisionCostSummary} — the single source of truth for
+ * the cost-rollup shape when it rides an MCP tool's `outputSchema`. `consensus_vote`
+ * declares this in its `outputSchema`, so a spec-strict MCP client validates the
+ * cost summary against it; declaring the shape once here is what fixed #4032's
+ * `-32602 additional properties` rejection. `pr_review` returns the same object
+ * but does not yet advertise an `outputSchema`, so it will reuse this when it does.
+ * A runtime guard test pins the schema to the producer output (`rollupDecisionCost`)
+ * so the shape can't drift.
+ */
+export const DecisionCostSummarySchema = z.object({
+  billingMode: z.enum(['plan', 'api']),
+  voterCount: z.number(),
+  measuredVoters: z.number(),
+  unmeasuredVoters: z.number(),
+  totalInputTokens: z.number(),
+  totalOutputTokens: z.number(),
+  totalTokens: z.number(),
+  totalCostUsd: z.number(),
+  perVoter: z.array(
+    z.object({
+      role: z.string(),
+      model: z.string(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+      costUsd: z.number(),
+      unmeasured: z.boolean(),
+    })
+  ),
+  perModel: z.array(
+    z.object({
+      model: z.string(),
+      voterCount: z.number(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+      costUsd: z.number(),
+    })
+  ),
+});
 
 /** A voter contributes usage iff it reported any token count or a cost. */
 function isMeasured(v: VoterCostInput): boolean {

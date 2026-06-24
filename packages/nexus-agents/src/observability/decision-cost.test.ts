@@ -12,7 +12,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { rollupDecisionCost, UNKNOWN_MODEL, type VoterCostInput } from './decision-cost.js';
+import {
+  rollupDecisionCost,
+  DecisionCostSummarySchema,
+  UNKNOWN_MODEL,
+  type VoterCostInput,
+} from './decision-cost.js';
 
 describe('rollupDecisionCost', () => {
   describe('per-voter → per-decision totals (api mode)', () => {
@@ -258,5 +263,44 @@ describe('rollupDecisionCost', () => {
       // 0.1 + 0.2 = 0.30000000000000004 in IEEE-754; rounded to micro-USD = 0.3.
       expect(summary.totalCostUsd).toBe(0.3);
     });
+  });
+});
+
+describe('DecisionCostSummarySchema (#4032 — pins the MCP cost-summary shape)', () => {
+  // This schema rides consensus_vote/pr_review `outputSchema`. A strict MCP client
+  // validates the cost summary recursively, so any field the producer emits that
+  // the schema does not declare → `-32602 additional properties`. Validate a REAL
+  // rollup output strictly so producer↔schema drift fails the test, not a client.
+  it('strictly accepts a real rollup output, top-level and per-row', () => {
+    const voters: VoterCostInput[] = [
+      {
+        role: 'architect',
+        model: 'claude-sonnet',
+        inputTokens: 1000,
+        outputTokens: 200,
+        costUsd: 0.006,
+      },
+      { role: 'security', model: 'gemini-flash' }, // unmeasured (no token/cost report)
+    ];
+    const summary = rollupDecisionCost(voters, 'api');
+
+    expect(() => DecisionCostSummarySchema.strict().parse(summary)).not.toThrow();
+    expect(Object.keys(summary.perVoter[0]!).sort()).toEqual([
+      'costUsd',
+      'inputTokens',
+      'model',
+      'outputTokens',
+      'role',
+      'totalTokens',
+      'unmeasured',
+    ]);
+    expect(Object.keys(summary.perModel[0]!).sort()).toEqual([
+      'costUsd',
+      'inputTokens',
+      'model',
+      'outputTokens',
+      'totalTokens',
+      'voterCount',
+    ]);
   });
 });

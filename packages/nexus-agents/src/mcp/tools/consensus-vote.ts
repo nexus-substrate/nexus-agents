@@ -46,6 +46,7 @@ import {
 import {
   MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
+  VoteDecisionStatusSchema,
   VoteThresholdSchema,
   ConsensusVoteInputSchema,
   buildResponse,
@@ -61,6 +62,7 @@ import {
 } from './consensus-vote-recording.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
+import { DecisionCostSummarySchema } from '../../observability/decision-cost.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
@@ -889,7 +891,10 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
 export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   proposal: z.string(),
   strategy: VotingStrategySchema,
-  decision: z.enum(['approved', 'rejected', 'no_quorum']),
+  // Reuses the canonical VoteDecisionStatusSchema (single source) — a hand-listed
+  // subset here (was ['approved','rejected','no_quorum']) omitted the reachable
+  // 'timeout'/'pending' outcomes and made strict clients reject those votes (#4032).
+  decision: VoteDecisionStatusSchema,
   approvalPercentage: z.number(),
   voteCounts: z.object({
     approve: z.number(),
@@ -946,6 +951,15 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // a previously WARN-only skip visible to MCP callers.
   voteRecordPersisted: z.boolean(),
   voteRecordNote: z.string().max(500).optional(),
+  // #3587: set when the panel DEGRADED (some voters errored), so the decision
+  // rests on fewer voters than requested. Part of the response since #3587 but
+  // omitted from this schema until #4032 — its absence made a strict MCP client
+  // reject any degraded-panel vote (`-32602 additional properties`).
+  panelWarning: z.string().optional(),
+  // #3855: per-decision cost rollup. Same omission as panelWarning (#4032) — it
+  // is present on the response whenever cost recording succeeds (common in `api`
+  // billing mode). Shared schema lives with the type (single source of truth).
+  costSummary: DecisionCostSummarySchema.optional(),
 };
 
 /** Advertised MCP input schema for consensus_vote (hoisted to keep the register fn within its line budget). */

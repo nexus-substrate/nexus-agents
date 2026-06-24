@@ -28,6 +28,7 @@ import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
 import type { VoteRecord } from '../../audit/vote-record.js';
+import { rollupDecisionCost } from '../../observability/decision-cost.js';
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -1304,4 +1305,84 @@ describe('getDefaultErrorPolicy (#3167)', () => {
     expect(getDefaultErrorPolicy('simple_majority')).toBe('reduce_denominator');
     expect(getDefaultErrorPolicy('supermajority')).toBe('reduce_denominator');
   });
+});
+
+describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => {
+  // A fully-populated response with EVERY optional field set, incl. the two
+  // (`panelWarning` #3587, `costSummary` #3855) whose omission from the output
+  // schema made a strict MCP client reject the result with `-32602 additional
+  // properties`. The fixture is typed `ConsensusVoteResponse`, so a newly-added
+  // required response field forces this fixture to set it, surfacing schema drift.
+  const fullResponse: ConsensusVoteResponse = {
+    proposal: 'ship it',
+    threshold: 'majority',
+    strategy: 'higher_order',
+    decision: 'approved',
+    approvalPercentage: 66.7,
+    voteCounts: { approve: 2, reject: 0, abstain: 0, error: 1 },
+    votes: [
+      {
+        role: 'architect',
+        decision: 'approve',
+        confidence: 0.9,
+        reasoning: 'sound',
+        simulated: false,
+        error: false,
+        modelUsed: 'claude-sonnet',
+        rejectionCategories: [],
+      },
+    ],
+    durationMs: 4321,
+    simulateVotes: false,
+    higherOrderMetadata: {
+      posteriorApproval: 0.8,
+      posteriorRejection: 0.2,
+      effectiveVoteCount: 2.4,
+      method: 'ow',
+      usedCorrelationData: true,
+      improvementOverBaseline: 0.05,
+      downweightedAgents: ['devex'],
+      reasoning: 'correlation-aware',
+    },
+    policyReason: 'fail_closed: 1 voter(s) errored',
+    panelWarning: 'Panel degraded: 1 of 3 voters errored; decision rests on 2 voter(s).',
+    costSummary: rollupDecisionCost(
+      [
+        {
+          role: 'architect',
+          model: 'claude-sonnet',
+          inputTokens: 1000,
+          outputTokens: 200,
+          costUsd: 0.006,
+        },
+      ],
+      'api'
+    ),
+    voteRecordPersisted: true,
+    voteRecordNote: 'persisted',
+  };
+
+  it('strictly accepts a response carrying panelWarning + costSummary', () => {
+    expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(fullResponse)).not.toThrow();
+  });
+
+  it('declares exactly the response keys (no schema/response key drift)', () => {
+    // Key-level guard: catches a response field absent from the schema (the
+    // panelWarning/costSummary failure mode). It does NOT police value
+    // constraints — the `decision` enum is kept aligned structurally instead,
+    // by reusing VoteDecisionStatusSchema (see the enum test below).
+    expect(Object.keys(CONSENSUS_VOTE_OUTPUT_SCHEMA).sort()).toEqual(
+      Object.keys(fullResponse).sort()
+    );
+  });
+
+  it.each(['approved', 'rejected', 'pending', 'timeout', 'no_quorum'] as const)(
+    'accepts every reachable decision value (%s) — not just the old 3-value subset (#4032)',
+    (decision) => {
+      // 'timeout'/'pending' are reachable via mapOutcomeToDecision and were
+      // rejected by the previous narrower enum on a strict MCP client.
+      const response: ConsensusVoteResponse = { ...fullResponse, decision };
+      expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(response)).not.toThrow();
+    }
+  );
 });
