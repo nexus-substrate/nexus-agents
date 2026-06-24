@@ -661,3 +661,97 @@ That's my vote.`;
     });
   });
 });
+
+describe('collectRealVotes — gateway routing (#4040)', () => {
+  const logger = createLogger({ component: 'test', level: 'silent' });
+
+  /** A gateway-style in-process adapter (distinct modelId) returning an approve vote. */
+  function gatewayAdapter(modelId: string): IModelAdapter {
+    return {
+      providerId: 'openai-compat',
+      modelId,
+      capabilities: [],
+      complete: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          content: JSON.stringify({
+            decision: 'approve',
+            reasoning: `ok from ${modelId}`,
+            confidence: 0.9,
+          }) as unknown as CompletionResponse['content'],
+          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          stopReason: 'end_turn' as const,
+          model: modelId,
+        },
+      }),
+      stream: vi.fn(),
+      countTokens: vi.fn().mockResolvedValue(10),
+      validateConfig: vi.fn().mockReturnValue({ ok: true }),
+    };
+  }
+
+  const calls = (a: IModelAdapter): number =>
+    (a.complete as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('round-robins roles across the per-model gateway adapters (in-process, no CLI)', async () => {
+    const a = gatewayAdapter('gw-a');
+    const b = gatewayAdapter('gw-b');
+    const c = gatewayAdapter('gw-c');
+    const roles: VoterRole[] = ['architect', 'security', 'scope_steward'];
+
+    const results = await collectRealVotes({
+      roles,
+      proposal: 'ship it',
+      gatewayAdapters: [a, b, c],
+      logger,
+      timeoutMs: 5000,
+      maxRetries: 1,
+      interAgentDelayMs: 0,
+    });
+
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.source === 'llm')).toBe(true);
+    // 3 roles across 3 gateway adapters → each invoked exactly once. That the
+    // gateway adapters were called at all proves voters did NOT shell to a CLI.
+    expect(calls(a)).toBe(1);
+    expect(calls(b)).toBe(1);
+    expect(calls(c)).toBe(1);
+  });
+
+  it('wraps round-robin when the gateway serves fewer models than roles', async () => {
+    const a = gatewayAdapter('gw-a');
+    const b = gatewayAdapter('gw-b');
+    const roles: VoterRole[] = ['architect', 'security', 'scope_steward'];
+
+    await collectRealVotes({
+      roles,
+      proposal: 'ship it',
+      gatewayAdapters: [a, b],
+      logger,
+      timeoutMs: 5000,
+      maxRetries: 1,
+      interAgentDelayMs: 0,
+    });
+
+    // indices 0,2 → a; index 1 → b.
+    expect(calls(a)).toBe(2);
+    expect(calls(b)).toBe(1);
+  });
+
+  it('uses a single gateway model for all roles when only one is served', async () => {
+    const only = gatewayAdapter('gw-only');
+    const roles: VoterRole[] = ['architect', 'security', 'scope_steward'];
+
+    await collectRealVotes({
+      roles,
+      proposal: 'ship it',
+      gatewayAdapters: [only],
+      logger,
+      timeoutMs: 5000,
+      maxRetries: 1,
+      interAgentDelayMs: 0,
+    });
+
+    expect(calls(only)).toBe(3);
+  });
+});

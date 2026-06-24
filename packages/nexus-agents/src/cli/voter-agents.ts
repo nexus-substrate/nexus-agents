@@ -221,6 +221,15 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
   readonly proposal: string;
   /** Use simulation mode (explicit opt-in only) */
   readonly simulate?: boolean;
+  /**
+   * In-process gateway model adapters (#4040) — one per discovered gateway model.
+   * When provided (and no explicit `adapter` override), voters route through these
+   * HTTP adapters instead of shelling out to CLIs: roles are round-robined across
+   * them for per-role model diversity, the API key stays in-process (no subprocess
+   * env-forwarding), and the nested-spawn class (#4033) cannot occur. Empty/omitted
+   * ⇒ the CLI round-robin path is used (unchanged).
+   */
+  readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
 }
 
 /**
@@ -242,6 +251,13 @@ function resolveAdapter(
 ): { adapter: IModelAdapter } | { error: string } {
   try {
     if (options.adapter !== undefined) return { adapter: options.adapter };
+    // #4040: prefer an in-process gateway adapter as the fallback so a
+    // gateway-only environment (no CLIs installed) never hits the CLI registry,
+    // which would throw "No model adapter configured".
+    const gateway = options.gatewayAdapters;
+    if (gateway !== undefined && gateway.length > 0 && gateway[0] !== undefined) {
+      return { adapter: gateway[0] };
+    }
     const registry = getGlobalRegistry({ logger });
     return { adapter: registry.getDefault() };
   } catch (error) {
@@ -294,11 +310,56 @@ function createCliAdapterMap(
  * Distributes roles across CLIs in round-robin fashion for model diversity.
  * Falls back to single adapter if only one CLI is available.
  */
+/**
+ * Round-robin assign roles across a labeled adapter list (the shared diversity
+ * primitive for both the CLI path and the gateway path #4040). `label` is the
+ * model/CLI id surfaced in the assignment log so operators can confirm which
+ * model each role used.
+ */
+function assignRoundRobinAdapters(
+  roles: readonly VoterRole[],
+  entries: readonly { readonly label: string; readonly adapter: IModelAdapter }[],
+  logger: ILogger,
+  source: string
+): Map<VoterRole, IModelAdapter> {
+  const adapters = new Map<VoterRole, IModelAdapter>();
+  const assignments: Record<string, string> = {};
+  for (let i = 0; i < roles.length; i++) {
+    const role = roles[i];
+    const entry = entries[i % entries.length];
+    if (role === undefined || entry === undefined) continue;
+    adapters.set(role, entry.adapter);
+    assignments[role] = entry.label;
+  }
+  logger.info('Diverse adapters assigned', {
+    source,
+    count: entries.length,
+    roleAssignments: assignments,
+  });
+  return adapters;
+}
+
 async function resolveDiverseAdapters(
   roles: readonly VoterRole[],
   logger: ILogger,
-  fallbackAdapter: IModelAdapter
+  fallbackAdapter: IModelAdapter,
+  gatewayAdapters?: readonly IModelAdapter[]
 ): Promise<Map<VoterRole, IModelAdapter>> {
+  // #4040: gateway path — round-robin roles across the in-process per-model
+  // gateway adapters (HTTP, no subprocess). Preferred when configured.
+  if (gatewayAdapters !== undefined && gatewayAdapters.length > 0) {
+    if (gatewayAdapters.length === 1) {
+      logger.info('Single gateway model for all roles', { model: gatewayAdapters[0]?.modelId });
+      return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
+    }
+    return assignRoundRobinAdapters(
+      roles,
+      gatewayAdapters.map((a) => ({ label: a.modelId, adapter: a })),
+      logger,
+      'gateway'
+    );
+  }
+
   let availableClis: CliName[];
   try {
     availableClis = await getAvailableClis();
@@ -317,24 +378,12 @@ async function resolveDiverseAdapters(
   const cliAdapters = createCliAdapterMap(availableClis, logger);
   if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
 
-  // Round-robin assign roles to diverse CLIs
-  const cliList = [...cliAdapters.entries()];
-  const adapters = new Map<VoterRole, IModelAdapter>();
-  const assignments: Record<string, string> = {};
-  for (let i = 0; i < roles.length; i++) {
-    const role = roles[i];
-    const entry = cliList[i % cliList.length];
-    if (role === undefined || entry === undefined) continue;
-    adapters.set(role, entry[1]);
-    assignments[role] = entry[0];
-  }
-
-  logger.info('Diverse adapters assigned', {
-    cliCount: cliAdapters.size,
-    clis: [...cliAdapters.keys()],
-    roleAssignments: assignments,
-  });
-  return adapters;
+  return assignRoundRobinAdapters(
+    roles,
+    [...cliAdapters.entries()].map(([cli, adapter]) => ({ label: cli, adapter })),
+    logger,
+    'cli'
+  );
 }
 
 /** Options for staggered vote launching. */
@@ -429,7 +478,7 @@ export async function collectRealVotes(
   const roleAdapters =
     options.adapter !== undefined
       ? assignUniformAdapter(roles, adapterResult.adapter)
-      : await resolveDiverseAdapters(roles, logger, adapterResult.adapter);
+      : await resolveDiverseAdapters(roles, logger, adapterResult.adapter, options.gatewayAdapters);
 
   warnIfCodexConcurrencyExceeded(roleAdapters, logger);
 

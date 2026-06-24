@@ -14,7 +14,11 @@ vi.mock('./adapters/openai-compat-adapter.js', () => ({
   readOpenAICompatEnv: (...args: unknown[]) => readOpenAICompatEnvMock(...args) as unknown,
 }));
 
-import { tryWireGatewayAdapter } from './cli-server-gateway.js';
+import {
+  tryWireGatewayAdapter,
+  tryWireGatewayAdapters,
+  resolveDefaultModelAdapter,
+} from './cli-server-gateway.js';
 
 function makeMockAdapter(modelId: string): IModelAdapter {
   return {
@@ -203,5 +207,50 @@ describe('tryWireGatewayAdapter', () => {
       const flat = JSON.stringify(allLogCalls);
       expect(flat).not.toContain('sk-secret-key-should-not-leak');
     });
+  });
+});
+
+describe('tryWireGatewayAdapters (#4040 — full list for voter diversity)', () => {
+  beforeEach(() => {
+    delete process.env['NEXUS_SANDBOX'];
+    buildOpenAICompatAdaptersMock.mockReset();
+    readOpenAICompatEnvMock.mockReset();
+  });
+
+  it('returns ALL discovered adapters (not just the first)', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    const adapters = [
+      makeMockAdapter('model-a'),
+      makeMockAdapter('model-b'),
+      makeMockAdapter('model-c'),
+    ];
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
+    const result = await tryWireGatewayAdapters(makeMockLogger());
+    expect(result).toEqual(adapters);
+    // The singular wrapper still yields only the first (existing single-adapter consumers).
+    expect(await tryWireGatewayAdapter(makeMockLogger())).toBe(adapters[0]);
+  });
+
+  it('returns undefined when no gateway is configured', async () => {
+    readOpenAICompatEnvMock.mockReturnValue(null);
+    expect(await tryWireGatewayAdapters(makeMockLogger())).toBeUndefined();
+  });
+});
+
+describe('resolveDefaultModelAdapter (#4040)', () => {
+  const registryDefault = makeMockAdapter('cli-default');
+  const registry = { getDefault: () => registryDefault };
+
+  it('prefers the primary gateway adapter when present', () => {
+    const gw = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
+    expect(resolveDefaultModelAdapter(gw, registry)).toBe(gw[0]);
+  });
+
+  it('falls back to the registry default when no gateway adapters', () => {
+    expect(resolveDefaultModelAdapter(undefined, registry)).toBe(registryDefault);
+    expect(resolveDefaultModelAdapter([], registry)).toBe(registryDefault);
   });
 });

@@ -63,6 +63,7 @@ import {
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
 import { DecisionCostSummarySchema } from '../../observability/decision-cost.js';
+import type { IModelAdapter } from '../../core/index.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
@@ -133,6 +134,13 @@ export function resetCorrelationTracker(): void {
 export interface ConsensusVoteDeps extends BaseMcpToolDeps {
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
+  /**
+   * In-process gateway model adapters (#4040). When the server has a configured
+   * OpenAI-compatible gateway, voters route through these HTTP adapters instead
+   * of shelling out to a CLI subprocess — no per-subprocess key forwarding, and
+   * the nested-spawn deadlock (#4033) cannot occur. Omitted ⇒ CLI voter path.
+   */
+  gatewayAdapters?: readonly IModelAdapter[] | undefined;
 }
 
 // --- Strategy Resolution ---
@@ -561,7 +569,7 @@ async function maybeEscalateContrarian(
 export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger,
-  opts?: { voteTimeoutMs?: number }
+  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
   const algorithm = strategyToAlgorithm(strategy);
@@ -580,6 +588,7 @@ export async function executeVoting(
     proposal: input.proposal,
     simulate: input.simulateVotes,
     ...(opts?.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
+    ...(opts?.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
   });
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
@@ -736,7 +745,9 @@ async function handleConsensusVote(
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   if (args.simulateVotes) warnIfSimulatedOutsideTests('consensus_vote', logger);
   try {
-    const result = await executeVoting(args, logger);
+    const result = await executeVoting(args, logger, {
+      ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
+    });
     const strategy = args.strategy ?? 'simple_majority';
 
     // Detect all-error votes: return structured error instead of fake "rejected" (#1552)

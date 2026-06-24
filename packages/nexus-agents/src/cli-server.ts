@@ -50,7 +50,7 @@ import {
   type AppConfig,
 } from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
-import { tryWireGatewayAdapter } from './cli-server-gateway.js';
+import { tryWireGatewayAdapters, resolveDefaultModelAdapter } from './cli-server-gateway.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
@@ -404,8 +404,8 @@ async function initializeAndRegisterTools(
   // only available channel to LLMs, so a missing or unreachable gateway is a
   // hard startup failure (see tryWireGatewayAdapter for the matrix). Outside
   // sandbox mode it's optional — falls through to the CLI-based default.
-  const gatewayAdapter = await tryWireGatewayAdapter(logger);
-  const modelAdapter = gatewayAdapter ?? adapterRegistry.getDefault();
+  const gatewayAdapters = await tryWireGatewayAdapters(logger);
+  const modelAdapter = resolveDefaultModelAdapter(gatewayAdapters, adapterRegistry);
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;
@@ -417,6 +417,8 @@ async function initializeAndRegisterTools(
     policyFirewall,
     executionMode: policyVals.defaultExec,
     modelAdapter,
+    // Per-model gateway adapters routed to voters (#4040) — in-process, no subprocess.
+    ...(gatewayAdapters !== undefined && { gatewayAdapters }),
     // Gateway middleware for tier-aware dispatch logging (Issue #896, #897)
     gatewayConfig: buildGatewayConfig(config, logger),
     ...(allowedPaths !== undefined && { allowedPaths }),
