@@ -162,6 +162,22 @@ async function fileOneTask(task: PipelineTask, deps: ResolvedDeps): Promise<Task
   }
 }
 
+/**
+ * Opsec: warn once per run when filing real issue text with scrubbing
+ * unconfigured. With no {@link SENSITIVE_REFS_ENV} terms the scrubber is a no-op
+ * (by design), so surface the silent-leak window before any issue is filed.
+ */
+function warnIfUnscrubbed(taskCount: number, dryRun: boolean): void {
+  if (taskCount === 0 || dryRun) return;
+  const refs = process.env[SENSITIVE_REFS_ENV];
+  if (refs !== undefined && refs.trim() !== '') return;
+  logger.warn(
+    `Auto-filing issue text with no ${SENSITIVE_REFS_ENV} configured — issue titles/bodies ` +
+      'are NOT scrubbed for org/gov references. Set it to your org terms if filing from a ' +
+      'sensitive context.'
+  );
+}
+
 /** Resolves options to concrete deps (defaults: conservative + real `gh`). */
 function resolveDeps(options: AutoFileOptions): ResolvedDeps {
   return {
@@ -184,6 +200,8 @@ export async function autoFileSuggestions(
   const deps = resolveDeps(options);
   const filed: Array<{ id: string; url: string }> = [];
   const skipped: Array<{ id: string; reason: SkipReason }> = [];
+
+  warnIfUnscrubbed(tasks.length, deps.dryRun);
 
   for (const task of tasks) {
     if (filed.length >= maxPerRun) {

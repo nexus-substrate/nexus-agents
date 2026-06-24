@@ -160,6 +160,14 @@ describe('buildChildEnv (#2865)', () => {
       vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'FOO, MY_GATEWAY_KEY  BAR');
       expect(buildChildEnv('codex')['MY_GATEWAY_KEY']).toBe('gw');
     });
+
+    it('empty entries (",," / ", ") never forward unrelated secrets (no match-all)', () => {
+      // Guards the load-bearing length>0 filter: an empty name must not become a
+      // wildcard that forwards every var (which would re-create the =0 leak).
+      vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws');
+      vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'FOO,, ,BAR');
+      expect(buildChildEnv('codex')['AWS_SECRET_ACCESS_KEY']).toBeUndefined();
+    });
   });
 
   // #4033 — nested-server deadlock guard.

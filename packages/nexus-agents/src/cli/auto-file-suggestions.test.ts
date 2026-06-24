@@ -49,6 +49,14 @@ describe('scrubSensitiveRefs', () => {
       'the configured provider and the configured provider and the configured provider'
     );
   });
+  it('empty entries (",," / ", ") never scrub everything (no match-all regex)', () => {
+    // Guards the load-bearing length>0 filter: an empty term would compile to
+    // /\b\b/gi and replace at every word boundary — catastrophic over-scrub.
+    const env: NodeJS.ProcessEnv = { [SENSITIVE_REFS_ENV]: 'FOO,, ,BAR' };
+    expect(scrubSensitiveRefs('keep all these words intact', env)).toBe(
+      'keep all these words intact'
+    );
+  });
 });
 
 describe('autoFileSuggestions', () => {
