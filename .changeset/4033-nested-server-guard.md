@@ -15,5 +15,11 @@ process tree sat at 0% CPU until the per-voter timeout reaped it minutes later).
 on every spawned-CLI child (it is `NEXUS_`-prefixed, so it survives the env allowlist and
 reaches the grandchild server). The server bootstrap reads the marker at the top of startup
 and, when nested, exits cleanly _before_ any slow initialization — so the parent CLI
-proceeds without that MCP server (it needs no nexus server to answer a prompt). Mirrors the
-existing codex recursion guard (#3350) and never fires for a top-level launch.
+proceeds without that MCP server (it needs no nexus server to answer a prompt). The guard
+is scoped to `--mode=server` (orchestrator mode is unaffected) and never fires for a
+top-level launch.
+
+Scope: this covers the subprocess (opencode/claude/gemini/codex-CLI) voter path. The
+codex-**MCP** topology (`codex mcp-server` spawned over a replaced env) keeps its own
+independent `NEXUS_MCP_DEPTH` recursion guard (#3350) — the two markers are distinct and
+do not interfere.

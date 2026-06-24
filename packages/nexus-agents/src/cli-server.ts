@@ -556,13 +556,13 @@ export async function startServer(
 
   validateModeOrExit(logger, mode); // Fail fast for unimplemented modes (Issue #443)
 
-  exitIfNestedSubprocessServer(logger); // #4033: exit if a nexus-spawned CLI launched us
-
   // Handle orchestrator mode separately (Issue #446)
   if (mode === 'orchestrator') {
     await startOrchestratorMode(orchestratorOptions ?? { verbose });
     return;
   }
+
+  exitIfNestedSubprocessServer(logger); // #4033: server mode only (deadlock is stdio-bound)
 
   // Watchdog: if startup hangs, surface it rather than hang indefinitely
   // (#2163). Cleared once we reach "waiting for requests".
