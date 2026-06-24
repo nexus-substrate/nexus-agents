@@ -39,7 +39,16 @@ import { EXIT_CODES } from './cli-types.js';
  * whichever the gateway lists. Per-model adapter selection lives in the
  * tool handlers, not in the bootstrap.
  */
-export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
+/**
+ * Wire ALL discovered gateway adapters — one per model the gateway serves
+ * (#4040). Same probe/fail-closed contract as {@link tryWireGatewayAdapter};
+ * returns the full list so the voter path can round-robin roles across distinct
+ * models (per-role diversity, all in-process). Returns undefined when no gateway
+ * is configured or the probe fails.
+ */
+export async function tryWireGatewayAdapters(
+  logger: ILogger
+): Promise<readonly IModelAdapter[] | undefined> {
   const sandboxActive = detectSandbox().active;
   const env = readOpenAICompatEnv();
   if (env === null) {
@@ -66,7 +75,24 @@ export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdap
     modelCount: result.value.length,
     models: result.value.map((a) => a.modelId),
   });
-  return result.value[0];
+  return result.value;
+}
+
+export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
+  const all = await tryWireGatewayAdapters(logger);
+  return all?.[0];
+}
+
+/**
+ * The default model adapter: the primary in-process gateway model when a gateway
+ * is configured (#2502/#4040), else the CLI-registry default. The registry is
+ * typed structurally so this stays free of the adapter-registry import.
+ */
+export function resolveDefaultModelAdapter(
+  gatewayAdapters: readonly IModelAdapter[] | undefined,
+  adapterRegistry: { getDefault(): IModelAdapter }
+): IModelAdapter {
+  return gatewayAdapters?.[0] ?? adapterRegistry.getDefault();
 }
 
 function handleMissingEnv(logger: ILogger, sandboxActive: boolean): void {

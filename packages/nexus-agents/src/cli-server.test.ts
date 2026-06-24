@@ -46,6 +46,9 @@ vi.mock('./core/index.js', () => ({
 // stays focused on cli-server's own surface.
 vi.mock('./cli-server-gateway.js', () => ({
   tryWireGatewayAdapter: vi.fn(() => Promise.resolve(undefined)),
+  // #4040: cli-server now also imports these from the gateway module.
+  tryWireGatewayAdapters: vi.fn(() => Promise.resolve(undefined)),
+  resolveDefaultModelAdapter: vi.fn(() => undefined),
 }));
 
 vi.mock('./version.js', () => ({

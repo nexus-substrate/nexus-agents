@@ -18,7 +18,13 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
+import {
+  createLogger,
+  formatZodError,
+  getErrorMessage,
+  type ILogger,
+  type IModelAdapter,
+} from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -172,7 +178,14 @@ export interface PrReviewResponse {
   readonly costSummary?: DecisionCostSummary;
 }
 
-export type PrReviewDeps = BaseMcpToolDeps;
+export interface PrReviewDeps extends BaseMcpToolDeps {
+  /**
+   * In-process gateway model adapters (#4040) — routes the review panel through
+   * the gateway (HTTP, in-process) instead of a CLI subprocess when configured.
+   * Omitted ⇒ CLI voter path.
+   */
+  gatewayAdapters?: readonly IModelAdapter[] | undefined;
+}
 
 // ============================================================================
 // Decision Mapping
@@ -344,7 +357,11 @@ function summarizeReviews(reviews: readonly PrReviewVote[]): {
  * `collectRealVotes` is the long pole (live LLM fan-out), so the whole body
  * is what backgrounds.
  */
-async function executePrReviewBody(input: PrReviewInput, logger: ILogger): Promise<ToolResult> {
+async function executePrReviewBody(
+  input: PrReviewInput,
+  logger: ILogger,
+  gatewayAdapters?: readonly IModelAdapter[]
+): Promise<ToolResult> {
   const start = Date.now();
   const proposal = buildPrReviewProposal(input);
   const voteResults = await collectRealVotes({
@@ -352,6 +369,7 @@ async function executePrReviewBody(input: PrReviewInput, logger: ILogger): Promi
     proposal,
     simulate: input.simulate,
     logger,
+    ...(gatewayAdapters !== undefined && { gatewayAdapters }),
   });
 
   const reviews = voteResults.map(toPrReviewVote);
@@ -385,39 +403,46 @@ async function executePrReviewBody(input: PrReviewInput, logger: ILogger): Promi
   return toolSuccess(JSON.stringify(response, null, 2));
 }
 
-async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
-  const parsed = PrReviewInputSchema.safeParse(args);
-  if (!parsed.success) {
-    return toolStructuredError({
-      errorCategory: 'validation',
-      message: `Validation error: ${formatZodError(parsed.error)}`,
-    });
-  }
-  const input = parsed.data;
-
-  try {
-    // #3731: async dispatch — the 5-voter live fan-out can exceed the MCP
-    // request timeout. pr_review has no sessionId, so a fresh `pr-<uuid>` jobId
-    // is always minted (no idempotency surface). Returns a pending envelope.
-    if (input.dispatch === 'async') {
-      return runAsJob<PrReviewInput, ToolResult>({
-        toolName: 'pr_review',
-        input,
-        freshJobId: () => `pr-${randomUUID()}`,
-        run: () => executePrReviewBody(input, ctx.logger),
-        logger: ctx.logger,
+/**
+ * Build the pr_review handler, capturing the in-process gateway adapters (#4040)
+ * so the review panel routes through the gateway instead of a CLI subprocess
+ * when one is configured.
+ */
+function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
+  return async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
+    const parsed = PrReviewInputSchema.safeParse(args);
+    if (!parsed.success) {
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
       });
     }
-    return await executePrReviewBody(input, ctx.logger);
-  } catch (error) {
-    // #3731 discoverability: a sync run that times out (or otherwise fails)
-    // should point the caller at async mode — the durable fix for runs that
-    // exceed the request timeout.
-    return toolStructuredError({
-      errorCategory: 'internal',
-      message: `${PR_REVIEW_ASYNC_HINT} PR review failed: ${getErrorMessage(error)}`,
-    });
-  }
+    const input = parsed.data;
+
+    try {
+      // #3731: async dispatch — the 5-voter live fan-out can exceed the MCP
+      // request timeout. pr_review has no sessionId, so a fresh `pr-<uuid>` jobId
+      // is always minted (no idempotency surface). Returns a pending envelope.
+      if (input.dispatch === 'async') {
+        return runAsJob<PrReviewInput, ToolResult>({
+          toolName: 'pr_review',
+          input,
+          freshJobId: () => `pr-${randomUUID()}`,
+          run: () => executePrReviewBody(input, ctx.logger, gatewayAdapters),
+          logger: ctx.logger,
+        });
+      }
+      return await executePrReviewBody(input, ctx.logger, gatewayAdapters);
+    } catch (error) {
+      // #3731 discoverability: a sync run that times out (or otherwise fails)
+      // should point the caller at async mode — the durable fix for runs that
+      // exceed the request timeout.
+      return toolStructuredError({
+        errorCategory: 'internal',
+        message: `${PR_REVIEW_ASYNC_HINT} PR review failed: ${getErrorMessage(error)}`,
+      });
+    }
+  };
 }
 
 // ============================================================================
@@ -432,7 +457,7 @@ export function registerPrReviewTool(server: McpServer, deps: PrReviewDeps): voi
     'devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning ' +
     'and citations. Reuses consensus_vote infra; experimental.';
 
-  const secureHandler = createSecureHandler(prReviewHandler, {
+  const secureHandler = createSecureHandler(makePrReviewHandler(deps.gatewayAdapters), {
     toolName: 'pr_review',
     rateLimiter: deps.rateLimiter,
     logger,

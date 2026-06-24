@@ -128,6 +128,12 @@ export interface RegisterMcpToolsOptions {
   /** Optional model adapter for real workflow execution with expert agents */
   modelAdapter?: IModelAdapter;
   /**
+   * In-process gateway model adapters (one per discovered gateway model, #4040).
+   * Threaded to consensus_vote/pr_review so voters route through the gateway
+   * instead of a CLI subprocess. Omitted ⇒ voters use the CLI path.
+   */
+  gatewayAdapters?: readonly IModelAdapter[];
+  /**
    * Explicitly allow mock TechLead when no model adapter is available.
    * If false or undefined, an error is thrown when no adapter is detected.
    * (Source: Issue #554 - Fix silent mock TechLead fallback)
@@ -230,6 +236,8 @@ interface ToolRegistrationContext {
   logger: ILogger;
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
   modelAdapter?: IModelAdapter;
+  /** In-process gateway model adapters threaded to voters (#4040). */
+  gatewayAdapters?: readonly IModelAdapter[];
   builtInTemplates: Map<string, WorkflowDefinition>;
   /** Allow mock TechLead when no adapter (Issue #554) */
   useMockTechLead?: boolean;
@@ -363,6 +371,33 @@ function registerListWorkflows(ctx: ToolRegistrationContext, shared: SharedResou
   });
 }
 
+/**
+ * consensus_vote — threads the in-process gateway adapters (#4040) so voters
+ * route through the gateway instead of a CLI subprocess when one is configured.
+ * Mirrors the standard deps (logger/rateLimiter/security/auditLogger) + adds
+ * gatewayAdapters.
+ */
+function registerConsensusVote(ctx: ToolRegistrationContext): void {
+  registerConsensusVoteTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('consensus_vote'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+    ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
+    ...(ctx.gatewayAdapters !== undefined && { gatewayAdapters: ctx.gatewayAdapters }),
+  });
+}
+
+/** pr_review — threads gateway adapters (#4040) like consensus_vote. */
+function registerPrReview(ctx: ToolRegistrationContext): void {
+  registerPrReviewTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('pr_review'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+    ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
+    ...(ctx.gatewayAdapters !== undefined && { gatewayAdapters: ctx.gatewayAdapters }),
+  });
+}
+
 /** delegate_to_model — independent; does not require a model adapter. */
 function registerDelegate(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
@@ -450,18 +485,27 @@ function maybeRunStpaAnalysis(options: RegisterMcpToolsOptions, logger: ILogger)
   runStpaSafetyAnalysis(logger, options.failOnHighSeverityHazards ?? false);
 }
 
+/** Optional registration-option keys copied verbatim into the tool context. */
+const OPTIONAL_CONTEXT_KEYS = [
+  'modelAdapter',
+  'gatewayAdapters',
+  'useMockTechLead',
+  'policyFirewall',
+  'executionMode',
+  'allowedPaths',
+  'securityConfig',
+  'workflowConfig',
+  'feedbackIntegration',
+  'auditLogger',
+] as const satisfies readonly (keyof RegisterMcpToolsOptions & keyof ToolRegistrationContext)[];
+
 /** Copies optional properties from registration options, excluding undefined values. */
 function copyOptionalProps(opts: RegisterMcpToolsOptions): Partial<ToolRegistrationContext> {
-  const result: Partial<ToolRegistrationContext> = {};
-  if (opts.modelAdapter !== undefined) result.modelAdapter = opts.modelAdapter;
-  if (opts.useMockTechLead !== undefined) result.useMockTechLead = opts.useMockTechLead;
-  if (opts.policyFirewall !== undefined) result.policyFirewall = opts.policyFirewall;
-  if (opts.executionMode !== undefined) result.executionMode = opts.executionMode;
-  if (opts.allowedPaths !== undefined) result.allowedPaths = opts.allowedPaths;
-  if (opts.securityConfig !== undefined) result.securityConfig = opts.securityConfig;
-  if (opts.workflowConfig !== undefined) result.workflowConfig = opts.workflowConfig;
-  if (opts.feedbackIntegration !== undefined) result.feedbackIntegration = opts.feedbackIntegration;
-  if (opts.auditLogger !== undefined) result.auditLogger = opts.auditLogger;
+  const result: Record<string, unknown> = {};
+  for (const key of OPTIONAL_CONTEXT_KEYS) {
+    const value = opts[key];
+    if (value !== undefined) result[key] = value;
+  }
   return result;
 }
 
@@ -622,7 +666,9 @@ const HANDLER_TABLE: Record<RegisteredToolName, ToolHandler> = {
   memory_stats: standardHandler('memory_stats', registerMemoryStatsTool),
   memory_write: standardHandler('memory_write', registerMemoryWriteTool),
   // Standalone tools
-  consensus_vote: standardHandler('consensus_vote', registerConsensusVoteTool),
+  consensus_vote: (ctx) => {
+    registerConsensusVote(ctx);
+  },
   weather_report: standardHandler('weather_report', registerWeatherReportTool),
   improvement_review: standardHandler('improvement_review', registerImprovementReviewTool),
   registry_import: standardHandler('registry_import', registerRegistryImportTool),
@@ -649,7 +695,9 @@ const HANDLER_TABLE: Record<RegisteredToolName, ToolHandler> = {
   search_codebase: standardHandler('search_codebase', registerSearchCodebaseTool),
   run_dev_pipeline: standardHandler('run_dev_pipeline', registerDevPipelineTool),
   run_pipeline: standardHandler('run_pipeline', registerPipelineTool),
-  pr_review: standardHandler('pr_review', registerPrReviewTool),
+  pr_review: (ctx) => {
+    registerPrReview(ctx);
+  },
   supply_chain_tradeoff_panel: standardHandler(
     'supply_chain_tradeoff_panel',
     registerSupplyChainTradeoffPanelTool
