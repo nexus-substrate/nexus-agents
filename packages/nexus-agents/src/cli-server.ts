@@ -16,6 +16,7 @@ import { initializeBuiltInTemplates } from './workflows/index.js';
 import { createUnifiedRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import { MCP_TIMEOUTS } from './config/timeouts.js';
 import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
+import { exitIfNestedSubprocessServer } from './cli-server-nesting-guard.js';
 import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -561,6 +562,8 @@ export async function startServer(
     return;
   }
 
+  exitIfNestedSubprocessServer(logger); // #4033: server mode only (deadlock is stdio-bound)
+
   // Watchdog: if startup hangs, surface it rather than hang indefinitely
   // (#2163). Cleared once we reach "waiting for requests".
   const startupWatchdog = setTimeout(() => {
@@ -574,8 +577,7 @@ export async function startServer(
   // down cleanly before it fires (for short-lived test harnesses).
   startupWatchdog.unref();
 
-  const detectionResult = detectMode({ explicitMode: modeWasExplicit ? mode : undefined });
-  logStartupInfo(logger, detectionResult, verbose);
+  logStartupInfo(logger, detectMode({ explicitMode: modeWasExplicit ? mode : undefined }), verbose);
 
   // Surface stale long-lived servers (#3283): best-effort, non-blocking warn if
   // the running build is behind the latest published version. Fire-and-forget —

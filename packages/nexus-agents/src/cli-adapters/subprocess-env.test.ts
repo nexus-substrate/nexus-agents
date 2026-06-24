@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildChildEnv, getCliVendorKeys } from './subprocess-env.js';
+import {
+  buildChildEnv,
+  getCliVendorKeys,
+  readSubprocessDepth,
+  NEXUS_SUBPROCESS_DEPTH_ENV,
+} from './subprocess-env.js';
 
 describe('buildChildEnv (#2865)', () => {
   /** Env keys the tests touch — cleared before each test for a known slate. */
@@ -19,6 +24,7 @@ describe('buildChildEnv (#2865)', () => {
     'LC_CUSTOMTEST',
     'NEXUS_CUSTOMTEST',
     'NEXUS_SUBPROCESS_ENV_ALLOWLIST',
+    'NEXUS_SUBPROCESS_DEPTH',
     'npm_config_registry',
     'SOME_RANDOM_UNLISTED_VAR',
   ];
@@ -125,5 +131,39 @@ describe('buildChildEnv (#2865)', () => {
     for (const cli of ['claude', 'gemini', 'codex', 'opencode'] as const) {
       expect(map[cli].length).toBeGreaterThan(0);
     }
+  });
+
+  // #4033 — nested-server deadlock guard.
+  describe('NEXUS_SUBPROCESS_DEPTH marker (#4033)', () => {
+    it('stamps depth=1 on a child spawned from a top-level (unmarked) parent', () => {
+      const env = buildChildEnv('opencode');
+      expect(env[NEXUS_SUBPROCESS_DEPTH_ENV]).toBe('1');
+    });
+
+    it('increments the inherited depth (2 when the parent was already at 1)', () => {
+      vi.stubEnv('NEXUS_SUBPROCESS_DEPTH', '1');
+      expect(buildChildEnv('opencode')[NEXUS_SUBPROCESS_DEPTH_ENV]).toBe('2');
+    });
+
+    it('stamps the depth even under the allowlist=0 escape hatch (overrides inherited)', () => {
+      vi.stubEnv('NEXUS_SUBPROCESS_ENV_ALLOWLIST', '0');
+      vi.stubEnv('NEXUS_SUBPROCESS_DEPTH', '2');
+      // Full passthrough would copy '2'; we must still INCREMENT to 3.
+      expect(buildChildEnv('opencode')[NEXUS_SUBPROCESS_DEPTH_ENV]).toBe('3');
+    });
+
+    it('round-trips: a child env reads back as nested (depth > 0)', () => {
+      const child = buildChildEnv('opencode');
+      expect(readSubprocessDepth(child)).toBe(1);
+      expect(readSubprocessDepth(child) > 0).toBe(true);
+    });
+
+    it('readSubprocessDepth clamps missing/junk/negative to 0 (top-level)', () => {
+      expect(readSubprocessDepth({})).toBe(0);
+      expect(readSubprocessDepth({ NEXUS_SUBPROCESS_DEPTH: 'abc' })).toBe(0);
+      expect(readSubprocessDepth({ NEXUS_SUBPROCESS_DEPTH: '-1' })).toBe(0);
+      expect(readSubprocessDepth({ NEXUS_SUBPROCESS_DEPTH: '0' })).toBe(0);
+      expect(readSubprocessDepth({ NEXUS_SUBPROCESS_DEPTH: '3' })).toBe(3);
+    });
   });
 });
