@@ -1,5 +1,30 @@
 # nexus-agents
 
+## 2.139.0
+
+### Minor Changes
+
+- [#4030](https://github.com/nexus-substrate/nexus-agents/pull/4030) [`72a8f0a`](https://github.com/nexus-substrate/nexus-agents/commit/72a8f0a31029f8a035c1a29adce750c94ab71dd1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - pr_review records bind to the reviewed DIFF, not headSha ([#3831](https://github.com/nexus-substrate/nexus-agents/issues/3831) Option-C)
+
+  Migrates the authority `PrReviewRecord` schema (1.0 → 1.1) and the governor-path gate (`scripts/check-governor-review.ts`) from the rejected `headSha` binding to the ratified Option-C `{prNumber, baseSha, reviewedDiffHash}`. `reviewedDiffHash` is the sha256 of the canonical reviewed diff — a single shared `audit/reviewed-diff-hash.ts` pins the exact `git diff` invocation (algorithm/context/prefixes/autocrlf, two-dot range) + a 50k byte-boundary truncation so the producer and the gate cannot drift (proven by a cross-environment, hostile-gitconfig test). The gate now recomputes `reviewedDiffHash` from the committed PR's `base..head` and matches it; a record bound to a different diff does not satisfy the gate. The gate STAYS warn-first (no fail-closed flip). The committed `governance/pr-review-records.jsonl` ledger is empty on every install, so the schema bump needs no data migration. Ratified 7/0 (higher_order). The producer that writes these records is a tracked follow-up.
+
+### Patch Changes
+
+- [#4022](https://github.com/nexus-substrate/nexus-agents/pull/4022) [`2773273`](https://github.com/nexus-substrate/nexus-agents/commit/277327399aa82c220f384ef638fca016c3b28b36) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix async job complete-after-cancel rewriting the cancellation ([#4017](https://github.com/nexus-substrate/nexus-agents/issues/4017))
+
+  `writeJobComplete` / `writeJobFailed` now no-op when the job record is already `cancelled`, so a `runAsJob`-dispatched job whose work finishes _after_ `cancel_job` landed no longer silently overwrites the `cancelled` status back to `complete`/`failed`. This makes the guard symmetric with the existing caller-side cancel-after-complete protection. (Aborting the still-running in-flight work — `runAsJob` threads no AbortSignal — remains a separate follow-up under [#4017](https://github.com/nexus-substrate/nexus-agents/issues/4017).)
+
+- [#4023](https://github.com/nexus-substrate/nexus-agents/pull/4023) [`e298a53`](https://github.com/nexus-substrate/nexus-agents/commit/e298a53a92900948679db3d0386ff50a1a9318a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix typed-memory invalidation silently failing + harden outcome-store secret redaction
+
+  - **[#4018](https://github.com/nexus-substrate/nexus-agents/issues/4018):** `TypedMemory.invalidateFact` (and `storeFact`/`KnowledgeVault.store` with a past `validUntil`/`expiresAt`) computed a non-positive `ttl`, which `MemoryMetadataSchema` (`ttl: positive()`) rejected — so the store silently failed with `Invalid metadata` and the fact was never invalidated. The ttl is now clamped to ≥1ms at both computation sites, so a past/now expiry stores-then-expires-on-next-retrieve (the closest to immediate invalidation without a backend delete method).
+  - **Security hardening (CWE-532):** the outcome-store error-message redaction (`sanitizeErrorMessage`) now also redacts GitHub PATs (`ghp_/gho_/ghu_/ghs_/github_pat_`), AWS access keys (`AKIA…`), and space-separated `Bearer <token>` — formats the previous `sk-…`/`keyword=value` regex missed before persisting `error_message` to SQLite. Patterns are linear (ReDoS-safe).
+
+  Both found in the 2026-06-21 QA/security sweep.
+
+- [#4025](https://github.com/nexus-substrate/nexus-agents/pull/4025) [`592fe80`](https://github.com/nexus-substrate/nexus-agents/commit/592fe804f455e132a0ef004f8984e6487a2b1b01) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the inert `onFail` field from PolicyGateSpec ([#4019](https://github.com/nexus-substrate/nexus-agents/issues/4019))
+
+  `PolicyGateSpec.onFail` was a required field authorable as `block`/`warn`/`escalate`, but it was consumed nowhere — the gate's enforcement mode is resolved solely by the runtime bundle (`GatePolicyEnforcement.mode` / `NEXUS_POLICY_GATE_MODE`, warn-by-default per [#3177](https://github.com/nexus-substrate/nexus-agents/issues/3177)). Authoring `onFail:'block'` gave a false sense of enforcement (it silently ran in warn). Removed the field (and the dead `ON_FAIL_ACTIONS` enum) so the contract can't promise enforcement the runtime won't deliver, with a JSDoc on the schema naming the real enforcement knob. Ratified 7/0 (higher_order). Zero runtime change (policy-evaluator behavior unchanged); the non-strict schema ignores a stray legacy `onFail` key, so external plans stay backward-compatible.
+
 ## 2.138.1
 
 ### Patch Changes
