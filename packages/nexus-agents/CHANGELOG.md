@@ -1,5 +1,48 @@
 # nexus-agents
 
+## 2.139.1
+
+### Patch Changes
+
+- [#4034](https://github.com/nexus-substrate/nexus-agents/pull/4034) [`5035593`](https://github.com/nexus-substrate/nexus-agents/commit/503559350874e9e3858149c4809a7010d9505bbb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `consensus_vote` rejecting on strict MCP clients (`-32602 additional properties`, [#4032](https://github.com/nexus-substrate/nexus-agents/issues/4032))
+
+  `consensus_vote` returns `panelWarning` ([#3587](https://github.com/nexus-substrate/nexus-agents/issues/3587), on a degraded panel) and `costSummary`
+  ([#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855), whenever per-decision cost recording succeeds) in its `structuredContent`, but
+  `CONSENSUS_VOTE_OUTPUT_SCHEMA` never declared them. A spec-strict MCP client — one that
+  validates the result against the advertised `outputSchema` with
+  `additionalProperties: false` — rejected the response on most real votes. Both fields are
+  now declared. The same review found a second instance of the bug class: the schema's
+  `decision` enum listed only `approved`/`rejected`/`no_quorum`, but the response can also
+  carry the reachable `timeout`/`pending` outcomes — so a timed-out vote hit the same
+  `-32602` rejection. `decision` now reuses a canonical `VoteDecisionStatusSchema` (the
+  single source the `VoteDecisionStatus` type is also derived from), making that drift
+  structurally impossible. The cost-summary shape is likewise captured once in a shared
+  `DecisionCostSummarySchema` co-located with its type. Regression guards assert the strict
+  output schema accepts a fully-populated response (key parity) and every reachable
+  `decision` value, and pin the cost schema to the `rollupDecisionCost` producer.
+
+- [#4035](https://github.com/nexus-substrate/nexus-agents/pull/4035) [`fdab95d`](https://github.com/nexus-substrate/nexus-agents/commit/fdab95d3697073b272f2f0a0dfcce526eea613cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix consensus voters deadlocking when the spawned CLI auto-loads the nexus-agents MCP server ([#4033](https://github.com/nexus-substrate/nexus-agents/issues/4033))
+
+  When a `cli-first` consensus voter shelled out to a coding CLI (e.g. `opencode run
+--format json`) and that CLI was itself configured to auto-start a `nexus-agents
+--mode=server` MCP server, every voter subprocess launched a _fresh nested_ nexus-agents
+  server. The nested server attached to the child's stdio and blocked the child's own MCP
+  handshake, so the voter never returned its JSON and `consensus_vote` deadlocked (the whole
+  process tree sat at 0% CPU until the per-voter timeout reaped it minutes later).
+
+  `subprocess-env.buildChildEnv` now stamps an incrementing `NEXUS_SUBPROCESS_DEPTH` marker
+  on every spawned-CLI child (it is `NEXUS_`-prefixed, so it survives the env allowlist and
+  reaches the grandchild server). The server bootstrap reads the marker at the top of startup
+  and, when nested, exits cleanly _before_ any slow initialization — so the parent CLI
+  proceeds without that MCP server (it needs no nexus server to answer a prompt). The guard
+  is scoped to `--mode=server` (orchestrator mode is unaffected) and never fires for a
+  top-level launch.
+
+  Scope: this covers the subprocess (opencode/claude/gemini/codex-CLI) voter path. The
+  codex-**MCP** topology (`codex mcp-server` spawned over a replaced env) keeps its own
+  independent `NEXUS_MCP_DEPTH` recursion guard ([#3350](https://github.com/nexus-substrate/nexus-agents/issues/3350)) — the two markers are distinct and
+  do not interfere.
+
 ## 2.139.0
 
 ### Minor Changes
