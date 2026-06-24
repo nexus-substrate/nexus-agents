@@ -8,6 +8,7 @@ import {
   getCliVendorKeys,
   readSubprocessDepth,
   NEXUS_SUBPROCESS_DEPTH_ENV,
+  NEXUS_SUBPROCESS_EXTRA_ENV,
 } from './subprocess-env.js';
 
 describe('buildChildEnv (#2865)', () => {
@@ -25,6 +26,8 @@ describe('buildChildEnv (#2865)', () => {
     'NEXUS_CUSTOMTEST',
     'NEXUS_SUBPROCESS_ENV_ALLOWLIST',
     'NEXUS_SUBPROCESS_DEPTH',
+    'NEXUS_SUBPROCESS_EXTRA_ENV',
+    'MY_GATEWAY_KEY',
     'npm_config_registry',
     'SOME_RANDOM_UNLISTED_VAR',
   ];
@@ -131,6 +134,40 @@ describe('buildChildEnv (#2865)', () => {
     for (const cli of ['claude', 'gemini', 'codex', 'opencode'] as const) {
       expect(map[cli].length).toBeGreaterThan(0);
     }
+  });
+
+  // #4037 — granular extra-env allowlist (avoids the =0 hammer for custom gateways).
+  describe('NEXUS_SUBPROCESS_EXTRA_ENV (#4037)', () => {
+    it('forwards an operator-named extra var that is neither vendor nor NEXUS_-prefixed', () => {
+      vi.stubEnv('MY_GATEWAY_KEY', 'gw-secret');
+      // Without the extension, MY_GATEWAY_KEY is stripped (not a vendor/base/NEXUS_ key).
+      expect(buildChildEnv('opencode')['MY_GATEWAY_KEY']).toBeUndefined();
+      vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'MY_GATEWAY_KEY');
+      expect(buildChildEnv('opencode')['MY_GATEWAY_KEY']).toBe('gw-secret');
+    });
+
+    it('still strips OTHER non-allowlisted secrets (isolation preserved, not the =0 hammer)', () => {
+      vi.stubEnv('MY_GATEWAY_KEY', 'gw-secret');
+      vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws');
+      vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'MY_GATEWAY_KEY');
+      const env = buildChildEnv('opencode');
+      expect(env['MY_GATEWAY_KEY']).toBe('gw-secret');
+      expect(env['AWS_SECRET_ACCESS_KEY']).toBeUndefined();
+    });
+
+    it('parses a comma/space-separated list', () => {
+      vi.stubEnv('MY_GATEWAY_KEY', 'gw');
+      vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'FOO, MY_GATEWAY_KEY  BAR');
+      expect(buildChildEnv('codex')['MY_GATEWAY_KEY']).toBe('gw');
+    });
+
+    it('empty entries (",," / ", ") never forward unrelated secrets (no match-all)', () => {
+      // Guards the load-bearing length>0 filter: an empty name must not become a
+      // wildcard that forwards every var (which would re-create the =0 leak).
+      vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws');
+      vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'FOO,, ,BAR');
+      expect(buildChildEnv('codex')['AWS_SECRET_ACCESS_KEY']).toBeUndefined();
+    });
   });
 
   // #4033 — nested-server deadlock guard.

@@ -84,9 +84,11 @@ When observed behavior contradicts a claim (a "fixed" bug that reproduces, a doc
 lies, a dead voter, a missing stage), file a GitHub issue per the Discovered-Issues
 4-point gate — this is canonical tracking, not a memory note.
 
-- **OPSEC:** scrub `USAi` / government / org references from titles, bodies, and
-  pasted output; generalize to "the configured provider" / "an upstream provider".
-  Keep the technical content.
+- **OPSEC:** scrub government / organization / provider references from titles,
+  bodies, and pasted output; generalize to "the configured provider" / "an upstream
+  provider". Keep the technical content. The auto-file path applies the
+  operator-configured `NEXUS_SENSITIVE_REFS` denylist automatically — set it locally
+  to your org's terms (they are intentionally not hardcoded in this repo).
 - Cite the run (version + SHA), paste the real evidence, and link the claim it
   contradicts (changelog line, doc, or issue that declared it fixed).
 

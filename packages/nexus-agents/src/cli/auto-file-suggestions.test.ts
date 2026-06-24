@@ -8,9 +8,16 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   autoFileSuggestions,
   scrubSensitiveRefs,
+  SENSITIVE_REFS_ENV,
   MACHINE_SUGGESTED_LABEL,
 } from './auto-file-suggestions.js';
 import type { PipelineTask } from '../pipeline/dev-pipeline.js';
+
+// A synthetic, neutral fictional-company term used only to exercise the scrubber
+// (no real org/gov connotation) — actual sensitive references live in operator
+// config (NEXUS_SENSITIVE_REFS), never in source.
+const FAKE_REF = 'ACMECORP';
+const refEnv: NodeJS.ProcessEnv = { [SENSITIVE_REFS_ENV]: FAKE_REF };
 
 function task(id: string, title = `Title ${id}`, description = `Body ${id}`): PipelineTask {
   return { id, title, description, assignedTo: 'researcher', status: 'pending' };
@@ -20,13 +27,35 @@ const noExisting = (): Promise<boolean> => Promise.resolve(false);
 const okFiler = vi.fn(() => Promise.resolve({ ok: true as const, url: 'https://gh/issue/1' }));
 
 describe('scrubSensitiveRefs', () => {
-  it('replaces sensitive org/gov references', () => {
-    expect(scrubSensitiveRefs('Deploy for USAi today')).toBe(
+  it('replaces operator-configured sensitive references (case-insensitive)', () => {
+    expect(scrubSensitiveRefs(`Deploy for ${FAKE_REF} today`, refEnv)).toBe(
       'Deploy for the configured provider today'
+    );
+    expect(scrubSensitiveRefs('deploy for acmecorp today', refEnv)).toBe(
+      'deploy for the configured provider today'
     );
   });
   it('leaves clean text unchanged', () => {
-    expect(scrubSensitiveRefs('Add a deploy tool')).toBe('Add a deploy tool');
+    expect(scrubSensitiveRefs('Add a deploy tool', refEnv)).toBe('Add a deploy tool');
+  });
+  it('is a no-op when no sensitive refs are configured', () => {
+    expect(scrubSensitiveRefs(`Deploy for ${FAKE_REF} today`, {})).toBe(
+      `Deploy for ${FAKE_REF} today`
+    );
+  });
+  it('handles a multi-term, comma/space-separated list', () => {
+    const env: NodeJS.ProcessEnv = { [SENSITIVE_REFS_ENV]: 'ACMECORP, Initech Globex' };
+    expect(scrubSensitiveRefs('ACMECORP and Initech and Globex', env)).toBe(
+      'the configured provider and the configured provider and the configured provider'
+    );
+  });
+  it('empty entries (",," / ", ") never scrub everything (no match-all regex)', () => {
+    // Guards the load-bearing length>0 filter: an empty term would compile to
+    // /\b\b/gi and replace at every word boundary — catastrophic over-scrub.
+    const env: NodeJS.ProcessEnv = { [SENSITIVE_REFS_ENV]: 'FOO,, ,BAR' };
+    expect(scrubSensitiveRefs('keep all these words intact', env)).toBe(
+      'keep all these words intact'
+    );
   });
 });
 
@@ -72,17 +101,23 @@ describe('autoFileSuggestions', () => {
     expect(res.skipped).toEqual([{ id: 'c', reason: 'rate-limit' }]);
   });
 
-  it('scrubs sensitive refs from the filed title and body', async () => {
-    const fileIssue = vi.fn((_opts: { title: string; body: string; labels: readonly string[] }) =>
-      Promise.resolve({ ok: true as const, url: 'u' })
-    );
-    await autoFileSuggestions([task('a', 'Tool for USAi', 'Used by USAi pipelines')], {
-      searchExisting: noExisting,
-      fileIssue,
-    });
-    const arg = fileIssue.mock.calls[0]?.[0];
-    expect(arg?.title).not.toMatch(/USAi/);
-    expect(arg?.body).not.toMatch(/USAi/);
+  it('scrubs operator-configured sensitive refs from the filed title and body', async () => {
+    vi.stubEnv(SENSITIVE_REFS_ENV, FAKE_REF);
+    try {
+      const fileIssue = vi.fn((_opts: { title: string; body: string; labels: readonly string[] }) =>
+        Promise.resolve({ ok: true as const, url: 'u' })
+      );
+      await autoFileSuggestions(
+        [task('a', `Tool for ${FAKE_REF}`, `Used by ${FAKE_REF} pipelines`)],
+        { searchExisting: noExisting, fileIssue }
+      );
+      const arg = fileIssue.mock.calls[0]?.[0];
+      expect(arg?.title).not.toMatch(new RegExp(FAKE_REF, 'i'));
+      expect(arg?.body).not.toMatch(new RegExp(FAKE_REF, 'i'));
+      expect(arg?.title).toContain('the configured provider');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('fails closed when the GitHub filer is unavailable (stops, does not crash)', async () => {

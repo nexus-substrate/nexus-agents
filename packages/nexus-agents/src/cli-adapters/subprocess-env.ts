@@ -91,10 +91,38 @@ const CLI_VENDOR_KEYS: Record<CliName, readonly string[]> = {
   ],
 };
 
-/** True if `key` is permitted for a CLI whose vendor keys are `vendorKeys`. */
-function isAllowed(key: string, vendorKeys: readonly string[]): boolean {
+/**
+ * Env var naming ADDITIONAL var names to forward to spawned CLIs
+ * (comma/whitespace-separated). The granular alternative to the
+ * `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` hammer: for a custom gateway whose auth key
+ * is neither `NEXUS_`-prefixed nor a known vendor key (#4037), name it here to
+ * forward ONLY that var while keeping full cross-vendor isolation for everything
+ * else. `NEXUS_`-prefixed itself, so it also reaches nested runs.
+ */
+export const NEXUS_SUBPROCESS_EXTRA_ENV = 'NEXUS_SUBPROCESS_EXTRA_ENV';
+
+/** Parse the operator-configured extra-forward var names (empty when unset). */
+function readExtraEnvNames(env: NodeJS.ProcessEnv): readonly string[] {
+  const raw = env[NEXUS_SUBPROCESS_EXTRA_ENV];
+  if (raw === undefined || raw.trim() === '') return [];
+  return raw
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * True if `key` is permitted for a CLI whose vendor keys are `vendorKeys`, plus
+ * any operator-allowlisted `extraEnv` names (#4037).
+ */
+function isAllowed(
+  key: string,
+  vendorKeys: readonly string[],
+  extraEnv: readonly string[]
+): boolean {
   if (BASE_ENV_EXACT.includes(key)) return true;
   if (vendorKeys.includes(key)) return true;
+  if (extraEnv.includes(key)) return true;
   return BASE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
@@ -106,6 +134,10 @@ function isAllowed(key: string, vendorKeys: readonly string[]): boolean {
  * `CLAUDECODE` is never forwarded — a nested CLI seeing it would
  * believe it's already inside Claude Code, breaking nested sessions
  * (the pre-#2865 behavior also stripped it explicitly).
+ *
+ * Granular extension: {@link NEXUS_SUBPROCESS_EXTRA_ENV} forwards named extra
+ * vars (e.g. a custom gateway key) while keeping cross-vendor isolation — prefer
+ * it over the blunt `=0` hatch (#4037).
  *
  * Escape hatch: `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` restores the
  * pre-#2865 full-passthrough behavior (minus `CLAUDECODE`) — a
@@ -127,10 +159,11 @@ export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
   }
 
   const vendorKeys = CLI_VENDOR_KEYS[cliName];
+  const extraEnv = readExtraEnvNames(source);
   for (const [key, value] of Object.entries(source)) {
     if (value === undefined) continue;
     if (key === 'CLAUDECODE') continue;
-    if (isAllowed(key, vendorKeys)) childEnv[key] = value;
+    if (isAllowed(key, vendorKeys, extraEnv)) childEnv[key] = value;
   }
   childEnv[NEXUS_SUBPROCESS_DEPTH_ENV] = nextDepth;
   return childEnv;
