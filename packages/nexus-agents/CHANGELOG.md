@@ -1,5 +1,48 @@
 # nexus-agents
 
+## 2.140.0
+
+### Minor Changes
+
+- [#4041](https://github.com/nexus-substrate/nexus-agents/pull/4041) [`357e39a`](https://github.com/nexus-substrate/nexus-agents/commit/357e39a0ac7a9bdae9fa69ea950797abb375cfd7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Route consensus voters through the in-process gateway adapter ([#4040](https://github.com/nexus-substrate/nexus-agents/issues/4040))
+
+  `consensus_vote` and `pr_review` were the only model-using tools not wired to the in-process
+  OpenAI-compatible gateway adapter that every other tool already receives. They fell back to
+  the CLI adapter path, shelling out to a coding CLI (e.g. `opencode run`) — which is the sole
+  reason voting alone required a separate CLI auth and the model key forwarded across the
+  subprocess boundary (the root of the `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` workaround and the
+  nested-spawn class, [#4033](https://github.com/nexus-substrate/nexus-agents/issues/4033)).
+
+  When an OpenAI-compatible gateway is configured (`NEXUS_OPENAI_COMPAT_*`), the voter panel now
+  runs **in-process** over the gateway's models — no CLI subprocess, no cross-process key
+  forwarding. Per-role model diversity is preserved **when the gateway serves multiple models**:
+  the gateway already discovers one adapter per served model, and voter roles are round-robined
+  across them (wrapping when it serves fewer models than roles). A gateway that serves only one
+  model collapses the panel to that single model — voters then share a model and the run logs a
+  correlated-votes warning. The bootstrap previously discarded all but the first
+  discovered gateway model; it now keeps the full set and threads it to the voter tools. With no
+  gateway configured, behavior is unchanged (the CLI round-robin path).
+
+### Patch Changes
+
+- [#4038](https://github.com/nexus-substrate/nexus-agents/pull/4038) [`065f1ec`](https://github.com/nexus-substrate/nexus-agents/commit/065f1ec2cdbb76e3792f8e548ac02e736d08291a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Operator-configurable opsec: stop hardcoding organization-specific references in source
+
+  Two changes that move org-specific values out of the (public) source tree and into operator
+  config, so a deployment's sensitive references never ship in the repo:
+
+  - **`NEXUS_SUBPROCESS_EXTRA_ENV` ([#4037](https://github.com/nexus-substrate/nexus-agents/issues/4037)):**
+    a comma/space-separated list of additional env-var _names_ to forward to spawned voter CLIs.
+    Custom-gateway users whose auth key is neither `NEXUS_`-prefixed nor a known vendor key can
+    now forward just that key (e.g. `NEXUS_SUBPROCESS_EXTRA_ENV=MY_GATEWAY_KEY`) and keep full
+    cross-vendor key isolation — instead of reaching for `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0`,
+    which disables the [#2865](https://github.com/nexus-substrate/nexus-agents/issues/2865) allowlist entirely and re-leaks every key to every CLI.
+  - **`NEXUS_SENSITIVE_REFS`:** the auto-file issue scrubber ([#3382](https://github.com/nexus-substrate/nexus-agents/issues/3382)) no longer hardcodes a
+    specific org/gov reference term. The terms are now read from this operator-configured env
+    var (comma/space-separated); unset ⇒ no scrubbing. **Action for operators who auto-file
+    from a sensitive context:** set `NEXUS_SENSITIVE_REFS` to your org's terms, since the
+    previous built-in default has been removed (a hardcoded denylist literal is itself a
+    disclosure in a public repo).
+
 ## 2.139.1
 
 ### Patch Changes
