@@ -47,8 +47,10 @@ const MAX_SUMMARY_RECORD_CHARS = 500;
 /** Inputs for {@link buildPrReviewRecord} — the finalized review data. */
 export interface BuildPrReviewRecordInput {
   readonly prNumber: number;
-  /** The 40-hex head commit SHA the review was run against (sha-binding). */
-  readonly headSha: string;
+  /** The 40-hex BASE commit SHA the reviewed diff range was computed from (Option-C). */
+  readonly baseSha: string;
+  /** sha256 of the canonical reviewed diff (`audit/reviewed-diff-hash.ts`) — diff-binding. */
+  readonly reviewedDiffHash: string;
   readonly verdict: PrReviewVerdict;
   readonly verified: boolean;
   readonly voteCounts: PrReviewVoteCounts;
@@ -70,9 +72,9 @@ export interface BuildPrReviewRecordInput {
 /**
  * Construct a fully self-hashed {@link PrReviewRecord} from a completed review.
  * Pure (no I/O) so it is unit-testable and reusable by the gate seam and the
- * future producer. The self-hash covers `prNumber`/`headSha`/`verdict`/`sequence`
- * (the sha-binding, condition 1) but EXCLUDES `previousHash`. The summary is
- * stored truncated.
+ * future producer. The self-hash covers `prNumber`/`baseSha`/`reviewedDiffHash`/
+ * `verdict`/`sequence` (the diff-binding, Option-C) but EXCLUDES `previousHash`.
+ * The summary is stored truncated.
  */
 export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRecord {
   const summaryTruncated =
@@ -80,10 +82,11 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       ? input.summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
       : input.summary;
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.0',
+    version: '1.1',
     sequence: input.sequence ?? 0,
     prNumber: input.prNumber,
-    headSha: input.headSha,
+    baseSha: input.baseSha,
+    reviewedDiffHash: input.reviewedDiffHash,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
     verdict: input.verdict,
     verified: input.verified,

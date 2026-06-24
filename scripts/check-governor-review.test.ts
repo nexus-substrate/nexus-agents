@@ -2,10 +2,10 @@
  * Tests for the warn-first governor-path pr_review audit gate (#3831, Epic B).
  *
  * Proves the binding-condition behaviors:
- *  (a) a valid sha-bound record for the PR → PASS;
+ *  (a) a valid diff-bound record for the PR → PASS;
  *  (b) NO record → WARN (not fail) — warn-first;
- *  (c) NEGATIVE: a record with the WRONG/stale headSha → NOT accepted (still
- *      WARN), proving the gate is not theater (condition 1, mandatory);
+ *  (c) NEGATIVE: a record bound to a DIFFERENT reviewed diff → NOT accepted (still
+ *      WARN), proving the gate is not theater (Option-C diff-binding, mandatory);
  *  (d) a tampered record set (bad self-hash / sequence gap) → FAIL CLOSED;
  *  (e) genesis-exempt PR → PASS;
  *  (f) non-governor-path PR → PASS without needing a record.
@@ -35,6 +35,18 @@ import {
 
 const SHA_HEAD = 'a'.repeat(40);
 const SHA_STALE = 'b'.repeat(40);
+const SHA_BASE = 'e'.repeat(40);
+// reviewedDiffHash values (64-hex): DIFF_HASH is the gate-recomputed hash a record
+// must match; DIFF_HASH_STALE is a record bound to a DIFFERENT (changed) diff.
+const DIFF_HASH = 'c'.repeat(64);
+const DIFF_HASH_STALE = 'd'.repeat(64);
+
+/** Restore (or clear) an env var after a test override. `Reflect.deleteProperty`
+ * avoids the `delete obj[key]` dynamic-delete lint rule. */
+function restoreEnv(key: string, prev: string | undefined): void {
+  if (prev === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = prev;
+}
 
 /** A small CODEOWNERS sample carrying both pre-section and governor entries. */
 const CODEOWNERS_SAMPLE = [
@@ -58,7 +70,8 @@ const GOVERNOR_PATTERNS = governorPathsFromCodeowners(CODEOWNERS_SAMPLE);
 function record(overrides: Partial<BuildPrReviewRecordInput> = {}): PrReviewRecord {
   return buildPrReviewRecord({
     prNumber: 5000,
-    headSha: SHA_HEAD,
+    baseSha: SHA_BASE,
+    reviewedDiffHash: DIFF_HASH,
     verdict: 'approve',
     verified: false,
     voteCounts: { approve: 3, request_changes: 0, abstain: 0, error: 0, total: 3 },
@@ -72,7 +85,7 @@ function record(overrides: Partial<BuildPrReviewRecordInput> = {}): PrReviewReco
 function inputs(overrides: Partial<GovernorReviewInputs> = {}): GovernorReviewInputs {
   return {
     prNumber: 5000,
-    headSha: SHA_HEAD,
+    reviewedDiffHash: DIFF_HASH,
     changedFiles: ['packages/nexus-agents/src/audit/audit-logger.ts'],
     governorPatterns: GOVERNOR_PATTERNS,
     records: [],
@@ -115,17 +128,17 @@ describe('matchesCodeownersPattern', () => {
     ).toBe(false);
   });
   it('matches an exact file pattern', () => {
-    expect(matchesCodeownersPattern('scripts/inject-governance.ts', '/scripts/inject-governance.ts')).toBe(
-      true
-    );
-    expect(matchesCodeownersPattern('scripts/inject-other.ts', '/scripts/inject-governance.ts')).toBe(
-      false
-    );
+    expect(
+      matchesCodeownersPattern('scripts/inject-governance.ts', '/scripts/inject-governance.ts')
+    ).toBe(true);
+    expect(
+      matchesCodeownersPattern('scripts/inject-other.ts', '/scripts/inject-governance.ts')
+    ).toBe(false);
   });
   it('matches a glob pattern within a segment', () => {
-    expect(matchesCodeownersPattern('governance/claims-registry.yaml', '/governance/claims-registry.*')).toBe(
-      true
-    );
+    expect(
+      matchesCodeownersPattern('governance/claims-registry.yaml', '/governance/claims-registry.*')
+    ).toBe(true);
   });
   it('isGovernorPath aggregates the pattern set', () => {
     expect(isGovernorPath('CLAUDE.md', GOVERNOR_PATTERNS)).toBe(true);
@@ -143,20 +156,20 @@ describe('analyzeGovernorReview — binding conditions', () => {
     const outcome = analyzeGovernorReview(inputs({ records: [] }));
     expect(outcome.kind).toBe('warn');
     if (outcome.kind === 'warn') {
-      expect(outcome.message).toContain('NO sha-bound pr_review record');
+      expect(outcome.message).toContain('NO diff-bound pr_review record');
       expect(outcome.message).toContain('Warn-first');
     }
   });
 
-  it('(c) NEGATIVE: a record with the WRONG/stale headSha is NOT accepted (still warns)', () => {
-    // Record exists for THIS PR but against a stale head sha → must NOT satisfy.
-    const stale = record({ headSha: SHA_STALE });
+  it('(c) NEGATIVE: a record bound to a DIFFERENT reviewed diff is NOT accepted (still warns)', () => {
+    // Record exists for THIS PR but against a different (changed) diff → must NOT satisfy.
+    const stale = record({ reviewedDiffHash: DIFF_HASH_STALE });
     const outcome = analyzeGovernorReview(inputs({ records: [stale] }));
     expect(outcome.kind).toBe('warn');
     if (outcome.kind === 'warn') {
-      // The warn should call out the stale-sha record explicitly.
-      expect(outcome.message).toContain('STALE head sha');
-      expect(outcome.message).toContain(SHA_STALE);
+      // The warn should call out the different-diff record explicitly.
+      expect(outcome.message).toContain('DIFFERENT reviewed diff');
+      expect(outcome.message).toContain(DIFF_HASH_STALE.slice(0, 12));
     }
   });
 
@@ -211,24 +224,30 @@ describe('genesis parser', () => {
 });
 
 describe('PR context + changed-files resolution', () => {
-  it('reads --pr and --sha from argv', () => {
-    const ctx = resolvePrContext(['--pr', '777', '--sha', SHA_HEAD]);
+  it('reads --pr, --base, and --sha from argv', () => {
+    const ctx = resolvePrContext(['--pr', '777', '--base', SHA_BASE, '--sha', SHA_HEAD]);
     expect(ctx.prNumber).toBe(777);
+    expect(ctx.baseSha).toBe(SHA_BASE);
     expect(ctx.headSha).toBe(SHA_HEAD);
   });
   it('falls back to env vars', () => {
-    const prev = { PR_NUMBER: process.env['PR_NUMBER'], PR_HEAD_SHA: process.env['PR_HEAD_SHA'] };
+    const prev = {
+      PR_NUMBER: process.env['PR_NUMBER'],
+      PR_BASE_SHA: process.env['PR_BASE_SHA'],
+      PR_HEAD_SHA: process.env['PR_HEAD_SHA'],
+    };
     process.env['PR_NUMBER'] = '888';
+    process.env['PR_BASE_SHA'] = SHA_BASE;
     process.env['PR_HEAD_SHA'] = SHA_STALE;
     try {
       const ctx = resolvePrContext([]);
       expect(ctx.prNumber).toBe(888);
+      expect(ctx.baseSha).toBe(SHA_BASE);
       expect(ctx.headSha).toBe(SHA_STALE);
     } finally {
-      if (prev.PR_NUMBER === undefined) delete process.env['PR_NUMBER'];
-      else process.env['PR_NUMBER'] = prev.PR_NUMBER;
-      if (prev.PR_HEAD_SHA === undefined) delete process.env['PR_HEAD_SHA'];
-      else process.env['PR_HEAD_SHA'] = prev.PR_HEAD_SHA;
+      restoreEnv('PR_NUMBER', prev.PR_NUMBER);
+      restoreEnv('PR_BASE_SHA', prev.PR_BASE_SHA);
+      restoreEnv('PR_HEAD_SHA', prev.PR_HEAD_SHA);
     }
   });
   it('parses changed files from a newline/comma list', () => {

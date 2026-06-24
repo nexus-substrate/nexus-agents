@@ -4,7 +4,7 @@
  *
  * Stage 1: a WARN-FIRST CI gate asserting that a PR touching the GOVERNOR PATHS
  * (the governance-of-the-governor entries in /CODEOWNERS) carries a recorded,
- * SHA-BOUND, tamper-evident `pr_review` audit record before merge. The gate
+ * DIFF-BOUND, tamper-evident `pr_review` audit record before merge. The gate
  * QUERIES the committed ledger (`governance/pr-review-records.jsonl`); it NEVER
  * re-executes pr_review.
  *
@@ -13,13 +13,15 @@
  *     set — a `hash_mismatch` (an edited record) or a `sequence_gap` (a deleted
  *     record) — is TAMPER EVIDENCE; the gate refuses regardless of warn-first.
  *   - RECORD ABSENCE is WARN-FIRST (exit 0 + an actionable message, condition 2).
- *     A governor PR with no matching sha-bound record is WARNED, not blocked, in
+ *     A governor PR with no matching diff-bound record is WARNED, not blocked, in
  *     this stage. Flipping absence to fail-closed is a tracked FOLLOW-ON.
  *
- * SHA-BINDING (condition 1). A record satisfies the gate only when it matches
- * THIS PR's number AND head sha. A record produced against a STALE head sha does
- * NOT count — that is the negative case the test suite proves, and it is what
- * makes the gate not theater.
+ * DIFF-BINDING (Option-C, #3831). A record satisfies the gate only when it matches
+ * THIS PR's number AND `reviewedDiffHash` — the gate recomputes the canonical diff
+ * hash from `base..head` (see `audit/reviewed-diff-hash.ts`) and a record produced
+ * against a DIFFERENT diff does NOT count. That is the negative case the test suite
+ * proves, and it is what makes the gate not theater (a head pointer is mutable; the
+ * reviewed bytes are what the voters actually saw).
  *
  * GENESIS EXEMPTION (condition 5). The introducing PR and pre-convention PRs
  * cannot carry a record (the producer does not exist yet), so an explicit,
@@ -36,6 +38,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 import { ROOT } from './script-paths.js';
@@ -44,6 +47,10 @@ import {
   verifyPrReviewRecordSet,
   type PrReviewRecord,
 } from '../packages/nexus-agents/src/audit/index.js';
+import {
+  canonicalGitDiffArgs,
+  computeReviewedDiffHash,
+} from '../packages/nexus-agents/src/audit/reviewed-diff-hash.js';
 
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
 const PR_REVIEW_RECORDS_FILE = join(ROOT, 'governance/pr-review-records.jsonl');
@@ -168,7 +175,14 @@ export type GovernorReviewOutcome =
 /** Inputs for the pure gate analysis (no disk/process I/O). */
 export interface GovernorReviewInputs {
   readonly prNumber: number;
-  readonly headSha: string;
+  /**
+   * sha256 of the PR's CANONICAL reviewed diff (Option-C, #3831), recomputed by
+   * the impure caller from `git <canonicalGitDiffArgs(baseSha, headSha)>` via
+   * {@link computeReviewedDiffHash}. A record matches only if its `reviewedDiffHash`
+   * equals this — i.e. it reviewed the byte-identical diff. Replaces the rejected
+   * headSha binding.
+   */
+  readonly reviewedDiffHash: string;
   readonly changedFiles: readonly string[];
   readonly governorPatterns: readonly string[];
   readonly records: readonly PrReviewRecord[];
@@ -183,7 +197,7 @@ export interface GovernorReviewInputs {
  *     non-governor PR, because the artifact's integrity is itself governance.
  *  2. No governor path touched → PASS (nothing to assert).
  *  3. Genesis-exempt PR → PASS (condition 5; pre-convention PRs carry no record).
- *  4. A record matching THIS prNumber AND headSha exists → PASS (sha-binding,
+ *  4. A record matching THIS prNumber AND reviewedDiffHash exists → PASS (diff-binding,
  *     condition 1). A stale-sha record does NOT match.
  *  5. Otherwise → WARN (warn-first, condition 2): actionable, non-blocking.
  */
@@ -216,14 +230,14 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
     };
   }
 
-  // (4) Sha-bound record present? (condition 1 — number AND head sha must match.)
+  // (4) Diff-bound record present? (Option-C — number AND reviewedDiffHash match.)
   const match = inputs.records.find(
-    (r) => r.prNumber === inputs.prNumber && r.headSha === inputs.headSha
+    (r) => r.prNumber === inputs.prNumber && r.reviewedDiffHash === inputs.reviewedDiffHash
   );
   if (match !== undefined) {
     return {
       kind: 'pass',
-      reason: `sha-bound pr_review record found for PR #${String(inputs.prNumber)} @ ${inputs.headSha} (verdict=${match.verdict})`,
+      reason: `diff-bound pr_review record found for PR #${String(inputs.prNumber)} (reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…, verdict=${match.verdict})`,
     };
   }
 
@@ -231,14 +245,14 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
   const staleForPr = inputs.records.filter((r) => r.prNumber === inputs.prNumber);
   const staleNote =
     staleForPr.length > 0
-      ? ` A record EXISTS for this PR but against a STALE head sha ` +
-        `(${staleForPr.map((r) => r.headSha).join(', ')}) — re-run pr_review at the current head.`
+      ? ` A record EXISTS for this PR but against a DIFFERENT reviewed diff ` +
+        `(${staleForPr.map((r) => `${r.reviewedDiffHash.slice(0, 12)}…`).join(', ')}) — the diff changed since review; re-run pr_review at the current head.`
       : '';
   return {
     kind: 'warn',
     message:
       `PR #${String(inputs.prNumber)} touches governor paths ` +
-      `(${touched.join(', ')}) but has NO sha-bound pr_review record for head ${inputs.headSha}.` +
+      `(${touched.join(', ')}) but has NO diff-bound pr_review record for its current diff.` +
       staleNote +
       ` Run pr_review on this PR and commit the resulting record into ` +
       `governance/pr-review-records.jsonl. (Warn-first: not blocking merge in this stage, #3831.)`,
@@ -257,15 +271,40 @@ function parseSha(raw: string | undefined): string | undefined {
   return raw !== undefined && raw.trim() !== '' ? raw.trim() : undefined;
 }
 
-/** Resolve PR number + head sha from CLI args (`--pr`, `--sha`) or CI env. */
+/** Resolve PR number + base/head sha from CLI args (`--pr`, `--base`, `--sha`) or CI env. */
 export function resolvePrContext(argv: readonly string[]): {
   prNumber: number | undefined;
+  baseSha: string | undefined;
   headSha: string | undefined;
 } {
-  const prRaw = readFlag(argv, '--pr') ?? process.env['PR_NUMBER'] ?? process.env['GITHUB_PR_NUMBER'];
+  const prRaw =
+    readFlag(argv, '--pr') ?? process.env['PR_NUMBER'] ?? process.env['GITHUB_PR_NUMBER'];
+  const baseRaw =
+    readFlag(argv, '--base') ?? process.env['PR_BASE_SHA'] ?? process.env['GITHUB_BASE_SHA'];
   const shaRaw =
     readFlag(argv, '--sha') ?? process.env['PR_HEAD_SHA'] ?? process.env['GITHUB_HEAD_SHA'];
-  return { prNumber: parsePrNumber(prRaw), headSha: parseSha(shaRaw) };
+  return { prNumber: parsePrNumber(prRaw), baseSha: parseSha(baseRaw), headSha: parseSha(shaRaw) };
+}
+
+/**
+ * Recompute the canonical {@link computeReviewedDiffHash} of the PR's diff from
+ * raw SHAs (Option-C, #3831) — the gate side of the diff-binding. Runs the pinned
+ * {@link canonicalGitDiffArgs} so the bytes match what the producer hashed.
+ * Returns undefined when git cannot produce the diff (e.g. the base/head commits
+ * are not present in a shallow CI checkout) — the caller treats that as
+ * "cannot verify" → WARN, never a false PASS.
+ */
+function recomputeReviewedDiffHash(baseSha: string, headSha: string): string | undefined {
+  try {
+    const diff = execFileSync('git', canonicalGitDiffArgs(baseSha, headSha), {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return computeReviewedDiffHash(diff);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Read a `--flag value` pair from argv. */
@@ -291,37 +330,75 @@ export function resolveChangedFiles(argv: readonly string[]): string[] {
  * pure analysis; prints a structured result. Exit code: 0 for pass/WARN
  * (warn-first), 1 for a fail-closed integrity break.
  */
-export function runGovernorReviewGate(argv: readonly string[]): number {
-  const codeownersText = existsSync(CODEOWNERS_FILE)
-    ? readFileSync(CODEOWNERS_FILE, 'utf-8')
-    : '';
-  const governorPatterns = governorPathsFromCodeowners(codeownersText);
-  const { records } = readPrReviewRecords(PR_REVIEW_RECORDS_FILE);
-  const { prNumber, headSha } = resolvePrContext(argv);
+/**
+ * Run the fail-closed integrity check. Returns 1 (after logging) when the ledger
+ * is tampered, else null — so callers fail-close on tamper even when no PR context
+ * or no recomputable diff is available.
+ */
+function tamperExitCode(records: readonly PrReviewRecord[]): number | null {
+  const verification = verifyPrReviewRecordSet(records);
+  if (!verification.ok) {
+    console.error(
+      `[governor-review] FAIL (integrity): governance/pr-review-records.jsonl is tampered ` +
+        `(${verification.reason}): ${verification.detail}`
+    );
+    return 1;
+  }
+  return null;
+}
+
+/**
+ * Resolve the PR context + recompute the canonical reviewed-diff hash, handling
+ * the two early-exit cases (no PR context; git cannot produce the diff) — both of
+ * which still fail-close on a tampered ledger. Returns the resolved gate inputs,
+ * or `{ exit }` when the gate should terminate early.
+ */
+function resolveGateContext(
+  argv: readonly string[],
+  records: readonly PrReviewRecord[]
+): { prNumber: number; reviewedDiffHash: string; changedFiles: string[] } | { exit: number } {
+  const { prNumber, baseSha, headSha } = resolvePrContext(argv);
   const changedFiles = resolveChangedFiles(argv);
 
-  // Even without a PR context we still run the integrity check (it never
-  // depends on PR number/sha) so a tampered ledger fails CI on any run.
-  if (prNumber === undefined || headSha === undefined) {
-    const verification = verifyPrReviewRecordSet(records);
-    if (!verification.ok) {
-      console.error(
-        `[governor-review] FAIL (integrity): governance/pr-review-records.jsonl is tampered ` +
-          `(${verification.reason}): ${verification.detail}`
-      );
-      return 1;
-    }
+  if (prNumber === undefined || baseSha === undefined || headSha === undefined) {
+    const code = tamperExitCode(records);
+    if (code !== null) return { exit: code };
     console.error(
-      '[governor-review] PASS: no PR context (PR_NUMBER/PR_HEAD_SHA) provided and the ' +
+      '[governor-review] PASS: no PR context (PR_NUMBER/PR_BASE_SHA/PR_HEAD_SHA) provided and the ' +
         'pr-review ledger verifies. Nothing to assert for a non-PR run.'
     );
-    return 0;
+    return { exit: 0 };
   }
 
+  // Option-C (#3831): recompute the canonical reviewed-diff hash from base..head.
+  const reviewedDiffHash = recomputeReviewedDiffHash(baseSha, headSha);
+  if (reviewedDiffHash === undefined) {
+    const code = tamperExitCode(records); // fail-closed even when git can't diff
+    if (code !== null) return { exit: code };
+    const msg =
+      `could not recompute the canonical reviewed diff for ${baseSha.slice(0, 12)}..${headSha.slice(0, 12)} ` +
+      `(are both commits fetched? a shallow CI checkout may lack the base). Cannot verify a diff-bound ` +
+      `pr_review record. (Warn-first, #3831.)`;
+    console.error(`::warning title=Governor review unverifiable::${msg}`);
+    console.error(`[governor-review] WARN: ${msg}`);
+    return { exit: 0 };
+  }
+
+  return { prNumber, reviewedDiffHash, changedFiles };
+}
+
+export function runGovernorReviewGate(argv: readonly string[]): number {
+  const codeownersText = existsSync(CODEOWNERS_FILE) ? readFileSync(CODEOWNERS_FILE, 'utf-8') : '';
+  const governorPatterns = governorPathsFromCodeowners(codeownersText);
+  const { records } = readPrReviewRecords(PR_REVIEW_RECORDS_FILE);
+
+  const ctx = resolveGateContext(argv, records);
+  if ('exit' in ctx) return ctx.exit;
+
   const outcome = analyzeGovernorReview({
-    prNumber,
-    headSha,
-    changedFiles,
+    prNumber: ctx.prNumber,
+    reviewedDiffHash: ctx.reviewedDiffHash,
+    changedFiles: ctx.changedFiles,
     governorPatterns,
     records,
     genesisExemptPrs: GENESIS_EXEMPT_PRS,
