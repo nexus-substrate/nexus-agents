@@ -125,12 +125,13 @@ export interface DecisionCostSummary {
 
 /**
  * Zod schema for {@link DecisionCostSummary} — the single source of truth for
- * the cost-rollup shape when it rides an MCP tool's `outputSchema`. Both
- * `consensus_vote` and `pr_review` return this object on their response, so a
- * spec-strict MCP client validates it against the advertised schema; declaring
- * it once here keeps the two tool schemas from drifting (the omission that
- * caused #4032's `-32602 additional properties` rejection). A runtime guard test
- * pins it to the producer output (`rollupDecisionCost`) so the shape can't drift.
+ * the cost-rollup shape when it rides an MCP tool's `outputSchema`. `consensus_vote`
+ * declares this in its `outputSchema`, so a spec-strict MCP client validates the
+ * cost summary against it; declaring the shape once here is what fixed #4032's
+ * `-32602 additional properties` rejection. `pr_review` returns the same object
+ * but does not yet advertise an `outputSchema`, so it will reuse this when it does.
+ * A runtime guard test pins the schema to the producer output (`rollupDecisionCost`)
+ * so the shape can't drift.
  */
 export const DecisionCostSummarySchema = z.object({
   billingMode: z.enum(['plan', 'api']),

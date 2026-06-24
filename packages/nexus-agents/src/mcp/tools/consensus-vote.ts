@@ -46,6 +46,7 @@ import {
 import {
   MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
+  VoteDecisionStatusSchema,
   VoteThresholdSchema,
   ConsensusVoteInputSchema,
   buildResponse,
@@ -890,7 +891,10 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
 export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   proposal: z.string(),
   strategy: VotingStrategySchema,
-  decision: z.enum(['approved', 'rejected', 'no_quorum']),
+  // Reuses the canonical VoteDecisionStatusSchema (single source) — a hand-listed
+  // subset here (was ['approved','rejected','no_quorum']) omitted the reachable
+  // 'timeout'/'pending' outcomes and made strict clients reject those votes (#4032).
+  decision: VoteDecisionStatusSchema,
   approvalPercentage: z.number(),
   voteCounts: z.object({
     approve: z.number(),

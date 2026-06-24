@@ -1366,9 +1366,23 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(fullResponse)).not.toThrow();
   });
 
-  it('declares exactly the response keys (no schema/response drift)', () => {
+  it('declares exactly the response keys (no schema/response key drift)', () => {
+    // Key-level guard: catches a response field absent from the schema (the
+    // panelWarning/costSummary failure mode). It does NOT police value
+    // constraints — the `decision` enum is kept aligned structurally instead,
+    // by reusing VoteDecisionStatusSchema (see the enum test below).
     expect(Object.keys(CONSENSUS_VOTE_OUTPUT_SCHEMA).sort()).toEqual(
       Object.keys(fullResponse).sort()
     );
   });
+
+  it.each(['approved', 'rejected', 'pending', 'timeout', 'no_quorum'] as const)(
+    'accepts every reachable decision value (%s) — not just the old 3-value subset (#4032)',
+    (decision) => {
+      // 'timeout'/'pending' are reachable via mapOutcomeToDecision and were
+      // rejected by the previous narrower enum on a strict MCP client.
+      const response: ConsensusVoteResponse = { ...fullResponse, decision };
+      expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(response)).not.toThrow();
+    }
+  );
 });

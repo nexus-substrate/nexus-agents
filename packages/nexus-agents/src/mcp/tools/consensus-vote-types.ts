@@ -258,7 +258,24 @@ export interface AgentVoteSummary {
   rejectionCategories?: readonly string[];
 }
 
-export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout' | 'no_quorum';
+/**
+ * Canonical set of decision statuses a vote response can carry. Single source
+ * of truth: the `consensus_vote` MCP `outputSchema` reuses
+ * {@link VoteDecisionStatusSchema} so the advertised enum can never be narrower
+ * than what {@link buildResponse} emits (all five are reachable —
+ * `no_quorum` on an all-error/no-quorum panel, the rest via
+ * {@link mapOutcomeToDecision}). A narrower schema made strict MCP clients
+ * reject `timeout`/`pending` votes with a `-32602`-class error (#4032).
+ */
+export const VoteDecisionStatusSchema = z.enum([
+  'approved',
+  'rejected',
+  'pending',
+  'timeout',
+  'no_quorum',
+]);
+
+export type VoteDecisionStatus = z.infer<typeof VoteDecisionStatusSchema>;
 
 /** Higher-Order Voting metadata (Issue #514). */
 export interface HigherOrderMetadata {

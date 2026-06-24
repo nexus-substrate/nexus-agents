@@ -9,7 +9,12 @@ Fix `consensus_vote` rejecting on strict MCP clients (`-32602 additional propert
 `CONSENSUS_VOTE_OUTPUT_SCHEMA` never declared them. A spec-strict MCP client — one that
 validates the result against the advertised `outputSchema` with
 `additionalProperties: false` — rejected the response on most real votes. Both fields are
-now declared. The cost-summary shape is captured once in a shared
-`DecisionCostSummarySchema` (co-located with the `DecisionCostSummary` type), and a
-regression guard test asserts the strict output schema accepts a fully-populated response
-so the schema can't silently drift from the response type again.
+now declared. The same review found a second instance of the bug class: the schema's
+`decision` enum listed only `approved`/`rejected`/`no_quorum`, but the response can also
+carry the reachable `timeout`/`pending` outcomes — so a timed-out vote hit the same
+`-32602` rejection. `decision` now reuses a canonical `VoteDecisionStatusSchema` (the
+single source the `VoteDecisionStatus` type is also derived from), making that drift
+structurally impossible. The cost-summary shape is likewise captured once in a shared
+`DecisionCostSummarySchema` co-located with its type. Regression guards assert the strict
+output schema accepts a fully-populated response (key parity) and every reachable
+`decision` value, and pin the cost schema to the `rollupDecisionCost` producer.
