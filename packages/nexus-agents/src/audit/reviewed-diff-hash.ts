@@ -1,3 +1,6 @@
+// @export-no-consumer-yet — see #3831. Consumed today by the governor gate
+// (scripts/check-governor-review.ts, outside src/); the in-src/ consumer is the
+// recordAuthenticPrReview producer, the tracked #3831 follow-up.
 /**
  * Canonical reviewed-diff hashing for the Option-C pr_review binding (#3831).
  *
