@@ -1,5 +1,13 @@
 # nexus-memory
 
+## 0.1.4
+
+### Patch Changes
+
+- [#4026](https://github.com/nexus-substrate/nexus-agents/pull/4026) [`7df6cd8`](https://github.com/nexus-substrate/nexus-agents/commit/7df6cd81b0d9dc142024cbdf005a6e6cb0f9798e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reject `write(key, undefined)` uniformly across backends ([#4021](https://github.com/nexus-substrate/nexus-agents/issues/4021))
+
+  `InMemoryBackend` and `SqliteBackend` diverged on `write(key, undefined)`: the in-memory backend stored a phantom row (a later `read` looked like a miss but `count`/`query` included it) while the SQLite backend threw a cryptic NOT NULL bind error. Both `validate()` methods now reject `undefined` up front (before the optional schema check) with a clear `MemoryValidationError` — `undefined` is the missing-key sentinel `read` returns; callers wanting an explicit absent value use `null`. The shared backend contract test now asserts uniform rejection. Found in the 2026-06-21 QA/security sweep.
+
 ## 0.1.3
 
 ### Patch Changes
