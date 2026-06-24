@@ -147,7 +147,7 @@ describe('matchesCodeownersPattern', () => {
 });
 
 describe('analyzeGovernorReview — binding conditions', () => {
-  it('(a) PASSES with a valid sha-bound record for the PR', () => {
+  it('(a) PASSES with a valid diff-bound record for the PR', () => {
     const outcome = analyzeGovernorReview(inputs({ records: [record()] }));
     expect(outcome.kind).toBe('pass');
   });

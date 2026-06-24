@@ -6,7 +6,7 @@
  * over a GOVERNOR-PATH PR, persisted so a WARN-FIRST CI gate
  * (`scripts/check-governor-review.ts`, #3831) can assert that a PR touching the
  * governor's own paths (the /CODEOWNERS governance-of-the-governor list) carries
- * a recorded, SHA-BOUND review before merge — without the gate re-executing the
+ * a recorded, DIFF-BOUND review before merge — without the gate re-executing the
  * review (it QUERIES the ledger; pr_review is never re-run in the gate).
  *
  * MODEL: TAMPER-EVIDENT RECORD SET + MONOTONIC SEQUENCE. This MIRRORS the
@@ -38,8 +38,9 @@
  * `metadata`, so riding a metadata payload would leave the verdict OUTSIDE the
  * hash — an attacker could flip `request_changes`→`approve` without breaking any
  * hash. This record instead folds EVERY authenticity-bearing field (the PR
- * number, the head sha, the verdict, the verified flag, the vote counts, and the
- * `sequence`) into the self-hash, so editing any of them is a `hash_mismatch`.
+ * number, the base sha, the reviewed-diff hash, the verdict, the verified flag,
+ * the vote counts, and the `sequence`) into the self-hash, so editing any of them
+ * is a `hash_mismatch`.
  * Cryptographic signing/provenance is DEFERRED (mirrors the #3897 follow-up).
  *
  * @module audit/pr-review-record
@@ -146,7 +147,7 @@ type PrReviewRecordPayload = Omit<PrReviewRecord, 'hash'>;
 /**
  * Compute the SHA-256 over the canonical payload projection. Folds in EVERY
  * authenticity-bearing field — crucially `prNumber`, `baseSha`, `reviewedDiffHash`, and `verdict`
- * (the sha-binding, condition 1) plus the monotonic `sequence` — but EXCLUDES
+ * (the diff-binding, Option-C) plus the monotonic `sequence` — but EXCLUDES
  * `previousHash`, so the hash is position-independent and stable across
  * concurrent-branch merges and file reorders. Built field-by-field (not
  * `JSON.stringify(record)`) so key-order is deterministic regardless of how the
