@@ -537,7 +537,10 @@ async function maybeEscalateContrarian(
   outcome: 'approved' | 'rejected',
   ctx: { strategy: VotingStrategy; posteriorApproval: number | undefined },
   logger: ILogger,
-  opts?: { voteTimeoutMs?: number }
+  // Mirror executeVoting's opts so gateway routing (#4040) survives the escalation
+  // re-vote — the object is forwarded by reference today, but the wider type makes
+  // that contract explicit and refactor-safe.
+  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
 ): Promise<ExtendedVotingResult | undefined> {
   if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return undefined;
 

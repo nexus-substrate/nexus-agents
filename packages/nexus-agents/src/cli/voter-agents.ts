@@ -349,7 +349,16 @@ async function resolveDiverseAdapters(
   // gateway adapters (HTTP, no subprocess). Preferred when configured.
   if (gatewayAdapters !== undefined && gatewayAdapters.length > 0) {
     if (gatewayAdapters.length === 1) {
-      logger.info('Single gateway model for all roles', { model: gatewayAdapters[0]?.modelId });
+      // Consensus integrity: a multi-role panel on ONE model yields correlated
+      // votes (the higher_order strategy can't down-weight what it can't tell
+      // apart). Warn so operators notice — configure the gateway with more models
+      // for a genuinely diverse panel.
+      if (roles.length > 1) {
+        logger.warn('Consensus panel collapsed to a single gateway model — votes may correlate', {
+          model: gatewayAdapters[0]?.modelId,
+          roleCount: roles.length,
+        });
+      }
       return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
     }
     return assignRoundRobinAdapters(

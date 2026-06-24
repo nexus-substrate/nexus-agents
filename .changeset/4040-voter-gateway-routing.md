@@ -13,8 +13,10 @@ nested-spawn class, #4033).
 
 When an OpenAI-compatible gateway is configured (`NEXUS_OPENAI_COMPAT_*`), the voter panel now
 runs **in-process** over the gateway's models — no CLI subprocess, no cross-process key
-forwarding. Per-role model diversity is preserved: the gateway already discovers one adapter
-per served model, and voter roles are round-robined across them (wrapping when the gateway
-serves fewer models than roles). The bootstrap previously discarded all but the first
+forwarding. Per-role model diversity is preserved **when the gateway serves multiple models**:
+the gateway already discovers one adapter per served model, and voter roles are round-robined
+across them (wrapping when it serves fewer models than roles). A gateway that serves only one
+model collapses the panel to that single model — voters then share a model and the run logs a
+correlated-votes warning. The bootstrap previously discarded all but the first
 discovered gateway model; it now keeps the full set and threads it to the voter tools. With no
 gateway configured, behavior is unchanged (the CLI round-robin path).
