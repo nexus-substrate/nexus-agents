@@ -17,6 +17,25 @@
 
 import type { CliName } from './types.js';
 
+/**
+ * Marker stamped on EVERY spawned-CLI child env (#4033): how deep we are in the
+ * nexus → CLI subprocess nesting. A child CLI (e.g. `opencode run`) that is
+ * itself configured to auto-start a `nexus-agents --mode=server` MCP server
+ * would otherwise deadlock the voter — the nested server attaches to the child's
+ * stdio and blocks the child's MCP handshake, so the voter never returns its
+ * JSON. The server bootstrap reads this marker and refuses to start when nested
+ * (see `cli-server.ts`). Distinct from the codex-only `NEXUS_MCP_DEPTH` guard so
+ * the two cannot interfere. `NEXUS_`-prefixed, so it survives the allowlist (and
+ * the `=0` full-passthrough hatch) and reaches the grandchild MCP server.
+ */
+export const NEXUS_SUBPROCESS_DEPTH_ENV = 'NEXUS_SUBPROCESS_DEPTH';
+
+/** Read the subprocess nesting depth from an env bag; clamps missing/junk to 0. */
+export function readSubprocessDepth(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number.parseInt(env[NEXUS_SUBPROCESS_DEPTH_ENV] ?? '0', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
 /** Exact-match infrastructure vars every spawned CLI legitimately needs. */
 const BASE_ENV_EXACT: readonly string[] = [
   'PATH',
@@ -95,11 +114,15 @@ function isAllowed(key: string, vendorKeys: readonly string[]): boolean {
 export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
   const source = process.env;
   const childEnv: NodeJS.ProcessEnv = {};
+  // Stamp the incremented nesting depth (#4033) LAST in both branches so it
+  // overrides any inherited value rather than copying the parent's depth.
+  const nextDepth = String(readSubprocessDepth(source) + 1);
 
   if (source['NEXUS_SUBPROCESS_ENV_ALLOWLIST'] === '0') {
     for (const [key, value] of Object.entries(source)) {
       if (value !== undefined && key !== 'CLAUDECODE') childEnv[key] = value;
     }
+    childEnv[NEXUS_SUBPROCESS_DEPTH_ENV] = nextDepth;
     return childEnv;
   }
 
@@ -109,6 +132,7 @@ export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
     if (key === 'CLAUDECODE') continue;
     if (isAllowed(key, vendorKeys)) childEnv[key] = value;
   }
+  childEnv[NEXUS_SUBPROCESS_DEPTH_ENV] = nextDepth;
   return childEnv;
 }
 
