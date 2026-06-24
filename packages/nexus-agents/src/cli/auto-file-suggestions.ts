@@ -37,14 +37,38 @@ export const MACHINE_SUGGESTED_LABEL = 'machine-suggested';
 const DEFAULT_MAX_PER_RUN = 3;
 
 /**
- * Sensitive org/gov reference patterns scrubbed from filed issue text (opsec).
- * Kept minimal + case-insensitive; extend as needed.
+ * Env var holding operator-configured sensitive org/gov reference terms to scrub
+ * from auto-filed issue text (comma/whitespace-separated). The terms are
+ * deliberately NOT hardcoded here: this is a public repo, so an organization's
+ * specific reference must live in that operator's own config, never in source
+ * (opsec — a hardcoded denylist literal is itself a disclosure). Unset/empty ⇒
+ * no scrubbing. Operators who auto-file from a sensitive context MUST set this.
  */
-const SENSITIVE_REF_PATTERNS: readonly RegExp[] = [/\bUSAi\b/gi];
+export const SENSITIVE_REFS_ENV = 'NEXUS_SENSITIVE_REFS';
 
-/** Replaces sensitive org/gov references with a neutral placeholder. */
-export function scrubSensitiveRefs(text: string): string {
-  return SENSITIVE_REF_PATTERNS.reduce(
+/** Escape regex metacharacters in an operator-supplied term. */
+function escapeRegExp(term: string): string {
+  return term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Word-boundary, case-insensitive patterns from the configured terms (memoized off env). */
+function loadSensitiveRefPatterns(env: NodeJS.ProcessEnv): readonly RegExp[] {
+  const raw = env[SENSITIVE_REFS_ENV];
+  if (raw === undefined || raw.trim() === '') return [];
+  return raw
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .map((t) => new RegExp(`\\b${escapeRegExp(t)}\\b`, 'gi'));
+}
+
+/**
+ * Replaces operator-configured sensitive references (see {@link SENSITIVE_REFS_ENV})
+ * with a neutral placeholder. No-op when none are configured. The `env` param is
+ * injectable for tests; production callers use `process.env`.
+ */
+export function scrubSensitiveRefs(text: string, env: NodeJS.ProcessEnv = process.env): string {
+  return loadSensitiveRefPatterns(env).reduce(
     (acc, pattern) => acc.replace(pattern, 'the configured provider'),
     text
   );

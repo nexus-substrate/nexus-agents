@@ -205,14 +205,17 @@ All configuration can be overridden with environment variables:
 
 ### Security Variables
 
-| Variable               | Description                                                                                                                       | Default          |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `NEXUS_SANDBOX`        | Sandbox flavor; passed through to subprocess adapters (epic #2500)                                                                | unset            |
-| `NEXUS_SANDBOX_ROOT`   | Sandbox root directory for the sandbox executor                                                                                   | unset            |
-| `NEXUS_RATE_LIMIT`     | Requests per minute                                                                                                               | `60`             |
-| `NEXUS_AUTH_ENABLED`   | Enable MCP auth (applies only to network transports; no effect on the default stdio MCP)                                          | `true`           |
-| `NEXUS_AUTH_METHOD`    | Auth method                                                                                                                       | `token`          |
-| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: any value except `0` (incl. unset) = advisory (warn); `0` = blocking (#2199). CI sets `0` to enforce. | unset (advisory) |
+| Variable                         | Description                                                                                                                                                                               | Default              |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `NEXUS_SANDBOX`                  | Sandbox flavor; passed through to subprocess adapters (epic #2500)                                                                                                                        | unset                |
+| `NEXUS_SANDBOX_ROOT`             | Sandbox root directory for the sandbox executor                                                                                                                                           | unset                |
+| `NEXUS_SUBPROCESS_ENV_ALLOWLIST` | `0` disables the spawned-CLI env allowlist (#2865) entirely — full passthrough (minus `CLAUDECODE`). Blunt escape hatch; re-leaks cross-vendor keys. Prefer `NEXUS_SUBPROCESS_EXTRA_ENV`. | unset (allowlist on) |
+| `NEXUS_SUBPROCESS_EXTRA_ENV`     | Comma/space-separated list of additional env-var **names** to forward to spawned CLIs, e.g. a custom gateway key (#4037). Keeps cross-vendor isolation; forwards only the named vars.     | unset                |
+| `NEXUS_SENSITIVE_REFS`           | Comma/space-separated org/gov reference **terms** scrubbed from auto-filed issue text (#3382 opsec). Intentionally not hardcoded — set your org's terms here. Unset ⇒ no scrubbing.       | unset                |
+| `NEXUS_RATE_LIMIT`               | Requests per minute                                                                                                                                                                       | `60`                 |
+| `NEXUS_AUTH_ENABLED`             | Enable MCP auth (applies only to network transports; no effect on the default stdio MCP)                                                                                                  | `true`               |
+| `NEXUS_AUTH_METHOD`              | Auth method                                                                                                                                                                               | `token`              |
+| `NEXUS_DRIFT_ADVISORY`           | Model-string drift CI gate: any value except `0` (incl. unset) = advisory (warn); `0` = blocking (#2199). CI sets `0` to enforce.                                                         | unset (advisory)     |
 
 ### Orchestration Variables
 
