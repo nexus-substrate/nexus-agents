@@ -6,7 +6,7 @@
  * over a GOVERNOR-PATH PR, persisted so a WARN-FIRST CI gate
  * (`scripts/check-governor-review.ts`, #3831) can assert that a PR touching the
  * governor's own paths (the /CODEOWNERS governance-of-the-governor list) carries
- * a recorded, SHA-BOUND review before merge — without the gate re-executing the
+ * a recorded, DIFF-BOUND review before merge — without the gate re-executing the
  * review (it QUERIES the ledger; pr_review is never re-run in the gate).
  *
  * MODEL: TAMPER-EVIDENT RECORD SET + MONOTONIC SEQUENCE. This MIRRORS the
@@ -22,12 +22,15 @@
  * participate in verification. Omission is detected via SEQUENCE GAPS; concurrent
  * forks (two records sharing a sequence) are a BENIGN signal, not a failure.
  *
- * SHA-BINDING (condition 1 of the #3831 ratification). The self-`hash` covers
- * `prNumber` + **`headSha`** + `verdict` + the review summary content. Binding
- * the record to the exact `headSha` it reviewed is what makes the gate NOT
- * theater: a record produced against a STALE head sha does NOT satisfy a later
- * push (the gate matches `prNumber` AND `headSha`), and the record's content
- * cannot be edited to claim a different sha/verdict without breaking the hash.
+ * DIFF-BINDING (Option-C, #3831 ratification). The self-`hash` covers
+ * `prNumber` + **`baseSha`** + **`reviewedDiffHash`** + `verdict` + the review
+ * summary content. Binding the record to the exact reviewed DIFF is what makes the
+ * gate NOT theater: a record produced against a different diff does NOT satisfy a
+ * later push (the gate matches `prNumber` AND recomputes `reviewedDiffHash` from
+ * the committed PR's canonical diff), and the record's content cannot be edited to
+ * claim a different diff/verdict without breaking the hash. This replaces the
+ * rejected `headSha` binding (a head pointer is mutable; the reviewed bytes are
+ * what the voters actually saw).
  *
  * WHY A DEDICATED PAYLOAD-COVERING HASH (and not the audit-event head hash).
  * As in #3897/#3927: the audit-event chain (`computeEventHash` in
@@ -35,8 +38,9 @@
  * `metadata`, so riding a metadata payload would leave the verdict OUTSIDE the
  * hash — an attacker could flip `request_changes`→`approve` without breaking any
  * hash. This record instead folds EVERY authenticity-bearing field (the PR
- * number, the head sha, the verdict, the verified flag, the vote counts, and the
- * `sequence`) into the self-hash, so editing any of them is a `hash_mismatch`.
+ * number, the base sha, the reviewed-diff hash, the verdict, the verified flag,
+ * the vote counts, and the `sequence`) into the self-hash, so editing any of them
+ * is a `hash_mismatch`.
  * Cryptographic signing/provenance is DEFERRED (mirrors the #3897 follow-up).
  *
  * @module audit/pr-review-record
@@ -67,7 +71,7 @@ export type PrReviewVoteCounts = z.infer<typeof PrReviewVoteCountsSchema>;
 
 /**
  * One authentic, self-hashed pr-review record. The `hash` covers every
- * authenticity field INCLUDING `prNumber`, `headSha`, `verdict`, and `sequence`
+ * authenticity field INCLUDING `prNumber`, `baseSha`, `reviewedDiffHash`, `verdict`, and `sequence`
  * but EXCLUDING `previousHash`, so the record is tamper-EVIDENT and
  * POSITION-INDEPENDENT: any edit to a persisted line is detected by
  * {@link verifyPrReviewRecordSet} as a `hash_mismatch`, while reordering file
@@ -75,8 +79,14 @@ export type PrReviewVoteCounts = z.infer<typeof PrReviewVoteCountsSchema>;
  */
 export const PrReviewRecordSchema = z
   .object({
-    /** Schema version. '1.0' is the initial record-set+sequence model (#3831). */
-    version: z.literal('1.0'),
+    /**
+     * Schema version. '1.1' is the Option-C binding (#3831): the record binds to
+     * `{prNumber, baseSha, reviewedDiffHash}` instead of the rejected `headSha`.
+     * Clean break — the committed `governance/pr-review-records.jsonl` ledger is
+     * empty on every install (no producer ever wrote a '1.0' record), so there is
+     * no '1.0' data to migrate.
+     */
+    version: z.literal('1.1'),
     /**
      * Monotonic sequence number (integer ≥ 0). Assigned as (max existing
      * sequence)+1 at write time. Sorted, the set of sequences must cover
@@ -87,12 +97,22 @@ export const PrReviewRecordSchema = z
     /** The PR number the review covers. */
     prNumber: z.number().int().positive(),
     /**
-     * The 40-hex head commit SHA the review was run against. SHA-BINDING
-     * (condition 1): the gate matches THIS sha — a record for a stale head does
-     * NOT satisfy a later push, and the hash below covers it so it cannot be
-     * edited to claim a different reviewed sha.
+     * The 40-hex BASE commit SHA the reviewed diff was computed against (the
+     * `<base>..<head>` range base). Part of the Option-C binding so the gate knows
+     * which range to recompute {@link reviewedDiffHash} over.
      */
-    headSha: z.string().regex(/^[0-9a-f]{40}$/, 'headSha must be a 40-char lowercase hex commit sha'),
+    baseSha: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/, 'baseSha must be a 40-char lowercase hex commit sha'),
+    /**
+     * DIFF-BINDING (Option-C, #3831): sha256 of the canonical reviewed diff bytes
+     * (see `audit/reviewed-diff-hash.ts` — pinned `git diff` invocation + 50k
+     * byte-truncation). The gate recomputes this from the committed PR's diff and
+     * matches it, so a record only satisfies a PR whose reviewed diff is
+     * byte-identical to what the voters saw. Covered by the self-hash below, so it
+     * cannot be edited to claim a different reviewed diff.
+     */
+    reviewedDiffHash: z.string().length(64),
     /** ISO-8601 timestamp the review was recorded. */
     recordedAt: z.string().min(1),
     /** The resolved aggregate verdict. */
@@ -126,8 +146,8 @@ type PrReviewRecordPayload = Omit<PrReviewRecord, 'hash'>;
 
 /**
  * Compute the SHA-256 over the canonical payload projection. Folds in EVERY
- * authenticity-bearing field — crucially `prNumber`, `headSha`, and `verdict`
- * (the sha-binding, condition 1) plus the monotonic `sequence` — but EXCLUDES
+ * authenticity-bearing field — crucially `prNumber`, `baseSha`, `reviewedDiffHash`, and `verdict`
+ * (the diff-binding, Option-C) plus the monotonic `sequence` — but EXCLUDES
  * `previousHash`, so the hash is position-independent and stable across
  * concurrent-branch merges and file reorders. Built field-by-field (not
  * `JSON.stringify(record)`) so key-order is deterministic regardless of how the
@@ -140,7 +160,8 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
     version: payload.version,
     sequence: payload.sequence,
     prNumber: payload.prNumber,
-    headSha: payload.headSha,
+    baseSha: payload.baseSha,
+    reviewedDiffHash: payload.reviewedDiffHash,
     recordedAt: payload.recordedAt,
     verdict: payload.verdict,
     verified: payload.verified,
@@ -242,7 +263,7 @@ function forkSequences({ counts }: SequenceCensus): number[] {
 /**
  * Verify a tamper-evident SET of pr-review records (mirrors
  * {@link verifyVoteRecordSet}, #3927). For each record, the self-hash must
- * recompute from its payload (covers `prNumber`/`headSha`/`verdict`/`sequence`,
+ * recompute from its payload (covers `prNumber`/`baseSha`/`reviewedDiffHash`/`verdict`/`sequence`,
  * excludes `previousHash`). Order of the array does NOT matter — it is a set, not
  * a chain. Semantics:
  *
