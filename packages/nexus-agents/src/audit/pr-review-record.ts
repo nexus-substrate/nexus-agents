@@ -22,6 +22,15 @@
  * participate in verification. Omission is detected via SEQUENCE GAPS; concurrent
  * forks (two records sharing a sequence) are a BENIGN signal, not a failure.
  *
+ * KNOWN GAP IN OMISSION DETECTION (#4011, mirrors vote-record.ts): sequence-gap
+ * detection only catches an omission that leaves a HOLE in the `0..maxSeq` run. It
+ * does NOT catch deletion of a FORK PARTNER — when ≥2 records share a sequence and
+ * one is removed, the survivor still occupies that sequence, so no gap appears and
+ * verification stays `ok`. Within the disclosed residual-trust boundary
+ * (author-typed records; cryptographic signing is #3927 item 4): a commit-access
+ * actor could equally never have written the partner, so it grants no new
+ * capability. Closing it folds into #3927 item 4.
+ *
  * DIFF-BINDING (Option-C, #3831 ratification). The self-`hash` covers
  * `prNumber` + **`baseSha`** + **`reviewedDiffHash`** + `verdict` + the review
  * summary content. Binding the record to the exact reviewed DIFF is what makes the
@@ -187,6 +196,10 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
  * tamper/omission signal: `hash_mismatch` (a record's content was edited),
  * `missing_hash` (a record carries no hash), or `sequence_gap` (a record is
  * missing from the 0..maxSeq run — an omission).
+ *
+ * NOT detected (#4011): deletion of a fork PARTNER (a record sharing a sequence
+ * with a survivor) leaves no gap, so `ok` stays true. Bounded by the residual-trust
+ * boundary (author-typed records; signing deferred to #3927 item 4) — module header.
  */
 export type PrReviewRecordVerification =
   | { ok: true; recordCount: number; forks?: number[] }
@@ -275,6 +288,11 @@ function forkSequences({ counts }: SequenceCensus): number[] {
  * - DUPLICATE sequence numbers are a BENIGN concurrent-fork signal (two branches
  *   appended from the same tip, then merged): NOT a failure. They are surfaced on
  *   the success result as `forks` (the duplicated sequence numbers, ascending).
+ *
+ * LIMIT (#4011): a duplicate sequence being benign means deleting ONE partner of a
+ * fork leaves the survivor on that sequence — no gap, so this returns `ok`.
+ * Sequence-gap omission detection does NOT cover a deleted fork partner; that
+ * guarantee waits on cryptographic signing (#3927 item 4), not `verification.ok`.
  *
  * An empty set verifies trivially.
  */

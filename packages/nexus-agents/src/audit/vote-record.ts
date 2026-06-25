@@ -20,6 +20,20 @@
  * verification. Omission is detected via SEQUENCE GAPS; concurrent forks (two
  * records sharing a sequence) are a BENIGN signal, not a failure.
  *
+ * KNOWN GAP IN OMISSION DETECTION (#4011): sequence-gap detection only catches an
+ * omission that leaves a HOLE in the `0..maxSeq` run. It does NOT catch the
+ * deletion of a FORK PARTNER — when a sequence is shared by ≥2 records and one is
+ * removed, the surviving partner still occupies that sequence, so no gap appears
+ * and verification still returns `ok`. So a concurrent fork that resolved
+ * `approved` + `rejected` can have its `rejected` partner silently dropped. This
+ * is consistent with the residual-trust boundary (records are author-typed and
+ * NOT yet cryptographically signed — signing is #3927 item 4): a commit-access
+ * actor could equally have just never written the rejecting record, so this grants
+ * no new capability. Closing it (cross-checking `forks`/`recordCount`, or
+ * requiring fork partners to be co-present) is only meaningful once signing raises
+ * the overall bar, and folds into #3927 item 4. See the audit-hash-chain threat
+ * model for the disclosed boundary.
+ *
  * WHY A DEDICATED PAYLOAD-COVERING HASH (and not the audit-event head hash).
  * The audit-event chain (`computeEventHash` in audit-logger.ts) hashes only the
  * stable HEAD fields (id/timestamp/category/action/outcome/actor/previousHash)
@@ -215,6 +229,11 @@ export function hashProposal(proposal: string): string {
  * tamper/omission signal: `hash_mismatch` (a record's content was edited),
  * `missing_hash` (a record carries no hash), or `sequence_gap` (a record is
  * missing from the 0..maxSeq run — an omission).
+ *
+ * NOT detected (#4011): the deletion of a fork PARTNER (a record sharing a
+ * sequence with a survivor) leaves no gap, so `ok` stays true. Bounded by the
+ * residual-trust boundary (author-typed records; signing deferred to #3927 item
+ * 4) — see the module header.
  */
 export type VoteRecordVerification =
   | { ok: true; recordCount: number; forks?: number[] }
@@ -299,6 +318,13 @@ function forkSequences({ counts }: SequenceCensus): number[] {
  * - DUPLICATE sequence numbers are a BENIGN concurrent-fork signal (two branches
  *   appended from the same tip, then merged): NOT a failure. They are surfaced
  *   on the success result as `forks` (the duplicated sequence numbers, ascending).
+ *
+ * LIMIT (#4011): because a duplicate sequence is benign, deleting ONE partner of a
+ * fork leaves the survivor occupying that sequence — no gap, so this returns `ok`.
+ * Sequence-gap omission detection therefore does NOT cover a deleted fork partner.
+ * This is within the disclosed residual-trust boundary (author-typed records;
+ * cryptographic signing is #3927 item 4); callers needing that guarantee must wait
+ * for signing, not rely on `verification.ok` alone.
  *
  * An empty set verifies trivially.
  */
