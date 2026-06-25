@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -226,7 +227,10 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
  * tier threaded) leaves the seam to fail-close to untrusted (tier 4). Only the
  * dev-pipeline executor consumes the tier; the others don't reach that seam.
  */
-export function buildDefaultExecutors(trustTier?: string): StrategyExecutorMap {
+export function buildDefaultExecutors(
+  trustTier?: string,
+  gatewayAdapters?: readonly IModelAdapter[]
+): StrategyExecutorMap {
   return {
     'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
       runDevPipelineForGoal(metaInput.goal, trustTier),
@@ -239,7 +243,8 @@ export function buildDefaultExecutors(trustTier?: string): StrategyExecutorMap {
     // registry is a feature with no current consumer (YAGNI) — add it only when a
     // named loop needs research-specific stages; until then research==pipeline.
     research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
-    consensus: (_decision, metaInput: MetaOrchestratorInput) => runConsensusForGoal(metaInput.goal),
+    consensus: (_decision, metaInput: MetaOrchestratorInput) =>
+      runConsensusForGoal(metaInput.goal, undefined, gatewayAdapters),
   };
 }
 
@@ -303,6 +308,8 @@ export async function executeGoal(
      * instead of fail-closing. Ignored when `executors` is supplied explicitly.
      */
     readonly trustTier?: string | undefined;
+    /** In-process gateway model adapters routed to consensus voters (#4042). */
+    readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
@@ -311,7 +318,7 @@ export async function executeGoal(
   const decision = selectDecision(input, 'execute', opts.logger);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
-    executors: opts.executors ?? buildDefaultExecutors(opts.trustTier),
+    executors: opts.executors ?? buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
@@ -337,7 +344,8 @@ export async function executeGoal(
 async function executeRunBody(
   input: RunInput,
   logger: ILogger,
-  trustTier?: string
+  trustTier?: string,
+  gatewayAdapters?: readonly IModelAdapter[]
 ): Promise<ToolResult> {
   try {
     // #3712: thread the caller's real RequestContext.trustTier into the
@@ -346,6 +354,7 @@ async function executeRunBody(
     const exec = await executeGoal(input, {
       logger,
       ...(trustTier !== undefined ? { trustTier } : {}),
+      ...(gatewayAdapters !== undefined ? { gatewayAdapters } : {}),
     });
     logger.info('run: executed goal', {
       decisionId: exec.decisionId,
@@ -366,7 +375,12 @@ async function executeRunBody(
   }
 }
 
-async function runHandler(args: unknown, logger: ILogger, trustTier?: string): Promise<ToolResult> {
+async function runHandler(
+  args: unknown,
+  logger: ILogger,
+  trustTier?: string,
+  gatewayAdapters?: readonly IModelAdapter[]
+): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
     return toolStructuredError({
@@ -387,11 +401,11 @@ async function runHandler(args: unknown, logger: ILogger, trustTier?: string): P
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
-        run: () => executeRunBody(input, logger, trustTier),
+        run: () => executeRunBody(input, logger, trustTier, gatewayAdapters),
         logger,
       });
     }
-    return executeRunBody(input, logger, trustTier);
+    return executeRunBody(input, logger, trustTier, gatewayAdapters);
   }
 
   const response = routeGoal(parsed.data, logger);
@@ -413,8 +427,13 @@ const DESCRIPTION =
   'Prefer this over choosing a pipeline tool by hand — the specialized tools remain ' +
   'available as advanced force-strategy paths.';
 
+/** Deps for the `run` tool — adds the in-process gateway adapters (#4042). */
+export interface RunToolDeps extends BaseMcpToolDeps {
+  gatewayAdapters?: readonly IModelAdapter[] | undefined;
+}
+
 /** @category MCP */
-export function registerRunTool(server: McpServer, deps: BaseMcpToolDeps): void {
+export function registerRunTool(server: McpServer, deps: RunToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run' });
 
   // 2-arg context-aware form (mirrors delegate-to-model.ts / run_dev_pipeline):
@@ -422,7 +441,8 @@ export function registerRunTool(server: McpServer, deps: BaseMcpToolDeps): void 
   // consensus→execute seam sees the real tier (#3712) — this closes the hole
   // where a possibly-untrusted goal ran a real research stage with no tier.
   const secureHandler = createSecureHandler(
-    (args: unknown, ctx: HandlerContext) => runHandler(args, logger, ctx.requestContext.trustTier),
+    (args: unknown, ctx: HandlerContext) =>
+      runHandler(args, logger, ctx.requestContext.trustTier, deps.gatewayAdapters),
     {
       toolName: 'run',
       rateLimiter: deps.rateLimiter,

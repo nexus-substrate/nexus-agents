@@ -24,6 +24,20 @@ vi.mock('./dev-pipeline-tool.js', () => ({
     runDevPipelineForGoalMock(goal, trustTier),
 }));
 
+// #4042: capture the gatewayAdapters threaded into the consensus executor. Keep
+// every other consensus-vote export real (run-tool only imports runConsensusForGoal).
+const runConsensusForGoalMock = vi.fn((_goal: string, _logger?: unknown, _gw?: unknown) =>
+  Promise.resolve({ result: { outcome: 'approved' } })
+);
+vi.mock('./consensus-vote.js', async () => {
+  const actual = await vi.importActual<typeof import('./consensus-vote.js')>('./consensus-vote.js');
+  return {
+    ...actual,
+    runConsensusForGoal: (goal: string, logger?: unknown, gw?: unknown) =>
+      runConsensusForGoalMock(goal, logger, gw),
+  };
+});
+
 // #3732: pass-through the secure-handler / timeout chain so the registered
 // callback is the bare handler — lets the async-dispatch tests invoke it
 // directly. createSecureHandler injects a minimal ctx (the run handler reads
@@ -227,6 +241,17 @@ describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole',
     const threaded = runDevPipelineForGoalMock.mock.calls[0]?.[1];
     expect(threaded).toBeDefined();
     expect(Number(threaded)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('threads gatewayAdapters through executeGoal into the consensus executor (#4042)', async () => {
+    runConsensusForGoalMock.mockClear();
+    const gw = [{ modelId: 'gw-x' }] as unknown as Parameters<typeof buildDefaultExecutors>[1];
+    await executeGoal(
+      { goal: 'decide A or B', forceStrategy: 'consensus', execute: true },
+      { gatewayAdapters: gw }
+    );
+    // executeGoal -> buildDefaultExecutors -> consensus executor -> runConsensusForGoal(goal, undefined, gw)
+    expect(runConsensusForGoalMock).toHaveBeenCalledWith('decide A or B', undefined, gw);
   });
 });
 
