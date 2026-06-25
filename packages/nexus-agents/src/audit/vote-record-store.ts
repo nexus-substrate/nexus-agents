@@ -99,10 +99,21 @@ export function voteRecordWriteFailedMessage(path: string): string {
   );
 }
 
-/** Map a consensus outcome to the recorded decision vocabulary. */
-function outcomeToDecision(result: ConsensusResult): VoteRecord['decision'] {
+/**
+ * Map a consensus outcome to the recorded decision vocabulary. Mirrors the MCP
+ * response's `buildResponse` so the persisted record and the response never
+ * disagree (#4053): an error-policy short-circuit (`errorVoided`) or an
+ * all-error / no-quorum void is `no_quorum`, not a genuine `rejected`.
+ */
+function outcomeToDecision(
+  result: ConsensusResult,
+  votes: readonly AgentVoteResult[],
+  errorVoided: boolean
+): VoteRecord['decision'] {
   if (result.outcome === 'approved') return 'approved';
-  if (!result.quorumReached && result.outcome !== 'rejected') return 'no_quorum';
+  const errorCount = votes.filter((v) => v.source === 'error').length;
+  const allErrors = errorCount === votes.length && errorCount > 0;
+  if (errorVoided || (!result.quorumReached && allErrors)) return 'no_quorum';
   return 'rejected';
 }
 
@@ -124,6 +135,8 @@ export interface BuildVoteRecordInput {
   readonly strategy: VoteRecord['strategy'];
   readonly result: ConsensusResult;
   readonly votes: readonly AgentVoteResult[];
+  /** #4053: vote voided by an error-policy short-circuit → record `no_quorum`. */
+  readonly errorVoided?: boolean | undefined;
   readonly correlationId?: string | undefined;
   readonly recordedAt?: string | undefined;
   /**
@@ -165,7 +178,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     proposalHash: hashProposal(input.proposal),
     proposal: proposalTruncated,
     strategy: input.strategy,
-    decision: outcomeToDecision(input.result),
+    decision: outcomeToDecision(input.result, input.votes, input.errorVoided ?? false),
     approvalPercentage: input.result.approvalPercentage,
     voteCounts: {
       approve: input.result.voteCounts.approve,
