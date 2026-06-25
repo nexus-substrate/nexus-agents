@@ -480,6 +480,22 @@ rm -rf ~/.config/nexus-agents
 
 ## Troubleshooting
 
+### `npm warn deprecated` on install (benign — no action needed)
+
+Installing `nexus-agents` prints two deprecation warnings. **Both are benign,
+expected, and safe to ignore** — they come from transitive dependencies of
+upstream packages, not from anything in the nexus-agents runtime:
+
+| Warning                                                                | Where it comes from                                               | Why it's harmless                                                                                                                                                                          |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prebuild-install@…: No longer maintained`                             | `better-sqlite3` (latest still depends on it)                     | Runs only at **install time** to download the prebuilt SQLite binary. Not part of the runtime, not a security risk. ([#4043](https://github.com/nexus-substrate/nexus-agents/issues/4043)) |
+| `node-domexception@…: Use your platform's native DOMException instead` | `@google/genai` → `google-auth-library` → `gaxios` → `node-fetch` | A `DOMException` polyfill that is a no-op on Node ≥ 22 (which ships a native `DOMException`). Inert at runtime. ([#4044](https://github.com/nexus-substrate/nexus-agents/issues/4044))     |
+
+Neither can currently be removed by upgrading: both persist in the **latest**
+versions of those upstream packages, and a library's `overrides` do not
+propagate to consumers. They will clear once the upstream maintainers drop the
+deprecated transitive deps; the linked issues track that.
+
 ### "Cannot find module" errors
 
 Clear the npm cache and reinstall:
