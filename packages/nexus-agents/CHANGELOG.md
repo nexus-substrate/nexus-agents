@@ -1,5 +1,36 @@
 # nexus-agents
 
+## 2.140.2
+
+### Patch Changes
+
+- [#4051](https://github.com/nexus-substrate/nexus-agents/pull/4051) [`37721c6`](https://github.com/nexus-substrate/nexus-agents/commit/37721c6c5cf9ce9412102efe0d9b6852b60e59a5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Route the `run`/MetaOrchestrator consensus-strategy path through the in-process gateway ([#4042](https://github.com/nexus-substrate/nexus-agents/issues/4042))
+
+  [#4040](https://github.com/nexus-substrate/nexus-agents/issues/4040) routed `consensus_vote` and `pr_review` voters through the in-process gateway adapter
+  when configured, but consensus reached via the `run` tool's consensus strategy
+  (`runConsensusForGoal`) still called `executeVoting` with no gateway adapters — so it fell
+  back to the CLI subprocess voter path. This threads `gatewayAdapters` from the `run` tool's
+  deps through `buildDefaultExecutors` → `runConsensusForGoal` → `executeVoting`, so the `run`
+  consensus path matches the two MCP tools: in-process voters (no subprocess, no cross-process
+  key) when a gateway is configured, CLI fallback otherwise. Closes a gap surfaced by the [#4040](https://github.com/nexus-substrate/nexus-agents/issues/4040)
+  review; routing in-process also removes the subprocess that was the re-entrancy concern.
+
+- [#4054](https://github.com/nexus-substrate/nexus-agents/pull/4054) [`e62fa9f`](https://github.com/nexus-substrate/nexus-agents/commit/e62fa9f4472b03f7d92f1c495b06a8f076696e18) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `consensus_vote`: an error-policy short-circuit now returns `no_quorum`, not a misleading `rejected` ([#4053](https://github.com/nexus-substrate/nexus-agents/issues/4053))
+
+  When a vote short-circuited because too many voters errored — the >50% hard floor, or
+  `fail_closed` — the response reported `decision: rejected` even when the responding voters
+  approved (e.g. quickMode with 2 of 3 voters erroring and the 1 responder approving). That
+  conflates "couldn't get enough valid votes" with "the panel rejected the proposal." Such a
+  short-circuit now returns **`no_quorum`** (the existing decision status for insufficient
+  valid voters); `policyReason` still rides the response to explain why. The internal vote
+  breakdown is unchanged.
+
+  Note (not a code change): the same report's `architect`/`security` voters failing with
+  `openai/<model>: HTTP 400` is NOT a per-role or prefix bug — voters round-robin across the
+  gateway's discovered models, the `openai/` is the `providerId` error format (the request
+  sends the bare id), and those specific models fail per-model on that gateway. Tracked in
+  [#4049](https://github.com/nexus-substrate/nexus-agents/issues/4049) / [#4053](https://github.com/nexus-substrate/nexus-agents/issues/4053).
+
 ## 2.140.1
 
 ### Patch Changes
