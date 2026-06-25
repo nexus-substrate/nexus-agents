@@ -107,6 +107,39 @@ describe('buildVoteRecord', () => {
     });
     expect(record.voters.map((v) => v.role)).not.toContain('pm');
   });
+
+  it('persists no_quorum (not rejected) for an error-policy short-circuit, matching the response (#4053)', () => {
+    const record = buildVoteRecord({
+      id: 'vote-sc',
+      proposal: 'p',
+      strategy: 'simple_majority',
+      // short-circuit shape: 1 approver surfaced, no quorum, error-voided.
+      result: consensusResult({
+        outcome: 'rejected',
+        quorumReached: false,
+        approvalPercentage: 100,
+      }),
+      votes: [
+        agentVote('scope_steward', 'approve'),
+        agentVote('architect', 'abstain', 'error'),
+        agentVote('security', 'abstain', 'error'),
+      ],
+      errorVoided: true,
+    });
+    expect(record.decision).toBe('no_quorum');
+  });
+
+  it('keeps rejected for a genuine quorum-reached rejection (#4053)', () => {
+    const record = buildVoteRecord({
+      id: 'vote-rej',
+      proposal: 'p',
+      strategy: 'simple_majority',
+      result: consensusResult({ outcome: 'rejected', quorumReached: true, approvalPercentage: 20 }),
+      votes: [agentVote('architect', 'reject'), agentVote('security', 'reject')],
+      errorVoided: false,
+    });
+    expect(record.decision).toBe('rejected');
+  });
 });
 
 describe('persistVoteRecord', () => {

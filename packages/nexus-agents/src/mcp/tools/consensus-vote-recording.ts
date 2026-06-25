@@ -148,6 +148,8 @@ export function recordAuthenticVote(args: {
   correlationId?: string | undefined;
   /** Authority-tier ratification subject (#4004) — bound into the record's self-hash. */
   ratifies?: string | undefined;
+  /** #4053: vote voided by an error-policy short-circuit → persist `no_quorum`. */
+  errorVoided?: boolean | undefined;
 }): VoteRecordPersistOutcome {
   const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
@@ -179,6 +181,7 @@ export function recordAuthenticVote(args: {
     strategy: toRecordStrategy(args.strategy),
     result: args.result,
     votes: args.votes,
+    ...(args.errorVoided !== undefined ? { errorVoided: args.errorVoided } : {}),
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     logger,

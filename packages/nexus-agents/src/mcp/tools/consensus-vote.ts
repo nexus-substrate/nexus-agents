@@ -731,6 +731,9 @@ function recordVoteSideEffects(
     strategy,
     result: result.result,
     votes: result.votes,
+    // #4053: an error-policy short-circuit voided the vote → the PERSISTED record
+    // must record `no_quorum`, matching the MCP response (not a stale `rejected`).
+    errorVoided: result.policyReason !== undefined,
     correlationId: decisionId,
     ...(ratifies !== undefined ? { ratifies } : {}),
   });
