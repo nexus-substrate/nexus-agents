@@ -9,7 +9,7 @@
  * (Source: npm registry)
  */
 
-import OpenAI from 'openai';
+import OpenAI, { APIError } from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletion } from 'openai/resources/chat/completions';
 import type {
   Result,
@@ -68,6 +68,54 @@ export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from '.
  * }
  * ```
  */
+
+/**
+ * Compose a diagnostic string from an OpenAI SDK `APIError`'s real fields
+ * (#4047). The SDK's `.message` alone can be as useless as
+ * `"400 status code (no body)"` for an OpenAI-compatible gateway; this pulls the
+ * HTTP status, structured error fields, and the raw body so the actual rejection
+ * reason is visible.
+ */
+/** Typed structural view of the OpenAI SDK `APIError` fields we read (the SDK's
+ * generic `APIError<any,…>` otherwise leaks `any`). */
+interface ApiErrorView {
+  readonly status?: number | null;
+  readonly type?: string | null;
+  readonly code?: string | null;
+  readonly param?: string | null;
+  readonly requestID?: string | null;
+  readonly error?: unknown;
+  readonly message?: string;
+}
+
+/** `key=value` tag, or `''` when the value is absent. */
+function kvTag(key: string, val: string | number | null | undefined): string {
+  return val === null || val === undefined || val === '' ? '' : `${key}=${String(val)}`;
+}
+
+function describeOpenAIApiError(v: ApiErrorView): string {
+  const tags = [
+    `HTTP ${String(v.status ?? 'unknown')}`,
+    kvTag('type', v.type),
+    kvTag('code', v.code),
+    kvTag('param', v.param),
+    kvTag('request_id', v.requestID),
+  ].filter((t) => t !== '');
+  let body = '';
+  if (v.error !== undefined && v.error !== null) {
+    try {
+      const raw = JSON.stringify(v.error);
+      body = ` body=${raw.length > MAX_ERROR_BODY_CHARS ? `${raw.slice(0, MAX_ERROR_BODY_CHARS)}…` : raw}`;
+    } catch {
+      body = ' body=<unserializable>';
+    }
+  }
+  return `${tags.join(' ')}: ${v.message ?? ''}${body}`;
+}
+
+/** Cap the surfaced gateway error body so a huge response can't bloat logs/messages. */
+const MAX_ERROR_BODY_CHARS = 600;
+
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
@@ -165,6 +213,35 @@ export class OpenAIAdapter extends BaseAdapter {
     } catch (error) {
       return err(this.transformError(error));
     }
+  }
+
+  /**
+   * Surface an OpenAI / OpenAI-compatible gateway's REAL HTTP status + response
+   * body in the error (#4047). The OpenAI SDK's default message collapses a
+   * gateway rejection to e.g. `"400 status code (no body)"`, which hides WHY a
+   * litellm-style gateway rejected a request — exactly the wall hit when
+   * diagnosing degraded voter panels on a custom gateway. We re-message with the
+   * status/type/code/param/request-id/body. Error-code routing is unchanged: we
+   * classify on the ORIGINAL signal (`status`/`code`/`message`) via a clean probe
+   * error, so the diagnostic `request_id`/`body` can't pollute the message-
+   * substring classifier, then re-message the result with the full detail.
+   * Applies to direct OpenAI and the compat gateway alike.
+   */
+  protected override transformError(error: unknown): ModelError {
+    if (error instanceof APIError) {
+      const v = error as ApiErrorView;
+      // Classify on the original SDK message + status/code only.
+      const probe: Error & { status?: number | undefined; code?: string | null | undefined } =
+        new Error(typeof v.message === 'string' ? v.message : '');
+      probe.status = typeof v.status === 'number' ? v.status : undefined;
+      probe.code = v.code ?? undefined;
+      probe.cause = error;
+      const classified = super.transformError(probe);
+      // Surface the full diagnostic detail in the final message (code/cause kept).
+      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v)}`;
+      return classified;
+    }
+    return super.transformError(error);
   }
 
   /**
