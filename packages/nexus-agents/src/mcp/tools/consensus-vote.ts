@@ -654,10 +654,16 @@ export async function executeVoting(
  */
 export async function runConsensusForGoal(
   goal: string,
-  logger: ILogger = createLogger({ tool: 'consensus_vote' })
+  logger: ILogger = createLogger({ tool: 'consensus_vote' }),
+  gatewayAdapters?: readonly IModelAdapter[]
 ): Promise<ExtendedVotingResult> {
   // Parse through the schema so defaults (quickMode, simulateVotes:false) apply.
-  return executeVoting(ConsensusVoteInputSchema.parse({ proposal: goal }), logger);
+  // #4042: thread the in-process gateway adapters so the run/MetaOrchestrator
+  // consensus path routes voters through the gateway like consensus_vote (#4040),
+  // not the CLI subprocess.
+  return executeVoting(ConsensusVoteInputSchema.parse({ proposal: goal }), logger, {
+    ...(gatewayAdapters !== undefined && { gatewayAdapters }),
+  });
 }
 
 /** Build the final `ExtendedVotingResult` once the engine + cascade settle. */

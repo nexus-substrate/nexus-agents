@@ -398,6 +398,18 @@ function registerPrReview(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** run — threads gateway adapters (#4042) so the consensus strategy routes
+ * voters through the gateway, matching consensus_vote/pr_review (#4040). */
+function registerRun(ctx: ToolRegistrationContext): void {
+  registerRunTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('run'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+    ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
+    ...(ctx.gatewayAdapters !== undefined && { gatewayAdapters: ctx.gatewayAdapters }),
+  });
+}
+
 /** delegate_to_model — independent; does not require a model adapter. */
 function registerDelegate(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
@@ -689,7 +701,9 @@ const HANDLER_TABLE: Record<RegisteredToolName, ToolHandler> = {
     registerSuggestResearchTasksTool
   ),
   list_available_models: standardHandler('list_available_models', registerListAvailableModelsTool),
-  run: standardHandler('run', registerRunTool),
+  run: (ctx) => {
+    registerRun(ctx);
+  },
   verify_audit_chain: standardHandler('verify_audit_chain', registerVerifyAuditChainTool),
   extract_symbols: standardHandler('extract_symbols', registerExtractSymbolsTool),
   search_codebase: standardHandler('search_codebase', registerSearchCodebaseTool),
