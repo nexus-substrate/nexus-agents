@@ -456,6 +456,25 @@ describe('OpenAIAdapter', () => {
         expect(result.error.message).toContain('max_completion_tokens');
         // The bare model id (not a transport prefix) is what the request used.
         expect(result.error.message).toContain('openai/gpt-4o');
+        // 422 is not a special code → MODEL_ERROR (classification through the override).
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+      }
+    });
+
+    it('preserves error-code classification through the APIError override (429 → rate-limited)', async () => {
+      const apiError = new APIError(
+        429,
+        { error: { message: 'rate limited' } },
+        'too many',
+        undefined
+      );
+      mockCreate.mockRejectedValueOnce(apiError);
+      const adapter = new OpenAIAdapter(validConfig);
+      const result = await adapter.complete({ messages: [{ role: 'user', content: 'Hi!' }] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_RATE_LIMITED);
+        expect(result.error.message).toContain('HTTP 429');
       }
     });
 

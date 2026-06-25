@@ -104,13 +104,17 @@ function describeOpenAIApiError(v: ApiErrorView): string {
   let body = '';
   if (v.error !== undefined && v.error !== null) {
     try {
-      body = ` body=${JSON.stringify(v.error)}`;
+      const raw = JSON.stringify(v.error);
+      body = ` body=${raw.length > MAX_ERROR_BODY_CHARS ? `${raw.slice(0, MAX_ERROR_BODY_CHARS)}…` : raw}`;
     } catch {
       body = ' body=<unserializable>';
     }
   }
   return `${tags.join(' ')}: ${v.message ?? ''}${body}`;
 }
+
+/** Cap the surfaced gateway error body so a huge response can't bloat logs/messages. */
+const MAX_ERROR_BODY_CHARS = 600;
 
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
@@ -217,19 +221,25 @@ export class OpenAIAdapter extends BaseAdapter {
    * gateway rejection to e.g. `"400 status code (no body)"`, which hides WHY a
    * litellm-style gateway rejected a request — exactly the wall hit when
    * diagnosing degraded voter panels on a custom gateway. We re-message with the
-   * status/type/code/param/request-id/body while preserving the fields the base
-   * classifier keys on (`status`/`code`/`message`), so error-code routing is
-   * unchanged. Applies to direct OpenAI and the compat gateway alike.
+   * status/type/code/param/request-id/body. Error-code routing is unchanged: we
+   * classify on the ORIGINAL signal (`status`/`code`/`message`) via a clean probe
+   * error, so the diagnostic `request_id`/`body` can't pollute the message-
+   * substring classifier, then re-message the result with the full detail.
+   * Applies to direct OpenAI and the compat gateway alike.
    */
   protected override transformError(error: unknown): ModelError {
     if (error instanceof APIError) {
       const v = error as ApiErrorView;
-      const tagged: Error & { status?: number | undefined; code?: string | null | undefined } =
-        new Error(describeOpenAIApiError(v));
-      tagged.status = typeof v.status === 'number' ? v.status : undefined;
-      tagged.code = v.code ?? undefined;
-      tagged.cause = error;
-      return super.transformError(tagged);
+      // Classify on the original SDK message + status/code only.
+      const probe: Error & { status?: number | undefined; code?: string | null | undefined } =
+        new Error(typeof v.message === 'string' ? v.message : '');
+      probe.status = typeof v.status === 'number' ? v.status : undefined;
+      probe.code = v.code ?? undefined;
+      probe.cause = error;
+      const classified = super.transformError(probe);
+      // Surface the full diagnostic detail in the final message (code/cause kept).
+      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v)}`;
+      return classified;
     }
     return super.transformError(error);
   }
