@@ -19,16 +19,21 @@ const mocks = vi.hoisted(() => {
   return { mockCreate };
 });
 
-// Mock the OpenAI SDK - reference hoisted mock
-vi.mock('openai', () => ({
-  default: class MockOpenAI {
-    chat = {
-      completions: {
-        create: mocks.mockCreate,
-      },
-    };
-  },
-}));
+// Mock the OpenAI SDK - reference hoisted mock. Keep the REAL `APIError` (the
+// adapter's #4047 error-surfacing does `instanceof APIError`), only stub the client.
+vi.mock('openai', async () => {
+  const actual = await vi.importActual<typeof import('openai')>('openai');
+  return {
+    default: class MockOpenAI {
+      chat = {
+        completions: {
+          create: mocks.mockCreate,
+        },
+      };
+    },
+    APIError: actual.APIError,
+  };
+});
 
 // Re-export for test access
 const mockCreate = mocks.mockCreate;
@@ -40,6 +45,7 @@ import {
   OPENAI_MODEL_ALIASES,
   type OpenAIAdapterConfig,
 } from './openai-adapter.js';
+import { APIError } from 'openai';
 
 describe('OpenAIAdapter', () => {
   const validConfig: OpenAIAdapterConfig = {
@@ -420,6 +426,45 @@ describe('OpenAIAdapter', () => {
       if (!result.ok) {
         expect(result.error.code).toBe(ErrorCode.MODEL_RATE_LIMITED);
       }
+    });
+
+    it('surfaces the gateway HTTP status + body for an OpenAI APIError (#4047)', async () => {
+      // A compat gateway's rejection — previously collapsed to an opaque
+      // "<provider>/<model>: 400 status code (no body)".
+      const apiError = new APIError(
+        422,
+        {
+          error: {
+            message: 'unsupported parameter',
+            type: 'invalid_request_error',
+            param: 'max_completion_tokens',
+          },
+        },
+        'unprocessable',
+        undefined
+      );
+      mockCreate.mockRejectedValueOnce(apiError);
+
+      const adapter = new OpenAIAdapter(validConfig);
+      const result = await adapter.complete({ messages: [{ role: 'user', content: 'Hi!' }] });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        // Real status is now explicit (not the SDK's opaque collapse)...
+        expect(result.error.message).toContain('HTTP 422');
+        // ...and the gateway's body (which carries the real reason) is surfaced.
+        expect(result.error.message).toContain('max_completion_tokens');
+        // The bare model id (not a transport prefix) is what the request used.
+        expect(result.error.message).toContain('openai/gpt-4o');
+      }
+    });
+
+    it('leaves non-APIError errors unchanged (classification preserved)', async () => {
+      mockCreate.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 503 }));
+      const adapter = new OpenAIAdapter(validConfig);
+      const result = await adapter.complete({ messages: [{ role: 'user', content: 'Hi!' }] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toContain('boom');
     });
 
     it('should set MODEL_TIMEOUT error code for timeout errors', async () => {

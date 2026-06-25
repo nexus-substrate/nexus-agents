@@ -9,7 +9,7 @@
  * (Source: npm registry)
  */
 
-import OpenAI from 'openai';
+import OpenAI, { APIError } from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletion } from 'openai/resources/chat/completions';
 import type {
   Result,
@@ -68,6 +68,50 @@ export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from '.
  * }
  * ```
  */
+
+/**
+ * Compose a diagnostic string from an OpenAI SDK `APIError`'s real fields
+ * (#4047). The SDK's `.message` alone can be as useless as
+ * `"400 status code (no body)"` for an OpenAI-compatible gateway; this pulls the
+ * HTTP status, structured error fields, and the raw body so the actual rejection
+ * reason is visible.
+ */
+/** Typed structural view of the OpenAI SDK `APIError` fields we read (the SDK's
+ * generic `APIError<any,…>` otherwise leaks `any`). */
+interface ApiErrorView {
+  readonly status?: number | null;
+  readonly type?: string | null;
+  readonly code?: string | null;
+  readonly param?: string | null;
+  readonly requestID?: string | null;
+  readonly error?: unknown;
+  readonly message?: string;
+}
+
+/** `key=value` tag, or `''` when the value is absent. */
+function kvTag(key: string, val: string | number | null | undefined): string {
+  return val === null || val === undefined || val === '' ? '' : `${key}=${String(val)}`;
+}
+
+function describeOpenAIApiError(v: ApiErrorView): string {
+  const tags = [
+    `HTTP ${String(v.status ?? 'unknown')}`,
+    kvTag('type', v.type),
+    kvTag('code', v.code),
+    kvTag('param', v.param),
+    kvTag('request_id', v.requestID),
+  ].filter((t) => t !== '');
+  let body = '';
+  if (v.error !== undefined && v.error !== null) {
+    try {
+      body = ` body=${JSON.stringify(v.error)}`;
+    } catch {
+      body = ' body=<unserializable>';
+    }
+  }
+  return `${tags.join(' ')}: ${v.message ?? ''}${body}`;
+}
+
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
@@ -165,6 +209,29 @@ export class OpenAIAdapter extends BaseAdapter {
     } catch (error) {
       return err(this.transformError(error));
     }
+  }
+
+  /**
+   * Surface an OpenAI / OpenAI-compatible gateway's REAL HTTP status + response
+   * body in the error (#4047). The OpenAI SDK's default message collapses a
+   * gateway rejection to e.g. `"400 status code (no body)"`, which hides WHY a
+   * litellm-style gateway rejected a request — exactly the wall hit when
+   * diagnosing degraded voter panels on a custom gateway. We re-message with the
+   * status/type/code/param/request-id/body while preserving the fields the base
+   * classifier keys on (`status`/`code`/`message`), so error-code routing is
+   * unchanged. Applies to direct OpenAI and the compat gateway alike.
+   */
+  protected override transformError(error: unknown): ModelError {
+    if (error instanceof APIError) {
+      const v = error as ApiErrorView;
+      const tagged: Error & { status?: number | undefined; code?: string | null | undefined } =
+        new Error(describeOpenAIApiError(v));
+      tagged.status = typeof v.status === 'number' ? v.status : undefined;
+      tagged.code = v.code ?? undefined;
+      tagged.cause = error;
+      return super.transformError(tagged);
+    }
+    return super.transformError(error);
   }
 
   /**
