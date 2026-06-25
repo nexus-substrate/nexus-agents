@@ -797,9 +797,55 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
     const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
     const response = buildResponse(input, base);
     expect(response.policyReason).toBe('fail_closed: 1 voter(s) errored');
-    // honest: 1 approve surfaced, decision still rejected
+    // honest: 1 approve surfaced; an error-policy short-circuit voids the vote →
+    // decision is no_quorum (too many errors to decide), NOT rejected (#4053).
     expect(response.voteCounts.approve).toBe(1);
-    expect(response.decision).toBe('rejected');
+    expect(response.decision).toBe('no_quorum');
+  });
+
+  it('quickMode >50%-error hard floor → no_quorum, not a misleading rejected (#4053)', () => {
+    // The reported case: 3-voter quickMode, 2 voters error, the 1 responder
+    // APPROVES. The >50% hard floor voids the vote — that is no_quorum, and
+    // reporting `rejected` (when the only valid voter approved) is misleading.
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'scope_steward',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'architect',
+        vote: { decision: 'abstain', reasoning: 'HTTP 400', confidence: 0 },
+        processingTimeMs: 40,
+        source: 'error',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'HTTP 400', confidence: 0 },
+        processingTimeMs: 40,
+        source: 'error',
+      },
+    ];
+    const reason = 'Errors exceeded 50% of voters (2/3)';
+    const base: ExtendedVotingResult = {
+      proposal: 'ship it',
+      threshold: 'simple_majority',
+      result: createPolicyFailedResult('ship it', 'simple_majority', reason, votes),
+      votes,
+      totalTimeMs: 100,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      policyReason: reason,
+    };
+    const response = buildResponse(
+      { proposal: 'ship it', simulateVotes: false, quickMode: true },
+      base
+    );
+    expect(response.decision).toBe('no_quorum');
+    expect(response.decision).not.toBe('rejected');
+    expect(response.voteCounts).toMatchObject({ approve: 1, error: 2 });
+    expect(response.policyReason).toBe(reason);
   });
 
   function makeShortCircuitResult(): ExtendedVotingResult {

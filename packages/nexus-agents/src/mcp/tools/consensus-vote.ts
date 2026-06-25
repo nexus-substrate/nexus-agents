@@ -200,10 +200,11 @@ function createEmptyConsensusResult(
  * (#2630). Reused for both the hard floor (errors > 50%) and `fail_closed`.
  * Stamps the reason on the proposal title and, since #3124, reports the TRUE
  * vote breakdown of the responding (non-error) voters instead of all-zeros —
- * the outcome stays `rejected` (the policy failed closed), but the counts and
- * `approvalPercentage` are honest (e.g. 6 approvals + 1 error → approve:6,
- * 100%) so callers/audit can see the policy short-circuited a real consensus
- * rather than mistake it for a genuine rejection.
+ * the internal `outcome` stays `rejected` (the policy failed closed), but the
+ * counts and `approvalPercentage` are honest (e.g. 6 approvals + 1 error →
+ * approve:6, 100%). As of #4053 the user-facing `decision` for this short-circuit
+ * is `no_quorum` (not `rejected`) — too many voters errored to reach a valid
+ * consensus, which is distinct from the panel rejecting the proposal.
  */
 export function createPolicyFailedResult(
   proposal: string,

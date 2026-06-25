@@ -413,8 +413,16 @@ export function buildResponse(
   const errorCount = result.votes.filter((v) => v.source === 'error').length;
 
   const allErrors = errorCount === result.votes.length && errorCount > 0;
+  // #4053: an error-policy short-circuit (the >50% hard floor, or fail_closed)
+  // VOIDED the vote because too many voters errored — that is "couldn't get
+  // enough valid votes" (no_quorum), NOT the panel rejecting the proposal.
+  // Reporting `rejected` when the responding voters actually approved is
+  // misleading (e.g. quickMode 1 approve + 2 error → no_quorum, not rejected).
+  // `policyReason` is set iff such a short-circuit occurred; it still rides the
+  // response so callers see WHY there was no quorum.
+  const errorVoidedVote = result.policyReason !== undefined;
   const decision: VoteDecisionStatus =
-    !result.result.quorumReached && allErrors
+    errorVoidedVote || (!result.result.quorumReached && allErrors)
       ? 'no_quorum'
       : mapOutcomeToDecision(result.result.outcome);
 
