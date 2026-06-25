@@ -243,13 +243,15 @@ describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole',
     expect(Number(threaded)).toBeGreaterThanOrEqual(3);
   });
 
-  it('threads gatewayAdapters into the consensus executor (#4042)', () => {
+  it('threads gatewayAdapters through executeGoal into the consensus executor (#4042)', async () => {
     runConsensusForGoalMock.mockClear();
     const gw = [{ modelId: 'gw-x' }] as unknown as Parameters<typeof buildDefaultExecutors>[1];
-    const executors = buildDefaultExecutors('3', gw);
-    void executors.consensus({} as never, { goal: 'ship it' });
-    // executor: runConsensusForGoal(goal, undefined, gatewayAdapters)
-    expect(runConsensusForGoalMock).toHaveBeenCalledWith('ship it', undefined, gw);
+    await executeGoal(
+      { goal: 'decide A or B', forceStrategy: 'consensus', execute: true },
+      { gatewayAdapters: gw }
+    );
+    // executeGoal -> buildDefaultExecutors -> consensus executor -> runConsensusForGoal(goal, undefined, gw)
+    expect(runConsensusForGoalMock).toHaveBeenCalledWith('decide A or B', undefined, gw);
   });
 });
 
