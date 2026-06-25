@@ -127,11 +127,11 @@ and [T5](#t5-missing--selective-omission). The tool is read-only (`:9-14`).
 
 ## 2. Adversary model
 
-| Adversary | Capability | Primary relevance |
-| --------- | ---------- | ----------------- |
-| **Storage compromise** | Read/write to `logDir` files only; cannot run the logger process or modify code. | T1–T6 |
-| **Process compromise** | Runs as the logger; can call `computeEventHash`, knows the algorithm, holds no secret key (there is none). | T3, T4, T8 |
-| **Code/tool compromise** | Can modify `audit-logger.ts` or the verify tool / its inputs. | T9 |
+| Adversary                | Capability                                                                                                 | Primary relevance |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------- |
+| **Storage compromise**   | Read/write to `logDir` files only; cannot run the logger process or modify code.                           | T1–T6             |
+| **Process compromise**   | Runs as the logger; can call `computeEventHash`, knows the algorithm, holds no secret key (there is none). | T3, T4, T8        |
+| **Code/tool compromise** | Can modify `audit-logger.ts` or the verify tool / its inputs.                                              | T9                |
 
 The critical observation: **the hashing algorithm uses no secret.**
 `computeEventHash` is a keyless `SHA-256` (`audit-logger.ts:45-56`). Any
@@ -264,7 +264,7 @@ hash). Each log directory's chain floats free.
 `policyDecision`, `violationType`, `severity`, `timestampMs`, `traceId`, etc.
 (see [§1.2](#12-how-entries-link-prevhash--hash)).
 
-**Detected?** **Partially — qualified since #3921.** For a *normal* event,
+**Detected?** **Partially — qualified since #3921.** For a _normal_ event,
 `computeEventHash` hashes only
 `{id, timestamp, category, action, outcome, actor, previousHash}`
 (`audit-logger.ts:~64`). Mutating an unhashed field leaves the stored `hash`
@@ -293,7 +293,7 @@ first line's `hash`).
 short-circuit `events[0]?.hash === undefined ⇒ { ok: true }`
 (`audit-logger.ts:131`) and reports success on a completely unprotected log. A
 green `verify_audit_chain` result does **not** prove the log was hash-chained —
-only that *if* it claims to be chained, it is internally consistent.
+only that _if_ it claims to be chained, it is internally consistent.
 
 **Residual risk: HIGH.** "OK" is ambiguous between "verified chained log" and
 "un-chained log, nothing to verify". Mitigation would require the tool to report
@@ -321,17 +321,17 @@ of the log. The single-key/no-key in-repo design cannot self-defend here.
 
 ## 4. Threat summary
 
-| # | Threat | Detected by `verify_audit_chain` today? | Residual risk |
-| - | ------ | --------------------------------------- | ------------- |
-| T1 | Truncation (drop tail) | No | HIGH |
-| T2 | Fork (divergent chains) | No (single view) | HIGH |
-| T3 | Rewrite-and-rehash | **No** (fundamental) | HIGH |
-| T4 | Reordering | Yes if not rehashed; No if rehashed | MEDIUM |
-| T5 | Missing / selective omission | Yes if not re-stitched; No if re-stitched | MEDIUM–HIGH |
-| T6 | First-record integrity (no anchor) | No | HIGH |
-| T7 | Content tampering in unhashed fields | **No** | HIGH |
-| T8 | Chain-disable / downgrade | No (reports OK) | HIGH |
-| T9 | Verifier tampering | No (by definition) | HIGH |
+| #   | Threat                               | Detected by `verify_audit_chain` today?   | Residual risk |
+| --- | ------------------------------------ | ----------------------------------------- | ------------- |
+| T1  | Truncation (drop tail)               | No                                        | HIGH          |
+| T2  | Fork (divergent chains)              | No (single view)                          | HIGH          |
+| T3  | Rewrite-and-rehash                   | **No** (fundamental)                      | HIGH          |
+| T4  | Reordering                           | Yes if not rehashed; No if rehashed       | MEDIUM        |
+| T5  | Missing / selective omission         | Yes if not re-stitched; No if re-stitched | MEDIUM–HIGH   |
+| T6  | First-record integrity (no anchor)   | No                                        | HIGH          |
+| T7  | Content tampering in unhashed fields | **No**                                    | HIGH          |
+| T8  | Chain-disable / downgrade            | No (reports OK)                           | HIGH          |
+| T9  | Verifier tampering                   | No (by definition)                        | HIGH          |
 
 **The chain reliably detects exactly one class of attack:** in-place edits or
 naive deletions/reorderings by an adversary who does **not** recompute the chain
@@ -348,7 +348,7 @@ keyless hash (T3 and its specializations) is **undetectable**.
 - **In-place tamper-evidence** via SHA-256 chaining of a subset of fields
   (`audit-logger.ts:45-56`, `:129`).
 - **Path-traversal protection** on `logDir` (`audit-storage.ts:56`, `:80`),
-  including a system-directory denylist (`:100`) — protects *where* logs are
+  including a system-directory denylist (`:100`) — protects _where_ logs are
   written, not their integrity once written.
 - **Read-only verifier** that never mutates the log (`verify-audit-chain-tool.ts:9-14`).
 - **Append-mode writes** (`audit-storage.ts:236`) — a convention, not enforcement.
@@ -399,6 +399,17 @@ Ranked by risk-reduction-per-effort. All are **out of scope for this doc**
    monotonic, non-decreasing `timestampMs` in `verifyChain`.** Strengthens
    **T4** and makes gaps in **T5** visible even when re-stitched (a gap in the
    sequence is detectable). Low–medium effort.
+
+   > Partially adopted in the SET-based record stores (`vote-record.ts`,
+   > `pr-review-record.ts`, #3927): records carry a monotonic `sequence`, and
+   > `verify*RecordSet` flags any hole in the `0..maxSeq` run as `sequence_gap`.
+   > **Known residual gap (#4011):** because duplicate sequences are a benign
+   > concurrent-fork signal, deleting ONE partner of a fork leaves the survivor on
+   > that sequence — no gap, so verification still returns `ok`. Sequence-gap
+   > omission detection therefore does NOT cover a deleted fork partner. This sits
+   > within the residual-trust boundary (records are author-typed and unsigned);
+   > closing it requires per-record signing (rec #3 / #3927 item 4), not the
+   > sequence mechanism alone.
 
 5. **Make `verify_audit_chain` fail-closed (or warn loudly) on an un-chained
    log when chaining is expected**, and report `chained: true/false` in its

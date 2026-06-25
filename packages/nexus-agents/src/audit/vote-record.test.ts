@@ -187,6 +187,23 @@ describe('verifyVoteRecordSet', () => {
       expect(result.forks).toEqual([1]);
     }
   });
+
+  it('does NOT detect a deleted fork PARTNER — documented residual gap (#4011)', () => {
+    // A fork resolved {approve @1, reject @1}. The `reject` partner is deleted,
+    // leaving its `approve` survivor occupying sequence 1. No 0..maxSeq hole
+    // appears, so verification still returns ok — sequence-gap omission detection
+    // canNOT catch a deleted fork partner. This pins the disclosed limitation;
+    // if a future change makes this detectable, update the vote-record.ts docs.
+    const survivorOnly = [makeRecord('vote-1', 0), makeRecord('vote-2a', 1)];
+    const result = verifyVoteRecordSet(survivorOnly);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // No `forks` surfaced (only one record now carries sequence 1) and no gap —
+      // the deletion is invisible to verification, exactly as documented.
+      expect(result.forks).toBeUndefined();
+      expect(result.recordCount).toBe(2);
+    }
+  });
 });
 
 describe('ratifies subject-binding field (#3927 item 1, schema 1.2)', () => {
