@@ -32,12 +32,20 @@ import {
   buildPrReviewProposal,
   mapVoteDecisionToPrDecision,
   registerPrReviewTool,
+  type PrReviewAggregate,
   type PrReviewVote,
 } from './pr-review-tool.js';
+import { persistReviewRecord } from './pr-review-record-producer.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { createLogger } from '../../core/index.js';
+import {
+  PR_REVIEW_RECORDS_PATH_ENV,
+  readPrReviewRecords,
+} from '../../audit/pr-review-record-store.js';
+import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
+import { verifyPrReviewRecordSet } from '../../audit/pr-review-record.js';
 
 describe('pr_review tool', () => {
   describe('PR_REVIEW_ROLES', () => {
@@ -456,5 +464,126 @@ describe('pr_review async dispatch (#3731)', () => {
     await new Promise((r) => setImmediate(r));
     const record = readJobResult(jobId);
     expect(record?.status).toBe('complete');
+  });
+});
+
+describe('pr_review Option-C audit-record persistence (#4031)', () => {
+  const BASE_SHA = 'c'.repeat(40);
+  const APPROVE_AGG: PrReviewAggregate = { decision: 'approve', verified: true };
+  const COUNTS = { approveCount: 5, requestChangesCount: 0, abstainCount: 0, errorCount: 0 };
+  const logger = createLogger({ tool: 'pr-review-test' });
+
+  let dir: string;
+  let prevEnv: string | undefined;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pr-review-tool-records-'));
+    prevEnv = process.env[PR_REVIEW_RECORDS_PATH_ENV];
+    process.env[PR_REVIEW_RECORDS_PATH_ENV] = join(dir, 'pr-review-records.jsonl');
+  });
+
+  afterEach(() => {
+    if (prevEnv === undefined) Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+    else process.env[PR_REVIEW_RECORDS_PATH_ENV] = prevEnv;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function input(
+    overrides: Record<string, unknown> = {}
+  ): ReturnType<typeof PrReviewInputSchema.parse> {
+    return PrReviewInputSchema.parse({
+      prTitle: 'Add audit producer',
+      prDiff: 'diff --git a/x b/x\n+line\n',
+      simulate: false,
+      ...overrides,
+    });
+  }
+
+  it('persists a record bound to {prNumber, baseSha, reviewedDiffHash} when both inputs + live review', () => {
+    const parsed = input({ prNumber: 99, baseSha: BASE_SHA });
+    const outcome = persistReviewRecord({
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    expect(outcome.persisted).toBe(true);
+    if (!outcome.persisted) throw new Error('expected persisted');
+    expect(outcome.prNumber).toBe(99);
+    expect(outcome.baseSha).toBe(BASE_SHA);
+    // Parity with the gate: producer hashes the EXACT prDiff via the same
+    // canonical computeReviewedDiffHash the gate recomputes with (#4031 condition).
+    expect(outcome.reviewedDiffHash).toBe(computeReviewedDiffHash(parsed.prDiff));
+    expect(outcome.sequence).toBe(0);
+
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    const { records, invalidLines } = readPrReviewRecords(path);
+    expect(invalidLines).toEqual([]);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.verdict).toBe('approve');
+    expect(verifyPrReviewRecordSet(records).ok).toBe(true);
+  });
+
+  it('skips with binding-inputs-absent when prNumber or baseSha is missing', () => {
+    const onlyPr = persistReviewRecord({
+      input: input({ prNumber: 99 }),
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(onlyPr).toEqual(
+      expect.objectContaining({ persisted: false, reason: 'binding-inputs-absent' })
+    );
+    const onlySha = persistReviewRecord({
+      input: input({ baseSha: BASE_SHA }),
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(onlySha).toEqual(
+      expect.objectContaining({ persisted: false, reason: 'binding-inputs-absent' })
+    );
+    // Nothing written.
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    expect(readPrReviewRecords(path).records).toHaveLength(0);
+  });
+
+  it('skips with reason=simulated even when the binding is present (no governance from non-live output)', () => {
+    const outcome = persistReviewRecord({
+      input: input({ prNumber: 99, baseSha: BASE_SHA, simulate: true }),
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(outcome).toEqual(expect.objectContaining({ persisted: false, reason: 'simulated' }));
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    expect(readPrReviewRecords(path).records).toHaveLength(0);
+  });
+
+  it('skips with reason=no-live-votes when every voter errored (no false gate pass)', () => {
+    // An all-errored panel still aggregates to {abstain, verified:true}, but no
+    // voter actually reviewed — persisting would write a gate-satisfying record
+    // for a review that never happened (#4031 adversarial-review BLOCKER).
+    const allErrored = {
+      approveCount: 0,
+      requestChangesCount: 0,
+      abstainCount: 0,
+      errorCount: 5,
+    };
+    const outcome = persistReviewRecord({
+      input: input({ prNumber: 99, baseSha: BASE_SHA }),
+      aggregate: APPROVE_AGG,
+      counts: allErrored,
+      reviewCount: 5,
+      logger,
+    });
+    expect(outcome).toEqual(expect.objectContaining({ persisted: false, reason: 'no-live-votes' }));
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    expect(readPrReviewRecords(path).records).toHaveLength(0);
   });
 });

@@ -6,12 +6,13 @@
  * review gate (`scripts/check-governor-review.ts`, #3831) can QUERY it from CI:
  * does a sha-bound, verified review exist for THIS PR's number AND head sha?
  *
- * SCOPE (#3831 Stage 1). This module deliberately exposes only the PURE builder
- * ({@link buildPrReviewRecord}) and the READER ({@link readPrReviewRecords}) plus
- * the path resolution — the seam the gate and tests need. The PRODUCER (pr_review
- * writing records as a side effect, the caller-commits flow shared with #3927) is
- * a tracked FOLLOW-ON and intentionally NOT wired here, so this stage adds the
- * gate + schema + verification without changing the pr_review write path.
+ * SCOPE. Stage 1 (#3831) added the PURE builder ({@link buildPrReviewRecord}) and
+ * the READER ({@link readPrReviewRecords}) plus path resolution — the seam the gate
+ * and tests need. Stage 2 (#4031) adds the PRODUCER ({@link persistPrReviewRecord},
+ * mirroring `persistVoteRecord`): pr_review writes a record as a best-effort side
+ * effect so the warn-first gate can finally find authentic, diff-bound records (the
+ * prerequisite to ever flipping it from warn to enforce). Persistence never throws
+ * into the review path.
  *
  * MERGE SAFETY (mirrors #3927). The ledger is a SET, not a chain: `sequence` is
  * assigned as (max existing sequence)+1, and the self-hash excludes
@@ -22,10 +23,12 @@
  * @module audit/pr-review-record-store
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { findRepoRoot } from '../config/repo-root-detection.js';
+import type { ILogger } from '../core/index.js';
+import { createLogger, getErrorMessage } from '../core/index.js';
 
 import type { PrReviewRecord, PrReviewVerdict, PrReviewVoteCounts } from './pr-review-record.js';
 import { PrReviewRecordSchema, computePrReviewRecordHash } from './pr-review-record.js';
@@ -151,4 +154,105 @@ export function readPrReviewRecords(filePath: string): {
     }
   }
   return { records, invalidLines };
+}
+
+/**
+ * Read the ledger tip: the maximum existing `sequence` and the advisory last-line
+ * hash. Mirrors the vote-record store's `readLedgerTip` (#3927). The producer
+ * assigns the next record `sequence = maxSequence + 1` and records `previousHash`
+ * as the last line's hash (advisory audit texture; NOT covered by the self-hash,
+ * so concurrent appends from the same tip stay merge-safe under `merge=union`).
+ * Returns `{ maxSequence: -1, lastHash: undefined }` for a missing/empty/unreadable
+ * ledger — a tip read must never fail the producer that follows.
+ */
+function readPrReviewLedgerTip(
+  filePath: string,
+  logger: ILogger
+): { maxSequence: number; lastHash: string | undefined } {
+  if (!existsSync(filePath)) return { maxSequence: -1, lastHash: undefined };
+  try {
+    const { records } = readPrReviewRecords(filePath);
+    if (records.length === 0) return { maxSequence: -1, lastHash: undefined };
+    let maxSequence = -1;
+    for (const record of records) {
+      if (record.sequence > maxSequence) maxSequence = record.sequence;
+    }
+    const last = records[records.length - 1];
+    return { maxSequence, lastHash: last?.hash };
+  } catch (error: unknown) {
+    logger.warn('Failed to read pr-review-record ledger tip', { error: getErrorMessage(error) });
+    return { maxSequence: -1, lastHash: undefined };
+  }
+}
+
+/** Options for {@link persistPrReviewRecord}. `sequence`/`previousHash` are assigned by the store. */
+export interface PersistPrReviewRecordOptions extends Omit<
+  BuildPrReviewRecordInput,
+  'previousHash' | 'sequence'
+> {
+  /**
+   * Override the artifact path; takes precedence over {@link PR_REVIEW_RECORDS_PATH_ENV}
+   * and the {@link resolvePrReviewRecordsPath} resolution.
+   */
+  readonly filePath?: string | undefined;
+  readonly logger?: ILogger | undefined;
+}
+
+/**
+ * Persist an authentic pr-review record (#4031, the #3831 Stage-2 producer that
+ * Stage 1 deferred). Best-effort and append-only: reads the ledger tip (max
+ * sequence + advisory last hash), assigns the next monotonic `sequence`, builds a
+ * self-hashed {@link PrReviewRecord} binding {prNumber, baseSha, reviewedDiffHash,
+ * verdict}, and appends one JSON line. Returns the written record — or `undefined`
+ * when the path could not be resolved or the write failed. Persistence NEVER
+ * throws into the review path (an audit sink must not break the operation it
+ * observes), mirroring {@link persistVoteRecord} and the warn-first posture of the
+ * gate this feeds.
+ *
+ * AUTHENTICITY (the load-bearing invariant the design vote flagged): the caller
+ * MUST pass `reviewedDiffHash` computed over the EXACT diff the voters reviewed
+ * (`computeReviewedDiffHash(prDiff)`), never a re-fetched/drifted diff — an
+ * authentic-looking record bound to the wrong artifact is worse than no record.
+ * `baseSha` is CALLER-ASSERTED and NOT cross-validated against the diff here; for
+ * the current warn-first phase this is acceptable, but a future warn→enforce flip
+ * (#3831) MUST NOT treat `baseSha` as verified provenance without adding that check.
+ *
+ * Path precedence: `opts.filePath` > {@link PR_REVIEW_RECORDS_PATH_ENV} >
+ * {@link resolvePrReviewRecordsPath}.
+ */
+export function persistPrReviewRecord(
+  opts: PersistPrReviewRecordOptions
+): PrReviewRecord | undefined {
+  const logger = opts.logger ?? createLogger({ component: 'pr-review-record-store' });
+  const filePath = opts.filePath ?? resolvePrReviewRecordsPath();
+  if (filePath === undefined) {
+    logger.warn('Cannot persist pr-review record: no records path resolved', {
+      prNumber: opts.prNumber,
+    });
+    return undefined;
+  }
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    const { maxSequence, lastHash } = readPrReviewLedgerTip(filePath, logger);
+    const record = buildPrReviewRecord({
+      ...opts,
+      sequence: maxSequence + 1,
+      previousHash: lastHash,
+    });
+    appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf-8');
+    logger.info('Persisted authentic pr-review record', {
+      prNumber: record.prNumber,
+      verdict: record.verdict,
+      sequence: record.sequence,
+      path: filePath,
+    });
+    return record;
+  } catch (error: unknown) {
+    logger.warn('Failed to persist authentic pr-review record', {
+      error: getErrorMessage(error),
+      prNumber: opts.prNumber,
+      path: filePath,
+    });
+    return undefined;
+  }
 }
