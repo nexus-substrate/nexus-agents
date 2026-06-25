@@ -46,6 +46,7 @@ import {
   parseFindings,
   type Finding,
 } from './pr-review-findings.js';
+import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
 
 export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
 
@@ -105,6 +106,30 @@ export const PrReviewInputSchema = z.object({
     .describe('Optional one-paragraph repo context (architecture, conventions)'),
   baseRef: z.string().max(200).optional().describe('Base branch ref (e.g. main)'),
   headRef: z.string().max(200).optional().describe('Head branch ref'),
+  /**
+   * Option-C audit binding (#4031). When BOTH `prNumber` and `baseSha` are
+   * supplied AND the review is live (not simulated), pr_review persists an
+   * authentic, self-hashed pr-review record binding {prNumber, baseSha,
+   * reviewedDiffHash(prDiff), verdict} to the governance ledger — the record the
+   * warn-first governor-review gate (#3831) queries. Omit either to skip
+   * persistence (a structured `recordOutcome` note explains why). IMPORTANT: for
+   * the gate to FIND the record, `prDiff`'s first 50_000 bytes must match the
+   * canonical `git diff <baseSha>..<headSha>` the gate recomputes (the hash
+   * truncates at that byte cap) — pass the canonical diff, not a reordered one.
+   */
+  prNumber: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('PR number — with baseSha, enables Option-C audit-record persistence (#4031)'),
+  baseSha: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/, 'baseSha must be a 40-char lowercase hex commit sha')
+    .optional()
+    .describe(
+      '40-hex base commit sha the reviewed diff was computed from (Option-C binding, #4031)'
+    ),
   simulate: z
     .boolean()
     .default(false)
@@ -176,6 +201,12 @@ export interface PrReviewResponse {
    * adapter reported no usage are counted as unmeasured, not a measured $0).
    */
   readonly costSummary?: DecisionCostSummary;
+  /**
+   * Option-C audit-record persistence outcome (#4031). Present on every
+   * response: `persisted: true` with the record's binding + sequence when an
+   * authentic record was written, otherwise `persisted: false` with the reason.
+   */
+  readonly recordOutcome?: PrReviewRecordOutcome;
 }
 
 export interface PrReviewDeps extends BaseMcpToolDeps {
@@ -392,6 +423,18 @@ async function executePrReviewBody(
     });
   }
 
+  // #4031: best-effort Option-C audit-record persistence. The producer surfaces
+  // every non-persist (binding absent / simulated / no quorum / write-failed) as
+  // a structured outcome and never throws — an audit sink must not break the
+  // review it observes.
+  const recordOutcome = persistReviewRecord({
+    input,
+    aggregate,
+    counts,
+    reviewCount: reviews.length,
+    logger,
+  });
+
   const response: PrReviewResponse = {
     summary: aggregate.decision,
     verified: aggregate.verified,
@@ -399,6 +442,7 @@ async function executePrReviewBody(
     reviews,
     totalDurationMs: Date.now() - start,
     ...(costSummary !== undefined ? { costSummary } : {}),
+    recordOutcome,
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }
