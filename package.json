@@ -67,7 +67,7 @@
     "git:cleanup:branches": "./scripts/git-housekeeping.sh --include-squash-merged",
     "git:cleanup:branches:dry": "./scripts/git-housekeeping.sh --include-squash-merged --dry-run",
     "changeset": "changeset",
-    "changeset:version": "changeset version && npx tsx scripts/sync-plugin-version.ts && pnpm governance:inject && npx tsx scripts/generate-repo-index.ts && npx tsx scripts/generate-docs-content.ts && pnpm --filter nexus-agents docs",
+    "changeset:version": "npx tsx scripts/changeset-version-with-retry.ts && npx tsx scripts/sync-plugin-version.ts && pnpm governance:inject && npx tsx scripts/generate-repo-index.ts && npx tsx scripts/generate-docs-content.ts && pnpm --filter nexus-agents docs",
     "changeset:publish": "changeset publish",
     "release": "pnpm build && changeset publish"
   },
