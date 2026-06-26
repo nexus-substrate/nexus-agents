@@ -33,7 +33,10 @@ import {
   getModelCapabilities,
   type OpenAIAdapterConfig,
 } from './openai-types.js';
-import { temperatureUnsupportedForModel } from '../config/temperature-support.js';
+import {
+  temperatureUnsupportedForModel,
+  warnTemperatureDropped,
+} from '../config/temperature-support.js';
 import {
   mapMessage,
   mapTool,
@@ -385,11 +388,12 @@ export class OpenAIAdapter extends BaseAdapter {
     // models (gpt-*, etc.) are unaffected. NOTE: a gateway that injects its OWN
     // default temperature when the field is absent is outside our control — our
     // contract is only to not SEND a value the target model rejects.
-    if (
-      request.temperature !== undefined &&
-      !temperatureUnsupportedForModel(this.resolvedModelId)
-    ) {
-      params.temperature = request.temperature;
+    if (request.temperature !== undefined) {
+      if (temperatureUnsupportedForModel(this.resolvedModelId)) {
+        warnTemperatureDropped(this.resolvedModelId);
+      } else {
+        params.temperature = request.temperature;
+      }
     }
 
     if (request.stop !== undefined && request.stop.length > 0) {

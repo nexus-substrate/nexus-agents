@@ -26,6 +26,48 @@
  * @module config/temperature-support
  */
 
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'temperature-support' });
+
+/**
+ * Models we have ALREADY warned about dropping `temperature` for, so the loud
+ * warning fires once per model per process rather than on every request (a voter
+ * panel makes many calls). Repeats log at debug.
+ */
+const warnedDroppedModels = new Set<string>();
+
+/**
+ * FAIL LOUDLY when `temperature` is omitted because the target model rejects it
+ * (#4066 layer 3). `temperature` is a BEHAVIORAL parameter — silently dropping it
+ * means a determinism/consistency setting is ignored with no signal (e.g. 0.0 and
+ * 0.7 yield identical output), the canonical footgun. So the first drop per model
+ * is a WARN that says the param was omitted and the request runs at the provider
+ * default; subsequent drops for that model log at debug to avoid per-call spam.
+ */
+export function warnTemperatureDropped(modelId: string): void {
+  if (warnedDroppedModels.has(modelId)) {
+    logger.debug('Omitted unsupported temperature (already warned for this model)', {
+      modelId,
+      parameter: 'temperature',
+    });
+    return;
+  }
+  warnedDroppedModels.add(modelId);
+  logger.warn(
+    `Model "${modelId}" does not support a custom \`temperature\` (the provider rejects ` +
+      `non-default values with a 400). nexus-agents omitted it; the request runs at the ` +
+      `provider default. Any determinism/consistency you expected from temperature has NO ` +
+      `effect on this model.`,
+    { modelId, parameter: 'temperature', severity: 'behavioral' }
+  );
+}
+
+/** Test seam: clear the once-per-model warning dedupe set. */
+export function _resetTemperatureWarnings(): void {
+  warnedDroppedModels.clear();
+}
+
 interface ClaudeMajorMinor {
   readonly major: number;
   readonly minor: number;

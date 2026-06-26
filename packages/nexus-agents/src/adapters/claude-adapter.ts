@@ -43,7 +43,10 @@ import {
   RESPOND_TOOL_NAME,
 } from './claude-adapter-helpers.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
-import { temperatureUnsupportedForModel } from '../config/temperature-support.js';
+import {
+  temperatureUnsupportedForModel,
+  warnTemperatureDropped,
+} from '../config/temperature-support.js';
 
 // Re-export types and constants for backward compatibility
 export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
@@ -278,12 +281,13 @@ export class ClaudeAdapter extends BaseAdapter {
     // with a 400 (per the @anthropic-ai/sdk deprecation note). Omit the param for
     // those models — 1.0 is the API default, so omitting is equivalent and avoids
     // the 400 the voter/base-agent default (0.3) would otherwise trigger.
-    if (
-      request.temperature !== undefined &&
-      !temperatureUnsupportedForModel(this.resolvedModelId)
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- still valid for older Anthropic models (≤ Opus 4.6) and value 1.0; gated by temperatureUnsupportedForModel
-      params.temperature = request.temperature;
+    if (request.temperature !== undefined) {
+      if (temperatureUnsupportedForModel(this.resolvedModelId)) {
+        warnTemperatureDropped(this.resolvedModelId);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- still valid for older Anthropic models (≤ Opus 4.6) and value 1.0; gated by temperatureUnsupportedForModel
+        params.temperature = request.temperature;
+      }
     }
 
     if (request.stop !== undefined && request.stop.length > 0) {
