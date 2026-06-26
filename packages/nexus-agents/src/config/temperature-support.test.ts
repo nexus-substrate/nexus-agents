@@ -6,9 +6,19 @@
  * whether an adapter must drop the param before sending.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { temperatureUnsupportedForModel } from './temperature-support.js';
+// Spy on the module logger so the loud-drop warning (#4066 layer 3) is assertable.
+const { warnSpy, debugSpy } = vi.hoisted(() => ({ warnSpy: vi.fn(), debugSpy: vi.fn() }));
+vi.mock('../core/index.js', () => ({
+  createLogger: () => ({ warn: warnSpy, debug: debugSpy, info: vi.fn(), error: vi.fn() }),
+}));
+
+import {
+  temperatureUnsupportedForModel,
+  warnTemperatureDropped,
+  _resetTemperatureWarnings,
+} from './temperature-support.js';
 
 describe('temperatureUnsupportedForModel (#4061)', () => {
   describe('Claude models AFTER Opus 4.6 → unsupported (drop temperature)', () => {
@@ -116,5 +126,40 @@ describe('temperatureUnsupportedForModel (#4061)', () => {
   it('is case-insensitive', () => {
     expect(temperatureUnsupportedForModel('Claude-Opus-4-8')).toBe(true);
     expect(temperatureUnsupportedForModel('CLAUDE-OPUS-4-6')).toBe(false);
+  });
+});
+
+describe('warnTemperatureDropped — fail loudly on a dropped behavioral param (#4066 layer 3)', () => {
+  beforeEach(() => {
+    warnSpy.mockClear();
+    debugSpy.mockClear();
+    _resetTemperatureWarnings();
+  });
+
+  it('warns LOUDLY (once) the first time temperature is dropped for a model', () => {
+    warnTemperatureDropped('claude-opus-4-8');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message, context] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain('claude-opus-4-8');
+    expect(message).toMatch(/temperature/i);
+    expect(context).toMatchObject({
+      modelId: 'claude-opus-4-8',
+      parameter: 'temperature',
+      severity: 'behavioral',
+    });
+  });
+
+  it('dedupes per model: repeat drops for the same model log at debug, not warn', () => {
+    warnTemperatureDropped('o3-mini');
+    warnTemperatureDropped('o3-mini');
+    warnTemperatureDropped('o3-mini');
+    expect(warnSpy).toHaveBeenCalledTimes(1); // loud once
+    expect(debugSpy).toHaveBeenCalledTimes(2); // quiet thereafter
+  });
+
+  it('warns separately for distinct models', () => {
+    warnTemperatureDropped('claude-opus-4-8');
+    warnTemperatureDropped('gpt-5.4');
+    expect(warnSpy).toHaveBeenCalledTimes(2);
   });
 });
