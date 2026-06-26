@@ -249,6 +249,27 @@ describe('ClaudeAdapter', () => {
       );
     });
 
+    it('should DROP temperature for a Claude model after Opus 4.6 (#4061)', async () => {
+      // Models released after Opus 4.6 reject any non-1.0 temperature with a 400;
+      // the adapter must omit the param so the request does not fail.
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Response' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: 'claude-opus-4-8',
+      });
+
+      const adapter = new ClaudeAdapter({ ...validConfig, modelId: 'claude-opus-4-8' });
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        temperature: 0.3,
+        maxTokens: 1024,
+      });
+
+      const callArg = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(callArg).not.toHaveProperty('temperature');
+    });
+
     it('should include stop sequences when provided', async () => {
       mockCreate.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'Response' }],

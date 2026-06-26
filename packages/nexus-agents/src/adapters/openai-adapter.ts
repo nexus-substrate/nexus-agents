@@ -33,6 +33,7 @@ import {
   getModelCapabilities,
   type OpenAIAdapterConfig,
 } from './openai-types.js';
+import { temperatureUnsupportedForModel } from '../config/temperature-support.js';
 import {
   mapMessage,
   mapTool,
@@ -378,7 +379,16 @@ export class OpenAIAdapter extends BaseAdapter {
     params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
     request: CompletionRequest
   ): void {
-    if (request.temperature !== undefined) {
+    // #4061: a gateway routing to a Claude model after Opus 4.6 rejects any
+    // non-1.0 temperature with a 400. Omit the param for those models so a
+    // gateway-routed voter panel (default 0.3) does not 400. Non-Claude gateway
+    // models (gpt-*, etc.) are unaffected. NOTE: a gateway that injects its OWN
+    // default temperature when the field is absent is outside our control — our
+    // contract is only to not SEND a value the target model rejects.
+    if (
+      request.temperature !== undefined &&
+      !temperatureUnsupportedForModel(this.resolvedModelId)
+    ) {
       params.temperature = request.temperature;
     }
 
