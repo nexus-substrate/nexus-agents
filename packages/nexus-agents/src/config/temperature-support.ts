@@ -1,19 +1,27 @@
 /**
- * nexus-agents/config — model `temperature` support (#4061).
+ * nexus-agents/config — model `temperature` support (#4061, #4062).
  *
- * Anthropic Claude models released AFTER Opus 4.6 do not support setting
- * `temperature`. Per the installed `@anthropic-ai/sdk` (messages.d.ts): "Models
- * released after Claude Opus 4.6 do not support setting temperature. A value of
- * 1.0 will be accepted for backwards compatibility, all other values will be
- * rejected with a 400 error." So sending the voter / base-agent default (0.3) to
- * Opus 4.7 / 4.8 — or routing them through an OpenAI-compatible gateway that
- * forwards the param — yields a hard 400.
+ * Some models reject a custom `temperature` with a hard 400, so both adapters
+ * must OMIT the param for them. Two families:
+ *
+ * 1. Anthropic Claude AFTER Opus 4.6 (#4061). Per the installed `@anthropic-ai/sdk`
+ *    (messages.d.ts): "Models released after Claude Opus 4.6 do not support setting
+ *    temperature. A value of 1.0 will be accepted for backwards compatibility, all
+ *    other values will be rejected with a 400 error."
+ * 2. OpenAI REASONING models (#4062): the o-series (o1/o3/o3-mini/o4-mini) reject
+ *    `temperature` outright ("Unsupported parameter"), and the GPT-5 family accepts
+ *    only the default ("Only the default (1) value is supported") — except the
+ *    non-reasoning `gpt-5-chat` variant. This repo routes codex-5.3→gpt-5.4,
+ *    codex-5.2→gpt-5.2-codex, codex-5.1-mini→o3-mini, so gateway voters at the
+ *    default 0.3 400 on all of them.
  *
  * {@link temperatureUnsupportedForModel} is the single source of truth both the
  * native Claude adapter and the OpenAI-compatible gateway adapter consult before
  * forwarding `temperature`. When it returns true the adapter OMITS the param
- * (value 1.0 is the API default, so omitting is equivalent and sidesteps the
- * deprecation).
+ * (value 1.0 is the API default, so omitting is equivalent). It returns FALSE for
+ * every model NOT known to reject temperature (gpt-4o, gpt-4, gemini, …), biasing
+ * AGAINST false-positive stripping — a false negative is a 400, a false positive
+ * only loses the consistency setting.
  *
  * @module config/temperature-support
  */
@@ -49,36 +57,61 @@ function parseClaudeMajorMinor(bareId: string): ClaudeMajorMinor | null {
 const LEGACY_TEMPERATURE_SUPPORTING = /claude[-_](?:instant|1|2|3)(?:[-_.]|$)/;
 
 /**
- * Whether `modelId` REJECTS a non-default `temperature` and the param must be
- * dropped before the request is sent.
- *
- * - Non-Claude models (gpt-*, gemini-*, …) → `false`: never touched here.
- * - Claude opus/sonnet/haiku with a parseable version > 4.6 → `true` (the SDK
- *   boundary: 4.7+, 5.x).
- * - Recognized legacy Claude (claude-2/3/instant) → `false`: still support it.
- * - Any OTHER Claude id (no parseable version and not legacy — e.g.
- *   `claude-fable-5`, a future Claude family, or a bare alias) → `true`. This
- *   SAFE-DROP default is deliberate: dropping `temperature` is a benign fall-back
- *   to the API default, whereas forwarding it to a model that rejects it is a 400
- *   outage. Errors are worse than losing a temperature setting.
- *
- * Robust to gateway id variants — provider prefixes (`anthropic/…`, `custom/…`),
- * `-`/`_` separators (`claude-opus-4-8`, `claude_4_8`), and dated suffixes.
+ * Claude branch of {@link temperatureUnsupportedForModel} (#4061). `bare` is the
+ * id sliced from the first `claude` (provider prefix stripped). Unsupported when
+ * the version is after Opus 4.6, or the family is unrecognized/non-numbered
+ * (`claude-fable-5`, future) — a deliberate SAFE-DROP, since a benign fall-back to
+ * the API default beats a 400.
  */
-export function temperatureUnsupportedForModel(modelId: string): boolean {
-  const id = modelId.toLowerCase();
-  const claudeAt = id.indexOf('claude');
-  if (claudeAt === -1) return false; // not a Claude model — leave temperature alone
-  const bare = id.slice(claudeAt); // strip any `anthropic/` / `custom/` prefix
-
+function claudeTemperatureUnsupported(bare: string): boolean {
   const version = parseClaudeMajorMinor(bare);
   if (version !== null) {
     // "after Opus 4.6": major > 4, or 4.7+ within the 4.x line.
     return version.major > 4 || (version.major === 4 && version.minor >= 7);
   }
-  // No version digits at all (e.g. `claude-instant`, a bare family alias, an
-  // unknown future family): legacy families keep temperature; everything else
-  // Claude is treated as unsupported (safe-drop — a benign default beats a 400).
   if (LEGACY_TEMPERATURE_SUPPORTING.test(bare)) return false;
   return true;
+}
+
+/**
+ * OpenAI branch of {@link temperatureUnsupportedForModel} (#4062). True ONLY for
+ * the reasoning models documented to reject `temperature`; everything else
+ * (gpt-4o, gpt-4, gpt-3.5, gemini, openrouter-*, …) returns false so its
+ * temperature is preserved. `id` is the full lower-cased model id.
+ *
+ * - o-series: `o1`/`o3`/`o3-mini`/`o4-mini` — `o` + digit at the START of the last
+ *   path segment (so `claude-opus`/`openrouter-*` cannot match — and the Claude
+ *   branch already ran first regardless).
+ * - codex: all current `codex…` routes are GPT-5-reasoning-based.
+ * - GPT-5 family: `gpt-5` / `gpt5` (anchored after the `5` so `gpt-50`/`gpt-512`
+ *   do NOT match) — EXCEPT the non-reasoning `gpt-5-chat` variant.
+ */
+function openAiReasoningTemperatureUnsupported(id: string): boolean {
+  const segment = id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id;
+  if (/^o[0-9]/.test(segment)) return true;
+  if (segment.includes('codex')) return true;
+  if (/gpt-?5(?![0-9])/.test(segment) && !segment.includes('gpt-5-chat')) return true;
+  return false;
+}
+
+/**
+ * Whether `modelId` REJECTS a non-default `temperature` and the param must be
+ * dropped before the request is sent. Single source of truth for both adapters.
+ *
+ * - Claude models → see {@link claudeTemperatureUnsupported} (after Opus 4.6, #4061).
+ * - OpenAI reasoning models → see {@link openAiReasoningTemperatureUnsupported}
+ *   (o-series / GPT-5 family / codex, #4062).
+ * - Everything else (gpt-4o, gpt-4, gemini-*, openrouter-*, …) → `false`.
+ *
+ * Biased AGAINST false positives: a missed model is a 400 outage, a wrongly
+ * matched one only loses the consistency setting. Robust to gateway id variants —
+ * provider prefixes (`anthropic/…`, `openai/…`), `-`/`_` separators, dated suffixes.
+ */
+export function temperatureUnsupportedForModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  const claudeAt = id.indexOf('claude');
+  if (claudeAt !== -1) {
+    return claudeTemperatureUnsupported(id.slice(claudeAt)); // strip provider prefix
+  }
+  return openAiReasoningTemperatureUnsupported(id);
 }
