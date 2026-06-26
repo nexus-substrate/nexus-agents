@@ -74,17 +74,41 @@ describe('temperatureUnsupportedForModel (#4061)', () => {
     });
   });
 
-  describe('non-Claude models → supported (never touched)', () => {
-    const nonClaude = [
+  describe('OpenAI reasoning models → unsupported (#4062)', () => {
+    const reasoning = [
+      'o1',
+      'o1-preview',
+      'o1-mini',
+      'o3',
+      'o3-mini',
+      'o4-mini',
+      'gpt-5',
       'gpt-5.4',
+      'gpt-5.2-codex',
+      'codex-5.3', // internal id; resolves to gpt-5.4 but match either way
+      'openai/o3-mini', // provider-prefixed → last segment matched
+    ];
+    it.each(reasoning)('%s → true', (id) => {
+      expect(temperatureUnsupportedForModel(id)).toBe(true);
+    });
+  });
+
+  describe('non-reasoning models → supported (never touched)', () => {
+    const supported = [
       'gpt-4o',
-      'o1-preview', // OpenAI reasoning models also reject temp, but are OUT OF SCOPE here
+      'gpt-4',
+      'gpt-4-turbo',
+      'gpt-3.5-turbo',
+      'gpt-5-chat-latest', // the documented non-reasoning GPT-5 carve-out
+      'gpt-50', // over-match guard: NOT gpt-5 (anchored after the 5)
+      'gpt-512', // over-match guard
       'gemini-3-pro',
       'gemini-2.5-flash',
       'openrouter/qwen-coder',
+      'openrouter-nemotron-super',
       'nemotron-super',
     ];
-    it.each(nonClaude)('%s → false', (id) => {
+    it.each(supported)('%s → false', (id) => {
       expect(temperatureUnsupportedForModel(id)).toBe(false);
     });
   });

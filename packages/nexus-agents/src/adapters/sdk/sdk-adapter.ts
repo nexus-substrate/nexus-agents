@@ -30,6 +30,7 @@ import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
+import { temperatureUnsupportedForModel } from '../../config/temperature-support.js';
 import {
   validateCustomApiBaseUrl,
   assertCustomApiHostResolvesPublic,
@@ -397,7 +398,11 @@ export class SdkAdapter extends BaseAdapter {
     if (request.systemPrompt !== undefined) {
       options['system'] = request.systemPrompt;
     }
-    if (request.temperature !== undefined) {
+    // #4061/#4062: Claude models after Opus 4.6 and OpenAI reasoning models
+    // (o-series, GPT-5 family) reject a non-1.0 temperature with a 400. The AI-SDK
+    // path routes to both (auto-adapter wires openai/codex + anthropic), so omit
+    // the param for those models — 1.0 is the API default, so omitting is equivalent.
+    if (request.temperature !== undefined && !temperatureUnsupportedForModel(this.modelId)) {
       options['temperature'] = request.temperature;
     }
     if (request.maxTokens !== undefined) {
