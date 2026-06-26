@@ -19,6 +19,7 @@ import type {
   TaskAnalysisResult,
 } from '../core/task-analysis/shared-task-analyzer.js';
 import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
+import { deriveStructuralSignals } from './workflow-router-signal-derivation.js';
 import type {
   TaskSignals,
   WorkflowPattern,
@@ -143,7 +144,9 @@ function routeTask(
   _opts?: WorkflowRouterOptions
 ): RoutingDecision {
   const analysis = analyzer.analyze(signals.description);
-  const enriched = enrichSignals(signals, analysis);
+  // #3989: gap-fill consensus/wave structural signals from the goal text so plain
+  // goal strings reach the richer strategy instead of the generic fallback.
+  const enriched = enrichSignals(deriveStructuralSignals(signals), analysis);
   const matchedRules: string[] = [];
   const alternatives: WorkflowPattern[] = [];
 
