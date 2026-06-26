@@ -292,6 +292,27 @@ describe('OpenAIAdapter', () => {
       );
     });
 
+    it('should DROP temperature for an OpenAI reasoning model (#4062 drift guard)', async () => {
+      // o-series / GPT-5 reasoning models reject a custom temperature with a 400;
+      // the adapter must omit it. Guards against a future refactor un-wiring the
+      // temperatureUnsupportedForModel check on this path.
+      mockCreate.mockResolvedValueOnce({
+        choices: [{ message: { content: 'Response', role: 'assistant' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        model: 'o3-mini',
+      });
+
+      const adapter = new OpenAIAdapter({ ...validConfig, modelId: 'o3-mini' });
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        temperature: 0.3,
+        maxTokens: 1024,
+      });
+
+      const callArg = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(callArg).not.toHaveProperty('temperature');
+    });
+
     it('should include stop sequences when provided', async () => {
       mockCreate.mockResolvedValueOnce({
         choices: [
