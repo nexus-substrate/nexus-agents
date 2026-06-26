@@ -115,6 +115,43 @@ describe('SdkAdapter', () => {
       }
     });
 
+    it('DROPS temperature for a reasoning model routed via the AI-SDK (#4062 drift guard)', async () => {
+      // auto-adapter wires the openai/codex provider through SdkAdapter to models
+      // like o3-mini / gpt-5.4 that reject a custom temperature. Guard against a
+      // future refactor un-wiring the temperatureUnsupportedForModel check here.
+      const { generateText } = await import('ai');
+      const mockGenerate = vi.mocked(generateText);
+      mockGenerate.mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 5, outputTokens: 2 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'o3-mini' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({ providerId: 'openai', modelId: 'o3-mini', apiKey: 'k' });
+      await adapter.complete(TEST_REQUEST); // TEST_REQUEST carries temperature: 0.7
+
+      const options = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(options).not.toHaveProperty('temperature');
+    });
+
+    it('passes temperature through for a supported model routed via the AI-SDK', async () => {
+      const { generateText } = await import('ai');
+      const mockGenerate = vi.mocked(generateText);
+      mockGenerate.mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 5, outputTokens: 2 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({ providerId: 'openai', modelId: 'gpt-4o', apiKey: 'k' });
+      await adapter.complete(TEST_REQUEST);
+
+      const options = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(options['temperature']).toBe(0.7);
+    });
+
     it('returns error result on API failure', async () => {
       const { generateText } = await import('ai');
       const mockGenerate = vi.mocked(generateText);
