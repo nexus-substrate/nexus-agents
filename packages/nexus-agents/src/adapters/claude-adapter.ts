@@ -43,6 +43,7 @@ import {
   RESPOND_TOOL_NAME,
 } from './claude-adapter-helpers.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
+import { temperatureUnsupportedForModel } from '../config/temperature-support.js';
 
 // Re-export types and constants for backward compatibility
 export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
@@ -273,8 +274,15 @@ export class ClaudeAdapter extends BaseAdapter {
     params: Anthropic.MessageCreateParamsNonStreaming,
     request: CompletionRequest
   ): void {
-    if (request.temperature !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- SDK 0.88 deprecated `temperature` for post-Opus-4.6 models; kept for backward compat with older Anthropic models and value 1.0
+    // #4061: Claude models released after Opus 4.6 reject any non-1.0 temperature
+    // with a 400 (per the @anthropic-ai/sdk deprecation note). Omit the param for
+    // those models — 1.0 is the API default, so omitting is equivalent and avoids
+    // the 400 the voter/base-agent default (0.3) would otherwise trigger.
+    if (
+      request.temperature !== undefined &&
+      !temperatureUnsupportedForModel(this.resolvedModelId)
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- still valid for older Anthropic models (≤ Opus 4.6) and value 1.0; gated by temperatureUnsupportedForModel
       params.temperature = request.temperature;
     }
 
