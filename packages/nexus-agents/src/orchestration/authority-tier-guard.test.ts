@@ -21,7 +21,7 @@ import {
   AuthorityRefusalError,
   type ActionClass,
 } from './authority-tier-guard.js';
-import { getStrategyManifest } from './strategy-manifest-registry.js';
+import { getStrategyManifest, STRATEGY_MANIFEST_REGISTRY } from './strategy-manifest-registry.js';
 import type { AuthorityTier } from './strategy-manifest.js';
 
 describe('authority-tier guard — tier→action mapping (#3841)', () => {
@@ -148,5 +148,46 @@ describe('dispatchActionClass — dispatch-mode → action-class map (#3920)', (
       // An observe-tier strategy is BELOW the floor — refused.
       expect(permitsAction('observe', dispatchActionClass(mode))).toBe(false);
     }
+  });
+});
+
+describe('execute-path dispatch floor invariant (#3925)', () => {
+  // The `suggest` dispatch floor (`dispatchActionClass`) is safe ONLY while every
+  // strategy reachable on the execute path is inert/advisory — its output is a
+  // recommendation / non-blocking vote that does NOT merge, deploy, or gate until a
+  // human or governor acts. These are the tiers safe under that floor; `enforce` is
+  // deliberately EXCLUDED: it is the only side-effecting tier, and the `suggest`
+  // floor would under-classify (and thus under-require authority for) an enforce
+  // strategy. This converts the previously asserted-but-untested assumption (#3924
+  // deferral, #3925) into a machine-checked, fail-closed gate.
+  const INERT_UNDER_SUGGEST_FLOOR: ReadonlySet<AuthorityTier> = new Set([
+    'observe',
+    'suggest',
+    'advisory',
+  ]);
+
+  it('pins the dispatch floor the invariant rests on (suggest)', () => {
+    expect(dispatchActionClass('route')).toBe('suggest');
+    expect(dispatchActionClass('execute')).toBe('suggest');
+  });
+
+  it('every live registry strategy is inert under the suggest floor — no silent enforce', () => {
+    for (const manifest of STRATEGY_MANIFEST_REGISTRY.manifests) {
+      // Fail-closed: an undeclared tier acts as the lowest rung (`observe`),
+      // mirroring permitsAction.
+      const tier: AuthorityTier = manifest.authorityTier ?? 'observe';
+      expect(
+        INERT_UNDER_SUGGEST_FLOOR.has(tier),
+        `Strategy "${manifest.strategy}" declares authorityTier "${tier}", which is NOT ` +
+          `inert under the 'suggest' execute dispatch floor. A side-effecting (enforce) ` +
+          `strategy must NOT rely on the suggest floor to gate it — raise ` +
+          `dispatchActionClass for its dispatch mode (and update this invariant) before ` +
+          `adding it (#3925).`
+      ).toBe(true);
+    }
+  });
+
+  it('covers a non-empty registry (the invariant is not vacuously true)', () => {
+    expect(STRATEGY_MANIFEST_REGISTRY.manifests.length).toBeGreaterThan(0);
   });
 });
