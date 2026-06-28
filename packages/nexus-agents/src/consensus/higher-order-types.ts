@@ -343,10 +343,15 @@ export interface IHigherOrderVoting {
 
   /**
    * Full pipeline: estimate correlation, compute result.
+   *
+   * `tracker` is OPTIONAL (#3173): when omitted, the instance uses the tracker
+   * injected at construction (`OWVotingOptions.tracker`), letting higher-order
+   * voting be reused as a building block without threading the tracker through
+   * every call. A per-call `tracker` still wins. Throws if neither is available.
    */
   aggregate(
     votes: ReadonlyMap<string, Vote>,
-    tracker: ICorrelationTracker
+    tracker?: ICorrelationTracker
   ): HigherOrderVotingResult;
 
   /**
