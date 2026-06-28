@@ -27,6 +27,12 @@
  * @module mcp/tools/improvement-enforce-readiness
  */
 
+import type { ReadinessCriterion, ReadinessVerdict } from './readiness-verdict.js';
+
+// Re-export the shared envelope under this module's historical name so existing
+// consumers of `ReadinessCriterion` from here are unaffected (#4096).
+export type { ReadinessCriterion } from './readiness-verdict.js';
+
 /** Tuning for {@link evaluateEnforceReadiness}. */
 export interface EnforceReadinessConfig {
   /** Minimum shadow would-remediate decisions before enforce can be considered. */
@@ -64,20 +70,11 @@ export interface EnforceReadinessEvidence {
   readonly owner?: string;
 }
 
-/** One checked condition of the exit criterion. */
-export interface ReadinessCriterion {
-  readonly name: string;
-  readonly met: boolean;
-  readonly detail: string;
-}
-
-/** Full readiness verdict. `ready` is true iff every criterion is met. */
-export interface EnforceReadinessReport {
-  readonly ready: boolean;
-  readonly criteria: readonly ReadinessCriterion[];
-  /** Names of the unmet criteria (empty when ready). */
-  readonly blockers: readonly string[];
-}
+/**
+ * Full readiness verdict. `ready` is true iff every criterion is met. Alias of the
+ * shared {@link ReadinessVerdict} envelope (#4096).
+ */
+export type EnforceReadinessReport = ReadinessVerdict;
 
 function pct(n: number, d: number): number {
   return d === 0 ? 0 : n / d;

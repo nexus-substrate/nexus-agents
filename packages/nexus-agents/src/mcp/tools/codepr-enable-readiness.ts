@@ -27,6 +27,8 @@
 
 import { z } from 'zod';
 
+import type { ReadinessCriterion, ReadinessVerdict } from './readiness-verdict.js';
+
 /**
  * Tuning for {@link evaluateCodePrEnableReadiness}. Conservative, fail-closed
  * defaults: enabling an autonomous push path is high-stakes, so the soak bar is
@@ -85,20 +87,18 @@ export const CodePrEnableReadinessEvidenceSchema = z
   .strict();
 export type CodePrEnableReadinessEvidence = z.infer<typeof CodePrEnableReadinessEvidenceSchema>;
 
-/** One checked condition of the enable gate. */
-export interface CodePrReadinessCriterion {
-  readonly name: string;
-  readonly met: boolean;
-  readonly detail: string;
-}
+/**
+ * One checked condition of the enable gate. Alias of the shared
+ * {@link ReadinessCriterion} envelope (#4096) — kept as a named re-export so existing
+ * consumers of this name are unaffected.
+ */
+export type CodePrReadinessCriterion = ReadinessCriterion;
 
-/** Full enable-readiness verdict. `ready` is true IFF every criterion is met. */
-export interface CodePrEnableReadiness {
-  readonly ready: boolean;
-  readonly criteria: readonly CodePrReadinessCriterion[];
-  /** Names of the unmet criteria (empty when ready). */
-  readonly blockers: readonly string[];
-}
+/**
+ * Full enable-readiness verdict. `ready` is true IFF every criterion is met. Alias of
+ * the shared {@link ReadinessVerdict} envelope (#4096).
+ */
+export type CodePrEnableReadiness = ReadinessVerdict;
 
 /** Build a "named X present" criterion, keeping the main fn flat. */
 function presenceCriterion(
