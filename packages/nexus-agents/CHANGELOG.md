@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.144.0
+
+### Minor Changes
+
+- [#4092](https://github.com/nexus-substrate/nexus-agents/pull/4092) [`e9a7f21`](https://github.com/nexus-substrate/nexus-agents/commit/e9a7f211172e5fc4b1366d77f3abec2c78cdfdbf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` can now actually STOP in-flight work for `runAsJob`-dispatched tools
+  ([#4086](https://github.com/nexus-substrate/nexus-agents/issues/4086), the follow-on to [#4017](https://github.com/nexus-substrate/nexus-agents/issues/4017)). Previously the shared async-job path had no abort
+  wiring, so a cancel only marked the durable record while the background work ran to
+  completion. A per-job `AbortController` registry now backs every dispatched job:
+  its `AbortSignal` is threaded into the job body (`run(jobId, input, signal)`), and
+  cancelling a `pending` job fires that signal.
+
+  A tool that threads the signal into its awaited operations is genuinely interrupted
+  in-process; when its `run()` rejects on abort, the terminal-writer guards ([#4022](https://github.com/nexus-substrate/nexus-agents/issues/4022))
+  preserve the `cancelled` record. A tool that ignores the signal still runs to
+  completion (you cannot stop an unyielding Promise), but its record stays
+  `cancelled` — so adopting the signal is per-tool and incremental, and the dispatch
+  infrastructure now makes it possible. Backward compatible: existing 2-arg `run`
+  callbacks remain valid (the trailing `signal` is simply ignored). Same-process only
+  (no IPC) — cross-process workers still observe cancellation by polling the record.
+
 ## 2.143.0
 
 ### Minor Changes
