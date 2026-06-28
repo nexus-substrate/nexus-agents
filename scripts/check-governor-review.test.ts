@@ -86,6 +86,7 @@ function inputs(overrides: Partial<GovernorReviewInputs> = {}): GovernorReviewIn
   return {
     prNumber: 5000,
     reviewedDiffHash: DIFF_HASH,
+    baseSha: SHA_BASE,
     changedFiles: ['packages/nexus-agents/src/audit/audit-logger.ts'],
     governorPatterns: GOVERNOR_PATTERNS,
     records: [],
@@ -147,8 +148,34 @@ describe('matchesCodeownersPattern', () => {
 });
 
 describe('analyzeGovernorReview — binding conditions', () => {
-  it('(a) PASSES with a valid diff-bound record for the PR', () => {
+  it('(a) PASSES with a valid diff-bound record for the PR (baseSha consistent)', () => {
     const outcome = analyzeGovernorReview(inputs({ records: [record()] }));
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') expect(outcome.reason).toContain('baseSha consistent');
+  });
+
+  it("(a2) WARNS when the record's baseSha does NOT match the PR's actual base (#4058)", () => {
+    // Same diff CONTENT (reviewedDiffHash matches) but the record records a base that
+    // is not the PR's real base → provenance inconsistent → warn-first (enforce: fail).
+    const outcome = analyzeGovernorReview(inputs({ records: [record()], baseSha: SHA_STALE }));
+    expect(outcome.kind).toBe('warn');
+    if (outcome.kind === 'warn') {
+      expect(outcome.message).toContain('does NOT match');
+      expect(outcome.message).toContain('#4058');
+    }
+  });
+
+  it('(a3) is case-insensitive on baseSha — no spurious warn for an upper-cased CI base', () => {
+    const outcome = analyzeGovernorReview(
+      inputs({ records: [record()], baseSha: SHA_BASE.toUpperCase() })
+    );
+    expect(outcome.kind).toBe('pass');
+  });
+
+  it('(a4) FAILS OPEN (passes) on a non-40-hex CI base — no spurious provenance warn', () => {
+    // An abbreviated/odd base is not comparable to the record's pinned 40-hex format;
+    // we PASS on the hash match rather than risk a false warn.
+    const outcome = analyzeGovernorReview(inputs({ records: [record()], baseSha: 'abc1234' }));
     expect(outcome.kind).toBe('pass');
   });
 
