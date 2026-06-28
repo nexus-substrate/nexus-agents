@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 
-import { handleRemediationReviewCommand } from './remediation-review-command.js';
+import { handleRemediationReviewCommand, harmfulRate } from './remediation-review-command.js';
 import type { ParsedCliArgs } from '../cli-types.js';
 import {
   createRemediationSoakSink,
@@ -23,6 +23,7 @@ import {
   getRemediationReviewFile,
   _resetRemediationReviewStoreForTests,
   soakRefOf,
+  type ReviewRecord,
 } from '../mcp/tools/remediation-review.js';
 
 function args(
@@ -153,5 +154,81 @@ describe('handleRemediationReviewCommand', () => {
     out.mockClear();
     await handleRemediationReviewCommand(args('list'));
     expect(output()).toContain('0 pending');
+  });
+
+  it('readiness: NOT READY (text) with no review data — fail-closed, harmful-rate line present', async () => {
+    seedSoak();
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness'));
+    const text = output();
+    expect(text).toContain('Enforcement readiness: NOT READY');
+    expect(text).toContain('harmful-rate');
+    expect(text).toMatch(/Blockers:/);
+  });
+
+  it('readiness --format json: ready=false + numeric harmfulRate with no review data', async () => {
+    seedSoak();
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as {
+      ready: boolean;
+      harmfulRate: number;
+      evidence: { judgedSelections: number; judgedSound: number };
+      blockers: string[];
+    };
+    expect(parsed.ready).toBe(false);
+    expect(typeof parsed.harmfulRate).toBe('number');
+    expect(parsed.harmfulRate).toBe(0); // judgedSelections=0 → 0
+    expect(parsed.blockers.length).toBeGreaterThan(0);
+  });
+
+  it('readiness: READY when volume + judged + sound + evaluator + owner all met', async () => {
+    const sink = createRemediationSoakSink(getRemediationSoakFile());
+    const reviewStore = createRemediationReviewStore(getRemediationReviewFile());
+    const refs: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const rec: RemediationSoakRecord = {
+        timestamp: `2026-06-08T00:00:${String(i).padStart(2, '0')}.000Z`,
+        signalKey: 'routing:floor:codex',
+        category: 'routing',
+        priority: 'p2',
+        severity: 'warning',
+        planStepCount: 3,
+        reason: 'plan produced',
+      };
+      sink.record(rec);
+      refs.push(soakRefOf(rec));
+    }
+    // Review 18/20 (≥80% judged), all sound (100% ≥ 90%), named evaluator + owner.
+    for (const ref of refs.slice(0, 18)) {
+      const review: ReviewRecord = {
+        soakRef: ref,
+        reviewedAt: '2026-06-09T00:00:00.000Z',
+        reviewed: true,
+        sound: true,
+        evaluator: 'alice',
+        owner: 'carol',
+      };
+      reviewStore.record(review);
+    }
+    _resetRemediationSoakSinkForTests();
+    _resetRemediationReviewStoreForTests();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as { ready: boolean; harmfulRate: number };
+    expect(parsed.ready).toBe(true);
+    expect(parsed.harmfulRate).toBeLessThanOrEqual(0.1);
+    expect(parsed.harmfulRate).toBe(0);
+  });
+});
+
+describe('harmfulRate', () => {
+  it('returns 0 when nothing judged', () => {
+    expect(harmfulRate({ shadowSelections: 5, judgedSelections: 0, judgedSound: 0 })).toBe(0);
+  });
+
+  it('is 1 − soundnessRate over judged selections (10 judged, 8 sound → 0.2)', () => {
+    expect(harmfulRate({ shadowSelections: 10, judgedSelections: 10, judgedSound: 8 })).toBeCloseTo(
+      0.2
+    );
   });
 });
