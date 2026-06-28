@@ -22,6 +22,7 @@
 import type { ILogger } from '../../core/index.js';
 import { toolSuccess, toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { writeJobComplete, writeJobFailed, writeJobPending } from './job-result-store.js';
+import { registerJobAbort, unregisterJobAbort } from './job-abort-registry.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
 import { release, suggestRetryAfterMs, tryAcquire } from './job-concurrency.js';
 import { resolveClassGuardMs } from '../../config/timeouts.js';
@@ -183,11 +184,14 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
   readonly freshJobId: () => string;
   /**
    * The detached background work. Receives the resolved `jobId` (so the
-   * runner can thread it into a task-state log) and the `input`. Its
-   * resolved value is recorded as the job's `complete` result; a rejection
-   * is recorded as `failed`.
+   * runner can thread it into a task-state log), the `input`, and an
+   * `AbortSignal` (#4086) that fires when `cancel_job` cancels this job —
+   * thread it into awaited operations to make cancellation actually stop the
+   * work. Existing 2-arg callbacks remain valid (the trailing param is
+   * ignored). Its resolved value is recorded as the job's `complete` result;
+   * a rejection is recorded as `failed`.
    */
-  readonly run: (jobId: string, input: I) => Promise<R>;
+  readonly run: (jobId: string, input: I, signal: AbortSignal) => Promise<R>;
   /** Per-tool envelope builders. Defaults to the {@link ToolResult} set. */
   readonly toEnvelope?: JobEnvelopeBuilders<E>;
   /** Optional logger for the background failure path. */
@@ -264,11 +268,18 @@ export async function runJobInBackground<I, R, E>(
 ): Promise<void> {
   const guardMs = resolveClassGuardMs(ASYNC_JOB_BODY_GUARD_CLASS);
   const guard = makeAsyncBodyGuard(jobId, params.toolName, guardMs, params.logger);
+  // #4086: register an AbortController so cancel_job can stop this job's work. Its
+  // signal is threaded into params.run; abort → run rejects → writeJobFailed, which
+  // no-ops against the already-written `cancelled` record (#4022), preserving it.
+  const controller = registerJobAbort(jobId);
   try {
     // Race the body against the runaway-guard. On guard expiry the guard
     // rejects with the sentinel → recorded as failed below. On body settle the
     // guard is cleared so it can never fire afterward.
-    const result = await Promise.race([params.run(jobId, params.input), guard.expired]);
+    const result = await Promise.race([
+      params.run(jobId, params.input, controller.signal),
+      guard.expired,
+    ]);
     writeJobComplete(jobId, params.toolName, result);
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
@@ -276,6 +287,7 @@ export async function runJobInBackground<I, R, E>(
     writeJobFailed(jobId, params.toolName, errObj.message);
   } finally {
     guard.clear();
+    unregisterJobAbort(jobId);
     release(params.toolName);
   }
 }

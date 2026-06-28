@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runAsJob, runJobInBackground } from './run-as-job.js';
-import { readJobResult } from './job-result-store.js';
+import { readJobResult, writeJobPending, writeJobCancelled } from './job-result-store.js';
+import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
 import { _resetForTests as resetConcurrency, getInFlight, getJobCap } from './job-concurrency.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
@@ -232,5 +233,73 @@ describe('runAsJob', () => {
       // The finally must still release the slot even on guard expiry.
       expect(getInFlight('orchestrate')).toBe(0);
     });
+  });
+});
+
+describe('runAsJob — cancellation aborts in-flight work (#4086)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-runasjob-abort-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('a signal-respecting job stops when cancelled, and the cancellation is preserved', async () => {
+    const jobId = 'job-abort-1';
+    writeJobPending(jobId, 'orchestrate');
+    let sawAbort = false;
+    const bg = runJobInBackground<DummyInput, { ok: true }, never>(jobId, {
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => jobId,
+      // Respects the signal: never resolves on its own, rejects when aborted.
+      run: (_id, _input, signal) =>
+        new Promise<{ ok: true }>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            sawAbort = true;
+            reject(new Error('aborted by signal'));
+          });
+        }),
+    });
+
+    // Simulate cancel_job: write the durable cancelled record FIRST, then abort.
+    writeJobCancelled(jobId, 'orchestrate', 'user cancel');
+    expect(abortJob(jobId, 'user cancel')).toBe(true);
+    await bg;
+
+    expect(sawAbort).toBe(true); // the work actually observed the abort
+    // The terminal writer (writeJobFailed on the abort rejection) must NOT have
+    // overwritten the cancellation (#4022 guard).
+    expect(readJobResult(jobId)?.status).toBe('cancelled');
+    // Slot released.
+    expect(getInFlight('orchestrate')).toBe(0);
+  });
+
+  it('a job that IGNORES the signal still completes, but its cancelled record wins', async () => {
+    const jobId = 'job-abort-2';
+    writeJobPending(jobId, 'orchestrate');
+    const bg = runJobInBackground<DummyInput, { ok: true }, never>(jobId, {
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => jobId,
+      run: () => Promise.resolve({ ok: true }), // ignores the signal, resolves immediately
+    });
+
+    writeJobCancelled(jobId, 'orchestrate', 'user cancel');
+    await bg;
+
+    // writeJobComplete ran but no-ops against the cancelled record (#4022).
+    expect(readJobResult(jobId)?.status).toBe('cancelled');
   });
 });

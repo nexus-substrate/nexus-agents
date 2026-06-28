@@ -14,19 +14,19 @@
  * - **`already_cancelled`** — second + cancellation against the same
  *   jobId is a no-op. Idempotent for safe retry.
  *
- * **IMPORTANT — cancel marks the record; it does NOT abort in-flight work
- * for jobs dispatched via the shared `runAsJob` path (#4017).** `run-as-job.ts`
- * has no AbortController/signal wiring, so for `run`, `run_pipeline`,
- * `run_dev_pipeline`, and every other `runAsJob`-dispatched tool, the
- * background `params.run(...)` keeps executing to completion after a cancel —
- * only the persisted record is marked `cancelled` (now preserved by the
- * terminal-writer guards). `consensus_vote` is the exception: it has its own
- * AbortSignal plumbing (#3038) and IS genuinely interrupted. Wiring a real
- * per-job AbortController through `runAsJob` so cancel actually stops the work
- * is tracked as a follow-up enhancement.
+ * **What cancel does to in-flight work (#4086).** Cancelling a `pending` job now
+ * fires that job's `AbortController` (registered by `runAsJob`, threaded into the
+ * job body as an `AbortSignal`). A `runAsJob`-dispatched tool that THREADS the
+ * signal into its awaited operations is genuinely interrupted in this process;
+ * when its `run()` rejects on abort, the terminal writers no-op against the
+ * already-written `cancelled` record (#4022), so the cancellation wins. A tool that
+ * IGNORES the signal still runs to completion (you cannot stop an unyielding
+ * Promise from outside) — but its record stays `cancelled`. So adopting the signal
+ * is per-tool and incremental; the dispatch infrastructure now makes it possible.
+ * (`consensus_vote` had its own AbortSignal plumbing pre-#4086, #3038.)
  *
- * It also doesn't abort work in OTHER processes (no IPC; per-process
- * AbortControllers can only abort what they own). In a multi-process
+ * Same-process only: it does not abort work in OTHER processes (no IPC; a
+ * per-process AbortController can only abort what it owns). In a multi-process
  * deployment the durable cancellation record is observable via
  * `get_job_result` / `list_jobs`, but the worker process must poll for it.
  *
@@ -46,6 +46,7 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { readJobResult, writeJobCancelled, type JobStatus } from '../jobs/job-result-store.js';
+import { abortJob } from '../jobs/job-abort-registry.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 export const CancelJobInputSchema = z.object({
@@ -118,14 +119,30 @@ function cancelJobHandler(args: unknown): Promise<ToolResult> {
   }
 
   // Status is 'pending' — perform the cancel.
-  writeJobCancelled(jobId, existing.toolName, reason);
-  const response: CancelJobResponse = {
+  return Promise.resolve(
+    toolSuccess(JSON.stringify(cancelPendingJob(jobId, existing.toolName, reason), null, 2))
+  );
+}
+
+/**
+ * Cancel a `pending` job: write the durable `cancelled` record FIRST, then abort
+ * the in-flight work (#4086). When the aborted `run()` rejects, the terminal
+ * writers no-op against the `cancelled` record (#4022), so the cancellation wins.
+ */
+function cancelPendingJob(jobId: string, toolName: string, reason?: string): CancelJobResponse {
+  writeJobCancelled(jobId, toolName, reason);
+  const aborted = abortJob(jobId, reason);
+  return {
     jobId,
     outcome: 'cancelled',
     status: 'cancelled',
-    message: `Job ${jobId} marked cancelled. In-flight work in the dispatching process aborts via AbortSignal; cross-process workers need to poll get_job_result to observe.`,
+    message:
+      `Job ${jobId} marked cancelled. ` +
+      (aborted
+        ? 'Its in-flight AbortSignal was fired — work that threads the signal stops in this process; '
+        : 'No in-flight controller was registered (the job already settled or runs in another process); ') +
+      'cross-process workers need to poll get_job_result to observe.',
   };
-  return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
 }
 
 /** @category MCP */
