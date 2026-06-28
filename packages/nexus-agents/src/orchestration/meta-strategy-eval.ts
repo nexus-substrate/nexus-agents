@@ -37,6 +37,10 @@
  * @module orchestration/meta-strategy-eval
  */
 
+// @export-no-consumer-yet — see #4095. Consumed by its test (evals run in CI via
+// tests); the production consumer is epic #4094's child 2 — the extracted shared
+// labeled-corpus→score→readiness-verdict primitive that feeds the #3552 gate.
+
 import { createMetaOrchestrator, type ExecutionStrategy } from './meta-orchestrator.js';
 import { createLearnedStrategySelector } from './meta-shadow-selector.js';
 

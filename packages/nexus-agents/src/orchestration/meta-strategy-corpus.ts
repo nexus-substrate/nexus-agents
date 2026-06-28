@@ -26,6 +26,10 @@
  * @module orchestration/meta-strategy-corpus
  */
 
+// @export-no-consumer-yet — see #4095. The labeled corpus is consumed by the eval's
+// test now; its production consumer is epic #4094's child 2 (the readiness collector
+// over the shared corpus→score→verdict primitive).
+
 import type { MetaStrategyCorpusEntry } from './meta-strategy-eval.js';
 
 export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
