@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 2.143.0
+
+### Minor Changes
+
+- [#4090](https://github.com/nexus-substrate/nexus-agents/pull/4090) [`55c1021`](https://github.com/nexus-substrate/nexus-agents/commit/55c102191b0045da14ef41e0b4c01283c531e83e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make the higher-order voting strategy's correlation tracker injectable ([#3173](https://github.com/nexus-substrate/nexus-agents/issues/3173)).
+  `OWVoting.aggregate()` previously required an `ICorrelationTracker` argument, and
+  the MCP consensus path always threaded its process-wide singleton through — so
+  higher-order voting could not be reused as a building block (autonomous agents,
+  test harnesses, custom pipelines) without coupling to that singleton or modifying
+  the call signature.
+
+  `OWVotingOptions` now accepts an optional `tracker`, and `aggregate(votes, tracker?)`
+  resolves the tracker as: per-call argument → constructor-injected → else throws a
+  clear error. Fully backward compatible — existing callers that pass the tracker
+  positionally are unchanged, and the MCP path keeps owning its persistent singleton.
+  The `IHigherOrderVoting.aggregate` signature's `tracker` is now optional to match.
+
 ## 2.142.1
 
 ### Patch Changes
