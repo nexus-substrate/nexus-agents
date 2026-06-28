@@ -65,6 +65,16 @@ const samples: Record<SecurityAuditEvent['type'], SecurityAuditEvent> = {
     stepNumber: 3,
     detail: 'executing node n1',
   },
+  clawguard_violation: {
+    ...base,
+    component: 'clawguard-audit',
+    type: 'clawguard_violation',
+    toolName: 'write_file',
+    warning: 'tool write_file not in derived allowlist',
+    policySource: 'llm',
+    mode: 'audit',
+    requestId: 'req-42',
+  },
 };
 
 describe('securityAuditEventToInput (#3291)', () => {
@@ -115,6 +125,24 @@ describe('securityAuditEventToInput (#3291)', () => {
     expect(input.metadata?.['actionType']).toBe('GeneratePatchPlan');
     expect(input.metadata && 'mode' in input.metadata).toBe(false);
     expect(input.metadata && 'stageType' in input.metadata).toBe(false);
+  });
+
+  it('maps a clawguard_violation to a success-outcome warning with the metadata (#4097)', () => {
+    const input = securityAuditEventToInput(samples.clawguard_violation);
+    expect(input.action).toBe('security.clawguard_violation');
+    // Audit mode ALLOWED the call → success, not denied; flagged as a warning.
+    expect(input.outcome).toBe('success');
+    expect(input.severity).toBe('warning');
+    expect(input.category).toBe('authorization');
+    expect(input.actor).toMatchObject({ type: 'system', id: 'clawguard-audit' });
+    expect(input.metadata).toMatchObject({
+      toolName: 'write_file',
+      warning: 'tool write_file not in derived allowlist',
+      policySource: 'llm',
+      mode: 'audit',
+      requestId: 'req-42',
+    });
+    expect(AuditEventInputSchema.safeParse(input).success).toBe(true);
   });
 
   it('flags a downgraded trust classification as a warning', () => {

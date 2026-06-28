@@ -330,6 +330,9 @@ function registerExecuteExpert(ctx: ToolRegistrationContext, shared: SharedResou
     rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
     cliCache: getSharedCliCache(),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+    // #4097: thread the durable logger so ClawGuard AUDIT-mode violations during
+    // the expert's nested tool calls are persisted to the shared hash chain.
+    ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
   });
 }
 
@@ -436,6 +439,9 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
       security: ctx.securityConfig,
       // Wire model adapter for fallback orchestration path (Issue #827)
       modelAdapter: ctx.modelAdapter,
+      // #4097: thread the durable logger so ClawGuard AUDIT-mode violations
+      // during nested tool calls are persisted to the shared hash chain.
+      ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
     });
   } catch (error) {
     const message = getErrorMessage(error);

@@ -88,8 +88,14 @@ import {
 import {
   deriveAccessPolicy,
   withAccessPolicy,
+  withAuditTrail,
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
+// Durable AUDIT-mode violation persistence (#4097). Establishes the audit
+// trail in ALS so the access-policy middleware can mirror log-and-allow
+// violations from the orchestrator's nested tool calls to the hash chain.
+import { createDurableAuditTrail } from '../../security/audit-bridge.js';
+import type { AuditTrail } from '../../security/audit-trail.js';
 // Structured task state (#2033, integration from #2043). Enabled by
 // default from v2.50+; set NEXUS_TASK_STATE_ENABLED=0 to opt out.
 // When disabled, helpers no-op silently.
@@ -665,6 +671,9 @@ async function executeOrchestration(
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
   const policy = await deriveOrchestratePolicy(input.task, deps, logger, trustTier);
+  // #4097: build the durable trail here (deps in scope); undefined on the
+  // no-logger path so that path establishes no trail and stays byte-identical.
+  const auditTrail = createDurableAuditTrail(deps.auditLogger);
   try {
     return await runOrchestratorWithStateTracking({
       taskId,
@@ -676,6 +685,7 @@ async function executeOrchestration(
       workflowRouter,
       startTime,
       logger,
+      ...(auditTrail !== undefined ? { auditTrail } : {}),
     });
   } catch (error) {
     recordTaskStateBlocker(taskId, error instanceof Error ? error.message : String(error), logger);
@@ -700,10 +710,17 @@ async function runOrchestratorWithStateTracking(params: {
   readonly workflowRouter: IWorkflowRouter;
   readonly startTime: number;
   readonly logger: ILogger;
+  /** Durable audit trail for ClawGuard AUDIT-mode violations (#4097). */
+  readonly auditTrail?: AuditTrail;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { taskId, taskInput, definition, orchestrator, policy, logger } = params;
+  const { taskId, taskInput, definition, orchestrator, policy, logger, auditTrail } = params;
   recordTaskStateStage(taskId, 'executing', logger);
-  const result = await withAccessPolicy(policy, () => orchestrator.execute(definition, {}));
+  const runOrchestrator = (): ReturnType<typeof orchestrator.execute> =>
+    orchestrator.execute(definition, {});
+  const result = await withAccessPolicy(
+    policy,
+    auditTrail !== undefined ? () => withAuditTrail(auditTrail, runOrchestrator) : runOrchestrator
+  );
   if (!result.ok) {
     recordTaskStateBlocker(taskId, result.error.message, logger);
     // #3091: see executeOrchestration — terminal failure stage is 'failed'.

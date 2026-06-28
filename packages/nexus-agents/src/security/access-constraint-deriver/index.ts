@@ -24,6 +24,9 @@ export {
   guardMcpToolCall,
   denyToToolResult,
   createAccessPolicyMiddleware,
+  withAuditTrail,
+  getActiveAuditTrail,
+  recordAuditModeViolation,
 } from './mcp-guard.js';
 export type { GuardArgs } from './mcp-guard.js';
 export { createAccessPolicyChainMiddleware } from './chain-adapter.js';

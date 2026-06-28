@@ -48,8 +48,14 @@ import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import {
   deriveAccessPolicy,
   withAccessPolicy,
+  withAuditTrail,
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
+// Durable AUDIT-mode violation persistence (#4097). Establishes the audit
+// trail in ALS so the access-policy middleware can mirror log-and-allow
+// violations to the shared hash chain — ONLY when the server threaded a logger.
+import { createDurableAuditTrail } from '../../security/audit-bridge.js';
+import type { IAuditLogger } from '../../audit/audit-types.js';
 // Per-expert context-budget observer (#2031). Telemetry-only; never
 // influences the call. Emits `context_warning` when utilization crosses
 // threshold (default 85%, overridable via NEXUS_CONTEXT_WARN_THRESHOLD).
@@ -118,6 +124,12 @@ export type ExecuteExpertInput = z.infer<typeof ExecuteExpertInputSchema>;
 export interface ExecuteExpertDeps extends BaseMcpToolDeps {
   /** Registry of created experts (shared with create_expert) */
   expertRegistry: Map<string, Expert>;
+  /**
+   * Durable, hash-chained audit logger (#4097). When present, ClawGuard
+   * AUDIT-mode violations during the expert's nested tool calls are persisted
+   * to the shared store. Absent on the pure-CLI path → no trail established.
+   */
+  auditLogger?: IAuditLogger;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
   /** MCP notifier for client-visible logging (Issue #974) */
@@ -569,6 +581,32 @@ async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<Exp
   };
 }
 
+/**
+ * Derive the access policy (#1977) and run `expert.execute(task)` under it,
+ * establishing a durable audit trail in ALS when a logger was threaded so
+ * ClawGuard AUDIT-mode violations from the expert's nested tool calls are
+ * persisted to the shared hash chain (#4097). No trail → byte-identical path.
+ *
+ * execute-expert runs through MCP's native task handler (not the
+ * ContextAwareHandler chain), so HandlerContext / RequestContext isn't
+ * available here. The deriver gets `undefined` and defaults to trust tier '4'
+ * (untrusted). End-to-end trust-tier wiring is a follow-up (see #2993).
+ */
+async function executeExpertUnderPolicy(
+  deps: ExecuteExpertDeps,
+  expert: Expert,
+  task: Parameters<Expert['execute']>[0],
+  policyObjective: string
+): Promise<Awaited<ReturnType<Expert['execute']>>> {
+  const policy = await deriveExpertAccessPolicy(policyObjective, deps.logger, undefined);
+  const auditTrail = createDurableAuditTrail(deps.auditLogger);
+  const runExpert = (): ReturnType<Expert['execute']> => expert.execute(task);
+  return withAccessPolicy(
+    policy,
+    auditTrail !== undefined ? () => withAuditTrail(auditTrail, runExpert) : runExpert
+  );
+}
+
 /** Runs the expert task and records outcomes. Assumes permit is held. */
 async function runExpertTask(
   deps: ExecuteExpertDeps,
@@ -606,14 +644,7 @@ async function runExpertTask(
 
       let result;
       try {
-        // execute-expert runs through MCP's native task handler (not the
-        // ContextAwareHandler chain), so HandlerContext / RequestContext
-        // isn't directly available here. Pass undefined so the deriver
-        // defaults to '4' (untrusted). Proper end-to-end trust-tier
-        // wiring for execute-expert is filed as a follow-up — see #2993
-        // (multi-file half) and the new follow-up issue.
-        const policy = await deriveExpertAccessPolicy(policyObjective, deps.logger, undefined);
-        result = await withAccessPolicy(policy, () => expert.execute(task));
+        result = await executeExpertUnderPolicy(deps, expert, task, policyObjective);
       } finally {
         clearInterval(heartbeatTimer);
         monitor.endSession(sessionId);

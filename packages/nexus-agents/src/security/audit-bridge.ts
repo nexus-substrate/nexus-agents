@@ -18,7 +18,12 @@
  */
 
 import { createLogger, getErrorMessage } from '../core/index.js';
-import type { AuditEvent as SecurityAuditEvent, DurableAuditSink } from './audit-trail.js';
+import { createAuditTrail } from './audit-trail.js';
+import type {
+  AuditEvent as SecurityAuditEvent,
+  AuditTrail,
+  DurableAuditSink,
+} from './audit-trail.js';
 import type {
   AuditEventInput,
   AuditActor,
@@ -43,6 +48,7 @@ type CorroborationEvt = Extract<SecurityAuditEvent, { type: 'corroboration' }>;
 type ReputationEvt = Extract<SecurityAuditEvent, { type: 'reputation' }>;
 type SanitizationEvt = Extract<SecurityAuditEvent, { type: 'sanitization' }>;
 type GraphEvt = Extract<SecurityAuditEvent, { type: 'graph_execution' }>;
+type ClawGuardEvt = Extract<SecurityAuditEvent, { type: 'clawguard_violation' }>;
 
 function mapTrust(e: TrustEvent): AuditEventInput {
   const severity: AuditSeverity = e.wasDowngraded ? 'warning' : 'info';
@@ -171,6 +177,29 @@ function mapGraphExecution(e: GraphEvt): AuditEventInput {
 }
 
 /**
+ * Map a ClawGuard AUDIT-mode violation (#4097) to a durable event. `outcome` is
+ * `success` because audit mode ALLOWED the call (it is log-and-allow, not a
+ * denial); `severity` is `warning` to flag the policy violation. Queryable by
+ * `action: 'security.clawguard_violation'`.
+ */
+function mapClawGuard(e: ClawGuardEvt): AuditEventInput {
+  return {
+    category: 'authorization',
+    severity: 'warning',
+    outcome: 'success',
+    action: 'security.clawguard_violation',
+    actor: systemActor(e.component),
+    metadata: {
+      toolName: e.toolName,
+      warning: e.warning,
+      policySource: e.policySource,
+      mode: e.mode,
+      requestId: e.requestId,
+    },
+  };
+}
+
+/**
  * Map a security `AuditEvent` (discriminated union) to a durable
  * `AuditEventInput`. Pure — no side effects. The durable logger assigns
  * id/timestamp/hash, so those are omitted here.
@@ -189,6 +218,8 @@ export function securityAuditEventToInput(event: SecurityAuditEvent): AuditEvent
       return mapSanitization(event);
     case 'graph_execution':
       return mapGraphExecution(event);
+    case 'clawguard_violation':
+      return mapClawGuard(event);
   }
 }
 
@@ -208,4 +239,17 @@ export function createDurableAuditSink(auditLogger: IAuditLogger): DurableAuditS
       });
     }
   };
+}
+
+/**
+ * Wrap an optional `auditLogger` into a durable {@link AuditTrail} (#4097) — the
+ * single representation of "mirror security events to the shared hash chain when
+ * a logger is threaded." Returns undefined when none is present, so the no-logger
+ * path establishes NO trail and stays byte-identical (mirrors the dev-pipeline
+ * `buildPolicyAuditTrail` guard). Consumers wrap execution in `withAuditTrail`
+ * ONLY when this returns a trail.
+ */
+export function createDurableAuditTrail(auditLogger?: IAuditLogger): AuditTrail | undefined {
+  if (auditLogger === undefined) return undefined;
+  return createAuditTrail(createDurableAuditSink(auditLogger));
 }

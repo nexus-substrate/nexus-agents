@@ -22,9 +22,67 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { checkAccess } from './enforcer.js';
 import type { AccessDecision, TaskAccessPolicy } from './types.js';
+import { emitClawGuardViolation, type AuditTrail } from '../audit-trail.js';
 
 /** AsyncLocalStorage holding the active task's access policy. */
 const accessPolicyStorage = new AsyncLocalStorage<TaskAccessPolicy>();
+
+/**
+ * AsyncLocalStorage holding the active durable {@link AuditTrail} (#4097).
+ * Established by orchestrators (orchestrate / execute_expert) alongside
+ * `withAccessPolicy` ONLY when the server threaded an `auditLogger`. When
+ * absent, {@link recordAuditModeViolation} is a no-op, so the no-logger path
+ * stays byte-identical.
+ */
+const auditTrailStorage = new AsyncLocalStorage<AuditTrail>();
+
+/** Max persisted warning length (#4097) — caps unbounded decision text. */
+const MAX_WARNING_LEN = 500;
+
+/**
+ * Run `fn` with `trail` available to any nested MCP tool dispatch, so the
+ * access-policy middleware can persist AUDIT-mode violations to the durable
+ * sink. Mirrors {@link withAccessPolicy}.
+ */
+export function withAuditTrail<T>(trail: AuditTrail, fn: () => Promise<T>): Promise<T> {
+  return auditTrailStorage.run(trail, fn);
+}
+
+/**
+ * Returns the active durable audit trail, or undefined when no wrapping
+ * `withAuditTrail` is in scope (the pure-CLI / no-logger path). Mirrors
+ * {@link getActivePolicy}.
+ */
+export function getActiveAuditTrail(): AuditTrail | undefined {
+  return auditTrailStorage.getStore();
+}
+
+/**
+ * Best-effort persist of a ClawGuard AUDIT-mode violation (#4097). Reads the
+ * active trail from ALS; no-ops when none is established. NEVER throws — a sink
+ * failure must never break the log-and-allow path that ALLOWS the call.
+ */
+export function recordAuditModeViolation(input: {
+  readonly toolName: string;
+  readonly warning: string;
+  readonly policySource: string;
+  readonly mode: string;
+  readonly requestId: string;
+}): void {
+  const trail = getActiveAuditTrail();
+  if (trail === undefined) return;
+  try {
+    emitClawGuardViolation(trail, {
+      toolName: input.toolName,
+      warning: input.warning.slice(0, MAX_WARNING_LEN),
+      policySource: input.policySource,
+      mode: input.mode,
+      requestId: input.requestId,
+    });
+  } catch {
+    /* never break log-and-allow (#4097) */
+  }
+}
 
 /**
  * Run `fn` with `policy` available to any nested MCP tool dispatch.
@@ -132,6 +190,13 @@ export function createAccessPolicyMiddleware(config: {
         tool: config.toolName,
         warning: decision.warning,
         policySource: policy.source,
+        requestId: ctx.requestContext.requestId,
+      });
+      recordAuditModeViolation({
+        toolName: config.toolName,
+        warning: decision.warning,
+        policySource: policy.source,
+        mode: policy.mode,
         requestId: ctx.requestContext.requestId,
       });
       return next(args, ctx);
