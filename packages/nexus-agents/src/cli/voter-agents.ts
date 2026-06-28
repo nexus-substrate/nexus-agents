@@ -17,6 +17,7 @@
  */
 
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
+import { resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { VOTER_ROLES } from './vote-types.js';
 import type { Vote } from '../consensus/types.js';
 import type { VoteUsage } from './voter-execution.js';
@@ -339,34 +340,64 @@ function assignRoundRobinAdapters(
   return adapters;
 }
 
+/**
+ * Gateway path (#4040): assign roles across the in-process per-model gateway
+ * adapters. A single model collapses to a uniform panel (warned). With multiple
+ * models, per-role operator overrides (#4055) pin chosen roles to a known-good
+ * model and the rest round-robin.
+ */
+export function resolveGatewayRoleAdapters(
+  roles: readonly VoterRole[],
+  gatewayAdapters: readonly IModelAdapter[],
+  fallbackAdapter: IModelAdapter,
+  logger: ILogger
+): Map<VoterRole, IModelAdapter> {
+  if (gatewayAdapters.length === 1) {
+    // Consensus integrity: a multi-role panel on ONE model yields correlated votes
+    // (the higher_order strategy can't down-weight what it can't tell apart). Warn
+    // so operators configure the gateway with more models for a diverse panel.
+    if (roles.length > 1) {
+      logger.warn('Consensus panel collapsed to a single gateway model — votes may correlate', {
+        model: gatewayAdapters[0]?.modelId,
+        roleCount: roles.length,
+      });
+    }
+    return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
+  }
+  // #4055: per-role overrides (NEXUS_VOTER_MODEL_<ROLE>) pin a role to a known-good
+  // gateway model; the rest round-robin. An unknown override id warns + falls
+  // through to round-robin (handled in the resolver).
+  const overrides = resolveVoterModelOverrides(roles, gatewayAdapters, logger);
+  const roundRobinRoles = roles.filter((r) => !overrides.has(r));
+  const assigned = assignRoundRobinAdapters(
+    roundRobinRoles,
+    gatewayAdapters.map((a) => ({ label: a.modelId, adapter: a })),
+    logger,
+    'gateway'
+  );
+  for (const [role, adapter] of overrides) assigned.set(role, adapter);
+  // Consensus-integrity parity with the single-model path (#4055 review): warn if
+  // the FINAL assignment collapsed every role onto one model — e.g. an operator
+  // pinned all roles to the same override — since correlated votes defeat the panel.
+  const distinctModels = new Set([...assigned.values()].map((a) => a.modelId));
+  if (roles.length > 1 && distinctModels.size === 1) {
+    logger.warn(
+      'Consensus panel collapsed to a single gateway model via overrides — votes may correlate',
+      { model: [...distinctModels][0], roleCount: roles.length }
+    );
+  }
+  return assigned;
+}
+
 async function resolveDiverseAdapters(
   roles: readonly VoterRole[],
   logger: ILogger,
   fallbackAdapter: IModelAdapter,
   gatewayAdapters?: readonly IModelAdapter[]
 ): Promise<Map<VoterRole, IModelAdapter>> {
-  // #4040: gateway path — round-robin roles across the in-process per-model
-  // gateway adapters (HTTP, no subprocess). Preferred when configured.
+  // #4040: gateway path is preferred when configured.
   if (gatewayAdapters !== undefined && gatewayAdapters.length > 0) {
-    if (gatewayAdapters.length === 1) {
-      // Consensus integrity: a multi-role panel on ONE model yields correlated
-      // votes (the higher_order strategy can't down-weight what it can't tell
-      // apart). Warn so operators notice — configure the gateway with more models
-      // for a genuinely diverse panel.
-      if (roles.length > 1) {
-        logger.warn('Consensus panel collapsed to a single gateway model — votes may correlate', {
-          model: gatewayAdapters[0]?.modelId,
-          roleCount: roles.length,
-        });
-      }
-      return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
-    }
-    return assignRoundRobinAdapters(
-      roles,
-      gatewayAdapters.map((a) => ({ label: a.modelId, adapter: a })),
-      logger,
-      'gateway'
-    );
+    return resolveGatewayRoleAdapters(roles, gatewayAdapters, fallbackAdapter, logger);
   }
 
   let availableClis: CliName[];
