@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 2.142.0
+
+### Minor Changes
+
+- [#4084](https://github.com/nexus-substrate/nexus-agents/pull/4084) [`771a4f0`](https://github.com/nexus-substrate/nexus-agents/commit/771a4f026353d940091e88a0f25a44ab8e6820e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add per-role voter model overrides ([#4055](https://github.com/nexus-substrate/nexus-agents/issues/4055)). Voters round-robin across the gateway's
+  discovered models ([#4040](https://github.com/nexus-substrate/nexus-agents/issues/4040)), so a role can land on a model that fails on a particular
+  gateway (e.g. a bodyless HTTP 400 for specific model ids, [#4049](https://github.com/nexus-substrate/nexus-agents/issues/4049)) with no way to pin
+  a known-good model. Operators can now route a role to a gateway-accepted model:
+
+  ```
+  NEXUS_VOTER_MODEL_<ROLE>=<bare gateway model id>
+  # e.g. NEXUS_VOTER_MODEL_ARCHITECT=claude_4_5_opus
+  ```
+
+  In the gateway round-robin (`resolveDiverseAdapters`), a role with a valid override
+  is pinned to that model and the remaining roles round-robin as before. The override
+  is validated against the discovered gateway catalog: an id that is not a live
+  gateway model warns and falls back to round-robin for that role (no hard failure).
+  Roles without an override are unchanged. This is the operator escape hatch for the
+  per-model gateway-rejection situation, independent of the underlying gateway fix
+  ([#4049](https://github.com/nexus-substrate/nexus-agents/issues/4049)).
+
 ## 2.141.6
 
 ### Patch Changes
