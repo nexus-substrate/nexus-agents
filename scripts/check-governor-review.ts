@@ -183,6 +183,13 @@ export interface GovernorReviewInputs {
    * headSha binding.
    */
   readonly reviewedDiffHash: string;
+  /**
+   * The PR's ACTUAL base commit sha (the trusted `base..head` range the CI gate
+   * recomputed {@link reviewedDiffHash} from). A matching record's caller-asserted
+   * `baseSha` is verified against THIS (#4058): a record that reviewed the right
+   * diff bytes but claims a different base has inaccurate provenance.
+   */
+  readonly baseSha: string;
   readonly changedFiles: readonly string[];
   readonly governorPatterns: readonly string[];
   readonly records: readonly PrReviewRecord[];
@@ -201,6 +208,48 @@ export interface GovernorReviewInputs {
  *     condition 1). A stale-sha record does NOT match.
  *  5. Otherwise → WARN (warn-first, condition 2): actionable, non-blocking.
  */
+/**
+ * Outcome for a record that matched on prNumber + reviewedDiffHash (#4058).
+ *
+ * PROVENANCE HYGIENE, not a new integrity gain: the matched `reviewedDiffHash` is
+ * already recomputed by CI from `git diff <trusted PR base>..<head>`, so a matching
+ * record provably reviewed byte-identical CONTENT to the real PR range — the
+ * record's stored `baseSha` is a label, and a wrong label CANNOT make a record
+ * falsely satisfy the gate (satisfaction is bound to the trusted-base hash, not the
+ * record's base). What this catches is a producer MISCONFIGURATION — a record that
+ * reviewed the right bytes but recorded a base inconsistent with the PR's actual
+ * base. Surfaced warn-first; a future enforce flip (#3831) can decide whether to
+ * harden it to a fail.
+ *
+ * Fail-OPEN on a non-comparable CI base (abbreviated / non-40-hex): the canonical
+ * CI path passes a full lowercase 40-hex `pull_request.base.sha`, but we only flag
+ * a mismatch when the base is directly comparable to the record's pinned
+ * `^[0-9a-f]{40}$` format — otherwise we PASS rather than risk a spurious warn.
+ */
+function matchedRecordOutcome(
+  match: PrReviewRecord,
+  inputs: GovernorReviewInputs
+): GovernorReviewOutcome {
+  const ciBase = inputs.baseSha.toLowerCase();
+  const comparable = /^[0-9a-f]{40}$/.test(ciBase);
+  if (comparable && match.baseSha.toLowerCase() !== ciBase) {
+    return {
+      kind: 'warn',
+      message:
+        `PR #${String(inputs.prNumber)} has a diff-bound pr_review record whose baseSha ` +
+        `(${match.baseSha.slice(0, 12)}…) does NOT match the PR's actual base ` +
+        `(${ciBase.slice(0, 12)}…). The reviewed diff content matches (hash verified), but the ` +
+        `record's recorded base is inconsistent with the PR — likely a producer ` +
+        `misconfiguration. Re-run pr_review with the PR's base and commit the record. ` +
+        `(Warn-first: not blocking this stage; provenance hygiene for a future enforce flip, #4058.)`,
+    };
+  }
+  return {
+    kind: 'pass',
+    reason: `diff-bound pr_review record found for PR #${String(inputs.prNumber)} (reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, verdict=${match.verdict})`,
+  };
+}
+
 export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorReviewOutcome {
   // (1) Integrity FIRST — fail-closed on tamper evidence (condition 2).
   const verification = verifyPrReviewRecordSet(inputs.records);
@@ -235,10 +284,7 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
     (r) => r.prNumber === inputs.prNumber && r.reviewedDiffHash === inputs.reviewedDiffHash
   );
   if (match !== undefined) {
-    return {
-      kind: 'pass',
-      reason: `diff-bound pr_review record found for PR #${String(inputs.prNumber)} (reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…, verdict=${match.verdict})`,
-    };
+    return matchedRecordOutcome(match, inputs);
   }
 
   // (5) Absence → WARN-FIRST (condition 2): actionable, non-blocking this stage.
@@ -356,7 +402,9 @@ function tamperExitCode(records: readonly PrReviewRecord[]): number | null {
 function resolveGateContext(
   argv: readonly string[],
   records: readonly PrReviewRecord[]
-): { prNumber: number; reviewedDiffHash: string; changedFiles: string[] } | { exit: number } {
+):
+  | { prNumber: number; reviewedDiffHash: string; baseSha: string; changedFiles: string[] }
+  | { exit: number } {
   const { prNumber, baseSha, headSha } = resolvePrContext(argv);
   const changedFiles = resolveChangedFiles(argv);
 
@@ -384,7 +432,7 @@ function resolveGateContext(
     return { exit: 0 };
   }
 
-  return { prNumber, reviewedDiffHash, changedFiles };
+  return { prNumber, reviewedDiffHash, baseSha, changedFiles };
 }
 
 export function runGovernorReviewGate(argv: readonly string[]): number {
@@ -398,6 +446,7 @@ export function runGovernorReviewGate(argv: readonly string[]): number {
   const outcome = analyzeGovernorReview({
     prNumber: ctx.prNumber,
     reviewedDiffHash: ctx.reviewedDiffHash,
+    baseSha: ctx.baseSha,
     changedFiles: ctx.changedFiles,
     governorPatterns,
     records,
