@@ -41,8 +41,23 @@ export function intEnv(name: string, fallback: number, min: number): number {
   return Number.isInteger(n) && n >= min ? n : fallback;
 }
 
-const MAX_ATTEMPTS = intEnv('CHANGESET_VERSION_MAX_ATTEMPTS', 3, 1);
-const RETRY_DELAY_MS = intEnv('CHANGESET_VERSION_RETRY_DELAY_MS', 5000, 0);
+// Defaults span a MULTI-MINUTE outage window. The GitHub GraphQL flake can last
+// minutes (observed 2026-06-28: a flat 3×5s = 15s window exhausted while the API
+// was down ~longer), so the retry uses EXPONENTIAL backoff: with base 10s and cap
+// 60s, 6 attempts wait 10+20+40+60+60s ≈ 190s before giving up (#4072 hardening).
+const MAX_ATTEMPTS = intEnv('CHANGESET_VERSION_MAX_ATTEMPTS', 6, 1);
+const RETRY_DELAY_MS = intEnv('CHANGESET_VERSION_RETRY_DELAY_MS', 10_000, 0);
+const RETRY_MAX_DELAY_MS = intEnv('CHANGESET_VERSION_MAX_DELAY_MS', 60_000, 0);
+
+/**
+ * Exponential backoff (capped) for the delay BEFORE retry `attempt` (1-based):
+ * `min(base * 2^(attempt-1), cap)`. Spans a longer outage than a flat delay while
+ * bounding the total wait. `attempt` 1 → `base`, 2 → `2*base`, … capped at `cap`.
+ */
+export function backoffDelayMs(attempt: number, baseMs: number, capMs: number): number {
+  const exponential = baseMs * 2 ** Math.max(0, attempt - 1);
+  return Math.min(exponential, capMs);
+}
 
 /**
  * Whether `changeset version`'s combined stdout+stderr indicates a TRANSIENT
@@ -97,11 +112,12 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+    const delayMs = backoffDelayMs(attempt, RETRY_DELAY_MS, RETRY_MAX_DELAY_MS);
     console.error(
       `[changeset-version-retry] transient GitHub GraphQL flake on attempt ` +
-        `${String(attempt)}/${String(MAX_ATTEMPTS)} (#4072) — retrying in ${String(RETRY_DELAY_MS)}ms...`
+        `${String(attempt)}/${String(MAX_ATTEMPTS)} (#4072) — retrying in ${String(delayMs)}ms...`
     );
-    await sleep(RETRY_DELAY_MS);
+    await sleep(delayMs);
   }
 }
 

@@ -6,7 +6,11 @@
 
 import { afterEach, describe, it, expect } from 'vitest';
 
-import { isRetryableChangesetVersionError, intEnv } from './changeset-version-with-retry.js';
+import {
+  isRetryableChangesetVersionError,
+  intEnv,
+  backoffDelayMs,
+} from './changeset-version-with-retry.js';
 
 describe('isRetryableChangesetVersionError (#4072)', () => {
   it('retries the observed get-github-info GraphQL premature-close flake', () => {
@@ -74,5 +78,24 @@ describe('intEnv — fail-safe attempt/delay parsing (#4072 review)', () => {
     expect(intEnv(KEY, 3, 1)).toBe(3);
     process.env[KEY] = '-4';
     expect(intEnv(KEY, 3, 1)).toBe(3);
+  });
+});
+
+describe('backoffDelayMs — exponential, capped (#4072 hardening)', () => {
+  it('doubles per attempt from the base', () => {
+    expect(backoffDelayMs(1, 10_000, 60_000)).toBe(10_000);
+    expect(backoffDelayMs(2, 10_000, 60_000)).toBe(20_000);
+    expect(backoffDelayMs(3, 10_000, 60_000)).toBe(40_000);
+  });
+
+  it('caps the delay so the total wait stays bounded', () => {
+    expect(backoffDelayMs(4, 10_000, 60_000)).toBe(60_000); // 80_000 capped to 60_000
+    expect(backoffDelayMs(6, 10_000, 60_000)).toBe(60_000);
+  });
+
+  it('spans a multi-minute window across the default 6 attempts', () => {
+    // The flat 15s window exhausted on 2026-06-28; sum the first 5 waits.
+    const total = [1, 2, 3, 4, 5].reduce((s, a) => s + backoffDelayMs(a, 10_000, 60_000), 0);
+    expect(total).toBe(190_000); // 10+20+40+60+60 s ≈ 3.2 min
   });
 });
