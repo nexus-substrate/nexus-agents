@@ -14,8 +14,10 @@ import {
   emitReputationEvent,
   emitSanitizationEvent,
   emitGraphExecutionEvent,
+  emitClawGuardViolation,
   createGraphAuditBridge,
 } from './audit-trail.js';
+import type { AuditEvent } from './audit-trail.js';
 
 describe('AuditTrail', () => {
   let trail: AuditTrail;
@@ -399,6 +401,41 @@ describe('AuditTrail', () => {
 
       const events = trail.query({ type: 'graph_execution' });
       expect(events.length).toBeGreaterThanOrEqual(3); // started, completed, step_completed, execution_complete
+    });
+  });
+
+  describe('emitClawGuardViolation (#4097)', () => {
+    it('appends a clawguard_violation event with the canonical component', () => {
+      emitClawGuardViolation(trail, {
+        toolName: 'write_file',
+        warning: 'tool not in allowlist',
+        policySource: 'llm',
+        mode: 'audit',
+        requestId: 'req-1',
+      });
+      const events = trail.query({ type: 'clawguard_violation' });
+      expect(events).toHaveLength(1);
+      const ev = events[0];
+      if (ev?.type === 'clawguard_violation') {
+        expect(ev.component).toBe('clawguard-audit');
+        expect(ev.toolName).toBe('write_file');
+        expect(ev.mode).toBe('audit');
+        expect(ev.requestId).toBe('req-1');
+      }
+    });
+
+    it('mirrors the violation through a durable sink', () => {
+      const mirrored: AuditEvent[] = [];
+      const sinkTrail = createAuditTrail((e) => mirrored.push(e));
+      emitClawGuardViolation(sinkTrail, {
+        toolName: 'run_shell',
+        warning: 'execute not permitted',
+        policySource: 'fallback-keyword',
+        mode: 'audit',
+        requestId: 'req-2',
+      });
+      expect(mirrored).toHaveLength(1);
+      expect(mirrored[0]?.type).toBe('clawguard_violation');
     });
   });
 });

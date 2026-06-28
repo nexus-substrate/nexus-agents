@@ -14,7 +14,7 @@
  */
 
 import { checkAccess } from './enforcer.js';
-import { denyToToolResult, getActivePolicy } from './mcp-guard.js';
+import { denyToToolResult, getActivePolicy, recordAuditModeViolation } from './mcp-guard.js';
 import type { GuardArgs } from './mcp-guard.js';
 // Type-only import: no runtime cycle with mcp/middleware/middleware-chain.ts.
 import type { Middleware } from '../../mcp/middleware/middleware-chain.js';
@@ -48,6 +48,13 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
         tool: toolName,
         warning: decision.warning,
         policySource: policy.source,
+        requestId: ctx.requestContext.requestId,
+      });
+      recordAuditModeViolation({
+        toolName,
+        warning: decision.warning,
+        policySource: policy.source,
+        mode: policy.mode,
         requestId: ctx.requestContext.requestId,
       });
       return next(args, ctx);

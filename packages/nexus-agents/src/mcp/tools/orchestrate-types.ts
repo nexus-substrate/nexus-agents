@@ -174,6 +174,12 @@ export interface OrchestrateDeps extends BaseMcpToolDeps {
   modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
+  /**
+   * Durable, hash-chained audit logger (#4097). When present, ClawGuard
+   * AUDIT-mode violations during the orchestrator's nested tool calls are
+   * persisted to the shared store. Absent on the pure-CLI path → no trail.
+   */
+  auditLogger?: import('../../audit/audit-types.js').IAuditLogger;
 }
 
 // ============================================================================

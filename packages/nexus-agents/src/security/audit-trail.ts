@@ -33,7 +33,8 @@ export type AuditEvent =
   | CorroborationEvent
   | ReputationEvent
   | SanitizationEvent
-  | GraphExecutionAuditEvent;
+  | GraphExecutionAuditEvent
+  | ClawGuardViolationEvent;
 
 /** Base fields shared by all audit events. */
 interface AuditEventBase {
@@ -137,6 +138,27 @@ export interface SanitizationEvent extends AuditEventBase {
    * Untrusted Input Policy: "Log stripped elements for audit trail."
    */
   readonly strippedElements: readonly StrippedElementSummary[];
+}
+
+/**
+ * ClawGuard AUDIT-mode violation (#4097). Records a tool call that VIOLATED the
+ * derived access policy but was ALLOWED to proceed because the policy is in
+ * `audit` mode (log-and-allow). Persisting these is what lets the audit→enforce
+ * graduation loop size the real violation rate from durable telemetry rather
+ * than ephemeral logs.
+ */
+export interface ClawGuardViolationEvent extends AuditEventBase {
+  readonly type: 'clawguard_violation';
+  /** The tool whose call violated the policy. */
+  readonly toolName: string;
+  /** Human-readable warning from the access decision (may be truncated). */
+  readonly warning: string;
+  /** Source of the derived policy (`llm` / `fallback-keyword` / `bypass`). */
+  readonly policySource: string;
+  /** Policy mode under which the violation was allowed (e.g. `audit`). */
+  readonly mode: string;
+  /** Request ID of the offending tool call, for correlation. */
+  readonly requestId: string;
 }
 
 /** Graph execution lifecycle event (Issue #839). */
@@ -462,6 +484,22 @@ export function emitGraphExecutionEvent(
   return trail.append({
     type: 'graph_execution',
     component: 'graph-executor',
+    ...data,
+  });
+}
+
+/**
+ * Records a ClawGuard AUDIT-mode violation (#4097) — a policy-violating tool
+ * call that was log-and-allowed because the policy is in `audit` mode. ONE
+ * append per call; mirrors to the durable sink when the trail is wired.
+ */
+export function emitClawGuardViolation(
+  trail: AuditTrail,
+  data: Omit<ClawGuardViolationEvent, 'id' | 'timestamp' | 'type' | 'component'>
+): string {
+  return trail.append({
+    type: 'clawguard_violation',
+    component: 'clawguard-audit',
     ...data,
   });
 }

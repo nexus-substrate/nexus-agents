@@ -16,11 +16,16 @@ import {
   denyToToolResult,
   deriveAccessPolicy,
   getActivePolicy,
+  getActiveAuditTrail,
   guardMcpToolCall,
+  recordAuditModeViolation,
   resetPolicyCache,
   withAccessPolicy,
+  withAuditTrail,
 } from './index.js';
 import type { TaskAccessPolicy } from './types.js';
+import { AuditTrail, createAuditTrail } from '../audit-trail.js';
+import type { AuditEvent } from '../audit-trail.js';
 
 function policyFactory(overrides: Partial<TaskAccessPolicy> = {}): TaskAccessPolicy {
   return {
@@ -241,6 +246,97 @@ describe('createAccessPolicyMiddleware', () => {
     )) as { isError?: boolean };
     expect(next).not.toHaveBeenCalled();
     expect(result.isError).toBe(true);
+  });
+});
+
+describe('recordAuditModeViolation (#4097)', () => {
+  const sample = {
+    toolName: 'write_file',
+    warning: 'tool not in allowlist',
+    policySource: 'llm',
+    mode: 'audit',
+    requestId: 'req-1',
+  };
+
+  it('no-ops when no trail is established in ALS', () => {
+    expect(getActiveAuditTrail()).toBeUndefined();
+    // No throw and nothing to mirror — the no-logger path stays inert.
+    expect(() => {
+      recordAuditModeViolation(sample);
+    }).not.toThrow();
+  });
+
+  it('emits exactly one clawguard_violation within withAuditTrail', async () => {
+    const mirrored: AuditEvent[] = [];
+    const trail = createAuditTrail((e) => mirrored.push(e));
+    await withAuditTrail(trail, () => {
+      recordAuditModeViolation(sample);
+      return Promise.resolve();
+    });
+    expect(trail.query({ type: 'clawguard_violation' })).toHaveLength(1);
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0]?.type).toBe('clawguard_violation');
+  });
+
+  it('caps the persisted warning at 500 chars', async () => {
+    const trail = createAuditTrail();
+    await withAuditTrail(trail, () => {
+      recordAuditModeViolation({ ...sample, warning: 'x'.repeat(1000) });
+      return Promise.resolve();
+    });
+    const ev = trail.query({ type: 'clawguard_violation' })[0];
+    if (ev?.type === 'clawguard_violation') {
+      expect(ev.warning).toHaveLength(500);
+    }
+  });
+
+  it('never throws even when the trail append throws', async () => {
+    const throwingTrail = {
+      append: () => {
+        throw new Error('sink exploded');
+      },
+    } as unknown as AuditTrail;
+    await withAuditTrail(throwingTrail, () => {
+      expect(() => {
+        recordAuditModeViolation(sample);
+      }).not.toThrow();
+      return Promise.resolve();
+    });
+  });
+});
+
+describe('log-and-allow regression: audit mode always ALLOWS (#4097)', () => {
+  function makeCtx(): { readonly requestContext: { readonly requestId: string } } {
+    return { requestContext: { requestId: 'req_reg' } };
+  }
+  const logger = { warn: vi.fn(), info: vi.fn() };
+  const auditPolicy = policyFactory({
+    allowedTools: ['gh_issue_view'],
+    mode: 'audit',
+    source: 'llm',
+  });
+
+  it('returns next() result with no trail present', async () => {
+    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_close', logger });
+    const next = vi.fn(() => Promise.resolve({ ok: true }));
+    const result = await withAccessPolicy(auditPolicy, () => mw({}, makeCtx(), next as never));
+    expect(next).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('returns next() result and does not throw when emit fails', async () => {
+    const throwingTrail = {
+      append: () => {
+        throw new Error('sink exploded');
+      },
+    } as unknown as AuditTrail;
+    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_close', logger });
+    const next = vi.fn(() => Promise.resolve({ ok: true }));
+    const result = await withAccessPolicy(auditPolicy, () =>
+      withAuditTrail(throwingTrail, () => mw({}, makeCtx(), next as never))
+    );
+    expect(next).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true });
   });
 });
 
