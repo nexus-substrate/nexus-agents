@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.147.0
+
+### Minor Changes
+
+- [#4107](https://github.com/nexus-substrate/nexus-agents/pull/4107) [`900b044`](https://github.com/nexus-substrate/nexus-agents/commit/900b044a1d73721d94aeee69338278cc460ec306) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `remediation-review readiness` — surfaces the remediation enforce-readiness verdict + per-criterion rates + harmful-rate ([#4098](https://github.com/nexus-substrate/nexus-agents/issues/4098), epic [#4094](https://github.com/nexus-substrate/nexus-agents/issues/4094)), reusing the exact evidence path the [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769) enforce gate consumes (no new corpus). Read-only; never flips enforcement.
+
 ## 2.146.0
 
 ### Minor Changes
