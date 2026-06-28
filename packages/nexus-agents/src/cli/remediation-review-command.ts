@@ -13,6 +13,7 @@
  *   mark <soakRef> --evaluator <name> (--sound | --unsound) [--note <text>]
  *                                     Record one reviewed verdict by a named evaluator.
  *   sign-off --owner <name>           Record an owner sign-off across reviewed selections.
+ *   readiness                         Show the enforce-readiness verdict + per-criterion rates + harmful-rate (read-only).
  *
  * `--format json` emits structured output. Never flips enforcement on itself.
  * An optional LLM-judge pre-pass is deferred to #3773 (advisory only — the
@@ -26,15 +27,23 @@ import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTimeProvider } from '../core/index.js';
 import {
   getRemediationSoakSink,
+  readRemediationSoakSummary,
   type RemediationSoakRecord,
 } from '../mcp/tools/improvement-remediation-shadow.js';
 import {
   getRemediationReviewStore,
   pendingSoakSelections,
+  readRemediationReviewSummary,
   soakRefOf,
   summarizeRemediationReviews,
   type ReviewRecord,
 } from '../mcp/tools/remediation-review.js';
+import { buildEnforceReadinessEvidence } from '../mcp/tools/remediation-readiness-collector.js';
+import {
+  DEFAULT_ENFORCE_READINESS_CONFIG,
+  evaluateEnforceReadiness,
+  type EnforceReadinessEvidence,
+} from '../mcp/tools/improvement-enforce-readiness.js';
 
 /** Soak records, projected to the minimal ref-able shape. */
 function soakSelections(): readonly Pick<RemediationSoakRecord, 'signalKey' | 'timestamp'>[] {
@@ -52,6 +61,49 @@ function runList(format: string): void {
   const lines = [`${String(pending.length)} pending soak selection(s) to review:`];
   for (const p of pending) lines.push(`  ${p.soakRef}  (${p.signalKey})`);
   process.stdout.write(`${lines.join('\n')}\n`);
+}
+
+/** Fraction of JUDGED selections assessed unsound (= 1 − soundnessRate); 0 when nothing judged. */
+export function harmfulRate(ev: EnforceReadinessEvidence): number {
+  return ev.judgedSelections === 0
+    ? 0
+    : (ev.judgedSelections - ev.judgedSound) / ev.judgedSelections;
+}
+
+/** Render the text-mode readiness report (kept separate to hold `runReadiness` under the line cap). */
+function formatReadiness(
+  verdict: ReturnType<typeof evaluateEnforceReadiness>,
+  evidence: EnforceReadinessEvidence,
+  harmful: number
+): string {
+  const maxPct = Math.round((1 - DEFAULT_ENFORCE_READINESS_CONFIG.minSoundnessRate) * 100);
+  const lines = [
+    `Enforcement readiness: ${verdict.ready ? 'READY' : 'NOT READY'}`,
+    `harmful-rate: ${String(Math.round(harmful * 100))}% of ${String(evidence.judgedSelections)} judged sound-reviews (threshold ≤ ${String(maxPct)}%)`,
+    'Criteria:',
+  ];
+  for (const c of verdict.criteria) {
+    lines.push(`  [${c.met ? 'PASS' : 'FAIL'}] ${c.name}  —  ${c.detail}`);
+  }
+  if (verdict.blockers.length > 0) lines.push(`Blockers: ${verdict.blockers.join(', ')}`);
+  return lines.join('\n');
+}
+
+/** `remediation-review readiness` — read-only enforce-readiness verdict + harmful-rate (#4098). */
+function runReadiness(format: string): void {
+  const evidence = buildEnforceReadinessEvidence(
+    readRemediationSoakSummary(),
+    readRemediationReviewSummary()
+  );
+  const verdict = evaluateEnforceReadiness(evidence);
+  const harmful = harmfulRate(evidence);
+  if (format === 'json') {
+    process.stdout.write(
+      `${JSON.stringify({ ready: verdict.ready, harmfulRate: harmful, evidence, criteria: verdict.criteria, blockers: verdict.blockers }, null, 2)}\n`
+    );
+    return;
+  }
+  process.stdout.write(`${formatReadiness(verdict, evidence, harmful)}\n`);
 }
 
 /** Resolve the sound verdict from the mutually-exclusive flags. Throws on bad input. */
@@ -166,9 +218,12 @@ export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promi
     case 'sign-off':
       runSignOff(args);
       break;
+    case 'readiness':
+      runReadiness(args.options.format);
+      break;
     default:
       throw new Error(
-        `remediation-review: unknown subcommand '${sub}' (expected list | mark | sign-off)`
+        `remediation-review: unknown subcommand '${sub}' (expected list | mark | sign-off | readiness)`
       );
   }
   await Promise.resolve();
