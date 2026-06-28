@@ -3,27 +3,32 @@
  *
  * Marks an async-mode job as cancelled. Three semantic outcomes:
  *
- * - **`cancelled`** — the job was `pending` and is now `cancelled`. The
- *   dispatcher's in-process AbortController (from #3035/#3038 plumbing)
- *   is the source of truth for ACTUALLY stopping in-flight work in the
- *   same process; this tool's job is to write the durable cancellation
- *   record so cross-session pollers can observe it.
+ * - **`cancelled`** — the job was `pending` and is now `cancelled`. This
+ *   writes the durable `cancelled` record, and the terminal writers
+ *   (`writeJobComplete`/`writeJobFailed`) no-op against it (#4017/#4022),
+ *   so a later-settling background job can no longer silently revert the
+ *   cancellation. See the IMPORTANT caveat below on what this does NOT stop.
  * - **`already_complete`** — the job is already `complete` / `failed`.
  *   The terminal record is preserved (Security flag from #3041 vote:
  *   cancel-after-complete must not rewrite history).
  * - **`already_cancelled`** — second + cancellation against the same
  *   jobId is a no-op. Idempotent for safe retry.
  *
- * **What this tool does NOT do:** it doesn't abort in-flight work in
- * OTHER processes (no IPC; per-process AbortControllers can only abort
- * what they own). For the same-process case, every async-mode dispatcher
- * shipped in Stages 1+3+4 already pairs `tryAcquire` with `release` in
- * `finally`, so the abort signal lands on the right Promise.
+ * **IMPORTANT — cancel marks the record; it does NOT abort in-flight work
+ * for jobs dispatched via the shared `runAsJob` path (#4017).** `run-as-job.ts`
+ * has no AbortController/signal wiring, so for `run`, `run_pipeline`,
+ * `run_dev_pipeline`, and every other `runAsJob`-dispatched tool, the
+ * background `params.run(...)` keeps executing to completion after a cancel —
+ * only the persisted record is marked `cancelled` (now preserved by the
+ * terminal-writer guards). `consensus_vote` is the exception: it has its own
+ * AbortSignal plumbing (#3038) and IS genuinely interrupted. Wiring a real
+ * per-job AbortController through `runAsJob` so cancel actually stops the work
+ * is tracked as a follow-up enhancement.
  *
- * In a multi-process deployment, the durable cancellation record this
- * tool writes is observable via `get_job_result` and `list_jobs`, but
- * the worker process needs to poll for it (future work; not part of
- * this PR).
+ * It also doesn't abort work in OTHER processes (no IPC; per-process
+ * AbortControllers can only abort what they own). In a multi-process
+ * deployment the durable cancellation record is observable via
+ * `get_job_result` / `list_jobs`, but the worker process must poll for it.
  *
  * @module mcp/tools/cancel-job-tool
  */
