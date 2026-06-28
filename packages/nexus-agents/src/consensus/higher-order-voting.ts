@@ -48,6 +48,15 @@ export interface OWVotingOptions {
    * Keeps the label consistent whether constructed directly or via a factory.
    */
   readonly algorithm?: ConsensusAlgorithm;
+  /**
+   * Correlation tracker this instance uses when {@link OWVoting.aggregate} is
+   * called WITHOUT a per-call tracker (#3173). Injecting here lets higher-order
+   * voting be reused as a building block (autonomous agents, test harnesses,
+   * custom pipelines) without coupling to the MCP tool's process-wide singleton
+   * or threading the tracker through every call. Omit it to keep the singleton
+   * model — the MCP consensus path injects/passes its persistent tracker.
+   */
+  readonly tracker?: ICorrelationTracker;
 }
 
 /**
@@ -57,12 +66,15 @@ export interface OWVotingOptions {
 export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
   readonly algorithm: ConsensusAlgorithm;
   private readonly config: HigherOrderVotingConfig;
+  /** #3173: tracker used when `aggregate` is called without a per-call one. */
+  private readonly injectedTracker: ICorrelationTracker | undefined;
 
   constructor(options: OWVotingOptions = {}) {
     this.config = { ...DEFAULT_HIGHER_ORDER_CONFIG, ...options.config };
     // #3168: configurable so the label is correct whether built directly or via
     // a factory; defaults to simple_majority for backward compatibility.
     this.algorithm = options.algorithm ?? 'simple_majority';
+    this.injectedTracker = options.tracker;
     logger.info('OWVoting initialized', { config: this.config, algorithm: this.algorithm });
   }
 
@@ -180,6 +192,23 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
   }
 
   aggregate(
+    votes: ReadonlyMap<string, Vote>,
+    tracker?: ICorrelationTracker
+  ): HigherOrderVotingResult {
+    // #3173: per-call tracker wins; otherwise use the one injected at construction.
+    // Neither present is a programming error (no correlation data source available).
+    const effectiveTracker = tracker ?? this.injectedTracker;
+    if (effectiveTracker === undefined) {
+      throw new Error(
+        'OWVoting.aggregate requires an ICorrelationTracker — pass it as an argument ' +
+          'or inject one via OWVotingOptions.tracker (#3173).'
+      );
+    }
+    return this.aggregateWith(votes, effectiveTracker);
+  }
+
+  /** Core aggregation against a resolved tracker (#3173 — extracted from aggregate). */
+  private aggregateWith(
     votes: ReadonlyMap<string, Vote>,
     tracker: ICorrelationTracker
   ): HigherOrderVotingResult {

@@ -8,8 +8,9 @@
  * (Source: Issue #333)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Vote } from './types-core.js';
+import type { ICorrelationTracker } from './higher-order-types.js';
 import {
   createAgentPairKey,
   parseAgentPairKey,
@@ -965,5 +966,51 @@ describe('OWVoting.algorithm label (#3168)', () => {
   it('HigherOrderVotingStrategy reports opinion_wise however it is created', () => {
     expect(new HigherOrderVotingStrategy().algorithm).toBe('opinion_wise');
     expect(createHigherOrderVotingStrategy().algorithm).toBe('opinion_wise');
+  });
+});
+
+// ============================================================================
+// Injectable correlation tracker (#3173)
+// ============================================================================
+
+/** Minimal spy tracker — `hasSufficientData=false` makes aggregate fall back to
+ *  simple voting (only that method is touched), so a spy proves WHICH tracker ran. */
+function spyTracker(): ICorrelationTracker {
+  return {
+    hasSufficientData: vi.fn(() => false),
+    computeCorrelationMatrix: vi.fn(() => new Map()),
+    identifyIndependentSubsets: vi.fn(() => []),
+  } as unknown as ICorrelationTracker;
+}
+
+describe('OWVoting — injectable correlation tracker (#3173)', () => {
+  const votes = createVoteMap([
+    ['alice', 'approve'],
+    ['bob', 'reject'],
+  ]);
+
+  it('uses the constructor-injected tracker when aggregate() is called WITHOUT one', () => {
+    const injected = spyTracker();
+    const owv = createOWVoting({ tracker: injected });
+    const result = owv.aggregate(votes); // no per-call tracker
+    expect(result).toBeDefined();
+    expect(injected.hasSufficientData).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a per-call tracker WIN over the injected one', () => {
+    const injected = spyTracker();
+    const perCall = spyTracker();
+    createOWVoting({ tracker: injected }).aggregate(votes, perCall);
+    expect(perCall.hasSufficientData).toHaveBeenCalledTimes(1);
+    expect(injected.hasSufficientData).not.toHaveBeenCalled();
+  });
+
+  it('THROWS a clear error when neither a per-call nor an injected tracker is available', () => {
+    expect(() => createOWVoting().aggregate(votes)).toThrow(/requires an ICorrelationTracker/);
+  });
+
+  it('still works with a real injected tracker (composability smoke test)', () => {
+    const owv = createOWVoting({ tracker: createCorrelationTracker() });
+    expect(owv.aggregate(votes)).toBeDefined();
   });
 });
