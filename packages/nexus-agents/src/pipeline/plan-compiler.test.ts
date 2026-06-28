@@ -180,6 +180,29 @@ describe('compilePlan', () => {
     const result = compilePlan(plan, { pluginRegistry: registry });
     expect(result.ok).toBe(true);
   });
+
+  it('marks a missing-plugin stage as a placeholder so its no-op is not a silent success (#3178)', async () => {
+    // A stage referencing an unregistered plugin still compiles (#1179) but runs as
+    // a NO-OP. It used to report status 'completed' indistinguishably from a real
+    // execution — a silent failure. The result now carries `placeholder: true` so an
+    // inspector can tell the difference (and the compiler logs a warning).
+    const registry = createCorePluginRegistry();
+    const plan = makePlan({
+      stages: [makeStage({ id: 'custom', pluginId: 'unknown:plugin' })],
+    });
+    const compiled = compilePlan(plan, { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const stageResults = result.value.finalState['stageResults'] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    const placeholderResult = stageResults?.find((s) => s['stageId'] === 'custom');
+    expect(placeholderResult).toBeDefined();
+    expect(placeholderResult?.['placeholder']).toBe(true);
+  });
 });
 
 // ============================================================================

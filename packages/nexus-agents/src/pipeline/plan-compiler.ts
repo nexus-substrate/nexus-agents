@@ -17,6 +17,9 @@ import type { IPluginRegistry } from './plugin-types.js';
 import { enforceGatePolicy } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
 import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'plan-compiler' });
 
 /** Result of plan compilation. */
 type CompileResult =
@@ -120,11 +123,22 @@ function createStageHandler(
       };
     };
   }
-  // Placeholder when no plugin registered for this stage's pluginId
+  // No plugin registered for this stage's pluginId. The stage still compiles
+  // (resilience, #1179) but runs as a NO-OP placeholder. Surface the
+  // misconfiguration LOUDLY at compile time (#3178: this path used to be silent —
+  // a typo'd or unregistered pluginId would run as a no-op and report success with
+  // no signal). The placeholder result is marked so an inspector can tell a real
+  // execution from a skipped one without re-parsing the node id.
+  logger.warn(
+    `Pipeline stage "${stage.id}" references unregistered plugin "${stage.pluginId}" — ` +
+      `it will run as a NO-OP placeholder (no work performed). Register the plugin or ` +
+      `remove the stage; a missing plugin is almost always a misconfiguration.`,
+    { stageId: stage.id, pluginId: stage.pluginId }
+  );
   return (_state: Readonly<GraphState>) =>
     Promise.resolve({
       currentStage: stage.id,
-      stageResults: [{ stageId: stage.id, status: 'completed' }],
+      stageResults: [{ stageId: stage.id, status: 'completed', placeholder: true }],
     });
 }
 
