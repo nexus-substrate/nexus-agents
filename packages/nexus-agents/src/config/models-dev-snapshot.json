@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-06-22",
+  "fetchedAt": "2026-06-29",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1219,54 +1219,6 @@
       "pricing": {
         "inputPer1M": 0.8,
         "outputPer1M": 2.4
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-5-haiku-20241022",
-      "vendor": "anthropic",
-      "family": "claude-haiku",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Haiku 3.5",
-      "verifiedAt": "2024-10-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.8,
-        "outputPer1M": 4
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-5-haiku-latest",
-      "vendor": "anthropic",
-      "family": "claude-haiku",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Haiku 3.5 (latest)",
-      "verifiedAt": "2024-10-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.8,
-        "outputPer1M": 4
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -4957,6 +4909,30 @@
       "contextWindow": 204800,
       "maxOutputTokens": 131072,
       "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "minimaxai/minimax-m3",
+      "vendor": "nvidia",
+      "family": "minimax",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "MiniMax-M3",
+      "verifiedAt": "2026-06-01",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 16384,
+      "inputModalities": ["text", "image", "video"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 0,
