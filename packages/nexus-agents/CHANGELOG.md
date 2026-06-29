@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.149.1
+
+### Patch Changes
+
+- [#4113](https://github.com/nexus-substrate/nexus-agents/pull/4113) [`6c77121`](https://github.com/nexus-substrate/nexus-agents/commit/6c7712187ccc7568adf6647334c52f37745b655a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the shared temperature drop-decision from the claude/openai/sdk adapters into one `planOptionalParams` seam ([#4068](https://github.com/nexus-substrate/nexus-agents/issues/4068), epic [#4066](https://github.com/nexus-substrate/nexus-agents/issues/4066) layer 2), consulting the layer-1 capability resolver and returning {dropped, transformed} for the layer-3 telemetry child ([#4069](https://github.com/nexus-substrate/nexus-agents/issues/4069)). Behavior-preserving; gemini/ollama and all max-tokens handling are unchanged.
+
 ## 2.149.0
 
 ### Minor Changes
