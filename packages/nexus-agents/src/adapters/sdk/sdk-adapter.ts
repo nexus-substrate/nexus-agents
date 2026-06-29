@@ -30,10 +30,7 @@ import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
-import {
-  temperatureUnsupportedForModel,
-  warnTemperatureDropped,
-} from '../../config/temperature-support.js';
+import { planOptionalParams } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
   assertCustomApiHostResolvesPublic,
@@ -401,16 +398,13 @@ export class SdkAdapter extends BaseAdapter {
     if (request.systemPrompt !== undefined) {
       options['system'] = request.systemPrompt;
     }
-    // #4061/#4062: Claude models after Opus 4.6 and OpenAI reasoning models
-    // (o-series, GPT-5 family) reject a non-1.0 temperature with a 400. The AI-SDK
-    // path routes to both (auto-adapter wires openai/codex + anthropic), so omit
-    // the param for those models — 1.0 is the API default, so omitting is equivalent.
-    if (request.temperature !== undefined) {
-      if (temperatureUnsupportedForModel(this.modelId)) {
-        warnTemperatureDropped(this.modelId);
-      } else {
-        options['temperature'] = request.temperature;
-      }
+    // #4068: the temperature drop-decision (#4061/#4062: Claude after Opus 4.6 and
+    // OpenAI reasoning models reject a non-1.0 temperature with a 400; the AI-SDK
+    // path routes to both, so omit the param for those models — 1.0 is the API
+    // default, equivalent) is centralized in the shared planOptionalParams seam.
+    const plan = planOptionalParams(request, this.modelId);
+    if (plan.temperature !== undefined) {
+      options['temperature'] = plan.temperature;
     }
     if (request.maxTokens !== undefined) {
       options['maxTokens'] = request.maxTokens;

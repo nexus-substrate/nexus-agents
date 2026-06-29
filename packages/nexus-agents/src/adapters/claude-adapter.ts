@@ -43,10 +43,7 @@ import {
   RESPOND_TOOL_NAME,
 } from './claude-adapter-helpers.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
-import {
-  temperatureUnsupportedForModel,
-  warnTemperatureDropped,
-} from '../config/temperature-support.js';
+import { planOptionalParams } from './optional-params.js';
 
 // Re-export types and constants for backward compatibility
 export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
@@ -277,17 +274,13 @@ export class ClaudeAdapter extends BaseAdapter {
     params: Anthropic.MessageCreateParamsNonStreaming,
     request: CompletionRequest
   ): void {
-    // #4061: Claude models released after Opus 4.6 reject any non-1.0 temperature
-    // with a 400 (per the @anthropic-ai/sdk deprecation note). Omit the param for
-    // those models — 1.0 is the API default, so omitting is equivalent and avoids
-    // the 400 the voter/base-agent default (0.3) would otherwise trigger.
-    if (request.temperature !== undefined) {
-      if (temperatureUnsupportedForModel(this.resolvedModelId)) {
-        warnTemperatureDropped(this.resolvedModelId);
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-deprecated -- still valid for older Anthropic models (≤ Opus 4.6) and value 1.0; gated by temperatureUnsupportedForModel
-        params.temperature = request.temperature;
-      }
+    // #4068: the temperature drop-decision (#4061: Claude after Opus 4.6 rejects
+    // any non-1.0 temperature with a 400; omit it — 1.0 is the API default, so
+    // omitting is equivalent) is centralized in the shared planOptionalParams seam.
+    const plan = planOptionalParams(request, this.resolvedModelId);
+    if (plan.temperature !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- still valid for older Anthropic models (≤ Opus 4.6) and value 1.0; the seam gates on temperatureUnsupportedForModel
+      params.temperature = plan.temperature;
     }
 
     if (request.stop !== undefined && request.stop.length > 0) {
