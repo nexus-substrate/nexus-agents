@@ -17,6 +17,7 @@ import type {
 } from '../core/index.js';
 import { getErrorMessage } from '../core/index.js';
 import { isRateLimitLikeError } from './rate-limit-detector.js';
+import { recordWouldHaveSelfHealed } from './optional-params.js';
 
 import {
   ok,
@@ -316,7 +317,19 @@ export abstract class BaseAdapter implements IModelAdapter {
     const errorMessage = getErrorMessage(error);
     const errorCode = this.determineErrorCode(error);
 
-    const modelError = this.createModelError(errorMessage, errorCode, error);
+    // #4069: a param-naming 400 carries the offending param name in context, and
+    // counts as a would-have-self-healed event (the reactive #4071 path would catch
+    // exactly this 400). Only set for MODEL_PARAMETER_UNSUPPORTED — all other codes
+    // are unchanged.
+    const param =
+      errorCode === ErrorCode.MODEL_PARAMETER_UNSUPPORTED
+        ? this.extractErrorParam(error)
+        : undefined;
+    if (param !== undefined) {
+      recordWouldHaveSelfHealed(this.modelId, param);
+    }
+
+    const modelError = this.createModelError(errorMessage, errorCode, error, param);
 
     this.logger.error('Model adapter error', modelError, {
       errorCode,
@@ -333,17 +346,24 @@ export abstract class BaseAdapter implements IModelAdapter {
   private createModelError(
     message: string,
     errorCode: (typeof ErrorCode)[keyof typeof ErrorCode],
-    originalError: unknown
+    originalError: unknown,
+    param?: string
   ): ModelError {
     const fullMessage = `${this.providerId}/${this.modelId}: ${message}`;
 
     // Build options object conditionally to satisfy exactOptionalPropertyTypes
+    const context: Record<string, unknown> = {
+      providerId: this.providerId,
+      modelId: this.modelId,
+    };
+    // #4069: surface the offending param name for a param-naming 400 so callers
+    // and the reactive self-heal path (#4071) can read which param to retry without.
+    if (param !== undefined) {
+      context.param = param;
+    }
     const options: NexusErrorOptions = {
       code: errorCode,
-      context: {
-        providerId: this.providerId,
-        modelId: this.modelId,
-      },
+      context,
     };
 
     // Only set cause if originalError is an Error
@@ -389,7 +409,34 @@ export abstract class BaseAdapter implements IModelAdapter {
       return ErrorCode.MODEL_UNAVAILABLE;
     }
 
+    // Check for a param-naming 400 (#4069): a 400 that identifies an unsupported
+    // parameter by name. Distinct from generic MODEL_ERROR — non-retryable, and the
+    // param name is threaded into context. Only changes 400s that NAME a param; a
+    // 400 with no param, and every non-400, stay MODEL_ERROR.
+    if (this.extractErrorParam(error) !== undefined) {
+      return ErrorCode.MODEL_PARAMETER_UNSUPPORTED;
+    }
+
     return ErrorCode.MODEL_ERROR;
+  }
+
+  /**
+   * Extract the offending parameter name from a param-naming 400 (#4069).
+   *
+   * Returns the param only when the error is a 400 AND carries a non-empty `param`
+   * field (the OpenAI SDK / OpenAI-compatible gateways set this on a rejected
+   * parameter; the OpenAI adapter threads it onto the classification probe).
+   * Returns undefined otherwise, so non-400s and param-less 400s are untouched.
+   */
+  private extractErrorParam(error: unknown): string | undefined {
+    if (!(error instanceof Error)) {
+      return undefined;
+    }
+    const errorObj = error as { status?: number; param?: unknown };
+    if (errorObj.status !== 400) {
+      return undefined;
+    }
+    return typeof errorObj.param === 'string' && errorObj.param !== '' ? errorObj.param : undefined;
   }
 
   /**
