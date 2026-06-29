@@ -345,6 +345,19 @@ function applyOptionalCapabilityFields(entry: ModelEntry, target: Writable<Model
   if (entry.cliAlias !== undefined) target.cliAlias = entry.cliAlias;
   if (entry.cliModelName !== undefined) target.cliModelName = entry.cliModelName;
   if (entry.aliases !== undefined) target.aliases = [...entry.aliases];
+  applyParameterSupportFields(entry, target);
+}
+
+/**
+ * Project the #4067 request-parameter capability fields back onto the legacy
+ * `ModelCapability` shape. Split from `applyOptionalCapabilityFields` to keep that
+ * function under the cyclomatic-complexity cap.
+ */
+function applyParameterSupportFields(entry: ModelEntry, target: Writable<ModelCapability>): void {
+  if (entry.unsupportedParameters !== undefined) {
+    target.unsupportedParameters = [...entry.unsupportedParameters];
+  }
+  if (entry.maxTokensParam !== undefined) target.maxTokensParam = entry.maxTokensParam;
 }
 
 function entryToCapability(entry: ModelEntry): ModelCapability {

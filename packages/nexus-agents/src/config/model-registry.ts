@@ -124,6 +124,18 @@ export interface ModelEntry {
   readonly pricing?: Pricing;
   readonly qualityScores?: QualityScores;
   readonly notes?: string;
+  /**
+   * Request parameters this model rejects (carried from
+   * `ModelCapability.unsupportedParameters`, #4067). Consumed by
+   * `model-parameter-support.ts`; absence means the regex fallback applies.
+   */
+  readonly unsupportedParameters?: readonly string[];
+  /**
+   * Max-tokens param name this model expects (carried from
+   * `ModelCapability.maxTokensParam`, #4049/#4067). Absence defaults to
+   * `'max_tokens'` (with the OpenAI-reasoning regex fallback).
+   */
+  readonly maxTokensParam?: 'max_tokens' | 'max_completion_tokens';
 
   // ---- CLI routing metadata (in-tree entries only) ----
   /** Which CLI tool this model belongs to (e.g. 'claude', 'gemini'). */

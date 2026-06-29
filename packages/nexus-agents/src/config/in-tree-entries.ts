@@ -53,6 +53,10 @@ function optionalFields(model: ModelCapability): Partial<ModelEntry> {
   if (model.cliName !== undefined) out.cliName = model.cliName;
   if (model.cliAlias !== undefined) out.cliAlias = model.cliAlias;
   if (model.cliModelName !== undefined) out.cliModelName = model.cliModelName;
+  if (model.unsupportedParameters !== undefined) {
+    out.unsupportedParameters = model.unsupportedParameters;
+  }
+  if (model.maxTokensParam !== undefined) out.maxTokensParam = model.maxTokensParam;
   return out;
 }
 

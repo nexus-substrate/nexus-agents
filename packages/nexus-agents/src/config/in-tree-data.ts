@@ -222,6 +222,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 128_000,
       cliName: 'codex',
       cliModelName: 'gpt-5.4',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
     },
     {
       id: 'codex-5.2',
@@ -250,6 +252,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 100_000,
       cliName: 'codex',
       cliModelName: 'gpt-5.2-codex',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
     },
     {
       id: 'codex-5.1-mini',
@@ -273,6 +277,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 100_000,
       cliName: 'codex',
       cliModelName: 'o3-mini',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
     },
     // ----- OpenCode (multi-provider proxy) -----
     {
