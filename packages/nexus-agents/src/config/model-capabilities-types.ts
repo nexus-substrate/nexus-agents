@@ -167,6 +167,18 @@ export const ModelCapabilitySchema = z.object({
   specialFeatures: z.array(z.enum(SPECIAL_FEATURES)),
   /** Known constraints or limitations */
   constraints: z.array(z.string()).optional(),
+  /**
+   * Request parameters this model REJECTS (e.g. `['temperature']`); the adapter
+   * must omit them. Data-driven generalization of `temperatureUnsupportedForModel`
+   * (#4067). When absent, the regex fallback in `model-parameter-support.ts`
+   * applies (Claude>4.6, OpenAI o-series/codex/gpt-5 reject `temperature`).
+   */
+  unsupportedParameters: z.array(z.string()).optional(),
+  /**
+   * Which max-tokens param name this model expects; OpenAI reasoning models use
+   * `'max_completion_tokens'` (#4049). Defaults to `'max_tokens'` when absent.
+   */
+  maxTokensParam: z.enum(['max_tokens', 'max_completion_tokens']).optional(),
   /** Notes about the model (e.g., beta features, pricing tier) */
   notes: z.string().optional(),
   /** Pricing per 1M tokens (USD) */
