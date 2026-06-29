@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.150.0
+
+### Minor Changes
+
+- [#4115](https://github.com/nexus-substrate/nexus-agents/pull/4115) [`eed699d`](https://github.com/nexus-substrate/nexus-agents/commit/eed699da37b0fa8c4c3ed58f30b0c32988125aac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make dropped model parameters LOUD ([#4069](https://github.com/nexus-substrate/nexus-agents/issues/4069), epic [#4066](https://github.com/nexus-substrate/nexus-agents/issues/4066) layer 3): planOptionalParams now classifies severity (behavioral params like temperature/seed/top_p warn loudly; cosmetic quiet), surfaces `warnings` on the CompletionResponse, and records a would-have-self-healed counter. Adds the MODEL_PARAMETER_UNSUPPORTED error code (non-retryable) for 400s that name an unsupported parameter, carrying the param name in error context.
+
 ## 2.149.1
 
 ### Patch Changes
