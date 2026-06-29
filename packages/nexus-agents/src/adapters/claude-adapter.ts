@@ -43,7 +43,7 @@ import {
   RESPOND_TOOL_NAME,
 } from './claude-adapter-helpers.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
-import { planOptionalParams } from './optional-params.js';
+import { planOptionalParams, type DroppedParam } from './optional-params.js';
 
 // Re-export types and constants for backward compatibility
 export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
@@ -193,7 +193,7 @@ export class ClaudeAdapter extends BaseAdapter {
    * Executes the completion request against the Anthropic API.
    */
   private async executeCompletion(request: CompletionRequest): Promise<CompletionResponse> {
-    const params = this.buildRequestParams(request);
+    const { params, dropped } = this.buildRequestParams(request);
     // #3036: forward AbortSignal into the SDK so withWatchdog timeouts
     // actually cancel the in-flight HTTP request instead of leaking it
     // past the Promise.race boundary. Branch on signal presence — vitest
@@ -208,7 +208,8 @@ export class ClaudeAdapter extends BaseAdapter {
     // #3433: when we forced a `respond` tool to satisfy a non-text
     // responseFormat, surface its structured input as a text block so the
     // caller's JSON parser keeps working unchanged.
-    return this.mapResponse(response, forcesResponseTool(request));
+    // #4069: surface params dropped by the seam (e.g. temperature) as warnings.
+    return this.mapResponse(response, forcesResponseTool(request), dropped);
   }
 
   /**
@@ -223,7 +224,7 @@ export class ClaudeAdapter extends BaseAdapter {
     }
   ): Promise<void> {
     try {
-      const params = this.buildRequestParams(request);
+      const { params } = this.buildRequestParams(request);
       const stream = this.client.messages.stream(params);
 
       for await (const event of stream) {
@@ -243,9 +244,10 @@ export class ClaudeAdapter extends BaseAdapter {
   /**
    * Builds Anthropic API request parameters from our CompletionRequest.
    */
-  private buildRequestParams(
-    request: CompletionRequest
-  ): Anthropic.MessageCreateParamsNonStreaming {
+  private buildRequestParams(request: CompletionRequest): {
+    params: Anthropic.MessageCreateParamsNonStreaming;
+    dropped: readonly DroppedParam[];
+  } {
     // Filter out system messages and map the rest
     const messages = request.messages.filter((m) => m.role !== 'system').map(mapMessage);
 
@@ -261,19 +263,21 @@ export class ClaudeAdapter extends BaseAdapter {
       params.system = systemPrompt;
     }
 
-    // Apply optional parameters
-    this.applyOptionalParams(params, request);
+    // Apply optional parameters; the seam reports any params it dropped (#4069).
+    const dropped = this.applyOptionalParams(params, request);
 
-    return params;
+    return { params, dropped };
   }
 
   /**
    * Applies optional parameters to the request params.
+   *
+   * @returns the params the seam dropped (#4069) — surfaced as response warnings.
    */
   private applyOptionalParams(
     params: Anthropic.MessageCreateParamsNonStreaming,
     request: CompletionRequest
-  ): void {
+  ): readonly DroppedParam[] {
     // #4068: the temperature drop-decision (#4061: Claude after Opus 4.6 rejects
     // any non-1.0 temperature with a 400; omit it — 1.0 is the API default, so
     // omitting is equivalent) is centralized in the shared planOptionalParams seam.
@@ -302,12 +306,18 @@ export class ClaudeAdapter extends BaseAdapter {
       params.tools = [...(params.tools ?? []), respondTool];
       params.tool_choice = { type: 'tool', name: RESPOND_TOOL_NAME };
     }
+
+    return plan.dropped;
   }
 
   /**
    * Maps Anthropic API response to our CompletionResponse format.
    */
-  private mapResponse(response: Anthropic.Message, surfaceRespondTool = false): CompletionResponse {
+  private mapResponse(
+    response: Anthropic.Message,
+    surfaceRespondTool = false,
+    dropped: readonly DroppedParam[] = []
+  ): CompletionResponse {
     const content: ContentBlock[] = surfaceRespondTool
       ? mapResponseWithRespondTool(response.content)
       : response.content.map(mapContentBlock);
@@ -323,6 +333,10 @@ export class ClaudeAdapter extends BaseAdapter {
       usage,
       stopReason: mapStopReason(response.stop_reason),
       model: response.model,
+      // #4069: surface dropped params (e.g. an omitted temperature) so the caller
+      // can see a behavioral param had no effect. Omitted entirely when nothing
+      // was dropped (exactOptionalPropertyTypes).
+      ...(dropped.length > 0 ? { warnings: dropped } : {}),
     };
   }
 

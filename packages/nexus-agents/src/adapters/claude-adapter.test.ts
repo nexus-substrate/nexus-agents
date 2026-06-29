@@ -270,6 +270,53 @@ describe('ClaudeAdapter', () => {
       expect(callArg).not.toHaveProperty('temperature');
     });
 
+    it('surfaces a dropped temperature as a response warning (#4069)', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Response' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: 'claude-opus-4-8',
+      });
+
+      const adapter = new ClaudeAdapter({ ...validConfig, modelId: 'claude-opus-4-8' });
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        temperature: 0.3,
+        maxTokens: 1024,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.warnings).toBeDefined();
+        expect(result.value.warnings).toHaveLength(1);
+        expect(result.value.warnings?.[0]).toMatchObject({
+          param: 'temperature',
+          severity: 'behavioral',
+        });
+      }
+    });
+
+    it('omits warnings when no param was dropped (supported model)', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Response' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        temperature: 0.5,
+        maxTokens: 1024,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.warnings).toBeUndefined();
+      }
+    });
+
     it('should include stop sequences when provided', async () => {
       mockCreate.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'Response' }],

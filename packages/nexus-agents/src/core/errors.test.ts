@@ -44,6 +44,7 @@ describe('ErrorCode', () => {
     expect(ErrorCode.MODEL_UNAVAILABLE).toBe('MODEL_UNAVAILABLE');
     expect(ErrorCode.MODEL_RATE_LIMITED).toBe('MODEL_RATE_LIMITED');
     expect(ErrorCode.MODEL_TIMEOUT).toBe('MODEL_TIMEOUT');
+    expect(ErrorCode.MODEL_PARAMETER_UNSUPPORTED).toBe('MODEL_PARAMETER_UNSUPPORTED');
   });
 
   it('contains all agent error codes', () => {

@@ -144,6 +144,20 @@ export interface CompletionResponse {
   stopReason: StopReason;
   /** Model that generated the response */
   model: string;
+  /**
+   * Request params the adapter dropped before sending (#4069, epic #4066 layer 3).
+   * Present (and non-empty) only when a param was silently unsupported — e.g. a
+   * post-Opus-4.6 Claude or OpenAI reasoning model that rejects `temperature`. The
+   * request still ran (at the provider default); this surfaces what was omitted so
+   * the caller can SEE a behavioral param had no effect. Absent when nothing was
+   * dropped. Typed via the adapter-layer {@link DroppedParam} shape, re-declared
+   * structurally here to avoid a core→adapters import cycle.
+   */
+  warnings?: readonly {
+    readonly param: string;
+    readonly reason: string;
+    readonly severity: 'behavioral' | 'cosmetic';
+  }[];
 }
 
 /**

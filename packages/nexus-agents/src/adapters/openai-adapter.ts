@@ -33,7 +33,7 @@ import {
   getModelCapabilities,
   type OpenAIAdapterConfig,
 } from './openai-types.js';
-import { planOptionalParams } from './optional-params.js';
+import { planOptionalParams, type DroppedParam } from './optional-params.js';
 import {
   mapMessage,
   mapTool,
@@ -231,11 +231,17 @@ export class OpenAIAdapter extends BaseAdapter {
   protected override transformError(error: unknown): ModelError {
     if (error instanceof APIError) {
       const v = error as ApiErrorView;
-      // Classify on the original SDK message + status/code only.
-      const probe: Error & { status?: number | undefined; code?: string | null | undefined } =
-        new Error(typeof v.message === 'string' ? v.message : '');
+      // Classify on the original SDK message + status/code/param only. #4069: thread
+      // `param` so a param-naming 400 classifies as MODEL_PARAMETER_UNSUPPORTED and
+      // the param name reaches the error context.
+      const probe: Error & {
+        status?: number | undefined;
+        code?: string | null | undefined;
+        param?: string | undefined;
+      } = new Error(typeof v.message === 'string' ? v.message : '');
       probe.status = typeof v.status === 'number' ? v.status : undefined;
       probe.code = v.code ?? undefined;
+      probe.param = typeof v.param === 'string' && v.param !== '' ? v.param : undefined;
       probe.cause = error;
       const classified = super.transformError(probe);
       // Surface the full diagnostic detail in the final message (code/cause kept).
@@ -280,7 +286,7 @@ export class OpenAIAdapter extends BaseAdapter {
    * Executes the completion request against the OpenAI API.
    */
   private async executeCompletion(request: CompletionRequest): Promise<CompletionResponse> {
-    const params = this.buildRequestParams(request);
+    const { params, dropped } = this.buildRequestParams(request);
     // #3036: forward AbortSignal into the OpenAI SDK so withWatchdog
     // timeouts cancel the HTTP request instead of leaking it past the
     // Promise.race boundary. Branch on signal presence — vitest 4
@@ -290,7 +296,8 @@ export class OpenAIAdapter extends BaseAdapter {
       request.signal !== undefined
         ? await this.client.chat.completions.create(params, { signal: request.signal })
         : await this.client.chat.completions.create(params);
-    return this.mapResponse(response);
+    // #4069: surface params dropped by the seam (e.g. temperature) as warnings.
+    return this.mapResponse(response, dropped);
   }
 
   /**
@@ -305,7 +312,7 @@ export class OpenAIAdapter extends BaseAdapter {
     }
   ): Promise<void> {
     try {
-      const params = this.buildRequestParams(request);
+      const { params } = this.buildRequestParams(request);
       const stream = await this.client.chat.completions.create({ ...params, stream: true });
 
       let contentIndex = 0;
@@ -335,9 +342,10 @@ export class OpenAIAdapter extends BaseAdapter {
   /**
    * Builds OpenAI API request parameters from our CompletionRequest.
    */
-  private buildRequestParams(
-    request: CompletionRequest
-  ): OpenAI.Chat.ChatCompletionCreateParamsNonStreaming {
+  private buildRequestParams(request: CompletionRequest): {
+    params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
+    dropped: readonly DroppedParam[];
+  } {
     const messages = this.buildMessages(request);
 
     const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
@@ -346,8 +354,8 @@ export class OpenAIAdapter extends BaseAdapter {
       max_completion_tokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
     };
 
-    this.addOptionalParams(params, request);
-    return params;
+    const dropped = this.addOptionalParams(params, request);
+    return { params, dropped };
   }
 
   /**
@@ -378,7 +386,7 @@ export class OpenAIAdapter extends BaseAdapter {
   private addOptionalParams(
     params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
     request: CompletionRequest
-  ): void {
+  ): readonly DroppedParam[] {
     // #4068: the temperature drop-decision (#4061: a gateway routing to a Claude
     // model after Opus 4.6, or an OpenAI reasoning model, rejects a non-1.0
     // temperature with a 400; omit it so a gateway-routed voter panel at the
@@ -399,6 +407,9 @@ export class OpenAIAdapter extends BaseAdapter {
     }
 
     this.addResponseFormat(params, request);
+
+    // #4069: report dropped params so mapResponse can surface them as warnings.
+    return plan.dropped;
   }
 
   /**
@@ -428,12 +439,15 @@ export class OpenAIAdapter extends BaseAdapter {
   /**
    * Maps OpenAI API response to our CompletionResponse format.
    */
-  private mapResponse(response: ChatCompletion): CompletionResponse {
+  private mapResponse(
+    response: ChatCompletion,
+    dropped: readonly DroppedParam[] = []
+  ): CompletionResponse {
     const firstChoice = response.choices[0];
 
     // Handle case where no choices are returned
     if (firstChoice === undefined) {
-      return this.createEmptyResponse(response);
+      return this.createEmptyResponse(response, dropped);
     }
 
     const content = mapChoiceToContentBlocks(firstChoice);
@@ -444,18 +458,25 @@ export class OpenAIAdapter extends BaseAdapter {
       usage,
       stopReason: mapStopReason(firstChoice.finish_reason),
       model: response.model,
+      // #4069: surface dropped params (e.g. an omitted temperature). Omitted
+      // entirely when nothing was dropped (exactOptionalPropertyTypes).
+      ...(dropped.length > 0 ? { warnings: dropped } : {}),
     };
   }
 
   /**
    * Creates an empty response when no choices are returned.
    */
-  private createEmptyResponse(response: ChatCompletion): CompletionResponse {
+  private createEmptyResponse(
+    response: ChatCompletion,
+    dropped: readonly DroppedParam[] = []
+  ): CompletionResponse {
     return {
       content: [{ type: 'text', text: '' }],
       usage: mapResponseUsage(response),
       stopReason: 'end_turn',
       model: response.model,
+      ...(dropped.length > 0 ? { warnings: dropped } : {}),
     };
   }
 

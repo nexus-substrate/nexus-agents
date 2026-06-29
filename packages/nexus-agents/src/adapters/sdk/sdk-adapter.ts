@@ -30,7 +30,7 @@ import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
-import { planOptionalParams } from '../optional-params.js';
+import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
   assertCustomApiHostResolvesPublic,
@@ -380,7 +380,10 @@ export class SdkAdapter extends BaseAdapter {
   /**
    * Maps our CompletionRequest to AI SDK generateText options.
    */
-  private buildSdkOptions(request: CompletionRequest): Record<string, unknown> {
+  private buildSdkOptions(request: CompletionRequest): {
+    options: Record<string, unknown>;
+    dropped: readonly DroppedParam[];
+  } {
     const options: Record<string, unknown> = {
       model: this.model,
       messages: request.messages.map((m) => ({
@@ -413,7 +416,8 @@ export class SdkAdapter extends BaseAdapter {
       options['stopSequences'] = request.stop;
     }
 
-    return options;
+    // #4069: report dropped params so complete() can surface them as warnings.
+    return { options, dropped: plan.dropped };
   }
 
   /**
@@ -483,16 +487,21 @@ export class SdkAdapter extends BaseAdapter {
             'Ensure ensureInitialized() completes before calling complete().'
         );
       }
-      const options = this.buildSdkOptions(request);
+      const { options, dropped } = this.buildSdkOptions(request);
 
       // #3433: native structured output. json_object/json_schema route
       // through generateObject; everything else keeps the generateText path
       // unchanged.
       const responseFormat = request.responseFormat;
-      const response =
+      const base =
         responseFormat !== undefined && responseFormat.type !== 'text'
           ? await this.completeStructured(sdk, options, responseFormat)
           : await this.completeText(sdk, options);
+
+      // #4069: surface params dropped by the seam (e.g. temperature) as warnings.
+      // Omitted entirely when nothing was dropped (exactOptionalPropertyTypes).
+      const response: CompletionResponse =
+        dropped.length > 0 ? { ...base, warnings: dropped } : base;
 
       this.logResponse(response);
       return ok(response);
@@ -516,7 +525,7 @@ export class SdkAdapter extends BaseAdapter {
       });
     }
 
-    const options = this.buildSdkOptions(request);
+    const { options } = this.buildSdkOptions(request);
 
     // First yield establishes the generator — errors after this point are
     // properly caught by callers using for-await-of with try/catch.
