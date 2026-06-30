@@ -7,6 +7,30 @@
  * (Source: Extracted from cli-commands.ts for #272)
  */
 
+import { getCommandHelp } from './cli-command-help.js';
+
+/**
+ * Print a standard "missing required arg" usage message whose Examples block is
+ * single-sourced from {@link getCommandHelp} (#3209, epic #3691) — so the on-error
+ * examples can't drift from `nexus-agents <cmd> --help`. The Examples section is
+ * omitted when the command has no registered help examples.
+ */
+function printUsageWithExamples(opts: {
+  readonly error: string;
+  readonly usage: string;
+  readonly command: string;
+}): void {
+  process.stdout.write(`Error: ${opts.error}\n`);
+  process.stdout.write(`Usage: ${opts.usage}\n`);
+  const examples = getCommandHelp(opts.command)?.examples ?? [];
+  if (examples.length > 0) {
+    process.stdout.write('Examples:\n');
+    for (const example of examples) {
+      process.stdout.write(`  ${example}\n`);
+    }
+  }
+}
+
 /**
  * Prints workflow run usage and exits.
  */
@@ -31,24 +55,22 @@ export function printRoutingAuditUsage(): void {
  * Prints orchestrate command usage and exits.
  */
 export function printOrchestrateUsage(): void {
-  process.stdout.write('Error: Task description is required.\n');
-  process.stdout.write('Usage: nexus-agents orchestrate <task> [options]\n');
-  process.stdout.write('Examples:\n');
-  process.stdout.write('  nexus-agents orchestrate "Explain this function"\n');
-  process.stdout.write('  nexus-agents orchestrate "Generate tests" --model=claude\n');
-  process.stdout.write('  nexus-agents orchestrate "Refactor code" --dry-run\n');
+  printUsageWithExamples({
+    error: 'Task description is required.',
+    usage: 'nexus-agents orchestrate <task> [options]',
+    command: 'orchestrate',
+  });
 }
 
 /**
  * Prints vote command usage and exits.
  */
 export function printVoteUsage(): void {
-  process.stdout.write('Error: Proposal is required.\n');
-  process.stdout.write('Usage: nexus-agents vote --proposal "..." [options]\n');
-  process.stdout.write('Examples:\n');
-  process.stdout.write('  nexus-agents vote --proposal "Add feature X"\n');
-  process.stdout.write('  nexus-agents vote -p "Proposal" -t supermajority\n');
-  process.stdout.write('  nexus-agents vote -p "Quick decision" --quick\n');
+  printUsageWithExamples({
+    error: 'Proposal is required.',
+    usage: 'nexus-agents vote --proposal "..." [options]',
+    command: 'vote',
+  });
 }
 
 /**

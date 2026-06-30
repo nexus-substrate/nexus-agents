@@ -274,13 +274,26 @@ function describe(command: string): string {
 }
 
 /**
+ * Look up the richer help entry (examples/flags/api-key needs) for a command.
+ * The single source other surfaces derive from — e.g. the error-usage messages
+ * in `cli-commands-usage.ts` render their Examples block from `entry.examples`
+ * rather than hand-maintaining a parallel (drift-prone) copy (#3209, epic #3691).
+ *
+ * @param command - The command name to look up
+ * @returns The {@link CommandHelpEntry}, or undefined if none exists
+ */
+export function getCommandHelp(command: string): CommandHelpEntry | undefined {
+  return COMMAND_HELP.find((e) => e.command === command);
+}
+
+/**
  * Formats help output for a specific command.
  *
  * @param command - The command name to look up
  * @returns Formatted help string, or undefined if no help entry exists
  */
 export function formatCommandHelp(command: string): string | undefined {
-  const entry = COMMAND_HELP.find((e) => e.command === command);
+  const entry = getCommandHelp(command);
   if (entry === undefined) return undefined;
 
   const lines: string[] = [];
