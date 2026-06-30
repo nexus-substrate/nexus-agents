@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.150.3
+
+### Patch Changes
+
+- [#4128](https://github.com/nexus-substrate/nexus-agents/pull/4128) [`c2741e4`](https://github.com/nexus-substrate/nexus-agents/commit/c2741e45a5e1f93c113c61cf5a39e6f5ed868b11) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Single-source the CLI on-error usage examples from `COMMAND_HELP` ([#3209](https://github.com/nexus-substrate/nexus-agents/issues/3209), epic [#3691](https://github.com/nexus-substrate/nexus-agents/issues/3691)).
+  `printVoteUsage` / `printOrchestrateUsage` previously hand-maintained example strings that
+  had drifted from each command's `--help` examples; they now render their Examples block
+  from the shared `getCommandHelp(command).examples`, so the on-error usage can't diverge from
+  `nexus-agents <cmd> --help`. A drift-guard test pins the single-source invariant. Completes
+  the residual of [#3209](https://github.com/nexus-substrate/nexus-agents/issues/3209) — the description consolidation already shipped via [#3212](https://github.com/nexus-substrate/nexus-agents/issues/3212)'s parity-gate
+  (Option B) and the help-text derivation.
+
 ## 2.150.2
 
 ### Patch Changes
