@@ -15,6 +15,7 @@ import {
   unsupportedParametersForModel,
   modelSupportsParameter,
   getMaxTokensParamForModel,
+  KNOWN_PARAMETER_INCOMPATIBILITIES,
 } from './model-parameter-support.js';
 import { temperatureUnsupportedForModel } from './temperature-support.js';
 
@@ -106,5 +107,29 @@ describe('determinism — same id yields the same result twice', () => {
   it.each(['codex-5.3', 'claude-opus-4-8', 'o3-mini', 'gpt-4o'])('%s', (id) => {
     expect(unsupportedParametersForModel(id)).toEqual(unsupportedParametersForModel(id));
     expect(getMaxTokensParamForModel(id)).toBe(getMaxTokensParamForModel(id));
+  });
+});
+
+describe('DRIFT GUARD — documented incompatibilities must never regress (#4070)', () => {
+  // Each entry is a real incident (#4061/#4062/#4049). If a resolver/data edit ever
+  // stops handling one — a bumped Claude threshold, an edited regex, a removed
+  // `unsupportedParameters` — this fails CI instead of 400-ing in production.
+  it('the registry is non-empty and every entry names exactly one expectation', () => {
+    expect(KNOWN_PARAMETER_INCOMPATIBILITIES.length).toBeGreaterThan(0);
+    for (const e of KNOWN_PARAMETER_INCOMPATIBILITIES) {
+      // Exactly one of `param` / `maxTokensParam` per entry.
+      expect((e.param !== undefined) !== (e.maxTokensParam !== undefined)).toBe(true);
+      expect(e.issue).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(
+    KNOWN_PARAMETER_INCOMPATIBILITIES.map((e) => [`#${String(e.issue)} ${e.modelId}`, e] as const)
+  )('%s is still handled by the resolver', (_label, e) => {
+    if (e.param !== undefined) {
+      expect(modelSupportsParameter(e.modelId, e.param)).toBe(false);
+    } else {
+      expect(getMaxTokensParamForModel(e.modelId)).toBe(e.maxTokensParam);
+    }
   });
 });
