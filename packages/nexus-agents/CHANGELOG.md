@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.150.1
+
+### Patch Changes
+
+- [#4122](https://github.com/nexus-substrate/nexus-agents/pull/4122) [`bbcf429`](https://github.com/nexus-substrate/nexus-agents/commit/bbcf42996c0677c373af860ec48c777db10fa8f4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add the model-parameter drift guard ([#4070](https://github.com/nexus-substrate/nexus-agents/issues/4070), epic [#4066](https://github.com/nexus-substrate/nexus-agents/issues/4066) layer 4): a single declarative,
+  exported `KNOWN_PARAMETER_INCOMPATIBILITIES` registry of the documented incidents
+  ([#4061](https://github.com/nexus-substrate/nexus-agents/issues/4061) Claude>4.6, [#4062](https://github.com/nexus-substrate/nexus-agents/issues/4062) OpenAI reasoning, [#4049](https://github.com/nexus-substrate/nexus-agents/issues/4049) max_completion_tokens), asserted in CI
+  against the resolver. The next param drift — a bumped Claude threshold, an edited regex,
+  a removed `unsupportedParameters` — now fails CI instead of 400-ing in production. The
+  registry is exported so it doubles as documentation and as the anchor for the deferred
+  provider-reality reconciliation. Part 2 (scheduled OpenRouter `supported_parameters`
+  reconciliation) is tracked separately.
+
 ## 2.150.0
 
 ### Minor Changes
