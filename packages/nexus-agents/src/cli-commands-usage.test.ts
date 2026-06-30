@@ -9,6 +9,7 @@ import {
   printVoteUsage,
   printWorkflowRunUsage,
 } from './cli-commands-usage.js';
+import { getCommandHelp } from './cli-command-help.js';
 
 describe('cli-commands-usage', () => {
   let writeSpy: MockInstance;
@@ -193,6 +194,23 @@ describe('cli-commands-usage', () => {
       printValidationUsage();
       const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
       expect(output).toContain('Options:');
+    });
+  });
+
+  // DRIFT GUARD (#3209, epic #3691): the on-error usage examples are single-sourced
+  // from COMMAND_HELP, so they can't diverge from `nexus-agents <cmd> --help`.
+  describe('usage examples are single-sourced from COMMAND_HELP', () => {
+    it.each([
+      ['vote', printVoteUsage],
+      ['orchestrate', printOrchestrateUsage],
+    ] as const)('%s usage renders exactly the COMMAND_HELP examples', (command, printUsage) => {
+      printUsage();
+      const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      const examples = getCommandHelp(command)?.examples ?? [];
+      expect(examples.length).toBeGreaterThan(0);
+      for (const example of examples) {
+        expect(output).toContain(`  ${example}\n`);
+      }
     });
   });
 });
