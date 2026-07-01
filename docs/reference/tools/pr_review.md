@@ -18,7 +18,7 @@ Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, secu
 | --------- | ---- | -------- | ----------- | ----------- |
 | `prTitle` | string | yes | minLength 1; maxLength 500 | PR title |
 | `prDescription` | string | no | maxLength 10000 | PR body / description |
-| `prDiff` | string | yes | minLength 1; maxLength 50000 | Unified diff text (max 50000 chars; truncate before calling) |
+| `prDiff` | string | yes | minLength 1; maxLength 2000000 | Unified diff text (max 2000000 chars). No need to truncate before calling: diffs over 50000 chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve). |
 | `repoContext` | string | no | maxLength 2000 | Optional one-paragraph repo context (architecture, conventions; max 2000 chars; trim before calling) |
 | `baseRef` | string | no | maxLength 200 | Base branch ref (e.g. main) |
 | `headRef` | string | no | maxLength 200 | Head branch ref |
