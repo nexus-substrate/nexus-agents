@@ -309,23 +309,109 @@ ${VOTE_PROMPT_EXAMPLES}`;
 // ============================================================================
 
 /**
- * Extracts JSON from LLM response text.
- * Handles responses that may include markdown code blocks.
+ * Extract the FIRST balanced top-level JSON object from `text`, respecting
+ * string literals + escapes so braces/brackets inside strings don't miscount
+ * (#4131). Returns the object substring, or undefined if no `{` is present.
+ *
+ * If the object is TRUNCATED (containers still open at end-of-input — e.g. a
+ * large findings-bearing vote cut off by the completion token cap), it returns a
+ * best-effort repair: the open string is closed and the open `{`/`[` containers
+ * are closed in order. Since a well-formed vote emits `decision`/`reasoning`/
+ * `confidence` before the optional `findings` array, a truncation inside
+ * `findings` still yields a parseable verdict. If the repair is still invalid,
+ * the caller's JSON.parse throws exactly as before (no regression).
+ */
+/** Mutable scan state for {@link extractFirstJsonObject}. */
+interface JsonScanState {
+  readonly closers: string[];
+  inString: boolean;
+  escaped: boolean;
+}
+
+type ScanResult = 'complete' | 'unbalanced' | 'continue';
+
+/** Handle one char while inside a JSON string literal. */
+function stepInString(state: JsonScanState, ch: string): void {
+  if (ch === '\\') state.escaped = true;
+  else if (ch === '"') state.inString = false;
+}
+
+/** Handle one structural (non-string) char, tracking open/close containers. */
+function stepStructural(state: JsonScanState, ch: string): ScanResult {
+  if (ch === '"') state.inString = true;
+  else if (ch === '{') state.closers.push('}');
+  else if (ch === '[') state.closers.push(']');
+  else if (ch === '}' || ch === ']') {
+    if (state.closers.pop() === undefined) return 'unbalanced';
+    if (state.closers.length === 0) return 'complete';
+  }
+  return 'continue';
+}
+
+/** Advance the balanced-object scan by one char. Returns whether the object closed / broke. */
+function stepJsonScan(state: JsonScanState, ch: string): ScanResult {
+  if (state.escaped) {
+    state.escaped = false;
+    return 'continue';
+  }
+  if (state.inString) {
+    stepInString(state, ch);
+    return 'continue';
+  }
+  return stepStructural(state, ch);
+}
+
+/** Best-effort close of an object truncated mid-scan (open string + open containers). */
+function repairTruncatedObject(fragment: string, state: JsonScanState): string {
+  let repaired = state.inString ? `${fragment}"` : fragment;
+  for (let i = state.closers.length - 1; i >= 0; i--) {
+    const closer = state.closers[i];
+    if (closer !== undefined) repaired += closer;
+  }
+  return repaired;
+}
+
+function extractFirstJsonObject(text: string): string | undefined {
+  const start = text.indexOf('{');
+  if (start === -1) return undefined;
+  const state: JsonScanState = { closers: [], inString: false, escaped: false };
+  for (let i = start; i < text.length; i++) {
+    const result = stepJsonScan(state, text[i] as string);
+    if (result === 'complete') return text.slice(start, i + 1);
+    if (result === 'unbalanced') return undefined;
+  }
+  // Loop ran off the end with containers still open ⇒ truncated; repair best-effort.
+  return state.closers.length > 0 ? repairTruncatedObject(text.slice(start), state) : undefined;
+}
+
+/**
+ * Extracts the JSON vote object from raw LLM response text (#4131).
+ *
+ * Robust to the ways a voter's output shape used to silently DROP the voter:
+ *  1. Prefer an explicit ` ```json ` fence.
+ *  2. Otherwise scan every fenced block and use the first whose content is a
+ *     JSON object — so a ` ```yaml findings ` block (pr-review mode) is SKIPPED
+ *     instead of being handed to JSON.parse (the `Unexpected token 'y'` drop).
+ *  3. Otherwise take the first balanced JSON object anywhere in the text, so a
+ *     verdict followed by a trailing prose / YAML block still parses, and a
+ *     truncated object is repaired.
+ *  4. Fallback: the trimmed text (JSON.parse will surface a real malformation).
  */
 export function extractJsonFromResponse(text: string): string {
-  // Try to find JSON in code blocks first
-  const codeBlockMatch = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
-  if (codeBlockMatch?.[1] !== undefined) {
-    return codeBlockMatch[1].trim();
+  const jsonFence = /```json\s*([\s\S]*?)```/i.exec(text);
+  if (jsonFence?.[1] !== undefined) {
+    return extractFirstJsonObject(jsonFence[1]) ?? jsonFence[1].trim();
   }
 
-  // Look for JSON object directly
-  const jsonMatch = /\{[\s\S]*\}/i.exec(text);
-  if (jsonMatch?.[0] !== undefined) {
-    return jsonMatch[0];
+  for (const match of text.matchAll(/```[a-zA-Z0-9]*\s*([\s\S]*?)```/g)) {
+    const inner = match[1];
+    if (inner?.trimStart().startsWith('{') === true) {
+      const obj = extractFirstJsonObject(inner);
+      if (obj !== undefined) return obj;
+    }
   }
 
-  return text.trim();
+  return extractFirstJsonObject(text) ?? text.trim();
 }
 
 /**
@@ -358,6 +444,48 @@ function createFallbackVote(output: string, _role: VoterRole, reason: string): P
     confidence: 0.5,
     source: 'fallback', // Mark as synthetic
   };
+}
+
+/** Caps mirroring {@link VoteResponseSchema} (reasoning) + {@link RawFindingSchema} (claim). */
+const REASONING_MAX_CHARS = 4000;
+const CLAIM_MAX_CHARS = 2000;
+const TRUNCATION_MARKER = ' …[truncated]';
+
+/** Truncate `s` to `max` chars with a marker; a no-op when already within cap. */
+function clampWithMarker(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - TRUNCATION_MARKER.length)) + TRUNCATION_MARKER;
+}
+
+/**
+ * Clamp the capped string fields of a parsed vote to their schema limits with a
+ * truncation marker BEFORE validation (#4131). A thorough voter (esp. the
+ * contrarian, which writes the most detailed findings) whose `reasoning` exceeds
+ * the 4000-char cap previously hard-failed validation and was SILENTLY DROPPED
+ * from the panel denominator. Clamping records a (clipped, clearly-marked) real
+ * vote instead. Only shape (oversize strings) is repaired — a genuinely
+ * malformed vote (missing decision, bad confidence) still fails `safeParse`.
+ */
+function clampOversizeVoteStrings(parsed: unknown): unknown {
+  if (typeof parsed !== 'object' || parsed === null) return parsed;
+  const obj = { ...(parsed as Record<string, unknown>) };
+  if (typeof obj['reasoning'] === 'string') {
+    obj['reasoning'] = clampWithMarker(obj['reasoning'], REASONING_MAX_CHARS);
+  }
+  if (Array.isArray(obj['findings'])) {
+    obj['findings'] = (obj['findings'] as unknown[]).map((finding): unknown => {
+      if (
+        typeof finding === 'object' &&
+        finding !== null &&
+        typeof (finding as Record<string, unknown>)['claim'] === 'string'
+      ) {
+        const f = finding as Record<string, unknown>;
+        return { ...f, claim: clampWithMarker(f['claim'] as string, CLAIM_MAX_CHARS) };
+      }
+      return finding;
+    });
+  }
+  return obj;
 }
 
 /** Maps a validated VoteResponse into a ParsedVote, threading optional fields. */
@@ -399,7 +527,9 @@ export function parseVoteResponse(
   try {
     const jsonStr = extractJsonFromResponse(output);
     const parsed = JSON.parse(jsonStr) as unknown;
-    const validated = VoteResponseSchema.safeParse(parsed);
+    // #4131: clip oversize reasoning/claims (with a marker) so a thorough voter
+    // records a real vote instead of being silently dropped on the char cap.
+    const validated = VoteResponseSchema.safeParse(clampOversizeVoteStrings(parsed));
 
     if (validated.success) {
       return buildParsedVote(validated.data);
