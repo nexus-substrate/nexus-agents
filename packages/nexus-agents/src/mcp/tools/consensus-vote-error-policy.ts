@@ -17,6 +17,12 @@
  *   — error voter is treated as having withheld approval.
  * - `fail_closed` (default for unanimous only, #3138): any error
  *   short-circuits to vote-void.
+ * - `absolute_quorum` (opt-in, #4132): errors reach the engine as abstain
+ *   (like `count_as_abstain`), but the post-tally predicate in
+ *   `buildResponse` degrades ANY errored panel to `no_quorum` — an induced
+ *   error can never manufacture `approved`/`rejected`. Does not short-circuit
+ *   here (below the hard floor); the degrade happens after the tally so a
+ *   genuine reject is preserved.
  *
  * Hard floor: if errors > `ERROR_FLOOR_FRACTION` of total voters, the
  * vote always fails regardless of policy. "All CLIs are down" is not a
@@ -84,10 +90,15 @@ export function applyErrorPolicy(
     };
   }
 
-  if (policy === 'count_as_abstain') {
-    // Errors stay in the engine input but as abstain decisions.
-    // The original `source: 'error'` is preserved so the per-voter
-    // response shape and `voteCounts.error` still report the error.
+  if (policy === 'count_as_abstain' || policy === 'absolute_quorum') {
+    // Errors stay in the engine input but as abstain decisions — the engine sees
+    // the FULL panel rather than a shrunk denominator. The original
+    // `source: 'error'` is preserved so the per-voter response shape and
+    // `voteCounts.error` still report the error, and (for #4132 absolute_quorum)
+    // the post-tally predicate in buildResponse can still see the true errorCount.
+    // absolute_quorum does NOT fail-close here — the >50% hard floor above still
+    // applies, but a sub-floor error degrades to no_quorum in buildResponse, not
+    // a short-circuit, so the engine outcome (a genuine reject) is preserved.
     return {
       shortCircuit: false,
       engineVotes: votes.map((v) =>

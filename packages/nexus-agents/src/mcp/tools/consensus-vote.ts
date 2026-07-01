@@ -48,6 +48,7 @@ import {
   VotingStrategySchema,
   VoteDecisionStatusSchema,
   VoteThresholdSchema,
+  ErrorPolicySchema,
   ConsensusVoteInputSchema,
   buildResponse,
   getDefaultErrorPolicy,
@@ -426,11 +427,17 @@ async function processVotesWithCascade(
 /** Confidence threshold above which a contrarian rejection triggers escalation (#1799). */
 const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
 
-/** Run a single contrarian agent to check for YAGNI/MISALIGNED/SECURITY_RISK (#1799). */
+/**
+ * Run a single contrarian agent to check for YAGNI/MISALIGNED/SECURITY_RISK
+ * (#1799). `errored` (#4132) is true when the contrarian voice could NOT be
+ * obtained (import/executeExpert failure, or the expert reported failure) — the
+ * absolute_quorum policy routes that to `no_quorum` instead of silently
+ * proceeding as if the contrarian approved.
+ */
 async function runContrarianCheck(
   proposal: string,
   log: ILogger
-): Promise<{ shouldEscalate: boolean; reason: string; confidence: number }> {
+): Promise<{ shouldEscalate: boolean; reason: string; confidence: number; errored: boolean }> {
   try {
     const { executeExpert } = await import('../../pipeline/expert-bridge.js');
     const prompt = [
@@ -446,10 +453,14 @@ async function runContrarianCheck(
     ].join('\n');
 
     const result = await executeExpert('architecture', prompt);
-    if (!result.success) return { shouldEscalate: false, reason: '', confidence: 0 };
+    // Expert-bridge reported failure — the contrarian voice was NOT obtained.
+    if (!result.success) return { shouldEscalate: false, reason: '', confidence: 0, errored: true };
 
     const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch === null) return { shouldEscalate: false, reason: '', confidence: 0 };
+    // The expert responded but emitted no structured concern — treat as "no
+    // escalation" (it spoke, it just didn't flag a blocker), not an error.
+    if (jsonMatch === null)
+      return { shouldEscalate: false, reason: '', confidence: 0, errored: false };
 
     const parsed = JSON.parse(jsonMatch[0]) as {
       decision?: string;
@@ -466,10 +477,10 @@ async function runContrarianCheck(
         confidence,
         reasoning: reasoning.slice(0, 200),
       });
-      return { shouldEscalate: true, reason: reasoning, confidence };
+      return { shouldEscalate: true, reason: reasoning, confidence, errored: false };
     }
 
-    return { shouldEscalate: false, reason: '', confidence };
+    return { shouldEscalate: false, reason: '', confidence, errored: false };
   } catch (error: unknown) {
     // Closes #2952 (medium): pre-fix the bare `catch {}` swallowed
     // `executeExpert` failures, JSON parse errors, and expert-bridge
@@ -479,7 +490,9 @@ async function runContrarianCheck(
     // bug is at least visible in operator logs.
     const message = error instanceof Error ? error.message : String(error);
     log.warn('Contrarian check failed; defaulting to no escalation', { error: message });
-    return { shouldEscalate: false, reason: '', confidence: 0 };
+    // #4132: the contrarian voice was NOT obtained — errored:true so
+    // absolute_quorum can degrade to no_quorum instead of silently proceeding.
+    return { shouldEscalate: false, reason: '', confidence: 0, errored: true };
   }
 }
 
@@ -493,6 +506,7 @@ function buildPolicyShortCircuitResult(args: {
   input: ConsensusVoteInput;
   strategy: VotingStrategy;
   algorithm: ConsensusAlgorithm;
+  roles: readonly VoterRole[];
   votes: readonly AgentVoteResult[];
   errorPolicy: ConsensusVoteInput['errorPolicy'];
   reason: string;
@@ -512,6 +526,10 @@ function buildPolicyShortCircuitResult(args: {
     totalTimeMs,
     simulateVotes: args.input.simulateVotes,
     strategy: args.strategy,
+    // #4132: thread the requested panel shape so the absolute_quorum predicate
+    // in buildResponse has PANEL_SIZE + contrarian-presence even on a short-circuit.
+    panelSize: args.roles.length,
+    contrarianRequested: args.roles.includes('catfish'),
     // #3124: surface WHY a high-approval result is still 'rejected' so callers
     // don't mistake a fail-closed policy short-circuit for a genuine rejection.
     policyReason: args.reason,
@@ -530,10 +548,13 @@ function buildPolicyShortCircuitResult(args: {
  *    YAGNI / SECURITY_RISK / SCOPE_CREEP; escalate if it rejects with high
  *    confidence.
  *
- * Returns the escalated result, or `undefined` for "no escalation, continue
- * with the quickMode result."
+ * Returns:
+ *  - `{ escalated }` — a full-panel re-vote result to use instead;
+ *  - `{ degradeReason }` — (#4132, absolute_quorum only) the contrarian check
+ *    ERRORED, so the quickMode verdict must degrade to `no_quorum`;
+ *  - `{}` — no escalation, continue with the quickMode result.
  */
-async function maybeEscalateContrarian(
+export async function maybeEscalateContrarian(
   input: ConsensusVoteInput,
   outcome: 'approved' | 'rejected',
   ctx: { strategy: VotingStrategy; posteriorApproval: number | undefined },
@@ -542,24 +563,34 @@ async function maybeEscalateContrarian(
   // re-vote — the object is forwarded by reference today, but the wider type makes
   // that contract explicit and refactor-safe.
   opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
-): Promise<ExtendedVotingResult | undefined> {
-  if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return undefined;
+): Promise<{ escalated?: ExtendedVotingResult; degradeReason?: string }> {
+  if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return {};
 
   if (shouldEscalateLowPosterior(ctx.strategy, outcome, input.quickMode, ctx.posteriorApproval)) {
     logger.warn('Posterior-confidence escalation: re-running with full vote (#3174)', {
       strategy: ctx.strategy,
       posteriorApproval: ctx.posteriorApproval,
     });
-    return executeVoting({ ...input, quickMode: false }, logger, opts);
+    return { escalated: await executeVoting({ ...input, quickMode: false }, logger, opts) };
   }
 
   const escalation = await runContrarianCheck(input.proposal, logger);
-  if (!escalation.shouldEscalate) return undefined;
+  // #4132: under absolute_quorum, a contrarian check that ERRORED means the
+  // contrarian voice was never heard — that voids the quorum (no_quorum), it is
+  // not silently skipped. Only under absolute_quorum; every other policy keeps
+  // the pre-#4132 behavior of proceeding with the quickMode result.
+  if (escalation.errored && input.errorPolicy === 'absolute_quorum') {
+    logger.warn('Contrarian check errored under absolute_quorum — degrading to no_quorum (#4132)');
+    return {
+      degradeReason: 'no_quorum: re-run — contrarian check errored (absolute_quorum quick-mode)',
+    };
+  }
+  if (!escalation.shouldEscalate) return {};
   logger.warn('Contrarian escalation: re-running with full vote', {
     reason: escalation.reason,
     confidence: escalation.confidence,
   });
-  return executeVoting({ ...input, quickMode: false }, logger, opts);
+  return { escalated: await executeVoting({ ...input, quickMode: false }, logger, opts) };
 }
 
 /*
@@ -603,6 +634,7 @@ export async function executeVoting(
       input,
       strategy,
       algorithm,
+      roles,
       votes,
       errorPolicy,
       reason: policyDecision.reason ?? 'error policy short-circuit',
@@ -625,19 +657,20 @@ export async function executeVoting(
 
   recordVotesToTracker(votes, outcome, logger);
 
-  const escalated = await maybeEscalateContrarian(
+  const escalation = await maybeEscalateContrarian(
     input,
     outcome,
     { strategy, posteriorApproval: higherOrderResult?.posteriorApproval },
     logger,
     opts
   );
-  if (escalated !== undefined) return escalated;
+  if (escalation.escalated !== undefined) return escalation.escalated;
 
-  return finalizeVotingResult({
+  const finalized = finalizeVotingResult({
     input,
     strategy,
     algorithm,
+    roles,
     engineResult,
     higherOrderResult,
     votes,
@@ -646,6 +679,24 @@ export async function executeVoting(
     startTime,
     logger,
   });
+  // #4132: a contrarian check that errored under absolute_quorum voids the quorum
+  // — stamp policyReason so buildResponse's existing ternary downgrades to
+  // no_quorum, matching the errored-voter path. (Kept out of finalizeVotingResult
+  // to hold executeVoting within its cyclomatic budget.)
+  return applyContrarianDegrade(finalized, escalation.degradeReason);
+}
+
+/**
+ * #4132: stamp the contrarian-check-errored degrade reason onto a finalized
+ * result (unless an upstream short-circuit already set one). A no-op when the
+ * contrarian check ran cleanly (`degradeReason` undefined).
+ */
+function applyContrarianDegrade(
+  result: ExtendedVotingResult,
+  degradeReason: string | undefined
+): ExtendedVotingResult {
+  if (degradeReason === undefined || result.policyReason !== undefined) return result;
+  return { ...result, policyReason: degradeReason };
 }
 
 /**
@@ -672,6 +723,7 @@ function finalizeVotingResult(args: {
   input: ConsensusVoteInput;
   strategy: VotingStrategy;
   algorithm: ConsensusAlgorithm;
+  roles: readonly VoterRole[];
   engineResult: ConsensusResult;
   higherOrderResult: ReturnType<typeof runHigherOrderVoting>;
   votes: readonly AgentVoteResult[];
@@ -695,6 +747,9 @@ function finalizeVotingResult(args: {
     totalTimeMs,
     simulateVotes: args.input.simulateVotes,
     strategy: args.strategy,
+    // #4132: PANEL_SIZE + contrarian-presence for the absolute_quorum predicate.
+    panelSize: args.roles.length,
+    contrarianRequested: args.roles.includes('catfish'),
   };
   if (args.higherOrderResult !== undefined) result.higherOrderResult = args.higherOrderResult;
   return result;
@@ -995,6 +1050,9 @@ const CONSENSUS_VOTE_TOOL_SCHEMA = {
     .describe('Voting threshold (legacy). Use strategy instead.'),
   strategy: VotingStrategySchema.optional().describe(
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
+  ),
+  errorPolicy: ErrorPolicySchema.optional().describe(
+    'How to treat errored/timed-out voters (#2630): reduce_denominator (default non-strict) | count_as_abstain | fail_closed (default unanimous) | absolute_quorum (#4132 opt-in — an errored voter, esp. the contrarian, degrades the verdict to no_quorum instead of being dropped; never manufactures approved/rejected from an induced error). Errors > 50% always fails.'
   ),
   quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 7'),
   simulateVotes: z

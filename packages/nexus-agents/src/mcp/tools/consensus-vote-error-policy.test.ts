@@ -161,6 +161,52 @@ describe('applyErrorPolicy (#2630)', () => {
     });
   });
 
+  describe('absolute_quorum (#4132)', () => {
+    it('does NOT short-circuit on a sub-floor error — keeps errors as abstain for the engine', () => {
+      // 1 error in 7 is below the >50% floor: the degrade happens post-tally in
+      // buildResponse, not as a short-circuit, so the engine outcome survives.
+      const votes = [
+        makeVote('architect', 'approve', 'llm'),
+        makeVote('security', 'approve', 'llm'),
+        makeVote('devex', 'approve', 'llm'),
+        makeVote('ai_ml', 'approve', 'llm'),
+        makeVote('pm', 'approve', 'llm'),
+        makeVote('catfish', 'approve', 'llm'),
+        makeVote('scope_steward', 'reject', 'error'),
+      ];
+      const decision = applyErrorPolicy(votes, 'absolute_quorum');
+      expect(decision.shortCircuit).toBe(false);
+      // Full panel reaches the engine; the error voter is forced to abstain.
+      expect(decision.engineVotes).toHaveLength(7);
+      const errored = decision.engineVotes.find((v) => v.source === 'error');
+      expect(errored?.vote.decision).toBe('abstain');
+      expect(errored?.source).toBe('error');
+    });
+
+    it('still trips the >50% hard floor (too many errors is never a quorum)', () => {
+      const votes = [
+        makeVote('architect', 'approve', 'llm'),
+        makeVote('security', 'abstain', 'error'),
+        makeVote('devex', 'abstain', 'error'),
+      ];
+      const decision = applyErrorPolicy(votes, 'absolute_quorum');
+      expect(decision.shortCircuit).toBe(true);
+      expect(decision.reason).toContain('Errors exceeded');
+    });
+
+    it('passes clean votes through unchanged (no error → no degrade at this layer)', () => {
+      const votes = [
+        makeVote('architect', 'approve', 'llm'),
+        makeVote('security', 'reject', 'llm'),
+      ];
+      const decision = applyErrorPolicy(votes, 'absolute_quorum');
+      expect(decision.shortCircuit).toBe(false);
+      expect(decision.engineVotes).toHaveLength(2);
+      expect(decision.engineVotes[0]?.vote.decision).toBe('approve');
+      expect(decision.engineVotes[1]?.vote.decision).toBe('reject');
+    });
+  });
+
   describe('edge cases', () => {
     it('handles empty vote array (no votes, no errors)', () => {
       const decision = applyErrorPolicy([], 'reduce_denominator');

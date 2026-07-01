@@ -78,7 +78,7 @@ const VOTE_HELP: CommandHelpEntry = {
     {
       flag: '--error-policy <p>',
       description:
-        'How to count errored/timed-out voters: reduce_denominator | count_as_abstain | fail_closed (default: fail_closed for unanimous, reduce_denominator otherwise)',
+        'How to count errored/timed-out voters: reduce_denominator | count_as_abstain | fail_closed | absolute_quorum (#4132 — an errored voter degrades the verdict to no_quorum) (default: fail_closed for unanimous, reduce_denominator otherwise)',
     },
     { flag: '--verbose', description: 'Show vote verification hashes' },
   ],

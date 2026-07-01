@@ -254,6 +254,73 @@ describe('pr_review tool', () => {
     it('returns abstain on empty input', () => {
       expect(aggregatePrDecisions([])).toEqual({ decision: 'abstain', verified: true });
     });
+
+    describe('absolute_quorum (#4132)', () => {
+      const fullPanel = (
+        over: Partial<Record<PrReviewVote['role'], Parameters<typeof makeReview>[2]>> = {}
+      ): PrReviewVote[] =>
+        (['architect', 'security', 'devex', 'catfish', 'scope_steward'] as const).map((role) =>
+          makeReview(role, 'approve', over[role])
+        );
+
+      it('all 5 approve, 0 errors, catfish present → verified approve', () => {
+        expect(aggregatePrDecisions(fullPanel(), 'absolute_quorum')).toEqual({
+          decision: 'approve',
+          verified: true,
+        });
+      });
+
+      it('errorCount>0 degrades a would-be approve → abstain/verified:false (no_quorum analogue)', () => {
+        const reviews = fullPanel({ scope_steward: { source: 'error' } });
+        const out = aggregatePrDecisions(reviews, 'absolute_quorum');
+        expect(out.decision).toBe('abstain');
+        expect(out.verified).toBe(false);
+        expect(out.reason).toContain('scope_steward');
+        expect(out.reason).toContain('absolute_quorum');
+      });
+
+      it('errored contrarian (catfish) → not verified (never rubber-stamps the merge)', () => {
+        const reviews = fullPanel({ catfish: { source: 'error' } });
+        const out = aggregatePrDecisions(reviews, 'absolute_quorum');
+        expect(out.decision).toBe('abstain');
+        expect(out.verified).toBe(false);
+        expect(out.reason).toContain('catfish');
+      });
+
+      it('missing contrarian (incomplete panel) → not verified', () => {
+        // 4-role panel with no catfish: valid.length !== PR_REVIEW_ROLES.length.
+        const reviews = [
+          makeReview('architect', 'approve'),
+          makeReview('security', 'approve'),
+          makeReview('devex', 'approve'),
+          makeReview('scope_steward', 'approve'),
+        ];
+        const out = aggregatePrDecisions(reviews, 'absolute_quorum');
+        expect(out.decision).toBe('abstain');
+        expect(out.verified).toBe(false);
+        expect(out.reason).toContain('catfish');
+      });
+
+      it('a genuine verified blocker still wins under absolute_quorum (Tier 1 runs first)', () => {
+        const reviews = [
+          makeReview('architect', 'request_changes', { findings: [VERIFIED_FINDING] }),
+          makeReview('security', 'approve'),
+          makeReview('devex', 'approve', { source: 'error' }),
+          makeReview('catfish', 'approve'),
+          makeReview('scope_steward', 'approve'),
+        ];
+        expect(aggregatePrDecisions(reviews, 'absolute_quorum')).toEqual({
+          decision: 'request_changes',
+          verified: true,
+        });
+      });
+
+      it('DEFAULT (standard) is unchanged: an errored voter is dropped → verified approve', () => {
+        const reviews = fullPanel({ scope_steward: { source: 'error' } });
+        // No policy arg → standard: the pre-#4132 behavior (drop the error).
+        expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
+      });
+    });
   });
 
   describe('buildPrReviewProposal', () => {
