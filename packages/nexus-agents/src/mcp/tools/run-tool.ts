@@ -25,7 +25,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IModelAdapter } from '../../core/index.js';
 
-import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -46,6 +46,9 @@ import {
   getShadowSink,
   persistMetaOutcome,
 } from '../../orchestration/meta-shadow-selector.js';
+import { evaluateMetaStrategy } from '../../orchestration/meta-strategy-eval.js';
+import { META_STRATEGY_CORPUS } from '../../orchestration/meta-strategy-corpus.js';
+import { evaluateMetaStrategyReadiness } from '../../orchestration/meta-strategy-readiness.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import {
   createMetaDispatcher,
@@ -170,6 +173,42 @@ function toMetaInput(
 }
 
 /**
+ * Whether the learned-selector readiness signal has already been logged this
+ * process. The verdict is a deterministic function of the STATIC labeled corpus, so
+ * it never changes within a run — compute + log it exactly once at first shadow-enable
+ * (not per decision), matching the shadow selector's own one-time hydrate log.
+ */
+let readinessLogged = false;
+
+/**
+ * Compute the learned-selector promotion readiness verdict once and SURFACE it for
+ * operators (#4094). AUDIT-MODE ONLY — this is a non-routing observer of the offline
+ * eval: it logs whether the learned arm has crossed the promotion bar so the #3552
+ * shadow→route flip has a falsifiable signal to gate on. It NEVER touches the routed
+ * decision. Best-effort: an eval failure is swallowed so selection never breaks.
+ */
+function logMetaStrategyReadinessOnce(logger: ILogger): void {
+  if (readinessLogged) return;
+  readinessLogged = true;
+  try {
+    const evalResult = evaluateMetaStrategy(META_STRATEGY_CORPUS);
+    const verdict = evaluateMetaStrategyReadiness(evalResult);
+    logger.info('meta-strategy learned-selector readiness', {
+      ready: verdict.ready,
+      delta: evalResult.delta,
+      learnedAccuracy: evalResult.learnedAccuracy,
+      rulesAccuracy: evalResult.rulesAccuracy,
+      testCount: evalResult.testCount,
+      blockers: verdict.blockers,
+    });
+  } catch (err) {
+    logger.warn('meta-strategy readiness signal failed (non-fatal)', {
+      error: getErrorMessage(err),
+    });
+  }
+}
+
+/**
  * Selects a strategy for a goal via the MetaOrchestrator. `mode` is the dispatch
  * mode the selection feeds (#3920): it sets the `requiredAuthority` the
  * authority-ladder router enforces, so `select` can refuse an above-tier action
@@ -184,6 +223,10 @@ function selectDecision(input: RunInput, mode: DispatchMode, logger?: ILogger): 
     shadowSelector: getShadowSelector(),
     shadowSink: getShadowSink(),
   });
+  // Non-routing audit signal (#4094): surface the learned-selector readiness verdict
+  // alongside shadow enablement. Observed, never acted on — the routed decision below
+  // is untouched by it.
+  logMetaStrategyReadinessOnce(logger ?? createLogger({ component: 'RunTool' }));
   return meta.select(toMetaInput(input, mode));
 }
 

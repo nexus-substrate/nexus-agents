@@ -18,17 +18,14 @@
  *  - `spec`            a greenfield build FROM A WRITTEN SPEC ("from scratch", "new … from this spec").
  *  - `research`        research-heavy investigation / comparison / survey.
  *
- * Balanced 5 per strategy (40 total). GROWTH TARGET: expand toward ≥80 (≥10/strategy)
- * so a 25% test split yields ≥20 held-out cases — the volume the #3552 readiness gate
- * expects (improvement-enforce-readiness: volume≥20). This starter establishes the
- * eval mechanism + the routing-accuracy regression guard.
+ * Balanced 10 per strategy (80 total) so a 25% test split yields ≥20 held-out cases —
+ * the volume the #3552 readiness gate expects ({@link evaluateMetaStrategyReadiness}:
+ * volume≥20). This grew from the starter 40 (5/strategy) as the eval matured from a
+ * mechanism-demonstrator into the corpus that backs the audit-mode readiness signal.
+ * The corpus doubles as the routing-accuracy regression guard.
  *
  * @module orchestration/meta-strategy-corpus
  */
-
-// @export-no-consumer-yet — see #4095. The labeled corpus is consumed by the eval's
-// test now; its production consumer is epic #4094's child 2 (the readiness collector
-// over the shared corpus→score→verdict primitive).
 
 import type { MetaStrategyCorpusEntry } from './meta-strategy-eval.js';
 
@@ -39,6 +36,17 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
   { goal: 'format this JSON snippet', expectedStrategy: 'single-shot' },
   { goal: 'add a one-line comment explaining this regex', expectedStrategy: 'single-shot' },
   { goal: 'convert this value from Celsius to Fahrenheit', expectedStrategy: 'single-shot' },
+  {
+    goal: 'explain what the useEffect hook does in one paragraph',
+    expectedStrategy: 'single-shot',
+  },
+  { goal: 'convert this markdown table to CSV', expectedStrategy: 'single-shot' },
+  {
+    goal: 'rename the function calcTotal to computeTotal in cart.ts',
+    expectedStrategy: 'single-shot',
+  },
+  { goal: 'what is the time complexity of binary search?', expectedStrategy: 'single-shot' },
+  { goal: 'format this SQL query for readability', expectedStrategy: 'single-shot' },
 
   // dev-pipeline — code change needing the test/lint/typecheck gate
   {
@@ -55,6 +63,26 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
     goal: 'patch the null-pointer in parser.ts and verify the build',
     expectedStrategy: 'dev-pipeline',
   },
+  {
+    goal: 'fix the memory leak in the websocket handler and make the tests green',
+    expectedStrategy: 'dev-pipeline',
+  },
+  {
+    goal: 'add a rate limiter to the API middleware with unit tests',
+    expectedStrategy: 'dev-pipeline',
+  },
+  {
+    goal: 'correct the timezone bug in the scheduler and run the test suite',
+    expectedStrategy: 'dev-pipeline',
+  },
+  {
+    goal: 'implement pagination on the users endpoint with tests and typecheck',
+    expectedStrategy: 'dev-pipeline',
+  },
+  {
+    goal: 'fix the flaky retry test in queue.ts and keep lint clean',
+    expectedStrategy: 'dev-pipeline',
+  },
 
   // pipeline — multi-stage templated audit/general
   { goal: 'run a security audit of the payments module', expectedStrategy: 'pipeline' },
@@ -62,6 +90,11 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
   { goal: 'produce an architecture review of the data pipeline', expectedStrategy: 'pipeline' },
   { goal: 'run the documentation-quality audit over the docs tree', expectedStrategy: 'pipeline' },
   { goal: 'perform a compliance audit of the logging subsystem', expectedStrategy: 'pipeline' },
+  { goal: 'run a performance audit of the checkout flow', expectedStrategy: 'pipeline' },
+  { goal: 'do a dependency-vulnerability audit of the whole repo', expectedStrategy: 'pipeline' },
+  { goal: 'produce an accessibility audit of the web frontend', expectedStrategy: 'pipeline' },
+  { goal: 'run a code-quality audit across the billing service', expectedStrategy: 'pipeline' },
+  { goal: 'perform a test-coverage audit of the core package', expectedStrategy: 'pipeline' },
 
   // graph-workflow — DAG / conditional-edge
   {
@@ -84,6 +117,26 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
     goal: 'design a graph workflow with a fan-in join after three sequential gated branches',
     expectedStrategy: 'graph-workflow',
   },
+  {
+    goal: 'build a workflow that runs A then branches to B or C based on the security-scan verdict',
+    expectedStrategy: 'graph-workflow',
+  },
+  {
+    goal: 'create a DAG where build and lint run in parallel then merge into a gated deploy step',
+    expectedStrategy: 'graph-workflow',
+  },
+  {
+    goal: 'design a workflow with a retry-loop edge back to the fetch step on transient failure',
+    expectedStrategy: 'graph-workflow',
+  },
+  {
+    goal: 'wire a pipeline that skips the migration step when the schema-check passes',
+    expectedStrategy: 'graph-workflow',
+  },
+  {
+    goal: 'orchestrate a conditional graph: on approval go to publish, otherwise route to a rework node',
+    expectedStrategy: 'graph-workflow',
+  },
 
   // orchestrate — pattern-based multi-agent
   {
@@ -103,6 +156,26 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
     expectedStrategy: 'orchestrate',
   },
   { goal: 'dispatch a wave of agents to audit each microservice', expectedStrategy: 'orchestrate' },
+  {
+    goal: 'spawn a swarm of agents to add type annotations across every module in parallel',
+    expectedStrategy: 'orchestrate',
+  },
+  {
+    goal: 'fan out a wave of agents to update the copyright header in each file',
+    expectedStrategy: 'orchestrate',
+  },
+  {
+    goal: 'use a multi-agent pattern to generate unit tests for each untested component concurrently',
+    expectedStrategy: 'orchestrate',
+  },
+  {
+    goal: 'dispatch parallel agents to translate the docs into each supported language',
+    expectedStrategy: 'orchestrate',
+  },
+  {
+    goal: 'run a fan-out of agents to bump the dependency version in every package independently',
+    expectedStrategy: 'orchestrate',
+  },
 
   // consensus — multi-perspective decision/vote
   { goal: 'hold a consensus vote on whether to adopt GraphQL', expectedStrategy: 'consensus' },
@@ -119,6 +192,20 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
     goal: 'do a multi-perspective review and vote on the migration plan',
     expectedStrategy: 'consensus',
   },
+  { goal: 'hold a vote on which cloud provider to standardize on', expectedStrategy: 'consensus' },
+  {
+    goal: 'get a consensus decision on whether to drop support for Node 18',
+    expectedStrategy: 'consensus',
+  },
+  {
+    goal: 'run a multi-perspective panel to decide the caching strategy',
+    expectedStrategy: 'consensus',
+  },
+  { goal: 'we need a consensus vote on the proposed pricing model', expectedStrategy: 'consensus' },
+  {
+    goal: 'gather multiple expert opinions and vote on the rollout timeline',
+    expectedStrategy: 'consensus',
+  },
 
   // spec — greenfield from a written spec
   { goal: 'build a greenfield todo app from this written spec', expectedStrategy: 'spec' },
@@ -132,6 +219,26 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
     goal: 'build the new notification service from scratch following the spec',
     expectedStrategy: 'spec',
   },
+  {
+    goal: 'build a new authentication service from scratch following this specification',
+    expectedStrategy: 'spec',
+  },
+  {
+    goal: 'scaffold a greenfield mobile backend from the attached spec document',
+    expectedStrategy: 'spec',
+  },
+  {
+    goal: 'implement a brand-new billing engine from this written spec',
+    expectedStrategy: 'spec',
+  },
+  {
+    goal: 'create a new GraphQL gateway from scratch per the provided spec',
+    expectedStrategy: 'spec',
+  },
+  {
+    goal: 'build the greenfield analytics dashboard from this specification',
+    expectedStrategy: 'spec',
+  },
 
   // research — research-heavy investigation
   { goal: 'research the best vector database for our use case', expectedStrategy: 'research' },
@@ -143,6 +250,26 @@ export const META_STRATEGY_CORPUS: readonly MetaStrategyCorpusEntry[] = [
   { goal: 'survey the landscape of LLM evaluation frameworks', expectedStrategy: 'research' },
   {
     goal: 'research which benchmarks are worth adopting for our agents',
+    expectedStrategy: 'research',
+  },
+  {
+    goal: 'research the current best practices for prompt caching across LLM providers',
+    expectedStrategy: 'research',
+  },
+  {
+    goal: 'compare and evaluate message-queue technologies for our throughput needs',
+    expectedStrategy: 'research',
+  },
+  {
+    goal: 'survey the state of the art in retrieval-augmented generation',
+    expectedStrategy: 'research',
+  },
+  {
+    goal: 'investigate which observability stack fits our microservices best',
+    expectedStrategy: 'research',
+  },
+  {
+    goal: 'research the tradeoffs between monorepo and polyrepo for our team',
     expectedStrategy: 'research',
   },
 ];
