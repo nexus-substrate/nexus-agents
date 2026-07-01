@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.152.1
+
+### Patch Changes
+
+- [#4146](https://github.com/nexus-substrate/nexus-agents/pull/4146) [`21b61ab`](https://github.com/nexus-substrate/nexus-agents/commit/21b61ab61b7aec97b1b147a8923ecb461c5e65f0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix a fail-open in the dev-pipeline vote stage ([#4143](https://github.com/nexus-substrate/nexus-agents/issues/4143), epic [#4130](https://github.com/nexus-substrate/nexus-agents/issues/4130)). When the consensus vote
+  stage threw (all voters errored, adapter down, timeout), `agent-executor` caught it and
+  returned `{ kind: 'approved' }` ("Error (auto-approved)") — executing an unvoted plan as if
+  the panel had approved it. It now FAILS CLOSED to `no_quorum` (a recoverable "vote couldn't
+  complete — re-run/escalate" state, handled by [#4135](https://github.com/nexus-substrate/nexus-agents/issues/4135)), never auto-approving. Consistent with
+  the fail-loud principle behind the voter-drop epic: an errored gate must block, not grant,
+  execution.
+
 ## 2.152.0
 
 ### Minor Changes
