@@ -18,7 +18,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, mkdtempSync, rmSync, writeFileSync, realpathSync, readdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  realpathSync,
+  readdirSync,
+  readFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -300,8 +308,7 @@ describe('executeCodePrPush — happy path (ready + token + clean plan)', () => 
     // from the dry-run orchestrator's own would_open_pr audit).
     const pushAudits = m.events.filter(
       (e) =>
-        e.action === 'autonomous_code_pr.would_open_pr' &&
-        e.actor?.id === 'autonomous-code-pr-push'
+        e.action === 'autonomous_code_pr.would_open_pr' && e.actor?.id === 'autonomous-code-pr-push'
     );
     expect(pushAudits.length).toBe(2);
     // Both push audits pin a non-secret token identity (NOT the raw token).
@@ -420,9 +427,7 @@ describe('executeCodePrPush — push seam throws (atomic cleanup)', () => {
 
 describe('executeCodePrPush — never-merge / branch-name invariants', () => {
   it('the module source CODE has NO merge / auto-merge / force-push / protection surface', () => {
-    const raw = execFileSync('cat', [new URL('./codepr-push.ts', import.meta.url).pathname], {
-      encoding: 'utf8',
-    });
+    const raw = readFileSync(new URL('./codepr-push.ts', import.meta.url).pathname, 'utf8');
     // Strip block + line comments so the assertion tests EXECUTABLE code only
     // (the doc comments legitimately use the words "merge"/"auto-merge"/"protections"
     // to DOCUMENT their absence; the invariant is about the code, not the prose).
