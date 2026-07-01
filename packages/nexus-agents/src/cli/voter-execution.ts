@@ -258,8 +258,12 @@ function buildVoteRequest(
       { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
       { role: 'user', content: buildVotePrompt(proposal) },
     ],
-    // 2000 (#2245): JSON envelope + reasoning + YAML findings exceed the old 500.
-    maxTokens: 2000,
+    // 4000 (#4131): headroom so a findings-bearing verdict (JSON envelope +
+    // reasoning + structured findings) isn't cut mid-JSON by the token cap and
+    // silently dropped. Was 2000 (#2245, up from 500); large contrarian findings
+    // still overflowed it. Non-findings votes stop at natural completion, so the
+    // higher cap adds no cost for them.
+    maxTokens: 4000,
     temperature: 0.3, // Low temperature for consistent evaluations
     // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
     // signal too for CLI-vs-API cancellation parity (#3036/#3304).

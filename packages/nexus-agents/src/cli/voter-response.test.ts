@@ -901,3 +901,79 @@ describe('buildVotePrompt workflow-test criteria', () => {
     expect(prompt).toContain('Example reject response');
   });
 });
+
+// ============================================================================
+// #4131 — voter-output resilience: stop dropping voters on output shape
+// ============================================================================
+
+describe('#4131 voter-output resilience', () => {
+  const role: VoterRole = 'catfish'; // the contrarian — most affected by shape drops
+
+  describe('extractJsonFromResponse — shape-aware', () => {
+    it('prefers a ```json fence', () => {
+      const text = 'Here is my vote:\n```json\n{"decision":"approve","confidence":0.9}\n```';
+      expect(JSON.parse(extractJsonFromResponse(text))).toMatchObject({ decision: 'approve' });
+    });
+
+    it('takes the JSON verdict and IGNORES a trailing ```yaml findings block', () => {
+      const text =
+        '{"decision":"reject","reasoning":"see findings","confidence":0.8}\n\n```yaml findings\n- severity: high\n  claim: bad\n```';
+      const parsed = JSON.parse(extractJsonFromResponse(text)) as { decision: string };
+      expect(parsed.decision).toBe('reject');
+    });
+
+    it('finds the JSON verdict even when a ```yaml findings block leads (repro: Unexpected token y)', () => {
+      const text =
+        '```yaml findings\n- severity: high\n  claim: something\n```\n{"decision":"approve","reasoning":"ok enough","confidence":0.7}';
+      // Previously extractJsonFromResponse returned the yaml block → JSON.parse threw
+      // "Unexpected token 'y', \"yaml findi\"...". Now it returns the JSON object.
+      expect(() => {
+        JSON.parse(extractJsonFromResponse(text));
+      }).not.toThrow();
+      expect(JSON.parse(extractJsonFromResponse(text))).toMatchObject({ decision: 'approve' });
+    });
+
+    it('does not miscount braces/brackets inside string values', () => {
+      const text =
+        '{"decision":"approve","reasoning":"uses { and } and ] in prose","confidence":0.5}';
+      expect(JSON.parse(extractJsonFromResponse(text))).toMatchObject({
+        reasoning: 'uses { and } and ] in prose',
+      });
+    });
+
+    it('repairs a truncated object (repro: position 7181 mid-JSON cut)', () => {
+      // decision/reasoning/confidence emitted before a findings array cut off mid-value.
+      const truncated =
+        '{"decision":"reject","reasoning":"blockers found","confidence":0.9,"findings":[{"severity":"high","claim":"this was cut of';
+      const repaired = extractJsonFromResponse(truncated);
+      const parsed = JSON.parse(repaired) as { decision: string; findings: unknown[] };
+      expect(parsed.decision).toBe('reject');
+      expect(Array.isArray(parsed.findings)).toBe(true);
+    });
+  });
+
+  describe('parseVoteResponse — no silent drop on shape', () => {
+    it('clamps oversize reasoning with a marker instead of erroring (repro: >4000 char drop)', () => {
+      const huge = 'x'.repeat(5000);
+      const output = JSON.stringify({ decision: 'reject', reasoning: huge, confidence: 0.9 });
+      const vote = parseVoteResponse(output, role);
+      expect(vote.source).toBe('parsed'); // NOT 'error' / dropped
+      expect(vote.decision).toBe('reject');
+      expect(vote.reasoning.length).toBeLessThanOrEqual(4000);
+      expect(vote.reasoning.endsWith('…[truncated]')).toBe(true);
+    });
+
+    it('parses a pr-review-style output (JSON verdict + trailing yaml findings block)', () => {
+      const output =
+        '{"decision":"approve","reasoning":"looks fine overall","confidence":0.8}\n```yaml findings\n- claim: nit\n```';
+      const vote = parseVoteResponse(output, role);
+      expect(vote.source).toBe('parsed');
+      expect(vote.decision).toBe('approve');
+    });
+
+    it('still throws on a genuinely malformed vote (missing decision) — behavior preserved', () => {
+      const output = '{"reasoning":"no decision field here","confidence":0.5}';
+      expect(() => parseVoteResponse(output, role)).toThrow(SyntheticVoteError);
+    });
+  });
+});
