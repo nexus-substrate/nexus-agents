@@ -47,6 +47,8 @@ import {
   type Finding,
 } from './pr-review-findings.js';
 import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
+// prettier-ignore
+import { applyPartialCoverageGate, packDiffForReview, type PrReviewCoverage } from './pr-review-diff-budget.js';
 
 export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
 
@@ -65,10 +67,16 @@ export const PR_REVIEW_ROLES: readonly VoterRole[] = [
   'scope_steward',
 ];
 
-/** Hard cap on diff size sent to voters. Diffs above this are truncated with
- * an explicit notice — the tool stays useful for typical PRs without blowing
- * the context budget. */
+/** Voter PANEL budget: the max diff bytes packed into the proposal sent to the
+ * 5-voter panel. Diffs above this are NOT rejected — they are security-prioritized
+ * and PARTIALLY reviewed (whole-file packing via `pr-review-diff-budget.ts`, #4140).
+ * Also the byte cap the canonical `reviewedDiffHash` binds to (unchanged, #3831). */
 export const MAX_DIFF_LENGTH = 50_000;
+/** DoS bound on `prDiff` INPUT (#4140). Diffs up to this size are ACCEPTED (no
+ * hard-fail, no caller-side truncation); those over `MAX_DIFF_LENGTH` are packed
+ * to a security-prioritized, partially-reviewed subset. Two-number contract:
+ * `MAX_DIFF_INPUT_LENGTH` gates acceptance, `MAX_DIFF_LENGTH` gates the panel. */
+export const MAX_DIFF_INPUT_LENGTH = 2_000_000;
 /** Max `repoContext` length; over-limit input hard-fails Zod validation (#4133). */
 export const MAX_REPO_CONTEXT_LENGTH = 2000;
 
@@ -99,8 +107,10 @@ export const PrReviewInputSchema = z.object({
   prDiff: z
     .string()
     .min(1)
-    .max(MAX_DIFF_LENGTH)
-    .describe(`Unified diff text (max ${String(MAX_DIFF_LENGTH)} chars; truncate before calling)`),
+    .max(MAX_DIFF_INPUT_LENGTH)
+    .describe(
+      `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). No need to truncate before calling: diffs over ${String(MAX_DIFF_LENGTH)} chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve).`
+    ),
   repoContext: z
     .string()
     .max(MAX_REPO_CONTEXT_LENGTH)
@@ -236,6 +246,12 @@ export interface PrReviewResponse {
    * authentic record was written, otherwise `persisted: false` with the reason.
    */
   readonly recordOutcome?: PrReviewRecordOutcome;
+  /**
+   * Large-diff review coverage (#4140). Present only when the input diff exceeded
+   * `MAX_DIFF_LENGTH` and was security-prioritized + partially reviewed; absent for
+   * a whole-diff (≤`MAX_DIFF_LENGTH`) review.
+   */
+  readonly coverage?: PrReviewCoverage;
 }
 
 export interface PrReviewDeps extends BaseMcpToolDeps {
@@ -455,30 +471,53 @@ function summarizeReviews(reviews: readonly PrReviewVote[]): {
 // ============================================================================
 
 /**
- * Run the 5-voter panel + shape the response. The sync handler awaits this
- * inline; the async dispatcher backgrounds it via {@link runAsJob} (#3731).
- * `collectRealVotes` is the long pole (live LLM fan-out), so the whole body
- * is what backgrounds.
+ * Aggregate the panel, emit telemetry, and apply the #4140 C1 gate. Under
+ * absolute_quorum (#4132) an errored/incomplete panel degrades a would-be approve to
+ * a recoverable abstain (logged). Then the C1 gate bars a PARTIAL review from a
+ * verified-approve (degrade to the same no_quorum shape) while a genuine blocker from
+ * a reviewed file still wins — reference inequality signals the degrade for logging.
  */
-/**
- * Aggregate the panel and, under absolute_quorum (#4132), emit the actionable
- * "re-run the missing voice" telemetry when a would-be approve degraded to a
- * recoverable abstain because a voter (esp. the contrarian) errored.
- */
-function aggregateWithTelemetry(
+function resolveAggregate(
   reviews: readonly PrReviewVote[],
-  errorPolicy: 'standard' | 'absolute_quorum',
+  input: PrReviewInput,
   errorCount: number,
+  coverage: PrReviewCoverage | undefined,
   logger: ILogger
 ): PrReviewAggregate {
-  const aggregate = aggregatePrDecisions(reviews, errorPolicy);
-  if (aggregate.reason !== undefined) {
+  const preGate = aggregatePrDecisions(reviews, input.errorPolicy);
+  if (preGate.reason !== undefined) {
     logger.warn('pr_review degraded to no_quorum under absolute_quorum (#4132)', {
-      reason: aggregate.reason,
+      reason: preGate.reason,
       errorCount,
     });
   }
+  const aggregate = applyPartialCoverageGate(preGate, coverage);
+  if (aggregate !== preGate) {
+    logger.warn(
+      'pr_review partial review barred from verified-approve — degraded to no_quorum (#4140)',
+      { reason: aggregate.reason }
+    );
+  }
   return aggregate;
+}
+
+/**
+ * #4140 large-diff affordance: within budget → byte-identical proposal (no pack, no
+ * note, `coverage: undefined`); over budget → security-first packed subset with a
+ * prepended partial-review NOTE. Logs an over-budget warning when partial.
+ */
+function preparePanelProposal(
+  input: PrReviewInput,
+  logger: ILogger
+): { proposal: string; coverage: PrReviewCoverage | undefined } {
+  const { coverage, packedDiff, note } = packDiffForReview(input.prDiff, MAX_DIFF_LENGTH);
+  const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
+  if (coverage?.partial === true) {
+    logger.warn(
+      `pr_review diff over budget — reviewed ${String(coverage.reviewedFiles)} of ${String(coverage.totalFiles)} files, dropped ${String(coverage.droppedFiles.length)}`
+    );
+  }
+  return { proposal: note + buildPrReviewProposal(body), coverage };
 }
 
 async function executePrReviewBody(
@@ -487,7 +526,7 @@ async function executePrReviewBody(
   gatewayAdapters?: readonly IModelAdapter[]
 ): Promise<ToolResult> {
   const start = Date.now();
-  const proposal = buildPrReviewProposal(input);
+  const { proposal, coverage } = preparePanelProposal(input, logger);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
     proposal,
@@ -498,7 +537,7 @@ async function executePrReviewBody(
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
-  const aggregate = aggregateWithTelemetry(reviews, input.errorPolicy, counts.errorCount, logger);
+  const aggregate = resolveAggregate(reviews, input, counts.errorCount, coverage, logger);
 
   // #3855: roll up + persist this review's per-voter cost and ride it on the
   // existing response (no new MCP tool). Best-effort — a rollup failure must
@@ -526,6 +565,7 @@ async function executePrReviewBody(
     counts,
     reviewCount: reviews.length,
     logger,
+    ...(coverage !== undefined ? { coverage } : {}),
   });
 
   const response: PrReviewResponse = {
@@ -536,6 +576,7 @@ async function executePrReviewBody(
     totalDurationMs: Date.now() - start,
     ...(costSummary !== undefined ? { costSummary } : {}),
     recordOutcome,
+    ...(coverage !== undefined ? { coverage } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }

@@ -61,6 +61,20 @@ export interface PrReviewCounts {
   readonly errorCount: number;
 }
 
+/**
+ * Large-diff review coverage stamped onto the record (#4140). Present only when the
+ * review was over-budget and partially reviewed. Folded into the (hash-covered)
+ * record `summary` for honest completeness — the `reviewedDiffHash` binding is
+ * UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of `input.prDiff`);
+ * the gate matches on `{prNumber, reviewedDiffHash}`, never on the summary text.
+ */
+export interface PrReviewCoverageStamp {
+  readonly reviewedFiles: number;
+  readonly totalFiles: number;
+  readonly droppedFiles: readonly string[];
+  readonly partial: boolean;
+}
+
 /** Inputs for {@link persistReviewRecord} — bundled to stay within max-params. */
 export interface PersistReviewRecordArgs {
   readonly input: PrReviewInput;
@@ -68,6 +82,8 @@ export interface PersistReviewRecordArgs {
   readonly counts: PrReviewCounts;
   readonly reviewCount: number;
   readonly logger: ILogger;
+  /** #4140: large-diff coverage; stamped into the record summary when partial. */
+  readonly coverage?: PrReviewCoverageStamp | undefined;
 }
 
 /**
@@ -81,7 +97,14 @@ function buildAndPersist(
   baseSha: string,
   args: PersistReviewRecordArgs
 ): PrReviewRecordOutcome {
-  const { input, aggregate, counts, reviewCount, logger } = args;
+  const { input, aggregate, counts, reviewCount, logger, coverage } = args;
+  // #4140: honest completeness — stamp partial coverage into the (hash-covered)
+  // summary so an auditor reading the ledger sees the review was partial. Does NOT
+  // touch reviewedDiffHash (the gate's binding), so gate parity is preserved.
+  const coverageSuffix =
+    coverage?.partial === true
+      ? ` [partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}]`
+      : '';
   // Diff-hash parity contract (#4031): the gate recomputes this hash over the
   // first MAX_REVIEWED_DIFF_BYTES of the canonical `git diff`. If the reviewed
   // diff exceeds that byte cap, content past it is UNBOUND, so a record can match
@@ -106,7 +129,7 @@ function buildAndPersist(
       error: counts.errorCount,
       total: reviewCount,
     },
-    summary: `${aggregate.decision} (${String(counts.approveCount)} approve / ${String(counts.requestChangesCount)} request_changes / ${String(counts.abstainCount)} abstain) — ${input.prTitle}`,
+    summary: `${aggregate.decision} (${String(counts.approveCount)} approve / ${String(counts.requestChangesCount)} request_changes / ${String(counts.abstainCount)} abstain) — ${input.prTitle}${coverageSuffix}`,
     logger,
   });
   if (record === undefined) {

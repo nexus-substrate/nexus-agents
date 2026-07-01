@@ -26,6 +26,7 @@ vi.mock('../middleware/secure-handler.js', () => ({
 }));
 
 import {
+  MAX_DIFF_INPUT_LENGTH,
   PR_REVIEW_ROLES,
   PrReviewInputSchema,
   aggregatePrDecisions,
@@ -35,6 +36,7 @@ import {
   type PrReviewAggregate,
   type PrReviewVote,
 } from './pr-review-tool.js';
+import { applyPartialCoverageGate, type PrReviewCoverage } from './pr-review-diff-budget.js';
 import { persistReviewRecord } from './pr-review-record-producer.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -323,6 +325,47 @@ describe('pr_review tool', () => {
     });
   });
 
+  describe('applyPartialCoverageGate — C1 (#4140)', () => {
+    const partial = (over: Partial<PrReviewCoverage> = {}): PrReviewCoverage => ({
+      reviewedFiles: 2,
+      totalFiles: 5,
+      droppedFiles: ['src/x.ts', 'src/y.ts', 'src/z.ts'],
+      partial: true,
+      strategy: 'budget',
+      ...over,
+    });
+
+    it('BARS a partial would-be verified approve → abstain/verified:false (no_quorum shape)', () => {
+      const out = applyPartialCoverageGate({ decision: 'approve', verified: true }, partial());
+      expect(out.decision).toBe('abstain');
+      expect(out.verified).toBe(false);
+      expect(out.reason).toContain('partial diff');
+      expect(out.reason).toContain('no_quorum');
+      expect(out.reason).toContain('2 of 5');
+    });
+
+    it('a request_changes blocker from a REVIEWED file STILL WINS under a partial review', () => {
+      const blocker: PrReviewAggregate = { decision: 'request_changes', verified: true };
+      expect(applyPartialCoverageGate(blocker, partial())).toEqual(blocker);
+    });
+
+    it('a soft request_changes (verified:false) is untouched — a partial review can still block', () => {
+      const soft: PrReviewAggregate = { decision: 'request_changes', verified: false };
+      expect(applyPartialCoverageGate(soft, partial())).toEqual(soft);
+    });
+
+    it('whole-diff review (coverage undefined) → verified approve is unchanged', () => {
+      const approve: PrReviewAggregate = { decision: 'approve', verified: true };
+      expect(applyPartialCoverageGate(approve, undefined)).toEqual(approve);
+    });
+
+    it('non-partial coverage (nothing dropped) → verified approve is unchanged', () => {
+      const approve: PrReviewAggregate = { decision: 'approve', verified: true };
+      const cov = partial({ partial: false, droppedFiles: [] });
+      expect(applyPartialCoverageGate(approve, cov)).toEqual(approve);
+    });
+  });
+
   describe('buildPrReviewProposal', () => {
     const baseInput = {
       prTitle: 'Add foo widget',
@@ -417,10 +460,17 @@ describe('pr_review tool', () => {
       expect(r.success).toBe(false);
     });
 
-    it('should reject overlong diff (>50k chars)', () => {
+    it('accepts a diff between the panel budget and the 2MB input cap (#4140)', () => {
+      // Pre-#4140 this hard-failed at 50k; now diffs up to MAX_DIFF_INPUT_LENGTH are
+      // accepted and (over 50k) security-prioritized + partially reviewed.
+      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: 'a'.repeat(50_001) });
+      expect(r.success).toBe(true);
+    });
+
+    it('should reject a diff over the 2MB input DoS cap (#4140)', () => {
       const r = PrReviewInputSchema.safeParse({
         prTitle: 'x',
-        prDiff: 'a'.repeat(50_001),
+        prDiff: 'a'.repeat(MAX_DIFF_INPUT_LENGTH + 1),
       });
       expect(r.success).toBe(false);
     });
@@ -630,6 +680,37 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     expect(outcome).toEqual(expect.objectContaining({ persisted: false, reason: 'simulated' }));
     const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
     expect(readPrReviewRecords(path).records).toHaveLength(0);
+  });
+
+  it('stamps partial coverage into the (hash-covered) record summary without breaking verification (#4140)', () => {
+    const parsed = input({ prNumber: 77, baseSha: BASE_SHA });
+    const outcome = persistReviewRecord({
+      input: parsed,
+      // A partial review degrades to abstain/verified:false per the C1 gate.
+      aggregate: {
+        decision: 'abstain',
+        verified: false,
+        reason: 'no_quorum: partial diff — 2 of 5 files reviewed',
+      },
+      counts: { approveCount: 3, requestChangesCount: 0, abstainCount: 0, errorCount: 0 },
+      reviewCount: 3,
+      logger,
+      coverage: {
+        reviewedFiles: 2,
+        totalFiles: 5,
+        droppedFiles: ['src/z.ts', 'src/w.ts', 'src/v.ts'],
+        partial: true,
+      },
+    });
+    expect(outcome.persisted).toBe(true);
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    const { records } = readPrReviewRecords(path);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.summary).toContain('partial coverage: 2/5 files reviewed');
+    // reviewedDiffHash basis is unchanged — still the canonical hash of prDiff.
+    expect(records[0]?.reviewedDiffHash).toBe(computeReviewedDiffHash(parsed.prDiff));
+    // The summary stamp is hash-covered, so verification still passes.
+    expect(verifyPrReviewRecordSet(records).ok).toBe(true);
   });
 
   it('skips with reason=no-live-votes when every voter errored (no false gate pass)', () => {
