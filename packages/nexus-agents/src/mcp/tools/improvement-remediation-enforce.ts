@@ -52,7 +52,19 @@ import {
   getRemediationCircuitBreaker,
 } from './remediation-circuit-breaker.js';
 import { planTouchesProtectedPath } from './remediation-protected-paths.js';
+import { retryOnNoQuorum, type VoteVerdict } from './remediation-vote-adapter.js';
 import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
+
+/**
+ * #4138: bounded re-runs of an `absolute_quorum` `no_quorum` void in the
+ * auto-remediation consensus gate. Auto-remediation is an unattended loop and each
+ * re-run is a full live voter panel, so the budget is deliberately tiny: 1 re-run
+ * absorbs a transient blip (a voter's adapter momentarily offline) without turning
+ * a knocked-offline voice into an autonomous-execution DoS. A verdict that stays
+ * `no_quorum` after the single re-run is an EXPLICIT terminal "left as an issue"
+ * (zero writes) — the autonomy voter's ratified condition, not a silent proceed.
+ */
+const AUTO_REMEDIATION_NO_QUORUM_RETRIES = 1;
 
 /** The three enforcement modes. */
 export type AutoRemediateMode = 'off' | 'audit' | 'enforce';
@@ -126,10 +138,7 @@ export interface AutoRemediationDeps {
    * `consensus_vote` with live voters; voter input must be sanitized (the plan is
    * a strict typed artifact, #3613).
    */
-  vote(input: { proposal: string; algorithm: ConsensusAlgorithm }): Promise<{
-    approved: boolean;
-    approvalPercentage: number;
-  }>;
+  vote(input: { proposal: string; algorithm: ConsensusAlgorithm }): Promise<VoteVerdict>;
   /**
    * Optional audit-mode dry-run, required for p0 before a real PR (#3653). Runs
    * the pipeline plan-only with no writes; must return ok before IMPLEMENT.
@@ -342,9 +351,21 @@ function admitSignal(signal: ImprovementSignal, guard: RemediationGuard, now: nu
 }
 
 /**
+ * Audit label for a vote verdict. Default path (no `decision`, or a resolved
+ * approved/rejected) is byte-identical to the pre-#4138 `approved ? … : …`; a
+ * `no_quorum` degradation surfaces as `no_quorum` so the audit trail shows the
+ * degraded panel rather than a misleading `rejected`.
+ */
+function voteVerdictLabel(v: VoteVerdict): string {
+  if (v.decision === 'no_quorum') return 'no_quorum';
+  return v.approved ? 'approved' : 'rejected';
+}
+
+/**
  * Consensus gate (#3653): run the priority-required vote on the plan; for p0 also
  * require a green dry-run. Returns a skip reason, or null to proceed. Fail-closed:
  * a rejected vote, a p0 with no dry-run capability, or a failed dry-run all skip.
+ * #4138: an absolute_quorum `no_quorum` void → bounded re-run → explicit terminal skip.
  */
 async function consensusGate(
   signal: ImprovementSignal,
@@ -356,12 +377,27 @@ async function consensusGate(
   const algorithm = requirement.algorithm;
   if (algorithm === undefined) return 'no consensus algorithm for tier'; // p4 — shouldn't reach here
   const proposal = `Auto-remediation for '${signal.signalKey}'.\n\n${renderPlanAsResearch(plan)}`;
-  const vote = await deps.vote({ proposal, algorithm });
-  deps.audit({
-    step: 'vote',
-    signalKey: signal.signalKey,
-    detail: `${algorithm}: ${vote.approved ? 'approved' : 'rejected'} (${String(Math.round(vote.approvalPercentage))}%)`,
-  });
+  // One vote attempt, audited. Under absolute_quorum (#4138) an errored voice
+  // degrades the verdict to no_quorum; retryOnNoQuorum re-runs it up to the tiny
+  // AUTO_REMEDIATION_NO_QUORUM_RETRIES budget to absorb a transient blip.
+  const runVote = async (): Promise<VoteVerdict> => {
+    const v = await deps.vote({ proposal, algorithm });
+    deps.audit({
+      step: 'vote',
+      signalKey: signal.signalKey,
+      detail: `${algorithm}: ${voteVerdictLabel(v)} (${String(Math.round(v.approvalPercentage))}%)`,
+    });
+    return v;
+  };
+  const vote = await retryOnNoQuorum(runVote, AUTO_REMEDIATION_NO_QUORUM_RETRIES);
+
+  // #4138 security condition (i): an absolute_quorum no_quorum that survives the
+  // bounded re-run is a missing/errored voice — NOT a verdict. Return an EXPLICIT
+  // terminal skip (zero writes); never let the `!vote.approved` check below collapse
+  // it incidentally, and never proceed to IMPLEMENT.
+  if (vote.decision === 'no_quorum') {
+    return `consensus no_quorum — quorum not reached after ${String(AUTO_REMEDIATION_NO_QUORUM_RETRIES)} re-run(s); left as an issue`;
+  }
   if (!vote.approved) {
     return `consensus ${algorithm} not reached (${String(Math.round(vote.approvalPercentage))}%) — left as an issue`;
   }
