@@ -606,6 +606,19 @@ describe('vote stage — no_quorum handling (#4135)', () => {
     }
   });
 
+  it('#4143: a vote-stage infra error FAILS CLOSED to no_quorum, never auto-approved', async () => {
+    // Previously the catch block returned { kind:'approved' } ("Error (auto-approved)"),
+    // a fail-OPEN that would execute an unvoted plan. It now fails closed to no_quorum.
+    mockExecuteVoting.mockRejectedValue(new Error('all voters errored / adapter down'));
+    const stages = createAgentStages({ simulateVotes: false });
+    const vote = await stages.vote('the plan', '');
+    expect(vote.kind).toBe('no_quorum');
+    expect(vote.kind).not.toBe('approved');
+    if (vote.kind === 'no_quorum') {
+      expect(vote.reason).toMatch(/errored|failing closed/i);
+    }
+  });
+
   it('approve/reject paths are unchanged when decision is absent (default-policy fallback)', async () => {
     mockExecuteVoting.mockResolvedValueOnce(
       votingResult({ outcome: 'approved', approve: 6, reject: 0 })
