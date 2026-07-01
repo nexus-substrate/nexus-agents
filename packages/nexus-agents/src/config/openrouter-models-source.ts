@@ -31,8 +31,27 @@ const MAX_MODELS = 5_000;
 /** Byte cap on the raw response body (~8 MB) — the real catalog is well under. */
 const MAX_BYTES = 8_000_000;
 
-const OpenRouterModelSchema = z.object({ id: z.string().min(1).max(256) });
+/** Cap on a model's `supported_parameters` list — bounds an untrusted payload. */
+const MAX_SUPPORTED_PARAMETERS = 256;
+
+const OpenRouterModelSchema = z.object({
+  id: z.string().min(1).max(256),
+  // #4121: the provider's machine-readable capability list. Optional & additive —
+  // older catalogs (and our older fixtures) omit it; consumers reading only `.id`
+  // are unaffected. Bounded so a hostile payload can't blow memory.
+  supported_parameters: z.array(z.string().max(256)).max(MAX_SUPPORTED_PARAMETERS).optional(),
+});
 const OpenRouterModelsResponseSchema = z.object({ data: z.array(OpenRouterModelSchema) });
+
+/**
+ * A validated catalog model. `supportedParameters` is the provider's
+ * machine-readable capability list (#4121) — `undefined` when the catalog omits
+ * it (backward-compat). Existing existence-only consumers read `.id` and ignore it.
+ */
+export interface OpenRouterCatalogModel {
+  readonly id: string;
+  readonly supportedParameters?: readonly string[];
+}
 
 export interface OpenRouterModelsSourceOptions {
   /** Override the catalog URL (tests / self-hosted gateways). */
@@ -50,8 +69,13 @@ export interface OpenRouterModelsSourceOptions {
  */
 const logger = createLogger({ component: 'openrouter-models-source' });
 
-/** Validate + cap a catalog body. Returns `[]` on oversize or schema failure. */
-function parseCatalog(text: string): readonly { id: string }[] {
+/**
+ * Validate + cap a catalog body. Returns `[]` on oversize or schema failure.
+ * Widened in #4121 to also surface each model's `supported_parameters` (as
+ * `supportedParameters`); the field is omitted when the provider doesn't send it,
+ * so existing `.id`-only readers are unaffected.
+ */
+export function parseCatalog(text: string): readonly OpenRouterCatalogModel[] {
   if (text.length > MAX_BYTES) {
     logger.warn('OpenRouter catalog exceeds byte cap; ignoring', { bytes: text.length });
     return [];
@@ -63,7 +87,13 @@ function parseCatalog(text: string): readonly { id: string }[] {
     });
     return [];
   }
-  return parsed.data.data.slice(0, MAX_MODELS).map((m) => ({ id: m.id }));
+  return parsed.data.data
+    .slice(0, MAX_MODELS)
+    .map((m) =>
+      m.supported_parameters === undefined
+        ? { id: m.id }
+        : { id: m.id, supportedParameters: m.supported_parameters }
+    );
 }
 
 /** Fetch + validate the catalog. Fail-OPEN: any failure returns `[]`. */
@@ -71,7 +101,7 @@ async function fetchCatalog(
   url: string,
   timeoutMs: number,
   doFetch: typeof fetch
-): Promise<readonly { id: string }[]> {
+): Promise<readonly OpenRouterCatalogModel[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
@@ -123,4 +153,21 @@ export function createOpenRouterModelsSource(
     providerHint: 'openrouter',
     listModels: () => fetchCatalog(url, timeoutMs, doFetch),
   };
+}
+
+/**
+ * Fetch the OpenRouter catalog WITH `supportedParameters` retained in the return
+ * type (the {@link AvailableModelsSource} interface narrows to `.id`-only). Used by
+ * the #4121 parameter-drift reconciliation job, which needs the provider's
+ * capability list. Preserves the same fail-OPEN semantics — any fetch/schema
+ * failure yields `[]`. The reconciliation job treats an empty result as a LOUD
+ * skip (the real catalog is never empty), NOT as "no drift".
+ */
+export function fetchOpenRouterCatalog(
+  opts: OpenRouterModelsSourceOptions = {}
+): Promise<readonly OpenRouterCatalogModel[]> {
+  const url = opts.url ?? OPENROUTER_MODELS_URL;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const doFetch = opts.fetchImpl ?? fetch;
+  return fetchCatalog(url, timeoutMs, doFetch);
 }

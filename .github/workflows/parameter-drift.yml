@@ -1,0 +1,87 @@
+name: Parameter Capability Drift Check
+
+# Reconciles the hand-curated model-parameter capability map
+# (KNOWN_PARAMETER_INCOMPATIBILITIES + ModelCapability.unsupportedParameters) against
+# the provider's machine-readable `supported_parameters` (#4121, epic #4066). On
+# drift it opens ONE issue for a human to vet — it NEVER auto-edits the curated map.
+# Modeled on pricing-drift.yml. A provider fetch failure is a LOUD skip, not a
+# false "no drift".
+
+on:
+  schedule:
+    - cron: '37 8 * * 1' # Weekly Monday ~8:37am UTC (off-minute; distinct from pricing-drift 8:23)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check model parameter-capability drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Reconcile curated param map against provider supported_parameters
+        id: drift
+        run: |
+          OUTPUT=$(pnpm check:parameter-drift 2>&1)
+          echo "$OUTPUT"
+          STATUS=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_STATUS=\K\S+' | tail -1 || echo "skipped")
+          COUNT=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_COUNT=\K\d+' | tail -1 || echo "0")
+          echo "drift_status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "drift_count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "$OUTPUT" > parameter-drift-report.txt
+
+      - name: Note a loud skip (provider fetch failure — NOT "no drift")
+        if: steps.drift.outputs.drift_status == 'skipped'
+        run: |
+          echo "::warning::Parameter-drift check SKIPPED — OpenRouter catalog fetch failed or empty. Not treated as 'no drift'; re-run when the provider is reachable."
+
+      - name: Create issue if parameter drift found
+        if: steps.drift.outputs.drift_status == 'drift'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('parameter-drift-report.txt', 'utf-8');
+            const count = '${{ steps.drift.outputs.drift_count }}';
+
+            // Dedup by a stable title fragment across open discovered-drift issues.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'tech-debt,discovered',
+              per_page: 100,
+            });
+            const hasIssue = existing.data.some(i =>
+              i.title.includes('parameter-capability drift')
+            );
+            if (hasIssue) {
+              console.log('Parameter-capability drift issue already open, skipping');
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `chore(model-registry): review parameter-capability drift (${count} pairs)`,
+              labels: ['tech-debt', 'discovered'],
+              body: [
+                '**Found during:** weekly parameter-capability drift check (#4121, epic #4066)',
+                '**Severity:** medium — a stale param map risks a silent 400 (wrongly-forwarded param) or a lost tuning knob (wrongly-stripped param).',
+                '',
+                'The curated map is **hand-vetted** — this check does NOT auto-edit it. A human must confirm each pair below and reconcile `KNOWN_PARAMETER_INCOMPATIBILITIES` / the model’s `unsupportedParameters`.',
+                '',
+                '```',
+                report.slice(0, 3000),
+                '```',
+                '',
+                'Reconcile in `packages/nexus-agents/src/config/model-parameter-support.ts` and `src/config/in-tree-data.ts`.',
+              ].join('\n'),
+            });
