@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.154.2
+
+### Patch Changes
+
+- [#4159](https://github.com/nexus-substrate/nexus-agents/pull/4159) [`06654a8`](https://github.com/nexus-substrate/nexus-agents/commit/06654a8594737444acc2aa22e34baf9fe7356e3e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Raise the auto-remediation enforce-readiness volume bar ([#4158](https://github.com/nexus-substrate/nexus-agents/issues/4158)): `DEFAULT_ENFORCE_READINESS_CONFIG.minShadowSelections` 20 → 100. This gate authorizes the auto-remediation enforce flip, which makes REAL code changes; its volume bar now matches the comparably-stakes access-policy flip (clawguard-eval ≥100, [#2077](https://github.com/nexus-substrate/nexus-agents/issues/2077)) rather than sitting 5× lower. Monotonically safer (a thinner corpus stays in audit longer); overridable per-caller via `readinessConfig`. Surfaced by the [#4094](https://github.com/nexus-substrate/nexus-agents/issues/4094) vote-gate.
+
 ## 2.154.1
 
 ### Patch Changes
