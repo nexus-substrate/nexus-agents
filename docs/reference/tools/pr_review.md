@@ -19,7 +19,7 @@ Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, secu
 | `prTitle` | string | yes | minLength 1; maxLength 500 | PR title |
 | `prDescription` | string | no | maxLength 10000 | PR body / description |
 | `prDiff` | string | yes | minLength 1; maxLength 50000 | Unified diff text (max 50000 chars; truncate before calling) |
-| `repoContext` | string | no | maxLength 2000 | Optional one-paragraph repo context (architecture, conventions) |
+| `repoContext` | string | no | maxLength 2000 | Optional one-paragraph repo context (architecture, conventions; max 2000 chars; trim before calling) |
 | `baseRef` | string | no | maxLength 200 | Base branch ref (e.g. main) |
 | `headRef` | string | no | maxLength 200 | Head branch ref |
 | `prNumber` | integer | no | max 9007199254740991; > 0 | PR number — with baseSha, enables Option-C audit-record persistence (#4031) |
