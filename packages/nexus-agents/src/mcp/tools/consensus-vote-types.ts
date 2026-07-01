@@ -110,12 +110,28 @@ export function shouldEscalateLowPosterior(
  * - `fail_closed` (default for unanimous / higher_order): any error voids
  *   the vote. Threshold math is not run. Use for security-critical or
  *   breaking-change decisions where every voter must be heard.
+ * - `absolute_quorum` (opt-in, #4132): an errored voter DEGRADES the panel
+ *   verdict to `no_quorum` instead of being silently dropped from the
+ *   denominator. Unlike `fail_closed` (which reports a rejection-flavored void),
+ *   `absolute_quorum` reports `no_quorum` — a recoverable "re-run the missing
+ *   voice" state that never manufactures `approved` NOR `rejected` from an
+ *   induced error. An approval requires ZERO errors, the contrarian (catfish)
+ *   present and non-error (unless quick-mode drops it), and an ABSOLUTE approval
+ *   count (`ceil(fraction * panelSize)` over the full requested panel — not just
+ *   a majority of the responders). A genuine reject (zero errors) still blocks.
+ *   The anti-DoS point: a voter you can knock offline can only ever force a
+ *   re-run, never flip the verdict.
  *
  * Regardless of policy, a hard floor applies: when errors exceed 50% of
  * total voters, the vote always fails. Catches "all CLIs are down" — a
  * 2-voter consensus is not a real consensus.
  */
-export const ErrorPolicySchema = z.enum(['reduce_denominator', 'count_as_abstain', 'fail_closed']);
+export const ErrorPolicySchema = z.enum([
+  'reduce_denominator',
+  'count_as_abstain',
+  'fail_closed',
+  'absolute_quorum',
+]);
 
 export type ErrorPolicy = z.infer<typeof ErrorPolicySchema>;
 
@@ -168,7 +184,7 @@ export const ConsensusVoteInputSchema = z.object({
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
   ),
   errorPolicy: ErrorPolicySchema.optional().describe(
-    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Regardless of policy, errors > 50% always fails.'
+    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Opt-in absolute_quorum (#4132): an errored voter — especially the contrarian (catfish) — degrades the verdict to no_quorum (recoverable re-run) instead of being dropped from the denominator; never manufactures approved/rejected from an induced error. Regardless of policy, errors > 50% always fails.'
   ),
   quickMode: z
     .boolean()
@@ -344,6 +360,21 @@ export interface ExtendedVotingResult extends VotingResult {
   higherOrderResult?: HigherOrderVotingResult;
   /** Reason an error policy short-circuited the vote (#3124); surfaced on the response. */
   policyReason?: string;
+  /**
+   * #4132: the FULL requested panel size (`roles.length`) — the absolute_quorum
+   * predicate in {@link buildResponse} needs it to compute the absolute approval
+   * floor `ceil(fraction * panelSize)`. Distinct from `votes.length`, which can
+   * differ from the requested panel if the collector ever returns a short list.
+   * When absent, the predicate falls back to `votes.length`.
+   */
+  panelSize?: number;
+  /**
+   * #4132: whether the contrarian (catfish) was in the requested panel. `--quick`
+   * runs a 3-role panel WITHOUT catfish, so the absolute_quorum "contrarian must
+   * be present and non-error" clause is skipped when this is false (the quick-mode
+   * carve-out). True on the full 7-role panel.
+   */
+  contrarianRequested?: boolean;
 }
 
 // ============================================================================
@@ -394,6 +425,173 @@ function panelDegradationWarning(errorCount: number, total: number): string | un
   );
 }
 
+// ============================================================================
+// absolute_quorum (#4132)
+// ============================================================================
+
+/**
+ * #4132: process-wide count of panels that DEGRADED to `no_quorum` under the
+ * opt-in `absolute_quorum` policy. The evidence base a future default-flip rests
+ * on — how often does an errored voice actually void a real panel? Incremented in
+ * {@link buildResponse}; read via {@link getDegradedPanelCount}. There is no
+ * metrics bus in this module, so this mirrors the bare module-level counter style
+ * used elsewhere (e.g. the correlation-tracker singleton).
+ */
+let degradedPanelCount = 0;
+
+/** #4132: current degraded-panel count (see {@link degradedPanelCount}). */
+export function getDegradedPanelCount(): number {
+  return degradedPanelCount;
+}
+
+/** #4132: reset the degraded-panel counter. Test-isolation only. @internal */
+export function resetDegradedPanelCount(): void {
+  degradedPanelCount = 0;
+}
+
+/**
+ * #4132: the absolute approval fraction a strategy requires over the FULL panel.
+ * `ceil(fraction * panelSize)` is the absolute number of approvals an
+ * `absolute_quorum` verdict needs — an ABSOLUTE floor over every requested
+ * voter, not a majority of the responders (which abstains/errors would shrink).
+ * majority → 0.5, supermajority → 2/3, unanimous → 1.0; the higher_order family
+ * and proof_of_learning follow the majority (0.5) baseline they tally against.
+ */
+function absoluteQuorumFraction(strategy: VotingStrategy): number {
+  switch (strategy) {
+    case 'supermajority':
+      return 2 / 3;
+    case 'unanimous':
+      return 1;
+    default:
+      return 0.5;
+  }
+}
+
+/** A vote decision plus the (optional) actionable reason a panel degraded. */
+export interface VoteDecisionOutcome {
+  readonly decision: VoteDecisionStatus;
+  /** Set when the verdict degraded to `no_quorum` under absolute_quorum. */
+  readonly degradeReason?: string;
+}
+
+/**
+ * #4132: the absolute_quorum predicate (post-tally). Applied ONLY when
+ * `errorPolicy === 'absolute_quorum'`; every other policy keeps the legacy
+ * decision path untouched (opt-in).
+ *
+ * The invariant this enforces (anti-DoS): an induced voter error can NEVER
+ * manufacture `approved` and NEVER manufacture `rejected` — errors force
+ * `no_quorum`, a recoverable "re-run the missing voice" state. A GENUINE reject
+ * (zero errors) still blocks. The happy path (all approve, zero errors,
+ * contrarian present) stays `approved`.
+ *
+ *   approved  ⇔ errorCount === 0 AND (contrarian present-and-non-error, unless
+ *               quick-mode dropped it) AND approveCount >= ceil(frac * panel)
+ *   no_quorum ⇔ errorCount > 0 OR the contrarian was requested but errored/missing
+ *   rejected  ⇔ zero errors, contrarian present, engine rejected (genuine reject)
+ *   no_quorum ⇔ zero errors but the absolute approval floor was not met and there
+ *               is no genuine reject (abstain-heavy; recoverable)
+ */
+/**
+ * The "an errored/absent voice voids the quorum" half of the predicate. Returns
+ * the actionable re-run reason when the panel had ANY error, or the contrarian
+ * was required but errored/missing; `undefined` otherwise (clean panel).
+ */
+function absoluteQuorumDegradeReason(
+  result: ExtendedVotingResult,
+  errorCount: number
+): string | undefined {
+  const contrarianVote = result.votes.find((v) => v.role === 'catfish');
+  const contrarianOk = contrarianVote !== undefined && contrarianVote.source !== 'error';
+  const contrarianDegraded = result.contrarianRequested === true && !contrarianOk;
+  if (errorCount === 0 && !contrarianDegraded) return undefined;
+
+  const erroredRoles = result.votes.filter((v) => v.source === 'error').map((v) => v.role);
+  const named =
+    contrarianDegraded && !erroredRoles.includes('catfish')
+      ? [...erroredRoles, 'catfish']
+      : erroredRoles;
+  const list = named.length > 0 ? named.join(', ') : 'contrarian';
+  return `no_quorum: re-run — voter(s) [${list}] errored (absolute_quorum)`;
+}
+
+function computeAbsoluteQuorumDecision(
+  result: ExtendedVotingResult,
+  errorCount: number,
+  allErrors: boolean
+): VoteDecisionOutcome {
+  const degradeReason = absoluteQuorumDegradeReason(result, errorCount);
+  if (degradeReason !== undefined) return { decision: 'no_quorum', degradeReason };
+
+  // Zero errors, contrarian satisfied (or not required in quick mode).
+  const panel = result.panelSize ?? result.votes.length;
+  const needed = Math.ceil(absoluteQuorumFraction(result.strategy) * panel);
+  const approveCount = result.votes.filter(
+    (v) => v.source !== 'error' && v.vote.decision === 'approve'
+  ).length;
+
+  if (result.result.outcome === 'approved' && approveCount >= needed) {
+    return { decision: 'approved' };
+  }
+  if (result.result.outcome === 'rejected' && !allErrors) {
+    // A genuine reject (the engine rejected with zero errors) still blocks.
+    return { decision: 'rejected' };
+  }
+  // Approved-by-responders but the absolute approval floor was not met (e.g.
+  // abstain-heavy) — no error, no genuine reject, just not enough YES. Recoverable.
+  return {
+    decision: 'no_quorum',
+    degradeReason: `no_quorum: absolute quorum not met (${String(approveCount)}/${String(needed)} approvals over ${String(panel)}-voter panel, absolute_quorum)`,
+  };
+}
+
+/**
+ * Resolve the user-facing decision for a tallied vote. Keeps the pre-#4132 path
+ * verbatim for every policy except `absolute_quorum`, which routes through
+ * {@link computeAbsoluteQuorumDecision}.
+ */
+function resolveVoteDecision(
+  input: ConsensusVoteInput,
+  result: ExtendedVotingResult,
+  errorCount: number
+): VoteDecisionOutcome {
+  const allErrors = errorCount === result.votes.length && errorCount > 0;
+  // #4053: an error-policy short-circuit (>50% hard floor, or fail_closed) VOIDED
+  // the vote — that is no_quorum, not the panel rejecting. Applies to every policy.
+  if (result.policyReason !== undefined || (!result.result.quorumReached && allErrors)) {
+    return { decision: 'no_quorum' };
+  }
+  if (input.errorPolicy === 'absolute_quorum') {
+    return computeAbsoluteQuorumDecision(result, errorCount, allErrors);
+  }
+  return { decision: mapOutcomeToDecision(result.result.outcome) };
+}
+
+/**
+ * #4132: absolute_quorum response side-effects — increment the degraded-panel
+ * telemetry counter and surface the actionable re-run reason on policyReason /
+ * panelWarning (when an errored voter degraded the verdict without an upstream
+ * short-circuit already setting result.policyReason). Extracted to hold
+ * {@link buildResponse} within its cyclomatic budget.
+ */
+function applyAbsoluteQuorumTelemetry(
+  response: ConsensusVoteResponse,
+  input: ConsensusVoteInput,
+  decision: VoteDecisionStatus,
+  degradeReason: string | undefined
+): void {
+  // The evidence base for a future default-flip: how often does an errored voice
+  // actually void a real panel?
+  if (input.errorPolicy === 'absolute_quorum' && decision === 'no_quorum') {
+    degradedPanelCount++;
+  }
+  if (degradeReason !== undefined) {
+    response.policyReason ??= degradeReason;
+    response.panelWarning ??= degradeReason;
+  }
+}
+
 /**
  * Builds the response from voting result.
  *
@@ -412,19 +610,14 @@ export function buildResponse(
 
   const errorCount = result.votes.filter((v) => v.source === 'error').length;
 
-  const allErrors = errorCount === result.votes.length && errorCount > 0;
-  // #4053: an error-policy short-circuit (the >50% hard floor, or fail_closed)
-  // VOIDED the vote because too many voters errored — that is "couldn't get
-  // enough valid votes" (no_quorum), NOT the panel rejecting the proposal.
-  // Reporting `rejected` when the responding voters actually approved is
-  // misleading (e.g. quickMode 1 approve + 2 error → no_quorum, not rejected).
-  // `policyReason` is set iff such a short-circuit occurred; it still rides the
-  // response so callers see WHY there was no quorum.
-  const errorVoidedVote = result.policyReason !== undefined;
-  const decision: VoteDecisionStatus =
-    errorVoidedVote || (!result.result.quorumReached && allErrors)
-      ? 'no_quorum'
-      : mapOutcomeToDecision(result.result.outcome);
+  // #4053 / #4132: the user-facing decision. An error-policy short-circuit (the
+  // >50% hard floor, or fail_closed) VOIDED the vote — that is no_quorum, NOT the
+  // panel rejecting. The opt-in absolute_quorum policy (#4132) additionally
+  // degrades to no_quorum when ANY voter (especially the contrarian) errored, so
+  // an induced error can never manufacture approved/rejected. Every other policy
+  // keeps the legacy mapping. `degradeReason` (when present) is the actionable
+  // "re-run" message; it rides the response as `policyReason`.
+  const { decision, degradeReason } = resolveVoteDecision(input, result, errorCount);
 
   const response: ConsensusVoteResponse = {
     proposal: proposalTruncated,
@@ -449,6 +642,7 @@ export function buildResponse(
   }
 
   applyOptionalResponseFields(response, input, result, errorCount, costSummary);
+  applyAbsoluteQuorumTelemetry(response, input, decision, degradeReason);
   return response;
 }
 

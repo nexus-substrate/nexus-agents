@@ -10,6 +10,7 @@ import {
   ConsensusVoteInputSchema,
   CONSENSUS_VOTE_OUTPUT_SCHEMA,
   createPolicyFailedResult,
+  maybeEscalateContrarian,
   type ConsensusVoteDeps,
   type AgentVoteSummary,
   type ConsensusVoteResponse,
@@ -22,11 +23,21 @@ import {
   getDefaultErrorPolicy,
   isHigherOrderStrategy,
   shouldEscalateLowPosterior,
+  getDegradedPanelCount,
+  resetDegradedPanelCount,
   HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR,
 } from './consensus-vote-types.js';
 import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
+import type { ConsensusResult } from '../../consensus/types.js';
+
+// #4132: force the contrarian expert-bridge to fail so runContrarianCheck reports
+// errored:true deterministically (no live adapter). Only runContrarianCheck imports
+// this module, and only the maybeEscalateContrarian tests exercise that path.
+vi.mock('../../pipeline/expert-bridge.js', () => ({
+  executeExpert: vi.fn().mockRejectedValue(new Error('expert bridge down (test)')),
+}));
 import type { VoteRecord } from '../../audit/vote-record.js';
 import { rollupDecisionCost } from '../../observability/decision-cost.js';
 
@@ -1431,4 +1442,305 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
       expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(response)).not.toThrow();
     }
   );
+});
+
+// ============================================================================
+// absolute_quorum error policy (#4132) — the anti-DoS security proof
+// ============================================================================
+
+const FULL_PANEL: AgentVoteResult['role'][] = [
+  'architect',
+  'security',
+  'devex',
+  'ai_ml',
+  'pm',
+  'catfish',
+  'scope_steward',
+];
+
+function aqVote(
+  role: AgentVoteResult['role'],
+  decision: 'approve' | 'reject' | 'abstain',
+  source: AgentVoteResult['source'] = 'llm'
+): AgentVoteResult {
+  return {
+    role,
+    vote: {
+      decision,
+      reasoning: `${decision} from ${role}`,
+      confidence: source === 'error' ? 0 : 0.9,
+    },
+    processingTimeMs: 10,
+    source,
+  };
+}
+
+function aqEngineResult(
+  outcome: 'approved' | 'rejected',
+  votes: AgentVoteResult[]
+): ConsensusResult {
+  let approve = 0;
+  let reject = 0;
+  let abstain = 0;
+  for (const v of votes) {
+    if (v.source === 'error') continue;
+    if (v.vote.decision === 'approve') approve++;
+    else if (v.vote.decision === 'reject') reject++;
+    else abstain++;
+  }
+  const total = approve + reject + abstain;
+  return {
+    proposalId: 'aq',
+    proposal: { title: 't', description: 'd', algorithm: 'simple_majority' },
+    outcome,
+    votes: new Map(),
+    voteCounts: { approve, reject, abstain, total },
+    approvalPercentage: total > 0 ? (approve / total) * 100 : 0,
+    quorumReached: true,
+    startedAt: '',
+    closedAt: '',
+    durationMs: 0,
+  };
+}
+
+function aqResult(
+  votes: AgentVoteResult[],
+  opts: {
+    outcome: 'approved' | 'rejected';
+    strategy?: VotingStrategy;
+    panelSize?: number;
+    contrarianRequested?: boolean;
+  }
+): ExtendedVotingResult {
+  const strategy = opts.strategy ?? 'simple_majority';
+  return {
+    proposal: 'p',
+    threshold: strategy === 'higher_order' ? 'higher_order' : 'simple_majority',
+    result: aqEngineResult(opts.outcome, votes),
+    votes,
+    totalTimeMs: 1,
+    simulateVotes: false,
+    strategy,
+    panelSize: opts.panelSize ?? votes.length,
+    contrarianRequested: opts.contrarianRequested ?? votes.some((v) => v.role === 'catfish'),
+  };
+}
+
+/** Decide under absolute_quorum (the opt-in). */
+function decideAq(
+  votes: AgentVoteResult[],
+  opts: {
+    outcome: 'approved' | 'rejected';
+    strategy?: VotingStrategy;
+    panelSize?: number;
+    contrarianRequested?: boolean;
+    quickMode?: boolean;
+  }
+): ConsensusVoteResponse {
+  return buildResponse(
+    {
+      proposal: 'p',
+      simulateVotes: false,
+      quickMode: opts.quickMode ?? false,
+      errorPolicy: 'absolute_quorum',
+    },
+    aqResult(votes, opts)
+  );
+}
+
+describe('absolute_quorum error policy (#4132)', () => {
+  describe('the anti-DoS invariant — induced error never→approved, never→rejected', () => {
+    it.each([0, 1, 2, 3])(
+      '7-panel with k=%s errors: approved ONLY at k=0; k>0 → no_quorum, never rejected',
+      (k) => {
+        // First (7 - k) voters approve; last k error. (k ≤ 3 keeps below the >50% floor.)
+        const votes = FULL_PANEL.map((role, i) =>
+          i >= 7 - k ? aqVote(role, 'abstain', 'error') : aqVote(role, 'approve')
+        );
+        // The engine (errors→abstain) still tallies the approvals as approved.
+        const res = decideAq(votes, { outcome: 'approved' });
+        if (k === 0) {
+          expect(res.decision).toBe('approved');
+        } else {
+          expect(res.decision).toBe('no_quorum');
+          expect(res.decision).not.toBe('rejected');
+          expect(res.decision).not.toBe('approved');
+        }
+      }
+    );
+
+    it('errored contrarian (catfish) with everyone else approving → no_quorum, not approved', () => {
+      const votes = FULL_PANEL.map((role) =>
+        role === 'catfish' ? aqVote(role, 'abstain', 'error') : aqVote(role, 'approve')
+      );
+      const res = decideAq(votes, { outcome: 'approved' });
+      expect(res.decision).toBe('no_quorum');
+      expect(res.policyReason).toContain('catfish');
+      expect(res.policyReason).toContain('absolute_quorum');
+    });
+
+    it('happy path: all approve, 0 errors, contrarian present → approved', () => {
+      const votes = FULL_PANEL.map((role) => aqVote(role, 'approve'));
+      const res = decideAq(votes, { outcome: 'approved' });
+      expect(res.decision).toBe('approved');
+      expect(res.voteCounts.error).toBe(0);
+    });
+
+    it('genuine all-reject (0 errors) still blocks → rejected, not no_quorum', () => {
+      const votes = FULL_PANEL.map((role) => aqVote(role, 'reject'));
+      const res = decideAq(votes, { outcome: 'rejected' });
+      expect(res.decision).toBe('rejected');
+    });
+
+    it('mixed genuine reject (0 errors, contrarian present) stays rejected', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'reject'),
+        aqVote('devex', 'reject'),
+        aqVote('ai_ml', 'reject'),
+        aqVote('pm', 'approve'),
+        aqVote('catfish', 'reject'),
+        aqVote('scope_steward', 'approve'),
+      ];
+      const res = decideAq(votes, { outcome: 'rejected' });
+      expect(res.decision).toBe('rejected');
+    });
+  });
+
+  describe('absolute approval floor over the FULL panel', () => {
+    it('supermajority: 4/7 approve + 3 abstain (engine-approved) is below ceil(2/3*7)=5 → no_quorum', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'approve'),
+        aqVote('devex', 'approve'),
+        aqVote('ai_ml', 'approve'),
+        aqVote('pm', 'abstain'),
+        aqVote('catfish', 'abstain'),
+        aqVote('scope_steward', 'abstain'),
+      ];
+      // Engine over responders (abstains excluded): 4/4 approve → approved.
+      const res = decideAq(votes, { outcome: 'approved', strategy: 'supermajority' });
+      expect(res.decision).toBe('no_quorum');
+      expect(res.policyReason).toContain('absolute quorum not met');
+    });
+
+    it('supermajority: 5/7 approve (0 errors, contrarian approves) meets ceil(2/3*7)=5 → approved', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'approve'),
+        aqVote('devex', 'approve'),
+        aqVote('ai_ml', 'approve'),
+        aqVote('pm', 'approve'),
+        aqVote('catfish', 'abstain'),
+        aqVote('scope_steward', 'abstain'),
+      ];
+      const res = decideAq(votes, { outcome: 'approved', strategy: 'supermajority' });
+      expect(res.decision).toBe('approved');
+    });
+  });
+
+  describe('quick-mode carve-out (no catfish in the 3-panel)', () => {
+    it('3-panel all-approve, 0 errors → approved (not forced no_quorum by a missing contrarian)', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'approve'),
+        aqVote('scope_steward', 'approve'),
+      ];
+      const res = decideAq(votes, {
+        outcome: 'approved',
+        panelSize: 3,
+        contrarianRequested: false,
+        quickMode: true,
+      });
+      expect(res.decision).toBe('approved');
+    });
+
+    it('3-panel with an errored voter still degrades → no_quorum', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'abstain', 'error'),
+        aqVote('scope_steward', 'approve'),
+      ];
+      const res = decideAq(votes, {
+        outcome: 'approved',
+        panelSize: 3,
+        contrarianRequested: false,
+        quickMode: true,
+      });
+      expect(res.decision).toBe('no_quorum');
+    });
+  });
+
+  describe('default policy is UNCHANGED (opt-in only)', () => {
+    it('reduce_denominator (default): 1 errored voter + rest approve → approved, NOT no_quorum', () => {
+      const votes = FULL_PANEL.map((role) =>
+        role === 'catfish' ? aqVote(role, 'abstain', 'error') : aqVote(role, 'approve')
+      );
+      // No errorPolicy set → legacy mapping.
+      const res = buildResponse(
+        { proposal: 'p', simulateVotes: false, quickMode: false },
+        aqResult(votes, { outcome: 'approved' })
+      );
+      expect(res.decision).toBe('approved');
+      expect(res.decision).not.toBe('no_quorum');
+    });
+  });
+
+  describe('telemetry — degraded-panel counter', () => {
+    it('increments the degraded-panel counter only on an absolute_quorum no_quorum', () => {
+      resetDegradedPanelCount();
+      const before = getDegradedPanelCount();
+      // A clean approve does NOT increment.
+      decideAq(
+        FULL_PANEL.map((role) => aqVote(role, 'approve')),
+        { outcome: 'approved' }
+      );
+      expect(getDegradedPanelCount()).toBe(before);
+      // An errored-catfish degrade DOES increment.
+      const votes = FULL_PANEL.map((role) =>
+        role === 'catfish' ? aqVote(role, 'abstain', 'error') : aqVote(role, 'approve')
+      );
+      decideAq(votes, { outcome: 'approved' });
+      expect(getDegradedPanelCount()).toBe(before + 1);
+    });
+  });
+});
+
+describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)', () => {
+  const logger: ILogger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as ILogger;
+
+  // The top-level vi.mock (below the imports) makes executeExpert reject, so
+  // runContrarianCheck reports errored:true without any live adapter call.
+  it('absolute_quorum + quick approval + contrarian check errors → degradeReason (no_quorum)', async () => {
+    const out = await maybeEscalateContrarian(
+      {
+        proposal: 'ship it',
+        simulateVotes: false,
+        quickMode: true,
+        errorPolicy: 'absolute_quorum',
+      },
+      'approved',
+      { strategy: 'simple_majority', posteriorApproval: undefined },
+      logger
+    );
+    expect(out.escalated).toBeUndefined();
+    expect(out.degradeReason).toContain('no_quorum');
+    expect(out.degradeReason).toContain('contrarian');
+  });
+
+  it('non-absolute_quorum + contrarian check errors → no degrade (pre-#4132 behavior preserved)', async () => {
+    const out = await maybeEscalateContrarian(
+      { proposal: 'ship it', simulateVotes: false, quickMode: true },
+      'approved',
+      { strategy: 'simple_majority', posteriorApproval: undefined },
+      logger
+    );
+    expect(out.escalated).toBeUndefined();
+    expect(out.degradeReason).toBeUndefined();
+  });
 });

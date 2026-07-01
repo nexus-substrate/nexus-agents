@@ -135,6 +135,23 @@ export const PrReviewInputSchema = z.object({
     .default(false)
     .describe('Use simulated voters (testing only; never ship live with this true)'),
   /**
+   * Error policy (#4132). `standard` (default) keeps the pre-#4132 aggregation:
+   * an errored voter is simply excluded from the panel. `absolute_quorum` gates
+   * the verified-approve verdict on a COMPLETE, error-free panel with the
+   * contrarian (catfish) present and approving — any errored voter (especially
+   * catfish) degrades the verdict to a recoverable `{ decision: 'abstain',
+   * verified: false }` (the no_quorum analogue; `PrReviewAggregate` has no
+   * `no_quorum` state), so an induced voter error can never manufacture a
+   * verified approve. A genuine `request_changes` blocker still wins (Tiers 1-2
+   * run first).
+   */
+  errorPolicy: z
+    .enum(['standard', 'absolute_quorum'])
+    .default('standard')
+    .describe(
+      "Error policy (#4132). 'standard' (default): errored voters excluded. 'absolute_quorum': any errored voter — esp. the contrarian — degrades a would-be approve to a recoverable abstain (verified:false); never manufactures a verified approve from an induced error."
+    ),
+  /**
    * Dispatch mode (#3731). `sync` (default) runs the 5-voter panel inline and
    * returns the result — but a live fan-out can exceed the MCP request timeout.
    * `async` returns a `{ status: 'pending', jobId }` envelope immediately and
@@ -180,6 +197,14 @@ export interface PrReviewVote {
 export interface PrReviewAggregate {
   readonly decision: PrReviewDecision;
   readonly verified: boolean;
+  /**
+   * #4132: set when `absolute_quorum` DEGRADED a would-be verified approve to a
+   * recoverable `{ decision: 'abstain', verified: false }` because a voter (esp.
+   * the contrarian) errored or the panel was incomplete. `PrReviewAggregate` has
+   * no `no_quorum` state, so `abstain`+`verified:false`+`reason` represents it —
+   * the actionable "re-run the missing voice" signal. Absent on ungated verdicts.
+   */
+  readonly reason?: string;
 }
 
 export interface PrReviewResponse {
@@ -258,11 +283,16 @@ const SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD = 3;
  * Adding the finding requirement would zero this path out and reproduce
  * the baseline behavior.
  */
-export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewAggregate {
+export function aggregatePrDecisions(
+  reviews: readonly PrReviewVote[],
+  errorPolicy: 'standard' | 'absolute_quorum' = 'standard'
+): PrReviewAggregate {
   const valid = reviews.filter((r) => r.source !== 'error');
   if (valid.length === 0) return { decision: 'abstain', verified: true };
 
-  // Tier 1: verified blocker — ≥1 voter has a verified finding.
+  // Tier 1: verified blocker — ≥1 voter has a verified finding. A genuine
+  // request_changes blocker still wins under BOTH policies (runs before the
+  // absolute_quorum gate) so a real defect is never masked by a re-run signal.
   const hasVerifiedBlocker = valid.some(
     (r) => r.decision === 'request_changes' && r.findings.some((f) => f.verified)
   );
@@ -274,13 +304,51 @@ export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReview
     return { decision: 'request_changes', verified: false };
   }
 
-  // Tier 3: unanimous approve.
+  // Tier 3: unanimous approve. Under absolute_quorum (#4132) the verified-approve
+  // is GATED on a complete, error-free panel with the contrarian (catfish)
+  // present and approving — an errored voter (esp. catfish) cannot manufacture a
+  // verified approve; it degrades to a recoverable abstain (verified:false), the
+  // no_quorum analogue. `valid.every(approve)` alone would silently drop the
+  // errored voter from the denominator and rubber-stamp the merge.
   if (valid.every((r) => r.decision === 'approve')) {
+    if (errorPolicy === 'absolute_quorum') {
+      return absoluteQuorumApprove(reviews, valid);
+    }
     return { decision: 'approve', verified: true };
   }
 
   // Tier 4: ambiguous — abstain.
   return { decision: 'abstain', verified: true };
+}
+
+/**
+ * #4132: the absolute_quorum verified-approve gate. Reached only when every
+ * non-error voter approved. Requires ZERO errors, a COMPLETE panel
+ * (`valid.length === PR_REVIEW_ROLES.length`), and the contrarian (catfish)
+ * present-and-approving. Any shortfall degrades to a recoverable
+ * `{ decision: 'abstain', verified: false, reason }` — the no_quorum analogue.
+ */
+function absoluteQuorumApprove(
+  reviews: readonly PrReviewVote[],
+  valid: readonly PrReviewVote[]
+): PrReviewAggregate {
+  const errorCount = reviews.length - valid.length;
+  const erroredRoles = reviews.filter((r) => r.source === 'error').map((r) => r.role);
+  const catfish = valid.find((r) => r.role === 'catfish');
+  const catfishApproved = catfish?.decision === 'approve';
+  const panelComplete = valid.length === PR_REVIEW_ROLES.length;
+
+  if (errorCount > 0 || !catfishApproved || !panelComplete) {
+    const missing = catfishApproved ? [] : ['catfish'];
+    const named = [...erroredRoles, ...missing];
+    const list = named.length > 0 ? named.join(', ') : 'incomplete panel';
+    return {
+      decision: 'abstain',
+      verified: false,
+      reason: `no_quorum: re-run — voter(s) [${list}] errored/missing (absolute_quorum)`,
+    };
+  }
+  return { decision: 'approve', verified: true };
 }
 
 // ============================================================================
@@ -388,6 +456,27 @@ function summarizeReviews(reviews: readonly PrReviewVote[]): {
  * `collectRealVotes` is the long pole (live LLM fan-out), so the whole body
  * is what backgrounds.
  */
+/**
+ * Aggregate the panel and, under absolute_quorum (#4132), emit the actionable
+ * "re-run the missing voice" telemetry when a would-be approve degraded to a
+ * recoverable abstain because a voter (esp. the contrarian) errored.
+ */
+function aggregateWithTelemetry(
+  reviews: readonly PrReviewVote[],
+  errorPolicy: 'standard' | 'absolute_quorum',
+  errorCount: number,
+  logger: ILogger
+): PrReviewAggregate {
+  const aggregate = aggregatePrDecisions(reviews, errorPolicy);
+  if (aggregate.reason !== undefined) {
+    logger.warn('pr_review degraded to no_quorum under absolute_quorum (#4132)', {
+      reason: aggregate.reason,
+      errorCount,
+    });
+  }
+  return aggregate;
+}
+
 async function executePrReviewBody(
   input: PrReviewInput,
   logger: ILogger,
@@ -405,7 +494,7 @@ async function executePrReviewBody(
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
-  const aggregate = aggregatePrDecisions(reviews);
+  const aggregate = aggregateWithTelemetry(reviews, input.errorPolicy, counts.errorCount, logger);
 
   // #3855: roll up + persist this review's per-voter cost and ride it on the
   // existing response (no new MCP tool). Best-effort — a rollup failure must
