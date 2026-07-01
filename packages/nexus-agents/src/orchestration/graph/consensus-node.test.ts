@@ -33,6 +33,22 @@ describe('runConsensusGate', () => {
     await runConsensusGate(spy, { proposal: 'p', context: 'c' });
     expect(spy).toHaveBeenCalledWith({ proposal: 'p', context: 'c' });
   });
+
+  it('propagates a no_quorum verdict from the voter (#4135 — distinct from rejected)', async () => {
+    const noQuorumVoter: ConsensusVoter = () =>
+      Promise.resolve({ outcome: 'no_quorum', feedback: 're-run — a voice was missing' });
+    const v = await runConsensusGate(noQuorumVoter, { proposal: 'plan' });
+    expect(v.outcome).toBe('no_quorum');
+    // A quorum void is NOT success and NOT a rejection — the widened union carries it.
+    expect(v.outcome).not.toBe('rejected');
+    expect(v.outcome).not.toBe('approved');
+  });
+
+  it('a voter THROW still fails closed to rejected, not no_quorum (an error is not a valid void)', async () => {
+    const throwing: ConsensusVoter = () => Promise.reject(new Error('adapter offline'));
+    const v = await runConsensusGate(throwing, { proposal: 'plan' });
+    expect(v.outcome).toBe('rejected');
+  });
 });
 
 describe('createConsensusGateNode', () => {

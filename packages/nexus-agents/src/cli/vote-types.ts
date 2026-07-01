@@ -10,6 +10,19 @@ import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../consensus/typ
 import type { ErrorPolicy, VoteThreshold } from '../mcp/tools/consensus-vote-types.js';
 
 /**
+ * #4135: how the `vote` command maps a `no_quorum` decision — a quorum void
+ * (a missing/errored voice under the opt-in `absolute_quorum` error policy, or an
+ * error-policy short-circuit), which is DISTINCT from a genuine rejection.
+ *
+ * - `fail` (default): exit 1, exactly as a rejection would — back-compat.
+ * - `exit2`: exit with a distinct code 2 so scripts can tell a quorum void apart
+ *   from an approval (0) or a rejection (1).
+ * - `retry`: re-run the vote ONCE (the plan is fine, a voice was missing); if it
+ *   still cannot reach quorum, fall back to `fail` (exit 1).
+ */
+export type NoQuorumPolicy = 'fail' | 'exit2' | 'retry';
+
+/**
  * Options for the vote command.
  */
 export interface VoteCommandOptions {
@@ -29,6 +42,12 @@ export interface VoteCommandOptions {
    * `fail_closed` for unanimous, `reduce_denominator` otherwise.
    */
   readonly errorPolicy?: ErrorPolicy;
+  /**
+   * #4135: how to map a `no_quorum` decision (a recoverable quorum void, not a
+   * rejection). Default `fail` (exit 1) preserves back-compat. See
+   * {@link NoQuorumPolicy}.
+   */
+  readonly onNoQuorum?: NoQuorumPolicy;
 }
 
 /**

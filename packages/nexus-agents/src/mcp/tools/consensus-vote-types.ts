@@ -375,6 +375,17 @@ export interface ExtendedVotingResult extends VotingResult {
    * carve-out). True on the full 7-role panel.
    */
   contrarianRequested?: boolean;
+  /**
+   * #4135: the response-layer decision (incl. `no_quorum`) for this vote, computed
+   * by {@link resolveVoteDecision}. Set by `executeVoting` right before it returns
+   * so pipeline consumers (iterative-consensus, agent-executor, the CLI) can honor
+   * a `no_quorum` void instead of misreading it as a rejection — WITHOUT recomputing
+   * the policy math. The engine `ConsensusResult.outcome` stays 2-valued
+   * (`approved`/`rejected`); this is the widened, opt-in-aware view. Absent on
+   * results built by paths that never ran `executeVoting` (direct unit calls to
+   * `buildResponse`), where consumers fall back to mapping the engine outcome.
+   */
+  decision?: VoteDecisionStatus;
 }
 
 // ============================================================================
@@ -550,8 +561,14 @@ function computeAbsoluteQuorumDecision(
  * Resolve the user-facing decision for a tallied vote. Keeps the pre-#4132 path
  * verbatim for every policy except `absolute_quorum`, which routes through
  * {@link computeAbsoluteQuorumDecision}.
+ *
+ * Exported (#4135) so `executeVoting` can stamp `ExtendedVotingResult.decision`
+ * with the SAME computation `buildResponse` uses — the response-layer decision
+ * (including `no_quorum`) is derived once, in one place, and can't diverge
+ * between the engine result and the MCP response. The engine
+ * `ConsensusResult.outcome` stays 2-valued; this is the widened view.
  */
-function resolveVoteDecision(
+export function resolveVoteDecision(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
   errorCount: number
@@ -617,7 +634,14 @@ export function buildResponse(
   // an induced error can never manufacture approved/rejected. Every other policy
   // keeps the legacy mapping. `degradeReason` (when present) is the actionable
   // "re-run" message; it rides the response as `policyReason`.
-  const { decision, degradeReason } = resolveVoteDecision(input, result, errorCount);
+  //
+  // #4135 (DRY): `executeVoting` already stamped `result.decision` via THIS same
+  // `resolveVoteDecision`. Reuse it so the response decision can't diverge from the
+  // one pipeline consumers read; recompute only for the `degradeReason` telemetry
+  // and for direct unit calls that bypass `executeVoting` (where `decision` is absent).
+  const resolved = resolveVoteDecision(input, result, errorCount);
+  const decision = result.decision ?? resolved.decision;
+  const { degradeReason } = resolved;
 
   const response: ConsensusVoteResponse = {
     proposal: proposalTruncated,

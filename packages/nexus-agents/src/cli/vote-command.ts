@@ -19,13 +19,20 @@
 import * as crypto from 'node:crypto';
 import { getTimeProvider, formatPercentage, getErrorMessage, createLogger } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
-import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
+import type {
+  VoteCommandOptions,
+  VoterRole,
+  VotingResult,
+  VoteHash,
+  NoQuorumPolicy,
+} from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/types.js';
 import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
 import { validateTimeout } from '../config/timeouts.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
-import type { ConsensusVoteInput } from '../mcp/tools/consensus-vote-types.js';
+import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
+import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
@@ -164,9 +171,30 @@ function validateGitHubIssue(issueNumber: number): boolean {
 }
 
 /**
- * Formats vote result as markdown comment.
+ * Maps a decision to the markdown result label. `no_quorum` (#4135) renders
+ * distinctly from a rejection — a quorum void is recoverable ("re-run the missing
+ * voice"), NOT the panel rejecting the proposal.
  */
-export function formatVoteComment(result: VotingResult): string {
+function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; text: string } {
+  switch (decision) {
+    case 'approved':
+      return { emoji: '✅', text: 'APPROVED' };
+    case 'no_quorum':
+      return { emoji: '⚠️', text: 'NO QUORUM' };
+    default:
+      // rejected / timeout / pending — the same ❌ the pre-#4135 formatter used.
+      return { emoji: '❌', text: decision.toUpperCase() };
+  }
+}
+
+/**
+ * Formats vote result as markdown comment.
+ *
+ * `decision` (#4135) is the response-layer decision (incl. `no_quorum`). When
+ * omitted, it falls back to mapping the 2-valued engine outcome — so pre-#4135
+ * callers get the identical `APPROVED`/`REJECTED` label.
+ */
+export function formatVoteComment(result: VotingResult, decision?: VoteDecisionStatus): string {
   const now = new Date(getTimeProvider().now()).toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -174,8 +202,8 @@ export function formatVoteComment(result: VotingResult): string {
     day: '2-digit',
   });
 
-  const outcomeEmoji = result.result.outcome === 'approved' ? '✅' : '❌';
-  const outcomeText = result.result.outcome.toUpperCase();
+  const effectiveDecision = decision ?? mapOutcomeToDecision(result.result.outcome);
+  const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
 
   const voteRows = result.votes
     .map(({ role, vote }) => {
@@ -218,8 +246,12 @@ ${voteRows}
  * shell-metacharacter pattern. Piping keeps the body off the shell
  * entirely — no escaping, no injection surface.
  */
-export function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
-  const comment = formatVoteComment(result);
+export function recordVoteToGitHub(
+  issueNumber: number,
+  result: VotingResult,
+  decision?: VoteDecisionStatus
+): void {
+  const comment = formatVoteComment(result, decision);
 
   const output = safeExecSandboxed(`gh issue comment ${String(issueNumber)} --body-file -`, {
     context: 'gh',
@@ -245,7 +277,9 @@ export function recordVoteToGitHub(issueNumber: number, result: VotingResult): v
  * CLI-specific concerns (timeout clamping + diagnostic line) remain here
  * because they belong to the operator UX, not the voting flow itself.
  */
-async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
+async function runVote(
+  options: VoteCommandOptions
+): Promise<VotingResult & { readonly decision: VoteDecisionStatus }> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -277,7 +311,9 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
 
   // `ExtendedVotingResult` is a superset of `VotingResult` — return the
   // narrower view since the CLI pretty-printers only consume the base
-  // fields and don't render `strategy` / `higherOrderResult`.
+  // fields and don't render `strategy` / `higherOrderResult`. #4135: also carry
+  // the response-layer `decision` (incl. `no_quorum`) so the command can honor a
+  // quorum void; fall back to mapping the engine outcome when it's absent.
   return {
     proposal: result.proposal,
     threshold: result.threshold,
@@ -285,6 +321,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     votes: result.votes,
     totalTimeMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
+    decision: result.decision ?? mapOutcomeToDecision(result.result.outcome),
   };
 }
 
@@ -318,7 +355,11 @@ function validateIssueIfNeeded(issueNumber: number | undefined): boolean {
 /**
  * Handles recording vote to GitHub or dry-run message.
  */
-function handleRecording(options: VoteCommandOptions, result: VotingResult): void {
+function handleRecording(
+  options: VoteCommandOptions,
+  result: VotingResult,
+  decision?: VoteDecisionStatus
+): void {
   if (options.issueNumber === undefined) return;
 
   if (options.dryRun === true) {
@@ -326,8 +367,19 @@ function handleRecording(options: VoteCommandOptions, result: VotingResult): voi
       `${colors.yellow}[DRY RUN]${colors.reset} Would record to issue #${String(options.issueNumber)}\n`
     );
   } else {
-    recordVoteToGitHub(options.issueNumber, result);
+    recordVoteToGitHub(options.issueNumber, result, decision);
   }
+}
+
+/**
+ * #4135: map a resolved decision to the CLI exit code, honoring `--on-no-quorum`.
+ * `approved` → 0; a quorum void → 2 under `exit2`, else 1 (`fail`/`retry`
+ * fall-through, back-compat); everything else (a genuine rejection) → 1.
+ */
+function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolicy): number {
+  if (decision === 'approved') return 0;
+  if (decision === 'no_quorum') return policy === 'exit2' ? 2 : 1;
+  return 1;
 }
 
 /**
@@ -343,16 +395,25 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
   writeLine(
     `${colors.dim}Proposal: ${options.proposal.slice(0, 100)}${options.proposal.length > 100 ? '...' : ''}${colors.reset}\n`
   );
+  const onNoQuorum: NoQuorumPolicy = options.onNoQuorum ?? 'fail';
   try {
-    const result = await runVote(options);
+    let result = await runVote(options);
+    // #4135: a quorum void is recoverable (a voice was missing) — under `retry`,
+    // re-run the vote ONCE before falling back to `fail`. The plan is unchanged.
+    if (result.decision === 'no_quorum' && onNoQuorum === 'retry') {
+      writeLine(
+        `${colors.yellow}No quorum — re-running the vote once (--on-no-quorum=retry)...${colors.reset}\n`
+      );
+      result = await runVote(options);
+    }
     printVoteDetails(result.votes);
     printSummary({ result: result.result, votes: result.votes, threshold: result.threshold });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
-    handleRecording(options, result);
+    handleRecording(options, result, result.decision);
 
-    return result.result.outcome === 'approved' ? 0 : 1;
+    return exitCodeForDecision(result.decision, onNoQuorum);
   } catch (error) {
     writeLine(`${colors.red}Error: ${getErrorMessage(error)}${colors.reset}`);
     return 1;

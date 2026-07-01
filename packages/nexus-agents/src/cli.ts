@@ -33,6 +33,7 @@ import {
   type VoteThreshold,
   type ErrorPolicy,
 } from './mcp/tools/consensus-vote-types.js';
+import type { NoQuorumPolicy } from './cli/vote-types.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -123,6 +124,7 @@ interface ParsedValues {
   quick: boolean;
   timeout?: string;
   'error-policy'?: string;
+  'on-no-quorum'?: string;
   // SWE-bench options
   variant?: string;
   limit?: string;
@@ -214,6 +216,15 @@ function parseErrorPolicy(value: string | undefined): ErrorPolicy | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * #4135: validates the `--on-no-quorum` flag (fail | exit2 | retry). Unknown
+ * values fall through to `undefined` → the command default (`fail`).
+ */
+function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefined {
+  if (value === 'fail' || value === 'exit2' || value === 'retry') return value;
+  return undefined;
+}
+
 /** Builds vote-specific options. */
 function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   const threshold = parseThreshold(values.threshold);
@@ -221,11 +232,13 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   // Convert seconds to milliseconds (CLI uses seconds for readability)
   const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
   const errorPolicy = parseErrorPolicy(values['error-policy']);
+  const onNoQuorum = parseNoQuorumPolicy(values['on-no-quorum']);
   return {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
     ...(threshold !== undefined && { threshold }),
     ...(timeoutMs !== undefined && { timeoutMs }),
     ...(errorPolicy !== undefined && { errorPolicy }),
+    ...(onNoQuorum !== undefined && { onNoQuorum }),
   };
 }
 

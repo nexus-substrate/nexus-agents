@@ -10,6 +10,7 @@
 import type { ServerMode } from './cli/index.js';
 import type { CliNameLiteral } from './config/model-capabilities-types.js';
 import type { ErrorPolicy, VoteThreshold } from './mcp/tools/consensus-vote-types.js';
+import type { NoQuorumPolicy } from './cli/vote-types.js';
 import type { CommandResult } from './core/command-result.js';
 
 // Re-export help text from extracted module for backward compatibility
@@ -223,6 +224,8 @@ export interface ParsedCliArgs {
     timeoutMs?: number;
     /** #2630 — see `applyErrorPolicy`. */
     errorPolicy?: ErrorPolicy;
+    /** #4135 — how the vote command maps a `no_quorum` decision. Default `fail`. */
+    onNoQuorum?: NoQuorumPolicy;
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
@@ -411,6 +414,10 @@ export const PARSE_ARGS_CONFIG = {
     },
     // #2630 — error policy for the vote command.
     'error-policy': {
+      type: 'string' as const,
+    },
+    // #4135 — how the vote command maps a no_quorum decision (fail|exit2|retry).
+    'on-no-quorum': {
       type: 'string' as const,
     },
     // SWE-bench command options

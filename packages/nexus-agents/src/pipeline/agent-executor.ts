@@ -11,7 +11,12 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
-import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
+import type {
+  DevPipelineStages,
+  PipelineTask,
+  QaReviewResult,
+  VoteResult,
+} from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
@@ -52,6 +57,51 @@ export function buildVoteProposal(plan: string, research: string): string {
   const planPart = plan.slice(0, planBudget);
   const researchPart = trimmed.slice(0, VOTE_RESEARCH_BUDGET);
   return `${planPart}${RESEARCH_HEADER}${researchPart}`.slice(0, VOTE_PROPOSAL_MAX);
+}
+
+/**
+ * #4135: classify a `consensus_vote` result into the pipeline {@link VoteResult},
+ * reading the response-layer `decision` (which honors a `no_quorum` void under the
+ * opt-in absolute_quorum policy / an error-policy short-circuit) rather than the
+ * 2-valued engine outcome. Falls back to the engine outcome when `decision` is
+ * absent — default-policy callers never see `no_quorum`, so this stays inert until
+ * a call site opts in. `no_quorum` is a DISTINCT terminal signal (no reviewer
+ * feedback — the plan is fine, a voice was missing), NOT a rejection fed into
+ * plan-revision. Extracted from the vote stage to keep it within its complexity budget.
+ */
+function classifyVoteStageResult(votingResult: {
+  readonly decision?: string;
+  readonly result: {
+    readonly outcome: string;
+    readonly voteCounts: { readonly approve: number; readonly reject: number };
+  };
+  readonly votes: ReadonlyArray<{
+    readonly vote: { readonly decision: string; readonly reasoning: string };
+  }>;
+}): { vote: VoteResult; label: string } {
+  const { approve, reject } = votingResult.result.voteCounts;
+  const pct = (approve / Math.max(1, approve + reject)) * 100;
+  const decision =
+    votingResult.decision ?? (votingResult.result.outcome === 'approved' ? 'approved' : 'rejected');
+
+  if (decision === 'no_quorum') {
+    return {
+      vote: {
+        kind: 'no_quorum',
+        reason: 'consensus vote could not reach quorum (a voice was missing)',
+        approvalPercentage: pct,
+      },
+      label: 'No quorum — re-run needed',
+    };
+  }
+  if (decision !== 'approved') {
+    const feedback = votingResult.votes
+      .filter((v) => v.vote.decision !== 'approve')
+      .map((v) => v.vote.reasoning)
+      .join('\n');
+    return { vote: { kind: 'rejected', feedback, approvalPercentage: pct }, label: 'Rejected' };
+  }
+  return { vote: { kind: 'approved', approvalPercentage: pct }, label: 'Approved' };
 }
 
 // DRY: delegate to shared pipeline-observability.ts (#1734 Phase 1.1)
@@ -540,18 +590,17 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           },
           logger
         );
-        const approved = votingResult.result.outcome === 'approved';
-        const pct =
-          (votingResult.result.voteCounts.approve /
-            Math.max(
-              1,
-              votingResult.result.voteCounts.approve + votingResult.result.voteCounts.reject
-            )) *
-          100;
-        const feedback = votingResult.votes
-          .filter((v) => v.vote.decision !== 'approve')
-          .map((v) => v.vote.reasoning)
-          .join('\n');
+        // #4135: read the response-layer decision (honors a `no_quorum` void under
+        // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
+        // of the 2-valued engine outcome. Falls back to the engine outcome when
+        // `decision` is absent — default-policy callers never see `no_quorum`, so
+        // this is inert until a call site opts in. (The #4143 catch-block
+        // auto-approve bug below is a SEPARATE issue and is intentionally untouched.)
+        // #4135: read the response-layer decision (honors a `no_quorum` void under
+        // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
+        // of the 2-valued engine outcome. `classifyVoteStageResult` maps it to the
+        // stage VoteResult (incl. the distinct no_quorum terminal signal).
+        const { vote, label } = classifyVoteStageResult(votingResult);
         const ms = getTimeProvider().now() - start;
         emitStageEvent('vote', 'completed', { durationMs: ms });
         // Vote is itself a consensus result, not a single CLI's output;
@@ -562,18 +611,15 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           taskId: 'vote',
           category: 'planning',
           cli: undefined,
-          success: approved,
+          success: vote.kind === 'approved',
           durationMs: ms,
         });
         await postProgress(
           config,
           'Vote',
-          `${approved ? 'Approved' : 'Rejected'} (${Math.round(pct)}%, ${ms}ms)`
+          `${label} (${Math.round(vote.approvalPercentage)}%, ${ms}ms)`
         );
-        if (!approved) {
-          return { kind: 'rejected' as const, feedback, approvalPercentage: pct };
-        }
-        return { kind: 'approved' as const, approvalPercentage: pct };
+        return vote;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         emitStageEvent('vote', 'failed', { error: msg });

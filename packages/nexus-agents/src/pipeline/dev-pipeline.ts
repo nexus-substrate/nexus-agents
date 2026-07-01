@@ -92,7 +92,15 @@ export type VoteResult =
       readonly conditions: readonly string[];
       readonly caveats: readonly string[];
       readonly approvalPercentage: number;
-    };
+    }
+  // #4135: the vote could not reach a valid quorum — a recoverable "re-run the
+  // missing voice" state, DISTINCT from a rejection. Only produced when a caller
+  // opts into the `absolute_quorum` error policy (or an error-policy short-circuit
+  // voids the vote); inert under every default policy. Consumers must NOT feed this
+  // into plan-revision (it carries no reviewer feedback — the plan is fine, a voice
+  // was missing); it terminates/escalates instead. `isApproved` and
+  // `getVoteFeedback` already treat it as not-approved / no-feedback.
+  | { readonly kind: 'no_quorum'; readonly reason: string; readonly approvalPercentage: number };
 
 /** Construct VoteResult from legacy approval flow. */
 export function createVoteResult(

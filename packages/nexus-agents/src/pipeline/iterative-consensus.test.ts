@@ -169,4 +169,71 @@ describe('runIterativeConsensus', () => {
       expect(result.vote.feedback).toContain('Missing tests');
     }
   });
+
+  // ==========================================================================
+  // #4135 — no_quorum recovery (bounded re-run of the SAME plan, then terminate)
+  // ==========================================================================
+
+  // A vote whose response-layer decision is `no_quorum` (a missing voice, not a
+  // rejection). `outcome` stays 'rejected' (the engine is 2-valued) — the point is
+  // parseVotingResult must read `decision`, not `outcome`.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function makeNoQuorumResult() {
+    return {
+      decision: 'no_quorum',
+      result: { outcome: 'rejected', voteCounts: { approve: 1, reject: 0, abstain: 0, error: 1 } },
+      votes: [{ vote: { decision: 'approve', reasoning: 'ok' } }],
+      durationMs: 100,
+    };
+  }
+
+  it('re-runs the SAME plan on no_quorum up to maxNoQuorumRetries, then terminates non-rejected', async () => {
+    // Every vote comes back no_quorum → the bounded re-runs exhaust and the result
+    // is a TERMINAL no_quorum failure, NOT a rejection, and revisePlan is never called.
+    mockExecuteVoting.mockResolvedValue(makeNoQuorumResult());
+    const revisePlan = vi
+      .fn<(plan: string, feedback: string) => Promise<string>>()
+      .mockResolvedValue('Revised');
+
+    const result = await runIterativeConsensus('Plan', revisePlan, {
+      maxIterations: 3,
+      maxNoQuorumRetries: 2,
+    });
+
+    expect(result.vote.kind).toBe('no_quorum');
+    if (result.vote.kind === 'no_quorum') {
+      expect(result.vote.reason).toContain('could not reach quorum');
+      expect(result.vote.reason).toContain('2 re-run');
+    }
+    // 1 initial vote + 2 bounded re-runs, all within the first iteration.
+    expect(mockExecuteVoting).toHaveBeenCalledTimes(3);
+    // The plan is fine — a voice was missing — so we NEVER revise on no_quorum.
+    expect(revisePlan).not.toHaveBeenCalled();
+    expect(result.iterations).toBe(1);
+  });
+
+  it('recovers when a bounded re-run reaches approval (does not terminate)', async () => {
+    mockExecuteVoting
+      .mockResolvedValueOnce(makeNoQuorumResult())
+      .mockResolvedValueOnce(makeVotingResult('approved', 5, 1));
+    const revisePlan = vi.fn<(plan: string, feedback: string) => Promise<string>>();
+
+    const result = await runIterativeConsensus('Plan', revisePlan, {
+      maxIterations: 3,
+      maxNoQuorumRetries: 2,
+    });
+
+    expect(result.vote.kind).toBe('approved');
+    expect(mockExecuteVoting).toHaveBeenCalledTimes(2); // initial no_quorum + 1 recovery re-run
+    expect(revisePlan).not.toHaveBeenCalled();
+    expect(result.iterations).toBe(1);
+  });
+
+  it('a normal approve/reject path is unaffected when decision is absent (fallback)', async () => {
+    // Mocks that don't set `decision` fall back to the legacy outcome mapping —
+    // the pre-#4135 behavior, proving the default path is inert.
+    mockExecuteVoting.mockResolvedValueOnce(makeVotingResult('rejected', 1, 5, 'Nope'));
+    const result = await runIterativeConsensus('Plan', vi.fn(), { maxIterations: 1 });
+    expect(result.vote.kind).toBe('rejected');
+  });
 });

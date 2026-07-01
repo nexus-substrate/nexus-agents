@@ -29,6 +29,14 @@ export interface IterativeConsensusConfig {
   readonly quickMode?: boolean | undefined;
   /** Voting strategy (default: 'higher_order'). */
   readonly strategy?: VotingStrategy | undefined;
+  /**
+   * #4135: how many times to re-run the SAME plan when a vote returns
+   * `no_quorum` — a missing/errored voice, not a rejection — before giving up
+   * (default: 2). Counted SEPARATELY from `maxIterations`: a quorum void is a
+   * recoverable "re-run the missing voice" state, not a plan-revision trigger, so
+   * it must not consume the refine budget.
+   */
+  readonly maxNoQuorumRetries?: number | undefined;
   /** Max proposal length sent to voters (default: 4000). */
   readonly maxProposalLength?: number | undefined;
   /** Logger instance. */
@@ -49,6 +57,8 @@ export interface IterativeConsensusResult {
 // ============================================================================
 
 const DEFAULT_MAX_ITERATIONS = 3;
+/** #4135: default bounded re-runs for a `no_quorum` void (separate from maxIterations). */
+const DEFAULT_MAX_NO_QUORUM_RETRIES = 2;
 const DEFAULT_MAX_PROPOSAL_LENGTH = 4000;
 const DEFAULT_STRATEGY: VotingStrategy = 'higher_order';
 const DEFAULT_PREFIX = 'pipeline';
@@ -71,25 +81,68 @@ interface ConsensusLoopState {
   readonly log: ILogger;
   readonly prefix: string;
   readonly globalStart: number;
+  /** #4135: bounded re-runs for a `no_quorum` void (separate from maxIterations). */
+  readonly maxNoQuorumRetries: number;
 }
 
-/** Run one iteration of the consensus loop. Returns result if accepted, undefined to continue. */
+/**
+ * Run one vote and, on a `no_quorum` void, re-run the SAME plan (a voice was
+ * missing — the plan is fine, so we do NOT revise) up to `maxNoQuorumRetries`
+ * times (#4135). Returns the recovered vote, or the last `no_quorum` when the
+ * bounded re-runs are exhausted.
+ */
+async function voteWithQuorumRecovery(state: ConsensusLoopState): Promise<VoteResult> {
+  let vote = await executeSingleVote(state.plan, state.config, state.log);
+  for (
+    let attempt = 1;
+    vote.kind === 'no_quorum' && attempt <= state.maxNoQuorumRetries;
+    attempt++
+  ) {
+    state.log.warn('Vote reached no_quorum — re-running the missing voice (bounded)', {
+      attempt,
+      maxNoQuorumRetries: state.maxNoQuorumRetries,
+      reason: vote.reason,
+    });
+    emitPipelineStageEvent(state.prefix, 'vote', 'started');
+    vote = await executeSingleVote(state.plan, state.config, state.log);
+  }
+  return vote;
+}
+
+/**
+ * Run one consensus iteration: vote (with bounded no_quorum recovery), then
+ * classify. Returns `{ result }` when accepted (stop), `{ terminal }` when the
+ * quorum could not be reached after the bounded re-runs (#4135 — a non-rejected
+ * TERMINAL failure, do NOT drop into revise), or `{}` to continue (rejected).
+ */
 async function runOneIteration(
   state: ConsensusLoopState,
   iteration: number
-): Promise<IterativeConsensusResult | undefined> {
+): Promise<{ result?: IterativeConsensusResult; terminal?: IterativeConsensusResult }> {
   state.log.info('Consensus iteration', { iteration });
   emitPipelineStageEvent(state.prefix, 'vote', 'started');
 
-  state.lastVote = await executeSingleVote(state.plan, state.config, state.log);
+  state.lastVote = await voteWithQuorumRecovery(state);
   const iterMs = getTimeProvider().now() - state.globalStart;
-  const status = isVoteAccepted(state.lastVote) ? 'completed' : 'failed';
-  emitPipelineStageEvent(state.prefix, 'vote', status, { durationMs: iterMs });
+  const accepted = isVoteAccepted(state.lastVote);
+  emitPipelineStageEvent(state.prefix, 'vote', accepted ? 'completed' : 'failed', {
+    durationMs: iterMs,
+  });
 
-  if (isVoteAccepted(state.lastVote)) {
-    return { vote: state.lastVote, iterations: iteration, durationMs: iterMs };
+  if (accepted) {
+    return { result: { vote: state.lastVote, iterations: iteration, durationMs: iterMs } };
   }
-  return undefined;
+  // #4135: a quorum void that survived the bounded re-runs is TERMINAL — surface a
+  // non-rejected failure so it never enters the refine-and-re-vote loop.
+  if (state.lastVote.kind === 'no_quorum') {
+    const terminalVote: VoteResult = {
+      kind: 'no_quorum',
+      reason: `vote could not reach quorum after ${String(state.maxNoQuorumRetries)} re-run(s): ${state.lastVote.reason}`,
+      approvalPercentage: state.lastVote.approvalPercentage,
+    };
+    return { terminal: { vote: terminalVote, iterations: iteration, durationMs: iterMs } };
+  }
+  return {};
 }
 
 export async function runIterativeConsensus(
@@ -105,11 +158,25 @@ export async function runIterativeConsensus(
     log: config?.logger ?? defaultLogger,
     prefix: config?.pipelinePrefix ?? DEFAULT_PREFIX,
     globalStart: getTimeProvider().now(),
+    maxNoQuorumRetries: config?.maxNoQuorumRetries ?? DEFAULT_MAX_NO_QUORUM_RETRIES,
   };
 
+  return runConsensusLoop(state, maxIter, revisePlan);
+}
+
+/**
+ * The plan→vote→(revise) loop. Stops on acceptance, on a terminal `no_quorum`
+ * void (#4135 — never dropping into revise), or on iteration exhaustion.
+ */
+async function runConsensusLoop(
+  state: ConsensusLoopState,
+  maxIter: number,
+  revisePlan: (plan: string, feedback: string) => Promise<string>
+): Promise<IterativeConsensusResult> {
   for (let i = 0; i < maxIter; i++) {
-    const accepted = await runOneIteration(state, i + 1);
-    if (accepted !== undefined) return accepted;
+    const outcome = await runOneIteration(state, i + 1);
+    const done = outcome.result ?? outcome.terminal;
+    if (done !== undefined) return done;
     await maybeRevise(state, i, maxIter, revisePlan);
   }
 
@@ -204,6 +271,13 @@ async function executeSingleVote(
 
 /** Parse executeVoting output into a VoteResult. */
 function parseVotingResult(result: {
+  /**
+   * #4135: the response-layer decision (incl. `no_quorum`) `executeVoting` stamps.
+   * Preferred over the 2-valued engine `outcome` so a quorum void is honored, not
+   * misread as a rejection. Absent for callers/mocks that don't set it — the
+   * engine outcome is the fallback (legacy behavior, never `no_quorum`).
+   */
+  readonly decision?: string;
   readonly result: {
     readonly outcome: string;
     readonly voteCounts: { readonly approve: number; readonly reject: number };
@@ -212,12 +286,23 @@ function parseVotingResult(result: {
     readonly vote: { readonly decision: string; readonly reasoning: string };
   }>;
 }): VoteResult {
-  const approved = result.result.outcome === 'approved';
   const total = Math.max(1, result.result.voteCounts.approve + result.result.voteCounts.reject);
   const pct = (result.result.voteCounts.approve / total) * 100;
 
-  if (approved) {
+  const decision =
+    result.decision ?? (result.result.outcome === 'approved' ? 'approved' : 'rejected');
+
+  if (decision === 'approved') {
     return { kind: 'approved', approvalPercentage: pct };
+  }
+  // #4135: a quorum void — the plan is fine, a voice was missing. Do NOT synthesize
+  // rejection feedback (that would feed a plan revision the loop must skip).
+  if (decision === 'no_quorum') {
+    return {
+      kind: 'no_quorum',
+      reason: 'vote could not reach quorum (a voice was missing)',
+      approvalPercentage: pct,
+    };
   }
 
   const feedback = result.votes

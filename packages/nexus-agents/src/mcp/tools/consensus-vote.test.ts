@@ -892,6 +892,146 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
   }
 });
 
+describe('#4135: decision plumbing (executeVoting stamps decision; buildResponse reuses it)', () => {
+  it('executeVoting stamps result.decision matching the legacy mapping under a default policy', async () => {
+    const { executeVoting } = await import('./consensus-vote.js');
+    const { mapOutcomeToDecision } = await import('./consensus-vote-types.js');
+    const result = await executeVoting(
+      { proposal: 'Ship the plumbing', simulateVotes: true, quickMode: true },
+      createMockLogger()
+    );
+    // Under a default policy the decision is the legacy 2-valued mapping — never
+    // no_quorum. This is the inert-by-default guarantee (#4135).
+    expect(result.decision).toBeDefined();
+    expect(result.decision).toBe(mapOutcomeToDecision(result.result.outcome));
+    expect(result.decision).not.toBe('no_quorum');
+  });
+
+  it('buildResponse REUSES a pre-stamped result.decision (DRY — decision cannot diverge)', () => {
+    // A deliberately "stale" stamped decision proves buildResponse reads
+    // result.decision rather than recomputing: an all-approve clean panel would
+    // normally compute 'approved', but the stamped 'no_quorum' must win.
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+    ];
+    const base: ExtendedVotingResult = {
+      proposal: 'Test',
+      threshold: 'simple_majority',
+      result: {
+        proposalId: 'p1',
+        proposal: { title: 't', description: 'Test', algorithm: 'simple_majority' },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: 'now',
+        closedAt: 'now',
+        durationMs: 1,
+      },
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'no_quorum',
+    };
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false },
+      base
+    );
+    expect(response.decision).toBe('no_quorum');
+  });
+
+  it('buildResponse COMPUTES the decision when result.decision is absent (fallback unchanged)', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+    ];
+    const base: ExtendedVotingResult = {
+      proposal: 'Test',
+      threshold: 'simple_majority',
+      result: {
+        proposalId: 'p1',
+        proposal: { title: 't', description: 'Test', algorithm: 'simple_majority' },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: 'now',
+        closedAt: 'now',
+        durationMs: 1,
+      },
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      // decision intentionally absent
+    };
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false },
+      base
+    );
+    expect(response.decision).toBe('approved');
+  });
+
+  it('absolute_quorum with an errored voter → executeVoting stamps decision:no_quorum', () => {
+    // Reuses the buildResponse absolute_quorum path (which resolveVoteDecision drives,
+    // the same function executeVoting stamps with): an errored voter voids the quorum.
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+      {
+        role: 'catfish',
+        vote: { decision: 'abstain', reasoning: 'timeout', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+    ];
+    const base: ExtendedVotingResult = {
+      proposal: 'Test',
+      threshold: 'simple_majority',
+      result: {
+        proposalId: 'p1',
+        proposal: { title: 't', description: 'Test', algorithm: 'simple_majority' },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: 'now',
+        closedAt: 'now',
+        durationMs: 1,
+      },
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      panelSize: 2,
+      contrarianRequested: true,
+    };
+    resetDegradedPanelCount();
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false, errorPolicy: 'absolute_quorum' },
+      base
+    );
+    expect(response.decision).toBe('no_quorum');
+  });
+});
+
 describe('buildResponse surfaces vote-record persistence outcome (#3991)', () => {
   function makeResult(): ExtendedVotingResult {
     const votes: AgentVoteResult[] = [

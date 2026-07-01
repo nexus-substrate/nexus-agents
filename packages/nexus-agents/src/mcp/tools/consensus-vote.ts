@@ -54,6 +54,7 @@ import {
   getDefaultErrorPolicy,
   isHigherOrderStrategy,
   shouldEscalateLowPosterior,
+  resolveVoteDecision,
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import {
@@ -600,8 +601,24 @@ export async function maybeEscalateContrarian(
  * are applyErrorPolicy, buildPolicyShortCircuitResult,
  * maybeEscalateContrarian, finalizeVotingResult.
  */
-// eslint-disable-next-line max-lines-per-function -- see block comment above
 export async function executeVoting(
+  input: ConsensusVoteInput,
+  logger: ILogger,
+  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
+): Promise<ExtendedVotingResult> {
+  const result = await executeVotingInner(input, logger, opts);
+  // #4135: stamp the response-layer decision (incl. `no_quorum`) ONCE, using the
+  // SAME `resolveVoteDecision` `buildResponse` consumes, so pipeline consumers can
+  // honor a quorum void instead of misreading it as a rejection — without
+  // recomputing the policy math (DRY; the decision can't diverge). `errorCount`
+  // uses the identical definition `buildResponse` uses.
+  const errorCount = result.votes.filter((v) => v.source === 'error').length;
+  result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  return result;
+}
+
+// eslint-disable-next-line max-lines-per-function -- see block comment above
+async function executeVotingInner(
   input: ConsensusVoteInput,
   logger: ILogger,
   opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }

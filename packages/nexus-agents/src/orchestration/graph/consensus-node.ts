@@ -33,8 +33,21 @@ export interface ConsensusProposalInput {
 
 /** The typed verdict a consensus round produces. */
 export interface ConsensusVerdict {
-  /** Whether the proposal cleared the consensus bar. */
-  readonly outcome: 'approved' | 'rejected';
+  /**
+   * Whether the proposal cleared the consensus bar.
+   *
+   * `no_quorum` (#4135) is DISTINCT from `rejected`: the panel could not reach a
+   * valid quorum (an errored/absent voice under the opt-in `absolute_quorum`
+   * policy, or an error-policy short-circuit) — a recoverable "re-run the missing
+   * voice" state, NOT the panel rejecting the proposal. A voter that maps a
+   * `consensus_vote` result into a verdict should surface the vote's `decision`
+   * here so `no_quorum` propagates. It is not `success` — pair the gate with a
+   * conditional edge that routes `no_quorum` to a bounded re-vote/escalate rather
+   * than the reject/revise path. The voter-throw fail-closed path stays `rejected`
+   * (an exception is an error, not a valid quorum void). Inert until a caller opts
+   * into `absolute_quorum`.
+   */
+  readonly outcome: 'approved' | 'rejected' | 'no_quorum';
   /** Reviewer feedback (empty on a clean approval). */
   readonly feedback: string;
   /** Optional structured detail (approval %, the raw vote, …) for consumers. */

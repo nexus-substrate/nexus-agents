@@ -21,10 +21,12 @@ const {
   mockEmit,
   mockExecuteDiscovery,
   mockAnalyzeGaps,
+  mockExecuteVoting,
 } = vi.hoisted(() => ({
   mockExecuteExpert: vi.fn(),
   mockExecuteDiscovery: vi.fn(),
   mockAnalyzeGaps: vi.fn(),
+  mockExecuteVoting: vi.fn(),
   mockGetOutcomeSummaryText: vi.fn(),
   mockGetOutcomeStore: vi.fn(() => ({ append: vi.fn(), query: vi.fn().mockReturnValue([]) })),
   mockGenerateWeatherReport: vi.fn(),
@@ -92,6 +94,12 @@ vi.mock('./event-bus.js', () => ({
 
 vi.mock('./security-gate.js', () => ({
   checkSecurityScan: () => () => Promise.resolve({ verdict: 'pass', details: 'ok' }),
+}));
+
+// #4135: the vote stage dynamically imports executeVoting — stub it so the vote
+// stage can be driven by a fixed decision (approved/rejected/no_quorum).
+vi.mock('../mcp/tools/consensus-vote.js', () => ({
+  executeVoting: mockExecuteVoting,
 }));
 
 import { createAgentStages, buildVoteProposal } from './agent-executor.js';
@@ -558,6 +566,59 @@ describe('createAgentStages — central workflow hub', () => {
 
       expect(findModelCalled()).toBeUndefined();
     });
+  });
+});
+
+describe('vote stage — no_quorum handling (#4135)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function votingResult(opts: {
+    decision?: string;
+    outcome: string;
+    approve: number;
+    reject: number;
+  }) {
+    return {
+      ...(opts.decision !== undefined ? { decision: opts.decision } : {}),
+      result: {
+        outcome: opts.outcome,
+        voteCounts: { approve: opts.approve, reject: opts.reject, abstain: 0, error: 0 },
+      },
+      votes: [{ vote: { decision: 'reject', reasoning: 'a concern' } }],
+    };
+  }
+
+  beforeEach(() => {
+    mockExecuteVoting.mockReset();
+  });
+
+  it('a no_quorum decision blocks + escalates — returns kind:no_quorum, NOT rejected-into-revision', async () => {
+    mockExecuteVoting.mockResolvedValue(
+      votingResult({ decision: 'no_quorum', outcome: 'rejected', approve: 5, reject: 1 })
+    );
+    const stages = createAgentStages({ simulateVotes: false });
+    const vote = await stages.vote('the plan', '');
+    expect(vote.kind).toBe('no_quorum');
+    // A no_quorum void carries no reviewer feedback (the plan is fine) — so it is
+    // NOT a { kind:'rejected', feedback } that would drive plan-revision.
+    expect(vote.kind).not.toBe('rejected');
+    if (vote.kind === 'no_quorum') {
+      expect(vote.reason).toContain('quorum');
+    }
+  });
+
+  it('approve/reject paths are unchanged when decision is absent (default-policy fallback)', async () => {
+    mockExecuteVoting.mockResolvedValueOnce(
+      votingResult({ outcome: 'approved', approve: 6, reject: 0 })
+    );
+    const stages = createAgentStages({ simulateVotes: false });
+    const approvedVote = await stages.vote('plan', '');
+    expect(approvedVote.kind).toBe('approved');
+
+    mockExecuteVoting.mockResolvedValueOnce(
+      votingResult({ outcome: 'rejected', approve: 1, reject: 5 })
+    );
+    const rejectedVote = await stages.vote('plan', '');
+    expect(rejectedVote.kind).toBe('rejected');
   });
 });
 
