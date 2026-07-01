@@ -41,9 +41,9 @@ function rawPlanFor(s: ImprovementSignal): unknown {
 
 function readyEvidence(): EnforceReadinessEvidence {
   return {
-    shadowSelections: 25,
-    judgedSelections: 22,
-    judgedSound: 21,
+    shadowSelections: 120, // ≥ 100 (#4158)
+    judgedSelections: 110, // 91.7% ≥ 80%
+    judgedSound: 105, // 95.5% ≥ 90%
     evaluator: 'rev@example',
     owner: 'williamzujkowski',
   };

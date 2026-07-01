@@ -41,13 +41,14 @@ describe('buildEnforceReadinessEvidence', () => {
   });
 
   it('produces evidence that PASSES the readiness gate when criteria are met', () => {
+    // #4158: the volume bar is now ≥100 shadow selections.
     const reviews: RemediationReviewSummary = {
-      judgedSelections: 18,
-      judgedSound: 17,
+      judgedSelections: 110, // 91.7% ≥ 80%
+      judgedSound: 105, // 95.5% ≥ 90%
       evaluator: 'alice',
       owner: 'carol',
     };
-    const evidence = buildEnforceReadinessEvidence(soak(20), reviews);
+    const evidence = buildEnforceReadinessEvidence(soak(120), reviews);
     expect(evaluateEnforceReadiness(evidence).ready).toBe(true);
   });
 

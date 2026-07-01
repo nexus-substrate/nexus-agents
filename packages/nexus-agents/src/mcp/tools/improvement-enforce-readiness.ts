@@ -47,9 +47,18 @@ export interface EnforceReadinessConfig {
   readonly requireNamedOwner: boolean;
 }
 
-/** Conservative defaults — high bar, fail-closed. */
+/**
+ * Conservative defaults — high bar, fail-closed.
+ *
+ * #4158: `minShadowSelections` is 100 (raised from 20). This gate authorizes the
+ * auto-remediation enforce flip, which makes REAL code changes — its volume bar
+ * should match the comparably-stakes access-policy flip (clawguard-eval requires
+ * ≥100 judged events, #2077), not sit 5× lower. Raising it is monotonically safer
+ * (a thinner corpus stays in audit longer); overridable per-caller via
+ * `config.readinessConfig`.
+ */
 export const DEFAULT_ENFORCE_READINESS_CONFIG: EnforceReadinessConfig = {
-  minShadowSelections: 20,
+  minShadowSelections: 100,
   minJudgedRate: 0.8,
   minSoundnessRate: 0.9,
   requireNamedEvaluator: true,

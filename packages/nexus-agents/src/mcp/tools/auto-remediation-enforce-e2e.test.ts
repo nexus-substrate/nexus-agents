@@ -345,9 +345,9 @@ describe('enforce path — e2e against a throwaway repo (#3777)', () => {
       const deps = enforceReadyDeps();
       deps.readinessEvidence = () =>
         Promise.resolve({
-          shadowSelections: 50,
-          judgedSelections: 50,
-          judgedSound: 50,
+          shadowSelections: 120, // ≥ 100 (#4158)
+          judgedSelections: 110,
+          judgedSound: 105,
           evaluator: 'e2e',
           owner: 'e2e',
         });

@@ -186,9 +186,10 @@ describe('handleRemediationReviewCommand', () => {
     const sink = createRemediationSoakSink(getRemediationSoakFile());
     const reviewStore = createRemediationReviewStore(getRemediationReviewFile());
     const refs: string[] = [];
-    for (let i = 0; i < 20; i++) {
+    // #4158: volume bar is now ≥100 shadow selections.
+    for (let i = 0; i < 120; i++) {
       const rec: RemediationSoakRecord = {
-        timestamp: `2026-06-08T00:00:${String(i).padStart(2, '0')}.000Z`,
+        timestamp: `2026-06-08T00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z`,
         signalKey: 'routing:floor:codex',
         category: 'routing',
         priority: 'p2',
@@ -199,8 +200,8 @@ describe('handleRemediationReviewCommand', () => {
       sink.record(rec);
       refs.push(soakRefOf(rec));
     }
-    // Review 18/20 (≥80% judged), all sound (100% ≥ 90%), named evaluator + owner.
-    for (const ref of refs.slice(0, 18)) {
+    // Review 110/120 (≥80% judged), all sound (100% ≥ 90%), named evaluator + owner.
+    for (const ref of refs.slice(0, 110)) {
       const review: ReviewRecord = {
         soakRef: ref,
         reviewedAt: '2026-06-09T00:00:00.000Z',
