@@ -630,8 +630,22 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           success: false,
           durationMs: getTimeProvider().now() - start,
         });
-        await postProgress(config, 'Vote', `Error (auto-approved): ${msg.slice(0, 200)}`);
-        return { kind: 'approved' as const, approvalPercentage: 0 };
+        // #4143: a vote-stage infra error (all voters errored / adapter down /
+        // timeout) FAILS CLOSED to `no_quorum` — a recoverable "the vote couldn't
+        // complete, re-run/escalate" state (#4135) — NOT auto-approved. Granting
+        // approval on an errored gate is a fail-OPEN: it would execute an unvoted
+        // plan. no_quorum blocks execution and routes to the bounded re-run/escalate
+        // recovery, consistent with the fail-loud principle behind #4130/#4132.
+        await postProgress(
+          config,
+          'Vote',
+          `Error (failing closed — no quorum): ${msg.slice(0, 200)}`
+        );
+        return {
+          kind: 'no_quorum' as const,
+          reason: `vote stage errored — failing closed: ${msg.slice(0, 160)}`,
+          approvalPercentage: 0,
+        };
       }
     },
 
