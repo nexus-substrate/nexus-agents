@@ -8,14 +8,21 @@ import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from './voter-agents.js';
 
-const { safeExecSandboxedMock } = vi.hoisted(() => ({ safeExecSandboxedMock: vi.fn() }));
+const { safeExecSandboxedMock, executeVotingMock } = vi.hoisted(() => ({
+  safeExecSandboxedMock: vi.fn(),
+  executeVotingMock: vi.fn(),
+}));
 vi.mock('./sandbox-exec.js', () => ({ safeExecSandboxed: safeExecSandboxedMock }));
+// #4135: stub executeVoting so voteCommand exit-code mapping can be driven by a
+// fixed response-layer decision (approved / rejected / no_quorum).
+vi.mock('../mcp/tools/consensus-vote.js', () => ({ executeVoting: executeVotingMock }));
 
 import {
   formatVoteComment,
   formatVoteRow,
   explainOutcome,
   recordVoteToGitHub,
+  voteCommand,
 } from './vote-command.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
@@ -314,5 +321,74 @@ describe('recordVoteToGitHub', () => {
     const commandString = safeExecSandboxedMock.mock.calls[0]?.[0] as string;
     // The body (which contains `|`, `(`, `)`) lives in stdin, not the command.
     expect(commandString).not.toMatch(/[|()]/);
+  });
+});
+
+describe('formatVoteComment — no_quorum labeling (#4135)', () => {
+  it('labels a no_quorum decision distinctly (not APPROVED/REJECTED)', () => {
+    // Engine outcome stays 'rejected' (2-valued); the decision is the void.
+    const result = createMockVotingResult({
+      result: createMockConsensusResult({ outcome: 'rejected' }),
+    });
+    const comment = formatVoteComment(result, 'no_quorum');
+    expect(comment).toContain('NO QUORUM');
+    expect(comment).not.toContain('**REJECTED**');
+    expect(comment).not.toContain('**APPROVED**');
+  });
+
+  it('falls back to the engine outcome label when no decision is passed (back-compat)', () => {
+    const result = createMockVotingResult();
+    expect(formatVoteComment(result)).toContain('**APPROVED**');
+  });
+});
+
+describe('voteCommand — exit-code mapping for no_quorum (#4135)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function extendedResult(decision: string) {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'rejected' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision,
+    };
+  }
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    safeExecSandboxedMock.mockReset();
+  });
+
+  it('default (fail) → exit 1 on a no_quorum (back-compat)', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('no_quorum'));
+    const code = await voteCommand({ proposal: 'p' });
+    expect(code).toBe(1);
+  });
+
+  it('--on-no-quorum=exit2 → distinct exit 2 on a no_quorum', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('no_quorum'));
+    const code = await voteCommand({ proposal: 'p', onNoQuorum: 'exit2' });
+    expect(code).toBe(2);
+  });
+
+  it('--on-no-quorum=retry → re-runs the vote once, then falls to exit 1', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('no_quorum'));
+    const code = await voteCommand({ proposal: 'p', onNoQuorum: 'retry' });
+    expect(code).toBe(1);
+    // 1 initial run + 1 retry.
+    expect(executeVotingMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('an approved decision → exit 0 regardless of policy', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+    expect(await voteCommand({ proposal: 'p', onNoQuorum: 'exit2' })).toBe(0);
+  });
+
+  it('a rejected decision → exit 1 (unchanged)', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('rejected'));
+    expect(await voteCommand({ proposal: 'p', onNoQuorum: 'exit2' })).toBe(1);
   });
 });

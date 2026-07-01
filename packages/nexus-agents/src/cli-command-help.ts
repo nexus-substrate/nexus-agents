@@ -80,6 +80,11 @@ const VOTE_HELP: CommandHelpEntry = {
       description:
         'How to count errored/timed-out voters: reduce_denominator | count_as_abstain | fail_closed | absolute_quorum (#4132 — an errored voter degrades the verdict to no_quorum) (default: fail_closed for unanimous, reduce_denominator otherwise)',
     },
+    {
+      flag: '--on-no-quorum <p>',
+      description:
+        'How to map a no_quorum decision (#4135): fail (exit 1, default) | exit2 (distinct exit 2) | retry (re-run once, then fail)',
+    },
     { flag: '--verbose', description: 'Show vote verification hashes' },
   ],
   requiresApiKey: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'],

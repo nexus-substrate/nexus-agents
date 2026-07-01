@@ -279,11 +279,15 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<CliExitRes
     proposal,
     ...(validThreshold !== undefined && { threshold: validThreshold }),
     ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
+    ...(args.options.onNoQuorum !== undefined && { onNoQuorum: args.options.onNoQuorum }),
     dryRun: args.options.dryRun,
     quick: args.options.quick,
     verbose: args.options.verbose,
   });
-  return cliExitFromStatus(exitCode);
+  // #4135: use `cliExit` (not `cliExitFromStatus`) so a distinct `--on-no-quorum=exit2`
+  // code (2) survives to the process instead of being collapsed to 1. Codes 0/1 map
+  // identically, so back-compat holds.
+  return cliExit(exitCode);
 }
 
 /**
