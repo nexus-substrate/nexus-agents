@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 
-import { createOpenRouterModelsSource } from './openrouter-models-source.js';
+import { createOpenRouterModelsSource, parseCatalog } from './openrouter-models-source.js';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -89,5 +89,37 @@ describe('createOpenRouterModelsSource (#3404)', () => {
     const src = createOpenRouterModelsSource({ fetchImpl });
     const ids = await src.listModels();
     expect(ids.length).toBe(5000);
+  });
+});
+
+describe('parseCatalog supported_parameters widening (#4121)', () => {
+  it('captures supported_parameters as supportedParameters when present', () => {
+    const models = parseCatalog(
+      JSON.stringify({
+        data: [{ id: 'vendor/model-a', supported_parameters: ['temperature', 'top_p'] }],
+      })
+    );
+    expect(models).toEqual([
+      { id: 'vendor/model-a', supportedParameters: ['temperature', 'top_p'] },
+    ]);
+  });
+
+  it('leaves supportedParameters undefined when the provider omits it (backward-compat)', () => {
+    const models = parseCatalog(JSON.stringify({ data: [{ id: 'vendor/model-b' }] }));
+    expect(models).toEqual([{ id: 'vendor/model-b' }]);
+    expect(models[0]?.supportedParameters).toBeUndefined();
+  });
+
+  it('still fails open ([]) on a malformed payload (unchanged guardrail)', () => {
+    expect(parseCatalog(JSON.stringify({ data: [{ notId: 1 }] }))).toEqual([]);
+  });
+
+  it('drops a malformed supported_parameters (non-string entries) via schema, failing open', () => {
+    // supported_parameters must be string[]; a number entry fails validation → [].
+    expect(
+      parseCatalog(
+        JSON.stringify({ data: [{ id: 'vendor/model-c', supported_parameters: [1, 2] }] })
+      )
+    ).toEqual([]);
   });
 });
