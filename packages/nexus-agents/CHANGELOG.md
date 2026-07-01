@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.151.1
+
+### Patch Changes
+
+- [#4141](https://github.com/nexus-substrate/nexus-agents/pull/4141) [`7145bc3`](https://github.com/nexus-substrate/nexus-agents/commit/7145bc3f22305b174579f0a0588cfa5b18eb0ea5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Document the `pr_review` `repoContext` 2000-char cap ([#4133](https://github.com/nexus-substrate/nexus-agents/issues/4133), epic [#4130](https://github.com/nexus-substrate/nexus-agents/issues/4130)). The field silently
+  hard-failed Zod validation over 2000 chars with no limit stated in its description (unlike
+  `prDiff`, which documents its 50000 cap). The cap is now a named `MAX_REPO_CONTEXT_LENGTH`
+  constant and stated in the field description + regenerated tool reference. The larger
+  diff-summarization affordance for the 50000-char `prDiff` cap is tracked separately.
+
 ## 2.151.0
 
 ### Minor Changes
