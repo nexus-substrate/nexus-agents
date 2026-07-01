@@ -10,7 +10,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type { VoteResult } from './dev-pipeline.js';
-import type { VotingStrategy } from '../mcp/tools/consensus-vote-types.js';
+import type { VotingStrategy, ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
 
 const defaultLogger = createLogger({ component: 'iterative-consensus' });
@@ -29,6 +29,14 @@ export interface IterativeConsensusConfig {
   readonly quickMode?: boolean | undefined;
   /** Voting strategy (default: 'higher_order'). */
   readonly strategy?: VotingStrategy | undefined;
+  /**
+   * #4138: error policy for the vote (default: 'absolute_quorum'). The dev-pipeline
+   * plan gate opts in to `absolute_quorum` so an errored voter — especially the
+   * contrarian — degrades to a recoverable `no_quorum` (which the bounded
+   * `maxNoQuorumRetries` re-run then terminal path already honors) instead of being
+   * silently dropped from the denominator. Overridable per-caller.
+   */
+  readonly errorPolicy?: ErrorPolicy | undefined;
   /**
    * #4135: how many times to re-run the SAME plan when a vote returns
    * `no_quorum` — a missing/errored voice, not a rejection — before giving up
@@ -228,13 +236,22 @@ function buildExhaustedResult(
 function buildVotingInput(
   plan: string,
   config: IterativeConsensusConfig | undefined
-): { proposal: string; strategy: VotingStrategy; simulateVotes: boolean; quickMode: boolean } {
-  const maxLen = config?.maxProposalLength ?? DEFAULT_MAX_PROPOSAL_LENGTH;
+): {
+  proposal: string;
+  strategy: VotingStrategy;
+  simulateVotes: boolean;
+  quickMode: boolean;
+  errorPolicy: ErrorPolicy;
+} {
+  const c = config ?? {};
+  const maxLen = c.maxProposalLength ?? DEFAULT_MAX_PROPOSAL_LENGTH;
   return {
     proposal: plan.slice(0, maxLen),
-    strategy: config?.strategy ?? DEFAULT_STRATEGY,
-    simulateVotes: config?.simulateVotes ?? false,
-    quickMode: config?.quickMode ?? false,
+    strategy: c.strategy ?? DEFAULT_STRATEGY,
+    simulateVotes: c.simulateVotes ?? false,
+    quickMode: c.quickMode ?? false,
+    // #4138: the dev-pipeline plan gate opts in to absolute_quorum (overridable).
+    errorPolicy: c.errorPolicy ?? 'absolute_quorum',
   };
 }
 

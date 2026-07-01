@@ -110,6 +110,24 @@ describe('runIterativeConsensus', () => {
     );
   });
 
+  it('#4138: opts the plan gate into absolute_quorum by default', async () => {
+    mockExecuteVoting.mockResolvedValueOnce(makeVotingResult('approved', 6, 0));
+    await runIterativeConsensus('Plan', vi.fn(), {});
+    expect(mockExecuteVoting).toHaveBeenCalledWith(
+      expect.objectContaining({ errorPolicy: 'absolute_quorum' }),
+      expect.anything()
+    );
+  });
+
+  it('#4138: errorPolicy is overridable per-caller', async () => {
+    mockExecuteVoting.mockResolvedValueOnce(makeVotingResult('approved', 6, 0));
+    await runIterativeConsensus('Plan', vi.fn(), { errorPolicy: 'reduce_denominator' });
+    expect(mockExecuteVoting).toHaveBeenCalledWith(
+      expect.objectContaining({ errorPolicy: 'reduce_denominator' }),
+      expect.anything()
+    );
+  });
+
   it('truncates proposal to maxProposalLength', async () => {
     mockExecuteVoting.mockResolvedValueOnce(makeVotingResult('approved', 4, 2));
     const longPlan = 'x'.repeat(10000);
