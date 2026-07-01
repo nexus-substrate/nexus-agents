@@ -174,6 +174,47 @@ describe('runAutoRemediation — enforce', () => {
     expect(deps.implement).not.toHaveBeenCalled();
   });
 
+  it('an errored contrarian (absolute_quorum no_quorum) leaves the signal as an issue — NO write (#4138)', async () => {
+    // The load-bearing security test (vote condition (ii)): a degraded panel under
+    // absolute_quorum degrades to no_quorum; it must NEVER be executed. Persistent
+    // no_quorum (both attempts) → EXPLICIT terminal skip, zero writes.
+    const vote = vi.fn(async () =>
+      Promise.resolve({ approved: false, approvalPercentage: 0, decision: 'no_quorum' as const })
+    );
+    const { deps } = makeDeps({ vote });
+    const r = await runAutoRemediation([signal()], deps, enf());
+    expect(r.remediated).toEqual([]);
+    expect(r.skipped[0]?.reason).toMatch(/no_quorum/);
+    expect(r.skipped[0]?.reason).toMatch(/left as an issue/);
+    expect(deps.implement).not.toHaveBeenCalled(); // the security guarantee: no write
+    expect(vote).toHaveBeenCalledTimes(2); // initial + exactly 1 bounded re-run
+  });
+
+  it('a no_quorum that RECOVERS to approved on the bounded re-run proceeds to remediate (#4138)', async () => {
+    const vote = vi
+      .fn()
+      .mockResolvedValueOnce({ approved: false, approvalPercentage: 0, decision: 'no_quorum' })
+      .mockResolvedValueOnce({ approved: true, approvalPercentage: 100, decision: 'approved' });
+    const { deps } = makeDeps({ vote });
+    const r = await runAutoRemediation([signal()], deps, enf());
+    expect(r.remediated).toHaveLength(1); // transient blip absorbed
+    expect(deps.implement).toHaveBeenCalledTimes(1);
+    expect(vote).toHaveBeenCalledTimes(2); // initial no_quorum + one recovering re-run
+  });
+
+  it('a no_quorum that RECOVERS to rejected on the re-run leaves the signal as an issue (#4138)', async () => {
+    const vote = vi
+      .fn()
+      .mockResolvedValueOnce({ approved: false, approvalPercentage: 0, decision: 'no_quorum' })
+      .mockResolvedValueOnce({ approved: false, approvalPercentage: 30, decision: 'rejected' });
+    const { deps } = makeDeps({ vote });
+    const r = await runAutoRemediation([signal()], deps, enf());
+    expect(r.remediated).toEqual([]);
+    expect(r.skipped[0]?.reason).toMatch(/not reached/); // genuine reject, not no_quorum
+    expect(deps.implement).not.toHaveBeenCalled();
+    expect(vote).toHaveBeenCalledTimes(2);
+  });
+
   it('p0 fail-closes when no dry-run capability is available', async () => {
     const { deps } = makeDeps();
     delete (deps as { dryRun?: unknown }).dryRun; // no dry-run capability
