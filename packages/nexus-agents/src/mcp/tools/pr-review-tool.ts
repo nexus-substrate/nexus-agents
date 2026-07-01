@@ -69,6 +69,8 @@ export const PR_REVIEW_ROLES: readonly VoterRole[] = [
  * an explicit notice — the tool stays useful for typical PRs without blowing
  * the context budget. */
 export const MAX_DIFF_LENGTH = 50_000;
+/** Max `repoContext` length; over-limit input hard-fails Zod validation (#4133). */
+export const MAX_REPO_CONTEXT_LENGTH = 2000;
 
 /** Hard cap on PR description. */
 export const MAX_DESCRIPTION_LENGTH = 10_000;
@@ -101,9 +103,11 @@ export const PrReviewInputSchema = z.object({
     .describe(`Unified diff text (max ${String(MAX_DIFF_LENGTH)} chars; truncate before calling)`),
   repoContext: z
     .string()
-    .max(2000)
+    .max(MAX_REPO_CONTEXT_LENGTH)
     .optional()
-    .describe('Optional one-paragraph repo context (architecture, conventions)'),
+    .describe(
+      `Optional one-paragraph repo context (architecture, conventions; max ${String(MAX_REPO_CONTEXT_LENGTH)} chars; trim before calling)`
+    ),
   baseRef: z.string().max(200).optional().describe('Base branch ref (e.g. main)'),
   headRef: z.string().max(200).optional().describe('Head branch ref'),
   /**
