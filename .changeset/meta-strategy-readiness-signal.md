@@ -1,0 +1,5 @@
+---
+'nexus-agents': minor
+---
+
+Add the learned-selector promotion readiness signal (#4094, EVIDENCE half). New pure `evaluateMetaStrategyReadiness(evaluateMetaStrategy(META_STRATEGY_CORPUS))` (`orchestration/meta-strategy-readiness.ts`) turns the offline learned-vs-rules eval into a falsifiable, fail-closed `ReadinessVerdict` (reusing the shared #4096 envelope) over three criteria: `volume` (≥20 held-out cases), `learned-beats-rules` (delta ≥0.05 margin, a tie is not enough), and `learned-accuracy-floor` (learned accuracy ≥0.70, so "beats rules" can't pass on two weak arms). The labeled `META_STRATEGY_CORPUS` grew 40→80 (10 per ExecutionStrategy, balanced) so a 25% split yields ≥20 held-out cases. The `run` tool now computes and LOGS the verdict once per process at shadow-enable time (`meta-strategy learned-selector readiness`) as an AUDIT-MODE operator signal — it never alters the routed decision. This is the readiness signal only; the promotion path that lets the learned selector actually route (#3552) is a separate vote-gated increment and is deliberately NOT built here.
