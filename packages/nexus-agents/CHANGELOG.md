@@ -1,5 +1,26 @@
 # nexus-agents
 
+## 2.153.0
+
+### Minor Changes
+
+- [#4149](https://github.com/nexus-substrate/nexus-agents/pull/4149) [`5df8c6c`](https://github.com/nexus-substrate/nexus-agents/commit/5df8c6c069d44707b88f1d5f8c8a1514afda138c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Opt the auto-remediation consensus→execute gate into `absolute_quorum` ([#4138](https://github.com/nexus-substrate/nexus-agents/issues/4138), epic [#4130](https://github.com/nexus-substrate/nexus-agents/issues/4130)). The
+  remediation vote adapter now sets `errorPolicy: 'absolute_quorum'` and surfaces the [#4135](https://github.com/nexus-substrate/nexus-agents/issues/4135)-stamped
+  response-layer `decision` (incl. `no_quorum`) on its verdict. A degraded panel (e.g. an errored
+  contrarian) now degrades to `no_quorum` and triggers ONE bounded re-run
+  (`AUTO_REMEDIATION_NO_QUORUM_RETRIES = 1`) to absorb a transient blip; a verdict that stays
+  `no_quorum` becomes an EXPLICIT auditable terminal "left as an issue" (zero writes) rather than an
+  incidental `!approved` collapse. A voter you can knock offline can only ever force a re-run of the
+  autonomous-execution gate, never flip it. The default (approved→proceed / rejected→skip) path is
+  byte-identical.
+
+- [#4148](https://github.com/nexus-substrate/nexus-agents/pull/4148) [`93515f0`](https://github.com/nexus-substrate/nexus-agents/commit/93515f03e9cd7d9a247a669c59ab3745bc45b219) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Opt the dev-pipeline plan gate into `absolute_quorum` ([#4138](https://github.com/nexus-substrate/nexus-agents/issues/4138), epic [#4130](https://github.com/nexus-substrate/nexus-agents/issues/4130)). `iterative-consensus`
+  now defaults its vote `errorPolicy` to `absolute_quorum` (overridable per-caller), so an errored
+  voter — especially the contrarian — degrades the plan verdict to a recoverable `no_quorum` (which
+  the existing bounded `maxNoQuorumRetries` re-run-then-terminal path already honors) instead of
+  being silently dropped from the denominator. Day-one opt-in wiring; the global default policy is
+  unchanged.
+
 ## 2.152.1
 
 ### Patch Changes
