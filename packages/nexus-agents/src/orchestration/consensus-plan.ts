@@ -23,6 +23,7 @@ import {
 } from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
+import { resolveExecutionModelId } from '../cli-adapters/types.js';
 import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
 import type {
   CliPlan,
@@ -174,6 +175,9 @@ async function dispatchPlans(
   const promises = selectedClis.map(async ({ cli, adapter }): Promise<CliPlanPartition> => {
     const startTime = getTimeProvider().now();
     const prompt = buildPlanPrompt(task, cli);
+    // Configured model id — the honest attribution for failure/timeout
+    // partitions that never produce a response-reported model (#4194).
+    const configuredModel = resolveExecutionModelId(adapter);
     // #3026 finding 2: cancel the adapter call when the race timeout
     // wins so the subprocess doesn't keep running past its decision.
     const controller = new AbortController();
@@ -188,34 +192,35 @@ async function dispatchPlans(
 
       if (!result.ok) {
         logger.warn('Plan CLI failed', { cli, error: result.error.message });
-        return {
-          cli,
-          success: false,
-          plan: null,
-          rawOutput: '',
-          durationMs,
-          error: result.error.message,
-        };
+        return failedPlanPartition(cli, durationMs, configuredModel, result.error.message);
       }
 
       const rawOutput = result.value.text.slice(0, config.maxOutputCharsPerCli);
       const plan = parsePlan(rawOutput);
-      const model = result.value.model;
+      const model = resolveExecutionModelId(adapter, result.value.model);
 
-      return model !== undefined
-        ? { cli, success: true, plan, rawOutput, durationMs, model }
-        : { cli, success: true, plan, rawOutput, durationMs };
+      return { cli, success: true, plan, rawOutput, durationMs, model };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
       const message = getErrorMessage(error);
       logger.warn('Plan CLI threw', { cli, error: message });
-      return { cli, success: false, plan: null, rawOutput: '', durationMs, error: message };
+      return failedPlanPartition(cli, durationMs, configuredModel, message);
     } finally {
       controller.abort();
     }
   });
 
   return Promise.all(promises);
+}
+
+/** Builds a failed plan partition with real model attribution (#4194). */
+function failedPlanPartition(
+  cli: CliName,
+  durationMs: number,
+  model: string,
+  error: string
+): CliPlanPartition {
+  return { cli, success: false, plan: null, rawOutput: '', durationMs, model, error };
 }
 
 function createPlanTimeout(ms: number, cli: CliName): Promise<never> {
@@ -475,7 +480,7 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
         id: `cpn-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category: 'planning',
-        model: p.model ?? 'unknown',
+        model: p.model,
         success: p.success,
         durationMs: p.durationMs,
         timestamp: new Date(getTimeProvider().now()).toISOString(),

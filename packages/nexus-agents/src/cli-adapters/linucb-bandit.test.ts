@@ -348,10 +348,10 @@ describe('LinUCBBandit', () => {
     it('should replay outcomes to warm start arms', () => {
       const bandit = new LinUCBBandit(armNames);
       const outcomes = [
-        { cli: 'claude' as const, success: true },
-        { cli: 'claude' as const, success: true },
-        { cli: 'gemini' as const, success: false },
-        { cli: 'codex' as const, success: true },
+        { cli: 'claude' as const, model: 'claude-opus-4', success: true },
+        { cli: 'claude' as const, model: 'claude-opus-4', success: true },
+        { cli: 'gemini' as const, model: 'gemini-2.5-pro', success: false },
+        { cli: 'codex' as const, model: 'gpt-5', success: true },
       ] as unknown as Parameters<typeof bandit.warmStart>[0];
 
       const replayed = bandit.warmStart(outcomes);
@@ -366,8 +366,8 @@ describe('LinUCBBandit', () => {
     it('should skip unknown CLI names', () => {
       const bandit = new LinUCBBandit(armNames);
       const outcomes = [
-        { cli: 'unknown-cli' as const, success: true },
-        { cli: 'claude' as const, success: true },
+        { cli: 'unknown-cli' as const, model: 'mystery-model', success: true },
+        { cli: 'claude' as const, model: 'claude-opus-4', success: true },
       ] as unknown as Parameters<typeof bandit.warmStart>[0];
 
       const replayed = bandit.warmStart(outcomes);
@@ -378,6 +378,59 @@ describe('LinUCBBandit', () => {
     it('should return 0 for empty outcomes', () => {
       const bandit = new LinUCBBandit(armNames);
       expect(bandit.warmStart([])).toBe(0);
+    });
+  });
+
+  describe('getWarmStartModelStats() (#4194)', () => {
+    const mixedOutcomes = [
+      { cli: 'claude', model: 'claude-opus-4', success: true },
+      { cli: 'claude', model: 'claude-opus-4', success: false },
+      { cli: 'claude', model: 'claude-haiku-4', success: true },
+      { cli: 'gemini', model: 'gemini-2.5-flash', success: true },
+      { cli: 'other-cli', model: 'other-model', success: true },
+    ] as unknown as Parameters<LinUCBBandit['warmStart']>[0];
+
+    it('groups replayed outcomes per arm and model', () => {
+      const bandit = new LinUCBBandit(armNames);
+      bandit.warmStart(mixedOutcomes);
+
+      const stats = bandit.getWarmStartModelStats();
+      expect(stats).toEqual([
+        { arm: 'claude', model: 'claude-haiku-4', replayedCount: 1, successCount: 1 },
+        { arm: 'claude', model: 'claude-opus-4', replayedCount: 2, successCount: 1 },
+        { arm: 'gemini', model: 'gemini-2.5-flash', replayedCount: 1, successCount: 1 },
+      ]);
+    });
+
+    it('does not track outcomes skipped for unknown arms', () => {
+      const bandit = new LinUCBBandit(armNames);
+      bandit.warmStart(mixedOutcomes);
+
+      const stats = bandit.getWarmStartModelStats();
+      expect(stats.some((s) => s.model === 'other-model')).toBe(false);
+    });
+
+    it('does not change arm selection statistics — telemetry surface only', () => {
+      const withStats = new LinUCBBandit(armNames);
+      const replayed = withStats.warmStart(mixedOutcomes);
+
+      // Same replay behavior as before the per-model grouping existed:
+      // 4 of 5 outcomes match an arm, and pull counts key on cli alone.
+      expect(replayed).toBe(4);
+      expect(withStats.getStats().map((s) => s.pullCount)).toEqual([3, 1, 0]);
+      const selection = withStats.select(createContext());
+      expect(armNames).toContain(selection.armName);
+    });
+
+    it('is empty before warm start and cleared by reset()', () => {
+      const bandit = new LinUCBBandit(armNames);
+      expect(bandit.getWarmStartModelStats()).toEqual([]);
+
+      bandit.warmStart(mixedOutcomes);
+      expect(bandit.getWarmStartModelStats().length).toBeGreaterThan(0);
+
+      bandit.reset();
+      expect(bandit.getWarmStartModelStats()).toEqual([]);
     });
   });
 

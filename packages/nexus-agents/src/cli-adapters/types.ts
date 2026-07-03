@@ -44,7 +44,11 @@ export type {
   CliModelInfo,
 } from './types-capability.js';
 
-export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types-capability.js';
+export {
+  CLI_VERSION_REQUIREMENTS,
+  DEFAULT_CAPABILITIES,
+  resolveExecutionModelId,
+} from './types-capability.js';
 
 // Routing types
 export type {

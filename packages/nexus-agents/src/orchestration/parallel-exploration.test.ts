@@ -255,6 +255,38 @@ describe('executeParallelExploration', () => {
     expect(result.value.partitions[0]?.model).toBe('gemini-model');
   });
 
+  it('records real model ids for failed partitions instead of unknown (#4194)', async () => {
+    const adapters = buildAdapters(
+      ['gemini', createMockAdapter('gemini', 'G findings')],
+      ['claude', createFailingAdapter('claude')]
+    );
+
+    await executeParallelExploration('Explore the codebase layout', adapters);
+
+    const outcomes = getOutcomeStore().query({});
+    const failed = outcomes.find((o) => o.cli === 'claude');
+    // Failed partitions fall back to the adapter's configured model id
+    // (mock getModelInfo().id === adapter name), never 'unknown'.
+    expect(failed?.model).toBe('claude');
+    const succeeded = outcomes.find((o) => o.cli === 'gemini');
+    expect(succeeded?.model).toBe('gemini-model');
+  });
+
+  it('falls back to the adapter configured model when the response omits model (#4194)', async () => {
+    const adapter = createMockAdapter('gemini', 'findings');
+    // Response without a model field — partition must still carry the
+    // adapter's configured model id.
+    adapter.execute = () => Promise.resolve(ok({ text: 'findings' }));
+    const adapters = buildAdapters(['gemini', adapter]);
+
+    const result = await executeParallelExploration('Explore the codebase', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.partitions[0]?.model).toBe('gemini');
+    expect(getOutcomeStore().query({})[0]?.model).toBe('gemini');
+  });
+
   it('detects task category from task text', async () => {
     const adapters = buildAdapters(['gemini', createMockAdapter('gemini', 'research findings')]);
 

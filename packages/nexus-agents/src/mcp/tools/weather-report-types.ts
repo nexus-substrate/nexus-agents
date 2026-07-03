@@ -95,6 +95,31 @@ export interface AdaptiveBonus {
   readonly sufficient: boolean;
 }
 
+/**
+ * Per-model performance lens entry (#4194). A telemetry surface computed from
+ * the same OutcomeStore records as the CLI×category bonuses, keyed by concrete
+ * model id via the #2548 family-fallback query path. NOT a routing input —
+ * adaptive bonuses stay CLI×category; per-model bonus consumption is
+ * #4196/#4197 scope.
+ */
+export interface ModelWeatherEntry {
+  /** Concrete model id observed in outcome records. */
+  readonly model: string;
+  /** Vendor resolved via the ModelRegistry (#2548). */
+  readonly vendor: string;
+  /** Family resolved via the ModelRegistry (#2548). */
+  readonly family: string;
+  /**
+   * Whether the stats come from literal-id samples or the family-broadened
+   * cold-start fallback (#2548). Family scope means sibling-model outcomes
+   * are included as priors.
+   */
+  readonly scope: 'literal' | 'family';
+  readonly sampleCount: number;
+  readonly successRate: number;
+  readonly avgDurationMs: number;
+}
+
 /** Tier recommendation surfaced in the weather report (#895). */
 export interface TierRecommendationEntry {
   readonly category: string;
@@ -254,6 +279,12 @@ export interface WeatherReportResponse {
   readonly triageStats?: TriageStats;
   /** Cost section: per-gate decision-cost aggregates + strategy cost profiles (Epic G, #3856). */
   readonly costSection?: CostSection;
+  /**
+   * Per-model performance lens (#4194) — telemetry only; routing bonuses stay
+   * CLI×category. Present only when at least one model clears the min-sample
+   * threshold.
+   */
+  readonly modelWeather?: readonly ModelWeatherEntry[];
   /** Recent performance within the lookback window (#1401). */
   readonly recentWindow?: {
     readonly windowMs: number;

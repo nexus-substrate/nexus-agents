@@ -411,4 +411,34 @@ describe('executeConsensusPlan', () => {
     expect(failedOutcome).toBeDefined();
     expect(failedOutcome?.cli).toBe('codex');
   });
+
+  it('records real model ids for failed partitions instead of unknown (#4194)', async () => {
+    const adapters = buildAdapters(
+      ['claude', createPlanAdapter('claude', claudePlan)],
+      ['codex', createFailingPlanAdapter('codex')]
+    );
+
+    await executeConsensusPlan('Plan a feature', adapters);
+
+    const outcomes = getOutcomeStore().query({});
+    const failedOutcome = outcomes.find((o) => !o.success);
+    // Failed partitions fall back to the adapter's configured model id
+    // (mock getModelInfo().id === adapter name), never 'unknown'.
+    expect(failedOutcome?.model).toBe('codex');
+    const successOutcome = outcomes.find((o) => o.success);
+    expect(successOutcome?.model).toBe('claude-model');
+  });
+
+  it('falls back to the adapter configured model when the response omits model (#4194)', async () => {
+    const adapter = createPlanAdapter('claude', claudePlan);
+    (adapter as { execute: unknown }).execute = () => Promise.resolve(ok({ text: claudePlan }));
+    const adapters = buildAdapters(['claude', adapter]);
+
+    const result = await executeConsensusPlan('Plan a feature', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.partitions[0]?.model).toBe('claude');
+    expect(getOutcomeStore().query({})[0]?.model).toBe('claude');
+  });
 });

@@ -177,6 +177,49 @@ describe('pipeline-observability', () => {
       const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
       expect(event).toMatchObject({ error: 'Unknown' });
     });
+
+    it('forwards the real model id on failed events when details carry one (#4194)', () => {
+      emitPipelineStageEvent('dev-pipeline', 'impl-t1', 'failed', {
+        error: 'boom',
+        model: 'claude-opus-4',
+      });
+
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).toMatchObject({
+        type: 'stage.failed',
+        stageId: 'impl-t1',
+        model: 'claude-opus-4',
+      });
+    });
+
+    it('omits model on failed events when details.model is absent or not a string (#4194)', () => {
+      emitPipelineStageEvent('dev-pipeline', 'qa', 'failed', { error: 'boom', model: 42 });
+
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).not.toHaveProperty('model');
+    });
+  });
+
+  describe('emitStageFailed model attribution (#4194)', () => {
+    it('includes model when provided', () => {
+      emitStageFailed({
+        bus: mockBus,
+        executionId: 'exec-1',
+        stageId: 'impl',
+        error: 'boom',
+        model: 'gemini-2.5-pro',
+      });
+
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).toMatchObject({ type: 'stage.failed', model: 'gemini-2.5-pro' });
+    });
+
+    it('omits model when not provided', () => {
+      emitStageFailed({ bus: mockBus, executionId: 'exec-1', stageId: 'impl', error: 'boom' });
+
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).not.toHaveProperty('model');
+    });
   });
 
   describe('emitModelCalled (#3387)', () => {

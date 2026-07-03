@@ -561,7 +561,11 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
       const r = await runExpert(guard, 'architecture', prompt, 'plan');
-      emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
+      // model: real per-model failure attribution for the feedback bridge (#4194)
+      emitStageEvent('plan', r.success ? 'completed' : 'failed', {
+        durationMs: r.durationMs,
+        model: r.model,
+      });
       recordOutcome({
         taskId: 'plan',
         category: 'architecture',
@@ -683,6 +687,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       );
       emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
         durationMs: r.durationMs,
+        // model: real per-model failure attribution for the feedback bridge (#4194)
+        model: r.model,
       });
       recordOutcome({
         taskId: task.id,
@@ -714,6 +720,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const review = parseQaFromResponse(r.text);
       emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
         durationMs: r.durationMs,
+        // model: real per-model failure attribution for the feedback bridge (#4194)
+        model: r.model,
       });
       recordOutcome({
         taskId: task.id,
