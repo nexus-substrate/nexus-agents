@@ -247,4 +247,45 @@ describe('MCP Server Integration', () => {
       expect(result.isError).not.toBe(true);
     }
   });
+
+  // --------------------------------------------------------------------------
+  // consensus_vote — simulateVotes fails closed outside test runners (#4170)
+  // --------------------------------------------------------------------------
+
+  it('consensus_vote rejects simulateVotes outside a test runner — sync and async modes (#4170)', async () => {
+    const originalVitest = process.env['VITEST'];
+    const originalNodeEnv = process.env['NODE_ENV'];
+    const originalAllowSimulate = process.env['NEXUS_ALLOW_SIMULATE'];
+    // Simulate a non-test-runner process: the guard reads the env at call time.
+    delete process.env['VITEST'];
+    process.env['NODE_ENV'] = 'production';
+    delete process.env['NEXUS_ALLOW_SIMULATE'];
+    try {
+      const syncResult = await ctx.client.callTool({
+        name: 'consensus_vote',
+        arguments: { proposal: 'Approve this change', simulateVotes: true },
+      });
+      expect(syncResult.isError).toBe(true);
+      const syncText = (syncResult.content as Array<{ text: string }>)[0]?.text ?? '';
+      expect(syncText).toContain('NEXUS_ALLOW_SIMULATE');
+
+      // Async mode must reject IDENTICALLY — the gate sits in the sync prelude
+      // before runAsJob, so no pending envelope (and no background random vote)
+      // ever escapes.
+      const asyncResult = await ctx.client.callTool({
+        name: 'consensus_vote',
+        arguments: { proposal: 'Approve this change', simulateVotes: true, mode: 'async' },
+      });
+      expect(asyncResult.isError).toBe(true);
+      const asyncText = (asyncResult.content as Array<{ text: string }>)[0]?.text ?? '';
+      expect(asyncText).toContain('NEXUS_ALLOW_SIMULATE');
+    } finally {
+      if (originalVitest === undefined) delete process.env['VITEST'];
+      else process.env['VITEST'] = originalVitest;
+      if (originalNodeEnv === undefined) delete process.env['NODE_ENV'];
+      else process.env['NODE_ENV'] = originalNodeEnv;
+      if (originalAllowSimulate === undefined) delete process.env['NEXUS_ALLOW_SIMULATE'];
+      else process.env['NEXUS_ALLOW_SIMULATE'] = originalAllowSimulate;
+    }
+  });
 });

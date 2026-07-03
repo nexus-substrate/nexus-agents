@@ -38,6 +38,7 @@ vi.mock('../../pipeline/adaptive-orchestrator.js', async (importOriginal) => {
 });
 
 import { PipelineInputSchema, registerPipelineTool } from './pipeline-tool.js';
+import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
@@ -158,6 +159,73 @@ describe('run_pipeline async dispatch (#3730)', () => {
     await new Promise((r) => setImmediate(r));
     const record = readJobResult(jobId);
     expect(record?.status).toBe('complete');
+  });
+});
+
+// #4170: simulateVotes must FAIL CLOSED outside test runners. The old guard
+// only logged a warning and proceeded — a random panel could resolve
+// outcome:'approved' with zero live voters. Outside a test runner the handler
+// now rejects with a `permission` envelope unless NEXUS_ALLOW_SIMULATE=1.
+describe('run_pipeline simulateVotes fail-closed gate (#4170)', () => {
+  const originalVitest = process.env['VITEST'];
+  const originalNodeEnv = process.env['NODE_ENV'];
+  const originalAllowSimulate = process.env['NEXUS_ALLOW_SIMULATE'];
+
+  /** Simulate a non-test-runner process (no VITEST, production NODE_ENV). */
+  function leaveTestRunnerEnv(): void {
+    delete process.env['VITEST'];
+    process.env['NODE_ENV'] = 'production';
+    delete process.env['NEXUS_ALLOW_SIMULATE'];
+  }
+
+  afterEach(() => {
+    if (originalVitest === undefined) delete process.env['VITEST'];
+    else process.env['VITEST'] = originalVitest;
+    if (originalNodeEnv === undefined) delete process.env['NODE_ENV'];
+    else process.env['NODE_ENV'] = originalNodeEnv;
+    if (originalAllowSimulate === undefined) delete process.env['NEXUS_ALLOW_SIMULATE'];
+    else process.env['NEXUS_ALLOW_SIMULATE'] = originalAllowSimulate;
+  });
+
+  it('rejects simulateVotes outside a test runner with a permission envelope', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    const result = await handler({ task: 'Build feature X', simulateVotes: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('NEXUS_ALLOW_SIMULATE');
+    const meta = (result as { _meta?: Record<string, unknown> })._meta;
+    const envelope = meta?.[ERROR_ENVELOPE_META_KEY] as { errorCategory: string };
+    expect(envelope.errorCategory).toBe('permission');
+  });
+
+  it('rejects identically in async dispatch mode — no pending envelope leaks out', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    const result = await handler({
+      task: 'Build feature X',
+      simulateVotes: true,
+      dispatch: 'async',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('NEXUS_ALLOW_SIMULATE');
+  });
+
+  it('proceeds with simulated: true in the output when NEXUS_ALLOW_SIMULATE=1', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    process.env['NEXUS_ALLOW_SIMULATE'] = '1';
+    const result = await handler({ task: 'Build feature X', simulateVotes: true });
+    expect(result.isError).not.toBe(true);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    expect(output['simulated']).toBe(true);
+  });
+
+  it('stays allowed inside a test runner with no simulated flag (existing suites unaffected)', async () => {
+    // Default vitest env: VITEST=true.
+    const result = await captureHandler()({ task: 'Build feature X', simulateVotes: true });
+    expect(result.isError).not.toBe(true);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    expect(output['simulated']).toBeUndefined();
   });
 });
 

@@ -219,14 +219,15 @@ All configuration can be overridden with environment variables:
 
 ### Orchestration Variables
 
-| Variable                         | Description                                | Default |
-| -------------------------------- | ------------------------------------------ | ------- |
-| `NEXUS_V2_MODE`                  | V2 pipeline mode (`off`/`partial`/`full`)  | `full`  |
-| `NEXUS_AORCHESTRA`               | AOrchestra dynamic agent planning          | `true`  |
-| `NEXUS_AORCHESTRA_DISPATCH`      | AOrchestra worker dispatch                 | `true`  |
-| `NEXUS_WORKER_MAX_CALLS`         | Max model calls per orchestrate invocation | `6`     |
-| `NEXUS_MAX_CONCURRENT_EXPERTS`   | Expert pool semaphore capacity             | `6`     |
-| `NEXUS_ALLOW_MOCK_ORCHESTRATION` | Allow mock orchestration (test/CI only)    | `false` |
+| Variable                         | Description                                                                                                                                                                         | Default             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `NEXUS_V2_MODE`                  | V2 pipeline mode (`off`/`partial`/`full`)                                                                                                                                           | `full`              |
+| `NEXUS_AORCHESTRA`               | AOrchestra dynamic agent planning                                                                                                                                                   | `true`              |
+| `NEXUS_AORCHESTRA_DISPATCH`      | AOrchestra worker dispatch                                                                                                                                                          | `true`              |
+| `NEXUS_WORKER_MAX_CALLS`         | Max model calls per orchestrate invocation                                                                                                                                          | `6`                 |
+| `NEXUS_MAX_CONCURRENT_EXPERTS`   | Expert pool semaphore capacity                                                                                                                                                      | `6`                 |
+| `NEXUS_ALLOW_MOCK_ORCHESTRATION` | Allow mock orchestration (test/CI only)                                                                                                                                             | `false`             |
+| `NEXUS_ALLOW_SIMULATE`           | Explicit opt-in (`1`) for `simulateVotes: true` outside test runners (demos only — simulated votes are random, #4170). Unset = such requests are rejected with a `permission` error | unset (fail closed) |
 
 **Scheduled `improvement_review` (#3229).** Periodically runs `improvement_review` server-side so its `signal.fitness_declined` fires without manual invocation, feeding the self-tuning loop:
 

@@ -114,6 +114,9 @@ const NexusEnvSchema = z.object({
   NEXUS_BILLING_MODE: z.enum(['plan', 'api']).optional(),
   NEXUS_CONFIG_PATH: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
+  // Explicit opt-in for simulateVotes outside test runners (#4170) — read by
+  // checkSimulationAllowed (mcp/tools/simulation-guard.ts). Unset = fail closed.
+  NEXUS_ALLOW_SIMULATE: z.enum(['0', '1']).optional(),
 
   // --- Autonomous remediation & policy (#3540 / #3653) ---
   // Drives the auto-remediation cycle (resolveAutoRemediateMode); default audit

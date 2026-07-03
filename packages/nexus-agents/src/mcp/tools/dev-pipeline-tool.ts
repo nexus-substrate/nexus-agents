@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
-import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
+import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import type { DevPipelineResult, DevPipelineOptions } from '../../pipeline/dev-pipeline.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
@@ -264,8 +264,14 @@ export async function runDevPipelineForGoal(
 // ============================================================================
 
 /** Build structured JSON output for harness consumption (#1700). */
-function buildStructuredOutput(result: DevPipelineResult): Record<string, unknown> {
+function buildStructuredOutput(
+  result: DevPipelineResult,
+  simulated: boolean
+): Record<string, unknown> {
   return {
+    // #4170: stamped only on an explicit NEXUS_ALLOW_SIMULATE=1 opt-in run so
+    // a random demo panel can never pass as a real decision.
+    ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
     securityPassed: result.securityPassed,
     voteIterations: result.voteIterations,
@@ -324,12 +330,13 @@ function buildPipelineOptions(
 async function executeDevPipelineBody(
   taskText: string,
   stages: Awaited<ReturnType<typeof createStages>>,
-  pipelineOptions: DevPipelineOptions | undefined
+  pipelineOptions: DevPipelineOptions | undefined,
+  simulated: boolean
 ): Promise<ToolResult> {
   const result = await runDevPipeline(taskText, stages, pipelineOptions);
   // Always flush memory session — including dry-run exits (#1716)
   flushPipelineMemory();
-  return toolSuccessStructured(buildStructuredOutput(result));
+  return toolSuccessStructured(buildStructuredOutput(result, simulated));
 }
 
 async function runDevPipelineHandler(
@@ -346,8 +353,14 @@ async function runDevPipelineHandler(
     });
   }
   const input = parsed.data;
+  // #4170: simulateVotes fails CLOSED outside test runners — BEFORE the try
+  // block (its catch categorizes as `internal`) and BEFORE the async dispatch
+  // (sync and async modes must reject identically).
+  let simulated = false;
   if (input.simulateVotes) {
-    warnIfSimulatedOutsideTests('run_dev_pipeline', logger);
+    const simCheck = checkSimulationAllowed('run_dev_pipeline', logger);
+    if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
+    simulated = simCheck.optedIn;
   }
 
   try {
@@ -358,15 +371,17 @@ async function runDevPipelineHandler(
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const resolvedOptions = hasOptions ? pipelineOptions : undefined;
+    const run = (): Promise<ToolResult> =>
+      executeDevPipelineBody(taskText, stages, resolvedOptions, simulated);
 
     // #3726: async dispatch for real (non-dryRun) runs — a full pipeline can
     // exceed the 900s MCP request timeout. dryRun ALWAYS stays sync (plan+vote
     // completes fast). Returns `{ status: 'pending', jobId }` immediately.
     if (input.dispatch === 'async' && !input.dryRun) {
-      return dispatchAsyncDevPipeline(input, taskText, stages, resolvedOptions, logger);
+      return dispatchAsyncDevPipeline(input, run, logger);
     }
 
-    return await executeDevPipelineBody(taskText, stages, resolvedOptions);
+    return await run();
   } catch (error: unknown) {
     // #3726 discoverability: a sync run that times out (or otherwise fails
     // mid-pipeline) should point the caller at async mode — the durable fix
@@ -396,13 +411,9 @@ async function runDevPipelineHandler(
  */
 function dispatchAsyncDevPipeline(
   input: DevPipelineInput,
-  taskText: string,
-  stages: Awaited<ReturnType<typeof createStages>>,
-  pipelineOptions: DevPipelineOptions | undefined,
+  run: () => Promise<ToolResult>,
   logger: ILogger
 ): ToolResult {
-  const run = (): Promise<ToolResult> => executeDevPipelineBody(taskText, stages, pipelineOptions);
-
   // No sessionId → mint a fresh dp-<uuid>; no idempotency surface to track.
   if (input.sessionId === undefined) {
     return runAsJob<DevPipelineInput, ToolResult>({
