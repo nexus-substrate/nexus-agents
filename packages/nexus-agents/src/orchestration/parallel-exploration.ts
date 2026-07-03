@@ -28,6 +28,7 @@ import type {
   CliResponse,
   CliError,
 } from '../cli-adapters/types.js';
+import { resolveExecutionModelId } from '../cli-adapters/types.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
@@ -189,6 +190,16 @@ function getRoleContext(cli: CliName, category: TaskCategory): string {
   return roleMap[cli][category] ?? `You are performing ${category} analysis.`;
 }
 
+/** Builds a failed partition result with real model attribution (#4194). */
+function failedPartition(
+  cli: CliName,
+  durationMs: number,
+  model: string,
+  error: string
+): PartitionResult {
+  return { cli, success: false, output: '', durationMs, model, error };
+}
+
 /** Dispatches tasks to all selected CLIs in parallel. */
 async function dispatchPartitions(
   task: string,
@@ -200,6 +211,9 @@ async function dispatchPartitions(
   const promises = selectedClis.map(async ({ cli, adapter }): Promise<PartitionResult> => {
     const startTime = getTimeProvider().now();
     const cliTask = buildCliTask(task, cli, category);
+    // Configured model id — the honest attribution for failure/timeout
+    // partitions that never produce a response-reported model (#4194).
+    const configuredModel = resolveExecutionModelId(adapter);
     // #3026 finding 2: cancel the adapter call when the race timeout
     // wins so the subprocess doesn't keep running past its decision.
     const controller = new AbortController();
@@ -214,19 +228,17 @@ async function dispatchPartitions(
 
       if (!result.ok) {
         logger.warn('CLI partition failed', { cli, error: result.error.message });
-        return { cli, success: false, output: '', durationMs, error: result.error.message };
+        return failedPartition(cli, durationMs, configuredModel, result.error.message);
       }
 
       const output = truncateOutput(result.value.text, config.maxOutputCharsPerCli);
-      const model = result.value.model;
-      return model !== undefined
-        ? { cli, success: true, output, durationMs, model }
-        : { cli, success: true, output, durationMs };
+      const model = resolveExecutionModelId(adapter, result.value.model);
+      return { cli, success: true, output, durationMs, model };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
       const message = getErrorMessage(error);
       logger.warn('CLI partition threw', { cli, error: message });
-      return { cli, success: false, output: '', durationMs, error: message };
+      return failedPartition(cli, durationMs, configuredModel, message);
     } finally {
       controller.abort();
     }
@@ -280,7 +292,7 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
         id: `pex-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category,
-        model: p.model ?? 'unknown',
+        model: p.model,
         success: p.success,
         durationMs: p.durationMs,
         timestamp: new Date(getTimeProvider().now()).toISOString(),

@@ -22,7 +22,14 @@ export interface PartitionResult {
   readonly success: boolean;
   readonly output: string;
   readonly durationMs: number;
-  readonly model?: string;
+  /**
+   * Concrete model id attributed to this partition (#4194). On success this
+   * is the adapter-reported `CliResponse.model`; on failure/timeout (or when
+   * the response omits it) it falls back to the adapter's configured
+   * `getModelInfo().id`. Required so recorded outcomes carry real per-model
+   * attribution instead of `'unknown'`.
+   */
+  readonly model: string;
   readonly error?: string;
 }
 

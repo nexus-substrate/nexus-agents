@@ -111,7 +111,9 @@ function recordStageFailed(
     id: `fb-fail-${event.executionId}-${String(event.timestamp)}`,
     cli: DEFAULT_CLI, // Stage failures don't carry CLI info; default to canonical fallback
     category: 'code_generation',
-    model: 'unknown',
+    // Real model id when the emitter attributed one (#4194); 'unknown' is
+    // reserved for stages that genuinely have no single model — never a guess.
+    model: event.model ?? 'unknown',
     success: false,
     durationMs: 0,
     timestamp: new Date(event.timestamp).toISOString(),

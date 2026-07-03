@@ -56,6 +56,30 @@ describe('createFeedbackSubscriber', () => {
     expect(outcomes[0]?.failureCategory).toBeDefined();
   });
 
+  it('records the real model id when the stage.failed event carries one (#4194)', () => {
+    createFeedbackSubscriber(bus, store);
+
+    bus.emit({
+      type: 'stage.failed',
+      executionId: 'exec-model',
+      stageId: 'impl-t1',
+      error: 'boom',
+      model: 'claude-opus-4',
+      timestamp: Date.now(),
+    });
+
+    expect(store.size).toBe(1);
+    expect(store.query({})[0]?.model).toBe('claude-opus-4');
+  });
+
+  it("falls back to 'unknown' only when the event genuinely lacks a model (#4194)", () => {
+    createFeedbackSubscriber(bus, store);
+
+    bus.emit(stageFailed('exec-no-model'));
+
+    expect(store.query({})[0]?.model).toBe('unknown');
+  });
+
   it('ignores model.called events — that event has no producer (#3179)', () => {
     // The bridge no longer subscribes to model.called. Even if some future
     // producer emitted one, outcome-writing stays on agent-executor's direct

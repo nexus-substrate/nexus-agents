@@ -32,6 +32,25 @@ const SUCCESS_REWARD = 0.7;
 const FAILURE_REWARD = 0.1;
 
 /**
+ * Per-arm × per-model warm-start replay statistic (#4194).
+ *
+ * The bandit's arms stay keyed by CLI slot / routing arm id — this is a
+ * telemetry surface exposing which concrete models the replayed outcomes
+ * came from, so per-model shadow evaluation can read the grouping without
+ * changing arm structure or selection behavior.
+ */
+export interface WarmStartModelStat {
+  /** Arm the outcome was replayed into (outcome.cli). */
+  readonly arm: string;
+  /** Concrete model id the outcome carried (outcome.model). */
+  readonly model: string;
+  /** Number of outcomes replayed for this arm × model. */
+  readonly replayedCount: number;
+  /** Number of those outcomes that were successes. */
+  readonly successCount: number;
+}
+
+/**
  * Arm state for LinUCB.
  */
 interface ArmState {
@@ -54,6 +73,11 @@ export class LinUCBBandit {
   private readonly config: LinUCBConfig;
   private readonly arms: ArmState[];
   private readonly armNames: readonly string[];
+  /** Warm-start replay ledger keyed `arm model` (#4194). Telemetry only. */
+  private readonly warmStartModelLedger = new Map<
+    string,
+    { arm: string; model: string; replayedCount: number; successCount: number }
+  >();
 
   constructor(armNames: readonly string[], config?: Partial<LinUCBConfig>) {
     this.armNames = armNames;
@@ -287,9 +311,36 @@ export class LinUCBBandit {
       if (armIndex < 0) continue;
       const reward = outcome.success ? SUCCESS_REWARD : FAILURE_REWARD;
       this.update(armIndex, neutralContext, reward);
+      this.recordWarmStartModelStat(outcome.cli, outcome.model, outcome.success);
       replayed++;
     }
     return replayed;
+  }
+
+  /** Accumulate the per-arm × per-model warm-start ledger (#4194). */
+  private recordWarmStartModelStat(arm: string, model: string, success: boolean): void {
+    const key = `${arm} ${model}`;
+    const entry = this.warmStartModelLedger.get(key) ?? {
+      arm,
+      model,
+      replayedCount: 0,
+      successCount: 0,
+    };
+    entry.replayedCount++;
+    if (success) entry.successCount++;
+    this.warmStartModelLedger.set(key, entry);
+  }
+
+  /**
+   * Per-arm × per-model grouping of the outcomes replayed through
+   * {@link warmStart} (#4194). A telemetry surface for per-model outcome
+   * evaluation — arm structure and selection behavior are unchanged.
+   * Sorted by arm, then model, for stable output.
+   */
+  getWarmStartModelStats(): readonly WarmStartModelStat[] {
+    return [...this.warmStartModelLedger.values()]
+      .map((s) => ({ ...s }))
+      .sort((a, b) => a.arm.localeCompare(b.arm) || a.model.localeCompare(b.model));
   }
 
   /**
@@ -303,6 +354,7 @@ export class LinUCBBandit {
       arm.pullCount = 0;
       arm.cumulativeReward = 0;
     }
+    this.warmStartModelLedger.clear();
   }
 }
 

@@ -37,6 +37,11 @@ export interface StageFailedOptions {
   readonly executionId: string;
   readonly stageId: string;
   readonly error: string;
+  /**
+   * Concrete model id the failing stage's executor reported, when known
+   * (#4194). Omit for stages with no single model — never guess.
+   */
+  readonly model?: string | undefined;
 }
 
 /** Options for emitting a model.called event (#3387). */
@@ -104,6 +109,7 @@ export function emitStageFailed(options: StageFailedOptions): void {
     executionId: options.executionId,
     stageId: options.stageId,
     error: options.error,
+    ...(options.model !== undefined && { model: options.model }),
   });
 }
 
@@ -151,10 +157,14 @@ export function emitPipelineStageEvent(
       durationMs: (details?.['durationMs'] as number) || 0,
     });
   } else {
+    const model = details?.['model'];
     emitStageFailed({
       executionId,
       stageId: stage,
       error: (details?.['error'] as string) || 'Unknown',
+      // Real model attribution when the caller knows it (#4194) — string only,
+      // so junk detail values never masquerade as a model id.
+      ...(typeof model === 'string' && model.length > 0 ? { model } : {}),
     });
   }
 }

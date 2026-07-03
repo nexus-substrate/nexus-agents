@@ -199,6 +199,25 @@ export interface ICliAdapter {
 }
 
 /**
+ * Resolve the model id to attribute to an adapter execution (#4194): prefer
+ * the response-reported model, else the adapter's configured
+ * `getModelInfo().id`. Failed/timed-out executions have no response-reported
+ * model, but the adapter still knows which model it was configured to run —
+ * that configured id is the honest attribution, not a placeholder. The
+ * `'unknown'` return is a last-resort guard for a throwing `getModelInfo()`
+ * (never observed for in-tree adapters), so callers can't crash a dispatch
+ * loop on attribution.
+ */
+export function resolveExecutionModelId(adapter: ICliAdapter, reportedModel?: string): string {
+  if (reportedModel !== undefined && reportedModel.length > 0) return reportedModel;
+  try {
+    return adapter.getModelInfo().id;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * (#2540) One row from a CLI's `models`-listing surface. `id` matches what
  * the CLI accepts as `--model`. `provider` is split out when the CLI uses
  * `provider/model` ids (e.g. opencode `anthropic/claude-3-5-sonnet`).

@@ -122,6 +122,14 @@ interface StageFailedEvent extends BaseEvent {
   readonly error: string;
   /** Error classification: retriable (transient) or fatal (permanent) (Epic #952). */
   readonly errorTaxonomy?: 'retriable' | 'fatal';
+  /**
+   * Concrete model id the failing stage's executor reported, when known
+   * (#4194). Additive and optional: emitters whose stages genuinely have no
+   * single model (local gates, consensus votes, graph nodes) omit it, and
+   * consumers must tolerate its absence. Lets the feedback-subscriber record
+   * real per-model outcome attribution instead of a placeholder.
+   */
+  readonly model?: string;
 }
 
 interface StageRetryingEvent extends BaseEvent {
