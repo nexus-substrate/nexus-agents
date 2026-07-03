@@ -727,6 +727,172 @@ describe('ModelRegistry — identity resolution tier (#4164)', () => {
   });
 });
 
+// ============================================================================
+// #4183 — fuzzy-resolution follow-ups: dated decorations match their
+// canonical (ONE trailing date segment stripped, fail-closed for
+// snapshot-style dated canonicals), and sub-SKU decorations (size/tier
+// quirk absent from the canonical) fail closed instead of inheriting the
+// full SKU's pricing.
+// ============================================================================
+
+/** Snapshot-style canonical whose version IS the date (gpt-4o-2024-08-06). */
+const gpt4oDatedSnapshot: ModelEntry = {
+  id: 'gpt-4o-2024-08-06',
+  vendor: 'openai',
+  family: 'gpt-4o',
+  version: '2024-08-06',
+  displayName: 'GPT-4o (2024-08-06)',
+  contextWindow: 128_000,
+  maxOutputTokens: 16_384,
+  pricing: { inputPer1M: 2.5, outputPer1M: 10 },
+  parallelToolCalls: true,
+  promptCaching: 'none',
+  toolDefinitionFormat: 'openai',
+  maxRecommendedTurnBudget: 10,
+  strictJson: true,
+  quirks: [],
+  profileId: 'gpt-4o',
+  source: 'in-tree',
+};
+
+/** Canonical gateway sub-SKU that carries a size quirk ('lite') itself. */
+const haikuLiteCanonical: ModelEntry = {
+  id: 'claude-haiku-4-5-lite',
+  vendor: 'anthropic',
+  family: 'claude-haiku',
+  version: '4-5',
+  displayName: 'Claude Haiku 4.5 Lite (gateway SKU)',
+  contextWindow: 200_000,
+  maxOutputTokens: 32_000,
+  pricing: { inputPer1M: 0.5, outputPer1M: 2.5 },
+  parallelToolCalls: true,
+  promptCaching: 'ephemeral',
+  toolDefinitionFormat: 'anthropic',
+  maxRecommendedTurnBudget: 8,
+  strictJson: true,
+  quirks: [],
+  profileId: 'claude-haiku',
+  source: 'manifest',
+};
+
+describe('ModelRegistry — dated decorations (#4183)', () => {
+  it.each(['claude-opus-4-8-20250514', 'anthropic/Claude_Opus_4.8_20250514'])(
+    'dated decoration %s matches its canonical (one trailing date segment stripped)',
+    (decorated) => {
+      const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });
+      const entry = reg.getEntry(decorated);
+      expect(entry.id).toBe(decorated); // caller's id preserved
+      expect(entry.matchedVia).toBe('identity');
+      expect(entry.resolvedFrom).toBe('claude-opus-4-8');
+      expect(entry.pricing).toEqual({ inputPer1M: 5, outputPer1M: 25 });
+    }
+  );
+
+  it('dated decoration with the WRONG base version fails closed', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });
+    const entry = reg.getEntry('claude-opus-4-9-20250514');
+    expect(entry.matchedVia).toBeUndefined();
+    expect(entry.resolvedFrom).toBeUndefined();
+    expect(entry.pricing).toBeUndefined();
+    expect(entry.source).toBe('derived');
+  });
+
+  it('canonical whose version IS dated still requires full version equality', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [gpt4oDatedSnapshot] });
+    // Exact hit and full-equality decorated hit keep working.
+    expect(reg.getEntry('gpt-4o-2024-08-06').pricing).toEqual({
+      inputPer1M: 2.5,
+      outputPer1M: 10,
+    });
+    const fullEquality = reg.getEntry('gpt-4o-2024-08-06-hardened');
+    expect(fullEquality.matchedVia).toBe('identity');
+    expect(fullEquality.resolvedFrom).toBe('gpt-4o-2024-08-06');
+    // But an EXTRA trailing date segment must not strip its way onto the
+    // snapshot entry — the canonical side's version carries the date.
+    const extraDate = reg.getEntry('gpt-4o-2024-08-06-20250101');
+    expect(extraDate.matchedVia).toBeUndefined();
+    expect(extraDate.pricing).toBeUndefined();
+    expect(extraDate.source).toBe('derived');
+  });
+
+  it('date-stripped fallback keeps ambiguity rules: two distinct candidates fail closed', () => {
+    const a: ModelEntry = {
+      ...opus48Canonical,
+      id: 'claude-opus-4-9',
+      version: '4-9',
+      aliases: [],
+    };
+    const b: ModelEntry = {
+      ...opus48Canonical,
+      id: 'claude-opus-4-9-preview',
+      version: '4-9',
+      aliases: [],
+      pricing: { inputPer1M: 7, outputPer1M: 35 },
+    };
+    const reg = new ModelRegistry({ inTreeEntries: [a, b] });
+    const entry = reg.getEntry('claude-opus-4-9-20250514');
+    expect(entry.matchedVia).toBeUndefined();
+    expect(entry.pricing).toBeUndefined();
+    expect(entry.source).toBe('derived');
+  });
+
+  it('date-stripped fallback keeps dedupe rules: effective duplicates collapse first', () => {
+    const reg = new ModelRegistry({
+      generatedEntries: [
+        generatedOpus48('anthropic/claude-opus-4-8', { inputPer1M: 5, outputPer1M: 25 }),
+        generatedOpus48('gateway-x/anthropic.claude-opus-4-8-v1', {
+          inputPer1M: 5,
+          outputPer1M: 25,
+        }),
+      ],
+    });
+    const entry = reg.getEntry('claude-opus-4-8-20250514');
+    expect(entry.matchedVia).toBe('identity');
+    expect(entry.pricing).toEqual({ inputPer1M: 5, outputPer1M: 25 });
+  });
+});
+
+describe('ModelRegistry — sub-SKU fail-closed guard (#4183)', () => {
+  it.each(['claude-opus-4-8-mini', 'claude-opus-4-8-lite', 'claude-opus-4-8-nano'])(
+    'size-marked decoration %s no longer inherits the full SKU pricing',
+    (decorated) => {
+      const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });
+      const entry = reg.getEntry(decorated);
+      expect(entry.matchedVia).toBeUndefined();
+      expect(entry.resolvedFrom).toBeUndefined();
+      expect(entry.pricing).toBeUndefined();
+      expect(entry.source).toBe('derived');
+    }
+  );
+
+  it('a decoration whose size quirk exists on the canonical too still matches', () => {
+    const reg = new ModelRegistry({ manifestEntries: [haikuLiteCanonical] });
+    const entry = reg.getEntry('claude-haiku-4-5-lite-hardened');
+    expect(entry.matchedVia).toBe('identity');
+    expect(entry.resolvedFrom).toBe('claude-haiku-4-5-lite');
+    expect(entry.pricing).toEqual({ inputPer1M: 0.5, outputPer1M: 2.5 });
+  });
+
+  it.each(['claude-opus-4-8-thinking', 'claude-opus-4-8-high'])(
+    'non-size quirk decoration %s still matches (same-SKU variant)',
+    (decorated) => {
+      const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });
+      const entry = reg.getEntry(decorated);
+      expect(entry.matchedVia).toBe('identity');
+      expect(entry.resolvedFrom).toBe('claude-opus-4-8');
+      expect(entry.pricing).toEqual({ inputPer1M: 5, outputPer1M: 25 });
+    }
+  );
+
+  it('the guard applies to date-stripped matches too', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });
+    const entry = reg.getEntry('claude-opus-4-8-20250514-mini');
+    expect(entry.matchedVia).toBeUndefined();
+    expect(entry.pricing).toBeUndefined();
+    expect(entry.source).toBe('derived');
+  });
+});
+
 describe('ModelRegistry — exact-match surfaces stay exact (#4164)', () => {
   it('hasAuthoritative stays false for decorated ids that only fuzzy-match', () => {
     const reg = new ModelRegistry({ inTreeEntries: [opus48Canonical] });

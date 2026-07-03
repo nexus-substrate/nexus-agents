@@ -44,12 +44,12 @@ import {
   resolveModelIdentitySync,
   type ModelHints,
   type ModelVendor,
+  type ResolvedModelIdentity,
 } from './model-identity.js';
 import {
   MAX_FUZZY_ID_LENGTH,
   buildIdentityIndex,
-  identityKeyFor,
-  selectIdentityCandidate,
+  matchIdentityCandidate,
 } from './model-fuzzy-resolution.js';
 import { buildInTreeEntries } from './in-tree-entries.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
@@ -260,16 +260,20 @@ export class ModelRegistry {
       return direct;
     }
     if (direct === undefined) {
-      const fuzzy = this.lookupFuzzy(modelId, hints);
+      // Resolve the identity ONCE (#4183 perf): the fuzzy tier's identity
+      // key and, on a miss, derivation both consume the same resolution.
+      const identity = resolveModelIdentitySync(modelId, hints);
+      const fuzzy = this.lookupFuzzy(modelId, identity, hints);
       if (fuzzy !== undefined) return fuzzy;
+      return deriveEntry(modelId, identity);
     }
 
     const identity = resolveModelIdentitySync(modelId, augmentHints(hints, direct));
     const derived = deriveEntry(modelId, identity);
-    if (direct !== undefined && identity.vendor !== 'unknown') {
+    if (identity.vendor !== 'unknown') {
       return mergeSnapshotWithDerived(direct, derived);
     }
-    return direct ?? derived;
+    return direct;
   }
 
   /**
@@ -308,21 +312,27 @@ export class ModelRegistry {
    * (a) retry `lookupExact` with the `normaliseModelId`-normalized id so
    *     aliases + alias-shadow (#3293) keep working;
    * (b) identity-match {vendor, family, version} against the load-time
-   *     index — version required on both sides, tier-ordered uniqueness,
-   *     fail closed on ambiguity (see model-fuzzy-resolution.ts).
+   *     index — version required on both sides (ONE trailing date segment
+   *     tolerated on the decorated side, #4183), tier-ordered uniqueness,
+   *     fail closed on ambiguity and on sub-SKU size markers (see
+   *     model-fuzzy-resolution.ts).
    * Over-long ids skip the tier entirely (straight to derivation).
+   * `identity` is the caller's already-resolved identity for `modelId`
+   * (#4183 perf: resolved once per getEntry call).
    */
-  private lookupFuzzy(modelId: string, hints?: ModelHints): ModelEntry | undefined {
+  private lookupFuzzy(
+    modelId: string,
+    identity: ResolvedModelIdentity,
+    hints?: ModelHints
+  ): ModelEntry | undefined {
     if (modelId.length > MAX_FUZZY_ID_LENGTH) return undefined;
     const normalized = normaliseModelId(modelId);
     const byNormalized = normalized === modelId ? undefined : this.lookupExact(normalized);
     if (byNormalized !== undefined) {
       return this.resolveMatched(byNormalized, modelId, hints, 'normalized');
     }
-    const key = identityKeyFor(resolveModelIdentitySync(modelId, hints));
-    if (key === undefined) return undefined;
     this.identityIndex ??= buildIdentityIndex(this.byId.values());
-    const matched = selectIdentityCandidate(this.identityIndex.get(key));
+    const matched = matchIdentityCandidate(this.identityIndex, identity);
     if (matched === undefined) return undefined;
     return this.resolveMatched(matched, modelId, hints, 'identity');
   }

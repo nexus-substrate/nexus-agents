@@ -13,7 +13,8 @@ OpenAI-compatible gateways often expose vendor models under decorated names — 
 
 - Decorated names resolve automatically when they normalize to a known id/alias, or when their parsed `vendor + family + version` identity matches exactly one registry entry. Version equality is required; ambiguity fails closed.
 - A fuzzy match grants **pricing and capability metadata only** — behavior and request-shaping fields never transfer.
-- Version-less, dated (`-20250514`), and ambiguous decorations do not resolve — declare those in `models-manifest.yaml` instead. Sub-SKU decorations (`-mini`) are a known hazard tracked in [#4183](https://github.com/nexus-substrate/nexus-agents/issues/4183); declare them explicitly.
+- Dated decorations (`claude-opus-4-8-20250514`) resolve too (#4183): one trailing snapshot-date segment is ignored when the canonical entry's own version carries no date. Version-less and ambiguous decorations still do not resolve — declare those in `models-manifest.yaml` instead.
+- Sub-SKU decorations (`-mini`, `-lite`) **fail closed** (#4183): a size/tier marker the canonical entry lacks means a different SKU, so no pricing is inherited. Declare gateway sub-SKUs explicitly to give them their real price.
 - A model with no pricing anywhere in the chain is **UNMEASURED, never $0** — decision-cost totals become a floor, flagged via `measuredVoters < voterCount`.
 
 ## What resolves automatically
@@ -25,6 +26,8 @@ On an exact-id and alias miss, `ModelRegistry.getEntry()` runs a two-step resolu
 **Step 2 — identity match.** The decorated id is parsed into `{vendor, family, version}` and matched against a load-time index of every loaded entry:
 
 - **Version equality is required on both sides.** Version keys treat `.` and `-` as equal, so a decorated `4.8` matches a canonical `4-8`. An id that parses without a version never identity-matches.
+- **One trailing date segment is tolerated on the decorated side (#4183).** `claude-opus-4-8-20250514` parses to version `4-8-20250514`; when no entry matches it exactly, a single trailing 6–8-digit date segment is stripped and `4-8` is retried. The fallback is fail-closed: it only applies when the canonical entry's own version is date-free, so snapshot-style ids whose date _is_ the version (`gpt-4o-2024-08-06`) still require full equality.
+- **Size/tier markers fail closed (#4183).** If the decorated id carries a size/tier quirk (`mini`/`nano`/`tiny`/`small`/`lite`, `large`/`xl`/`big`/`maxi`, or a `7b`-style parameter count) that the canonical candidate lacks, the match is abandoned — `claude-opus-4-8-mini` is a different SKU, not decorated Opus 4.8. Mode/feature markers (`thinking`, `high`, `vision`, `coder`, `instruct`) are variants of the same SKU and do not block.
 - **Candidates are consulted tier-ordered.** Authoritative tiers (manifest, in-tree) are checked first; the breadth catalogs (models.dev, generated LiteLLM) only get a look when no authoritative candidate exists.
 - **Effective duplicates are collapsed, then uniqueness is enforced.** Catalog entries that normalize to the same id, or share identical pricing _and_ context-window/max-output envelope, count as one. If more than one distinct candidate survives, the match is abandoned — no guessing.
 
@@ -32,14 +35,16 @@ So `Claude_Opus_4.8_hardened` parses to `anthropic / claude-opus / 4.8`, matches
 
 ### What deliberately does not resolve
 
-| Decoration   | Example                               | Behavior                                                                                                                                                                        |
-| ------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Version-less | `claude-opus-hardened`                | No version parses → no identity key → derivation only (no pricing)                                                                                                              |
-| Ambiguous    | identity matches two distinct entries | Fails closed → derivation only                                                                                                                                                  |
-| Dated        | `claude-opus-4-8-20250514`            | Version parses as `4-8-20250514`, which never equals canonical `4-8` → no match ([#4183](https://github.com/nexus-substrate/nexus-agents/issues/4183) considers date-stripping) |
-| Over-long    | id > 256 chars                        | Fuzzy tier skipped entirely                                                                                                                                                     |
+| Decoration      | Example                                   | Behavior                                                                                                                                                                                               |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Version-less    | `claude-opus-hardened`                    | No version parses → no identity key → derivation only (no pricing)                                                                                                                                     |
+| Ambiguous       | identity matches two distinct entries     | Fails closed → derivation only (the date-stripped retry obeys the same tier-order/dedupe/uniqueness rules)                                                                                             |
+| Wrong-base date | `claude-opus-4-9-20250514` (no 4.9 entry) | Date-stripping only tolerates the date — the remaining version must equal a canonical one → no match                                                                                                   |
+| Dated snapshot  | `gpt-4o-2024-08-06-20250101`              | The canonical's version _is_ the date → full equality required; extra date segments never strip their way onto a snapshot entry ([#4183](https://github.com/nexus-substrate/nexus-agents/issues/4183)) |
+| Sub-SKU         | `claude-opus-4-8-mini`                    | Size/tier marker absent from the canonical → different SKU → fails closed instead of inheriting Opus pricing ([#4183](https://github.com/nexus-substrate/nexus-agents/issues/4183))                    |
+| Over-long       | id > 256 chars                            | Fuzzy tier skipped entirely                                                                                                                                                                            |
 
-**Sub-SKU hazard.** Size markers parse as quirks, not version segments, so `claude-opus-4-8-mini` currently _does_ identity-match the full `claude-opus-4-8` entry and inherits its (higher) pricing. Failing closed on mismatched size markers is tracked in [#4183](https://github.com/nexus-substrate/nexus-agents/issues/4183); until it lands, declare gateway sub-SKUs explicitly in the manifest (example below) so their real price wins.
+**Sub-SKU pricing.** Size markers parse as quirks, not version segments, so before #4183 `claude-opus-4-8-mini` identity-matched the full `claude-opus-4-8` entry and inherited its (higher) pricing. It now fails closed — which also means a sub-SKU has **no pricing at all** until you declare it explicitly in the manifest (example below) with its real price. A decoration whose size marker exists on the canonical side too (`claude-haiku-4-5-lite-hardened` against a declared `claude-haiku-4-5-lite`) still matches normally.
 
 ### Provenance and merge semantics
 
@@ -54,7 +59,7 @@ Implementation: [model-registry.ts](../../packages/nexus-agents/src/config/model
 
 ## When to use a manifest-overlay alias instead
 
-Reach for the operator manifest (#2547) whenever automatic resolution can't or shouldn't apply: version-less decorations, dated decorations, ambiguous names, sub-SKUs with their own price, or gateway-only models the registry has never heard of.
+Reach for the operator manifest (#2547) whenever automatic resolution can't or shouldn't apply: version-less decorations, ambiguous names, sub-SKUs (which fail closed since #4183 and need their own price declared), or gateway-only models the registry has never heard of.
 
 The operator manifest lives at `<NEXUS_DATA_DIR>/models-manifest.yaml` (default `~/.nexus-agents/models-manifest.yaml`), or wherever `NEXUS_MODELS_OVERLAY_PATH` points. A per-user overlay (`models.yaml` / `NEXUS_MODEL_REGISTRY_OVERLAY`, #3351) uses the same schema at lower precedence — the operator entry wins on id collision. Manifest entries sit at the **top** of the pricing chain, above in-tree data.
 
@@ -78,8 +83,8 @@ models:
       inputPer1M: 5.0 # USD per million input tokens
       outputPer1M: 25.0 # USD per million output tokens
 
-  # Declare a sub-SKU as its own entry so it never inherits Opus pricing
-  # (#4183 hazard above).
+  # A sub-SKU fails closed since #4183 (it never inherits Opus pricing) —
+  # declare it as its own entry so it gets its REAL price instead of none.
   - id: claude-opus-4-8-mini
     vendor: anthropic
     family: claude-opus
