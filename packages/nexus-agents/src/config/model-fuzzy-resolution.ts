@@ -1,0 +1,129 @@
+/**
+ * Identity-index helpers for the ModelRegistry's normalized/identity
+ * resolution tier (#4164).
+ *
+ * OpenAI-compatible gateways frequently expose vendor models under
+ * decorated names (`Claude_Opus_4.8_hardened`, `2025-claude-opus-4_0_high`).
+ * An exact registry lookup misses those, which used to drop the request to
+ * bare derivation — losing pricing/metadata the registry actually has for
+ * the underlying model. This module supplies the second-chance machinery:
+ *
+ *   - a load-time `vendor|family|version` index over loaded entries (built
+ *     once, never per-request O(N) scans),
+ *   - tier-ordered candidate selection (manifest/in-tree before
+ *     models-dev/generated) with effective-duplicate dedupe, failing CLOSED
+ *     when more than one distinct candidate survives.
+ *
+ * The registry itself (model-registry.ts) owns the merge semantics —
+ * matched entries grant PRICING/METADATA ONLY; behaviour fields still come
+ * from derivation for the original decorated id.
+ *
+ * @module config/model-fuzzy-resolution
+ */
+
+import { normaliseModelId, resolveModelIdentitySync } from './model-identity.js';
+import type { ResolvedModelIdentity } from './model-identity.js';
+import type { ModelEntry } from './model-registry.js';
+import type { Pricing } from './model-capabilities-types.js';
+
+/**
+ * Ids longer than this skip the fuzzy tier entirely (straight to
+ * derivation). Guards the normalizer/regex parses against pathological
+ * inputs; checked BEFORE normalization.
+ */
+export const MAX_FUZZY_ID_LENGTH = 256;
+
+/** Breadth catalog tiers — searched only when no authoritative tier matches. */
+const BREADTH_SOURCES: ReadonlySet<ModelEntry['source']> = new Set(['models-dev', 'generated']);
+
+/**
+ * Canonical comparison key for version strings. Reuses `normaliseModelId`,
+ * additionally unifying `.` with `-` so a decorated `4.8` compares equal to
+ * the canonical Anthropic-style `4-8`. This is a version-KEY canonicalizer
+ * only — id normalization stays `normaliseModelId` verbatim.
+ */
+function versionKey(version: string): string {
+  return normaliseModelId(version).replace(/\./g, '-');
+}
+
+/** Entry-side version: the stored field, else best-effort parse of the id. */
+function entryVersion(entry: ModelEntry): string | undefined {
+  return entry.version ?? resolveModelIdentitySync(entry.id).version;
+}
+
+/**
+ * `vendor|family|version` index key, or undefined when the identity cannot
+ * participate in identity matching: version is REQUIRED on both sides, and
+ * the `unknown` vendor/family sentinels never match anything.
+ */
+export function identityKeyFor(
+  identity: Pick<ResolvedModelIdentity, 'vendor' | 'family' | 'version'>
+): string | undefined {
+  if (identity.vendor === 'unknown' || identity.family === 'unknown') return undefined;
+  if (identity.version === undefined) return undefined;
+  return `${identity.vendor}|${identity.family}|${versionKey(identity.version)}`;
+}
+
+/**
+ * Build the identity index over loaded entries. Called ONCE (lazily, on the
+ * first fuzzy lookup) — the registry's entry maps are immutable after
+ * construction, so the index never goes stale.
+ */
+export function buildIdentityIndex(entries: Iterable<ModelEntry>): Map<string, ModelEntry[]> {
+  const index = new Map<string, ModelEntry[]>();
+  for (const entry of entries) {
+    const version = entryVersion(entry);
+    if (version === undefined) continue;
+    const key = identityKeyFor({ vendor: entry.vendor, family: entry.family, version });
+    if (key === undefined) continue;
+    const bucket = index.get(key);
+    if (bucket === undefined) index.set(key, [entry]);
+    else bucket.push(entry);
+  }
+  return index;
+}
+
+function samePricing(a: Pricing, b: Pricing): boolean {
+  return a.inputPer1M === b.inputPer1M && a.outputPer1M === b.outputPer1M;
+}
+
+/**
+ * Two candidates are "effectively the same model" when their ids normalize
+ * to the same canonical id, or when both carry identical pricing — LiteLLM
+ * catalogs list the same model under many provider prefixes.
+ */
+function isEffectivelySameModel(a: ModelEntry, b: ModelEntry): boolean {
+  if (normaliseModelId(a.id) === normaliseModelId(b.id)) return true;
+  return a.pricing !== undefined && b.pricing !== undefined && samePricing(a.pricing, b.pricing);
+}
+
+/** Keep the first of each effective-duplicate group (load order = tier order). */
+function dedupeEffectiveDuplicates(candidates: readonly ModelEntry[]): readonly ModelEntry[] {
+  const kept: ModelEntry[] = [];
+  for (const candidate of candidates) {
+    if (!kept.some((k) => isEffectivelySameModel(k, candidate))) kept.push(candidate);
+  }
+  return kept;
+}
+
+/** Unique candidate from one tier bucket, or undefined (fail closed on >1). */
+function uniqueCandidate(candidates: readonly ModelEntry[]): ModelEntry | undefined {
+  const distinct = dedupeEffectiveDuplicates(candidates);
+  return distinct.length === 1 ? distinct[0] : undefined;
+}
+
+/**
+ * Tier-ordered uniqueness: manifest/in-tree candidates are considered
+ * first; only when that bucket is EMPTY do the breadth tiers
+ * (models-dev/generated) get a look. Within a bucket, effective duplicates
+ * are collapsed before ambiguity is declared; if more than one distinct
+ * candidate survives, fail closed (no match) rather than guess.
+ */
+export function selectIdentityCandidate(
+  candidates: readonly ModelEntry[] | undefined
+): ModelEntry | undefined {
+  if (candidates === undefined) return undefined;
+  const authoritative = candidates.filter((e) => !BREADTH_SOURCES.has(e.source));
+  if (authoritative.length > 0) return uniqueCandidate(authoritative);
+  return uniqueCandidate(candidates.filter((e) => BREADTH_SOURCES.has(e.source)));
+}

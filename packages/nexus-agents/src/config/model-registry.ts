@@ -39,7 +39,18 @@
  * @module config/model-registry
  */
 
-import { resolveModelIdentitySync, type ModelHints, type ModelVendor } from './model-identity.js';
+import {
+  normaliseModelId,
+  resolveModelIdentitySync,
+  type ModelHints,
+  type ModelVendor,
+} from './model-identity.js';
+import {
+  MAX_FUZZY_ID_LENGTH,
+  buildIdentityIndex,
+  identityKeyFor,
+  selectIdentityCandidate,
+} from './model-fuzzy-resolution.js';
 import { buildInTreeEntries } from './in-tree-entries.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
 import { DEFAULT_ENTRY, deriveEntry } from './model-derivation.js';
@@ -82,6 +93,14 @@ export type PromptCachingMode = 'none' | 'ephemeral' | 'aggressive';
  * ones field-by-field; `derived` is always the fallback floor.
  */
 export type EntrySource = 'in-tree' | 'models-dev' | 'manifest' | 'derived' | 'generated';
+
+/**
+ * How the normalized/identity resolution tier (#4164) found a canonical
+ * entry for a decorated gateway model id: `'normalized'` — the id matched
+ * an entry/alias after `normaliseModelId`; `'identity'` — the parsed
+ * {vendor, family, version} matched exactly one loaded entry.
+ */
+export type MatchedVia = 'normalized' | 'identity';
 
 /**
  * One model's full metadata. Combines what was previously split
@@ -158,6 +177,14 @@ export interface ModelEntry {
   readonly source: EntrySource;
   /** ISO date when this entry was last validated against the upstream. */
   readonly verifiedAt?: string;
+  /**
+   * Set when the normalized/identity resolution tier (#4164) matched this
+   * (decorated) id to a canonical entry. Absent for exact/alias hits and
+   * pure derivation.
+   */
+  readonly matchedVia?: MatchedVia;
+  /** Canonical id of the matched entry the pricing/metadata came from. */
+  readonly resolvedFrom?: string;
 }
 
 // Derivation (DEFAULT_ENTRY, VENDOR_DEFAULTS, FAMILY_DEFAULTS, deriveEntry)
@@ -192,6 +219,13 @@ export interface ModelRegistryOptions {
 export class ModelRegistry {
   private readonly byId = new Map<string, ModelEntry>();
   private readonly byAlias = new Map<string, string>(); // alias → canonical id
+  /**
+   * `vendor|family|version` → candidate entries, for the identity tier
+   * (#4164). Built ONCE, lazily on the first fuzzy lookup — the entry maps
+   * are immutable after construction, so it never goes stale. No caching of
+   * UNMATCHED ids happens anywhere (the index only holds loaded entries).
+   */
+  private identityIndex: Map<string, ModelEntry[]> | undefined;
 
   constructor(options: ModelRegistryOptions = {}) {
     // Load order: lowest priority first; later sources overwrite.
@@ -212,6 +246,10 @@ export class ModelRegistry {
   /**
    * Resolve a model id to its full metadata entry. Always returns —
    * unknown models get a derived entry with sensible defaults.
+   *
+   * On exact miss, the normalized/identity resolution tier (#4164) runs
+   * BEFORE derivation so decorated gateway ids (`Claude_Opus_4.8_hardened`)
+   * still pick up the canonical entry's pricing/metadata.
    */
   getEntry(modelId: string, hints?: ModelHints): ModelEntry {
     const direct = this.lookupExact(modelId);
@@ -220,6 +258,10 @@ export class ModelRegistry {
     // authoritative and return directly). (#3293)
     if (direct !== undefined && direct.source !== 'models-dev' && direct.source !== 'generated') {
       return direct;
+    }
+    if (direct === undefined) {
+      const fuzzy = this.lookupFuzzy(modelId, hints);
+      if (fuzzy !== undefined) return fuzzy;
     }
 
     const identity = resolveModelIdentitySync(modelId, augmentHints(hints, direct));
@@ -259,6 +301,46 @@ export class ModelRegistry {
     const canonical = this.byAlias.get(modelId);
     if (canonical !== undefined) return this.byId.get(canonical);
     return undefined;
+  }
+
+  /**
+   * Normalized/identity resolution tier (#4164). Runs on exact miss only:
+   * (a) retry `lookupExact` with the `normaliseModelId`-normalized id so
+   *     aliases + alias-shadow (#3293) keep working;
+   * (b) identity-match {vendor, family, version} against the load-time
+   *     index — version required on both sides, tier-ordered uniqueness,
+   *     fail closed on ambiguity (see model-fuzzy-resolution.ts).
+   * Over-long ids skip the tier entirely (straight to derivation).
+   */
+  private lookupFuzzy(modelId: string, hints?: ModelHints): ModelEntry | undefined {
+    if (modelId.length > MAX_FUZZY_ID_LENGTH) return undefined;
+    const normalized = normaliseModelId(modelId);
+    const byNormalized = normalized === modelId ? undefined : this.lookupExact(normalized);
+    if (byNormalized !== undefined) {
+      return this.resolveMatched(byNormalized, modelId, hints, 'normalized');
+    }
+    const key = identityKeyFor(resolveModelIdentitySync(modelId, hints));
+    if (key === undefined) return undefined;
+    this.identityIndex ??= buildIdentityIndex(this.byId.values());
+    const matched = selectIdentityCandidate(this.identityIndex.get(key));
+    if (matched === undefined) return undefined;
+    return this.resolveMatched(matched, modelId, hints, 'identity');
+  }
+
+  /**
+   * Build the entry returned for a fuzzy match: a fresh COPY that keeps the
+   * CALLER'S id and takes behaviour from derivation for that original id —
+   * the matched entry grants pricing/metadata only.
+   */
+  private resolveMatched(
+    matched: ModelEntry,
+    modelId: string,
+    hints: ModelHints | undefined,
+    matchedVia: MatchedVia
+  ): ModelEntry {
+    const identity = resolveModelIdentitySync(modelId, augmentHints(hints, matched));
+    const derived = deriveEntry(modelId, identity);
+    return mergeMatchedWithDerived(matched, derived, matchedVia);
   }
 
   private loadEntries(entries: readonly ModelEntry[]): void {
@@ -310,6 +392,40 @@ function mergeSnapshotWithDerived(snapshot: ModelEntry, derived: ModelEntry): Mo
     profileId: derived.profileId,
     source: 'derived',
   };
+}
+
+/**
+ * Merge for the normalized/identity resolution tier (#4164) — extends the
+ * #3293 `mergeSnapshotWithDerived` semantics: capability/metadata (pricing,
+ * contextWindow, maxOutputTokens, displayName, modalities, quality) come
+ * from the matched canonical entry, behaviour fields from the derived entry
+ * for the ORIGINAL decorated id. On top of that base merge it:
+ *   - keeps the CALLER'S id (and its parsed version) — not the canonical's,
+ *   - withholds fields outside the pricing/metadata grant: alias/CLI routing
+ *     belongs to the canonical entry, and request-shaping fields
+ *     (unsupportedParameters, maxTokensParam) must follow the original id,
+ *   - stamps `matchedVia` + `resolvedFrom` provenance.
+ * Always returns a fresh object — stored entries are never mutated.
+ */
+function mergeMatchedWithDerived(
+  matched: ModelEntry,
+  derived: ModelEntry,
+  matchedVia: MatchedVia
+): ModelEntry {
+  const merged: { -readonly [K in keyof ModelEntry]?: ModelEntry[K] } = {
+    ...mergeSnapshotWithDerived(matched, derived),
+  };
+  delete merged.aliases;
+  delete merged.cliName;
+  delete merged.cliAlias;
+  delete merged.cliModelName;
+  delete merged.unsupportedParameters;
+  delete merged.maxTokensParam;
+  merged.id = derived.id;
+  if (derived.version !== undefined) merged.version = derived.version;
+  merged.matchedVia = matchedVia;
+  merged.resolvedFrom = matched.id;
+  return merged as ModelEntry;
 }
 
 // Re-export the derivation surface so existing consumers keep working
