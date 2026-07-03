@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.162.1
+
+### Patch Changes
+
+- [#4216](https://github.com/nexus-substrate/nexus-agents/pull/4216) [`54a3212`](https://github.com/nexus-substrate/nexus-agents/commit/54a3212b5344eadb785755d763dd2edbb3655fba) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(routing): yaml surface + typed keys for per-class cost ceilings ([#4214](https://github.com/nexus-substrate/nexus-agents/issues/4214))
+
+  - `routing.budget.taskClassMaxCostUsd` is now configurable via nexus-agents.yaml (previously programmatic-only; the YAML schema stripped it)
+  - Ceiling keys are validated against the `TaskCategory` enum (`z.partialRecord`) in both the YAML and composite-router schemas, so a typo'd task class fails config parsing instead of silently configuring nothing; `BudgetRouterOptions.taskClassCostCeilings` is typed accordingly
+  - Documented the operator surface in CONFIGURATION.md (ceilings, `NEXUS_BILLING_MODE=api` requirement, fail-closed semantics for unpriced candidates)
+
 ## 2.162.0
 
 ### Minor Changes
