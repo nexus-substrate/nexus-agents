@@ -66,17 +66,33 @@ function defaultGeneratedPath(): string {
   return join(here, 'model-registry.generated.json');
 }
 
+/**
+ * Extract usable pricing from a raw catalog record.
+ *
+ * #4176: litellm carries placeholder $0/$0 rows for models it has no pricing
+ * for (e.g. `amazon-bedrock/anthropic.claude-mythos-preview`). Treating that
+ * as real pricing makes `computeCostDetail` report priced:true costUsd:0 — a
+ * measured $0 for what is actually UNMEASURED (#4165). Drop BOTH-zero pricing
+ * so the entry stays unpriced; one-sided zeros (free input tiers) are real
+ * and kept. Genuinely free models are represented in-tree (higher tier), so
+ * nothing legitimate is lost at this lowest-priority breadth tier.
+ */
+function extractPricing(
+  rec: GeneratedRecord
+): { inputPer1M: number; outputPer1M: number } | undefined {
+  const inputPer1M = rec.pricing?.inputPer1M;
+  const outputPer1M = rec.pricing?.outputPer1M;
+  if (typeof inputPer1M !== 'number' || typeof outputPer1M !== 'number') return undefined;
+  if (inputPer1M === 0 && outputPer1M === 0) return undefined;
+  return { inputPer1M, outputPer1M };
+}
+
 /** Convert one raw catalog record into a `ModelEntry` (derived base + overlay). */
 function toModelEntry(rec: GeneratedRecord): ModelEntry | undefined {
   if (typeof rec.id !== 'string' || rec.id === '') return undefined;
   const id = rec.id;
   const base = deriveEntry(id, resolveModelIdentitySync(id));
-  const pricing =
-    rec.pricing !== undefined &&
-    typeof rec.pricing.inputPer1M === 'number' &&
-    typeof rec.pricing.outputPer1M === 'number'
-      ? { inputPer1M: rec.pricing.inputPer1M, outputPer1M: rec.pricing.outputPer1M }
-      : undefined;
+  const pricing = extractPricing(rec);
   return {
     ...base,
     source: 'generated',

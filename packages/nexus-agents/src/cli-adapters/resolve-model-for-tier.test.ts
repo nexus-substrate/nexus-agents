@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import { resolveModelForTier, TIER_QUALITY_DIMENSION } from './resolve-model-for-tier.js';
 import { findInTreeByCli, getDefaultModelForCli } from '../config/model-config-helpers.js';
+import type { ModelCapability } from '../config/model-capabilities-types.js';
 
 describe('resolveModelForTier (#3394)', () => {
   it('maps each tier to its quality dimension (table-driven)', () => {
@@ -16,11 +17,25 @@ describe('resolveModelForTier (#3394)', () => {
   });
 
   it('picks the highest-reasoning claude model for the powerful tier', () => {
-    const claudeModels = findInTreeByCli('claude');
-    const best = claudeModels
+    // Mirror the documented tie-break: reasoning desc, then cheaper (higher
+    // cost score) first, then lexicographic. Since #4176 claude-fable-5 and
+    // claude-opus tie at reasoning 10; opus (cost 6 vs 4) wins as the cheaper.
+    const rank = (m: ModelCapability): number =>
+      (m.qualityScores?.reasoning ?? 0) * 100 + (m.qualityScores?.cost ?? 0);
+    const best = findInTreeByCli('claude')
       .filter((m) => typeof m.qualityScores?.reasoning === 'number')
-      .sort((a, b) => (b.qualityScores?.reasoning ?? 0) - (a.qualityScores?.reasoning ?? 0))[0];
+      .sort((a, b) => rank(b) - rank(a) || a.id.localeCompare(b.id))[0];
     expect(resolveModelForTier('claude', 'powerful')).toBe(best?.id);
+    expect(resolveModelForTier('claude', 'powerful')).toBe('claude-opus');
+  });
+
+  it('picks codex-5.3 for the codex powerful tier despite gpt-5.5 being the CLI default (#4176)', () => {
+    // Deliberate tension, mirroring the claude pin above: gpt-5.5 and
+    // codex-5.3 tie at reasoning 10, so the tier resolver's tie-break
+    // (cheaper — higher cost score — first) picks codex-5.3 (cost 5 vs 4),
+    // while DEFAULT_MODEL_PER_CLI.codex is the frontier gpt-5.5.
+    expect(resolveModelForTier('codex', 'powerful')).toBe('codex-5.3');
+    expect(getDefaultModelForCli('codex')).toBe('gpt-5.5');
   });
 
   it('picks the highest-speed model for the fast tier', () => {

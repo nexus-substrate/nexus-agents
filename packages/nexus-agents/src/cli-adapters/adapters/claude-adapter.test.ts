@@ -176,11 +176,12 @@ describe('ClaudeCliAdapter', () => {
     it('should return correct capability profile', () => {
       const caps = adapter.capabilities;
 
+      // Default claude model is claude-fable-5 (frontier tier, #4176).
       expect(caps.reasoning).toBe(10);
       expect(caps.contextWindow).toBe(1_000_000);
-      expect(caps.codeGeneration).toBe(9);
+      expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(5);
-      expect(caps.cost).toBe(6);
+      expect(caps.cost).toBe(4);
     });
   });
 
@@ -189,17 +190,17 @@ describe('ClaudeCliAdapter', () => {
       const info = adapter.getModelInfo();
 
       // Default model resolves to cliModelName from registry (Issue #1095)
-      expect(info.id).toBe('claude-opus-4-6');
-      expect(info.name).toBe('Claude Opus 4.6');
+      expect(info.id).toBe('claude-fable-5');
+      expect(info.name).toBe('Claude Fable 5');
       expect(info.contextWindow).toBe(1_000_000);
       expect(info.maxOutput).toBe(128_000);
     });
 
-    it('should return correct cost info for opus', () => {
+    it('should return correct cost info for the default (fable) model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(5.0);
-      expect(info.costPerMillionOutput).toBe(25.0);
+      expect(info.costPerMillionInput).toBe(10.0);
+      expect(info.costPerMillionOutput).toBe(50.0);
     });
 
     it('resolves legacy claude-opus-4 alias to current Opus via registry (#2200 Child 1)', () => {
@@ -256,8 +257,8 @@ describe('ClaudeCliAdapter', () => {
       expect(capturedArgs).toContain('--output-format');
       expect(capturedArgs).toContain('json');
       expect(capturedArgs).toContain('--model');
-      // Default model 'opus' is passed directly (CLI alias, quality-first)
-      expect(capturedArgs).toContain('opus');
+      // Default model 'fable' is passed directly (CLI alias, quality-first)
+      expect(capturedArgs).toContain('fable');
     });
 
     it('should include system prompt when provided', async () => {

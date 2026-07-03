@@ -58,27 +58,28 @@ describe('QualityConstraintStage', () => {
     });
 
     it('filters low quality candidates', async () => {
-      // Derived from registry: claude=0.95, gemini=0.95, codex=1.0
-      // At minQuality=0.96, only codex (1.0) passes
+      // Derived from registry (#4176): claude=1.0 (claude-fable-5),
+      // gemini=0.95 (gemini-3-pro), codex=1.0 (gpt-5.5)
+      // At minQuality=0.96, claude and codex pass
       const strictStage = new QualityConstraintStage({ minQuality: 0.96 });
       const ctx = createContext('test task');
       const result = await strictStage.route(ctx);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        // Claude (0.95) and Gemini (0.95) should be filtered
+        // Gemini (0.95) should be filtered
         const filtered = result.value.context.filtered;
-        expect(filtered.has('claude')).toBe(true);
         expect(filtered.has('gemini')).toBe(true);
-        // Codex (1.0) should pass
+        // Claude (1.0) and Codex (1.0) should pass
+        expect(filtered.has('claude')).toBe(false);
         expect(filtered.has('codex')).toBe(false);
       }
     });
 
     it('filters high cost candidates', async () => {
-      // Derived from registry pricing (inputPer1M):
-      // claude-opus=$15/M → $0.015/1k, gemini-3-pro=$1.25/M → $0.00125/1k, codex-5.3=$2/M → $0.002/1k
-      // At 1500 tokens: claude=$0.0225, gemini=$0.001875, codex=$0.003
+      // Derived from registry pricing (inputPer1M, #4176 defaults):
+      // claude-fable-5=$10/M → $0.01/1k, gemini-3-pro=$2/M → $0.002/1k, gpt-5.5=$5/M → $0.005/1k
+      // At 1500 tokens: claude=$0.015, gemini=$0.003, codex=$0.0075
       const lowBudgetStage = new QualityConstraintStage({
         maxCostUsd: 0.004,
         expectedTokens: 1500,
@@ -88,11 +89,11 @@ describe('QualityConstraintStage', () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        // Only gemini ($0.001875) and codex ($0.003) pass
+        // Only gemini ($0.003) passes
         const filtered = result.value.context.filtered;
         expect(filtered.has('claude')).toBe(true);
+        expect(filtered.has('codex')).toBe(true);
         expect(filtered.has('gemini')).toBe(false);
-        expect(filtered.has('codex')).toBe(false);
       }
     });
 
@@ -114,7 +115,7 @@ describe('QualityConstraintStage', () => {
 
     it('uses fallback when all filtered', async () => {
       // Make constraints impossible to meet
-      // Derived: claude=0.95, gemini=0.95, codex=1.0 — need >1.0 to filter all
+      // Derived: claude=1.0, gemini=0.95, codex=1.0 (#4176) — need >1.0 to filter all
       const impossibleStage = new QualityConstraintStage({
         minQuality: 1.01,
         allowFallback: true,
@@ -124,9 +125,9 @@ describe('QualityConstraintStage', () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        // Codex should be fallback (highest quality at 1.0)
+        // Claude should be fallback (ties codex at quality 1.0; first profile wins)
         expect(result.value.context.signals).toContain('quality:used-fallback');
-        expect(result.value.context.filtered.has('codex')).toBe(false);
+        expect(result.value.context.filtered.has('claude')).toBe(false);
         expect(result.value.continuesPipeline).toBe(true);
       }
     });
@@ -146,7 +147,7 @@ describe('QualityConstraintStage', () => {
     });
 
     it('adds constraint violation signals', async () => {
-      // Derived: claude=0.95, gemini=0.95 → filtered at 0.96
+      // Derived: gemini=0.95 → filtered at 0.96 (#4176)
       const strictStage = new QualityConstraintStage({ minQuality: 0.96 });
       const ctx = createContext('test task');
       const result = await strictStage.route(ctx);
@@ -209,13 +210,13 @@ describe('QualityConstraintStage', () => {
     });
 
     it('tracks filtered count', async () => {
-      // Derived: claude=0.95, gemini=0.95 filtered at 0.96; codex=1.0 passes
+      // Derived (#4176): gemini=0.95 filtered at 0.96; claude=1.0, codex=1.0 pass
       const strictStage = new QualityConstraintStage({ minQuality: 0.96 });
       await strictStage.route(createContext('test'));
 
       const stats = strictStage.getStats();
-      // 2 candidates should be filtered (claude, gemini)
-      expect(stats['filteredCount']).toBe(2);
+      // 1 candidate should be filtered (gemini)
+      expect(stats['filteredCount']).toBe(1);
     });
 
     it('tracks fallback count', async () => {
@@ -230,23 +231,23 @@ describe('QualityConstraintStage', () => {
     });
 
     it('tracks constraint violations by type', async () => {
-      // Derived: claude=0.95, gemini=0.95 filtered at 0.96
+      // Derived (#4176): gemini=0.95 filtered at 0.96
       const qualityStage = new QualityConstraintStage({ minQuality: 0.96 });
       await qualityStage.route(createContext('test'));
 
       const stats = qualityStage.getStats();
       const violations = stats['constraintViolations'] as Record<string, number>;
-      expect(violations['quality']).toBe(2); // claude and gemini
+      expect(violations['quality']).toBe(1); // gemini
     });
 
     it('calculates filter rate', async () => {
-      // Derived: claude=0.95, gemini=0.95 filtered at 0.96
+      // Derived (#4176): gemini=0.95 filtered at 0.96
       const strictStage = new QualityConstraintStage({ minQuality: 0.96 });
       await strictStage.route(createContext('test'));
 
       const stats = strictStage.getStats();
-      // 2 filtered out of 1 routing = rate of 2
-      expect(stats['filterRate']).toBe(2);
+      // 1 filtered out of 1 routing = rate of 1
+      expect(stats['filterRate']).toBe(1);
     });
   });
 

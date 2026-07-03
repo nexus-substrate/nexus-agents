@@ -212,11 +212,12 @@ describe('selectModel with specialization integration', () => {
     expect(result.reasoning).toContain('architecture');
   });
 
-  it('prefers codex for implementation tasks', () => {
+  it('prefers a codex-CLI model for implementation tasks', () => {
     const input = { task: 'Implement the API endpoint', estimate_tokens: false };
     const req = makeReq({ needsCodeGen: true });
     const result = selectModel(input, req, 'plan');
-    // codex-5.3 should be selected (code generation + specialization)
-    expect(result.model).toContain('codex');
+    // A codex-CLI model should be selected (code generation + specialization);
+    // since #4176 the frontier gpt-5.5 tops codex-5.3.
+    expect(['gpt-5.5', 'codex-5.3', 'codex-5.2']).toContain(result.model);
   });
 });

@@ -52,7 +52,7 @@ function makeDecision(overrides: Record<string, unknown> = {}) {
 
 describe('cliNameToModel', () => {
   it('maps claude to default model from registry', () => {
-    expect(cliNameToModel('claude')).toBe('claude-opus');
+    expect(cliNameToModel('claude')).toBe('claude-fable-5');
   });
 
   it('maps gemini to default model from registry', () => {
@@ -60,7 +60,7 @@ describe('cliNameToModel', () => {
   });
 
   it('maps codex to default model from registry', () => {
-    expect(cliNameToModel('codex')).toBe('codex-5.3');
+    expect(cliNameToModel('codex')).toBe('gpt-5.5');
   });
 });
 
@@ -73,7 +73,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision, 500);
 
-    expect(output.recommended_model).toBe('claude-opus');
+    expect(output.recommended_model).toBe('claude-fable-5');
     expect(output.reasoning).toBe('Best model for reasoning tasks');
     expect(output.estimated_tokens).toBe(500);
   });
@@ -89,13 +89,13 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision, 500);
 
-    expect(output.recommended_model).toBe('claude-opus');
+    expect(output.recommended_model).toBe('claude-fable-5');
   });
 
   it('includes capabilities from MODEL_CAPABILITIES', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision, 100);
-    const expected = MODEL_CAPABILITIES['claude-opus'];
+    const expected = MODEL_CAPABILITIES['claude-fable-5'];
 
     expect(output.capabilities).toEqual(expected);
   });
@@ -127,7 +127,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const output = mapCompositeDecisionToOutput(decision, 100);
 
     expect(output.alternatives[0]!.model).toBe('gemini-3-pro');
-    expect(output.alternatives[1]!.model).toBe('codex-5.3');
+    expect(output.alternatives[1]!.model).toBe('gpt-5.5');
   });
 
   it('uses topsisScore for alternative scores', () => {
@@ -176,7 +176,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ cliName: 'codex' });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['codex-5.3']);
+    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gpt-5.5']);
   });
 });
 

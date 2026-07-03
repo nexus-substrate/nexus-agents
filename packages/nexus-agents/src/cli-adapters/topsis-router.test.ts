@@ -231,8 +231,9 @@ describe('TopsisRouter', () => {
 
       const result = qualityOnly.selectModel();
 
-      // Codex has highest quality score (10) — quality-first defaults (Issue #807)
-      expect(result.selectedModel).toBe('codex');
+      // claude (claude-fable-5) and codex (gpt-5.5) tie at quality 10 (#4176)
+      // — with cost/latency weights at 0 either is the highest-quality pick.
+      expect(['claude', 'codex']).toContain(result.selectedModel);
       expect(result.estimatedSavingsPercent).toBeGreaterThanOrEqual(0);
     });
   });

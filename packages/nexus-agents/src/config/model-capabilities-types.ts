@@ -107,13 +107,16 @@ export const DEFAULT_ROUTING_CONFIDENCE = 0.85;
  * until then.
  */
 export const MODEL_IDS = [
+  'claude-fable-5',
   'claude-opus',
   'claude-sonnet',
   'claude-haiku',
   'gemini-3-pro',
   'gemini-pro',
+  'gemini-3.5-flash',
   'gemini-3-flash',
   'gemini-flash',
+  'gpt-5.5',
   'codex-5.3',
   'codex-5.2',
   'codex-5.1-mini',

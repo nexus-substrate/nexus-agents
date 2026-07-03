@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- data-only registry; grows with every supported model (#4176) */
 /**
  * nexus-agents/config - In-tree model data
  *
@@ -39,9 +40,28 @@ import type {
  */
 export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
   version: 3,
-  updatedAt: '2026-03-14',
+  updatedAt: '2026-07-03',
   models: [
     // ----- Anthropic Claude -----
+    {
+      id: 'claude-fable-5',
+      displayName: 'Claude Fable 5',
+      provider: 'anthropic',
+      contextWindow: 1_000_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: ['mcp', 'function_calling', 'computer_use', 'structured_output'],
+      specialFeatures: ['extended_thinking', 'streaming', 'citations', 'context_caching'],
+      notes: 'Frontier Claude (models.dev 2026-06-29); above Opus 4.6; 1M context',
+      pricing: { inputPer1M: 10.0, outputPer1M: 50.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 5, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'claude',
+      cliAlias: 'fable',
+      cliModelName: 'claude-fable-5',
+      // #4176 belt-and-braces: fable→5.0 regex fallback already rejects temperature.
+      unsupportedParameters: ['temperature'],
+    },
     {
       id: 'claude-opus',
       displayName: 'Claude Opus 4.6',
@@ -157,6 +177,28 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliModelName: 'gemini-2.5-pro',
     },
     {
+      id: 'gemini-3.5-flash',
+      displayName: 'Gemini 3.5 Flash',
+      provider: 'google',
+      contextWindow: 1_048_576,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'structured_output',
+      ],
+      specialFeatures: ['streaming', 'grounding'],
+      notes: 'Latest fast Gemini (models.dev 2026-06-29); flash tier, NOT the gemini default',
+      pricing: { inputPer1M: 1.5, outputPer1M: 9.0 },
+      // Flash tier: reasoning stays BELOW gemini-3-pro (10) so pro keeps winning.
+      qualityScores: { reasoning: 8, codeGeneration: 9, speed: 10, cost: 8 },
+      maxOutputTokens: 65_536,
+      cliName: 'gemini',
+      cliModelName: 'gemini-3.5-flash',
+    },
+    {
       id: 'gemini-3-flash',
       displayName: 'Gemini 3 Flash (Preview)',
       provider: 'google',
@@ -199,6 +241,32 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliModelName: 'gemini-2.5-flash',
     },
     // ----- OpenAI Codex -----
+    {
+      id: 'gpt-5.5',
+      displayName: 'GPT-5.5',
+      provider: 'openai',
+      contextWindow: 1_050_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+        'computer_use',
+      ],
+      specialFeatures: ['streaming'],
+      notes: 'Frontier GPT (models.dev 2026-06-29); succeeds GPT-5.4 in Codex CLI; 1M context',
+      pricing: { inputPer1M: 5.0, outputPer1M: 30.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'codex',
+      cliModelName: 'gpt-5.5',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
+    },
     {
       id: 'codex-5.3',
       displayName: 'GPT-5.4',
@@ -377,8 +445,9 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
  * Quality-first: each CLI routes to its strongest model by default.
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
-  claude: 'claude-opus',
+  // #4176: fable/gpt-5.5 are strongest per CLI; gemini-3.5-flash is flash-tier, not default.
+  claude: 'claude-fable-5',
   gemini: 'gemini-3-pro',
-  codex: 'codex-5.3',
+  codex: 'gpt-5.5',
   opencode: 'opencode-default',
 };
