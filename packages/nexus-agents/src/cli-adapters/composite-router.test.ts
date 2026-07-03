@@ -18,6 +18,18 @@ import {
   getDefaultAvailableModelsCache,
   setDefaultAvailableModelsCache,
 } from '../config/available-models-cache.js';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  getModelSelectionShadowFailureCount,
+  readModelSelectionShadowRecords,
+  resetModelSelectionShadowFailureCount,
+} from './model-selection-shadow.js';
+import { resetModelSelectionReadinessLogging } from './model-selection-readiness.js';
+import { getModelSelectionShadowFile } from '../config/learning-persistence.js';
+import { getDefaultModelForCli } from '../config/model-config-helpers.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /**
  * Creates a mock CLI adapter for testing.
@@ -235,6 +247,103 @@ describe('CompositeRouter', () => {
           expect(result.value.model).toBeUndefined();
         }
       }
+    });
+  });
+
+  // #4197: shadow-mode eval recording for NEXUS_ROUTE_MODEL_SELECTION.
+  describe('route-model shadow eval (#4197)', () => {
+    let dir: string;
+    let prevDataDir: string | undefined;
+    let shadowRouter: CompositeRouter;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'router-shadow-'));
+      prevDataDir = process.env['NEXUS_DATA_DIR'];
+      process.env['NEXUS_DATA_DIR'] = dir;
+      resetModelSelectionShadowFailureCount();
+      resetModelSelectionReadinessLogging();
+      shadowRouter = new CompositeRouter(createTestAdapters());
+    });
+
+    afterEach(() => {
+      delete process.env['NEXUS_ROUTE_MODEL_SHADOW'];
+      delete process.env['NEXUS_ROUTE_MODEL_SELECTION'];
+      if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+      rmSync(dir, { recursive: true, force: true });
+      resetModelSelectionReadinessLogging();
+    });
+
+    it('records nothing when the flag is off (default)', async () => {
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+      shadowRouter.recordDifficultyOutcome(task, true);
+      expect(existsSync(getModelSelectionShadowFile())).toBe(false);
+    });
+
+    it('persists an outcome-joined shadow record when enabled, without touching the live decision', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // Live decision unchanged: route-time selection stays OFF, so no model.
+      expect(result.value.model).toBeUndefined();
+      expect(result.value.difficultyTier).toBeDefined();
+
+      shadowRouter.recordDifficultyOutcome(task, true);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      const rec = records[0];
+      expect(rec?.success).toBe(true);
+      expect(rec?.tier).toBe(result.value.difficultyTier);
+      // With selection off, the actual model is the CLI default the adapter
+      // resolves late; agreement is derived from it.
+      expect(rec?.actualModel).toBe(getDefaultModelForCli(rec?.cli as CliNameLiteral));
+      expect(rec?.agree).toBe(rec?.actualModel === rec?.shadowModel);
+      expect(getModelSelectionShadowFailureCount()).toBe(0);
+    });
+
+    it('records agree=true when route-time selection is live (actual === shadow)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      process.env['NEXUS_ROUTE_MODEL_SELECTION'] = 'true';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      shadowRouter.recordDifficultyOutcome(task, false);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.actualModel).toBe(result.value.model);
+      expect(records[0]?.agree).toBe(true);
+      expect(records[0]?.success).toBe(false);
+    });
+
+    it('does not join an outcome for a different task', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      await shadowRouter.route(task);
+      shadowRouter.recordDifficultyOutcome({ content: 'Some other task entirely' }, true);
+      expect(readModelSelectionShadowRecords()).toHaveLength(0);
+    });
+
+    it('never breaks routing or outcome recording when the shadow log cannot be written', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      // Occupy the data-dir path with a FILE so the learning dir can't exist.
+      const blocked = join(dir, 'blocked');
+      writeFileSync(blocked, 'occupied', 'utf-8');
+      process.env['NEXUS_DATA_DIR'] = blocked;
+
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+      expect(() => {
+        shadowRouter.recordDifficultyOutcome(task, true);
+      }).not.toThrow();
+      expect(getModelSelectionShadowFailureCount()).toBeGreaterThanOrEqual(1);
     });
   });
 

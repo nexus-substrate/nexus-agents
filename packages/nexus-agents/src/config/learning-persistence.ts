@@ -72,6 +72,21 @@ export function getMetaOutcomesFile(): string {
   return join(getLearningDir(), 'meta-outcomes.jsonl');
 }
 
+/**
+ * JSONL file for route-time model-selection shadow comparisons (#4197).
+ *
+ * Stores ONLY the sanitized comparison — CLI slot, difficulty tier, the model
+ * actually used vs the model `resolveModelForTier` WOULD have picked, agreement,
+ * outcome success, and (where measured) costUsd — never task content, prompts,
+ * or model outputs. A DEDICATED log (mirroring `meta-outcomes.jsonl`, #3593)
+ * rather than extra OutcomeStore fields, so the shadow eval never re-reads the
+ * OutcomeStore that weather + LinUCB warm-start already replay (the pre-existing
+ * double-counting boundary excluded from #4194).
+ */
+export function getModelSelectionShadowFile(): string {
+  return join(getLearningDir(), 'model-selection-shadow.jsonl');
+}
+
 // Note: previous LEARNING_DIR / OUTCOMES_FILE / RULES_FILE exports were
 // removed in #2316 — they were evaluated at module import time and ignored
 // `NEXUS_DATA_DIR`. All callers must use the getter functions above.

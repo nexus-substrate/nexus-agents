@@ -114,6 +114,15 @@ import {
 } from '../config/register-model-sources.js';
 import { resolveModelForTier, isRouteModelSelectionEnabled } from './resolve-model-for-tier.js';
 import {
+  MODEL_SELECTION_SHADOW_SCHEMA_VERSION,
+  computeModelSelectionShadow,
+  isRouteModelShadowEnabled,
+  persistModelSelectionShadowRecord,
+  recordModelSelectionShadowFailure,
+  type ModelSelectionShadowComparison,
+} from './model-selection-shadow.js';
+import { logModelSelectionReadinessOnce } from './model-selection-readiness.js';
+import {
   recordBanditOutcome,
   recordPreferenceSignal,
   recordZeroRouterOutcome,
@@ -234,6 +243,15 @@ export class CompositeRouter implements ICompositeRouter {
 
   // Track last traceId for metrics correlation (Issue #559)
   private lastTraceId?: string;
+
+  /**
+   * Pending model-selection shadow comparison awaiting its outcome join
+   * (#4197). Keyed by task content like {@link lastRoutedTask}; persisted with
+   * `success` when `recordDifficultyOutcome` reports the matching outcome.
+   * The task content itself is never persisted.
+   */
+  private pendingModelShadow?:
+    (ModelSelectionShadowComparison & { taskContent: string }) | undefined;
 
   constructor(
     adapters: Map<RoutingArmId, ICliAdapter>,
@@ -653,12 +671,19 @@ export class CompositeRouter implements ICompositeRouter {
 
       this.trackLastRoutedTask(task, pipelineResult.value);
 
-      return this.buildRoutingDecision({
+      const decisionResult = this.buildRoutingDecision({
         ...pipelineResult.value,
         taskProfile,
         stagesExecuted,
         startTime,
       });
+      // #4197: SHADOW-ONLY comparison of the tier resolver's would-be model vs
+      // the model actually used. Exception-guarded inside — never alters or
+      // breaks the live decision.
+      if (decisionResult.ok) {
+        this.trackModelSelectionShadow(task, decisionResult.value);
+      }
+      return decisionResult;
     } catch (error: unknown) {
       return this.handleRoutingError(error, stagesExecuted);
     }
@@ -754,6 +779,77 @@ export class CompositeRouter implements ICompositeRouter {
         selectedCli: result.selectedCli,
         difficulty: result.difficultyEstimate.aggregateScore,
       };
+    }
+  }
+
+  /**
+   * Compute the model-selection SHADOW comparison for a routed decision
+   * (#4197): what `resolveModelForTier` WOULD have picked vs the model the
+   * decision actually carries (or the CLI default the adapter will resolve).
+   * Held pending until `recordDifficultyOutcome` supplies the outcome, then
+   * persisted to the dedicated shadow log. Gated behind
+   * `NEXUS_ROUTE_MODEL_SHADOW=1` (default OFF). NEVER affects the live
+   * decision — any failure increments the shadow-failure counter and is
+   * logged, not thrown into the routing path.
+   */
+  private trackModelSelectionShadow(task: CliTask, decision: CompositeRoutingDecision): void {
+    try {
+      if (!isRouteModelShadowEnabled() || decision.difficultyTier === undefined) return;
+      // Log-once flip-readiness signal (#4197, mirrors #4161's pattern):
+      // surfaced alongside shadow enablement, observed, never acted on.
+      logModelSelectionReadinessOnce(this.logger);
+      const comparison = computeModelSelectionShadow(
+        routingArmDisplaySlot(decision.cliName),
+        decision.difficultyTier,
+        decision.model
+      );
+      this.pendingModelShadow = { ...comparison, taskContent: task.content };
+      this.logger.debug('Model-selection shadow computed (#4197)', {
+        cli: comparison.cli,
+        tier: comparison.tier,
+        actualModel: comparison.actualModel,
+        shadowModel: comparison.shadowModel,
+        agree: comparison.agree,
+      });
+    } catch (error: unknown) {
+      const failures = recordModelSelectionShadowFailure();
+      this.logger.warn('Model-selection shadow failed (non-fatal, #4197)', {
+        error: getErrorMessage(error),
+        failures,
+      });
+    }
+  }
+
+  /**
+   * Join a pending model-selection shadow comparison with its task outcome and
+   * persist the completed record (#4197). Matches by task content, mirroring
+   * {@link getDifficultyInfo}'s lastRoutedTask join. `costUsd` is deliberately
+   * absent: the routing outcome path measures no per-decision cost today, and
+   * the readiness gate's cost criterion stays fail-closed until it does.
+   * Exception-guarded — an outcome-join failure never breaks outcome recording.
+   */
+  private joinModelSelectionShadowOutcome(task: CliTask, success: boolean): void {
+    const pending = this.pendingModelShadow;
+    if (pending === undefined) return;
+    if (pending.taskContent !== task.content) return;
+    this.pendingModelShadow = undefined;
+    try {
+      persistModelSelectionShadowRecord({
+        schema: MODEL_SELECTION_SHADOW_SCHEMA_VERSION,
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        cli: pending.cli,
+        tier: pending.tier,
+        actualModel: pending.actualModel,
+        shadowModel: pending.shadowModel,
+        agree: pending.agree,
+        success,
+      });
+    } catch (error: unknown) {
+      const failures = recordModelSelectionShadowFailure();
+      this.logger.warn('Model-selection shadow outcome join failed (non-fatal, #4197)', {
+        error: getErrorMessage(error),
+        failures,
+      });
     }
   }
 
@@ -873,6 +969,9 @@ export class CompositeRouter implements ICompositeRouter {
 
   recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void {
     recordZeroRouterOutcome(task, success, qualityScore, this.getOutcomeDependencies());
+    // #4197: complete the pending model-selection shadow record with the
+    // outcome. Shadow-only + exception-guarded; no routing/learning effect.
+    this.joinModelSelectionShadowOutcome(task, success);
   }
 
   hasMinimumPreferenceData(): boolean {
