@@ -12,7 +12,14 @@
  *     once, never per-request O(N) scans),
  *   - tier-ordered candidate selection (manifest/in-tree before
  *     models-dev/generated) with effective-duplicate dedupe, failing CLOSED
- *     when more than one distinct candidate survives.
+ *     when more than one distinct candidate survives,
+ *   - dated-decoration tolerance (#4183): ONE trailing snapshot-date
+ *     segment on the decorated side is stripped when the canonical's
+ *     version is date-free — snapshot-style dated canonicals still require
+ *     full equality,
+ *   - a sub-SKU guard (#4183): a size/tier quirk (`-mini`, `-lite`, `70b`)
+ *     on the decorated id that the canonical lacks fails CLOSED instead of
+ *     inheriting the parent SKU's pricing.
  *
  * The registry itself (model-registry.ts) owns the merge semantics —
  * matched entries grant PRICING/METADATA ONLY; behaviour fields still come
@@ -159,4 +166,96 @@ export function selectIdentityCandidate(
   const authoritative = ranked.filter((e) => !BREADTH_SOURCES.has(e.source));
   if (authoritative.length > 0) return uniqueCandidate(authoritative);
   return uniqueCandidate(ranked.filter((e) => BREADTH_SOURCES.has(e.source)));
+}
+
+// ============================================================================
+// #4183 — dated-decoration matching + sub-SKU fail-closed guard
+// ============================================================================
+
+/**
+ * ONE trailing snapshot-date segment on a version KEY — `4-8-20250514`
+ * ends in a strippable `-20250514`. Mirrors `parseClaudeMajorMinor`'s
+ * date-tolerant parse (model-parameter-support.ts): 6–8 digits covers
+ * `202505`/`20250514` while a short numeric segment (`-8`, `-70`) stays
+ * version-significant. Applied AFTER normalization, so `_`/`.` separators
+ * have already become `-`.
+ */
+const TRAILING_DATE_SEGMENT = /-\d{6,8}$/;
+
+/**
+ * Any date-LIKE segment inside a version key (`20250514`, `2024-08`,
+ * `2024-08-06`). Detects snapshot-style versions where the date IS (part
+ * of) the version — those require full equality and never participate in
+ * date-stripped matching, on either side.
+ */
+const DATE_SEGMENT = /(?:^|-)(?:\d{6,8}|\d{4}-\d{2}(?:-\d{2})?)(?:-|$)/;
+
+/**
+ * Size/tier quirk markers from model-identity.ts's QUIRK_PATTERNS (#4183).
+ * These denote a DIFFERENT SKU with its own pricing, not a variant of the
+ * matched model:
+ *   - 'small' (mini|nano|tiny|small|lite) and 'large' (large|xl|big|maxi)
+ *     are distinct size tiers sold at their own price points;
+ *   - 'sized-suffix' (7b/70b/405b) is a parameter-count SKU marker.
+ * Deliberately EXCLUDED: 'thinking', 'high-variant', 'vision', 'coder',
+ * 'instruct' (mode/feature variants of the same SKU, same price sheet),
+ * 'embedding' (never reaches identity matching with a matching family),
+ * and 'dated' (handled by the date-stripping rule above).
+ */
+const SIZE_TIER_QUIRKS: ReadonlySet<string> = new Set(['small', 'large', 'sized-suffix']);
+
+/**
+ * Full identity-match for a decorated id (#4164 + #4183): primary exact
+ * version-key lookup, then a date-stripped fallback for dated decorations,
+ * then the sub-SKU guard. Fails closed at every step.
+ */
+export function matchIdentityCandidate(
+  index: ReadonlyMap<string, ModelEntry[]>,
+  identity: ResolvedModelIdentity
+): ModelEntry | undefined {
+  const key = identityKeyFor(identity);
+  if (key === undefined || identity.version === undefined) return undefined;
+  const matched =
+    selectIdentityCandidate(index.get(key)) ??
+    selectDateStripped(index, identity, identity.version);
+  if (matched === undefined) return undefined;
+  return blockedBySizeQuirk(identity, matched) ? undefined : matched;
+}
+
+/** Date-stripped fallback lookup, scoped to the identity's vendor|family. */
+function selectDateStripped(
+  index: ReadonlyMap<string, ModelEntry[]>,
+  identity: Pick<ResolvedModelIdentity, 'vendor' | 'family'>,
+  version: string
+): ModelEntry | undefined {
+  const vk = versionKey(version);
+  if (!TRAILING_DATE_SEGMENT.test(vk)) return undefined;
+  const stripped = vk.replace(TRAILING_DATE_SEGMENT, '');
+  // FAIL-CLOSED guard: index buckets are keyed by the canonical side's
+  // versionKey, so requiring the stripped key to be date-FREE guarantees
+  // every candidate's own version carries no date segment. Snapshot-style
+  // canonicals (dated gpt-4o ids, version = the date) stay reachable only
+  // through full equality on the primary key.
+  if (stripped.length === 0 || DATE_SEGMENT.test(stripped)) return undefined;
+  const strippedKey = identityKeyFor({
+    vendor: identity.vendor,
+    family: identity.family,
+    version: stripped,
+  });
+  if (strippedKey === undefined) return undefined;
+  return selectIdentityCandidate(index.get(strippedKey));
+}
+
+/**
+ * Sub-SKU guard (#4183): a size/tier quirk on the DECORATED id that is
+ * absent from the canonical candidate's identity means the decoration names
+ * a different SKU (`claude-opus-4-8-mini` is not Opus 4.8) — fail closed
+ * rather than grant the parent's pricing. Quirks present on BOTH sides
+ * (`…-lite-hardened` matching a canonical `…-lite`) do not block.
+ */
+function blockedBySizeQuirk(identity: ResolvedModelIdentity, matched: ModelEntry): boolean {
+  const sizeQuirks = identity.quirks.filter((q) => SIZE_TIER_QUIRKS.has(q));
+  if (sizeQuirks.length === 0) return false;
+  const canonicalQuirks = resolveModelIdentitySync(matched.id).quirks;
+  return sizeQuirks.some((q) => !canonicalQuirks.includes(q));
 }
