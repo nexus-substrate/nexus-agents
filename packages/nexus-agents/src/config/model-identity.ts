@@ -253,8 +253,11 @@ export function parseModelId(modelId: string): ParseResult {
  * Lowercase + replace `_` and `/` with `-` so word boundaries land on
  * the real model-name tokens. Collapses runs of `-` so we don't get
  * empty tokens from `--`.
+ *
+ * Exported (#4164) so the ModelRegistry's normalized-retry tier reuses
+ * THIS normalizer for decorated gateway ids — do not add another one.
  */
-function normaliseModelId(modelId: string): string {
+export function normaliseModelId(modelId: string): string {
   return modelId.toLowerCase().replace(/[_/]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
