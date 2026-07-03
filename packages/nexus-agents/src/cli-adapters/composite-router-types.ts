@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { TaskCategorySchema } from '../config/task-specialization-types.js';
 import type { ICliAdapter, CliName, RoutingArmId } from './types.js';
 import type { TaskProfile } from '../core/index.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
@@ -79,9 +80,11 @@ export const CompositeRouterConfigSchema = z.object({
       maxCostUsd: z.number().positive(),
       maxLatencyMs: z.number().positive(),
       /** Per-task-class cost ceilings in USD, keyed by TaskCategory (#4196).
+       * Keys are validated against the TaskCategory enum (#4214) so a typo'd
+       * class fails config parsing instead of silently configuring nothing.
        * Default: absent → no ceiling (OFF/unlimited). Enforced only under
        * billingMode 'api'; missing candidate pricing fails CLOSED. */
-      taskClassMaxCostUsd: z.record(z.string(), z.number().positive()),
+      taskClassMaxCostUsd: z.partialRecord(TaskCategorySchema, z.number().positive()),
     })
     .partial()
     .optional(),

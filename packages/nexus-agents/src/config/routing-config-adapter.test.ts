@@ -89,6 +89,23 @@ describe('routing-config-adapter', () => {
       });
     });
 
+    it('plumbs budget.taskClassMaxCostUsd through to budgetConstraints (#4214)', () => {
+      const yamlConfig: RoutingConfig = {
+        budget: {
+          maxCostUsd: 5,
+          taskClassMaxCostUsd: { code_generation: 0.25, research: 1.0 },
+        },
+        latencyScoreWeight: 0.2,
+      };
+
+      const result = adaptRoutingConfig(yamlConfig);
+
+      expect(result.budgetConstraints?.taskClassMaxCostUsd).toEqual({
+        code_generation: 0.25,
+        research: 1.0,
+      });
+    });
+
     it('adapts linucb parameters', () => {
       const yamlConfig: RoutingConfig = {
         linucb: {

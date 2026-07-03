@@ -6,12 +6,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   CompositeRouter,
   createCompositeRouter,
   CompositeRouterConfigSchema,
   CompositeRoutingError,
 } from './composite-router.js';
+import { RoutingConfigSchema } from '../config/schemas-routing.js';
+import { adaptRoutingConfig } from '../config/routing-config-adapter.js';
 import type { ICliAdapter, CliTask, CliName, RoutingArmId } from './types.js';
 import {
   AvailableModelsCache,
@@ -1156,5 +1159,67 @@ describe('CompositeRouter #4196 cost weighting/ceiling', () => {
     if (!result.ok) {
       expect(result.error.stage).toBe('budget-filter');
     }
+  });
+
+  it("schema rejects typo'd task-class ceiling keys (#4214)", () => {
+    expect(() =>
+      CompositeRouterConfigSchema.parse({
+        budgetConstraints: { taskClassMaxCostUsd: { code_gen: 0.25 } },
+      })
+    ).toThrow();
+  });
+});
+
+// ============================================================================
+// #4214 — end-to-end: nexus-agents.yaml text → RoutingConfigSchema →
+// adaptRoutingConfig → CompositeRouter enforces per-task-class ceilings
+// ============================================================================
+
+describe('CompositeRouter #4214 YAML-configured cost ceilings (end-to-end)', () => {
+  // Explicit stage flags keep the pipeline deterministic regardless of the
+  // learning-persistence env (which auto-enables routingMemory et al., #1353).
+  const yamlText = `
+routing:
+  stages:
+    preferenceRouting: false
+    routingMemory: false
+    strategyDistillation: false
+  budget:
+    taskClassMaxCostUsd:
+      code_generation: 0.000001
+`;
+
+  afterEach(() => {
+    delete process.env['NEXUS_BILLING_MODE'];
+  });
+
+  function buildRouterFromYaml(): CompositeRouter {
+    const doc = parseYaml(yamlText) as { routing: unknown };
+    const routingConfig = RoutingConfigSchema.parse(doc.routing);
+    return new CompositeRouter(createTestAdapters(), adaptRoutingConfig(routingConfig));
+  }
+
+  it('api billing: YAML ceiling reaches the BudgetRouter and rejects unaffordable classes', async () => {
+    process.env['NEXUS_BILLING_MODE'] = 'api';
+    const router = buildRouterFromYaml();
+    const result = await router.route({ content: 'implement a function', maxTokens: 10_000 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.stage).toBe('budget-filter');
+    }
+  });
+
+  it('plan billing (default): the same YAML ceiling is an annotated no-op', async () => {
+    delete process.env['NEXUS_BILLING_MODE'];
+    const router = buildRouterFromYaml();
+    const result = await router.route({ content: 'implement a function', maxTokens: 10_000 });
+    expect(result.ok).toBe(true);
+  });
+
+  it('adapted YAML config carries the ceilings into budgetConstraints', () => {
+    const doc = parseYaml(yamlText) as { routing: unknown };
+    const routingConfig = RoutingConfigSchema.parse(doc.routing);
+    const adapted = adaptRoutingConfig(routingConfig);
+    expect(adapted.budgetConstraints?.taskClassMaxCostUsd).toEqual({ code_generation: 0.000001 });
   });
 });

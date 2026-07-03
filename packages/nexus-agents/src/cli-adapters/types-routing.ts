@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../core/index.js';
+import type { TaskCategory } from '../config/task-specialization-types.js';
 import type { CliName, CliResponse, CliError } from './types-core.js';
 import type { CliTask, ICliAdapter } from './types-capability.js';
 
@@ -181,11 +182,13 @@ export interface BudgetRouterOptions {
   /**
    * Per-task-class cost ceilings in USD per task (#4196), keyed by
    * `TaskCategory` from `detectTaskCategory` (e.g. `code_generation`).
+   * Keys are the TaskCategory enum (#4214) so a typo'd class is a compile
+   * error rather than a silently ignored entry.
    * Absent/empty → no ceiling (default OFF/unlimited). Enforced only under
    * api billing mode by the composite pipeline; a candidate whose registry
    * pricing is missing FAILS a configured ceiling (fail-closed).
    */
-  readonly taskClassCostCeilings?: Readonly<Record<string, number>>;
+  readonly taskClassCostCeilings?: Readonly<Partial<Record<TaskCategory, number>>>;
 }
 
 /**

@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import { CliNameSchema } from './model-capabilities-types.js';
+import { TaskCategorySchema } from './task-specialization-types.js';
 
 /**
  * Budget constraints schema for cost/token/latency limits.
@@ -23,6 +24,15 @@ export const BudgetConstraintsSchema = z
     maxCostUsd: z.number().positive().optional(),
     /** Maximum latency per request in milliseconds */
     maxLatencyMs: z.number().positive().optional(),
+    /**
+     * Per-task-class cost ceilings in USD, keyed by `TaskCategory`
+     * (#4196, #4214). Keys are validated against the enum so a typo'd
+     * class fails config parsing instead of silently configuring nothing.
+     * Absent → no ceiling (OFF/unlimited). Enforced only under
+     * `NEXUS_BILLING_MODE=api`; a candidate with missing registry pricing
+     * fails a configured ceiling (fail-closed).
+     */
+    taskClassMaxCostUsd: z.partialRecord(TaskCategorySchema, z.number().positive()).optional(),
   })
   .optional();
 
