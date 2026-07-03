@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import type { CliName } from './types-core.js';
+import { deriveTierToClis } from './derive-tier-tables.js';
 
 /**
  * Difficulty dimensions for task analysis.
@@ -95,12 +96,15 @@ export const DEFAULT_DIFFICULTY_TO_TIER: Record<DifficultyLevel, ModelTier> = {
 
 /**
  * Mapping from model tier to CLI preference order.
+ *
+ * DERIVED from each CLI's default-model `qualityScores` + real registry pricing
+ * (#4195) — no longer a hand-maintained literal. `powerful` leads with the
+ * strongest premium default and EXCLUDES any CLI whose default lacks
+ * qualityScores (fail-safe: an unvetted model never fronts the powerful tier);
+ * `fast` leads with the fastest/cheapest; `balanced` with the best quality/cost
+ * blend. Ordering is deterministic (stable, explicit tie-breaks).
  */
-export const DEFAULT_TIER_TO_CLIS: Record<ModelTier, CliName[]> = {
-  fast: ['gemini', 'codex', 'opencode', 'claude'],
-  balanced: ['codex', 'opencode', 'gemini', 'claude'],
-  powerful: ['claude', 'codex', 'opencode', 'gemini'],
-};
+export const DEFAULT_TIER_TO_CLIS: Record<ModelTier, CliName[]> = deriveTierToClis();
 
 /**
  * Weight configuration for difficulty aggregation.

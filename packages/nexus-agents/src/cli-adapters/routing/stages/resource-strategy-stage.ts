@@ -22,6 +22,7 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.js';
+import { deriveCliQualityRank, deriveCliCostRank } from '../../derive-tier-tables.js';
 
 /**
  * Resource strategy tier determining routing behavior.
@@ -56,24 +57,18 @@ const DEFAULT_CONFIG: ResourceStrategyConfig = {
 };
 
 /**
- * Quality ranking per CLI (higher = better quality, higher cost).
+ * Quality ranking per CLI (higher = better quality). DERIVED from each CLI's
+ * default-model composite `qualityScores` (#4195); an unscored default ranks 0
+ * (never quality-boosted). No longer a hand-tuned literal.
  */
-const CLI_QUALITY_RANK: Record<CliName, number> = {
-  claude: 3,
-  codex: 2,
-  opencode: 1.5,
-  gemini: 1,
-};
+const CLI_QUALITY_RANK: Record<CliName, number> = deriveCliQualityRank();
 
 /**
- * Cost efficiency ranking per CLI (higher = cheaper).
+ * Cost-efficiency ranking per CLI (higher = cheaper). DERIVED from each CLI's
+ * default-model real registry pricing (#4195); a $0/$0 default is treated as
+ * most-expensive so it can never rank "cheapest" and pull budget traffic.
  */
-const CLI_COST_RANK: Record<CliName, number> = {
-  gemini: 3,
-  codex: 2,
-  opencode: 2,
-  claude: 1,
-};
+const CLI_COST_RANK: Record<CliName, number> = deriveCliCostRank();
 
 /**
  * Computes the current resource tier from a utilization level.
