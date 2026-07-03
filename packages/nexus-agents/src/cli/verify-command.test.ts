@@ -244,6 +244,33 @@ describe('verify-command', () => {
       expect(failing.noHardFailures).toBe(false);
     });
 
+    it('reports Configuration as failed (warn) with a fix hint when config access throws (#4181)', async () => {
+      vi.resetModules();
+      vi.doMock('../config/index.js', async (importOriginal) => {
+        const actual = await importOriginal<typeof import('../config/index.js')>();
+        return {
+          ...actual,
+          get defaultConfig(): never {
+            throw new Error('simulated config loader failure');
+          },
+        };
+      });
+      try {
+        const mod = await import('./verify-command.js');
+        const result = await mod.runVerify();
+        const configCheck = result.checks.find((c) => c.name === 'Configuration');
+        expect(configCheck).toBeDefined();
+        expect(configCheck?.passed).toBe(false);
+        // Diagnostic-only: degraded, not a hard gate.
+        expect(configCheck?.severity).toBe('warn');
+        expect(configCheck?.message).toBe('Failed to load default configuration');
+        expect(configCheck?.fix).toContain('Reinstall nexus-agents');
+      } finally {
+        vi.doUnmock('../config/index.js');
+        vi.resetModules();
+      }
+    });
+
     it('printVerifyResult renders warn-only failures as degraded, not failed', () => {
       const result: VerifyResult = {
         version: '1.0.0',

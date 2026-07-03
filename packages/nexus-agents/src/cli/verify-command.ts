@@ -155,10 +155,14 @@ function checkConfigLoading(): VerifyCheck {
       message: 'Using default configuration',
     };
   } catch {
+    // #4181: config breakage must SURFACE in the diagnostic instead of being
+    // reported as a pass. Warn severity — degraded, not a hard gate (exit 0).
     return {
       name: 'Configuration',
-      passed: true, // Still works with defaults
-      message: 'Using default configuration',
+      passed: false,
+      severity: 'warn',
+      message: 'Failed to load default configuration',
+      fix: 'Reinstall nexus-agents (npm install -g nexus-agents); if a local config override exists, check it for syntax errors',
     };
   }
 }
