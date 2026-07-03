@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.158.1
+
+### Patch Changes
+
+- [#4193](https://github.com/nexus-substrate/nexus-agents/pull/4193) [`6d42160`](https://github.com/nexus-substrate/nexus-agents/commit/6d4216076e69f92e2178b5975354b82dd3380c86) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents verify`: the Configuration check now reports a failure (warn severity, with a fix hint) when the config loader throws, instead of passing silently — config breakage surfaces in the diagnostic. Warn severity keeps the exit code at 0 (diagnostic-only, not a gate). Also pins previously shape-only test assertions: DEFAULT_RUBRICS criterion configs/weights and the readiness-criterion detail wording ([#4181](https://github.com/nexus-substrate/nexus-agents/issues/4181)).
+
 ## 2.158.0
 
 ### Minor Changes
