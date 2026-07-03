@@ -22,7 +22,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 // ============================================================================
 // Configuration
@@ -54,10 +54,20 @@ interface CheckResult {
  * Get list of changed files in the current commit or PR.
  * Uses git diff against the merge base for PRs, or HEAD~1 for direct commits.
  */
+/**
+ * GITHUB_BASE_REF is external input (the PR target branch name); accept only
+ * plain ref characters before it reaches a shell string (#4171).
+ */
+function safeBaseRef(): string | undefined {
+  const baseRef = process.env['GITHUB_BASE_REF'];
+  if (baseRef === undefined || baseRef === '') return undefined;
+  return /^[\w./-]+$/.test(baseRef) ? baseRef : undefined;
+}
+
 function getChangedFiles(): string[] {
   try {
-    const baseRef = process.env['GITHUB_BASE_REF'];
-    const base = baseRef !== undefined && baseRef !== '' ? `origin/${baseRef}` : 'HEAD~1';
+    const baseRef = safeBaseRef();
+    const base = baseRef !== undefined ? `origin/${baseRef}` : 'HEAD~1';
 
     const diffOutput = execSync(
       `git diff --name-only ${base}...HEAD 2>/dev/null || git diff --name-only HEAD~1`,
@@ -113,12 +123,24 @@ export function isMechanicalActionBumpDiff(diff: string): boolean {
 /** Diff a single changed pipeline file against the PR base; mechanical-bump check (#3363). */
 function isMechanicalActionBump(file: string): boolean {
   try {
-    const baseRef = process.env['GITHUB_BASE_REF'];
-    const base = baseRef !== undefined && baseRef !== '' ? `origin/${baseRef}...HEAD` : 'HEAD~1';
-    const diff = execSync(
-      `git diff ${base} -- "${file}" 2>/dev/null || git diff HEAD~1 -- "${file}"`,
-      { cwd: REPO_ROOT, encoding: 'utf-8' }
-    );
+    // execFileSync array args: `file` is a PR-controlled path and baseRef is
+    // external input — neither may reach a shell string (#4171).
+    const baseRef = safeBaseRef();
+    const range = baseRef !== undefined ? `origin/${baseRef}...HEAD` : 'HEAD~1';
+    let diff: string;
+    try {
+      diff = execFileSync('git', ['diff', range, '--', file], {
+        cwd: REPO_ROOT,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      diff = execFileSync('git', ['diff', 'HEAD~1', '--', file], {
+        cwd: REPO_ROOT,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    }
     return isMechanicalActionBumpDiff(diff);
   } catch {
     // Can't determine the diff → treat as substantive so the gate still fires.
@@ -135,10 +157,10 @@ function isMechanicalActionBump(file: string): boolean {
  * in any commit on the branch is honored. (#2411)
  */
 function getCommitMessagesForEscapeHatch(cwd: string = REPO_ROOT): string {
-  const baseRef = process.env['GITHUB_BASE_REF'];
-  if (baseRef !== undefined && baseRef !== '') {
+  const baseRef = safeBaseRef();
+  if (baseRef !== undefined) {
     try {
-      return execSync(`git log origin/${baseRef}...HEAD --pretty=%B`, {
+      return execFileSync('git', ['log', `origin/${baseRef}...HEAD`, '--pretty=%B'], {
         cwd,
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
