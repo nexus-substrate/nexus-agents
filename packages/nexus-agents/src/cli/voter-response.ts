@@ -9,29 +9,27 @@
 import { z } from 'zod';
 import type { Vote } from '../consensus/types.js';
 import type { VoterRole } from './vote-types.js';
-import { getErrorMessage, createLogger } from '../core/index.js';
+import { getErrorMessage } from '../core/index.js';
 
 // ============================================================================
 // Error Classes
 // ============================================================================
 
 /**
- * Error thrown when vote response parsing fails and synthetic votes not allowed.
+ * Error thrown when vote response parsing fails.
  * (Source: Issue #512 - Fail-safe voting response parsing)
  *
- * By default, parseVoteResponse throws this error when JSON parsing or validation
- * fails. To use synthetic fallback votes (NOT RECOMMENDED), pass
- * `allowSyntheticVote: true` to the options parameter.
+ * parseVoteResponse always throws this error when JSON parsing or validation
+ * fails — voting is fail-closed; no synthetic vote is ever fabricated (#4177
+ * removed the opt-in `allowSyntheticVote` escape hatch, which had zero
+ * production callers).
  */
 export class SyntheticVoteError extends Error {
   constructor(
     reason: string,
     public readonly rawOutput: string
   ) {
-    super(
-      `Vote response parsing failed: ${reason}. ` +
-        'To use synthetic fallback votes (NOT RECOMMENDED), set allowSyntheticVote: true'
-    );
+    super(`Vote response parsing failed: ${reason}`);
     this.name = 'SyntheticVoteError';
   }
 }
@@ -47,18 +45,6 @@ export type ParsedVoteSource = 'parsed' | 'fallback';
  */
 export interface ParsedVote extends Vote {
   readonly source: ParsedVoteSource;
-}
-
-/**
- * Options for parseVoteResponse.
- */
-export interface ParseVoteOptions {
-  /**
-   * Allow synthetic fallback votes when parsing fails.
-   * Default: false (throws SyntheticVoteError)
-   * (Source: Issue #512 - Fail-safe voting)
-   */
-  readonly allowSyntheticVote?: boolean;
 }
 
 // ============================================================================
@@ -414,38 +400,6 @@ export function extractJsonFromResponse(text: string): string {
   return extractFirstJsonObject(text) ?? text.trim();
 }
 
-/**
- * Creates a fallback vote when parsing fails.
- * Attempts to infer decision from text content.
- * ONLY used when allowSyntheticVote is explicitly true.
- * (Source: Issue #512 - Fail-safe voting)
- */
-function createFallbackVote(output: string, _role: VoterRole, reason: string): ParsedVote {
-  const lower = output.toLowerCase();
-  let decision: Vote['decision'] = 'abstain';
-
-  // Simple keyword detection - heuristic only
-  // Check reject keywords FIRST since "disagree" contains "agree" substring
-  if (lower.includes('reject') || lower.includes('decline') || lower.includes('disagree')) {
-    decision = 'reject';
-  } else if (lower.includes('approve') || lower.includes('accept') || lower.includes('agree')) {
-    decision = 'approve';
-  }
-
-  // Log warning about synthetic vote
-  createLogger({ component: 'voter-response' }).warn(
-    'Creating synthetic vote (NOT parsed from LLM output)',
-    { decision, reason }
-  );
-
-  return {
-    decision,
-    reasoning: `[SYNTHETIC: ${reason}] ${output.slice(0, 200)}`,
-    confidence: 0.5,
-    source: 'fallback', // Mark as synthetic
-  };
-}
-
 /** Caps mirroring {@link VoteResponseSchema} (reasoning) + {@link RawFindingSchema} (claim). */
 const REASONING_MAX_CHARS = 4000;
 const CLAIM_MAX_CHARS = 2000;
@@ -506,24 +460,17 @@ function buildParsedVote(data: VoteResponse): ParsedVote {
 /**
  * Parses vote response from LLM output.
  *
- * By default, throws SyntheticVoteError if parsing fails. To use synthetic
- * fallback votes (NOT RECOMMENDED), pass `allowSyntheticVote: true`.
+ * Fail-closed: throws SyntheticVoteError if parsing or validation fails.
+ * No synthetic vote is ever fabricated from unparseable output (#4177).
  *
  * (Source: Issue #512 - Fail-safe voting response parsing)
  *
  * @param output - Raw LLM output text
- * @param role - Voter role for context
- * @param options - Parsing options including allowSyntheticVote
+ * @param _role - Voter role for context
  * @returns ParsedVote with source tracking
- * @throws SyntheticVoteError if parsing fails and allowSyntheticVote is false
+ * @throws SyntheticVoteError if parsing or validation fails
  */
-export function parseVoteResponse(
-  output: string,
-  role: VoterRole,
-  options?: ParseVoteOptions
-): ParsedVote {
-  const allowSyntheticVote = options?.allowSyntheticVote ?? false;
-
+export function parseVoteResponse(output: string, _role: VoterRole): ParsedVote {
   try {
     const jsonStr = extractJsonFromResponse(output);
     const parsed = JSON.parse(jsonStr) as unknown;
@@ -535,23 +482,14 @@ export function parseVoteResponse(
       return buildParsedVote(validated.data);
     }
 
-    // Validation failed - throw or fallback based on config
     const reason = `Validation failed: ${validated.error.issues.map((e: { message: string }) => e.message).join(', ')}`;
-    if (!allowSyntheticVote) {
-      throw new SyntheticVoteError(reason, output);
-    }
-    return createFallbackVote(output, role, reason);
+    throw new SyntheticVoteError(reason, output);
   } catch (error) {
     // If it's already a SyntheticVoteError, rethrow it
     if (error instanceof SyntheticVoteError) {
       throw error;
     }
 
-    // Parse error - throw or fallback based on config
-    const reason = getErrorMessage(error, 'Unknown parse error');
-    if (!allowSyntheticVote) {
-      throw new SyntheticVoteError(reason, output);
-    }
-    return createFallbackVote(output, role, reason);
+    throw new SyntheticVoteError(getErrorMessage(error, 'Unknown parse error'), output);
   }
 }

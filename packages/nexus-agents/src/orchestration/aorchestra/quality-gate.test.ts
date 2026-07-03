@@ -10,6 +10,7 @@ import {
   nonEmptyGate,
   composeGates,
   applyQualityGate,
+  createQaGate,
   DEFAULT_QUALITY_GATE,
   MIN_OUTPUT_LENGTH,
   MAX_OUTPUT_LENGTH,
@@ -128,6 +129,49 @@ describe('quality-gate', () => {
 
     it('rejects too-short output', () => {
       expect(DEFAULT_QUALITY_GATE(makeResult('short'))).toContain('too short');
+    });
+  });
+
+  describe('createQaGate', () => {
+    it("maps a 'reject' verdict to a 'QA reject: <feedback>' rejection reason", async () => {
+      const gate = createQaGate(() =>
+        Promise.resolve({
+          verdict: 'reject' as const,
+          feedback: 'Output contradicts the spec',
+          issues: ['contradiction'],
+        })
+      );
+
+      await expect(gate(makeResult('some worker output here'))).resolves.toBe(
+        'QA reject: Output contradicts the spec'
+      );
+    });
+
+    it("returns undefined (pass) for a 'pass' verdict", async () => {
+      const gate = createQaGate(() =>
+        Promise.resolve({
+          verdict: 'pass' as const,
+          feedback: 'Looks good',
+          issues: [],
+        })
+      );
+
+      await expect(gate(makeResult('some worker output here'))).resolves.toBeUndefined();
+    });
+
+    it('returns undefined for non-success results without invoking the reviewer', async () => {
+      let reviewCalls = 0;
+      const gate = createQaGate(() => {
+        reviewCalls += 1;
+        return Promise.resolve({
+          verdict: 'reject' as const,
+          feedback: 'should not run',
+          issues: [] as readonly string[],
+        });
+      });
+
+      await expect(gate(makeResult('failed output', 'error'))).resolves.toBeUndefined();
+      expect(reviewCalls).toBe(0);
     });
   });
 

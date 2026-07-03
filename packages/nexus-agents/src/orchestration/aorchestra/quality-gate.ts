@@ -104,10 +104,13 @@ export type AsyncQualityGateFn = (result: WorkerResult) => Promise<string | unde
  * dispatchWorkers(entries, { asyncQualityGate: qaGate });
  * ```
  */
+// @export-no-consumer-yet — see #4177. This is the only factory that adapts a
+// reviewer-verdict function into the AsyncQualityGateFn shape that
+// dispatchWorkers accepts via its `asyncQualityGate` option
+// (worker-dispatcher.ts); kept as the composition entry point for semantic
+// QA gating. Behavior is pinned by quality-gate.test.ts.
 export function createQaGate(
-  reviewFn: (
-    output: string
-  ) => Promise<{
+  reviewFn: (output: string) => Promise<{
     verdict: 'pass' | 'needs_work' | 'reject';
     feedback: string;
     issues: readonly string[];

@@ -13,7 +13,6 @@ import {
   extractJsonFromResponse,
   parseVoteResponse,
   type VoteResponse,
-  type ParseVoteOptions,
 } from './voter-response.js';
 import type { VoterRole } from './vote-types.js';
 
@@ -129,7 +128,6 @@ describe('SyntheticVoteError', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('SyntheticVoteError');
     expect(error.message).toContain('Invalid JSON');
-    expect(error.message).toContain('allowSyntheticVote: true');
     expect(error.rawOutput).toBe('raw output');
   });
 
@@ -514,7 +512,7 @@ describe('parseVoteResponse', () => {
     });
   });
 
-  describe('error handling without allowSyntheticVote', () => {
+  describe('fail-closed error handling', () => {
     it('should throw SyntheticVoteError for invalid JSON', () => {
       const output = 'not valid json';
 
@@ -572,115 +570,6 @@ describe('parseVoteResponse', () => {
       });
 
       expect(() => parseVoteResponse(output, role)).toThrow(SyntheticVoteError);
-    });
-  });
-
-  describe('fallback votes with allowSyntheticVote', () => {
-    const options: ParseVoteOptions = { allowSyntheticVote: true };
-
-    it('should create fallback approve vote from keyword', () => {
-      const output = 'I approve this proposal because it looks good';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('approve');
-      expect(result.source).toBe('fallback');
-      expect(result.confidence).toBe(0.5);
-      expect(result.reasoning).toContain('[SYNTHETIC:');
-    });
-
-    it('should create fallback reject vote from keyword', () => {
-      const output = 'I reject this proposal because it needs work';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('reject');
-      expect(result.source).toBe('fallback');
-    });
-
-    it('should create fallback abstain for no keywords', () => {
-      const output = 'This is unclear to me';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('abstain');
-      expect(result.source).toBe('fallback');
-    });
-
-    it('should detect accept keyword', () => {
-      const output = 'I accept this change';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('approve');
-    });
-
-    it('should detect agree keyword', () => {
-      const output = 'I agree with this approach';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('approve');
-    });
-
-    it('should detect decline keyword', () => {
-      const output = 'I decline to support this';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('reject');
-    });
-
-    it('should detect disagree keyword as reject', () => {
-      const output = 'I disagree with this direction';
-
-      const result = parseVoteResponse(output, role, options);
-
-      // Reject keywords are checked first to avoid "agree" substring matching
-      expect(result.decision).toBe('reject');
-    });
-
-    it('should be case insensitive', () => {
-      const output = 'I APPROVE this proposal';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.decision).toBe('approve');
-    });
-
-    it('should truncate long output in reasoning', () => {
-      const output = 'approve ' + 'x'.repeat(300);
-
-      const result = parseVoteResponse(output, role, options);
-
-      // Reasoning format: [SYNTHETIC: reason] + output.slice(0, 200)
-      // The prefix adds to the total length
-      expect(result.reasoning).toContain('[SYNTHETIC:');
-      expect(result.reasoning).toContain('approve');
-      // Output is truncated to 200 chars, but prefix makes total longer
-      const outputPart = result.reasoning.split('] ')[1];
-      expect(outputPart?.length ?? 0).toBeLessThanOrEqual(200);
-    });
-
-    it('should handle invalid JSON with fallback', () => {
-      const output = '{ not valid json }';
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.source).toBe('fallback');
-      expect(result.confidence).toBe(0.5);
-    });
-
-    it('should handle validation error with fallback', () => {
-      const output = JSON.stringify({
-        decision: 'maybe',
-        reasoning: 'test',
-        confidence: 0.5,
-      });
-
-      const result = parseVoteResponse(output, role, options);
-
-      expect(result.source).toBe('fallback');
     });
   });
 
