@@ -405,7 +405,7 @@ describe('getModelWeatherSummary (#4194)', () => {
   it('rides the report payload without changing routing-visible bonuses', () => {
     seedOutcomes(15, { model: 'claude-opus-4', cli: 'claude', category: 'code_generation' });
 
-    const report = generateWeatherReport({});
+    const report = generateWeatherReport({ includeModelWeather: true });
 
     // Telemetry lens present…
     expect(report.modelWeather?.some((e) => e.model === 'claude-opus-4')).toBe(true);
@@ -421,6 +421,14 @@ describe('getModelWeatherSummary (#4194)', () => {
 
   it('omits the modelWeather section when no model has sufficient samples', () => {
     seedOutcomes(2, { model: 'gpt-5', cli: 'codex' });
+
+    const report = generateWeatherReport({ includeModelWeather: true });
+
+    expect(report.modelWeather).toBeUndefined();
+  });
+
+  it('omits the modelWeather lens entirely when not opted in (#4202 — routing path)', () => {
+    seedOutcomes(15, { model: 'claude-opus-4', cli: 'claude', category: 'code_generation' });
 
     const report = generateWeatherReport({});
 

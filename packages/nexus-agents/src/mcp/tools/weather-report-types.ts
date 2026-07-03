@@ -54,6 +54,13 @@ export interface WeatherReportOptions {
   readonly cli?: CliNameLiteral;
   readonly category?: string;
   readonly includeAdaptive?: boolean;
+  /**
+   * Opt-in for the per-model telemetry lens (#4194). Default off (#4202):
+   * the lens scans the full store per distinct model, so the hot
+   * routing-bonus path (weather-bonus-stage) must not pay for it; the
+   * weather_report MCP tool always opts in.
+   */
+  readonly includeModelWeather?: boolean;
 }
 
 // ============================================================================
