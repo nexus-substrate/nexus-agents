@@ -59,10 +59,10 @@ describe('DEFAULT_RUBRICS - criteria', () => {
     }
   });
 
-  it('criterion weights sum to approximately 1.0 per rubric', () => {
+  it('criterion weights sum to 1.0 per rubric', () => {
     for (const rubric of DEFAULT_RUBRICS) {
       const sum = rubric.criteria.reduce((acc, c) => acc + c.weight, 0);
-      expect(sum).toBeCloseTo(1.0, 1);
+      expect(sum).toBeCloseTo(1.0, 5);
     }
   });
 
@@ -115,31 +115,198 @@ describe('DEFAULT_RUBRICS - categories', () => {
 });
 
 // ============================================================================
-// Specific rubric checks
+// Content pins (#4181)
+//
+// These rubrics score agent outputs via rubric-scorer, so the keyword lists,
+// minCount/length bounds, and weight splits are load-bearing. Pin them exactly
+// — a silent edit to any of them changes every score downstream.
 // ============================================================================
 
-describe('DEFAULT_RUBRICS - specific rubrics', () => {
-  it('code-generation rubric exists with 3 criteria', () => {
+describe('DEFAULT_RUBRICS - content pins', () => {
+  it('pins the rubric IDs in order', () => {
+    expect(DEFAULT_RUBRICS.map((r) => r.id)).toEqual([
+      'code-generation',
+      'code-review',
+      'architecture',
+      'testing',
+      'documentation',
+      'large-context',
+    ]);
+  });
+
+  it('pins the code-generation rubric (0.3/0.4/0.3 split)', () => {
     const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'code-generation');
-    expect(rubric).toBeDefined();
-    expect(rubric?.criteria).toHaveLength(3);
+    expect(rubric?.categories).toEqual(['code_generation', 'refactoring']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'syntax-correctness',
+        description: 'Code has correct syntax',
+        weight: 0.3,
+        scoringFunction: 'keyword_presence',
+        config: {
+          keywords: ['function', 'const', 'let', 'class', 'return', 'async', '=>'],
+          minCount: 2,
+        },
+      },
+      {
+        id: 'pattern-coverage',
+        description: 'Response includes expected patterns',
+        weight: 0.4,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'response-length',
+        description: 'Response has appropriate length',
+        weight: 0.3,
+        scoringFunction: 'length_check',
+        config: { minLength: 50, maxLength: 10000 },
+      },
+    ]);
   });
 
-  it('code-review rubric exists with 3 criteria', () => {
+  it('pins the code-review rubric (0.4/0.3/0.3 split, fix-suggestion keywords + minCount 2)', () => {
     const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'code-review');
-    expect(rubric).toBeDefined();
-    expect(rubric?.criteria).toHaveLength(3);
+    expect(rubric?.categories).toEqual(['code_review', 'debugging']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'issue-identification',
+        description: 'Identifies issues in the code',
+        weight: 0.4,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'explanation-quality',
+        description: 'Provides clear explanations',
+        weight: 0.3,
+        scoringFunction: 'length_check',
+        config: { minLength: 100, maxLength: 5000 },
+      },
+      {
+        id: 'fix-suggestion',
+        description: 'Suggests fixes or improvements',
+        weight: 0.3,
+        scoringFunction: 'keyword_presence',
+        config: {
+          keywords: ['fix', 'change', 'instead', 'should', 'recommend', 'suggest', 'better'],
+          minCount: 2,
+        },
+      },
+    ]);
   });
 
-  it('testing rubric exists with 3 criteria', () => {
+  it('pins the architecture rubric (0.3/0.4/0.3 split)', () => {
+    const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'architecture');
+    expect(rubric?.categories).toEqual(['architecture']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'component-description',
+        description: 'Describes system components',
+        weight: 0.3,
+        scoringFunction: 'keyword_presence',
+        config: {
+          keywords: ['service', 'component', 'module', 'layer', 'api', 'database', 'interface'],
+          minCount: 3,
+        },
+      },
+      {
+        id: 'pattern-coverage',
+        description: 'Response includes expected patterns',
+        weight: 0.4,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'thoroughness',
+        description: 'Provides thorough analysis',
+        weight: 0.3,
+        scoringFunction: 'length_check',
+        config: { minLength: 200, maxLength: 15000 },
+      },
+    ]);
+  });
+
+  it('pins the testing rubric (0.4/0.4/0.2 split)', () => {
     const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'testing');
-    expect(rubric).toBeDefined();
-    expect(rubric?.criteria).toHaveLength(3);
+    expect(rubric?.categories).toEqual(['testing']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'test-structure',
+        description: 'Has proper test structure',
+        weight: 0.4,
+        scoringFunction: 'keyword_presence',
+        config: {
+          keywords: ['describe', 'it', 'test', 'expect', 'assert', 'mock', 'beforeEach'],
+          minCount: 3,
+        },
+      },
+      {
+        id: 'pattern-coverage',
+        description: 'Response includes expected patterns',
+        weight: 0.4,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'test-count',
+        description: 'Contains multiple test cases',
+        weight: 0.2,
+        scoringFunction: 'length_check',
+        config: { minLength: 100, maxLength: 10000 },
+      },
+    ]);
   });
 
-  it('large-context rubric exists with 2 criteria', () => {
+  it('pins the documentation rubric (0.4/0.4/0.2 split)', () => {
+    const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'documentation');
+    expect(rubric?.categories).toEqual(['documentation']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'documentation-format',
+        description: 'Uses proper documentation format',
+        weight: 0.4,
+        scoringFunction: 'keyword_presence',
+        config: {
+          keywords: ['@param', '@returns', '@example', '@description', '/**', '*/'],
+          minCount: 2,
+        },
+      },
+      {
+        id: 'pattern-coverage',
+        description: 'Response includes expected patterns',
+        weight: 0.4,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'content-length',
+        description: 'Appropriate documentation length',
+        weight: 0.2,
+        scoringFunction: 'length_check',
+        config: { minLength: 50, maxLength: 5000 },
+      },
+    ]);
+  });
+
+  it('pins the large-context rubric (0.5/0.5 split)', () => {
     const rubric = DEFAULT_RUBRICS.find((r) => r.id === 'large-context');
-    expect(rubric).toBeDefined();
-    expect(rubric?.criteria).toHaveLength(2);
+    expect(rubric?.categories).toEqual(['large_context']);
+    expect(rubric?.criteria).toEqual([
+      {
+        id: 'comprehensiveness',
+        description: 'Addresses the full context',
+        weight: 0.5,
+        scoringFunction: 'pattern_match',
+        config: { matchAll: false },
+      },
+      {
+        id: 'thoroughness',
+        description: 'Provides thorough analysis',
+        weight: 0.5,
+        scoringFunction: 'length_check',
+        config: { minLength: 200, maxLength: 20000 },
+      },
+    ]);
   });
 });

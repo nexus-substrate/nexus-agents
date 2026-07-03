@@ -14,7 +14,9 @@ import {
 const SOAK = DEFAULT_CODEPR_ENABLE_READINESS_CONFIG.minGuardsGreenSoak;
 
 /** A fully-satisfying evidence object; override fields per test. */
-function fullEvidence(over: Partial<CodePrEnableReadinessEvidence> = {}): CodePrEnableReadinessEvidence {
+function fullEvidence(
+  over: Partial<CodePrEnableReadinessEvidence> = {}
+): CodePrEnableReadinessEvidence {
   return {
     flagEnabled: true,
     enableVoteRef: 'vote-3670-enable',
@@ -57,6 +59,7 @@ describe('evaluateCodePrEnableReadiness', () => {
     const r = evaluateCodePrEnableReadiness(fullEvidence({ enableVoteRef: '' }));
     expect(r.ready).toBe(false);
     expect(r.blockers).toEqual(['enable-vote-ref']);
+    expect(r.criteria.find((c) => c.name === 'enable-vote-ref')?.detail).toBe('no enable-vote ref');
   });
 
   it('whitespace-only vote ref counts as absent', () => {
@@ -80,12 +83,43 @@ describe('evaluateCodePrEnableReadiness', () => {
     const r = evaluateCodePrEnableReadiness(fullEvidence({ owner: '' }));
     expect(r.ready).toBe(false);
     expect(r.blockers).toEqual(['owner-ack']);
+    // #4181: pin THIS copy's wording. readiness-verdict.ts documents that the two
+    // presenceCriterion copies deliberately diverge ("no {label}" here vs
+    // "no named {label}" in improvement-enforce-readiness) — do not unify.
+    expect(r.criteria.find((c) => c.name === 'owner-ack')?.detail).toBe('no owner');
   });
 
-  it('reports every criterion regardless of verdict', () => {
+  it('reports every criterion with the exact detail wording (#4181)', () => {
     const r = evaluateCodePrEnableReadiness(fullEvidence());
-    const names = r.criteria.map((c) => c.name);
-    expect(names).toEqual(['flag-enabled', 'enable-vote-ref', 'guards-green-soak', 'owner-ack']);
+    expect(r.criteria).toEqual([
+      { name: 'flag-enabled', met: true, detail: 'OFF→on flag is set' },
+      { name: 'enable-vote-ref', met: true, detail: 'enable-vote ref: vote-3670-enable' },
+      {
+        name: 'guards-green-soak',
+        met: true,
+        detail: `${String(SOAK)} consecutive green dry-runs (need ≥ ${String(SOAK)})`,
+      },
+      { name: 'owner-ack', met: true, detail: 'owner: william' },
+    ]);
+  });
+
+  it('pins the unmet-side detail wording (#4181)', () => {
+    const r = evaluateCodePrEnableReadiness({
+      flagEnabled: false,
+      enableVoteRef: '',
+      consecutiveGreenDryRuns: 0,
+      owner: '',
+    });
+    expect(r.criteria).toEqual([
+      { name: 'flag-enabled', met: false, detail: 'OFF→on flag is not set' },
+      { name: 'enable-vote-ref', met: false, detail: 'no enable-vote ref' },
+      {
+        name: 'guards-green-soak',
+        met: false,
+        detail: `0 consecutive green dry-runs (need ≥ ${String(SOAK)})`,
+      },
+      { name: 'owner-ack', met: false, detail: 'no owner' },
+    ]);
   });
 
   it('config can drop the vote/owner requirement (still needs flag + soak)', () => {

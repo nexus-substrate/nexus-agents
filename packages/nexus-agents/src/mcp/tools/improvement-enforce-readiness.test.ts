@@ -86,6 +86,10 @@ describe('evaluateEnforceReadiness', () => {
     });
     expect(r.ready).toBe(false);
     expect(r.blockers).toContain('named-evaluator');
+    // #4181: pin THIS copy's wording. readiness-verdict.ts documents that the two
+    // presenceCriterion copies deliberately diverge ("no named {label}" here vs
+    // "no {label}" in codepr-enable-readiness) — do not unify.
+    expect(r.criteria.find((c) => c.name === 'named-evaluator')?.detail).toBe('no named evaluator');
   });
 
   it('blocks on missing / blank named owner', () => {
@@ -96,9 +100,11 @@ describe('evaluateEnforceReadiness', () => {
       evaluator: 'rev@example',
     });
     expect(missing.blockers).toContain('named-owner');
-    expect(evaluateEnforceReadiness(readyEvidence({ owner: '   ' })).blockers).toContain(
-      'named-owner'
-    );
+    // #4181: pin this copy's deliberate "no named {label}" wording (see readiness-verdict.ts).
+    expect(missing.criteria.find((c) => c.name === 'named-owner')?.detail).toBe('no named owner');
+    const blank = evaluateEnforceReadiness(readyEvidence({ owner: '   ' }));
+    expect(blank.blockers).toContain('named-owner');
+    expect(blank.criteria.find((c) => c.name === 'named-owner')?.detail).toBe('no named owner');
   });
 
   it('honors relaxed config (evaluator/owner not required)', () => {
@@ -122,15 +128,19 @@ describe('evaluateEnforceReadiness', () => {
     expect(DEFAULT_ENFORCE_READINESS_CONFIG.requireNamedOwner).toBe(true);
   });
 
-  it('reports every criterion with a human-readable detail', () => {
+  it('reports every criterion with the exact human-readable detail (#4181)', () => {
+    // 110/120 judged = 91.7% → rounds to 92; 105/110 sound = 95.5% → rounds to 95.
     const r = evaluateEnforceReadiness(readyEvidence());
-    expect(r.criteria.map((c) => c.name)).toEqual([
-      'volume',
-      'judged-coverage',
-      'soundness',
-      'named-evaluator',
-      'named-owner',
+    expect(r.criteria).toEqual([
+      { name: 'volume', met: true, detail: '120 shadow selections (need ≥ 100)' },
+      { name: 'judged-coverage', met: true, detail: '92% reviewed (need ≥ 80%)' },
+      {
+        name: 'soundness',
+        met: true,
+        detail: '95% of reviewed judged sound (need ≥ 90%, with reviews present)',
+      },
+      { name: 'named-evaluator', met: true, detail: 'evaluator: security-reviewer@example' },
+      { name: 'named-owner', met: true, detail: 'owner: williamzujkowski' },
     ]);
-    expect(r.criteria.every((c) => c.detail.length > 0)).toBe(true);
   });
 });
