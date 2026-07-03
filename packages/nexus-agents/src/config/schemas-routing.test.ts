@@ -55,6 +55,40 @@ describe('BudgetConstraintsSchema', () => {
     const tiny = { maxTokens: 0.0001, maxCostUsd: 0.0001, maxLatencyMs: 1 };
     expect(BudgetConstraintsSchema.parse(tiny)).toEqual(tiny);
   });
+
+  // #4214 — per-task-class cost ceilings on the YAML surface
+  it('retains taskClassMaxCostUsd instead of stripping it (#4214)', () => {
+    const valid = {
+      maxCostUsd: 1.0,
+      taskClassMaxCostUsd: { code_generation: 0.25, architecture: 1.5 },
+    };
+    expect(BudgetConstraintsSchema.parse(valid)).toEqual(valid);
+  });
+
+  it('rejects typo’d task-class ceiling keys (#4214)', () => {
+    expect(() =>
+      BudgetConstraintsSchema.parse({ taskClassMaxCostUsd: { code_gen: 0.25 } })
+    ).toThrow();
+  });
+
+  it('rejects non-positive ceiling values (#4214)', () => {
+    expect(() =>
+      BudgetConstraintsSchema.parse({ taskClassMaxCostUsd: { code_generation: 0 } })
+    ).toThrow();
+  });
+
+  it('accepts an empty ceilings map (OFF/unlimited) (#4214)', () => {
+    expect(BudgetConstraintsSchema.parse({ taskClassMaxCostUsd: {} })).toEqual({
+      taskClassMaxCostUsd: {},
+    });
+  });
+
+  it('RoutingConfigSchema retains nested budget.taskClassMaxCostUsd (#4214)', () => {
+    const parsed = RoutingConfigSchema.parse({
+      budget: { taskClassMaxCostUsd: { testing: 0.05 } },
+    });
+    expect(parsed.budget?.taskClassMaxCostUsd).toEqual({ testing: 0.05 });
+  });
 });
 
 describe('TopsisCriterionSchema', () => {

@@ -513,6 +513,38 @@ routing:
     resetIntervalMs: 3600000 # Reset every hour
 ```
 
+### Per-Task-Class Cost Ceilings
+
+Cap the per-task USD cost by task class (#4196, #4214). Each key is a
+`TaskCategory` (`architecture`, `code_generation`, `code_review`, `research`,
+`security_review`, `planning`, `documentation`, `testing`, `devops`,
+`exploration`); a typo'd key fails config validation instead of silently
+configuring nothing:
+
+```yaml
+routing:
+  budget:
+    taskClassMaxCostUsd:
+      code_generation: 0.25 # Max $0.25 per code-generation task
+      research: 1.00 # Research tasks may spend more
+```
+
+Two things to know before relying on ceilings:
+
+- **`NEXUS_BILLING_MODE=api` is required.** Ceilings are only enforced in
+  cost-aware (`api`) billing mode. Under the default `plan` mode they are an
+  annotated no-op — the routing decision reason carries
+  `cost weighting disabled: plan mode` and no candidate is ever filtered.
+- **Unpriced candidates fail closed.** When a ceiling is configured for the
+  task's detected class, any candidate whose model has no registry pricing is
+  excluded — an unknown cost is never allowed to slip under a configured
+  ceiling. If every candidate exceeds the ceiling (or is unpriced), routing
+  fails at the budget-filter stage rather than falling back to
+  all-candidates.
+
+Omit `taskClassMaxCostUsd` (or leave it empty) to disable ceilings entirely
+(the default).
+
 ### TOPSIS Weights
 
 Adjust multi-criteria optimization:
