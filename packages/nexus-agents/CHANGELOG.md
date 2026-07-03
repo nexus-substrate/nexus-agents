@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.160.0
+
+### Minor Changes
+
+- [#4201](https://github.com/nexus-substrate/nexus-agents/pull/4201) [`37b641d`](https://github.com/nexus-substrate/nexus-agents/commit/37b641df3b0c775ddfd9c196533000ce4d18c3e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Per-model outcome telemetry ([#4194](https://github.com/nexus-substrate/nexus-agents/issues/4194)). Producer hygiene: the three producers that wrote placeholder model ids now record real ones — `stage.failed` events carry an additive optional `model` field (plumbed from the dev-pipeline plan/impl/qa expert results) that the feedback-subscriber records instead of `'unknown'`; parallel-exploration and consensus-plan partitions now always carry a concrete model id (`PartitionResult.model` / `CliPlanPartition.model` became required): the adapter-reported response model on success, the adapter's configured `getModelInfo().id` on failure/timeout. Consumer lenses (telemetry only, behind the existing per-CLI arms): `getModelWeatherSummary()` plus an optional `modelWeather` weather-report section computed via the [#2548](https://github.com/nexus-substrate/nexus-agents/issues/2548) family-fallback query path (min 5 samples, lookback windowing with all-history fallback, placeholder/worker ids excluded, unrecognized models never pooled through the unknown/unknown family), and `LinUCBBandit.getWarmStartModelStats()` exposing the warm-start replay grouped per arm × model. Routing-visible behavior is unchanged: adaptive bonuses stay CLI×category and arm selection is untouched (per-model consumption is [#4196](https://github.com/nexus-substrate/nexus-agents/issues/4196)/[#4197](https://github.com/nexus-substrate/nexus-agents/issues/4197) scope).
+
 ## 2.159.0
 
 ### Minor Changes
