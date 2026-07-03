@@ -78,6 +78,10 @@ export const CompositeRouterConfigSchema = z.object({
       maxTokens: z.number().positive(),
       maxCostUsd: z.number().positive(),
       maxLatencyMs: z.number().positive(),
+      /** Per-task-class cost ceilings in USD, keyed by TaskCategory (#4196).
+       * Default: absent → no ceiling (OFF/unlimited). Enforced only under
+       * billingMode 'api'; missing candidate pricing fails CLOSED. */
+      taskClassMaxCostUsd: z.record(z.string(), z.number().positive()),
     })
     .partial()
     .optional(),

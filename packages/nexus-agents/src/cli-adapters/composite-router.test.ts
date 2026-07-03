@@ -1101,3 +1101,60 @@ function makeMockCache(
     getAll: vi.fn().mockResolvedValue(all),
   } as unknown as import('../config/available-models-cache.js').AvailableModelsCache;
 }
+
+// ============================================================================
+// #4196 — plan-mode cost annotation + per-task-class ceiling config surface
+// ============================================================================
+
+describe('CompositeRouter #4196 cost weighting/ceiling', () => {
+  it('default config (plan mode): decision reason carries the explicit annotation', async () => {
+    const router = new CompositeRouter(createTestAdapters());
+    const result = await router.route({ content: 'Help me write a function' });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.reason).toContain('cost weighting disabled: plan mode');
+    }
+  });
+
+  it('api mode: annotation is absent from the decision reason', async () => {
+    const router = new CompositeRouter(createTestAdapters(), { billingMode: 'api' });
+    const result = await router.route({ content: 'Help me write a function' });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.reason).not.toContain('cost weighting disabled: plan mode');
+    }
+  });
+
+  it('schema accepts per-task-class cost ceilings inside budgetConstraints', () => {
+    const parsed = CompositeRouterConfigSchema.parse({
+      budgetConstraints: { taskClassMaxCostUsd: { code_generation: 0.25 } },
+    });
+    expect(parsed.budgetConstraints?.taskClassMaxCostUsd).toEqual({ code_generation: 0.25 });
+  });
+
+  it('schema leaves ceilings undefined by default (OFF/unlimited)', () => {
+    const parsed = CompositeRouterConfigSchema.parse({});
+    expect(parsed.budgetConstraints?.taskClassMaxCostUsd).toBeUndefined();
+  });
+
+  it('default config (plan + ceilings configured): ceiling never filters candidates', async () => {
+    // Ceiling low enough to exclude everything IF it were enforced — plan mode must ignore it.
+    const router = new CompositeRouter(createTestAdapters(), {
+      budgetConstraints: { taskClassMaxCostUsd: { code_generation: 0.000001 } },
+    });
+    const result = await router.route({ content: 'implement a function', maxTokens: 10_000 });
+    expect(result.ok).toBe(true);
+  });
+
+  it('api mode + ceilings: unaffordable classes reject with budget-filter error', async () => {
+    const router = new CompositeRouter(createTestAdapters(), {
+      billingMode: 'api',
+      budgetConstraints: { taskClassMaxCostUsd: { code_generation: 0.000001 } },
+    });
+    const result = await router.route({ content: 'implement a function', maxTokens: 10_000 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.stage).toBe('budget-filter');
+    }
+  });
+});

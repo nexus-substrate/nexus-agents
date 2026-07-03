@@ -178,6 +178,14 @@ export interface BudgetRouterOptions {
   };
   /** Whether to block tasks that exceed budget (vs. warn only) */
   readonly enforceHardLimits?: boolean;
+  /**
+   * Per-task-class cost ceilings in USD per task (#4196), keyed by
+   * `TaskCategory` from `detectTaskCategory` (e.g. `code_generation`).
+   * Absent/empty → no ceiling (default OFF/unlimited). Enforced only under
+   * api billing mode by the composite pipeline; a candidate whose registry
+   * pricing is missing FAILS a configured ceiling (fail-closed).
+   */
+  readonly taskClassCostCeilings?: Readonly<Record<string, number>>;
 }
 
 /**

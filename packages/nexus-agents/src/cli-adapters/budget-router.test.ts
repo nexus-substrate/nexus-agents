@@ -342,3 +342,93 @@ describe('BudgetRouter', () => {
     });
   });
 });
+
+// ============================================================================
+// Per-task-class cost ceiling (#4196)
+// ============================================================================
+
+// Partial-mock the registry pricing lookup so the fail-closed (missing
+// pricing) branch is testable; all other exports stay real.
+vi.mock('../config/model-config-helpers.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../config/model-config-helpers.js')>();
+  return { ...actual, getModelPricing: vi.fn(actual.getModelPricing) };
+});
+
+describe('BudgetRouter task-class cost ceiling (#4196)', () => {
+  // 'implement a function' → detectTaskCategory → code_generation.
+  // Registry pricing of per-CLI default models (in-tree-data):
+  //   claude → claude-fable-5 ($10/$50 per 1M)
+  //   gemini → gemini-3-pro   ($2/$12 per 1M)
+  //   codex  → gpt-5.5        ($5/$30 per 1M)
+  // With maxTokens 10_000 output: claude ≈ $0.50, codex ≈ $0.30, gemini ≈ $0.12.
+  const ceilingTask: CliTask = { content: 'implement a function', maxTokens: 10_000 };
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  function makeAdapters(): Map<CliName, ICliAdapter> {
+    return new Map<CliName, ICliAdapter>([
+      ['claude', createMockAdapter('claude')],
+      ['gemini', createMockAdapter('gemini')],
+      ['codex', createMockAdapter('codex')],
+    ]);
+  }
+
+  afterEach(async () => {
+    // Re-point the partial mock at the real implementation after each test.
+    const helpers = await import('../config/model-config-helpers.js');
+    const actual = await vi.importActual<typeof import('../config/model-config-helpers.js')>(
+      '../config/model-config-helpers.js'
+    );
+    vi.mocked(helpers.getModelPricing).mockImplementation(actual.getModelPricing);
+  });
+
+  it('returns candidates unchanged when no ceilings are configured (default OFF)', () => {
+    const r = new BudgetRouter(makeAdapters());
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(candidates);
+    r.dispose();
+  });
+
+  it('returns candidates unchanged when the task class has no ceiling', () => {
+    const r = new BudgetRouter(makeAdapters(), {
+      taskClassCostCeilings: { architecture: 0.001 },
+    });
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(candidates);
+    r.dispose();
+  });
+
+  it('returns candidates unchanged when the task matches no category', () => {
+    const r = new BudgetRouter(makeAdapters(), {
+      taskClassCostCeilings: { code_generation: 0.001 },
+    });
+    const vague: CliTask = { content: 'hello there', maxTokens: 10_000 };
+    expect(r.filterByTaskClassCeiling(vague, candidates)).toEqual(candidates);
+    r.dispose();
+  });
+
+  it('excludes candidates whose registry-priced estimate exceeds the class ceiling', () => {
+    const r = new BudgetRouter(makeAdapters(), {
+      taskClassCostCeilings: { code_generation: 0.2 },
+    });
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    r.dispose();
+  });
+
+  it('keeps every candidate under a generous ceiling', () => {
+    const r = new BudgetRouter(makeAdapters(), {
+      taskClassCostCeilings: { code_generation: 5.0 },
+    });
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(candidates);
+    r.dispose();
+  });
+
+  it('fails CLOSED when pricing is missing — candidate excluded, no return-all fallback', async () => {
+    const helpers = await import('../config/model-config-helpers.js');
+    vi.mocked(helpers.getModelPricing).mockReturnValue(undefined);
+    const r = new BudgetRouter(makeAdapters(), {
+      taskClassCostCeilings: { code_generation: 5.0 },
+    });
+    // Every candidate has unknown cost → ALL fail the ceiling (fail-closed),
+    // NOT the filterByPreferenceTier-style return-all-candidates pattern.
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual([]);
+    r.dispose();
+  });
+});

@@ -6,7 +6,7 @@
  * (Source: Issue #475 - Add routing configuration section to nexus-agents.yaml)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-adapter.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import { DEFAULT_TOPSIS_CONFIG } from '../cli-adapters/topsis-types.js';
@@ -327,5 +327,30 @@ describe('routing-config-adapter', () => {
       expect(Object.prototype.hasOwnProperty.call(result, 'maxLatencyMs')).toBe(false);
       expect(Object.prototype.hasOwnProperty.call(result, 'maxCostPerRequest')).toBe(false);
     });
+  });
+});
+
+// ============================================================================
+// #4196 — NEXUS_BILLING_MODE wiring into composite config
+// ============================================================================
+
+describe('adaptRoutingConfig billing mode (#4196)', () => {
+  afterEach(() => {
+    delete process.env['NEXUS_BILLING_MODE'];
+  });
+
+  it('defaults to plan when NEXUS_BILLING_MODE is unset', () => {
+    delete process.env['NEXUS_BILLING_MODE'];
+    expect(adaptRoutingConfig(undefined).billingMode).toBe('plan');
+  });
+
+  it('resolves api when NEXUS_BILLING_MODE=api', () => {
+    process.env['NEXUS_BILLING_MODE'] = 'api';
+    expect(adaptRoutingConfig(undefined).billingMode).toBe('api');
+  });
+
+  it('treats unknown values as plan (fail-safe default)', () => {
+    process.env['NEXUS_BILLING_MODE'] = 'weird';
+    expect(adaptRoutingConfig(undefined).billingMode).toBe('plan');
   });
 });

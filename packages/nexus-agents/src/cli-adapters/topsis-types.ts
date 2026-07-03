@@ -156,6 +156,65 @@ export const TASK_CATEGORY_PLAN_CRITERIA: Readonly<Record<string, readonly Topsi
 } as const;
 
 /**
+ * Difficulty-conditional weighting thresholds (#4196, epic #4175).
+ * Operate on the TaskProfile 0-10 `reasoningComplexity` scale, which is the
+ * canonical SharedTaskAnalyzer complexity estimate (`complexityScore * 10`,
+ * task-profile-adapter.ts) — no fourth difficulty estimator is introduced.
+ * The high threshold matches the existing ×1.2 quality-boost threshold in
+ * composite-router-helpers.ts `adjustProfileForTask`.
+ */
+export const DIFFICULTY_QUALITY_HEAVY_THRESHOLD = 7;
+
+/** Below this complexity the task is considered easy → cost-heavy weights (#4196). */
+export const DIFFICULTY_COST_HEAVY_THRESHOLD = 4;
+
+/**
+ * Weight mass shifted between quality and cost by difficulty conditioning
+ * (#4196). On the 0.5/0.3/0.2 defaults this yields 0.65/0.15/0.2 for hard
+ * tasks and 0.35/0.45/0.2 for easy tasks; latency is never touched and the
+ * weight sum stays 1.0.
+ */
+export const DIFFICULTY_WEIGHT_SHIFT = 0.15;
+
+/**
+ * Applies difficulty-conditional quality/cost weighting (#4196).
+ *
+ * Hard tasks (complexity > {@link DIFFICULTY_QUALITY_HEAVY_THRESHOLD}) move
+ * weight from cost to quality (tolerate frontier $/1M for hard work); easy
+ * tasks (complexity < {@link DIFFICULTY_COST_HEAVY_THRESHOLD}) move weight
+ * from quality to cost. Mid-band complexity returns the SAME criteria
+ * reference so the unchanged default path stays byte-identical.
+ *
+ * Callers MUST gate this on api billing mode: plan mode zeroes the cost
+ * weight already, and conditioning there would silently reshape quality vs
+ * latency. The shift is clamped so no weight goes negative.
+ */
+export function applyDifficultyCostWeighting(
+  criteria: readonly TopsisCredential[],
+  reasoningComplexity: number
+): readonly TopsisCredential[] {
+  const direction =
+    reasoningComplexity > DIFFICULTY_QUALITY_HEAVY_THRESHOLD
+      ? 1
+      : reasoningComplexity < DIFFICULTY_COST_HEAVY_THRESHOLD
+        ? -1
+        : 0;
+  if (direction === 0) return criteria;
+  const quality = criteria.find((c) => c.name === 'quality');
+  const cost = criteria.find((c) => c.name === 'cost');
+  if (quality === undefined || cost === undefined) return criteria;
+  // Clamp so the donating criterion never goes negative (sum stays 1.0).
+  const donorWeight = direction === 1 ? cost.weight : quality.weight;
+  const shift = Math.min(DIFFICULTY_WEIGHT_SHIFT, donorWeight);
+  if (shift <= 0) return criteria;
+  return criteria.map((c) => {
+    if (c.name === 'quality') return { ...c, weight: c.weight + direction * shift };
+    if (c.name === 'cost') return { ...c, weight: c.weight - direction * shift };
+    return c;
+  });
+}
+
+/**
  * Gets TOPSIS criteria for a task category and billing mode.
  * Falls back to default criteria if category not found.
  */

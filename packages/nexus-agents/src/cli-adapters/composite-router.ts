@@ -296,7 +296,7 @@ export class CompositeRouter implements ICompositeRouter {
     latencyConfig?: Partial<LatencyTrackerConfig>
   ): void {
     if (this.config.enableBudgetFilter && adapters.size > 0) {
-      this.budgetRouter = new BudgetRouter(adapters);
+      this.budgetRouter = this.buildBudgetRouter(adapters);
     }
     if (this.config.enableZeroRouter) this.zeroRouter = new ZeroRouter(zeroConfig, this.logger);
     if (this.config.enablePreferenceRouting)
@@ -311,6 +311,15 @@ export class CompositeRouter implements ICompositeRouter {
       this.warmStartBandit();
     }
     if (this.config.enableLatencyTracking) this.latencyTracker = new LatencyTracker(latencyConfig);
+  }
+
+  /** #4196: plumb per-task-class cost ceilings into the BudgetRouter.
+   * Absent → defaults (no ceiling configured). */
+  private buildBudgetRouter(adapters: Map<RoutingArmId, ICliAdapter>): BudgetRouter {
+    const ceilings = this.config.budgetConstraints?.taskClassMaxCostUsd;
+    return ceilings !== undefined
+      ? new BudgetRouter(adapters, { taskClassCostCeilings: ceilings })
+      : new BudgetRouter(adapters);
   }
 
   private initializeMemoryAndStages(
@@ -709,8 +718,7 @@ export class CompositeRouter implements ICompositeRouter {
 
   /** (#2540 PR 7) Public accessor for the wired cache (or undefined). */
   getAvailableModelsCache():
-    | import('../config/available-models-cache.js').AvailableModelsCache
-    | undefined {
+    import('../config/available-models-cache.js').AvailableModelsCache | undefined {
     return this.availableModelsCache;
   }
 
@@ -761,7 +769,13 @@ export class CompositeRouter implements ICompositeRouter {
 
     const decisionTimeMs = getTimeProvider().now() - params.startTime;
     this.updateStats(params.selectedCli, decisionTimeMs);
-    const { confidence, reason, alternatives } = buildDecisionFields({ ...params, decisionTimeMs });
+    // #4196 BINDING: plan mode must annotate the decision explicitly
+    // ('cost weighting disabled: plan mode') — never a silent no-op.
+    const { confidence, reason, alternatives } = buildDecisionFields({
+      ...params,
+      decisionTimeMs,
+      billingMode: this.config.billingMode,
+    });
 
     // #3394: pick a concrete model from the difficulty tier (opt-in, default
     // OFF). Registry-only + synchronous — no probe on the hot path. Consumers

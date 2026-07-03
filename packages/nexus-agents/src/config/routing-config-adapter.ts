@@ -194,6 +194,17 @@ function resolveStageFlags(stagesConfig: Partial<CompositeRouterConfig>): StageF
 }
 
 /**
+ * Resolves the composite router's billing mode from `NEXUS_BILLING_MODE`
+ * (#4196). Only the explicit value 'api' enables cost-aware routing
+ * (difficulty-conditional TOPSIS weights + per-task-class cost ceilings);
+ * anything else falls back to the 'plan' default, where those features are
+ * annotated no-ops.
+ */
+function resolveBillingModeFromEnv(): CompositeRouterConfig['billingMode'] {
+  return process.env['NEXUS_BILLING_MODE'] === 'api' ? 'api' : DEFAULT_COMPOSITE_CONFIG.billingMode;
+}
+
+/**
  * Builds the base CompositeRouterConfig from YAML config and defaults.
  */
 function buildBaseConfig(
@@ -204,7 +215,7 @@ function buildBaseConfig(
 
   return {
     ...stageFlags,
-    billingMode: DEFAULT_COMPOSITE_CONFIG.billingMode,
+    billingMode: resolveBillingModeFromEnv(),
     latencyScoreWeight: config.latencyScoreWeight,
     budgetConstraints: config.budget,
     linucbAlpha: config.linucb?.alpha ?? DEFAULT_COMPOSITE_CONFIG.linucbAlpha,
