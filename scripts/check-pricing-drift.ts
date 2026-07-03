@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Cross-check our model-capabilities.ts pricing and context windows against
+ * Cross-check our in-tree-data.ts pricing and context windows against
  * litellm's community-maintained catalog.
  *
  * Non-blocking advisory: prints a diff table and exits 0 regardless.
@@ -13,7 +13,11 @@
  * (Source: Issue #1896 — litellm catalog cross-check)
  */
 
-import { DEFAULT_MODEL_CAPABILITIES } from '../packages/nexus-agents/src/config/model-capabilities.js';
+/* eslint-disable no-console */
+
+// model-capabilities.ts was renamed to in-tree-data.ts in #2546 slice E; this
+// import silently broke the gate until #4173 repointed it.
+import { DEFAULT_MODEL_CAPABILITIES } from '../packages/nexus-agents/src/config/in-tree-data.js';
 
 /** litellm's per-model schema we care about. Source: model_prices_and_context_window.json. */
 interface LitellmModelEntry {
@@ -58,9 +62,30 @@ interface DriftReport {
   delta: string;
 }
 
+/** Compare one per-million pricing field; litellm is per-token, we're per-million. */
+function comparePricingField(
+  modelId: string,
+  key: string,
+  field: 'inputPer1M' | 'outputPer1M',
+  ours: number | undefined,
+  theirCostPerToken: number | undefined
+): DriftReport | undefined {
+  if (theirCostPerToken === undefined || ours === undefined) return undefined;
+  const theirsPer1M = theirCostPerToken * 1_000_000;
+  if (Math.abs(ours - theirsPer1M) <= 0.01) return undefined;
+  return {
+    modelId,
+    litellmKey: key,
+    field,
+    ours,
+    theirs: theirsPer1M,
+    delta: `$${ours.toFixed(2)} → $${theirsPer1M.toFixed(2)}`,
+  };
+}
+
 function compareModel(
   ourModel: (typeof DEFAULT_MODEL_CAPABILITIES.models)[number],
-  catalog: LitellmCatalog,
+  catalog: LitellmCatalog
 ): DriftReport[] {
   const key = getLitellmKey(ourModel);
   const theirs = catalog[key];
@@ -83,35 +108,22 @@ function compareModel(
     });
   }
 
-  // Pricing — litellm is per-token, we're per-million
-  if (theirs.input_cost_per_token !== undefined) {
-    const theirInputPer1M = theirs.input_cost_per_token * 1_000_000;
-    const ourInput = ourModel.pricing?.inputPer1M;
-    if (ourInput !== undefined && Math.abs(ourInput - theirInputPer1M) > 0.01) {
-      reports.push({
-        modelId: ourModel.id,
-        litellmKey: key,
-        field: 'inputPer1M',
-        ours: ourInput,
-        theirs: theirInputPer1M,
-        delta: `$${ourInput.toFixed(2)} → $${theirInputPer1M.toFixed(2)}`,
-      });
-    }
-  }
-  if (theirs.output_cost_per_token !== undefined) {
-    const theirOutputPer1M = theirs.output_cost_per_token * 1_000_000;
-    const ourOutput = ourModel.pricing?.outputPer1M;
-    if (ourOutput !== undefined && Math.abs(ourOutput - theirOutputPer1M) > 0.01) {
-      reports.push({
-        modelId: ourModel.id,
-        litellmKey: key,
-        field: 'outputPer1M',
-        ours: ourOutput,
-        theirs: theirOutputPer1M,
-        delta: `$${ourOutput.toFixed(2)} → $${theirOutputPer1M.toFixed(2)}`,
-      });
-    }
-  }
+  const input = comparePricingField(
+    ourModel.id,
+    key,
+    'inputPer1M',
+    ourModel.pricing?.inputPer1M,
+    theirs.input_cost_per_token
+  );
+  if (input !== undefined) reports.push(input);
+  const output = comparePricingField(
+    ourModel.id,
+    key,
+    'outputPer1M',
+    ourModel.pricing?.outputPer1M,
+    theirs.output_cost_per_token
+  );
+  if (output !== undefined) reports.push(output);
 
   return reports;
 }
@@ -140,6 +152,10 @@ async function main(): Promise<void> {
     allReports.push(...compareModel(model, catalog));
   }
 
+  printReports(allReports, missing);
+}
+
+function printReports(allReports: DriftReport[], missing: string[]): void {
   if (allReports.length === 0 && missing.length === 0) {
     console.log('✅ No drift — our pricing matches litellm for all tracked models.');
     return;
@@ -154,12 +170,16 @@ async function main(): Promise<void> {
   }
 
   if (missing.length > 0) {
-    console.log(`ℹ️  ${String(missing.length)} models not in litellm catalog (expected for opencode, custom, etc.):`);
+    console.log(
+      `ℹ️  ${String(missing.length)} models not in litellm catalog (expected for opencode, custom, etc.):`
+    );
     for (const m of missing) console.log(`  • ${m}`);
     console.log('');
   }
 
-  console.log('Review and update packages/nexus-agents/src/config/model-capabilities.ts if drift is real.');
+  console.log(
+    'Review and update packages/nexus-agents/src/config/in-tree-data.ts if drift is real.'
+  );
   console.log('Non-blocking: script always exits 0.');
 }
 
