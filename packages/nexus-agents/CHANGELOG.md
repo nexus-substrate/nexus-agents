@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.155.1
+
+### Patch Changes
+
+- [#4182](https://github.com/nexus-substrate/nexus-agents/pull/4182) [`ccee90d`](https://github.com/nexus-substrate/nexus-agents/commit/ccee90d90ee2048e6957c7f6a1f557b7f41f1be6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pin the dev-pipeline vote-verdict decider contract with direct tests ([#4174](https://github.com/nexus-substrate/nexus-agents/issues/4174)): `no_quorum` is never an approval and carries no reviewer feedback ([#4135](https://github.com/nexus-substrate/nexus-agents/issues/4135)), `conditional_go` approves, rejection feedback passes through, and `createVoteResult` can never manufacture `no_quorum`. Test-only change.
+
 ## 2.155.0
 
 ### Minor Changes
@@ -148,8 +154,8 @@ partial, strategy: 'budget' }`) rides the response and is stamped into the audit
   was cut mid-JSON by the token cap. The most thorough voter (the contrarian) was the likeliest
   to be dropped — exactly the reviewer a panel exists to protect.
 
-  Now: extraction prefers a ```json fence, skips non-JSON fences, extracts the first *balanced*
-JSON object (string/escape-aware) and repairs a truncated one; oversize `reasoning`/`claim`is truncated with a`…[truncated]` marker instead of hard-rejected; and the vote completion
+  Now: extraction prefers a ```json fence, skips non-JSON fences, extracts the first _balanced_
+  JSON object (string/escape-aware) and repairs a truncated one; oversize `reasoning`/`claim`is truncated with a`…[truncated]` marker instead of hard-rejected; and the vote completion
   token cap is raised (2000→4000) so findings-bearing verdicts aren't cut off. A genuinely
   malformed vote still errors. (The governance-semantics fix — an errored voter degrading the
   verdict instead of shrinking the denominator — is tracked separately in [#4132](https://github.com/nexus-substrate/nexus-agents/issues/4132).)
