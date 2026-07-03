@@ -1,0 +1,122 @@
+name: Remediation Audit Soak
+
+# Scheduled AUDIT-mode auto-remediation cycle (#4224).
+#
+# Why this exists: the enforce-readiness soak (`learning/remediation-soak.jsonl`,
+# read by `remediation-readiness-collector.ts`) only accrued when a human ran
+# `nexus-agents auto-remediate`. It is NOT a byproduct of normal work, so the
+# evidence the enforce gate depends on structurally could not accumulate — the
+# soak flatlined on 2026-06-17. This workflow gives it an organic, scheduled feed
+# (mirroring how the code-PR guards soak accrues from CI on every PR).
+#
+# SAFETY: this runs in AUDIT mode ONLY. Audit is the default
+# (`NEXUS_AUTO_REMEDIATE` unset -> audit) and produces vote/plan soak evidence with
+# ZERO writes — it never opens a PR and never remediates. Belt-and-braces, we
+# EXPORT `NEXUS_AUTO_REMEDIATE=audit` explicitly and assert it before running, so
+# CI can never be nudged into `enforce`. Even if it were, the cycle entry point
+# (`runAutoRemediationCycle`) structurally withholds `repoRoot`, so `enforce`
+# cannot engage from here (see auto-remediation-cycle.ts / auto-remediation-deps.ts).
+
+on:
+  schedule:
+    # Daily at 07:17 UTC. Daily cadence keeps the soak accruing steadily without
+    # excess CI cost; the readiness gate needs volume over a soak *window*, and a
+    # once-a-day cycle gives a predictable run-over-run drip. The offset minute
+    # (:17, not :00) avoids the well-known top-of-hour GitHub-cron congestion that
+    # delays or drops scheduled runs.
+    - cron: '17 7 * * *'
+  workflow_dispatch: {}
+
+# No writes are needed: audit mode opens no PRs and this workflow commits nothing.
+permissions:
+  contents: read
+
+# Serialize runs so an overlapping scheduled + manual (or a slow prior) run can
+# never interleave writes to — or races on the save of — the same soak file.
+# cancel-in-progress: false so a running cycle is allowed to FINISH its
+# append + cache-save rather than being killed mid-write (which could lose or
+# truncate the accrued evidence); the newer run waits its turn.
+concurrency:
+  group: remediation-audit-soak
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    name: Audit-mode remediation soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Belt-and-braces: force AUDIT (default) so this can never remediate in CI.
+      NEXUS_AUTO_REMEDIATE: audit
+      # Persist the soak/review evidence under a workspace path the cache covers.
+      NEXUS_DATA_DIR: ${{ github.workspace }}/.nexus-soak-data
+      # This is a frozen CI checkout — never touch the tree or route state per-repo.
+      NEXUS_GITIGNORE_AUTO: '0'
+      NEXUS_REPO_PREFERRED: '0'
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Assert AUDIT mode (never enforce in CI)
+        run: |
+          if [ "${NEXUS_AUTO_REMEDIATE}" != "audit" ]; then
+            echo "::error::NEXUS_AUTO_REMEDIATE must be 'audit' in this workflow (got '${NEXUS_AUTO_REMEDIATE}')"
+            exit 1
+          fi
+          echo "AUDIT mode confirmed — zero writes, soak-only."
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      # Restore the prior soak + review evidence so this run APPENDS to it. The
+      # JSONL soak sink hydrates-on-construct and appends-on-write, so a restored
+      # `remediation-soak.jsonl` grows rather than being overwritten.
+      #
+      # Accumulation strategy — ROLLING key + restore-keys prefix (NOT a fixed key):
+      #   * `key` embeds `github.run_id`, so it is UNIQUE per run and the post-job
+      #     save always writes a NEW cache entry (a fixed key would hit on restore
+      #     and GitHub then SKIPS the save — the file would never grow).
+      #   * `restore-keys` is a bare prefix, so each run restores the MOST RECENT
+      #     prior cache under that prefix — i.e. yesterday's accumulated file.
+      # Restore latest -> append this run -> save under a fresh key == genuine
+      # run-over-run accumulation.
+      - name: Restore + persist accumulating soak
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: ${{ github.workspace }}/.nexus-soak-data/learning
+          key: remediation-audit-soak-${{ github.run_id }}
+          restore-keys: |
+            remediation-audit-soak-
+
+      - name: Record pre-run soak volume
+        id: pre
+        run: |
+          SOAK="${NEXUS_DATA_DIR}/learning/remediation-soak.jsonl"
+          before=0
+          [ -f "$SOAK" ] && before=$(wc -l < "$SOAK" | tr -d ' ')
+          echo "before=${before}" >> "$GITHUB_OUTPUT"
+          echo "Soak records before this run: ${before}"
+
+      - name: Run audit-mode remediation cycle
+        working-directory: packages/nexus-agents
+        run: |
+          mkdir -p "${NEXUS_DATA_DIR}/learning"
+          node dist/cli.js auto-remediate --format json
+
+      - name: Report accrual to job summary
+        if: always()
+        run: |
+          SOAK="${NEXUS_DATA_DIR}/learning/remediation-soak.jsonl"
+          after=0
+          [ -f "$SOAK" ] && after=$(wc -l < "$SOAK" | tr -d ' ')
+          before="${{ steps.pre.outputs.before }}"
+          {
+            echo "### Remediation audit soak (#4224)"
+            echo ""
+            echo "- Mode: \`audit\` (zero writes, soak-only)"
+            echo "- Soak records before: **${before:-0}**"
+            echo "- Soak records after:  **${after}**"
+            echo "- Accrued this run:    **$(( after - ${before:-0} ))**"
+          } >> "$GITHUB_STEP_SUMMARY"
