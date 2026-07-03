@@ -492,7 +492,7 @@ _Auto-generated from source. 46 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-06-28_
+_Governance Version: 2026-07-03_
 
 <!-- GOVERNANCE:VERSION:END -->
 
