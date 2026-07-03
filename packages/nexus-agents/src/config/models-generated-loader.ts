@@ -74,16 +74,22 @@ function defaultGeneratedPath(): string {
  * as real pricing makes `computeCostDetail` report priced:true costUsd:0 — a
  * measured $0 for what is actually UNMEASURED (#4165). Drop BOTH-zero pricing
  * so the entry stays unpriced; one-sided zeros (free input tiers) are real
- * and kept. Genuinely free models are represented in-tree (higher tier), so
- * nothing legitimate is lost at this lowest-priority breadth tier.
+ * and kept.
+ *
+ * #4209 exception: ids ending in `:free` (openrouter free tiers, e.g.
+ * `openrouter/meta-llama/llama-3.3-70b-instruct:free`) are GENUINELY free —
+ * their $0/$0 is real pricing, not a placeholder, and they exist ONLY in this
+ * generated catalog (not in-tree). They keep their pricing so the cost chain
+ * reports a measured $0 (priced: true) instead of falling to UNPRICED.
  */
 function extractPricing(
-  rec: GeneratedRecord
+  rec: GeneratedRecord,
+  id: string
 ): { inputPer1M: number; outputPer1M: number } | undefined {
   const inputPer1M = rec.pricing?.inputPer1M;
   const outputPer1M = rec.pricing?.outputPer1M;
   if (typeof inputPer1M !== 'number' || typeof outputPer1M !== 'number') return undefined;
-  if (inputPer1M === 0 && outputPer1M === 0) return undefined;
+  if (inputPer1M === 0 && outputPer1M === 0 && !id.endsWith(':free')) return undefined;
   return { inputPer1M, outputPer1M };
 }
 
@@ -92,7 +98,7 @@ function toModelEntry(rec: GeneratedRecord): ModelEntry | undefined {
   if (typeof rec.id !== 'string' || rec.id === '') return undefined;
   const id = rec.id;
   const base = deriveEntry(id, resolveModelIdentitySync(id));
-  const pricing = extractPricing(rec);
+  const pricing = extractPricing(rec, id);
   return {
     ...base,
     source: 'generated',
