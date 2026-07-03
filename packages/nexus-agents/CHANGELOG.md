@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.160.1
+
+### Patch Changes
+
+- [#4204](https://github.com/nexus-substrate/nexus-agents/pull/4204) [`d1e39f8`](https://github.com/nexus-substrate/nexus-agents/commit/d1e39f8b285ff6b7b1ca0d049bb58589f1a8e0f1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Gate the per-model weather telemetry lens behind an opt-in (`includeModelWeather`), default off ([#4202](https://github.com/nexus-substrate/nexus-agents/issues/4202)). The routing-bonus path no longer pays the per-model full-store scans introduced in [#4194](https://github.com/nexus-substrate/nexus-agents/issues/4194); the `weather_report` MCP tool always opts in, so its response is unchanged.
+
 ## 2.160.0
 
 ### Minor Changes
