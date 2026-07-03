@@ -399,6 +399,16 @@ appends this run's records, and the post-job save writes a fresh cache entry —
 volume genuinely accumulates run-over-run. A single-flight `concurrency` group
 (`cancel-in-progress: false`) prevents overlapping runs from racing the file.
 
+> **CI evidence is thin by design — no LLM credentials.** This workflow wires no
+> model/gateway secrets, so the per-signal consensus vote degrades to `no_quorum`
+> (the job stays green and incurs **zero LLM cost** — `createAutoAdapter` throws
+> before any network call). Consequently CI-accrued records carry only volume +
+> `signalKey`/`category`/`priority`/`planStepCount`/`reason` — **not** `voteOutcome`
+> (no vote ran) and not `dryRunResult`. That's safe (thinner evidence can only keep
+> the enforce gate fail-closed, never falsely enable it), but it means CI alone
+> cannot produce soundness-judgeable evidence. Vote-bearing evidence requires the
+> local path below, where your real gateway credentials + telemetry are present.
+
 **2. LOCAL cron / systemd timer (recommended for real operators).** A fresh CI
 checkout has little of your outcome/decision-cost telemetry, so the
 `improvement_review` signals it collects are thin. **Richer, more representative
@@ -424,12 +434,13 @@ readiness gate reflects **genuine** soundness over real, plan-bearing selections
 > soak record's `dryRunResult` only fires when a `dryRun` capability is wired into
 > the deps — `buildAutoRemediationDeps` does not wire one, and there is **no
 > config/flag/env** to enable it from the CLI. So accrued records carry the real
-> `signalKey`, `category`, `priority`, `planStepCount`, `voteOutcome`, and `reason`
-> (a large improvement over the prior synthetic, uniform volume), but not the full
-> dry-run plan text. Wiring a `dryRun` adapter into the audit cycle so the accrued
-> selections are fully plan-bearing is tracked as follow-up to #4224 (and would
-> also need the dry-run audit `detail` to carry plan content rather than just
-> `ok`/error).
+> `signalKey`, `category`, `priority`, `planStepCount`, and `reason` (plus
+> `voteOutcome` only where LLM credentials are present — i.e. the local path, not
+> credential-less CI, per the note above), a large improvement over the prior
+> synthetic, uniform volume — but not the full dry-run plan text. Wiring a `dryRun`
+> adapter into the audit cycle so the accrued selections are fully plan-bearing is
+> tracked as follow-up to #4224 (and would also need the dry-run audit `detail` to
+> carry plan content rather than just `ok`/error).
 
 ### Removed in 2.82.0 (#2977)
 

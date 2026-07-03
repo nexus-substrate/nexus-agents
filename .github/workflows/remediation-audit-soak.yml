@@ -101,8 +101,6 @@ jobs:
 
       - name: Run audit-mode remediation cycle
         working-directory: packages/nexus-agents
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "${NEXUS_DATA_DIR}/learning"
           node dist/cli.js auto-remediate --format json
