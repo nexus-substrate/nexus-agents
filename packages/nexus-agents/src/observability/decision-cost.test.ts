@@ -189,6 +189,24 @@ describe('rollupDecisionCost', () => {
       expect(summary.perModel[0]?.model).toBe(UNKNOWN_MODEL);
     });
 
+    it('a token-reporting voter WITHOUT a computable cost is unmeasured (#4165)', () => {
+      // Unpriced model: the bridge omits costUsd but keeps the tokens. The
+      // tokens still count toward consumption totals, but the voter's unknown
+      // cost must surface as UNMEASURED — a measured $0 would silently
+      // understate spend.
+      const voters: VoterCostInput[] = [
+        { role: 'devex', model: 'unpriced-model', inputTokens: 500, outputTokens: 100 },
+      ];
+
+      const summary = rollupDecisionCost(voters, 'api');
+
+      expect(summary.measuredVoters).toBe(0);
+      expect(summary.unmeasuredVoters).toBe(1);
+      expect(summary.perVoter[0]?.unmeasured).toBe(true);
+      expect(summary.totalTokens).toBe(600);
+      expect(summary.totalCostUsd).toBe(0);
+    });
+
     it('a measured voter with zero cost (free model) is NOT unmeasured', () => {
       // Reported tokens but a free model ⇒ measured, cost genuinely 0.
       const voters: VoterCostInput[] = [

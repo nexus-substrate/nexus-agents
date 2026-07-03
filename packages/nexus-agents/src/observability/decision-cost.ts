@@ -20,12 +20,14 @@
  *
  * Design decisions that the fixture tests pin (#3855 acceptance criteria):
  *
- *  - **Missing cost is UNMEASURED, not zero.** A voter with no token counts
- *    (e.g. a CLI-subscription adapter that doesn't report usage, or an error
- *    vote that never reached the model) is counted in `unmeasuredVoters` and
- *    contributes 0 to the totals — but the summary records that the total is a
- *    floor, not an exact figure (`measured` < `voterCount`). Treating unmeasured
- *    as a true $0 would silently understate spend; this keeps the honesty.
+ *  - **Missing cost is UNMEASURED, not zero.** A voter with no computable cost
+ *    — no usage report at all (a CLI-subscription adapter, an error vote that
+ *    never reached the model) or a model with no pricing anywhere in the
+ *    registry chain (#4165) — is counted in `unmeasuredVoters` and contributes
+ *    0 to the COST totals (reported tokens still count toward consumption) —
+ *    but the summary records that the total is a floor, not an exact figure
+ *    (`measured` < `voterCount`). Treating unmeasured as a true $0 would
+ *    silently understate spend; this keeps the honesty.
  *  - **Plan mode records 0-cost but keeps tokens.** Under `NEXUS_BILLING_MODE=plan`
  *    the spend is pre-covered by a subscription, so cost is recorded as $0 while
  *    token counts are preserved (so the operator can still see consumption and
@@ -46,8 +48,10 @@ export type DecisionBillingMode = 'plan' | 'api';
  * Token counts and cost are OPTIONAL: a voter whose adapter reported no usage
  * (CLI subscription, error vote, simulation) leaves them `undefined` and is
  * folded in as `unmeasured` — never silently zeroed. `costUsd`, when present,
- * is the API-mode cost (e.g. from `computeCostUSD`); plan mode zeroes it at
- * rollup time but keeps the tokens.
+ * is the API-mode cost (e.g. from `computeCostDetail`); plan mode zeroes it at
+ * rollup time but keeps the tokens. A voter with tokens but NO `costUsd`
+ * (unpriced model, #4165) is likewise unmeasured — its tokens count toward
+ * consumption while its unknown cost is honestly excluded from the total.
  */
 export interface VoterCostInput {
   /** Voter role (e.g. 'architect', 'security'). */
@@ -76,8 +80,9 @@ export interface VoterCostBreakdown {
   /** Effective cost after billing-mode application (0 in plan mode). */
   readonly costUsd: number;
   /**
-   * True when this voter reported NO usage at all (no tokens, no cost). Its
-   * zeros are placeholders, not a measured $0 / 0-token call.
+   * True when no cost was computable for this voter — no usage report at all,
+   * or a token-reporting call on an unpriced model (#4165). Its cost zero is a
+   * placeholder, not a measured $0.
    */
   readonly unmeasured: boolean;
 }
@@ -104,9 +109,12 @@ export interface DecisionCostSummary {
   readonly billingMode: DecisionBillingMode;
   /** Total voters folded into this decision. */
   readonly voterCount: number;
-  /** Voters that reported usage (tokens and/or cost). */
+  /** Voters with a computable cost (`costUsd` present on the input). */
   readonly measuredVoters: number;
-  /** Voters that reported no usage at all (counted, not zeroed-as-fact). */
+  /**
+   * Voters whose cost could not be computed — no usage report, or an unpriced
+   * model (#4165). Counted, not zeroed-as-fact.
+   */
   readonly unmeasuredVoters: number;
   readonly totalInputTokens: number;
   readonly totalOutputTokens: number;
@@ -165,13 +173,15 @@ export const DecisionCostSummarySchema = z.object({
   ),
 });
 
-/** A voter contributes usage iff it reported any token count or a cost. */
+/**
+ * A voter's cost is measured iff a cost was computable for it (`costUsd`
+ * present — a genuinely free model arrives as `costUsd: 0`, still measured).
+ * Token counts alone do NOT make a voter cost-measured (#4165): an unpriced
+ * model's tokens are kept in the consumption totals, but its unknown cost must
+ * surface as UNMEASURED — a measured $0 would silently understate spend.
+ */
 function isMeasured(v: VoterCostInput): boolean {
-  return (
-    (v.inputTokens !== undefined && v.inputTokens > 0) ||
-    (v.outputTokens !== undefined && v.outputTokens > 0) ||
-    v.costUsd !== undefined
-  );
+  return v.costUsd !== undefined;
 }
 
 /** Round to micro-USD so summaries don't drift to floating-point noise. */
@@ -197,7 +207,8 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
   const inputTokens = v.inputTokens ?? 0;
   const outputTokens = v.outputTokens ?? 0;
   // Plan mode: cost is pre-covered, record 0 but keep tokens. Api mode: use the
-  // supplied cost (a measured voter with no costUsd ⇒ 0, e.g. a free model).
+  // supplied cost (absence ⇒ unmeasured, recorded as a placeholder 0 — a free
+  // model arrives as an explicit costUsd: 0 and stays measured, #4165).
   const costUsd = isPlan ? 0 : roundUsd(v.costUsd ?? 0);
   return {
     role: v.role,
@@ -214,9 +225,10 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
  * Roll N per-voter cost inputs up into one {@link DecisionCostSummary}.
  *
  * Pure and deterministic: no I/O, no clock, no env reads. `plan` mode zeroes
- * every cost (tokens kept); `api` mode uses the supplied `costUsd`. Voters that
- * reported no usage are counted in `unmeasuredVoters` and contribute zeros that
- * are explicitly NOT a measured $0 (see module doc / `unmeasured` flag).
+ * every cost (tokens kept); `api` mode uses the supplied `costUsd`. Voters with
+ * no computable cost (no usage report, or an unpriced model, #4165) are counted
+ * in `unmeasuredVoters` and contribute cost zeros that are explicitly NOT a
+ * measured $0 (see module doc / `unmeasured` flag).
  */
 export function rollupDecisionCost(
   voters: readonly VoterCostInput[],

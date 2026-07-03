@@ -11,8 +11,13 @@
  *      log under <NEXUS_DATA_DIR>/usage/usage-YYYY-MM.jsonl.
  *   2. `loadUsageEvents({...})` — read events for a window, filtered
  *      by model / category.
- *   3. `computeCostUSD(modelId, inputTokens, outputTokens)` — compute
- *      cost from `config/in-tree-data.ts` pricing via `lookupInTreeCapability`.
+ *   3. `computeCostDetail(modelId, inputTokens, outputTokens)` (and its
+ *      thin wrapper `computeCostUSD`) — compute cost from the FULL model
+ *      registry pricing chain (manifest > in-tree > models.dev > generated
+ *      LiteLLM catalog), including the #4164 normalized/identity resolution
+ *      tier for decorated gateway model ids. A model with no pricing
+ *      anywhere in the chain is reported as `priced: false` so consumers
+ *      can treat the missing cost as UNMEASURED (#3855), never a real $0.
  *
  * The `usage` CLI command (cli/usage-command.ts) consumes this for the
  * operator dashboard. Existing OutcomeStore is intentionally untouched
@@ -23,7 +28,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from
 import { dirname, join } from 'node:path';
 
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
-import { lookupInTreeCapability } from '../config/model-config-helpers.js';
+// NOTE: only the FUNCTION is imported here — `getDefaultRegistry()` must never
+// be CALLED at module scope (#3185 bootstrap hazard: first construction reads
+// the manifest overlay/snapshot from disk). All calls happen at invocation
+// time inside computeCostDetail.
+import { getDefaultRegistry, type MatchedVia } from '../config/model-registry.js';
 
 export interface UsageEvent {
   /** ISO 8601 timestamp of the call. */
@@ -35,7 +44,12 @@ export interface UsageEvent {
   /** Token counts. */
   readonly inputTokens: number;
   readonly outputTokens: number;
-  /** Cost in USD. Computed at write time from pricing in `config/in-tree-data.ts`. */
+  /**
+   * Cost in USD. Computed at write time from the full model-registry pricing
+   * chain (see `computeCostDetail`). 0 with `priced: false` means the model
+   * was UNPRICED (cost unknown), not a real $0 — check `priced` before
+   * treating this as a measured figure.
+   */
   readonly usdCost: number;
   /** Wall-clock latency in milliseconds. */
   readonly latencyMs: number;
@@ -48,26 +62,78 @@ export interface UsageEvent {
   readonly category?: string;
   /** Optional failure code when success === false. */
   readonly errorCode?: string;
+  /**
+   * Whether pricing data existed for the model at write time (#4165), so
+   * audit can distinguish a real $0 from an unpriced model. Absent on lines
+   * written before this field existed.
+   */
+  readonly priced?: boolean;
+  /**
+   * Pricing provenance: the canonical registry id whose pricing was applied
+   * (the entry's `resolvedFrom` when the #4164 fuzzy tier matched a decorated
+   * id, else the caller's model id). Present only when `priced` is true.
+   */
+  readonly priceSource?: string;
+}
+
+/** Result of a pricing-aware cost computation (#4165). */
+export interface CostDetail {
+  /** Cost in USD. Always 0 when `priced` is false — an unknown, not a $0. */
+  readonly costUsd: number;
+  /** Whether the resolved registry entry carried pricing data. */
+  readonly priced: boolean;
+  /**
+   * Canonical id the pricing/metadata came from: the entry's `resolvedFrom`
+   * when the #4164 fuzzy tier matched a decorated id, else the caller's id.
+   */
+  readonly resolvedId: string;
+  /** Fuzzy-resolution provenance (#4164), passed through from the entry. */
+  readonly matchedVia?: MatchedVia;
 }
 
 /**
- * Compute cost in USD given a model and token counts. Returns 0 when the
- * model has no pricing data (e.g., free local model, gateway-routed model
- * we don't have rates for). Operators with custom gateways can extend
- * `config/in-tree-data.ts` to add their pricing.
+ * Compute cost in USD given a model and token counts, with pricing
+ * provenance. Reads the FULL registry chain via
+ * `getDefaultRegistry().getEntry()` — manifest > in-tree > models.dev >
+ * generated LiteLLM catalog, plus the #4164 normalized/identity tier that
+ * resolves decorated model names from OpenAI-compatible gateways to their
+ * canonical entry's pricing.
+ *
+ * `priced: false` (with `costUsd: 0`) means NO pricing existed anywhere in
+ * the chain — consumers must treat the cost as UNMEASURED (#3855), never a
+ * real $0. Operators can add pricing for gateway-only models via the
+ * models-manifest overlay.
  */
-export function computeCostUSD(modelId: string, inputTokens: number, outputTokens: number): number {
-  const cap = lookupInTreeCapability(modelId);
-  if (cap === undefined) return 0;
-  const inputPer1M = cap.pricing?.inputPer1M ?? 0;
-  const outputPer1M = cap.pricing?.outputPer1M ?? 0;
+export function computeCostDetail(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number
+): CostDetail {
+  // Registry read happens at INVOCATION time, never module load — first
+  // construction touches the filesystem (#3185 bootstrap hazard).
+  const entry = getDefaultRegistry().getEntry(modelId);
+  const resolvedId = entry.resolvedFrom ?? modelId;
+  const provenance = entry.matchedVia !== undefined ? { matchedVia: entry.matchedVia } : {};
+  if (entry.pricing === undefined) {
+    return { costUsd: 0, priced: false, resolvedId, ...provenance };
+  }
   // Multiply token counts by per-million rate then divide. Use Math.round
   // at micro-USD precision so JSONL files don't drift to floating-point
   // noise on small calls.
   const microUsd = Math.round(
-    inputTokens * inputPer1M + outputTokens * outputPer1M // micro-USD per million scaled
+    inputTokens * entry.pricing.inputPer1M + outputTokens * entry.pricing.outputPer1M
   );
-  return microUsd / 1_000_000;
+  return { costUsd: microUsd / 1_000_000, priced: true, resolvedId, ...provenance };
+}
+
+/**
+ * Thin wrapper over {@link computeCostDetail} returning only the USD figure.
+ * Returns 0 both for a genuinely free model and for a model with no pricing
+ * data — callers that must tell those apart (unpriced ⇒ UNMEASURED, #3855)
+ * should use `computeCostDetail` and check `priced`.
+ */
+export function computeCostUSD(modelId: string, inputTokens: number, outputTokens: number): number {
+  return computeCostDetail(modelId, inputTokens, outputTokens).costUsd;
 }
 
 /** Resolve the active usage log path for the current month. */
