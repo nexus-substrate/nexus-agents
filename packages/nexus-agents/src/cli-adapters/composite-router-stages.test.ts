@@ -142,6 +142,8 @@ describe('runBudgetStage', () => {
     const stages: string[] = [];
     const mockBudgetRouter = {
       checkBudget: vi.fn().mockReturnValue({ withinBudget: true }),
+      // #4196: api billing mode also runs the per-task-class ceiling filter.
+      filterByTaskClassCeiling: vi.fn((_task: unknown, cands: CliName[]) => cands),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableBudgetFilter: true },

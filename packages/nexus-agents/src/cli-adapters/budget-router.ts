@@ -27,9 +27,12 @@ import type {
   ICliAdapter,
 } from './types.js';
 import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
+import type { CliName } from './types.js';
 import { estimateTokens, estimateCost } from './budget-utils.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
+import { detectTaskCategory } from '../config/task-specialization.js';
+import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 
 const logger = createLogger({ component: 'budget-router' });
 
@@ -53,7 +56,29 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
     critical: 90,
   },
   enforceHardLimits: true,
+  // #4196: per-task-class cost ceilings default OFF (no ceiling configured).
+  taskClassCostCeilings: {},
 };
+
+/**
+ * Estimate the USD cost of a task on a CLI slot using CANONICAL registry
+ * pricing (#4165 path: `ModelEntry.pricing` of the slot's default model) —
+ * NOT the legacy `TOKEN_COSTS` table (consolidation tracked in #4168).
+ * Returns `undefined` when the registry has no pricing for the model, so the
+ * caller can fail CLOSED on a configured ceiling (#4196 BINDING condition).
+ */
+export function estimateRegistryCostUsd(
+  slot: CliName,
+  inputTokens: number,
+  outputTokens: number
+): number | undefined {
+  const pricing = getModelPricing(getDefaultModelForCli(slot));
+  if (pricing === undefined) return undefined;
+  return (
+    (inputTokens / 1_000_000) * pricing.inputPer1M +
+    (outputTokens / 1_000_000) * pricing.outputPer1M
+  );
+}
 
 /**
  * Budget-constrained task router.
@@ -188,6 +213,51 @@ export class BudgetRouter implements IBudgetRouter {
       warnings,
       projectedBudget,
     };
+  }
+
+  /**
+   * Per-task-class cost ceiling filter (#4196, epic #4175).
+   *
+   * Resolves the task's class via `detectTaskCategory`; when a ceiling is
+   * configured for that class, each candidate's cost is estimated with
+   * canonical registry pricing and candidates above the ceiling are dropped.
+   *
+   * BINDING fail direction: a candidate with MISSING registry pricing FAILS
+   * the check (fail-closed) — unknown cost must not slip under a configured
+   * ceiling. This is deliberately NOT the return-all-candidates fallback of
+   * `filterByPreferenceTier` (composite-router-helpers.ts).
+   *
+   * Billing-mode gating (api only) is the caller's responsibility
+   * (`applyBudgetFilter`); plan mode never invokes this.
+   */
+  filterByTaskClassCeiling(task: CliTask, candidates: RoutingArmId[]): RoutingArmId[] {
+    const ceiling = this.resolveTaskClassCeiling(task);
+    if (ceiling === undefined) return candidates;
+    const inputTokens = estimateTokens(task.content);
+    const outputTokens = task.maxTokens ?? inputTokens * 2;
+    return candidates.filter((arm) => {
+      // Pricing is slot-level; an api:* arm is priced by its display slot's
+      // default model (#3422).
+      const cost = estimateRegistryCostUsd(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+      if (cost === undefined) {
+        logger.debug('Cost ceiling: missing registry pricing — failing closed', { arm, ceiling });
+        return false;
+      }
+      const within = cost <= ceiling;
+      if (!within) {
+        logger.debug('Cost ceiling: candidate excluded', { arm, cost, ceiling });
+      }
+      return within;
+    });
+  }
+
+  /** Resolve the configured ceiling for the task's detected class, if any (#4196). */
+  private resolveTaskClassCeiling(task: CliTask): number | undefined {
+    const ceilings = this.options.taskClassCostCeilings;
+    if (Object.keys(ceilings).length === 0) return undefined;
+    const match = detectTaskCategory(task.content);
+    if (match === null) return undefined;
+    return ceilings[match.category];
   }
 
   /**

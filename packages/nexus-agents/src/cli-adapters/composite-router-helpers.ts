@@ -17,6 +17,7 @@ import {
   DEFAULT_MODEL_PROFILES,
   DEFAULT_TOPSIS_CRITERIA,
   PLAN_BILLING_TOPSIS_CRITERIA,
+  applyDifficultyCostWeighting,
   getCriteriaForTaskCategory,
 } from './topsis-types.js';
 import type { BillingMode } from '../mcp/tools/delegate-to-model-types.js';
@@ -75,6 +76,14 @@ export function calculateConfidence(
 }
 
 /**
+ * BINDING plan-mode annotation (#4196): when billing mode is 'plan' the
+ * difficulty-conditional cost weighting and the per-task-class cost ceiling
+ * are no-ops — the routing decision must SAY so explicitly (never silent),
+ * so downstream evals don't misread plan-mode routing as cost-aware.
+ */
+export const PLAN_MODE_COST_ANNOTATION = 'cost weighting disabled: plan mode';
+
+/**
  * Options for building routing reason.
  */
 export interface BuildReasonOptions {
@@ -85,6 +94,8 @@ export interface BuildReasonOptions {
   preferenceScore?: number;
   difficultyTier?: ModelTier;
   difficultyScore?: number;
+  /** Billing mode in effect; 'plan' appends {@link PLAN_MODE_COST_ANNOTATION} (#4196). */
+  billingMode?: BillingMode;
 }
 
 /**
@@ -101,6 +112,7 @@ export function buildReason(options: BuildReasonOptions): string {
   if (preferenceScore !== undefined) parts.push('preference ' + preferenceScore.toFixed(2));
   if (topsisScore !== undefined) parts.push('TOPSIS score ' + topsisScore.toFixed(2));
   if (ucbScore !== undefined) parts.push('UCB score ' + ucbScore.toFixed(2));
+  if (options.billingMode === 'plan') parts.push(PLAN_MODE_COST_ANNOTATION);
   return parts.join(', ');
 }
 
@@ -153,9 +165,7 @@ export function applyBudgetFilter(
   budgetRouter: BudgetRouter | undefined,
   config: CompositeRouterConfig
 ): BudgetFilterResult {
-  if (budgetRouter === undefined) {
-    return { eligible: candidates, withinBudget: true };
-  }
+  if (budgetRouter === undefined) return { eligible: candidates, withinBudget: true };
 
   const rawConstraints = config.budgetConstraints;
   const constraint: BudgetConstraint = {};
@@ -170,7 +180,13 @@ export function applyBudgetFilter(
   }
 
   const result = budgetRouter.checkBudget(task, constraint);
-  return { eligible: result.withinBudget ? candidates : [], withinBudget: result.withinBudget };
+  if (!result.withinBudget) return { eligible: [], withinBudget: false };
+  // #4196: per-task-class cost ceiling — enforced ONLY under api billing.
+  // Plan mode is a no-op here; the decision carries PLAN_MODE_COST_ANNOTATION
+  // instead of silently skipping. A candidate with missing registry pricing
+  // FAILS the ceiling (fail-closed) — see BudgetRouter.filterByTaskClassCeiling.
+  if (config.billingMode !== 'api') return { eligible: candidates, withinBudget: true };
+  return { eligible: budgetRouter.filterByTaskClassCeiling(task, candidates), withinBudget: true };
 }
 
 /**
@@ -192,26 +208,32 @@ export interface TopsisRankingResult {
  */
 export const TOPSIS_TOLERANCE_BAND_PERCENT = 0.05;
 
-/** Returns a TopsisRouter with task-category-aware criteria (#1491).
+/** Returns a TopsisRouter with task-category-aware criteria (#1491) and
+ * difficulty-conditional quality/cost weighting (#4196).
+ * Difficulty conditioning is api-mode ONLY: plan mode zeroes the cost weight
+ * already, so conditioning there would be a silent no-op — plan mode instead
+ * emits an explicit routing-decision annotation (see buildReason).
  * Only creates a new router when the criteria differ from the billing-mode default. */
 function selectTopsisRouter(
   router: TopsisRouter,
   billingMode: BillingMode,
-  taskType?: string
+  taskType?: string,
+  reasoningComplexity?: number
 ): TopsisRouter {
-  if (taskType !== undefined) {
-    const mode = billingMode === 'plan' ? 'plan' : 'api';
-    const criteria = getCriteriaForTaskCategory(taskType, mode);
-    const defaultCriteria =
-      mode === 'plan' ? PLAN_BILLING_TOPSIS_CRITERIA : DEFAULT_TOPSIS_CRITERIA;
-    // Only create a new router when category criteria differ from default
-    if (criteria !== defaultCriteria) {
-      return new TopsisRouter({ criteria });
-    }
-  }
-  if (billingMode === 'plan') {
-    return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
-  }
+  const mode = billingMode === 'plan' ? 'plan' : 'api';
+  const defaultCriteria = mode === 'plan' ? PLAN_BILLING_TOPSIS_CRITERIA : DEFAULT_TOPSIS_CRITERIA;
+  const base =
+    taskType !== undefined ? getCriteriaForTaskCategory(taskType, mode) : defaultCriteria;
+  // #4196: condition the quality/cost split on the canonical SharedTaskAnalyzer
+  // complexity (TaskProfile.reasoningComplexity). Mid-band complexity returns
+  // the same reference, keeping the default path byte-identical.
+  const criteria =
+    mode === 'api' && reasoningComplexity !== undefined
+      ? applyDifficultyCostWeighting(base, reasoningComplexity)
+      : base;
+  // Only create a new router when the effective criteria differ from default
+  if (criteria !== defaultCriteria) return new TopsisRouter({ criteria });
+  if (mode === 'plan') return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
   return router;
 }
 
@@ -351,7 +373,12 @@ export function applyTopsisRanking(
   }
 
   const billingMode = options?.billingMode ?? 'api';
-  const router = selectTopsisRouter(topsisRouter, billingMode, taskProfile.taskType);
+  const router = selectTopsisRouter(
+    topsisRouter,
+    billingMode,
+    taskProfile.taskType,
+    taskProfile.reasoningComplexity
+  );
   const adjustedProfiles = buildAdjustedProfiles(taskProfile, candidates, options);
   const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
@@ -505,6 +532,8 @@ export interface BuildDecisionContext {
   topsisScore: number | undefined;
   ucbScore: number | undefined;
   taskProfile: TaskProfile;
+  /** Billing mode in effect; 'plan' surfaces the explicit annotation (#4196). */
+  billingMode?: BillingMode | undefined;
 }
 
 /**
@@ -519,6 +548,7 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
   const reason = buildReason({
     selectedCli: ctx.selectedCli,
     stages: ctx.stagesExecuted,
+    ...(ctx.billingMode !== undefined ? { billingMode: ctx.billingMode } : {}),
     ...(ctx.topsisScore !== undefined ? { topsisScore: ctx.topsisScore } : {}),
     ...(ctx.ucbScore !== undefined ? { ucbScore: ctx.ucbScore } : {}),
     ...(ctx.preferenceScore !== undefined ? { preferenceScore: ctx.preferenceScore } : {}),

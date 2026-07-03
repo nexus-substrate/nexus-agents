@@ -32,7 +32,14 @@ import {
   buildDecisionFields,
   buildPreferenceStats,
   applyPerformanceFloorPenalty,
+  PLAN_MODE_COST_ANNOTATION,
 } from './composite-router-helpers.js';
+import {
+  applyDifficultyCostWeighting,
+  DEFAULT_TOPSIS_CRITERIA,
+  PLAN_BILLING_TOPSIS_CRITERIA,
+  TASK_CATEGORY_TOPSIS_CRITERIA,
+} from './topsis-types.js';
 
 // ============================================================================
 // Helpers
@@ -790,5 +797,212 @@ describe('adjustProfileWithStageScores', () => {
     ]);
     const result = adjustProfileWithStageScores([highQuality, gemini], scores);
     expect(result[0]?.qualityScore).toBeLessThanOrEqual(10);
+  });
+});
+
+// ============================================================================
+// applyDifficultyCostWeighting (#4196)
+// ============================================================================
+
+describe('applyDifficultyCostWeighting', () => {
+  const weightOf = (
+    criteria: ReturnType<typeof applyDifficultyCostWeighting>,
+    name: string
+  ): number | undefined => criteria.find((c) => c.name === name)?.weight;
+
+  it('shifts weight from cost to quality for high complexity (>7)', () => {
+    const result = applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, 8);
+    expect(weightOf(result, 'quality')).toBeCloseTo(0.65);
+    expect(weightOf(result, 'cost')).toBeCloseTo(0.15);
+    expect(weightOf(result, 'latency')).toBeCloseTo(0.2);
+  });
+
+  it('shifts weight from quality to cost for low complexity (<4)', () => {
+    const result = applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, 3);
+    expect(weightOf(result, 'quality')).toBeCloseTo(0.35);
+    expect(weightOf(result, 'cost')).toBeCloseTo(0.45);
+    expect(weightOf(result, 'latency')).toBeCloseTo(0.2);
+  });
+
+  it('returns the SAME criteria reference for mid complexity (byte-identical default path)', () => {
+    expect(applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, 5)).toBe(DEFAULT_TOPSIS_CRITERIA);
+    expect(applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, 7)).toBe(DEFAULT_TOPSIS_CRITERIA);
+    expect(applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, 4)).toBe(DEFAULT_TOPSIS_CRITERIA);
+  });
+
+  it('preserves weight sum of 1.0 after shifting', () => {
+    for (const complexity of [2, 9]) {
+      const result = applyDifficultyCostWeighting(DEFAULT_TOPSIS_CRITERIA, complexity);
+      const sum = result.reduce((a, c) => a + c.weight, 0);
+      expect(sum).toBeCloseTo(1.0, 10);
+    }
+  });
+
+  it('clamps the shift so no weight goes negative (architecture cost=0.1)', () => {
+    const architecture = TASK_CATEGORY_TOPSIS_CRITERIA['architecture'];
+    expect(architecture).toBeDefined();
+    const result = applyDifficultyCostWeighting(architecture as never, 9);
+    expect(weightOf(result, 'quality')).toBeCloseTo(0.8);
+    expect(weightOf(result, 'cost')).toBeCloseTo(0.0);
+    expect(weightOf(result, 'latency')).toBeCloseTo(0.2);
+  });
+
+  it('is a no-op when cost weight is already 0 and complexity is high (plan-shaped criteria)', () => {
+    expect(applyDifficultyCostWeighting(PLAN_BILLING_TOPSIS_CRITERIA, 9)).toBe(
+      PLAN_BILLING_TOPSIS_CRITERIA
+    );
+  });
+});
+
+// ============================================================================
+// applyTopsisRanking — difficulty conditioning gates (#4196)
+// ============================================================================
+
+describe('applyTopsisRanking difficulty conditioning', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+  // Complexity 3 vs 5 isolates the NEW weight conditioning: neither value
+  // triggers the pre-existing ×1.2 profile quality boost (>7), so any output
+  // difference can only come from the criteria-weight shift (#4196).
+
+  it('plan mode: weights are NOT difficulty-conditioned (regression pin)', async () => {
+    const { TopsisRouter } = await import('./topsis-router.js');
+    const router = new TopsisRouter();
+    const low = applyTopsisRanking(
+      makeTaskProfile({ taskType: 'general', reasoningComplexity: 3 }),
+      candidates,
+      router,
+      { billingMode: 'plan' }
+    );
+    const mid = applyTopsisRanking(
+      makeTaskProfile({ taskType: 'general', reasoningComplexity: 5 }),
+      candidates,
+      router,
+      { billingMode: 'plan' }
+    );
+    expect(low.ranking).toEqual(mid.ranking);
+    expect(low.topScore).toBe(mid.topScore);
+  });
+
+  it('api mode: low complexity (cost-heavy weights) changes the scoring landscape', async () => {
+    const { TopsisRouter } = await import('./topsis-router.js');
+    const router = new TopsisRouter();
+    const low = applyTopsisRanking(
+      makeTaskProfile({ taskType: 'general', reasoningComplexity: 3 }),
+      candidates,
+      router,
+      { billingMode: 'api' }
+    );
+    const mid = applyTopsisRanking(
+      makeTaskProfile({ taskType: 'general', reasoningComplexity: 5 }),
+      candidates,
+      router,
+      { billingMode: 'api' }
+    );
+    // Cost-heavy weights (0.35/0.45/0.2) must change the closeness landscape
+    // relative to defaults (0.5/0.3/0.2).
+    expect(low.topScore).not.toBe(mid.topScore);
+  });
+});
+
+// ============================================================================
+// buildReason / buildDecisionFields — plan-mode annotation (#4196)
+// ============================================================================
+
+describe('plan-mode cost annotation', () => {
+  it('buildReason appends the annotation in plan mode', () => {
+    const reason = buildReason({ selectedCli: 'claude', stages: [], billingMode: 'plan' });
+    expect(reason).toContain(PLAN_MODE_COST_ANNOTATION);
+    expect(reason).toContain('cost weighting disabled: plan mode');
+  });
+
+  it('buildReason omits the annotation in api mode', () => {
+    const reason = buildReason({ selectedCli: 'claude', stages: [], billingMode: 'api' });
+    expect(reason).not.toContain(PLAN_MODE_COST_ANNOTATION);
+  });
+
+  it('buildReason omits the annotation when billingMode is not provided (back-compat)', () => {
+    const reason = buildReason({ selectedCli: 'claude', stages: [] });
+    expect(reason).toBe('Selected claude');
+  });
+
+  it('buildDecisionFields threads billingMode into the reason', () => {
+    const base = {
+      selectedCli: 'claude' as CliName,
+      candidates: ['claude', 'gemini'] as CliName[],
+      topsisRanking: ['claude', 'gemini'] as CliName[],
+      stagesExecuted: ['task-analysis'],
+      decisionTimeMs: 5,
+      withinBudget: true,
+      difficultyEstimate: undefined,
+      difficultyTier: undefined,
+      preferenceScore: undefined,
+      preferenceTier: undefined,
+      topsisScore: 0.8,
+      ucbScore: undefined,
+      taskProfile: makeTaskProfile(),
+    };
+    const plan = buildDecisionFields({ ...base, billingMode: 'plan' });
+    expect(plan.reason).toContain(PLAN_MODE_COST_ANNOTATION);
+    const api = buildDecisionFields({ ...base, billingMode: 'api' });
+    expect(api.reason).not.toContain(PLAN_MODE_COST_ANNOTATION);
+  });
+});
+
+// ============================================================================
+// applyBudgetFilter — per-task-class cost ceiling gating (#4196)
+// ============================================================================
+
+describe('applyBudgetFilter task-class ceiling gating', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('api mode: applies the ceiling filter via the budget router', () => {
+    const mockRouter = {
+      checkBudget: vi.fn(() => ({ withinBudget: true })),
+      filterByTaskClassCeiling: vi.fn(() => ['gemini']),
+    };
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      {
+        billingMode: 'api',
+      } as never
+    );
+    expect(mockRouter.filterByTaskClassCeiling).toHaveBeenCalledTimes(1);
+    expect(result.eligible).toEqual(['gemini']);
+  });
+
+  it('api mode: an empty ceiling result stays empty (fail-closed, no return-all fallback)', () => {
+    const mockRouter = {
+      checkBudget: vi.fn(() => ({ withinBudget: true })),
+      filterByTaskClassCeiling: vi.fn(() => []),
+    };
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      {
+        billingMode: 'api',
+      } as never
+    );
+    expect(result.eligible).toEqual([]);
+  });
+
+  it('plan mode: never invokes the ceiling filter (no-op)', () => {
+    const mockRouter = {
+      checkBudget: vi.fn(() => ({ withinBudget: true })),
+      filterByTaskClassCeiling: vi.fn(() => []),
+    };
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      {
+        billingMode: 'plan',
+        budgetConstraints: { taskClassMaxCostUsd: { code_generation: 0.01 } },
+      } as never
+    );
+    expect(mockRouter.filterByTaskClassCeiling).not.toHaveBeenCalled();
+    expect(result.eligible).toEqual(candidates);
   });
 });
