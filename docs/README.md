@@ -211,6 +211,7 @@ The data plane is the engineering CLIs (Claude Code, Codex, Gemini, OpenCode) th
 | [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)       | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline                                                     |
 | [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)       | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)                                               |
 | [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                   | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway                                               |
+| [MODEL_REGISTRY_PRICING.md](./guides/MODEL_REGISTRY_PRICING.md)     | Decorated gateway model names → canonical pricing; manifest aliases; UNMEASURED cost semantics               |
 | [PARALLEL_AGENT_WORKTREES.md](./guides/PARALLEL_AGENT_WORKTREES.md) | Safe parallel agents via `isolation: "worktree"` + the empirical WorktreeCreate/WorktreeRemove hook contract |
 
 ---
