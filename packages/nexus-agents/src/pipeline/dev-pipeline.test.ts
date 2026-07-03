@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { researchContextFromText } from './research-context.js';
-import { runDevPipeline } from './dev-pipeline.js';
+import { runDevPipeline, isApproved, createVoteResult, getVoteFeedback } from './dev-pipeline.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { PolicyBlockedError } from './policy-evaluator.js';
 import type {
@@ -847,6 +847,84 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
       expect(events.some((g) => g.startsWith('consensus-to-execute:'))).toBe(true);
     } finally {
       off();
+    }
+  });
+});
+
+describe('vote-verdict deciders (#4174) — isApproved / createVoteResult / getVoteFeedback', () => {
+  // These three gate pipeline progression (isApproved consumed at the vote
+  // stage); the #4135 contract — no_quorum is NOT an approval and carries no
+  // reviewer feedback — was previously documented in a comment but unpinned.
+
+  it('isApproved: approved and conditional_go are approvals', () => {
+    expect(isApproved({ kind: 'approved', approvalPercentage: 100 })).toBe(true);
+    expect(
+      isApproved({
+        kind: 'conditional_go',
+        conditions: ['add tests'],
+        caveats: [],
+        approvalPercentage: 80,
+      })
+    ).toBe(true);
+  });
+
+  it('isApproved: rejected is not an approval', () => {
+    expect(isApproved({ kind: 'rejected', feedback: 'no', approvalPercentage: 20 })).toBe(false);
+  });
+
+  it('isApproved: no_quorum is NOT an approval (#4135 — voided vote must fail closed)', () => {
+    expect(
+      isApproved({ kind: 'no_quorum', reason: 'contrarian voter errored', approvalPercentage: 0 })
+    ).toBe(false);
+  });
+
+  it('getVoteFeedback: only rejected carries reviewer feedback', () => {
+    expect(
+      getVoteFeedback({ kind: 'rejected', feedback: 'fix the API', approvalPercentage: 30 })
+    ).toBe('fix the API');
+    expect(getVoteFeedback({ kind: 'approved', approvalPercentage: 100 })).toBe('');
+    expect(
+      getVoteFeedback({
+        kind: 'conditional_go',
+        conditions: ['c'],
+        caveats: [],
+        approvalPercentage: 75,
+      })
+    ).toBe('');
+  });
+
+  it('getVoteFeedback: no_quorum carries NO feedback (#4135 — must not feed plan revision)', () => {
+    expect(
+      getVoteFeedback({ kind: 'no_quorum', reason: 'panel degraded', approvalPercentage: 0 })
+    ).toBe('');
+  });
+
+  it('createVoteResult: not-approved maps to rejected with feedback preserved', () => {
+    const r = createVoteResult(false, 'needs rework', 40);
+    expect(r).toEqual({ kind: 'rejected', feedback: 'needs rework', approvalPercentage: 40 });
+  });
+
+  it('createVoteResult: approved with conditions maps to conditional_go', () => {
+    const r = createVoteResult(true, '', 85, ['pin versions']);
+    expect(r).toEqual({
+      kind: 'conditional_go',
+      conditions: ['pin versions'],
+      caveats: [],
+      approvalPercentage: 85,
+    });
+  });
+
+  it('createVoteResult: approved with empty/absent conditions maps to plain approved', () => {
+    expect(createVoteResult(true, '', 90)).toEqual({ kind: 'approved', approvalPercentage: 90 });
+    expect(createVoteResult(true, '', 90, [])).toEqual({
+      kind: 'approved',
+      approvalPercentage: 90,
+    });
+  });
+
+  it('createVoteResult can never manufacture no_quorum (only error policies produce it)', () => {
+    for (const approved of [true, false]) {
+      expect(createVoteResult(approved, 'x', 50).kind).not.toBe('no_quorum');
     }
   });
 });
