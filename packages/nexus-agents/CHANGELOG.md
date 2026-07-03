@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 2.158.0
+
+### Minor Changes
+
+- [#4189](https://github.com/nexus-substrate/nexus-agents/pull/4189) [`bbb0895`](https://github.com/nexus-substrate/nexus-agents/commit/bbb08958f722345be42d5cb844234041621dbf3f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - compute cost from the full model registry; unpriced is unmeasured, never $0
+
+  `computeCostUSD` now reads pricing via `getDefaultRegistry().getEntry()` —
+  the full chain (manifest > in-tree > models.dev > generated LiteLLM catalog),
+  including the [#4164](https://github.com/nexus-substrate/nexus-agents/issues/4164) normalized/identity resolution tier — instead of the
+  in-tree tier only, so long-tail catalog models and decorated model names from
+  OpenAI-compatible gateways price correctly. New `computeCostDetail` returns
+  `{costUsd, priced, resolvedId, matchedVia?}`; `computeCostUSD` is a thin
+  wrapper (public API unchanged). `votesToCostInputs` omits `costUsd` for
+  unpriced models (tokens kept) and `rollupDecisionCost` now counts a voter
+  without a computable cost as UNMEASURED ([#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855) semantics) — a missing price
+  is never recorded as a measured $0. `UsageEvent` gains optional
+  `priced`/`priceSource` provenance fields so audit can distinguish a real $0
+  from an unpriced model.
+
 ## 2.157.1
 
 ### Patch Changes
