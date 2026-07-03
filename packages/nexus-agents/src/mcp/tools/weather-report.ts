@@ -106,8 +106,12 @@ function buildOptionalSections(
     triageStats: buildTriageStats(input),
     recentWindow: buildRecentWindow(cfg),
     // Per-model telemetry lens (#4194) — additive optional section; the
-    // routing-visible adaptiveBonuses above stay CLI×category.
-    modelWeather: getModelWeatherSummary(input, cfg),
+    // routing-visible adaptiveBonuses above stay CLI×category. Gated off by
+    // default (#4202): the lens costs a full-store scan per distinct model,
+    // and the routing-bonus path (weather-bonus-stage) reads only
+    // adaptiveBonuses — only the MCP tool opts in.
+    modelWeather:
+      input.includeModelWeather === true ? getModelWeatherSummary(input, cfg) : undefined,
   });
 }
 

@@ -79,6 +79,9 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
       ...(cli !== undefined && { cli }),
       ...(category !== undefined && { category }),
       includeAdaptive,
+      // The MCP tool always opts into the per-model lens (#4194/#4202);
+      // the routing-bonus path stays lens-free.
+      includeModelWeather: true,
     };
     const report = generateWeatherReport(opts);
     const serialized = serializeReport(report);
