@@ -30,6 +30,7 @@ import {
 } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
@@ -437,6 +438,15 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
     });
   }
   const input = parsed.data;
+  // #4170: simulate fails CLOSED outside test runners — BEFORE the try block
+  // (its catch categorizes as `internal`) and BEFORE the async dispatch
+  // (sync and async modes must reject identically). Simulated panels feed the
+  // same collectRealVotes → createSimulatedVotes machinery as consensus_vote,
+  // so they get the identical gate.
+  if (input.simulate) {
+    const simCheck = checkSimulationAllowed('supply_chain_tradeoff_panel', ctx.logger);
+    if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
+  }
 
   try {
     // #3731: async dispatch — the up-to-7-voter live fan-out can exceed the MCP

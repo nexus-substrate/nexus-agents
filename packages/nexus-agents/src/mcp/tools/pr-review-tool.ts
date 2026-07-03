@@ -35,6 +35,7 @@ import {
 } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
@@ -596,6 +597,15 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
       });
     }
     const input = parsed.data;
+    // #4170: simulate fails CLOSED outside test runners — BEFORE the try block
+    // (its catch categorizes as `internal`) and BEFORE the async dispatch
+    // (sync and async modes must reject identically). Simulated review panels
+    // feed the same collectRealVotes → createSimulatedVotes machinery as
+    // consensus_vote, so they get the identical gate.
+    if (input.simulate) {
+      const simCheck = checkSimulationAllowed('pr_review', ctx.logger);
+      if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
+    }
 
     try {
       // #3731: async dispatch — the 5-voter live fan-out can exceed the MCP

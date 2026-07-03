@@ -68,7 +68,7 @@ import { DecisionCostSummarySchema } from '../../observability/decision-cost.js'
 import type { IModelAdapter } from '../../core/index.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
-import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
+import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3045 / epic #2631 Stage 4 — async-mode dispatch + concurrency cap.
 // #3045 / epic #2631 Stage 4 — async-mode dispatch via the shared `runAsJob`
@@ -828,7 +828,6 @@ async function handleConsensusVote(
   args: ConsensusVoteInput
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
-  if (args.simulateVotes) warnIfSimulatedOutsideTests('consensus_vote', logger);
   try {
     const result = await executeVoting(args, logger, {
       ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
@@ -957,6 +956,13 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
         errorCategory: 'validation',
         message: `Validation error: ${formatZodError(validationResult.error)}`,
       });
+    }
+    // #4170: simulateVotes fails CLOSED outside test runners — checked in the
+    // sync prelude BEFORE the async runAsJob dispatch so sync and async modes
+    // reject identically (no pending envelope for a random panel).
+    if (validationResult.data.simulateVotes) {
+      const simCheck = checkSimulationAllowed('consensus_vote', ctx.logger);
+      if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
     }
     const strategy = validationResult.data.strategy ?? 'simple_majority';
     ctx.logger.debug('Starting consensus vote', {

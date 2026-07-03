@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
-import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
+import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
 import type { AgentBudgetConfig } from '../../pipeline/budget-guard.js';
@@ -129,7 +129,10 @@ export type PipelineInput = z.infer<typeof PipelineInputSchema>;
 // Output Formatting
 // ============================================================================
 
-function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown> {
+function buildOutput(
+  result: AdaptiveOrchestratorResult,
+  simulated: boolean
+): Record<string, unknown> {
   return {
     success: result.success,
     templateId: result.templateId,
@@ -138,6 +141,9 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
     stepsExecuted: result.stepsExecuted,
     durationMs: result.durationMs,
     error: result.error ?? null,
+    // #4170: stamped only on an explicit NEXUS_ALLOW_SIMULATE=1 opt-in run so
+    // a random demo panel can never pass as a real decision.
+    ...(simulated ? { simulated: true } : {}),
     // Rate limit awareness (#1802)
     rateLimitHint:
       result.error?.toLowerCase().includes('rate limit') === true
@@ -275,14 +281,15 @@ async function executePipelineBody(
   task: string,
   stages: ReturnType<typeof selectStageRegistry>,
   templateId: string | undefined,
-  dryRun: boolean
+  dryRun: boolean,
+  simulated: boolean
 ): Promise<ToolResult> {
   const result = await runAdaptiveOrchestrator(task, {
     stages,
     templateId,
     dryRun,
   });
-  return toolSuccessStructured(buildOutput(result));
+  return toolSuccessStructured(buildOutput(result, simulated));
 }
 
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
@@ -295,8 +302,14 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
     });
   }
   const input = parsed.data;
+  // #4170: simulateVotes fails CLOSED outside test runners — BEFORE the try
+  // block (its catch categorizes as `internal`) and BEFORE the async dispatch
+  // (sync and async modes must reject identically).
+  let simulated = false;
   if (input.simulateVotes) {
-    warnIfSimulatedOutsideTests('run_pipeline', logger);
+    const simCheck = checkSimulationAllowed('run_pipeline', logger);
+    if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
+    simulated = simCheck.optedIn;
   }
 
   try {
@@ -321,12 +334,12 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
         toolName: 'run_pipeline',
         input,
         freshJobId: () => `rp-${randomUUID()}`,
-        run: () => executePipelineBody(task, stages, input.template, input.dryRun),
+        run: () => executePipelineBody(task, stages, input.template, input.dryRun, simulated),
         logger,
       });
     }
 
-    return await executePipelineBody(task, stages, input.template, input.dryRun);
+    return await executePipelineBody(task, stages, input.template, input.dryRun, simulated);
   } catch (error: unknown) {
     // #3730 discoverability: a sync run that times out (or otherwise fails
     // mid-pipeline) should point the caller at async mode — the durable fix
