@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.157.1
+
+### Patch Changes
+
+- [#4188](https://github.com/nexus-substrate/nexus-agents/pull/4188) [`d8e4240`](https://github.com/nexus-substrate/nexus-agents/commit/d8e42409579ed8c32203321838740052453bfd86) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vestigial cleanup ([#4177](https://github.com/nexus-substrate/nexus-agents/issues/4177)): remove dead one-shot harness `scripts/e2e-memory-validation.ts` (hardcoded pre-move absolute import path), delete five verified-dead barrel files (`src/exports/index.ts`, `src/scm/index.ts`, `src/security/index.ts`, `src/security/firewall/index.ts`, `src/benchmarks/index.ts`), and remove the never-used `allowSyntheticVote` option and `createFallbackVote` keyword-sniffing fallback from vote parsing — `parseVoteResponse` is now unconditionally fail-closed (throws `SyntheticVoteError` on unparseable output, as it already did by default). `createQaGate` is kept (it is the factory for `dispatchWorkers`' `asyncQualityGate` option) with its verdict mapping now pinned by tests. Orphan allowlist: rationale for the `**/index.ts` glob corrected and `scripts/typedoc-astro-title.mjs` (loaded via `typedoc.markdown.json`) added to `specific_files`. No public package export surface (`src/index.ts`) changes.
+
 ## 2.157.0
 
 ### Minor Changes
