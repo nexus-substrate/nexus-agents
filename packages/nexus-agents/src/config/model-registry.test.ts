@@ -420,6 +420,7 @@ const opus48Canonical: ModelEntry = {
   unsupportedParameters: ['temperature'],
   maxTokensParam: 'max_completion_tokens',
   source: 'in-tree',
+  verifiedAt: '2026-01-01',
 };
 
 const opus40Snapshot: ModelEntry = {
@@ -551,6 +552,8 @@ describe('ModelRegistry — identity resolution tier (#4164)', () => {
     expect(entry.cliAlias).toBeUndefined();
     expect(entry.cliModelName).toBeUndefined();
     expect(entry.aliases).toBeUndefined();
+    // verifiedAt attests the CANONICAL entry, not this decorated derivation.
+    expect(entry.verifiedAt).toBeUndefined();
   });
 
   it('does not mutate the stored canonical entry (returns a copy)', () => {
@@ -632,6 +635,70 @@ describe('ModelRegistry — identity resolution tier (#4164)', () => {
     const entry = reg.getEntry('Claude_Opus_4.8_hardened');
     expect(entry.resolvedFrom).toBe('claude-opus-4-8');
     expect(entry.pricing).toEqual({ inputPer1M: 5, outputPer1M: 25 });
+  });
+
+  it('tier order: a MANIFEST effective-duplicate beats its in-tree twin', () => {
+    // Effective duplicates (identical pricing + contextWindow +
+    // maxOutputTokens) across the authoritative bucket: the manifest
+    // (operator) entry must win — the registry's maps iterate
+    // lowest-priority-first, so selection must NOT rely on insertion order.
+    const manifestTwin: ModelEntry = {
+      ...opus48Canonical,
+      id: 'operator/claude-opus-4-8',
+      aliases: [],
+      displayName: 'Operator Opus 4.8',
+      source: 'manifest',
+    };
+    const reg = new ModelRegistry({
+      inTreeEntries: [opus48Canonical],
+      manifestEntries: [manifestTwin],
+    });
+    const entry = reg.getEntry('Claude_Opus_4.8_hardened');
+    expect(entry.matchedVia).toBe('identity');
+    expect(entry.resolvedFrom).toBe('operator/claude-opus-4-8');
+    expect(entry.displayName).toBe('Operator Opus 4.8');
+  });
+
+  it('tier order: a models-dev effective-duplicate beats its generated twin', () => {
+    const generatedTwin: ModelEntry = {
+      ...opus40Snapshot,
+      id: 'litellm/claude-opus-4-0',
+      displayName: 'LiteLLM Opus 4.0',
+      source: 'generated',
+    };
+    const reg = new ModelRegistry({
+      modelsDevEntries: [opus40Snapshot],
+      generatedEntries: [generatedTwin],
+    });
+    const entry = reg.getEntry('claude-opus-4.0-hardened');
+    expect(entry.matchedVia).toBe('identity');
+    expect(entry.resolvedFrom).toBe('claude-opus-4-0');
+    expect(entry.displayName).toBe('Claude Opus 4 (latest)');
+  });
+
+  it('fails closed for same-price DISTINCT models (different context windows)', () => {
+    // Identical pricing alone must not collapse a GA/preview pair whose
+    // routing-relevant capability data (contextWindow) differs.
+    const ga: ModelEntry = {
+      ...opus48Canonical,
+      id: 'claude-opus-4-9',
+      version: '4-9',
+      aliases: [],
+      contextWindow: 200_000,
+    };
+    const preview: ModelEntry = {
+      ...opus48Canonical,
+      id: 'claude-opus-4-9-preview',
+      version: '4-9',
+      aliases: [],
+      contextWindow: 1_000_000,
+    };
+    const reg = new ModelRegistry({ inTreeEntries: [ga, preview] });
+    const entry = reg.getEntry('claude-opus-4.9-hardened');
+    expect(entry.matchedVia).toBeUndefined();
+    expect(entry.resolvedFrom).toBeUndefined();
+    expect(entry.pricing).toBeUndefined();
+    expect(entry.source).toBe('derived');
   });
 
   it('falls back to the generated tier only when no authoritative candidate exists', () => {

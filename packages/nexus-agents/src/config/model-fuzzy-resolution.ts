@@ -37,6 +37,24 @@ export const MAX_FUZZY_ID_LENGTH = 256;
 const BREADTH_SOURCES: ReadonlySet<ModelEntry['source']> = new Set(['models-dev', 'generated']);
 
 /**
+ * Explicit tier priority (lower = higher). The registry's entry maps
+ * iterate in LOAD order, which is lowest-priority-FIRST (generated →
+ * models-dev → in-tree → manifest), so candidate selection must rank by
+ * source explicitly — never rely on map insertion order.
+ */
+const SOURCE_RANK: Record<ModelEntry['source'], number> = {
+  manifest: 0,
+  'in-tree': 1,
+  'models-dev': 2,
+  generated: 3,
+  derived: 4,
+};
+
+function byTierPriority(a: ModelEntry, b: ModelEntry): number {
+  return SOURCE_RANK[a.source] - SOURCE_RANK[b.source];
+}
+
+/**
  * Canonical comparison key for version strings. Reuses `normaliseModelId`,
  * additionally unifying `.` with `-` so a decorated `4.8` compares equal to
  * the canonical Anthropic-style `4-8`. This is a version-KEY canonicalizer
@@ -89,15 +107,27 @@ function samePricing(a: Pricing, b: Pricing): boolean {
 
 /**
  * Two candidates are "effectively the same model" when their ids normalize
- * to the same canonical id, or when both carry identical pricing — LiteLLM
- * catalogs list the same model under many provider prefixes.
+ * to the same canonical id, or when their pricing AND capability envelope
+ * (contextWindow, maxOutputTokens) are all identical — LiteLLM catalogs
+ * list the same model under many provider prefixes. Identical pricing
+ * ALONE is not sufficient: a GA/preview pair can share a price while
+ * differing on routing-relevant data like the context window.
  */
 function isEffectivelySameModel(a: ModelEntry, b: ModelEntry): boolean {
   if (normaliseModelId(a.id) === normaliseModelId(b.id)) return true;
-  return a.pricing !== undefined && b.pricing !== undefined && samePricing(a.pricing, b.pricing);
+  if (a.pricing === undefined || b.pricing === undefined) return false;
+  return (
+    samePricing(a.pricing, b.pricing) &&
+    a.contextWindow === b.contextWindow &&
+    a.maxOutputTokens === b.maxOutputTokens
+  );
 }
 
-/** Keep the first of each effective-duplicate group (load order = tier order). */
+/**
+ * Keep the first of each effective-duplicate group. Callers pass candidates
+ * already ranked by tier priority, so "first" is the highest-priority
+ * representative of the group.
+ */
 function dedupeEffectiveDuplicates(candidates: readonly ModelEntry[]): readonly ModelEntry[] {
   const kept: ModelEntry[] = [];
   for (const candidate of candidates) {
@@ -123,7 +153,10 @@ export function selectIdentityCandidate(
   candidates: readonly ModelEntry[] | undefined
 ): ModelEntry | undefined {
   if (candidates === undefined) return undefined;
-  const authoritative = candidates.filter((e) => !BREADTH_SOURCES.has(e.source));
+  // Rank by tier priority first (stable sort keeps within-tier load order)
+  // so dedupe keeps the highest-priority representative of each group.
+  const ranked = [...candidates].sort(byTierPriority);
+  const authoritative = ranked.filter((e) => !BREADTH_SOURCES.has(e.source));
   if (authoritative.length > 0) return uniqueCandidate(authoritative);
-  return uniqueCandidate(candidates.filter((e) => BREADTH_SOURCES.has(e.source)));
+  return uniqueCandidate(ranked.filter((e) => BREADTH_SOURCES.has(e.source)));
 }

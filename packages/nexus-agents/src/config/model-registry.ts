@@ -402,8 +402,9 @@ function mergeSnapshotWithDerived(snapshot: ModelEntry, derived: ModelEntry): Mo
  * for the ORIGINAL decorated id. On top of that base merge it:
  *   - keeps the CALLER'S id (and its parsed version) — not the canonical's,
  *   - withholds fields outside the pricing/metadata grant: alias/CLI routing
- *     belongs to the canonical entry, and request-shaping fields
+ *     belongs to the canonical entry, request-shaping fields
  *     (unsupportedParameters, maxTokensParam) must follow the original id,
+ *     and `verifiedAt` attests the canonical entry — not this derivation,
  *   - stamps `matchedVia` + `resolvedFrom` provenance.
  * Always returns a fresh object — stored entries are never mutated.
  */
@@ -421,6 +422,7 @@ function mergeMatchedWithDerived(
   delete merged.cliModelName;
   delete merged.unsupportedParameters;
   delete merged.maxTokensParam;
+  delete merged.verifiedAt;
   merged.id = derived.id;
   if (derived.version !== undefined) merged.version = derived.version;
   merged.matchedVia = matchedVia;
