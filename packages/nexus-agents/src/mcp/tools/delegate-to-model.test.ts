@@ -240,7 +240,9 @@ describe('delegate_to_model Tool', () => {
 
       // Top-tier models should be selected for reasoning tasks
       expect([
+        'claude-fable-5',
         'claude-opus',
+        'gpt-5.5',
         'codex-5.3',
         'codex-5.2',
         'claude-sonnet',
@@ -387,9 +389,13 @@ describe('delegate_to_model Tool', () => {
       const content = result.content as Array<{ type: string; text: string }>;
       const output = JSON.parse(content[0]!.text) as DelegateOutput;
       // Should select a fast model (gemini-flash or claude-haiku)
-      expect(['gemini-flash', 'gemini-3-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
-        output.recommended_model
-      );
+      expect([
+        'gemini-flash',
+        'gemini-3.5-flash',
+        'gemini-3-flash',
+        'claude-haiku',
+        'codex-5.1-mini',
+      ]).toContain(output.recommended_model);
     });
   });
 

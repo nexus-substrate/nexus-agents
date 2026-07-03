@@ -308,7 +308,7 @@ describe('getDefaultModelForCli — early-bootstrap fallback (#3185 condition 1)
   it('returns the static default id with NO registry constructed (no recursion)', () => {
     setDefaultRegistry(undefined);
     // peekDefaultRegistry() is undefined here, so the static fallback fires.
-    expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+    expect(getDefaultModelForCli('claude')).toBe('claude-fable-5');
     // And it must NOT have constructed the registry as a side effect.
     expect(peekDefaultRegistry()).toBeUndefined();
   });
@@ -349,7 +349,7 @@ models:
       expect(after?.contextWindow).toBe(123456);
       // getDefaultModelForCli still resolves to the canonical id, now via the
       // overlay-bearing registry (it exists post-reload).
-      expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+      expect(getDefaultModelForCli('claude')).toBe('claude-fable-5');
       expect(peekDefaultRegistry()).toBeDefined();
     } finally {
       if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
@@ -374,7 +374,7 @@ models:
       // Must degrade to the in-tree floor, not throw.
       await expect(reloadDefaultRegistry()).resolves.toBeDefined();
       // In-tree entries still resolve.
-      expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+      expect(getDefaultModelForCli('claude')).toBe('claude-fable-5');
     } finally {
       if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
       else process.env['NEXUS_MODELS_OVERLAY_PATH'] = previous;

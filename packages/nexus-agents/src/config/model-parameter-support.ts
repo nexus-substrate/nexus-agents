@@ -188,10 +188,15 @@ export interface KnownParameterIncompatibility {
 export const KNOWN_PARAMETER_INCOMPATIBILITIES: readonly KnownParameterIncompatibility[] = [
   // #4061 — Claude after Opus 4.6 rejects a non-1.0 temperature with a 400 (regex fallback; unregistered concrete id).
   { modelId: 'claude-opus-4-8', param: 'temperature', issue: 4061 },
+  // #4176 — Claude Fable 5 (frontier) rejects temperature; registry-encoded via `unsupportedParameters` on the in-tree entry (regex fallback also covers it: fable→5.0 > 4.6).
+  { modelId: 'claude-fable-5', param: 'temperature', issue: 4176 },
   // #4062 — OpenAI reasoning families reject temperature (o-series/gpt-5 via regex fallback; codex via registry data).
   { modelId: 'o3-mini', param: 'temperature', issue: 4062 },
   { modelId: 'gpt-5', param: 'temperature', issue: 4062 },
   { modelId: 'codex-5.3', param: 'temperature', issue: 4062 },
+  // #4176 — GPT-5.5 (frontier reasoning) rejects temperature and expects `max_completion_tokens`; registry-encoded, mirroring codex-5.3.
+  { modelId: 'gpt-5.5', param: 'temperature', issue: 4176 },
+  { modelId: 'gpt-5.5', maxTokensParam: 'max_completion_tokens', issue: 4176 },
   // #4049 — OpenAI reasoning models expect `max_completion_tokens`, not `max_tokens` (codex via registry; o-series via fallback).
   { modelId: 'codex-5.3', maxTokensParam: 'max_completion_tokens', issue: 4049 },
   { modelId: 'o3-mini', maxTokensParam: 'max_completion_tokens', issue: 4049 },

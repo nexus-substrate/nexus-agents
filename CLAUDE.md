@@ -389,7 +389,7 @@ The harness-neutral canonical-paths table (the routing chain, the core registrie
 
 **Adapter access:** go through `UnifiedAdapterRegistry` (singleton via `getGlobalRegistry()`); do NOT call `createAutoAdapter()`/`createResilientAdapter()` in new code. **Model registry** (`config/model-registry.ts` + `config/in-tree-data.ts`) is the single source of truth for pricing, quality, context windows, CLI aliases, defaults — read via `getDefaultRegistry()`, never hardcode.
 
-<!-- GOVERNANCE:MODEL_LIST:START -->Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3-flash, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default, opencode-custom-opus, opencode-custom-sonnet, openrouter-nemotron-super, openrouter-qwen-coder.<!-- GOVERNANCE:MODEL_LIST:END -->
+<!-- GOVERNANCE:MODEL_LIST:START -->Supported models: claude-fable-5, claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3.5-flash, gemini-3-flash, gemini-flash, gpt-5.5, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default, opencode-custom-opus, opencode-custom-sonnet, openrouter-nemotron-super, openrouter-qwen-coder.<!-- GOVERNANCE:MODEL_LIST:END -->
 
 **Voter panel:** 7 roles default (`architect, security, devex, ai_ml, pm, catfish, scope_steward`); `--quick` runs 3 (`architect, security, scope_steward`). Supermajority is 5/7. Full voting thresholds in `.rules/governance.md`.
 

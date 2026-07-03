@@ -146,7 +146,7 @@ describe('MockCliAdapter', () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value.model).toBe('claude-opus');
+        expect(result.value.model).toBe('claude-fable-5');
       }
     });
 
@@ -397,8 +397,8 @@ describe('MockCliAdapter', () => {
     it('should return claude model info by default', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('claude-opus');
-      expect(info.name).toBe('Claude Opus 4.6');
+      expect(info.id).toBe('claude-fable-5');
+      expect(info.name).toBe('Claude Fable 5');
       expect(info.contextWindow).toBe(1_000_000);
     });
 
@@ -417,8 +417,8 @@ describe('MockCliAdapter', () => {
 
       const info = codexAdapter.getModelInfo();
 
-      expect(info.id).toBe('codex-5.3');
-      expect(info.name).toBe('GPT-5.4');
+      expect(info.id).toBe('gpt-5.5');
+      expect(info.name).toBe('GPT-5.5');
       expect(info.contextWindow).toBe(1_050_000);
     });
   });
