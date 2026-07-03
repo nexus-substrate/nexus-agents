@@ -306,6 +306,15 @@ describe('CompositeRouter', () => {
       expect(getModelSelectionShadowFailureCount()).toBe(0);
     });
 
+    // ATTRIBUTION CAVEAT (#4218 review): the intended eval configuration is
+    // SELECTION off + SHADOW on (the previous test) — that is the cohort the
+    // readiness gate judges. With SELECTION live, `decision.model` is what the
+    // record attributes as `actualModel`, but `executeTask` does not thread
+    // `decision.model` into the adapter execution (pre-existing #3394 seam,
+    // deliberately NOT changed here), so under SELECTION=true the attributed
+    // model is the decision's pick, not necessarily what the adapter ran.
+    // Shadow records gathered with SELECTION live are trivially agree=true and
+    // carry no flip evidence either way.
     it('records agree=true when route-time selection is live (actual === shadow)', async () => {
       process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
       process.env['NEXUS_ROUTE_MODEL_SELECTION'] = 'true';
@@ -320,6 +329,22 @@ describe('CompositeRouter', () => {
       expect(records[0]?.actualModel).toBe(result.value.model);
       expect(records[0]?.agree).toBe(true);
       expect(records[0]?.success).toBe(false);
+    });
+
+    it('skips the shadow sample entirely for tasks with a pinned model (#4218 review)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      // A pinned CliTask.model is what the adapter actually executes — the CLI
+      // default the comparison would assume never ran, so pinned tasks are not
+      // evidence about the tier selector and must not enter the log.
+      const task: CliTask = {
+        content: 'Design a microservices architecture',
+        model: 'pinned-model-id',
+      };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+      shadowRouter.recordDifficultyOutcome(task, true);
+      expect(readModelSelectionShadowRecords()).toHaveLength(0);
+      expect(getModelSelectionShadowFailureCount()).toBe(0);
     });
 
     it('does not join an outcome for a different task', async () => {

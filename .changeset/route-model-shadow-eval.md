@@ -15,10 +15,13 @@ next to the model actually used (the decision's model, or the CLI default
 the adapter resolves late), and persists the comparison joined with its
 outcome to a dedicated `learning/model-selection-shadow.jsonl` (mirroring
 the #3593 meta-shadow persistence pattern: sanitized fields only, no task
-text; a dedicated log so the eval never re-reads the OutcomeStore that
-weather + LinUCB warm-start already replay). Shadow compute is registry-only
-and exception-guarded with a failure counter — a shadow failure never
-alters or breaks routing.
+text, schema-versioned lines validated on read; a dedicated log so the eval
+never re-reads the OutcomeStore that weather + LinUCB warm-start already
+replay). Tasks with a pinned `CliTask.model` are skipped — the adapter
+executes the pinned model, not the default the comparison would assume, so
+they carry no evidence about the tier selector. Shadow compute is
+registry-only and exception-guarded with a failure counter — a shadow
+failure never alters or breaks routing.
 
 `evaluateModelSelectionReadiness(records, config?)` encodes the
 PRE-DECLARED win metric as a fail-closed #4096 readiness envelope:

@@ -109,6 +109,11 @@ export interface ModelSelectionShadowComparison {
  * selection is enabled; when absent (the default-OFF production reality) the
  * adapter resolves `getDefaultModelForCli` late, so that default IS the actual
  * model the comparison must use.
+ *
+ * CALLER CONTRACT (#4218 review): do NOT sample tasks with a pinned
+ * `CliTask.model` — the adapter executes the pinned model, not the default
+ * assumed here, so the comparison would attribute a model that never ran and
+ * mislabel the agree/diverge cohorts.
  */
 export function computeModelSelectionShadow(
   cli: CliNameLiteral,

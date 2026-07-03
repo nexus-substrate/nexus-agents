@@ -791,10 +791,17 @@ export class CompositeRouter implements ICompositeRouter {
    * `NEXUS_ROUTE_MODEL_SHADOW=1` (default OFF). NEVER affects the live
    * decision — any failure increments the shadow-failure counter and is
    * logged, not thrown into the routing path.
+   *
+   * Tasks with a PINNED model (`CliTask.model`) are SKIPPED entirely: the
+   * adapter executes the pinned model (base-adapter), not the CLI default the
+   * comparison would otherwise assume, so a pinned run says nothing about the
+   * tier selector — sampling it would mislabel the agree/diverge cohorts and
+   * pad the volume criterion with garbage (#4218 review).
    */
   private trackModelSelectionShadow(task: CliTask, decision: CompositeRoutingDecision): void {
     try {
       if (!isRouteModelShadowEnabled() || decision.difficultyTier === undefined) return;
+      if (task.model !== undefined) return; // pinned model — not selector evidence
       // Log-once flip-readiness signal (#4197, mirrors #4161's pattern):
       // surfaced alongside shadow enablement, observed, never acted on.
       logModelSelectionReadinessOnce(this.logger);
