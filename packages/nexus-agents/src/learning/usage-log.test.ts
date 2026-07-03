@@ -142,6 +142,20 @@ describe('computeCostDetail (#4165)', () => {
         detail.costUsd
       );
     });
+
+    it('reports a MEASURED $0 (priced: true) for a `:free` catalog id (#4209)', () => {
+      // ':free'-suffixed openrouter entries are genuinely free: the generated
+      // loader keeps their $0/$0 pricing (exempt from the #4176 placeholder
+      // guard), so the full chain prices them at a real, measured $0 — not
+      // priced:false/UNMEASURED (#3855/#4165 semantics).
+      const detail = computeCostDetail(
+        'openrouter/meta-llama/llama-3.3-70b-instruct:free',
+        1_000_000,
+        500_000
+      );
+      expect(detail.priced).toBe(true);
+      expect(detail.costUsd).toBe(0);
+    });
   });
 });
 

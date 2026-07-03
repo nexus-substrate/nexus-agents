@@ -121,4 +121,28 @@ describe('models-generated-loader $0/$0 pricing guard (#4176)', () => {
     ]);
     expect(result.entries[0]?.pricing).toEqual({ inputPer1M: 0, outputPer1M: 4 });
   });
+
+  it('keeps $0/$0 pricing for `:free`-suffixed ids — genuinely free tiers (#4209)', () => {
+    // openrouter ':free' entries are GENUINELY free; their $0/$0 is real
+    // pricing, not a catalog placeholder. They must stay PRICED (measured $0)
+    // rather than falling to UNPRICED/unmeasured.
+    const result = loadFixture([
+      {
+        id: 'openrouter/meta-llama/llama-3.3-70b-instruct:free',
+        pricing: { inputPer1M: 0, outputPer1M: 0 },
+      },
+    ]);
+    const entry = result.entries.find(
+      (e) => e.id === 'openrouter/meta-llama/llama-3.3-70b-instruct:free'
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.pricing).toEqual({ inputPer1M: 0, outputPer1M: 0 });
+  });
+
+  it('still drops $0/$0 when `:free` appears mid-id, not as the suffix', () => {
+    const result = loadFixture([
+      { id: 'litellm/foo:free-preview', pricing: { inputPer1M: 0, outputPer1M: 0 } },
+    ]);
+    expect(result.entries[0]?.pricing).toBeUndefined();
+  });
 });
