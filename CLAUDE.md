@@ -266,7 +266,7 @@ Do not create parallel implementations — modify existing files at these canoni
 | Memory registry   | `MemoryRegistry` + `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                             |
 | Graph workflows   | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
 | Pipeline runner   | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
-| Security pipeline | `src/security/index.ts`                                                                                        |
+| Security pipeline | `src/exports/security.ts`                                                                                      |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`. Do NOT directly instantiate stage routers — use `CompositeRouter.route(task)`.
 
