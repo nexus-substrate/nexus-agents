@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.160.2
+
+### Patch Changes
+
+- [#4206](https://github.com/nexus-substrate/nexus-agents/pull/4206) [`bc19143`](https://github.com/nexus-substrate/nexus-agents/commit/bc191439820e76611ef7d1ba92e8501ba4914ab5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove three never-wired env-var declarations from the env-schema ([#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180), same silent-no-op class as [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977)): `NEXUS_TEST_TIMEOUT_MS` had no production reader, and `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` fed only `getTimeout('cliSimpleMs'/'cliComplexMs')`, which has zero production call sites — per-complexity CLI timeouts flow through `TIMEOUT_PROFILES` / `getTimeoutForCli`. The equally unread `DEFAULTS.TIMEOUT_DEFAULTS.cliSimpleMs` / `cliComplexMs` keys are removed with them (internal surface only; not exported from the package entry point). Setting the removed vars now produces an unknown-variable warning from `validateNexusEnv` instead of silently doing nothing.
+
 ## 2.160.1
 
 ### Patch Changes
