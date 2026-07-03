@@ -12,7 +12,8 @@
  * and returns the summary so the tool can attach it to its response.
  *
  * Per-voter token/cost is propagated where the adapter layer reported it; voters
- * with no usage are folded in as UNMEASURED (not a measured $0) — see
+ * with no usage — or whose model has no pricing anywhere in the registry chain
+ * (#4165) — are folded in as UNMEASURED (not a measured $0) — see
  * {@link module:observability/decision-cost}. Record + measure ONLY — no routing
  * or weighting change.
  *
@@ -21,7 +22,7 @@
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
-import { computeCostUSD } from '../../learning/usage-log.js';
+import { computeCostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
 import type {
   DecisionBillingMode,
@@ -39,21 +40,27 @@ export function resolveBillingMode(): DecisionBillingMode {
  *
  * The vote result carries the model id (#3855) and, where the adapter reported
  * it, token counts. When tokens are present we derive the api-mode cost via the
- * same registry-backed {@link computeCostUSD} the per-call usage log uses, so a
- * per-decision rollup and the per-call usage log price identically. When no
+ * same registry-backed {@link computeCostDetail} the per-call usage log uses, so
+ * a per-decision rollup and the per-call usage log price identically. When no
  * usage was reported the voter is left with no tokens/cost ⇒ unmeasured.
+ *
+ * When the model resolves WITHOUT pricing anywhere in the registry chain
+ * (#4165), `costUsd` is OMITTED — tokens are kept — so the rollup counts the
+ * voter as UNMEASURED (#3855: missing cost is unmeasured, never a measured $0).
  */
 export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {
   return votes.map((v) => {
     const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
+    const detail =
+      hasTokens && v.model !== undefined
+        ? computeCostDetail(v.model, v.inputTokens ?? 0, v.outputTokens ?? 0)
+        : undefined;
     const input: VoterCostInput = {
       role: v.role,
       model: v.model,
       ...(v.inputTokens !== undefined ? { inputTokens: v.inputTokens } : {}),
       ...(v.outputTokens !== undefined ? { outputTokens: v.outputTokens } : {}),
-      ...(hasTokens && v.model !== undefined
-        ? { costUsd: computeCostUSD(v.model, v.inputTokens ?? 0, v.outputTokens ?? 0) }
-        : {}),
+      ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
     };
     return input;
   });

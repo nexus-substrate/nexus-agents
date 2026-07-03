@@ -9,6 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  ModelRegistry,
+  peekDefaultRegistry,
+  setDefaultRegistry,
+  type ModelEntry,
+} from '../config/model-registry.js';
+import {
+  computeCostDetail,
   computeCostUSD,
   loadUsageEvents,
   recordUsageEvent,
@@ -52,6 +59,89 @@ describe('computeCostUSD (#2469)', () => {
     const cost2 = computeCostUSD('claude-sonnet', 2000, 1000);
     // 2x tokens → 2x cost (within rounding)
     expect(cost2).toBeCloseTo(cost1 * 2, 6);
+  });
+});
+
+describe('computeCostDetail (#4165)', () => {
+  /** Canonical priced entry so the fuzzy tier (#4164) has something to match. */
+  const opus48Canonical: ModelEntry = {
+    id: 'claude-opus-4-8',
+    vendor: 'anthropic',
+    family: 'claude-opus',
+    version: '4-8',
+    displayName: 'Claude Opus 4.8',
+    pricing: { inputPer1M: 5, outputPer1M: 25 },
+    parallelToolCalls: true,
+    promptCaching: 'ephemeral',
+    toolDefinitionFormat: 'anthropic',
+    maxRecommendedTurnBudget: 20,
+    strictJson: true,
+    quirks: [],
+    profileId: 'claude-opus',
+    source: 'in-tree',
+  };
+
+  describe('with an injected registry (deterministic pricing)', () => {
+    let prevRegistry: ModelRegistry | undefined;
+
+    beforeEach(() => {
+      prevRegistry = peekDefaultRegistry();
+      setDefaultRegistry(new ModelRegistry({ inTreeEntries: [opus48Canonical] }));
+    });
+
+    afterEach(() => {
+      setDefaultRegistry(prevRegistry);
+    });
+
+    it('prices a decorated gateway id via the fuzzy tier with provenance', () => {
+      // OpenAI-compatible gateways expose decorated model names; the #4164
+      // resolution tier maps them to the canonical entry's pricing.
+      const detail = computeCostDetail('Claude_Opus_4.8_hardened', 1000, 500);
+      // 1000 * 5 + 500 * 25 = 17_500 micro-USD = 0.0175.
+      expect(detail.costUsd).toBeCloseTo(0.0175, 9);
+      expect(detail.priced).toBe(true);
+      expect(detail.matchedVia).toBe('identity');
+      expect(detail.resolvedId).toBe('claude-opus-4-8');
+    });
+
+    it('keeps the caller id as resolvedId for an exact (non-fuzzy) match', () => {
+      const detail = computeCostDetail('claude-opus-4-8', 1000, 500);
+      expect(detail.priced).toBe(true);
+      expect(detail.resolvedId).toBe('claude-opus-4-8');
+      expect(detail.matchedVia).toBeUndefined();
+    });
+
+    it('reports priced: false with costUsd 0 for an unknown model', () => {
+      const detail = computeCostDetail('mystery-model-xyz', 1000, 500);
+      expect(detail.costUsd).toBe(0);
+      expect(detail.priced).toBe(false);
+      expect(detail.resolvedId).toBe('mystery-model-xyz');
+      expect(detail.matchedVia).toBeUndefined();
+    });
+
+    it('computeCostUSD is a thin wrapper returning .costUsd (priced and unpriced)', () => {
+      expect(computeCostUSD('Claude_Opus_4.8_hardened', 1000, 500)).toBe(
+        computeCostDetail('Claude_Opus_4.8_hardened', 1000, 500).costUsd
+      );
+      expect(computeCostUSD('mystery-model-xyz', 1000, 500)).toBe(
+        computeCostDetail('mystery-model-xyz', 1000, 500).costUsd
+      );
+      expect(computeCostUSD('mystery-model-xyz', 1000, 500)).toBe(0);
+    });
+  });
+
+  describe('against the real default registry (full chain)', () => {
+    it('prices a long-tail catalog id from the generated tier', () => {
+      // 'amazon-bedrock/amazon.nova-micro-v1:0' has NO in-tree entry — its
+      // pricing only exists in the generated (LiteLLM) catalog tier, which
+      // the old lookupInTreeCapability path priced at $0.
+      const detail = computeCostDetail('amazon-bedrock/amazon.nova-micro-v1:0', 1_000_000, 0);
+      expect(detail.priced).toBe(true);
+      expect(detail.costUsd).toBeGreaterThan(0);
+      expect(computeCostUSD('amazon-bedrock/amazon.nova-micro-v1:0', 1_000_000, 0)).toBe(
+        detail.costUsd
+      );
+    });
   });
 });
 

@@ -30,7 +30,7 @@ import type {
 } from '../core/index.js';
 import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
-import { recordUsageEvent, computeCostUSD } from '../learning/usage-log.js';
+import { recordUsageEvent, computeCostDetail } from '../learning/usage-log.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 
 export interface OpenAICompatConfig {
@@ -155,15 +155,20 @@ function withUsageRecording(inner: IModelAdapter): IModelAdapter {
       try {
         if (result.ok) {
           const u = result.value.usage;
+          // Full-registry pricing with provenance (#4165): `priced: false`
+          // marks the $0 as UNPRICED (unmeasured), not a real $0.
+          const cost = computeCostDetail(inner.modelId, u.inputTokens, u.outputTokens);
           recordUsageEvent({
             timestamp: new Date().toISOString(),
             modelId: inner.modelId,
             providerId: inner.providerId,
             inputTokens: u.inputTokens,
             outputTokens: u.outputTokens,
-            usdCost: computeCostUSD(inner.modelId, u.inputTokens, u.outputTokens),
+            usdCost: cost.costUsd,
             latencyMs,
             success: true,
+            priced: cost.priced,
+            ...(cost.priced ? { priceSource: cost.resolvedId } : {}),
           });
         } else {
           recordUsageEvent({

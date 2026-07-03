@@ -59,8 +59,22 @@ describe('votesToCostInputs', () => {
     const inputs = votesToCostInputs([withTokens]);
     expect(inputs[0]?.inputTokens).toBe(1000);
     expect(inputs[0]?.outputTokens).toBe(200);
-    // computeCostUSD returns a number (0 for unknown-model pricing, >=0 otherwise).
-    expect(typeof inputs[0]?.costUsd).toBe('number');
+    // claude-sonnet is priced in the registry, so a real cost is attached
+    // (#4165: costUsd is only ever present when pricing actually resolved).
+    expect(inputs[0]?.costUsd).toBeGreaterThan(0);
+  });
+
+  it('OMITS costUsd for an unpriced model but keeps the tokens (#4165 — unmeasured, not $0)', () => {
+    // A model with no pricing anywhere in the registry chain must not record
+    // a measured $0 — the cost field is left off so the rollup counts the
+    // voter as UNMEASURED (#3855 semantics).
+    const inputs = votesToCostInputs([
+      vote({ role: 'devex', model: 'mystery-model-xyz', inputTokens: 500, outputTokens: 100 }),
+    ]);
+    expect(inputs[0]?.inputTokens).toBe(500);
+    expect(inputs[0]?.outputTokens).toBe(100);
+    expect(inputs[0]?.costUsd).toBeUndefined();
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
   });
 });
 
@@ -129,6 +143,34 @@ describe('recordDecisionCost', () => {
     expect(summary.totalInputTokens).toBe(2000);
     expect(summary.totalOutputTokens).toBe(450);
     expect(summary.totalTokens).toBe(2450);
+  });
+
+  it('rolls up a token-reporting voter on an UNPRICED model as unmeasured end-to-end (#4165)', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
+    const summary = recordDecisionCost({
+      decisionId: 'd-unpriced',
+      gate: 'consensus_vote',
+      votes: [
+        vote({ role: 'devex', model: 'mystery-model-xyz', inputTokens: 500, outputTokens: 100 }),
+        vote({ role: 'architect', model: 'claude-sonnet', inputTokens: 1000, outputTokens: 200 }),
+      ],
+      store,
+      billingMode: 'api',
+    });
+
+    // The unpriced voter's tokens are kept, but its unknown cost surfaces as
+    // UNMEASURED (total is a floor) — never a measured $0 (#3855).
+    expect(summary.measuredVoters).toBe(1);
+    expect(summary.unmeasuredVoters).toBe(1);
+    expect(summary.totalTokens).toBe(1800);
+    const unpriced = summary.perVoter.find((v) => v.role === 'devex');
+    expect(unpriced?.unmeasured).toBe(true);
+    expect(unpriced?.totalTokens).toBe(600);
+    expect(unpriced?.costUsd).toBe(0);
+    // Total cost reflects ONLY the priced voter.
+    const priced = summary.perVoter.find((v) => v.role === 'architect');
+    expect(summary.totalCostUsd).toBe(priced?.costUsd);
+    expect(summary.totalCostUsd).toBeGreaterThan(0);
   });
 });
 
