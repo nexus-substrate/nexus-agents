@@ -15,7 +15,12 @@
  */
 
 import { buildInTreeEntries } from './in-tree-entries.js';
-import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
+import {
+  DEFAULT_MODEL_CAPABILITIES,
+  DEFAULT_MODEL_PER_CLI,
+  STATIC_CLI_COST_PER_1M,
+  type CostPer1M,
+} from './in-tree-data.js';
 import type {
   ModelId,
   ModelCapability,
@@ -150,6 +155,33 @@ export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
   return registry.getEntry(staticDefault).id as ModelId;
 }
 
+/**
+ * Resolve per-1M-token USD pricing for a model id from the registry, falling
+ * back to a conservative static estimate when the registry has NO pricing
+ * (#4168). The fallback is NEVER $0: an unpriced candidate must stay
+ * conservative in cost gates, because a $0 always passes a budget filter (and
+ * looks cheapest to TOPSIS) and gets over-selected, spending real money.
+ *
+ * A model with EXPLICIT $0 registry pricing (a deliberately-free entry) is
+ * returned as-is — only a missing (`undefined`) price triggers the fallback,
+ * matching `computeCostDetail`'s `priced` semantics (#4165).
+ */
+export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): CostPer1M {
+  const pricing = getModelPricing(modelId);
+  if (pricing === undefined) return fallback;
+  return { input: pricing.inputPer1M, output: pricing.outputPer1M };
+}
+
+/**
+ * Resolve per-1M-token USD pricing for a CLI's default model (#4168):
+ * `CliName → getDefaultModelForCli → registry pricing`, with the CLI's
+ * {@link STATIC_CLI_COST_PER_1M} entry as the conservative fallback when the
+ * resolved model is unpriced. Single source for the former per-CLI $ tables.
+ */
+export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
+  return resolveModelCostPer1M(getDefaultModelForCli(cli), STATIC_CLI_COST_PER_1M[cli]);
+}
+
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
 export function getCliModelName(modelId: ModelId): string {
   const entry = lookupInTree(modelId);
@@ -260,9 +292,18 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
   >) {
     const entry = byId.get(modelId);
     const q = entry?.qualityScores;
-    const p = entry?.pricing;
-    if (entry === undefined || q === undefined || p === undefined) continue;
+    if (entry === undefined || q === undefined) continue;
     if (entry.contextWindow === undefined) continue;
+    // Pricing is registry-first with a conservative static fallback (#4168):
+    // an unpriced default model stays a candidate at a non-$0 cost rather than
+    // being dropped or scored as free (which TOPSIS would rank cheapest). Read
+    // the already-built in-tree `entry` directly (not `resolveModelCostPer1M`)
+    // to avoid re-entering `lookupInTree` at module-load time (TDZ hazard).
+    const p = entry.pricing;
+    const price: CostPer1M =
+      p !== undefined
+        ? { input: p.inputPer1M, output: p.outputPer1M }
+        : STATIC_CLI_COST_PER_1M[cli];
     profiles.push({
       cliName: cli,
       capabilities: {
@@ -272,8 +313,8 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
         speed: q.speed,
         cost: q.cost,
       },
-      costPerMillionInput: p.inputPer1M,
-      costPerMillionOutput: p.outputPer1M,
+      costPerMillionInput: price.input,
+      costPerMillionOutput: price.output,
       averageLatencyMs: cliAvgLatency()[cli],
       qualityScore: (q.reasoning + q.codeGeneration) / 2,
     });

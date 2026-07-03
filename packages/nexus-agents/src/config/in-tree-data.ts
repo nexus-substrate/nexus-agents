@@ -451,3 +451,33 @@ export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   codex: 'gpt-5.5',
   opencode: 'opencode-default',
 };
+
+/** A per-1M-token USD pricing pair (input/output). */
+export interface CostPer1M {
+  readonly input: number;
+  readonly output: number;
+}
+
+/**
+ * Static per-CLI USD/1M-token fallback, used ONLY when the registry has no
+ * pricing for a CLI's resolved default model (#4168). Single authoritative
+ * representation of the former hardcoded per-CLI cost tables (previously
+ * duplicated in `budget-utils.TOKEN_COSTS`, `budget-stage`'s
+ * `COST_PER_1K_TOKENS`, and `test-metrics`).
+ *
+ * It is a FALLBACK, not the primary source: a priced model always upgrades to
+ * real registry data via `resolveModelCostPer1M`. Because every current
+ * `DEFAULT_MODEL_PER_CLI` entry is priced, this map is dormant today; it exists
+ * so an UNPRICED candidate stays CONSERVATIVE (never $0) in budget/TOPSIS gates
+ * — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
+ *
+ * Lives in this leaf data module (not `model-config-helpers`) so the
+ * module-load-time `buildTopsisProfiles` call reads it after initialization,
+ * dodging the TDZ hazard documented for the registry builders.
+ */
+export const STATIC_CLI_COST_PER_1M: Record<CliNameLiteral, CostPer1M> = {
+  claude: { input: 3.0, output: 15.0 },
+  gemini: { input: 0.075, output: 0.3 },
+  codex: { input: 2.5, output: 10.0 },
+  opencode: { input: 2.0, output: 8.0 },
+};
