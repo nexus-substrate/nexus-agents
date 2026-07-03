@@ -29,6 +29,15 @@ describe('resolveModelForTier (#3394)', () => {
     expect(resolveModelForTier('claude', 'powerful')).toBe('claude-opus');
   });
 
+  it('picks codex-5.3 for the codex powerful tier despite gpt-5.5 being the CLI default (#4176)', () => {
+    // Deliberate tension, mirroring the claude pin above: gpt-5.5 and
+    // codex-5.3 tie at reasoning 10, so the tier resolver's tie-break
+    // (cheaper — higher cost score — first) picks codex-5.3 (cost 5 vs 4),
+    // while DEFAULT_MODEL_PER_CLI.codex is the frontier gpt-5.5.
+    expect(resolveModelForTier('codex', 'powerful')).toBe('codex-5.3');
+    expect(getDefaultModelForCli('codex')).toBe('gpt-5.5');
+  });
+
   it('picks the highest-speed model for the fast tier', () => {
     const models = findInTreeByCli('claude');
     const best = models
