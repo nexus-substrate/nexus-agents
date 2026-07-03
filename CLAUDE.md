@@ -67,7 +67,7 @@ Most-used env vars:
 
 Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
 
-Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed).
+Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars).
 
 ---
 

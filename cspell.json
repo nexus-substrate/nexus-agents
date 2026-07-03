@@ -110,6 +110,8 @@
     "aflow",
     "alfworld",
     "aorchestra",
+    "clisimple",
+    "clicomplex",
     "appcypher",
     "atproto",
     "autoloads",

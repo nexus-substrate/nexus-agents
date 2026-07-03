@@ -46,8 +46,7 @@ export type KnownCliName = CliNameLiteral | 'default';
  */
 export interface TimeoutDefaults {
   cliMs: number;
-  cliSimpleMs: number;
-  cliComplexMs: number;
+  // cliSimpleMs / cliComplexMs removed in #4180 — see config/defaults.ts.
   apiMs: number;
   apiMaxMs: number;
   workflowMs: number;
@@ -213,8 +212,7 @@ export const ToolRateLimitConfigSchema = z.object({
  */
 export const TimeoutDefaultsSchema = z.object({
   cliMs: durationMs.describe('Default CLI timeout'),
-  cliSimpleMs: durationMs.describe('Simple CLI task timeout'),
-  cliComplexMs: durationMs.describe('Complex CLI task timeout'),
+  // cliSimpleMs / cliComplexMs removed in #4180 — see config/defaults.ts.
   apiMs: durationMs.describe('Default API timeout'),
   apiMaxMs: durationMs.describe('Maximum API timeout'),
   workflowMs: durationMs.describe('Default workflow timeout'),

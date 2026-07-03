@@ -295,14 +295,17 @@ describe('Centralized Timeout Configuration', () => {
   });
 
   describe('resolveEnvTimeout()', () => {
-    const testVar = 'NEXUS_TEST_TIMEOUT_MS';
+    // Deliberately NOT a registered env var (was NEXUS_TEST_TIMEOUT_MS before
+    // #4180 removed that never-wired schema entry); resolveEnvTimeout accepts
+    // any name, so use one that cannot be mistaken for a real knob.
+    const testVar = 'NEXUS_FIXTURE_TIMEOUT_MS';
 
     beforeEach(() => {
-      delete process.env.NEXUS_TEST_TIMEOUT_MS;
+      delete process.env.NEXUS_FIXTURE_TIMEOUT_MS;
     });
 
     afterEach(() => {
-      delete process.env.NEXUS_TEST_TIMEOUT_MS;
+      delete process.env.NEXUS_FIXTURE_TIMEOUT_MS;
     });
 
     it('returns default when env var not set', () => {

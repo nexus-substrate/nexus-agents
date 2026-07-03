@@ -51,6 +51,12 @@ describe('env-schema', () => {
       expect(result.invalidVars).toHaveLength(0);
     });
 
+    it('flags the never-wired timeout vars removed in #4180 as unknown', () => {
+      vi.stubEnv('NEXUS_TEST_TIMEOUT_MS', '60000');
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((u) => u.name)).toContain('NEXUS_TEST_TIMEOUT_MS');
+    });
+
     it('rejects an invalid NEXUS_ALLOW_SIMULATE value (#4170)', () => {
       vi.stubEnv('NEXUS_ALLOW_SIMULATE', 'yes');
       const result = validateNexusEnv();
@@ -206,6 +212,13 @@ describe('env-schema', () => {
       expect(names).toContain('NEXUS_PERSIST_LEARNING');
       expect(names).toContain('NEXUS_AUTH_ENABLED');
       expect(names).toContain('NEXUS_BILLING_MODE');
+    });
+
+    it('does not register the never-wired timeout vars removed in #4180', () => {
+      const names = getKnownNexusVarNames();
+      expect(names).not.toContain('NEXUS_TEST_TIMEOUT_MS');
+      expect(names).not.toContain('NEXUS_TIMEOUT_CLISIMPLE');
+      expect(names).not.toContain('NEXUS_TIMEOUT_CLICOMPLEX');
     });
 
     it('all names start with NEXUS_', () => {
