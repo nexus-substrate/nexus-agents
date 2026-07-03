@@ -388,6 +388,20 @@ error from `validateNexusEnv`. If you had any of them set, just unset them:
 The matching `WORKER_DEFAULTS.*` config-set keys are also gone; `config set
 WORKER_DEFAULTS.foo X` now returns "key not found" instead of a false success.
 
+### Removed (#4180)
+
+Three more env vars from the same silent-no-op class, missed by the #2977 sweep,
+were declared in the env-schema but never read by any production code. They have
+been removed; `validateNexusEnv` now flags them as unknown. If you had any of
+them set, just unset them:
+
+`NEXUS_TEST_TIMEOUT_MS`, `NEXUS_TIMEOUT_CLISIMPLE`, `NEXUS_TIMEOUT_CLICOMPLEX`.
+
+The matching (equally unread) `TIMEOUT_DEFAULTS.cliSimpleMs` /
+`TIMEOUT_DEFAULTS.cliComplexMs` defaults keys are also gone. Per-complexity CLI
+timeouts were never driven by these knobs — they flow through the internal
+per-CLI `TIMEOUT_PROFILES` (`getTimeoutForCli`).
+
 ## Model Configuration
 
 ### Default Model

@@ -39,8 +39,10 @@ const floatStr = z.string().regex(/^\d+(\.\d+)?$/, 'Must be a non-negative numbe
 const NexusEnvSchema = z.object({
   // --- Timeouts ---
   NEXUS_TIMEOUT_CLI: positiveIntStr.optional(),
-  NEXUS_TIMEOUT_CLISIMPLE: positiveIntStr.optional(),
-  NEXUS_TIMEOUT_CLICOMPLEX: positiveIntStr.optional(),
+  // NEXUS_TIMEOUT_CLISIMPLE + NEXUS_TIMEOUT_CLICOMPLEX removed in #4180 — silent
+  // no-ops (#2977 class). Their only possible reader, getTimeout('cliSimpleMs' /
+  // 'cliComplexMs'), had zero production call sites; per-complexity CLI timeouts
+  // flow through getTimeoutForCli/TIMEOUT_PROFILES instead.
   NEXUS_TIMEOUT_API: positiveIntStr.optional(),
   NEXUS_TIMEOUT_WORKFLOW: positiveIntStr.optional(),
   NEXUS_TIMEOUT_MCP: positiveIntStr.optional(),
@@ -48,7 +50,9 @@ const NexusEnvSchema = z.object({
   NEXUS_MCP_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_WORKFLOW_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_GRAPH_TIMEOUT_MS: positiveIntStr.optional(),
-  NEXUS_TEST_TIMEOUT_MS: positiveIntStr.optional(),
+  // NEXUS_TEST_TIMEOUT_MS removed in #4180 — silent no-op (#2977 class). No
+  // production reader ever constructed this name; TEST_TIMEOUTS takes no env
+  // override. Re-register only alongside a real consumer.
   NEXUS_EXPERT_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_WORKER_TIMEOUT_MS: positiveIntStr.optional(),
 

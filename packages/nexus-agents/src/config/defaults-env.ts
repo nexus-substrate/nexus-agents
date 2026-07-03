@@ -64,8 +64,7 @@ export function parseBoolEnv(envKey: string, fallback: boolean): boolean {
 /** Timeout defaults type from DEFAULTS object */
 export interface TimeoutDefaultsConst {
   readonly cliMs: number;
-  readonly cliSimpleMs: number;
-  readonly cliComplexMs: number;
+  // cliSimpleMs / cliComplexMs removed in #4180 — see config/defaults.ts.
   readonly apiMs: number;
   readonly apiMaxMs: number;
   readonly workflowMs: number;

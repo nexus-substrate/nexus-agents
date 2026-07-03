@@ -110,10 +110,10 @@ export const DEFAULTS = {
   TIMEOUT_DEFAULTS: {
     /** CLI tool execution timeout in milliseconds. */
     cliMs: _CLI.default.standard,
-    /** Simple CLI task timeout (single function, quick query). */
-    cliSimpleMs: _CLI.default.simple,
-    /** Complex CLI task timeout (codebase-wide, deep analysis). */
-    cliComplexMs: _CLI.default.complex,
+    // cliSimpleMs / cliComplexMs removed in #4180 — never read by any production
+    // code (the matching NEXUS_TIMEOUT_CLISIMPLE/CLICOMPLEX env vars were silent
+    // no-ops, #2977 class). Per-complexity CLI timeouts come from
+    // getTimeoutForCli/TIMEOUT_PROFILES (CLI_TIMEOUTS in config/timeouts.ts).
     /** API request timeout in milliseconds. */
     apiMs: _API.defaultMs,
     /** Maximum API timeout in milliseconds. */
