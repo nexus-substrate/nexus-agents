@@ -135,23 +135,26 @@ describe('createEmptyMetrics', () => {
 // estimateCost
 // ============================================================================
 
+// #4168: costs resolve from registry pricing for each CLI's default model
+// (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12, codex→gpt-5.5
+// $5/$30 per 1M), not the old static table — numbers updated deliberately.
 describe('estimateCost', () => {
   it('calculates cost for Claude', () => {
     const cost = estimateCost('claude', { inputTokens: 1_000_000, outputTokens: 100_000 });
-    // 3.0 + 1.5 = 4.5
-    expect(cost).toBeCloseTo(4.5);
+    // 10.0 + 5.0 = 15.0 (claude-fable-5)
+    expect(cost).toBeCloseTo(15.0);
   });
 
   it('calculates cost for Gemini', () => {
     const cost = estimateCost('gemini', { inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    // 0.075 + 0.3 = 0.375
-    expect(cost).toBeCloseTo(0.375);
+    // 2.0 + 12.0 = 14.0 (gemini-3-pro)
+    expect(cost).toBeCloseTo(14.0);
   });
 
   it('calculates cost for Codex', () => {
     const cost = estimateCost('codex', { inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    // 2.0 + 8.0 = 10.0
-    expect(cost).toBeCloseTo(10.0);
+    // 5.0 + 30.0 = 35.0 (gpt-5.5)
+    expect(cost).toBeCloseTo(35.0);
   });
 
   it('returns 0 for zero tokens', () => {

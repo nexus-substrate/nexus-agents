@@ -5,33 +5,43 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TOKEN_COSTS, estimateTokens, estimateCost, formatTokens } from './budget-utils.js';
+import { estimateTokens, estimateCost, formatTokens } from './budget-utils.js';
+import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
 
 describe('budget-utils', () => {
-  describe('TOKEN_COSTS', () => {
+  // #4168: the former hardcoded `TOKEN_COSTS` table now resolves through the
+  // registry via `resolveCliCostPer1M` (single authoritative source). These
+  // assertions preserve the original intent (each CLI is priced, output > input).
+  describe('per-CLI token costs (registry-backed)', () => {
     it('has cost data for claude', () => {
-      expect(TOKEN_COSTS.claude).toBeDefined();
-      expect(TOKEN_COSTS.claude.input).toBeGreaterThan(0);
-      expect(TOKEN_COSTS.claude.output).toBeGreaterThan(0);
+      const c = resolveCliCostPer1M('claude');
+      expect(c.input).toBeGreaterThan(0);
+      expect(c.output).toBeGreaterThan(0);
     });
 
     it('has cost data for gemini', () => {
-      expect(TOKEN_COSTS.gemini).toBeDefined();
-      expect(TOKEN_COSTS.gemini.input).toBeGreaterThan(0);
-      expect(TOKEN_COSTS.gemini.output).toBeGreaterThan(0);
+      const c = resolveCliCostPer1M('gemini');
+      expect(c.input).toBeGreaterThan(0);
+      expect(c.output).toBeGreaterThan(0);
     });
 
     it('has cost data for codex', () => {
-      expect(TOKEN_COSTS.codex).toBeDefined();
-      expect(TOKEN_COSTS.codex.input).toBeGreaterThan(0);
-      expect(TOKEN_COSTS.codex.output).toBeGreaterThan(0);
+      const c = resolveCliCostPer1M('codex');
+      expect(c.input).toBeGreaterThan(0);
+      expect(c.output).toBeGreaterThan(0);
     });
 
     it('output costs are higher than input costs', () => {
       // This is a common pricing pattern - outputs cost more than inputs
-      expect(TOKEN_COSTS.claude.output).toBeGreaterThan(TOKEN_COSTS.claude.input);
-      expect(TOKEN_COSTS.gemini.output).toBeGreaterThan(TOKEN_COSTS.gemini.input);
-      expect(TOKEN_COSTS.codex.output).toBeGreaterThan(TOKEN_COSTS.codex.input);
+      expect(resolveCliCostPer1M('claude').output).toBeGreaterThan(
+        resolveCliCostPer1M('claude').input
+      );
+      expect(resolveCliCostPer1M('gemini').output).toBeGreaterThan(
+        resolveCliCostPer1M('gemini').input
+      );
+      expect(resolveCliCostPer1M('codex').output).toBeGreaterThan(
+        resolveCliCostPer1M('codex').input
+      );
     });
   });
 
@@ -59,23 +69,26 @@ describe('budget-utils', () => {
     });
   });
 
+  // #4168: costs now come from registry pricing for each CLI's default model
+  // (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12, codex→gpt-5.5
+  // $5/$30 per 1M), not the old static table — numbers updated deliberately.
   describe('estimateCost', () => {
     it('calculates cost for claude', () => {
-      // 1M input tokens at $3.00 + 1M output tokens at $15.00 = $18.00
+      // 1M input at $10.00 + 1M output at $50.00 = $60.00 (claude-fable-5)
       const cost = estimateCost('claude', 1_000_000, 1_000_000);
-      expect(cost).toBe(18.0);
+      expect(cost).toBe(60.0);
     });
 
     it('calculates cost for gemini', () => {
-      // 1M input tokens at $0.075 + 1M output tokens at $0.30 = $0.375
+      // 1M input at $2.00 + 1M output at $12.00 = $14.00 (gemini-3-pro)
       const cost = estimateCost('gemini', 1_000_000, 1_000_000);
-      expect(cost).toBeCloseTo(0.375, 4);
+      expect(cost).toBeCloseTo(14.0, 4);
     });
 
     it('calculates cost for codex', () => {
-      // 1M input tokens at $2.50 + 1M output tokens at $10.00 = $12.50
+      // 1M input at $5.00 + 1M output at $30.00 = $35.00 (gpt-5.5)
       const cost = estimateCost('codex', 1_000_000, 1_000_000);
-      expect(cost).toBe(12.5);
+      expect(cost).toBe(35.0);
     });
 
     it('scales linearly with tokens', () => {
@@ -90,19 +103,19 @@ describe('budget-utils', () => {
 
     it('handles input-only cost', () => {
       const cost = estimateCost('claude', 1_000_000, 0);
-      expect(cost).toBe(3.0); // Only input cost
+      expect(cost).toBe(10.0); // Only input cost (claude-fable-5 $10/1M)
     });
 
     it('handles output-only cost', () => {
       const cost = estimateCost('claude', 0, 1_000_000);
-      expect(cost).toBe(15.0); // Only output cost
+      expect(cost).toBe(50.0); // Only output cost (claude-fable-5 $50/1M)
     });
 
     it('handles small token counts', () => {
-      // 1000 input + 1000 output for claude
+      // 1000 input + 1000 output for claude (claude-fable-5)
       const cost = estimateCost('claude', 1000, 1000);
-      // (1000/1M) * 3 + (1000/1M) * 15 = 0.003 + 0.015 = 0.018
-      expect(cost).toBeCloseTo(0.018, 6);
+      // (1000/1M) * 10 + (1000/1M) * 50 = 0.01 + 0.05 = 0.06
+      expect(cost).toBeCloseTo(0.06, 6);
     });
   });
 

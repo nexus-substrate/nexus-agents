@@ -1,25 +1,17 @@
 /**
  * Budget utilities for cost estimation and token counting.
  *
- * CANONICAL SOURCE for token costs across the codebase.
- * Other modules should import from here or align their constants.
+ * Token costs are NO LONGER hardcoded here: `estimateCost` resolves per-CLI
+ * pricing from the model registry via `resolveCliCostPer1M` (#4168), so the
+ * `ModelEntry.pricing` chain is the single authoritative source. Unpriced
+ * models fall back to the conservative `STATIC_CLI_COST_PER_1M` map (never $0).
  *
  * @module cli-adapters/budget-utils
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)
  */
 
 import type { CliName } from './types.js';
-
-/**
- * Token cost estimates per 1M tokens (USD).
- * Based on public pricing as of 2025-01.
- */
-export const TOKEN_COSTS: Record<CliName, { input: number; output: number }> = {
-  claude: { input: 3.0, output: 15.0 },
-  gemini: { input: 0.075, output: 0.3 },
-  codex: { input: 2.5, output: 10.0 },
-  opencode: { input: 2.0, output: 8.0 },
-};
+import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
 
 /**
  * Estimate tokens from task content.
@@ -30,10 +22,12 @@ export function estimateTokens(content: string): number {
 }
 
 /**
- * Estimate cost for a task based on estimated tokens.
+ * Estimate cost (USD) for a task based on estimated tokens, using registry
+ * pricing for the CLI's default model (conservative static fallback when
+ * unpriced — never $0). Rates are per-1M tokens.
  */
 export function estimateCost(model: CliName, inputTokens: number, outputTokens: number): number {
-  const costs = TOKEN_COSTS[model];
+  const costs = resolveCliCostPer1M(model);
   const inputCost = (inputTokens / 1_000_000) * costs.input;
   const outputCost = (outputTokens / 1_000_000) * costs.output;
   return inputCost + outputCost;

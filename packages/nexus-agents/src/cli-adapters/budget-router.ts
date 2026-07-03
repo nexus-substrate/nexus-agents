@@ -62,10 +62,12 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
 
 /**
  * Estimate the USD cost of a task on a CLI slot using CANONICAL registry
- * pricing (#4165 path: `ModelEntry.pricing` of the slot's default model) —
- * NOT the legacy `TOKEN_COSTS` table (consolidation tracked in #4168).
+ * pricing (#4165 path: `ModelEntry.pricing` of the slot's default model).
  * Returns `undefined` when the registry has no pricing for the model, so the
  * caller can fail CLOSED on a configured ceiling (#4196 BINDING condition).
+ * This deliberately differs from `resolveCliCostPer1M` (#4168), which returns
+ * a conservative non-$0 fallback for budget FILTERING — here an unknown price
+ * must stay `undefined` to preserve the ceiling's fail-CLOSED guarantee.
  */
 export function estimateRegistryCostUsd(
   slot: CliName,

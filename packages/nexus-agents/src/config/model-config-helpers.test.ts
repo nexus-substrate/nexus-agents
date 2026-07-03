@@ -22,7 +22,10 @@ import {
   buildCliCapabilityProfiles,
   buildTopsisProfiles,
   buildMockModelInfo,
+  resolveModelCostPer1M,
+  resolveCliCostPer1M,
 } from './model-config-helpers.js';
+import type { ModelId } from './model-capabilities-types.js';
 
 // ============================================================================
 // Single-Model Lookups
@@ -324,6 +327,56 @@ describe('buildMockModelInfo', () => {
       expect(model.id).toBeTruthy();
       expect(model.name).toBeTruthy();
       expect(model.contextWindow).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
+// Cost resolution (#4168) — the single authoritative per-CLI/per-model $ source
+// ============================================================================
+
+describe('resolveModelCostPer1M', () => {
+  it('upgrades a priced model to real registry pricing', () => {
+    // claude-sonnet is priced $3/$15 per 1M in-tree; must NOT use the fallback.
+    const fallback = { input: 999, output: 999 };
+    expect(resolveModelCostPer1M('claude-sonnet', fallback)).toEqual({ input: 3.0, output: 15.0 });
+  });
+
+  it('FAIL DIRECTION: unpriced model falls back conservatively, never $0', () => {
+    // A model the registry cannot price MUST NOT resolve to $0 — a $0 candidate
+    // fails OPEN (always passes a budget filter, looks cheapest to TOPSIS) and
+    // gets over-selected, spending real money (#4168 binding condition 2).
+    const fallback = { input: 3.0, output: 15.0 };
+    const resolved = resolveModelCostPer1M('nonexistent-unpriced-model-xyz' as ModelId, fallback);
+    expect(resolved).toEqual(fallback);
+    expect(resolved.input).toBeGreaterThan(0);
+    expect(resolved.output).toBeGreaterThan(0);
+  });
+
+  it('preserves an EXPLICIT $0 registry price (only a missing price falls back)', () => {
+    // openrouter-nemotron-super is deliberately priced $0 in-tree — that is a
+    // real (priced) $0, not an unknown, so it is returned as-is, not the fallback.
+    const fallback = { input: 3.0, output: 15.0 };
+    expect(resolveModelCostPer1M('openrouter-nemotron-super', fallback)).toEqual({
+      input: 0,
+      output: 0,
+    });
+  });
+});
+
+describe('resolveCliCostPer1M', () => {
+  it('maps each CLI to its default model registry pricing (per-1M)', () => {
+    // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12, codex→gpt-5.5 $5/$30.
+    expect(resolveCliCostPer1M('claude')).toEqual({ input: 10.0, output: 50.0 });
+    expect(resolveCliCostPer1M('gemini')).toEqual({ input: 2.0, output: 12.0 });
+    expect(resolveCliCostPer1M('codex')).toEqual({ input: 5.0, output: 30.0 });
+  });
+
+  it('every CLI resolves to a non-$0 cost (no fail-open in budget gates)', () => {
+    for (const cli of CLI_NAMES) {
+      const c = resolveCliCostPer1M(cli);
+      expect(c.input).toBeGreaterThan(0);
+      expect(c.output).toBeGreaterThan(0);
     }
   });
 });

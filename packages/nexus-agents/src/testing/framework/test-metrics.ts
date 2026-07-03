@@ -8,6 +8,7 @@
 
 import type { CliName } from '../../cli-adapters/types.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { resolveCliCostPer1M } from '../../config/model-config-helpers.js';
 import type {
   TaskTestResult,
   AggregatedMetrics,
@@ -221,21 +222,15 @@ export function computeRoutingMetrics(results: readonly TaskTestResult[]): {
 }
 
 /**
- * Estimates cost for token usage.
+ * Estimates cost (USD) for token usage using registry pricing for the CLI's
+ * default model via `resolveCliCostPer1M` (#4168, per-1M tokens). Unpriced
+ * models fall back to a conservative non-$0 estimate.
  */
 export function estimateCost(
   cli: CliName,
   usage: { inputTokens: number; outputTokens: number }
 ): number {
-  // Cost per 1M tokens (approximate)
-  const costs: Record<CliName, { input: number; output: number }> = {
-    claude: { input: 3.0, output: 15.0 },
-    gemini: { input: 0.075, output: 0.3 },
-    codex: { input: 2.0, output: 8.0 },
-    opencode: { input: 2.0, output: 8.0 },
-  };
-
-  const rate = costs[cli];
+  const rate = resolveCliCostPer1M(cli);
   const inputCost = (usage.inputTokens / 1_000_000) * rate.input;
   const outputCost = (usage.outputTokens / 1_000_000) * rate.output;
 

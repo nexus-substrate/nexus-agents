@@ -20,20 +20,11 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
+import { resolveCliCostPer1M } from '../../../config/model-config-helpers.js';
 
 // ============================================================================
 // Configuration
 // ============================================================================
-
-/**
- * Cost per 1K tokens for each CLI (approximate).
- */
-const COST_PER_1K_TOKENS: Record<CliName, { input: number; output: number }> = {
-  claude: { input: 0.015, output: 0.075 },
-  gemini: { input: 0.00125, output: 0.005 },
-  codex: { input: 0.003, output: 0.015 },
-  opencode: { input: 0.003, output: 0.012 },
-};
 
 /**
  * Configuration for the budget filter stage.
@@ -163,11 +154,17 @@ export class BudgetFilterStage implements IRouterStage {
 
   /**
    * Estimate cost for a CLI based on expected tokens.
+   *
+   * Rates come from registry pricing for the CLI's default model via
+   * `resolveCliCostPer1M` (#4168), which is per-1M tokens (the old
+   * `COST_PER_1K_TOKENS` table was per-1K — hence the 1_000_000 divisor).
+   * An unpriced model falls back to a conservative non-$0 estimate, so a
+   * candidate never resolves to $0 and passes the budget filter for free.
    */
   private estimateCost(cli: CliName): number {
-    const rates = COST_PER_1K_TOKENS[cli];
-    const inputCost = (this.config.expectedInputTokens / 1000) * rates.input;
-    const outputCost = (this.config.expectedOutputTokens / 1000) * rates.output;
+    const rates = resolveCliCostPer1M(cli);
+    const inputCost = (this.config.expectedInputTokens / 1_000_000) * rates.input;
+    const outputCost = (this.config.expectedOutputTokens / 1_000_000) * rates.output;
     return inputCost + outputCost;
   }
 
