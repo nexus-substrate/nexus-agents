@@ -125,6 +125,7 @@ topics:
     tier3_files:
       - 'docs/architecture/ROUTING_SYSTEM.md'
       - 'docs/guides/CUSTOM_ENDPOINT_SETUP.md'
+      - 'docs/guides/MODEL_REGISTRY_PRICING.md'
     keywords:
       - 'adapter'
       - 'registry'
@@ -136,6 +137,7 @@ topics:
       - 'custom-openai'
       - 'model'
       - 'unified'
+      - 'pricing'
 
   orchestration:
     summary: 'Task orchestration — AOrchestra, graph workflows, scenario validator'
