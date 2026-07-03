@@ -76,6 +76,24 @@ describe('env-schema', () => {
       expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_META_SHADOW_TRAIN');
     });
 
+    it('recognizes NEXUS_ROUTE_MODEL_SELECTION and NEXUS_ROUTE_MODEL_SHADOW (#4197)', () => {
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', 'true');
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', '1');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('rejects invalid NEXUS_ROUTE_MODEL_SELECTION / NEXUS_ROUTE_MODEL_SHADOW values (#4197)', () => {
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', '1');
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', 'true');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name).sort()).toEqual([
+        'NEXUS_ROUTE_MODEL_SELECTION',
+        'NEXUS_ROUTE_MODEL_SHADOW',
+      ]);
+    });
+
     it('rejects invalid NEXUS_AUTO_REMEDIATE / NEXUS_POLICY_GATE_MODE values (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'bogus');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'nope');

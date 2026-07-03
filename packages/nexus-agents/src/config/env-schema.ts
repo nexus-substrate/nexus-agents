@@ -134,6 +134,13 @@ const NexusEnvSchema = z.object({
   NEXUS_CONTEXT_RANKED: z.enum(['0', '1']).optional(),
   // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
   NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
+  // Resolve a concrete model from the difficulty tier at route time (#3394,
+  // isRouteModelSelectionEnabled); off by default. Registered here in #4197 —
+  // the reader predates this schema entry.
+  NEXUS_ROUTE_MODEL_SELECTION: boolStr.optional(),
+  // Record would-be tier model selections (shadow) + join them with outcomes for
+  // the offline flip eval (#4197, isRouteModelShadowEnabled); off by default.
+  NEXUS_ROUTE_MODEL_SHADOW: z.enum(['0', '1']).optional(),
   // Async job-result reader source (#3090/#3693): `task_state` prefers/unions the
   // Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the
   // sidecar→Stage-2 migration (epic #2631).
