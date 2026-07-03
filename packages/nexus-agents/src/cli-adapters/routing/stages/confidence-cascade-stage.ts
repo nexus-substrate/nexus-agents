@@ -25,20 +25,20 @@ import {
   COMPLEX_TASK_INDICATORS,
   SIMPLE_TASK_INDICATORS,
 } from '../../confidence-router-types.js';
+import { deriveCliConfidenceProfiles } from '../../derive-tier-tables.js';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 /**
- * Confidence profile for each CLI based on typical performance.
+ * Confidence profile for each CLI, DERIVED from its default-model
+ * `qualityScores` (#4195): `complexScore` tracks composite quality (hard tasks
+ * escalate to the strongest model), `simpleScore` tracks speed (easy tasks take
+ * the fastest). No longer a hand-tuned literal.
  */
-const CLI_CONFIDENCE_PROFILES: Record<CliName, { simpleScore: number; complexScore: number }> = {
-  claude: { simpleScore: 0.7, complexScore: 1.0 }, // Best for complex reasoning
-  gemini: { simpleScore: 1.0, complexScore: 0.6 }, // Fast for simple tasks
-  codex: { simpleScore: 0.8, complexScore: 0.9 }, // Good for code tasks
-  opencode: { simpleScore: 0.8, complexScore: 0.7 }, // Multi-provider proxy
-};
+const CLI_CONFIDENCE_PROFILES: Record<CliName, { simpleScore: number; complexScore: number }> =
+  deriveCliConfidenceProfiles();
 
 /**
  * Configuration for the confidence cascade stage.

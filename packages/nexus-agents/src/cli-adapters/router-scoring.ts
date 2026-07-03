@@ -16,6 +16,17 @@ type TaskType = TaskTypeCategory;
 /**
  * Capability matching matrix from Issue #78.
  * Maps task types to CLI preferences (0-1 scale).
+ *
+ * NOTE (#4195 assessment): this is a per-TASK-TYPE AFFINITY matrix (e.g. gemini
+ * leads `architecture`/`large_codebase` for its context window; codex leads
+ * `code_implementation`), which is an ORTHOGONAL axis to the quality/cost TIER
+ * consolidation and is NOT recoverable from `qualityScores` — the frontier
+ * defaults share near-identical reasoning/codeGen scores, so quality-deriving
+ * this table would collapse the domain distinctions and regress routing. The
+ * per-CLI capability INPUTS the `score*` functions consume (reasoning,
+ * codeGeneration, speed, cost) are ALREADY registry-derived via
+ * `buildCliCapabilityProfiles` (config/model-config-helpers.ts). This matrix is
+ * therefore intentionally retained as authored task-affinity data.
  */
 export const CAPABILITY_MATRIX: Record<TaskType, Record<CliName, number>> = {
   architecture: { claude: 0.7, gemini: 1.0, codex: 0.5, opencode: 0.6 },

@@ -27,6 +27,7 @@ import type { CompositeRouterConfig } from './composite-router-types.js';
 import type { IZeroRouter } from './zero-router.js';
 import type { DifficultyEstimate, DifficultyOutcome, ModelTier } from './zero-router-types.js';
 import { hashTaskContent } from './zero-router-calibration.js';
+import { deriveStrongClis, deriveWeakClis, deriveTierToClis } from './derive-tier-tables.js';
 
 /**
  * Adjusts model profile based on task characteristics.
@@ -123,12 +124,13 @@ export function filterByPreferenceTier(
   candidates: RoutingArmId[],
   tier: 'strong' | 'weak'
 ): RoutingArmId[] {
-  // Strong models: claude (opus, sonnet)
-  // Weak models: gemini (flash), codex
-  // Tier membership is slot-level; collapse an api:* arm to its display slot
-  // (#3422) so a wrapped API arm inherits its vendor slot's tier.
-  const strongModels: CliName[] = ['claude'];
-  const weakModels: CliName[] = ['gemini', 'codex'];
+  // Strong = the premium tier (most-expensive frontier default); weak = the
+  // budget CLIs. DERIVED from real registry pricing + qualityScores (#4195) —
+  // a $0/unscored default can never be "strong". Tier membership is slot-level;
+  // collapse an api:* arm to its display slot (#3422) so a wrapped API arm
+  // inherits its vendor slot's tier.
+  const strongModels: CliName[] = deriveStrongClis();
+  const weakModels: CliName[] = deriveWeakClis();
 
   const preferred = tier === 'strong' ? strongModels : weakModels;
   const filtered = candidates.filter((c) => preferred.includes(routingArmDisplaySlot(c)));
@@ -445,14 +447,9 @@ export function filterByDifficultyTier(
   candidates: RoutingArmId[],
   tier: ModelTier
 ): RoutingArmId[] {
-  // Tier mappings aligned with ZeroRouter DEFAULT_TIER_TO_CLIS
-  const tierPreferences: Record<ModelTier, CliName[]> = {
-    fast: ['gemini', 'codex', 'claude'],
-    balanced: ['codex', 'gemini', 'claude'],
-    powerful: ['claude', 'codex', 'gemini'],
-  };
-
-  const preferred = tierPreferences[tier];
+  // Single source with ZeroRouter's DEFAULT_TIER_TO_CLIS: the same
+  // registry-derived tier→CLI ordering (#4195), no longer a parallel literal.
+  const preferred = deriveTierToClis()[tier];
   // Sort candidates by tier preference order. Tier preference is slot-level;
   // an api:* arm sorts by its display slot's position (#3422).
   const sortedCandidates = [...candidates].sort((a, b) => {
