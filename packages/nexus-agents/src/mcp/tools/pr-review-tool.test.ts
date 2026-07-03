@@ -37,6 +37,7 @@ import {
   type PrReviewVote,
 } from './pr-review-tool.js';
 import { applyPartialCoverageGate, type PrReviewCoverage } from './pr-review-diff-budget.js';
+import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { persistReviewRecord } from './pr-review-record-producer.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -581,6 +582,72 @@ describe('pr_review async dispatch (#3731)', () => {
     await new Promise((r) => setImmediate(r));
     const record = readJobResult(jobId);
     expect(record?.status).toBe('complete');
+  });
+});
+
+// #4170: simulate must FAIL CLOSED outside test runners — pr_review feeds the
+// same collectRealVotes → createSimulatedVotes machinery as consensus_vote, so
+// it gets the identical gate (deny outside test runner unless
+// NEXUS_ALLOW_SIMULATE=1; per-vote `source: 'simulation'` provenance already
+// rides the response).
+describe('pr_review simulate fail-closed gate (#4170)', () => {
+  const originalVitest = process.env['VITEST'];
+  const originalNodeEnv = process.env['NODE_ENV'];
+  const originalAllowSimulate = process.env['NEXUS_ALLOW_SIMULATE'];
+
+  /** Simulate a non-test-runner process (no VITEST, production NODE_ENV). */
+  function leaveTestRunnerEnv(): void {
+    delete process.env['VITEST'];
+    process.env['NODE_ENV'] = 'production';
+    delete process.env['NEXUS_ALLOW_SIMULATE'];
+  }
+
+  afterEach(() => {
+    if (originalVitest === undefined) delete process.env['VITEST'];
+    else process.env['VITEST'] = originalVitest;
+    if (originalNodeEnv === undefined) delete process.env['NODE_ENV'];
+    else process.env['NODE_ENV'] = originalNodeEnv;
+    if (originalAllowSimulate === undefined) delete process.env['NEXUS_ALLOW_SIMULATE'];
+    else process.env['NEXUS_ALLOW_SIMULATE'] = originalAllowSimulate;
+  });
+
+  it('rejects simulate outside a test runner with a permission envelope', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('NEXUS_ALLOW_SIMULATE');
+    const meta = (result as { _meta?: Record<string, unknown> })._meta;
+    const envelope = meta?.[ERROR_ENVELOPE_META_KEY] as { errorCategory: string };
+    expect(envelope.errorCategory).toBe('permission');
+  });
+
+  it('rejects identically in async dispatch mode — no pending envelope leaks out', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    const result = await handler(
+      { prTitle: 'x', prDiff: 'y', simulate: true, dispatch: 'async' },
+      TEST_CTX
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('NEXUS_ALLOW_SIMULATE');
+  });
+
+  it('proceeds when NEXUS_ALLOW_SIMULATE=1 (explicit demo opt-in)', async () => {
+    const handler = captureHandler();
+    leaveTestRunnerEnv();
+    process.env['NEXUS_ALLOW_SIMULATE'] = '1';
+    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    expect(result.isError).not.toBe(true);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    expect(output['summary']).toBeDefined();
+  });
+
+  it('stays allowed inside a test runner (existing suites unaffected)', async () => {
+    // Default vitest env: VITEST=true.
+    const handler = captureHandler();
+    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    expect(result.isError).not.toBe(true);
   });
 });
 

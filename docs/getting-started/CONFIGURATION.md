@@ -229,6 +229,8 @@ All configuration can be overridden with environment variables:
 | `NEXUS_ALLOW_MOCK_ORCHESTRATION` | Allow mock orchestration (test/CI only)                                                                                                                                             | `false`             |
 | `NEXUS_ALLOW_SIMULATE`           | Explicit opt-in (`1`) for `simulateVotes: true` outside test runners (demos only — simulated votes are random, #4170). Unset = such requests are rejected with a `permission` error | unset (fail closed) |
 
+**`NEXUS_ALLOW_SIMULATE` scope notes (#4170).** Test-runner detection trusts `VITEST=true` / `NODE_ENV=test` — a server started with an inherited test environment therefore disables the ban. The gate covers the MCP tool surface (`consensus_vote`, `run_pipeline`, `run_dev_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`); programmatic library consumers (e.g. `createAgentStages` / `executeVoting` via the package exports) sit below the gate by design.
+
 **Scheduled `improvement_review` (#3229).** Periodically runs `improvement_review` server-side so its `signal.fitness_declined` fires without manual invocation, feeding the self-tuning loop:
 
 | Variable                               | Description                                                                   | Default   |
