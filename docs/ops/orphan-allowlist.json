@@ -33,8 +33,13 @@
     },
     {
       "glob": "**/index.ts",
-      "rationale": "Barrel re-export files. Consumed via package-level resolution (`import x from './foo'` resolves to `./foo/index.ts`); knip flags these because nothing imports the barrel directly. Allowlisting reduces noise; intentional dead barrels still get caught by typecheck (unused export detection)."
+      "rationale": "Barrel re-export files that ARE consumed (directly via explicit `./foo/index.js` NodeNext imports, or via directory imports that knip resolves). The exemption exists for genuinely-consumed barrels only — knip resolves directory imports, so it does NOT flag a consumed barrel; a barrel flagged as orphaned despite this glob would be genuinely dead and should be deleted (see #4177, which removed five such dead barrels)."
     }
   ],
-  "specific_files": []
+  "specific_files": [
+    {
+      "path": "packages/nexus-agents/scripts/typedoc-astro-title.mjs",
+      "rationale": "Loaded by TypeDoc as a markdown-hooks plugin via typedoc.markdown.json (`plugin` array), not imported by JS code."
+    }
+  ]
 }

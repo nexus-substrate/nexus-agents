@@ -8,7 +8,7 @@ keywords:
   - trust-tiers
   - input-sanitization
 related_files:
-  - src/security/index.ts
+  - src/exports/security.ts
   - src/security/sanitizer.ts
   - src/security/trust-classifier.ts
 ---

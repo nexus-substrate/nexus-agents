@@ -32,7 +32,7 @@
       "purpose": "Input sanitization, trust classification, policy gates, reputation, firewall",
       "ts_files": 35,
       "test_files": 38,
-      "barrel": "src/security/index.ts",
+      "barrel": "src/exports/security.ts",
       "layer": 0,
       "depends_on": ["core"],
       "key_exports": [
