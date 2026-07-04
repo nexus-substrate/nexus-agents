@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.165.1
+
+### Patch Changes
+
+- [#4232](https://github.com/nexus-substrate/nexus-agents/pull/4232) [`84f9f88`](https://github.com/nexus-substrate/nexus-agents/commit/84f9f8807ba65b766ea06d9c6c39cb5c18758e60) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): did-you-mean suggestions + tracking hint for unknown commands ([#3207](https://github.com/nexus-substrate/nexus-agents/issues/3207))
+
+  `handleUnimplementedCommand` now, for a recognized-but-unbuilt subcommand,
+  surfaces the closest _implemented_ sibling by edit distance (reusing the
+  Levenshtein-backed `suggestCommand` matcher from [#3211](https://github.com/nexus-substrate/nexus-agents/issues/3211) — e.g. `workflow lst`
+  → `Did you mean: workflow list?`) and points the user at the repo issue
+  tracker to file or upvote the missing command. Near-miss-only: an unbuilt
+  command with no close sibling (e.g. `expert create`) stays silent rather than
+  guessing.
+
 ## 2.165.0
 
 ### Minor Changes
