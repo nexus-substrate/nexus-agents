@@ -53,7 +53,8 @@ export const MAX_REVIEWED_DIFF_BYTES = 50_000;
  *  - `--no-renames` — rename detection output is config/version-sensitive; off.
  *  - `-U3` — pin the context-line count (git default is 3, but it is configurable).
  *  - `<base>..<head>` — TWO-DOT range (base→head), NOT three-dot/merge-base.
- * Caller appends the `<base>..<head>` range as the final element.
+ * {@link canonicalGitDiffArgs} appends the range, then the `--` separator and the
+ * {@link LEDGER_EXCLUDE_PATHSPEC} exclude pathspec (see that constant for why).
  */
 export const CANONICAL_GIT_DIFF_ARGS: readonly string[] = Object.freeze([
   '-c',
@@ -71,9 +72,50 @@ export const CANONICAL_GIT_DIFF_ARGS: readonly string[] = Object.freeze([
   '-U3',
 ]);
 
-/** Build the full canonical `git` argv for a base..head range (two-dot). */
+/**
+ * Git pathspec (magic `:(exclude)` prefix) that removes the append-only pr-review
+ * ledger from the canonical reviewed diff (#4229). WHY it must be excluded from
+ * the authenticity primitive:
+ *
+ *   A pr_review record for PR N must be COMMITTED to PR N's head branch, because
+ *   the governor gate reads the ledger from the head checkout (`readFileSync`).
+ *   But committing the record advances head, so a naive `git diff base..head`
+ *   would then include the record line — changing the diff bytes and thus the
+ *   recomputed `reviewedDiffHash`, which no longer matches the hash stored IN that
+ *   record. The record would self-invalidate the moment it is committed. Excluding
+ *   the ledger from the canonical diff makes committing a record to head safe.
+ *
+ * The SAME {@link canonicalGitDiffArgs} is used by BOTH the producer (over the diff
+ * the voters reviewed) and the gate (`scripts/check-governor-review.ts` recompute),
+ * so the exclusion applies identically to both sides by construction — they cannot
+ * drift.
+ *
+ * SECURITY (pinned by tests in `reviewed-diff-hash.test.ts`):
+ *  - ONLY this EXACT path is excluded — the leading-space-free `:(exclude)` magic
+ *    matches one literal file, NOT a glob or directory, so it can never hide
+ *    reviewable code (e.g. `governance/other.jsonl` or `…records.jsonl.bak` stay
+ *    in the diff).
+ *  - The ledger's INTEGRITY is unaffected: it is still fully tamper-checked by
+ *    `verifyPrReviewRecordSet`. Excluding it from the *reviewed diff* does not
+ *    remove it from tamper-evidence.
+ *  - A PR that changes ledger content still cannot smuggle non-ledger changes: the
+ *    exclusion drops only the ledger file; every other changed path (code) remains
+ *    in the canonical diff and thus in the hash.
+ *
+ * The literal path is kept in sync with the store's `PR_REVIEW_RECORDS_REL_PATH`
+ * by a drift-guard test (this module stays dependency-minimal — only `node:crypto`
+ * — so it does not import the heavier store module here).
+ */
+export const LEDGER_EXCLUDE_PATHSPEC = ':(exclude)governance/pr-review-records.jsonl';
+
+/**
+ * Build the full canonical `git` argv for a base..head range (two-dot). The range
+ * is followed by `--` (revision/pathspec separator) and {@link LEDGER_EXCLUDE_PATHSPEC}
+ * so the append-only pr-review ledger is excluded from the reviewed diff (#4229) —
+ * committing a record to head then does not change the hash the record binds to.
+ */
 export function canonicalGitDiffArgs(baseSha: string, headSha: string): string[] {
-  return [...CANONICAL_GIT_DIFF_ARGS, `${baseSha}..${headSha}`];
+  return [...CANONICAL_GIT_DIFF_ARGS, `${baseSha}..${headSha}`, '--', LEDGER_EXCLUDE_PATHSPEC];
 }
 
 /**
