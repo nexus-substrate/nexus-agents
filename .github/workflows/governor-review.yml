@@ -68,9 +68,12 @@ jobs:
 
       - name: Run governor-review gate (warn-first; integrity fail-closed)
         env:
-          # The gate gets the PR number + head sha from CI here — sha-binding
-          # (condition 1) rests on github.event.pull_request.head.sha.
+          # The gate needs BOTH base and head sha: sha-binding (condition 1) AND
+          # the Option-C diff-binding recompute `git diff base..head` (#3831).
+          # Without PR_BASE_SHA, resolvePrContext.baseSha is undefined and the
+          # diff-binding never runs, so the gate cannot match any record (#4227).
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CHANGED_FILES: ${{ steps.changed.outputs.files }}
         # No continue-on-error: the script encodes warn (exit 0) vs fail-closed
