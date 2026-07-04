@@ -75,6 +75,7 @@ import {
   printResearchUsage,
 } from './cli-commands-usage.js';
 import { getErrorMessage } from './core/index.js';
+import { suggestCommand } from './cli-command-suggester.js';
 
 // Re-export complex handlers for backward compatibility
 export {
@@ -102,6 +103,46 @@ const MCP_EQUIVALENTS: Record<string, string> = {
   'expert execute': 'execute_expert',
 };
 
+/**
+ * Implemented subcommands per top-level command, keyed by top-level name. Used
+ * only to power the "Did you mean?" hint: a mistyped subcommand
+ * (`workflow lst`) resolves to the closest *built* one (`workflow list`), while
+ * a recognized-but-unbuilt subcommand (`expert create`) has no close match and
+ * stays silent rather than guessing. Keep in sync with the dispatch switches in
+ * `handleExpertCommand` / `handleWorkflowCommand` below.
+ */
+const IMPLEMENTED_SUBCOMMANDS: Record<string, readonly string[]> = {
+  expert: ['list'],
+  workflow: ['list', 'run'],
+};
+
+/**
+ * The repo's own issue tracker — where a user can file or upvote a
+ * recognized-but-unbuilt command. Deliberately generic (no per-command issue
+ * mapping to drift): the tracker is the single durable pointer.
+ */
+const TRACKING_ISSUES_URL = 'https://github.com/nexus-substrate/nexus-agents/issues';
+
+/**
+ * Emits a `Did you mean: <top> <sub>?` line to stderr when the unimplemented
+ * `command` (`"<top> <sub>"`) has a mistyped subcommand within edit-distance of
+ * an implemented sibling. Reuses the Levenshtein-backed `suggestCommand` matcher
+ * (#3211) so the threshold/ranking matches the top-level unknown-command path.
+ * No-op when the top-level command has no implemented-subcommand table, the
+ * subcommand is empty, or nothing is close (avoids bogus suggestions).
+ */
+function writeSubcommandSuggestion(command: string): void {
+  const [topLevel, ...subParts] = command.split(' ');
+  const subcommand = subParts.join(' ');
+  if (topLevel === undefined || subcommand.length === 0) return;
+  const validSubcommands = IMPLEMENTED_SUBCOMMANDS[topLevel];
+  if (validSubcommands === undefined) return;
+  const suggestions = suggestCommand(subcommand, validSubcommands);
+  if (suggestions.length === 0) return;
+  const rendered = suggestions.map((sub) => `${topLevel} ${sub}`).join(', ');
+  process.stderr.write(`Did you mean: ${rendered}?\n`);
+}
+
 export function handleUnimplementedCommand(command: string): void {
   const equiv = MCP_EQUIVALENTS[command];
   process.stderr.write(`The '${command}' CLI subcommand is not yet implemented.\n`);
@@ -110,6 +151,10 @@ export function handleUnimplementedCommand(command: string): void {
       `Equivalent today: run \`nexus-agents --mode=server\` and call the \`${equiv}\` MCP tool.\n`
     );
   }
+  writeSubcommandSuggestion(command);
+  // #3207: point users at the tracker so a wanted-but-unbuilt command gets
+  // filed/upvoted instead of silently dropped.
+  process.stderr.write(`Track or request this command: ${TRACKING_ISSUES_URL}\n`);
   process.stderr.write('Run "nexus-agents --help" for available options.\n');
 }
 
