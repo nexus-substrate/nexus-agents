@@ -10,25 +10,16 @@
  *   npx tsx scripts/pr-review-local.ts --watch --interval 600 # custom poll
  *   npx tsx scripts/pr-review-local.ts <pr-number> --no-post # dry run
  *
- * What it does (one-shot):
- *   1. Fetches PR diff via `gh api`
- *   2. Runs the same 5-voter pipeline pr_review uses (voters route
- *      through CLI subprocesses → use your local subscription auth)
- *   3. Posts a single review comment back via `gh pr comment`
- *   4. Adds the `pr-reviewed` label so --watch mode skips on next pass
+ * What it does (one-shot): fetch the PR's canonical `base..head` diff (ledger-
+ * excluded, #4229), run the same live 5-voter pr_review panel, post a single review
+ * comment (`gh pr comment`), add the `pr-reviewed` label, and feed the governance
+ * ledger with a diff-bound record the governor gate can MATCH (see
+ * `pr-review-local-ledger.ts`). Watch mode polls open, unlabelled, non-draft PRs on
+ * an interval and reviews each.
  *
- * What it does (watch mode):
- *   Polls open PRs without the `pr-reviewed` label, runs review on each,
- *   sleeps for --interval seconds (default 300), repeats.
- *
- * Safety:
- *   - Adds `pr-reviewed` label so the same PR isn't reviewed twice
- *   - Skips PRs with `skip-pr-review` label (matches the workflow's opt-out)
- *   - Skips draft PRs by default (use --include-drafts to override)
- *   - Adds [bot] suffix to comment body so it's clearly automated
- *
- * Cost: ~5 voter LLM calls per PR (5 messages of subscription quota at
- * typical PR size, ~2 minutes wall-clock per PR).
+ * Safety: `pr-reviewed` avoids double review; `skip-pr-review` opts out; drafts
+ * skipped unless `--include-drafts`; comment carries a [bot] suffix. Cost: ~5 voter
+ * LLM calls (~2 min) per PR.
  *
  * @module scripts/pr-review-local
  */
@@ -44,16 +35,23 @@ import {
   mapVoteDecisionToPrDecision,
   aggregatePrDecisions,
   MAX_DIFF_LENGTH,
+  type PrReviewAggregate,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-tool.js';
 import {
   isFindingVerified,
   type Finding,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
+import {
+  ensurePrCommitsLocal,
+  generateCanonicalReviewDiff,
+  feedLedgerRecord,
+  fetchPrMeta,
+  fetchGhDiff,
+  type PrMeta,
+} from './pr-review-local-ledger.js';
 
 const execFileP = promisify(execFile);
 
-const REPO_OWNER = 'nexus-substrate';
-const REPO_NAME = 'nexus-agents';
 const REVIEWED_LABEL = 'pr-reviewed';
 const SKIP_LABEL = 'skip-pr-review';
 
@@ -138,45 +136,6 @@ async function listOpenPrs(): Promise<readonly OpenPr[]> {
   }));
 }
 
-async function fetchPrDiff(prNumber: number): Promise<{
-  diff: string;
-  truncated: boolean;
-  baseRef: string;
-  headRef: string;
-  title: string;
-  body: string;
-}> {
-  const [{ stdout: meta }, { stdout: diffOut }] = await Promise.all([
-    execFileP('gh', [
-      'api',
-      `repos/${REPO_OWNER}/${REPO_NAME}/pulls/${String(prNumber)}`,
-      '--jq',
-      '{title, body, head: .head.ref, base: .base.ref}',
-    ]),
-    execFileP(
-      'gh',
-      [
-        'api',
-        `repos/${REPO_OWNER}/${REPO_NAME}/pulls/${String(prNumber)}`,
-        '-H',
-        'Accept: application/vnd.github.v3.diff',
-      ],
-      { maxBuffer: 16 * 1024 * 1024 }
-    ),
-  ]);
-  const m = JSON.parse(meta) as { title?: string; body?: string; head?: string; base?: string };
-  const truncated = diffOut.length > MAX_DIFF_LENGTH;
-  const diff = truncated ? `${diffOut.slice(0, MAX_DIFF_LENGTH)}\n[...truncated]` : diffOut;
-  return {
-    diff,
-    truncated,
-    title: m.title ?? '',
-    body: m.body ?? '',
-    headRef: m.head ?? '',
-    baseRef: m.base ?? '',
-  };
-}
-
 async function postPrComment(prNumber: number, body: string): Promise<void> {
   // Use stdin to avoid shell-escape headaches on the markdown body.
   const child = execFile('gh', ['pr', 'comment', String(prNumber), '--body-file', '-']);
@@ -214,31 +173,55 @@ interface VoterResult {
   readonly cli?: string | undefined;
 }
 
-async function runReview(
-  prNumber: number
-): Promise<{ summary: string; verified: boolean; reviews: VoterResult[] }> {
-  console.log(`\n[#${String(prNumber)}] fetching diff…`);
-  const { diff, title, body, baseRef, headRef } = await fetchPrDiff(prNumber);
-  console.log(`  ${title}`);
-  console.log(`  diff size: ${String(diff.length)} chars`);
+interface ReviewResult {
+  readonly summary: string;
+  readonly verified: boolean;
+  readonly reviews: VoterResult[];
+  readonly aggregate: PrReviewAggregate;
+  readonly title: string;
+  readonly description: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  /**
+   * The full canonical (ledger-excluded) `base..head` diff the voters reviewed and
+   * that gets hashed for the ledger record — undefined when the local clone could
+   * not produce it (fell back to the gh v3.diff for the review; no ledger record).
+   */
+  readonly canonicalDiff: string | undefined;
+}
 
-  const proposal = buildPrReviewProposal({
-    prTitle: title,
-    prDescription: body,
-    prDiff: diff,
-    ...(baseRef !== '' && { baseRef }),
-    ...(headRef !== '' && { headRef }),
-    simulate: false,
-  });
+/**
+ * Produce the diff the voters review. Prefers the CANONICAL, ledger-excluded
+ * `git diff base..head` (so its hash matches the gate recompute and the review can
+ * feed the ledger); falls back to the GitHub `v3.diff` when the base/head commits
+ * are not fetchable locally (review still runs, but no record — the fallback diff
+ * is not hash-parity with the gate).
+ */
+async function resolveReviewDiff(
+  prNumber: number,
+  meta: PrMeta
+): Promise<{ reviewDiff: string; canonicalDiff: string | undefined }> {
+  if (meta.baseSha !== '' && meta.headSha !== '') {
+    await ensurePrCommitsLocal(prNumber, meta.baseSha);
+    try {
+      const full = await generateCanonicalReviewDiff(meta.baseSha, meta.headSha);
+      const reviewDiff =
+        full.length > MAX_DIFF_LENGTH ? `${full.slice(0, MAX_DIFF_LENGTH)}\n[...truncated]` : full;
+      return { reviewDiff, canonicalDiff: full };
+    } catch (e) {
+      console.warn(
+        `  canonical git diff unavailable (${(e as Error).message.slice(0, 120)}); ` +
+          `falling back to gh diff (review only, no ledger record).`
+      );
+    }
+  }
+  const { diff } = await fetchGhDiff(prNumber);
+  return { reviewDiff: diff, canonicalDiff: undefined };
+}
 
-  console.log(`  running ${String(PR_REVIEW_ROLES.length)} voters via local CLI auth…`);
-  const voteResults = await collectRealVotes({
-    roles: PR_REVIEW_ROLES,
-    proposal,
-    simulate: false,
-  });
-
-  const reviews: VoterResult[] = voteResults.map((r) => {
+/** Normalize the raw voter results into the local {@link VoterResult} shape. */
+function mapVoterResults(voteResults: Awaited<ReturnType<typeof collectRealVotes>>): VoterResult[] {
+  return voteResults.map((r) => {
     const raw = r.vote.findings;
     const findings: Finding[] =
       raw !== undefined && raw.length > 0
@@ -261,9 +244,46 @@ async function runReview(
       cli: r.cli,
     };
   });
+}
 
+async function runReview(prNumber: number): Promise<ReviewResult> {
+  console.log(`\n[#${String(prNumber)}] fetching diff…`);
+  const meta = await fetchPrMeta(prNumber);
+  const { reviewDiff, canonicalDiff } = await resolveReviewDiff(prNumber, meta);
+  console.log(`  ${meta.title}`);
+  console.log(
+    `  diff size: ${String(reviewDiff.length)} chars${canonicalDiff !== undefined ? ' (canonical, ledger-excluded)' : ' (gh fallback)'}`
+  );
+
+  const proposal = buildPrReviewProposal({
+    prTitle: meta.title,
+    prDescription: meta.body,
+    prDiff: reviewDiff,
+    ...(meta.baseRef !== '' && { baseRef: meta.baseRef }),
+    ...(meta.headRef !== '' && { headRef: meta.headRef }),
+    simulate: false,
+  });
+
+  console.log(`  running ${String(PR_REVIEW_ROLES.length)} voters via local CLI auth…`);
+  const voteResults = await collectRealVotes({
+    roles: PR_REVIEW_ROLES,
+    proposal,
+    simulate: false,
+  });
+
+  const reviews = mapVoterResults(voteResults);
   const aggregate = aggregatePrDecisions(reviews);
-  return { summary: aggregate.decision, verified: aggregate.verified, reviews };
+  return {
+    summary: aggregate.decision,
+    verified: aggregate.verified,
+    reviews,
+    aggregate,
+    title: meta.title,
+    description: meta.body,
+    baseSha: meta.baseSha,
+    headSha: meta.headSha,
+    canonicalDiff,
+  };
 }
 
 // ============================================================================
@@ -375,6 +395,25 @@ async function runOnce(prNumber: number, post: boolean): Promise<void> {
   await postPrComment(prNumber, body);
   await applyLabel(prNumber, REVIEWED_LABEL);
   console.log(`  posted comment + applied '${REVIEWED_LABEL}' label.`);
+
+  // Feed the governance ledger (#4229): persist an authentic, diff-bound record so
+  // the governor-review gate can MATCH this PR's review.
+  await feedLedgerRecord({
+    prNumber,
+    baseSha: result.baseSha,
+    headSha: result.headSha,
+    title: result.title,
+    description: result.description,
+    aggregate: result.aggregate,
+    canonicalDiff: result.canonicalDiff,
+    counts: {
+      approveCount: counts.approve,
+      requestChangesCount: counts.rc,
+      abstainCount: counts.abstain,
+      errorCount: counts.err,
+    },
+    reviewCount: result.reviews.length,
+  });
 }
 
 async function runWatch(args: Args): Promise<void> {
@@ -422,4 +461,10 @@ async function main(): Promise<void> {
   await runOnce(args.prNumber, args.post);
 }
 
-await main();
+// Run only when invoked directly (not when imported by the test suite), mirroring
+// scripts/check-governor-review.ts — so the exported ledger-feeder seams are unit
+// testable without executing the watcher.
+const invokedPath = process.argv[1] ?? '';
+if (import.meta.url === `file://${invokedPath}`) {
+  await main();
+}
