@@ -5,7 +5,7 @@
  * (Source: Issue #378)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ParsedCliArgs } from './cli-types.js';
 import type { ServerMode } from './cli/index.js';
 
@@ -37,6 +37,7 @@ import {
   handleConfigCommand,
   handleExpertCommand,
   handleHelloCommand,
+  handleUnimplementedCommand,
 } from './cli-commands-handlers.js';
 import { configCommand, configInitCommand, expertListCommand, helloCommand } from './cli/index.js';
 
@@ -418,5 +419,60 @@ describe('CliExitResult return contract (#3210)', () => {
         exitCode: 1,
       });
     });
+  });
+});
+
+// #3207: did-you-mean suggestions + tracking-issue link for unimplemented
+// (recognized-but-not-built) CLI subcommands. Writes to stderr; we spy on it
+// directly since the module-level process stub only mocks stdout.
+describe('handleUnimplementedCommand (#3207)', () => {
+  let stderrSpy: MockInstance;
+
+  beforeEach(() => {
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    stderrSpy.mockRestore();
+  });
+
+  function stderrOutput(): string {
+    return stderrSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('');
+  }
+
+  it('always reports the command is not implemented and points at the tracker', () => {
+    handleUnimplementedCommand('workflow bogus');
+    const out = stderrOutput();
+    expect(out).toContain("The 'workflow bogus' CLI subcommand is not yet implemented.");
+    expect(out).toContain('https://github.com/nexus-substrate/nexus-agents/issues');
+  });
+
+  it('suggests the closest implemented subcommand for a near-miss typo', () => {
+    // `lst` is one edit from `list` (an implemented workflow subcommand).
+    handleUnimplementedCommand('workflow lst');
+    expect(stderrOutput()).toContain('Did you mean: workflow list?');
+  });
+
+  it('suggests a workflow run typo', () => {
+    // `runn` is one edit from `run`; short 2-char inputs are intentionally
+    // below the suggester's relative-distance floor, so use a 4-char near-miss.
+    handleUnimplementedCommand('workflow runn');
+    expect(stderrOutput()).toContain('Did you mean: workflow run?');
+  });
+
+  it('does not emit a bogus suggestion when no implemented subcommand is close', () => {
+    // `create` is far from the only implemented expert subcommand (`list`).
+    handleUnimplementedCommand('expert create');
+    expect(stderrOutput()).not.toContain('Did you mean');
+  });
+
+  it('still names the equivalent MCP tool when one exists', () => {
+    handleUnimplementedCommand('expert create');
+    expect(stderrOutput()).toContain('create_expert');
+  });
+
+  it('does not suggest when the subcommand is empty', () => {
+    handleUnimplementedCommand('expert ');
+    expect(stderrOutput()).not.toContain('Did you mean');
   });
 });
