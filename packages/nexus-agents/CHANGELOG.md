@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 2.166.1
+
+### Patch Changes
+
+- [#4245](https://github.com/nexus-substrate/nexus-agents/pull/4245) [`8bbbffc`](https://github.com/nexus-substrate/nexus-agents/commit/8bbbffcb511998f249e25c1ca793313b1c50d55d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix two indexer bugs: default exclude globs (`**/*.test.ts`, `**/*.d.ts`) were never actually applied because `shouldExcludeFile` stripped `*`/`**` from patterns before matching, leaving a broken substring check that couldn't match real file paths — test files and `.d.ts` files were being indexed. Excludes are now passed as negated globs directly to ts-morph's `addSourceFilesAtPaths`, which resolves them correctly.
+
+  Also fixed `extractDescription` mishandling single-line JSDoc headers (e.g. `/** Utils. */`): `classifyJsDocLine` checked `startsWith('/**')` before `endsWith('*/')`, so a self-closing single-line comment never closed the comment state, causing the next code line to be misread as the description. A leading non-JSDoc block comment (e.g. `/* eslint-disable */`) also incorrectly aborted extraction before reaching the real module JSDoc; it is now skipped instead.
+
+- [#4244](https://github.com/nexus-substrate/nexus-agents/pull/4244) [`d82f1a0`](https://github.com/nexus-substrate/nexus-agents/commit/d82f1a08356ac24f85f21a3f7a43cee30cce9e35) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(indexer): resolve MCP tool description/inputSchema identifiers from enclosing scope
+
+  The entrypoint MCP extractor resolved shorthand `{ description }` and
+  `inputSchema: toolSchema` references via `sourceFile.getVariableDeclaration()`,
+  which only searches top-level declarations. The dominant tool pattern declares
+  `const description` / `const toolSchema` INSIDE the `registerXTool(...)`
+  function, so these silently resolved to empty — shipping 27 MCP tools (incl.
+  `extract_symbols`, `search_codebase`, `repo_analyze`) with `description: ''` in
+  `docs/.generated/entrypoints.yaml`.
+
+  Identifiers are now resolved through the type-checker symbol across all
+  enclosing scopes, and string concatenations are read statically. A warning is
+  now emitted when a tool resolves to BOTH an empty description and empty
+  parameters (the silent-empty class, [#2153](https://github.com/nexus-substrate/nexus-agents/issues/2153)). Regenerating the manifest drops the
+  empty-description count from 27 to 1 (the remaining `run_pipeline` uses a runtime
+  template-literal description the extractor cannot resolve statically, and is now
+  flagged by the warning).
+
 ## 2.166.0
 
 ### Minor Changes
