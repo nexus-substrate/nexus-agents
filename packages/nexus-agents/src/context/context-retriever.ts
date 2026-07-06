@@ -44,6 +44,8 @@ import {
   clampToTokenBudget,
   type RankedMemoryItem,
 } from './context-retriever-helpers.js';
+import { createTokenCounter } from './token-counter.js';
+import { getTokenLedger } from './token-ledger.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -415,16 +417,43 @@ function oneLine(value: string): string {
  * memory-backend fan-out or ranking semantics (including the ranked path's
  * own internal {@link RANKED_PREFIX_TOKEN_BUDGET}) — it is a final clamp
  * applied after rendering.
+ *
+ * **Token ledger wiring (#4252, Phase 0 of epic #4251):** every non-empty
+ * result is also recorded in the {@link getTokenLedger} as one `memory-backend`
+ * entry, tagged with `variant: 'ranked' | 'legacy'` for which rendering path
+ * produced it. This is the single highest-value measurement point named by
+ * #4252 — without it, the C3 (#4253 caps) and C1' (#4254 repo-map) savings
+ * have no per-call baseline to diff against.
  */
 export function summarizeContextForPrompt(
   ctx: UnifiedContext,
   budgetTokens: number = DEFAULT_CONTEXT_BUDGET_TOKENS
 ): string {
-  const rendered =
-    process.env[CONTEXT_RANKED_FLAG] === '1'
-      ? summarizeRankedContext(ctx)
-      : summarizeLegacyContext(ctx);
-  return clampRenderedContext(rendered, budgetTokens);
+  const ranked = process.env[CONTEXT_RANKED_FLAG] === '1';
+  const rendered = ranked ? summarizeRankedContext(ctx) : summarizeLegacyContext(ctx);
+  const clamped = clampRenderedContext(rendered, budgetTokens);
+  recordAssembledContextTokens(clamped, ranked);
+  return clamped;
+}
+
+/** Shared estimator for the ledger wiring below — builds on `token-counter.ts` (#4252). */
+const contextTokenCounter = createTokenCounter();
+
+/**
+ * Record the assembled-context token count in the per-call token ledger
+ * (#4252). Best-effort: {@link getTokenLedger}'s persistence never throws
+ * (inherited from the `JsonlStore` contract), so this cannot break context
+ * assembly. Skipped for an empty block — there is nothing to measure, and
+ * recording it would add "0 tokens" noise to every no-signal call.
+ */
+function recordAssembledContextTokens(rendered: string, ranked: boolean): void {
+  if (rendered === '') return;
+  getTokenLedger().record({
+    tool: 'context-retriever.summarizeContextForPrompt',
+    contextSource: 'memory-backend',
+    inputTokens: contextTokenCounter.estimate(rendered),
+    variant: ranked ? 'ranked' : 'legacy',
+  });
 }
 
 /** Default per-call context budget (tokens), applied by {@link summarizeContextForPrompt} (#4253). Matches the CLAUDE.md "Standard" context-budget tier (~2,500); pass a different value for a caller in the Minimal (~800) / Research (~1,500) / Full (~6,000) tier. */

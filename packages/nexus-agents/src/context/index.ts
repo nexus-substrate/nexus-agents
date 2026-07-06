@@ -284,3 +284,19 @@ export {
   type RankedMemorySource,
   type RankMemoriesOptions,
 } from './context-retriever-helpers.js';
+
+// Per-call token ledger (#4252, Phase 0 of epic #4251) — records input/output
+// tokens per call tagged by context-source, so the C3 (#4253)/C1' (#4254)
+// savings are measurable rather than assumed.
+export {
+  TokenLedger,
+  getTokenLedger,
+  CONTEXT_SOURCE_TAGS,
+  TokenLedgerEventSchema,
+  type ContextSourceTag,
+  type TokenLedgerEvent,
+  type TokenLedgerConfig,
+  type TokenLedgerAggregate,
+  type TokenLedgerSummary,
+  type TokenLedgerWindow,
+} from './token-ledger.js';
