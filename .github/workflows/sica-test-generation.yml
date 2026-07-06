@@ -4,10 +4,14 @@ name: SICA Weekly Test Generation
 # (Source: Issue #256 - Self-Generated Test Automation, Phase 3.2)
 
 on:
-  schedule:
-    # Run every Monday at 9:00 AM UTC (5:00 AM ET)
-    - cron: '0 9 * * 1'
-  # Manual trigger for testing
+  # Weekly schedule DISABLED pending #4240. This job failed on every run for 6+
+  # weeks: the generator's coverage-gap discovery is a stub with a hardcoded,
+  # repo-root-relative target path, so writeFile ENOENTs, no *.sica.test.ts files
+  # land, and Create-PR dies on an empty pathspec. Re-enable the cron once the
+  # generator is fixed or the workflow is intentionally retired (see #4240).
+  # Manual dispatch is kept so the fix can be exercised on demand.
+  # schedule:
+  #   - cron: '0 9 * * 1'  # every Monday 09:00 UTC (05:00 ET)
   workflow_dispatch:
     inputs:
       target_coverage:
