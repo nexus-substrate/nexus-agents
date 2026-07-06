@@ -2,7 +2,7 @@
 # Generated automatically - do not edit manually
 
 schema_version: '1.0'
-generated_at: 07/06/2026, 10:49:01
+generated_at: 07/06/2026, 11:25:04
 cli_commands:
   - name: hello
     description: Show welcome message and quick start (no API keys needed)
@@ -350,9 +350,9 @@ mcp_tools:
     source_line: 208
   - name: extract_symbols
     description:
-      Parse a SINGLE TypeScript/JavaScript file with tree-sitter and return its structural AST symbols. Use when
-      you need the structure of one file — function/class/method/interface/type definitions. Not a cross-file search;
-      for that use `search_codebase`. Output is 80%+ smaller than reading the full file.
+      Parse a SINGLE TypeScript/JavaScript file with the TypeScript compiler API and return its structural AST
+      symbols. Use when you need the structure of one file — function/class/method/interface/type definitions. Not a
+      cross-file search; for that use `search_codebase`. Output is 80%+ smaller than reading the full file.
     parameters:
       - name: filePath
         type: string
@@ -907,10 +907,11 @@ mcp_tools:
     source_line: 433
   - name: search_codebase
     description:
-      'Cross-file ripgrep-style search across the working directory. Builds an in-memory symbol index and ranks
-      matches with relevance scoring. Use when you need usages of a symbol or pattern across MANY files. For the AST of
-      a single file, use `extract_symbols` instead. Modes: search (find by keyword), summary (per-file overview), list
-      (all indexed files).'
+      'Cross-file search across an index of declared symbol NAMES in the working directory — declarations only
+      (functions, classes, methods, interfaces, types); NOT usages, call-sites, comments, or string/text content. Builds
+      an in-memory symbol index and ranks matches with relevance scoring. Use when you need to find where a symbol is
+      DECLARED across MANY files. For the AST of a single file, use `extract_symbols` instead. Modes: search (find by
+      keyword), summary (per-file overview), list (all indexed files).'
     parameters:
       - name: query
         type: string
@@ -928,8 +929,11 @@ mcp_tools:
         type: enum
         description: search/summary/list
         required: false
+      - name: maxDepth
+        type: unknown
+        required: false
     source_file: packages/nexus-agents/src/mcp/tools/search-codebase-tool.ts
-    source_line: 265
+    source_line: 315
   - name: suggest_research_tasks
     description:
       'SUGGEST-ONLY: surface candidate pipeline tasks for human/orchestrator review (#1715 / #1711 / #3576). Two
