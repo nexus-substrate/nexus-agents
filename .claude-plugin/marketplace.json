@@ -13,7 +13,7 @@
         "source": "github",
         "repo": "nexus-substrate/nexus-agents"
       },
-      "description": "Intelligent orchestration platform for AI coding tools — 46 MCP tools (orchestrate, consensus voting, research, pipelines), 33 skills, 12 expert agents, governance hooks.",
+      "description": "Intelligent orchestration platform for AI coding tools — 47 MCP tools (orchestrate, consensus voting, research, pipelines), 33 skills, 12 expert agents, governance hooks.",
       "keywords": ["orchestration", "mcp", "consensus", "pipelines", "multi-agent"]
     }
   ]

@@ -1,6 +1,6 @@
 ---
 title: 'MCP Tool Reference'
-description: 'Per-tool reference for all 46 registered nexus-agents MCP tools, generated from the tool manifest and input schemas.'
+description: 'Per-tool reference for all 47 registered nexus-agents MCP tools, generated from the tool manifest and input schemas.'
 tier: 1
 keywords: [mcp, tools, reference, api]
 ---
@@ -10,7 +10,7 @@ keywords: [mcp, tools, reference, api]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas (`pnpm docs:tools`). Do not edit by hand.
 
-nexus-agents exposes **46 MCP tools** via stdio. Each tool below links to its full parameter reference.
+nexus-agents exposes **47 MCP tools** via stdio. Each tool below links to its full parameter reference.
 
 | Tool | Summary |
 | ---- | ------- |
@@ -51,6 +51,7 @@ nexus-agents exposes **46 MCP tools** via stdio. Each tool below links to its fu
 | [`repo_security_plan`](./repo_security_plan.md) | Generate security scanning pipeline for a repo |
 | [`extract_symbols`](./extract_symbols.md) | TypeScript-compiler-API AST symbols from a SINGLE file (functions/classes/types) |
 | [`search_codebase`](./search_codebase.md) | Cross-file search over declared symbol NAMES (declarations only, not usages) |
+| [`search_usages`](./search_usages.md) | Structural usage/call-site search for a symbol via ast-grep (calls, member calls, new, imports, references) — the "where is X used" gap `search_codebase` cannot fill |
 | [`run_dev_pipeline`](./run_dev_pipeline.md) | Full dev pipeline: research, plan, vote, implement, QA |
 | [`run_pipeline`](./run_pipeline.md) | Execute a pipeline plugin by name with typed input |
 | [`pr_review`](./pr_review.md) | Multi-voter PR review with verification gate (experimental) |

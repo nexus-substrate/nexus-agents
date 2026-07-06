@@ -133,7 +133,7 @@ These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI 
 
 ## Composability Model
 
-The 46 MCP tools are not a flat menu — they form three tiers, and the design intent is that **a higher tier composes lower tiers**. Knowing the tier of a tool tells you whether you call it directly or hand its output to something larger.
+The 47 MCP tools are not a flat menu — they form three tiers, and the design intent is that **a higher tier composes lower tiers**. Knowing the tier of a tool tells you whether you call it directly or hand its output to something larger.
 
 ### Three tiers
 

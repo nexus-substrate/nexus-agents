@@ -12,7 +12,7 @@ A focused tutorial: install → verify → run a real consensus vote → wire it
 
 This is the canonical new-user path. If you want platform-specific install details, jump to [INSTALLATION.md](./INSTALLATION.md). If you want every knob enumerated, jump to [CONFIGURATION.md](./CONFIGURATION.md). For Claude Code plugin install specifically, see [PLUGIN_INSTALL.md](./PLUGIN_INSTALL.md). Everything below stays on the canonical "first 5 minutes" path.
 
-> **CLI vs MCP — read this first.** The standalone CLI surface (`vote`, `orchestrate`, `review`) is a useful subset you can run from any terminal. The full control plane — the `run` entry point plus the 46 MCP tools — lives behind `setup` and an MCP-aware editor (Claude Code, Cursor, etc.). If you're an MCP user, the one command to learn is `run "<goal>"`: it's read-only by default (pass `execute: true` to actually run), and the MetaOrchestrator picks the strategy for you, so you rarely pick a pipeline tool by hand. Note `run` is **MCP-only** — it is not a CLI command.
+> **CLI vs MCP — read this first.** The standalone CLI surface (`vote`, `orchestrate`, `review`) is a useful subset you can run from any terminal. The full control plane — the `run` entry point plus the 47 MCP tools — lives behind `setup` and an MCP-aware editor (Claude Code, Cursor, etc.). If you're an MCP user, the one command to learn is `run "<goal>"`: it's read-only by default (pass `execute: true` to actually run), and the MetaOrchestrator picks the strategy for you, so you rarely pick a pipeline tool by hand. Note `run` is **MCP-only** — it is not a CLI command.
 
 ---
 
@@ -106,7 +106,7 @@ That's the smoke task. The verdict prints; the vote tally and per-voter confiden
 nexus-agents setup
 ```
 
-Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, Gemini, and Codex (whichever you have). Restart the editor; the 46 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, Gemini, and Codex (whichever you have). Restart the editor; the 47 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 `setup` writes/updates up to seven things — each opt-outtable with the corresponding `--skip-*` flag. The full breakdown is in the [project README](../../README.md#what-setup-configures); if you'd rather configure one CLI at a time, run `setup --interactive` (the default).
 

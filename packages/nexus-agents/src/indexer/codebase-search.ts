@@ -74,13 +74,22 @@ function isSourceFile(name: string): boolean {
 }
 
 /** Result of a recursive source-file walk: the files found plus a truncation signal. */
-interface FindSourceFilesResult {
+export interface FindSourceFilesResult {
   files: string[];
   /** Count of directories that were NOT descended into because maxDepth hit 0. */
   skippedDirs: number;
 }
 
-async function findSourceFiles(dir: string, maxDepth: number): Promise<FindSourceFilesResult> {
+/**
+ * Recursively collect TS/JS source files under `dir`, bounded by `maxDepth`,
+ * skipping `node_modules`/`dist` and test/declaration files. Exported so the
+ * `search_usages` tool (#4265) reuses the exact same source-file set the symbol
+ * index walks — keeping the two tools' scopes apples-to-apples (DRY).
+ */
+export async function findSourceFiles(
+  dir: string,
+  maxDepth: number
+): Promise<FindSourceFilesResult> {
   if (maxDepth <= 0) return { files: [], skippedDirs: 1 };
   const files: string[] = [];
   let skippedDirs = 0;

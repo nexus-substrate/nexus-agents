@@ -36,7 +36,7 @@ of truth, and a blocking gate keeps them honest.
 
 Add (or update) a registry entry whenever a PR introduces or changes a
 **substantive, falsifiable claim** in `README.md` or `ARCHITECTURE.md` — a
-count ("46 MCP tools", "12 expert types"), a capability ("audit trail is
+count ("47 MCP tools", "12 expert types"), a capability ("audit trail is
 hash-chained"), or a roadmap status ("standalone CLI is Phase 2, not shipped").
 
 If you can't point the claim at a live source of truth, soften the prose
@@ -111,12 +111,12 @@ Notes:
 
 ### Worked example
 
-`README.md` states the system exposes **46 MCP tools**. The source of truth is
+`README.md` states the system exposes **47 MCP tools**. The source of truth is
 the MCP tool manifest, so the entry uses `manifest-tool-count`:
 
 ```yaml
 - id: mcp-tool-count
-  claim: 'README states the system exposes 46 MCP tools.'
+  claim: 'README states the system exposes 47 MCP tools.'
   subject: README.md
   status: verified
   evidenceType: source

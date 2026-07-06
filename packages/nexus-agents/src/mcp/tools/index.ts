@@ -351,6 +351,18 @@ export {
   type ExtractSymbolsDeps,
   type ExtractSymbolsInput,
 } from './extract-symbols-tool.js';
+// Usage/call-site search tool (#4265 / epic #4249 Child A — ast-grep structural search)
+export {
+  registerSearchUsagesTool,
+  SearchUsagesInputSchema,
+  findUsagesInSource,
+  DEFAULT_USAGES_LIMIT,
+  MAX_USAGES_LIMIT,
+  type SearchUsagesDeps,
+  type SearchUsagesInput,
+  type UsageKind,
+  type UsageMatch,
+} from './search-usages-tool.js';
 // Query trace tool (Epic #952, Phase 5)
 export {
   registerQueryTraceTool,

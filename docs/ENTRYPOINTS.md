@@ -355,6 +355,7 @@ nexus-agents hooks stop --check-tasks
 | `repo_security_plan`          | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                                                                                                                | None (local) | Shared bucket |
 | `extract_symbols`             | Parse a SINGLE source file with the TypeScript compiler API and return its structural symbols (functions, classes, types).                                                                                                                | None (local) | Shared bucket |
 | `search_codebase`             | Cross-file search across an index of declared symbol NAMES over the working directory — declarations only, NOT usages, call-sites, comments, or string content.                                                                           | None (local) | Shared bucket |
+| `search_usages`               | Structural USAGE / call-site search for a symbol via ast-grep (tree-sitter).                                                                                                                                                              | None (local) | Shared bucket |
 | `run_dev_pipeline`            | Run the multi-agent development pipeline.                                                                                                                                                                                                 | Optional     | Shared bucket |
 | `run_pipeline`                | Single unified entry point for all pipeline templates (dev/research/audit/greenfield/general).                                                                                                                                            | None (local) | Shared bucket |
 | `pr_review`                   | Run multi-voter consensus review on a PR diff (#2233).                                                                                                                                                                                    | None (local) | Shared bucket |
@@ -365,7 +366,7 @@ nexus-agents hooks stop --check-tasks
 | `list_available_models`       | Probe every model-discovery transport (#3406, epic #3403) — the OpenRouter live catalog + the opencode/claude/codex/gemini CLI adapters — and return a per-transport health report { transport, ok, modelCount, sampleModelIds, error }.  | None (local) | Shared bucket |
 | `run`                         | DEFAULT ENTRY POINT (epic #3548): give a goal and nexus-agents selects the right strategy (single-shot / dev-pipeline / pipeline / graph-workflow / orchestrate / consensus / spec / research) via the MetaOrchestrator.                  | None (local) | Shared bucket |
 
-_Auto-generated from `REGISTERED_TOOL_NAMES` + `TOOL_DESCRIPTIONS` by `scripts/inject-governance.ts`. 46 tools._
+_Auto-generated from `REGISTERED_TOOL_NAMES` + `TOOL_DESCRIPTIONS` by `scripts/inject-governance.ts`. 47 tools._
 
 <!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->
 
@@ -825,6 +826,8 @@ mcp_tools:
     - name: extract_symbols
       auth: none
     - name: search_codebase
+      auth: none
+    - name: search_usages
       auth: none
     - name: run_dev_pipeline
       auth: optional

@@ -111,6 +111,7 @@ const EXPECTED_TOOL_NAMES = [
   'repo_security_plan',
   'extract_symbols',
   'search_codebase',
+  'search_usages',
   'run_dev_pipeline',
   'run_pipeline',
   'pr_review',

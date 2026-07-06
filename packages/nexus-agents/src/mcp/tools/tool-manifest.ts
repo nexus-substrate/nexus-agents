@@ -185,7 +185,10 @@ export const TOOL_MANIFEST = [
     },
     sideEffects: [
       { category: 'implicit', description: 'Consumes rate limit quota' },
-      { category: 'explicit', description: 'Records routing decision to tool-memory (learning feedback)' },
+      {
+        category: 'explicit',
+        description: 'Records routing decision to tool-memory (learning feedback)',
+      },
     ],
   },
   {
@@ -664,6 +667,23 @@ export const TOOL_MANIFEST = [
         description: 'Reads source files and builds an in-memory symbol index',
       },
     ],
+  },
+  {
+    name: 'search_usages',
+    annotations: {
+      title: 'Search Usages',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      { category: 'implicit', description: 'Reads source files and walks their ASTs via ast-grep' },
+    ],
+    // #4265: structural usage/call-site search (ast-grep). Orthogonal to
+    // search_codebase (declaration NAME index) and extract_symbols (single-file
+    // AST) — the "where is X used" capability neither of those provides.
+    orthogonalityGroup: 'code-usage-search',
   },
   {
     name: 'run_dev_pipeline',

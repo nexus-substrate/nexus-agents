@@ -76,6 +76,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Parse a SINGLE source file with the TypeScript compiler API and return its structural symbols (functions, classes, types). Use when you need the AST shape of one file. Not a cross-file search.',
   search_codebase:
     'Cross-file search across an index of declared symbol NAMES over the working directory — declarations only, NOT usages, call-sites, comments, or string content. Use when you need to find where a symbol is declared across MANY files. Not an AST parser — for single-file structure use `extract_symbols`.',
+  search_usages:
+    'Structural USAGE / call-site search for a symbol via ast-grep (tree-sitter). Answers "where is X used or called" — finds calls foo(), member calls obj.foo(), new Foo(), imports, and bare references with file:line:column + snippet. The gap `search_codebase` CANNOT fill (that indexes declared NAMES only). Excludes the declaration itself. Syntactic, not type-aware. Read-only; results capped (default 50) with overflow reported.',
   query_task_state:
     'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
   get_job_result:
@@ -159,6 +161,8 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   extract_symbols:
     'TypeScript-compiler-API AST symbols from a SINGLE file (functions/classes/types)',
   search_codebase: 'Cross-file search over declared symbol NAMES (declarations only, not usages)',
+  search_usages:
+    'Structural usage/call-site search for a symbol via ast-grep (calls, member calls, new, imports, references) — the "where is X used" gap `search_codebase` cannot fill',
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',
   run_pipeline: 'Execute a pipeline plugin by name with typed input',
   pr_review: 'Multi-voter PR review with verification gate (experimental)',
