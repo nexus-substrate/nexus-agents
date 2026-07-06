@@ -47,7 +47,14 @@ export interface IndexStats {
   totalFiles: number;
   totalSymbols: number;
   indexedAt: string;
+  /** Directories not descended into because `maxDepth` was exhausted (#4243). */
+  skippedDirs: number;
 }
+
+/** Default recursion depth for `CodebaseIndex.index()` (#4243 — was hardcoded 4). */
+export const DEFAULT_INDEX_MAX_DEPTH = 24;
+/** Upper clamp for caller-supplied `maxDepth` to bound worst-case tree-walk cost. */
+export const MAX_INDEX_MAX_DEPTH = 64;
 
 // Score weights for different match types
 const SCORE_EXACT = 20;
@@ -66,20 +73,30 @@ function isSourceFile(name: string): boolean {
   );
 }
 
-async function findSourceFiles(dir: string, maxDepth: number): Promise<string[]> {
-  if (maxDepth <= 0) return [];
+/** Result of a recursive source-file walk: the files found plus a truncation signal. */
+interface FindSourceFilesResult {
+  files: string[];
+  /** Count of directories that were NOT descended into because maxDepth hit 0. */
+  skippedDirs: number;
+}
+
+async function findSourceFiles(dir: string, maxDepth: number): Promise<FindSourceFilesResult> {
+  if (maxDepth <= 0) return { files: [], skippedDirs: 1 };
   const files: string[] = [];
+  let skippedDirs = 0;
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     const fullPath = resolve(dir, entry.name);
     if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== 'dist') {
-      files.push(...(await findSourceFiles(fullPath, maxDepth - 1)));
+      const sub = await findSourceFiles(fullPath, maxDepth - 1);
+      files.push(...sub.files);
+      skippedDirs += sub.skippedDirs;
     }
     if (entry.isFile() && isSourceFile(entry.name)) {
       files.push(fullPath);
     }
   }
-  return files;
+  return { files, skippedDirs };
 }
 
 function scoreMatch(symbolName: string, query: string): SearchResult['score'] | null {
@@ -113,14 +130,22 @@ export class CodebaseIndex {
   private readonly symbols: IndexedSymbol[] = [];
   private readonly fileResults = new Map<string, SymbolExtractionResult>();
   private readonly rootDir: string;
+  private skippedDirs = 0;
 
   constructor(rootDir: string) {
     this.rootDir = rootDir;
   }
 
-  /** Index all TS/JS source files in the directory. */
-  async index(maxDepth = 4): Promise<IndexStats> {
-    const files = await findSourceFiles(this.rootDir, maxDepth);
+  /**
+   * Index all TS/JS source files in the directory.
+   *
+   * `maxDepth` is clamped to `[1, MAX_INDEX_MAX_DEPTH]` so a caller-supplied
+   * value can't force an unbounded tree-walk (#4243).
+   */
+  async index(maxDepth: number = DEFAULT_INDEX_MAX_DEPTH): Promise<IndexStats> {
+    const clampedDepth = Math.min(Math.max(maxDepth, 1), MAX_INDEX_MAX_DEPTH);
+    const { files, skippedDirs } = await findSourceFiles(this.rootDir, clampedDepth);
+    this.skippedDirs = skippedDirs;
 
     for (const file of files) {
       const result = await extractSymbols(file);
@@ -136,6 +161,7 @@ export class CodebaseIndex {
       totalFiles: files.length,
       totalSymbols: this.symbols.length,
       indexedAt: new Date().toISOString(),
+      skippedDirs,
     };
   }
 
@@ -192,10 +218,11 @@ export class CodebaseIndex {
   }
 
   /** Get index statistics. */
-  get stats(): { files: number; symbols: number } {
+  get stats(): { files: number; symbols: number; skippedDirs: number } {
     return {
       files: this.fileResults.size,
       symbols: this.symbols.length,
+      skippedDirs: this.skippedDirs,
     };
   }
 }

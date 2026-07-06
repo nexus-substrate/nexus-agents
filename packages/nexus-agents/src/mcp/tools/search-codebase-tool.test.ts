@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => {
     search: vi.fn().mockReturnValue([]),
     listFiles: vi.fn().mockReturnValue([]),
     getFileSummary: vi.fn().mockReturnValue(undefined),
-    stats: { files: 0, symbols: 0 },
+    stats: { files: 0, symbols: 0, skippedDirs: 0 },
   };
   // vitest 4: arrow functions aren't constructor-callable. Use a real
   // function so `new CodebaseIndex(dir)` works.
@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../indexer/codebase-search.js', () => ({
   CodebaseIndex: mocks.ctor,
+  DEFAULT_INDEX_MAX_DEPTH: 24,
+  MAX_INDEX_MAX_DEPTH: 64,
 }));
 
 import { _testing } from './search-codebase-tool.js';
@@ -65,7 +67,7 @@ describe('search-codebase-tool (#2159)', () => {
     mocks.indexInstance.search.mockReturnValue([]);
     mocks.indexInstance.listFiles.mockReturnValue([]);
     mocks.indexInstance.getFileSummary.mockReturnValue(undefined);
-    mocks.indexInstance.stats = { files: 0, symbols: 0 };
+    mocks.indexInstance.stats = { files: 0, symbols: 0, skippedDirs: 0 };
   });
 
   describe('input validation', () => {
@@ -99,6 +101,94 @@ describe('search-codebase-tool (#2159)', () => {
     it('rejects invalid mode enum value', async () => {
       const result = await searchCodebaseHandler({ query: 'foo', mode: 'fuzzy' }, makeCtx());
       expect(result.isError).toBe(true);
+    });
+
+    it('rejects maxDepth below 1', async () => {
+      const result = await searchCodebaseHandler({ query: 'foo', maxDepth: 0 }, makeCtx());
+      expect(result.isError).toBe(true);
+    });
+
+    it('rejects maxDepth above the clamp (64)', async () => {
+      const result = await searchCodebaseHandler({ query: 'foo', maxDepth: 65 }, makeCtx());
+      expect(result.isError).toBe(true);
+    });
+
+    it('rejects a non-integer maxDepth', async () => {
+      const result = await searchCodebaseHandler({ query: 'foo', maxDepth: 2.5 }, makeCtx());
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('maxDepth threading (#4243 — hardcoded index(4) silently truncated deep trees)', () => {
+    it('passes the caller-supplied maxDepth to CodebaseIndex.index', async () => {
+      await searchCodebaseHandler({ query: 'foo', directory: './src', maxDepth: 12 }, makeCtx());
+      expect(mocks.indexInstance.index).toHaveBeenCalledWith(12);
+    });
+
+    it('defaults to DEFAULT_INDEX_MAX_DEPTH (24) when maxDepth is omitted', async () => {
+      await searchCodebaseHandler({ query: 'foo', directory: './src' }, makeCtx());
+      expect(mocks.indexInstance.index).toHaveBeenCalledWith(24);
+    });
+
+    it('treats a cached shallower index as stale when a deeper maxDepth is requested', async () => {
+      await searchCodebaseHandler({ query: 'q', directory: './src', maxDepth: 4 }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(1);
+
+      // Deeper request for the same dir → the depth-4 cache entry can't
+      // satisfy it → rebuild, not a stale cache hit.
+      await searchCodebaseHandler({ query: 'q', directory: './src', maxDepth: 10 }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(2);
+      expect(mocks.indexInstance.index).toHaveBeenLastCalledWith(10);
+
+      // Same or shallower depth again → cache hit, no rebuild.
+      await searchCodebaseHandler({ query: 'q', directory: './src', maxDepth: 10 }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('skipped-directory reporting (#4243 — truncation must be visible, not silent)', () => {
+    it('appends a note to "no results" output when directories were skipped', async () => {
+      mocks.indexInstance.search.mockReturnValue([]);
+      mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 2 };
+      const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).toMatch(/2 subdirectories were not indexed/);
+      expect(text).toMatch(/maxDepth/);
+    });
+
+    it('appends a note to non-empty search results when directories were skipped', async () => {
+      mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 1 };
+      mocks.indexInstance.search.mockReturnValue([
+        {
+          matchType: 'exact',
+          symbol: {
+            name: 'doThing',
+            kind: 'function',
+            exported: true,
+            filePath: 'src/foo.ts',
+            startLine: 42,
+          },
+        },
+      ]);
+      const result = await searchCodebaseHandler({ query: 'doThing' }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).toMatch(/1 subdirectory was not indexed/);
+    });
+
+    it('appends a note to list-mode output when directories were skipped', async () => {
+      mocks.indexInstance.listFiles.mockReturnValue([{ path: 'a.ts', symbols: 5, lines: 100 }]);
+      mocks.indexInstance.stats = { files: 1, symbols: 5, skippedDirs: 3 };
+      const result = await searchCodebaseHandler({ query: '*', mode: 'list' }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).toMatch(/3 subdirectories were not indexed/);
+    });
+
+    it('omits the note entirely when no directories were skipped', async () => {
+      mocks.indexInstance.search.mockReturnValue([]);
+      mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
+      const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).not.toMatch(/not indexed/);
     });
   });
 
@@ -237,7 +327,7 @@ describe('search-codebase-tool (#2159)', () => {
   describe('mode dispatch', () => {
     it('search mode: reports zero results cleanly', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
-      mocks.indexInstance.stats = { files: 3, symbols: 17 };
+      mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       expect(result.isError).toBeFalsy();
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -269,7 +359,7 @@ describe('search-codebase-tool (#2159)', () => {
         { path: 'a.ts', symbols: 5, lines: 100 },
         { path: 'b.ts', symbols: 10, lines: 50 },
       ]);
-      mocks.indexInstance.stats = { files: 2, symbols: 15 };
+      mocks.indexInstance.stats = { files: 2, symbols: 15, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: '*', mode: 'list' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
       expect(text).toMatch(/2 files, 15 symbols indexed/);

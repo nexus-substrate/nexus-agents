@@ -146,7 +146,7 @@ export function registerExtractSymbolsTool(server: McpServer, deps: ExtractSymbo
   };
 
   const description =
-    'Parse a SINGLE TypeScript/JavaScript file with tree-sitter and return its structural AST symbols. ' +
+    'Parse a SINGLE TypeScript/JavaScript file with the TypeScript compiler API and return its structural AST symbols. ' +
     'Use when you need the structure of one file — function/class/method/interface/type definitions. ' +
     'Not a cross-file search; for that use `search_codebase`. ' +
     'Output is 80%+ smaller than reading the full file.';

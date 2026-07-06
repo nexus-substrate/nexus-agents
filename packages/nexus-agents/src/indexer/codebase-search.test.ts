@@ -6,9 +6,11 @@
  * @module indexer/codebase-search.test
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { resolve } from 'node:path';
-import { CodebaseIndex } from './codebase-search.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { resolve, join } from 'node:path';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { CodebaseIndex, MAX_INDEX_MAX_DEPTH } from './codebase-search.js';
 
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
@@ -110,5 +112,63 @@ describe('CodebaseIndex', () => {
         expect(f.lines).toBeGreaterThan(0);
       }
     });
+  });
+});
+
+// ============================================================================
+// maxDepth (#4243 — index(maxDepth = 4) silently truncated any file more than
+// 4 directory levels below the search root, and the tool reported an
+// authoritative-sounding "no symbols found" with no indication of truncation)
+// ============================================================================
+
+describe('CodebaseIndex maxDepth (#4243)', () => {
+  let tmpRoot: string;
+  // 5 directories deep: tmpRoot/d1/d2/d3/d4/d5/deep.ts (6 levels incl. the file).
+  const MARKER_SYMBOL = 'deepFunctionMarkerXyz4243';
+
+  beforeAll(async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), 'codebase-search-depth-'));
+    const deepDir = join(tmpRoot, 'd1', 'd2', 'd3', 'd4', 'd5');
+    await mkdir(deepDir, { recursive: true });
+    await writeFile(join(deepDir, 'deep.ts'), `export function ${MARKER_SYMBOL}(): void {}\n`);
+  });
+
+  afterAll(async () => {
+    await rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('finds a symbol more than 4 directory levels deep with the default maxDepth', async () => {
+    const deepIndex = new CodebaseIndex(tmpRoot);
+    const stats = await deepIndex.index();
+    expect(stats.skippedDirs).toBe(0);
+    expect(deepIndex.search(MARKER_SYMBOL).length).toBeGreaterThan(0);
+  });
+
+  it('would have silently missed the file at the old hardcoded depth of 4', async () => {
+    const oldDepthIndex = new CodebaseIndex(tmpRoot);
+    const stats = await oldDepthIndex.index(4);
+    expect(oldDepthIndex.search(MARKER_SYMBOL)).toHaveLength(0);
+    expect(stats.skippedDirs).toBeGreaterThan(0);
+  });
+
+  it('reports the skipped-directory count when maxDepth is exhausted', async () => {
+    const shallowIndex = new CodebaseIndex(tmpRoot);
+    const stats = await shallowIndex.index(2);
+    expect(stats.skippedDirs).toBeGreaterThan(0);
+    expect(shallowIndex.stats.skippedDirs).toBe(stats.skippedDirs);
+    expect(shallowIndex.search(MARKER_SYMBOL)).toHaveLength(0);
+  });
+
+  it('clamps an oversized maxDepth instead of erroring', async () => {
+    const clampedIndex = new CodebaseIndex(tmpRoot);
+    const stats = await clampedIndex.index(MAX_INDEX_MAX_DEPTH + 1000);
+    expect(stats.skippedDirs).toBe(0);
+    expect(clampedIndex.search(MARKER_SYMBOL).length).toBeGreaterThan(0);
+  });
+
+  it('clamps a non-positive maxDepth to a minimum of 1', async () => {
+    const zeroIndex = new CodebaseIndex(tmpRoot);
+    const stats = await zeroIndex.index(0);
+    expect(stats.skippedDirs).toBeGreaterThan(0);
   });
 });

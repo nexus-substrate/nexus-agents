@@ -49,8 +49,8 @@ nexus-agents exposes **46 MCP tools** via stdio. Each tool below links to its fu
 | [`verify_audit_chain`](./verify_audit_chain.md) | Verify hash chain of a FileAuditStorage audit log directory |
 | [`repo_analyze`](./repo_analyze.md) | Analyze GitHub repository structure |
 | [`repo_security_plan`](./repo_security_plan.md) | Generate security scanning pipeline for a repo |
-| [`extract_symbols`](./extract_symbols.md) | Tree-sitter AST symbols from a SINGLE file (functions/classes/types) |
-| [`search_codebase`](./search_codebase.md) | Cross-file ripgrep search for patterns or text (not an AST parser) |
+| [`extract_symbols`](./extract_symbols.md) | TypeScript-compiler-API AST symbols from a SINGLE file (functions/classes/types) |
+| [`search_codebase`](./search_codebase.md) | Cross-file search over declared symbol NAMES (declarations only, not usages) |
 | [`run_dev_pipeline`](./run_dev_pipeline.md) | Full dev pipeline: research, plan, vote, implement, QA |
 | [`run_pipeline`](./run_pipeline.md) | Execute a pipeline plugin by name with typed input |
 | [`pr_review`](./pr_review.md) | Multi-voter PR review with verification gate (experimental) |
