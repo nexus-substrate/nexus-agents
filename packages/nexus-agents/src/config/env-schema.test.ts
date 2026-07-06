@@ -44,6 +44,19 @@ describe('env-schema', () => {
       expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_CONTEXT_RANKED');
     });
 
+    it('recognizes NEXUS_REPO_MAP (#4254)', () => {
+      vi.stubEnv('NEXUS_REPO_MAP', '1');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('rejects an invalid NEXUS_REPO_MAP value (#4254)', () => {
+      vi.stubEnv('NEXUS_REPO_MAP', 'on');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_REPO_MAP');
+    });
+
     it('recognizes NEXUS_ALLOW_SIMULATE (#4170)', () => {
       vi.stubEnv('NEXUS_ALLOW_SIMULATE', '1');
       const result = validateNexusEnv();

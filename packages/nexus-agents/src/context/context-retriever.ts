@@ -46,6 +46,7 @@ import {
 } from './context-retriever-helpers.js';
 import { createTokenCounter } from './token-counter.js';
 import { getTokenLedger } from './token-ledger.js';
+import { getRepoMapForTask, REPO_MAP_FLAG } from './repo-map.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -86,6 +87,17 @@ export interface UnifiedContext {
    * them by {@link rankMemories}.
    */
   readonly rankedMemories: readonly RankedMemoryItem[];
+  /**
+   * Ranked, token-budgeted repo-map (#4254, Phase 3 of epic #4251): the module
+   * import graph ordered by PageRank centrality, carrying an explicit
+   * "import-graph only, no call-site data" caveat. **Present ONLY when
+   * `NEXUS_REPO_MAP=1` AND the task plausibly needs cross-file structure**
+   * (pull-shaped / rank-gated — see {@link getRepoMapForTask}). Absent
+   * (`undefined`) on every other call, so flag-off `getContextForTask` output
+   * is byte-for-byte unchanged. Rendered into the prompt — and measured in the
+   * token ledger tagged `repo-map` — by {@link summarizeContextForPrompt}.
+   */
+  readonly repoMap?: string;
 }
 
 /** Options accepted by {@link getContextForTask}. */
@@ -161,7 +173,17 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
 
   // Derive the cross-ranked view from the seven per-backend lists (#3236). Pure
   // + fail-soft, so this never affects the lists above or throws.
-  return { ...base, rankedMemories: rankMemories({ ...base, rankedMemories: [] }, options.task) };
+  const result: UnifiedContext = {
+    ...base,
+    rankedMemories: rankMemories({ ...base, rankedMemories: [] }, options.task),
+  };
+
+  // Pull-shaped repo-map (#4254). Returns undefined — doing no work — unless
+  // NEXUS_REPO_MAP=1 AND the task plausibly needs cross-file structure, so the
+  // key is only added on those calls. Flag off ⇒ `result` is byte-identical to
+  // the pre-#4254 return value (the byte-unchanged constraint). Fail-soft.
+  const repoMap = getRepoMapForTask({ task: options.task, category: options.category, logger });
+  return repoMap === undefined ? result : { ...result, repoMap };
 }
 
 /** Tokens shorter than this are too generic to anchor research relevance. */
@@ -433,7 +455,37 @@ export function summarizeContextForPrompt(
   const rendered = ranked ? summarizeRankedContext(ctx) : summarizeLegacyContext(ctx);
   const clamped = clampRenderedContext(rendered, budgetTokens);
   recordAssembledContextTokens(clamped, ranked);
-  return clamped;
+  return appendRepoMapSection(clamped, ctx);
+}
+
+/**
+ * Append the ranked repo-map block (#4254) after the memory-backend block when
+ * `ctx.repoMap` is present. Its emitted token count is recorded in the token
+ * ledger tagged `contextSource: 'repo-map'` — a SEPARATE entry from the
+ * memory-backend one — so the repo-map's cost is independently visible for the
+ * #4251 A/B. Best-effort (the ledger never throws). When `ctx.repoMap` is
+ * absent (flag off / rank-gated out) this returns the memory block unchanged,
+ * so flag-off output stays byte-for-byte identical and no `repo-map` ledger
+ * entry is written.
+ */
+function appendRepoMapSection(memoryBlock: string, ctx: UnifiedContext): string {
+  const map = ctx.repoMap;
+  if (map === undefined || map === '') return memoryBlock;
+  recordRepoMapTokens(map);
+  return memoryBlock === '' ? map : `${memoryBlock}\n\n${map}`;
+}
+
+/** Variant tag recording the flag config that produced a repo-map ledger entry (#4254). */
+const REPO_MAP_LEDGER_VARIANT = `${REPO_MAP_FLAG}=1`;
+
+/** Record the repo-map's token count in the ledger, tagged `repo-map` (#4254 constraint 5). */
+function recordRepoMapTokens(rendered: string): void {
+  getTokenLedger().record({
+    tool: 'context-retriever.summarizeContextForPrompt',
+    contextSource: 'repo-map',
+    inputTokens: contextTokenCounter.estimate(rendered),
+    variant: REPO_MAP_LEDGER_VARIANT,
+  });
 }
 
 /** Shared estimator for the ledger wiring below — builds on `token-counter.ts` (#4252). */

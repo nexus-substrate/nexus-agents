@@ -750,3 +750,112 @@ describe('getContextPromptPrefix — ranked × inject flag matrix (#3236)', () =
     expect(out).not.toContain('### Most relevant prior context');
   });
 });
+
+// ============================================================================
+// Repo-map wiring (#4254, Phase 3 of epic #4251)
+//
+// Proves the three acceptance behaviors: (a) flag OFF ⇒ getContextForTask
+// output is unchanged (no repoMap key) and summarize emits no repo-map;
+// (b) flag ON ⇒ summarize appends the repo-map block with the caveat;
+// (c) a `repo-map`-tagged ledger entry is recorded when the map is emitted.
+// ============================================================================
+
+describe('getContextForTask — repo-map (flag off, byte-unchanged) (#4254)', () => {
+  let dataDir: string;
+  let prevDataDir: string | undefined;
+  const prevRepoMap = process.env['NEXUS_REPO_MAP'];
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'context-retriever-repomap-'));
+    prevDataDir = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    delete process.env['NEXUS_REPO_MAP'];
+    setMemoryRegistry(createInMemoryMemoryRegistry());
+    resetOutcomeStore();
+  });
+
+  afterEach(async () => {
+    await closeMemoryRegistry();
+    if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+    if (prevRepoMap === undefined) delete process.env['NEXUS_REPO_MAP'];
+    else process.env['NEXUS_REPO_MAP'] = prevRepoMap;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('omits the repoMap key entirely when the flag is off (object byte-unchanged)', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+    const ctx = await getContextForTask({
+      // A structural task that WOULD produce a map if the flag were on.
+      task: 'design the module architecture and refactor cross-file dependencies',
+      category: 'architecture',
+    });
+    expect(Object.prototype.hasOwnProperty.call(ctx, 'repoMap')).toBe(false);
+    expect(ctx.repoMap).toBeUndefined();
+  });
+});
+
+describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () => {
+  function withBelief(): UnifiedContext {
+    const belief = {
+      beliefId: 'b1',
+      subject: 'module architecture',
+      predicate: 'depends on',
+      object: 'core',
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    } as const;
+    const base = emptyContext({ beliefs: [belief] });
+    return { ...base, rankedMemories: rankMemories(base, 'module architecture') };
+  }
+
+  const REPO_MAP =
+    '## Repo Map (module import graph — PageRank-ranked)\n' +
+    '> Import-graph only: edges are module import dependencies + declaration names, ' +
+    'NOT call-site/usage data.\n- core (centrality 0.400, 3 files): foundation';
+
+  it('flag off (no repoMap): no repo-map section and no repo-map ledger entry', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(withBelief());
+    expect(out).not.toContain('Repo Map');
+    const summary = getTokenLedger().summarize();
+    expect(summary.bySource['repo-map']).toBeUndefined();
+    // Only the memory-backend entry is recorded — flag-off ledger is unchanged.
+    expect(summary.overall.entries).toBe(1);
+  });
+
+  it('flag on (repoMap present): appends the ranked map with the import-graph-only caveat', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const ctx: UnifiedContext = { ...withBelief(), repoMap: REPO_MAP };
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).toContain('### Beliefs');
+    expect(out).toContain('Repo Map');
+    expect(out).toContain('Import-graph only');
+  });
+
+  it('records a separate repo-map-tagged ledger entry when the map is emitted', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const ctx: UnifiedContext = { ...withBelief(), repoMap: REPO_MAP };
+    summarizeContextForPrompt(ctx);
+    const summary = getTokenLedger().summarize();
+    expect(summary.bySource['repo-map']?.entries).toBe(1);
+    expect(summary.bySource['memory-backend']?.entries).toBe(1);
+    const repoEntry = getTokenLedger()
+      .all()
+      .find((e) => e.contextSource === 'repo-map');
+    expect(repoEntry?.inputTokens).toBeGreaterThan(0);
+    expect(repoEntry?.variant).toBe('NEXUS_REPO_MAP=1');
+  });
+
+  it('an empty repoMap string appends nothing and records no repo-map entry', () => {
+    const ctx: UnifiedContext = { ...withBelief(), repoMap: '' };
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).not.toContain('Repo Map');
+    expect(getTokenLedger().summarize().bySource['repo-map']).toBeUndefined();
+  });
+});
