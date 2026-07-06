@@ -89,6 +89,18 @@ jobs:
             exit 1
           fi
 
+          # Compact to a SINGLE line before writing: $targets is pretty-printed
+          # multi-line jq output, and the `key=value` GITHUB_OUTPUT format only
+          # accepts single-line values — a multi-line value makes Actions reject
+          # the second line ("Invalid format '  {'") and fail the step (it did so
+          # on every scheduled run since #2838's discovery rewrite). Compact JSON
+          # also parses cleanly via fromJSON() in the matrix consumer below.
+          # (Kept as a bare assignment for consistency with the jq accumulation
+          # above; $targets is already validated JSON here — it passed through the
+          # same jq twice and the MIN_REPOS floor — so this compaction cannot fail
+          # in practice. Note bash `set -e` does NOT abort on a command-sub failure
+          # inside an assignment, so a hard guarantee would need an explicit check.)
+          targets=$(jq -c . <<< "$targets")
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   smoke:
