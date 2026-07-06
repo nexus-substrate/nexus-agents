@@ -132,6 +132,10 @@ const NexusEnvSchema = z.object({
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
   // Render the unified cross-ranked memory prefix instead of per-backend sections (#3236); off by default.
   NEXUS_CONTEXT_RANKED: z.enum(['0', '1']).optional(),
+  // Attach a ranked, budgeted repo-map (module import graph, PageRank-centrality)
+  // to context for structural tasks (#4254, getRepoMapForTask); pull-shaped +
+  // rank-gated, off by default.
+  NEXUS_REPO_MAP: z.enum(['0', '1']).optional(),
   // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
   NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
   // Resolve a concrete model from the difficulty tier at route time (#3394,

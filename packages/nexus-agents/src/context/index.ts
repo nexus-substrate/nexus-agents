@@ -285,6 +285,23 @@ export {
   type RankMemoriesOptions,
 } from './context-retriever-helpers.js';
 
+// Repo-map context provider (#4254, Phase 3 of epic #4251) — the module import
+// graph ranked by PageRank centrality, budget-clipped, with an import-graph-only
+// caveat. Pull-shaped + flag-gated (NEXUS_REPO_MAP); default off.
+export {
+  buildRepoMap,
+  computeModulePageRank,
+  rankRepoMapEntries,
+  taskNeedsRepoMap,
+  getRepoMapForTask,
+  REPO_MAP_FLAG,
+  REPO_MAP_CAVEAT,
+  DEFAULT_REPO_MAP_TOKEN_BUDGET,
+  type RepoMapEntry,
+  type BuildRepoMapOptions,
+  type RepoMapProviderOptions,
+} from './repo-map.js';
+
 // Per-call token ledger (#4252, Phase 0 of epic #4251) — records input/output
 // tokens per call tagged by context-source, so the C3 (#4253)/C1' (#4254)
 // savings are measurable rather than assumed.
