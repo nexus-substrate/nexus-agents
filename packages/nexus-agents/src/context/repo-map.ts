@@ -1,12 +1,15 @@
 /**
  * Repo-map context provider — pull-shaped, usage-aware, measured (#4254,
- * Phase 3 of epic #4251).
+ * Phase 3 of epic #4251; call-site signal added in #4268).
  *
  * Wires the EXISTING module-import graph (`indexer/types.ts`
  * `ModuleEntry.dependsOn`, built by `analyzer.ts buildIndex`, until now
  * emitted only as docs/mermaid) into context assembly as a **ranked,
- * token-budgeted repo-map**. Modules are ordered by PageRank centrality over
- * the import graph, then budget-clipped to a small token target.
+ * token-budgeted repo-map**. Modules are ordered by import-graph PageRank
+ * centrality **blended with real call-site frequency** (#4268 — the
+ * `search_usages` ast-grep signal, `context/repo-map-callsites.ts`), then
+ * budget-clipped to a small token target so heavily-*called* modules surface,
+ * not just heavily-imported ones.
  *
  * ## Shaped exactly as the consensus vote (#4251) constrained it
  *
@@ -17,12 +20,18 @@
  * 2. **Pull-shaped / rank-gated.** Even with the flag on, the map is produced
  *    ONLY for tasks that plausibly span multiple modules ({@link taskNeedsRepoMap}) —
  *    never pushed onto 100% of calls (the rejected eager-RAG anti-pattern).
- * 3. **PageRank ranking** over the import graph orders entries; the block is
+ * 3. **PageRank + call-site ranking.** Import-graph PageRank is the base score;
+ *    a bounded per-module call-site count ({@link computeCallSiteCounts}) is
+ *    blended in as a secondary signal ({@link blendRankScore}). The block is
  *    then clipped to a token budget (reusing the #4253 char/4 mechanism —
  *    {@link clampToTokenBudget}).
- * 4. **Usage-aware caveat.** The graph is import-edges + declaration-names only
- *    (NO call-site edges yet — that is #4249-A). Every rendered map carries an
- *    explicit {@link REPO_MAP_CAVEAT} so agents do not over-trust it as a call graph.
+ * 4. **Honest caveat.** Call-site data IS incorporated, but structural matching
+ *    is syntactic (no type checker): dynamic dispatch, computed/string-keyed
+ *    calls, and same-named members on unrelated objects are not resolved, and
+ *    the call-site signal only samples the top import-ranked modules. Every
+ *    rendered map carries an explicit {@link REPO_MAP_CAVEAT} at the top so
+ *    agents treat centrality as an approximate structural+usage signal, not an
+ *    exact call graph.
  * 5. **Measured.** The emitted token count is recorded in the token ledger
  *    tagged `contextSource: 'repo-map'` by the `context-retriever.ts` wiring.
  * 6. **Fresh, not persisted.** The default index provider builds from the
@@ -30,8 +39,8 @@
  *    stale-map path. (A scoped index cache is a tracked follow-up; the
  *    provider is opt-in + rank-gated so the build cost is only paid when asked.)
  *
- * Pure builder + fail-soft provider: a build failure yields `undefined`, never
- * a throw into the calling context assembly.
+ * Pure builder + fail-soft provider: a build (or call-site) failure degrades to
+ * import-only ranking / `undefined`, never a throw into context assembly.
  *
  * @module context/repo-map
  */
@@ -43,6 +52,7 @@ import { createLogger } from '../core/logger.js';
 import { extractProject } from '../indexer/extractor.js';
 import { buildIndex } from '../indexer/analyzer.js';
 import { clampToTokenBudget } from './context-retriever-helpers.js';
+import { CALLSITE_TOP_N_MODULES, computeCallSiteCounts } from './repo-map-callsites.js';
 
 // ============================================================================
 // Public constants
@@ -55,18 +65,22 @@ export const REPO_MAP_FLAG = 'NEXUS_REPO_MAP';
 export const DEFAULT_REPO_MAP_TOKEN_BUDGET = 400;
 
 /**
- * Mandatory usage caveat (#4254 constraint 4). The graph is import-edges +
- * declaration-names only — there are NO call-site/usage edges yet (that is
- * #4249-A). This caveat is rendered at the TOP of every map so a prefix-cut
- * budget clamp can never remove it.
+ * Mandatory honesty caveat (#4254 constraint 4, updated in #4268 once call-site
+ * data landed). Ranking now blends import PageRank with real call-site
+ * frequency, so the old "no call-site data" wording is gone. The remaining,
+ * honest limitation is that call-site matching is structural/syntactic (no type
+ * checker). Rendered at the TOP of every map so a prefix-cut budget clamp can
+ * never remove it.
  */
 export const REPO_MAP_CAVEAT =
-  'Import-graph only: edges are module import dependencies + declaration names, ' +
-  'NOT call-site/usage data. Centrality reflects import structure, not runtime ' +
-  'call frequency — do not treat this as a call graph (call-site edges tracked in #4249-A).';
+  'Ranking blends import-graph PageRank with structural call-site frequency ' +
+  '(ast-grep, sampled over the top import-ranked modules). Call-site matching is ' +
+  'syntactic, not type-aware: dynamic dispatch, computed/string-keyed calls, and ' +
+  'same-named members on unrelated objects are not resolved — treat centrality as ' +
+  'an approximate structural+usage signal, not an exact call graph.';
 
 /** Section header for the rendered repo-map block. */
-const REPO_MAP_HEADER = '## Repo Map (module import graph — PageRank-ranked)';
+const REPO_MAP_HEADER = '## Repo Map (module import graph + call-site usage — ranked)';
 
 // ============================================================================
 // PageRank over the module-import graph
@@ -163,12 +177,14 @@ function l1Delta(a: Map<string, number>, b: Map<string, number>): number {
 // Ranked entries
 // ============================================================================
 
-/** One repo-map row: a module with its centrality and import edges. */
+/** One repo-map row: a module with its centrality, call-site count, and import edges. */
 export interface RepoMapEntry {
   /** Module name. */
   readonly module: string;
   /** PageRank centrality in [0, 1]. */
   readonly centrality: number;
+  /** Structural call-sites of this module's exported symbols (#4268; 0 when no call-site data). */
+  readonly callSites: number;
   /** Module purpose (from the index). */
   readonly purpose: string;
   /** Modules this module imports (out-edges). */
@@ -178,21 +194,61 @@ export interface RepoMapEntry {
 }
 
 /**
- * Rank every module in the index by PageRank centrality (descending; ties
- * broken by name for a deterministic order). Pure.
+ * Weight of the call-site signal relative to import centrality (#4268). At
+ * `2`, a max-called module scores up to 3× its centrality, so a heavily-called
+ * but lightly-imported module can overtake a lightly-called one with up to ~3×
+ * its centrality — enough to measurably reorder toward actually-used modules
+ * while keeping import centrality as the base signal.
  */
-export function rankRepoMapEntries(index: CodebaseIndex): readonly RepoMapEntry[] {
+const CALL_SITE_WEIGHT = 2;
+
+/** Blend import centrality with a normalized call-site count into the sort score (#4268). */
+export function blendRankScore(
+  centrality: number,
+  callSites: number,
+  maxCallSites: number
+): number {
+  if (maxCallSites <= 0) return centrality;
+  return centrality * (1 + CALL_SITE_WEIGHT * (callSites / maxCallSites));
+}
+
+/** Largest call-site count across modules, used to normalize the blend. */
+function maxCount(counts: ReadonlyMap<string, number>): number {
+  let max = 0;
+  for (const v of counts.values()) if (v > max) max = v;
+  return max;
+}
+
+/**
+ * Rank every module in the index by import-graph PageRank centrality blended
+ * with call-site frequency (#4268) — descending, ties broken by name for a
+ * deterministic order. With no `callSiteCounts` (or all-zero counts) the score
+ * reduces to pure centrality, so import-only callers rank identically. Pure.
+ */
+export function rankRepoMapEntries(
+  index: CodebaseIndex,
+  callSiteCounts?: ReadonlyMap<string, number>
+): readonly RepoMapEntry[] {
   const ranks = computeModulePageRank(index.modules);
-  const entries: RepoMapEntry[] = Object.entries(index.modules).map(([name, mod]) => ({
-    module: name,
-    centrality: ranks.get(name) ?? 0,
-    purpose: mod.purpose,
-    dependsOn: mod.dependsOn,
-    fileCount: mod.stats.fileCount,
-  }));
-  return entries.sort((a, b) =>
-    b.centrality !== a.centrality ? b.centrality - a.centrality : a.module.localeCompare(b.module)
+  const counts = callSiteCounts ?? new Map<string, number>();
+  const max = maxCount(counts);
+  const scored = Object.entries(index.modules).map(([name, mod]) => {
+    const centrality = ranks.get(name) ?? 0;
+    const callSites = counts.get(name) ?? 0;
+    const entry: RepoMapEntry = {
+      module: name,
+      centrality,
+      callSites,
+      purpose: mod.purpose,
+      dependsOn: mod.dependsOn,
+      fileCount: mod.stats.fileCount,
+    };
+    return { entry, score: blendRankScore(centrality, callSites, max) };
+  });
+  scored.sort((a, b) =>
+    b.score !== a.score ? b.score - a.score : a.entry.module.localeCompare(b.entry.module)
   );
+  return scored.map((s) => s.entry);
 }
 
 // ============================================================================
@@ -203,6 +259,8 @@ export function rankRepoMapEntries(index: CodebaseIndex): readonly RepoMapEntry[
 export interface BuildRepoMapOptions {
   /** Token budget for the rendered block. Defaults to {@link DEFAULT_REPO_MAP_TOKEN_BUDGET}. */
   readonly budgetTokens?: number;
+  /** Per-module call-site counts to blend into ranking (#4268). Absent ⇒ import-only order. */
+  readonly callSiteCounts?: ReadonlyMap<string, number>;
 }
 
 /** Rough chars-per-token estimate, matching {@link clampToTokenBudget} / token-counter (~4). */
@@ -221,7 +279,7 @@ const MAX_LINE_CHARS = 200;
  * caveat (#4254 constraint 4). Empty index → empty string. Pure.
  */
 export function buildRepoMap(index: CodebaseIndex, options: BuildRepoMapOptions = {}): string {
-  const entries = rankRepoMapEntries(index);
+  const entries = rankRepoMapEntries(index, options.callSiteCounts);
   if (entries.length === 0) return '';
   const budget = options.budgetTokens ?? DEFAULT_REPO_MAP_TOKEN_BUDGET;
   return renderRepoMap(entries, budget);
@@ -243,12 +301,13 @@ function renderRepoMap(entries: readonly RepoMapEntry[], budgetTokens: number): 
   return `${preamble}${body}${notice}`;
 }
 
-/** Render one module row: `- name (centrality, files): purpose → dep, dep`. */
+/** Render one module row: `- name (centrality, N call-sites, files): purpose → dep, dep`. */
 function formatEntryLine(e: RepoMapEntry): string {
   const shownDeps = e.dependsOn.slice(0, MAX_DEPS_PER_LINE);
   const more = e.dependsOn.length > MAX_DEPS_PER_LINE ? ', …' : '';
   const deps = shownDeps.length > 0 ? ` → ${shownDeps.join(', ')}${more}` : '';
-  const line = `- ${e.module} (centrality ${e.centrality.toFixed(3)}, ${String(e.fileCount)} files): ${oneLine(e.purpose)}${deps}`;
+  const calls = e.callSites > 0 ? `, ${String(e.callSites)} call-sites` : '';
+  const line = `- ${e.module} (centrality ${e.centrality.toFixed(3)}${calls}, ${String(e.fileCount)} files): ${oneLine(e.purpose)}${deps}`;
   return line.slice(0, MAX_LINE_CHARS);
 }
 
@@ -323,6 +382,12 @@ export interface RepoMapProviderOptions {
    * stale map). Injected in tests for a deterministic fixture graph.
    */
   readonly indexProvider?: () => CodebaseIndex;
+  /**
+   * Injectable per-module call-site counts (#4268). Defaults to a live,
+   * bounded {@link computeCallSiteCounts} pass over the index. Injected in tests
+   * for a deterministic call-site signal without touching disk.
+   */
+  readonly callSiteCounts?: ReadonlyMap<string, number>;
   /** Optional logger override. */
   readonly logger?: ILogger;
 }
@@ -331,8 +396,10 @@ export interface RepoMapProviderOptions {
  * Produce a ranked, budgeted repo-map for a task — or `undefined`. Returns
  * `undefined` (doing no work) when the `NEXUS_REPO_MAP` flag is off or the
  * task doesn't plausibly need cross-file structure, so it is safe to call
- * unconditionally from context assembly. Fail-soft: any index-build or render
- * error is logged at debug and yields `undefined`, never a throw.
+ * unconditionally from context assembly. Ranking blends import PageRank with a
+ * bounded call-site signal (#4268). Fail-soft: any index-build, call-site, or
+ * render error is logged at debug and yields `undefined` / import-only order,
+ * never a throw.
  */
 export function getRepoMapForTask(options: RepoMapProviderOptions): string | undefined {
   if (process.env[REPO_MAP_FLAG] !== '1') return undefined;
@@ -340,8 +407,10 @@ export function getRepoMapForTask(options: RepoMapProviderOptions): string | und
   const log = options.logger ?? createLogger({ component: 'RepoMap' });
   try {
     const index = (options.indexProvider ?? buildLiveIndex)();
+    const callSiteCounts = options.callSiteCounts ?? liveCallSiteCounts(index, log);
     const map = buildRepoMap(index, {
       budgetTokens: options.budgetTokens ?? DEFAULT_REPO_MAP_TOKEN_BUDGET,
+      callSiteCounts,
     });
     return map === '' ? undefined : map;
   } catch (error: unknown) {
@@ -350,6 +419,20 @@ export function getRepoMapForTask(options: RepoMapProviderOptions): string | und
     });
     return undefined;
   }
+}
+
+/**
+ * Compute the bounded call-site signal for a live index: take the TOP-N
+ * import-ranked modules ({@link CALLSITE_TOP_N_MODULES}) and count structural
+ * call-sites of their exported symbols across the tree (#4268). Best-effort —
+ * {@link computeCallSiteCounts} never throws; a failure yields an empty map and
+ * ranking degrades to import-only order.
+ */
+function liveCallSiteCounts(index: CodebaseIndex, log: ILogger): ReadonlyMap<string, number> {
+  const topModules = rankRepoMapEntries(index)
+    .slice(0, CALLSITE_TOP_N_MODULES)
+    .map((e) => e.module);
+  return computeCallSiteCounts(index, topModules, { logger: log });
 }
 
 /**

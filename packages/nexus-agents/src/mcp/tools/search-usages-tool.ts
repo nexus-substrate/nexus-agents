@@ -22,13 +22,18 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { extname, relative, resolve, sep } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import { Lang, parse } from '@ast-grep/napi';
-import type { NapiConfig, SgNode } from '@ast-grep/napi';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { findSourceFiles } from '../../indexer/codebase-search.js';
+import {
+  IDENTIFIER_RE,
+  LANG_VALUES,
+  findUsagesInSource,
+  inferLang,
+  type UsageMatch,
+} from '../../indexer/usage-ast.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -38,6 +43,13 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+// The structural usage/call-site AST core moved to `indexer/usage-ast.ts` so a
+// second consumer (the repo-map ranker, #4268) can reuse it without going
+// through this MCP tool layer. Re-exported here so the #4265 tool module stays
+// the public import site for existing consumers (mcp/tools/index.ts, tests).
+export { findUsagesInSource };
+export type { UsageKind, UsageMatch } from '../../indexer/usage-ast.js';
 
 // ============================================================================
 // Constants + output cap (reuses the #4253 output-cap discipline)
@@ -53,18 +65,10 @@ const DEFAULT_USAGES_MAX_DEPTH = 24;
 const MAX_USAGES_MAX_DEPTH = 64;
 /** Upper bound on files parsed in a single dir-scope search, to bound worst-case cost. */
 const MAX_FILES_SCANNED = 5000;
-/** Per-match snippet char cap. */
-const MAX_SNIPPET_CHARS = 200;
-
-/** A single JS identifier — anchored so a symbol can't smuggle ast-grep pattern metachars. */
-const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 // ============================================================================
 // Input Schema
 // ============================================================================
-
-const LANG_VALUES = ['typescript', 'tsx', 'javascript'] as const;
-type SupportedLang = (typeof LANG_VALUES)[number];
 
 export const SearchUsagesInputSchema = z.object({
   symbol: z
@@ -113,133 +117,8 @@ export type SearchUsagesInput = z.infer<typeof SearchUsagesInputSchema>;
 export type SearchUsagesDeps = BaseMcpToolDeps;
 
 // ============================================================================
-// Core: structural usage matching via ast-grep
-// ============================================================================
-
-/** The kind of a usage site. Declarations are excluded (that is the name index's job). */
-export type UsageKind = 'call' | 'method-call' | 'new' | 'import' | 'reference';
-
-/** A single usage match within one source string. */
-export interface UsageMatch {
-  /** 1-based line number. */
-  line: number;
-  /** 1-based column number. */
-  column: number;
-  kind: UsageKind;
-  /** Trimmed, length-capped source line for the match. */
-  snippet: string;
-}
-
-/** Identifier parents whose matched identifier IS the declared name — not a usage. */
-const DECLARATION_PARENT_KINDS = new Set<string>([
-  'function_declaration',
-  'generator_function_declaration',
-  'class_declaration',
-  'interface_declaration',
-  'type_alias_declaration',
-  'enum_declaration',
-  'function_signature',
-  'method_definition',
-  'abstract_method_signature',
-]);
-
-/** Identifier parents that denote an import binding. */
-const IMPORT_PARENT_KINDS = new Set<string>([
-  'import_specifier',
-  'namespace_import',
-  'import_clause',
-]);
-
-function langToNapi(lang: SupportedLang): Lang {
-  if (lang === 'tsx') return Lang.Tsx;
-  if (lang === 'javascript') return Lang.JavaScript;
-  return Lang.TypeScript;
-}
-
-/** Escape regex metacharacters so a `$`-bearing identifier anchors correctly. */
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** True when the identifier `node` is the `name` field of its variable_declarator parent. */
-function isDeclaredName(declarator: SgNode, node: SgNode): boolean {
-  const name = declarator.field('name');
-  return name !== null && name.id() === node.id();
-}
-
-/** Classify a plain `identifier` occurrence; returns null when it is a declaration name to skip. */
-function classifyIdentifier(node: SgNode): UsageKind | null {
-  const parent = node.parent();
-  if (parent === null) return 'reference';
-  const pk = String(parent.kind());
-  if (DECLARATION_PARENT_KINDS.has(pk)) return null;
-  if (pk === 'variable_declarator') return isDeclaredName(parent, node) ? null : 'reference';
-  if (IMPORT_PARENT_KINDS.has(pk)) return 'import';
-  if (pk === 'call_expression') return 'call';
-  if (pk === 'new_expression') return 'new';
-  return 'reference';
-}
-
-/** Classify a `property_identifier` occurrence (member access): method-call vs plain reference. */
-function classifyProperty(node: SgNode): UsageKind {
-  const member = node.parent();
-  const grandparent = member === null ? null : member.parent();
-  if (grandparent !== null && String(grandparent.kind()) === 'call_expression')
-    return 'method-call';
-  return 'reference';
-}
-
-function toMatch(node: SgNode, kind: UsageKind, lines: readonly string[]): UsageMatch {
-  const { start } = node.range();
-  const rawLine = lines[start.line] ?? node.text();
-  return {
-    line: start.line + 1,
-    column: start.column + 1,
-    kind,
-    snippet: rawLine.trim().slice(0, MAX_SNIPPET_CHARS),
-  };
-}
-
-/**
- * Find every structural usage of `symbol` in `src`. Returns call-sites, member
- * calls, `new` expressions, imports, and bare references — but NOT the symbol's
- * own declaration (that is what `search_codebase`'s name index already covers).
- * Sorted by position. This is the capability `search_codebase` cannot provide.
- */
-export function findUsagesInSource(symbol: string, src: string, lang: SupportedLang): UsageMatch[] {
-  if (!IDENTIFIER_RE.test(symbol)) return [];
-  const root = parse(langToNapi(lang), src).root();
-  const lines = src.split('\n');
-  const out: UsageMatch[] = [];
-
-  for (const node of root.findAll(symbol)) {
-    const kind = classifyIdentifier(node);
-    if (kind !== null) out.push(toMatch(node, kind, lines));
-  }
-
-  // Member-access occurrences are `property_identifier` nodes, which the bare
-  // identifier pattern above does not match — collect them via a kind rule.
-  const propRule: NapiConfig = {
-    rule: { kind: 'property_identifier', regex: `^${escapeRegex(symbol)}$` },
-  };
-  for (const node of root.findAll(propRule)) {
-    out.push(toMatch(node, classifyProperty(node), lines));
-  }
-
-  return out.sort((a, b) => a.line - b.line || a.column - b.column);
-}
-
-// ============================================================================
 // File scope resolution + gathering
 // ============================================================================
-
-/** Infer the ast-grep language for a file from its extension. */
-function inferLang(file: string): SupportedLang {
-  const ext = extname(file).toLowerCase();
-  if (ext === '.tsx' || ext === '.jsx') return 'tsx';
-  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') return 'javascript';
-  return 'typescript';
-}
 
 /** Resolve a caller path against a path-traversal guard (must stay within cwd). */
 function resolveWithinCwd(target: string): { resolved: string } | { error: string } {

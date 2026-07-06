@@ -815,9 +815,10 @@ describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () =
   }
 
   const REPO_MAP =
-    '## Repo Map (module import graph — PageRank-ranked)\n' +
-    '> Import-graph only: edges are module import dependencies + declaration names, ' +
-    'NOT call-site/usage data.\n- core (centrality 0.400, 3 files): foundation';
+    '## Repo Map (module import graph + call-site usage — ranked)\n' +
+    '> Ranking blends import-graph PageRank with structural call-site frequency ' +
+    '(ast-grep). Call-site matching is syntactic, not type-aware.\n' +
+    '- core (centrality 0.400, 12 call-sites, 3 files): foundation';
 
   it('flag off (no repoMap): no repo-map section and no repo-map ledger entry', () => {
     delete process.env['NEXUS_CONTEXT_RANKED'];
@@ -829,13 +830,13 @@ describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () =
     expect(summary.overall.entries).toBe(1);
   });
 
-  it('flag on (repoMap present): appends the ranked map with the import-graph-only caveat', () => {
+  it('flag on (repoMap present): appends the ranked map with the call-site-aware caveat', () => {
     delete process.env['NEXUS_CONTEXT_RANKED'];
     const ctx: UnifiedContext = { ...withBelief(), repoMap: REPO_MAP };
     const out = summarizeContextForPrompt(ctx);
     expect(out).toContain('### Beliefs');
     expect(out).toContain('Repo Map');
-    expect(out).toContain('Import-graph only');
+    expect(out).toContain('call-site frequency');
   });
 
   it('records a separate repo-map-tagged ledger entry when the map is emitted', () => {
