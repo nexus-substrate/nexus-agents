@@ -12,7 +12,12 @@ import { resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
-import { CodebaseIndex } from '../../indexer/codebase-search.js';
+import {
+  CodebaseIndex,
+  DEFAULT_INDEX_MAX_DEPTH,
+  MAX_INDEX_MAX_DEPTH,
+  type SearchResult,
+} from '../../indexer/codebase-search.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -40,6 +45,15 @@ export const SearchCodebaseInputSchema = z.object({
     .enum(['search', 'summary', 'list'])
     .optional()
     .describe('search: find symbols. summary: file overview. list: list indexed files.'),
+  maxDepth: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_INDEX_MAX_DEPTH)
+    .optional()
+    .describe(
+      `Max directory depth to index below "directory" (default: ${String(DEFAULT_INDEX_MAX_DEPTH)}, clamped to ${String(MAX_INDEX_MAX_DEPTH)}). Raise this if results seem incomplete for a deeply nested tree.`
+    ),
 });
 
 export type SearchCodebaseInput = z.infer<typeof SearchCodebaseInputSchema>;
@@ -71,15 +85,24 @@ const INDEX_TTL_MS = 15 * 60 * 1000;
 interface CachedIndexEntry {
   readonly index: CodebaseIndex;
   readonly expiresAt: number;
+  /** The maxDepth the cached index was built with — see staleness check below. */
+  readonly maxDepth: number;
 }
 
 const indexCache = new Map<string, CachedIndexEntry>();
 const inflightIndex = new Map<string, Promise<CodebaseIndex>>();
 
-function getFromCache(dir: string): CodebaseIndex | undefined {
+function getFromCache(dir: string, maxDepth: number): CodebaseIndex | undefined {
   const entry = indexCache.get(dir);
   if (entry === undefined) return undefined;
   if (entry.expiresAt <= getTimeProvider().now()) {
+    indexCache.delete(dir);
+    return undefined;
+  }
+  // A cached index built with a SHALLOWER depth than now requested would
+  // silently reintroduce the truncation this cache-staleness check exists to
+  // prevent (#4243) — treat it as a miss so the deeper walk actually runs.
+  if (entry.maxDepth < maxDepth) {
     indexCache.delete(dir);
     return undefined;
   }
@@ -89,8 +112,8 @@ function getFromCache(dir: string): CodebaseIndex | undefined {
   return entry.index;
 }
 
-function putInCache(dir: string, index: CodebaseIndex): void {
-  indexCache.set(dir, { index, expiresAt: getTimeProvider().now() + INDEX_TTL_MS });
+function putInCache(dir: string, index: CodebaseIndex, maxDepth: number): void {
+  indexCache.set(dir, { index, expiresAt: getTimeProvider().now() + INDEX_TTL_MS, maxDepth });
   while (indexCache.size > MAX_CACHED_DIRS) {
     // Map iteration is insertion order, so the first key is the LRU candidate.
     const lruKey = indexCache.keys().next().value;
@@ -99,18 +122,22 @@ function putInCache(dir: string, index: CodebaseIndex): void {
   }
 }
 
-async function getIndex(dir: string): Promise<CodebaseIndex> {
-  const cached = getFromCache(dir);
+async function getIndex(dir: string, maxDepth: number): Promise<CodebaseIndex> {
+  const cached = getFromCache(dir, maxDepth);
   if (cached !== undefined) return cached;
 
   // Coalesce: if another caller is already indexing this dir, await their result.
+  // Note: coalescing is keyed by dir only, not maxDepth — a concurrent request
+  // for a deeper walk than the in-flight one may receive a shallower result.
+  // Narrow race window (rare on repeat calls); the TTL/staleness check above
+  // is what prevents it from persisting past the in-flight call.
   const inflight = inflightIndex.get(dir);
   if (inflight !== undefined) return inflight;
 
   const promise = (async (): Promise<CodebaseIndex> => {
     const index = new CodebaseIndex(dir);
-    await index.index(4);
-    putInCache(dir, index);
+    await index.index(maxDepth);
+    putInCache(dir, index, maxDepth);
     return index;
   })().finally(() => {
     inflightIndex.delete(dir);
@@ -136,6 +163,32 @@ function resolveSearchDir(directory: string | undefined): { dir: string } | { er
   return { dir };
 }
 
+/**
+ * A note appended whenever the tree-walk hit `maxDepth` before finishing —
+ * makes truncation visible instead of a silently-incomplete index (#4243).
+ */
+function skippedDirsNote(index: CodebaseIndex): string {
+  const { skippedDirs } = index.stats;
+  if (skippedDirs === 0) return '';
+  return `\n\nNote: ${String(skippedDirs)} subdirector${skippedDirs === 1 ? 'y was' : 'ies were'} not indexed because maxDepth was exhausted. Pass a larger maxDepth (up to ${String(MAX_INDEX_MAX_DEPTH)}) to include them.`;
+}
+
+/** Format default search-mode output — handles both the empty and non-empty cases. */
+function formatSearchOutput(index: CodebaseIndex, query: string, results: SearchResult[]): string {
+  if (results.length === 0) {
+    return `No symbols matching "${query}" found in ${String(index.stats.files)} indexed files.${skippedDirsNote(index)}`;
+  }
+
+  const output = results
+    .map((r) => {
+      const exp = r.symbol.exported ? 'export ' : '';
+      return `[${r.matchType}] ${exp}${r.symbol.kind} ${r.symbol.name} (${r.symbol.filePath}:${String(r.symbol.startLine)})`;
+    })
+    .join('\n');
+
+  return `${String(results.length)} results for "${query}":\n\n${output}${skippedDirsNote(index)}`;
+}
+
 /** Format list mode output. */
 function formatListOutput(index: CodebaseIndex): string {
   const files = index.listFiles();
@@ -146,7 +199,7 @@ function formatListOutput(index: CodebaseIndex): string {
         `${String(f.symbols).padStart(4)} symbols  ${String(f.lines).padStart(5)} lines  ${f.path}`
     )
     .join('\n');
-  return `${String(index.stats.files)} files, ${String(index.stats.symbols)} symbols indexed\n\n${output}`;
+  return `${String(index.stats.files)} files, ${String(index.stats.symbols)} symbols indexed\n\n${output}${skippedDirsNote(index)}`;
 }
 
 // ============================================================================
@@ -162,7 +215,7 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
     });
   }
 
-  const { query, directory, limit, mode } = parsed.data;
+  const { query, directory, limit, mode, maxDepth } = parsed.data;
   const dirResult = resolveSearchDir(directory);
   if ('error' in dirResult) {
     // resolveSearchDir only fails on a path-traversal denial.
@@ -170,7 +223,7 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
   }
 
   try {
-    const index = await getIndex(dirResult.dir);
+    const index = await getIndex(dirResult.dir, maxDepth ?? DEFAULT_INDEX_MAX_DEPTH);
 
     if (mode === 'list') return toolSuccess(formatListOutput(index));
 
@@ -186,20 +239,7 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
 
     // Default: search mode
     const results = index.search(query, limit ?? 20);
-    if (results.length === 0) {
-      return toolSuccess(
-        `No symbols matching "${query}" found in ${String(index.stats.files)} indexed files.`
-      );
-    }
-
-    const output = results
-      .map((r) => {
-        const exp = r.symbol.exported ? 'export ' : '';
-        return `[${r.matchType}] ${exp}${r.symbol.kind} ${r.symbol.name} (${r.symbol.filePath}:${String(r.symbol.startLine)})`;
-      })
-      .join('\n');
-
-    return toolSuccess(`${String(results.length)} results for "${query}":\n\n${output}`);
+    return toolSuccess(formatSearchOutput(index, query, results));
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     ctx.logger.error('Codebase search failed', e);
@@ -244,12 +284,22 @@ export function registerSearchCodebaseTool(server: McpServer, deps: SearchCodeba
     directory: z.string().max(500).optional().describe('Directory to index'),
     limit: z.number().min(1).max(50).optional().describe('Max results'),
     mode: z.enum(['search', 'summary', 'list']).optional().describe('search/summary/list'),
+    maxDepth: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_INDEX_MAX_DEPTH)
+      .optional()
+      .describe(
+        `Max directory depth to index (default: ${String(DEFAULT_INDEX_MAX_DEPTH)}, clamped to ${String(MAX_INDEX_MAX_DEPTH)})`
+      ),
   };
 
   const description =
-    'Cross-file ripgrep-style search across the working directory. ' +
-    'Builds an in-memory symbol index and ranks matches with relevance scoring. ' +
-    'Use when you need usages of a symbol or pattern across MANY files. ' +
+    'Cross-file search across an index of declared symbol NAMES in the working directory — ' +
+    'declarations only (functions, classes, methods, interfaces, types); NOT usages, call-sites, ' +
+    'comments, or string/text content. Builds an in-memory symbol index and ranks matches with ' +
+    'relevance scoring. Use when you need to find where a symbol is DECLARED across MANY files. ' +
     'For the AST of a single file, use `extract_symbols` instead. ' +
     'Modes: search (find by keyword), summary (per-file overview), list (all indexed files).';
 
