@@ -27,6 +27,30 @@ import type { DistilledRule } from '../learning/strategy-distiller-types.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { rankMemories } from './context-retriever-helpers.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
+import { getTokenLedger, _resetTokenLedgerForTests } from './token-ledger.js';
+
+// File-level isolation (#4252): `summarizeContextForPrompt` now records a
+// token-ledger entry on every call. Route ALL tests in this file to an
+// isolated NEXUS_DATA_DIR and reset the ledger singleton so no test writes to
+// the operator's real ~/.nexus-agents, regardless of whether the individual
+// describe block already manages its own data dir (this hook composes with
+// those — it runs first on the way in, last on the way out).
+let ledgerDataDir: string;
+let prevLedgerDataDir: string | undefined;
+
+beforeEach(() => {
+  prevLedgerDataDir = process.env['NEXUS_DATA_DIR'];
+  ledgerDataDir = mkdtempSync(join(tmpdir(), 'context-retriever-ledger-'));
+  process.env['NEXUS_DATA_DIR'] = ledgerDataDir;
+  _resetTokenLedgerForTests();
+});
+
+afterEach(() => {
+  if (prevLedgerDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+  else process.env['NEXUS_DATA_DIR'] = prevLedgerDataDir;
+  rmSync(ledgerDataDir, { recursive: true, force: true });
+  _resetTokenLedgerForTests();
+});
 
 describe('getContextForTask', () => {
   let dataDir: string;
@@ -554,6 +578,90 @@ describe('summarizeContextForPrompt — per-call budget guard (#4253)', () => {
     });
     const out = summarizeContextForPrompt(ctx);
     expect(out).not.toMatch(/clipped/i);
+  });
+});
+
+// ============================================================================
+// summarizeContextForPrompt — token ledger wiring (#4252, Phase 0 of epic #4251)
+// ============================================================================
+
+describe('summarizeContextForPrompt — token ledger wiring (#4252)', () => {
+  const prev = process.env['NEXUS_CONTEXT_RANKED'];
+  afterEach(() => {
+    if (prev === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = prev;
+  });
+
+  function withBelief(): UnifiedContext {
+    const belief = {
+      beliefId: 'b1',
+      subject: 'authentication token refresh',
+      predicate: 'requires',
+      object: 'oauth',
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    } as const;
+    const base = emptyContext({ beliefs: [belief] });
+    return { ...base, rankedMemories: rankMemories(base, 'authentication token refresh') };
+  }
+
+  it('records a memory-backend/legacy ledger entry when the legacy path renders content', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(withBelief());
+    expect(out).not.toBe('');
+
+    const summary = getTokenLedger().summarize();
+    expect(summary.overall.entries).toBe(1);
+    expect(summary.bySource['memory-backend']?.entries).toBe(1);
+    const [entry] = getTokenLedger().all();
+    expect(entry?.contextSource).toBe('memory-backend');
+    expect(entry?.variant).toBe('legacy');
+    expect(entry?.inputTokens).toBeGreaterThan(0);
+  });
+
+  it('records a memory-backend/ranked ledger entry when the ranked path is active', () => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '1';
+    summarizeContextForPrompt(withBelief());
+
+    const [entry] = getTokenLedger().all();
+    expect(entry?.contextSource).toBe('memory-backend');
+    expect(entry?.variant).toBe('ranked');
+  });
+
+  it('does not record an entry when there is no signal to render', () => {
+    summarizeContextForPrompt(emptyContext());
+    expect(getTokenLedger().size()).toBe(0);
+  });
+
+  it('the recorded token count tracks rendered size (a bigger context records more tokens)', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    summarizeContextForPrompt(withBelief());
+    const [small] = getTokenLedger().all();
+
+    const manyBeliefs = Array.from({ length: 5 }, (_, i) => ({
+      beliefId: `b${String(i)}`,
+      subject: `subject about task ${String(i)} `.repeat(10),
+      predicate: 'requires',
+      object: `object detail ${String(i)} `.repeat(10),
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    }));
+    const base = emptyContext({ beliefs: manyBeliefs });
+    summarizeContextForPrompt({ ...base, rankedMemories: rankMemories(base, 'task') }, 5000);
+    // Both calls share the same ledger in this test (no reset in between), so
+    // the second recorded entry — the "big" one — is the last, not the first.
+    const events = getTokenLedger().all();
+    const big = events[events.length - 1];
+
+    expect(big?.inputTokens).toBeGreaterThan(small?.inputTokens ?? 0);
   });
 });
 
