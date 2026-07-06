@@ -19,9 +19,14 @@ vi.mock('../../indexer/symbol-extractor.js', () => ({
   extractSymbolIndex: vi.fn(),
 }));
 
-import { _testing } from './extract-symbols-tool.js';
+import {
+  _testing,
+  DEFAULT_EXTRACT_MAX_CHARS,
+  DEFAULT_EXTRACT_MAX_SYMBOLS,
+} from './extract-symbols-tool.js';
 import { createLogger } from '../../core/index.js';
 import * as symbolExtractor from '../../indexer/symbol-extractor.js';
+import type { CodeSymbol } from '../../indexer/symbol-extractor.js';
 
 const { extractSymbolsHandler } = _testing;
 
@@ -141,6 +146,125 @@ describe('extract-symbols-tool (#2159)', () => {
       expect(result.isError).toBeFalsy();
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
       expect(text).toMatch(/No symbols found/);
+    });
+  });
+
+  describe('full-mode output cap (#4253)', () => {
+    /** Build a symbol whose `text` is exactly `chars` long. */
+    function makeSymbol(name: string, chars: number): CodeSymbol {
+      return {
+        name,
+        kind: 'function',
+        startLine: 1,
+        endLine: 2,
+        exported: true,
+        text: 'x'.repeat(chars),
+      };
+    }
+
+    it('caps total emitted chars to the default budget and reports the omission', async () => {
+      // 5 symbols well past DEFAULT_EXTRACT_MAX_CHARS in aggregate.
+      const perSymbolChars = Math.ceil(DEFAULT_EXTRACT_MAX_CHARS / 2);
+      const symbols = Array.from({ length: 5 }, (_, i) =>
+        makeSymbol(`s${String(i)}`, perSymbolChars)
+      );
+      mockedExtractSymbols.mockResolvedValueOnce({
+        filePath: '/big.ts',
+        totalLines: 1000,
+        totalChars: perSymbolChars * 5,
+        symbolChars: perSymbolChars * 5,
+        savingsPercent: 0,
+        symbols,
+      });
+
+      const result = await extractSymbolsHandler(
+        { filePath: resolve('./big.ts'), mode: 'full' },
+        makeCtx()
+      );
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      const parsed = JSON.parse(text) as {
+        truncated?: boolean;
+        omittedSymbols?: number;
+        omittedChars?: number;
+        symbols: { text: string }[];
+      };
+
+      expect(parsed.truncated).toBe(true);
+      expect(parsed.omittedSymbols).toBeGreaterThan(0);
+      expect(parsed.omittedChars).toBeGreaterThan(0);
+      const emittedChars = parsed.symbols.reduce((sum, s) => sum + s.text.length, 0);
+      // Emitted text should be bounded near the cap, not the full ~2.5x-cap input.
+      expect(emittedChars).toBeLessThan(perSymbolChars * 5);
+    });
+
+    it('caps symbol count to the default budget and reports the omission', async () => {
+      const count = DEFAULT_EXTRACT_MAX_SYMBOLS + 50;
+      const symbols = Array.from({ length: count }, (_, i) => makeSymbol(`s${String(i)}`, 5));
+      mockedExtractSymbols.mockResolvedValueOnce({
+        filePath: '/many.ts',
+        totalLines: count,
+        totalChars: count * 5,
+        symbolChars: count * 5,
+        savingsPercent: 0,
+        symbols,
+      });
+
+      const result = await extractSymbolsHandler(
+        { filePath: resolve('./many.ts'), mode: 'full' },
+        makeCtx()
+      );
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      const parsed = JSON.parse(text) as {
+        truncated?: boolean;
+        omittedSymbols?: number;
+        symbols: unknown[];
+      };
+
+      expect(parsed.truncated).toBe(true);
+      expect(parsed.symbols.length).toBe(DEFAULT_EXTRACT_MAX_SYMBOLS);
+      expect(parsed.omittedSymbols).toBe(50);
+    });
+
+    it('respects an explicit maxChars/maxSymbols override', async () => {
+      const symbols = [makeSymbol('a', 100), makeSymbol('b', 100), makeSymbol('c', 100)];
+      mockedExtractSymbols.mockResolvedValueOnce({
+        filePath: '/small.ts',
+        totalLines: 10,
+        totalChars: 300,
+        symbolChars: 300,
+        savingsPercent: 0,
+        symbols,
+      });
+
+      const result = await extractSymbolsHandler(
+        { filePath: resolve('./small.ts'), mode: 'full', maxSymbols: 1 },
+        makeCtx()
+      );
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      const parsed = JSON.parse(text) as { truncated?: boolean; symbols: unknown[] };
+
+      expect(parsed.truncated).toBe(true);
+      expect(parsed.symbols.length).toBe(1);
+    });
+
+    it('preserves existing output (no truncation fields) when results are under both caps', async () => {
+      mockedExtractSymbols.mockResolvedValueOnce({
+        filePath: '/x.ts',
+        totalLines: 10,
+        totalChars: 100,
+        symbolChars: 50,
+        savingsPercent: 50,
+        symbols: [makeSymbol('foo', 20)],
+      });
+
+      const result = await extractSymbolsHandler(
+        { filePath: resolve('./x.ts'), mode: 'full' },
+        makeCtx()
+      );
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      const parsed = JSON.parse(text) as { truncated?: boolean };
+
+      expect(parsed.truncated).toBeUndefined();
     });
   });
 

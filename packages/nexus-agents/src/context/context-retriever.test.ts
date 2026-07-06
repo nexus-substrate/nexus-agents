@@ -19,6 +19,7 @@ import {
   selectRelevantResearch,
   summarizeContextForPrompt,
   getContextPromptPrefix,
+  DEFAULT_CONTEXT_BUDGET_TOKENS,
   type UnifiedContext,
 } from './context-retriever.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
@@ -479,6 +480,80 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
   it('flag-on with empty backends renders nothing (fail-soft)', () => {
     process.env[RANKED] = '1';
     expect(summarizeContextForPrompt(emptyContext())).toBe('');
+  });
+});
+
+// ============================================================================
+// summarizeContextForPrompt — per-call context budget guard (#4253)
+// ============================================================================
+
+describe('summarizeContextForPrompt — per-call budget guard (#4253)', () => {
+  const prev = process.env['NEXUS_CONTEXT_RANKED'];
+  afterEach(() => {
+    if (prev === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = prev;
+  });
+
+  function bigContext(): UnifiedContext {
+    const beliefs = Array.from({ length: 5 }, (_, i) => ({
+      beliefId: `b${String(i)}`,
+      subject: `subject about task ${String(i)} `.repeat(10),
+      predicate: 'requires',
+      object: `object detail ${String(i)} `.repeat(10),
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    }));
+    const base = emptyContext({ beliefs });
+    return { ...base, rankedMemories: rankMemories(base, 'task') };
+  }
+
+  it('exports a default budget matching the CLAUDE.md Standard tier (~2,500 tokens)', () => {
+    expect(DEFAULT_CONTEXT_BUDGET_TOKENS).toBe(2500);
+  });
+
+  it('clamps the legacy (flag-off) path to an explicit small budget and reports the clip', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const ctx = bigContext();
+    const full = summarizeContextForPrompt(ctx, 5000);
+    const clamped = summarizeContextForPrompt(ctx, 5);
+    expect(clamped.length).toBeLessThan(full.length);
+    expect(clamped).toMatch(/clipped/i);
+    expect(clamped).toMatch(/chars omitted/i);
+  });
+
+  it('clamps the ranked (flag-on) path to an explicit small budget and reports the clip', () => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '1';
+    const ctx = bigContext();
+    const full = summarizeContextForPrompt(ctx, 5000);
+    const clamped = summarizeContextForPrompt(ctx, 5);
+    expect(clamped.length).toBeLessThan(full.length);
+    expect(clamped).toMatch(/clipped/i);
+  });
+
+  it('does not clip a small context under the default budget (unchanged behavior)', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const ctx = emptyContext({
+      beliefs: [
+        {
+          beliefId: 'b1',
+          subject: 'small',
+          predicate: 'is',
+          object: 'small',
+          confidence: BeliefConfidence.HIGH,
+          sourceType: BeliefSourceType.OBSERVATION,
+          version: 1,
+          createdAt: new Date('2026-06-01'),
+          updatedAt: new Date('2026-06-01'),
+          superseded: false,
+        },
+      ],
+    });
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).not.toMatch(/clipped/i);
   });
 });
 
