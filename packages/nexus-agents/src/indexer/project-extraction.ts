@@ -59,22 +59,15 @@ export function extractFileEntry(
 }
 
 /**
- * Checks if a file path matches any exclusion pattern.
- */
-function shouldExcludeFile(filePath: string, excludePatterns: string[], rootDir: string): boolean {
-  return excludePatterns.some((pattern) => {
-    const patternBase = pattern.replace(/\*\*/g, '').replace(/\*/g, '');
-    return filePath.includes(patternBase.replace(rootDir, '').replace(/^\//, ''));
-  });
-}
-
-/**
  * Processes source files and extracts metadata.
+ *
+ * Exclusion is enforced by ts-morph itself via negated glob patterns passed
+ * to `addSourceFilesAtPaths` (see `extractProject`), so every source file
+ * already in the project is eligible for extraction here.
  */
 function processSourceFiles(
   project: Project,
   rootDir: string,
-  excludePatterns: string[],
   extractDescriptions: boolean
 ): { files: FileEntry[]; errors: string[] } {
   const files: FileEntry[] = [];
@@ -82,10 +75,6 @@ function processSourceFiles(
 
   for (const sourceFile of project.getSourceFiles()) {
     const filePath = sourceFile.getFilePath();
-
-    if (shouldExcludeFile(filePath, excludePatterns, rootDir)) {
-      continue;
-    }
 
     try {
       files.push(extractFileEntry(sourceFile, rootDir, extractDescriptions));
@@ -112,16 +101,14 @@ export function extractProject(options: Partial<ExtractorOptions> = {}): Extract
 
   const rootDir = path.resolve(process.cwd(), opts.rootDir);
   const includePatterns = opts.include.map((p) => path.join(rootDir, p));
-  const excludePatterns = opts.exclude.map((p) => path.join(rootDir, p));
+  // Negated glob patterns: ts-morph forwards these straight through to
+  // tinyglobby, which honors `!`-prefixed entries as exclusions within the
+  // same pattern list passed to `addSourceFilesAtPaths`.
+  const excludePatterns = opts.exclude.map((p) => `!${path.join(rootDir, p)}`);
 
   try {
-    project.addSourceFilesAtPaths(includePatterns);
-    const { files, errors } = processSourceFiles(
-      project,
-      rootDir,
-      excludePatterns,
-      opts.extractDescriptions
-    );
+    project.addSourceFilesAtPaths([...includePatterns, ...excludePatterns]);
+    const { files, errors } = processSourceFiles(project, rootDir, opts.extractDescriptions);
     return { files, errors, durationMs: getTimeProvider().now() - startTime };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

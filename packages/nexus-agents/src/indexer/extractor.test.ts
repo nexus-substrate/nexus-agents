@@ -361,6 +361,26 @@ export const x = 1;
     const desc = extractDescription(sourceFile);
     expect(desc?.length).toBeLessThanOrEqual(153); // 150 + '...'
   });
+
+  it('should extract description from a single-line JSDoc header', () => {
+    const sourceFile = createSourceFile(`/** Utils. */
+import { z } from 'zod';
+
+export const x = z.number();
+    `);
+    const desc = extractDescription(sourceFile);
+    expect(desc).toBe('Utils.');
+  });
+
+  it('should skip a leading non-JSDoc block comment to find the real JSDoc', () => {
+    const sourceFile = createSourceFile(`/* eslint-disable */
+
+/** Real. */
+export const x = 1;
+    `);
+    const desc = extractDescription(sourceFile);
+    expect(desc).toBe('Real.');
+  });
 });
 
 describe('extractFileEntry', () => {
