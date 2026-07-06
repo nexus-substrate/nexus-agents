@@ -118,7 +118,7 @@ export function extractMcpTools(
     if (fileName.endsWith('.test.ts') || fileName === 'index.ts') continue;
 
     const relativePath = path.relative(process.cwd(), filePath);
-    const extractedTools = extractToolsFromFile(sourceFile, relativePath);
+    const extractedTools = extractToolsFromFile(sourceFile, relativePath, warnings);
     tools.push(...extractedTools);
   }
 
@@ -130,7 +130,8 @@ export function extractMcpTools(
  */
 function extractToolsFromFile(
   sourceFile: ReturnType<Project['getSourceFile']>,
-  relativePath: string
+  relativePath: string,
+  warnings?: string[]
 ): McpToolSpec[] {
   const tools: McpToolSpec[] = [];
   if (sourceFile === undefined) return tools;
@@ -165,43 +166,106 @@ function extractToolsFromFile(
     const toolName = nameArg.getText().replace(/['"`]/g, '');
 
     // Extract description and schema based on call type
-    const { description, schemaArg } = extractToolMeta(callText, args, sourceFile);
+    const { description, schemaArg } = extractToolMeta(callText, args);
 
     // Extract parameters from schema
     let parameters: ParameterSpec[] = [];
     if (schemaArg !== undefined) {
-      parameters = extractParametersFromSchema(schemaArg, sourceFile);
+      parameters = extractParametersFromSchema(schemaArg);
     }
 
-    tools.push({
+    const tool: McpToolSpec = {
       name: toolName,
       description: description.replace(/\\n/g, ' ').trim(),
       parameters,
       source_file: relativePath,
       source_line: callExpr.getStartLineNumber(),
-    });
+    };
+    maybeWarnEmptyTool(tool, warnings);
+    tools.push(tool);
   }
 
   return tools;
 }
 
 /**
- * Resolves a property's initializer value, handling both PropertyAssignment
- * and ShorthandPropertyAssignment (e.g., `{ description }` → variable lookup).
+ * Pushes a warning when a tool resolved to BOTH an empty description and zero
+ * parameters. This is the silent-empty class (#2153): the extractor produced a
+ * tool entry, but every metadata field failed to resolve — almost always an
+ * identifier reference (`{ description }` / `inputSchema: toolSchema`) declared
+ * outside this file, or a schema shape the extractor cannot read statically.
  */
-function resolvePropertyValue(
-  prop: Node,
-  sourceFile: ReturnType<Project['getSourceFile']>
-): Node | undefined {
-  const propAssign = prop.asKind(SyntaxKind.PropertyAssignment);
-  if (propAssign !== undefined) return propAssign.getInitializer();
+function maybeWarnEmptyTool(tool: McpToolSpec, warnings?: string[]): void {
+  if (warnings === undefined) return;
+  if (tool.description !== '' || tool.parameters.length > 0) return;
+  warnings.push(
+    `MCP tool "${tool.name}" (${tool.source_file}:${String(tool.source_line)}) ` +
+      `resolved to an empty description AND empty parameters. Its description/` +
+      `inputSchema likely reference an identifier the extractor could not ` +
+      `resolve statically (#2153).`
+  );
+}
 
-  const shorthand = prop.asKind(SyntaxKind.ShorthandPropertyAssignment);
-  if (shorthand !== undefined && sourceFile !== undefined) {
-    const varDecl = sourceFile.getVariableDeclaration(shorthand.getName());
-    return varDecl?.getInitializer();
+/**
+ * Resolves an identifier's binding to the initializer of its variable
+ * declaration, searching ALL enclosing scopes (function bodies, blocks) via the
+ * type-checker symbol — not just top-level declarations.
+ *
+ * The dominant tool pattern declares `const description = ...` /
+ * `const toolSchema = ...` INSIDE the `registerXTool(...)` function, so the
+ * prior `sourceFile.getVariableDeclaration(name)` (top-level only) never
+ * resolved them and shipped empty metadata (#2153).
+ */
+function resolveIdentifierInitializer(symbol: ReturnType<Node['getSymbol']>): Node | undefined {
+  for (const decl of symbol?.getDeclarations() ?? []) {
+    const varDecl = decl.asKind(SyntaxKind.VariableDeclaration);
+    const init = varDecl?.getInitializer();
+    if (init !== undefined) return init;
   }
   return undefined;
+}
+
+/**
+ * Resolves a property's initializer value, handling both PropertyAssignment
+ * (`inputSchema: toolSchema`, `description: 'literal'`) and
+ * ShorthandPropertyAssignment (`{ description }`). Bare identifier references
+ * are resolved to their declaration's initializer from the enclosing scope.
+ */
+function resolvePropertyValue(prop: Node): Node | undefined {
+  const propAssign = prop.asKind(SyntaxKind.PropertyAssignment);
+  if (propAssign !== undefined) {
+    const init = propAssign.getInitializer();
+    if (init?.getKind() === SyntaxKind.Identifier) {
+      return resolveIdentifierInitializer(init.getSymbol());
+    }
+    return init;
+  }
+
+  const shorthand = prop.asKind(SyntaxKind.ShorthandPropertyAssignment);
+  if (shorthand !== undefined) {
+    return resolveIdentifierInitializer(shorthand.getValueSymbol());
+  }
+  return undefined;
+}
+
+/**
+ * Reads a statically-resolvable string value from a node: string/template
+ * literals and `'a' + 'b'` concatenations (the common multi-line description
+ * shape). Returns '' for anything the extractor cannot resolve statically.
+ */
+function extractStringValue(node: Node | undefined): string {
+  if (node === undefined) return '';
+  const kind = node.getKind();
+  if (kind === SyntaxKind.StringLiteral || kind === SyntaxKind.NoSubstitutionTemplateLiteral) {
+    return node.asKind(kind)?.getLiteralText() ?? '';
+  }
+  if (kind === SyntaxKind.BinaryExpression) {
+    const bin = node.asKind(SyntaxKind.BinaryExpression);
+    if (bin?.getOperatorToken().getKind() === SyntaxKind.PlusToken) {
+      return extractStringValue(bin.getLeft()) + extractStringValue(bin.getRight());
+    }
+  }
+  return '';
 }
 
 /**
@@ -210,37 +274,36 @@ function resolvePropertyValue(
 
 function extractToolMeta(
   callText: string,
-  args: Node[],
-  _sourceFile: ReturnType<Project['getSourceFile']>
+  args: Node[]
 ): { description: string; schemaArg: Node | undefined } {
-  let description = '';
-  let schemaArg: Node | undefined;
-
   if (callText.endsWith('.registerTool')) {
     // registerTool(name, { description, inputSchema }, handler)
-    const configArg = args[1];
-    if (configArg !== undefined) {
-      const configObj = configArg.asKind(SyntaxKind.ObjectLiteralExpression);
-      if (configObj !== undefined) {
-        const descProp = configObj.getProperty('description');
-        if (descProp !== undefined) {
-          const init = resolvePropertyValue(descProp, _sourceFile);
-          description = init?.getText().replace(/^['"]|['"]$/g, '') ?? '';
-        }
-        const schemaProp = configObj.getProperty('inputSchema');
-        if (schemaProp !== undefined) {
-          schemaArg = resolvePropertyValue(schemaProp, _sourceFile);
-        }
-      }
-    }
-  } else {
-    // server.tool(name, description, schema, handler)
-    const descArg = args[1];
-    if (descArg !== undefined) {
-      description = descArg.getText().replace(/^['"]|['"]$/g, '');
-    }
-    schemaArg = args[2];
+    return extractRegisterToolMeta(args[1]);
   }
+
+  // server.tool(name, description, schema, handler)
+  return {
+    description: extractStringValue(args[1]),
+    schemaArg: args[2],
+  };
+}
+
+/**
+ * Extracts description + schema from a `registerTool` config object literal.
+ */
+function extractRegisterToolMeta(configArg: Node | undefined): {
+  description: string;
+  schemaArg: Node | undefined;
+} {
+  const configObj = configArg?.asKind(SyntaxKind.ObjectLiteralExpression);
+  if (configObj === undefined) return { description: '', schemaArg: undefined };
+
+  const descProp = configObj.getProperty('description');
+  const description =
+    descProp === undefined ? '' : extractStringValue(resolvePropertyValue(descProp));
+
+  const schemaProp = configObj.getProperty('inputSchema');
+  const schemaArg = schemaProp === undefined ? undefined : resolvePropertyValue(schemaProp);
 
   return { description, schemaArg };
 }
@@ -248,24 +311,17 @@ function extractToolMeta(
 /**
  * Extracts parameters from a schema argument.
  */
-function extractParametersFromSchema(
-  schemaArg: Node,
-  sourceFile: ReturnType<Project['getSourceFile']>
-): ParameterSpec[] {
+function extractParametersFromSchema(schemaArg: Node): ParameterSpec[] {
   // Handle both inline objects and variable references
   if (schemaArg.getKind() === SyntaxKind.ObjectLiteralExpression) {
     return extractZodParameters(schemaArg);
   }
 
-  if (schemaArg.getKind() === SyntaxKind.Identifier && sourceFile !== undefined) {
-    // Look up the variable
-    const varName = schemaArg.getText();
-    const varDecl = sourceFile.getVariableDeclaration(varName);
-    if (varDecl !== undefined) {
-      const init = varDecl.getInitializer();
-      if (init !== undefined) {
-        return extractZodParameters(init);
-      }
+  if (schemaArg.getKind() === SyntaxKind.Identifier) {
+    // Resolve the identifier from its enclosing scope (not just top-level).
+    const init = resolveIdentifierInitializer(schemaArg.getSymbol());
+    if (init !== undefined) {
+      return extractZodParameters(init);
     }
   }
 

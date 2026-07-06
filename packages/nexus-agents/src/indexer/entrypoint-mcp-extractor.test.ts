@@ -89,6 +89,77 @@ describe('extractMcpTools', () => {
     });
   });
 
+  describe('nested-scope identifier resolution (#2153)', () => {
+    // The dominant real tool pattern declares `const description = ...` and
+    // `const toolSchema = ...` INSIDE the registerXTool(...) function, then
+    // passes them as shorthand `{ description }` / `inputSchema: toolSchema`.
+    // ts-morph's sourceFile.getVariableDeclaration() only searches top-level
+    // declarations, so these silently resolved to empty — the class that
+    // shipped 27 tools with `description: ''` in entrypoints.yaml.
+    const nestedSource = `
+      import type { McpServer } from '@modelcontextprotocol/sdk';
+      import { z } from 'zod';
+      export function registerNestedTool(server: McpServer): void {
+        const toolSchema = {
+          query: z.string().describe('the search query'),
+        };
+        const description = 'Extract symbols from a codebase file.';
+        server.registerTool(
+          'extract_symbols',
+          { description, inputSchema: toolSchema },
+          async () => ({ content: [] })
+        );
+      }
+    `;
+
+    it('resolves a shorthand description declared inside the register function', () => {
+      const { project, toolsDir } = makeProject('nested.ts', nestedSource);
+      const tools = extractMcpTools(project, '/', toolsDir);
+      const tool = tools.find((t) => t.name === 'extract_symbols');
+      expect(tool).toBeDefined();
+      expect(tool?.description).toBe('Extract symbols from a codebase file.');
+    });
+
+    it('resolves an inputSchema identifier bound inside the register function', () => {
+      const { project, toolsDir } = makeProject('nested.ts', nestedSource);
+      const tools = extractMcpTools(project, '/', toolsDir);
+      const tool = tools.find((t) => t.name === 'extract_symbols');
+      expect(tool?.parameters.map((p) => p.name)).toContain('query');
+      const queryParam = tool?.parameters.find((p) => p.name === 'query');
+      expect(queryParam?.description).toBe('the search query');
+    });
+
+    it('pushes a warning when a tool resolves to BOTH empty description and empty params (silent-empty)', () => {
+      // Neither the description nor the schema identifier can be resolved:
+      // both point to declarations that live outside this file. Prior to the
+      // fix this shipped silently as an empty tool (#2153).
+      const source = `
+        export function registerBrokenTool(server) {
+          server.registerTool(
+            'broken_tool',
+            { description: missingDesc, inputSchema: missingSchema },
+            async () => ({ content: [] })
+          );
+        }
+      `;
+      const { project, toolsDir } = makeProject('broken.ts', source);
+      const warnings: string[] = [];
+      const tools = extractMcpTools(project, '/', toolsDir, warnings);
+      const tool = tools.find((t) => t.name === 'broken_tool');
+      expect(tool).toBeDefined();
+      expect(tool?.description).toBe('');
+      expect(tool?.parameters).toHaveLength(0);
+      expect(warnings.some((w) => w.includes('broken_tool'))).toBe(true);
+    });
+
+    it('does not push a silent-empty warning when the tool resolves a real description', () => {
+      const { project, toolsDir } = makeProject('nested.ts', nestedSource);
+      const warnings: string[] = [];
+      extractMcpTools(project, '/', toolsDir, warnings);
+      expect(warnings.some((w) => w.includes('extract_symbols'))).toBe(false);
+    });
+  });
+
   describe('empty-glob warning channel (#2153)', () => {
     it('pushes a warning when the tools directory glob matches zero files', () => {
       // Create a project with NO files in the tools dir — repro for the
