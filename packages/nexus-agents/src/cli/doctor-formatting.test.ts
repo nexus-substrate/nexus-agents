@@ -128,6 +128,7 @@ describe('doctor-formatting', () => {
       clis?: CliCheckResult[];
       mcpServerReady?: boolean;
       mcpClientReady?: boolean;
+      voterTransport?: { configured: boolean };
     } = {}
   ): DoctorResult => ({
     allHealthy: options.allHealthy ?? true,
@@ -179,6 +180,7 @@ describe('doctor-formatting', () => {
       driftCount: 0,
       missingCount: 0,
     },
+    voterTransport: options.voterTransport ?? { configured: false },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
@@ -422,6 +424,24 @@ describe('doctor-formatting', () => {
         const calls = getCalls();
         expect(calls.some((call) => call.includes(tc.serverExpect))).toBe(true);
         expect(calls.some((call) => call.includes(tc.clientExpect))).toBe(true);
+      }
+    });
+
+    it('should print voter transport status (#4255)', () => {
+      const testCases = [
+        { configured: true, expected: 'Voter transport: In-process gateway' },
+        { configured: false, expected: 'Voter transport:' },
+      ];
+
+      for (const tc of testCases) {
+        writeLineMock.mockClear();
+        const result = createDoctorResult({ voterTransport: { configured: tc.configured } });
+        printDoctorResults(result);
+        const calls = getCalls();
+        expect(calls.some((call) => call.includes(tc.expected))).toBe(true);
+        if (!tc.configured) {
+          expect(calls.some((call) => call.includes('NEXUS_OPENAI_COMPAT_URL'))).toBe(true);
+        }
       }
     });
 

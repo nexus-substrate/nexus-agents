@@ -377,6 +377,22 @@ function printDoctorSummary(result: DoctorResult): void {
 }
 
 /**
+ * Prints which transport voter/consensus calls will use (#4255): an
+ * in-process OpenAI-compatible gateway when configured, else the CLI
+ * subprocess round-robin fallback.
+ */
+function printVoterTransportCheck(check: DoctorResult['voterTransport']): void {
+  if (check.configured) {
+    writeLine(`${formatStatus(true)} Voter transport: In-process gateway`);
+    return;
+  }
+  writeLine(`${formatStatus(true)} Voter transport: ${colors.dim}CLI subprocess${colors.reset}`);
+  writeLine(
+    `  ${colors.dim}Set NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY for faster in-process voting${colors.reset}`
+  );
+}
+
+/**
  * Prints the doctor results to stdout.
  */
 export function printDoctorResults(result: DoctorResult): void {
@@ -406,6 +422,7 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(
     `${formatStatus(result.mcpClientReady)} MCP Client mode: ${result.mcpClientReady ? 'Ready (Codex mcp-server)' : 'Not ready (Codex not installed)'}`
   );
+  printVoterTransportCheck(result.voterTransport);
   writeLine('');
 
   writeLine(`${colors.cyan}Checking capabilities...${colors.reset}`);

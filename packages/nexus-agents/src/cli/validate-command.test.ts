@@ -99,6 +99,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       driftCount: 0,
       missingCount: 0,
     },
+    voterTransport: { configured: false },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,
