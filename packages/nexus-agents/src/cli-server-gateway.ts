@@ -53,17 +53,24 @@ export async function tryWireGatewayAdapters(
   const env = readOpenAICompatEnv();
   if (env === null) {
     handleMissingEnv(logger, sandboxActive);
+    noticeCliSubprocessFallback(logger);
     return undefined;
   }
 
   const result = await buildOpenAICompatAdapters();
-  if (result === null) return undefined; // env-was-set guard; build contract allows it
+  if (result === null) {
+    // env-was-set guard; build contract allows it
+    noticeCliSubprocessFallback(logger);
+    return undefined;
+  }
   if (!result.ok) {
     handleProbeFailure(logger, sandboxActive, result.error.message);
+    noticeCliSubprocessFallback(logger);
     return undefined;
   }
   if (result.value.length === 0) {
     handleZeroModels(logger, sandboxActive);
+    noticeCliSubprocessFallback(logger);
     return undefined;
   }
 
@@ -81,6 +88,34 @@ export async function tryWireGatewayAdapters(
 export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
   const all = await tryWireGatewayAdapters(logger);
   return all?.[0];
+}
+
+/**
+ * One-time operator notice (#4255): whenever no in-process gateway ends up
+ * wired — env unset, probe failed, or the gateway listed 0 models — voter
+ * and consensus calls fall through to the CLI-subprocess round-robin path
+ * (`voter-agents.ts` `getAvailableClis`). That path is slower (~90s wall
+ * time observed) and depends on each CLI's own auth/quota, but nothing told
+ * the operator a faster in-process option exists (#4040). Logged once per
+ * process via {@link cliSubprocessFallbackNoticeLogged} so a busy startup
+ * (or repeated calls in tests) can't spam it.
+ */
+let cliSubprocessFallbackNoticeLogged = false;
+
+function noticeCliSubprocessFallback(logger: ILogger): void {
+  if (cliSubprocessFallbackNoticeLogged) return;
+  cliSubprocessFallbackNoticeLogged = true;
+  logger.info(
+    'No in-process gateway is configured, so voter/consensus calls will spawn CLI ' +
+      "subprocesses (slower per-vote startup, subject to each CLI's own auth/quota). " +
+      'Set NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY to route voters through ' +
+      'an OpenAI-compatible gateway in-process instead (lower latency, no subprocess spawn).'
+  );
+}
+
+/** Test-only: reset the one-time notice guard so repeated tests can re-trigger it. */
+export function _resetCliSubprocessFallbackNotice(): void {
+  cliSubprocessFallbackNoticeLogged = false;
 }
 
 /**

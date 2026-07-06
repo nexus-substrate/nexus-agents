@@ -35,6 +35,7 @@ import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
+import { readOpenAICompatEnv } from '../adapters/openai-compat-adapter.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
@@ -209,6 +210,18 @@ export interface SandboxCheck {
 }
 
 /**
+ * Voter transport check (#4255): whether an OpenAI-compatible gateway is
+ * configured (env vars or the opencode.json bridge). Presence-only, same
+ * spirit as {@link checkApiKeys} — no network probe, and the key itself is
+ * never surfaced. When configured, consensus/voter calls route in-process
+ * through the gateway; otherwise they fall back to CLI subprocesses (see
+ * `cli-server-gateway.ts` `tryWireGatewayAdapters`).
+ */
+export interface VoterTransportCheck {
+  readonly configured: boolean;
+}
+
+/**
  * Complete doctor check results.
  */
 export interface DoctorResult {
@@ -230,6 +243,8 @@ export interface DoctorResult {
   readonly sandbox: SandboxCheck;
   /** Per-harness config alignment with AGENTS.md federation (#2805). */
   readonly harnessAlignment: HarnessAlignmentCheck;
+  /** Voter transport: in-process gateway vs CLI subprocess fallback (#4255). */
+  readonly voterTransport: VoterTransportCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -679,6 +694,15 @@ export function checkSandbox(): SandboxCheck {
 }
 
 /**
+ * Checks whether an OpenAI-compatible gateway is configured (#4255).
+ * Presence-only — mirrors {@link checkApiKeys}, no network probe and the
+ * key value never leaves `process.env`.
+ */
+export function checkVoterTransport(): VoterTransportCheck {
+  return { configured: readOpenAICompatEnv() !== null };
+}
+
+/**
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
@@ -700,6 +724,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const dataDirectory = checkDataDirectory();
   const sandbox = checkSandbox();
   const harnessAlignment = checkHarnessAlignment();
+  const voterTransport = checkVoterTransport();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -724,6 +749,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     dataDirectory,
     sandbox,
     harnessAlignment,
+    voterTransport,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

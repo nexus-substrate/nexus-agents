@@ -128,6 +128,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       driftCount: 0,
       missingCount: 0,
     },
+    voterTransport: { configured: false },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,
@@ -794,6 +795,35 @@ describe('Doctor Command', () => {
       writeSpy.mockRestore();
     });
 
+    it('should show voter transport as CLI subprocess when no gateway is configured', () => {
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      const result = createMockDoctorResult({ voterTransport: { configured: false } });
+
+      printDoctorResults(result);
+
+      const output = writeSpy.mock.calls.map((c) => c[0]).join('');
+      expect(output).toContain('Voter transport');
+      expect(output).toContain('CLI subprocess');
+      expect(output).toContain('NEXUS_OPENAI_COMPAT_URL');
+
+      writeSpy.mockRestore();
+    });
+
+    it('should show voter transport as in-process gateway when configured', () => {
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      const result = createMockDoctorResult({ voterTransport: { configured: true } });
+
+      printDoctorResults(result);
+
+      const output = writeSpy.mock.calls.map((c) => c[0]).join('');
+      expect(output).toContain('Voter transport');
+      expect(output).toContain('In-process gateway');
+
+      writeSpy.mockRestore();
+    });
+
     it('should show configuration file status', () => {
       const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -1136,6 +1166,48 @@ describe('Doctor Command', () => {
       const { checkSandbox } = await import('./doctor.js');
       const result = checkSandbox();
       expect(result.dataDirInsideRepo).toBe(false);
+    });
+  });
+
+  describe('checkVoterTransport() (#4255)', () => {
+    let originalUrl: string | undefined;
+    let originalKey: string | undefined;
+    let originalOpencodeConfig: string | undefined;
+
+    beforeEach(() => {
+      originalUrl = process.env['NEXUS_OPENAI_COMPAT_URL'];
+      originalKey = process.env['NEXUS_OPENAI_COMPAT_KEY'];
+      originalOpencodeConfig = process.env['NEXUS_OPENCODE_CONFIG'];
+      delete process.env['NEXUS_OPENAI_COMPAT_URL'];
+      delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
+      delete process.env['NEXUS_OPENCODE_CONFIG'];
+    });
+
+    afterEach(() => {
+      if (originalUrl === undefined) delete process.env['NEXUS_OPENAI_COMPAT_URL'];
+      else process.env['NEXUS_OPENAI_COMPAT_URL'] = originalUrl;
+      if (originalKey === undefined) delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
+      else process.env['NEXUS_OPENAI_COMPAT_KEY'] = originalKey;
+      if (originalOpencodeConfig === undefined) delete process.env['NEXUS_OPENCODE_CONFIG'];
+      else process.env['NEXUS_OPENCODE_CONFIG'] = originalOpencodeConfig;
+    });
+
+    it('reports not configured when neither env var is set', async () => {
+      const { checkVoterTransport } = await import('./doctor.js');
+      expect(checkVoterTransport()).toEqual({ configured: false });
+    });
+
+    it('reports configured when both gateway env vars are set', async () => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
+      const { checkVoterTransport } = await import('./doctor.js');
+      expect(checkVoterTransport()).toEqual({ configured: true });
+    });
+
+    it('reports not configured when only one of the two env vars is set', async () => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+      const { checkVoterTransport } = await import('./doctor.js');
+      expect(checkVoterTransport()).toEqual({ configured: false });
     });
   });
 });

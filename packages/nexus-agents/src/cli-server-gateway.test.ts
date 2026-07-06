@@ -18,6 +18,7 @@ import {
   tryWireGatewayAdapter,
   tryWireGatewayAdapters,
   resolveDefaultModelAdapter,
+  _resetCliSubprocessFallbackNotice,
 } from './cli-server-gateway.js';
 
 function makeMockAdapter(modelId: string): IModelAdapter {
@@ -237,6 +238,60 @@ describe('tryWireGatewayAdapters (#4040 — full list for voter diversity)', () 
   it('returns undefined when no gateway is configured', async () => {
     readOpenAICompatEnvMock.mockReturnValue(null);
     expect(await tryWireGatewayAdapters(makeMockLogger())).toBeUndefined();
+  });
+});
+
+describe('CLI subprocess fallback notice (#4255)', () => {
+  beforeEach(() => {
+    delete process.env['NEXUS_SANDBOX'];
+    buildOpenAICompatAdaptersMock.mockReset();
+    readOpenAICompatEnvMock.mockReset();
+    _resetCliSubprocessFallbackNotice();
+  });
+
+  it('logs once when no gateway env is configured', async () => {
+    readOpenAICompatEnvMock.mockReturnValue(null);
+    const logger = makeMockLogger();
+    await tryWireGatewayAdapters(logger);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('NEXUS_OPENAI_COMPAT_URL') as unknown
+    );
+  });
+
+  it('does not log when a gateway is configured and wiring succeeds', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('model-a')]));
+    const logger = makeMockLogger();
+    await tryWireGatewayAdapters(logger);
+    const calls = [...logger.info.mock.calls, ...logger.warn.mock.calls] as unknown[][];
+    const flat = JSON.stringify(calls);
+    expect(flat).not.toContain('NEXUS_OPENAI_COMPAT_URL');
+  });
+
+  it('logs once even when the probe fails or returns 0 models (still no usable gateway)', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok([]));
+    const logger = makeMockLogger();
+    await tryWireGatewayAdapters(logger);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('NEXUS_OPENAI_COMPAT_URL') as unknown
+    );
+  });
+
+  it('is emitted only once per process even across repeated calls (once-guard)', async () => {
+    readOpenAICompatEnvMock.mockReturnValue(null);
+    const loggerA = makeMockLogger();
+    const loggerB = makeMockLogger();
+    await tryWireGatewayAdapters(loggerA);
+    await tryWireGatewayAdapters(loggerB);
+    expect(loggerA.info).toHaveBeenCalledTimes(1);
+    expect(loggerB.info).not.toHaveBeenCalled();
   });
 });
 

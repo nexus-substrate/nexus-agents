@@ -29,6 +29,28 @@ export NEXUS_CUSTOM_API_KEY=...
 
 See [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md) for the custom-gateway path in depth.
 
+### Voter transport / performance (consensus_vote and similar tools)
+
+Tools that collect multiple LLM "votes" (e.g. `consensus_vote`) need one model
+call per voter role. There are two ways nexus-agents can make those calls:
+
+- **In-process, via an OpenAI-compatible gateway** — set both
+  `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY` (see
+  [CONFIGURATION.md](../getting-started/CONFIGURATION.md)) and nexus-agents
+  routes every voter through that gateway's HTTP API directly, in-process. No
+  subprocess is spawned per vote, so it's lower-latency and doesn't depend on
+  any individual CLI's own auth/quota.
+- **CLI subprocess round-robin (default when no gateway is set)** — with
+  neither env var set, voters shell out to whichever CLIs (claude/gemini/codex)
+  are installed, round-robining roles across them. This works with no extra
+  configuration, but each vote spawns a subprocess and inherits that CLI's own
+  auth/quota, so a full panel is noticeably slower.
+
+If you don't need per-CLI diversity and just want the fastest, most
+predictable voting path, configure an OpenAI-compatible gateway. nexus-agents
+logs a one-time notice at startup when it falls back to the CLI-subprocess
+path so you can tell which transport is active.
+
 ---
 
 ## OpenCode
