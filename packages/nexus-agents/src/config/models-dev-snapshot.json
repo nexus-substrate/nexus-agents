@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-06-29",
+  "fetchedAt": "2026-07-06",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1223,150 +1223,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "claude-3-5-sonnet-20240620",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3.5",
-      "verifiedAt": "2024-06-20",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-5-sonnet-20241022",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3.5 v2",
-      "verifiedAt": "2024-10-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-7-sonnet-20250219",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3.7",
-      "verifiedAt": "2025-02-19",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-haiku-20240307",
-      "vendor": "anthropic",
-      "family": "claude-haiku",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Haiku 3",
-      "verifiedAt": "2024-03-13",
-      "contextWindow": 200000,
-      "maxOutputTokens": 4096,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.25,
-        "outputPer1M": 1.25
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-opus-20240229",
-      "vendor": "anthropic",
-      "family": "claude-opus",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Opus 3",
-      "verifiedAt": "2024-02-29",
-      "contextWindow": 200000,
-      "maxOutputTokens": 4096,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 15,
-        "outputPer1M": 75
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-sonnet-20240229",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3",
-      "verifiedAt": "2024-03-04",
-      "contextWindow": 200000,
-      "maxOutputTokens": 4096,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "claude-fable-5",
       "vendor": "anthropic",
       "family": "claude-fable",
@@ -1439,30 +1295,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "claude-opus-4-0",
-      "vendor": "anthropic",
-      "family": "claude-opus",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Opus 4 (latest)",
-      "verifiedAt": "2025-05-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 32000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 15,
-        "outputPer1M": 75
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "claude-opus-4-1",
       "vendor": "anthropic",
       "family": "claude-opus",
@@ -1500,30 +1332,6 @@
       "source": "models-dev",
       "displayName": "Claude Opus 4.1",
       "verifiedAt": "2025-08-05",
-      "contextWindow": 200000,
-      "maxOutputTokens": 32000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 15,
-        "outputPer1M": 75
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-opus-4-20250514",
-      "vendor": "anthropic",
-      "family": "claude-opus",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Opus 4",
-      "verifiedAt": "2025-05-22",
       "contextWindow": 200000,
       "maxOutputTokens": 32000,
       "inputModalities": ["text", "image", "pdf"],
@@ -1655,54 +1463,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "claude-sonnet-4-0",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 4 (latest)",
-      "verifiedAt": "2025-05-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-sonnet-4-20250514",
-      "vendor": "anthropic",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-anthropic",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 4",
-      "verifiedAt": "2025-05-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "claude-sonnet-4-5",
       "vendor": "anthropic",
       "family": "claude-sonnet",
@@ -1716,7 +1476,7 @@
       "source": "models-dev",
       "displayName": "Claude Sonnet 4.5 (latest)",
       "verifiedAt": "2025-09-29",
-      "contextWindow": 200000,
+      "contextWindow": 1000000,
       "maxOutputTokens": 64000,
       "inputModalities": ["text", "image", "pdf"],
       "outputModalities": ["text"],
@@ -1740,7 +1500,7 @@
       "source": "models-dev",
       "displayName": "Claude Sonnet 4.5",
       "verifiedAt": "2025-09-29",
-      "contextWindow": 200000,
+      "contextWindow": 1000000,
       "maxOutputTokens": 64000,
       "inputModalities": ["text", "image", "pdf"],
       "outputModalities": ["text"],
@@ -1765,12 +1525,36 @@
       "displayName": "Claude Sonnet 4.6",
       "verifiedAt": "2026-03-13",
       "contextWindow": 1000000,
-      "maxOutputTokens": 64000,
+      "maxOutputTokens": 128000,
       "inputModalities": ["text", "image", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 3,
         "outputPer1M": 15
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "claude-sonnet-5",
+      "vendor": "anthropic",
+      "family": "claude-sonnet",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-anthropic",
+      "source": "models-dev",
+      "displayName": "Claude Sonnet 5",
+      "verifiedAt": "2026-06-30",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 10
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2964,6 +2748,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "claude-sonnet-5@default",
+      "vendor": "google",
+      "family": "claude-sonnet",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Claude Sonnet 5",
+      "verifiedAt": "2026-06-30",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 10
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "deepseek-ai/deepseek-v3.1-maas",
       "vendor": "google",
       "family": "deepseek",
@@ -4004,14 +3812,14 @@
       "profileId": "models-dev-mistral",
       "source": "models-dev",
       "displayName": "Mistral Medium (latest)",
-      "verifiedAt": "2025-08-12",
+      "verifiedAt": "2026-04-29",
       "contextWindow": 262144,
       "maxOutputTokens": 262144,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.4,
-        "outputPer1M": 2
+        "inputPer1M": 1.5,
+        "outputPer1M": 7.5
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -6206,7 +6014,7 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "z-ai/glm-5.1",
+      "id": "z-ai/glm-5.2",
       "vendor": "nvidia",
       "family": "glm",
       "parallelToolCalls": false,
@@ -6217,9 +6025,9 @@
       "quirks": [],
       "profileId": "models-dev-nvidia",
       "source": "models-dev",
-      "displayName": "GLM-5.1",
-      "verifiedAt": "2026-03-27",
-      "contextWindow": 131072,
+      "displayName": "GLM-5.2",
+      "verifiedAt": "2026-06-13",
+      "contextWindow": 1000000,
       "maxOutputTokens": 131072,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
