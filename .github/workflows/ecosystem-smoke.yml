@@ -89,7 +89,13 @@ jobs:
             exit 1
           fi
 
-          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          # Compact to a SINGLE line before writing: $targets is pretty-printed
+          # multi-line jq output, and the `key=value` GITHUB_OUTPUT format only
+          # accepts single-line values — a multi-line value makes Actions reject
+          # the second line ("Invalid format '  {'") and fail the step (it did so
+          # on every scheduled run since #2838's discovery rewrite). Compact JSON
+          # also parses cleanly via fromJSON() in the matrix consumer below.
+          echo "targets=$(jq -c . <<< "$targets")" >> "$GITHUB_OUTPUT"
 
   smoke:
     name: Smoke — ${{ matrix.target.owner }}/${{ matrix.target.name }}
