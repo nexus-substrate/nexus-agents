@@ -61,6 +61,7 @@ const {
   mockRegisterVerifyAuditChainTool,
   mockRegisterExtractSymbolsTool,
   mockRegisterSearchCodebaseTool,
+  mockRegisterSearchUsagesTool,
   mockRegisterRepoAnalyzeTool,
   mockRegisterRepoSecurityPlanTool,
   mockCreateDefaultDeps,
@@ -119,6 +120,7 @@ const {
   mockRegisterVerifyAuditChainTool: vi.fn(),
   mockRegisterExtractSymbolsTool: vi.fn(),
   mockRegisterSearchCodebaseTool: vi.fn(),
+  mockRegisterSearchUsagesTool: vi.fn(),
   mockRegisterRepoAnalyzeTool: vi.fn(),
   mockRegisterRepoSecurityPlanTool: vi.fn(),
   mockCreateDefaultDeps: vi.fn().mockReturnValue({
@@ -191,6 +193,7 @@ vi.mock('./mcp/index.js', async () => ({
   registerVerifyAuditChainTool: mockRegisterVerifyAuditChainTool,
   registerExtractSymbolsTool: mockRegisterExtractSymbolsTool,
   registerSearchCodebaseTool: mockRegisterSearchCodebaseTool,
+  registerSearchUsagesTool: mockRegisterSearchUsagesTool,
   registerRepoAnalyzeTool: mockRegisterRepoAnalyzeTool,
   registerRepoSecurityPlanTool: mockRegisterRepoSecurityPlanTool,
   registerRunQualityGateTool: vi.fn(),

@@ -124,6 +124,7 @@ const TOOL_SCHEMA_NAMES: Record<string, string> = {
   repo_security_plan: 'RepoSecurityPlanInputSchema',
   extract_symbols: 'ExtractSymbolsInputSchema',
   search_codebase: 'SearchCodebaseInputSchema',
+  search_usages: 'SearchUsagesInputSchema',
   run_dev_pipeline: 'DevPipelineInputSchema',
   run_pipeline: 'PipelineInputSchema',
   pr_review: 'PrReviewInputSchema',

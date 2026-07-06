@@ -7,7 +7,7 @@ keywords: [documentation, index, reference, navigation, docs, control-plane, map
 
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-06-17 (the skills under `skills/`, 46 MCP tools, 12 expert types, 11 workflow templates)
+**Canonical Documentation Index** | Last Updated: 2026-06-17 (the skills under `skills/`, 47 MCP tools, 12 expert types, 11 workflow templates)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
 

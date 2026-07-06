@@ -96,7 +96,7 @@ Code:               actual edits, tests, PRs, issues
   │   Event log: tamper-evident hash-chained audit       │
   │   Closed-loop self-tuning (MAPE-K)                   │
   │                                                       │
-  │   46 MCP tools · multi-stage CompositeRouter         │
+  │   47 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -181,7 +181,7 @@ Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, G
 nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
 ```
 
-Restart your editor. The 46 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Restart your editor. The 47 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 #### What `setup` configures
 
@@ -225,7 +225,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                                                                                                            |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                                                                                                         |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                                                                                                            |
-| **46 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                                                                                                              |
+| **47 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -333,6 +333,7 @@ When running as an MCP server, the following tools are available. **Start with `
 | `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                                                                                                           |
 | `extract_symbols`             | TypeScript-compiler-API AST symbols from a SINGLE file (functions/classes/types)                                                                                                                                         |
 | `search_codebase`             | Cross-file search over declared symbol NAMES (declarations only, not usages)                                                                                                                                             |
+| `search_usages`               | Structural usage/call-site search for a symbol via ast-grep (calls, member calls, new, imports, references) — the "where is X used" gap `search_codebase` cannot fill                                                    |
 | `run_dev_pipeline`            | Full dev pipeline: research, plan, vote, implement, QA                                                                                                                                                                   |
 | `run_pipeline`                | Execute a pipeline plugin by name with typed input                                                                                                                                                                       |
 | `pr_review`                   | Multi-voter PR review with verification gate (experimental)                                                                                                                                                              |

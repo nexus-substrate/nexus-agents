@@ -350,6 +350,10 @@ export {
   registerExtractSymbolsTool,
   ExtractSymbolsInputSchema,
   type ExtractSymbolsDeps,
+  // Usage/call-site search tool (#4265 — ast-grep)
+  registerSearchUsagesTool,
+  SearchUsagesInputSchema,
+  type SearchUsagesDeps,
   // Query trace tool (Epic #952, Phase 5)
   registerQueryTraceTool,
   QueryTraceInputSchema,

@@ -157,7 +157,7 @@ steps:
 
 ### MCP Tools
 
-The server exposes 46 MCP tools for integration. Key tools include:
+The server exposes 47 MCP tools for integration. Key tools include:
 
 | Tool                 | Description                                    |
 | -------------------- | ---------------------------------------------- |

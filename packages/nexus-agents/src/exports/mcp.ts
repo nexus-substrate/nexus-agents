@@ -208,6 +208,10 @@ export {
   registerSearchCodebaseTool,
   SearchCodebaseInputSchema,
   type SearchCodebaseDeps,
+  // Usage/call-site search (#4265 — ast-grep)
+  registerSearchUsagesTool,
+  SearchUsagesInputSchema,
+  type SearchUsagesDeps,
   // Prompts (Issue #1287)
   registerPrompts,
   PROMPT_DEFINITIONS,

@@ -23,10 +23,10 @@ const MANIFEST_NAMES: readonly RegisteredToolName[] = TOOL_MANIFEST.map((t) => t
 
 describe('table-driven tool registry parity vs TOOL_MANIFEST (#3266)', () => {
   it('handler table resolves exactly the manifest tool set (count + membership)', () => {
-    // Count: the MCP_TOOL_COUNT guard pins this at 46; assert against the
+    // Count: the MCP_TOOL_COUNT guard pins this at 47; assert against the
     // manifest rather than a literal so the two move together.
     expect(HANDLER_TABLE_TOOL_NAMES.length).toBe(MANIFEST_NAMES.length);
-    expect(MANIFEST_NAMES.length).toBe(46);
+    expect(MANIFEST_NAMES.length).toBe(47);
     // No extras, no omissions.
     expect([...HANDLER_TABLE_TOOL_NAMES].sort()).toEqual([...MANIFEST_NAMES].sort());
   });
@@ -133,6 +133,7 @@ describe('resolved tool set snapshot (#3266 — lock equivalence)', () => {
         "repo_security_plan",
         "extract_symbols",
         "search_codebase",
+        "search_usages",
         "run_dev_pipeline",
         "run_pipeline",
         "pr_review",

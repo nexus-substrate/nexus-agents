@@ -186,6 +186,7 @@ export const TOOL_CLASS = {
   // --- CPU-heavy local (300s — can exceed 60s on a big repo) ---
   extract_symbols: 'single-llm',
   search_codebase: 'single-llm',
+  search_usages: 'single-llm',
   // --- external network fetches (120s) ---
   research_discover: 'network-fetch',
   research_add_source: 'network-fetch',

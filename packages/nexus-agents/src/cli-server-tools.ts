@@ -62,6 +62,7 @@ import {
   registerVerifyAuditChainTool,
   registerExtractSymbolsTool,
   registerSearchCodebaseTool,
+  registerSearchUsagesTool,
   createDefaultDeps,
 } from './mcp/index.js';
 import { createMockOrchestrator } from './mcp/tools/orchestrate-types.js';
@@ -713,6 +714,7 @@ const HANDLER_TABLE: Record<RegisteredToolName, ToolHandler> = {
   verify_audit_chain: standardHandler('verify_audit_chain', registerVerifyAuditChainTool),
   extract_symbols: standardHandler('extract_symbols', registerExtractSymbolsTool),
   search_codebase: standardHandler('search_codebase', registerSearchCodebaseTool),
+  search_usages: standardHandler('search_usages', registerSearchUsagesTool),
   run_dev_pipeline: standardHandler('run_dev_pipeline', registerDevPipelineTool),
   run_pipeline: standardHandler('run_pipeline', registerPipelineTool),
   pr_review: (ctx) => {

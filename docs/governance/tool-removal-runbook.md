@@ -51,7 +51,7 @@ and reversible.
 
 ## Why this is gated the way it is
 
-The system carries 46 MCP tools (`tool-manifest.ts`; the README count is tracked
+The system carries 47 MCP tools (`tool-manifest.ts`; the README count is tracked
 by the claims registry — see below), which is near the ceiling of reliable agent
 tool-selection. Trimming dead weight is genuinely useful. But a tool registration
 is a **capability**, and removing a capability is exactly the class of action the

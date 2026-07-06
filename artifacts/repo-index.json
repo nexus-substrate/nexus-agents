@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-07-06T20:16:14.972Z",
+  "generated": "2026-07-06T21:17:30.420Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.168.0",
   "cli": {
@@ -481,6 +481,10 @@
       {
         "name": "search_codebase",
         "file": "src/mcp/tools/search-codebase.ts"
+      },
+      {
+        "name": "search_usages",
+        "file": "src/mcp/tools/search-usages.ts"
       },
       {
         "name": "suggest_research_tasks",
