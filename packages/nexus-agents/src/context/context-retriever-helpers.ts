@@ -31,12 +31,7 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 
 /** The discriminated set of cross-rankable backends (the aggregate `outcomes` is excluded). */
 export type RankedMemorySource =
-  | 'belief'
-  | 'agentic'
-  | 'adaptive'
-  | 'experience'
-  | 'strategy'
-  | 'research';
+  'belief' | 'agentic' | 'adaptive' | 'experience' | 'strategy' | 'research';
 
 /** A backend item lifted onto a single comparable scale. */
 export interface RankedMemoryItem {
@@ -215,6 +210,33 @@ function extractKeywords(task: string): readonly string[] {
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+/** Result of {@link clampToTokenBudget}. */
+export interface TokenBudgetClampResult {
+  /** The (possibly truncated) text, always a prefix of the input. */
+  readonly text: string;
+  /** Whether truncation occurred. */
+  readonly clipped: boolean;
+  /** Chars removed from the input (0 when not clipped). */
+  readonly omittedChars: number;
+}
+
+/**
+ * Clamp `text` to an estimated `maxTokens` budget using the same char/4
+ * heuristic as {@link topRankedWithinBudget} (#4253 — per-call context budget
+ * guard). Order-preserving prefix cut; never throws, never grows the input.
+ */
+export function clampToTokenBudget(text: string, maxTokens: number): TokenBudgetClampResult {
+  if (maxTokens <= 0) {
+    return { text: '', clipped: text.length > 0, omittedChars: text.length };
+  }
+  const maxChars = maxTokens * CHARS_PER_TOKEN;
+  if (text.length <= maxChars) {
+    return { text, clipped: false, omittedChars: 0 };
+  }
+  const kept = text.slice(0, maxChars);
+  return { text: kept, clipped: true, omittedChars: text.length - kept.length };
 }
 
 /** Age in ms from a possibly-invalid Date; non-finite timestamps → neutral 0. */

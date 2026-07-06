@@ -41,6 +41,7 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import {
   rankMemories,
   topRankedWithinBudget,
+  clampToTokenBudget,
   type RankedMemoryItem,
 } from './context-retriever-helpers.js';
 
@@ -400,13 +401,53 @@ function oneLine(value: string): string {
  * When `NEXUS_CONTEXT_RANKED=1` (#3236), the per-backend sections are replaced
  * by a single globally-cross-ranked "Most relevant prior context" block drawn
  * from {@link UnifiedContext.rankedMemories} within a token budget. Flag-off
- * output is byte-identical to the legacy per-section rendering.
+ * output is byte-identical to the legacy per-section rendering (as long as
+ * the result stays under `budgetTokens` — see the budget guard below).
+ *
+ * **Per-call context budget guard (#4253):** the assembled block — on BOTH
+ * the ranked and legacy rendering paths — is clamped to `budgetTokens`
+ * (default {@link DEFAULT_CONTEXT_BUDGET_TOKENS}, the CLAUDE.md "Standard"
+ * context-budget tier) via {@link clampToTokenBudget}'s char/4 estimate.
+ * Before this guard, the legacy path had no cap at all — only per-section
+ * `.slice(0, 3-5)` limits, which bound item *count* but not total size. When
+ * clamping actually truncates, a trailing notice reports it so callers see
+ * backpressure instead of a silent cut. This does not change the
+ * memory-backend fan-out or ranking semantics (including the ranked path's
+ * own internal {@link RANKED_PREFIX_TOKEN_BUDGET}) — it is a final clamp
+ * applied after rendering.
  */
-export function summarizeContextForPrompt(ctx: UnifiedContext): string {
-  if (process.env[CONTEXT_RANKED_FLAG] === '1') {
-    return summarizeRankedContext(ctx);
-  }
+export function summarizeContextForPrompt(
+  ctx: UnifiedContext,
+  budgetTokens: number = DEFAULT_CONTEXT_BUDGET_TOKENS
+): string {
+  const rendered =
+    process.env[CONTEXT_RANKED_FLAG] === '1'
+      ? summarizeRankedContext(ctx)
+      : summarizeLegacyContext(ctx);
+  return clampRenderedContext(rendered, budgetTokens);
+}
 
+/** Default per-call context budget (tokens), applied by {@link summarizeContextForPrompt} (#4253). Matches the CLAUDE.md "Standard" context-budget tier (~2,500); pass a different value for a caller in the Minimal (~800) / Research (~1,500) / Full (~6,000) tier. */
+export const DEFAULT_CONTEXT_BUDGET_TOKENS = 2500;
+
+/** Tokens reserved for the trailing clip notice so the final block stays close to `budgetTokens` once the notice is appended. */
+const CLIP_NOTICE_RESERVE_TOKENS = 30;
+
+/**
+ * Apply the final per-call budget clamp (#4253) to an already-rendered
+ * context block, appending a visible notice when clamping actually
+ * truncated something. No-op on an empty or already-in-budget block.
+ */
+function clampRenderedContext(rendered: string, budgetTokens: number): string {
+  if (rendered === '') return rendered;
+  const contentBudget = Math.max(0, budgetTokens - CLIP_NOTICE_RESERVE_TOKENS);
+  const { text: kept, clipped, omittedChars } = clampToTokenBudget(rendered, contentBudget);
+  if (!clipped) return rendered;
+  return `${kept}\n\n_(context clipped to fit the ~${String(budgetTokens)}-token budget; ~${String(omittedChars)} chars omitted — #4253)_`;
+}
+
+/** The legacy (flag-off) per-backend-section rendering (#3148 / #3471). Extracted from {@link summarizeContextForPrompt} so the budget guard wraps both rendering paths identically (#4253). */
+function summarizeLegacyContext(ctx: UnifiedContext): string {
   const sections: string[] = [];
 
   if (ctx.beliefs.length > 0) {
