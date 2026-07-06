@@ -53,19 +53,26 @@ jobs:
         id: diff
         run: |
           set -euo pipefail
-          OUTPUT=$(npx tsx scripts/check-registry-diff.ts \
+          npx tsx scripts/check-registry-diff.ts \
             /tmp/old-registry.json \
             packages/nexus-agents/src/config/model-registry.generated.json \
-            --json)
-          echo "$OUTPUT" > /tmp/diff-report.json
-          REQUIRES_REVIEW=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.verdict.requiresHumanReview)})' || echo "false")
-          TOTAL_ADDED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.added.length)})')
-          TOTAL_REMOVED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.removed.length)})')
-          TOTAL_CHANGED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.changed.length)})')
-          echo "requires_review=$REQUIRES_REVIEW" >> "$GITHUB_OUTPUT"
-          echo "total_added=$TOTAL_ADDED" >> "$GITHUB_OUTPUT"
-          echo "total_removed=$TOTAL_REMOVED" >> "$GITHUB_OUTPUT"
-          echo "total_changed=$TOTAL_CHANGED" >> "$GITHUB_OUTPUT"
+            --json > /tmp/diff-report.json
+          # Parse the verdict from the FILE, not a stdin pipe. The prior
+          # `echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data", ...)'` parsed only
+          # the FIRST stdin chunk; the report JSON for a ~1k-entry registry spans
+          # multiple chunks, so JSON.parse got a truncated prefix -> "Unexpected end
+          # of JSON input" and this step failed on every scheduled run. Reading the
+          # already-written file in one shot removes the chunk-boundary hazard and
+          # collapses four fragile re-parses into one.
+          node -e '
+            const fs = require("fs");
+            const r = JSON.parse(fs.readFileSync("/tmp/diff-report.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              `requires_review=${r.verdict.requiresHumanReview}\n` +
+              `total_added=${r.summary.added.length}\n` +
+              `total_removed=${r.summary.removed.length}\n` +
+              `total_changed=${r.summary.changed.length}\n`);
+          '
           npx tsx scripts/check-registry-diff.ts \
             /tmp/old-registry.json \
             packages/nexus-agents/src/config/model-registry.generated.json \
