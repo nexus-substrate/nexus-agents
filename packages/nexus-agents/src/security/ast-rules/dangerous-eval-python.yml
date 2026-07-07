@@ -1,0 +1,8 @@
+id: dangerous-eval-python
+language: python
+severity: error
+message: Dynamic code execution via eval/exec
+rule:
+  any:
+    - pattern: eval($CODE)
+    - pattern: exec($CODE)

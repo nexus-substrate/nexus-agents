@@ -168,3 +168,25 @@ export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
 export { generateATL, parseATL } from '../security/firewall/agent-trust-labels.js';
 export { createGitHubAdapter } from '../security/firewall/github-adapter.js';
 export type { GitHubInput } from '../security/firewall/github-adapter.js';
+
+// Polyglot (Python/Go) ast-grep QA/security rules — read-only (#4249 child C)
+export {
+  ensurePolyglotLangs,
+  loadRules,
+  getBuiltInAstRulesPath,
+  collectAstQaFindings,
+  runAstQaRules,
+  AST_RULE_LANGUAGES,
+  AST_RULE_SEVERITIES,
+  DEFAULT_AST_QA_LIMIT,
+  MAX_AST_QA_LIMIT,
+  MAX_FILES_SCANNED,
+} from '../security/ast-rule-runner.js';
+export type {
+  AstRuleLanguage,
+  AstRuleSeverity,
+  AstQaRuleFile,
+  AstRuleFinding,
+  RunAstQaRulesOptions,
+  AstQaCollectResult,
+} from '../security/ast-rule-runner.js';
