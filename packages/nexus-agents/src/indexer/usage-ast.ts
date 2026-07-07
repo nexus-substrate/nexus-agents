@@ -75,7 +75,7 @@ const IMPORT_PARENT_KINDS = new Set<string>([
   'import_clause',
 ]);
 
-function langToNapi(lang: SupportedLang): Lang {
+export function langToNapi(lang: SupportedLang): Lang {
   if (lang === 'tsx') return Lang.Tsx;
   if (lang === 'javascript') return Lang.JavaScript;
   return Lang.TypeScript;

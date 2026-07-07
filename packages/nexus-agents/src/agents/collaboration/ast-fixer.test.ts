@@ -8,12 +8,23 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { Lang, parse } from '@ast-grep/napi';
 import { AstFixer, createAstFixer } from './ast-fixer.js';
 import type { Violation } from './constitutional-types.js';
 
 // =============================================================================
 // Test Fixtures
 // =============================================================================
+
+/**
+ * Round-trip parse-validity guard: rewritten code must contain no `ERROR`
+ * tree-sitter node. Closes the "fixer emits broken code" defect class (#4243
+ * and the multi-line eval comment defect) permanently for any case it covers.
+ */
+const countParseErrors = (code: string): number =>
+  parse(Lang.TypeScript, code)
+    .root()
+    .findAll({ rule: { kind: 'ERROR' } }).length;
 
 const createViolation = (
   principleId: string,
@@ -149,6 +160,87 @@ describe('AstFixer', () => {
       expect(result.code).toContain('TODO');
       expect(result.code).toContain('no-eval');
     });
+
+    it('RED: does not over-match a *Function-suffixed identifier like setupFunction()', () => {
+      // The old `expressionText.endsWith('Function')` check over-matched
+      // ordinary calls; the exact-callee ast-grep pattern must not.
+      const code = `setupFunction();`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('SECURITY: eval disabled');
+      expect(result.code).not.toContain('eval() is not allowed');
+      // Falls back to the TODO-comment fixer instead.
+      expect(result.code).toContain('TODO');
+    });
+
+    it('green: Function(...) call is rewritten', () => {
+      const code = `Function('return 1');`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(result.code).toContain(
+        `throw new Error('eval() is not allowed for security reasons');`
+      );
+    });
+
+    it('green: new Function(...) call is rewritten', () => {
+      const code = `new Function('return 1');`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(result.code).toContain(
+        `throw new Error('eval() is not allowed for security reasons');`
+      );
+    });
+
+    it('green: an unrelated call, myFunction(), is left untouched', () => {
+      const code = `myFunction();`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('SECURITY: eval disabled');
+      expect(result.code).toContain('TODO');
+    });
+
+    it('rewrites a MULTI-LINE new Function(...) statement into parseable code (no syntax error)', () => {
+      // Regression: a `//` line comment only reaches end-of-line, so an old
+      // single-`//` prefix left lines 2+ of a multi-line statement live —
+      // producing a syntax error. Every line must be commented.
+      const code = `new Function(\n  'return 1'\n)();`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(result.code).toContain(
+        `throw new Error('eval() is not allowed for security reasons');`
+      );
+      // No live orphaned tokens: the rewrite must PARSE with no ERROR node.
+      expect(countParseErrors(result.code)).toBe(0);
+    });
+
+    it('rewrites a MULTI-LINE eval(...) statement into parseable code (no syntax error)', () => {
+      const code = `eval(\n  'a' +\n  'b'\n);`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(countParseErrors(result.code)).toBe(0);
+    });
   });
 
   // ===========================================================================
@@ -197,15 +289,13 @@ describe('AstFixer', () => {
 
   describe('error-handling fixes', () => {
     it('adds catch to simple promise chain', () => {
-      // Note: complex chains may fall back to TODO comments
       const code = `promise.then(() => console.log('done'));`;
       const violation = createViolation('error-handling', 'line 1');
 
       const result = fixer.applyFix(code, violation);
 
       expect(result.success).toBe(true);
-      // Either adds .catch or falls back to TODO
-      expect(result.code.includes('.catch') || result.code.includes('TODO')).toBe(true);
+      expect(result.code).toContain('.catch');
     });
 
     it('leaves chains with existing catch alone', () => {
@@ -216,6 +306,70 @@ describe('AstFixer', () => {
 
       // Should not add duplicate catch
       expect(result.code.match(/\.catch/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    });
+
+    it('fixes #4243: semicolon-terminated .then() chain gets .catch (not a TODO fallback)', () => {
+      // Regression: the old regex only matched a trailing `)` with no
+      // semicolon, so `p.then(f);` silently fell back to a TODO comment.
+      const code = `p.then(f);`;
+      const violation = createViolation('error-handling', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('p.then(f).catch(');
+      expect(result.code).not.toContain('TODO');
+    });
+
+    it('adds exactly one .catch to the outermost .then() of a multi-line chain', () => {
+      const code = `a\n  .then(f)\n  .then(g);`;
+      const violation = createViolation('error-handling', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code.match(/\.catch/g)?.length ?? 0).toBe(1);
+      expect(result.code.trimEnd().endsWith('.catch((err) => { console.error(err); });')).toBe(
+        true
+      );
+      // Appending after a call_expression's text stays valid across the
+      // chain's internal newlines — confirm it parses cleanly.
+      expect(countParseErrors(result.code)).toBe(0);
+    });
+
+    it('inner-then guard: a.then(f).then(g) gets exactly one .catch at the end', () => {
+      const code = `a.then(f).then(g);`;
+      const violation = createViolation('error-handling', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code.match(/\.catch/g)?.length ?? 0).toBe(1);
+      expect(result.code).toBe(`a.then(f).then(g).catch((err) => { console.error(err); });`);
+    });
+
+    it('regression green: .then() with no trailing semicolon still gets .catch', () => {
+      const code = `p.then(f)`;
+      const violation = createViolation('error-handling', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('p.then(f).catch(');
+    });
+
+    it('regression green: chain with existing .catch gets no duplicate .catch', () => {
+      // No qualifying unhandled `.then()` remains, so this falls back to the
+      // TODO-comment fixer (same fallback contract as every other fixer) —
+      // the original statement text itself is not rewritten.
+      const code = `promise.then(() => {}).catch(() => {});`;
+      const violation = createViolation('error-handling', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain(code);
+      expect(result.code.match(/\.catch/g)?.length ?? 0).toBe(1);
     });
   });
 
