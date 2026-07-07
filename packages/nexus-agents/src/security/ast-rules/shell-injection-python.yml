@@ -1,0 +1,13 @@
+id: shell-injection-python
+language: python
+severity: error
+message: Possible shell injection — shell=True / os.system with dynamic input
+rule:
+  any:
+    - pattern: os.system($CMD)
+    # ast-grep's multi-meta-var cannot match a trailing empty `$$$B` right
+    # after another matched arg (a napi/dynamic-lang quirk, verified against
+    # @ast-grep/napi@0.44.1 + @ast-grep/lang-python@0.0.6) — `shell=True` as
+    # the LAST arg needs its own arm alongside the "more args follow" arm.
+    - pattern: subprocess.$FN($$$A, shell=True, $$$B)
+    - pattern: subprocess.$FN($$$A, shell=True)

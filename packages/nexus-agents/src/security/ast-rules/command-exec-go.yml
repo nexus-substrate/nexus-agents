@@ -1,0 +1,15 @@
+id: command-exec-go
+language: go
+severity: warning
+message: External command execution — verify args are not attacker-controlled
+rule:
+  # A bare selector-expression pattern (`exec.Command($$$ARGS)`) does not
+  # reliably match against the dynamically-registered Go grammar (verified
+  # against @ast-grep/napi@0.44.1 + @ast-grep/lang-go@0.0.6): the pattern
+  # parser needs a valid enclosing Go context to resolve the `call_expression`
+  # selector for a dotted callee. The explicit context+selector form matches
+  # correctly and still excludes local/aliased near-misses (a bare `Command(x)`
+  # call, or a `myexec.Command(...)` call through a differently-named object).
+  pattern:
+    context: 'func f() { exec.Command($$$ARGS) }'
+    selector: call_expression

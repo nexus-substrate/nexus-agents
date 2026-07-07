@@ -20,6 +20,7 @@
     "dist",
     "scripts/postinstall.js",
     "src/workflows/templates",
+    "src/security/ast-rules",
     "README.md"
   ],
   "repository": {
@@ -78,6 +79,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
+    "@ast-grep/lang-go": "0.0.6",
+    "@ast-grep/lang-python": "0.0.6",
     "@ast-grep/napi": "0.44.1",
     "@google/genai": "^1.52.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
