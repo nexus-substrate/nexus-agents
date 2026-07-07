@@ -4,12 +4,23 @@
  * Uses ts-morph for TypeScript AST transformations to apply
  * constitutional violations fixes at the correct locations.
  *
+ * The `error-handling` and `no-eval` fixers delegate to ast-grep pattern
+ * rewrites (`./ast-rewrites.ts`) instead of the regex/text-suffix transforms
+ * this module used to inline — those silently no-op'd on semicolon-terminated
+ * promise chains and over-matched `*Function` callees (#4243). The other four
+ * fixers, and this class's entire public surface (`applyFix`,
+ * `createAstFixer()`, `AstFixResult`, comment-fallback, line-targeting),
+ * are unchanged.
+ *
  * @module agents/collaboration/ast-fixer
  * @see Issue #459 - AST-based code fixing in constitutional critic
+ * @see Issue #4243 - ast-fixer misses semicolon-terminated chains, over-matches *Function
+ * @see Issue #4249 - epic: replace ast-fixer's broken regex transforms
  */
 
 import { Project, SyntaxKind, SourceFile, Node } from 'ts-morph';
 import type { Violation } from './constitutional-types.js';
+import { appendCatchToUnhandledThen, neutralizeEvalCalls } from './ast-rewrites.js';
 
 /**
  * Result of an AST fix attempt.
@@ -172,76 +183,26 @@ export class AstFixer {
   }
 
   /**
-   * Checks if expression is a .then() call without .catch().
-   */
-  private isThenWithoutCatch(expression: Node, call: Node): boolean {
-    if (!Node.isPropertyAccessExpression(expression)) {
-      return false;
-    }
-    if (expression.getName() !== 'then') {
-      return false;
-    }
-    const parent = call.getParent();
-    if (parent !== undefined && Node.isPropertyAccessExpression(parent)) {
-      if (parent.getName() === 'catch') {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
    * Fixes missing error handling by adding .catch() to promise chains.
+   *
+   * Delegates to the ast-grep pattern rewrite {@link appendCatchToUnhandledThen}
+   * (#4243) — the old text-suffix regex silently no-op'd on any
+   * semicolon-terminated statement.
    */
   private fixErrorHandling(sourceFile: SourceFile, violation: Violation): AstFixResult {
     const lineNum = this.getLineNumber(violation);
-    let modified = false;
+    const code = sourceFile.getFullText();
+    const result = appendCatchToUnhandledThen(code, lineNum);
 
-    const callExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
-    for (const call of callExpressions) {
-      if (!this.isThenWithoutCatch(call.getExpression(), call)) {
-        continue;
-      }
-
-      const callLine = call.getStartLineNumber();
-      if (lineNum !== null && callLine !== lineNum) {
-        continue;
-      }
-
-      const statement = call.getFirstAncestorByKind(SyntaxKind.ExpressionStatement);
-      if (statement !== undefined) {
-        modified = this.addCatchToStatement(statement);
-        if (modified && lineNum !== null) {
-          break;
-        }
-      }
-    }
-
-    if (modified) {
+    if (result.modified) {
       return {
         success: true,
-        code: sourceFile.getFullText(),
+        code: result.code,
         changeDescription: 'Added .catch() to promise chain(s)',
       };
     }
 
-    return this.applyCommentFix(sourceFile.getFullText(), violation);
-  }
-
-  /**
-   * Adds .catch() to a statement and returns true if modified.
-   */
-  private addCatchToStatement(statement: Node): boolean {
-    const originalText = statement.getText().trimEnd();
-    const withCatch = originalText.replace(
-      /\)(\s*)$/,
-      ').catch((err) => { console.error(err); })$1'
-    );
-    if (withCatch !== originalText) {
-      statement.replaceWithText(withCatch);
-      return true;
-    }
-    return false;
+    return this.applyCommentFix(code, violation);
   }
 
   /**
@@ -280,49 +241,25 @@ export class AstFixer {
 
   /**
    * Fixes eval() usage by commenting it out with a warning.
+   *
+   * Delegates to the ast-grep pattern rewrite {@link neutralizeEvalCalls}
+   * (#4243) — the old `expressionText.endsWith('Function')` text check
+   * over-matched ordinary identifiers like `setupFunction()`.
    */
   private fixNoEval(sourceFile: SourceFile, violation: Violation): AstFixResult {
     const lineNum = this.getLineNumber(violation);
-    let modified = false;
+    const code = sourceFile.getFullText();
+    const result = neutralizeEvalCalls(code, lineNum);
 
-    const callExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
-    for (const call of callExpressions) {
-      const expression = call.getExpression();
-      const expressionText = expression.getText();
-
-      if (expressionText !== 'eval' && !expressionText.endsWith('Function')) {
-        continue;
-      }
-
-      const callLine = call.getStartLineNumber();
-      if (lineNum !== null && callLine !== lineNum) {
-        continue;
-      }
-
-      const statement = call.getFirstAncestorByKind(SyntaxKind.ExpressionStatement);
-      if (statement !== undefined) {
-        const originalText = statement.getText();
-        statement.replaceWithText(
-          `// SECURITY: eval disabled - ${originalText}\n` +
-            `throw new Error('eval() is not allowed for security reasons');`
-        );
-        modified = true;
-
-        if (lineNum !== null) {
-          break;
-        }
-      }
-    }
-
-    if (modified) {
+    if (result.modified) {
       return {
         success: true,
-        code: sourceFile.getFullText(),
+        code: result.code,
         changeDescription: 'Disabled eval() call with security error',
       };
     }
 
-    return this.applyCommentFix(sourceFile.getFullText(), violation);
+    return this.applyCommentFix(code, violation);
   }
 
   /**
