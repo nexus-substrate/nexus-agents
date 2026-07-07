@@ -1,5 +1,60 @@
 # nexus-agents
 
+## 2.171.0
+
+### Minor Changes
+
+- [#4277](https://github.com/nexus-substrate/nexus-agents/pull/4277) [`5310734`](https://github.com/nexus-substrate/nexus-agents/commit/5310734e84d689d746abbd771262b1e0a95a14ca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): polyglot (Python/Go) ast-grep QA/security rules via read-only runAstQaRules ([#4249](https://github.com/nexus-substrate/nexus-agents/issues/4249) child C)
+
+  Adds a new read-only `runAstQaRules` runner (`security/ast-rule-runner.ts`,
+  exported from `exports/security.ts`) that runs YAML-defined `@ast-grep/napi`
+  rules against Python/Go source, detecting dynamic `eval`/`exec`, shell
+  injection (`os.system`/`subprocess(..., shell=True)`), and unchecked external
+  command execution (`exec.Command`). Ships three built-in rules under
+  `security/ast-rules/*.yml` plus fixtures with both positive hits and
+  near-miss negatives (`evaluate`/`executor`/no-`shell=True`/local `Command`
+  helper/aliased `myexec.Command`), mirroring the [#4243](https://github.com/nexus-substrate/nexus-agents/issues/4243) lesson that a rule
+  which "sort of" matches over-fires on lookalikes.
+
+  `@ast-grep/napi@0.44.1`'s `Lang` enum has no Python/Go, so this adds the
+  dynamic-language grammar packages `@ast-grep/lang-python@0.0.6` and
+  `@ast-grep/lang-go@0.0.6` (both EXACT-pinned — early/experimental packages
+  where a caret range could silently swap in an incompatible native `.so`
+  grammar build) and registers them once per process via a lazy
+  `ensurePolyglotLangs()` singleton, since napi's `@experimental
+registerDynamicLanguage` throws if called more than once. Both grammar
+  packages are added to tsup's `external` list — like the other native-addon
+  deps — since they resolve their prebuilt `.so` via a `__dirname`-relative
+  lookup that bundling would break.
+
+  Detection-only by construction: ast-grep's YAML `fix:` key is never read by
+  `SgNode.findAll` (only ast-grep's separate CLI/rewrite machinery applies it),
+  so this runner cannot become a writer even if a rule author adds one.
+
+  MCP exposure is deferred to a follow-up issue to keep this surface a plain
+  function until a named consumer needs it wired through a tool.
+
+### Patch Changes
+
+- [#4274](https://github.com/nexus-substrate/nexus-agents/pull/4274) [`5a13b17`](https://github.com/nexus-substrate/nexus-agents/commit/5a13b1717335779f85d4cd3157349262ee7d5c06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix: ast-fixer misses semicolon-terminated promise chains and over-matches `*Function` callees ([#4243](https://github.com/nexus-substrate/nexus-agents/issues/4243)); rewrites now ast-grep pattern-based
+
+  The `error-handling` fixer's regex only matched a trailing `)` with no
+  semicolon, so any semicolon-terminated `.then(...)` chain (the overwhelmingly
+  common case) silently fell back to a TODO comment instead of getting a
+  `.catch(...)`. The `no-eval` fixer's `expressionText.endsWith('Function')`
+  check over-matched ordinary identifiers like `setupFunction()`.
+
+  Both transforms are replaced with `@ast-grep/napi` pattern rewrites
+  (`agents/collaboration/ast-rewrites.ts`): `.catch(...)` is appended to the
+  outermost unhandled `.then(...)` of a chain (ast-grep matches the
+  `call_expression` node itself, whose text excludes the trailing `;`, so this
+  bug class cannot recur by construction), and `eval(...)`/`Function(...)`/
+  `new Function(...)` are matched by exact callee so a `*Function`-suffixed
+  identifier cannot over-match. The other four ts-morph fixers, and
+  `AstFixer`'s entire public surface (`applyFix`, `createAstFixer()`,
+  `AstFixResult`, comment-fallback, line-targeting), are unchanged. Zero new
+  dependencies — `@ast-grep/napi` was already pinned for `search_usages` ([#4265](https://github.com/nexus-substrate/nexus-agents/issues/4265)).
+
 ## 2.170.0
 
 ### Minor Changes
