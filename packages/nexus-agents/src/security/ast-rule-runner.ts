@@ -34,10 +34,10 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Lang, parse, registerDynamicLanguage } from '@ast-grep/napi';
+import { parse, registerDynamicLanguage } from '@ast-grep/napi';
 import type { NapiConfig } from '@ast-grep/napi';
 // Both packages are CJS `export = <LanguageRegistration>` modules — the
 // default import is the whole registration object (`libraryPath` getter,
@@ -71,10 +71,15 @@ export function ensurePolyglotLangs(): void {
 // Rule schema (fail-closed)
 // ============================================================================
 
-/** Languages a rule file may declare. Only python/go are scanned for today (see
- * {@link inferRuleLang}); typescript/javascript are accepted by the schema so a
- * future rule file is not rejected by the loader before a walker exists for it. */
-export const AST_RULE_LANGUAGES = ['python', 'go', 'typescript', 'javascript'] as const;
+/** Languages a rule file may declare. Deliberately narrowed to the two this
+ * runner actually SCANS (python/go): admitting `typescript`/`javascript` here
+ * would let a TS/JS rule file validate at load time and then silently never
+ * fire (there is no TS/JS extension in {@link POLYGLOT_EXT_TO_LANG}), which is
+ * a fail-OPEN gap for a security scanner where "no findings" reads as "clean".
+ * TS/JS structural analysis is already covered by `search_usages` (#4265) and
+ * the ast-fixer rewrites (#4243); a TS/JS rule here would fail LOUD at load
+ * (unknown-language Zod error) instead of loading dead. */
+export const AST_RULE_LANGUAGES = ['python', 'go'] as const;
 export type AstRuleLanguage = (typeof AST_RULE_LANGUAGES)[number];
 
 export const AST_RULE_SEVERITIES = ['error', 'warning', 'info'] as const;
@@ -104,8 +109,10 @@ export const MAX_AST_QA_LIMIT = 2000;
 /** Directory walk depth for the target-dir scan (not caller-configurable — no
  * named consumer needs a deeper/shallower walk yet; YAGNI). */
 const AST_QA_MAX_DEPTH = 24;
-/** Upper bound on files parsed in a single run, to bound worst-case cost. */
-const MAX_FILES_SCANNED = 5000;
+/** Upper bound on files parsed in a single run, to bound worst-case cost.
+ * Exceeding it makes the scan PARTIAL — surfaced via {@link AstQaCollectResult}'s
+ * `filesTruncated`/`filesSkipped` + a warn, never silently dropped. */
+export const MAX_FILES_SCANNED = 5000;
 
 const logger = createLogger({ component: 'ast-rule-runner' });
 
@@ -122,7 +129,7 @@ const logger = createLogger({ component: 'ast-rule-runner' });
 export async function loadRules(dir: string): Promise<AstQaRuleFile[]> {
   let entries: string[];
   try {
-    entries = (await readdir(dir)).filter((f) => f.endsWith('.yml')).sort();
+    entries = (await readdir(dir)).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     throw new ValidationError(`ast-rule-runner: cannot read rules dir ${dir}: ${e.message}`, {
@@ -227,11 +234,25 @@ function inferRuleLang(file: string): AstRuleLanguage | null {
   return POLYGLOT_EXT_TO_LANG[extname(file).toLowerCase()] ?? null;
 }
 
-/** Recursively collect `.py`/`.go` files under `dir`, bounded by `maxDepth`. */
+/**
+ * Recursively collect `.py`/`.go` files under `dir`, bounded by `maxDepth`.
+ * A subdirectory whose `readdir` fails mid-walk (e.g. a `chmod 000` dir) is
+ * WARNED about per-dir and skipped rather than silently swallowed — the scan
+ * continues, but the partiality is surfaced in the log. The SCAN ROOT's own
+ * readability is validated up front by {@link collectAstQaFindings} (fail
+ * loud), so this soft-skip only ever applies to descendant dirs.
+ */
 async function findPolyglotFiles(dir: string, maxDepth: number): Promise<string[]> {
   if (maxDepth <= 0) return [];
   const out: string[] = [];
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (caught: unknown) {
+    const e = caught instanceof Error ? caught : new Error(String(caught));
+    logger.warn(`ast-rule-runner: skipped unreadable directory ${dir}: ${e.message}`);
+    return out;
+  }
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) {
@@ -244,13 +265,12 @@ async function findPolyglotFiles(dir: string, maxDepth: number): Promise<string[
 }
 
 /** Map a rule's declared language to the `parse()` first argument, registering
- * the dynamic grammars on first use of python/go. */
-function langToParseArg(lang: AstRuleLanguage): Lang | string {
-  if (lang === 'python' || lang === 'go') {
-    ensurePolyglotLangs();
-    return lang; // the CustomLang string keys used in registerDynamicLanguage()
-  }
-  return lang === 'javascript' ? Lang.JavaScript : Lang.TypeScript;
+ * the dynamic grammars on first use. Both supported languages (python/go) are
+ * dynamically-registered CustomLangs, so the language name string IS the
+ * `parse()` key set up in {@link ensurePolyglotLangs}. */
+function langToParseArg(lang: AstRuleLanguage): AstRuleLanguage {
+  ensurePolyglotLangs();
+  return lang; // the CustomLang string keys used in registerDynamicLanguage()
 }
 
 // ============================================================================
@@ -288,6 +308,14 @@ export interface AstQaCollectResult {
   /** True count of matches found, before the `limit` cap was applied. */
   total: number;
   limit: number;
+  /** Number of `.py`/`.go` files actually scanned (after the file cap). */
+  filesScanned: number;
+  /** Number of discovered files DROPPED because the file cap ({@link MAX_FILES_SCANNED})
+   * was exceeded. Non-zero means the scan was PARTIAL — a downstream consumer
+   * must not treat empty/low findings as a clean bill of health. */
+  filesSkipped: number;
+  /** True iff `filesSkipped > 0` — the scan did not cover every candidate file. */
+  filesTruncated: boolean;
 }
 
 /** Findings + true-match-count from scanning ONE already-read source file. */
@@ -348,6 +376,53 @@ function scanFile(
 }
 
 /**
+ * Fail LOUD on an unreadable / non-directory scan root. `loadRules` already
+ * throws on an unreadable RULES dir; the TARGET traversal must not fail OPEN —
+ * a lone file path, a bad path, or a `000` root would otherwise return an empty
+ * finding set that reads as "clean" for a security scanner.
+ */
+async function assertScanRootIsDirectory(resolved: string): Promise<void> {
+  let rootStat;
+  try {
+    rootStat = await stat(resolved);
+  } catch (caught: unknown) {
+    const e = caught instanceof Error ? caught : new Error(String(caught));
+    throw new ValidationError(`ast-rule-runner: cannot read targetDir ${resolved}: ${e.message}`, {
+      cause: e,
+    });
+  }
+  if (!rootStat.isDirectory()) {
+    throw new ValidationError(
+      `ast-rule-runner: targetDir must be a directory, got a non-directory path: ${resolved}`
+    );
+  }
+}
+
+/** Result of resolving the candidate file set under a scan root, with the
+ * file-cap truncation signal surfaced (never a silent `.slice`). */
+interface ScanFileSet {
+  files: string[];
+  filesSkipped: number;
+  filesTruncated: boolean;
+}
+
+/** Discover candidate `.py`/`.go` files, applying + SURFACING the file cap. */
+async function resolveScanFiles(root: string): Promise<ScanFileSet> {
+  const discovered = await findPolyglotFiles(root, AST_QA_MAX_DEPTH);
+  const files = discovered.slice(0, MAX_FILES_SCANNED);
+  const filesSkipped = discovered.length - files.length;
+  const filesTruncated = filesSkipped > 0;
+  if (filesTruncated) {
+    logger.warn(
+      `ast-rule-runner: ${String(filesSkipped)} file(s) NOT scanned — file cap ` +
+        `${String(MAX_FILES_SCANNED)} exceeded (discovered=${String(discovered.length)}). ` +
+        `Scan is PARTIAL; do not treat findings as exhaustive.`
+    );
+  }
+  return { files, filesSkipped, filesTruncated };
+}
+
+/**
  * Run every applicable rule in `rulesDir` against every `.py`/`.go` file under
  * `targetDir`, returning capped findings plus the true total (so callers that
  * need the overflow count — e.g. a future MCP tool wrapper — can report it).
@@ -360,15 +435,15 @@ export async function collectAstQaFindings(
   if ('error' in guard) {
     throw new SecurityError(guard.error);
   }
+  await assertScanRootIsDirectory(guard.resolved);
 
   const rulesDir = opts.rulesDir ?? getBuiltInAstRulesPath();
   const rules = await loadRules(rulesDir);
-  const limit = Math.min(opts.limit ?? DEFAULT_AST_QA_LIMIT, MAX_AST_QA_LIMIT);
+  // Clamp into [1, MAX]: a limit <= 0 would report total > 0 with zero findings
+  // (fail-open "clean" signal), so the floor is load-bearing, not cosmetic.
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_AST_QA_LIMIT, 1), MAX_AST_QA_LIMIT);
 
-  const files = (await findPolyglotFiles(guard.resolved, AST_QA_MAX_DEPTH)).slice(
-    0,
-    MAX_FILES_SCANNED
-  );
+  const { files, filesSkipped, filesTruncated } = await resolveScanFiles(guard.resolved);
 
   const findings: AstRuleFinding[] = [];
   let total = 0;
@@ -400,7 +475,7 @@ export async function collectAstQaFindings(
     );
   }
 
-  return { findings, total, limit };
+  return { findings, total, limit, filesScanned: files.length, filesSkipped, filesTruncated };
 }
 
 /**

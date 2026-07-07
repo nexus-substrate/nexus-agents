@@ -180,6 +180,7 @@ export {
   AST_RULE_SEVERITIES,
   DEFAULT_AST_QA_LIMIT,
   MAX_AST_QA_LIMIT,
+  MAX_FILES_SCANNED,
 } from '../security/ast-rule-runner.js';
 export type {
   AstRuleLanguage,
