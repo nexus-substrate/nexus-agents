@@ -8,12 +8,23 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { Lang, parse } from '@ast-grep/napi';
 import { AstFixer, createAstFixer } from './ast-fixer.js';
 import type { Violation } from './constitutional-types.js';
 
 // =============================================================================
 // Test Fixtures
 // =============================================================================
+
+/**
+ * Round-trip parse-validity guard: rewritten code must contain no `ERROR`
+ * tree-sitter node. Closes the "fixer emits broken code" defect class (#4243
+ * and the multi-line eval comment defect) permanently for any case it covers.
+ */
+const countParseErrors = (code: string): number =>
+  parse(Lang.TypeScript, code)
+    .root()
+    .findAll({ rule: { kind: 'ERROR' } }).length;
 
 const createViolation = (
   principleId: string,
@@ -201,6 +212,35 @@ describe('AstFixer', () => {
       expect(result.code).not.toContain('SECURITY: eval disabled');
       expect(result.code).toContain('TODO');
     });
+
+    it('rewrites a MULTI-LINE new Function(...) statement into parseable code (no syntax error)', () => {
+      // Regression: a `//` line comment only reaches end-of-line, so an old
+      // single-`//` prefix left lines 2+ of a multi-line statement live —
+      // producing a syntax error. Every line must be commented.
+      const code = `new Function(\n  'return 1'\n)();`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(result.code).toContain(
+        `throw new Error('eval() is not allowed for security reasons');`
+      );
+      // No live orphaned tokens: the rewrite must PARSE with no ERROR node.
+      expect(countParseErrors(result.code)).toBe(0);
+    });
+
+    it('rewrites a MULTI-LINE eval(...) statement into parseable code (no syntax error)', () => {
+      const code = `eval(\n  'a' +\n  'b'\n);`;
+      const violation = createViolation('no-eval', 'line 1');
+
+      const result = fixer.applyFix(code, violation);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('SECURITY: eval disabled');
+      expect(countParseErrors(result.code)).toBe(0);
+    });
   });
 
   // ===========================================================================
@@ -292,6 +332,9 @@ describe('AstFixer', () => {
       expect(result.code.trimEnd().endsWith('.catch((err) => { console.error(err); });')).toBe(
         true
       );
+      // Appending after a call_expression's text stays valid across the
+      // chain's internal newlines — confirm it parses cleanly.
+      expect(countParseErrors(result.code)).toBe(0);
     });
 
     it('inner-then guard: a.then(f).then(g) gets exactly one .catch at the end', () => {

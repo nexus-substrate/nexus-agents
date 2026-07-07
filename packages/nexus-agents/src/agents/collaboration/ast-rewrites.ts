@@ -118,9 +118,11 @@ function findEnclosingExpressionStatement(node: SgNode): SgNode | null {
 /**
  * Neutralizes `eval(...)`, `Function(...)`, and `new Function(...)` call
  * sites by replacing their enclosing expression statement with a security
- * comment plus a thrown error — verbatim the same output the old
- * ts-morph implementation produced, so downstream consumers/assertions of
- * that exact string don't churn.
+ * comment plus a thrown error. Preserves the `SECURITY: eval disabled` marker
+ * and the exact `throw new Error(...)` string the old ts-morph implementation
+ * emitted, so downstream consumers/assertions don't churn. Unlike that old
+ * code, EVERY line of the original statement is commented, not just the first,
+ * so a multi-line eval/Function statement does not emit a syntax error.
  *
  * Uses exact-callee ast-grep patterns rather than a `.endsWith('Function')`
  * text check, so an ordinary call like `setupFunction()` cannot over-match
@@ -158,9 +160,19 @@ export function neutralizeEvalCalls(code: string, targetLine: number | null): Re
       }
 
       const originalText = statement.text();
+      // The original statement can span multiple lines (e.g.
+      // `new Function(\n  'return 1'\n)();`). A `//` line comment only reaches
+      // end-of-line, so every line of `originalText` must be prefixed or lines
+      // 2+ become live orphaned tokens and the emit is a syntax error — the
+      // same emit-broken-code failure class as #4243. A block comment `/* */`
+      // is unusable because `originalText` could itself contain `*/`.
+      const commentedOriginal = originalText
+        .split('\n')
+        .map((l) => `// ${l}`)
+        .join('\n');
       edits.push(
         statement.replace(
-          `// SECURITY: eval disabled - ${originalText}\n` +
+          `// SECURITY: eval disabled -\n${commentedOriginal}\n` +
             `throw new Error('eval() is not allowed for security reasons');`
         )
       );
