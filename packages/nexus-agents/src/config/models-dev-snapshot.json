@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-07-06",
+  "fetchedAt": "2026-07-13",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -2444,6 +2444,28 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-omni-flash-preview",
+      "vendor": "google",
+      "family": "gemini",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemini Omni Flash Preview",
+      "verifiedAt": "2026-06-30",
+      "contextWindow": 131072,
+      "maxOutputTokens": 65536,
+      "inputModalities": ["text", "image", "video"],
+      "pricing": {
+        "inputPer1M": 1.5,
+        "outputPer1M": 17.5
+      }
+    },
+    {
       "id": "gemma-4-26b-a4b-it",
       "vendor": "google",
       "family": "gemma",
@@ -2844,6 +2866,29 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-2.5-flash-image",
+      "vendor": "google",
+      "family": "gemini-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Nano Banana",
+      "verifiedAt": "2025-08-26",
+      "contextWindow": 32768,
+      "maxOutputTokens": 32768,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text", "image"],
+      "pricing": {
+        "inputPer1M": 0.3,
+        "outputPer1M": 30
+      }
+    },
+    {
       "id": "gemini-2.5-flash-lite",
       "vendor": "google",
       "family": "gemini-flash-lite",
@@ -2960,6 +3005,52 @@
         "outputPer1M": 3
       },
       "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "vendor": "google",
+      "family": "gemini-pro",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Nano Banana Pro",
+      "verifiedAt": "2026-05-28",
+      "contextWindow": 65536,
+      "maxOutputTokens": 32768,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text", "image"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 120
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "vendor": "google",
+      "family": "gemini-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Nano Banana 2",
+      "verifiedAt": "2026-05-28",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "inputModalities": ["text", "image", "video", "pdf"],
+      "outputModalities": ["text", "image"],
+      "pricing": {
+        "inputPer1M": 0.5,
+        "outputPer1M": 60
+      }
     },
     {
       "id": "gemini-3.1-flash-lite",
@@ -3341,6 +3432,30 @@
       "pricing": {
         "inputPer1M": 1,
         "outputPer1M": 3.2
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "muse-spark-1.1",
+      "vendor": "meta",
+      "family": "muse",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-meta",
+      "source": "models-dev",
+      "displayName": "Muse Spark 1.1",
+      "verifiedAt": "2026-07-09",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 32000,
+      "inputModalities": ["text", "image", "pdf", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.25,
+        "outputPer1M": 4.25
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -6894,6 +7009,102 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gpt-5.6",
+      "vendor": "openai",
+      "family": "gpt-sol",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-5.6",
+      "verifiedAt": "2026-07-09",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 5,
+        "outputPer1M": 30
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "vendor": "openai",
+      "family": "gpt-luna",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-5.6 Luna",
+      "verifiedAt": "2026-07-09",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1,
+        "outputPer1M": 6
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "vendor": "openai",
+      "family": "gpt-sol",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-5.6 Sol",
+      "verifiedAt": "2026-07-09",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 5,
+        "outputPer1M": 30
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "vendor": "openai",
+      "family": "gpt-terra",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-5.6 Terra",
+      "verifiedAt": "2026-07-09",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2.5,
+        "outputPer1M": 15
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "gpt-image-1",
       "vendor": "openai",
       "family": "gpt-image",
@@ -6968,6 +7179,30 @@
         "inputPer1M": 5,
         "outputPer1M": 30
       }
+    },
+    {
+      "id": "gpt-realtime-2.1",
+      "vendor": "openai",
+      "family": "gpt",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-Realtime-2.1",
+      "verifiedAt": "2026-07-06",
+      "contextWindow": 128000,
+      "maxOutputTokens": 32000,
+      "inputModalities": ["text", "audio", "image"],
+      "outputModalities": ["text", "audio"],
+      "pricing": {
+        "inputPer1M": 4,
+        "outputPer1M": 24
+      },
+      "toolCapabilities": ["function-calling"]
     },
     {
       "id": "o1",
