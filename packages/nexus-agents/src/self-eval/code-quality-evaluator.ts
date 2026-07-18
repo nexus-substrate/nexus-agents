@@ -42,7 +42,18 @@ export class CodeQualityEvaluator extends BaseEvaluator {
     score = this.evaluateTestCoverage(component, metrics, concerns, score);
 
     const recommendation = this.scoreToRecommendation(score);
-    const confidence = this.calculateConfidence(metrics.length, concerns.length);
+    // Confidence rubric (shared BaseEvaluator.computeConfidence): more metrics ⇒
+    // higher confidence (capped at +0.4); more concerns ⇒ lower confidence
+    // (penalty capped at -0.2). Code quality is the only role that penalizes.
+    const confidence = this.computeConfidence({
+      base: 0.5,
+      metricCount: metrics.length,
+      metricCap: 0.4,
+      metricCoeff: 0.1,
+      concernCount: concerns.length,
+      concernCap: 0.2,
+      concernCoeff: 0.05,
+    });
 
     return this.createResult(component, recommendation, confidence, metrics, concerns);
   }
@@ -121,13 +132,5 @@ export class CodeQualityEvaluator extends BaseEvaluator {
     if (score >= 0.5) return 'review';
     if (score >= 0.3) return 'refactor';
     return 'deprecate';
-  }
-
-  private calculateConfidence(metricCount: number, concernCount: number): number {
-    // More metrics = higher confidence, more concerns = slightly lower
-    const base = 0.5;
-    const metricBonus = Math.min(0.4, metricCount * 0.1);
-    const concernPenalty = Math.min(0.2, concernCount * 0.05);
-    return base + metricBonus - concernPenalty;
   }
 }

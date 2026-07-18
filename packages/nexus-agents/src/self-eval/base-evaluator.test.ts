@@ -50,6 +50,10 @@ class TestEvaluator extends BaseEvaluator {
   ): ReturnType<BaseEvaluator['cite']> {
     return this.cite(metric, value, source, threshold);
   }
+
+  public testComputeConfidence(opts: Parameters<BaseEvaluator['computeConfidence']>[0]): number {
+    return this.computeConfidence(opts);
+  }
 }
 
 // ============================================================================
@@ -196,5 +200,132 @@ describe('BaseEvaluator - cite', () => {
   it('creates citation with string value', () => {
     const citation = evaluator.testCite('category', 'implementation', 'scanner');
     expect(citation.value).toBe('implementation');
+  });
+});
+
+// ============================================================================
+// computeConfidence (shared per-role rubric)
+// ============================================================================
+
+describe('BaseEvaluator - computeConfidence', () => {
+  const evaluator = new TestEvaluator('code-quality');
+
+  it('no-penalty case: base + uncapped metric bonus', () => {
+    // 0.6 + min(0.3, 3 * 0.05) = 0.6 + 0.15 = 0.75
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.6,
+        metricCount: 3,
+        metricCap: 0.3,
+        metricCoeff: 0.05,
+      })
+    ).toBeCloseTo(0.75, 10);
+  });
+
+  it('metric bonus saturates at the cap', () => {
+    // 0.6 + min(0.3, 10 * 0.05=0.5) = 0.6 + 0.3 = 0.9
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.6,
+        metricCount: 10,
+        metricCap: 0.3,
+        metricCoeff: 0.05,
+      })
+    ).toBeCloseTo(0.9, 10);
+  });
+
+  it('zero metrics returns the base', () => {
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.5,
+        metricCount: 0,
+        metricCap: 0.4,
+        metricCoeff: 0.08,
+      })
+    ).toBeCloseTo(0.5, 10);
+  });
+
+  it('penalty case: base + capped bonus - capped penalty', () => {
+    // 0.5 + min(0.4, 5*0.1=0.5) - min(0.2, 3*0.05=0.15) = 0.5 + 0.4 - 0.15 = 0.75
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.5,
+        metricCount: 5,
+        metricCap: 0.4,
+        metricCoeff: 0.1,
+        concernCount: 3,
+        concernCap: 0.2,
+        concernCoeff: 0.05,
+      })
+    ).toBeCloseTo(0.75, 10);
+  });
+
+  it('concern penalty saturates at the cap', () => {
+    // 0.5 + 0.4 - min(0.2, 10*0.05=0.5) = 0.5 + 0.4 - 0.2 = 0.7
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.5,
+        metricCount: 5,
+        metricCap: 0.4,
+        metricCoeff: 0.1,
+        concernCount: 10,
+        concernCap: 0.2,
+        concernCoeff: 0.05,
+      })
+    ).toBeCloseTo(0.7, 10);
+  });
+
+  it('omitting concern fields applies no penalty', () => {
+    const withoutConcerns = evaluator.testComputeConfidence({
+      base: 0.5,
+      metricCount: 2,
+      metricCap: 0.4,
+      metricCoeff: 0.08,
+    });
+    const withZeroConcernCount = evaluator.testComputeConfidence({
+      base: 0.5,
+      metricCount: 2,
+      metricCap: 0.4,
+      metricCoeff: 0.08,
+      concernCount: 0,
+      concernCap: 0.2,
+      concernCoeff: 0.05,
+    });
+    // 0.5 + min(0.4, 2*0.08=0.16) = 0.66 either way
+    expect(withoutConcerns).toBeCloseTo(0.66, 10);
+    expect(withZeroConcernCount).toBeCloseTo(0.66, 10);
+  });
+
+  it('reproduces each role formula byte-identically', () => {
+    // architecture-fit: 10 metrics ⇒ 0.6 + min(0.3, 0.5) = 0.9
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.6,
+        metricCount: 10,
+        metricCap: 0.3,
+        metricCoeff: 0.05,
+      })
+    ).toBe(0.6 + Math.min(0.3, 10 * 0.05));
+    // practical-value: 2 metrics ⇒ 0.5 + min(0.4, 0.16) = 0.66
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.5,
+        metricCount: 2,
+        metricCap: 0.4,
+        metricCoeff: 0.08,
+      })
+    ).toBe(0.5 + Math.min(0.4, 2 * 0.08));
+    // code-quality: 5 metrics + 3 concerns ⇒ 0.5 + 0.4 - 0.15 = 0.75
+    expect(
+      evaluator.testComputeConfidence({
+        base: 0.5,
+        metricCount: 5,
+        metricCap: 0.4,
+        metricCoeff: 0.1,
+        concernCount: 3,
+        concernCap: 0.2,
+        concernCoeff: 0.05,
+      })
+    ).toBe(0.5 + Math.min(0.4, 5 * 0.1) - Math.min(0.2, 3 * 0.05));
   });
 });
