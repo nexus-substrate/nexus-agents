@@ -66,8 +66,10 @@ import type { ExpertConfig } from './expert-config.js';
  * feeds the detector error-text only (no full transcript, no toolCalls), so each
  * indicator family can contribute at most one regex hit: error-text-only input
  * yields at most one family per regex hit; 0.4 = "two independent indicator
- * families", the strongest evidence this input shape can realistically produce;
- * 0.6 (the detector default) demands all three. Not applied to the global
+ * families", the MINIMUM a genuine two-family match produces (a single family
+ * tops out at 0.25, so 0.4 excludes every one-family signal). 0.6 (the detector
+ * default) is still reachable from error text when all three families of one
+ * archetype match; it is not the ceiling. Not applied to the global
  * DEFAULT_DETECTOR_CONFIG — that default is correct for the detector's designed
  * full-transcript + toolCalls input.
  */
