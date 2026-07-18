@@ -11,10 +11,13 @@ import {
   countByStatus,
   getResearchStatus,
   formatStatusResult,
+  computeTechniqueEvidence,
 } from './research-helpers-status.js';
 import type {
   TechniqueEntry,
   TechniquesRegistry,
+  PapersRegistry,
+  PaperEntry,
   ResearchStatusOptions,
   ResearchStatusResult,
 } from './research-types.js';
@@ -24,7 +27,38 @@ import * as researchIO from './research-helpers-io.js';
 // Mock research-helpers-io module
 vi.mock('./research-helpers-io.js', () => ({
   loadTechniquesRegistry: vi.fn(),
+  loadPapersRegistry: vi.fn(),
 }));
+
+// Helper to create a mock paper entry (only the fields the evidence join reads
+// need be meaningful; the rest satisfy the PaperEntry shape).
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createMockPaper(overrides: Partial<PaperEntry> = {}) {
+  const defaults: PaperEntry = {
+    title: 'A Paper',
+    authors: [],
+    source: 'arxiv',
+    arxiv_id: '0000.00000',
+    url: 'https://example.com',
+    publication_date: '2025-01-01',
+    venue: null,
+    topics: [],
+    tags: [],
+    reviewed_date: '2025-01-01',
+    reviewed_in: '',
+    summary: '',
+    key_findings: [],
+    relevance: 'medium',
+    techniques_extracted: [],
+    related_issues: [],
+    implementation_status: 'not-started',
+  };
+  return { ...defaults, ...overrides };
+}
+
+function makePapersRegistry(papers: Record<string, PaperEntry>): PapersRegistry {
+  return { schema_version: '1.0', papers };
+}
 
 // Helper to create mock technique entry
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -289,6 +323,86 @@ describe('research-helpers-status', () => {
   });
 
   // =============================================================================
+  // computeTechniqueEvidence (#4287)
+  // =============================================================================
+
+  describe('computeTechniqueEvidence', () => {
+    it('returns the MAX quality_score (and its tier) across resolved source papers', () => {
+      const entry = createMockTechnique({ source_papers: ['p-low', 'p-high', 'p-mid'] });
+      const papers = makePapersRegistry({
+        'p-low': createMockPaper({ quality_score: 3.0, evidence_tier: 'low' }),
+        'p-high': createMockPaper({ quality_score: 9.5, evidence_tier: 'high' }),
+        'p-mid': createMockPaper({ quality_score: 6.0, evidence_tier: 'medium' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'high',
+        qualityScore: 9.5,
+      });
+    });
+
+    it('defaults a scored paper without an evidence_tier to "low"', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      const papers = makePapersRegistry({
+        'p-1': createMockPaper({ quality_score: 8.0 }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'low',
+        qualityScore: 8.0,
+      });
+    });
+
+    it('returns undefined for a technique with zero source papers', () => {
+      const entry = createMockTechnique({ source_papers: [] });
+      const papers = makePapersRegistry({
+        'p-1': createMockPaper({ quality_score: 9.0, evidence_tier: 'high' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toBeUndefined();
+    });
+
+    it('skips source paper ids missing from the registry', () => {
+      const entry = createMockTechnique({ source_papers: ['missing', 'p-present'] });
+      const papers = makePapersRegistry({
+        'p-present': createMockPaper({ quality_score: 5.5, evidence_tier: 'medium' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'medium',
+        qualityScore: 5.5,
+      });
+    });
+
+    it('returns undefined when no source paper resolves (all ids missing)', () => {
+      const entry = createMockTechnique({ source_papers: ['nope-1', 'nope-2'] });
+      const papers = makePapersRegistry({
+        other: createMockPaper({ quality_score: 9.0, evidence_tier: 'high' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toBeUndefined();
+    });
+
+    it('returns undefined when resolved papers carry no numeric quality_score', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      const papers = makePapersRegistry({
+        // Registered, but no quality_score — nothing to weight on.
+        'p-1': createMockPaper({ evidence_tier: 'high' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toBeUndefined();
+    });
+
+    it('is fail-soft against a malformed registry with no papers map', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      // Simulate an unparsable/partial papers.yaml where `papers` is absent.
+      const malformed = { schema_version: '1.0' } as unknown as PapersRegistry;
+
+      expect(computeTechniqueEvidence(entry, malformed)).toBeUndefined();
+    });
+  });
+
+  // =============================================================================
   // getResearchStatus
   // =============================================================================
 
@@ -453,6 +567,69 @@ describe('research-helpers-status', () => {
       expect(result.counts.implemented).toBe(1);
       expect(result.counts.planned).toBe(1);
       expect(result.counts.notStarted).toBe(1);
+    });
+
+    it('joins papers.yaml evidence onto summaries when the registry resolves (#4287)', async () => {
+      const registryWithPapers: TechniquesRegistry = {
+        schema_version: '1.0',
+        techniques: {
+          'tech-001': createMockTechnique({
+            name: 'Alpha',
+            status: 'implemented',
+            priority: 'P1',
+            topic: 'optimization',
+            source_papers: ['p-a', 'p-b'],
+          }),
+          'tech-002': createMockTechnique({
+            name: 'Beta',
+            status: 'planned',
+            priority: 'P2',
+            topic: 'routing',
+            source_papers: ['p-missing'],
+          }),
+        },
+      };
+      vi.mocked(researchIO.loadTechniquesRegistry).mockResolvedValue({
+        ok: true,
+        value: registryWithPapers,
+      });
+      vi.mocked(researchIO.loadPapersRegistry).mockResolvedValue({
+        ok: true,
+        value: makePapersRegistry({
+          'p-a': createMockPaper({ quality_score: 4.0, evidence_tier: 'medium' }),
+          'p-b': createMockPaper({ quality_score: 9.0, evidence_tier: 'high' }),
+        }),
+      });
+
+      const result = await getResearchStatus({ status: 'all', format: 'json' });
+      const alpha = result.techniques.find((t) => t.id === 'tech-001');
+      const beta = result.techniques.find((t) => t.id === 'tech-002');
+
+      // Alpha weights on its best (max) source paper.
+      expect(alpha?.evidenceTier).toBe('high');
+      expect(alpha?.qualityScore).toBe(9.0);
+      // Beta's only source paper is unresolved → fields stay absent (fail-soft).
+      expect(beta?.evidenceTier).toBeUndefined();
+      expect(beta?.qualityScore).toBeUndefined();
+    });
+
+    it('leaves summaries unchanged when papers.yaml fails to load (fail-soft #4287)', async () => {
+      vi.mocked(researchIO.loadTechniquesRegistry).mockResolvedValue({
+        ok: true,
+        value: mockRegistry,
+      });
+      vi.mocked(researchIO.loadPapersRegistry).mockResolvedValue({
+        ok: false,
+        error: new ParseError('papers.yaml unparsable'),
+      });
+
+      const result = await getResearchStatus({ status: 'all', format: 'json' });
+
+      expect(result.success).toBe(true);
+      for (const t of result.techniques) {
+        expect(t.evidenceTier).toBeUndefined();
+        expect(t.qualityScore).toBeUndefined();
+      }
     });
   });
 

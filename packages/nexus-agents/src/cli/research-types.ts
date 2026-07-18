@@ -75,11 +75,7 @@ export interface PaperEntry {
   readonly has_code?: boolean;
   readonly code_url?: string;
   readonly rigor_tags?: readonly (
-    | 'has-code'
-    | 'has-dataset'
-    | 'has-baselines'
-    | 'peer-reviewed'
-    | 'single-model-eval'
+    'has-code' | 'has-dataset' | 'has-baselines' | 'peer-reviewed' | 'single-model-eval'
   )[];
   readonly quality_notes?: string;
   readonly last_quality_check?: string;
@@ -229,6 +225,16 @@ export interface TechniqueStatusSummary {
   readonly priority: Priority;
   readonly topic: string;
   readonly implementationIssue: number | null;
+  /**
+   * Read-time evidence weight joined from papers.yaml (#4287). Present only
+   * when at least one of the technique's `source_papers` resolves to a paper
+   * carrying a `quality_score`; absent otherwise (fail-soft — no papers.yaml,
+   * unresolved ids, or an unparsable registry all leave these undefined so the
+   * summary is byte-identical to the pre-#4287 shape). Not persisted:
+   * papers.yaml remains the single source of truth.
+   */
+  readonly evidenceTier?: 'high' | 'medium' | 'low';
+  readonly qualityScore?: number;
 }
 
 /**
@@ -258,11 +264,7 @@ export interface OverlapMatch {
   readonly sharedTags: readonly string[];
   readonly sharedTopic: boolean;
   readonly relationship:
-    | 'complementary'
-    | 'overlapping'
-    | 'conflicting'
-    | 'enhances'
-    | 'supersedes';
+    'complementary' | 'overlapping' | 'conflicting' | 'enhances' | 'supersedes';
 }
 
 /**

@@ -326,6 +326,10 @@ function makeTechnique(over: Partial<TechniqueStatusSummary>): TechniqueStatusSu
     priority: over.priority ?? 'P2',
     topic: over.topic ?? 'general',
     implementationIssue: over.implementationIssue ?? null,
+    // Evidence fields (#4287) are optional — carry them only when supplied so
+    // techniques without a papers.yaml join keep the pre-#4287 shape.
+    ...(over.evidenceTier !== undefined ? { evidenceTier: over.evidenceTier } : {}),
+    ...(over.qualityScore !== undefined ? { qualityScore: over.qualityScore } : {}),
   };
 }
 
@@ -364,6 +368,39 @@ describe('selectRelevantResearch', () => {
     // "api"/"web" are <4 chars → no match even though the word appears.
     expect(selectRelevantResearch(techs, 'design the api for web', 5)).toEqual([]);
   });
+
+  // #4287 — read-time evidence weighting reorders matches by tier.
+  it('orders matches by evidence tier (high > medium > low > none), stable within a tier', () => {
+    const techs = [
+      makeTechnique({ id: 'low', topic: 'routing', evidenceTier: 'low' }),
+      makeTechnique({ id: 'none', topic: 'routing' }),
+      makeTechnique({ id: 'high', topic: 'routing', evidenceTier: 'high' }),
+      makeTechnique({ id: 'med', topic: 'routing', evidenceTier: 'medium' }),
+    ];
+    const result = selectRelevantResearch(techs, 'improve routing decisions', 5);
+    expect(result.map((t) => t.id)).toEqual(['high', 'med', 'low', 'none']);
+  });
+
+  it('applies the evidence ordering before the limit (high-tier survives the cap)', () => {
+    const techs = [
+      makeTechnique({ id: 'a', topic: 'routing' }),
+      makeTechnique({ id: 'b', topic: 'routing' }),
+      makeTechnique({ id: 'c', topic: 'routing', evidenceTier: 'high' }),
+    ];
+    // Without weighting this would be ['a','b']; the high-tier 'c' is promoted.
+    const result = selectRelevantResearch(techs, 'improve routing decisions', 2);
+    expect(result.map((t) => t.id)).toEqual(['c', 'a']);
+  });
+
+  it('preserves insertion order when no technique carries evidence data (byte-unchanged)', () => {
+    const techs = [
+      makeTechnique({ id: 'a', topic: 'routing' }),
+      makeTechnique({ id: 'b', topic: 'routing' }),
+      makeTechnique({ id: 'c', topic: 'routing' }),
+    ];
+    const result = selectRelevantResearch(techs, 'improve routing decisions', 2);
+    expect(result.map((t) => t.id)).toEqual(['a', 'b']);
+  });
 });
 
 // ============================================================================
@@ -394,6 +431,34 @@ describe('summarizeContextForPrompt — research insights', () => {
     const out = summarizeContextForPrompt(ctx);
     expect(out).toContain('### Prior research on this topic');
     expect(out).toContain('- Speculative Decoding (rejected) — inference');
+  });
+
+  it('appends the evidence tier when the papers.yaml join resolved (#4287)', () => {
+    const ctx = emptyContext({
+      researchInsights: [
+        makeTechnique({
+          name: 'Speculative Decoding',
+          status: 'implemented',
+          topic: 'inference',
+          evidenceTier: 'high',
+          qualityScore: 9.0,
+        }),
+      ],
+    });
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).toContain('- Speculative Decoding (implemented, evidence: high) — inference');
+  });
+
+  it('renders a tier-free line identical to pre-#4287 when evidence fields are absent', () => {
+    const ctx = emptyContext({
+      researchInsights: [
+        makeTechnique({ name: 'Speculative Decoding', status: 'rejected', topic: 'inference' }),
+      ],
+    });
+    const out = summarizeContextForPrompt(ctx);
+    // No "evidence:" annotation, byte-identical to the pre-change render.
+    expect(out).toContain('- Speculative Decoding (rejected) — inference');
+    expect(out).not.toContain('evidence:');
   });
 
   it('omits the research section entirely when there are no insights', () => {
