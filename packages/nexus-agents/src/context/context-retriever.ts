@@ -190,11 +190,38 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
 const MIN_RELEVANCE_TOKEN = 4;
 
 /**
+ * Evidence-tier rank for the read-time weighting (#4287): higher wins. A
+ * technique with no joined tier (papers.yaml absent / ids unresolved) sorts
+ * last, preserving the pre-#4287 ordering when no evidence data exists.
+ *
+ * Explicit branches (rather than a map lookup) guarantee a finite numeric rank
+ * for `undefined` AND for any unexpected out-of-enum value — the sort
+ * comparator can never see a NaN, so ordering stays deterministic even though
+ * the tier originates from unvalidated papers.yaml.
+ */
+function evidenceRank(t: TechniqueStatusSummary): number {
+  switch (t.evidenceTier) {
+    case 'high':
+      return 3;
+    case 'medium':
+      return 2;
+    case 'low':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+/**
  * Pure relevance filter: select research techniques whose `topic` or `name`
  * shares a meaningful word (≥{@link MIN_RELEVANCE_TOKEN} chars) with the task
- * text. Order-preserving; returns at most `limit`. Exported for direct unit
- * testing of the matching logic (the network/registry read is wrapped
- * separately in {@link getResearchInsightsForTask}).
+ * text. Matches are STABLE-sorted by evidence tier (high > medium > low >
+ * none, #4287) before the `limit` is applied — insertion order is preserved
+ * within an equal tier, so when no technique carries evidence data the result
+ * is byte-identical to the pre-#4287 insertion-ordered slice. Returns at most
+ * `limit`. Exported for direct unit testing of the matching logic (the
+ * network/registry read is wrapped separately in
+ * {@link getResearchInsightsForTask}).
  */
 export function selectRelevantResearch(
   techniques: readonly TechniqueStatusSummary[],
@@ -213,12 +240,12 @@ export function selectRelevantResearch(
         break;
       }
     }
-    if (hit) {
-      matches.push(t);
-      if (matches.length >= limit) break;
-    }
+    if (hit) matches.push(t);
   }
-  return matches;
+  // Stable sort by descending evidence rank (Array.prototype.sort is stable),
+  // then take the top `limit`. Ties keep insertion (registry) order.
+  const ordered = [...matches].sort((a, b) => evidenceRank(b) - evidenceRank(a));
+  return ordered.slice(0, limit);
 }
 
 /** Lowercase word set, keeping only tokens long enough to be discriminating. */
@@ -565,9 +592,14 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
   }
 
   if (ctx.researchInsights.length > 0) {
-    const lines = ctx.researchInsights
-      .slice(0, 5)
-      .map((r) => `- ${oneLine(r.name)} (${oneLine(r.status)}) — ${oneLine(r.topic)}`);
+    const lines = ctx.researchInsights.slice(0, 5).map((r) => {
+      // Evidence tier (#4287) is appended only when the papers.yaml join
+      // resolved; absent ⇒ the line is byte-identical to the pre-#4287 render.
+      // Wrap in oneLine() like every other rendered field so an untrusted
+      // papers.yaml value can't escape the `- ` framing with embedded newlines.
+      const evidence = r.evidenceTier !== undefined ? `, evidence: ${oneLine(r.evidenceTier)}` : '';
+      return `- ${oneLine(r.name)} (${oneLine(r.status)}${evidence}) — ${oneLine(r.topic)}`;
+    });
     sections.push(`### Prior research on this topic\n${lines.join('\n')}`);
   }
 
