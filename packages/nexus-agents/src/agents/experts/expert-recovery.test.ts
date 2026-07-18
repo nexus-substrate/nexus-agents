@@ -147,6 +147,39 @@ describe('classifyExpertFailure', () => {
     const c = classifyExpertFailure(statusError(401, 'Invalid API key'), calibrated);
     expect(c).toEqual({ kind: 'permanent', source: 'default' });
   });
+
+  it('fails closed (does NOT throw) on an error with a throwing .message getter (#4303)', () => {
+    // A pathological Error-like object whose `.message` getter throws would make
+    // getErrorMessage/extractErrorMessage throw. Classification MUST swallow it
+    // and fail closed rather than let the throw escape.
+    const evil = {};
+    Object.defineProperty(evil, 'message', {
+      get() {
+        throw new Error('boom');
+      },
+    });
+    let c: ReturnType<typeof classifyExpertFailure> | undefined;
+    expect(() => {
+      c = classifyExpertFailure(evil, detector, 'task');
+    }).not.toThrow();
+    expect(c).toEqual({ kind: 'permanent', source: 'default' });
+  });
+
+  it('fails closed on an Error subclass whose .cause getter throws (#4303)', () => {
+    // The cause-chain walk reads `.cause`; a throwing `.cause` getter must also be
+    // caught. Use a real Error (so the chain walk descends into `.cause`).
+    const evil = new Error('outer');
+    Object.defineProperty(evil, 'cause', {
+      get() {
+        throw new Error('boom cause');
+      },
+    });
+    let c: ReturnType<typeof classifyExpertFailure> | undefined;
+    expect(() => {
+      c = classifyExpertFailure(evil, detector, 'task');
+    }).not.toThrow();
+    expect(c).toEqual({ kind: 'permanent', source: 'default' });
+  });
 });
 
 describe('RecoverableExpert.execute', () => {
@@ -288,6 +321,34 @@ describe('RecoverableExpert.execute', () => {
     if (!result.ok) {
       const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
       expect(recovery['attempts']).toBe(2);
+    }
+  });
+
+  it('resolves to err (never throws) when the failure has a throwing .cause getter (#4303)', async () => {
+    // A pathological error: normal `.message` (survives base-agent error wrapping)
+    // but a throwing `.cause` getter. The cause-chain walk in classifyExpertFailure
+    // (isRetryableErrorChain) reads `.cause` and would throw; without the fail-closed
+    // guard that throw escapes withRetry's un-guarded isRetryable/annotateExhausted
+    // and REJECTS the Promise, breaking execute_expert's never-throws contract.
+    const evil = new Error('model call blew up');
+    Object.defineProperty(evil, 'cause', {
+      get() {
+        throw new Error('cause getter boom');
+      },
+    });
+    const complete = vi.fn().mockRejectedValue(evil);
+    const expert = createRecoverableExpert({ maxRetries: 2, baseDelayMs: 0 }, complete);
+
+    // Must RESOLVE (not reject). Assert on the resolved Result, then the classification.
+    const result = await expert.execute(makeTask());
+
+    expect(result.ok).toBe(false);
+    // Failed closed → classified permanent → no retries (called exactly once).
+    expect(complete).toHaveBeenCalledTimes(1);
+    if (!result.ok) {
+      const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
+      expect(recovery['classification']).toBe('permanent');
+      expect(recovery['source']).toBe('default');
     }
   });
 
