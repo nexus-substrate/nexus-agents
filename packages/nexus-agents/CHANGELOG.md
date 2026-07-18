@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.173.3
+
+### Patch Changes
+
+- [#4305](https://github.com/nexus-substrate/nexus-agents/pull/4305) [`0a47b59`](https://github.com/nexus-substrate/nexus-agents/commit/0a47b59c7fbc6192d96ea01357d3f1adbfeaf9e9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(eval): extract the per-role confidence rubric into a parameterized
+  `BaseEvaluator.computeConfidence`. Architecture-fit, practical-value, and
+  code-quality each keep their own base/cap/coeff (and code-quality its concern
+  penalty) — the method is parameterized, not flattened, so confidence output is
+  byte-identical for every input ([#4290](https://github.com/nexus-substrate/nexus-agents/issues/4290)).
+
 ## 2.173.2
 
 ### Patch Changes
