@@ -417,9 +417,12 @@ describe('research-helpers-status', () => {
       const entry = createMockTechnique({ source_papers: ['p-1'] });
       const papers = makePapersRegistry({
         // `moderate`/`High`/`strong` are plausible typos in unvalidated YAML.
+        // Typed as a concrete literal (not the widened, undefined-including
+        // PaperEntry['evidence_tier']) so it satisfies exactOptionalPropertyTypes;
+        // the runtime value stays the out-of-enum 'moderate' the test needs.
         'p-1': createMockPaper({
           quality_score: 8.0,
-          evidence_tier: 'moderate' as unknown as PaperEntry['evidence_tier'],
+          evidence_tier: 'moderate' as unknown as 'low',
         }),
       });
 
