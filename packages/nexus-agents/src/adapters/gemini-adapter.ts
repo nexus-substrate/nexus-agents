@@ -5,8 +5,9 @@
  * Implements the IModelAdapter interface with streaming support, tool calling,
  * and proper error handling.
  *
- * Verified 2026-01-03: @google/genai@1.34.0 is current stable
- * (Source: npm registry - last modified 2025-12-17)
+ * Verified 2026-07-18: @google/genai@2.12.0 is current stable (#4045).
+ * 2.x breaking changes are Interactions-API-only; the stable
+ * models.generateContent* surface used here is unaffected.
  */
 
 import { GoogleGenAI } from '@google/genai';
