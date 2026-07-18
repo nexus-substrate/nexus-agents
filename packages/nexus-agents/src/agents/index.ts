@@ -207,6 +207,11 @@ export {
   FactoryError,
   createFromICTM,
   type CreateExpertOptions,
+  // Opt-in execution recovery (#4286)
+  RecoverableExpert,
+  classifyExpertFailure,
+  type ExpertRecoveryPolicy,
+  type FailureClassification,
   // Registry
   ExpertRegistry,
   RegistryError,

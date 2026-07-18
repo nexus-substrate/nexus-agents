@@ -105,6 +105,14 @@ export {
   type CreateExpertOptions,
 } from './expert-factory.js';
 
+// Opt-in expert execution recovery (#4286)
+export {
+  RecoverableExpert,
+  classifyExpertFailure,
+  type ExpertRecoveryPolicy,
+  type FailureClassification,
+} from './expert-recovery.js';
+
 // Registry for managing experts
 export {
   ExpertRegistry,
