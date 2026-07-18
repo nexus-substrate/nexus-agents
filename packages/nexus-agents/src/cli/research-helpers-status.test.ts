@@ -400,6 +400,75 @@ describe('research-helpers-status', () => {
 
       expect(computeTechniqueEvidence(entry, malformed)).toBeUndefined();
     });
+
+    it('is fail-soft against a null parse (yaml.parse of an empty file)', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      // `yaml.parse('') === null` — must not throw on `(null).papers`.
+      expect(computeTechniqueEvidence(entry, null as unknown as PapersRegistry)).toBeUndefined();
+    });
+
+    it('is fail-soft against a `papers: null` parse (yaml.parse of "papers:\\n")', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      const nullMap = { schema_version: '1.0', papers: null } as unknown as PapersRegistry;
+      expect(computeTechniqueEvidence(entry, nullMap)).toBeUndefined();
+    });
+
+    it('normalizes an out-of-enum evidence_tier to "low" (#4287 finding 1)', () => {
+      const entry = createMockTechnique({ source_papers: ['p-1'] });
+      const papers = makePapersRegistry({
+        // `moderate`/`High`/`strong` are plausible typos in unvalidated YAML.
+        'p-1': createMockPaper({
+          quality_score: 8.0,
+          evidence_tier: 'moderate' as unknown as PaperEntry['evidence_tier'],
+        }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'low',
+        qualityScore: 8.0,
+      });
+    });
+
+    it('skips a paper whose quality_score is NaN (#4287 finding 4)', () => {
+      const entry = createMockTechnique({ source_papers: ['p-nan', 'p-good'] });
+      const papers = makePapersRegistry({
+        // NaN is `typeof 'number'` — must be rejected so it can't mask p-good.
+        'p-nan': createMockPaper({ quality_score: NaN, evidence_tier: 'high' }),
+        'p-good': createMockPaper({ quality_score: 5.0, evidence_tier: 'medium' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'medium',
+        qualityScore: 5.0,
+      });
+    });
+
+    it('returns the highest VALIDATED tier, tie-broken by score (#4287 finding 5)', () => {
+      const entry = createMockTechnique({ source_papers: ['p-hi-lowscore', 'p-lo-highscore'] });
+      const papers = makePapersRegistry({
+        // Highest tier wins even though its score is lower than the low-tier sibling.
+        'p-hi-lowscore': createMockPaper({ quality_score: 4.0, evidence_tier: 'high' }),
+        'p-lo-highscore': createMockPaper({ quality_score: 9.9, evidence_tier: 'low' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'high',
+        qualityScore: 4.0,
+      });
+    });
+
+    it('tie-breaks equal tiers by the higher quality_score', () => {
+      const entry = createMockTechnique({ source_papers: ['p-a', 'p-b'] });
+      const papers = makePapersRegistry({
+        'p-a': createMockPaper({ quality_score: 6.0, evidence_tier: 'medium' }),
+        'p-b': createMockPaper({ quality_score: 7.5, evidence_tier: 'medium' }),
+      });
+
+      expect(computeTechniqueEvidence(entry, papers)).toEqual({
+        evidenceTier: 'medium',
+        qualityScore: 7.5,
+      });
+    });
   });
 
   // =============================================================================
@@ -631,6 +700,33 @@ describe('research-helpers-status', () => {
         expect(t.qualityScore).toBeUndefined();
       }
     });
+
+    it.each([
+      ['a null parse (empty/whitespace-only file)', null],
+      ['a `papers: null` parse', { schema_version: '1.0', papers: null }],
+      ['a scalar/malformed parse', 'not-an-object'],
+    ])(
+      'does not throw and leaves fields absent when papers.yaml is %s (fail-soft #4287)',
+      async (_label, parsed) => {
+        vi.mocked(researchIO.loadTechniquesRegistry).mockResolvedValue({
+          ok: true,
+          value: mockRegistry,
+        });
+        vi.mocked(researchIO.loadPapersRegistry).mockResolvedValue({
+          ok: true,
+          value: parsed as unknown as PapersRegistry,
+        });
+
+        const result = await getResearchStatus({ status: 'all', format: 'json' });
+
+        expect(result.success).toBe(true);
+        expect(result.techniques).toHaveLength(3);
+        for (const t of result.techniques) {
+          expect(t.evidenceTier).toBeUndefined();
+          expect(t.qualityScore).toBeUndefined();
+        }
+      }
+    );
   });
 
   // =============================================================================

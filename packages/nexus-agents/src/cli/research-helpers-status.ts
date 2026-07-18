@@ -12,7 +12,6 @@ import type {
   TechniqueStatus,
   TechniqueStatusSummary,
   PapersRegistry,
-  PaperEntry,
   ResearchStatusOptions,
   ResearchStatusResult,
 } from './research-types.js';
@@ -22,37 +21,75 @@ import { loadTechniquesRegistry, loadPapersRegistry } from './research-helpers-i
 // EVIDENCE JOIN (#4287)
 // =============================================================================
 
+/** Evidence tier, most-authoritative first. */
+type EvidenceTier = 'high' | 'medium' | 'low';
+
+/** Tier authority rank — higher wins when comparing two scored papers. */
+const TIER_RANK: Record<EvidenceTier, number> = { high: 3, medium: 2, low: 1 };
+
+/** True when candidate `a` should replace the running best `b` (higher tier, tie-break higher score). */
+function outranksBest(
+  a: { evidenceTier: EvidenceTier; qualityScore: number },
+  b: { evidenceTier: EvidenceTier; qualityScore: number } | undefined
+): boolean {
+  if (b === undefined) return true;
+  if (TIER_RANK[a.evidenceTier] !== TIER_RANK[b.evidenceTier]) {
+    return TIER_RANK[a.evidenceTier] > TIER_RANK[b.evidenceTier];
+  }
+  return a.qualityScore > b.qualityScore;
+}
+
+/**
+ * Type guard for a validated evidence tier (#4287). papers.yaml is parsed with
+ * `parseYaml(...) as PapersRegistry` — NO Zod validation — so an out-of-enum
+ * typo (`High`, `moderate`, `strong`) or a non-string could otherwise flow
+ * through into the ordering path and produce a NaN comparator. Anything not
+ * exactly one of the three tiers is rejected here at the join boundary.
+ */
+function isEvidenceTier(x: unknown): x is EvidenceTier {
+  return x === 'high' || x === 'medium' || x === 'low';
+}
+
 /**
  * Read-time evidence weight for a technique, joined from papers.yaml.
  *
  * Resolves each id in `entry.source_papers` against the papers registry and
- * returns the MAX `quality_score` found (with that paper's `evidence_tier`,
- * defaulting to `'low'` when a scored paper omits the tier — mirroring
- * {@link research-helpers-synthesize}). Returns `undefined` when no source
- * paper resolves to a registry entry carrying a numeric `quality_score`.
+ * returns the highest VALIDATED `evidence_tier` found (tie-broken by the higher
+ * `quality_score`), so the returned tier is the true max tier the ordering path
+ * downstream sorts on. A resolved paper with a missing/invalid tier is
+ * normalized to `'low'`. Returns `undefined` when no source paper resolves to a
+ * registry entry carrying a finite `quality_score`.
  *
- * Pure and fail-soft: no I/O, no persistence. papers.yaml stays the single
- * source of truth — the result is derived fresh on every status read.
+ * Treats `papers` as UNTRUSTED (unvalidated YAML): the container, its `papers`
+ * map, each paper, the score, and the tier are all shape/enum-checked. Pure and
+ * fail-soft — no I/O, no persistence, never throws. papers.yaml stays the single
+ * source of truth; the result is derived fresh on every status read.
  */
 export function computeTechniqueEvidence(
   entry: TechniqueEntry,
   papers: PapersRegistry
-): { evidenceTier: 'high' | 'medium' | 'low'; qualityScore: number } | undefined {
-  // Defensive against a malformed/partial registry object (fail-soft #4287):
-  // a parsed YAML may not actually carry a `papers` map, so treat it as
-  // optional at the boundary even though the declared type requires it.
-  const registry = (papers as { papers?: Record<string, PaperEntry> }).papers;
-  if (registry === undefined) return undefined;
+): { evidenceTier: EvidenceTier; qualityScore: number } | undefined {
+  // A parsed YAML may be `null` (`yaml.parse('')`), carry `papers: null`
+  // (`yaml.parse('papers:\n')`), or omit the map entirely — treat every shape
+  // as untrusted at the boundary even though the declared type requires it.
+  const registry = (papers as { papers?: unknown } | null | undefined)?.papers;
+  if (registry === null || typeof registry !== 'object') return undefined;
+  const map = registry as Record<string, unknown>;
 
-  let best: { evidenceTier: 'high' | 'medium' | 'low'; qualityScore: number } | undefined;
+  let best: { evidenceTier: EvidenceTier; qualityScore: number } | undefined;
   for (const paperId of entry.source_papers) {
-    const paper = registry[paperId];
-    if (paper === undefined) continue;
-    const score = paper.quality_score;
-    if (typeof score !== 'number') continue;
-    if (best === undefined || score > best.qualityScore) {
-      best = { evidenceTier: paper.evidence_tier ?? 'low', qualityScore: score };
-    }
+    const paper = map[paperId];
+    if (paper === null || typeof paper !== 'object') continue;
+    const score = (paper as { quality_score?: unknown }).quality_score;
+    // Number.isFinite rejects non-numbers, NaN, and ±Infinity (#4287 finding 4:
+    // `typeof NaN === 'number'` would otherwise pass and mask later papers).
+    if (!Number.isFinite(score)) continue;
+    const rawTier = (paper as { evidence_tier?: unknown }).evidence_tier;
+    const candidate = {
+      evidenceTier: isEvidenceTier(rawTier) ? rawTier : 'low',
+      qualityScore: score as number,
+    };
+    if (outranksBest(candidate, best)) best = candidate;
   }
   return best;
 }
@@ -167,7 +204,13 @@ export function countByStatus(
 async function loadPapersRegistrySoft(): Promise<PapersRegistry | undefined> {
   try {
     const papersResult = await loadPapersRegistry();
-    return papersResult.ok ? papersResult.value : undefined;
+    if (!papersResult.ok) return undefined;
+    // `parseYaml` can return `null` for an empty/whitespace-only file even on
+    // the ok branch (`yaml.parse('') === null`), despite the declared non-null
+    // type; map that to undefined so the join treats it as "no registry" rather
+    // than dereferencing null.
+    const value = papersResult.value as PapersRegistry | null;
+    return value ?? undefined;
   } catch {
     return undefined;
   }

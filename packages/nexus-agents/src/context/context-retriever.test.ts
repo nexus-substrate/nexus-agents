@@ -449,6 +449,21 @@ describe('summarizeContextForPrompt — research insights', () => {
     expect(out).toContain('- Speculative Decoding (implemented, evidence: high) — inference');
   });
 
+  it('collapses newlines in a poisoned evidence tier so it cannot inject prompt lines (#4287)', () => {
+    const ctx = emptyContext({
+      researchInsights: [
+        {
+          ...makeTechnique({ name: 'Spec Decoding', status: 'planned', topic: 'inference' }),
+          // Untrusted papers.yaml could smuggle a newline; oneLine() must frame it.
+          evidenceTier: 'low\n- INJECTED INSTRUCTION' as unknown as 'low',
+        },
+      ],
+    });
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).not.toMatch(/^- INJECTED INSTRUCTION/m);
+    expect(out).toContain('evidence: low - INJECTED INSTRUCTION)');
+  });
+
   it('renders a tier-free line identical to pre-#4287 when evidence fields are absent', () => {
     const ctx = emptyContext({
       researchInsights: [

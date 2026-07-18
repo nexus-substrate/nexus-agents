@@ -193,15 +193,23 @@ const MIN_RELEVANCE_TOKEN = 4;
  * Evidence-tier rank for the read-time weighting (#4287): higher wins. A
  * technique with no joined tier (papers.yaml absent / ids unresolved) sorts
  * last, preserving the pre-#4287 ordering when no evidence data exists.
+ *
+ * Explicit branches (rather than a map lookup) guarantee a finite numeric rank
+ * for `undefined` AND for any unexpected out-of-enum value — the sort
+ * comparator can never see a NaN, so ordering stays deterministic even though
+ * the tier originates from unvalidated papers.yaml.
  */
-const EVIDENCE_TIER_RANK: Record<'high' | 'medium' | 'low', number> = {
-  high: 3,
-  medium: 2,
-  low: 1,
-};
-
 function evidenceRank(t: TechniqueStatusSummary): number {
-  return t.evidenceTier !== undefined ? EVIDENCE_TIER_RANK[t.evidenceTier] : 0;
+  switch (t.evidenceTier) {
+    case 'high':
+      return 3;
+    case 'medium':
+      return 2;
+    case 'low':
+      return 1;
+    default:
+      return 0;
+  }
 }
 
 /**
@@ -587,7 +595,9 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
     const lines = ctx.researchInsights.slice(0, 5).map((r) => {
       // Evidence tier (#4287) is appended only when the papers.yaml join
       // resolved; absent ⇒ the line is byte-identical to the pre-#4287 render.
-      const evidence = r.evidenceTier !== undefined ? `, evidence: ${r.evidenceTier}` : '';
+      // Wrap in oneLine() like every other rendered field so an untrusted
+      // papers.yaml value can't escape the `- ` framing with embedded newlines.
+      const evidence = r.evidenceTier !== undefined ? `, evidence: ${oneLine(r.evidenceTier)}` : '';
       return `- ${oneLine(r.name)} (${oneLine(r.status)}${evidence}) — ${oneLine(r.topic)}`;
     });
     sections.push(`### Prior research on this topic\n${lines.join('\n')}`);
