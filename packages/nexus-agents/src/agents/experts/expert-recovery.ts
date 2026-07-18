@@ -184,6 +184,16 @@ function highestConfidenceFailure(
  * See the module header for the ordered decision procedure. `signal` is checked
  * first (mandatory guard): RETRYABLE_ERROR_PATTERNS matches /aborted/i, so
  * without this a cancelled task would otherwise be retried.
+ *
+ * Fails CLOSED on a throwing classifier (#4303): the body reads `error.message`
+ * and walks `.cause` (via getErrorMessage/extractErrorMessage/isRetryableErrorChain)
+ * and calls `detector.detect`. An Error-like object with a throwing `.message` or
+ * `.cause` getter would make any of those throw. `execute()` runs this INSIDE
+ * `withRetry`'s isRetryable predicate and again in annotateExhausted, neither of
+ * which is try-guarded by withRetry (adapters/retry.ts:339-363 catches only
+ * `operation()`), so an escaping throw would reject the `Promise<Result<…>>` and
+ * break the never-throws contract `execute_expert` relies on. This single outer
+ * guard covers BOTH call sites: any throw during classification → permanent.
  */
 export function classifyExpertFailure(
   error: unknown,
@@ -191,37 +201,43 @@ export function classifyExpertFailure(
   taskDescription?: string,
   signal?: AbortSignal
 ): FailureClassification {
-  // 1. Caller cancellation → permanent (fail closed, do not retry).
-  if (signal?.aborted === true) {
+  try {
+    // 1. Caller cancellation → permanent (fail closed, do not retry).
+    if (signal?.aborted === true) {
+      return { kind: 'permanent', source: 'default' };
+    }
+
+    // 2. Transport-retryable (429/408/5xx/ECONNRESET/…, NexusError rate-limit/
+    //    timeout/unavailable codes) anywhere in the cause chain → transient.
+    if (isRetryableErrorChain(error)) {
+      return { kind: 'transient', source: 'transport' };
+    }
+
+    // 3. Behavioral archetype (arxiv:2512.07497) → map to its recovery action.
+    const detection = detector.detect({
+      messages: [{ role: 'assistant', content: extractErrorMessage(error) }],
+      ...(taskDescription !== undefined ? { taskDescription } : {}),
+    });
+    if (detection.hasFailure) {
+      const top = highestConfidenceFailure(detection.failures);
+      if (top !== undefined) {
+        const action = DEFAULT_RECOVERY_STRATEGIES[top.archetype].action;
+        return {
+          kind: RECOVERABLE_ACTIONS.has(action) ? 'transient' : 'permanent',
+          source: 'archetype',
+          archetype: top.archetype,
+          confidence: top.confidence,
+        };
+      }
+    }
+
+    // 4. Fail closed.
+    return { kind: 'permanent', source: 'default' };
+  } catch {
+    // A throwing `.message`/`.cause` getter (or any classifier fault) MUST NOT
+    // escape — fail closed so `execute()` still resolves to a Result.
     return { kind: 'permanent', source: 'default' };
   }
-
-  // 2. Transport-retryable (429/408/5xx/ECONNRESET/…, NexusError rate-limit/
-  //    timeout/unavailable codes) anywhere in the cause chain → transient.
-  if (isRetryableErrorChain(error)) {
-    return { kind: 'transient', source: 'transport' };
-  }
-
-  // 3. Behavioral archetype (arxiv:2512.07497) → map to its recovery action.
-  const detection = detector.detect({
-    messages: [{ role: 'assistant', content: extractErrorMessage(error) }],
-    ...(taskDescription !== undefined ? { taskDescription } : {}),
-  });
-  if (detection.hasFailure) {
-    const top = highestConfidenceFailure(detection.failures);
-    if (top !== undefined) {
-      const action = DEFAULT_RECOVERY_STRATEGIES[top.archetype].action;
-      return {
-        kind: RECOVERABLE_ACTIONS.has(action) ? 'transient' : 'permanent',
-        source: 'archetype',
-        archetype: top.archetype,
-        confidence: top.confidence,
-      };
-    }
-  }
-
-  // 4. Fail closed.
-  return { kind: 'permanent', source: 'default' };
 }
 
 /**
@@ -336,32 +352,52 @@ export class RecoverableExpert extends Expert {
           return lastClassification.kind === 'transient';
         },
         onRetry: (info: RetryAttemptInfo): void => {
-          this.recoveryLogger.info('Expert execution retry', {
-            expertId: this.expertConfig.id,
-            attempt: info.attempt,
-            delayMs: info.delayMs,
-            classification: lastClassification?.kind,
-            source: lastClassification?.source,
-            archetype: lastClassification?.archetype,
-          });
-          // Archetype recovery: inject archetype-specific guidance into the next
-          // attempt's prompt via a mutable task copy.
-          if (
-            lastClassification?.source === 'archetype' &&
-            lastClassification.archetype !== undefined
-          ) {
-            currentTask = this.injectRecoveryGuidance(
-              currentTask,
-              lastClassification.archetype,
-              info
-            );
-          }
+          currentTask = this.handleRetry(info, lastClassification, currentTask);
         },
       }
     );
 
     if (outcome.ok) return ok(outcome.value);
     return err(this.annotateExhausted(outcome.error, currentTask, signal));
+  }
+
+  /**
+   * Per-retry callback: logs the attempt and, for a recoverable archetype,
+   * injects archetype-specific guidance into the next attempt's task.
+   *
+   * Returns the (possibly augmented) task. onRetry runs INSIDE withRetry's catch
+   * but is NOT itself try-guarded (adapters/retry.ts:352-359 — the try wraps only
+   * `operation()`), so a throw here would escape withRetry and reject the Promise.
+   * The guidance path re-reads the error (extractErrorMessage) and calls
+   * detector.detect, so a pathological error (#4303 throwing getter) could throw —
+   * guard it: on failure, skip injection and retry with the un-augmented task.
+   */
+  private handleRetry(
+    info: RetryAttemptInfo,
+    classification: FailureClassification | undefined,
+    currentTask: Task
+  ): Task {
+    this.recoveryLogger.info('Expert execution retry', {
+      expertId: this.expertConfig.id,
+      attempt: info.attempt,
+      delayMs: info.delayMs,
+      classification: classification?.kind,
+      source: classification?.source,
+      archetype: classification?.archetype,
+    });
+    if (classification?.source !== 'archetype' || classification.archetype === undefined) {
+      return currentTask;
+    }
+    try {
+      return this.injectRecoveryGuidance(currentTask, classification.archetype, info);
+    } catch (guidanceError: unknown) {
+      this.recoveryLogger.warn('Skipping recovery guidance injection (threw)', {
+        expertId: this.expertConfig.id,
+        archetype: classification.archetype,
+        error: getErrorMessage(guidanceError),
+      });
+      return currentTask;
+    }
   }
 
   /**
