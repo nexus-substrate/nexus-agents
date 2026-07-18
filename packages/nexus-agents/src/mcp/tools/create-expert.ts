@@ -25,6 +25,7 @@ import {
   ExpertFactory,
   Expert,
   type BuiltInExpertType,
+  type ExpertRecoveryPolicy,
   BUILT_IN_EXPERTS,
 } from '../../agents/index.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
@@ -91,7 +92,7 @@ export type CreateExpertInput = z.infer<typeof CreateExpertInputSchema>;
 export interface IExpertFactory {
   createBuiltIn(
     type: BuiltInExpertType,
-    options?: { modelOverrides?: { modelId?: string } }
+    options?: { modelOverrides?: { modelId?: string }; recoveryPolicy?: ExpertRecoveryPolicy }
   ): { ok: true; value: Expert } | { ok: false; error: Error };
 }
 
@@ -195,6 +196,12 @@ function createExpertFromFactory(
   if (adapter !== undefined) {
     options.adapter = adapter;
   }
+
+  // Opt-in execution recovery (#4286): experts run via `execute_expert` get a
+  // conservative 1-retry transient policy (transport 429/5xx/network + recoverable
+  // behavioral archetypes). The rate-limit CLI-fallback (#1532) in execute-expert
+  // remains the OUTER recovery layer, engaged only if this inner retry still fails.
+  options.recoveryPolicy = { maxRetries: 1 };
 
   const factoryOptions = Object.keys(options).length > 0 ? options : undefined;
   const result = deps.expertFactory.createBuiltIn(expertType, factoryOptions);

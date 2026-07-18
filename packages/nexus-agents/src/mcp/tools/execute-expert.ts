@@ -496,7 +496,14 @@ async function tryExpertFallback(
   const fallbackAdapter = registry.getAdapterForCli(fallbackCli);
   logger?.info('Retrying expert with fallback CLI', { role: expert.role, fallbackCli });
 
-  const fallbackResult = createExpert(expert.expertConfig, { adapter: fallbackAdapter });
+  // #4286: the outer CLI-fallback expert (#1532) also gets the conservative
+  // inner transient recovery, so a one-off transient blip on the fallback
+  // adapter doesn't collapse the last recovery layer. The primary expert's own
+  // { maxRetries: 1 } policy is wired at its creation site (create-expert.ts).
+  const fallbackResult = createExpert(expert.expertConfig, {
+    adapter: fallbackAdapter,
+    recoveryPolicy: { maxRetries: 1 },
+  });
   if (!fallbackResult.ok) return undefined;
 
   const fallbackStart = getTimeProvider().now();

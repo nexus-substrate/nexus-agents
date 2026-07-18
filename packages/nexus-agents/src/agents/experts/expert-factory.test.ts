@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ExpertFactory, Expert, FactoryError, type CreateExpertOptions } from './expert-factory.js';
+import { RecoverableExpert } from './expert-recovery.js';
 import { type ExpertConfig, BUILT_IN_EXPERTS } from './expert-config.js';
 
 describe('ExpertFactory', () => {
@@ -178,6 +179,45 @@ describe('ExpertFactory', () => {
         expect(result.value.id).toBe('pruning-expert');
         // Note: context pruning is applied internally to BaseAgent
         // We verify the expert was created successfully with the config
+      }
+    });
+
+    it('should return a RecoverableExpert when a recoveryPolicy is passed (#4286)', () => {
+      const config: ExpertConfig = {
+        id: 'recoverable-expert',
+        name: 'Recoverable Expert',
+        role: 'code_expert',
+        systemPrompt: 'Prompt.',
+        capabilities: ['task_execution'],
+      };
+
+      const options: CreateExpertOptions = { recoveryPolicy: { maxRetries: 1 } };
+
+      const result = ExpertFactory.create(config, options);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeInstanceOf(RecoverableExpert);
+        // RecoverableExpert must still be an Expert (subclass).
+        expect(result.value).toBeInstanceOf(Expert);
+      }
+    });
+
+    it('should return a plain Expert (not RecoverableExpert) without a policy (#4286)', () => {
+      const config: ExpertConfig = {
+        id: 'plain-expert',
+        name: 'Plain Expert',
+        role: 'code_expert',
+        systemPrompt: 'Prompt.',
+        capabilities: ['task_execution'],
+      };
+
+      const result = ExpertFactory.create(config);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeInstanceOf(Expert);
+        expect(result.value).not.toBeInstanceOf(RecoverableExpert);
       }
     });
 

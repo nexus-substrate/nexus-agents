@@ -3,9 +3,11 @@
  * (Source: Issue #500 - Add missing MCP tool test files)
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { ILogger } from '../../core/index.js';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import type { ILogger, IModelAdapter, CompletionResponse, StreamChunk } from '../../core/index.js';
+import { ok } from '../../core/index.js';
 import type { Expert } from '../../agents/index.js';
+import { ExpertFactory, RecoverableExpert } from '../../agents/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   ExecuteExpertInputSchema,
@@ -610,5 +612,65 @@ describe('maybeFetchContextPrefix gate (#3238)', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('execute_expert recovery policy integration (#4286)', () => {
+  /** Mock adapter whose `complete` is a caller-supplied vi.fn. */
+  function mockAdapter(complete: Mock): IModelAdapter {
+    return {
+      providerId: 'test-provider',
+      modelId: 'test-model',
+      capabilities: ['completion'],
+      complete,
+      stream: vi.fn().mockImplementation(function* (): Iterable<StreamChunk> {
+        yield { type: 'message_start', message: { model: 'test-model' } };
+        yield { type: 'message_stop' };
+      }),
+      countTokens: vi.fn().mockResolvedValue(10),
+      validateConfig: vi.fn().mockReturnValue(ok(undefined)),
+    };
+  }
+
+  function textResponse(text: string): CompletionResponse {
+    return {
+      content: [{ type: 'text', text }],
+      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      stopReason: 'end_turn',
+      model: 'test-model',
+    };
+  }
+
+  it('recovers a transient failure through the expert.execute tool call without CLI fallback', async () => {
+    // Mirror create_expert (#4286): experts get a conservative { maxRetries: 1 }.
+    const complete = vi.fn();
+    complete.mockRejectedValueOnce(
+      Object.assign(new Error('Service Unavailable'), { status: 503 })
+    );
+    complete.mockResolvedValueOnce(ok(textResponse('Recovered answer')));
+
+    const created = ExpertFactory.create(
+      {
+        id: 'code-expert',
+        name: 'Code Expert',
+        role: 'code_expert',
+        systemPrompt: 'You are a code expert.',
+        capabilities: ['task_execution'],
+      },
+      { adapter: mockAdapter(complete), recoveryPolicy: { maxRetries: 1, baseDelayMs: 0 } }
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.value).toBeInstanceOf(RecoverableExpert);
+
+    // Exactly the call the tool makes at runExpert (execute-expert.ts:~603).
+    const task = buildTask({ expertId: 'code-expert', task: 'Review this code' });
+    const result = await created.value.execute(task);
+
+    // Inner transient recovery succeeds → the tool's rate-limit CLI fallback
+    // (#1532, engaged only on !result.ok) is never reached.
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.output).toBe('Recovered answer');
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 });

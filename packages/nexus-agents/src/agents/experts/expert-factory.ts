@@ -13,9 +13,10 @@ import { extractLessons, formatLessonsForPrompt } from '../../orchestration/fail
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { ICTMConfig } from '../ictm/ictm-types.js';
 import { ictmToExpertConfig } from '../ictm/ictm-factory.js';
-import { SimpleAgent } from '../simple-agent.js';
 import type { BaseAgentOptions } from '../base-agent.js';
 import type { ContextPrunerAgentConfig } from '../base-agent-pruning-init.js';
+import { Expert } from './expert-agent.js';
+import { RecoverableExpert, type ExpertRecoveryPolicy } from './expert-recovery.js';
 import {
   type ExpertConfig,
   type BuiltInExpertType,
@@ -25,6 +26,10 @@ import {
   BuiltInExpertTypeSchema,
   BUILT_IN_EXPERTS,
 } from './expert-config.js';
+
+// Re-export the Expert class (moved to ./expert-agent.ts to break the
+// factory↔recovery import cycle, #4286) for backward-compatible imports.
+export { Expert } from './expert-agent.js';
 
 /**
  * Error specific to factory operations.
@@ -53,32 +58,16 @@ export interface CreateExpertOptions {
    * Since Issue #479, context pruning is enabled by default.
    */
   contextPruning?: ContextPrunerAgentConfig;
-}
-
-/**
- * Expert agent extending SimpleAgent with configuration-based setup.
- */
-export class Expert extends SimpleAgent {
-  readonly expertConfig: ExpertConfig;
-
-  constructor(options: BaseAgentOptions, config: ExpertConfig) {
-    super(options);
-    this.expertConfig = config;
-  }
-
   /**
-   * Get the expert's name.
+   * Opt-in transient-vs-permanent execution recovery policy (#4286).
+   *
+   * When present, `createExpert` returns a {@link RecoverableExpert} whose
+   * `execute()` retries transient failures (transport 429/5xx/network errors,
+   * and archetype failures classified as recoverable) with exponential backoff,
+   * and fails closed on permanent failures. When ABSENT, a plain {@link Expert}
+   * is constructed and behavior is bit-for-bit identical to the pre-#4286 path.
    */
-  get name(): string {
-    return this.expertConfig.name;
-  }
-
-  /**
-   * Get the expert's metadata.
-   */
-  get metadata(): Record<string, unknown> | undefined {
-    return this.expertConfig.metadata;
-  }
+  recoveryPolicy?: ExpertRecoveryPolicy;
 }
 
 // buildValidationError removed - use formatZodError from core/index.js instead
@@ -254,7 +243,13 @@ export function createExpert(
   const agentOptions = buildAgentOptions(validConfig, options);
 
   try {
-    const expert = new Expert(agentOptions, validConfig);
+    // Opt-in recovery (#4286): when a policy is supplied, wrap execution in the
+    // transient-vs-permanent retry policy; otherwise the plain Expert path is
+    // bit-for-bit unchanged.
+    const expert =
+      options?.recoveryPolicy !== undefined
+        ? new RecoverableExpert(agentOptions, validConfig, options.recoveryPolicy)
+        : new Expert(agentOptions, validConfig);
     return ok(expert);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
