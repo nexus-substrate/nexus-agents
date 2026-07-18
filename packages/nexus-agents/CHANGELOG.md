@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 2.173.4
+
+### Patch Changes
+
+- [#4307](https://github.com/nexus-substrate/nexus-agents/pull/4307) [`8ba79da`](https://github.com/nexus-substrate/nexus-agents/commit/8ba79daa441c3716261e1879194dc25da843ec9b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - harden(resilience): make `classifyExpertFailure` fail closed on a throwing error
+  getter. `RecoverableExpert.execute()` classifies failures inside `withRetry`'s
+  `isRetryable` predicate and in `annotateExhausted`; neither call site is
+  try-guarded by `withRetry` (its `try` wraps only the operation), so an Error-like
+  object with a throwing `.message`/`.cause` getter made the classifier throw and
+  REJECT the `Promise<Result<…>>`, breaking the never-throws contract
+  `execute_expert` relies on. The classifier now wraps its body in a single
+  try/catch and returns `permanent` on any classifier fault, and the per-retry
+  guidance-injection (also outside `withRetry`'s guarded region) is guarded too so
+  `execute()` always resolves to a `Result` ([#4303](https://github.com/nexus-substrate/nexus-agents/issues/4303)).
+
 ## 2.173.3
 
 ### Patch Changes
