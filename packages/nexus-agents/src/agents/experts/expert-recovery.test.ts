@@ -114,16 +114,38 @@ describe('classifyExpertFailure', () => {
     expect(c.kind).toBe('permanent');
   });
 
-  it('maps a recoverable behavioral archetype to transient/archetype', () => {
-    const lowThreshold = new FailureDetector({ confidenceThreshold: 0.1 });
+  // The RecoverableExpert wires its detector at this calibrated threshold; unit
+  // tests here mirror that so classification outcomes match production behavior.
+  const calibrated = new FailureDetector({ confidenceThreshold: 0.4 });
+
+  it('fires fragile_execution for a two-family error at the calibrated 0.4 threshold', () => {
+    // Two indicator families: /failed to (parse|…)/ AND /invalid|syntax error/ → 0.4.
     const c = classifyExpertFailure(
-      new Error('failed to parse tool output'),
-      lowThreshold,
-      'run the tool'
+      new AgentError('failed to parse tool output', {
+        cause: new Error('invalid JSON: syntax error near line 3'),
+      }),
+      calibrated,
+      'call the parser'
     );
     expect(c.source).toBe('archetype');
     expect(c.kind).toBe('transient');
     expect(c.archetype).toBe('fragile_execution');
+  });
+
+  it('FP floor: a one-family parse failure stays permanent at 0.4', () => {
+    // Only /failed to (parse|…)/ matches → 0.2 < 0.4 → below the floor.
+    const c = classifyExpertFailure(
+      new Error('failed to parse tool output'),
+      calibrated,
+      'call the parser'
+    );
+    expect(c).toEqual({ kind: 'permanent', source: 'default' });
+  });
+
+  it('FP floor: a 401 "Invalid API key" (one family) stays permanent at 0.4', () => {
+    // /invalid/ matches once → 0.2 < 0.4; also not transport-retryable.
+    const c = classifyExpertFailure(statusError(401, 'Invalid API key'), calibrated);
+    expect(c).toEqual({ kind: 'permanent', source: 'default' });
   });
 });
 
@@ -155,7 +177,32 @@ describe('RecoverableExpert.execute', () => {
     }
   });
 
-  it('retries a recoverable archetype and injects guidance into the retry', async () => {
+  it('fires the archetype path at the calibrated default (no detectorConfig) and injects guidance', async () => {
+    // Two indicator families in the cause chain → 0.4 → clears the calibrated
+    // default threshold with NO detectorConfig override. This is the liveness proof
+    // that the archetype path is reachable in production (replaces the old 0.1 crutch).
+    const complete = vi.fn();
+    complete.mockRejectedValueOnce(
+      new AgentError('failed to parse tool output', {
+        cause: new Error('invalid JSON: syntax error near line 3'),
+      })
+    );
+    complete.mockResolvedValueOnce(ok(textResponse('Fixed')));
+    const expert = createRecoverableExpert({ maxRetries: 1, baseDelayMs: 0 }, complete);
+
+    const result = await expert.execute(makeTask('call the parser'));
+
+    expect(result.ok).toBe(true);
+    expect(complete).toHaveBeenCalledTimes(2);
+    // The retried request must carry the injected recovery guidance.
+    const secondCall = complete.mock.calls[1]?.[0] as { messages: { content: string }[] };
+    const combined = secondCall.messages.map((m) => m.content).join('\n');
+    expect(combined).toContain('RECOVERY MODE');
+  });
+
+  it('honors an explicit detectorConfig override (spread last still wins)', async () => {
+    // A one-family error (0.2) would stay permanent at the 0.4 default, but a 0.1
+    // override lowers the floor so it fires — proving the caller override wins.
     const complete = vi.fn();
     complete.mockRejectedValueOnce(new Error('failed to parse tool output'));
     complete.mockResolvedValueOnce(ok(textResponse('Fixed')));
@@ -168,7 +215,6 @@ describe('RecoverableExpert.execute', () => {
 
     expect(result.ok).toBe(true);
     expect(complete).toHaveBeenCalledTimes(2);
-    // The retried request must carry the injected recovery guidance.
     const secondCall = complete.mock.calls[1]?.[0] as { messages: { content: string }[] };
     const combined = secondCall.messages.map((m) => m.content).join('\n');
     expect(combined).toContain('RECOVERY MODE');
@@ -185,6 +231,63 @@ describe('RecoverableExpert.execute', () => {
     if (!result.ok) {
       const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
       expect(recovery['attempts']).toBe(3);
+      // Item 2: exhausted 503 is re-classified from lastError → transient/transport,
+      // not the stale 'permanent' the final-attempt skip used to leave behind.
+      expect(recovery['classification']).toBe('transient');
+      expect(recovery['source']).toBe('transport');
+    }
+  });
+
+  it('re-classifies exhausted lastError: 503-then-401 with maxRetries:1 → permanent/default', async () => {
+    // withRetry skips isRetryable on the last attempt; the returned error is the 401,
+    // so the trace must reflect the 401 (permanent), NOT the stale 503 (transient).
+    const complete = vi.fn();
+    complete.mockRejectedValueOnce(statusError(503, 'Service Unavailable'));
+    complete.mockRejectedValueOnce(statusError(401, 'Invalid API key'));
+    const expert = createRecoverableExpert({ maxRetries: 1, baseDelayMs: 0 }, complete);
+
+    const result = await expert.execute(makeTask());
+
+    expect(result.ok).toBe(false);
+    expect(complete).toHaveBeenCalledTimes(2);
+    if (!result.ok) {
+      const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
+      expect(recovery['classification']).toBe('permanent');
+      expect(recovery['source']).toBe('default');
+    }
+  });
+
+  it('re-classifies exhausted lastError: maxRetries:0 always-503 → transient/transport, 1 attempt', async () => {
+    // maxRetries:0 → withRetry never calls isRetryable, so lastClassification is
+    // undefined; the explicit re-classification must still label this transient.
+    const complete = vi.fn().mockRejectedValue(statusError(503, 'Service Unavailable'));
+    const expert = createRecoverableExpert({ maxRetries: 0, baseDelayMs: 0 }, complete);
+
+    const result = await expert.execute(makeTask());
+
+    expect(result.ok).toBe(false);
+    expect(complete).toHaveBeenCalledTimes(1);
+    if (!result.ok) {
+      const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
+      expect(recovery['attempts']).toBe(1);
+      expect(recovery['classification']).toBe('transient');
+      expect(recovery['source']).toBe('transport');
+    }
+  });
+
+  it('defaults an omitted maxRetries to 1 (2 attempts), not 3', async () => {
+    // Item 3: a partial policy with no maxRetries → EXPERT_RECOVERY_DEFAULT_MAX_RETRIES
+    // (1) → exactly 2 attempts, not DEFAULT_RETRY_CONFIG's 3.
+    const complete = vi.fn().mockRejectedValue(statusError(503, 'Service Unavailable'));
+    const expert = createRecoverableExpert({ baseDelayMs: 0 }, complete);
+
+    const result = await expert.execute(makeTask());
+
+    expect(result.ok).toBe(false);
+    expect(complete).toHaveBeenCalledTimes(2);
+    if (!result.ok) {
+      const recovery = (result.error.context?.['recovery'] ?? {}) as Record<string, unknown>;
+      expect(recovery['attempts']).toBe(2);
     }
   });
 
