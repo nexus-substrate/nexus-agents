@@ -225,4 +225,13 @@ describe('PracticalValueEvaluator - confidence', () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0);
     expect(result.confidence).toBeLessThanOrEqual(1);
   });
+
+  it('pins the per-role rubric (behavior-preserving): base 0.5, cap 0.4, coeff 0.08, no penalty', async () => {
+    const evaluator = new PracticalValueEvaluator();
+    // Default component emits 3 metrics (exports, linesPerExport, sizeBytes) ⇒
+    // 0.5 + min(0.4, 3*0.08=0.24) = 0.74. No concern penalty for this role.
+    const result = await evaluator.evaluate(makeComponent());
+    expect(result.metrics).toHaveLength(3);
+    expect(result.confidence).toBeCloseTo(0.74, 10);
+  });
 });

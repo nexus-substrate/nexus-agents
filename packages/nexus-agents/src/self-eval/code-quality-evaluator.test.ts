@@ -246,6 +246,28 @@ describe('CodeQualityEvaluator - confidence', () => {
     const withoutCoverage = await evaluator.evaluate(makeComponent({ testCoverage: null }));
     expect(withCoverage.confidence).toBeGreaterThanOrEqual(withoutCoverage.confidence);
   });
+
+  it('pins the per-role rubric (behavior-preserving): base 0.5, cap 0.4, coeff 0.1, no concerns', async () => {
+    const evaluator = new CodeQualityEvaluator();
+    // Healthy default: 2 metrics (complexity, lines), 0 concerns ⇒
+    // 0.5 + min(0.4, 2*0.1=0.2) - 0 = 0.7
+    const result = await evaluator.evaluate(makeComponent());
+    expect(result.metrics).toHaveLength(2);
+    expect(result.concerns).toHaveLength(0);
+    expect(result.confidence).toBeCloseTo(0.7, 10);
+  });
+
+  it('pins the concern penalty path (the only role that penalizes)', async () => {
+    const evaluator = new CodeQualityEvaluator();
+    // complexity 25 (>20), lines 500 (>400), coverage 30 (<50):
+    // 3 metrics + 3 concerns ⇒ 0.5 + min(0.4, 3*0.1=0.3) - min(0.2, 3*0.05=0.15) = 0.65
+    const result = await evaluator.evaluate(
+      makeComponent({ complexity: 25, lines: 500, testCoverage: 30 })
+    );
+    expect(result.metrics).toHaveLength(3);
+    expect(result.concerns).toHaveLength(3);
+    expect(result.confidence).toBeCloseTo(0.65, 10);
+  });
 });
 
 // ============================================================================

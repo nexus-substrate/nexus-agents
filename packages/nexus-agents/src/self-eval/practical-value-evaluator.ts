@@ -42,12 +42,15 @@ export class PracticalValueEvaluator extends BaseEvaluator {
     score = this.evaluateSizeHeuristics(component, metrics, concerns, score);
 
     const recommendation = this.scoreToRecommendation(score);
-    // Confidence rubric (mirrors CodeQualityEvaluator.calculateConfidence): more
+    // Confidence rubric (shared BaseEvaluator.computeConfidence): more
     // practical-value metrics observed ⇒ higher confidence, capped at +0.4.
     // Practical value weights evidence presence, so there's no concern penalty.
-    const base = 0.5;
-    const metricBonus = Math.min(0.4, metrics.length * 0.08);
-    const confidence = base + metricBonus;
+    const confidence = this.computeConfidence({
+      base: 0.5,
+      metricCount: metrics.length,
+      metricCap: 0.4,
+      metricCoeff: 0.08,
+    });
 
     return this.createResult(component, recommendation, confidence, metrics, concerns);
   }

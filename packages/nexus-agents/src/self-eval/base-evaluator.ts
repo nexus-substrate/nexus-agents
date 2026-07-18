@@ -55,11 +55,12 @@ export abstract class BaseEvaluator {
       }, this.timeoutMs);
     });
     try {
-      const result = await Promise.race([this.performEvaluation(component), timeoutPromise]).finally(
-        () => {
-          if (timeoutId !== undefined) clearTimeout(timeoutId);
-        }
-      );
+      const result = await Promise.race([
+        this.performEvaluation(component),
+        timeoutPromise,
+      ]).finally(() => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      });
 
       this.log.debug('Evaluation complete', {
         component: component.path,
@@ -119,4 +120,32 @@ export abstract class BaseEvaluator {
     return { metric, value, source, ...(threshold !== undefined ? { threshold } : {}) };
   }
 
+  /**
+   * Shared per-role confidence rubric: `base + min(metricCap, metricCount *
+   * metricCoeff) - concernPenalty`. More observed metrics ⇒ higher confidence
+   * (bonus capped); more concerns ⇒ lower confidence (penalty capped).
+   *
+   * Each evaluator role passes its OWN base/cap/coeff — the constants are
+   * intentionally NOT unified (architecture-fit, practical-value, and
+   * code-quality each weight evidence differently). Omit the concern fields to
+   * skip the penalty entirely (roles that judge on positive signals only).
+   *
+   * The returned value is later clamped to [0, 1] by {@link createResult}.
+   */
+  protected computeConfidence(opts: {
+    base: number;
+    metricCount: number;
+    metricCap: number;
+    metricCoeff: number;
+    concernCount?: number;
+    concernCap?: number;
+    concernCoeff?: number;
+  }): number {
+    const metricBonus = Math.min(opts.metricCap, opts.metricCount * opts.metricCoeff);
+    const concernPenalty =
+      opts.concernCount !== undefined && opts.concernCoeff !== undefined
+        ? Math.min(opts.concernCap ?? Infinity, opts.concernCount * opts.concernCoeff)
+        : 0;
+    return opts.base + metricBonus - concernPenalty;
+  }
 }

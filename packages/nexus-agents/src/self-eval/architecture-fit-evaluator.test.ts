@@ -257,6 +257,45 @@ describe('ArchitectureFitEvaluator - confidence', () => {
     const withoutNode = await evaluator.evaluate(makeComponent({ dependencies: ['./a.js'] }));
     expect(withNode.confidence).toBeGreaterThanOrEqual(withoutNode.confidence);
   });
+
+  it('pins the per-role rubric (behavior-preserving): base 0.6, cap 0.3, coeff 0.05', async () => {
+    const evaluator = new ArchitectureFitEvaluator();
+    // Default component emits 4 metrics (dependencies, relativeDependencies,
+    // externalDependencies, exports) ⇒ 0.6 + min(0.3, 4*0.05=0.2) = 0.8
+    const result = await evaluator.evaluate(makeComponent());
+    expect(result.metrics).toHaveLength(4);
+    expect(result.confidence).toBeCloseTo(0.8, 10);
+  });
+
+  it('pins metric-bonus saturation at the +0.3 cap', async () => {
+    const evaluator = new ArchitectureFitEvaluator();
+    // node: import (+1) and maxDependencies breach (+1) push to 6 metrics ⇒
+    // 0.6 + min(0.3, 6*0.05=0.3) = 0.9
+    const result = await evaluator.evaluate(
+      makeComponent({
+        dependencies: [
+          'node:fs',
+          './a.js',
+          './b.js',
+          './c.js',
+          './d.js',
+          './e.js',
+          './f.js',
+          './g.js',
+          './h.js',
+          './i.js',
+          './j.js',
+          './k.js',
+          './l.js',
+          './m.js',
+          './n.js',
+          './o.js',
+        ],
+      })
+    );
+    expect(result.metrics).toHaveLength(6);
+    expect(result.confidence).toBeCloseTo(0.9, 10);
+  });
 });
 
 // ============================================================================
