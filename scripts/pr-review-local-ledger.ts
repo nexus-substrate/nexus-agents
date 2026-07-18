@@ -23,6 +23,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { canonicalGitDiffArgs } from '../packages/nexus-agents/src/audit/reviewed-diff-hash.js';
+import { PR_REVIEW_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/pr-review-record-store.js';
 import {
   persistReviewRecord,
   type PrReviewCounts,
@@ -302,11 +303,21 @@ export async function feedLedgerRecord(summary: LocalReviewSummary): Promise<voi
   if (outcome.persisted) {
     console.log(
       `  ledger: wrote pr-review record seq=${String(outcome.sequence)} ` +
-        `(reviewedDiffHash=${outcome.reviewedDiffHash.slice(0, 12)}…) to governance/pr-review-records.jsonl.`
+        `(reviewedDiffHash=${outcome.reviewedDiffHash.slice(0, 12)}…) to ${PR_REVIEW_RECORDS_REL_PATH}.`
     );
     console.log(
       `  ledger: commit this record onto PR #${String(summary.prNumber)}'s head branch to satisfy the ` +
         `governor-review gate — the ledger is excluded from the reviewed diff, so committing it is hash-safe (#4229).`
+    );
+    // #4235: print an explicit `git commit -o` (--only) recipe. Committing ONLY the
+    // ledger path — regardless of what else is staged — closes the residual window
+    // where the uncommitted record could be swept into an unrelated commit by a later
+    // `git add -A` on the wrong branch. The record is authentic + integrity-chained
+    // either way, but this keeps the ledger clean.
+    console.log(
+      `  ledger: to commit only this record (avoids a stray \`git add -A\` sweeping it):\n` +
+        `           git commit -o ${PR_REVIEW_RECORDS_REL_PATH} -m ` +
+        `"chore(audit): pr-review record for #${String(summary.prNumber)} (seq ${String(outcome.sequence)})"`
     );
   } else {
     console.log(`  ledger: no record written (${outcome.reason}): ${outcome.detail}`);
