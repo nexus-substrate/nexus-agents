@@ -15,8 +15,9 @@ keywords: [pr-review, eval, dataset, curation, provenance, autonomous-sdlc]
 ## Goal
 
 Grow the eval set toward n≥50 (target 100) **without fabricating
-cases**. (The set started at n=10 and is now n=19 after the #3847 outcome-mining
-pass; the remaining growth to n≥50 is the work this doc describes.) A fabricated PR/bug corrupts the eval — it teaches us nothing about
+cases**. (The set started at n=10, reached n=19 after the #3847 outcome-mining
+pass, and is now n=43 after the 2026-07-19 human-ratified Codex adjudication
+promotion.) A fabricated PR/bug corrupts the eval — it teaches us nothing about
 whether the panel catches _real_ bugs. So the pipeline is built to make adding a
 _genuinely-sourced_ case a one-step, provenance-stamped operation, and the doc is
 explicit about what cannot be automated.
@@ -85,11 +86,12 @@ is a sourcing input, not an automated import — see the blocker below.
 
 ## Honest assessment: reaching n≥50 autonomously
 
-**Current committed n = 19** (after the #3847 outcome-mining pass; the prior
-state was n=10 — 7 buggy, 2 clean, 1 borderline — after the #3846
-re-adjudication). The pipeline, schema, and stamping are in place. The remaining
-~31 cases to n≥50 **cannot be generated autonomously without corrupting the
-eval**, for concrete reasons:
+**Current committed n = 43** (10 buggy, 28 clean, 5 borderline) after the
+2026-07-19 human-ratified Codex adjudication promotion. The prior states were
+n=10 after the #3846 re-adjudication and n=19 after the first #3847
+outcome-mining pass. The pipeline, schema, and stamping are in place. The
+remaining ~7 cases to n≥50 **cannot be generated autonomously without corrupting
+the eval**, for concrete reasons:
 
 - **Real historical/clean cases require live GitHub history mining + human
   judgment.** Identifying a merged PR + its later regression fix, then confirming
@@ -103,18 +105,19 @@ eval**, for concrete reasons:
 - **The #3675 corpus needs license/provenance review + per-case
   re-adjudication** before any entry is admissible.
 
-Therefore this iteration delivers the **framework** and adds **no fabricated
-entries**. The genuinely-verifiable case already present (#2235, sourced from a
-real post-merge fix) is retained and re-stamped; the four other synthetics and
-two historical/clean entries are retained as-is.
+The 2026-07-19 promotion adds **no fabricated entries**: all 24 new cases are
+human-ratified, outcome-mined PRs with the real candidate diff preserved in
+`customDiff`. PR #3308 is deliberately excluded from the corpus because its
+confirmed BoundedLRUCache issue is tracked separately as bug #4319.
 
 ### What n≥50 needs (the explicit blocker)
 
 A real PR-sourcing effort, which is human/live-data-bound:
 
-1. A pass over `nexus-substrate/nexus-agents` merged-PR history to find ~25
-   buggy PRs with post-merge fixes (gold cases), each adjudicated per rubric.
-2. ~15 verified-clean merged PRs (no post-merge fix, no medium+ objection).
+1. Additional gold buggy PRs with post-merge fixes, each adjudicated per rubric,
+   to improve the clean-heavy class balance.
+2. Additional verified-clean or borderline merged PRs only when they have human
+   adjudication and useful subsystem coverage.
 3. License + provenance review of the #3675 corpus, then per-case
    re-adjudication of any transferable cases.
 4. Optionally a bounded number of additional synthetics (≤ the honest-proportion
