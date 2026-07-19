@@ -115,6 +115,38 @@ npm run eval:mine-candidates
 npx tsx scripts/mine-pr-review-candidates.ts --limit 80 --diff-cap 6000
 ```
 
+### Older-window targeting (`--search` / `--min-age-days`)
+
+On an active repo the default "most recent N merged PRs" window can be too
+young for the weak-label heuristic to say anything: `likely-clean` requires a
+PR to have cleared the `CLEAN_TENURE_DAYS` (42-day) no-fix window, so a run
+whose whole window is younger than that emits nothing but `unknown`. Two
+flags target an older window instead:
+
+- `--min-age-days N` — keep only PRs merged at least N days ago. The miner
+  transparently enlarges the raw `gh pr list --limit` and re-fetches (capped)
+  until it collects up to `--limit` qualifying PRs, `gh` runs out of history,
+  or the internal fetch ceiling is hit.
+- `--search "<gh search query>"` — passthrough to `gh pr list --search`,
+  used **instead of** `--state merged` (gh rejects combining them); fold
+  `is:merged` into the query yourself, e.g.:
+
+  ```bash
+  npx tsx scripts/mine-pr-review-candidates.ts \
+    --search "is:merged merged:<2026-06-06" --limit 50
+  # or, without a custom search query:
+  npx tsx scripts/mine-pr-review-candidates.ts --min-age-days 42 --limit 50
+  ```
+
+### 406 ("diff too large") fallback
+
+`gh pr diff` returns HTTP 406 for PRs touching more than ~300 files. When
+that happens the miner falls back to `gh api repos/<owner>/<repo>/pulls/<n>/files`
+(paginated) and assembles a bounded, diff-like excerpt from the real per-file
+`patch` fields (skipping binary/patchless files) — never fabricating content.
+If the fallback also yields nothing usable, the PR is recorded as **skipped**
+(printed at the end of the run with a reason) rather than silently dropped.
+
 Then adjudicate the populated `testing/datasets/pr-review-candidates.json`
 in-place (set the real class, fill `knownBugs`, flip `adjudicated: true`), and
 promote the adjudicated cases into `pr-review-sample.json`. Run
