@@ -444,6 +444,75 @@ readiness gate reflects **genuine** soundness over real, plan-bearing selections
 > tracked as follow-up to #4224 (and would also need the dry-run audit `detail` to
 > carry plan content rather than just `ok`/error).
 
+### On-demand MetaOrchestrator shadow-training soak (#4310)
+
+The shadow-training MECHANISM has worked since #3593: with
+`NEXUS_META_SHADOW_TRAIN=1`, `executeGoal` (the `run{execute:true}` engine)
+feeds every live dispatch outcome into the MetaOrchestrator shadow selector
+and appends a sanitized record — bandit feature values + a success flag only,
+**never task text** — to `learning/meta-outcomes.jsonl`. But nothing ever
+TRIGGERED it: training only fires on a live `run` call, and no CI/cron/CLI
+ever made one, so the shadow-agreement evidence the #3552 shadow→route flip
+decision depends on could not accumulate. `.github/workflows/meta-shadow-soak.yml`
+and `scripts/meta-shadow-soak.ts` give it an organic feed, mirroring the #4224
+remediation-audit-soak precedent above.
+
+> **This is a FEEDER, not a router.** `NEXUS_META_SHADOW_TRAIN=1` is the only
+> lever this soak pulls. It never alters which strategy `run` actually
+> dispatches, and it never feeds the enforce/routing path — the #3552
+> shadow→route flip stays a separate, human-gated change. The workflow asserts
+> this invariant explicitly before running.
+
+**Goal sourcing (ratified for #4310): REAL backlog issues, not synthetic.**
+The script fetches open issues from the repo via `gh issue list`, formats
+each as `#<number>: <title>` plus its first body paragraph, and deterministically
+selects a bounded set (default 12, most-recent-first by issue number — a
+reproducible proxy for recency). Synthetic goals would exercise the router on
+a distribution that doesn't resemble what `run` actually sees in production,
+undermining the shadow-agreement evidence the flip decision depends on. The
+selection/formatting logic is pure and unit-tested
+(`scripts/meta-shadow-soak-core.ts`); the `gh` fetch and the live `executeGoal`
+dispatch are the thin, untested-by-unit I/O edge (`scripts/meta-shadow-soak.ts`),
+mirroring the curate-pr-review-harvest.ts / mine-pr-review-candidates-core.ts
+split (#3847).
+
+**1. `workflow_dispatch` only — deliberately NO `schedule:` trigger.** The #4224
+audit-mode cycle costs zero LLM spend without credentials (`createAutoAdapter`
+throws before any network call), but this soak dispatches REAL strategies
+(dev-pipeline / pipeline / research / consensus) through real model gateways
+when credentials are present, so a recurring cron would recur real API cost
+with no CI-cost mandate to justify it. An owner triggers it manually from the
+Actions tab as the evidence window needs topping up.
+
+**Secret-gated — skips cleanly, never fails, when no model-gateway credential
+is configured.** A `check-secrets` step inspects `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` (the same set
+`pr-review.yml` checks) and every downstream step is conditioned on at least
+one being present. Without one, the job reports "skipped" in the step summary
+and exits green — this workflow is safe to leave present even before model
+credentials are configured as repo secrets.
+
+**2. LOCAL on-demand run (no CI cost, uses your own credentials/telemetry):**
+
+```bash
+NEXUS_META_SHADOW_TRAIN=1 npx tsx scripts/meta-shadow-soak.ts --count 12 --repo nexus-substrate/nexus-agents
+```
+
+Requires `gh` authenticated against the target repo (`gh auth status`) and
+model-gateway credentials for whichever strategies the router selects. A goal
+that routes to an unwired strategy (`graph-workflow` / `spec` / `orchestrate` /
+`single-shot`) still accrues a **failure** shadow-training record — the
+dispatcher records an outcome even for a `no_executor` dispatch — so even
+those goals are not wasted soak volume. The script prints a summary: goals
+run, `meta-outcomes.jsonl` record count before/after, and file size.
+
+> **Stub vs. live:** goal selection/formatting (`meta-shadow-soak-core.ts`) is
+> pure and fully unit-tested against fixtures — no network, no live models.
+> The `gh` fetch and the `executeGoal` dispatch are real I/O with no stub or
+> mock path; there is no `simulateVotes`/synthetic-outcome mode by design (a
+> mocked evidence trail would be worse than no evidence trail for a decision
+> #3552 depends on).
+
 ### Removed in 2.82.0 (#2977)
 
 These 8 env vars were declared but never read by any production code (silent
