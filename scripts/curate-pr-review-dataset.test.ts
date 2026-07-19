@@ -65,10 +65,10 @@ describe('committed dataset', () => {
     expect(dataset.rubricVersion).toBe(docVersion);
   });
 
-  it('reflects the post-#3847/#3849 class balance after the 2026-07-19 promotion (10 buggy / 28 clean / 5 borderline, n=43)', () => {
+  it('reflects the post-#3847/#3849 round-2 class balance after the 2026-07-19 promotion (10 buggy / 35 clean / 9 borderline, n=54)', () => {
     const stats = computeStats(loadDataset());
-    expect(stats.n).toBe(43);
-    expect(stats.byClass).toEqual({ buggy: 10, clean: 28, borderline: 5 });
+    expect(stats.n).toBe(54);
+    expect(stats.byClass).toEqual({ buggy: 10, clean: 35, borderline: 9 });
   });
 
   it('keeps the rubric doc version at the major it was re-adjudicated under', () => {
