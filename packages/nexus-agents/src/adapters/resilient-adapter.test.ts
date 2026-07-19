@@ -36,6 +36,7 @@ vi.mock('../agents/collaboration/event-bus.js', () => ({
 }));
 
 vi.mock('./rate-limit-detector.js', () => ({
+  isRateLimitText: vi.fn((text: string) => text.toLowerCase().includes('rate limit')),
   isRateLimitLikeError: vi.fn().mockReturnValue(false),
   toRateLimitError: vi.fn().mockReturnValue({ message: 'rate limit', retryAfterMs: undefined }),
   recordRateLimitEvent: vi.fn(),
