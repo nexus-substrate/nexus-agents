@@ -111,17 +111,24 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
  * Resolve the committable artifact path (mirrors #3927). Precedence:
  *  1. {@link PR_REVIEW_RECORDS_PATH_ENV} when set non-empty — a RELATIVE value is
  *     resolved against `process.cwd()` to an absolute path; an already-absolute
- *     value is returned unchanged.
+ *     value is returned unchanged. Operator-trust (set at process start):
+ *     intentionally UNRESTRICTED — no repo-root check.
  *  2. otherwise, when `repoPathOverride` is a non-whitespace string (#4278 —
- *     threaded from the pr_review tool's optional `repoPath` input), it is
- *     resolved to an absolute path and joined with {@link PR_REVIEW_RECORDS_REL_PATH}.
- *     The escape hatch for MCP server processes whose `process.cwd()` has no
- *     `.git` ancestor (so {@link findRepoRoot} would otherwise return `null` and
- *     the record would silently fail to persist).
+ *     threaded from the pr_review tool's optional `repoPath` input) AND it
+ *     resolves to a REAL repo root ({@link findRepoRoot} finds a `.git`
+ *     ancestor from it), `<that root>/`{@link PR_REVIEW_RECORDS_REL_PATH} is
+ *     used. Call-time input is NOT operator-trust — any MCP client can supply
+ *     `repoPath`, so (unlike the env var) it is constrained to a real repo
+ *     root rather than accepted as an arbitrary writable directory (security
+ *     review on #4312: an unconstrained override would let a caller redirect
+ *     the producer's `mkdirSync`+`appendFileSync` to any path the process can
+ *     write, e.g. `repoPath: '/var/www/html'`). An override that is NOT a real
+ *     repo root is NOT used — falls through to tier 3, never to an arbitrary
+ *     directory.
  *  3. otherwise `<repo-root>/governance/pr-review-records.jsonl` resolved from
  *     {@link findRepoRoot}(`process.cwd()`).
  * Returns `undefined` when none of the above yields a path. A whitespace-only
- * env value or override is treated as unset (falls through to the next tier).
+ * env value is treated as unset (falls through to the next tier).
  */
 export function resolvePrReviewRecordsPath(repoPathOverride?: string): string | undefined {
   const envPath = process.env[PR_REVIEW_RECORDS_PATH_ENV];
@@ -129,8 +136,10 @@ export function resolvePrReviewRecordsPath(repoPathOverride?: string): string | 
     return isAbsolute(envPath) ? envPath : resolve(envPath);
   }
   if (repoPathOverride !== undefined && repoPathOverride.trim() !== '') {
-    const repoRoot = isAbsolute(repoPathOverride) ? repoPathOverride : resolve(repoPathOverride);
-    return join(repoRoot, PR_REVIEW_RECORDS_REL_PATH);
+    const overrideRoot = findRepoRoot(repoPathOverride);
+    if (overrideRoot !== null) return join(overrideRoot, PR_REVIEW_RECORDS_REL_PATH);
+    // Not a real repo root — do NOT write to an arbitrary directory; fall
+    // through to cwd detection below.
   }
   const root = findRepoRoot(process.cwd());
   if (root === null) return undefined;
@@ -208,8 +217,10 @@ export interface PersistPrReviewRecordOptions extends Omit<
   /**
    * Repo-root override (#4278) forwarded to {@link resolvePrReviewRecordsPath}
    * when `filePath` is not given. Sits below {@link PR_REVIEW_RECORDS_PATH_ENV}
-   * but above `findRepoRoot(process.cwd())` in the resolution precedence — see
-   * that function's doc comment.
+   * but above `findRepoRoot(process.cwd())` in the resolution precedence.
+   * Call-time input (not operator-trust): only honored when it resolves to a
+   * REAL repo root (a `.git` ancestor); otherwise ignored and the resolver
+   * falls through to cwd detection — see that function's doc comment.
    */
   readonly repoPathOverride?: string | undefined;
   readonly logger?: ILogger | undefined;

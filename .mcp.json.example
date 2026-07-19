@@ -1,6 +1,6 @@
 {
   "_comment": "Portable MCP config for distributing nexus-agents as a Claude Code plugin (#1826). Copy to .mcp.json (gitignored) or ship this file at plugin-root as .mcp.json in the marketplace repo.",
-  "_comment_env": "env is optional. NEXUS_PR_REVIEW_RECORDS_PATH (#4278): the MCP server's cwd often has no `.git` ancestor, so pr_review's governance-record write silently fails to resolve a path — set this to force an absolute records-file path (e.g. `/abs/path/to/repo/governance/pr-review-records.jsonl`). Per-call `pr_review({ repoPath: '/abs/path/to/repo' })` is the alternative escape hatch: it overrides cwd auto-detection but NOT this env var. See docs/getting-started/CONFIGURATION.md.",
+  "_comment_env": "env is optional. NEXUS_PR_REVIEW_RECORDS_PATH (#4278): the MCP server's cwd often has no `.git` ancestor, so pr_review's governance-record write silently fails to resolve a path — set this to force an absolute records-file path (e.g. `/abs/path/to/repo/governance/pr-review-records.jsonl`); unrestricted (operator-trust). Per-call `pr_review({ repoPath: '/abs/path/to/repo' })` is the alternative escape hatch: it overrides cwd auto-detection but NOT this env var, and (#4312, call-time input is not operator-trust) is only honored when it resolves to a real repo root (a `.git` ancestor) — otherwise it is ignored. See docs/getting-started/CONFIGURATION.md.",
   "mcpServers": {
     "nexus-agents": {
       "command": "npx",

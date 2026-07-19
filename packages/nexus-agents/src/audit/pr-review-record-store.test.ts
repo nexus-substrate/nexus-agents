@@ -7,7 +7,7 @@
  * builder/reader/path resolution are exercised by `pr-review-record.test.ts`.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -144,6 +144,13 @@ describe('resolvePrReviewRecordsPath (#4278)', () => {
   // resolve. `repoPathOverride` (threaded from the pr_review `repoPath`
   // input) lets the caller say where the repo is, without disturbing the
   // existing env-var / cwd-detection precedence.
+  //
+  // #4312 security review (BLOCKING, addressed): call-time `repoPathOverride`
+  // is NOT operator-trust — any MCP client can supply it — so it is only
+  // honored when it resolves to a REAL repo root (a `.git` ancestor).
+  // Otherwise it is ignored (falls through to cwd detection) rather than
+  // letting a caller redirect the producer's mkdirSync+appendFileSync to an
+  // arbitrary writable directory.
   let originalCwd: string;
   let originalEnv: string | undefined;
   let noGitDir: string;
@@ -163,9 +170,11 @@ describe('resolvePrReviewRecordsPath (#4278)', () => {
     else process.env[PR_REVIEW_RECORDS_PATH_ENV] = originalEnv;
   });
 
-  it('(a) resolves <repoPathOverride>/governance/pr-review-records.jsonl when cwd has no .git ancestor', () => {
+  it('(a) resolves <repoPathOverride>/governance/pr-review-records.jsonl when the override IS a real repo root', () => {
     const overrideRoot = mkdtempSync(join(tmpdir(), 'pr-review-override-'));
     try {
+      // Give the override a `.git` marker so findRepoRoot(overrideRoot) succeeds.
+      mkdirSync(join(overrideRoot, '.git'));
       process.chdir(noGitDir);
       expect(findRepoRoot(process.cwd())).toBeNull();
 
@@ -173,6 +182,24 @@ describe('resolvePrReviewRecordsPath (#4278)', () => {
       expect(resolved).toBe(join(overrideRoot, PR_REVIEW_RECORDS_REL_PATH));
     } finally {
       rmSync(overrideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('(a2) #4312: an override with NO .git ancestor is NOT used — falls through to cwd detection', () => {
+    // Stay in the real repo cwd (has a resolvable repo root) so the fallthrough
+    // path is observable as a concrete value, not just `undefined`.
+    const cwdRoot = findRepoRoot(originalCwd);
+    expect(cwdRoot).not.toBeNull();
+
+    const notARepo = mkdtempSync(join(tmpdir(), 'pr-review-not-a-repo-'));
+    try {
+      const resolved = resolvePrReviewRecordsPath(notARepo);
+      // Must NOT redirect to the arbitrary directory...
+      expect(resolved).not.toBe(join(notARepo, PR_REVIEW_RECORDS_REL_PATH));
+      // ...it falls through to the cwd-based path instead.
+      expect(resolved).toBe(join(cwdRoot as string, PR_REVIEW_RECORDS_REL_PATH));
+    } finally {
+      rmSync(notARepo, { recursive: true, force: true });
     }
   });
 

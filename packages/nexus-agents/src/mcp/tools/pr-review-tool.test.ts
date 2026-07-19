@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -831,6 +831,11 @@ describe('pr_review repoPath input (#4278)', () => {
   // exercises the FULL path: schema -> persistReviewRecord -> persistPrReviewRecord
   // -> resolvePrReviewRecordsPath, from a cwd with no `.git` ancestor and the
   // env override unset.
+  //
+  // #4312 security review (BLOCKING, addressed): `repoPath` is call-time input
+  // from any MCP client, not operator-trust — it is only honored when it
+  // resolves to a REAL repo root (`.git` ancestor), never as an arbitrary
+  // writable directory.
   describe('end-to-end persistence with no .git ancestor in cwd', () => {
     let originalCwd: string;
     let originalEnv: string | undefined;
@@ -843,6 +848,8 @@ describe('pr_review repoPath input (#4278)', () => {
       Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
       noGitDir = mkdtempSync(join(tmpdir(), 'pr-review-repopath-no-git-'));
       repoRoot = mkdtempSync(join(tmpdir(), 'pr-review-repopath-root-'));
+      // Give repoRoot a `.git` marker so it IS a real repo root (#4312).
+      mkdirSync(join(repoRoot, '.git'));
       process.chdir(noGitDir);
     });
 
@@ -855,7 +862,7 @@ describe('pr_review repoPath input (#4278)', () => {
       rmSync(repoRoot, { recursive: true, force: true });
     });
 
-    it('persists to <repoPath>/governance/pr-review-records.jsonl when cwd has no .git ancestor', () => {
+    it('persists to <repoPath>/governance/pr-review-records.jsonl when cwd has no .git ancestor and repoPath IS a real repo root', () => {
       const parsed = PrReviewInputSchema.parse({
         prTitle: 'Add repoPath escape hatch',
         prDiff: 'diff --git a/x b/x\n+line\n',
@@ -901,6 +908,39 @@ describe('pr_review repoPath input (#4278)', () => {
       expect(outcome).toEqual(
         expect.objectContaining({ persisted: false, reason: 'write-failed' })
       );
+    });
+
+    it('#4312: a repoPath that is NOT a real repo root is ignored — never writes into it', () => {
+      const notARepo = mkdtempSync(join(tmpdir(), 'pr-review-not-a-repo-'));
+      try {
+        const parsed = PrReviewInputSchema.parse({
+          prTitle: 'Malicious repoPath',
+          prDiff: 'diff --git a/x b/x\n+line\n',
+          simulate: false,
+          prNumber: 4280,
+          baseSha: BASE_SHA,
+          repoPath: notARepo,
+        });
+
+        const outcome = persistReviewRecord({
+          input: parsed,
+          aggregate: APPROVE_AGG,
+          counts: COUNTS,
+          reviewCount: 5,
+          logger,
+        });
+
+        // cwd (noGitDir) also has no `.git` ancestor, so the resolver has
+        // nothing left to fall through to — the write must be skipped, NOT
+        // redirected into the arbitrary `notARepo` directory.
+        expect(outcome).toEqual(
+          expect.objectContaining({ persisted: false, reason: 'write-failed' })
+        );
+        const wouldBeArbitraryPath = join(notARepo, 'governance', 'pr-review-records.jsonl');
+        expect(readPrReviewRecords(wouldBeArbitraryPath).records).toHaveLength(0);
+      } finally {
+        rmSync(notARepo, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -147,7 +147,7 @@ export const PrReviewInputSchema = z.object({
     .max(1024)
     .optional()
     .describe(
-      'Absolute path to the repo root for persisting the governance pr-review record (overrides cwd auto-detection; env NEXUS_PR_REVIEW_RECORDS_PATH still takes precedence).'
+      'Repo root path for persisting the governance pr-review record (overrides cwd auto-detection). Must contain a .git ancestor — relative paths are resolved against cwd; ignored (falls back to cwd auto-detection) if it is not a real repo root. Env NEXUS_PR_REVIEW_RECORDS_PATH still takes precedence and is unrestricted.'
     ),
   simulate: z
     .boolean()
