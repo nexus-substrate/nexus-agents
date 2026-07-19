@@ -24,6 +24,7 @@ export const RATE_LIMIT_PATTERNS = [
   'too many requests',
   '429',
   'quota exceeded',
+  'key limit',
   'throttl',
   'usage limit',
   'requests per minute',

@@ -11,6 +11,8 @@ import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './typ
 import {
   CliCircuitBreakerIntegration,
   createCliCircuitBreakerIntegration,
+  getCliCircuitBreakerSnapshot,
+  getDefaultCliCircuitBreakerRegistry,
   type CliCircuitBreakerConfig,
 } from './cli-circuit-breaker.js';
 import { CircuitError, CircuitErrorCode, type CircuitStateChangeEvent } from './circuit-breaker.js';
@@ -74,6 +76,13 @@ function createTask(content = 'test task') {
   } as unknown as CliTask;
 }
 
+function createAdapterReturningError(name: CliName, error: CliError): ICliAdapter {
+  return {
+    name,
+    execute: vi.fn<() => Promise<Result<CliResponse, CliError>>>().mockResolvedValue(err(error)),
+  } as unknown as ICliAdapter;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -84,6 +93,7 @@ describe('CliCircuitBreakerIntegration', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    getDefaultCliCircuitBreakerRegistry().resetAll();
     adapters = [
       createMockAdapter('claude', 'success'),
       createMockAdapter('gemini', 'success'),
@@ -93,6 +103,7 @@ describe('CliCircuitBreakerIntegration', () => {
   });
 
   afterEach(() => {
+    getDefaultCliCircuitBreakerRegistry().resetAll();
     vi.useRealTimers();
   });
 
@@ -157,6 +168,42 @@ describe('CliCircuitBreakerIntegration', () => {
       const custom = new CliCircuitBreakerIntegration(adapters, config);
       const result2 = await custom.execute(failingAdapter, createTask());
       expect(result2.ok).toBe(false);
+    });
+
+    it.each([
+      ['OpenRouter quota exhaustion', 'OpenRouter error: Key limit exceeded'],
+      ['HTTP 5xx with no response body', 'HTTP 503 with no response body'],
+    ])('records %s as a breaker failure', async (_label, message) => {
+      const quotaAdapter = createAdapterReturningError('opencode', {
+        code: 'EXECUTION_ERROR',
+        message,
+        cli: 'opencode',
+        retryable: true,
+      });
+      const custom = new CliCircuitBreakerIntegration([quotaAdapter], {
+        perCliConfig: { opencode: { failureThreshold: 1 } },
+      });
+
+      const result = await custom.execute(quotaAdapter, createTask());
+
+      expect(result.ok).toBe(false);
+      expect(custom.getCircuitSnapshots().get('opencode')?.state).toBe('open');
+    });
+
+    it('exposes default integration failures through the shared breaker snapshot', async () => {
+      const quotaAdapter = createAdapterReturningError('opencode', {
+        code: 'EXECUTION_ERROR',
+        message: 'OpenRouter error: Key limit exceeded',
+        cli: 'opencode',
+        retryable: true,
+      });
+      const defaultIntegration = new CliCircuitBreakerIntegration([quotaAdapter]);
+
+      for (let i = 0; i < 5; i++) {
+        await defaultIntegration.execute(quotaAdapter, createTask());
+      }
+
+      expect(getCliCircuitBreakerSnapshot('opencode')?.state).toBe('open');
     });
   });
 

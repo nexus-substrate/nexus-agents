@@ -7,6 +7,7 @@
  */
 
 import { NexusError, ErrorCode } from '../core/errors.js';
+import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import type { CliName } from './types.js';
 
 // ============================================================================
@@ -216,7 +217,6 @@ export const DEFAULT_CIRCUIT_BREAKER_CONFIG: CircuitBreakerConfig = {
  */
 const TIMEOUT_PATTERNS = ['timeout', 'timed out'];
 const AUTH_PATTERNS = ['auth', 'unauthorized', 'forbidden', 'oauth'];
-const RATE_LIMIT_PATTERNS = ['rate limit', 'too many requests', '429'];
 const CONNECTION_PATTERNS = [
   'connection',
   'econnrefused',
@@ -248,7 +248,7 @@ export function categorizeError(error: unknown): FailureCategory {
 
   if (matchesPatterns(combined, TIMEOUT_PATTERNS)) return 'timeout';
   if (matchesPatterns(combined, AUTH_PATTERNS)) return 'authentication';
-  if (matchesPatterns(combined, RATE_LIMIT_PATTERNS)) return 'rate_limit';
+  if (isRateLimitText(combined)) return 'rate_limit';
   if (matchesPatterns(combined, CONNECTION_PATTERNS)) return 'connection';
   if (matchesPatterns(combined, CRASH_PATTERNS)) return 'crash';
 
