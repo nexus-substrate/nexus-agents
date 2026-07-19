@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.173.6
+
+### Patch Changes
+
+- [#4325](https://github.com/nexus-substrate/nexus-agents/pull/4325) [`7e733c2`](https://github.com/nexus-substrate/nexus-agents/commit/7e733c22a5612fc6caaa6ea67bda7186222817a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - exclude circuit-broken CLIs from voter panel selection so quota/rate-dead CLIs are skipped and do not waste retries
+
 ## 2.173.5
 
 ### Patch Changes
