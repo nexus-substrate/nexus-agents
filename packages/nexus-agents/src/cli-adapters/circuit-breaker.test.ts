@@ -779,6 +779,7 @@ describe('categorizeError', () => {
     expect(categorizeError(new Error('Rate limit exceeded'))).toBe('rate_limit');
     expect(categorizeError(new Error('Too many requests'))).toBe('rate_limit');
     expect(categorizeError(new Error('HTTP 429 error'))).toBe('rate_limit');
+    expect(categorizeError(new Error('Key limit exceeded'))).toBe('rate_limit');
   });
 
   it('should categorize connection errors', () => {

@@ -80,6 +80,10 @@ describe('isRateLimitLikeError', () => {
     expect(isRateLimitLikeError(new Error('API quota exceeded'))).toBe(true);
   });
 
+  it('detects "key limit" provider quota errors', () => {
+    expect(isRateLimitLikeError(new Error('Key limit exceeded'))).toBe(true);
+  });
+
   it('detects "throttle"', () => {
     expect(isRateLimitLikeError(new Error('Request throttled'))).toBe(true);
   });

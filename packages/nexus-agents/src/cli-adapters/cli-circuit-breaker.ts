@@ -87,6 +87,21 @@ const DEFAULT_CONFIG: Required<CliCircuitBreakerConfig> = {
   enableFallback: true,
   maxFallbackAttempts: 2,
 };
+const defaultCliCircuitBreakerRegistry = new CircuitBreakerRegistry();
+
+/** Returns the shared CLI circuit-breaker registry used by default integrations. */
+export function getDefaultCliCircuitBreakerRegistry(): CircuitBreakerRegistry {
+  return defaultCliCircuitBreakerRegistry;
+}
+
+/**
+ * Reads the current snapshot for a CLI without creating a new breaker.
+ *
+ * `undefined` means no circuit state is known yet, so callers should fail open.
+ */
+export function getCliCircuitBreakerSnapshot(cliName: CliName): CircuitBreakerSnapshot | undefined {
+  return defaultCliCircuitBreakerRegistry.getAllSnapshots().get(cliName);
+}
 
 /**
  * Integrates circuit breaker pattern with CLI adapters.
@@ -105,7 +120,8 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.logger = logger ?? createLogger({ component: 'cli-circuit-breaker-integration' });
-    this.registry = new CircuitBreakerRegistry();
+    this.registry =
+      config === undefined ? defaultCliCircuitBreakerRegistry : new CircuitBreakerRegistry();
     for (const adapter of adapters) {
       this.adapters.set(adapter.name, adapter);
       this.registry.getBreaker(adapter.name, this.config.perCliConfig[adapter.name]);
@@ -181,7 +197,15 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
   }
 
   getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
-    return this.registry.getAllSnapshots();
+    const allSnapshots = this.registry.getAllSnapshots();
+    const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
+    for (const name of this.adapters.keys()) {
+      const snapshot = allSnapshots.get(name);
+      if (snapshot !== undefined) {
+        snapshots.set(name, snapshot);
+      }
+    }
+    return snapshots;
   }
 
   resetCircuit(cliName: CliName): void {

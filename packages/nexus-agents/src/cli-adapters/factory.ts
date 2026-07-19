@@ -10,7 +10,7 @@
  */
 
 import type { ICliAdapter, CliName, RoutingArmId, CliTransport } from './types.js';
-import { getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import { collectApiRoutingArms } from '../adapters/auto-adapter.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
@@ -21,6 +21,9 @@ import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
+import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
+
+const factoryLogger = createLogger({ component: 'cli-adapter-factory' });
 
 /**
  * Configuration for creating a CLI adapter.
@@ -226,5 +229,23 @@ export async function getAvailableClis(cache?: ICliDetectionCache): Promise<CliN
       (r): r is PromiseFulfilledResult<{ cli: CliName; available: boolean }> =>
         r.status === 'fulfilled' && r.value.available
     )
+    .filter((r) => isCliServingForVoters(r.value.cli))
     .map((r) => r.value.cli);
+}
+
+function isCliServingForVoters(cli: CliName): boolean {
+  try {
+    const snapshot = getCliCircuitBreakerSnapshot(cli);
+    if (snapshot?.state !== 'open') {
+      return true;
+    }
+    factoryLogger.warn('CLI excluded from voter availability because circuit is open', {
+      cli,
+      circuitState: snapshot.state,
+      failureCount: snapshot.failureCount,
+    });
+    return false;
+  } catch {
+    return true;
+  }
 }
