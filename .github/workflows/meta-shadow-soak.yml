@@ -1,0 +1,190 @@
+name: Meta Shadow-Training Soak
+
+# On-demand MetaOrchestrator shadow-training trigger (#4310, feeder for #3552).
+#
+# Why this exists: the shadow-training MECHANISM already works —
+# `NEXUS_META_SHADOW_TRAIN=1` makes `executeGoal` (run-tool.ts) feed every live
+# `run{execute:true}` dispatch outcome into the MetaOrchestrator shadow
+# selector and persist a sanitized record (feature values + success only,
+# never task text, #3593) to `<NEXUS_DATA_DIR>/learning/meta-outcomes.jsonl`.
+# But nothing ever TRIGGERED it: training only fires on a live `run` call, and
+# no CI/cron/CLI ever made one, so the shadow-agreement evidence #3552's
+# shadow→route flip decision depends on could not accumulate. This workflow
+# is that trigger — it drives `scripts/meta-shadow-soak.ts` against a bounded
+# set of REAL backlog issues (gh-sourced, not synthetic; ratified for #4310)
+# through the actual `run` router + dispatcher.
+#
+# Mirrors the #4224 remediation-audit-soak precedent (concurrency-serialized,
+# actions/cache rolling-key accumulation, NEXUS_DATA_DIR under the workspace,
+# an explicit mode-assert safety step) with ONE deliberate difference:
+# NO `schedule:` trigger. Unlike #4224's audit-mode cycle (zero LLM cost
+# without credentials — `createAutoAdapter` throws before any network call),
+# this soak DISPATCHES REAL strategies (dev-pipeline / pipeline / research /
+# consensus) through real model gateways when credentials are present, so a
+# recurring cron would recur real API cost with no CI-cost mandate to justify
+# it. `workflow_dispatch` only: an owner runs it on demand as the evidence
+# window needs topping up (see the LOCAL run command in
+# docs/getting-started/CONFIGURATION.md for the credential-rich alternative).
+#
+# SAFETY (feeder only, never wired to routing — see the "Assert shadow/feeder-
+# only mode" step below): this workflow ONLY ever sets
+# NEXUS_META_SHADOW_TRAIN=1. That env var feeds the SHADOW selector and the
+# offline eval surface (meta-outcomes.jsonl) — it never alters which strategy
+# `run` actually dispatches. The #3552 shadow→route flip stays a separate,
+# human-gated change; nothing here can enable it.
+#
+# SECRET-GATED: without at least one model-gateway API key configured as a
+# repo secret, the soak step is a structural no-op — `check-secrets` sets
+# `has_key=false` and every downstream step is skipped (job stays GREEN, not
+# failed), so this workflow is safe to leave present even on a fork or a repo
+# that hasn't configured model credentials.
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'Number of real backlog goals to drive through executeGoal'
+        required: false
+        default: '12'
+        type: string
+      repo:
+        description: 'owner/repo to source backlog issues from'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+# Serialize runs so an overlapping manual trigger (or a slow prior run) can
+# never interleave writes to — or race the cache save of — the same
+# meta-outcomes.jsonl. cancel-in-progress: false lets a running soak FINISH
+# its append + cache-save rather than being killed mid-write.
+concurrency:
+  group: meta-shadow-soak
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    name: Shadow-training soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The ONLY lever this workflow pulls: feeds the SHADOW selector, never
+      # routing. See the safety note above and the assert step below.
+      NEXUS_META_SHADOW_TRAIN: '1'
+      # Persist the shadow-training evidence under a workspace path the cache covers.
+      NEXUS_DATA_DIR: ${{ github.workspace }}/.nexus-soak-data
+      # This is a frozen CI checkout — never touch the tree or route state per-repo.
+      NEXUS_GITIGNORE_AUTO: '0'
+      NEXUS_REPO_PREFERRED: '0'
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Assert shadow/feeder-only mode (never wired to routing)
+        run: |
+          if [ "${NEXUS_META_SHADOW_TRAIN}" != "1" ]; then
+            echo "::error::NEXUS_META_SHADOW_TRAIN must be '1' in this workflow (got '${NEXUS_META_SHADOW_TRAIN}')"
+            exit 1
+          fi
+          echo "Shadow-training mode confirmed: feeds learning/meta-outcomes.jsonl only."
+          echo "This workflow does not set, and #4310 does not introduce, any env var or"
+          echo "flag that routes a live decision through the learned selector — the #3552"
+          echo "shadow-to-route flip remains a separate, human-gated change."
+
+      - name: Check for model-gateway secrets
+        id: check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+            echo "At least one model-gateway secret is configured — soak will run."
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "No model-gateway secret configured (ANTHROPIC_API_KEY / OPENAI_API_KEY /"
+            echo "GOOGLE_AI_API_KEY / OPENROUTER_API_KEY). This is expected for an on-demand,"
+            echo "no-CI-cost-mandate soak — skipping cleanly rather than failing. Add one of"
+            echo "those repo secrets to enable this workflow, or run the soak LOCALLY (see"
+            echo "docs/getting-started/CONFIGURATION.md)."
+          fi
+
+      - if: steps.check.outputs.has_key == 'true'
+        uses: ./.github/actions/setup-node
+
+      # `executeGoal`'s dispatch path can reach the memory-registry surface
+      # (nexus-memory), a separate workspace package whose dist is not built by
+      # a bare `pnpm install`. Mirrors the "Script Tests" CI job.
+      - name: Build nexus-memory (workspace dep)
+        if: steps.check.outputs.has_key == 'true'
+        run: pnpm --filter nexus-memory build
+
+      # Restore the prior soak so this run APPENDS to it — the shadow-training
+      # sink appends-on-write and the selector hydrates-on-construct, so a
+      # restored meta-outcomes.jsonl grows rather than being overwritten.
+      #
+      # Rolling key + restore-keys prefix (NOT a fixed key), mirroring #4224:
+      #   * `key` embeds `github.run_id` so the post-job save always writes a
+      #     NEW cache entry (a fixed key would hit on restore and GitHub would
+      #     then SKIP the save — the file would never grow).
+      #   * `restore-keys` is a bare prefix, so each run restores the MOST
+      #     RECENT prior cache under it.
+      - name: Restore + persist accumulating soak
+        if: steps.check.outputs.has_key == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: ${{ github.workspace }}/.nexus-soak-data/learning
+          key: meta-shadow-soak-${{ github.run_id }}
+          restore-keys: |
+            meta-shadow-soak-
+
+      - name: Record pre-run shadow-record volume
+        if: steps.check.outputs.has_key == 'true'
+        id: pre
+        run: |
+          FILE="${NEXUS_DATA_DIR}/learning/meta-outcomes.jsonl"
+          before=0
+          [ -f "$FILE" ] && before=$(wc -l < "$FILE" | tr -d ' ')
+          echo "before=${before}" >> "$GITHUB_OUTPUT"
+          echo "meta-outcomes.jsonl records before this run: ${before}"
+
+      - name: Run shadow-training soak
+        if: steps.check.outputs.has_key == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "${NEXUS_DATA_DIR}/learning"
+          npx tsx scripts/meta-shadow-soak.ts \
+            --count "${{ inputs.count || '12' }}" \
+            --repo "${{ inputs.repo != '' && inputs.repo || github.repository }}"
+
+      - name: Report accrual to job summary
+        if: always()
+        run: |
+          {
+            echo "### Meta shadow-training soak (#4310)"
+            echo ""
+            if [ "${{ steps.check.outputs.has_key }}" != "true" ]; then
+              echo "- Skipped: no model-gateway secret configured (expected for this"
+              echo "  on-demand, no-CI-cost-mandate workflow). See"
+              echo "  docs/getting-started/CONFIGURATION.md for the local run command."
+              exit 0
+            fi
+            FILE="${NEXUS_DATA_DIR}/learning/meta-outcomes.jsonl"
+            after=0
+            [ -f "$FILE" ] && after=$(wc -l < "$FILE" | tr -d ' ')
+            before="${{ steps.pre.outputs.before }}"
+            echo "- Mode: shadow-training only (\`NEXUS_META_SHADOW_TRAIN=1\`); never routes"
+            echo "- meta-outcomes.jsonl records before: **${before:-0}**"
+            echo "- meta-outcomes.jsonl records after:  **${after}**"
+            echo "- Accrued this run:                   **$(( after - ${before:-0} ))**"
+          } >> "$GITHUB_STEP_SUMMARY"
