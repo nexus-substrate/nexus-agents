@@ -2,7 +2,7 @@
   "rubricVersion": "1.0.0",
   "curatedAt": "2026-07-19",
   "reAdjudicatedAt": "2026-06-17",
-  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3. | #3847 strengthened promotion (2026-06-17): added 9 cases via OUTCOME-MINING of the org's own merged nexus-substrate/nexus-agents PRs. 3 BUGGY (3915, 3893, 3873) — each label derived from a confirmed corrective follow-up PR, customDiff carrying the real original code hunk the fix later changed (provenance.source 'outcome-mined' vs synthetic). 6 CLEAN sourced from OLDER long-tenure PRs (2286, 2288, 2289, 2298, 2306, 2251), all merged 2026-04-25..2026-04-30 — each labeled clean only because NO corrective/revert PR has touched its changed source file in the >6-week window since merge. This long-tenure window (genuine clean signal: a defect would have surfaced a corrective PR by now) deliberately REPLACES the rejected ~1-week no-corrective-PR window from the superseded #3936 attempt, whose short window carried too high a false-clean risk. Diverse subsystems: orchestration ledger, security access-policy, mcp audit-chain, mcp supply-chain panel, cli portable-init, pr_review aggregation. All 10 prior v5 cases preserved unchanged. n: 10 -> 19. | #3847/#3849 corpus adjudication promotion (2026-07-19): added 24 human-ratified outcome-mined PR-review cases from the Codex adjudication proposals. 20 CLEAN (no defensible medium+ objection under rubric v1.0.0) and 4 BORDERLINE (#3303, #3302, #3277, #3113) with context-dependent concerns recorded in borderlineConcerns. PR #3308 was deliberately excluded from promotion because its BoundedLRUCache issue is tracked separately as bug #4319. All prior 19 entries preserved. n: 19 -> 43. | #3849 corpus adjudication round 2 (2026-07-19): added 11 human-adjudicated outcome-mined PR-review candidates from the weak-labeled round-2 candidate set. 7 CLEAN (#1873, #1872, #1870, #1869, #1832, #1823, #1819) and 4 BORDERLINE (#1887, #1867, #1859, #1818) were promoted under rubric v1.0.0. PR #1824 was excluded as BUGGY because maxParallelTracks: 0 in the new research pipeline can hang investigation wave execution. All prior 43 entries preserved. n: 43 -> 54.",
+  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3. | #3847 strengthened promotion (2026-06-17): added 9 cases via OUTCOME-MINING of the org's own merged nexus-substrate/nexus-agents PRs. 3 BUGGY (3915, 3893, 3873) — each label derived from a confirmed corrective follow-up PR, customDiff carrying the real original code hunk the fix later changed (provenance.source 'outcome-mined' vs synthetic). 6 CLEAN sourced from OLDER long-tenure PRs (2286, 2288, 2289, 2298, 2306, 2251), all merged 2026-04-25..2026-04-30 — each labeled clean only because NO corrective/revert PR has touched its changed source file in the >6-week window since merge. This long-tenure window (genuine clean signal: a defect would have surfaced a corrective PR by now) deliberately REPLACES the rejected ~1-week no-corrective-PR window from the superseded #3936 attempt, whose short window carried too high a false-clean risk. Diverse subsystems: orchestration ledger, security access-policy, mcp audit-chain, mcp supply-chain panel, cli portable-init, pr_review aggregation. All 10 prior v5 cases preserved unchanged. n: 10 -> 19. | #3847/#3849 corpus adjudication promotion (2026-07-19): added 24 human-ratified outcome-mined PR-review cases from the Codex adjudication proposals. 20 CLEAN (no defensible medium+ objection under rubric v1.0.0) and 4 BORDERLINE (#3303, #3302, #3277, #3113) with context-dependent concerns recorded in borderlineConcerns. PR #3308 was deliberately excluded from promotion because its BoundedLRUCache issue is tracked separately as bug #4319. All prior 19 entries preserved. n: 19 -> 43. | #3849 corpus adjudication round 2 (2026-07-19): added 11 human-adjudicated outcome-mined PR-review candidates from the weak-labeled round-2 candidate set. 7 CLEAN (#1873, #1872, #1870, #1869, #1832, #1823, #1819) and 4 BORDERLINE (#1887, #1867, #1859, #1818) were promoted under rubric v1.0.0. PR #1824 was excluded as BUGGY because maxParallelTracks: 0 in the new research pipeline can hang investigation wave execution. All prior 43 entries preserved. n: 43 -> 54. | #3849/#3845 synthetic recall rebalance (2026-07-19): added 10 NEW synthetic BUGGY cases with one reachable medium+ defect each across command injection, path traversal, null dereference, off-by-one loop bound, resource leak, auth bypass, missing await, unbounded buffer growth, money precision, and missing input validation. All prior 54 entries preserved. n: 54 -> 64.",
   "rubricRef": "docs/research/pr-review-eval-labeling-rubric.md",
   "prs": [
     {
@@ -1261,6 +1261,286 @@
         "rationale": "Sibling-prefix fixes are correct for ordinary configured roots, but the root-directory edge case for resolvedRoot + sep is defensible and depends on accepting filesystem root as cwd or runsDir, so it is borderline rather than confirmed buggy."
       },
       "notes": "Human-ratified 2026-07-19 via Codex adjudication proposal. Source PR: https://github.com/nexus-substrate/nexus-agents/pull/1818; mergedAt: 2026-04-12T08:56:53Z. Candidate weakLabel: likely-clean. PR #1824 excluded from this promotion; listed as buggy for separate filing."
+    },
+    {
+      "number": "synthetic-command-injection-diagnostics",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(cli): add branch diagnostics command (synthetic buggy case)",
+      "customDescription": "feat(cli): add branch diagnostics command",
+      "customDiff": "diff --git a/packages/nexus-agents/src/cli/diagnostics.ts b/packages/nexus-agents/src/cli/diagnostics.ts\nindex 7a68fd12144..ed43012c992 100644\n--- a/packages/nexus-agents/src/cli/diagnostics.ts\n+++ b/packages/nexus-agents/src/cli/diagnostics.ts\n@@ -1,5 +1,7 @@\n import { promisify } from 'node:util';\n+import { exec } from 'node:child_process';\n \n import { createLogger } from '../core/logger.js';\n \n const logger = createLogger('diagnostics');\n+const execAsync = promisify(exec);\n+\n+export async function collectBranchDiagnostics(branchName: string): Promise<string> {\n+  logger.info('Collecting branch diagnostics', { branchName });\n+  const { stdout } = await execAsync(`git log --oneline ${branchName} --`);\n+  return stdout.trim();\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Command injection in branch diagnostics because untrusted branchName is interpolated into a shell command passed to child_process.exec",
+          "severity": "critical",
+          "location": "packages/nexus-agents/src/cli/diagnostics.ts:11",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Critical: collectBranchDiagnostics accepts a caller-provided branch name and passes it through child_process.exec, so a branchName such as \"main; touch /tmp/pwned\" executes arbitrary shell commands on a reachable CLI diagnostics path."
+      }
+    },
+    {
+      "number": "synthetic-path-traversal-artifact-read",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(mcp): expose run artifact reader (synthetic buggy case)",
+      "customDescription": "feat(mcp): expose run artifact reader",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/read-run-artifact.ts b/packages/nexus-agents/src/mcp/tools/read-run-artifact.ts\nindex 43f628c6abc..7d9bb3d61f1 100644\n--- a/packages/nexus-agents/src/mcp/tools/read-run-artifact.ts\n+++ b/packages/nexus-agents/src/mcp/tools/read-run-artifact.ts\n@@ -1,6 +1,8 @@\n import { readFile } from 'node:fs/promises';\n+import { resolve } from 'node:path';\n \n export interface ReadRunArtifactInput {\n   readonly runId: string;\n+  readonly relativePath: string;\n }\n+\n+export async function readRunArtifact(input: ReadRunArtifactInput, runsDir: string): Promise<string> {\n+  const artifactPath = resolve(runsDir, input.runId, input.relativePath);\n+  return readFile(artifactPath, 'utf8');\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Path traversal in run artifact reader because relativePath is resolved under runsDir without verifying the result stays inside the run directory",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/mcp/tools/read-run-artifact.ts:10",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: a caller can pass relativePath \"../../../../etc/passwd\" and read outside the intended run artifact directory because the resolved path is never checked against the allowed root before readFile."
+      }
+    },
+    {
+      "number": "synthetic-null-deref-panel-summary",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(pr-review): include first finding location in panel summaries (synthetic buggy case)",
+      "customDescription": "feat(pr-review): include first finding location in panel summaries",
+      "customDiff": "diff --git a/packages/nexus-agents/src/pr-review/panel-summary.ts b/packages/nexus-agents/src/pr-review/panel-summary.ts\nindex 1a261acba1f..59e12a8162b 100644\n--- a/packages/nexus-agents/src/pr-review/panel-summary.ts\n+++ b/packages/nexus-agents/src/pr-review/panel-summary.ts\n@@ -8,6 +8,17 @@ export interface ReviewFinding {\n   readonly severity: 'critical' | 'high' | 'medium' | 'low';\n   readonly message: string;\n+  readonly location?: {\n+    readonly file: string;\n+    readonly line: number;\n+  };\n }\n+\n+export function summarizeFirstFinding(finding: ReviewFinding | undefined): string {\n+  if (finding === undefined) return 'No findings';\n+  return `${finding.severity}: ${finding.location.file}:${finding.location.line} ${finding.message}`;\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Null/undefined dereference because ReviewFinding.location is optional but summarizeFirstFinding always reads location.file and location.line",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/pr-review/panel-summary.ts:18",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: the type explicitly permits findings without a location, and summarizeFirstFinding throws a TypeError for that reachable value instead of rendering a summary or fallback location."
+      }
+    },
+    {
+      "number": "synthetic-off-by-one-wave-planner",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(orchestration): chunk tasks into execution waves (synthetic buggy case)",
+      "customDescription": "feat(orchestration): chunk tasks into execution waves",
+      "customDiff": "diff --git a/packages/nexus-agents/src/orchestration/wave-planner.ts b/packages/nexus-agents/src/orchestration/wave-planner.ts\nindex c33afca1820..97e0732ab59 100644\n--- a/packages/nexus-agents/src/orchestration/wave-planner.ts\n+++ b/packages/nexus-agents/src/orchestration/wave-planner.ts\n@@ -12,6 +12,14 @@ export interface ExecutionWave<T> {\n   readonly tasks: readonly T[];\n }\n+\n+export function planExecutionWaves<T>(tasks: readonly T[], maxWaveSize: number): Array<ExecutionWave<T>> {\n+  const waves: Array<ExecutionWave<T>> = [];\n+  for (let start = 0; start <= tasks.length; start += maxWaveSize) {\n+    waves.push({ tasks: tasks.slice(start, start + maxWaveSize) });\n+  }\n+  return waves;\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Off-by-one loop bound creates an empty execution wave when tasks.length is an exact multiple of maxWaveSize",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/orchestration/wave-planner.ts:17",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: planExecutionWaves([a,b], 2) returns a second empty wave because the loop uses <= tasks.length; downstream wave executors that require at least one task will fail on a reachable exact-multiple input."
+      }
+    },
+    {
+      "number": "synthetic-resource-leak-temp-worktree",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(research): run experiments in a temporary worktree (synthetic buggy case)",
+      "customDescription": "feat(research): run experiments in a temporary worktree",
+      "customDiff": "diff --git a/packages/nexus-agents/src/research/temp-worktree.ts b/packages/nexus-agents/src/research/temp-worktree.ts\nindex 7048f4151ab..bf0d05b764c 100644\n--- a/packages/nexus-agents/src/research/temp-worktree.ts\n+++ b/packages/nexus-agents/src/research/temp-worktree.ts\n@@ -1,5 +1,13 @@\n import { mkdtemp } from 'node:fs/promises';\n import { tmpdir } from 'node:os';\n import { join } from 'node:path';\n+\n+export async function withTemporaryWorktree<T>(run: (dir: string) => Promise<T>): Promise<T> {\n+  const dir = await mkdtemp(join(tmpdir(), 'nexus-research-'));\n+  const result = await run(dir);\n+  return result;\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Resource leak because withTemporaryWorktree creates a temporary directory and never removes it in a finally block after run completes or throws",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/research/temp-worktree.ts:6",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: every successful or failed call leaves a nexus-research-* directory behind because the temporary worktree is not cleaned up in finally; repeated research runs grow disk usage indefinitely."
+      }
+    },
+    {
+      "number": "synthetic-auth-bypass-permission-operator",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "fix(mcp): centralize write permission checks (synthetic buggy case)",
+      "customDescription": "fix(mcp): centralize write permission checks",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/auth/permission-check.ts b/packages/nexus-agents/src/mcp/auth/permission-check.ts\nindex cb545f0258d..2b83f4ddf25 100644\n--- a/packages/nexus-agents/src/mcp/auth/permission-check.ts\n+++ b/packages/nexus-agents/src/mcp/auth/permission-check.ts\n@@ -7,6 +7,18 @@ export interface AuthenticatedUser {\n   readonly role: 'admin' | 'maintainer' | 'viewer';\n   readonly permissions: readonly string[];\n }\n+\n+export function canInvokeTool(user: AuthenticatedUser, requiredPermissions: readonly string[]): boolean {\n+  if (user.role === 'admin' || requiredPermissions.includes('write')) {\n+    return true;\n+  }\n+\n+  return requiredPermissions.every((permission) => user.permissions.includes(permission));\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Authorization bypass because any tool requiring write permission is allowed before checking the caller permissions",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/mcp/auth/permission-check.ts:12",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: a non-admin viewer can invoke a write-protected tool because requiredPermissions.includes(\"write\") makes the early return true based on the operation being sensitive rather than on the user having that permission."
+      }
+    },
+    {
+      "number": "synthetic-missing-await-artifact-receipt",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(pipeline): persist artifact receipt after publish (synthetic buggy case)",
+      "customDescription": "feat(pipeline): persist artifact receipt after publish",
+      "customDiff": "diff --git a/packages/nexus-agents/src/pipeline/artifact-publisher.ts b/packages/nexus-agents/src/pipeline/artifact-publisher.ts\nindex 10d8109cf61..704321b409b 100644\n--- a/packages/nexus-agents/src/pipeline/artifact-publisher.ts\n+++ b/packages/nexus-agents/src/pipeline/artifact-publisher.ts\n@@ -18,6 +18,17 @@ export interface PublishResult {\n   readonly receiptPath: string;\n }\n+\n+export async function publishArtifactReceipt(receipt: AuditReceipt): Promise<PublishResult> {\n+  const receiptPath = await reserveReceiptPath(receipt.runId);\n+  writeAuditReceipt(receiptPath, receipt);\n+  return { receiptPath };\n+}\n+\n+declare function reserveReceiptPath(runId: string): Promise<string>;\n+declare function writeAuditReceipt(path: string, receipt: AuditReceipt): Promise<void>;",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Missing await on writeAuditReceipt causes publishArtifactReceipt to report success before the receipt write finishes and turns write failures into unhandled rejections",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/pipeline/artifact-publisher.ts:23",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: callers receive a successful PublishResult even if writeAuditReceipt later rejects, so audit receipt persistence can silently fail on a reachable filesystem error path."
+      }
+    },
+    {
+      "number": "synthetic-unbounded-outcome-buffer",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(telemetry): buffer recent routing outcomes for distillation (synthetic buggy case)",
+      "customDescription": "feat(telemetry): buffer recent routing outcomes for distillation",
+      "customDiff": "diff --git a/packages/nexus-agents/src/telemetry/outcome-buffer.ts b/packages/nexus-agents/src/telemetry/outcome-buffer.ts\nindex 595330603b7..df79a512c01 100644\n--- a/packages/nexus-agents/src/telemetry/outcome-buffer.ts\n+++ b/packages/nexus-agents/src/telemetry/outcome-buffer.ts\n@@ -9,6 +9,16 @@ export interface RoutingOutcome {\n   readonly success: boolean;\n   readonly latencyMs: number;\n }\n+\n+const bufferedOutcomes: RoutingOutcome[] = [];\n+\n+export function rememberOutcome(outcome: RoutingOutcome, maxEntries: number): readonly RoutingOutcome[] {\n+  bufferedOutcomes.push(outcome);\n+  if (bufferedOutcomes.length > maxEntries) {\n+    bufferedOutcomes.slice(-maxEntries);\n+  }\n+  return bufferedOutcomes;\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Unbounded growth because the cap path calls slice without assigning or mutating bufferedOutcomes, so old outcomes are never dropped",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/telemetry/outcome-buffer.ts:18",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: after maxEntries is exceeded, slice returns a capped copy that is discarded; a long-running process keeps every routing outcome forever instead of enforcing the configured cap."
+      }
+    },
+    {
+      "number": "synthetic-precision-budget-cents",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(budget): convert dollar budgets to cents (synthetic buggy case)",
+      "customDescription": "feat(budget): convert dollar budgets to cents",
+      "customDiff": "diff --git a/packages/nexus-agents/src/budget/money.ts b/packages/nexus-agents/src/budget/money.ts\nindex 761e9d42550..b8ee535a9c0 100644\n--- a/packages/nexus-agents/src/budget/money.ts\n+++ b/packages/nexus-agents/src/budget/money.ts\n@@ -1,4 +1,10 @@\n export interface BudgetLimit {\n   readonly cents: number;\n }\n+\n+export function budgetLimitFromDollars(dollars: number): BudgetLimit {\n+  return { cents: Math.floor(dollars * 100) };\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Precision error in dollar-to-cent conversion because Math.floor(dollars * 100) undercounts values such as 10.29 due to binary floating point representation",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/budget/money.ts:6",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: budgetLimitFromDollars(10.29) can produce 1028 instead of 1029 cents, making budget enforcement off by one cent for reachable decimal inputs that should be exact money amounts."
+      }
+    },
+    {
+      "number": "synthetic-missing-validation-retry-policy",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(orchestration): load retry policy from workflow config (synthetic buggy case)",
+      "customDescription": "feat(orchestration): load retry policy from workflow config",
+      "customDiff": "diff --git a/packages/nexus-agents/src/orchestration/retry-policy.ts b/packages/nexus-agents/src/orchestration/retry-policy.ts\nindex f1092118f6e..26c7db7b328 100644\n--- a/packages/nexus-agents/src/orchestration/retry-policy.ts\n+++ b/packages/nexus-agents/src/orchestration/retry-policy.ts\n@@ -7,6 +7,16 @@ export interface RetryPolicy {\n   readonly maxAttempts: number;\n   readonly delayMs: number;\n }\n+\n+export function retryPolicyFromConfig(config: { maxAttempts: number; delayMs: number }): RetryPolicy {\n+  return {\n+    maxAttempts: config.maxAttempts,\n+    delayMs: config.delayMs,\n+  };\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Missing input validation allows invalid retry policy state such as maxAttempts 0 or negative delayMs to be accepted from workflow config",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/orchestration/retry-policy.ts:12",
+          "locationTolerance": "line",
+          "fixReference": "synthetic"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-07-19",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: retryPolicyFromConfig({ maxAttempts: 0, delayMs: -1 }) creates a policy that either never attempts work or schedules invalid negative delays; this is reachable from workflow configuration and should be rejected at the boundary."
+      }
     }
   ]
 }
