@@ -19,8 +19,13 @@ import {
   daysSinceMerge,
   deriveWeakLabel,
   isBotAuthored,
+  filterByMinAge,
+  buildPrListArgs,
+  growFetchLimit,
+  assembleDiffFromFiles,
   CLEAN_TENURE_DAYS,
   DEFAULT_DIFF_CHAR_CAP,
+  MAX_FETCH_LIMIT,
   type MergedPrWithDiff,
 } from './mine-pr-review-candidates-core.js';
 import {
@@ -97,6 +102,151 @@ describe('daysSinceMerge', () => {
     expect(daysSinceMerge('2026-06-10T00:00:00Z', NOW)).toBe(10);
     expect(daysSinceMerge('2026-06-25T00:00:00Z', NOW)).toBe(0); // future → 0
     expect(daysSinceMerge('not-a-date', NOW)).toBe(0);
+  });
+});
+
+// ============================================================================
+// filterByMinAge — --min-age-days targeting (#4316)
+// ============================================================================
+
+describe('filterByMinAge', () => {
+  const prs = [
+    { number: 1, mergedAt: '2026-06-19T00:00:00Z' }, // 1 day old
+    { number: 2, mergedAt: '2026-06-10T00:00:00Z' }, // 10 days old
+    { number: 3, mergedAt: '2026-05-01T00:00:00Z' }, // 50 days old
+    { number: 4, mergedAt: '2026-04-01T00:00:00Z' }, // 80 days old
+  ];
+
+  it('keeps only PRs merged at least N days ago', () => {
+    const kept = filterByMinAge(prs, 42, NOW);
+    expect(kept.map((p) => p.number)).toEqual([3, 4]);
+  });
+
+  it('is a no-op (returns everything) when minAgeDays is 0 (the default)', () => {
+    expect(filterByMinAge(prs, 0, NOW)).toEqual(prs);
+  });
+
+  it('keeps nothing when every PR is younger than the threshold', () => {
+    expect(filterByMinAge(prs, 1000, NOW)).toEqual([]);
+  });
+});
+
+// ============================================================================
+// growFetchLimit — page enlargement when --min-age-days filters out most of a page
+// ============================================================================
+
+describe('growFetchLimit', () => {
+  it('doubles the raw fetch limit toward the target, never below the target', () => {
+    expect(growFetchLimit(50, 50)).toBe(100);
+    expect(growFetchLimit(20, 50)).toBe(50);
+  });
+
+  it('caps growth at MAX_FETCH_LIMIT', () => {
+    expect(growFetchLimit(400, 50)).toBe(MAX_FETCH_LIMIT);
+    expect(growFetchLimit(MAX_FETCH_LIMIT, 50)).toBe(MAX_FETCH_LIMIT);
+  });
+});
+
+// ============================================================================
+// buildPrListArgs — query assembly for `gh pr list` (--search passthrough, #4316)
+// ============================================================================
+
+describe('buildPrListArgs', () => {
+  const JSON_FIELDS = 'number,title,body,url,mergedAt,author,files,reviewDecision';
+
+  it('defaults to --state merged when no --search is given', () => {
+    const args = buildPrListArgs({ repo: 'nexus-substrate/nexus-agents', limit: 50 });
+    expect(args).toEqual([
+      'pr',
+      'list',
+      '--repo',
+      'nexus-substrate/nexus-agents',
+      '--state',
+      'merged',
+      '--limit',
+      '50',
+      '--json',
+      JSON_FIELDS,
+    ]);
+  });
+
+  it('uses --search instead of --state when a search query is given (no conflicting flags)', () => {
+    const args = buildPrListArgs({
+      repo: 'nexus-substrate/nexus-agents',
+      limit: 80,
+      search: 'merged:<2026-06-06 is:merged',
+    });
+    expect(args).toEqual([
+      'pr',
+      'list',
+      '--repo',
+      'nexus-substrate/nexus-agents',
+      '--search',
+      'merged:<2026-06-06 is:merged',
+      '--limit',
+      '80',
+      '--json',
+      JSON_FIELDS,
+    ]);
+    expect(args).not.toContain('--state');
+  });
+
+  it('ignores an empty/null search string and falls back to --state merged', () => {
+    const args = buildPrListArgs({ repo: 'r/r', limit: 10, search: null });
+    expect(args).toContain('--state');
+    expect(args).not.toContain('--search');
+  });
+});
+
+// ============================================================================
+// assembleDiffFromFiles — 406-fallback assembly from the files API (#4316)
+// ============================================================================
+
+describe('assembleDiffFromFiles', () => {
+  it('assembles a unified-diff-ish excerpt from real patch fields only', () => {
+    const files = [
+      { filename: 'a.ts', patch: '@@ -1 +1 @@\n-old\n+new' },
+      { filename: 'b.ts', patch: '@@ -1 +1 @@\n-x\n+y' },
+    ];
+    const out = assembleDiffFromFiles(files, 10000);
+    expect(out).toContain('diff --git a/a.ts b/a.ts');
+    expect(out).toContain('-old\n+new');
+    expect(out).toContain('diff --git a/b.ts b/b.ts');
+    expect(out).toContain('-x\n+y');
+  });
+
+  it('skips patch-less entries (binary/oversized-per-file) rather than fabricating content', () => {
+    const files = [
+      { filename: 'a.ts', patch: '@@ -1 +1 @@\n-old\n+new' },
+      { filename: 'big.bin' }, // no patch field (binary or too large per-file)
+      { filename: 'c.ts', patch: '' },
+    ];
+    const out = assembleDiffFromFiles(files, 10000);
+    expect(out).toContain('a.ts');
+    expect(out).not.toContain('big.bin');
+    expect(out).not.toContain('c.ts');
+  });
+
+  it('returns empty string (never invents) when no file has usable patch content', () => {
+    expect(assembleDiffFromFiles([{ filename: 'big.bin' }], 10000)).toBe('');
+    expect(assembleDiffFromFiles([], 10000)).toBe('');
+  });
+
+  it('respects the cap, truncating with an explicit marker rather than overflowing', () => {
+    const files = [{ filename: 'a.ts', patch: 'x'.repeat(500) }];
+    const out = assembleDiffFromFiles(files, 100);
+    expect(out.length).toBeLessThan(600);
+    expect(out).toContain('diff truncated');
+  });
+
+  it('stops adding further files once the cap is reached, without truncating mid-earlier-file needlessly', () => {
+    const files = [
+      { filename: 'a.ts', patch: 'a'.repeat(50) },
+      { filename: 'b.ts', patch: 'b'.repeat(500) },
+    ];
+    const out = assembleDiffFromFiles(files, 80);
+    expect(out).toContain('a.ts');
+    expect(out).toContain('diff truncated');
   });
 });
 
@@ -313,14 +463,28 @@ describe('buildCandidatesFile', () => {
 });
 
 describe('parseArgs / summarize', () => {
-  it('parses limit/diff-cap/out with sane defaults', () => {
+  it('parses limit/diff-cap/out with sane defaults, search/min-age-days off by default', () => {
     expect(parseArgs([])).toEqual({
       limit: 50,
       diffCap: DEFAULT_DIFF_CHAR_CAP,
       out: expect.any(String),
+      search: null,
+      minAgeDays: 0,
     });
     const a = parseArgs(['--limit', '10', '--diff-cap', '500', '--out', '/tmp/x.json']);
-    expect(a).toEqual({ limit: 10, diffCap: 500, out: '/tmp/x.json' });
+    expect(a).toEqual({
+      limit: 10,
+      diffCap: 500,
+      out: '/tmp/x.json',
+      search: null,
+      minAgeDays: 0,
+    });
+  });
+
+  it('parses --search and --min-age-days', () => {
+    const a = parseArgs(['--search', 'merged:<2026-06-06 is:merged', '--min-age-days', '42']);
+    expect(a.search).toBe('merged:<2026-06-06 is:merged');
+    expect(a.minAgeDays).toBe(42);
   });
 
   it('tallies weak labels for the run summary', () => {

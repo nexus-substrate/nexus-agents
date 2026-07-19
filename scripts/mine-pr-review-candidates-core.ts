@@ -169,6 +169,117 @@ export function deriveWeakLabel(
 }
 
 // ============================================================================
+// Older-window targeting (#4316): --min-age-days filter + gh query assembly
+// ============================================================================
+
+/**
+ * Keep only PRs merged at least `minAgeDays` days before `now`. Pure and
+ * Date-injectable (never calls Date.now internally). `minAgeDays <= 0` is a
+ * no-op — the default `0` preserves the pre-#4316 "most recent window"
+ * behavior.
+ *
+ * Generic over any shape carrying `mergedAt` so it works on both the raw
+ * `gh pr list --json` rows and the mapped `MergedPr` shape.
+ */
+export function filterByMinAge<T extends { readonly mergedAt: string }>(
+  prs: readonly T[],
+  minAgeDays: number,
+  now: Date
+): readonly T[] {
+  if (minAgeDays <= 0) return prs;
+  return prs.filter((pr) => daysSinceMerge(pr.mergedAt, now) >= minAgeDays);
+}
+
+/** Safety ceiling on the raw `gh pr list --limit` the miner will ever request. */
+export const MAX_FETCH_LIMIT = 500;
+
+/**
+ * Compute the next raw `gh pr list --limit` to request when a page didn't
+ * yield enough `--min-age-days`-qualifying PRs to satisfy `targetLimit`.
+ * Doubles the current raw limit (never below `targetLimit`), capped at
+ * `MAX_FETCH_LIMIT` so an operator's `--min-age-days` can't trigger unbounded
+ * `gh` traffic. The I/O edge re-fetches with this larger limit and re-filters;
+ * it stops growing once `gh` itself returns fewer rows than requested (the
+ * list is exhausted) or the cap is hit.
+ */
+export function growFetchLimit(rawLimit: number, targetLimit: number): number {
+  return Math.min(Math.max(rawLimit * 2, targetLimit), MAX_FETCH_LIMIT);
+}
+
+export interface PrListQuery {
+  readonly repo: string;
+  readonly limit: number;
+  /** An operator-supplied `gh search` query (e.g. `merged:<2026-06-06 is:merged`). */
+  readonly search?: string | null;
+}
+
+const LIST_JSON_FIELDS = 'number,title,body,url,mergedAt,author,files,reviewDecision';
+
+/**
+ * Assemble the `gh pr list` argv for a fetch. When `search` is given, it wires
+ * in as `--search <query>` INSTEAD of `--state merged` (gh rejects `--search`
+ * combined with `--state`/other list filters) — the operator is expected to
+ * fold `is:merged` into the query themselves when they want only merged PRs.
+ * Without `search` (the default path), behavior is unchanged from pre-#4316:
+ * `--state merged`.
+ */
+export function buildPrListArgs(query: PrListQuery): readonly string[] {
+  const base = ['pr', 'list', '--repo', query.repo];
+  const search = query.search;
+  const filter =
+    search !== null && search !== undefined && search.length > 0
+      ? ['--search', search]
+      : ['--state', 'merged'];
+  return [...base, ...filter, '--limit', String(query.limit), '--json', LIST_JSON_FIELDS];
+}
+
+// ============================================================================
+// 406-fallback assembly (#4316): files-API patch fields → bounded diff excerpt
+// ============================================================================
+
+/** One entry from `gh api repos/<owner>/<repo>/pulls/<n>/files`. */
+export interface FileDiffEntry {
+  readonly filename: string;
+  /** Absent for binary files or files GitHub itself declined to diff. */
+  readonly patch?: string;
+}
+
+const DIFF_TRUNCATED_MARKER = (cap: number): string =>
+  `\n… [diff truncated at ${String(cap)} chars — see the source PR for the full diff]`;
+
+/**
+ * Assemble a bounded, unified-diff-ish excerpt from the GitHub files-API
+ * `patch` fields — the fallback path when `gh pr diff` 406s (>300 files /
+ * "too large"). Skips entries with no `patch` (binary or per-file-too-large)
+ * rather than fabricating content, per the NEVER-invent-a-diff invariant.
+ * Stops adding further files once `cap` is reached and appends the same
+ * truncation marker `boundDiff` uses, so a reader can never mistake the
+ * excerpt for a complete diff. Returns `''` when no file has usable patch
+ * content (the caller records that as a skip, not a silent empty candidate).
+ */
+export function assembleDiffFromFiles(files: readonly FileDiffEntry[], cap: number): string {
+  const parts: string[] = [];
+  let length = 0;
+  for (const f of files) {
+    if (f.patch === undefined || f.patch === '') continue;
+    const block = `diff --git a/${f.filename} b/${f.filename}\n${f.patch}\n`;
+    if (length + block.length > cap) {
+      const remaining = cap - length;
+      const marker = DIFF_TRUNCATED_MARKER(cap);
+      if (remaining > 0) {
+        parts.push(`${block.slice(0, remaining)}${marker}`);
+      } else {
+        parts.push(marker.trimStart());
+      }
+      return parts.join('');
+    }
+    parts.push(block);
+    length += block.length;
+  }
+  return parts.join('');
+}
+
+// ============================================================================
 // Diff bounding (never invent — only bound the real diff)
 // ============================================================================
 
