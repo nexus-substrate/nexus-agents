@@ -112,15 +112,25 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
  *  1. {@link PR_REVIEW_RECORDS_PATH_ENV} when set non-empty — a RELATIVE value is
  *     resolved against `process.cwd()` to an absolute path; an already-absolute
  *     value is returned unchanged.
- *  2. otherwise `<repo-root>/governance/pr-review-records.jsonl` resolved from
+ *  2. otherwise, when `repoPathOverride` is a non-whitespace string (#4278 —
+ *     threaded from the pr_review tool's optional `repoPath` input), it is
+ *     resolved to an absolute path and joined with {@link PR_REVIEW_RECORDS_REL_PATH}.
+ *     The escape hatch for MCP server processes whose `process.cwd()` has no
+ *     `.git` ancestor (so {@link findRepoRoot} would otherwise return `null` and
+ *     the record would silently fail to persist).
+ *  3. otherwise `<repo-root>/governance/pr-review-records.jsonl` resolved from
  *     {@link findRepoRoot}(`process.cwd()`).
- * Returns `undefined` when neither yields a path. A whitespace-only override is
- * treated as unset (falls through to root detection).
+ * Returns `undefined` when none of the above yields a path. A whitespace-only
+ * env value or override is treated as unset (falls through to the next tier).
  */
-export function resolvePrReviewRecordsPath(): string | undefined {
+export function resolvePrReviewRecordsPath(repoPathOverride?: string): string | undefined {
   const envPath = process.env[PR_REVIEW_RECORDS_PATH_ENV];
   if (envPath !== undefined && envPath.trim() !== '') {
     return isAbsolute(envPath) ? envPath : resolve(envPath);
+  }
+  if (repoPathOverride !== undefined && repoPathOverride.trim() !== '') {
+    const repoRoot = isAbsolute(repoPathOverride) ? repoPathOverride : resolve(repoPathOverride);
+    return join(repoRoot, PR_REVIEW_RECORDS_REL_PATH);
   }
   const root = findRepoRoot(process.cwd());
   if (root === null) return undefined;
@@ -195,6 +205,13 @@ export interface PersistPrReviewRecordOptions extends Omit<
    * and the {@link resolvePrReviewRecordsPath} resolution.
    */
   readonly filePath?: string | undefined;
+  /**
+   * Repo-root override (#4278) forwarded to {@link resolvePrReviewRecordsPath}
+   * when `filePath` is not given. Sits below {@link PR_REVIEW_RECORDS_PATH_ENV}
+   * but above `findRepoRoot(process.cwd())` in the resolution precedence — see
+   * that function's doc comment.
+   */
+  readonly repoPathOverride?: string | undefined;
   readonly logger?: ILogger | undefined;
 }
 
@@ -218,13 +235,14 @@ export interface PersistPrReviewRecordOptions extends Omit<
  * (#3831) MUST NOT treat `baseSha` as verified provenance without adding that check.
  *
  * Path precedence: `opts.filePath` > {@link PR_REVIEW_RECORDS_PATH_ENV} >
- * {@link resolvePrReviewRecordsPath}.
+ * `opts.repoPathOverride` > {@link resolvePrReviewRecordsPath}'s
+ * `findRepoRoot(process.cwd())` fallback.
  */
 export function persistPrReviewRecord(
   opts: PersistPrReviewRecordOptions
 ): PrReviewRecord | undefined {
   const logger = opts.logger ?? createLogger({ component: 'pr-review-record-store' });
-  const filePath = opts.filePath ?? resolvePrReviewRecordsPath();
+  const filePath = opts.filePath ?? resolvePrReviewRecordsPath(opts.repoPathOverride);
   if (filePath === undefined) {
     logger.warn('Cannot persist pr-review record: no records path resolved', {
       prNumber: opts.prNumber,

@@ -802,3 +802,105 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     expect(readPrReviewRecords(path).records).toHaveLength(0);
   });
 });
+
+describe('pr_review repoPath input (#4278)', () => {
+  const BASE_SHA = 'd'.repeat(40);
+  const APPROVE_AGG: PrReviewAggregate = { decision: 'approve', verified: true };
+  const COUNTS = { approveCount: 5, requestChangesCount: 0, abstainCount: 0, errorCount: 0 };
+  const logger = createLogger({ tool: 'pr-review-test' });
+
+  it('is accepted by PrReviewInputSchema as an optional string', () => {
+    const r = PrReviewInputSchema.safeParse({
+      prTitle: 'x',
+      prDiff: 'y',
+      repoPath: '/some/repo/root',
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.repoPath).toBe('/some/repo/root');
+  });
+
+  it('omits repoPath from parsed output when not supplied', () => {
+    const r = PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y' });
+    expect(r.repoPath).toBeUndefined();
+  });
+
+  // #4278 root cause: resolvePrReviewRecordsPath() falls back to
+  // findRepoRoot(process.cwd()), which returns null in an MCP server process
+  // whose cwd has no `.git` ancestor — so the record silently fails to
+  // persist. `repoPath` is the caller-supplied escape hatch. This test
+  // exercises the FULL path: schema -> persistReviewRecord -> persistPrReviewRecord
+  // -> resolvePrReviewRecordsPath, from a cwd with no `.git` ancestor and the
+  // env override unset.
+  describe('end-to-end persistence with no .git ancestor in cwd', () => {
+    let originalCwd: string;
+    let originalEnv: string | undefined;
+    let noGitDir: string;
+    let repoRoot: string;
+
+    beforeEach(() => {
+      originalCwd = process.cwd();
+      originalEnv = process.env[PR_REVIEW_RECORDS_PATH_ENV];
+      Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+      noGitDir = mkdtempSync(join(tmpdir(), 'pr-review-repopath-no-git-'));
+      repoRoot = mkdtempSync(join(tmpdir(), 'pr-review-repopath-root-'));
+      process.chdir(noGitDir);
+    });
+
+    afterEach(() => {
+      process.chdir(originalCwd);
+      if (originalEnv === undefined)
+        Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+      else process.env[PR_REVIEW_RECORDS_PATH_ENV] = originalEnv;
+      rmSync(noGitDir, { recursive: true, force: true });
+      rmSync(repoRoot, { recursive: true, force: true });
+    });
+
+    it('persists to <repoPath>/governance/pr-review-records.jsonl when cwd has no .git ancestor', () => {
+      const parsed = PrReviewInputSchema.parse({
+        prTitle: 'Add repoPath escape hatch',
+        prDiff: 'diff --git a/x b/x\n+line\n',
+        simulate: false,
+        prNumber: 4278,
+        baseSha: BASE_SHA,
+        repoPath: repoRoot,
+      });
+
+      const outcome = persistReviewRecord({
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+      });
+
+      expect(outcome.persisted).toBe(true);
+      const expectedPath = join(repoRoot, 'governance', 'pr-review-records.jsonl');
+      const { records, invalidLines } = readPrReviewRecords(expectedPath);
+      expect(invalidLines).toEqual([]);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.prNumber).toBe(4278);
+    });
+
+    it('without repoPath, persistence is skipped (write-failed) — the #4278 bug reproduced', () => {
+      const parsed = PrReviewInputSchema.parse({
+        prTitle: 'No repoPath supplied',
+        prDiff: 'diff --git a/x b/x\n+line\n',
+        simulate: false,
+        prNumber: 4279,
+        baseSha: BASE_SHA,
+      });
+
+      const outcome = persistReviewRecord({
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+      });
+
+      expect(outcome).toEqual(
+        expect.objectContaining({ persisted: false, reason: 'write-failed' })
+      );
+    });
+  });
+});

@@ -16,10 +16,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { verifyPrReviewRecordSet } from './pr-review-record.js';
 import type { PrReviewVoteCounts } from './pr-review-record.js';
 import {
+  PR_REVIEW_RECORDS_PATH_ENV,
+  PR_REVIEW_RECORDS_REL_PATH,
   persistPrReviewRecord,
   readPrReviewRecords,
+  resolvePrReviewRecordsPath,
   type PersistPrReviewRecordOptions,
 } from './pr-review-record-store.js';
+import { findRepoRoot } from '../config/repo-root-detection.js';
 
 const BASE_SHA = 'a'.repeat(40);
 const DIFF_HASH = 'b'.repeat(64);
@@ -131,5 +135,66 @@ describe('persistPrReviewRecord (#4031)', () => {
         JSON.parse(line);
       }).not.toThrow();
     }
+  });
+});
+
+describe('resolvePrReviewRecordsPath (#4278)', () => {
+  // #4278: an MCP server process's cwd often has no `.git` ancestor, so
+  // findRepoRoot(cwd) returns null and the ledger path silently fails to
+  // resolve. `repoPathOverride` (threaded from the pr_review `repoPath`
+  // input) lets the caller say where the repo is, without disturbing the
+  // existing env-var / cwd-detection precedence.
+  let originalCwd: string;
+  let originalEnv: string | undefined;
+  let noGitDir: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+    originalEnv = process.env[PR_REVIEW_RECORDS_PATH_ENV];
+    Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+    // A fresh mkdtemp'd dir has no `.git` ancestor within the temp filesystem.
+    noGitDir = mkdtempSync(join(tmpdir(), 'pr-review-no-git-'));
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(noGitDir, { recursive: true, force: true });
+    if (originalEnv === undefined) Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+    else process.env[PR_REVIEW_RECORDS_PATH_ENV] = originalEnv;
+  });
+
+  it('(a) resolves <repoPathOverride>/governance/pr-review-records.jsonl when cwd has no .git ancestor', () => {
+    const overrideRoot = mkdtempSync(join(tmpdir(), 'pr-review-override-'));
+    try {
+      process.chdir(noGitDir);
+      expect(findRepoRoot(process.cwd())).toBeNull();
+
+      const resolved = resolvePrReviewRecordsPath(overrideRoot);
+      expect(resolved).toBe(join(overrideRoot, PR_REVIEW_RECORDS_REL_PATH));
+    } finally {
+      rmSync(overrideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('(b) env var still wins over repoPathOverride', () => {
+    const overrideRoot = mkdtempSync(join(tmpdir(), 'pr-review-override-'));
+    const envOverridePath = join(overrideRoot, 'elsewhere', 'records.jsonl');
+    process.env[PR_REVIEW_RECORDS_PATH_ENV] = envOverridePath;
+    try {
+      process.chdir(noGitDir);
+      const resolved = resolvePrReviewRecordsPath(overrideRoot);
+      expect(resolved).toBe(envOverridePath);
+    } finally {
+      rmSync(overrideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('(c) no override + resolvable cwd = unchanged findRepoRoot(cwd) behavior', () => {
+    // originalCwd is inside this repo checkout, so findRepoRoot resolves it.
+    const root = findRepoRoot(originalCwd);
+    expect(root).not.toBeNull();
+
+    const resolved = resolvePrReviewRecordsPath();
+    expect(resolved).toBe(join(root as string, PR_REVIEW_RECORDS_REL_PATH));
   });
 });

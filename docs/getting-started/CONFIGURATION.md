@@ -268,12 +268,13 @@ Files stored:
 
 ### Security & Governance Variables
 
-| Variable                       | Description                                                                      | Default          |
-| ------------------------------ | -------------------------------------------------------------------------------- | ---------------- |
-| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279)     | `audit` (v2.50+) |
-| `NEXUS_REPUTATION_GATING`      | Author-reputation tier gating: `off` / `audit` / `enforce` (#3122, epic #3118)   | `audit`          |
-| `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log + Magentic-One ledgers (`0`/`false` to disable, #2278) | enabled (v2.50+) |
-| `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                      | `0.85`           |
+| Variable                       | Description                                                                                                                                                                                                                                                                                                                                         | Default                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279)                                                                                                                                                                                                                                                                        | `audit` (v2.50+)        |
+| `NEXUS_REPUTATION_GATING`      | Author-reputation tier gating: `off` / `audit` / `enforce` (#3122, epic #3118)                                                                                                                                                                                                                                                                      | `audit`                 |
+| `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log + Magentic-One ledgers (`0`/`false` to disable, #2278)                                                                                                                                                                                                                                                                    | enabled (v2.50+)        |
+| `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                                                                                                                                                                                                                                                                                         | `0.85`                  |
+| `NEXUS_PR_REVIEW_RECORDS_PATH` | Forces the `pr_review` governance-record ledger path to an explicit absolute file. Escape hatch for MCP server processes whose `process.cwd()` has no `.git` ancestor, where cwd-based auto-detection silently fails to persist the record (#4278). Takes precedence over the per-call `pr_review({ repoPath })` input and over cwd auto-detection. | unset (cwd auto-detect) |
 
 **`NEXUS_ACCESS_POLICY_MODE` graduation path:**
 
