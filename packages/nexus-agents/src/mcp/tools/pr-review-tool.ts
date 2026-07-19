@@ -33,7 +33,7 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
+import type { VoterRole } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -41,15 +41,12 @@ import { recordDecisionCost } from './decision-cost-recording.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
-import {
-  FINDINGS_FORMAT_INSTRUCTIONS,
-  isFindingVerified,
-  parseFindings,
-  type Finding,
-} from './pr-review-findings.js';
+import { FINDINGS_FORMAT_INSTRUCTIONS, type Finding } from './pr-review-findings.js';
 import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
 // prettier-ignore
 import { applyPartialCoverageGate, packDiffForReview, type PrReviewCoverage } from './pr-review-diff-budget.js';
+// #4278: split out of this file to stay under the max-lines budget (no behavior change).
+import { toPrReviewVote, summarizeReviews } from './pr-review-result-mapping.js';
 
 export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
 
@@ -144,6 +141,13 @@ export const PrReviewInputSchema = z.object({
     .optional()
     .describe(
       '40-hex base commit sha the reviewed diff was computed from (Option-C binding, #4031)'
+    ),
+  repoPath: z
+    .string()
+    .max(1024)
+    .optional()
+    .describe(
+      'Repo root path for persisting the governance pr-review record (overrides cwd auto-detection). Must contain a .git ancestor — relative paths are resolved against cwd; ignored (falls back to cwd auto-detection) if it is not a real repo root. Env NEXUS_PR_REVIEW_RECORDS_PATH still takes precedence and is unrestricted.'
     ),
   simulate: z
     .boolean()
@@ -411,60 +415,6 @@ export function buildPrReviewProposal(
   parts.push(`\n${FINDINGS_FORMAT_INSTRUCTIONS}\n`);
 
   return parts.join('');
-}
-
-// ============================================================================
-// Result Mapping
-// ============================================================================
-
-/** Resolves findings for a voter result. Preferred path is the top-level
- * `vote.findings` array (#2245 v4 follow-up — JSON-native, lossless). Falls
- * back to parsing a YAML block from reasoning text for older voter outputs
- * that may still emit the legacy format. */
-function resolveFindings(result: AgentVoteResult): readonly Finding[] {
-  const raw = result.vote.findings;
-  if (raw !== undefined && raw.length > 0) {
-    return raw.map((f) => ({
-      summary: f.summary,
-      location: f.location,
-      severity: f.severity,
-      gate: f.gate,
-      claim: f.claim,
-      verified: isFindingVerified(f.gate),
-    }));
-  }
-  // Fallback: legacy YAML-in-reasoning format.
-  return parseFindings(result.vote.reasoning);
-}
-
-function toPrReviewVote(result: AgentVoteResult): PrReviewVote {
-  return {
-    role: result.role,
-    decision: mapVoteDecisionToPrDecision(result.vote.decision),
-    confidence: result.vote.confidence,
-    reasoning: result.vote.reasoning,
-    findings: resolveFindings(result),
-    source: result.source,
-    cli: result.cli,
-    processingTimeMs: result.processingTimeMs,
-    ...(result.error !== undefined && { errorMessage: result.error }),
-  };
-}
-
-function summarizeReviews(reviews: readonly PrReviewVote[]): {
-  approveCount: number;
-  requestChangesCount: number;
-  abstainCount: number;
-  errorCount: number;
-} {
-  return {
-    approveCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'approve').length,
-    requestChangesCount: reviews.filter(
-      (r) => r.source !== 'error' && r.decision === 'request_changes'
-    ).length,
-    abstainCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'abstain').length,
-    errorCount: reviews.filter((r) => r.source === 'error').length,
-  };
 }
 
 // ============================================================================

@@ -24,6 +24,7 @@ Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, secu
 | `headRef` | string | no | maxLength 200 | Head branch ref |
 | `prNumber` | integer | no | max 9007199254740991; > 0 | PR number — with baseSha, enables Option-C audit-record persistence (#4031) |
 | `baseSha` | string | no | pattern `^[0-9a-f]{40}$` | 40-hex base commit sha the reviewed diff was computed from (Option-C binding, #4031) |
+| `repoPath` | string | no | maxLength 1024 | Repo root path for persisting the governance pr-review record (overrides cwd auto-detection). Must contain a .git ancestor — relative paths are resolved against cwd; ignored (falls back to cwd auto-detection) if it is not a real repo root. Env NEXUS_PR_REVIEW_RECORDS_PATH still takes precedence and is unrestricted. |
 | `simulate` | boolean | no | default false | Use simulated voters (testing only; never ship live with this true) |
 | `errorPolicy` | enum | no | one of: standard \| absolute_quorum; default standard | Error policy (#4132). 'standard' (default): errored voters excluded. 'absolute_quorum': any errored voter — esp. the contrarian — degrades a would-be approve to a recoverable abstain (verified:false); never manufactures a verified approve from an induced error. |
 | `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result). |

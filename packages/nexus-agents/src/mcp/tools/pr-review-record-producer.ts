@@ -130,6 +130,9 @@ function buildAndPersist(
       total: reviewCount,
     },
     summary: `${aggregate.decision} (${String(counts.approveCount)} approve / ${String(counts.requestChangesCount)} request_changes / ${String(counts.abstainCount)} abstain) — ${input.prTitle}${coverageSuffix}`,
+    // #4278: lets a caller (e.g. an MCP server whose cwd has no `.git`
+    // ancestor) say where the repo is, so the record isn't silently dropped.
+    ...(input.repoPath !== undefined ? { repoPathOverride: input.repoPath } : {}),
     logger,
   });
   if (record === undefined) {
