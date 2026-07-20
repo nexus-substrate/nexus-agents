@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-07-13",
+  "fetchedAt": "2026-07-20",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -2408,14 +2408,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash Latest",
-      "verifiedAt": "2025-09-25",
+      "verifiedAt": "2026-05-19",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.3,
-        "outputPer1M": 2.5
+        "inputPer1M": 1.5,
+        "outputPer1M": 9
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2432,14 +2432,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash-Lite Latest",
-      "verifiedAt": "2025-09-25",
+      "verifiedAt": "2026-05-07",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.1,
-        "outputPer1M": 0.4
+        "inputPer1M": 0.25,
+        "outputPer1M": 1.5
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -3208,14 +3208,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash Latest",
-      "verifiedAt": "2025-09-25",
+      "verifiedAt": "2026-05-19",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.3,
-        "outputPer1M": 2.5
+        "inputPer1M": 1.5,
+        "outputPer1M": 9
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -3232,14 +3232,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash-Lite Latest",
-      "verifiedAt": "2025-09-25",
+      "verifiedAt": "2026-05-07",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.1,
-        "outputPer1M": 0.4
+        "inputPer1M": 0.25,
+        "outputPer1M": 1.5
       },
       "toolCapabilities": ["function-calling"]
     },
