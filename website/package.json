@@ -16,7 +16,7 @@
     "@astrojs/svelte": "~8.1.2",
     "astro": "~6.4.8",
     "mermaid": "^11.16.0",
-    "svelte": "^5.56.4",
+    "svelte": "^5.56.6",
     "typescript": "^5.9.3"
   }
 }
