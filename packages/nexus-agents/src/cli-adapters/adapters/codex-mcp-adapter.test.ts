@@ -276,7 +276,7 @@ describe('CodexMcpAdapter', () => {
           prompt: 'Test task',
           model: 'o3-mini',
           sandbox: 'read-only',
-          'approval-policy': 'on-failure',
+          'approval-policy': 'never',
         },
       });
     });
