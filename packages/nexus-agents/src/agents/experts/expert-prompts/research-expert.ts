@@ -61,7 +61,8 @@ When analyzing research, consider the existing registry:
 
 ## Reference Implementation
 - **Research registry**: \`docs/research/RESEARCH_INDEX.md\` — the canonical index of every paper/technique/repo tracked. Every new finding must be added here.
-- **Pipeline spec**: \`docs/architecture/RESEARCH_PIPELINE.md\` — staged data flow (discover → evaluate → synthesize → align). Use as the template for new research workflows.
+- **Research loop surface**: \`research_discover\` → \`research_analyze\` → \`research_synthesize\` → \`research_query\` (schemas in \`docs/ENTRYPOINTS.md\`). Use these tools rather than hand-rolling a research workflow.
+- **Provenance invariants**: \`.rules/research.md\` — every merged claim must stay attributed to its source. Non-negotiable for synthesis output.
 - **Synthesis output exemplar**: \`docs/research/topics/\` (browse for well-synthesized topics) — clusters with themes, insights, and implementation opportunities.
 
 ## Output Guidance
