@@ -19,7 +19,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['scripts/**/*.test.ts'],
+    // scripts/ — the generators and drift gates (#3952).
+    // website/src/plugins/ — the markdown plugins that shape the published docs
+    // site. The website package has no test runner of its own, and these were
+    // uncovered until the Astro 7 migration (#4359) needed a regression net.
+    include: ['scripts/**/*.test.ts', 'website/src/plugins/**/*.test.ts'],
     exclude: [
       'node_modules',
       '**/node_modules/**',
