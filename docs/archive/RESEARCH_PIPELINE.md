@@ -1,9 +1,30 @@
-# Research-to-Project Pipeline
+# Research-to-Project Pipeline (removed)
 
-**Status:** Canonical
-**Issue:** [#1822](https://github.com/nexus-substrate/nexus-agents/issues/1822) (supersedes closed [#1731](https://github.com/nexus-substrate/nexus-agents/pull/1731))
-**Module:** `packages/nexus-agents/src/pipeline/research-pipeline.ts`
-**Plugin id:** `nexus:research-pipeline` (registered via `core-plugins.ts`)
+**Status:** Archived — the subsystem this document describes no longer exists.
+**Removed in:** [#3492](https://github.com/nexus-substrate/nexus-agents/issues/3492) (PR [#3590](https://github.com/nexus-substrate/nexus-agents/pull/3590), commit `fa9d7cbcc6`), on a 5/0 `consensus_vote` to REMOVE.
+**Originally:** [#1822](https://github.com/nexus-substrate/nexus-agents/issues/1822) (superseded closed [#1731](https://github.com/nexus-substrate/nexus-agents/pull/1731))
+
+> **Do not use this document as a guide.** `packages/nexus-agents/src/pipeline/research-pipeline.ts`, the
+> `runResearchPipeline` export, and the `nexus:research-pipeline` plugin id were all deleted. Everything below is
+> retained only as a historical record of what the subsystem was intended to do.
+
+## What replaced it
+
+The `research` pipeline template was retired first, in [#3488](https://github.com/nexus-substrate/nexus-agents/issues/3488): its `investigate` and `synthesize` stages had no stage implementation and the stage order was incoherent, so the template could never actually run. Research-classified tasks now fall back to the `general` / `dev` templates ([#3489](https://github.com/nexus-substrate/nexus-agents/issues/3489)), which already cover research → plan → vote.
+
+The complete-but-unwired `runResearchPipeline` subsystem ([#1711](https://github.com/nexus-substrate/nexus-agents/issues/1711)) was then removed as dead lineage — it had zero runtime call sites once its only consumer was retired. The capability is served today by:
+
+- **AdaptiveOrchestrator templates** — see `packages/nexus-agents/src/pipeline/templates.ts` (the removal rationale is recorded in a comment at the `research` entry).
+- **The MetaOrchestrator `research` strategy**, which routes to `run_pipeline`.
+- **The `research_discover` / `research_synthesize` MCP tools** for the discovery and synthesis halves.
+
+See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the current research surface.
+
+---
+
+## Historical record
+
+Everything below described the removed implementation as of 2026-04.
 
 ## Purpose
 
