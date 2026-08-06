@@ -24,7 +24,7 @@ jobs:
       # CodeQL only needs source checkout, not pnpm/Node.js setup (build-mode: none).
       # Cannot use ./.github/actions/setup-node here — local actions require
       # the repo to be checked out first (#1495).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: github/codeql-action/init@bb471cdcf4dda2c934c5b656f554d43c1434ed13 # v4
         with:
