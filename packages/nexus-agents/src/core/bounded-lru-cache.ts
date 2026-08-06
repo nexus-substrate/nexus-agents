@@ -57,8 +57,12 @@ export class BoundedLRUCache<K, V> {
     if (this.entries.has(key)) {
       this.entries.delete(key);
     } else if (this.entries.size >= this.capacity) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest !== undefined) this.entries.delete(oldest);
+      // Use the iterator's `done` flag rather than `value !== undefined`:
+      // `undefined` is a legal Map key, so a value check would conflate "the
+      // iterator is exhausted" with "the oldest key is undefined" and skip the
+      // eviction, letting the cache grow past capacity (#4319).
+      const oldest = this.entries.keys().next();
+      if (oldest.done !== true) this.entries.delete(oldest.value);
     }
     this.entries.set(key, value);
   }

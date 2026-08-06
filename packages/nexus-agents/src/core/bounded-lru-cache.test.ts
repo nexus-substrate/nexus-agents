@@ -70,4 +70,36 @@ describe('BoundedLRUCache', () => {
   it('rejects a capacity below 1', () => {
     expect(() => new BoundedLRUCache<string, number>(0)).toThrow();
   });
+
+  it('evicts an oldest key that is itself undefined (#4319)', () => {
+    // `undefined` is a legal Map key, so "oldest key" and "no key" must not be
+    // conflated — otherwise eviction silently no-ops and the cache grows past
+    // capacity.
+    const c = new BoundedLRUCache<string | undefined, number>(1);
+    c.set(undefined, 1);
+    c.set('x', 2);
+    expect(c.size).toBe(1);
+    expect(c.has(undefined)).toBe(false);
+    expect(c.get('x')).toBe(2);
+  });
+
+  it('keeps the capacity bound when undefined keys are interleaved (#4319)', () => {
+    const c = new BoundedLRUCache<string | undefined, number>(2);
+    c.set(undefined, 0);
+    c.set('a', 1);
+    c.set('b', 2); // undefined is oldest -> evicted
+    expect(c.size).toBe(2);
+    expect(c.has(undefined)).toBe(false);
+    expect(c.has('a')).toBe(true);
+    expect(c.has('b')).toBe(true);
+  });
+
+  it('stores and retrieves undefined as a key (#4319)', () => {
+    const c = new BoundedLRUCache<string | undefined, number>(2);
+    c.set(undefined, 42);
+    expect(c.get(undefined)).toBe(42);
+    expect(c.has(undefined)).toBe(true);
+    expect(c.delete(undefined)).toBe(true);
+    expect(c.has(undefined)).toBe(false);
+  });
 });
