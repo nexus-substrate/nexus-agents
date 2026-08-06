@@ -73,5 +73,4 @@ Cache at `~/.claude/plugins/` is cleared automatically.
 
 - [AGENTS.md](../../AGENTS.md) — guidance for non-Claude agents
 - [docs/ENTRYPOINTS.md](../ENTRYPOINTS.md) — full CLI/MCP reference
-- [docs/architecture/RESEARCH_PIPELINE.md](../architecture/RESEARCH_PIPELINE.md) — research pipeline component
 - Epic [#1825](https://github.com/nexus-substrate/nexus-agents/issues/1825) — plugin integration

@@ -73,9 +73,18 @@ describe('Expert-specific reference cites', () => {
     expect(PM_EXPERT_BASE_PROMPT).toContain('Canonical Paths');
   });
 
-  it('research cites RESEARCH_INDEX + RESEARCH_PIPELINE', () => {
+  it('research cites RESEARCH_INDEX + the live research-loop surface', () => {
     expect(RESEARCH_EXPERT_BASE_PROMPT).toContain('RESEARCH_INDEX.md');
-    expect(RESEARCH_EXPERT_BASE_PROMPT).toContain('RESEARCH_PIPELINE.md');
+    expect(RESEARCH_EXPERT_BASE_PROMPT).toContain('research_synthesize');
+    expect(RESEARCH_EXPERT_BASE_PROMPT).toContain('.rules/research.md');
+  });
+
+  it('no expert prompt cites the removed RESEARCH_PIPELINE.md (#3492)', () => {
+    // The subsystem was deleted in fa9d7cbcc6; pointing an expert at its doc
+    // sent agents to a spec for code that no longer exists.
+    for (const prompt of [RESEARCH_EXPERT_BASE_PROMPT, INFRASTRUCTURE_EXPERT_BASE_PROMPT]) {
+      expect(prompt).not.toContain('RESEARCH_PIPELINE.md');
+    }
   });
 
   it('security cites test-secrets + UNTRUSTED_INPUT_HARDENING', () => {

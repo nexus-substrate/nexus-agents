@@ -129,7 +129,6 @@ The scheduler is `run` / MetaOrchestrator: one entry point picks (and optionally
 | [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
 | [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                 | Dynamic sub-agent creation     | Canonical |
 | [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
-| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md)                       | Research-to-project runner     | Canonical |
 | [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
 
 **How-to (composing & routing):**
@@ -223,10 +222,9 @@ The autonomic loops. Each maps to a shipped mechanism and sits at a declared run
 
 ### Self-configuring & self-optimizing
 
-| Document                                                    | Description                                   | Status    |
-| ----------------------------------------------------------- | --------------------------------------------- | --------- |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)         | 7-type memory architecture (shared Knowledge) | Canonical |
-| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md) | Research-to-project runner                    | Canonical |
+| Document                                            | Description                                   | Status    |
+| --------------------------------------------------- | --------------------------------------------- | --------- |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md) | 7-type memory architecture (shared Knowledge) | Canonical |
 
 ### Self-protecting (security)
 
@@ -447,6 +445,7 @@ Documents kept for historical reference only:
 | [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit                   | Current security docs                          |
 | [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote                   | Current consensus protocols                    |
 | [archive/system-review-2026-05-31.md](./archive/system-review-2026-05-31.md)   | Full 13-domain system review (epic #3143) | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md) |
+| [archive/RESEARCH_PIPELINE.md](./archive/RESEARCH_PIPELINE.md)                 | Subsystem removed in #3492 (PR #3590)     | [ENTRYPOINTS.md](./ENTRYPOINTS.md)             |
 
 **Previously Archived/Removed:**
 
