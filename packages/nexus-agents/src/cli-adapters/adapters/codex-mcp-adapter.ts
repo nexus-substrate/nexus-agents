@@ -173,7 +173,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
       : {
           ...baseArgs,
           sandbox: 'read-only' as const,
-          'approval-policy': 'on-failure' as const,
+          'approval-policy': 'never' as const,
         };
 
     const result = await this.client.callTool({
