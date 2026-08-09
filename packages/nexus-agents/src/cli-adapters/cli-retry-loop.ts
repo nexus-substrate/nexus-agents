@@ -70,6 +70,28 @@ export function calculateBackoffDelay(
   return Math.min(delayMs, maxDelayMs);
 }
 
+/**
+ * Resolve how long to wait before the next attempt (#4373).
+ *
+ * Prefers a provider-supplied `retryAfterMs` over the computed exponential
+ * backoff — a provider that names its window knows better than our guess — but
+ * still clamps to the caller's ceiling so a CLI claiming a multi-hour window
+ * cannot wedge the retry loop. A zero or negative hint is ignored rather than
+ * retried instantly.
+ */
+export function resolveRetryDelayMs(
+  error: CliError,
+  attempt: number,
+  baseDelayMs: number,
+  maxDelayMs: number
+): number {
+  const hint = error.retryAfterMs;
+  if (hint !== undefined && hint > 0) {
+    return Math.min(hint, maxDelayMs);
+  }
+  return calculateBackoffDelay(attempt, baseDelayMs, maxDelayMs);
+}
+
 /** Determines if an error code is retryable. */
 export function isRetryableError(code: CliErrorCode): boolean {
   return RETRYABLE_ERROR_CODES.has(code);
@@ -130,7 +152,7 @@ export async function executeCliRetryLoop(
       return err(lastError);
     }
 
-    const delayMs = calculateBackoffDelay(attempt, config.baseDelayMs, config.maxDelayMs);
+    const delayMs = resolveRetryDelayMs(lastError, attempt, config.baseDelayMs, config.maxDelayMs);
     config.logger.debug('Retrying CLI execution', {
       cli: config.cli,
       attempt,

@@ -41,6 +41,7 @@ import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
+import { parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
 
 const execAsync = promisify(exec);
 
@@ -366,12 +367,18 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    */
   protected createError(code: CliErrorCode, message: string, cause?: Error): CliError {
     const retryable = ['RATE_LIMITED', 'TIMEOUT', 'CONNECTION_ERROR'].includes(code);
+    // #4373: `parseRetryAfterMs` existed with regexes for "retry after Xs" /
+    // "try again in Xs" and was called from nowhere under cli-adapters, so a
+    // provider telling us exactly how long to wait was ignored in favour of our
+    // own exponential backoff. Only meaningful on a retryable error.
+    const retryAfterMs = retryable ? parseRetryAfterMs(message) : undefined;
 
     return {
       code,
       message,
       cli: this.name,
       retryable,
+      ...(retryAfterMs !== undefined && { retryAfterMs }),
       ...(cause !== undefined && { cause }),
     };
   }

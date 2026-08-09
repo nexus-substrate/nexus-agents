@@ -131,6 +131,14 @@ export interface CliError {
   readonly cause?: Error;
   /** Whether the error is retryable */
   readonly retryable: boolean;
+  /**
+   * How long the provider asked us to wait before retrying, in milliseconds
+   * (#4373). Present only when the CLI's own message stated one — parsed by
+   * `parseRetryAfterMs`. The retry loop prefers this over its computed
+   * exponential backoff, since a provider that names its window knows better
+   * than our guess.
+   */
+  readonly retryAfterMs?: number;
 }
 
 /**
