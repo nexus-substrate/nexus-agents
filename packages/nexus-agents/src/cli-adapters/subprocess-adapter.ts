@@ -748,7 +748,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     }
 
     if (error.message.includes('ENOENT')) {
-      return err(this.createError('NOT_FOUND', `${this.name} CLI not found`, error));
+      return err(this.createError('NOT_FOUND', `${this.binaryName} CLI not found`, error));
     }
 
     return err(this.createError('EXECUTION_ERROR', sanitizeOutput(error.message), error));

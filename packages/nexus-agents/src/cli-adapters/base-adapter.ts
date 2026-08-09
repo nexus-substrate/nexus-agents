@@ -67,6 +67,21 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   abstract readonly name: CliName;
   abstract readonly transport: CliTransport;
 
+  /**
+   * The executable this adapter actually runs.
+   *
+   * Defaults to {@link name} because for most arms the routing identity and the
+   * binary are the same word. They are NOT always the same: the `gemini` arm
+   * runs `agy` (Antigravity) after Google retired the standalone gemini CLI
+   * (#4346). Conflating the two is how that arm ended up executing `agy` for
+   * work while shelling `gemini --version` for its health check — reporting the
+   * dead binary's version against the live one's floor, and failing its own
+   * availability gate while working perfectly.
+   */
+  get binaryName(): string {
+    return this.name;
+  }
+
   protected readonly logger: ILogger;
   protected capacityTracker: CapacityTracker | null = null;
   protected initialized = false;
@@ -252,7 +267,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     }
 
     try {
-      const { stdout } = await execAsync(`${this.name} --version`, {
+      const { stdout } = await execAsync(`${this.binaryName} --version`, {
         timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 
@@ -261,7 +276,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       this.cachedVersion = version;
       return version;
     } catch (cause: unknown) {
-      throw new Error(`Failed to get ${this.name} version`, { cause });
+      throw new Error(`Failed to get ${this.binaryName} version`, { cause });
     }
   }
 

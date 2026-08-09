@@ -90,6 +90,16 @@ const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConf
  */
 export class GeminiCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'gemini';
+
+  /**
+   * #4346: the arm is still called `gemini` (it serves Google's Gemini models
+   * and keeps the routing/LinUCB identity), but the executable is `agy`. The
+   * standalone gemini CLI is EOL — it exits 55 with IneligibleTierError on
+   * every invocation.
+   */
+  override get binaryName(): string {
+    return 'agy';
+  }
   protected readonly parser: ICliResponseParser;
 
   private readonly model: string;
@@ -248,7 +258,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     // always passed as its argument rather than positionally.
     args.push('--print', content);
 
-    return { command: 'agy', args };
+    return { command: this.binaryName, args };
   }
 
   private checkCircuitBreaker(): CliError | null {
