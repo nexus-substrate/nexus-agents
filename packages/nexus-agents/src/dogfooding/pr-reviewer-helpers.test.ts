@@ -743,6 +743,7 @@ function createMockPRMetadata(overrides: Partial<PRMetadata> = {}): PRMetadata {
 
 function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRReviewResult {
   return {
+    postOutcome: { status: 'posted' },
     prNumber: 1,
     repository: 'owner/repo',
     decision: 'approve',

@@ -9,7 +9,7 @@
 
 import { createLogger, formatPercentage } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
-import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
+import type { PRReviewResult, ReviewSeverity, ReviewPostOutcome } from '../dogfooding/index.js';
 import { capitalize } from '../utils/text-utils.js';
 
 const logger = createLogger({ component: 'ReviewCommand' });
@@ -47,7 +47,10 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
   }
 
   printReviewResult(result.value, verbose, dryRun);
-  return 0;
+  // #4354: a review that ran but failed to post is not a success. The command
+  // used to print "Review posted to GitHub." and exit 0 over an HTTP 422, so a
+  // script gating on the exit code saw a review that never existed.
+  return result.value.postOutcome.status === 'failed' ? 1 : 0;
 }
 
 function printHeader(prUrl: string, dryRun: boolean): void {
@@ -69,8 +72,27 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
     }
   }
 
-  if (!dryRun) {
-    process.stdout.write('Review posted to GitHub.\n');
+  printPostOutcome(review.postOutcome);
+}
+
+/**
+ * Report what actually happened to the review, rather than assuming a
+ * non-dry-run means it landed (#4354).
+ */
+function printPostOutcome(outcome: ReviewPostOutcome): void {
+  switch (outcome.status) {
+    case 'posted':
+      process.stdout.write('Review posted to GitHub.\n');
+      return;
+    case 'skipped':
+      // dry-run already says so in the header; a policy block does not.
+      if (outcome.reason !== 'dry-run') {
+        process.stdout.write(`Review NOT posted to GitHub: ${outcome.reason}\n`);
+      }
+      return;
+    case 'failed':
+      process.stderr.write(`Review NOT posted to GitHub: ${outcome.error}\n`);
+      return;
   }
 }
 

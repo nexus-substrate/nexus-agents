@@ -77,12 +77,7 @@ export type ReviewSeverity = (typeof FINDING_SEVERITY_LEVELS)[number];
  * Review category for organizing findings.
  */
 export type ReviewCategory =
-  | 'security'
-  | 'performance'
-  | 'code_quality'
-  | 'testing'
-  | 'documentation'
-  | 'architecture';
+  'security' | 'performance' | 'code_quality' | 'testing' | 'documentation' | 'architecture';
 
 /**
  * Individual review finding from an expert.
@@ -200,7 +195,35 @@ export interface PRReviewResult {
   readonly timestamp: string;
   /** Author trust + reputation assessment (#3123). */
   readonly trustAssessment: PRTrustAssessment;
+  /**
+   * What actually happened when the review was posted to GitHub (#4354).
+   *
+   * The review previously reported success whether or not the post landed: a
+   * `createReview` rejection was logged and discarded, and a Rule-of-Two block
+   * returned early, both leaving the CLI to print "Review posted to GitHub."
+   * over a review that does not exist. Callers must consult this rather than
+   * inferring a successful post from a successful review.
+   */
+  readonly postOutcome: ReviewPostOutcome;
 }
+
+/**
+ * A completed review before the posting step has run (#4354).
+ *
+ * Everything the reviewer aggregates is known before the post is attempted; the
+ * outcome is stamped on afterwards. Keeping the two apart in the types is what
+ * stops `postOutcome` from being defaulted to a hopeful value.
+ */
+export type PRReviewDraft = Omit<PRReviewResult, 'postOutcome'>;
+
+/** Terminal state of the GitHub review-posting step (#4354). */
+export type ReviewPostOutcome =
+  /** The review was created on GitHub. */
+  | { readonly status: 'posted' }
+  /** Posting was deliberately not attempted (dry-run, or a policy gate blocked it). */
+  | { readonly status: 'skipped'; readonly reason: string }
+  /** Posting was attempted and GitHub rejected it. */
+  | { readonly status: 'failed'; readonly error: string };
 
 /**
  * Configuration for PR review.
