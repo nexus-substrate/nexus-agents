@@ -378,6 +378,33 @@ export async function executeGoal(
 }
 
 /**
+ * Detect a business failure an engine reported in its own result, or null when
+ * the run is honest-success (#4362).
+ *
+ * The MetaDispatcher types `DispatchResult.result` as `unknown`, so this reads
+ * the two shapes the wired executors actually produce:
+ *
+ * - `AdaptiveOrchestratorResult` (pipeline / research) — `success: false`
+ * - `DevPipelineResult` (dev-pipeline) — `completed: false`
+ *
+ * `ExtendedVotingResult` (consensus) is deliberately absent: a `rejected`
+ * outcome is the verdict the caller asked for, not an engine fault.
+ */
+function detectEngineFailure(result: unknown): string | null {
+  if (typeof result !== 'object' || result === null) return null;
+  const record = result as Record<string, unknown>;
+
+  if (record['success'] === false) {
+    const detail = typeof record['error'] === 'string' ? record['error'] : 'no error message';
+    return `Engine reported failure: ${detail}`;
+  }
+  if (record['completed'] === false) {
+    return 'Engine reported failure: the dev pipeline did not complete';
+  }
+  return null;
+}
+
+/**
  * Run the `execute: true` body — dispatch the selected strategy via the
  * MetaDispatcher and shape the `ToolResult`. The sync path awaits this inline;
  * the async dispatcher backgrounds it via {@link runAsJob} (#3732). Catches the
@@ -404,6 +431,17 @@ async function executeRunBody(
       strategy: exec.strategy,
       durationMs: exec.durationMs,
     });
+    // #4362: a dispatch that RESOLVED used to be an unconditional success, so an
+    // engine reporting its own failure was handed back as `toolSuccess` — and,
+    // backgrounded, recorded as a `complete` job. Only a throw was surfaced.
+    const engineFailure = detectEngineFailure(exec.result);
+    if (engineFailure !== null) {
+      logger.warn('run: engine reported failure', {
+        decisionId: exec.decisionId,
+        strategy: exec.strategy,
+      });
+      return toolStructuredError({ errorCategory: 'business', message: engineFailure });
+    }
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
     const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
@@ -416,6 +454,29 @@ async function executeRunBody(
       message: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/**
+ * Async-path wrapper around {@link executeRunBody} that rejects on an error
+ * envelope (#4362).
+ *
+ * `runAsJob` records `complete` whenever its `run` callback RESOLVES, so
+ * returning a structured error would still land a `complete` job — the caller
+ * would poll `get_job_result`, see success, and never look at the payload.
+ * Rejecting routes it through `writeJobFailed`. Increment 2 (#4363) folds this
+ * into `runAsJob` itself as the fail-closed default for every caller.
+ */
+async function executeRunBodyOrThrow(
+  input: RunInput,
+  logger: ILogger,
+  trustTier?: string,
+  gatewayAdapters?: readonly IModelAdapter[]
+): Promise<ToolResult> {
+  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters);
+  if (result.isError === true) {
+    throw new Error(result.content[0]?.text ?? 'run failed');
+  }
+  return result;
 }
 
 async function runHandler(
@@ -444,7 +505,7 @@ async function runHandler(
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
-        run: () => executeRunBody(input, logger, trustTier, gatewayAdapters),
+        run: () => executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters),
         logger,
       });
     }
