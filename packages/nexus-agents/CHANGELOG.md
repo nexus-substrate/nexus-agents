@@ -1,5 +1,55 @@
 # nexus-agents
 
+## 2.173.9
+
+### Patch Changes
+
+- [#4377](https://github.com/nexus-substrate/nexus-agents/pull/4377) [`a17d13b`](https://github.com/nexus-substrate/nexus-agents/commit/a17d13b6ca81a9fda4638c0b53e5a781987a9d06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(review): stop reporting a review as posted when GitHub rejected it ([#4354](https://github.com/nexus-substrate/nexus-agents/issues/4354))
+
+  `nexus-agents review` printed `Review posted to GitHub.` and exited 0 whenever the
+  review itself completed, regardless of what GitHub did with it. `postReviewToGitHub`
+  logged a `createReview` rejection and returned `void`, and a Rule-of-Two policy block
+  returned early the same way — so an HTTP 422 (the case that surfaced this: GitHub
+  refuses to let an author request changes on their own PR) produced a confident
+  success message over a review that does not exist, and a script gating on the exit
+  code saw nothing wrong.
+
+  `PRReviewResult` now carries a `postOutcome` of `posted` / `skipped` (with a reason)
+  / `failed` (with the error). Both `review` and `review --demo` report what actually
+  happened and exit 1 when the post failed. A policy-gate skip is stated plainly and
+  still exits 0 — it is a deliberate governance outcome, not a fault — and dry-run
+  stays quiet because the header already says so.
+
+  The aggregated review is typed as `PRReviewDraft` until the posting step runs, so
+  `postOutcome` cannot be defaulted to a hopeful value.
+
+- [#4371](https://github.com/nexus-substrate/nexus-agents/pull/4371) [`e4d1cc9`](https://github.com/nexus-substrate/nexus-agents/commit/e4d1cc929f49aa4f6d9e186a0a0c7a20468e308d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): make `runAsJob` fail closed on failure-shaped results ([#4363](https://github.com/nexus-substrate/nexus-agents/issues/4363))
+
+  Increment 2 of the unanimous Option C decision on [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351). `writeJobComplete` fired
+  on **any** resolved value, so a `run` callback that resolved a failure-shaped
+  payload recorded `status: 'complete'` — a caller polling `get_job_result` read it
+  as a success and never looked inside. Increment 1 ([#4362](https://github.com/nexus-substrate/nexus-agents/issues/4362)) normalized the two known
+  offenders; this makes the chokepoint itself refuse the shape, so the next caller
+  cannot reintroduce the bug by omission.
+
+  The check inspects the payload's **root** keys only — `isError === true`,
+  `ok === false`, `success === false` — and never deep-scans. A vote whose _decision_
+  is `reject`, and a pipeline summary listing a stage it recovered from, both carry a
+  nested falsy `success` and are successful jobs; misreading them would trade
+  fail-open for fail-wrong. The job record names which key tripped and carries the
+  payload's own message, so it is debuggable rather than a bare `failed`.
+
+  Callers that legitimately resolve a failure-shaped payload set
+  `allowFailureShapedResult` with a stated reason, which is logged whenever it
+  actually suppresses a detection — an opted-out caller is a visible policy decision,
+  not a silent kwarg.
+
+  The accompanying caller audit found one site still bypassing the guard:
+  `run_pipeline` wrapped its result in `toolSuccessStructured`, which nests the
+  payload under `structuredContent` and left the `ToolResult` root clean, so a
+  `success: false` pipeline was recorded `complete` on both the sync and async paths.
+  It now hoists the verdict to the root the way `run_graph_workflow` does.
+
 ## 2.173.8
 
 ### Patch Changes
