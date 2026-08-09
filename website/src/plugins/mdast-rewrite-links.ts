@@ -1,8 +1,9 @@
 /**
- * remark-rewrite-links.ts
+ * mdast-rewrite-links.ts
  *
  * Rewrites markdown link URLs so that repo-relative paths resolve correctly
- * on the deployed website. Applied during the Astro build via remarkPlugins.
+ * on the deployed website. Applied during the Astro build as a Sätteri mdast
+ * plugin (`markdown.processor`).
  *
  * Rules (evaluated in order):
  *   1. External URLs (http/https) — unchanged
@@ -10,46 +11,25 @@
  *   3. .md links inside docs/ tree — rewrite to /nexus-agents/docs/<slug>/[#anchor]
  *   4. Links that escape docs/ into src/, packages/, or root files — GitHub blob URL
  *   5. Everything else — unchanged (best-effort passthrough)
+ *
+ * Ported from a remark/unified plugin in #4359 (Astro 6 -> 7). Astro 7 replaced
+ * the unified pipeline with Sätteri as the default Markdown processor, so the
+ * legacy `markdown.remarkPlugins` option no longer runs without pulling
+ * `@astrojs/markdown-remark` back in. The rewriting rules below are unchanged by
+ * the port — only the traversal mechanism differs: instead of walking the tree
+ * ourselves and reading `vfile.history[0]`, Sätteri dispatches a `link` visitor
+ * and exposes the source document as `ctx.fileURL`.
+ *
+ * @module website/src/plugins/mdast-rewrite-links
  */
 
 import { join, normalize, dirname, extname, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { defineMdastPlugin, type MdastPluginDefinition } from 'satteri';
 
 const DOCS_PREFIX = '/nexus-agents/docs';
 const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
-
-/** Minimal AST node shape for remark mdast. */
-interface AstNode {
-  type: string;
-  url?: string;
-  children?: AstNode[];
-}
-
-/** A link node in the mdast tree. */
-interface LinkNode extends AstNode {
-  type: 'link';
-  url: string;
-}
-
-/** VFile shape with history array. */
-interface VFileWithHistory {
-  history: string[];
-}
-
-/** Type guard for link nodes. */
-function isLink(node: AstNode): node is LinkNode {
-  return node.type === 'link' && typeof node.url === 'string';
-}
-
-/** Walk the AST and call visitor on every node. */
-function walk(node: AstNode, visitor: (n: AstNode) => void): void {
-  visitor(node);
-  if (Array.isArray(node.children)) {
-    for (const child of node.children) {
-      walk(child, visitor);
-    }
-  }
-}
 
 /** Convert a filename segment (no extension) into a lowercase slug segment. */
 function fileToSlug(name: string): string {
@@ -104,8 +84,16 @@ function rewriteIntraDocsLink(docsRoot: string, resolved: string, anchor: string
  * Given the docs-relative path of the source file being processed
  * (e.g. "architecture/README.md") and a raw link href, return the
  * rewritten href or null to leave the link unchanged.
+ *
+ * Exported for tests: this is the whole behavioural surface of the plugin, and
+ * keeping it independently callable is what let the Astro 6 -> 7 port be
+ * verified against an unchanged test suite (#4359).
  */
-function rewriteHref(docsRoot: string, currentFilePath: string, href: string): string | null {
+export function rewriteHref(
+  docsRoot: string,
+  currentFilePath: string,
+  href: string
+): string | null {
   if (/^https?:\/\//i.test(href)) return null;
   if (href.startsWith('#')) return null;
   if (/^(javascript|data|vbscript):/i.test(href)) return '';
@@ -129,34 +117,56 @@ function rewriteHref(docsRoot: string, currentFilePath: string, href: string): s
   return null;
 }
 
+/** The docs-tree location of the document currently being processed. */
+export interface DocsContext {
+  /** Absolute path of the docs root, including the trailing separator. */
+  readonly docsRoot: string;
+  /** Path of the current file relative to `docsRoot`, e.g. "architecture/README.md". */
+  readonly currentFilePath: string;
+}
+
 /**
- * Remark plugin that rewrites link nodes in the mdast.
+ * Split the absolute path of the source document into its docs root and its
+ * docs-relative path. Returns null when the file does not live under a `docs/`
+ * tree, in which case there is no meaningful relative base and links are left
+ * alone.
  *
- * Astro injects VFile metadata so that vfile.history[0] is the absolute path
- * to the source .md file. We use this to derive the docs-relative path needed
- * for accurate relative-link resolution.
+ * Exported for tests.
  */
-export default function remarkRewriteLinks(): (tree: AstNode, vfile: VFileWithHistory) => void {
-  return (tree: AstNode, vfile: VFileWithHistory) => {
-    const absPath: string = typeof vfile.history[0] === 'string' ? vfile.history[0] : '';
+export function deriveDocsContext(absPath: string): DocsContext | null {
+  const docsMarker = '/docs/';
+  const docsIdx = absPath.lastIndexOf(docsMarker);
+  if (docsIdx === -1) return null;
 
-    const docsMarker = '/docs/';
-    const docsIdx = absPath.lastIndexOf(docsMarker);
-    const currentFilePath = docsIdx !== -1 ? absPath.slice(docsIdx + docsMarker.length) : '';
-    const docsRoot = docsIdx !== -1 ? absPath.slice(0, docsIdx + docsMarker.length) : '';
+  const currentFilePath = absPath.slice(docsIdx + docsMarker.length);
+  const docsRoot = absPath.slice(0, docsIdx + docsMarker.length);
+  if (currentFilePath === '' || docsRoot === '') return null;
 
-    if (currentFilePath === '' || docsRoot === '') {
-      return;
-    }
+  return { docsRoot, currentFilePath };
+}
 
-    walk(tree, (node) => {
-      if (!isLink(node)) {
-        return;
-      }
-      const rewritten = rewriteHref(docsRoot, currentFilePath, node.url);
+/**
+ * Sätteri mdast plugin that rewrites link nodes.
+ *
+ * Sätteri dispatches one call per `link` node and exposes the source document
+ * as `ctx.fileURL` (the compile's `fileURL` option, which Astro populates), so
+ * the docs-relative base is derived per node rather than once per document as
+ * it was under remark. Resolution is pure string work; the only I/O is the
+ * frontmatter probe, which the remark version performed per link as well.
+ */
+export default function mdastRewriteLinks(): MdastPluginDefinition {
+  return defineMdastPlugin({
+    name: 'nexus-rewrite-links',
+    link(node, ctx) {
+      if (ctx.fileURL === undefined) return;
+
+      const docs = deriveDocsContext(fileURLToPath(ctx.fileURL));
+      if (docs === null) return;
+
+      const rewritten = rewriteHref(docs.docsRoot, docs.currentFilePath, node.url);
       if (rewritten !== null) {
-        node.url = rewritten;
+        ctx.setProperty(node, 'url', rewritten);
       }
-    });
-  };
+    },
+  });
 }
