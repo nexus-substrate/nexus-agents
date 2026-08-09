@@ -1,5 +1,57 @@
 # nexus-agents
 
+## 2.173.11
+
+### Patch Changes
+
+- [#4384](https://github.com/nexus-substrate/nexus-agents/pull/4384) [`2455932`](https://github.com/nexus-substrate/nexus-agents/commit/2455932f2119ba7285a50582c1eeff1b25107817) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli-adapters): register codex in the model-discovery probe ([#4318](https://github.com/nexus-substrate/nexus-agents/issues/4318))
+
+  `list_available_models` reported `claude`, `gemini` and `opencode` but never
+  `codex`, despite the CLI being installed and authenticated.
+
+  The cause was a silent capability gap rather than a registration bug.
+  `buildDefaultModelSources` includes an adapter only when `hasListModels(adapter)`
+  is true, and `createAllAdapters` defaults codex to the **mcp** transport
+  (`codexTransport: CliTransport = 'mcp'`). `CodexMcpAdapter` had no `listModels()`
+  — only the subprocess `CodexCliAdapter` did — so codex was filtered out of the
+  source list with no error logged anywhere. The probe reported one fewer transport
+  than it had.
+
+  `CodexMcpAdapter.listModels()` now delegates to the same key-free models.dev
+  snapshot lookup the subprocess adapter uses. Model enumeration is
+  transport-independent, so which transport codex happens to be running must not
+  change which transports are discoverable — pinned by a test asserting both
+  transports yield the same probe set.
+
+  This is one item of [#4318](https://github.com/nexus-substrate/nexus-agents/issues/4318); the agy/Antigravity migration and auth-tier health
+  detection remain open there.
+
+- [#4382](https://github.com/nexus-substrate/nexus-agents/pull/4382) [`01892d5`](https://github.com/nexus-substrate/nexus-agents/commit/01892d5562b7e7870d8a4164ac0d3ecccac129e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli-adapters): classify codex-mcp quota errors, and honor provider retry-after ([#4373](https://github.com/nexus-substrate/nexus-agents/issues/4373))
+
+  Two gaps found while auditing error surfaces for [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351) criterion 3.
+
+  **codex-mcp never classified a quota error.** Every other CLI adapter extends
+  `SubprocessCliAdapter` and inherits a pipeline that checks `isRateLimitText`.
+  `CodexMcpAdapter` extends `BaseCliAdapter` and classified on its own:
+  `determineErrorCode` matched only ENOENT / timeout / connection, and
+  `parseToolResult` hardcoded `EXECUTION_ERROR` for any `isError: true` result
+  without reading the message at all. That matters beyond naming — the voter
+  serving-gate ([#4330](https://github.com/nexus-substrate/nexus-agents/issues/4330)) excludes a CLI whose circuit has opened, and the breaker
+  counts `RATE_LIMITED` where `EXECUTION_ERROR` is generic, so a quota-dead
+  codex-mcp never looked like a serving failure. Both paths now reuse the shared
+  pattern set rather than growing a second taxonomy, with the terminal readings
+  (missing binary, timeout) still taking precedence — a rate-limit reading would
+  route the caller into a retry that can never succeed.
+
+  **A provider-stated retry window was parsed and thrown away.**
+  `parseRetryAfterMs` has existed with regexes for "retry after Xs" / "try again in
+  Xs" and was called from nowhere under `cli-adapters/`; `CliError` had no field to
+  carry it. So when a provider named its window, the retry loop ignored it in favour
+  of its own exponential backoff. `CliError.retryAfterMs` now carries the value on
+  retryable errors, and `resolveRetryDelayMs` prefers it — still clamped to the
+  caller's ceiling, so a CLI claiming a multi-hour window cannot wedge the loop, and
+  a zero or negative hint is ignored rather than retried instantly.
+
 ## 2.173.10
 
 ### Patch Changes
