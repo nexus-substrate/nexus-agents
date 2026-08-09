@@ -20,7 +20,17 @@ vi.mock('../middleware/secure-handler.js', () => ({
 
 // #3730: stub the adaptive orchestrator so the async background run resolves
 // fast and deterministically (no live adapters in unit tests).
-const ORCHESTRATOR_RESULT = {
+interface StubOrchestratorResult {
+  success: boolean;
+  templateId: string;
+  selectionMethod: string;
+  taskClassification: { pipelineType: string };
+  stepsExecuted: number;
+  durationMs: number;
+  /** Present only on the #4363 failure fixtures. */
+  error?: string;
+}
+const ORCHESTRATOR_RESULT: StubOrchestratorResult = {
   success: true,
   templateId: 'general',
   selectionMethod: 'auto',
@@ -159,6 +169,50 @@ describe('run_pipeline async dispatch (#3730)', () => {
     await new Promise((r) => setImmediate(r));
     const record = readJobResult(jobId);
     expect(record?.status).toBe('complete');
+  });
+
+  // #4363 caller audit. `toolSuccessStructured` nests the payload under
+  // `structuredContent`, so a `success: false` run left the ToolResult's own
+  // root clean — it slipped past both the caller and `runAsJob`'s root-key
+  // fail-closed check, and the job recorded `complete` for a failed pipeline.
+  describe('a failed pipeline is not a successful job (#4363)', () => {
+    function failedRun(): typeof ORCHESTRATOR_RESULT {
+      return {
+        ...ORCHESTRATOR_RESULT,
+        success: false,
+        error: '1 stage(s) failed — plan: adapter rejected the request',
+      };
+    }
+
+    it('returns a business error envelope on the sync path', async () => {
+      runAdaptiveOrchestratorMock.mockResolvedValueOnce(failedRun());
+      const handler = captureHandler();
+
+      const result = await handler({ task: 'Build feature X' });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('records the job failed on the async path', async () => {
+      runAdaptiveOrchestratorMock.mockResolvedValueOnce(failedRun());
+      const handler = captureHandler();
+
+      const result = await handler({ task: 'Build feature X', dispatch: 'async' });
+      const jobId = envelope(result)['jobId'] as string;
+      await new Promise((r) => setImmediate(r));
+
+      expect(readJobResult(jobId)?.status).toBe('failed');
+    });
+
+    it('still records a successful pipeline as complete', async () => {
+      const handler = captureHandler();
+
+      const result = await handler({ task: 'Build feature X', dispatch: 'async' });
+      const jobId = envelope(result)['jobId'] as string;
+      await new Promise((r) => setImmediate(r));
+
+      expect(readJobResult(jobId)?.status).toBe('complete');
+    });
   });
 });
 
