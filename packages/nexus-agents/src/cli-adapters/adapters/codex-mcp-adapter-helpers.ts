@@ -9,6 +9,7 @@
 
 import type { ResolvedExecutionOptions, CliError, CliName } from '../types.js';
 import { CODEX_MCP_TIMEOUTS } from '../../config/timeouts.js';
+import { isRateLimitText } from '../../adapters/rate-limit-detector.js';
 import {
   createCliError as sharedCreateCliError,
   isRetryableErrorCode as sharedIsRetryableErrorCode,
@@ -139,7 +140,14 @@ export function createTimeout(ms: number): Promise<null> {
   });
 }
 
-/** Determines error code from error message. */
+/**
+ * Determines error code from error message.
+ *
+ * The terminal/actionable readings are checked first: a missing binary or a
+ * timeout is a better answer than "rate limited" even when the text mentions a
+ * rate limit, because a rate-limit reading routes the caller into a retry that
+ * can never succeed.
+ */
 export function determineErrorCode(message: string): CliError['code'] {
   if (message.includes('ENOENT') || message.includes('not found')) {
     return 'NOT_FOUND';
@@ -151,6 +159,16 @@ export function determineErrorCode(message: string): CliError['code'] {
 
   if (message.includes('connection') || message.includes('disconnect')) {
     return 'CONNECTION_ERROR';
+  }
+
+  // #4373: this check was missing entirely. Every other adapter extends
+  // SubprocessCliAdapter and inherits it; CodexMcpAdapter extends
+  // BaseCliAdapter and classified on its own, so a quota-dead codex-mcp came
+  // back as a generic EXECUTION_ERROR and never registered as a serving failure
+  // with the circuit breaker the voter serving-gate reads (#4330).
+  // Reuses the shared pattern set rather than adding a second taxonomy.
+  if (isRateLimitText(message)) {
+    return 'RATE_LIMITED';
   }
 
   return 'EXECUTION_ERROR';

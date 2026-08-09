@@ -190,7 +190,13 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   private parseToolResult(result: McpToolResult, startTime: number): Result<CliResponse, CliError> {
     if (result.isError === true) {
       const errorText = extractTextFromContent(result.content);
-      return err(this.createError('EXECUTION_ERROR', errorText ?? 'Tool execution failed'));
+      // #4373: this hardcoded EXECUTION_ERROR and never looked at the message,
+      // so a quota-dead codex-mcp was indistinguishable from any other failure
+      // and never counted as a serving failure against the circuit breaker the
+      // voter gate reads (#4330). Classify the text the same way the error path
+      // below does.
+      const code = errorText === null ? 'EXECUTION_ERROR' : determineErrorCode(errorText);
+      return err(this.createError(code, errorText ?? 'Tool execution failed'));
     }
 
     const text = extractTextFromContent(result.content);

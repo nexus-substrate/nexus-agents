@@ -17,6 +17,7 @@
  * @module cli-adapters/cli-error-helpers
  */
 
+import { parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
 
 /** Error codes the retry machinery treats as transient. */
@@ -43,11 +44,18 @@ export function createCliError(
   cli: CliName,
   cause?: Error
 ): CliError {
+  const retryable = isRetryableErrorCode(code);
+  // #4373: honor a provider-stated retry window here too, so the shared helper
+  // and BaseCliAdapter.createError produce the same shape — otherwise which
+  // construction path an adapter happened to use would decide whether the hint
+  // survived.
+  const retryAfterMs = retryable ? parseRetryAfterMs(message) : undefined;
   return {
     code,
     message,
     cli,
-    retryable: isRetryableErrorCode(code),
+    retryable,
+    ...(retryAfterMs !== undefined && { retryAfterMs }),
     ...(cause !== undefined && { cause }),
   };
 }
