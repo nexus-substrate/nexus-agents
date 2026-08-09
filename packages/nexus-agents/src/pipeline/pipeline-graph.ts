@@ -30,6 +30,27 @@ export interface PipelineGraphResult {
 /** Map of stage ID → stage implementation. */
 export type StageRegistry = ReadonlyMap<string, IPipelineStage>;
 
+/**
+ * Thrown by a node handler when its stage reported `success: false` (#4362).
+ *
+ * The graph executor has exactly one failure channel — it catches a thrown
+ * handler and records the node as `NodeResult.status: 'failed'` with this
+ * message. Throwing routes stage failure through that existing channel instead
+ * of adding a second, parallel one in graph state (`consensus_vote`,
+ * `higher_order`, 7/0 on #4362).
+ */
+export class StageFailureError extends Error {
+  constructor(
+    readonly stageId: string,
+    stageError: string | undefined
+  ) {
+    // Carries only what the stage already reported — stage errors can embed
+    // command output, so this must not widen the message beyond `output.error`.
+    super(`Stage '${stageId}' failed: ${stageError ?? 'no error message'}`);
+    this.name = 'StageFailureError';
+  }
+}
+
 // ============================================================================
 // Graph Compilation
 // ============================================================================
@@ -146,6 +167,14 @@ function createNodeHandler(
     };
 
     const output = await stage.execute(context);
+    // #4362: `output.success`/`output.error` used to be discarded here, so a
+    // stage that failed cleanly (returned rather than threw) was indistinguishable
+    // from one that succeeded — and every caller up the chain reported success.
+    // Throwing hands the failure to the executor's own channel; it records this
+    // node `status: 'failed'` with the message below and drops its stateUpdates.
+    if (!output.success) {
+      throw new StageFailureError(stage.id, output.error);
+    }
     return { [output.stateKey]: output.value };
   };
 }

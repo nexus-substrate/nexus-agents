@@ -10,7 +10,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
-import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
+import type { CompiledGraph, NodeResult } from '../orchestration/graph/graph-types.js';
 import { compilePipelineGraph } from './pipeline-graph.js';
 import type { PipelineTemplate } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
@@ -120,6 +120,27 @@ async function executeAndReport(
     return buildError(template.id, result.error.message, startTime);
   }
 
+  // #4362: `result.ok` only says the BSP loop returned. The executor absorbs a
+  // failed node into an `ok` result (it records `NodeResult.status: 'failed'`
+  // and keeps going), so reporting success on `result.ok` alone made every
+  // failed stage invisible to callers. Read the node results instead —
+  // template-agnostic, unlike a `finalState.completed` predicate, which would
+  // fail-wrong on the dev/general/greenfield templates that never set that key.
+  const failures = describeFailedNodes(result.value.nodeResults);
+  if (failures !== null) {
+    emitPipelineStageEvent(template.id, 'pipeline', 'failed', { error: failures });
+    return {
+      success: false,
+      templateId: template.id,
+      stepsExecuted: result.value.stepsExecuted,
+      durationMs,
+      // Keep whatever earlier stages produced — callers inspect finalState to
+      // see how far the run got before it failed.
+      finalState: result.value.finalState,
+      error: failures,
+    };
+  }
+
   emitPipelineStageEvent(template.id, 'pipeline', 'completed', { durationMs });
   return {
     success: true,
@@ -128,6 +149,19 @@ async function executeAndReport(
     durationMs,
     finalState: result.value.finalState,
   };
+}
+
+/**
+ * Summarize the failed nodes of a graph run, or null when every node succeeded.
+ *
+ * Reports only what each node already recorded — stage errors can embed command
+ * output, so this must not widen the message beyond `NodeResult.error`.
+ */
+function describeFailedNodes(nodeResults: readonly NodeResult[]): string | null {
+  const failed = nodeResults.filter((n) => n.status === 'failed');
+  if (failed.length === 0) return null;
+  const detail = failed.map((n) => `${n.nodeId}: ${n.error ?? 'no error message'}`).join('; ');
+  return `${String(failed.length)} stage(s) failed — ${detail}`;
 }
 
 // ============================================================================

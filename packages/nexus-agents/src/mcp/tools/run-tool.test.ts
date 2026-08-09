@@ -24,6 +24,30 @@ vi.mock('./dev-pipeline-tool.js', () => ({
     runDevPipelineForGoalMock(goal, trustTier),
 }));
 
+// #4362: drive the pipeline executor's reported success/failure. run-tool only
+// imports runPipelineForGoal from this module.
+interface FakePipelineResult {
+  success: boolean;
+  templateId: string;
+  stepsExecuted: number;
+  durationMs: number;
+  finalState: Record<string, unknown>;
+  error?: string;
+}
+const runPipelineForGoalMock = vi.fn(
+  (_goal: string, _logger?: unknown): Promise<FakePipelineResult> =>
+    Promise.resolve({
+      success: true,
+      templateId: 'general',
+      stepsExecuted: 3,
+      durationMs: 5,
+      finalState: {},
+    })
+);
+vi.mock('./pipeline-tool.js', () => ({
+  runPipelineForGoal: (goal: string, logger?: unknown) => runPipelineForGoalMock(goal, logger),
+}));
+
 // #4042: capture the gatewayAdapters threaded into the consensus executor. Keep
 // every other consensus-vote export real (run-tool only imports runConsensusForGoal).
 const runConsensusForGoalMock = vi.fn((_goal: string, _logger?: unknown, _gw?: unknown) =>
@@ -325,6 +349,7 @@ describe('run async dispatch (execute:true, #3732)', () => {
   interface CapturedToolResult {
     isError?: boolean;
     content: Array<{ type: string; text: string }>;
+    _meta?: Record<string, unknown>;
   }
 
   /** Registers the tool against a mock server and returns the captured callback. */
@@ -347,6 +372,16 @@ describe('run async dispatch (execute:true, #3732)', () => {
 
   function envelope(result: CapturedToolResult): Record<string, unknown> {
     return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  /**
+   * The structured error envelope, which `toolStructuredError` puts in `_meta`
+   * (content[0].text carries only the bare message, so it is not JSON).
+   */
+  function errorEnvelope(result: CapturedToolResult): Record<string, unknown> | undefined {
+    const meta = result._meta;
+    if (meta === undefined) return undefined;
+    return Object.values(meta)[0] as Record<string, unknown> | undefined;
   }
 
   beforeEach(() => {
@@ -413,5 +448,93 @@ describe('run async dispatch (execute:true, #3732)', () => {
     await new Promise((r) => setImmediate(r));
     const record = readJobResult(jobId);
     expect(record?.status).toBe('complete');
+  });
+
+  // #4362 (increment 1 of the #4351 Option C decision): `executeRunBody` wrapped
+  // ANY resolved dispatch in `toolSuccess`, so an engine that ran to completion
+  // while reporting its own business failure was handed back as a success — and,
+  // on the async path, recorded as a `complete` job. Only a THROWN dispatch error
+  // was ever surfaced.
+  describe('engine-reported failure is not a tool success (#4362)', () => {
+    it('surfaces a dev-pipeline that did not complete as a structured error', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 0,
+        securityPassed: false,
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(errorEnvelope(result)?.['errorCategory']).toBe('business');
+    });
+
+    it('surfaces a pipeline that reported success:false as a structured error', async () => {
+      runPipelineForGoalMock.mockResolvedValueOnce({
+        success: false,
+        templateId: 'general',
+        stepsExecuted: 2,
+        durationMs: 5,
+        error: 'stage plan failed',
+        finalState: {},
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'analyze the repository',
+        forceStrategy: 'pipeline',
+        execute: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(errorEnvelope(result)?.['message']).toContain('stage plan failed');
+    });
+
+    it('records a failed job (not complete) when the backgrounded engine fails', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 0,
+        securityPassed: false,
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+        dispatch: 'async',
+      });
+      const jobId = envelope(result)['jobId'] as string;
+      await new Promise((r) => setImmediate(r));
+      expect(readJobResult(jobId)?.status).toBe('failed');
+    });
+
+    it('still reports a successful engine run as a tool success', async () => {
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(envelope(result)['executed']).toBe(true);
+    });
+
+    it('leaves a rejected consensus vote a success — a verdict is not a failure', async () => {
+      runConsensusForGoalMock.mockResolvedValueOnce({ result: { outcome: 'rejected' } });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'should we adopt A or B',
+        forceStrategy: 'consensus',
+        execute: true,
+      });
+      expect(result.isError).toBeFalsy();
+    });
   });
 });

@@ -890,6 +890,23 @@ type ConsensusVoteToolResponse = ToolResult;
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
  */
+/**
+ * Reject when the vote failed, so `runAsJob` records the job `failed` rather
+ * than `complete` (#4362). Increment 2 (#4363) folds this fail-closed check into
+ * `runAsJob` itself for every caller.
+ *
+ * Exported so the transform can be asserted without standing up a live voter
+ * panel (the success path initializes the whole memory substrate).
+ * @internal
+ */
+export async function unwrapVoteOrThrow(
+  pending: ReturnType<typeof handleConsensusVote>
+): Promise<Awaited<ReturnType<typeof handleConsensusVote>>> {
+  const result = await pending;
+  if (!result.ok) throw new Error(result.error);
+  return result;
+}
+
 function dispatchAsyncConsensusVote(
   deps: ConsensusVoteDeps,
   args: import('./consensus-vote-types.js').ConsensusVoteInput
@@ -906,7 +923,12 @@ function dispatchAsyncConsensusVote(
     input: args,
     idempotencyKey: args.idempotencyKey,
     freshJobId: () => `job-vote-${randomUUID()}`,
-    run: (_jobId, input) => handleConsensusVote(deps, input),
+    // #4362: `handleConsensusVote`'s `{ ok: false }` used to flow into the job
+    // record verbatim, and `runAsJob` records `complete` for anything its `run`
+    // callback RESOLVES — so a dead voter panel produced a job a caller polling
+    // `get_job_result` read as a success. Reject instead, mirroring the sync
+    // sibling's `toolStructuredError` on the same condition.
+    run: (_jobId, input) => unwrapVoteOrThrow(handleConsensusVote(deps, input)),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }
