@@ -196,6 +196,75 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
   readonly toEnvelope?: JobEnvelopeBuilders<E>;
   /** Optional logger for the background failure path. */
   readonly logger?: ILogger | undefined;
+  /**
+   * Opt out of the fail-closed result check (#4363), stating why.
+   *
+   * By default a `run` callback that RESOLVES a failure-shaped payload records
+   * the job `failed` rather than `complete`. A handful of tools legitimately
+   * resolve such a payload as their real answer — `consensus_vote` records the
+   * partial vote set collected before a `cancel_job`, for instance. Those set
+   * this field; the reason is logged whenever it actually suppresses a
+   * detection, so an opted-out caller is a visible policy decision rather than
+   * a silent kwarg.
+   */
+  readonly allowFailureShapedResult?: string | undefined;
+}
+
+/** A root envelope key whose value marks the payload as a failure (#4363). */
+interface FailureShape {
+  /** Which key tripped — recorded so the job record is debuggable. */
+  readonly key: string;
+  /** The payload's own message, when it carries one. */
+  readonly detail: string | undefined;
+}
+
+/** Root envelope keys and the value that means "this failed". */
+const FAILURE_KEYS: ReadonlyArray<{ key: string; failsWhen: boolean }> = [
+  // toolStructuredError
+  { key: 'isError', failsWhen: true },
+  // handleConsensusVote and the other Result-shaped handlers
+  { key: 'ok', failsWhen: false },
+  // GraphPipelineResult / AdaptiveOrchestratorResult
+  { key: 'success', failsWhen: false },
+];
+
+/** Root keys carrying a human-readable reason, in order of preference. */
+const DETAIL_KEYS: readonly string[] = ['error', 'message'];
+
+/**
+ * Render a failure shape for the job record. Names the key that tripped so the
+ * record is debuggable, and carries the payload's own message when it has one —
+ * a bare `failed` tells whoever polls the job nothing.
+ */
+function describeFailureShape(failure: FailureShape): string {
+  const suffix = failure.detail === undefined ? '' : `: ${failure.detail}`;
+  return `Job result reported failure via '${failure.key}'${suffix}`;
+}
+
+/**
+ * Detect a failure-shaped job payload, or null when the result is a success
+ * (#4363).
+ *
+ * Inspects the payload's ROOT keys only. A deep scan would turn fail-open into
+ * fail-wrong: a vote whose *decision* is `reject` and a pipeline summary listing
+ * a stage it recovered from both carry a nested falsy `success`, and both are
+ * successful jobs. Only the top-level envelope says whether the job itself
+ * failed.
+ *
+ * Exported for tests.
+ * @internal
+ */
+export function detectFailureShapedResult(result: unknown): FailureShape | null {
+  if (typeof result !== 'object' || result === null) return null;
+  const record = result as Record<string, unknown>;
+
+  for (const { key, failsWhen } of FAILURE_KEYS) {
+    if (record[key] === failsWhen) {
+      const detailKey = DETAIL_KEYS.find((k) => typeof record[k] === 'string');
+      return { key, detail: detailKey === undefined ? undefined : (record[detailKey] as string) };
+    }
+  }
+  return null;
 }
 
 /**
@@ -280,7 +349,23 @@ export async function runJobInBackground<I, R, E>(
       params.run(jobId, params.input, controller.signal),
       guard.expired,
     ]);
-    writeJobComplete(jobId, params.toolName, result);
+    // #4363: `writeJobComplete` used to fire on ANY resolved value, so a
+    // callback resolving a failure-shaped payload recorded `complete` and a
+    // caller polling `get_job_result` read it as a success. Fail closed by
+    // default — an opt-in predicate was rejected because "caller forgot to
+    // normalize" would just become "caller forgot to pass the predicate".
+    const failure = detectFailureShapedResult(result);
+    if (failure !== null && params.allowFailureShapedResult === undefined) {
+      writeJobFailed(jobId, params.toolName, describeFailureShape(failure));
+    } else {
+      if (failure !== null) {
+        params.logger?.warn(
+          `Recorded a failure-shaped ${params.toolName} result as complete (opted out)`,
+          { jobId, key: failure.key, reason: params.allowFailureShapedResult }
+        );
+      }
+      writeJobComplete(jobId, params.toolName, result);
+    }
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });

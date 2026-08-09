@@ -289,7 +289,20 @@ async function executePipelineBody(
     templateId,
     dryRun,
   });
-  return toolSuccessStructured(buildOutput(result, simulated));
+  const output = buildOutput(result, simulated);
+  // #4363 caller audit: `toolSuccessStructured` nests the payload under
+  // `structuredContent`, so a `success: false` run left the ToolResult's own
+  // root clean and slipped past both the caller and `runAsJob`'s fail-closed
+  // check — the job recorded `complete` for a pipeline that failed. Hoist the
+  // verdict to the root, the same way run_graph_workflow does.
+  if (!result.success) {
+    return toolStructuredError({
+      errorCategory: 'business',
+      message: result.error ?? `Pipeline '${result.templateId}' did not complete successfully`,
+      detail: output,
+    });
+  }
+  return toolSuccessStructured(output);
 }
 
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */

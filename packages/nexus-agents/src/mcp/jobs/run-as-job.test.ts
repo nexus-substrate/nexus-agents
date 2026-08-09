@@ -234,6 +234,162 @@ describe('runAsJob', () => {
       expect(getInFlight('orchestrate')).toBe(0);
     });
   });
+
+  // ==========================================================================
+  // fail-closed default (#4363, increment 2 of the #4351 Option C decision)
+  // ==========================================================================
+
+  // `writeJobComplete` fired on ANY resolved value, so a callback that resolved
+  // a failure-shaped payload recorded `complete`: a caller polling
+  // `get_job_result` saw success and never looked inside. Increment 1 (#4362)
+  // normalized the two known offenders; this makes the chokepoint itself refuse
+  // the shape, so the next caller cannot reintroduce it by omission.
+  describe('fail-closed default (#4363)', () => {
+    /** Dispatch + drive one background run deterministically. */
+    async function runJob(
+      jobId: string,
+      result: unknown,
+      extra: Record<string, unknown> = {}
+    ): Promise<ReturnType<typeof readJobResult>> {
+      const params = {
+        toolName: 'orchestrate',
+        input: { task: 't' } as DummyInput,
+        freshJobId: () => jobId,
+        run: () => Promise.resolve(result),
+        ...extra,
+      };
+      runAsJob<DummyInput, unknown>({ ...params, run: () => new Promise(() => {}) });
+      await runJobInBackground(jobId, params);
+      return readJobResult(jobId);
+    }
+
+    it('refuses to record an isError ToolResult as complete', async () => {
+      const record = await runJob('job-fc-iserror', {
+        isError: true,
+        content: [{ type: 'text', text: 'adapter unauthorized' }],
+      });
+
+      expect(record?.status).toBe('failed');
+    });
+
+    it('refuses to record an { ok: false } result as complete', async () => {
+      expect((await runJob('job-fc-ok', { ok: false, error: 'no quorum' }))?.status).toBe('failed');
+    });
+
+    it('refuses to record a { success: false } result as complete', async () => {
+      expect((await runJob('job-fc-success', { success: false }))?.status).toBe('failed');
+    });
+
+    it('names the key that tripped, so the record is debuggable', async () => {
+      const record = await runJob('job-fc-why', { ok: false, error: 'no quorum' });
+
+      expect(record?.error).toContain('ok');
+      // …and carries the payload's own message rather than a bare "failed".
+      expect(record?.error).toContain('no quorum');
+    });
+
+    it('records an ordinary success as complete', async () => {
+      const record = await runJob('job-fc-happy', { value: 42 });
+
+      expect(record?.status).toBe('complete');
+      expect(record?.result).toEqual({ value: 42 });
+    });
+
+    // The false-positive class the #4351 panel made binding: fail-closed must
+    // not become fail-wrong. These payloads all describe work that SUCCEEDED.
+    describe('does not misread success payloads as failures', () => {
+      it('a rejected consensus verdict is a successful job', async () => {
+        const record = await runJob('job-fc-verdict', {
+          ok: true,
+          value: { decision: 'rejected', approvalPercentage: 28 },
+        });
+
+        expect(record?.status).toBe('complete');
+      });
+
+      it('a nested success:false carried as DATA is a successful job', async () => {
+        // A pipeline summary listing a stage it recovered from. Only root keys
+        // are checked — never a deep scan.
+        const record = await runJob('job-fc-nested', {
+          success: true,
+          stages: [
+            { id: 'plan', success: true },
+            { id: 'research', success: false, recovered: true },
+          ],
+        });
+
+        expect(record?.status).toBe('complete');
+      });
+
+      it('a root isError:false is a successful job', async () => {
+        expect((await runJob('job-fc-noterror', { isError: false }))?.status).toBe('complete');
+      });
+
+      it('a non-object payload is a successful job', async () => {
+        expect((await runJob('job-fc-scalar', 'plain text result'))?.status).toBe('complete');
+      });
+
+      it('a null payload is a successful job', async () => {
+        expect((await runJob('job-fc-null', null))?.status).toBe('complete');
+      });
+    });
+
+    describe('opt-out is explicit and observable', () => {
+      it('records complete when the caller opted out with a stated reason', async () => {
+        const record = await runJob(
+          'job-fc-optout',
+          { ok: false, error: 'partial vote set after cancel' },
+          { allowFailureShapedResult: 'partial results are the point of this tool' }
+        );
+
+        expect(record?.status).toBe('complete');
+      });
+
+      it('logs the opt-out when it actually suppresses a detection', async () => {
+        // In a governance substrate an opted-out caller is a policy decision and
+        // has to appear in the audit trail, not vanish into a silent kwarg.
+        const warn = vi.fn();
+        const logger = {
+          warn,
+          error: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+        } as unknown as import('../../core/index.js').ILogger;
+
+        await runJob(
+          'job-fc-optout-logged',
+          { ok: false },
+          { allowFailureShapedResult: 'documented reason', logger }
+        );
+
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('failure-shaped'),
+          expect.objectContaining({
+            jobId: 'job-fc-optout-logged',
+            reason: 'documented reason',
+          })
+        );
+      });
+
+      it('does not log an opt-out that never had anything to suppress', async () => {
+        const warn = vi.fn();
+        const logger = {
+          warn,
+          error: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+        } as unknown as import('../../core/index.js').ILogger;
+
+        await runJob(
+          'job-fc-optout-quiet',
+          { value: 1 },
+          { allowFailureShapedResult: 'documented reason', logger }
+        );
+
+        expect(warn).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
 
 describe('runAsJob — cancellation aborts in-flight work (#4086)', () => {
