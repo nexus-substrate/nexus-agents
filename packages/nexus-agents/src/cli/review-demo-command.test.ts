@@ -21,6 +21,13 @@ vi.mock('../core/index.js', () => ({
     now: vi.fn(() => 1000),
   })),
   formatPercentage: vi.fn((v: number) => `${String(Math.round(v * 100))}%`),
+  getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
+}));
+
+// #4350: the demo path resolves its adapter from the canonical registry.
+const getDefaultMock = vi.fn(() => ({ name: 'test-adapter' }));
+vi.mock('../adapters/unified-registry.js', () => ({
+  getGlobalRegistry: () => ({ getDefault: getDefaultMock }),
 }));
 
 vi.mock('./review-demo-helpers.js', () => ({
@@ -120,6 +127,7 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
       isSuspicious: false,
     },
     postOutcome: { status: 'posted' },
+    filesReviewed: 7,
     ...overrides,
   } satisfies PRReviewResult;
 }

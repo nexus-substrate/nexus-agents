@@ -8,7 +8,9 @@
  * (Source: Issue #258 - PR Review Demo Workflow)
  */
 
-import { getTimeProvider, formatPercentage } from '../core/index.js';
+import { getTimeProvider, formatPercentage, getErrorMessage } from '../core/index.js';
+import type { IModelAdapter } from '../core/index.js';
+import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity, ReviewPostOutcome } from '../dogfooding/index.js';
 import type { ReviewDemoOptions, ProgressStep } from './review-demo-types.js';
@@ -132,7 +134,17 @@ async function runReviewWithProgress(
   steps = updateProgress(steps, 1, { status: 'in_progress' });
   printProgress(steps, verbose);
 
-  const reviewer = createPRReviewer({ dryRun });
+  // #4350: the adapter is createPRReviewer's SECOND parameter and was never
+  // passed here either, so every expert ran its heuristic branch while the
+  // progress display reported a clean multi-agent review. Fail closed.
+  const adapter = resolveAdapter();
+  if (adapter === null) {
+    steps = updateProgress(steps, 0, { status: 'failed', message: 'no model adapter' });
+    printProgress(steps, verbose);
+    return 1;
+  }
+
+  const reviewer = createPRReviewer({ dryRun }, adapter);
   const result = await reviewer.reviewPR(prUrl);
 
   if (!result.ok) {
@@ -157,6 +169,26 @@ async function runReviewWithProgress(
   printSuccessMessage(durationMs);
 
   return 0;
+}
+
+/**
+ * Resolve the model adapter the experts will run on, or null after reporting why
+ * the review cannot proceed (#4350). Mirrors `review-command.ts`.
+ */
+function resolveAdapter(): IModelAdapter | null {
+  try {
+    // No logger threaded: this command has none, and the registry's is optional.
+    return getGlobalRegistry().getDefault();
+  } catch (error) {
+    // Our guidance plus the registry's message only — never the adapter
+    // configuration, which can carry credentials.
+    process.stderr.write(
+      `\nError: no model adapter is available, so the review would fall back to generic heuristics rather than reading this PR.\n` +
+        `  ${getErrorMessage(error)}\n` +
+        `  Run "nexus-agents doctor" to see which CLIs are detected and authenticated.\n`
+    );
+    return null;
+  }
 }
 
 /**
@@ -238,7 +270,9 @@ function updateAllStepsCompleted(
 function getStepMessage(index: number, review: PRReviewResult): string {
   const msgMap: Record<number, string> = {
     0: 'OK',
-    1: `${String(review.expertReviews.length)} files`,
+    // #4350: this printed `expertReviews.length` — the EXPERT count — under a
+    // "files" label, so a 7-file PR reported "3 files".
+    1: `${String(review.filesReviewed)} files`,
     2: getExpertMessage(review, 'security'),
     3: getExpertMessage(review, 'code_quality'),
     4: getExpertMessage(review, 'testing'),

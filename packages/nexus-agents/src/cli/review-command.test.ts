@@ -15,6 +15,12 @@ vi.mock('../dogfooding/index.js', () => ({
   formatReviewComment: vi.fn(),
 }));
 
+// #4350: the review path resolves its adapter from the canonical registry.
+const getDefaultMock = vi.fn(() => ({ name: 'test-adapter' }));
+vi.mock('../adapters/unified-registry.js', () => ({
+  getGlobalRegistry: () => ({ getDefault: getDefaultMock }),
+}));
+
 // Mock the core module
 vi.mock('../core/index.js', () => ({
   createLogger: vi.fn(() => ({
@@ -24,13 +30,14 @@ vi.mock('../core/index.js', () => ({
     debug: vi.fn(),
   })),
   formatPercentage: vi.fn((n: number) => `${String(Math.round(n * 100))}%`),
+  getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult } from '../dogfooding/index.js';
-
 const mockCreatePRReviewer = vi.mocked(createPRReviewer);
 const mockFormatReviewComment = vi.mocked(formatReviewComment);
+const mockGetDefault = getDefaultMock;
 
 describe('review-command', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,11 +79,13 @@ describe('review-command', () => {
     },
     expertReviews: [],
     postOutcome: { status: 'posted' },
+    filesReviewed: 7,
     ...overrides,
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    getDefaultMock.mockReturnValue({ name: 'test-adapter' });
     stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     stderrWriteSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     mockFormatReviewComment.mockReturnValue('# Review Comment Preview');
@@ -328,7 +337,9 @@ describe('review-command', () => {
         verbose: false,
       });
 
-      expect(mockCreatePRReviewer).toHaveBeenCalledWith({ dryRun: true });
+      // #4350: the factory now also receives the resolved adapter as its second
+      // argument — the parameter the CLI used to leave empty.
+      expect(mockCreatePRReviewer).toHaveBeenCalledWith({ dryRun: true }, expect.anything());
     });
   });
 
@@ -408,6 +419,60 @@ describe('review-command', () => {
 
       const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).not.toContain('GitHub Comment Preview');
+    });
+  });
+
+  // #4350: both CLI entry points called `createPRReviewer({ dryRun })`, but the
+  // adapter is that factory's SECOND parameter — so the review path never wired
+  // one. Every expert logged `hasAdapter: false` and fell through to its
+  // heuristic branch, and the command printed a confident decision built from
+  // generic findings with `tokensUsed: 0` and exited 0.
+  describe('model adapter wiring (#4350)', () => {
+    it('passes the registry adapter to the reviewer', async () => {
+      const adapter = { name: 'claude-resilient' };
+      mockGetDefault.mockReturnValue(adapter);
+      mockCreatePRReviewer.mockReturnValue({
+        reviewPR: vi.fn().mockResolvedValue({ ok: true, value: createMockReview() }),
+      } as never);
+
+      await reviewCommand({ prUrl: 'test/pr', dryRun: false, verbose: false });
+
+      // Assert on the SECOND argument specifically — passing it positionally
+      // wrong is exactly the slip that caused this bug, and a looser assertion
+      // would not catch a repeat.
+      expect(mockCreatePRReviewer).toHaveBeenCalledWith(expect.anything(), adapter);
+    });
+
+    it('fails closed when no adapter is configured', async () => {
+      mockGetDefault.mockImplementation(() => {
+        throw new Error('No model adapter configured');
+      });
+
+      const exitCode = await reviewCommand({ prUrl: 'test/pr', dryRun: false, verbose: false });
+
+      expect(exitCode).toBe(1);
+      expect(mockCreatePRReviewer).not.toHaveBeenCalled();
+    });
+
+    it('tells the user what to do, not just what is missing', async () => {
+      // The confusing part of this bug is that `doctor` reports healthy CLIs
+      // while the review path ignored them — the message has to bridge that.
+      mockGetDefault.mockImplementation(() => {
+        throw new Error('No model adapter configured');
+      });
+
+      await reviewCommand({ prUrl: 'test/pr', dryRun: false, verbose: false });
+
+      const stderr = stderrWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stderr).toContain('nexus-agents doctor');
+    });
+
+    it('fails closed in dry-run too — a dry run still needs a real review', async () => {
+      mockGetDefault.mockImplementation(() => {
+        throw new Error('No model adapter configured');
+      });
+
+      expect(await reviewCommand({ prUrl: 'test/pr', dryRun: true, verbose: false })).toBe(1);
     });
   });
 

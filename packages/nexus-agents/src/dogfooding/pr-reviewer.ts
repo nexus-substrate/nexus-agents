@@ -361,6 +361,7 @@ Provide a structured review with:
       findingsByCategory: countByCategory(allFindings),
       totalDurationMs: getTimeProvider().now() - startTime,
       expertCount: reviews.length,
+      filesReviewed: pr.files.length,
       consensusScore,
       debateRounds: 1,
       timestamp: getTimeProvider().nowIso(),
