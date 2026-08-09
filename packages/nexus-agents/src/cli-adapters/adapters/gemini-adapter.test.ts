@@ -223,51 +223,88 @@ describe('GeminiCliAdapter', () => {
   });
 });
 
-describe('GeminiCliAdapter systemPrompt (#1886)', () => {
-  it('passes --policy <tempfile> when systemPrompt is set', () => {
+describe('GeminiCliAdapter systemPrompt (#1886, reworked in #4346)', () => {
+  function getCommand(task: unknown): { command: string; args: string[]; cleanup?: () => void } {
     const adapter = new GeminiCliAdapter();
-    // Access protected getCommand via type assertion (test-only)
-    const cmd = (
-      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
-    ).getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
-    const policyIdx = cmd.args.indexOf('--policy');
-    expect(policyIdx).toBeGreaterThanOrEqual(0);
-    expect(cmd.args[policyIdx + 1]).toMatch(/policy\.md$/);
-    expect(cmd.cleanup).toBeDefined();
-    // Clean up the temp file
-    if (cmd.cleanup !== undefined) cmd.cleanup();
+    return (
+      adapter as unknown as {
+        getCommand: (t: unknown) => { command: string; args: string[]; cleanup?: () => void };
+      }
+    ).getCommand(task);
+  }
+
+  it('prepends the system prompt to the content', () => {
+    // agy has no system-prompt flag — the retired gemini CLI's `--policy <file>`
+    // has no equivalent, and `--agent` selects a preconfigured agent rather than
+    // accepting inline instructions. Prepending is a deliberate downgrade in
+    // framing fidelity, pinned here so it is not mistaken for an oversight.
+    const cmd = getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
+
+    const printIdx = cmd.args.indexOf('--print');
+    expect(cmd.args[printIdx + 1]).toBe('You are strict.\n\ntest prompt');
   });
 
-  it('omits --policy when systemPrompt is empty', () => {
-    const adapter = new GeminiCliAdapter();
-    const cmd = (
-      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
-    ).getCommand({ content: 'test prompt' });
-    expect(cmd.args).not.toContain('--policy');
+  it('passes the content unchanged when no system prompt is set', () => {
+    const cmd = getCommand({ content: 'test prompt' });
+
+    const printIdx = cmd.args.indexOf('--print');
+    expect(cmd.args[printIdx + 1]).toBe('test prompt');
+  });
+
+  it('writes no temp file, so there is nothing to clean up', () => {
+    // The old --policy path wrote a tempdir per call and needed a cleanup
+    // callback to avoid leaking it (#2824). That surface is gone entirely.
+    const cmd = getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
+
     expect(cmd.cleanup).toBeUndefined();
+    expect(cmd.args).not.toContain('--policy');
+  });
+});
+
+describe('GeminiCliAdapter runs agy, not the retired gemini CLI (#4346)', () => {
+  function getCommand(task: unknown): { command: string; args: string[] } {
+    const adapter = new GeminiCliAdapter();
+    return (
+      adapter as unknown as { getCommand: (t: unknown) => { command: string; args: string[] } }
+    ).getCommand(task);
+  }
+
+  it('spawns agy', () => {
+    // The standalone gemini CLI fails every invocation with IneligibleTierError
+    // (exit 55) since Google retired it for individual tiers.
+    expect(getCommand({ content: 'hi' }).command).toBe('agy');
   });
 
-  it('cleanup removes parent tempdir, not just file (#2824)', async () => {
-    const adapter = new GeminiCliAdapter();
-    const cmd = (
-      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
-    ).getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
-    const policyIdx = cmd.args.indexOf('--policy');
-    const file = cmd.args[policyIdx + 1] as string;
-    const dir = file.replace(/\/policy\.md$/, '');
+  it('uses agy flag spellings', () => {
+    const { args } = getCommand({ content: 'hi' });
 
-    // Sanity check pre-cleanup
-    const { existsSync } = await import('node:fs');
-    expect(existsSync(file)).toBe(true);
-    expect(existsSync(dir)).toBe(true);
+    expect(args).toContain('--output-format');
+    expect(args).toContain('--model');
+    expect(args).toContain('--print');
+    // The retired CLI's short forms.
+    expect(args).not.toContain('-o');
+    expect(args).not.toContain('-m');
+  });
 
-    if (cmd.cleanup !== undefined) cmd.cleanup();
+  it('requests JSON output — the only place agy reports success or failure', () => {
+    const { args } = getCommand({ content: 'hi' });
 
-    // Post-cleanup: both file AND parent tempdir gone. Pre-fix only the
-    // file was unlinked, leaking an empty `nexus-gemini-sysprompt-XXXXXX`
-    // dir on every call.
-    expect(existsSync(file)).toBe(false);
-    expect(existsSync(dir)).toBe(false);
+    expect(args[args.indexOf('--output-format') + 1]).toBe('json');
+  });
+
+  it('resumes a session with --conversation, not --resume', () => {
+    const { args } = getCommand({ content: 'hi', sessionId: 'conv-123' });
+
+    expect(args[args.indexOf('--conversation') + 1]).toBe('conv-123');
+    expect(args).not.toContain('--resume');
+  });
+
+  it('passes the prompt as the value of --print, never positionally', () => {
+    // A valueless --print consumes whatever token follows it.
+    const { args } = getCommand({ content: 'hi' });
+
+    expect(args[args.indexOf('--print') + 1]).toBe('hi');
+    expect(args[0]).not.toBe('hi');
   });
 });
 

@@ -206,7 +206,9 @@ You need at least one of these CLI tools installed and authenticated:
 ```bash
 # Verify CLI authentication
 claude --version    # Claude CLI
-gemini --version    # Gemini CLI
+agy --version       # Antigravity CLI — the `gemini` routing arm runs this now (#4346).
+                    # The standalone `gemini` CLI is retired and fails every
+                    # invocation with IneligibleTierError.
 codex --version     # Codex CLI
 ```
 
@@ -341,9 +343,7 @@ describe('ModuleName', () => {
   describe('functionName', () => {
     it('should handle expected input correctly', () => {
       // Arrange
-      const input = {
-        /* ... */
-      };
+      const input = {/* ... */};
 
       // Act
       const result = functionName(input);
@@ -354,18 +354,14 @@ describe('ModuleName', () => {
 
     it('should return error for invalid input', () => {
       // Arrange
-      const invalidInput = {
-        /* ... */
-      };
+      const invalidInput = {/* ... */};
 
       // Act
       const result = functionName(invalidInput);
 
       // Assert
       expect(result.ok).toBe(false);
-      expect(result.error).toMatchObject({
-        /* ... */
-      });
+      expect(result.error).toMatchObject({/* ... */});
     });
   });
 });
