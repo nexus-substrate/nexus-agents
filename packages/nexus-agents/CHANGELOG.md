@@ -1,5 +1,64 @@
 # nexus-agents
 
+## 2.173.7
+
+### Patch Changes
+
+- [#4349](https://github.com/nexus-substrate/nexus-agents/pull/4349) [`66f1884`](https://github.com/nexus-substrate/nexus-agents/commit/66f1884e70239c37a2c2653c5125f937c7836d0e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Use a supported non-interactive approval policy when the Codex MCP adapter starts a read-only task.
+
+- [#4358](https://github.com/nexus-substrate/nexus-agents/pull/4358) [`658930f`](https://github.com/nexus-substrate/nexus-agents/commit/658930fe914420a3b2d95692d4f5beb28e4920b2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(core): keep BoundedLRUCache bounded when the oldest key is `undefined`
+
+  `set()` decided whether to evict by testing `keys().next().value !== undefined`,
+  which conflates "the iterator is exhausted" with "the oldest key is literally
+  `undefined`". Since `undefined` is a legal `Map` key, a cache instantiated with a
+  key type admitting it (e.g. `BoundedLRUCache<string | undefined, V>`) silently
+  skipped the eviction and grew past its capacity. Eviction now branches on the
+  iterator's `done` flag instead. Closes [#4319](https://github.com/nexus-substrate/nexus-agents/issues/4319).
+
+- [#4361](https://github.com/nexus-substrate/nexus-agents/pull/4361) [`5878d17`](https://github.com/nexus-substrate/nexus-agents/commit/5878d1740b3a3198bfe33e2a8cf16f4192c2a61f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(experts): stop pointing the research and infrastructure experts at a removed subsystem
+
+  Both expert prompts cited `docs/architecture/RESEARCH_PIPELINE.md` as a reference
+  implementation — the research expert called it "the template for new research
+  workflows". That subsystem (`research-pipeline.ts`, `runResearchPipeline`, the
+  `nexus:research-pipeline` plugin) was deleted in [#3492](https://github.com/nexus-substrate/nexus-agents/issues/3492) / PR [#3590](https://github.com/nexus-substrate/nexus-agents/issues/3590), so the prompts
+  were sending agents to a spec for code that no longer exists.
+
+  The research expert now points at the live research-loop tools
+  (`research_discover` → `research_analyze` → `research_synthesize` →
+  `research_query`) plus `.rules/research.md` for the provenance invariants; the
+  infrastructure expert now cites `ORCHESTRATOR_WORKFLOW_ENGINE.md` for staged data
+  flow. Adds a regression test asserting no expert prompt cites the removed doc.
+
+- [#4367](https://github.com/nexus-substrate/nexus-agents/pull/4367) [`61b2c23`](https://github.com/nexus-substrate/nexus-agents/commit/61b2c23facd934cd0beb35a615b50a5707f0eeab) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix: stop three fail-open sites reporting failed work as success ([#4362](https://github.com/nexus-substrate/nexus-agents/issues/4362))
+
+  Increment 1 of the unanimous Option C decision on [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351). Each site let a failure
+  that was detected somewhere in the stack reach the caller as a success:
+
+  - **`pipeline/pipeline-graph.ts`** — `createNodeHandler` discarded
+    `StageOutput.success`/`.error`, so a stage that failed cleanly was
+    indistinguishable from one that succeeded. It now throws a `StageFailureError`,
+    routing the failure through the graph executor's existing channel
+    (`NodeResult.status: 'failed'`).
+  - **`pipeline/graph-pipeline-runner.ts`** — `executeAndReport` derived `success`
+    from "the BSP loop returned", never inspecting `nodeResults`. It now reports
+    `success: false` when any node failed, names the failed stage ids, and keeps the
+    partial `finalState`.
+  - **`mcp/tools/run-tool.ts`** — `executeRunBody` wrapped any resolved dispatch in
+    `toolSuccess`. It now returns a `business` error when the engine reported its own
+    failure (`success: false` from the pipeline engines, `completed: false` from the
+    dev pipeline), and the async path rejects so the job records `failed` rather than
+    `complete`. A `rejected` consensus verdict stays a success — it is the answer the
+    caller asked for, not a fault.
+  - **`mcp/tools/consensus-vote.ts`** — `dispatchAsyncConsensusVote` passed
+    `handleConsensusVote`'s `{ ok: false }` straight into `runAsJob`, which records
+    `complete` for anything that resolves; a dead voter panel therefore produced a job
+    a caller read as successful. It now rejects, mirroring the sync path.
+
+  The throw-based mechanism was chosen by `consensus_vote` (`higher_order`, 7/0) over
+  adding a parallel error key to graph state. No behaviour changes on any wired
+  template: every in-tree template is a linear chain, and the only production producer
+  of `StageOutput` already wrote `null` on failure.
+
 ## 2.173.6
 
 ### Patch Changes
