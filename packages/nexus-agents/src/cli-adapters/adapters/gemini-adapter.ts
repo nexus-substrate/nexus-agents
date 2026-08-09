@@ -12,9 +12,6 @@
  * (Source: Issue #389 - Merged enhanced adapter back to canonical)
  */
 
-import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
@@ -29,7 +26,8 @@ import type {
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
-import { ResilientGeminiParser } from '../parsers/gemini-parser-resilient.js';
+import { AgyResponseParser } from '../parsers/agy-parser.js';
+import { toAgyModelSlug } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import {
@@ -109,7 +107,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     this.maxRetries = mergedConfig.maxRetries;
     this.baseDelayMs = mergedConfig.baseDelayMs;
     this.maxDelayMs = mergedConfig.maxDelayMs;
-    this.parser = new ResilientGeminiParser();
+    this.parser = new AgyResponseParser();
     this.adapterLogger = options?.logger ?? createLogger({ component: 'gemini-adapter' });
 
     // Initialize circuit breaker if enabled
@@ -209,49 +207,48 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   protected override getCommand(task: CliTask): CommandConfig {
     const args: string[] = [];
 
-    // Add the task content as positional argument
-    args.push(task.content);
+    // #4346: the standalone `gemini` CLI is retired — it fails every invocation
+    // with IneligibleTierError (exit 55). `agy` (Antigravity) is Google's own
+    // replacement. Flag spellings differ entirely from the old CLI:
+    //   -o json      -> --output-format json
+    //   -m <model>   -> --model <slug>
+    //   --resume     -> --conversation
+    //   --policy     -> (no equivalent; see systemPrompt handling below)
+    args.push('--output-format', 'json');
 
-    // Add output format
-    args.push('-o', 'json');
+    // Registry model ids and agy slugs are different namespaces — see
+    // config/agy-model-map.ts for why `cliModelName` cannot carry the agy slug.
+    // An unmapped id would make agy return status:ERROR with exit code 0, so the
+    // resolver substitutes a valid slug rather than letting that happen.
+    const requested = task.model ?? this.model;
+    const model = toAgyModelSlug(requested);
+    if (model !== requested) {
+      this.adapterLogger.debug('Substituted an agy model slug', { requested, model });
+    }
+    args.push('--model', model);
 
-    // Add model (always present due to default)
-    const model = task.model ?? this.model;
-    args.push('-m', model);
-
-    // Add session for continuation
     if (task.sessionId !== undefined && task.sessionId !== '') {
-      args.push('--resume', task.sessionId);
+      args.push('--conversation', task.sessionId);
     }
 
-    // Note: Sandbox mode (-s) removed - causes npm permission issues
-    // and "rebuilt dependencies successfully" contamination
+    // agy has no system-prompt flag. The old CLI's `--policy <file>` preserved
+    // system-role framing (#1886); agy offers only `--agent`, which selects a
+    // preconfigured agent rather than accepting inline instructions. So the
+    // system prompt is prepended to the user content — a deliberate downgrade
+    // in framing fidelity, recorded here so it is not mistaken for an
+    // oversight. No temp file is written, which also removes the tempdir-leak
+    // surface the old path had.
+    const content =
+      task.systemPrompt !== undefined && task.systemPrompt !== ''
+        ? `${task.systemPrompt}\n\n${task.content}`
+        : task.content;
 
-    // Honor systemPrompt via gemini's --policy flag (#1886).
-    // Gemini treats policy files as system-level instructions, preserving
-    // the system-role framing (unlike prepending to user content).
-    let cleanup: (() => void) | undefined;
-    if (task.systemPrompt !== undefined && task.systemPrompt !== '') {
-      const dir = mkdtempSync(join(tmpdir(), 'nexus-gemini-sysprompt-'));
-      const file = join(dir, 'policy.md');
-      writeFileSync(file, task.systemPrompt, { encoding: 'utf8', mode: 0o600 });
-      args.push('--policy', file);
-      cleanup = (): void => {
-        // Recursive rm so we drop the parent tempdir, not just the file
-        // inside it. Pre-fix every gemini call with a systemPrompt leaked
-        // one empty `/tmp/nexus-gemini-sysprompt-XXXXXX` dir until the OS
-        // reaper ran.
-        try {
-          rmSync(dir, { recursive: true, force: true });
-        } catch {
-          // best-effort; tempdir auto-cleanup will eventually reap it
-        }
-      };
-    }
+    // --print LAST with an explicit value. agy accepts flags in any order, but
+    // a valueless --print consumes whatever token follows it, so the prompt is
+    // always passed as its argument rather than positionally.
+    args.push('--print', content);
 
-    return cleanup === undefined
-      ? { command: 'gemini', args }
-      : { command: 'gemini', args, cleanup };
+    return { command: 'agy', args };
   }
 
   private checkCircuitBreaker(): CliError | null {

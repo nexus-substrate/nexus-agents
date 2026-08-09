@@ -306,9 +306,13 @@ export const CLI_VERSION_REQUIREMENTS: Record<CliName, VersionRequirements> = {
     recommended: '2.0.76',
     breaking: [],
   },
+  // #4346: the `gemini` arm now runs the Antigravity CLI (`agy`), which
+  // replaced the retired standalone gemini CLI. Versions are agy's, not
+  // gemini's — an installed gemini 0.5x would fail the minimum, which is
+  // correct: it cannot serve.
   gemini: {
-    minimum: '0.20.0',
-    recommended: '0.22.5',
+    minimum: '1.0.0',
+    recommended: '1.1.9',
     breaking: [],
   },
   codex: {
