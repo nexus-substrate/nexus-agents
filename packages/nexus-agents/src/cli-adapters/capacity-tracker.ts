@@ -129,6 +129,15 @@ export class CapacityTracker {
    */
   private requestTimestamps: number[];
 
+  /**
+   * Whether this process has recorded even one request against this adapter
+   * (#4374). Sticky: pruning the usage window back to empty does NOT clear it,
+   * because the process has still seen the adapter work — it simply has no
+   * recent samples. Without this flag a never-used tracker is indistinguishable
+   * from an idle healthy one, and both report full remaining capacity.
+   */
+  private hasObserved = false;
+
   constructor(config: CapacityTrackerConfig) {
     this.config = config;
     this.usageHistory = [];
@@ -142,6 +151,7 @@ export class CapacityTracker {
    */
   recordUsage(usage: TokenUsage | undefined): void {
     const now = getTimeProvider().now();
+    this.hasObserved = true;
     this.pruneOldEntries(now);
 
     this.requestTimestamps.push(now);
@@ -180,6 +190,7 @@ export class CapacityTracker {
       resetTime,
       utilizationPercent: Math.round(utilizationPercent * 100) / 100,
       exhausted,
+      observed: this.hasObserved,
     };
   }
 

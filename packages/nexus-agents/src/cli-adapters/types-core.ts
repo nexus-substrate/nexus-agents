@@ -168,4 +168,18 @@ export interface CapacityStatus {
   readonly utilizationPercent: number;
   /** Whether capacity is exhausted */
   readonly exhausted: boolean;
+  /**
+   * Whether this process has observed any usage of the adapter (#4374).
+   *
+   * When false, every other field is a *default*, not a measurement: a tracker
+   * that has never recorded a request reports the full token limit remaining and
+   * 0% utilization, which is indistinguishable from a genuinely idle adapter.
+   * Consumers must not present an unobserved reading as health.
+   *
+   * Note the narrower guarantee even when true: the tracker sees only THIS
+   * process's spend. It has no visibility into a provider-side weekly quota
+   * consumed elsewhere, so `remainingTokens` is a local upper bound on what is
+   * left, never an authoritative one.
+   */
+  readonly observed: boolean;
 }

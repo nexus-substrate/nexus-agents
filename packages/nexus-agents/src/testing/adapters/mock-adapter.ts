@@ -131,6 +131,7 @@ export class MockCliAdapter implements ICliAdapter {
       resetTime: new Date(getTimeProvider().now() + 3600_000),
       utilizationPercent: 0,
       exhausted: false,
+      observed: true,
     });
   }
 

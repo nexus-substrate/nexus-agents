@@ -163,6 +163,10 @@ export class ModelToCliAdapter implements ICliAdapter {
    * API adapters don't expose subprocess-style rate windows; report
    * non-exhausted capacity. Real rate-limit signals surface via execute()'s
    * RATE_LIMITED error, which the resilience layer acts on.
+   *
+   * #4374: `observed: false` — the infinities below are a stand-in for "this
+   * adapter has no rate window to report", not a measurement. Reporting them as
+   * observed would tell consumers we had checked and found unlimited capacity.
    */
   getCapacity(): Promise<CapacityStatus> {
     return Promise.resolve({
@@ -171,6 +175,7 @@ export class ModelToCliAdapter implements ICliAdapter {
       resetTime: new Date(0),
       utilizationPercent: 0,
       exhausted: false,
+      observed: false,
     });
   }
 

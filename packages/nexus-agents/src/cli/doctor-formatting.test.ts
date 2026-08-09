@@ -386,6 +386,9 @@ describe('doctor-formatting', () => {
           resetTime: new Date(),
           utilizationPercent: tc.util,
           exhausted: tc.util >= 100,
+          // #4374: these cases assert the percentage banding, which only applies
+          // to a reading we actually measured.
+          observed: true,
         };
         const result = createDoctorResult({
           clis: [
@@ -399,6 +402,53 @@ describe('doctor-formatting', () => {
           `${tc.desc} capacity`
         ).toBe(true);
       }
+    });
+
+    // #4374: a tracker that has never recorded a request returns the full token
+    // limit and 0% utilization — a default, not a measurement — and doctor
+    // rendered it as a green "100% remaining". That reading is fiction for a CLI
+    // whose weekly quota was consumed by another process, and it is what made
+    // the #4351 reproduction confusing.
+    it('does not report unobserved capacity as 100% remaining', () => {
+      const capacity: CapacityStatus = {
+        remainingTokens: 100_000,
+        remainingRequests: 100,
+        resetTime: new Date(),
+        utilizationPercent: 0,
+        exhausted: false,
+        observed: false,
+      };
+      const result = createDoctorResult({
+        clis: [
+          createCliCheckResult('claude', true, true, 'supported', { version: '0.2.0', capacity }),
+        ],
+      });
+
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      expect(calls.some((call) => call.includes('100% remaining'))).toBe(false);
+      expect(calls.some((call) => call.includes('unknown'))).toBe(true);
+    });
+
+    it('still reports an observed idle adapter as 100% remaining', () => {
+      const capacity: CapacityStatus = {
+        remainingTokens: 100_000,
+        remainingRequests: 100,
+        resetTime: new Date(),
+        utilizationPercent: 0,
+        exhausted: false,
+        observed: true,
+      };
+      const result = createDoctorResult({
+        clis: [
+          createCliCheckResult('claude', true, true, 'supported', { version: '0.2.0', capacity }),
+        ],
+      });
+
+      printDoctorResults(result);
+
+      expect(getCalls().some((call) => call.includes('100% remaining'))).toBe(true);
     });
 
     it('should print MCP server and client status', () => {
