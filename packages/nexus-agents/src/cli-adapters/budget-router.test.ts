@@ -56,6 +56,7 @@ function createMockAdapter(
       resetTime: new Date(Date.now() + 3600000),
       utilizationPercent: 10,
       exhausted: false,
+      observed: true,
     } satisfies CapacityStatus),
     getVersion: vi.fn().mockResolvedValue('1.0.0'),
     getModelInfo: vi.fn().mockReturnValue({

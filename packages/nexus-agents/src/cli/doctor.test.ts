@@ -164,6 +164,7 @@ describe('Doctor Command', () => {
           resetTime: new Date(),
           utilizationPercent: 15,
           exhausted: false,
+          observed: true,
         }),
       };
 
@@ -319,6 +320,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -353,6 +355,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -372,6 +375,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -391,6 +395,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -488,6 +493,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -507,6 +513,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -545,6 +552,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -564,6 +572,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -583,6 +592,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -615,6 +625,7 @@ describe('Doctor Command', () => {
           resetTime: new Date(),
           utilizationPercent: 15,
           exhausted: false,
+          observed: true,
         }),
       };
       const mockAdapters = new Map([
@@ -651,6 +662,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             }),
           },
         ],
@@ -684,6 +696,7 @@ describe('Doctor Command', () => {
           resetTime: new Date(),
           utilizationPercent: 15,
           exhausted: false,
+          observed: true,
         }),
       };
       const mockAdapters = new Map([
@@ -916,6 +929,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               exhausted: false,
+              observed: true,
             },
           },
           {
@@ -1019,6 +1033,7 @@ describe('Doctor Command', () => {
           resetTime: new Date(),
           utilizationPercent: 15,
           exhausted: false,
+          observed: true,
         }),
       };
 
@@ -1089,6 +1104,7 @@ describe('Doctor Command', () => {
           resetTime: new Date(),
           utilizationPercent: 15,
           exhausted: false,
+          observed: true,
         }),
       };
 

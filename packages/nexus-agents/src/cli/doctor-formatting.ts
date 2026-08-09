@@ -57,6 +57,13 @@ function formatVersionStatus(status: string): string {
  */
 function formatCapacity(capacity?: CapacityStatus): string {
   if (capacity === undefined) return 'Unknown';
+  // #4374: a tracker that has never recorded a request reports the full token
+  // limit and 0% utilization, which used to render as a green "100% remaining".
+  // That is a default, not a measurement — and it is fiction for a CLI whose
+  // weekly quota was consumed by another process. Say so instead.
+  if (!capacity.observed) {
+    return `${colors.yellow}unknown (no usage observed this session)${colors.reset}`;
+  }
   const remaining = 100 - capacity.utilizationPercent;
   const remainingStr = String(remaining);
   if (remaining > 80) return `${colors.green}${remainingStr}% remaining${colors.reset}`;

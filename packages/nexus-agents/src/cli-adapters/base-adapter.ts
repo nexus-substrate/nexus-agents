@@ -45,14 +45,6 @@ import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 const execAsync = promisify(exec);
 
 /**
- * Fallback capacity (in tokens) when capacity tracker is uninitialized.
- * Uses a realistic 100k token budget instead of MAX_SAFE_INTEGER to prevent
- * downstream consumers from treating the adapter as having unlimited capacity.
- * Issue #1463.
- */
-export const DEFAULT_CAPACITY_FALLBACK = 100_000;
-
-/**
  * Default execution options.
  *
  * Timeout reduced from 120s to 60s per Issue #280 to prevent
