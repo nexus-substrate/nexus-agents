@@ -7,7 +7,9 @@
  * (Source: Issue #161, Alignment Roadmap Phase 3)
  */
 
-import { createLogger, formatPercentage } from '../core/index.js';
+import { createLogger, formatPercentage, getErrorMessage } from '../core/index.js';
+import type { IModelAdapter } from '../core/index.js';
+import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity, ReviewPostOutcome } from '../dogfooding/index.js';
 import { capitalize } from '../utils/text-utils.js';
@@ -38,7 +40,15 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
 
   printHeader(prUrl, dryRun);
 
-  const reviewer = createPRReviewer({ dryRun });
+  // #4350: this used to be `createPRReviewer({ dryRun })` — the adapter is that
+  // factory's SECOND parameter, so the CLI never wired one and every expert
+  // silently fell through to its heuristic branch, producing a confident
+  // decision with `tokensUsed: 0` and exit 0. Fail closed instead: a review
+  // nobody should trust must not look like one that succeeded.
+  const adapter = resolveAdapter();
+  if (adapter === null) return 1;
+
+  const reviewer = createPRReviewer({ dryRun }, adapter);
   const result = await reviewer.reviewPR(prUrl);
 
   if (!result.ok) {
@@ -51,6 +61,30 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
   // used to print "Review posted to GitHub." and exit 0 over an HTTP 422, so a
   // script gating on the exit code saw a review that never existed.
   return result.value.postOutcome.status === 'failed' ? 1 : 0;
+}
+
+/**
+ * Resolve the model adapter the experts will run on, or null after reporting
+ * why the review cannot proceed (#4350).
+ *
+ * Uses the canonical acquisition path (`getGlobalRegistry().getDefault()`), the
+ * same one the voter CLI uses. The guidance matters as much as the error: the
+ * confusing part of this failure is that `doctor` reports healthy, authenticated
+ * CLIs while the review path was ignoring them entirely.
+ */
+function resolveAdapter(): IModelAdapter | null {
+  try {
+    return getGlobalRegistry({ logger }).getDefault();
+  } catch (error) {
+    // Report only our own guidance plus the registry's message — never the
+    // adapter configuration itself, which can carry credentials.
+    process.stderr.write(
+      `Error: no model adapter is available, so the review would fall back to generic heuristics rather than reading this PR.\n` +
+        `  ${getErrorMessage(error)}\n` +
+        `  Run "nexus-agents doctor" to see which CLIs are detected and authenticated.\n`
+    );
+    return null;
+  }
 }
 
 function printHeader(prUrl: string, dryRun: boolean): void {
