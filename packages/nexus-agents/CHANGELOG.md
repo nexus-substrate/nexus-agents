@@ -1,5 +1,61 @@
 # nexus-agents
 
+## 2.173.10
+
+### Patch Changes
+
+- [#4379](https://github.com/nexus-substrate/nexus-agents/pull/4379) [`7ee937e`](https://github.com/nexus-substrate/nexus-agents/commit/7ee937e7996ea5cfcab47a99c28e71238fcf7a37) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(review): wire the model adapter into PR review, and fail closed without one ([#4350](https://github.com/nexus-substrate/nexus-agents/issues/4350))
+
+  `nexus-agents review` never ran a model. Both CLI entry points called
+  `createPRReviewer({ dryRun })`, but the adapter is that factory's **second**
+  parameter — so `PRReviewer.adapter` was always `undefined`, every expert logged
+  `hasAdapter: false`, and each one silently fell through to its heuristic branch.
+  The command then printed a confident decision (`67% REQUEST CHANGES` in the report)
+  built from generic findings with no file, no line, no PR-specific reasoning and
+  `tokensUsed: 0`, and exited 0 — so automation could not tell it apart from a real
+  adapter-backed review. `verify` and `doctor` correctly reported three authenticated
+  CLIs the whole time, because they inspect the CLIs directly; the review path simply
+  never asked for an adapter.
+
+  Both entry points now resolve one through the canonical
+  `getGlobalRegistry().getDefault()` path — the same acquisition the voter CLI uses —
+  and **fail closed** with actionable guidance when none is configured, rather than
+  producing a review nobody should trust. Decided by `consensus_vote`
+  (`higher_order`, 7/0): a labelled "degraded mode" was rejected because the labelling
+  would have to survive every render path, and deleting the heuristic path outright
+  was rejected as a breaking library change out of scope for a bug fix. It remains
+  reachable for library consumers that construct `PRReviewer` with no adapter.
+
+  Also fixes a mislabelled count in the same report: the demo command's progress line
+  printed `expertReviews.length` (the expert count) under a "files" label, so a
+  7-file PR reported "3 files". `PRReviewResult` now carries `filesReviewed`.
+
+- [#4381](https://github.com/nexus-substrate/nexus-agents/pull/4381) [`1af3ef7`](https://github.com/nexus-substrate/nexus-agents/commit/1af3ef773abac472a9dca79c474b7470c79a50b7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli-adapters): stop reporting unobserved capacity as full capacity ([#4374](https://github.com/nexus-substrate/nexus-agents/issues/4374))
+
+  `CapacityStatus` had no way to say "I do not know". A tracker that had never
+  recorded a single request returned `remainingTokens: tokenLimit`,
+  `utilizationPercent: 0`, `exhausted: false` — byte-identical to a genuinely idle,
+  healthy adapter — and `doctor` rendered that as a green `100% remaining`. For a CLI
+  whose weekly quota was consumed by another process that reading is fiction, and it
+  is what made the [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351) reproduction confusing: the panel advertised healthy capacity
+  while every voter came back empty.
+
+  `CapacityStatus` now carries `observed`. It is sticky — pruning the usage window
+  back to empty does not clear it, because the process has still seen the adapter
+  work. `doctor` renders an unobserved reading as `unknown (no usage observed this
+session)` rather than inventing health; an observed idle adapter still reports
+  `100% remaining` as before. The API-backed `ModelToCliAdapter` reports
+  `observed: false`, since its infinite values are a stand-in for "no rate window to
+  report", not a measurement.
+
+  The docs on the field state the narrower guarantee that holds even when `observed`
+  is true: the tracker sees only this process's spend and has no visibility into a
+  provider-side quota consumed elsewhere, so `remainingTokens` is a local upper bound,
+  never an authoritative one.
+
+  Also removes `DEFAULT_CAPACITY_FALLBACK`, dead since [#2714](https://github.com/nexus-substrate/nexus-agents/issues/2714) removed its only call
+  site and never re-exported from any package entry point.
+
 ## 2.173.9
 
 ### Patch Changes
