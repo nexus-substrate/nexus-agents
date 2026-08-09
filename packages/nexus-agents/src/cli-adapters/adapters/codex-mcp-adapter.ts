@@ -24,6 +24,8 @@ import type {
 } from '../types.js';
 import type { Result } from '../../core/index.js';
 import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../core/index.js';
+import type { CliModelInfo } from '../types-capability.js';
+import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
 
 import {
@@ -62,6 +64,21 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   constructor(options?: BaseAdapterOptions) {
     super(options?.logger ?? createLogger({ component: 'codex-mcp-adapter' }));
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
+  }
+
+  /**
+   * Key-free model enumeration via the models.dev snapshot (#3405), matching
+   * `CodexCliAdapter`.
+   *
+   * #4318: this was missing, and `buildDefaultModelSources` includes an adapter
+   * only when `hasListModels(adapter)` is true. Since `createAllAdapters`
+   * defaults codex to the mcp transport, codex was silently filtered out of
+   * `list_available_models` — the probe reported one fewer transport than it
+   * had, with no error anywhere. Model enumeration is transport-independent, so
+   * the two adapters must answer identically.
+   */
+  listModels(): Promise<readonly CliModelInfo[]> {
+    return Promise.resolve(listModelsForCli(this.name));
   }
 
   /**
