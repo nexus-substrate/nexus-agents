@@ -17,6 +17,8 @@ export type {
   ExpertReviewResult,
   ReviewDecision,
   PRReviewResult,
+  PRReviewDraft,
+  ReviewPostOutcome,
   PRReviewConfig,
 } from './pr-review-types.js';
 

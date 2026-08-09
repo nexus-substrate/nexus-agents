@@ -10,7 +10,7 @@
 
 import { getTimeProvider, formatPercentage } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
-import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
+import type { PRReviewResult, ReviewSeverity, ReviewPostOutcome } from '../dogfooding/index.js';
 import type { ReviewDemoOptions, ProgressStep } from './review-demo-types.js';
 import {
   checkSetupStatus,
@@ -150,6 +150,10 @@ async function runReviewWithProgress(
   // Print result
   process.stdout.write('\n');
   printReviewResult(result.value, verbose, dryRun);
+  // #4354: only claim success when the review actually landed.
+  if (result.value.postOutcome.status === 'failed') {
+    return 1;
+  }
   printSuccessMessage(durationMs);
 
   return 0;
@@ -275,8 +279,26 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
     }
   }
 
-  if (!dryRun) {
-    process.stdout.write('Review posted to GitHub.\n');
+  // #4354: same false-success as `review` — a non-dry-run was assumed to mean
+  // the post landed, so an HTTP 422 printed "Review posted to GitHub."
+  printPostOutcome(review.postOutcome);
+}
+
+/** Report what actually happened to the review (#4354). */
+function printPostOutcome(outcome: ReviewPostOutcome): void {
+  switch (outcome.status) {
+    case 'posted':
+      process.stdout.write('Review posted to GitHub.\n');
+      return;
+    case 'skipped':
+      // dry-run already says so in the header; a policy block does not.
+      if (outcome.reason !== 'dry-run') {
+        process.stdout.write(`Review NOT posted to GitHub: ${outcome.reason}\n`);
+      }
+      return;
+    case 'failed':
+      process.stderr.write(`Review NOT posted to GitHub: ${outcome.error}\n`);
+      return;
   }
 }
 

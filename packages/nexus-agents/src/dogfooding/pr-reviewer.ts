@@ -24,6 +24,8 @@ import type {
   PRMetadata,
   PRReviewConfig,
   PRReviewResult,
+  PRReviewDraft,
+  ReviewPostOutcome,
   PRTrustAssessment,
   PRFetchData,
   ExpertReviewResult,
@@ -112,18 +114,19 @@ export class PRReviewer {
     const expertReviews = await this.runExpertReviews(prMetadata, traceId);
     const result = this.aggregateReviews(prMetadata, expertReviews, startTime, trustAssessment);
 
-    if (!this.config.dryRun) {
-      await this.postReviewToGitHub(provider, parseResult.value, result, gateDecision);
-    }
+    const postOutcome: ReviewPostOutcome = this.config.dryRun
+      ? { status: 'skipped', reason: 'dry-run' }
+      : await this.postReviewToGitHub(provider, parseResult.value, result, gateDecision);
 
     logger.info('PR review completed', {
       prNumber,
       decision: result.decision,
       findingsCount: sumFindings(result.findingsBySeverity),
       durationMs: result.totalDurationMs,
+      postStatus: postOutcome.status,
     });
 
-    return ok(result);
+    return ok({ ...result, postOutcome });
   }
 
   /**
@@ -343,7 +346,7 @@ Provide a structured review with:
     reviews: ExpertReviewResult[],
     startTime: number,
     trustAssessment: PRTrustAssessment
-  ): PRReviewResult {
+  ): PRReviewDraft {
     const allFindings = reviews.flatMap((r) => r.findings);
     const decision = determineDecision(reviews, allFindings);
     const consensusScore = calculateConsensus(reviews);
@@ -375,16 +378,19 @@ Provide a structured review with:
   private async postReviewToGitHub(
     provider: FullCapableProvider,
     pr: { owner: string; repo: string; prNumber: number },
-    result: PRReviewResult,
+    result: PRReviewDraft,
     gateDecision: ReputationGateDecision
-  ): Promise<void> {
+  ): Promise<ReviewPostOutcome> {
     const policyResult = this.auditReviewAction(gateDecision.enforcedTier);
     if (policyResult.hasRuleOfTwoViolation) {
       logger.warn('Rule of Two: review posting blocked', {
         prNumber: pr.prNumber,
         violations: policyResult.violations,
       });
-      return;
+      return {
+        status: 'skipped',
+        reason: `Rule of Two: ${policyResult.violations.map((v) => v.rule).join(', ')}`,
+      };
     }
     if (policyResult.violations.length > 0) {
       logger.info('Policy gate warnings for review posting', {
@@ -398,7 +404,13 @@ Provide a structured review with:
     const postResult = await provider.createReview(pr.prNumber, body, result.decision);
     if (!postResult.ok) {
       logger.error('Failed to post review', postResult.error);
+      // #4354: this used to end here. The rejection was logged and dropped, the
+      // review resolved ok, and the CLI printed "Review posted to GitHub." over
+      // a review GitHub had refused to create (HTTP 422 when the reviewer is the
+      // PR author, for instance).
+      return { status: 'failed', error: postResult.error.message };
     }
+    return { status: 'posted' };
   }
 
   /**

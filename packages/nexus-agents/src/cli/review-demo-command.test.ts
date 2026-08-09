@@ -119,6 +119,7 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
       suspiciousSignals: [],
       isSuspicious: false,
     },
+    postOutcome: { status: 'posted' },
     ...overrides,
   } satisfies PRReviewResult;
 }

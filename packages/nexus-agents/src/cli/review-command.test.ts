@@ -71,6 +71,7 @@ describe('review-command', () => {
       architecture: 0,
     },
     expertReviews: [],
+    postOutcome: { status: 'posted' },
     ...overrides,
   });
 
@@ -212,6 +213,71 @@ describe('review-command', () => {
     });
   });
 
+  // #4354: the command printed "Review posted to GitHub." and exited 0 whenever
+  // the review itself succeeded, regardless of what GitHub did with the post. A
+  // real HTTP 422 (requesting changes on your own PR) was logged and discarded,
+  // so a script gating on the exit code saw a review that did not exist.
+  describe('posting failure is not reported as success (#4354)', () => {
+    function withOutcome(postOutcome: PRReviewResult['postOutcome']): void {
+      mockCreatePRReviewer.mockReturnValue({
+        reviewPR: vi.fn().mockResolvedValue({ ok: true, value: createMockReview({ postOutcome }) }),
+      } as never);
+    }
+
+    const run = async (): Promise<number> =>
+      reviewCommand({ prUrl: 'test/pr', dryRun: false, verbose: false });
+
+    it('exits non-zero when GitHub rejected the review', async () => {
+      withOutcome({ status: 'failed', error: 'gh: Unprocessable Entity (HTTP 422)' });
+
+      expect(await run()).toBe(1);
+    });
+
+    it('does not claim the review was posted', async () => {
+      withOutcome({ status: 'failed', error: 'gh: Unprocessable Entity (HTTP 422)' });
+
+      await run();
+
+      const stdout = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stdout).not.toContain('Review posted to GitHub');
+    });
+
+    it('reports the rejection reason on stderr', async () => {
+      withOutcome({ status: 'failed', error: 'gh: Unprocessable Entity (HTTP 422)' });
+
+      await run();
+
+      const stderr = stderrWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stderr).toContain('HTTP 422');
+    });
+
+    it('says so when a policy gate blocked the post, and still exits 0', async () => {
+      // A Rule of Two block is a deliberate governance outcome, not a fault —
+      // but it must not read as "posted" either.
+      withOutcome({ status: 'skipped', reason: 'Rule of Two: rule-of-two' });
+
+      expect(await run()).toBe(0);
+      const stdout = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stdout).toContain('Review NOT posted to GitHub');
+      expect(stdout).not.toContain('Review posted to GitHub');
+    });
+
+    it('stays silent about posting in dry-run — the header already said so', async () => {
+      mockCreatePRReviewer.mockReturnValue({
+        reviewPR: vi.fn().mockResolvedValue({
+          ok: true,
+          value: createMockReview({ postOutcome: { status: 'skipped', reason: 'dry-run' } }),
+        }),
+      } as never);
+
+      const code = await reviewCommand({ prUrl: 'test/pr', dryRun: true, verbose: false });
+
+      expect(code).toBe(0);
+      const stdout = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stdout).not.toContain('Review NOT posted');
+    });
+  });
+
   describe('dry run mode', () => {
     it('should show dry-run indicator', async () => {
       const mockReview = createMockReview();
@@ -230,7 +296,12 @@ describe('review-command', () => {
     });
 
     it('should not show "posted to GitHub" in dry run', async () => {
-      const mockReview = createMockReview();
+      // #4354: the message now follows the reviewer's reported outcome rather
+      // than the caller's dryRun flag, so the fixture has to carry the outcome a
+      // dry run actually produces.
+      const mockReview = createMockReview({
+        postOutcome: { status: 'skipped', reason: 'dry-run' },
+      });
       mockCreatePRReviewer.mockReturnValue({
         reviewPR: vi.fn().mockResolvedValue({ ok: true, value: mockReview }),
       } as never);

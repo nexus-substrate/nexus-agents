@@ -13,7 +13,7 @@ import { getTimeProvider, createLogger } from '../core/index.js';
 import type { ScmUserMetadata } from '../scm/types.js';
 import type {
   PRMetadata,
-  PRReviewResult,
+  PRReviewDraft,
   PRTrustAssessment,
   ExpertReviewResult,
   ReviewFinding,
@@ -339,7 +339,7 @@ ${expertSummaries}`;
 /**
  * Formats the review result as a GitHub comment.
  */
-export function formatReviewComment(result: PRReviewResult): string {
+export function formatReviewComment(result: PRReviewDraft): string {
   const emoji = DECISION_EMOJI[result.decision];
   const decisionText = result.decision.replaceAll('_', ' ').toUpperCase();
 
@@ -358,7 +358,7 @@ ${statsSection}
 *Reviewed by [nexus-agents](https://github.com/nexus-substrate/nexus-agents) in ${String(result.totalDurationMs)}ms*`;
 }
 
-function formatFindingsSection(result: PRReviewResult): string {
+function formatFindingsSection(result: PRReviewDraft): string {
   const allFindings = result.expertReviews.flatMap((r) => r.findings);
 
   if (allFindings.length === 0) {
@@ -388,7 +388,7 @@ function formatFindingsSection(result: PRReviewResult): string {
   return lines.join('\n');
 }
 
-function formatStatsSection(result: PRReviewResult): string {
+function formatStatsSection(result: PRReviewDraft): string {
   const { findingsBySeverity } = result;
   const total = sumFindings(findingsBySeverity);
 
