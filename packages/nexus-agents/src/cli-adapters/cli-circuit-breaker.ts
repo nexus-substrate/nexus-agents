@@ -89,6 +89,21 @@ const DEFAULT_CONFIG: Required<CliCircuitBreakerConfig> = {
 };
 const defaultCliCircuitBreakerRegistry = new CircuitBreakerRegistry();
 
+// #4330: the shared registry now gates voter-panel availability, so a CLI can
+// vanish from a panel roster because its circuit opened. Log every transition —
+// otherwise the next person debugging a "missing voter" has no trail, and a
+// misclassified transient error silently costs the panel its diversity.
+const registryLogger = createLogger({ component: 'cli-circuit-breaker' });
+defaultCliCircuitBreakerRegistry.addGlobalStateChangeListener((event) => {
+  registryLogger.warn('CLI circuit state changed', {
+    cli: event.cliName,
+    previousState: event.previousState,
+    newState: event.newState,
+    failureCount: event.failureCount,
+    reason: event.reason,
+  });
+});
+
 /** Returns the shared CLI circuit-breaker registry used by default integrations. */
 export function getDefaultCliCircuitBreakerRegistry(): CircuitBreakerRegistry {
   return defaultCliCircuitBreakerRegistry;

@@ -40,6 +40,7 @@ import { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
 import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
+import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 
 const execAsync = promisify(exec);
 
@@ -178,16 +179,29 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     task: CliTask,
     opts: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
+    // #4330: this used to pass no breaker, which made the `recordFailure` in
+    // `executeCliRetryLoop` unreachable for every subprocess CLI. The voter
+    // serving-gate reads exactly this registry, so a quota-dead CLI's snapshot
+    // stayed `undefined` and the gate fail-opened on every panel — #4325's
+    // exclusion could never fire because nothing produced the signal.
+    const circuitBreaker = getDefaultCliCircuitBreakerRegistry().getBreaker(this.name);
     const result = await executeCliRetryLoop(() => this.executeTask(task, opts), {
       maxRetries: opts.maxRetries,
       allowRetry: this.shouldOuterRetry(opts),
       baseDelayMs: 1_000,
       maxDelayMs: 16_000,
+      circuitBreaker,
       cli: this.name,
       logger: this.logger,
     });
 
     if (result.ok) {
+      // Recording the success is the caller's job (`executeCliRetryLoop` only
+      // records failures — see its test), and it matters: in the closed state
+      // `recordSuccess` zeroes the failure count, which is what makes the
+      // threshold mean "consecutive failures". Without it a long-lived process
+      // accumulates scattered blips and eventually evicts a healthy CLI.
+      circuitBreaker.recordSuccess();
       this.recordUsage(result.value.response);
       this.logger.info('Task executed successfully', {
         cli: this.name,
