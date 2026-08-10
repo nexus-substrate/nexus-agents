@@ -19,6 +19,7 @@
  */
 
 import OpenAI from 'openai';
+import { assertCustomApiHostResolvesPublic } from './sdk/custom-api-validation.js';
 
 import type {
   Result,
@@ -82,6 +83,29 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
 }
 
 /**
+ * Ceiling on how many models one gateway may contribute.
+ *
+ * `buildOpenAICompatAdapters` constructs one adapter per discovered model, so an
+ * unbounded list becomes unbounded objects during bootstrap. Aggregators
+ * legitimately serve hundreds — models.dev lists 339 for one and 620 for
+ * another — so this is a sanity ceiling on adapter construction, not a claim
+ * about what a gateway may offer.
+ */
+const MAX_DISCOVERED_MODELS = 256;
+
+/** Bound on the discovery call. Bootstrap must not hang on a dead gateway. */
+const MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
+
+/** Hostname of a base URL, or the raw string when it will not parse. */
+function hostnameOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return baseUrl;
+  }
+}
+
+/**
  * Discover available models by calling `GET {baseUrl}/v1/models`. Uses the
  * official `openai` SDK's `client.models.list()` so we benefit from its
  * pagination + retry handling. The list is the strongly authoritative
@@ -91,9 +115,34 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
 export async function discoverModels(
   config: OpenAICompatConfig
 ): Promise<Result<readonly DiscoveredModel[], ConfigError>> {
+  // Reuse the SDK path's DNS-resolve-time SSRF guard (#3426) rather than
+  // growing a second one. This path needs it at least as much: it can read its
+  // base URL from a FILE (`NEXUS_OPENCODE_CONFIG` -> opencode.json), not only
+  // from an env var, so the input is not always direct operator intent.
+  // The guard fails OPEN on transient resolver errors and rejects only a
+  // confirmed private/loopback/link-local resolution.
+  const hostCheck = await assertCustomApiHostResolvesPublic(hostnameOf(config.baseUrl));
+  if (!hostCheck.ok) {
+    return err(new ConfigError(`Gateway URL rejected: ${hostCheck.error.message}`));
+  }
   try {
-    const client = new OpenAI({ baseURL: config.baseUrl, apiKey: config.apiKey });
+    const client = new OpenAI({
+      baseURL: config.baseUrl,
+      apiKey: config.apiKey,
+      // Discovery runs during server bootstrap, so an unresponsive gateway must
+      // not stall startup indefinitely. The SDK's own default is far longer.
+      timeout: MODEL_DISCOVERY_TIMEOUT_MS,
+      maxRetries: 1,
+    });
     const list = await client.models.list();
+    if (list.data.length > MAX_DISCOVERED_MODELS) {
+      return err(
+        new ConfigError(
+          `Gateway ${config.baseUrl} listed ${String(list.data.length)} models, above the ` +
+            `${String(MAX_DISCOVERED_MODELS)} cap. Refusing to build an adapter per model.`
+        )
+      );
+    }
     const models: readonly DiscoveredModel[] = list.data.map((m) => ({
       id: m.id,
       created: m.created,

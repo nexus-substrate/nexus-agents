@@ -28,6 +28,16 @@ vi.mock('openai', () => {
 const { mockReadOpencodeGateway } = vi.hoisted(() => ({
   mockReadOpencodeGateway: vi.fn<(path: string) => unknown>(),
 }));
+// The discovery path reuses the SDK path's DNS-resolve-time SSRF guard (#3426).
+// Stubbed so these tests perform no real lookups; two tests drive the rejection
+// branch explicitly.
+const { mockAssertHostPublic } = vi.hoisted(() => ({
+  mockAssertHostPublic: vi.fn(),
+}));
+vi.mock('./sdk/custom-api-validation.js', () => ({
+  assertCustomApiHostResolvesPublic: mockAssertHostPublic,
+}));
+
 vi.mock('../config/opencode-bridge.js', () => ({
   readOpencodeGateway: mockReadOpencodeGateway,
 }));
@@ -137,6 +147,8 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
 describe('discoverModels (#2468)', () => {
   beforeEach(() => {
     mockList.mockReset();
+    mockAssertHostPublic.mockReset();
+    mockAssertHostPublic.mockResolvedValue({ ok: true });
   });
 
   const config: OpenAICompatConfig = {
@@ -197,6 +209,62 @@ describe('discoverModels (#2468)', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toContain('NEXUS_OPENAI_COMPAT_KEY');
+  });
+
+  // #4392: this path can take its base URL from a FILE
+  // (`NEXUS_OPENCODE_CONFIG` → opencode.json), not only an env var, and it runs
+  // during server bootstrap — so it needs the guards the sibling SDK path
+  // already had.
+  describe('discovery guards (#4392)', () => {
+    it('refuses a gateway whose host resolves privately', async () => {
+      mockAssertHostPublic.mockResolvedValue({
+        ok: false,
+        error: new Error('resolves to a private address'),
+      });
+
+      const result = await discoverModels(config);
+
+      expect(result.ok).toBe(false);
+    });
+
+    it('checks the host BEFORE opening a connection', async () => {
+      // The guard is worthless if the request has already gone out.
+      mockAssertHostPublic.mockResolvedValue({ ok: false, error: new Error('blocked') });
+
+      await discoverModels(config);
+
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it('rejects an implausibly large catalogue rather than one adapter each', async () => {
+      mockList.mockResolvedValue({
+        data: Array.from({ length: 300 }, (_v, i) => ({
+          id: `m-${String(i)}`,
+          created: 1,
+          owned_by: 'x',
+        })),
+      });
+
+      const result = await discoverModels(config);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('cap');
+    });
+
+    it('still accepts a large-but-plausible catalogue', async () => {
+      // Aggregators legitimately serve hundreds; the cap is a sanity ceiling on
+      // adapter construction, not a claim about what a gateway may offer.
+      mockList.mockResolvedValue({
+        data: Array.from({ length: 200 }, (_v, i) => ({
+          id: `m-${String(i)}`,
+          created: 1,
+          owned_by: 'x',
+        })),
+      });
+
+      expect((await discoverModels(config)).ok).toBe(true);
+    });
   });
 });
 
