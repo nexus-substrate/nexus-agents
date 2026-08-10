@@ -387,6 +387,32 @@ interface PushStageArgs {
 }
 
 /**
+ * Append one push-milestone audit event.
+ *
+ * The pre-push (intent) and post-push (result) events carry an identical
+ * payload and differ only in the actor name, so the shape lives here once —
+ * an intent event that drifts from the result event would make the pair
+ * useless for reconciling "what we said we'd do" against "what we did".
+ */
+function auditPushMilestone(
+  args: PushStageArgs,
+  actorName: string
+): ReturnType<typeof auditAutonomousEvent> {
+  const { input, deps, token, realized } = args;
+  return auditAutonomousEvent(deps.logger, {
+    runId: input.run.runId,
+    sourceSignalHash: input.run.sourceSignalHash,
+    diffHash: realized.diffHash,
+    scanVerdict: 'clean',
+    filesTouched: realized.changedFiles.length,
+    linesTouched: realized.linesTouched,
+    tokenIdentity: tokenIdentity(token),
+    decision: 'would_open_pr',
+    actor: { type: 'system', id: 'autonomous-code-pr-push', name: actorName },
+  });
+}
+
+/**
  * Step 3 (re-guard) + step 4 (push) + step 5 (audit before/after). RE-RUNS
  * {@link evaluateWriteGuards} on the freshly-realized diff immediately before the
  * push (defense-in-depth). Audits intent BEFORE the push and the result AFTER.
@@ -414,21 +440,7 @@ function reguardAndPush(args: PushStageArgs): CodePrPushResult {
   }
 
   // Step 5a: audit the INTENT before any external action (branch, diff, token id).
-  const intent = auditAutonomousEvent(deps.logger, {
-    runId: input.run.runId,
-    sourceSignalHash: input.run.sourceSignalHash,
-    diffHash: realized.diffHash,
-    scanVerdict: 'clean',
-    filesTouched: realized.changedFiles.length,
-    linesTouched: realized.linesTouched,
-    tokenIdentity: tokenIdentity(token),
-    decision: 'would_open_pr',
-    actor: {
-      type: 'system',
-      id: 'autonomous-code-pr-push',
-      name: `code-PR push intent (${branch})`,
-    },
-  });
+  const intent = auditPushMilestone(args, `code-PR push intent (${branch})`);
   if (!intent.ok) {
     // A failed pre-push audit is itself fail-closed: do NOT push.
     return pushDenied(
@@ -442,21 +454,7 @@ function reguardAndPush(args: PushStageArgs): CodePrPushResult {
   const pr = deps.openPullRequest({ branch, title: input.prTitle, body: input.prBody, token });
 
   // Step 5b: audit the RESULT after the push (PR url/number).
-  auditAutonomousEvent(deps.logger, {
-    runId: input.run.runId,
-    sourceSignalHash: input.run.sourceSignalHash,
-    diffHash: realized.diffHash,
-    scanVerdict: 'clean',
-    filesTouched: realized.changedFiles.length,
-    linesTouched: realized.linesTouched,
-    tokenIdentity: tokenIdentity(token),
-    decision: 'would_open_pr',
-    actor: {
-      type: 'system',
-      id: 'autonomous-code-pr-push',
-      name: `code-PR PR opened #${String(pr.number)}`,
-    },
-  });
+  auditPushMilestone(args, `code-PR PR opened #${String(pr.number)}`);
   return { ok: true, pr, branch, diffHash: realized.diffHash };
 }
 
