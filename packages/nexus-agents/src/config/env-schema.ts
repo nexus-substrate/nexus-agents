@@ -117,6 +117,9 @@ const NexusEnvSchema = z.object({
   // NEXUS_EVENTBUS_MAX_HISTORY removed in #2977 — silent no-op (no production reader).
   NEXUS_BILLING_MODE: z.enum(['plan', 'api']).optional(),
   NEXUS_CONFIG_PATH: z.string().optional(),
+  // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
+  // resolves to `<dataDir>/tmp`; set it to relocate scratch off the repo.
+  NEXUS_TMPDIR: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
   // Explicit opt-in for simulateVotes outside test runners (#4170) — read by
   // checkSimulationAllowed (mcp/tools/simulation-guard.ts). Unset = fail closed.

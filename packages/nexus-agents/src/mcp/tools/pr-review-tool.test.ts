@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { mkdtempOutsideRepo } from '../../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 
 // #3731: pass-through the secure-handler / timeout chain so the registered
@@ -846,7 +847,7 @@ describe('pr_review repoPath input (#4278)', () => {
       originalCwd = process.cwd();
       originalEnv = process.env[PR_REVIEW_RECORDS_PATH_ENV];
       Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
-      noGitDir = mkdtempSync(join(tmpdir(), 'pr-review-repopath-no-git-'));
+      noGitDir = mkdtempOutsideRepo('pr-review-repopath-no-git-');
       repoRoot = mkdtempSync(join(tmpdir(), 'pr-review-repopath-root-'));
       // Give repoRoot a `.git` marker so it IS a real repo root (#4312).
       mkdirSync(join(repoRoot, '.git'));
@@ -911,7 +912,7 @@ describe('pr_review repoPath input (#4278)', () => {
     });
 
     it('#4312: a repoPath that is NOT a real repo root is ignored — never writes into it', () => {
-      const notARepo = mkdtempSync(join(tmpdir(), 'pr-review-not-a-repo-'));
+      const notARepo = mkdtempOutsideRepo('pr-review-not-a-repo-');
       try {
         const parsed = PrReviewInputSchema.parse({
           prTitle: 'Malicious repoPath',

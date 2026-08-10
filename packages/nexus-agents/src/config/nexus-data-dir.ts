@@ -80,6 +80,14 @@ import { ensureGitignored } from './portable-mode.js';
  * default.
  */
 const PER_REPO_SUBDIRS: ReadonlySet<string> = new Set([
+  // Scratch space for short-lived work (worktrees, prompt files, MCP configs).
+  // Per-repo because a throwaway worktree of repo A is meaningless to repo B,
+  // and because containing it here keeps it inside the already-gitignored
+  // `.nexus-agents/` tree instead of accumulating in a shared `/tmp` nobody
+  // reaps. A full `/tmp` is not a theoretical problem: it silently broke this
+  // repo's own test suite, with ~1,100 files failing to COLLECT and zero
+  // assertion failures, which reads like a code fault and is not one.
+  'tmp',
   'sessions',
   'checkpoints',
   'traces',

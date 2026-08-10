@@ -18,7 +18,7 @@
  *    in {@link evaluateCodePrEnableReadiness}.
  *
  * Flow (all fail-closed):
- *  1. Create an isolated throwaway worktree under `os.tmpdir()` via
+ *  1. Create an isolated throwaway worktree under the nexus scratch dir via
  *     `git worktree add --detach` from the repo (never the live tree).
  *  2. For each change, run {@link confinePath} + {@link classifyPath}. Any
  *     escape or sensitive path → ABORT the WHOLE plan (no partial application),
@@ -36,8 +36,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
@@ -147,7 +147,11 @@ function sha256(s: string): string {
 
 /** Run git in a given cwd, capturing stdout. Throws on non-zero (caller wraps). */
 function git(cwd: string, args: readonly string[]): string {
-  return execFileSync('git', [...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync('git', [...args], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 /**
@@ -173,11 +177,7 @@ function parseNumstat(numstat: string): ChangedFile[] {
   return files;
 }
 
-function denied(
-  reason: GuardDenialReason,
-  detail: string,
-  auditRecorded: boolean
-): CodePrPlan {
+function denied(reason: GuardDenialReason, detail: string, auditRecorded: boolean): CodePrPlan {
   return { ok: false, reason, detail, auditRecorded };
 }
 
@@ -240,7 +240,11 @@ function precheckChanges(
         filesTouched: 0,
         linesTouched: 0,
       });
-      return denied('sensitive_path', `sensitive path (${cls.category}): ${change.relPath}`, recorded);
+      return denied(
+        'sensitive_path',
+        `sensitive path (${cls.category}): ${change.relPath}`,
+        recorded
+      );
     }
   }
   return undefined;
@@ -365,8 +369,8 @@ function runInWorktree(
   const fault = options.faultInjector;
   const repoRoot = options.repoRoot ?? process.cwd();
 
-  // 1. Isolated throwaway worktree under os.tmpdir() — NEVER the live tree.
-  handle.tempParent = realpathSync(mkdtempSync(join(tmpdir(), 'codepr-orchestrator-')));
+  // 1. Isolated throwaway worktree under the nexus scratch dir — NEVER the live tree.
+  handle.tempParent = realpathSync(nexusMkdtempSync('codepr-orchestrator-'));
   handle.worktreeRoot = join(handle.tempParent, 'wt');
   git(repoRoot, ['worktree', 'add', '--detach', handle.worktreeRoot]);
   fault?.('after-worktree');
@@ -410,7 +414,7 @@ function discardWorktree(repoRoot: string, handle: WorktreeHandle): void {
     try {
       rmSync(handle.tempParent, { recursive: true, force: true });
     } catch {
-      // best-effort; the temp dir is under os.tmpdir() and OS-reclaimable
+      // best-effort; the temp dir is under the nexus scratch dir and reapable
     }
   }
 }

@@ -22,8 +22,8 @@ import {
   type ChildProcessWithoutNullStreams,
 } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { nexusMkdtempSync } from '../packages/nexus-agents/src/config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 
 import { REVIEW_PROMPT } from './review-pr-prompt.js';
@@ -272,7 +272,7 @@ function postReviewToGitHub(prNumber: number, comment: string, addLabel: boolean
   // interpolation. The prior `replace(/"/g, '\\"')` didn't escape backslashes,
   // so an attacker-controlled comment with `\"` could escape the quoted block
   // and inject shell commands (CodeQL js/incomplete-sanitization).
-  const dir = mkdtempSync(join(tmpdir(), 'nexus-review-'));
+  const dir = nexusMkdtempSync('nexus-review-');
   const file = join(dir, 'comment.md');
   writeFileSync(file, comment, { encoding: 'utf8', mode: 0o600 });
   try {
