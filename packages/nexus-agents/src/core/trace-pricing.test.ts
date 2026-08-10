@@ -87,11 +87,23 @@ describe('trace-pricing', () => {
       expect(cost).toBe(2.5 + 15);
     });
 
-    it('returns undefined for deprecated models not in registry', () => {
-      // Legacy models no longer supported — returns undefined
-      expect(calculateCost('gpt-4o', 1000, 1000)).toBeUndefined();
-      expect(calculateCost('claude-3-opus', 1000, 1000)).toBeUndefined();
-      expect(calculateCost('gpt-3.5-turbo', 1000, 1000)).toBeUndefined();
+    it('prices legacy models the catalogue still lists (#4406)', () => {
+      // This previously asserted `undefined` for these ids, on the reasoning
+      // that they are "no longer supported". That conflated two separate
+      // questions: whether we can PRICE a model and whether we should OFFER it.
+      //
+      // Absence of a price is a bad way to express end-of-life. It is also
+      // actively harmful: cost ceilings are documented as fail-closed for
+      // unpriced candidates, so an unpriced model gets rejected for the wrong
+      // reason, and historical records of real spend cannot be costed at all.
+      // Lifecycle belongs in the `deprecated` / `replacedBy` fields.
+      expect(calculateCost('gpt-4o', 1_000_000, 1_000_000)).toBeCloseTo(12.5, 5);
+      expect(calculateCost('gpt-3.5-turbo', 1_000_000, 1_000_000)).toBeDefined();
+    });
+
+    it('still returns undefined for a model no source has ever priced', () => {
+      // The fallback must not manufacture a number.
+      expect(calculateCost('definitely-not-a-real-model-xyz', 1000, 1000)).toBeUndefined();
     });
   });
 });
