@@ -1,5 +1,51 @@
 # nexus-agents
 
+## 2.174.1
+
+### Patch Changes
+
+- [#4398](https://github.com/nexus-substrate/nexus-agents/pull/4398) [`a740ef7`](https://github.com/nexus-substrate/nexus-agents/commit/a740ef7a9294a8244f93d0edd21b15e22e551a2a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli-adapters): honour a pinned gemini `cliModelName` instead of silently defaulting ([#4395](https://github.com/nexus-substrate/nexus-agents/issues/4395))
+
+  `toAgyModelSlug` matched agy slugs and canonical registry ids, but not
+  `cliModelName`s. A caller pinning `gemini-2.5-pro` — a real, documented registry
+  value — fell through to `DEFAULT_AGY_MODEL` and silently ran a **different model
+  than requested**, with no warning. The resolver now goes through
+  `findCanonicalModel` before defaulting.
+
+  Adds `fromAgyModelSlug`, derived from the forward map so the two directions cannot
+  drift, so a raw agy slug can be resolved back to a canonical (and therefore
+  priceable) registry id when one is encountered.
+
+  Scope note: the original issue also claimed `getModelInfo()` misreporting the
+  invoked model corrupted outcome telemetry. That was over-claimed — the reported id
+  is the registry's own `cliModelName`, which resolves to the correct entry at the
+  correct price. Reporting the agy slug instead would have _broken_ pricing, and
+  that half was reverted before merge.
+
+- [#4396](https://github.com/nexus-substrate/nexus-agents/pull/4396) [`10ab4dc`](https://github.com/nexus-substrate/nexus-agents/commit/10ab4dcdec138cdbe813df9e371ad22bbc4faead) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): compare canonical model identity in panel diversity checks ([#4390](https://github.com/nexus-substrate/nexus-agents/issues/4390))
+
+  The consensus panel's diversity check built a `Set` of raw `modelId` strings. The
+  same weights arrive under different strings from different gateways —
+  `claude-sonnet-4-6` via the claude CLI, `anthropic/claude-sonnet-4-6` via
+  opencode, `custom/claude-sonnet-4-6` via an OpenAI-compatible endpoint — so one
+  model counted as three and the warning never fired for a collapsed panel.
+
+  `config/model-equivalence.ts` adds `canonicalModelKey` and `countDistinctModels`,
+  built on the existing `resolveModelIdentitySync`, which already normalises gateway
+  prefixes. An unidentifiable model returns `null` and is counted by its raw string
+  rather than sharing a placeholder key — otherwise two genuinely different models
+  would compare equal, which is the inverse error and the worse one, since it would
+  silence a warning that should fire.
+
+  Also adds the check the CLI round-robin path never had: distinct CLIs do not imply
+  distinct models, and a panel spread across two arms fronting the same weights is no
+  more independent than one on a single arm.
+
+  Scope note: these checks are `logger.warn` only — nothing gates on them — so this
+  fixes observability rather than a live consensus hole. The same string comparison
+  also affects cost attribution in `decision-cost-recording`, which is tracked
+  separately.
+
 ## 2.174.0
 
 ### Minor Changes
