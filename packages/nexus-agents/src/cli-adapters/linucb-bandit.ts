@@ -10,6 +10,7 @@
 
 import type { BanditContext, LinUCBConfig } from './budget-router-types.js';
 import { DEFAULT_LINUCB_CONFIG, LinUCBConfigSchema } from './budget-router-types.js';
+import { createLogger } from '../core/index.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import {
   createIdentityMatrix,
@@ -24,6 +25,8 @@ import {
   vectorScale,
   shermanMorrisonUpdate,
 } from './linucb-math.js';
+
+const logger = createLogger({ component: 'linucb-bandit' });
 
 /** Reward value assigned on successful task completion. */
 const SUCCESS_REWARD = 0.7;
@@ -292,6 +295,13 @@ export class LinUCBBandit {
    * from persisted data. Uses a neutral context (same as seedPriors) since
    * the original task context is not stored in TaskOutcome.
    *
+   * Outcomes whose arm is not among this bandit's arms are skipped. That skip
+   * used to be entirely silent, which hid a real defect: `api:*` arms could not
+   * be represented in `TaskOutcome.cli` at all (#4400), so every API arm
+   * discarded its whole history and began cold each process with nothing
+   * reported. The skip is now counted and logged — a warm-start that silently
+   * drops most of its input looks identical to one that worked.
+   *
    * @param outcomes - Persisted task outcomes to replay
    * @returns Number of outcomes successfully replayed
    */
@@ -306,13 +316,24 @@ export class LinUCBBandit {
     };
 
     let replayed = 0;
+    const skippedArms = new Map<string, number>();
     for (const outcome of outcomes) {
       const armIndex = this.armNames.indexOf(outcome.cli);
-      if (armIndex < 0) continue;
+      if (armIndex < 0) {
+        skippedArms.set(outcome.cli, (skippedArms.get(outcome.cli) ?? 0) + 1);
+        continue;
+      }
       const reward = outcome.success ? SUCCESS_REWARD : FAILURE_REWARD;
       this.update(armIndex, neutralContext, reward);
       this.recordWarmStartModelStat(outcome.cli, outcome.model, outcome.success);
       replayed++;
+    }
+    if (skippedArms.size > 0) {
+      logger.warn('Warm-start skipped outcomes for arms this bandit does not have', {
+        skippedByArm: Object.fromEntries(skippedArms),
+        replayed,
+        knownArms: this.armNames,
+      });
     }
     return replayed;
   }

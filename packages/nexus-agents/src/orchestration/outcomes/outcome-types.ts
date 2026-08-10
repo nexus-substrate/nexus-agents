@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { CliNameSchema } from '../../config/model-capabilities-types.js';
+import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
 
@@ -40,13 +41,26 @@ export const OutcomeFailureCategorySchema = z.enum([
 ]);
 
 /**
- * CLI attribution for an outcome. Widened beyond {@link CliNameSchema} to allow
- * an explicit `'unknown'` (#3624) — for outcomes (e.g. expert executions) whose
- * real executing CLI can't be resolved from the model. `'unknown'` is excluded
- * from CLI-quality signals (detectCliPerformanceFloor) so it can't skew a real
- * CLI, but is retained for category/failure analysis rather than fabricated.
+ * Routing-arm attribution for an outcome.
+ *
+ * Widened beyond {@link CliNameSchema} for two reasons:
+ *
+ * - an explicit `'unknown'` (#3624) — for outcomes (e.g. expert executions)
+ *   whose real executing CLI can't be resolved from the model. `'unknown'` is
+ *   excluded from CLI-quality signals (detectCliPerformanceFloor) so it can't
+ *   skew a real CLI, but is retained for category/failure analysis rather than
+ *   fabricated.
+ * - `api:*` routing arms (#4400). The router genuinely registers
+ *   `api:anthropic`, `api:openai`, `api:google` and `api:custom-openai` as arms
+ *   under `NEXUS_BILLING_MODE=api`, but this schema could not represent them —
+ *   so no outcome could be recorded under an API arm's own id.
+ *   `LinUCBBandit.warmStart` matches arms BY NAME, so those arms could never
+ *   warm-start: every process began cold no matter how much history existed,
+ *   and the skip was silent.
+ *
+ * The union only ever grows, so previously persisted records stay valid.
  */
-export const OutcomeCliSchema = z.union([CliNameSchema, z.literal('unknown')]);
+export const OutcomeCliSchema = z.union([CliNameSchema, ApiArmIdSchema, z.literal('unknown')]);
 export type OutcomeCli = z.infer<typeof OutcomeCliSchema>;
 
 /** Schema for a single recorded task outcome. */

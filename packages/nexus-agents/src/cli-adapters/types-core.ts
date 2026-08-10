@@ -8,6 +8,7 @@
  */
 
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { z } from 'zod';
 
 /**
  * Supported CLI names.
@@ -25,6 +26,18 @@ export type ApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
 
 /** Prefixed routing arm id for a direct-API adapter, e.g. `api:anthropic` (#3422). */
 export type ApiArmId = `api:${ApiVendor}`;
+
+/**
+ * Zod schema for {@link ApiArmId}, so persisted records can validate an API arm
+ * (#4400). Kept next to the type rather than in the outcome schema so the two
+ * cannot drift as `ApiVendor` changes.
+ */
+export const ApiArmIdSchema = z.enum([
+  'api:anthropic',
+  'api:openai',
+  'api:google',
+  'api:custom-openai',
+]);
 
 /**
  * A LinUCB/routing arm id — either a canonical CLI slot or a distinct API arm
