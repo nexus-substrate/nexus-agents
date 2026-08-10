@@ -28,6 +28,7 @@ import { getAvailableClis } from '../cli-adapters/factory.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
+import { countDistinctModels } from '../config/model-equivalence.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -378,11 +379,16 @@ export function resolveGatewayRoleAdapters(
   // Consensus-integrity parity with the single-model path (#4055 review): warn if
   // the FINAL assignment collapsed every role onto one model — e.g. an operator
   // pinned all roles to the same override — since correlated votes defeat the panel.
-  const distinctModels = new Set([...assigned.values()].map((a) => a.modelId));
-  if (roles.length > 1 && distinctModels.size === 1) {
+  // #4390: compare CANONICAL model identity, not the raw strings. The same
+  // weights arrive under different strings from different gateways —
+  // `claude-sonnet-4-6`, `anthropic/claude-sonnet-4-6` and
+  // `custom/claude-sonnet-4-6` are one model — so a raw-string set reported a
+  // collapsed panel as diverse and the warning never fired.
+  const assignedModels = [...assigned.values()].map((a) => a.modelId);
+  if (roles.length > 1 && countDistinctModels(assignedModels) === 1) {
     logger.warn(
       'Consensus panel collapsed to a single gateway model via overrides — votes may correlate',
-      { model: [...distinctModels][0], roleCount: roles.length }
+      { model: assignedModels[0], roleCount: roles.length }
     );
   }
   return assigned;
@@ -416,6 +422,20 @@ async function resolveDiverseAdapters(
 
   const cliAdapters = createCliAdapterMap(availableClis, logger);
   if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
+
+  // #4390: distinct CLIs do NOT imply distinct models. Two arms can front the
+  // same weights — opencode serving `anthropic/claude-sonnet-4-6` alongside the
+  // claude CLI, for instance — and a panel spread across them is no more
+  // independent than one on a single arm. The gateway path had this check; the
+  // CLI path had none.
+  const cliModels = [...cliAdapters.values()].map((a) => a.modelId);
+  if (roles.length > 1 && countDistinctModels(cliModels) === 1) {
+    logger.warn('Consensus panel spans multiple CLIs serving ONE model — votes may correlate', {
+      cliCount: cliAdapters.size,
+      model: cliModels[0],
+      roleCount: roles.length,
+    });
+  }
 
   return assignRoundRobinAdapters(
     roles,

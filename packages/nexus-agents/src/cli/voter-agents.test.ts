@@ -27,7 +27,7 @@ import {
   NoAdapterError,
 } from './voter-agents.js';
 import type { VoterRole } from './vote-types.js';
-import type { IModelAdapter, CompletionResponse } from '../core/index.js';
+import type { IModelAdapter, CompletionResponse, ILogger } from '../core/index.js';
 import type { Result } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -550,6 +550,77 @@ That's my vote.`;
       expect(results).toHaveLength(1);
       expect(results[0]?.source).toBe('llm');
       expect(results[0]?.vote.decision).toBe('approve');
+    });
+  });
+
+  // #4390: the diversity check compared raw modelId STRINGS, so one model
+  // reached through two gateways — `anthropic/claude-sonnet-4-6` and
+  // `custom/claude-sonnet-4-6` are the same weights — counted as two distinct
+  // models and the warning never fired.
+  describe('panel diversity uses canonical model identity (#4390)', () => {
+    function adapterFor(modelId: string): IModelAdapter {
+      return {
+        providerId: 'gateway',
+        modelId,
+        capabilities: [],
+        complete: vi.fn().mockResolvedValue({
+          ok: true,
+          value: {
+            content: JSON.stringify({
+              decision: 'approve',
+              reasoning: 'Reasonable enough for a test fixture.',
+              confidence: 0.8,
+            }),
+            usage: {},
+            stopReason: 'end_turn',
+            model: modelId,
+          },
+        }),
+        stream: vi.fn(),
+        countTokens: vi.fn().mockResolvedValue(10),
+        validateConfig: vi.fn().mockReturnValue({ ok: true }),
+      };
+    }
+
+    async function warningsFor(modelIds: readonly string[]): Promise<string[]> {
+      const warnings: string[] = [];
+      const capturing = {
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        warn: (msg: string) => warnings.push(msg),
+      } as unknown as ILogger;
+
+      await collectRealVotes({
+        roles: ['architect', 'security'],
+        proposal: 'Test proposal',
+        logger: capturing,
+        gatewayAdapters: modelIds.map(adapterFor),
+      });
+      return warnings;
+    }
+
+    it('warns when two gateways serve the same underlying model', async () => {
+      const warnings = await warningsFor([
+        'anthropic/claude-sonnet-4-6',
+        'custom/claude-sonnet-4-6',
+      ]);
+
+      expect(warnings.some((w) => w.includes('collapsed to a single gateway model'))).toBe(true);
+    });
+
+    it('stays quiet for a genuinely diverse panel', async () => {
+      const warnings = await warningsFor(['anthropic/claude-sonnet-4-6', 'openai/gpt-5.5']);
+
+      expect(warnings.some((w) => w.includes('collapsed to a single gateway model'))).toBe(false);
+    });
+
+    it('does not merge two unidentifiable models into one', async () => {
+      // The inverse error: collapsing distinct models because neither can be
+      // identified would silence a warning that should NOT fire.
+      const warnings = await warningsFor(['some-private-model', 'another-private-model']);
+
+      expect(warnings.some((w) => w.includes('collapsed to a single gateway model'))).toBe(false);
     });
   });
 
