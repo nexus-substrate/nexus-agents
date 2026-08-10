@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   toAgyModelSlug,
+  fromAgyModelSlug,
   isAgyModelSlug,
   AGY_MODEL_SLUGS,
   DEFAULT_AGY_MODEL,
@@ -60,5 +61,47 @@ describe('agy model slugs', () => {
     // agy also fronts Claude and GPT-OSS. The `gemini` arm means Gemini-family
     // models; those are routed through their own adapters (#4346, 7/0 vote).
     expect(AGY_MODEL_SLUGS.every((s) => s.startsWith('gemini-'))).toBe(true);
+  });
+
+  describe('reverse mapping (#4395)', () => {
+    it('round-trips every canonical gemini model', () => {
+      const geminiIds = DEFAULT_MODEL_CAPABILITIES.models
+        .filter((m) => m.cliName === 'gemini')
+        .map((m) => m.id);
+
+      for (const id of geminiIds) {
+        const slug = toAgyModelSlug(id);
+        // Several registry entries can share a slug where agy's generations do
+        // not line up with ours, so the reverse need not return the SAME id —
+        // but it must return one that maps forward to the same slug.
+        const back = fromAgyModelSlug(slug);
+        expect(back).not.toBeNull();
+        expect(toAgyModelSlug(back as string)).toBe(slug);
+      }
+    });
+
+    it('returns null for a slug with no registry entry', () => {
+      // agy serves 3.6 Flash at high/medium; the registry only reaches -low.
+      expect(fromAgyModelSlug('gemini-3.6-flash-high')).toBeNull();
+    });
+
+    it('returns null for a string that is not an agy slug at all', () => {
+      expect(fromAgyModelSlug('claude-sonnet-4-6')).toBeNull();
+    });
+
+    it('honours a pinned registry cliModelName instead of silently defaulting', () => {
+      // #4395: callers pin Google API ids like `gemini-2.5-pro` (the registry's
+      // cliModelName for `gemini-pro`). Falling through to the default here
+      // would silently run a different model than the caller asked for.
+      expect(toAgyModelSlug('gemini-2.5-pro')).toBe(toAgyModelSlug('gemini-pro'));
+      expect(toAgyModelSlug('gemini-2.5-pro')).not.toBe(DEFAULT_AGY_MODEL);
+    });
+
+    it('resolves a reversed slug to real registry pricing', () => {
+      // The point of the reverse map: an invoked slug must be priceable.
+      const canonical = fromAgyModelSlug('gemini-3.1-pro-high');
+
+      expect(canonical).toBe('gemini-3-pro');
+    });
   });
 });

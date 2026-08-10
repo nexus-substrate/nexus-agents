@@ -21,6 +21,8 @@
  * @module config/agy-model-map
  */
 
+import { findCanonicalModel } from './model-config-helpers.js';
+
 /**
  * The model slugs `agy` accepts, as reported by `agy models`.
  *
@@ -75,6 +77,33 @@ const CANONICAL_TO_AGY: Readonly<Record<string, AgyModelSlug>> = {
   'gemini-flash': 'gemini-3.6-flash-low',
 };
 
+/**
+ * agy slug → canonical registry id. Derived from {@link CANONICAL_TO_AGY} so the
+ * two directions cannot drift (#4395).
+ *
+ * Needed because the forward map alone left the arm unable to describe what it
+ * actually ran: `getModelInfo()` reported the registry's `cliModelName` (a
+ * Google API id agy does not accept) while `getCommand()` spawned the slug. That
+ * mismatch reached `TaskOutcome.model`, so the routing loop was told the wrong
+ * model produced each outcome, and pricing could not resolve the slug at all.
+ */
+const AGY_TO_CANONICAL: ReadonlyMap<string, string> = new Map(
+  Object.entries(CANONICAL_TO_AGY).map(([canonical, slug]) => [slug, canonical])
+);
+
+/**
+ * Resolve an agy slug back to the canonical registry id, or null when the slug
+ * is one agy serves but the registry has no entry for.
+ *
+ * Null rather than a guess: several registry entries map onto the same slug
+ * where agy's generations do not line up with ours, so a reverse lookup is
+ * lossy by construction. Callers should fall back to the raw slug rather than
+ * inventing an entry.
+ */
+export function fromAgyModelSlug(slug: string): string | null {
+  return AGY_TO_CANONICAL.get(slug) ?? null;
+}
+
 /** The slug used when a caller names a model agy cannot serve. */
 export const DEFAULT_AGY_MODEL: AgyModelSlug = 'gemini-3.1-pro-high';
 
@@ -97,5 +126,16 @@ export function isAgyModelSlug(value: string): value is AgyModelSlug {
  */
 export function toAgyModelSlug(model: string): AgyModelSlug {
   if (isAgyModelSlug(model)) return model;
-  return CANONICAL_TO_AGY[model] ?? DEFAULT_AGY_MODEL;
+  const direct = CANONICAL_TO_AGY[model];
+  if (direct !== undefined) return direct;
+  // #4395: callers legitimately pin a registry `cliModelName` (a Google API id
+  // like `gemini-2.5-pro`) rather than the canonical entry id. Resolve it to the
+  // canonical entry before mapping, so a pinned model is honoured instead of
+  // silently falling through to the default.
+  const canonical = findCanonicalModel('gemini', model)?.id;
+  if (canonical !== undefined) {
+    const viaCanonical = CANONICAL_TO_AGY[canonical];
+    if (viaCanonical !== undefined) return viaCanonical;
+  }
+  return DEFAULT_AGY_MODEL;
 }
