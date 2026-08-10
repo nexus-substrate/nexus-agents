@@ -1,5 +1,110 @@
 # nexus-agents
 
+## 2.174.0
+
+### Minor Changes
+
+- [#4394](https://github.com/nexus-substrate/nexus-agents/pull/4394) [`c8f4fc8`](https://github.com/nexus-substrate/nexus-agents/commit/c8f4fc8ae1ab4fd33965d49c633dbaa18aeacc37) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli-adapters): graded gateway health evidence, and admit unverifiable gateways ([#4391](https://github.com/nexus-substrate/nexus-agents/issues/4391))
+
+  First slice of the gateway contract. `isCliAvailable` was
+  `health.healthy && auth.state === 'authenticated'` — a boolean measured wrong in
+  **both** directions within one week:
+
+  - **False negative:** `agy` served correct answers while `probeGemini` read
+    `~/.gemini/oauth_creds.json`, a file agy does not use. The arm was excluded from
+    routing while working.
+  - **False positive:** the retired `gemini` CLI held a valid, unexpired credential
+    file while failing every invocation with `IneligibleTierError`.
+
+  The fix is not a better boolean: an absence of evidence is now expressible.
+
+  `AuthProbeResult` gains an explicit `unknown` state, and `isCliAvailable` now
+  **admits** it. A gateway that exposes no auth signal we can read is given the
+  benefit of the doubt; real invocation failures do the excluding, via the circuit
+  breaker the adapters feed since [#4330](https://github.com/nexus-substrate/nexus-agents/issues/4330). Only `needs-login` and `not-installed`
+  withhold an arm.
+
+  The gemini probe stops reading the retired CLI's credential cache and reports
+  `unknown`, which is the honest answer: agy has no `auth`/`login`/`whoami`
+  subcommand, no credential artifact of its own, and its `models` subcommand hangs
+  without a TTY ([#4393](https://github.com/nexus-substrate/nexus-agents/issues/4393)) so it cannot be used programmatically. `nexus-agents login`
+  renders the new state as `? unverified`.
+
+  Net effect: `isCliAvailable('gemini')` goes from `false` to `true` for an arm that
+  was returning correct answers the whole time.
+
+  Decided by `consensus_vote` at 4/3 — **below** the supermajority an architecture
+  change requires — so the rejecters' alternative was adopted rather than the
+  proposal as written.
+
+- [#4385](https://github.com/nexus-substrate/nexus-agents/pull/4385) [`3b17bb9`](https://github.com/nexus-substrate/nexus-agents/commit/3b17bb96afc3820c02750529e728a1db93706648) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli-adapters): run the `gemini` arm on `agy` (Antigravity), replacing the retired gemini CLI ([#4346](https://github.com/nexus-substrate/nexus-agents/issues/4346))
+
+  Google retired the standalone `gemini` CLI for individual tiers. It now fails
+  **every** invocation with `IneligibleTierError: This client is no longer supported
+for Gemini Code Assist for individuals`, exit code 55 — verified live against
+  `gemini` v0.51.0. The routing arm was dead, not degraded.
+
+  The `gemini` CliName is kept and its binary repointed to `agy` (verified against
+  v1.1.9). Decided by `consensus_vote` (`higher_order`, 7/0): adding or renaming a
+  CliName would touch ~30 exhaustive maps, two exhaustive switches, a duplicated
+  union in `packages/nexus-memory`, and persisted LinUCB/outcome history — to buy
+  routability of agy's Claude/GPT-OSS models, which are already reachable through
+  their own adapters.
+
+  **The load-bearing detail: `agy` exits 0 even when the run failed.** A bad model
+  returns `{"status":"ERROR","response":"","error":"…"}` with exit code 0. The new
+  `AgyResponseParser` is fail-closed by construction — unparseable output, truncated
+  JSON, a missing `status`, an unrecognized `status`, and a non-string `response` all
+  yield `null`, and `status` is pinned to the literal `SUCCESS` via Zod so a future
+  status cannot be waved through. Reintroducing exit-code-based classification here
+  would have undone [#4350](https://github.com/nexus-substrate/nexus-agents/issues/4350)/[#4354](https://github.com/nexus-substrate/nexus-agents/issues/4354)/[#4362](https://github.com/nexus-substrate/nexus-agents/issues/4362)/[#4363](https://github.com/nexus-substrate/nexus-agents/issues/4363).
+
+  Other changes:
+
+  - Flag spellings updated (`-o json` → `--output-format json`, `-m` → `--model`,
+    `--resume` → `--conversation`).
+  - `--policy <file>` has no agy equivalent, so the system prompt is prepended to
+    the content — a deliberate downgrade in framing fidelity, which also removes the
+    per-call tempdir the old path created.
+  - Token usage maps onto `TokenUsage` with `thinking_tokens` folded into
+    `outputTokens` (generated, billable, and previously would have been dropped);
+    `cache_read_tokens` deliberately not added, being a subset of input already
+    counted.
+  - Model slugs live in a new `config/agy-model-map.ts` rather than in
+    `cliModelName` — that field is also read by the API-based `GeminiAdapter`, which
+    calls Google directly and needs real API ids. One field cannot serve both.
+  - `CLI_VERSION_REQUIREMENTS.gemini` now describes agy versions, so an installed
+    gemini 0.5x correctly fails the minimum.
+
+### Patch Changes
+
+- [#4388](https://github.com/nexus-substrate/nexus-agents/pull/4388) [`b85c235`](https://github.com/nexus-substrate/nexus-agents/commit/b85c235ff410684966dbe4022b86d971e56985d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli-adapters): separate an adapter's executable from its routing identity ([#4346](https://github.com/nexus-substrate/nexus-agents/issues/4346))
+
+  Fixes a regression the agy repoint introduced: `isCliAvailable('gemini')` returned
+  **false** on a machine where the adapter worked perfectly.
+
+  `BaseCliAdapter.getVersion()` ran ``execAsync(`${this.name} --version`)`` — the
+  `CliName` doubled as the binary name. That is fine while the two coincide and
+  silently wrong when they diverge. After the gemini arm was repointed to spawn
+  `agy`, task execution went to `agy` while the health check still shelled
+  `gemini --version`, reporting the retired binary's `0.51.0` against agy's `1.0.0`
+  floor. The arm failed its own availability gate while returning correct results
+  to any caller that bypassed the gate.
+
+  `BaseCliAdapter` now exposes `binaryName`, defaulting to `name` so every other
+  adapter is unaffected, overridden to `agy` for the gemini arm. `getVersion()`, the
+  version-failure message, and `SubprocessCliAdapter`'s NOT_FOUND message all use
+  it, and `GeminiCliAdapter.getCommand()` derives its command from the same property
+  rather than a separate literal — so the execution path and the version probe
+  cannot drift apart again.
+
+  Verified live: `healthCheck()` now returns `{healthy: true, version: "1.1.11"}`
+  where it previously returned `{healthy: false, version: "0.51.0"}`.
+
+  Note this restores the health half only. `isCliAvailable` is
+  `health.healthy && auth.state === 'authenticated'`, and the auth probe still reads
+  the retired CLI's OAuth cache — tracked separately.
+
 ## 2.173.11
 
 ### Patch Changes
