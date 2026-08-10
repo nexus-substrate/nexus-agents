@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 import { formatMigrationResult, runMigrate } from './migrate-command.js';
 
@@ -110,7 +111,7 @@ describe('runMigrate (#2879)', () => {
 
   it('fails when no repo can be detected and --to is absent', () => {
     seed('sessions', { 'x.jsonl': '{}\n' });
-    const nonRepoCwd = mkdtempSync(join(tmpdir(), 'nexus-migrate-no-repo-'));
+    const nonRepoCwd = mkdtempOutsideRepo('nexus-migrate-no-repo-');
     try {
       const result = runMigrate({ from: homedirState, cwd: nonRepoCwd });
       expect(result.success).toBe(false);
@@ -124,7 +125,7 @@ describe('runMigrate (#2879)', () => {
   it('respects explicit --to override even outside a repo', () => {
     seed('sessions', { 's-1.jsonl': '{}\n' });
     const explicitTarget = join(workspace, 'explicit-target');
-    const nonRepoCwd = mkdtempSync(join(tmpdir(), 'nexus-migrate-no-repo-'));
+    const nonRepoCwd = mkdtempOutsideRepo('nexus-migrate-no-repo-');
     try {
       const result = runMigrate({
         from: homedirState,

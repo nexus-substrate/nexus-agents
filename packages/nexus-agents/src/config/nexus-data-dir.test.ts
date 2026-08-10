@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { homedir } from 'node:os';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join, resolve, isAbsolute } from 'node:path';
 import { getNexusDataDir, nexusDataPath, resetNexusDataDirCache } from './nexus-data-dir.js';
 
@@ -212,9 +213,8 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
 
   it('returns null when cwd is not in a repo (homedir fallback)', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-no-repo-'));
+    const { rmSync } = await import('node:fs');
+    const nonRepo = mkdtempOutsideRepo('nexus-no-repo-');
     try {
       process.chdir(nonRepo);
       expect(getNexusRepoDir()).toBe(null);
@@ -491,9 +491,8 @@ describe('sandbox-fallback for cross-repo paths (issue #2888)', () => {
   it('does NOT fall back when not in a repo (surfaces the underlying error)', async () => {
     process.env['HOME'] = unwritableHome;
     const { nexusDataPath } = await import('./nexus-data-dir.js');
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-no-repo-'));
+    const { rmSync } = await import('node:fs');
+    const nonRepo = mkdtempOutsideRepo('nexus-no-repo-');
     try {
       process.chdir(nonRepo);
       // No repo to fall back to → returns the homedir path; the
@@ -705,7 +704,7 @@ describe('active workspace root (#3991 — MCP roots)', () => {
     // install where the server's cwd is the npm bin dir, not the project.
     repoDir = mkdtempSync(join(tmpdir(), 'nexus-ws-repo-'));
     mkdirSync(join(repoDir, '.git'));
-    cwdOutsideRepo = mkdtempSync(join(tmpdir(), 'nexus-ws-cwd-'));
+    cwdOutsideRepo = mkdtempOutsideRepo('nexus-ws-cwd-');
 
     const { _resetActiveWorkspaceRootForTests, _resetGitignoreMemoForTests } =
       await import('./nexus-data-dir.js');

@@ -161,10 +161,29 @@ function getAllSourceFiles(): string[] {
 }
 
 /**
+ * True for test-support modules — helpers under `src/testing/` whose whole
+ * reason to exist is to be imported by tests.
+ *
+ * They still need a consumer, so dead code there is caught exactly as before;
+ * the only relaxation is that a *test* consumer counts. Without this, the sole
+ * way to add a test helper is the `@export-no-consumer-yet` marker, which
+ * promises a production consumer that is never coming — a lie the gate would
+ * then carry indefinitely. Note `src/testing/` also holds genuinely
+ * production-consumed modules (memory-benchmark, e2e scenario runner), which
+ * is why this relaxes the *kind* of consumer required rather than skipping
+ * the directory.
+ */
+export function isTestSupportFile(file: string): boolean {
+  return file.includes('/src/testing/');
+}
+
+/**
  * Returns the set of `.ts` files under `SRC_DIR` that contain at least
  * one import matching `patterns`. Excludes the candidate file itself
  * (so a file importing its own siblings doesn't self-consume) and
- * excludes test files (we want production consumers, not just tests).
+ * excludes test files (we want production consumers, not just tests) —
+ * unless the target is a test-support module, where tests are the
+ * intended consumers.
  *
  * Native Node implementation — replaces the earlier `rg`-based check
  * that silently degraded to "no consumers found" on CI runners where
@@ -172,9 +191,10 @@ function getAllSourceFiles(): string[] {
  */
 function findConsumers(file: string, patterns: RegExp[]): string[] {
   const consumers = new Set<string>();
+  const testConsumersCount = isTestSupportFile(file);
   for (const candidate of getAllSourceFiles()) {
     if (candidate === file) continue;
-    if (isTestFile(candidate)) continue;
+    if (!testConsumersCount && isTestFile(candidate)) continue;
     let content: string;
     try {
       content = readFileSync(candidate, 'utf-8');

@@ -8,9 +8,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 import { findRepoRoot, isRepoRoot } from './repo-root-detection.js';
 
@@ -18,7 +18,7 @@ describe('repo-root-detection', () => {
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'nexus-repo-root-'));
+    root = mkdtempOutsideRepo('nexus-repo-root-');
   });
 
   afterEach(() => {

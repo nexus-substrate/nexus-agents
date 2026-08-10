@@ -28,6 +28,7 @@ import {
   readFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getNexusTmpDir } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
@@ -100,7 +101,9 @@ function linkedWorktrees(repoRoot: string): string[] {
 
 /** Count temp dirs the push module may have left behind. */
 function residualPushTempDirs(): string[] {
-  return readdirSync(tmpdir()).filter((n) => n.startsWith('codepr-push-') && !n.includes('repo'));
+  return readdirSync(getNexusTmpDir()).filter(
+    (n) => n.startsWith('codepr-push-') && !n.includes('repo')
+  );
 }
 
 /** A mock deps bundle that records every external-seam call. */
@@ -134,13 +137,26 @@ function makeMockDeps(opts: {
   return { deps, gitPush, openPullRequest, events };
 }
 
+// Own scratch root so the leak detector above counts only this process's
+// dirs. `codepr-armed-not-active.test.ts` also drives the push path, and
+// concurrent workers sharing one root make the before/after delta a race —
+// see the longer note in codepr-orchestrator.test.ts.
+let scratchRoot: string;
+let savedTmpEnv: string | undefined;
+
 let repo: { repoRoot: string; cleanup: () => void };
 beforeEach(() => {
+  savedTmpEnv = process.env['NEXUS_TMPDIR'];
+  scratchRoot = mkdtempSync(join(getNexusTmpDir(), 'codepr-push-scope-'));
+  process.env['NEXUS_TMPDIR'] = scratchRoot;
   repo = makeRepo();
 });
 afterEach(() => {
   repo.cleanup();
   vi.unstubAllEnvs();
+  if (savedTmpEnv === undefined) delete process.env['NEXUS_TMPDIR'];
+  else process.env['NEXUS_TMPDIR'] = savedTmpEnv;
+  rmSync(scratchRoot, { recursive: true, force: true });
 });
 
 // A low soak bar so a small soak value satisfies the gate in tests.

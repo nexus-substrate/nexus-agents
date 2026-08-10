@@ -12,8 +12,8 @@
  * User task content is passed as a single argv element (no shell interpolation).
  */
 
-import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, rmSync } from 'node:fs';
+import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import type {
   ICliResponseParser,
@@ -107,7 +107,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     // the prompt into a tempfile, pass it via `-c`, and clean up on exit.
     let cleanup: (() => void) | undefined;
     if (task.systemPrompt !== undefined && task.systemPrompt !== '') {
-      const dir = mkdtempSync(join(tmpdir(), 'nexus-codex-sysprompt-'));
+      const dir = nexusMkdtempSync('nexus-codex-sysprompt-');
       const file = join(dir, 'instructions.md');
       writeFileSync(file, task.systemPrompt, { encoding: 'utf8', mode: 0o600 });
       args.push('-c', `model_instructions_file=${file}`);

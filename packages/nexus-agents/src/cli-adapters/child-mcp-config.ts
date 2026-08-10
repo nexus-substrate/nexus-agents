@@ -11,9 +11,9 @@
  * @module cli-adapters/child-mcp-config
  */
 
-import { writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { writeFile, rm } from 'node:fs/promises';
+import { nexusMkdtemp } from '../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'swe-bench-mcp-config' });
@@ -114,7 +114,7 @@ export async function generateMcpConfig(options?: McpConfigOptions): Promise<Gen
   const config = buildConfig(options);
   const tools = options?.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
 
-  const tempDir = await mkdtemp(join(tmpdir(), 'nexus-mcp-'));
+  const tempDir = await nexusMkdtemp('nexus-mcp-');
   const configPath = join(tempDir, 'mcp-config.json');
 
   await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');

@@ -43,8 +43,8 @@
 // @export-no-consumer-yet — see #3670 (Stage 3; activation requires enable-vote + soak + owner-ack)
 
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -178,7 +178,12 @@ export type CodePrPushReason =
 
 /** Discriminated push result. NEVER thrown — a failure is a denied value. */
 export type CodePrPushResult =
-  | { readonly ok: true; readonly pr: OpenedPrRef; readonly branch: string; readonly diffHash: string }
+  | {
+      readonly ok: true;
+      readonly pr: OpenedPrRef;
+      readonly branch: string;
+      readonly diffHash: string;
+    }
   | { readonly ok: false; readonly reason: CodePrPushReason; readonly detail: string };
 
 // ============================================================================
@@ -190,7 +195,11 @@ function sha256(s: string): string {
 }
 
 function git(cwd: string, args: readonly string[]): string {
-  return execFileSync('git', [...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync('git', [...args], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 function pushDenied(reason: CodePrPushReason, detail: string): CodePrPushResult {
@@ -247,7 +256,11 @@ function auditRefusal(
       tokenIdentity: 'none',
       decision: 'abort',
       abortReason: 'guard_error',
-      actor: { type: 'system', id: 'autonomous-code-pr-push', name: `code-PR push refused (${reason})` },
+      actor: {
+        type: 'system',
+        id: 'autonomous-code-pr-push',
+        name: `code-PR push refused (${reason})`,
+      },
     });
   } catch {
     // Auditing the refusal is best-effort; the refusal itself already stands.
@@ -263,7 +276,10 @@ function auditRefusal(
  * from the durable soak store (NOT from caller input — the streak cannot be
  * forged). Returns a `not_enabled` denial (audited) when NOT ready, else undefined.
  */
-function checkReadiness(input: CodePrPushInput, deps: CodePrPushDeps): CodePrPushResult | undefined {
+function checkReadiness(
+  input: CodePrPushInput,
+  deps: CodePrPushDeps
+): CodePrPushResult | undefined {
   const readSoak = deps.readSoak ?? readCodePrGuardsGreenSoak;
   const consecutiveGreenDryRuns = readSoak();
   const verdict = evaluateCodePrEnableReadiness(
@@ -277,7 +293,10 @@ function checkReadiness(input: CodePrPushInput, deps: CodePrPushDeps): CodePrPus
   );
   if (verdict.ready) return undefined;
   auditRefusal(deps.logger, input.run, 'not_enabled', sha256(''));
-  return pushDenied('not_enabled', `enable-readiness not satisfied: blockers=[${verdict.blockers.join(', ')}]`);
+  return pushDenied(
+    'not_enabled',
+    `enable-readiness not satisfied: blockers=[${verdict.blockers.join(', ')}]`
+  );
 }
 
 // ============================================================================
@@ -310,7 +329,7 @@ function realizeInPushWorktree(
   handle: PushWorktree
 ): RealizedPush {
   const repoRoot = input.repoRoot ?? process.cwd();
-  handle.tempParent = realpathSync(mkdtempSync(join(tmpdir(), 'codepr-push-')));
+  handle.tempParent = realpathSync(nexusMkdtempSync('codepr-push-'));
   handle.worktreeRoot = join(handle.tempParent, 'wt');
   // `-b <branch>` creates the NEW feature branch in the throwaway worktree.
   git(repoRoot, ['worktree', 'add', '-b', branch, handle.worktreeRoot, 'HEAD']);
@@ -352,7 +371,7 @@ function discardPushWorktree(repoRoot: string, handle: PushWorktree): void {
     try {
       rmSync(handle.tempParent, { recursive: true, force: true });
     } catch {
-      // best-effort; under os.tmpdir()
+      // best-effort; under the nexus scratch dir
     }
   }
 }
@@ -365,6 +384,32 @@ interface PushStageArgs {
   readonly token: string;
   readonly worktreeRoot: string;
   readonly realized: RealizedPush;
+}
+
+/**
+ * Append one push-milestone audit event.
+ *
+ * The pre-push (intent) and post-push (result) events carry an identical
+ * payload and differ only in the actor name, so the shape lives here once —
+ * an intent event that drifts from the result event would make the pair
+ * useless for reconciling "what we said we'd do" against "what we did".
+ */
+function auditPushMilestone(
+  args: PushStageArgs,
+  actorName: string
+): ReturnType<typeof auditAutonomousEvent> {
+  const { input, deps, token, realized } = args;
+  return auditAutonomousEvent(deps.logger, {
+    runId: input.run.runId,
+    sourceSignalHash: input.run.sourceSignalHash,
+    diffHash: realized.diffHash,
+    scanVerdict: 'clean',
+    filesTouched: realized.changedFiles.length,
+    linesTouched: realized.linesTouched,
+    tokenIdentity: tokenIdentity(token),
+    decision: 'would_open_pr',
+    actor: { type: 'system', id: 'autonomous-code-pr-push', name: actorName },
+  });
 }
 
 /**
@@ -388,24 +433,20 @@ function reguardAndPush(args: PushStageArgs): CodePrPushResult {
   });
   if (!verdict.ok) {
     auditRefusal(deps.logger, input.run, `pre_push_guard:${verdict.reason}`, realized.diffHash);
-    return pushDenied('pre_push_guard_denied', `pre-push guard re-check denied (${verdict.reason}): ${verdict.detail}`);
+    return pushDenied(
+      'pre_push_guard_denied',
+      `pre-push guard re-check denied (${verdict.reason}): ${verdict.detail}`
+    );
   }
 
   // Step 5a: audit the INTENT before any external action (branch, diff, token id).
-  const intent = auditAutonomousEvent(deps.logger, {
-    runId: input.run.runId,
-    sourceSignalHash: input.run.sourceSignalHash,
-    diffHash: realized.diffHash,
-    scanVerdict: 'clean',
-    filesTouched: realized.changedFiles.length,
-    linesTouched: realized.linesTouched,
-    tokenIdentity: tokenIdentity(token),
-    decision: 'would_open_pr',
-    actor: { type: 'system', id: 'autonomous-code-pr-push', name: `code-PR push intent (${branch})` },
-  });
+  const intent = auditPushMilestone(args, `code-PR push intent (${branch})`);
   if (!intent.ok) {
     // A failed pre-push audit is itself fail-closed: do NOT push.
-    return pushDenied('audit_failed', `pre-push audit append failed (fail-closed): ${intent.detail}`);
+    return pushDenied(
+      'audit_failed',
+      `pre-push audit append failed (fail-closed): ${intent.detail}`
+    );
   }
 
   // Step 4: external action via the injectable seams. NEW branch only; NEVER merge.
@@ -413,17 +454,7 @@ function reguardAndPush(args: PushStageArgs): CodePrPushResult {
   const pr = deps.openPullRequest({ branch, title: input.prTitle, body: input.prBody, token });
 
   // Step 5b: audit the RESULT after the push (PR url/number).
-  auditAutonomousEvent(deps.logger, {
-    runId: input.run.runId,
-    sourceSignalHash: input.run.sourceSignalHash,
-    diffHash: realized.diffHash,
-    scanVerdict: 'clean',
-    filesTouched: realized.changedFiles.length,
-    linesTouched: realized.linesTouched,
-    tokenIdentity: tokenIdentity(token),
-    decision: 'would_open_pr',
-    actor: { type: 'system', id: 'autonomous-code-pr-push', name: `code-PR PR opened #${String(pr.number)}` },
-  });
+  auditPushMilestone(args, `code-PR PR opened #${String(pr.number)}`);
   return { ok: true, pr, branch, diffHash: realized.diffHash };
 }
 
@@ -442,7 +473,11 @@ function planOptions(input: CodePrPushInput): CodePrRunOptions {
  * re-guard + push in a fresh worktree, discarding it in a `finally`. May throw
  * (the caller wraps a throw into a denied result).
  */
-function planRealizePush(input: CodePrPushInput, deps: CodePrPushDeps, token: string): CodePrPushResult {
+function planRealizePush(
+  input: CodePrPushInput,
+  deps: CodePrPushDeps,
+  token: string
+): CodePrPushResult {
   // Step 3a: build + validate the plan via the dry-run orchestrator (it discards
   // its OWN worktree). A denial here is a hard stop — never reach the push.
   const planRun = deps.planRun ?? planCodePrRun;
@@ -458,7 +493,14 @@ function planRealizePush(input: CodePrPushInput, deps: CodePrPushDeps, token: st
   try {
     const realized = realizeInPushWorktree(input, branch, handle);
     if (handle.worktreeRoot === undefined) throw new Error('push worktree not created');
-    return reguardAndPush({ input, deps, branch, token, worktreeRoot: handle.worktreeRoot, realized });
+    return reguardAndPush({
+      input,
+      deps,
+      branch,
+      token,
+      worktreeRoot: handle.worktreeRoot,
+      realized,
+    });
   } finally {
     discardPushWorktree(repoRoot, handle);
   }
@@ -490,7 +532,10 @@ export function executeCodePrPush(input: CodePrPushInput, deps: CodePrPushDeps):
   // Step 2: credentials required — absent/empty token ⇒ no push.
   const token = process.env[CODEPR_TOKEN_ENV] ?? '';
   if (token.trim() === '') {
-    return pushDenied('no_credentials', `no scoped credential in ${CODEPR_TOKEN_ENV} (fail-closed)`);
+    return pushDenied(
+      'no_credentials',
+      `no scoped credential in ${CODEPR_TOKEN_ENV} (fail-closed)`
+    );
   }
 
   // Steps 3–6 — wrapped so ANY throw becomes a fail-closed denial.
@@ -562,7 +607,11 @@ export function defaultOpenPullRequest(args: OpenPullRequestArgs): OpenedPrRef {
     ['pr', 'create', '--head', args.branch, '--title', args.title, '--body', args.body],
     { encoding: 'utf8', env: { ...process.env, GH_TOKEN: args.token } }
   ).trim();
-  const url = out.split('\n').find((l) => l.startsWith('http'))?.trim() ?? out;
+  const url =
+    out
+      .split('\n')
+      .find((l) => l.startsWith('http'))
+      ?.trim() ?? out;
   const num = url.match(/\/pull\/(\d+)/);
   return { number: num?.[1] !== undefined ? Number.parseInt(num[1], 10) : 0, url };
 }

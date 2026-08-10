@@ -9,6 +9,7 @@
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -159,8 +160,8 @@ describe('resolvePrReviewRecordsPath (#4278)', () => {
     originalCwd = process.cwd();
     originalEnv = process.env[PR_REVIEW_RECORDS_PATH_ENV];
     Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
-    // A fresh mkdtemp'd dir has no `.git` ancestor within the temp filesystem.
-    noGitDir = mkdtempSync(join(tmpdir(), 'pr-review-no-git-'));
+    // Guaranteed no `.git` ancestor — asserted by the helper, not assumed.
+    noGitDir = mkdtempOutsideRepo('pr-review-no-git-');
   });
 
   afterEach(() => {
@@ -191,7 +192,7 @@ describe('resolvePrReviewRecordsPath (#4278)', () => {
     const cwdRoot = findRepoRoot(originalCwd);
     expect(cwdRoot).not.toBeNull();
 
-    const notARepo = mkdtempSync(join(tmpdir(), 'pr-review-not-a-repo-'));
+    const notARepo = mkdtempOutsideRepo('pr-review-not-a-repo-');
     try {
       const resolved = resolvePrReviewRecordsPath(notARepo);
       // Must NOT redirect to the arbitrary directory...

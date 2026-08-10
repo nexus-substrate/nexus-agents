@@ -7,10 +7,34 @@
  * @module vitest.config
  */
 
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+/**
+ * Scratch root for the test run (#4412).
+ *
+ * `os.tmpdir()` honors `$TMPDIR` on POSIX, so setting it here redirects every
+ * test that reaches for a temp file — including the ~100 that call `tmpdir()`
+ * directly — without editing them. That matters because the shared `/tmp` is
+ * a 32G tmpfs anything on the box can fill, and when it filled, this suite
+ * failed to *collect* ~1,100 files while reporting zero assertion failures.
+ * A disk fault that presents as a code fault costs hours; a repo-local dir on
+ * real disk removes the whole failure mode. Gitignored via `.nexus-agents/`.
+ */
+const TEST_TMP = join(dirname(fileURLToPath(import.meta.url)), '.nexus-agents', 'tmp');
+mkdirSync(TEST_TMP, { recursive: true });
 
 export default defineConfig({
   test: {
+    // Keep scratch out of the shared tmpfs — see TEST_TMP above.
+    // Tests asserting repo-*detection* need a dir with no `.git` ancestor,
+    // which TEST_TMP cannot provide. Hand them the real system temp dir; see
+    // src/testing/non-repo-temp-dir.ts.
+    env: { TMPDIR: TEST_TMP, NEXUS_TMPDIR: TEST_TMP, VITEST_SYSTEM_TMPDIR: tmpdir() },
+
     // Test file patterns
     include: ['src/**/*.test.ts'],
     exclude: [

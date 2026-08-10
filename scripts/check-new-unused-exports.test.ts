@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { classifyAddedFiles } from './check-new-unused-exports.js';
+import { classifyAddedFiles, isTestSupportFile } from './check-new-unused-exports.js';
 
 describe('classifyAddedFiles', () => {
   it('classifies a new source file as needing the consumer check', () => {
@@ -71,5 +71,27 @@ describe('classifyAddedFiles', () => {
     const result = classifyAddedFiles([]);
     expect(result.newSourceFiles).toEqual([]);
     expect(result.skipped).toEqual([]);
+  });
+});
+
+describe('isTestSupportFile (#4412)', () => {
+  it('treats a helper under src/testing/ as test-support', () => {
+    // Its consumers are tests by design. Requiring a *production* consumer
+    // would leave "mislabel it with the no-consumer-yet marker" as the only
+    // way to add a test helper — a marker promising a consumer never coming.
+    expect(isTestSupportFile('packages/nexus-agents/src/testing/non-repo-temp-dir.ts')).toBe(true);
+  });
+
+  it('treats a nested helper under src/testing/ as test-support', () => {
+    expect(isTestSupportFile('packages/nexus-agents/src/testing/adapters/fake-cli.ts')).toBe(true);
+  });
+
+  it('does NOT treat ordinary production code as test-support', () => {
+    // The narrowness is the point: this must not become a blanket exemption.
+    expect(isTestSupportFile('packages/nexus-agents/src/config/nexus-tmp-dir.ts')).toBe(false);
+  });
+
+  it('does NOT match a production file merely named like testing', () => {
+    expect(isTestSupportFile('packages/nexus-agents/src/cli/testing-command.ts')).toBe(false);
   });
 });

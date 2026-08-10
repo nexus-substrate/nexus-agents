@@ -13,11 +13,24 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, realpathSync, readdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  realpathSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getNexusTmpDir } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { planCodePrRun, type CodePrRunInput, type OrchestratorPhase } from './codepr-orchestrator.js';
+import {
+  planCodePrRun,
+  type CodePrRunInput,
+  type OrchestratorPhase,
+} from './codepr-orchestrator.js';
 import type { IAuditLogger, AuditEventInput } from '../../audit/audit-types.js';
 
 // ----------------------------------------------------------------------------
@@ -76,15 +89,38 @@ function linkedWorktrees(repoRoot: string): string[] {
 
 /** Count temp dirs the orchestrator may have left behind. */
 function residualTempDirs(): string[] {
-  return readdirSync(tmpdir()).filter((n) => n.startsWith('codepr-orchestrator-'));
+  return readdirSync(getNexusTmpDir()).filter((n) => n.startsWith('codepr-orchestrator-'));
 }
+
+/**
+ * Give this file its own scratch root so the leak detector above counts only
+ * dirs *this* process created.
+ *
+ * Four test files exercise `planCodePrRun`, and vitest runs four workers at a
+ * time. Sharing one scratch root makes the before/after comparison a race: a
+ * sibling worker's worktree lands mid-window and is indistinguishable from a
+ * leak. That produced a real intermittent failure in the full suite that no
+ * amount of running this file alone reproduces.
+ *
+ * The shared-namespace race is not new — before scratch moved, every one of
+ * these files raced in `/tmp` the same way. Scoping the root is what makes the
+ * detector exact rather than merely relocated.
+ */
+let scratchRoot: string;
+let savedTmpEnv: string | undefined;
 
 let repo: { repoRoot: string; cleanup: () => void };
 beforeEach(() => {
+  savedTmpEnv = process.env['NEXUS_TMPDIR'];
+  scratchRoot = mkdtempSync(join(getNexusTmpDir(), 'codepr-orch-scope-'));
+  process.env['NEXUS_TMPDIR'] = scratchRoot;
   repo = makeRepo();
 });
 afterEach(() => {
   repo.cleanup();
+  if (savedTmpEnv === undefined) delete process.env['NEXUS_TMPDIR'];
+  else process.env['NEXUS_TMPDIR'] = savedTmpEnv;
+  rmSync(scratchRoot, { recursive: true, force: true });
 });
 
 const baseInput = (changes: CodePrRunInput['changes']): CodePrRunInput => ({
@@ -195,9 +231,7 @@ describe('planCodePrRun — fail-closed', () => {
   it('secret in newContent → denied secret_detected via scanDiffOrDeny', () => {
     const { logger } = makeCapturingLogger();
     const result = planCodePrRun(
-      baseInput([
-        { relPath: 'src/leak.ts', newContent: 'const key = "AKIAIOSFODNN7EXAMPLE";\n' },
-      ]),
+      baseInput([{ relPath: 'src/leak.ts', newContent: 'const key = "AKIAIOSFODNN7EXAMPLE";\n' }]),
       logger,
       { repoRoot: repo.repoRoot }
     );
