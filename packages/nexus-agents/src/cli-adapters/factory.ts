@@ -159,7 +159,16 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
     // call failed with an opaque subprocess error. Auth must agree with the
     // probe doctor already uses (cli-auth-probe.ts, #2447).
     const [health, auth] = await Promise.all([adapter.healthCheck(), probeCli(cli)]);
-    const available = health.healthy && auth.state === 'authenticated';
+    // #4391: `unknown` is ADMITTED, not excluded. Some gateways expose no
+    // auth signal we can read — agy has no non-interactive auth check at all,
+    // and its `models` subcommand hangs without a TTY (#4393). Treating an
+    // absence of evidence as a failure is what excluded a working agy arm from
+    // routing (#4346); treating it as success is how the retired gemini CLI
+    // stayed selectable while failing every call (#4318). We admit it and let
+    // real invocation failures do the excluding, via the circuit breaker the
+    // adapters now feed (#4330).
+    const authBlocks = auth.state === 'needs-login' || auth.state === 'not-installed';
+    const available = health.healthy && !authBlocks;
 
     // Store in cache if provided. Synthesize a degraded health record when
     // the binary is healthy but auth failed, so downstream consumers see
@@ -173,10 +182,9 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
           version: health.version,
           versionStatus: health.versionStatus,
           checkedAt: new Date(),
-          message:
-            auth.state === 'authenticated'
-              ? health.message
-              : `auth: ${auth.state}` + ('reason' in auth ? ` (${auth.reason})` : ''),
+          message: authBlocks
+            ? `auth: ${auth.state}` + ('reason' in auth ? ` (${auth.reason})` : '')
+            : health.message,
         });
       }
     }

@@ -24,6 +24,9 @@ const STATE_GLYPH: Record<AuthProbeResult['state'], string> = {
   authenticated: '✓', // ✓
   'needs-login': '⚠', // ⚠
   'not-installed': '⊘', // ⊘
+  // #4391: the CLI is installed but offers no auth signal we can read. Neither
+  // a tick nor a warning would be honest.
+  unknown: '?', // ?
   error: '✗', // ✗
 };
 
@@ -31,6 +34,7 @@ const STATE_LABEL: Record<AuthProbeResult['state'], string> = {
   authenticated: 'authenticated',
   'needs-login': 'needs login',
   'not-installed': 'not installed',
+  unknown: 'unverified',
   error: 'error',
 };
 

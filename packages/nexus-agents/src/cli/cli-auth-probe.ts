@@ -12,12 +12,14 @@
  *                 (or env: ANTHROPIC_API_KEY)
  *   - codex     → `codex login status` (returns auth state)
  *                 (or env: OPENAI_API_KEY)
- *   - gemini    → presence + non-expired `~/.gemini/oauth_creds.json`
- *                 (or env: GOOGLE_AI_API_KEY)
+ *   - gemini    → presence of `agy` only, reported as `unknown` (#4391). The arm
+ *                 runs Antigravity, which offers no non-interactive auth check
+ *                 and does NOT use `~/.gemini/oauth_creds.json`.
  *   - opencode  → `opencode auth list` (parses credential count)
  *
- * No live API calls. Tokens are not decoded or sent anywhere — only their
- * presence/expiry is read locally.
+ * No live API calls. Tokens are never decoded or sent anywhere — only their
+ * presence/expiry is read locally. Where a CLI offers no signal we can read, the
+ * probe reports `unknown` rather than guessing in either direction (#4391).
  *
  * Source: Issue #2447. Replaces the binary-detection-only path in doctor.ts
  * (Issue #2439 follow-up).
@@ -63,6 +65,21 @@ export type AuthProbeResult =
   | {
       readonly cli: CliName;
       readonly state: 'not-installed';
+      readonly reason: string;
+    }
+  | {
+      /**
+       * The CLI is installed, but it exposes NO way to verify authentication
+       * that we can use (#4391). Not a failure — an honest absence of evidence.
+       *
+       * Callers must admit these optimistically. Asserting `needs-login` here
+       * excluded a working `agy` arm from routing for exactly this reason
+       * (#4346), and asserting `authenticated` is how the retired gemini CLI
+       * stayed selectable while failing every call (#4318). Real invocation
+       * failures — the circuit breaker — do the excluding instead.
+       */
+      readonly cli: CliName;
+      readonly state: 'unknown';
       readonly reason: string;
     }
   | {
@@ -162,53 +179,50 @@ async function probeCodex(): Promise<AuthProbeResult> {
   }
 }
 
-function geminiNeedsLogin(reason: string): AuthProbeResult {
-  return {
-    cli: 'gemini',
-    state: 'needs-login',
-    reason,
-    fixCommand: 'gemini',
-    envFallback: 'GOOGLE_AI_API_KEY',
-    fixUrl: 'https://aistudio.google.com/apikey',
-  };
-}
-
-function classifyGeminiCreds(parsed: unknown): AuthProbeResult {
-  if (!isGeminiCredsShape(parsed)) {
-    return geminiNeedsLogin('OAuth credentials file present but not in expected shape');
-  }
-  if (typeof parsed.expiry_date === 'number' && parsed.expiry_date < Date.now()) {
-    return geminiNeedsLogin(
-      `OAuth access token expired ${new Date(parsed.expiry_date).toISOString()} (refresh may still work)`
-    );
-  }
-  return {
-    cli: 'gemini',
-    state: 'authenticated',
-    via: 'cli-credentials',
-    ...(typeof parsed.expiry_date === 'number' ? { meta: { expiresAt: parsed.expiry_date } } : {}),
-  };
-}
-
-function probeGemini(): AuthProbeResult {
-  const env = process.env['GOOGLE_AI_API_KEY'] ?? process.env['GEMINI_API_KEY'];
-  if (env !== undefined && env !== '') {
-    return { cli: 'gemini', state: 'authenticated', via: 'env-var' };
-  }
-  const credPath = join(HOME, '.gemini', 'oauth_creds.json');
-  if (!existsSync(credPath)) {
-    return geminiNeedsLogin(
-      'No OAuth credentials at ~/.gemini/oauth_creds.json and GOOGLE_AI_API_KEY/GEMINI_API_KEY are not set'
-    );
-  }
+/**
+ * Probe the gemini arm, which runs `agy` (Antigravity) since Google retired the
+ * standalone gemini CLI (#4389).
+ *
+ * There is no usable auth signal to read, and that is a measured conclusion
+ * rather than an assumption:
+ *
+ *   - `agy models` HANGS when stdout is not a TTY — 90s and no output, confirmed
+ *     from both a shell pipe and `execFile` (#4393). Unusable programmatically.
+ *   - There is no `auth`, `login` or `whoami` subcommand.
+ *   - agy does not use `~/.gemini/oauth_creds.json`. Verified experimentally:
+ *     it served a completion while that file sat untouched with an expiry 5.5
+ *     hours in the past. The previous probe read exactly that file and so
+ *     reported `needs-login` for a working gateway.
+ *
+ * The only thing that proves agy works is a real completion, which costs ~17k
+ * input tokens per call — far too expensive for a health check.
+ *
+ * So this reports `unknown`: the binary is there, and we decline to guess. Under
+ * the admission policy that makes the arm selectable, and a genuinely broken
+ * gateway is excluded by its own failures rather than by a check that cannot
+ * see it.
+ */
+async function probeGemini(): Promise<AuthProbeResult> {
   try {
-    return classifyGeminiCreds(JSON.parse(readFileSync(credPath, 'utf-8')));
-  } catch (e: unknown) {
+    // `--version` is local, instant, and TTY-independent — it establishes
+    // presence without asserting anything about auth.
+    await execFileAsync('agy', ['--version'], {
+      timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
+      maxBuffer: 64 * 1024,
+    });
     return {
       cli: 'gemini',
-      state: 'error',
-      reason: `Failed to read gemini credentials: ${e instanceof Error ? e.message : String(e)}`,
+      state: 'unknown',
+      reason: 'agy exposes no non-interactive auth check; admitted unverified',
     };
+  } catch (e: unknown) {
+    const err = e as { code?: string | number };
+    if (err.code === 'ENOENT') {
+      return { cli: 'gemini', state: 'not-installed', reason: 'agy binary not found on PATH' };
+    }
+    // Deliberately does not echo stderr: gateway output can carry request
+    // content or credential material.
+    return { cli: 'gemini', state: 'error', reason: 'agy --version failed' };
   }
 }
 
@@ -260,16 +274,6 @@ function isClaudeCredsShape(v: unknown): v is ClaudeCreds {
   return typeof (oauth as { accessToken?: unknown }).accessToken === 'string';
 }
 
-interface GeminiCreds {
-  readonly access_token: string;
-  readonly expiry_date?: number;
-}
-
-function isGeminiCredsShape(v: unknown): v is GeminiCreds {
-  if (typeof v !== 'object' || v === null) return false;
-  return typeof (v as { access_token?: unknown }).access_token === 'string';
-}
-
 // ============================================================================
 // Public API
 // ============================================================================
@@ -282,7 +286,7 @@ export async function probeCli(cli: CliName): Promise<AuthProbeResult> {
     case 'codex':
       return probeCodex();
     case 'gemini':
-      return Promise.resolve(probeGemini());
+      return probeGemini();
     case 'opencode':
       return probeOpencode();
   }
