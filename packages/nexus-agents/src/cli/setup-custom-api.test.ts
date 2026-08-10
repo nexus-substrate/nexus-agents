@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { configureCustomApi, type HttpFetcher } from './setup-custom-api.js';
 
 describe('configureCustomApi (#2124)', () => {
@@ -40,7 +41,10 @@ describe('configureCustomApi (#2124)', () => {
       if (!result.ok) return;
       expect(result.value.baseUrl).toBe('https://gateway.example.com/v1');
       expect(result.value.probeSucceeded).toBe(true);
-      expect(result.value.model).toBe('gpt-4o');
+      // #4408: the default moved off gpt-4o, which is end-of-life at OpenAI.
+      // Assert against the constant rather than a literal so the next lifecycle
+      // move does not need a test edit.
+      expect(result.value.model).toBe(CUSTOM_API_DEFAULT_MODEL);
     });
 
     it('respects a custom model override', async () => {

@@ -89,11 +89,18 @@ import {
  * `adapters/auto-adapter.ts` (NEXUS_CUSTOM_MODEL env-var fallback). Single
  * source of truth so changes flow through all consumers.
  *
- * `gpt-4o` is widely supported across OpenAI-compatible gateways (vLLM,
- * LiteLLM, Together AI, etc.) — a pragmatic baseline rather than the
- * cheapest or most capable. Operators are expected to override.
+ * `gpt-4o` was the previous value, chosen because it was widely supported across
+ * OpenAI-compatible gateways. It is now END-OF-LIFE at OpenAI, so defaulting to
+ * it points new operators at a model their gateway may well refuse (#4408).
+ *
+ * A custom gateway can serve anything, so ANY default here is a guess — the
+ * right long-term answer is to discover the model list from the endpoint
+ * (`GET /v1/models`, which this repo already implements) rather than assume one.
+ * Until that is wired, guess a current model instead of a retired one.
+ *
+ * Operators are expected to override via `NEXUS_CUSTOM_MODEL`.
  */
-export const CUSTOM_API_DEFAULT_MODEL = 'gpt-4o';
+export const CUSTOM_API_DEFAULT_MODEL = 'gpt-5.5';
 
 // ============================================================================
 // Central Defaults Object
