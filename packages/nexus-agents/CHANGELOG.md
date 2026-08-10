@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.175.0
+
+### Minor Changes
+
+- [#4414](https://github.com/nexus-substrate/nexus-agents/pull/4414) [`3dd1cba`](https://github.com/nexus-substrate/nexus-agents/commit/3dd1cbac65198ab3bfc909e80d9840e2132d418a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Route scratch files to a repo-local gitignored directory instead of the shared `/tmp` ([#4412](https://github.com/nexus-substrate/nexus-agents/issues/4412))
+
+  Throwaway git worktrees, generated MCP configs, and system-prompt files were written straight into `os.tmpdir()`. That is a shared space with no owner and no budget — when an unrelated tool filled it, this repo's test suite failed to _collect_ ~1,100 files while reporting zero assertion failures, a disk fault that presents as a code fault.
+
+  Scratch now resolves through `getNexusTmpDir()`: `NEXUS_TMPDIR` if set, else `<dataDir>/tmp` via the existing data-dir resolution (so it inherits the per-repo, sandbox, and writability logic and lands inside the already-gitignored `.nexus-agents/` tree), else `os.tmpdir()` as a fail-open fallback. Scratch gets its own `tmp/` subdir so it can be reaped without touching sessions, traces, or the audit chain.
+
+### Patch Changes
+
+- [#4418](https://github.com/nexus-substrate/nexus-agents/pull/4418) [`dd370ea`](https://github.com/nexus-substrate/nexus-agents/commit/dd370eae77baa22bdb2ab553a7997d57b2354404) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Repoint the stale `openrouter-qwen-coder` registry entry ([#4410](https://github.com/nexus-substrate/nexus-agents/issues/4410))
+
+  The entry pointed at `qwen/qwen3-coder-480b-a35b:free`, an id absent from the live models.dev catalogue in every form, so any routing that selected it dispatched an unservable `--model` at opencode. Because it was also priced `0/0`, the cost-aware stages saw a free option that was really a guaranteed failure.
+
+  OpenRouter still serves the family, but no longer at a zero-cost tier. Repointed to `qwen/qwen3-coder` — verified as the same checkpoint (`name: "Qwen3 Coder 480B A35B"`, 262K context), which is what licenses carrying the existing quality scores over — priced at the catalogue list rate of 0.3/1 per 1M, with `cost` re-scored 10 → 9 (10 is reserved for genuinely zero-cost entries) and "free" dropped from the display name and notes.
+
+  The zero-cost tier now contains only `openrouter-nemotron-super`, which is an accurate reflection of the live catalogue rather than a reduction in capability. Decided 7/0 via `higher_order` consensus.
+
 ## 2.174.2
 
 ### Patch Changes
