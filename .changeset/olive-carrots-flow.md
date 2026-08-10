@@ -14,10 +14,7 @@ First slice of the gateway contract. `isCliAvailable` was
 - **False positive:** the retired `gemini` CLI held a valid, unexpired credential
   file while failing every invocation with `IneligibleTierError`.
 
-The fix is not a better boolean. `cli-adapters/gateway-health.ts` records what a
-probe actually _proved_ — `none` / `local` / `service` / `completion` — and keeps
-admission policy as a separate pure function over that evidence, so a weak signal
-is never laundered into a confident verdict.
+The fix is not a better boolean: an absence of evidence is now expressible.
 
 `AuthProbeResult` gains an explicit `unknown` state, and `isCliAvailable` now
 **admits** it. A gateway that exposes no auth signal we can read is given the
