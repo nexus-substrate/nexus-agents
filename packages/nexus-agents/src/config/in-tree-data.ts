@@ -422,7 +422,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     {
       id: 'openrouter-qwen-coder',
-      displayName: 'Qwen3 Coder 480B (free)',
+      displayName: 'Qwen3 Coder 480B A35B',
       provider: 'openrouter',
       contextWindow: 262_144,
       outputModalities: ['text', 'structured_json', 'code'],
@@ -430,12 +430,15 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       toolCapabilities: ['function_calling', 'structured_output'],
       specialFeatures: ['streaming'],
       notes:
-        'Strongest free coding model on OpenRouter. ' + '480B parameters, 262K context. Free tier.',
-      pricing: { inputPer1M: 0, outputPer1M: 0 },
-      qualityScores: { reasoning: 7, codeGeneration: 8, speed: 6, cost: 10 },
+        'Strongest coding-specialized model on OpenRouter. 480B parameters ' +
+        '(35B active), 262K context. The zero-cost SKU this entry used to ' +
+        'point at was retired (#4410); `qwen/qwen3-coder` is the same ' +
+        'checkpoint at list price.',
+      pricing: { inputPer1M: 0.3, outputPer1M: 1 },
+      qualityScores: { reasoning: 7, codeGeneration: 8, speed: 6, cost: 9 },
       maxOutputTokens: 32_768,
       cliName: 'opencode',
-      cliModelName: 'qwen/qwen3-coder-480b-a35b:free',
+      cliModelName: 'qwen/qwen3-coder',
     },
   ],
 };
