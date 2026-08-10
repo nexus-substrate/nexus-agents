@@ -1,5 +1,71 @@
 # nexus-agents
 
+## 2.174.2
+
+### Patch Changes
+
+- [#4401](https://github.com/nexus-substrate/nexus-agents/pull/4401) [`09477be`](https://github.com/nexus-substrate/nexus-agents/commit/09477beb8019fc5599a6d5817954dbc7bf20278d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): guard the openai-compat model-discovery fetch ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392))
+
+  `discoverModels` handed an operator-supplied base URL straight to the OpenAI SDK
+  and called `models.list()` with SDK defaults — no SSRF guard, no timeout, no bound
+  on the returned list. The sibling `custom-openai` SDK path already guards the same
+  class of URL with a DNS-resolve-time check ([#3426](https://github.com/nexus-substrate/nexus-agents/issues/3426)), so the two paths disagreed on
+  posture, and the unguarded one is the one that can read its base URL from a **file**
+  (`NEXUS_OPENCODE_CONFIG` → `opencode.json`) rather than only an env var.
+
+  Now reuses the existing `assertCustomApiHostResolvesPublic` guard rather than
+  growing a second one, runs it **before** any connection is opened, bounds the call
+  with an explicit timeout since discovery happens during server bootstrap, and caps
+  the catalogue at 256 models — `buildOpenAICompatAdapters` constructs one adapter
+  per discovered model, so an unbounded list becomes unbounded objects at startup.
+  The cap is a sanity ceiling on adapter construction, not a claim about what a
+  gateway may offer; aggregators legitimately serve hundreds.
+
+- [#4409](https://github.com/nexus-substrate/nexus-agents/pull/4409) [`6bc2cd3`](https://github.com/nexus-substrate/nexus-agents/commit/6bc2cd32f4d6661d5e6aad1b9fc6a2ba39d0c353) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cost): fall back to catalogue list prices instead of reporting no price ([#4406](https://github.com/nexus-substrate/nexus-agents/issues/4406))
+
+  `calculateCost` read **only** the static in-tree matrix, so a model the registry
+  priced perfectly well came back unpriced — `calculateCost('gpt-4o', 1M, 1M)`
+  returned `undefined` while the models.dev tier held `2.5 / 10` for it the whole
+  time. Its sibling `computeCostDetail` already resolved through the registry, so
+  this was a second, narrower implementation of the same lookup.
+
+  A missing price is not free: cost ceilings are documented as fail-closed for
+  unpriced candidates, so an unpriced model is rejected for the wrong reason, and
+  historical spend cannot be costed at all.
+
+  Adds `PriceBasis` and `priceBasisCaveat` so a surface showing a cost can say what
+  it is: a **public list price**, not a rate verified against the operator's account.
+  There is deliberately no `'contract'` member — nexus-agents has no way for an
+  operator to state a negotiated rate, so claiming one would be a lie.
+
+  Also moves `CUSTOM_API_DEFAULT_MODEL` off `gpt-4o`, which is end-of-life at OpenAI
+  and was pointing new operators at a model their gateway may refuse.
+
+  One existing test asserted `undefined` for these ids on the reasoning that they are
+  "no longer supported". That conflated whether we can **price** a model with whether
+  we should **offer** it; lifecycle belongs in the `deprecated`/`replacedBy` fields,
+  which is tracked in [#4408](https://github.com/nexus-substrate/nexus-agents/issues/4408).
+
+- [#4407](https://github.com/nexus-substrate/nexus-agents/pull/4407) [`5da80bc`](https://github.com/nexus-substrate/nexus-agents/commit/5da80bc8811db04de5f152ecfebb7884ed16ab95) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(routing): let API arms record outcomes under their own id, and surface warm-start skips ([#4400](https://github.com/nexus-substrate/nexus-agents/issues/4400))
+
+  `OutcomeCliSchema` was `CliName | 'unknown'` with no `api:*` member, so no
+  `TaskOutcome.cli` could ever equal an API arm's id — even though the router
+  genuinely registers `api:anthropic`, `api:openai`, `api:google` and
+  `api:custom-openai` as arms under `NEXUS_BILLING_MODE=api`.
+
+  `LinUCBBandit.warmStart` matches arms **by name** (`armIndex < 0 → continue`), so
+  every API arm discarded its entire history and began each process cold, with the
+  skip reported nowhere. The schema now accepts `ApiArmIdSchema`, kept beside the
+  `ApiArmId` type so the two cannot drift. The union only grows, so previously
+  persisted records stay valid.
+
+  `warmStart` now counts skipped outcomes per arm and logs them. A warm-start that
+  silently drops most of its input looked identical to one that worked, which is how
+  this stayed invisible.
+
+  Precondition for [#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392): giving a gateway a routing arm before this would have
+  produced an arm that looks wired and learns nothing across runs.
+
 ## 2.174.1
 
 ### Patch Changes
