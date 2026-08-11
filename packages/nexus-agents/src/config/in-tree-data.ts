@@ -406,7 +406,10 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'openrouter-nemotron-super',
       displayName: 'NVIDIA Nemotron 3 Super 120B (free)',
       provider: 'openrouter',
-      contextWindow: 1_000_000,
+      // The `:free` SKU serves 262K; the paid `nvidia/nemotron-3-super-120b-a12b`
+      // is the 1M one. Copying the paid variant's headline here made every
+      // context-budgeting consumer overstate capacity by ~4x (#4416).
+      contextWindow: 262_144,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'code'],
       toolCapabilities: ['function_calling', 'structured_output'],
