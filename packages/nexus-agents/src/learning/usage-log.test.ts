@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import {
   ModelRegistry,
+  getDefaultRegistry,
   peekDefaultRegistry,
   setDefaultRegistry,
   type ModelEntry,
@@ -130,6 +131,21 @@ describe('computeCostDetail (#4165)', () => {
     });
   });
 
+  /**
+   * Pick a `:free` catalogue id that exists right now, priced 0/0.
+   *
+   * Read from the registry rather than hardcoded so the weekly catalogue refresh
+   * cannot turn an expired example into a false regression (#4417 / the refresh
+   * in #4340 retired the id this test used to pin).
+   */
+  function findFirstFreeCatalogId(): string | undefined {
+    return getDefaultRegistry()
+      .allEntries()
+      .find(
+        (e) => e.id.endsWith(':free') && e.pricing?.inputPer1M === 0 && e.pricing.outputPer1M === 0
+      )?.id;
+  }
+
   describe('against the real default registry (full chain)', () => {
     it('prices a long-tail catalog id from the generated tier', () => {
       // 'amazon-bedrock/amazon.nova-micro-v1:0' has NO in-tree entry — its
@@ -148,11 +164,19 @@ describe('computeCostDetail (#4165)', () => {
       // loader keeps their $0/$0 pricing (exempt from the #4176 placeholder
       // guard), so the full chain prices them at a real, measured $0 — not
       // priced:false/UNMEASURED (#3855/#4165 semantics).
-      const detail = computeCostDetail(
-        'openrouter/meta-llama/llama-3.3-70b-instruct:free',
-        1_000_000,
-        500_000
-      );
+      //
+      // The id is chosen from the catalogue at run time rather than hardcoded.
+      // This test previously pinned `openrouter/meta-llama/llama-3.3-70b-instruct:free`
+      // and went red the moment the weekly refresh retired that SKU — the
+      // invariant under test ("a :free entry prices at a measured $0") was
+      // still true; only the example had expired. Binding a behavioural
+      // assertion to a third-party SKU makes upstream churn look like a
+      // regression in our code.
+      const freeId = findFirstFreeCatalogId();
+      expect(freeId, 'no `:free` entry in the generated catalogue to exercise').toBeDefined();
+
+      const detail = computeCostDetail(freeId as string, 1_000_000, 500_000);
+
       expect(detail.priced).toBe(true);
       expect(detail.costUsd).toBe(0);
     });
