@@ -45,4 +45,16 @@ echo "::group::full test suite"
 pnpm --filter nexus-agents exec vitest run
 echo "::endgroup::"
 
+echo "::group::catalogue drift (advisory)"
+# The refresh has just replaced the catalogue, which is the exact moment an
+# in-tree entry can go stale — #4340's diff caught the qwen `:free` retirement
+# two weeks before it surfaced as bug #4410, and nobody looked. Run the sweep
+# here so it lands in the job log while the diff is in front of someone.
+#
+# Deliberately non-fatal: drift means an *in-tree* entry is wrong, not that
+# this refresh is bad. Failing the job would block the correct catalogue update
+# because of a pre-existing registry defect, which is backwards.
+npx tsx scripts/check-catalogue-drift.ts || echo "^ drift reported; see #4417 — not blocking this refresh"
+echo "::endgroup::"
+
 echo "verify-refresh: all gates passed"
