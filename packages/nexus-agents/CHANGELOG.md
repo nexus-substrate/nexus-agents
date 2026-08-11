@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 2.176.0
+
+### Minor Changes
+
+- [#4422](https://github.com/nexus-substrate/nexus-agents/pull/4422) [`db7b9dd`](https://github.com/nexus-substrate/nexus-agents/commit/db7b9dded8de0f5c85b66c3e989b1d2e0ccdfcbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the model-not-found substitution machinery ([#4408](https://github.com/nexus-substrate/nexus-agents/issues/4408) step 1)
+
+  `withModelNotFoundFallback` / `wrapResilientWithFallback` wrapped every adapter so a `MODEL_NOT_FOUND` error would refresh the available-models cache, pick a same-family sibling, and retry. Decided 6/1 (`higher_order`) to delete it rather than wire it.
+
+  The objection is alignment, not cost: the wrapper deliberately preserved the wrapped adapter's `providerId`/`modelId` so telemetry saw no schema change — which means a substituted call recorded the substitute's outcome **under the retired model's id**, corrupting LinUCB reward attribution and the outcome→distillation loop. In a substrate whose product is auditable decisions, the caller's model choice is itself an audited decision.
+
+  It was dormant twice over: `enableMissingModelFallback` defaulted `false` and was never set anywhere in production, and even enabled, its fallback search returned null because the default cache has no sources.
+
+  Removed: `adapters/model-not-found-fallback.ts` and its test (906 lines), the `enableMissingModelFallback` / `missingModelFallbackOptions` config, `withDefaultOnRetirement`, the `maybeWrap` call path, and the barrel exports. `MODEL_NOT_FOUND` now surfaces to the caller unchanged, with its structured error code intact.
+
+  `AvailableModelsCache`, `openrouter-models-source`, and `register-model-sources` are deliberately kept — they are the live path behind the shipped `list_available_models` MCP tool.
+
+### Patch Changes
+
+- [#4419](https://github.com/nexus-substrate/nexus-agents/pull/4419) [`a38e4f7`](https://github.com/nexus-substrate/nexus-agents/commit/a38e4f78f4bad5766288faf9ea8ce365a918e297) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the advertised context window for `openrouter-nemotron-super` ([#4416](https://github.com/nexus-substrate/nexus-agents/issues/4416))
+
+  The entry dispatches `nvidia/nemotron-3-super-120b-a12b:free` but carried `contextWindow: 1_000_000`, which is the _paid_ variant's window. models.dev lists both, and the free SKU serves 262,144.
+
+  `contextWindow` is what context budgeting and model-eligibility filtering read, so a task assembling between 262K and 1M tokens passed the local check and was then rejected by the provider — after the context had been built. Unlike the dead pointer in [#4410](https://github.com/nexus-substrate/nexus-agents/issues/4410) the model is live, which is why this never surfaced.
+
+  Corrected to `262_144`, keeping the free SKU: repointing to the paid id would empty the zero-cost tier, which [#4410](https://github.com/nexus-substrate/nexus-agents/issues/4410) just reduced to this single entry. Added a general assertion that no entry dispatching a `:free` SKU claims a seven-figure context, so the paid/free metadata split cannot recur silently.
+
 ## 2.175.0
 
 ### Minor Changes
