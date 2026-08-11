@@ -34,6 +34,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Post a visible verification status on the PR head (#4424). PRs opened
+      # with GITHUB_TOKEN do not trigger pull_request workflows, so without
+      # this the PR shows NO checks and reads as verified when it is not.
+      statuses: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,7 +91,12 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify refreshed data before opening a PR
+        if: steps.changed.outputs.changed == 'true'
+        run: bash scripts/verify-refresh.sh
+
       - name: Open PR with refreshed registry
+        id: cpr
         if: steps.changed.outputs.changed == 'true' && inputs['dry-run'] != 'true'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -103,6 +112,23 @@ jobs:
             architecture
             capabilities-matrix
             automated
+
+      - name: Publish verification status onto the PR head
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+        run: |
+          set -euo pipefail
+          # The gates above already passed (the job would have failed otherwise),
+          # so this records THAT on the commit the PR points at. Without it the
+          # PR carries no status at all and is indistinguishable from a verified
+          # one — the actual defect in #4424.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state=success \
+            -f context=refresh/verify \
+            -f description='typecheck + registry-coverage + config tests passed' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
       - name: Label PR needs-human-review when guardrails trip
         if: steps.changed.outputs.changed == 'true' && steps.diff.outputs.requires_review == 'true' && inputs['dry-run'] != 'true'
