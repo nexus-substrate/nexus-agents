@@ -28,7 +28,9 @@ export const ErrorCode = {
    * or a vendor "this model has been deprecated" message. Distinct from
    * MODEL_UNAVAILABLE (transient 502/503 service overload) — this one
    * means the model is gone, retry won't help, route to a different id.
-   * See `withModelNotFoundFallback` for the retire-and-retry primitive.
+   * Surfaced to the caller as-is: automatic substitution was removed in
+   * #4408 because answering with a model the caller did not request
+   * records the substitute's outcome under the requested model's id.
    */
   MODEL_NOT_FOUND: 'MODEL_NOT_FOUND',
   MODEL_RATE_LIMITED: 'MODEL_RATE_LIMITED',

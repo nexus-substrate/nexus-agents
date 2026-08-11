@@ -183,16 +183,3 @@ export {
 export { SdkAdapter } from './sdk/index.js';
 export type { SdkAdapterConfig, SdkProviderId } from './sdk/index.js';
 export { PROVIDER_ENV_KEYS } from './sdk/index.js';
-
-// (#2540 PR 8) Runtime retire-and-retry primitive — wraps any
-// IModelAdapter so a `MODEL_NOT_FOUND` error refreshes the
-// AvailableModelsCache and retries through the closest sibling.
-export {
-  withModelNotFoundFallback,
-  wrapResilientWithFallback,
-} from './model-not-found-fallback.js';
-export type {
-  ModelNotFoundFallbackOptions,
-  RetirementInfo,
-  ResilientLike,
-} from './model-not-found-fallback.js';

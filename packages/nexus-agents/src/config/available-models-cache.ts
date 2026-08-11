@@ -224,9 +224,9 @@ function normaliseEntry(raw: { id: string }, source: AvailableModelsSource): Ava
 }
 
 // ============================================================================
-// Default (process-singleton) instance — used by adapter factories that
-// auto-wire `withModelNotFoundFallback`. Operators that need a different
-// cache (different TTLs, custom sources) can override via
+// Default (process-singleton) instance — read by the `list_available_models`
+// MCP tool and the composite router. Operators that need a different cache
+// (different TTLs, custom sources) can override via
 // `setDefaultAvailableModelsCache` at startup.
 // ============================================================================
 
@@ -234,10 +234,9 @@ let defaultCache: AvailableModelsCache | null = null;
 
 /**
  * Get (or lazily construct) the process-default cache. Starts with no
- * sources — adapter factories register themselves via `addSource` on
- * construction. Until at least one source is added, the cache returns
- * empty snapshots and `withModelNotFoundFallback` degrades to surfacing
- * the original error (safe).
+ * sources — callers register them via `addSource`. Until at least one
+ * source is added the cache returns empty snapshots, so every consumer
+ * must treat an empty result as "unknown", not as "no models exist".
  */
 export function getDefaultAvailableModelsCache(): AvailableModelsCache {
   defaultCache ??= new AvailableModelsCache({ sources: [] });
