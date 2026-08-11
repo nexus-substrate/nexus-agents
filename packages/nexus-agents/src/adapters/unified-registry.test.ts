@@ -18,9 +18,7 @@ import {
   createUnifiedRegistry,
   getGlobalRegistry,
   resetGlobalRegistry,
-  withDefaultOnRetirement,
 } from './unified-registry.js';
-import type { ILogger } from '../core/index.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 import * as modelConfigHelpers from '../config/model-config-helpers.js';
@@ -321,94 +319,6 @@ describe('global registry singleton', () => {
     mockLogger.warn.mockClear();
     getGlobalRegistry();
     expect(mockLogger.warn).not.toHaveBeenCalled();
-  });
-});
-
-// ============================================================================
-// MODEL_NOT_FOUND fallback wiring (#2549)
-// ============================================================================
-
-describe('UnifiedAdapterRegistry enableMissingModelFallback (#2549)', () => {
-  afterEach(() => {
-    resetGlobalRegistry();
-  });
-
-  it('returns raw resilient adapters by default (flag off)', () => {
-    const registry = createUnifiedRegistry({ logger: mockLogger });
-    const adapter = registry.getAdapterForCli('claude');
-    // The raw resilient adapter exposes setPreferredCli; sanity-check
-    // that the surface includes it.
-    expect(typeof adapter.setPreferredCli).toBe('function');
-    expect(typeof adapter.complete).toBe('function');
-    expect(typeof adapter.getHealth).toBe('function');
-    registry.dispose();
-  });
-
-  it('wraps adapters with fallback when the flag is enabled', () => {
-    const registry = createUnifiedRegistry({
-      logger: mockLogger,
-      enableMissingModelFallback: true,
-    });
-    const adapter = registry.getAdapterForCli('claude');
-    // Wrapped adapter still implements the resilient surface — the
-    // wrapper preserves health/lifecycle methods via the
-    // `wrapResilientWithFallback` helper.
-    expect(typeof adapter.setPreferredCli).toBe('function');
-    expect(typeof adapter.getHealth).toBe('function');
-    expect(typeof adapter.refresh).toBe('function');
-    expect(typeof adapter.dispose).toBe('function');
-    expect(typeof adapter.complete).toBe('function');
-    registry.dispose();
-  });
-
-  it('caches the wrapped adapter — repeated lookups return the same instance', () => {
-    const registry = createUnifiedRegistry({
-      logger: mockLogger,
-      enableMissingModelFallback: true,
-    });
-    const first = registry.getAdapterForCli('claude');
-    const second = registry.getAdapterForCli('claude');
-    expect(first).toBe(second);
-    registry.dispose();
-  });
-});
-
-describe('withDefaultOnRetirement — onRetirement dead-bridge wiring', () => {
-  const freshLogger = (): ILogger => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-    setLevel: vi.fn(),
-  });
-
-  it('returns options unchanged when the fallback is disabled', () => {
-    const opts = {};
-    expect(withDefaultOnRetirement(false, opts, freshLogger())).toBe(opts);
-    expect(withDefaultOnRetirement(false, undefined, freshLogger())).toBeUndefined();
-  });
-
-  it('wires a default logging onRetirement when enabled and none was provided', () => {
-    const logger = freshLogger();
-    const resolved = withDefaultOnRetirement(true, undefined, logger);
-    expect(resolved?.onRetirement).toBeDefined();
-    resolved!.onRetirement!({
-      retiredModelId: 'claude-opus-4-6',
-      fallbackModelId: 'claude-opus',
-    } as never);
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Model retired via not-found fallback',
-      expect.objectContaining({
-        retirement: expect.objectContaining({ retiredModelId: 'claude-opus-4-6' }),
-      })
-    );
-  });
-
-  it('preserves a caller-supplied onRetirement (no override)', () => {
-    const custom = vi.fn();
-    const resolved = withDefaultOnRetirement(true, { onRetirement: custom }, freshLogger());
-    expect(resolved?.onRetirement).toBe(custom);
   });
 });
 

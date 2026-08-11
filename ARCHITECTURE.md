@@ -250,7 +250,7 @@ interface IModelAdapter {
 3. models.dev snapshot (auto-imported by `scripts/sync-models-dev.ts`)
 4. Pattern-derived fallback (vendor + family inferred from modelId)
 
-Runtime availability is a separate concern handled by `AvailableModelsCache`, which probes adapters' `listModels?()` (where supported) and gates routing decisions. The `withModelNotFoundFallback(adapter, ...)` wrapper closes the retire-and-retry loop: on a `MODEL_NOT_FOUND` error, it refreshes the cache, picks a same-vendor/same-family alternative, and retries once via the adapter factory.
+Runtime availability is a separate concern handled by `AvailableModelsCache`, which probes adapters' `listModels?()` (where supported) and gates routing decisions. There is deliberately **no** automatic retire-and-retry: a `MODEL_NOT_FOUND` error surfaces to the caller unchanged. The wrapper that once substituted a same-family alternative was removed in #4408 — it preserved the wrapped adapter's `providerId`/`modelId`, so a substituted call recorded the substitute's outcome under the retired model's id, corrupting reward attribution in the routing loop. In a substrate whose product is auditable decisions, the caller's model choice is itself an audited decision.
 
 ### IWorkflowEngine
 

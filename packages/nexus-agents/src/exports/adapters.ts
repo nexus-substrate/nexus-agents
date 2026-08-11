@@ -83,11 +83,6 @@ export {
   // Wraps any IModelAdapter so a 404 / "model is deprecated" error
   // refreshes the AvailableModelsCache and retries through the
   // closest sibling per the registry.
-  withModelNotFoundFallback,
-  wrapResilientWithFallback,
-  type ModelNotFoundFallbackOptions,
-  type RetirementInfo,
-  type ResilientLike,
   // Unified adapter registry (#1149) — the canonical adapter-access primitive
   // named in CLAUDE.md's Canonical Paths, now reachable from the public barrel
   // so operators can build custom routing without reaching into internals
