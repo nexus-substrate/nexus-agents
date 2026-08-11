@@ -29,11 +29,20 @@ echo "::group::registry-coverage manifest"
 npx tsx scripts/check-registry-coverage.ts
 echo "::endgroup::"
 
-echo "::group::config + registry tests"
-# Scoped to the suites that read generated model data. A full run would be
-# ~3 minutes of mostly-unrelated tests on a weekly cron; these are the ones a
-# bad refresh actually breaks.
-pnpm --filter nexus-agents exec vitest run src/config
+echo "::group::full test suite"
+# Deliberately the FULL suite, not a scoped subset.
+#
+# The first version of this gate ran only `src/config`, reasoning that those
+# were "the ones a bad refresh actually breaks". That reasoning failed on its
+# first real use: the #4340 refresh retired an openrouter `:free` SKU that
+# `src/learning/usage-log.test.ts` had hardcoded, and main went red with the
+# gate green. Guessing which suites depend on generated catalogue data is
+# exactly the kind of judgement a gate should not be making — any test may
+# reach the registry through `getDefaultRegistry()`.
+#
+# Cost is ~3 minutes on a weekly cron. That is cheap next to shipping a red
+# main and then bisecting it.
+pnpm --filter nexus-agents exec vitest run
 echo "::endgroup::"
 
 echo "verify-refresh: all gates passed"
