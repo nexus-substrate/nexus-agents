@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 2.177.1
+
+### Patch Changes
+
+- [#4438](https://github.com/nexus-substrate/nexus-agents/pull/4438) [`31338e4`](https://github.com/nexus-substrate/nexus-agents/commit/31338e40d7c7dc9233d21f7e20b303ee9aaf22b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Stop discarding Anthropic cache-creation tokens ([#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435))
+
+  `ClaudeResult.usage` has declared `cache_creation_input_tokens` all along, but the parser only ever extracted `input_tokens`, `output_tokens`, and `cache_read_input_tokens`. Cache-_creation_ tokens were typed and then thrown away.
+
+  They are the expensive ones — Anthropic bills cache writes at roughly 1.25x the uncached input rate, versus ~0.1x for reads — and they are not a rare case: a voter panel writes the cache on its first call, so every fresh panel silently lost its largest input measurement.
+
+  Now surfaced as `TokenUsage.cacheCreationInputTokens`, kept distinct from `cachedInputTokens` because the two bill at opposite ends and collapsing them would make correct pricing impossible. Absent stays absent — a fabricated `0` would read as "no cache write happened".
+
+  Purely additive: `inputTokens` still means uncached input and `totalTokens` is unchanged. Folding the cache figures into the totals is a semantics change for every consumer and stays with the threading increment on [#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435).
+
+  Found by the contrarian voter on [#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435)'s panel, which was convened to decide what to do about cache _read_ tokens; the creation gap had gone unnoticed.
+
+- [#4436](https://github.com/nexus-substrate/nexus-agents/pull/4436) [`f6a8f37`](https://github.com/nexus-substrate/nexus-agents/commit/f6a8f37c3532b680c9ceb6cd6fba460d9ab194c6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A voter that reported no tokens is no longer certified as measured ([#4430](https://github.com/nexus-substrate/nexus-agents/issues/4430))
+
+  `isMeasured` keyed on `costUsd` alone. Because the breakdown coerces absent counts (`inputTokens ?? 0`), any voter whose adapter reported no usage still produced a `0 / 0` line flagged `unmeasured: false` — the rollup certified a non-measurement as measured.
+
+  Observed live across three 7-voter panels: every `gpt-5.5` voter returned full reasoning that counted toward the verdict while reporting `0` input and `0` output, all flagged measured. That also defeats the natural mitigation — a consumer told to discard zero-token voters would have dropped 3 of 7 in one of those votes, enough to move a supermajority.
+
+  Now requires a computable cost **and** at least one reported token counter. An explicit `0` is still a measurement (a genuinely free model stays measured, [#4165](https://github.com/nexus-substrate/nexus-agents/issues/4165)); absent is not. Either counter suffices, since some adapters report only completion tokens and demanding both would newly discard voters that were previously counted.
+
+  The separate "cached input tokens are parsed then discarded" half of [#4430](https://github.com/nexus-substrate/nexus-agents/issues/4430) is tracked in [#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435) — folding them into `inputTokens` would overstate cost, since cache reads bill at roughly a tenth of the uncached rate.
+
 ## 2.177.0
 
 ### Minor Changes
