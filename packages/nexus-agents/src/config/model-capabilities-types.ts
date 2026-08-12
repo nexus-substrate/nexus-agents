@@ -91,7 +91,7 @@ export const DEFAULT_ROUTING_CONFIDENCE = 0.85;
  *
  * This is a hand-maintained narrow tuple rather than a derived view
  * from `ModelRegistry` because the literal-union type is load-bearing:
- * — Zod schemas (`ModelCapabilitySchema.id`, `replacedBy`) need a
+ * — the Zod schema (`ModelCapabilitySchema.id`) needs a
  *   closed enum at compile time.
  * — Many function signatures across `src/` accept `ModelId` and rely
  *   on the narrowed type for exhaustiveness.
@@ -212,7 +212,6 @@ export const ModelCapabilitySchema = z.object({
   /** ISO date when the model was deprecated (informational) */
   deprecatedAt: z.string().optional(),
   /** Model ID to migrate to (informational guidance) */
-  replacedBy: z.enum(MODEL_IDS).optional(),
 });
 
 export type ModelCapability = z.infer<typeof ModelCapabilitySchema>;
