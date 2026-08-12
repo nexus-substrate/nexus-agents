@@ -88,8 +88,16 @@ export interface TokenUsage {
   readonly inputTokens: number;
   /** Output tokens generated */
   readonly outputTokens: number;
-  /** Cached input tokens (if applicable) */
+  /** Cached input tokens READ from an existing cache (if applicable). */
   readonly cachedInputTokens?: number;
+  /**
+   * Input tokens spent WRITING the cache, when the vendor reports them
+   * separately (#4435). Kept distinct from {@link cachedInputTokens} because
+   * they bill at opposite ends: cache writes are ~1.25x the uncached input
+   * rate, cache reads ~0.1x. Collapsing them would make correct pricing
+   * impossible.
+   */
+  readonly cacheCreationInputTokens?: number;
   /** Total tokens (input + output) */
   readonly totalTokens?: number;
 }
