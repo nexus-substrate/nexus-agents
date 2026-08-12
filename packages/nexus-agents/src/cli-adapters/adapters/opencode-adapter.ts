@@ -23,7 +23,6 @@ import {
   type TransientRetryConfig,
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
-import { resolveLiveModelId } from '../../config/resolve-live-model.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
@@ -209,29 +208,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   /** Appends --model if the resolved model is usable (#1402, #3407, #3408). */
   private appendModelArg(args: string[], task: CliTask): void {
     const internalModel = task.model ?? this.model;
-    let cliModel = resolveOpenCodeModel(internalModel);
-
-    // #3407/#3408: if the resolved model isn't usable — renamed away (#3407) or
-    // in rate-limit cooldown (#3408) — resolve it to the closest USABLE live
-    // model (excluding cooled ones from the candidate set). Opt-in
-    // (NEXUS_DYNAMIC_MODELS) + fail-open: when discovery is off, isCooled is
-    // always false and resolveLiveModelId returns the input unchanged, so
-    // behavior is identical.
-    if (
-      !this.isModelUsable(cliModel) &&
-      isDynamicModelsEnabled() &&
-      this.availableModels !== undefined
-    ) {
-      const usable = new Set([...this.availableModels].filter((m) => !this.isCooled(m)));
-      const resolved = resolveLiveModelId(cliModel, usable);
-      if (resolved !== cliModel) {
-        logger.debug('Resolved to live/non-cooled model (#3407/#3408)', {
-          from: cliModel,
-          to: resolved,
-        });
-        cliModel = resolved;
-      }
-    }
+    const cliModel = resolveOpenCodeModel(internalModel);
 
     if (this.isModelUsable(cliModel)) {
       args.push('--model', cliModel);

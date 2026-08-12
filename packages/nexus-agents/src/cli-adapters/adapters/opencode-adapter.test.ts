@@ -243,7 +243,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain('google/gemini-2.5-flash');
     });
 
-    it('resolves a stale model to its live alias when discovery is on (#3407)', async () => {
+    it('does NOT substitute a stale model even with discovery on (#4408) — omits --model', async () => {
       process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
       try {
         vi.mocked(execFile).mockImplementation(
@@ -263,11 +263,15 @@ describe('OpenCodeCliAdapter', () => {
             ].join('\n')
           )
         );
-        // Stale id (provider renamed it) — should resolve to the live :free id.
+        // Stale id (provider renamed it). #3407 used to resolve it to the live
+        // `:free` id; #4408 deleted that substitution — answering with a model
+        // the caller did not request records the outcome under the requested
+        // id. Drift is now caught at refresh time by the #4417 sweep instead.
         await freshAdapter.execute({ content: 'x', model: 'qwen/qwen3-coder-480b-a35b:free' });
         const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-        expect(args).toContain('--model');
-        expect(args).toContain('qwen/qwen3-coder:free');
+        // No --model: opencode picks its own default, explicitly and logged.
+        expect(args).not.toContain('--model');
+        expect(args).not.toContain('qwen/qwen3-coder:free');
       } finally {
         delete process.env['NEXUS_DYNAMIC_MODELS'];
       }
@@ -297,7 +301,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).not.toContain('--model');
     });
 
-    it('skips a model in rate-limit cooldown, resolving to a live alternative (#3408)', async () => {
+    it('still skips a model in rate-limit cooldown, without substituting (#3408/#4408)', async () => {
       process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
       try {
         resetAvailabilityCache();
@@ -322,9 +326,13 @@ describe('OpenCodeCliAdapter', () => {
         );
         await adapter.execute({ content: 'x', model: 'qwen/qwen3-coder:free' });
         const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-        // The cooled :free model is skipped; routing falls to the non-cooled base.
+        // The #3408 intent survives #4408: a cooled model is NOT dispatched.
         expect(args).not.toContain('qwen/qwen3-coder:free');
-        expect(args).toContain('qwen/qwen3-coder');
+        // What changed is the recovery. Previously the adapter picked a
+        // non-cooled sibling itself, which recorded that sibling's outcome
+        // under the requested id. Now it omits --model and lets opencode use
+        // its default — the caller is never told a different model answered.
+        expect(args).not.toContain('--model');
       } finally {
         delete process.env['NEXUS_DYNAMIC_MODELS'];
         resetAvailabilityCache();
