@@ -135,7 +135,7 @@ jobs:
           set -u
           leaks=$(git status --porcelain --untracked-files=all 2>/dev/null \
             | awk '{print $2}' \
-            | grep -E '^(runs/|logs/|\.nexus-pipeline/|\.nexus-agents/|predictions\.jsonl$|coverage\.json$|\.test-)' \
+            | grep -E '^(runs/|logs/|\.nexus-pipeline/|\.nexus-agents/|governance/|predictions\.jsonl$|coverage\.json$|\.test-)' \
             || true)
           if [ -n "$leaks" ]; then
             echo "::error::Tests left sprawl artifacts in the working tree:"
@@ -144,6 +144,11 @@ jobs:
             echo "Per epic #2872, runtime artifacts must land under getNexusDataDir(),"
             echo "and test temp dirs must use os.tmpdir() + mkdtempSync() with cleanup."
             echo "See packages/nexus-agents/src/cli/init-portable.test.ts for the pattern."
+            echo ""
+            echo "A governance/ entry means a test wrote to a TRACKED, hash-chained"
+            echo "audit file (#4415). Those records chain cleanly, so a fabricated one"
+            echo "is indistinguishable from a real verdict — pass an explicit repoPath"
+            echo "to a throwaway repo instead."
             exit 1
           fi
           echo "✓ Working tree clean after tests"

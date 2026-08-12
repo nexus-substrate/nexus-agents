@@ -107,6 +107,46 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
   return { ...payload, hash: computePrReviewRecordHash(payload) };
 }
 
+/** True when running under a test runner (vitest sets `VITEST`). */
+function isUnderTestRunner(): boolean {
+  return process.env['VITEST'] !== undefined || process.env['NODE_ENV'] === 'test';
+}
+
+/**
+ * Refuse to WRITE the source checkout's own tracked chain from a test (#4415).
+ *
+ * `governance/pr-review-records.jsonl` is tracked and hash-chained. During
+ * #4412 a test appended three fabricated verdicts to it — they chained
+ * correctly onto each other, so `verify_audit_chain` would have read a valid
+ * chain containing fake reviews. They were noticed only because `git status`
+ * showed a tracked file dirty before a commit.
+ *
+ * A fabricated record that hash-chains cleanly is worse than a corrupt file:
+ * it is indistinguishable from a real one. The threat model already scopes the
+ * chain as tamper-*evident*, which only holds if we do not manufacture
+ * plausible entries ourselves.
+ *
+ * Guards the DESTINATION, not how it was derived — an explicit `filePath` or
+ * env var pointing at the same file is the same harm. Resolution itself stays
+ * unguarded: `resolvePrReviewRecordsPath` is a query, and tests legitimately
+ * assert its fall-through behaviour (#4278/#4312) without writing anything.
+ *
+ * A throwaway repo — the shape a legitimate persistence test uses — is
+ * untouched.
+ */
+function assertNotSourceCheckoutWrite(filePath: string): void {
+  if (!isUnderTestRunner()) return;
+  const here = findRepoRoot(process.cwd());
+  if (here === null) return;
+  if (resolve(filePath) !== resolve(join(here, PR_REVIEW_RECORDS_REL_PATH))) return;
+  throw new Error(
+    `Refusing to write ${filePath} from a test run (#4415): this is the source ` +
+      "checkout's tracked, hash-chained audit file, and a fabricated record that " +
+      'chains cleanly is indistinguishable from a real verdict. Pass repoPath to a ' +
+      'throwaway repo, or set NEXUS_PR_REVIEW_RECORDS_PATH.'
+  );
+}
+
 /**
  * Resolve the committable artifact path (mirrors #3927). Precedence:
  *  1. {@link PR_REVIEW_RECORDS_PATH_ENV} when set non-empty — a RELATIVE value is
@@ -133,8 +173,10 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
 export function resolvePrReviewRecordsPath(repoPathOverride?: string): string | undefined {
   const envPath = process.env[PR_REVIEW_RECORDS_PATH_ENV];
   if (envPath !== undefined && envPath.trim() !== '') {
+    // Explicit target — the caller has stated where it wants records to land.
     return isAbsolute(envPath) ? envPath : resolve(envPath);
   }
+
   if (repoPathOverride !== undefined && repoPathOverride.trim() !== '') {
     const overrideRoot = findRepoRoot(repoPathOverride);
     if (overrideRoot !== null) return join(overrideRoot, PR_REVIEW_RECORDS_REL_PATH);
@@ -260,6 +302,10 @@ export function persistPrReviewRecord(
     });
     return undefined;
   }
+  // Before the try: a swallowed guard would silently skip the write and hide
+  // the very mistake it exists to surface.
+  assertNotSourceCheckoutWrite(filePath);
+
   try {
     mkdirSync(dirname(filePath), { recursive: true });
     const { maxSequence, lastHash } = readPrReviewLedgerTip(filePath, logger);
