@@ -66,6 +66,9 @@ export interface VoterCostInput {
    * API-mode cost in USD for the voter call, when computable. Absent ⇒ the
    * voter is unmeasured (see module doc). Present ⇒ used as-is in `api` mode,
    * zeroed in `plan` mode.
+   *
+   * A cost alone no longer certifies a measurement: a voter that reported
+   * neither token count is unmeasured regardless of cost (#4430).
    */
   readonly costUsd?: number | undefined;
 }
@@ -109,11 +112,11 @@ export interface DecisionCostSummary {
   readonly billingMode: DecisionBillingMode;
   /** Total voters folded into this decision. */
   readonly voterCount: number;
-  /** Voters with a computable cost (`costUsd` present on the input). */
+  /** Voters with a computable cost AND at least one reported token count. */
   readonly measuredVoters: number;
   /**
-   * Voters whose cost could not be computed — no usage report, or an unpriced
-   * model (#4165). Counted, not zeroed-as-fact.
+   * Voters whose cost could not be computed — an unpriced model (#4165) — or
+   * which reported no token counts at all (#4430). Counted, not zeroed-as-fact.
    */
   readonly unmeasuredVoters: number;
   readonly totalInputTokens: number;
@@ -174,14 +177,29 @@ export const DecisionCostSummarySchema = z.object({
 });
 
 /**
- * A voter's cost is measured iff a cost was computable for it (`costUsd`
- * present — a genuinely free model arrives as `costUsd: 0`, still measured).
- * Token counts alone do NOT make a voter cost-measured (#4165): an unpriced
- * model's tokens are kept in the consumption totals, but its unknown cost must
- * surface as UNMEASURED — a measured $0 would silently understate spend.
+ * A voter is measured iff BOTH hold:
+ *
+ *  - a cost was computable (`costUsd` present — a genuinely free model arrives
+ *    as `costUsd: 0`, still measured). Token counts alone do NOT make a voter
+ *    cost-measured (#4165): an unpriced model's tokens stay in the consumption
+ *    totals, but its unknown cost must surface as UNMEASURED, because a
+ *    measured $0 would silently understate spend; and
+ *  - at least one token counter was reported (#4430). Cost alone certified
+ *    `0/0` token lines as measurements, since the breakdown coerces absent
+ *    counts to 0. An explicit 0 is evidence; absent is not, and collapsing the
+ *    two makes the consumption totals a floor that claims to be exact.
  */
 function isMeasured(v: VoterCostInput): boolean {
-  return v.costUsd !== undefined;
+  // Cost alone is not evidence (#4430). A voter whose adapter reported no usage
+  // still gets `inputTokens ?? 0` below, so keying only on cost certified 0/0
+  // as a measurement — observed live on every gpt-5.5 voter across three
+  // panels, each returning full reasoning that counted toward the verdict.
+  //
+  // An explicit 0 IS a measurement and stays measured; absent is not. Either
+  // counter suffices, because some adapters report only completion tokens and
+  // demanding both would newly discard voters that were previously counted.
+  const reportedTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
+  return v.costUsd !== undefined && reportedTokens;
 }
 
 /** Round to micro-USD so summaries don't drift to floating-point noise. */
@@ -200,7 +218,8 @@ interface ModelAcc {
 /**
  * Resolve one voter into its per-decision breakdown line under the billing mode.
  * Plan mode zeroes cost (tokens kept); unmeasured voters surface zeros flagged
- * as placeholders.
+ * as placeholders — including the TOKEN zeros, which previously passed as a
+ * measurement whenever a cost happened to be present (#4430).
  */
 function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdown {
   const measured = isMeasured(v);
