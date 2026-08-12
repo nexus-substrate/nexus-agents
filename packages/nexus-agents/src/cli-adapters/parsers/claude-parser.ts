@@ -118,12 +118,24 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
       }
 
       const cachedInputTokens = extractNumberField(usageRecord, 'cache_read_input_tokens');
+      // Declared on ClaudeResult.usage since forever but never read (#4435) —
+      // so a panel's FIRST call, which writes the cache, lost its largest
+      // input measurement entirely. Absent stays absent: a fabricated 0 would
+      // read as "no cache write happened".
+      const cacheCreationInputTokens = extractNumberField(
+        usageRecord,
+        'cache_creation_input_tokens'
+      );
 
       return {
         inputTokens,
         outputTokens,
+        // NOTE: still uncached input + output. Folding the cache figures in
+        // here is a semantics change for every consumer of totalTokens and
+        // belongs with the threading increment on #4435, not this extraction.
         totalTokens: inputTokens + outputTokens,
         ...(cachedInputTokens !== null && { cachedInputTokens }),
+        ...(cacheCreationInputTokens !== null && { cacheCreationInputTokens }),
       };
     } catch {
       logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
