@@ -48,6 +48,26 @@ export function resolveBillingMode(): DecisionBillingMode {
  * (#4165), `costUsd` is OMITTED — tokens are kept — so the rollup counts the
  * voter as UNMEASURED (#3855: missing cost is unmeasured, never a measured $0).
  */
+/**
+ * Copy only the token counters the adapter actually reported. Every field is
+ * spread conditionally so an absent counter stays absent — a fabricated 0
+ * would read as a measurement (#4439).
+ *
+ * The cache figures ride along for visibility only: cost is still priced on
+ * uncached input, because the registry carries no cache-read rate and pricing
+ * the cached portion at the input rate would overstate spend (#4435).
+ */
+function reportedTokenFields(v: AgentVoteResult): Partial<VoterCostInput> {
+  return {
+    ...(v.inputTokens !== undefined ? { inputTokens: v.inputTokens } : {}),
+    ...(v.outputTokens !== undefined ? { outputTokens: v.outputTokens } : {}),
+    ...(v.cachedInputTokens !== undefined ? { cachedInputTokens: v.cachedInputTokens } : {}),
+    ...(v.cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens: v.cacheCreationInputTokens }
+      : {}),
+  };
+}
+
 export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {
   return votes.map((v) => {
     const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
@@ -58,8 +78,7 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
     const input: VoterCostInput = {
       role: v.role,
       model: v.model,
-      ...(v.inputTokens !== undefined ? { inputTokens: v.inputTokens } : {}),
-      ...(v.outputTokens !== undefined ? { outputTokens: v.outputTokens } : {}),
+      ...reportedTokenFields(v),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
     };
     return input;

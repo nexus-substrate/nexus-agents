@@ -35,6 +35,10 @@ const VoterCostBreakdownSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
+  // #4435 — optional: absent means the adapter reported no cache activity,
+  // which is a different claim from "zero cache tokens were used".
+  cachedInputTokens: z.number().int().nonnegative().optional(),
+  cacheCreationInputTokens: z.number().int().nonnegative().optional(),
   costUsd: z.number().nonnegative(),
   unmeasured: z.boolean(),
 });
