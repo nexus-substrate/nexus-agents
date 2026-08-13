@@ -64,9 +64,17 @@ export interface RoutingDecision {
 // ============================================================================
 
 /**
- * Token usage tracking per model.
+ * Running token totals for an observability SESSION, aggregated across calls.
+ *
+ * Named to distinguish it from the per-call `SessionTokenTotals` in
+ * `core/types/model.ts` (#4440). The two shared a name and a shape while
+ * modelling different things — session aggregate vs. one call's usage — and
+ * `exports/observability.ts` already had to alias this one as
+ * `ObserverTokenUsage` to avoid the clash. That collision is not harmless: it
+ * led me to file #4439 claiming three duplicate per-call types when there were
+ * two, and the third was this.
  */
-export interface TokenUsage {
+export interface SessionTokenTotals {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -91,7 +99,7 @@ export interface SessionMetrics {
   taskCount: number;
   successCount: number;
   failureCount: number;
-  tokenUsage: TokenUsage;
+  tokenUsage: SessionTokenTotals;
   costMetrics: CostMetrics;
   routingDecisions: number;
   eventsProcessed: number;
@@ -231,7 +239,7 @@ export interface IOrchestrationObserver {
   recordRoutingDecision(decision: RoutingDecision): void;
 
   /** Record token usage for a session */
-  recordTokenUsage(sessionId: string, model: CliName, tokens: TokenUsage): void;
+  recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals): void;
 
   /** Check if observer is active */
   isActive(): boolean;

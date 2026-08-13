@@ -12,7 +12,7 @@ import { OrchestrationObserver, createOrchestrationObserver } from './orchestrat
 import type {
   OrchestrationObserverEvent,
   RoutingDecision,
-  TokenUsage,
+  SessionTokenTotals,
 } from './orchestration-observer-types.js';
 
 describe('OrchestrationObserver', () => {
@@ -282,7 +282,7 @@ describe('OrchestrationObserver', () => {
         })
       );
 
-      const tokens: TokenUsage = {
+      const tokens: SessionTokenTotals = {
         inputTokens: 500,
         outputTokens: 200,
         totalTokens: 700,
