@@ -1,5 +1,41 @@
 # nexus-agents
 
+## 2.178.0
+
+### Minor Changes
+
+- [#4443](https://github.com/nexus-substrate/nexus-agents/pull/4443) [`a106f96`](https://github.com/nexus-substrate/nexus-agents/commit/a106f96927abc6d1218aafb64f6840bc94dcef7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Thread cache token figures into the decision-cost record ([#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435))
+
+  Completes the chain the last three changes opened: the parser extracts cache tokens ([#4438](https://github.com/nexus-substrate/nexus-agents/issues/4438)), the adapter response carries them ([#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439)), and they now reach `VoteUsage` → `AgentVoteResult` → `VoterCostInput` → `VoterCostBreakdown`. An operator reading a decision's cost record can finally see that a voter's `inputTokens: 2` sits beside 3,980 cached tokens rather than being the whole story.
+
+  Reads and writes stay separate all the way down — cache reads bill at roughly a tenth of the uncached input rate and cache writes at roughly 1.25x, so a single merged "cached" number could not be priced correctly later.
+
+  Both fields are optional and omitted when the adapter reported no cache activity, consistent with [#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439): absent is not zero.
+
+  `DecisionCostSummarySchema` and the persisted store schema declare the new fields. That matters because the summary schema rides `consensus_vote`'s MCP `outputSchema` — a field the producer emits but the schema omits is a `-32602 additional properties` rejection at a strict client ([#4032](https://github.com/nexus-substrate/nexus-agents/issues/4032)). The existing guard test that validates a real rollup strictly is extended to cover rollups with and without cache figures.
+
+  **`totalTokens` is unchanged** — still uncached input + output. Redefining a widely-read field is a semantics change for every existing consumer and every record already written, so it is tracked separately rather than slipped in. Cost is likewise still priced on uncached input only, per the 7/0 decision to defer registry cache-read pricing until a consumer needs it.
+
+- [#4441](https://github.com/nexus-substrate/nexus-agents/pull/4441) [`d17ccff`](https://github.com/nexus-substrate/nexus-agents/commit/d17ccffb9727c8d1b236817f20a5e2a8b8cd4896) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve token-usage absence end to end instead of fabricating zeros ([#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439))
+
+  Four producers synthesised `0/0/0` when a vendor reported no usage — `cli-to-model-adapter`, `openai-mappers` (non-streaming and streaming), `gemini-adapter`, and the reverse `model-to-cli` bridge. A synthesised zero is indistinguishable downstream from a real zero-token call, which silently defeated the measured-voter gate ([#4436](https://github.com/nexus-substrate/nexus-agents/issues/4436)) on every live vote and discarded the cache fields ([#4438](https://github.com/nexus-substrate/nexus-agents/issues/4438)) that [#4435](https://github.com/nexus-substrate/nexus-agents/issues/4435) needs.
+
+  `CompletionResponse.usage` is now optional, and producers omit it rather than zero-filling. The response-side `TokenUsage` also carries optional `cachedInputTokens` / `cacheCreationInputTokens`, so cache figures survive the crossing. Decided 7/0 via `higher_order`.
+
+  Verified end to end: a CLI reporting no usage now yields `usage: undefined`, and that voter rolls up as `unmeasured: true, measuredVoters: 0`. The same probe before this change returned `unmeasured: false, measuredVoters: 1`.
+
+  Leaf display totals (`TaskResult.metadata.tokensUsed` and similar required-number fields) still coerce unknown to `0` — they are aggregates, not measurements, and the decision-cost path no longer reads through them.
+
+### Patch Changes
+
+- [#4444](https://github.com/nexus-substrate/nexus-agents/pull/4444) [`56a482c`](https://github.com/nexus-substrate/nexus-agents/commit/56a482cff0ad97bcf11af97413b8ee2d8c79b259) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Rename the observability session aggregate to `SessionTokenTotals` ([#4440](https://github.com/nexus-substrate/nexus-agents/issues/4440))
+
+  `agents/observability` defined a `TokenUsage` interface that models a **running session total**, sharing a name and a shape with the per-call `TokenUsage` in `core/types/model.ts`. The clash was already known — `exports/observability.ts` aliased it as `ObserverTokenUsage` with the comment _"Renamed: core.ts exports TokenUsage"_ — but the workaround lived at the export boundary while the confusing name stayed at the source.
+
+  That is not harmless: it led me to file [#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439) claiming three duplicate per-call usage types, when there were two and the third was this session aggregate. Conflating them would have been strictly worse than leaving them alone.
+
+  Internal name is now `SessionTokenTotals`. The public export keeps the name `ObserverTokenUsage`, so this is not a breaking change.
+
 ## 2.177.1
 
 ### Patch Changes
