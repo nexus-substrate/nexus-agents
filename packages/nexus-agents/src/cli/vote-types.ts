@@ -60,13 +60,7 @@ export interface VoteCommandOptions {
  * + biases toward "don't build."
  */
 export type VoterRole =
-  | 'architect'
-  | 'security'
-  | 'devex'
-  | 'ai_ml'
-  | 'pm'
-  | 'catfish'
-  | 'scope_steward';
+  'architect' | 'security' | 'devex' | 'ai_ml' | 'pm' | 'catfish' | 'scope_steward';
 
 /**
  * Agent role descriptions for prompt generation.
@@ -119,6 +113,17 @@ export interface AgentVoteResult {
    * (#3910). See {@link AgentVoteResult.inputTokens}.
    */
   readonly outputTokens?: number | undefined;
+  /**
+   * Input tokens read from an existing prompt cache, when the adapter
+   * reported them (#4435). Separate from {@link inputTokens} because cache
+   * reads bill at roughly a tenth of the uncached rate.
+   */
+  readonly cachedInputTokens?: number | undefined;
+  /**
+   * Input tokens spent writing the cache, when reported (#4435). Bills at
+   * roughly 1.25x the uncached rate — the opposite end from a cache read.
+   */
+  readonly cacheCreationInputTokens?: number | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }

@@ -62,6 +62,10 @@ export interface VoterCostInput {
   readonly inputTokens?: number | undefined;
   /** Output tokens for the voter call, when the adapter reported them. */
   readonly outputTokens?: number | undefined;
+  /** Input tokens read from an existing prompt cache, when reported (#4435). */
+  readonly cachedInputTokens?: number | undefined;
+  /** Input tokens spent writing the cache, when reported (#4435). */
+  readonly cacheCreationInputTokens?: number | undefined;
   /**
    * API-mode cost in USD for the voter call, when computable. Absent ⇒ the
    * voter is unmeasured (see module doc). Present ⇒ used as-is in `api` mode,
@@ -77,9 +81,25 @@ export interface VoterCostInput {
 export interface VoterCostBreakdown {
   readonly role: string;
   readonly model: string;
+  /** Uncached input tokens. See {@link cachedInputTokens} for the rest. */
   readonly inputTokens: number;
   readonly outputTokens: number;
+  /**
+   * Uncached input + output.
+   *
+   * Deliberately EXCLUDES the cache figures (#4435). Redefining this field to
+   * include them is a semantics change for every existing consumer and every
+   * record already written, so it is tracked separately rather than slipped in
+   * — read it alongside `cachedInputTokens` for true consumption.
+   */
   readonly totalTokens: number;
+  /**
+   * Input tokens read from an existing prompt cache, when reported. Omitted
+   * when the adapter said nothing — absent is not zero (#4439).
+   */
+  readonly cachedInputTokens?: number | undefined;
+  /** Input tokens spent writing the cache, when reported. */
+  readonly cacheCreationInputTokens?: number | undefined;
   /** Effective cost after billing-mode application (0 in plan mode). */
   readonly costUsd: number;
   /**
@@ -160,6 +180,8 @@ export const DecisionCostSummarySchema = z.object({
       inputTokens: z.number(),
       outputTokens: z.number(),
       totalTokens: z.number(),
+      cachedInputTokens: z.number().optional(),
+      cacheCreationInputTokens: z.number().optional(),
       costUsd: z.number(),
       unmeasured: z.boolean(),
     })
@@ -235,6 +257,10 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
+    ...(v.cachedInputTokens !== undefined ? { cachedInputTokens: v.cachedInputTokens } : {}),
+    ...(v.cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens: v.cacheCreationInputTokens }
+      : {}),
     costUsd,
     unmeasured: !measured,
   };

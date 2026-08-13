@@ -297,6 +297,10 @@ function isStructuredOutputUnsupported(errorMessage: string): boolean {
 export interface VoteUsage {
   readonly inputTokens?: number | undefined;
   readonly outputTokens?: number | undefined;
+  /** Input tokens read from an existing prompt cache, when reported (#4435). */
+  readonly cachedInputTokens?: number | undefined;
+  /** Input tokens spent writing the cache, when reported (#4435). */
+  readonly cacheCreationInputTokens?: number | undefined;
 }
 
 /** Read a usage token count when the adapter actually reported a number (#3910). */
@@ -330,11 +334,17 @@ async function runVoteCompletion(
     | {
         inputTokens?: unknown;
         outputTokens?: unknown;
+        cachedInputTokens?: unknown;
+        cacheCreationInputTokens?: unknown;
       }
     | undefined;
   const usage: VoteUsage = {
     inputTokens: readTokenCount(reported?.inputTokens),
     outputTokens: readTokenCount(reported?.outputTokens),
+    // #4435: an `inputTokens: 2` next to 3,980 cached tokens tells a very
+    // different story than `inputTokens: 2` alone.
+    cachedInputTokens: readTokenCount(reported?.cachedInputTokens),
+    cacheCreationInputTokens: readTokenCount(reported?.cacheCreationInputTokens),
   };
   return { ok: true, output: extractTextFromResponse(response.value.content), usage };
 }

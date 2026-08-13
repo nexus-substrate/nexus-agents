@@ -149,6 +149,12 @@ function buildLlmVoteResult(
     model: adapter.modelId,
     ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
     ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+    ...(usage.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : {}),
+    ...(usage.cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+      : {}),
   };
 }
 
