@@ -204,6 +204,11 @@ function withUsageRecording(inner: IModelAdapter): IModelAdapter {
       try {
         if (result.ok) {
           const u = result.value.usage;
+          // No vendor usage ⇒ nothing to record. Zero-filling here would write
+          // a fabricated measurement into the usage log, which is the defect
+          // #4439 exists to remove — a lost latency datapoint is the cheaper
+          // loss than a false token count.
+          if (u === undefined) return result;
           // Full-registry pricing with provenance (#4165): `priced: false`
           // marks the $0 as UNPRICED (unmeasured), not a real $0.
           const cost = computeCostDetail(inner.modelId, u.inputTokens, u.outputTokens);

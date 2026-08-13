@@ -114,7 +114,7 @@ class TestPruningAgent extends BaseAgent {
         output: 'Test output',
         metadata: {
           durationMs: 100,
-          tokensUsed: result.value.usage.totalTokens,
+          tokensUsed: result.value.usage?.totalTokens ?? 0,
           toolsUsed: [],
           model: result.value.model,
         },

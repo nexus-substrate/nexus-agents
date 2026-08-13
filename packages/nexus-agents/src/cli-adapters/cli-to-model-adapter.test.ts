@@ -202,15 +202,17 @@ describe('CliToModelAdapter.complete', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.content[0]).toEqual({ type: 'text', text: 'Hello from CLI' });
-      expect(result.value.usage.inputTokens).toBe(10);
-      expect(result.value.usage.outputTokens).toBe(20);
-      expect(result.value.usage.totalTokens).toBe(30);
+      expect(result.value.usage?.inputTokens).toBe(10);
+      expect(result.value.usage?.outputTokens).toBe(20);
+      expect(result.value.usage?.totalTokens).toBe(30);
       expect(result.value.stopReason).toBe('end_turn');
       expect(result.value.model).toBe('claude-sonnet-4-20250514');
     }
   });
 
-  it('defaults usage to zeros when CLI response has no usage', async () => {
+  it('omits usage when the CLI response has none (#4439)', async () => {
+    // Previously asserted zeros. Absence must stay absent so the decision-cost
+    // rollup can tell "zero tokens" from "we do not know".
     const cli = makeMockCliAdapter();
     (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -224,9 +226,7 @@ describe('CliToModelAdapter.complete', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.usage.inputTokens).toBe(0);
-      expect(result.value.usage.outputTokens).toBe(0);
-      expect(result.value.usage.totalTokens).toBe(0);
+      expect(result.value.usage).toBeUndefined();
     }
   });
 

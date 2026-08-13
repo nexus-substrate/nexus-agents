@@ -125,6 +125,18 @@ export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /**
+   * Input tokens READ from an existing prompt cache, when the vendor reports
+   * them separately. Billed at roughly a tenth of the uncached input rate, so
+   * kept out of `inputTokens` rather than summed into it (#4435).
+   */
+  cachedInputTokens?: number;
+  /**
+   * Input tokens spent WRITING the cache. Billed at roughly 1.25x the uncached
+   * rate — the opposite end from a cache read, which is why the two stay
+   * separate (#4438).
+   */
+  cacheCreationInputTokens?: number;
 }
 
 /**
@@ -138,8 +150,16 @@ export type StopReason = 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use
 export interface CompletionResponse {
   /** Response content blocks */
   content: ContentBlock[];
-  /** Token usage statistics */
-  usage: TokenUsage;
+  /**
+   * Token usage statistics, when the vendor reported them.
+   *
+   * OPTIONAL on purpose (#4439). Producers used to synthesise `0/0/0` from an
+   * absent vendor report, which is indistinguishable downstream from a real
+   * zero-token call — that fabrication silently defeated the measured-voter
+   * gate (#4436) on every live path. Absence must stay absent; consumers that
+   * need a number should treat `undefined` as "unknown", never as zero.
+   */
+  usage?: TokenUsage;
   /** Reason generation stopped */
   stopReason: StopReason;
   /** Model that generated the response */
@@ -168,7 +188,7 @@ export type StreamChunk =
   | { type: 'content_block_delta'; index: number; delta: { type: 'text_delta'; text: string } }
   | { type: 'content_block_stop'; index: number }
   | { type: 'message_start'; message: { model: string } }
-  | { type: 'message_delta'; delta: { stop_reason: StopReason }; usage: TokenUsage }
+  | { type: 'message_delta'; delta: { stop_reason: StopReason }; usage?: TokenUsage }
   | { type: 'message_stop' };
 
 /**

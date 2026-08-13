@@ -451,11 +451,11 @@ export class OpenAIAdapter extends BaseAdapter {
     }
 
     const content = mapChoiceToContentBlocks(firstChoice);
-    const usage: TokenUsage = mapResponseUsage(response);
+    const usage: TokenUsage | undefined = mapResponseUsage(response);
 
     return {
       content,
-      usage,
+      ...(usage !== undefined ? { usage } : {}),
       stopReason: mapStopReason(firstChoice.finish_reason),
       model: response.model,
       // #4069: surface dropped params (e.g. an omitted temperature). Omitted
@@ -471,9 +471,10 @@ export class OpenAIAdapter extends BaseAdapter {
     response: ChatCompletion,
     dropped: readonly DroppedParam[] = []
   ): CompletionResponse {
+    const emptyUsage = mapResponseUsage(response);
     return {
       content: [{ type: 'text', text: '' }],
-      usage: mapResponseUsage(response),
+      ...(emptyUsage !== undefined ? { usage: emptyUsage } : {}),
       stopReason: 'end_turn',
       model: response.model,
       ...(dropped.length > 0 ? { warnings: dropped } : {}),

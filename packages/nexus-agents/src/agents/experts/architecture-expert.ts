@@ -50,24 +50,13 @@ export interface ArchitectureExpertOptions extends ExpertOptions {
  * Architecture style options.
  */
 export type ArchitectureStyle =
-  | 'layered'
-  | 'microservices'
-  | 'event_driven'
-  | 'hexagonal'
-  | 'clean'
-  | 'cqrs'
-  | 'ddd';
+  'layered' | 'microservices' | 'event_driven' | 'hexagonal' | 'clean' | 'cqrs' | 'ddd';
 
 /**
  * Quality attributes for architecture decisions.
  */
 export type QualityAttribute =
-  | 'performance'
-  | 'scalability'
-  | 'maintainability'
-  | 'security'
-  | 'reliability'
-  | 'testability';
+  'performance' | 'scalability' | 'maintainability' | 'security' | 'reliability' | 'testability';
 
 /**
  * ArchitectureExpert - Expert agent for architecture-related tasks.
@@ -184,7 +173,7 @@ Analyze and provide your architectural recommendations in the specified JSON for
       output: result,
       metadata: {
         durationMs: getTimeProvider().now() - startTime,
-        tokensUsed: response.usage.totalTokens,
+        tokensUsed: response.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: response.model,
       },

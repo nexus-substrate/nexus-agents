@@ -170,7 +170,7 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       output: result,
       metadata: {
         durationMs: getTimeProvider().now() - startTime,
-        tokensUsed: response.usage.totalTokens,
+        tokensUsed: response.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: response.model,
       },

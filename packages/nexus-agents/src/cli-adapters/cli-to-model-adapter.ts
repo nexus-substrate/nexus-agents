@@ -113,13 +113,29 @@ export class CliToModelAdapter implements IModelAdapter {
    * Converts CliResponse to CompletionResponse.
    */
   private toCompletionResponse(response: CliResponse): CompletionResponse {
+    const u = response.usage;
     return {
       content: [{ type: 'text', text: response.text }],
-      usage: {
-        inputTokens: response.usage?.inputTokens ?? 0,
-        outputTokens: response.usage?.outputTokens ?? 0,
-        totalTokens: response.usage?.totalTokens ?? 0,
-      },
+      // #4439: this used to be `response.usage?.x ?? 0`, which turned "the CLI
+      // reported nothing" into a present 0/0/0 — indistinguishable downstream
+      // from a real zero-token call. That single coercion defeated the
+      // measured-voter gate (#4436) on every live vote and dropped the cache
+      // fields (#4438) that #4435 needs. Absence stays absent.
+      ...(u !== undefined
+        ? {
+            usage: {
+              inputTokens: u.inputTokens,
+              outputTokens: u.outputTokens,
+              totalTokens: u.totalTokens ?? u.inputTokens + u.outputTokens,
+              ...(u.cachedInputTokens !== undefined
+                ? { cachedInputTokens: u.cachedInputTokens }
+                : {}),
+              ...(u.cacheCreationInputTokens !== undefined
+                ? { cacheCreationInputTokens: u.cacheCreationInputTokens }
+                : {}),
+            },
+          }
+        : {}),
       stopReason: 'end_turn',
       model: response.model ?? this.modelId,
     };
@@ -183,7 +199,9 @@ export class CliToModelAdapter implements IModelAdapter {
     yield {
       type: 'message_delta',
       delta: { stop_reason: response.stopReason },
-      usage: response.usage,
+      // exactOptionalPropertyTypes: omit the key entirely when unknown rather
+      // than passing an explicit undefined (#4439).
+      ...(response.usage !== undefined ? { usage: response.usage } : {}),
     };
 
     yield { type: 'message_stop' };
