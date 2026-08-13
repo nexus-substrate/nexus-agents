@@ -198,9 +198,18 @@ async function handleRunGraphWorkflow(
     });
   }
 
+  // #4351: was hardcoded 'completed'. The executor returns ok() even when
+  // nodes failed — its err() paths cover checkpoint/validation/timeout only —
+  // so a graph whose nodes all failed reported success to the caller.
+  // 'interrupted' is intentionally NOT treated as a failure here: the executor
+  // signals that separately via `halted`, and conflating the two would change
+  // interrupt semantics this change has not studied.
+  const nodeStatus = result.value.nodeResults.some((n) => n.status === 'failed')
+    ? ('failed' as const)
+    : ('completed' as const);
   return {
     workflow: input.workflow,
-    status: 'completed',
+    status: nodeStatus,
     finalState: result.value.finalState,
     stepsExecuted: result.value.stepsExecuted,
     nodesExecuted: result.value.nodeResults.length,

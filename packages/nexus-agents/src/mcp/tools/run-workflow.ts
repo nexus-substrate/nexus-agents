@@ -38,6 +38,7 @@ import {
   loadWorkflow,
   validateWorkflowInputs,
   executeDryRun,
+  deriveWorkflowStatus,
   toStepResultSummary,
   successResponse,
   errorResponse,
@@ -127,13 +128,16 @@ async function executeWorkflow(
     stepCount: workflowResult.stepResults.length,
   });
 
+  const stepResults = workflowResult.stepResults.map(toStepResultSummary);
   return {
     ok: true,
     value: {
       executionId: workflowResult.executionId,
       workflowName: workflowResult.workflowName,
-      status: 'completed',
-      stepResults: workflowResult.stepResults.map(toStepResultSummary),
+      // #4351: was hardcoded 'completed'. A run whose steps all failed —
+      // e.g. every adapter out of capacity — reported success to the caller.
+      status: deriveWorkflowStatus(stepResults),
+      stepResults,
       output: workflowResult.output,
       durationMs: workflowResult.totalDurationMs,
     },

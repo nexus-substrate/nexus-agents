@@ -110,6 +110,28 @@ export function getAllowedWorkflowDirs(deps: RunWorkflowDeps): string[] {
 // ============================================================================
 
 /**
+ * Derive the workflow's reported status from what its steps actually did.
+ *
+ * `run_workflow` used to hardcode `status: 'completed'` once the runner
+ * returned, and `WorkflowResult` carries no overall success field — only
+ * per-step status. So a run in which every step failed was surfaced as a
+ * completed workflow, and a caller reading only the top-level status saw
+ * success (#4351, observed live when adapter capacity was exhausted).
+ *
+ * Any failed step ⇒ failed: partial success is not success at a job boundary,
+ * because a consumer that acts on "completed" would act on incomplete work.
+ * `skipped` is a deliberate control-flow outcome and does not fail the run.
+ * An empty step list is failed — nothing ran, which is the exact shape #4351
+ * reported.
+ */
+export function deriveWorkflowStatus(
+  steps: readonly Pick<StepResultSummary, 'status'>[]
+): 'completed' | 'failed' {
+  if (steps.length === 0) return 'failed';
+  return steps.some((s) => s.status === 'failed') ? 'failed' : 'completed';
+}
+
+/**
  * Convert StepResult to StepResultSummary for tool output.
  *
  * @param result - Full step result
