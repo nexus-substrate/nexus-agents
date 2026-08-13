@@ -19,7 +19,7 @@ import {
   type AgentState,
   type RoutingDecision,
   type SessionMetrics,
-  type TokenUsage,
+  type SessionTokenTotals,
   type OrchestrationStats,
   type OrchestrationObserverListener,
   type OrchestrationObserverEvent,
@@ -399,7 +399,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     this.emitObserverEvent({ type: 'routing_decision', decision });
   }
 
-  recordTokenUsage(sessionId: string, model: CliName, tokens: TokenUsage): void {
+  recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals): void {
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics === undefined) return;
 

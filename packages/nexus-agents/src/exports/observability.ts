@@ -140,7 +140,9 @@ export {
   type IOrchestrationObserver,
   type ConsensusStats,
   type SessionMetrics as ObserverSessionMetrics,
-  type TokenUsage as ObserverTokenUsage, // Renamed: core.ts exports TokenUsage
+  // Public name kept as ObserverTokenUsage so this is not a breaking change;
+  // the underlying type was renamed to say what it is (#4440).
+  type SessionTokenTotals as ObserverTokenUsage,
   type CostMetrics as ObserverCostMetrics,
   type TrackedAgent as ObserverTrackedAgent, // Renamed: core types may also export TrackedAgent
   type OrchestrationStats,

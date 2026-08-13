@@ -8,7 +8,7 @@ import type { DomainEvent } from '../collaboration/event-bus-types.js';
 import type {
   RoutingDecision,
   SessionMetrics,
-  TokenUsage,
+  SessionTokenTotals,
 } from './orchestration-observer-types.js';
 import {
   extractStringField,
@@ -281,13 +281,13 @@ describe('identifySessionsToRemove', () => {
 
 describe('calculateTokenCost', () => {
   it('calculates cost from tokens and rate', () => {
-    const tokens: TokenUsage = { inputTokens: 100, outputTokens: 200, totalTokens: 1000 };
+    const tokens: SessionTokenTotals = { inputTokens: 100, outputTokens: 200, totalTokens: 1000 };
     // 1000 / 1000 * 0.01 = 0.01
     expect(calculateTokenCost(tokens, 0.01)).toBeCloseTo(0.01);
   });
 
   it('returns 0 for zero tokens', () => {
-    const tokens: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const tokens: SessionTokenTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     expect(calculateTokenCost(tokens, 0.01)).toBe(0);
   });
 });

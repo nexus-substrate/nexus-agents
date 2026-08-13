@@ -15,7 +15,7 @@ export {
   type AgentState,
   type TrackedAgent,
   type RoutingDecision,
-  type TokenUsage,
+  type SessionTokenTotals,
   type CostMetrics,
   type SessionMetrics,
   type OrchestrationStats,

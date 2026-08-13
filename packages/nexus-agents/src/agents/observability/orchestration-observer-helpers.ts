@@ -15,7 +15,7 @@ import type {
   AgentState,
   RoutingDecision,
   SessionMetrics,
-  TokenUsage,
+  SessionTokenTotals,
   CostMetrics,
 } from './orchestration-observer-types.js';
 
@@ -118,9 +118,9 @@ export function createInitialSessionMetrics(sessionId: string): SessionMetrics {
 /**
  * Creates initial token usage with zero values.
  *
- * @returns A new TokenUsage object with zero values
+ * @returns A new SessionTokenTotals object with zero values
  */
-export function createInitialTokenUsage(): TokenUsage {
+export function createInitialTokenUsage(): SessionTokenTotals {
   return {
     inputTokens: 0,
     outputTokens: 0,
@@ -274,6 +274,6 @@ export function identifySessionsToRemove(
  * @param ratePerThousand - Cost rate per 1000 tokens
  * @returns The calculated cost in USD
  */
-export function calculateTokenCost(tokens: TokenUsage, ratePerThousand: number): number {
+export function calculateTokenCost(tokens: SessionTokenTotals, ratePerThousand: number): number {
   return (tokens.totalTokens / 1000) * ratePerThousand;
 }
