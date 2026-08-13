@@ -111,13 +111,26 @@ export class ModelToCliAdapter implements ICliAdapter {
 
   /** Convert a CompletionResponse to a CliResponse. */
   private toCliResponse(response: CompletionResponse): CliResponse {
+    const usage = response.usage;
     return {
       text: this.toText(response),
-      usage: {
-        inputTokens: response.usage.inputTokens,
-        outputTokens: response.usage.outputTokens,
-        totalTokens: response.usage.totalTokens,
-      },
+      // Omit rather than zero-fill (#4439): a synthesised 0/0/0 is
+      // indistinguishable from a real zero-token call downstream.
+      ...(usage !== undefined
+        ? {
+            usage: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+              ...(usage.cachedInputTokens !== undefined
+                ? { cachedInputTokens: usage.cachedInputTokens }
+                : {}),
+              ...(usage.cacheCreationInputTokens !== undefined
+                ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+                : {}),
+            },
+          }
+        : {}),
       model: response.model,
     };
   }

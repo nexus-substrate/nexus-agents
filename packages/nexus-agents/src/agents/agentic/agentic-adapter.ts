@@ -281,8 +281,8 @@ export class AgenticAdapter implements IAgenticAdapter {
       };
     }
     const response = completion.value;
-    state.totalInputTokens += response.usage.inputTokens;
-    state.totalOutputTokens += response.usage.outputTokens;
+    state.totalInputTokens += response.usage?.inputTokens ?? 0;
+    state.totalOutputTokens += response.usage?.outputTokens ?? 0;
 
     const toolUses = response.content.filter(
       (c): c is Extract<ContentBlock, { type: 'tool_use' }> => c.type === 'tool_use'
@@ -681,8 +681,8 @@ function buildTurn(b: BuildTurnArgs): AgentTurn {
     toolResult: b.toolResult,
     modelLatencyMs: b.modelLatencyMs,
     toolLatencyMs: b.toolLatencyMs,
-    inputTokens: b.response.usage.inputTokens,
-    outputTokens: b.response.usage.outputTokens,
+    inputTokens: b.response.usage?.inputTokens ?? 0,
+    outputTokens: b.response.usage?.outputTokens ?? 0,
   };
 }
 

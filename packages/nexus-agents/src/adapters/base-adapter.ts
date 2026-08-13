@@ -290,9 +290,9 @@ export abstract class BaseAdapter implements IModelAdapter {
     this.logger.debug('Received completion response', {
       contentBlocks: response.content.length,
       stopReason: response.stopReason,
-      inputTokens: response.usage.inputTokens,
-      outputTokens: response.usage.outputTokens,
-      totalTokens: response.usage.totalTokens,
+      inputTokens: response.usage?.inputTokens ?? 0,
+      outputTokens: response.usage?.outputTokens ?? 0,
+      totalTokens: response.usage?.totalTokens ?? 0,
       model: response.model,
     });
   }

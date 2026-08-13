@@ -314,7 +314,7 @@ export class ForestEngine {
     };
     const response = await this.adapter.complete(request);
     if (!response.ok) return { node: null, tokensUsed: 0 };
-    const tokensUsed = response.value.usage.totalTokens;
+    const tokensUsed = response.value.usage?.totalTokens ?? 0;
     const parsed = parseReasoningStepResponse(extractText(response.value.content));
     if (parsed === null) return { node: null, tokensUsed };
     const newNode = buildReasoningNode({

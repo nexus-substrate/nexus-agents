@@ -108,8 +108,8 @@ describe('SdkAdapter', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.content[0]).toEqual({ type: 'text', text: 'Hello back!' });
-        expect(result.value.usage.inputTokens).toBe(10);
-        expect(result.value.usage.outputTokens).toBe(5);
+        expect(result.value.usage?.inputTokens).toBe(10);
+        expect(result.value.usage?.outputTokens).toBe(5);
         expect(result.value.stopReason).toBe('end_turn');
         expect(result.value.model).toBe('claude-sonnet-4-6');
       }
@@ -266,7 +266,7 @@ describe('SdkAdapter', () => {
           type: 'text',
           text: JSON.stringify({ answer: 42 }),
         });
-        expect(result.value.usage.inputTokens).toBe(10);
+        expect(result.value.usage?.inputTokens).toBe(10);
         expect(result.value.stopReason).toBe('end_turn');
         expect(result.value.model).toBe('claude-sonnet-4-6');
       }

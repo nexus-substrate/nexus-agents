@@ -359,15 +359,22 @@ export class GeminiAdapter extends BaseAdapter {
     const candidate = response.candidates?.[0];
     const usageMetadata = response.usageMetadata;
 
-    const usage: TokenUsage = {
-      inputTokens: usageMetadata?.promptTokenCount ?? 0,
-      outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
-      totalTokens: usageMetadata?.totalTokenCount ?? 0,
-    };
+    // #4439: omit rather than zero-fill when Gemini sent no usageMetadata.
+    const usage: TokenUsage | undefined =
+      usageMetadata === undefined
+        ? undefined
+        : {
+            inputTokens: usageMetadata.promptTokenCount ?? 0,
+            outputTokens: usageMetadata.candidatesTokenCount ?? 0,
+            totalTokens: usageMetadata.totalTokenCount ?? 0,
+            ...(usageMetadata.cachedContentTokenCount !== undefined
+              ? { cachedInputTokens: usageMetadata.cachedContentTokenCount }
+              : {}),
+          };
 
     return {
       content,
-      usage,
+      ...(usage !== undefined ? { usage } : {}),
       stopReason: mapStopReason(candidate?.finishReason),
       model: this.resolvedModelId,
     };

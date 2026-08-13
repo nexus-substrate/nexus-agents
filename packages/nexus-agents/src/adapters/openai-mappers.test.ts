@@ -251,17 +251,18 @@ describe('mapResponseUsage', () => {
       usage: { prompt_tokens: 100, completion_tokens: 200, total_tokens: 300 },
     } as ChatCompletion;
     const usage = mapResponseUsage(response);
-    expect(usage.inputTokens).toBe(100);
-    expect(usage.outputTokens).toBe(200);
-    expect(usage.totalTokens).toBe(300);
+    expect(usage?.inputTokens).toBe(100);
+    expect(usage?.outputTokens).toBe(200);
+    expect(usage?.totalTokens).toBe(300);
   });
 
-  it('defaults to 0 for missing usage', () => {
+  it('returns undefined for missing usage rather than defaulting to 0 (#4439)', () => {
+    // This previously asserted 0/0/0. That default was the bug: a synthesised
+    // zero is indistinguishable downstream from a real zero-token call, and it
+    // silently defeated the measured-voter gate (#4436).
     const response = {} as ChatCompletion;
-    const usage = mapResponseUsage(response);
-    expect(usage.inputTokens).toBe(0);
-    expect(usage.outputTokens).toBe(0);
-    expect(usage.totalTokens).toBe(0);
+
+    expect(mapResponseUsage(response)).toBeUndefined();
   });
 });
 

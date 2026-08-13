@@ -139,9 +139,9 @@ export async function executeModelCompletion(
   // Record actual token usage for EMA tracking (Issue #304)
   budgetTracker.recordUsage({
     timestamp: getTimeProvider().now(),
-    inputTokens: result.value.usage.inputTokens,
-    outputTokens: result.value.usage.outputTokens,
-    totalTokens: result.value.usage.totalTokens,
+    inputTokens: result.value.usage?.inputTokens ?? 0,
+    outputTokens: result.value.usage?.outputTokens ?? 0,
+    totalTokens: result.value.usage?.totalTokens ?? 0,
   });
 
   return ok(result.value);

@@ -198,9 +198,9 @@ describe('ClaudeAdapter', () => {
       if (result.ok) {
         expect(result.value.content).toHaveLength(1);
         expect(result.value.content[0]).toEqual({ type: 'text', text: 'Hello!' });
-        expect(result.value.usage.inputTokens).toBe(10);
-        expect(result.value.usage.outputTokens).toBe(5);
-        expect(result.value.usage.totalTokens).toBe(15);
+        expect(result.value.usage?.inputTokens).toBe(10);
+        expect(result.value.usage?.outputTokens).toBe(5);
+        expect(result.value.usage?.totalTokens).toBe(15);
         expect(result.value.stopReason).toBe('end_turn');
       }
     });

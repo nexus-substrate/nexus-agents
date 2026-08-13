@@ -57,7 +57,7 @@ export class SimpleAgent extends BaseAgent {
       output: textContent,
       metadata: {
         durationMs,
-        tokensUsed: result.value.usage.totalTokens,
+        tokensUsed: result.value.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: result.value.model,
       },
@@ -90,7 +90,7 @@ export class SimpleAgent extends BaseAgent {
       output: text,
       metadata: {
         durationMs,
-        tokensUsed: retry.value.usage.totalTokens,
+        tokensUsed: retry.value.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: retry.value.model,
       },

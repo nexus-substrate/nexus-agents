@@ -213,11 +213,18 @@ export function mapTool(tool: ToolDefinition): ChatCompletionTool {
 /**
  * Maps OpenAI API response to our CompletionResponse format.
  */
-export function mapResponseUsage(response: ChatCompletion): TokenUsage {
+export function mapResponseUsage(response: ChatCompletion): TokenUsage | undefined {
+  const u = response.usage;
+  // #4439: `?? 0` here synthesised a measurement the vendor never sent. An
+  // absent usage block must stay absent so the decision-cost rollup can tell
+  // "zero tokens" from "we do not know".
+  if (u === undefined) return undefined;
+  const cached = u.prompt_tokens_details?.cached_tokens;
   return {
-    inputTokens: response.usage?.prompt_tokens ?? 0,
-    outputTokens: response.usage?.completion_tokens ?? 0,
-    totalTokens: response.usage?.total_tokens ?? 0,
+    inputTokens: u.prompt_tokens,
+    outputTokens: u.completion_tokens,
+    totalTokens: u.total_tokens,
+    ...(cached !== undefined ? { cachedInputTokens: cached } : {}),
   };
 }
 

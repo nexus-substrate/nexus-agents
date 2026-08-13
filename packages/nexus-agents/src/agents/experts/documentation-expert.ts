@@ -160,7 +160,7 @@ Generate documentation in the specified JSON format.`,
       output: result,
       metadata: {
         durationMs: getTimeProvider().now() - startTime,
-        tokensUsed: response.usage.totalTokens,
+        tokensUsed: response.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: response.model,
       },
@@ -252,7 +252,9 @@ const VALID_DOC_TYPES = new Set<DocumentationResult['documentationType']>([
 ]);
 
 function isValidDocType(v: unknown): v is DocumentationResult['documentationType'] {
-  return typeof v === 'string' && VALID_DOC_TYPES.has(v as DocumentationResult['documentationType']);
+  return (
+    typeof v === 'string' && VALID_DOC_TYPES.has(v as DocumentationResult['documentationType'])
+  );
 }
 
 function isDocUnitConfidence(v: unknown): v is number {
@@ -267,11 +269,9 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function applyDocOptionalFields(
-  result: DocumentationResult,
-  p: Record<string, unknown>
-): void {
-  if (Array.isArray(p['sections'])) result.sections = p['sections'] as DocumentationResult['sections'];
+function applyDocOptionalFields(result: DocumentationResult, p: Record<string, unknown>): void {
+  if (Array.isArray(p['sections']))
+    result.sections = p['sections'] as DocumentationResult['sections'];
   // apiDocs is an object (ApiDocumentation), not a top-level array.
   if (isPlainObject(p['apiDocs'])) {
     result.apiDocs = p['apiDocs'] as unknown as NonNullable<DocumentationResult['apiDocs']>;
@@ -295,7 +295,8 @@ function parseDocumentationResult(
       throw new Error('Parsed value is not a plain object');
     }
     const result: DocumentationResult = {
-      content: typeof rawParsed['content'] === 'string' ? rawParsed['content'] : 'Documentation generated',
+      content:
+        typeof rawParsed['content'] === 'string' ? rawParsed['content'] : 'Documentation generated',
       documentationType: isValidDocType(rawParsed['documentationType'])
         ? rawParsed['documentationType']
         : defaultType,
