@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 2.178.1
+
+### Patch Changes
+
+- [#4446](https://github.com/nexus-substrate/nexus-agents/pull/4446) [`4f5f7b7`](https://github.com/nexus-substrate/nexus-agents/commit/4f5f7b7f2961cb4df4d54d60d21f3bcad9128f38) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Run quality-gate checks inside the target project ([#4355](https://github.com/nexus-substrate/nexus-agents/issues/4355))
+
+  `runCommandCheck` never set `cwd`, so every `run_quality_gate` check executed in the MCP server's own working directory. Three checks partly masked it by passing `projectDir` as an argument (`tsc --project`, `eslint <dir>`, `vitest --dir`), but `checkBuild` passed nothing at all — so `pnpm build` built whatever project happened to sit at that directory. Under a global install (`npx -y nexus-agents --mode=server`) that is arbitrary, meaning the build verdict described an unrelated project.
+
+  All four checks now execute in `projectDir`, and `checkBuild` takes it as a parameter.
+
+  This is the unambiguous half of [#4355](https://github.com/nexus-substrate/nexus-agents/issues/4355). The reported half — the gate hard-codes ESLint/vitest/pnpm and ignores the target's declared scripts, producing a false RED on an oxlint/npm project — is decided (7/0, Option A) and tracked there.
+
+- [`e0b2e33`](https://github.com/nexus-substrate/nexus-agents/commit/e0b2e33d6ec8eeea5229347ff6d7353f9962338c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report `failed` when workflow steps or graph nodes failed ([#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351), partial)
+
+  `run_workflow` and `run_graph_workflow` both hardcoded `status: 'completed'` once their runner returned. Neither runner signals overall success: `WorkflowResult` carries no success field at all — only per-step `status: 'success' | 'failed' | 'skipped'` — and the graph executor returns `ok()` even when nodes failed, because its `err()` paths cover checkpoint, validation, and timeout only.
+
+  So a run in which **every** step or node failed was surfaced to the caller as a completed workflow. That is the fail-closed gap [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351) reported from a live session where adapter capacity was exhausted: "the MCP orchestration surfaces can report a successful/complete outer job even when no model work completed".
+
+  Both now derive the reported status from what actually happened. Any failed step or node ⇒ `failed`; `skipped` is a deliberate control-flow outcome and does not fail a run; an empty step list is `failed`, since nothing ran.
+
+  `interrupted` graph nodes are deliberately **not** treated as failures — the executor signals interrupts separately via `halted`, and conflating the two would change interrupt semantics this change did not study.
+
+  This is the statically verifiable part of [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351). The issue's broader ask — representing exhausted adapter capacity in routing and explaining it in the result — remains open.
+
 ## 2.178.0
 
 ### Minor Changes
