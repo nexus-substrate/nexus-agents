@@ -121,7 +121,7 @@ function buildCheck(name: QualityCheck, projectDir: string): GateCheckFn {
     case 'tests':
       return checkTests(projectDir);
     case 'build':
-      return checkBuild();
+      return checkBuild(projectDir);
     case 'security':
       return checkSecurityScan(projectDir);
   }
