@@ -25,14 +25,19 @@ export type GateCheckFn = () => Promise<GateCheckResult>;
 async function runCommandCheck(
   name: string,
   command: string,
-  args: readonly string[]
+  args: readonly string[],
+  cwd: string
 ): Promise<GateCheckResult> {
   const start = Date.now();
   try {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const exec = promisify(execFile);
-    await exec(command, [...args], { timeout: 120_000 });
+    // #4355: `cwd` was never set, so every check ran in the MCP server's own
+    // working directory. Three checks partly hid it by passing projectDir as
+    // an argument; `pnpm build` passed nothing and built whatever project sat
+    // at that cwd — arbitrary under a global install.
+    await exec(command, [...args], { timeout: 120_000, cwd });
     return {
       name,
       verdict: 'pass',
@@ -56,22 +61,30 @@ async function runCommandCheck(
 
 /** Check: TypeScript compilation passes. */
 export function checkTypeCheck(projectDir: string): GateCheckFn {
-  return () => runCommandCheck('type_check', 'npx', ['tsc', '--noEmit', '--project', projectDir]);
+  return () =>
+    runCommandCheck('type_check', 'npx', ['tsc', '--noEmit', '--project', projectDir], projectDir);
 }
 
 /** Check: ESLint passes. */
 export function checkLint(projectDir: string): GateCheckFn {
-  return () => runCommandCheck('lint', 'npx', ['eslint', '--max-warnings', '0', projectDir]);
+  return () =>
+    runCommandCheck('lint', 'npx', ['eslint', '--max-warnings', '0', projectDir], projectDir);
 }
 
 /** Check: Tests pass. */
 export function checkTests(projectDir: string): GateCheckFn {
-  return () => runCommandCheck('tests', 'npx', ['vitest', 'run', '--dir', projectDir]);
+  return () => runCommandCheck('tests', 'npx', ['vitest', 'run', '--dir', projectDir], projectDir);
 }
 
-/** Check: Build succeeds. */
-export function checkBuild(): GateCheckFn {
-  return () => runCommandCheck('build', 'pnpm', ['build']);
+/**
+ * Check: Build succeeds.
+ *
+ * Takes `projectDir` (#4355). It previously took no argument and ran
+ * `pnpm build` wherever the server happened to be, so its verdict described
+ * an unrelated project.
+ */
+export function checkBuild(projectDir: string): GateCheckFn {
+  return () => runCommandCheck('build', 'pnpm', ['build'], projectDir);
 }
 
 // ============================================================================
