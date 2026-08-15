@@ -151,7 +151,9 @@ IF NO:   [fallback]
 
 After the action, close the loop: `RESULT … MATCHES yes/no … THEREFORE …`.
 
-**On failure:** (1) state what failed with the raw error, (2) state your theory of the cause, (3) propose ONE next action, (4) state the expected outcome, (5) wait for confirmation. Never silently retry, guess past a failure, or continue without addressing it.
+**On failure:** (1) state what failed with the raw error, (2) state your theory of the cause, (3) take ONE corrective action and state the expected outcome, (4) check the result against it. Never silently retry, guess past a failure, or continue without addressing it.
+
+Do not stop for confirmation on a reversible failure (#4463) — diagnose and act. Retries are bounded, not unlimited: change the approach after the second failed attempt rather than repeating it, and stop only if the failure is itself a hard-stop condition (see [`.rules/autonomous.md`](./.rules/autonomous.md)). Report what you did and why in the turn summary; the audit trail is the review surface, not a mid-task pause.
 
 ## Self-check quality gate
 

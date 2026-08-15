@@ -90,11 +90,17 @@ Genuinely pause and surface to the user ONLY when:
 
 - **Cost-gated work** that needs prior approval not already granted (e.g. running a $100+ benchmark sweep)
 - **Destructive operations** where the blast radius exceeds what the user authorized (force-push to main, delete data, revoke access)
-- **Waiting on external system** with no path to progress (e.g. a dependency PR is stuck in another org's review, and there's no other autonomous work left)
-- **CI failure requiring a human design decision** (not a mechanical fix)
-- **Repeated failures** — same error 3+ times with distinct fix attempts, genuinely stuck
+- **Secret or credential handling** that would expose a value, or any point where untrusted input, repository write, and secret access converge (Rule of Two)
+- **Governance self-modification** — `.rules/`, `AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/governance/`, drift machinery, voter config, `CODEOWNERS`. Author the change and open the PR; do not land it. The governor must not be able to weaken its own governor.
+- **Publishing or spending** — an npm publish, a public release, or anything that moves money.
 
 For everything else: keep working, summarize progress at end of turn, begin the next item.
+
+**Not hard stops (#4463).** These used to pause the loop and no longer do — each is reversible, and stopping bought delay rather than safety:
+
+- **Waiting on an external system.** Poll it with backoff, revalidate the state when it changes, and resume. Take other backlog work meanwhile; a blocked dependency is not a blocked session.
+- **CI failure needing a design decision.** Route it to `consensus_vote` (`higher_order`) with architecture/QA/adversarial review subagents. The vote result is the decision — that is what the panel is for.
+- **Repeated failures.** Three attempts at the same error means the approach is wrong, not that a human is required. Change strategy: re-diagnose from evidence with a fresh subagent, or vote on the approach. Escalate only if the failure is itself one of the hard stops above.
 
 ## Self-continuation is mandatory — never hand the turn back idle
 
