@@ -20,6 +20,7 @@ import {
   reviewedDiffWasTruncated,
 } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
+import { looksLikeUnifiedDiff } from './pr-review-diff-budget.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -49,7 +50,12 @@ export type PrReviewRecordOutcome =
     }
   | {
       readonly persisted: false;
-      readonly reason: 'binding-inputs-absent' | 'simulated' | 'no-live-votes' | 'write-failed';
+      readonly reason:
+        | 'binding-inputs-absent'
+        | 'simulated'
+        | 'no-live-votes'
+        | 'diff-not-unified'
+        | 'write-failed';
       readonly detail: string;
     };
 
@@ -160,25 +166,57 @@ function buildAndPersist(
  * against the diff; acceptable for the warn-first gate, but a future enforce flip
  * (#3831) must add that provenance check (design-vote condition).
  */
-export function persistReviewRecord(args: PersistReviewRecordArgs): PrReviewRecordOutcome {
-  const { input } = args;
+/**
+ * Outcome of the pre-write guard chain: either a refusal to persist, or the
+ * narrowed binding the writer needs. Carrying `prNumber`/`baseSha` out of the
+ * guard keeps their non-undefined narrowing without re-checking in the caller.
+ */
+type PersistGate =
+  | { readonly ok: false; readonly outcome: PrReviewRecordOutcome }
+  | { readonly ok: true; readonly prNumber: number; readonly baseSha: string };
+
+/**
+ * Every reason a review must NOT be written to the governance ledger.
+ *
+ * Extracted from {@link persistReviewRecord} so the guard chain can grow without
+ * pushing that function over the max-lines budget. Each guard fails CLOSED: a
+ * ledger record is evidence, and a wrong record is worse than a missing one.
+ */
+function refuseToPersist(args: PersistReviewRecordArgs): PersistGate {
+  const { input, counts } = args;
+  /** Wraps a refusal so every guard reads the same way. */
+  const refuse = (
+    reason: 'binding-inputs-absent' | 'diff-not-unified' | 'simulated' | 'no-live-votes',
+    detail: string
+  ): PersistGate => ({ ok: false, outcome: { persisted: false, reason, detail } });
+
   if (input.prNumber === undefined || input.baseSha === undefined) {
-    return {
-      persisted: false,
-      reason: 'binding-inputs-absent',
-      detail:
-        'No audit record written: supply both prNumber and baseSha to persist an ' +
-        'Option-C governor-review record bound to {prNumber, baseSha, reviewedDiffHash}.',
-    };
+    return refuse(
+      'binding-inputs-absent',
+      'No audit record written: supply both prNumber and baseSha to persist an ' +
+        'Option-C governor-review record bound to {prNumber, baseSha, reviewedDiffHash}.'
+    );
+  }
+  // #4451 second gate. `PrReviewInputSchema` rejects a non-diff `prDiff`, but it
+  // only guards the MCP entrance: `scripts/pr-review-local-ledger.ts` builds a
+  // PrReviewInput literal and calls this function directly, never touching the
+  // schema. Since the harm in #4451 is a fabricated `verified: true` LEDGER
+  // RECORD, the check has to live at the writer too — otherwise the gate covers
+  // one of two doors into the thing it protects.
+  if (!looksLikeUnifiedDiff(input.prDiff)) {
+    return refuse(
+      'diff-not-unified',
+      'No audit record written: prDiff is not a unified diff, so the review did not ' +
+        'examine code and reviewedDiffHash would hash non-diff text — a record ' +
+        'indistinguishable from a real one (#4451).'
+    );
   }
   if (input.simulate) {
-    return {
-      persisted: false,
-      reason: 'simulated',
-      detail:
-        'No audit record written: the review used simulated voters, and a committed ' +
-        'governance record must not be seeded from non-live output (mirrors #2319).',
-    };
+    return refuse(
+      'simulated',
+      'No audit record written: the review used simulated voters, and a committed ' +
+        'governance record must not be seeded from non-live output (mirrors #2319).'
+    );
   }
   // Quorum floor (#4031, found in #4031 adversarial review): an all-errored panel
   // still aggregates to a verdict (abstain/verified — see aggregatePrDecisions),
@@ -186,22 +224,25 @@ export function persistReviewRecord(args: PersistReviewRecordArgs): PrReviewReco
   // record for a review that never happened — the governor-review analogue of the
   // consensus_vote `no_quorum` void (#4053). Valid (non-error) voters are exactly
   // the approve/request_changes/abstain tallies; if all three are zero, skip.
-  const { counts } = args;
   if (counts.approveCount + counts.requestChangesCount + counts.abstainCount === 0) {
-    return {
-      persisted: false,
-      reason: 'no-live-votes',
-      detail:
-        'No audit record written: every voter errored, so the aggregate verdict ' +
+    return refuse(
+      'no-live-votes',
+      'No audit record written: every voter errored, so the aggregate verdict ' +
         'reflects no live review. A committed governor-review record must not be ' +
-        'seeded from a failed panel (the pr_review analogue of no_quorum, #4053).',
-    };
+        'seeded from a failed panel (the pr_review analogue of no_quorum, #4053).'
+    );
   }
+  return { ok: true, prNumber: input.prNumber, baseSha: input.baseSha };
+}
+
+export function persistReviewRecord(args: PersistReviewRecordArgs): PrReviewRecordOutcome {
+  const gate = refuseToPersist(args);
+  if (!gate.ok) return gate.outcome;
   // Defense-in-depth: buildAndPersist's only non-store-guarded step is the diff
   // hash, which does not currently throw — but an audit sink must NEVER throw into
   // the review path, so a future throwable change degrades to write-failed here.
   try {
-    return buildAndPersist(input.prNumber, input.baseSha, args);
+    return buildAndPersist(gate.prNumber, gate.baseSha, args);
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     args.logger.warn('Audit-record persistence threw (non-fatal)', { detail });
