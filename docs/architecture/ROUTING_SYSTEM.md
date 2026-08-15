@@ -359,9 +359,13 @@ Each candidate resolves to one of three states, and the third is the point of th
 
 When every candidate is excluded, the stage sets `continuesPipeline: false` and the runner returns a `CompositeRoutingError` **naming each excluded arm and its reason**. #4351's original complaint was that nexus "did not represent that capacity state accurately, exclude those adapters from routing, or explain it in the terminal result" — a bare error code would have fixed only two of those three.
 
-### Known limitation
+### Known limitations
 
-The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one. The residual error is entirely on the false-negative side, which is the pre-existing behaviour it improves on.
+**1. Local visibility only.** The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one. The residual error is entirely on the false-negative side, which is the pre-existing behaviour it improves on.
+
+**2. Slot granularity vs. serving route (#4455).** Capacity is assessed per display slot, because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot (`api:anthropic` → `claude`). When a CLI arm and an api arm share a slot, one arm's reading is applied to both — an exhausted CLI can exclude a healthy `api:*` arm holding its own independent quota, and an exhausted api arm can go unexcluded.
+
+Slot granularity is a pre-existing property of every `RoutingContext`-based stage, and for _scoring_ it is a fair approximation. For capacity it is not: quota belongs to a credential and a serving route, not to a vendor, and this stage's action is exclusion rather than a score nudge. Not reachable under the default `plan` billing mode, where no api arm is registered; reachable under `NEXUS_BILLING_MODE=api`. Resolves structurally with the #4391 gateway work.
 
 ---
 

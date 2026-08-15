@@ -157,6 +157,17 @@ export function runBudgetStage(
  * error rather than handing an empty set downstream, so the caller fails closed
  * with a named reason instead of routing to an adapter that cannot serve. That
  * is the behaviour #4351 was filed for.
+ *
+ * KNOWN LIMITATION (#4455): capacity is assessed at display-slot granularity,
+ * because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot. When
+ * a CLI arm and an api arm share a slot, one arm's reading is applied to both —
+ * so an exhausted CLI can exclude a healthy `api:*` arm with its own independent
+ * quota, and vice versa. Quota is per serving route, not per vendor, so unlike
+ * the scoring stages (where slot granularity is a fair approximation) this is
+ * the wrong quantity rather than an imprecise one. Not reachable under the
+ * default `plan` billing mode, where no api arm is ever registered
+ * (`factory.ts:127`); reachable under `NEXUS_BILLING_MODE=api`. Resolves
+ * structurally with the #4391 gateway work.
  */
 export async function runCapacityStage(
   task: CliTask,
