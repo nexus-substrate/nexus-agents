@@ -176,12 +176,27 @@ export function getDefaultErrorPolicy(strategy: VotingStrategy): ErrorPolicy {
 }
 
 export const ConsensusVoteInputSchema = z.object({
-  proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
+  proposal: z
+    .string()
+    .min(1)
+    .max(MAX_PROPOSAL_LENGTH)
+    .describe(
+      'Proposal text to vote on. IMPORTANT (#4452): the tally records approve/reject/abstain ' +
+        'ONLY. If your proposal asks voters to choose among named options (A/B/C), every voter ' +
+        'who engages returns `approve`, so the result records as unanimous even when the panel ' +
+        'disagreed about WHICH option — a 6-1 split persists as 7-0, 100%. Threshold semantics ' +
+        'invert too: `unanimous` becomes trivially easy to clear, because everyone approves ' +
+        'while choosing different things. Prefer a single yes/no question; if you must offer ' +
+        "options, read each voter's `reasoning` to recover the real split and do NOT report the " +
+        'recorded percentage as agreement.'
+    ),
   threshold: VoteThresholdSchema.optional().describe(
     'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
   ),
   strategy: VotingStrategySchema.optional().describe(
-    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
+    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal). ' +
+      'NOTE (#4452): thresholds are evaluated over approve/reject/abstain, not over which option a voter chose. On a ' +
+      'multi-option proposal even `unanimous` clears trivially — see the `proposal` field description.'
   ),
   errorPolicy: ErrorPolicySchema.optional().describe(
     'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Opt-in absolute_quorum (#4132): an errored voter — especially the contrarian (catfish) — degrades the verdict to no_quorum (recoverable re-run) instead of being dropped from the denominator; never manufactures approved/rejected from an induced error. Regardless of policy, errors > 50% always fails.'
