@@ -26,6 +26,8 @@ The routing system intelligently selects the optimal CLI/model for each task thr
 ```
 Task
   → Budget                              (filter — eliminate over-budget CLIs)
+  → Capacity                            (filter — eliminate measurably exhausted
+                                         arms; unmeasured never excludes, #4373)
   → Scoring (parallel)                  (ConfidenceCascade, CapabilityMatch,
                                          KnnRouting, DistilledRule,
                                          ResourceStrategy, ZeroRouter, Preference)
