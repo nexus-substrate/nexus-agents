@@ -123,7 +123,7 @@ export const PrReviewInputSchema = z.object({
         'and would be recorded as though it were (#4451).',
     })
     .describe(
-      `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). No need to truncate before calling: diffs over ${String(MAX_DIFF_LENGTH)} chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve).`
+      `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). REQUIRED SHAPE (#4451): must contain a \`diff --git\` header, an \`@@ … @@\` hunk header backed by +/- lines, or a \`---\`/\`+++\` header pair — a prose summary of the change is REJECTED, because reviewing a summary is not reviewing the code and would be recorded as though it were. (Stated here because Zod refinements do not survive JSON-schema generation, so this constraint is otherwise invisible to clients.) No need to truncate before calling: diffs over ${String(MAX_DIFF_LENGTH)} chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve).`
     ),
   repoContext: z
     .string()

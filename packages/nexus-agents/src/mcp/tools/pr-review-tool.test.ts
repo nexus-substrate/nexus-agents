@@ -489,7 +489,9 @@ describe('pr_review tool', () => {
     it('should reject a diff over the 2MB input DoS cap (#4140)', () => {
       const r = PrReviewInputSchema.safeParse({
         prTitle: 'x',
-        prDiff: VALID_DIFF + '+pad\n'.repeat(MAX_DIFF_INPUT_LENGTH),
+        // Exact off-by-one probe, not a 10MB allocation: pad to precisely one
+        // char over the cap while staying a structurally valid diff.
+        prDiff: VALID_DIFF + '+'.repeat(MAX_DIFF_INPUT_LENGTH + 1 - VALID_DIFF.length),
       });
       expect(r.success).toBe(false);
     });
@@ -757,6 +759,31 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     expect(records).toHaveLength(1);
     expect(records[0]?.verdict).toBe('approve');
     expect(verifyPrReviewRecordSet(records).ok).toBe(true);
+  });
+
+  it('skips with diff-not-unified when prDiff is not a diff, even with a full binding (#4451)', () => {
+    // The schema already rejects this at the MCP entrance, but scripts/
+    // pr-review-local-ledger.ts builds a PrReviewInput literal and calls
+    // persistReviewRecord directly. Since the #4451 harm is a fabricated
+    // `verified: true` LEDGER RECORD, the writer needs its own gate — otherwise
+    // the check covers one of two doors into the thing it protects.
+    const outcome = persistReviewRecord({
+      // Bypass the schema exactly as the script does.
+      input: {
+        ...input({ prNumber: 101, baseSha: BASE_SHA }),
+        prDiff: 'This PR deletes work-balancer.ts (388 lines) and updates two mocks.',
+      },
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    expect(outcome).toEqual(
+      expect.objectContaining({ persisted: false, reason: 'diff-not-unified' })
+    );
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    expect(readPrReviewRecords(path).records).toHaveLength(0);
   });
 
   it('skips with binding-inputs-absent when prNumber or baseSha is missing', () => {

@@ -114,47 +114,6 @@ function extractPath(fileText: string): string {
  *    (kept whole or dropped as a unit).
  *  - Empty input → `[]`.
  */
-/**
- * Line-anchored markers that identify text as a unified diff (#4451).
- *
- * Deliberately broader than `splitByFile`'s `diff --git`, which is git-specific:
- * `diff -u`, `svn diff`, and plain patch files produce valid, reviewable diffs
- * with only `---`/`+++` headers or bare `@@` hunks. `pr-review-tool.test.ts:374`
- * is exactly that shape, so a git-only check would reject one of the tool's own
- * fixtures.
- *
- * All are anchored with `^` under the `m` flag: prose that merely *mentions*
- * "diff --git" or "@@" mid-sentence must not qualify.
- */
-const UNIFIED_DIFF_MARKERS: readonly RegExp[] = Object.freeze([
-  /^diff --git /m,
-  /^--- /m,
-  /^\+\+\+ /m,
-  /^@@ .* @@/m,
-]);
-
-/**
- * Whether `text` is structurally a unified diff.
- *
- * This is a *shape* gate, not a correctness gate: it answers "did the caller
- * pass a diff, or something else entirely?" It cannot tell whether the diff is
- * the one actually under review — that is what provenance metadata is for.
- *
- * Motivation (#4451): `pr_review` previously validated `prDiff` by length only,
- * so a prose summary produced a full panel review and a `verified: true`
- * governance record indistinguishable from a real one. The panel approved a PR
- * that warranted `request_changes`, because it never saw any code.
- *
- * Kept next to `splitByFile` so there is ONE place that knows what a diff looks
- * like. Note `splitByFile` deliberately *tolerates* unstructured input (it
- * returns an `(unstructured)` segment) because the budget packer should pack
- * whatever it is handed — that tolerance is correct there, and this gate belongs
- * at the entry boundary instead.
- */
-export function looksLikeUnifiedDiff(text: string): boolean {
-  return UNIFIED_DIFF_MARKERS.some((re) => re.test(text));
-}
-
 export function splitByFile(diff: string): DiffFile[] {
   if (diff.length === 0) return [];
 
@@ -199,6 +158,59 @@ function truncateWithMarker(file: DiffFile, budget: number): string {
   const room = Math.max(0, budget - byteLen(marker));
   const prefix = Buffer.from(file.text, 'utf-8').subarray(0, room).toString('utf-8');
   return prefix + marker;
+}
+
+/** `diff --git a/x b/x` — git's own file header. */
+const GIT_FILE_HEADER = /^diff --git /m;
+/** `@@ -1,3 +1,4 @@` (optionally followed by context) — a unified hunk header. */
+const HUNK_HEADER = /^@@ .* @@/m;
+/** The `---` / `+++` old/new file-header pair. */
+const OLD_FILE_HEADER = /^--- /m;
+const NEW_FILE_HEADER = /^\+\+\+ /m;
+/**
+ * An added/removed body line. A hunk header alone proves nothing — prefixing one
+ * line of prose with `@@ -1 +1 @@` would otherwise satisfy the gate and reproduce
+ * #4451 end to end. A real hunk is always followed by `+`/`-` content.
+ *
+ * Note `^--- ` and `^+++ ` (file headers, space-suffixed) also match this, which
+ * is harmless: those paths already require the header pair.
+ */
+const BODY_LINE = /^[+-]/m;
+
+/**
+ * Whether `text` is structurally a unified diff.
+ *
+ * This is a *shape* gate, not a correctness gate: it answers "did the caller
+ * pass a diff, or something else entirely?" It cannot tell whether the diff is
+ * the one actually under review — that is what provenance metadata is for.
+ *
+ * Motivation (#4451): `pr_review` previously validated `prDiff` by length only,
+ * so a prose summary produced a full panel review and a `verified: true`
+ * governance record indistinguishable from a real one. The panel approved a PR
+ * that warranted `request_changes`, because it never saw any code.
+ *
+ * Kept next to `splitByFile` so there is ONE place that knows what a diff looks
+ * like. Note `splitByFile` deliberately *tolerates* unstructured input (it
+ * returns an `(unstructured)` segment) because the budget packer should pack
+ * whatever it is handed — that tolerance is correct there, and this gate belongs
+ * at the entry boundary instead.
+ */
+export function looksLikeUnifiedDiff(text: string): boolean {
+  // `diff --git` is git's own header and is not something prose produces, so it
+  // stands alone — and it must, since rename-only, mode-only and binary diffs
+  // legitimately carry no body lines at all.
+  if (GIT_FILE_HEADER.test(text)) return true;
+  // A hunk header must be backed by actual +/- content: `@@ -1 +1 @@` prepended
+  // to a paragraph is otherwise enough to pass, which reproduces #4451.
+  if (HUNK_HEADER.test(text) && BODY_LINE.test(text)) return true;
+  // `---` and `+++` are required TOGETHER, never alone. A lone `^--- ` is far too
+  // weak a signal: ordinary prose uses dashed rules and section headers
+  // (`--- Release notes ---`, `--- Section header ---`), and accepting those
+  // reopens exactly the hole this gate closes. In a real unified diff the two
+  // always co-occur, so requiring the pair costs nothing — verified against
+  // rename-only, binary, mode-only, CRLF, `diff -u`, bare-hunk and
+  // `git format-patch` output, all of which still qualify.
+  return OLD_FILE_HEADER.test(text) && NEW_FILE_HEADER.test(text);
 }
 
 /**
