@@ -318,31 +318,17 @@ interface CapacityInfo {
 
 ---
 
-## Work Balancer (IWorkBalancer)
+## Work Balancer — removed (#4378)
 
-Distributes parallel tasks across available CLIs.
+`IWorkBalancer` / `WorkBalancer` was removed in #4378 by unanimous (7/0) consensus vote. It is documented here as an absence because the component was described in this file for months while having **zero production consumers** — it was never wired into `CompositeRouter` or anything else.
 
-```typescript
-interface IWorkBalancer {
-  balance(tasks: TaskProfile[]): Promise<BalanceResult>;
-  queueTask(task: TaskProfile): void;
-  getQueueDepth(): number;
-  clearQueue(): void;
-}
+The decisive problem was not that it was unused, but what it contained: alongside its task queue it carried its own weighted capability scoring (reasoning / codeGeneration / speed / cost / context), duplicating the concern `SharedTaskAnalyzer` and `TopsisRouter` own canonically. Wiring it in would have introduced a second scoring-and-dispatch world into the canonical routing chain rather than avoiding duplication.
 
-interface BalanceResult {
-  assignments: Map<string, CliName>;
-  unassigned: string[];
-  reasoning: Record<string, ScoreBreakdown>;
-}
-```
+`CompositeRouter.getCapacityDashboard()` and its helper `fetchCapacityData` were removed in the same change — a read-only surface whose only references were two test mocks.
 
-### Balancing Algorithm
+**Capacity-aware routing is not gone; it is relocating.** #4373 implements capacity exclusion as a predicate inside the existing stage chain (`Budget → Zero → Preference → Topsis → LinUCB`), which is the shape the routing path actually needs — a per-candidate decision input rather than a queue. The deleted component's capacity-semantics tests (exhausted flag, zero-remaining, the estimate-vs-remaining boundary) are preserved on #4373 as its seed specification.
 
-1. **Capacity check**: Filter CLIs with available capacity
-2. **Task match**: Score CLI capabilities vs task requirements
-3. **Load balance**: Distribute evenly with affinity hints
-4. **Fallback**: Queue tasks if all CLIs at capacity
+Adapter capacity remains directly available via `ICliAdapter.getCapacity()`.
 
 ---
 

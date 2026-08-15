@@ -37,25 +37,18 @@ export type {
   BudgetEnforcementMode,
 } from './token-budget-types.js';
 
-// Work balancer
-export {
-  WorkBalancer,
-  createWorkBalancer,
-  createTaskProfile,
-  capacityStatusToInfo,
-  BalancingError,
-} from './work-balancer.js';
-
-export type {
-  IWorkBalancer,
-  TaskProfile,
-  CapacityInfo,
-  QueuedTask,
-  BalancerOptions,
-  ScoreBreakdown,
-  BalanceResult,
-  BalancingErrorCode,
-} from './work-balancer.js';
+// Work balancer removed in #4378 (7/0 consensus vote). It was a second,
+// unconsumed routing implementation — it carried its own weighted capability
+// scoring alongside a task queue, duplicating the concern SharedTaskAnalyzer +
+// TopsisRouter own canonically. Capacity-aware routing exclusion belongs in the
+// CompositeRouter stage chain instead; see #4373, which carries the ported
+// capacity-semantics tests.
+//
+// Note for anyone chasing a missing symbol: `TaskProfile`, `CapacityInfo`,
+// `QueuedTask` and `ScoreBreakdown` still exist — they are independent types
+// that merely shared these names. See core/task-analysis/task-profile-adapter.ts,
+// adapters/capacity-monitor-types.ts, workflows/task-queue.ts and
+// agents/experts/expert-selector-types.ts respectively.
 
 // Memory Backend
 export {

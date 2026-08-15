@@ -422,7 +422,6 @@ describe('delegate_to_model Tool', () => {
       getRoutingMemory: ReturnType<typeof vi.fn>;
       getMetricsCollector: ReturnType<typeof vi.fn>;
       getOrchestrationObserver: ReturnType<typeof vi.fn>;
-      getCapacityDashboard: ReturnType<typeof vi.fn>;
     } {
       return {
         route: vi.fn().mockResolvedValue(
@@ -470,7 +469,6 @@ describe('delegate_to_model Tool', () => {
         getRoutingMemory: vi.fn().mockReturnValue(undefined),
         getMetricsCollector: vi.fn().mockReturnValue(undefined),
         getOrchestrationObserver: vi.fn().mockReturnValue(undefined),
-        getCapacityDashboard: vi.fn().mockResolvedValue(new Map()),
       };
     }
 
