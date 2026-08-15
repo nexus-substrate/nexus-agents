@@ -1,5 +1,37 @@
 # nexus-agents
 
+## 3.1.1
+
+### Patch Changes
+
+- [#4458](https://github.com/nexus-substrate/nexus-agents/pull/4458) [`9175773`](https://github.com/nexus-substrate/nexus-agents/commit/9175773469cae953b4a30d4b666bf792389784f2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `pr_review` now rejects a `prDiff` that is not a unified diff ([#4451](https://github.com/nexus-substrate/nexus-agents/issues/4451)).
+
+  Previously `prDiff` was validated by length alone, so **a prose summary of a change was accepted**: it ran a full 5-voter panel and persisted a `verified: true` governance record whose `reviewedDiffHash` was the hash of the prose. Nothing in the record distinguished it from a review of real code, and the panel approved a PR that warranted `request_changes` — because it never saw any code.
+
+  Validation accepts any unified diff, not only git's: a `diff --git` header, an `@@ … @@` hunk header, or the `---`/`+++` file-header **pair**. All markers are line-anchored, so prose that merely mentions them does not qualify. Non-git diffs from `diff -u`, `svn diff`, or a patch file remain valid, as do rename-only, binary, mode-only and CRLF diffs.
+
+  The `---`/`+++` markers are required together rather than alone: a lone `---` line is too weak a signal, since prose uses dashed rules and section headers routinely (`--- Release notes ---`). In a real unified diff the two always co-occur, so requiring the pair costs nothing and closes that gap.
+
+  A hunk header alone is not enough either: `@@ -1 +1 @@` prepended to a paragraph must not qualify, so the hunk path additionally requires `+`/`-` body lines. `diff --git` stands alone, since rename-only, mode-only and binary diffs legitimately carry no body lines.
+
+  **The check runs at two boundaries, not one.** The schema guards the MCP entrance, but `scripts/pr-review-local-ledger.ts` builds a `PrReviewInput` literal and calls `persistReviewRecord` directly, never touching the schema. Since the harm is a fabricated `verified: true` **ledger record**, `persistReviewRecord` now refuses with `reason: 'diff-not-unified'` — otherwise the gate covered one of two doors into the thing it protects.
+
+  The predicate (`looksLikeUnifiedDiff`) lives beside `splitByFile` in `pr-review-diff-budget.ts` so one module owns what a diff looks like. `splitByFile`'s own tolerance of unstructured input is unchanged — that is correct for the budget packer, which should pack whatever it is handed; the gate belongs at the boundaries instead.
+
+  Known limitation: a _non-git_ binary-only diff (`Binary files a/x.png and b/x.png differ` from `diff -u`/`svn`, with no `diff --git` line) carries no marker and is rejected. Git's own binary diffs are unaffected.
+
+  This closes the input path. It does not retroactively mark existing records, and it cannot tell whether a syntactically valid diff is the diff actually under review — record provenance metadata remains tracked on [#4451](https://github.com/nexus-substrate/nexus-agents/issues/4451).
+
+- [#4461](https://github.com/nexus-substrate/nexus-agents/pull/4461) [`a6029e6`](https://github.com/nexus-substrate/nexus-agents/commit/a6029e66a7e28294a90260a31572a46fbe923485) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Warn callers that a `consensus_vote` tally cannot express a multi-option split ([#4452](https://github.com/nexus-substrate/nexus-agents/issues/4452), mitigation).
+
+  The tally records approve/reject/abstain only. When a proposal asks voters to choose among named options (A/B/C), every voter who engages constructively returns `approve` — so the result records as **unanimous, 100%** even when the panel disagreed about _which option_. A live 6–1 split was persisted as `{"decision":"approved","approvalPercentage":100,"voteCounts":{"approve":7,"reject":0}}`, with the real distribution recoverable only by reading seven free-text `reasoning` fields.
+
+  Threshold semantics invert the same way: `unanimous` is meant to be the strictest bar, but on a multi-option proposal it clears trivially, because everyone approves while choosing different things. A 4/3 split across two options would also record as 100%.
+
+  This is documentation only — the `proposal` and `strategy` field descriptions and the advertised tool description now state the limitation, so a caller is warned before relying on the number rather than after. The structural fix (a declared `options` input, a per-voter `selectedOption`, thresholds evaluated over the option tally, and explicit dissent in the record) remains tracked on [#4452](https://github.com/nexus-substrate/nexus-agents/issues/4452).
+
+  Matters because vote records feed the authority-ladder ratification path and the [#3849](https://github.com/nexus-substrate/nexus-agents/issues/3849) audit→enforce evidence base: a record asserting unanimity where a 6–1 split occurred is misleading in the direction of overconfidence.
+
 ## 3.1.0
 
 ### Minor Changes
