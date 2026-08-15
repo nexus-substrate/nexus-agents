@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SENSITIVE_PATH_PATTERNS,
+  looksLikeUnifiedDiff,
   securityFirstPack,
   splitByFile,
   type DiffFile,
@@ -186,5 +187,48 @@ describe('pr-review-diff-budget', () => {
       expect(SENSITIVE_PATH_PATTERNS).toContain('.env');
       expect(SENSITIVE_PATH_PATTERNS.every((p) => typeof p === 'string')).toBe(true);
     });
+  });
+});
+
+// ============================================================================
+// looksLikeUnifiedDiff (#4451)
+// ============================================================================
+
+describe('looksLikeUnifiedDiff', () => {
+  it('accepts a git-style diff', () => {
+    expect(looksLikeUnifiedDiff('diff --git a/x.ts b/x.ts\n+line\n')).toBe(true);
+  });
+
+  it('accepts a unified diff with no `diff --git` header', () => {
+    // Output of `diff -u`, `svn diff`, or a plain patch file. The tool's own
+    // fixture at pr-review-tool.test.ts:374 is this shape, so a
+    // `diff --git`-only check would reject a legitimate diff.
+    expect(looksLikeUnifiedDiff('--- a/foo.ts\n+++ b/foo.ts\n@@ -1 +1 @@\n-old\n+new')).toBe(true);
+  });
+
+  it('accepts a bare hunk header', () => {
+    expect(looksLikeUnifiedDiff('@@ -1,3 +1,4 @@\n context\n+added\n')).toBe(true);
+  });
+
+  it('rejects prose', () => {
+    // The actual #4451 payload shape: a English-language summary of a change,
+    // which produced a `verified: true` governance record.
+    const prose =
+      'This PR deletes packages/nexus-agents/src/context/work-balancer.ts (388 lines), ' +
+      'removes the barrel exports, and updates two test mocks. Verified: tsc clean.';
+    expect(looksLikeUnifiedDiff(prose)).toBe(false);
+  });
+
+  it('rejects filler with no diff structure', () => {
+    expect(looksLikeUnifiedDiff('a'.repeat(50_001))).toBe(false);
+  });
+
+  it('rejects the empty string', () => {
+    expect(looksLikeUnifiedDiff('')).toBe(false);
+  });
+
+  it('requires the marker at the start of a line, not merely present', () => {
+    // Prose that merely mentions the tokens must not pass.
+    expect(looksLikeUnifiedDiff('I ran diff --git and saw @@ markers in the output.')).toBe(false);
   });
 });

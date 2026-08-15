@@ -44,7 +44,12 @@ import { runAsJob } from '../jobs/run-as-job.js';
 import { FINDINGS_FORMAT_INSTRUCTIONS, type Finding } from './pr-review-findings.js';
 import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
 // prettier-ignore
-import { applyPartialCoverageGate, packDiffForReview, type PrReviewCoverage } from './pr-review-diff-budget.js';
+import {
+  applyPartialCoverageGate,
+  looksLikeUnifiedDiff,
+  packDiffForReview,
+  type PrReviewCoverage,
+} from './pr-review-diff-budget.js';
 // #4278: split out of this file to stay under the max-lines budget (no behavior change).
 import { toPrReviewVote, summarizeReviews } from './pr-review-result-mapping.js';
 
@@ -106,6 +111,17 @@ export const PrReviewInputSchema = z.object({
     .string()
     .min(1)
     .max(MAX_DIFF_INPUT_LENGTH)
+    // #4451: previously length-validated only, so a prose summary produced a
+    // full panel review and a `verified: true` governance record that was
+    // indistinguishable from a real one — the panel approved a PR that
+    // warranted request_changes because it never saw any code. Fail closed on
+    // anything without unified-diff structure, per the untrusted-input rule.
+    .refine(looksLikeUnifiedDiff, {
+      message:
+        'prDiff must be a unified diff (expected a `diff --git`, `---`/`+++`, or `@@ … @@` line). ' +
+        'Prose descriptions of a change are rejected: a review of a summary is not a review of the code, ' +
+        'and would be recorded as though it were (#4451).',
+    })
     .describe(
       `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). No need to truncate before calling: diffs over ${String(MAX_DIFF_LENGTH)} chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve).`
     ),

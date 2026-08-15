@@ -51,6 +51,13 @@ import {
 import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
 import { verifyPrReviewRecordSet } from '../../audit/pr-review-record.js';
 
+/**
+ * Smallest input satisfying the #4451 unified-diff shape gate. Tests whose
+ * subject is dispatch, simulation, or repoPath use this so they exercise the
+ * field they name instead of tripping over diff validation.
+ */
+const MINIMAL_DIFF = 'diff --git a/x.ts b/x.ts\n@@ -1 +1 @@\n-a\n+b\n';
+
 describe('pr_review tool', () => {
   describe('PR_REVIEW_ROLES', () => {
     it('should be exactly 5 roles per #2233 design', () => {
@@ -452,8 +459,15 @@ describe('pr_review tool', () => {
   });
 
   describe('PrReviewInputSchema', () => {
+    /**
+     * Smallest input that satisfies the #4451 shape gate. Tests below that are
+     * about title/size/defaults use this so they exercise the field they name
+     * rather than tripping over diff validation.
+     */
+    const VALID_DIFF = MINIMAL_DIFF;
+
     it('should reject empty title', () => {
-      const r = PrReviewInputSchema.safeParse({ prTitle: '', prDiff: 'x' });
+      const r = PrReviewInputSchema.safeParse({ prTitle: '', prDiff: VALID_DIFF });
       expect(r.success).toBe(false);
     });
 
@@ -465,36 +479,63 @@ describe('pr_review tool', () => {
     it('accepts a diff between the panel budget and the 2MB input cap (#4140)', () => {
       // Pre-#4140 this hard-failed at 50k; now diffs up to MAX_DIFF_INPUT_LENGTH are
       // accepted and (over 50k) security-prioritized + partially reviewed.
-      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: 'a'.repeat(50_001) });
+      // Padded with diff-shaped body lines so it stays a valid diff at size.
+      const big = VALID_DIFF + '+pad\n'.repeat(12_000);
+      expect(big.length).toBeGreaterThan(50_000);
+      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: big });
       expect(r.success).toBe(true);
     });
 
     it('should reject a diff over the 2MB input DoS cap (#4140)', () => {
       const r = PrReviewInputSchema.safeParse({
         prTitle: 'x',
-        prDiff: 'a'.repeat(MAX_DIFF_INPUT_LENGTH + 1),
+        prDiff: VALID_DIFF + '+pad\n'.repeat(MAX_DIFF_INPUT_LENGTH),
       });
       expect(r.success).toBe(false);
     });
 
     it('should default simulate to false', () => {
-      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: 'y' });
+      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: VALID_DIFF });
       expect(r.success).toBe(true);
       if (r.success) expect(r.data.simulate).toBe(false);
     });
 
     it('should accept minimal valid input', () => {
-      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: 'y' });
+      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: VALID_DIFF });
+      expect(r.success).toBe(true);
+    });
+
+    it('rejects a prose summary passed as prDiff (#4451)', () => {
+      // The exact defect: a description of a change used to validate, run a full
+      // 5-voter panel, and persist a `verified: true` governance record
+      // indistinguishable from a review of real code.
+      const prose =
+        'This PR deletes work-balancer.ts (388 lines), removes the barrel exports, ' +
+        'and updates two test mocks. Verified: tsc clean, 165 tests pass.';
+      const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: prose });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(JSON.stringify(r.error.issues)).toContain('unified diff');
+      }
+    });
+
+    it('accepts a non-git unified diff (diff -u / svn / patch file)', () => {
+      // Guards against over-narrowing the gate to `diff --git`: the fixture used
+      // by this file's own executePrReviewBody tests is exactly this shape.
+      const r = PrReviewInputSchema.safeParse({
+        prTitle: 'x',
+        prDiff: '--- a/foo.ts\n+++ b/foo.ts\n@@ -1 +1 @@\n-old\n+new',
+      });
       expect(r.success).toBe(true);
     });
 
     it('defaults dispatch to sync and accepts async (#3731)', () => {
-      expect(PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y' }).dispatch).toBe('sync');
+      expect(PrReviewInputSchema.parse({ prTitle: 'x', prDiff: VALID_DIFF }).dispatch).toBe('sync');
       expect(
-        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y', dispatch: 'async' }).dispatch
+        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: VALID_DIFF, dispatch: 'async' }).dispatch
       ).toBe('async');
       expect(() =>
-        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y', dispatch: 'bogus' })
+        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: VALID_DIFF, dispatch: 'bogus' })
       ).toThrow();
     });
   });
@@ -543,7 +584,12 @@ describe('pr_review async dispatch (#3731)', () => {
   }
 
   // simulate:true keeps the panel body fast + deterministic (no live adapters).
-  const ASYNC_ARGS = { prTitle: 'x', prDiff: 'y', simulate: true, dispatch: 'async' } as const;
+  const ASYNC_ARGS = {
+    prTitle: 'x',
+    prDiff: MINIMAL_DIFF,
+    simulate: true,
+    dispatch: 'async',
+  } as const;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'nexus-pr-async-'));
@@ -571,7 +617,9 @@ describe('pr_review async dispatch (#3731)', () => {
 
   it('runs the panel inline (sync) by default — no pending envelope', async () => {
     const handler = captureHandler();
-    const env = envelope(await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX));
+    const env = envelope(
+      await handler({ prTitle: 'x', prDiff: MINIMAL_DIFF, simulate: true }, TEST_CTX)
+    );
     expect(env['status']).toBeUndefined();
     expect(env['summary']).toBeDefined();
   });
@@ -615,7 +663,7 @@ describe('pr_review simulate fail-closed gate (#4170)', () => {
   it('rejects simulate outside a test runner with a permission envelope', async () => {
     const handler = captureHandler();
     leaveTestRunnerEnv();
-    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    const result = await handler({ prTitle: 'x', prDiff: MINIMAL_DIFF, simulate: true }, TEST_CTX);
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('NEXUS_ALLOW_SIMULATE');
     const meta = (result as { _meta?: Record<string, unknown> })._meta;
@@ -627,7 +675,7 @@ describe('pr_review simulate fail-closed gate (#4170)', () => {
     const handler = captureHandler();
     leaveTestRunnerEnv();
     const result = await handler(
-      { prTitle: 'x', prDiff: 'y', simulate: true, dispatch: 'async' },
+      { prTitle: 'x', prDiff: MINIMAL_DIFF, simulate: true, dispatch: 'async' },
       TEST_CTX
     );
     expect(result.isError).toBe(true);
@@ -638,7 +686,7 @@ describe('pr_review simulate fail-closed gate (#4170)', () => {
     const handler = captureHandler();
     leaveTestRunnerEnv();
     process.env['NEXUS_ALLOW_SIMULATE'] = '1';
-    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    const result = await handler({ prTitle: 'x', prDiff: MINIMAL_DIFF, simulate: true }, TEST_CTX);
     expect(result.isError).not.toBe(true);
     const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
     expect(output['summary']).toBeDefined();
@@ -647,7 +695,7 @@ describe('pr_review simulate fail-closed gate (#4170)', () => {
   it('stays allowed inside a test runner (existing suites unaffected)', async () => {
     // Default vitest env: VITEST=true.
     const handler = captureHandler();
-    const result = await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX);
+    const result = await handler({ prTitle: 'x', prDiff: MINIMAL_DIFF, simulate: true }, TEST_CTX);
     expect(result.isError).not.toBe(true);
   });
 });
@@ -813,7 +861,7 @@ describe('pr_review repoPath input (#4278)', () => {
   it('is accepted by PrReviewInputSchema as an optional string', () => {
     const r = PrReviewInputSchema.safeParse({
       prTitle: 'x',
-      prDiff: 'y',
+      prDiff: MINIMAL_DIFF,
       repoPath: '/some/repo/root',
     });
     expect(r.success).toBe(true);
@@ -821,7 +869,7 @@ describe('pr_review repoPath input (#4278)', () => {
   });
 
   it('omits repoPath from parsed output when not supplied', () => {
-    const r = PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y' });
+    const r = PrReviewInputSchema.parse({ prTitle: 'x', prDiff: MINIMAL_DIFF });
     expect(r.repoPath).toBeUndefined();
   });
 

@@ -114,6 +114,47 @@ function extractPath(fileText: string): string {
  *    (kept whole or dropped as a unit).
  *  - Empty input → `[]`.
  */
+/**
+ * Line-anchored markers that identify text as a unified diff (#4451).
+ *
+ * Deliberately broader than `splitByFile`'s `diff --git`, which is git-specific:
+ * `diff -u`, `svn diff`, and plain patch files produce valid, reviewable diffs
+ * with only `---`/`+++` headers or bare `@@` hunks. `pr-review-tool.test.ts:374`
+ * is exactly that shape, so a git-only check would reject one of the tool's own
+ * fixtures.
+ *
+ * All are anchored with `^` under the `m` flag: prose that merely *mentions*
+ * "diff --git" or "@@" mid-sentence must not qualify.
+ */
+const UNIFIED_DIFF_MARKERS: readonly RegExp[] = Object.freeze([
+  /^diff --git /m,
+  /^--- /m,
+  /^\+\+\+ /m,
+  /^@@ .* @@/m,
+]);
+
+/**
+ * Whether `text` is structurally a unified diff.
+ *
+ * This is a *shape* gate, not a correctness gate: it answers "did the caller
+ * pass a diff, or something else entirely?" It cannot tell whether the diff is
+ * the one actually under review — that is what provenance metadata is for.
+ *
+ * Motivation (#4451): `pr_review` previously validated `prDiff` by length only,
+ * so a prose summary produced a full panel review and a `verified: true`
+ * governance record indistinguishable from a real one. The panel approved a PR
+ * that warranted `request_changes`, because it never saw any code.
+ *
+ * Kept next to `splitByFile` so there is ONE place that knows what a diff looks
+ * like. Note `splitByFile` deliberately *tolerates* unstructured input (it
+ * returns an `(unstructured)` segment) because the budget packer should pack
+ * whatever it is handed — that tolerance is correct there, and this gate belongs
+ * at the entry boundary instead.
+ */
+export function looksLikeUnifiedDiff(text: string): boolean {
+  return UNIFIED_DIFF_MARKERS.some((re) => re.test(text));
+}
+
 export function splitByFile(diff: string): DiffFile[] {
   if (diff.length === 0) return [];
 
