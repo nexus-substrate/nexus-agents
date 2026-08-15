@@ -91,6 +91,7 @@ function makeDeps(): StageDependencies {
     resourceStrategyStage: undefined,
     distilledRuleStage: undefined,
     knnRoutingStage: undefined,
+    capacityFilterStage: undefined,
   };
 }
 

@@ -74,3 +74,13 @@ export {
 
 // Latency performance stage (priority: 80)
 export { LatencyStage, createLatencyStage, type LatencyStageConfig } from './latency-stage.js';
+
+// Capacity filter stage (priority: 25 — see the note on the class; CompositeRouter
+// takes stage order from call position, not this number) (#4373, #4351 criterion 3)
+export {
+  CapacityFilterStage,
+  createCapacityStage,
+  assessCapacity,
+  CAPACITY_EXHAUSTED,
+  type CapacityStageConfig,
+} from './capacity-stage.js';

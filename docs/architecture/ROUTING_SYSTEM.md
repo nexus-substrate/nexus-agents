@@ -326,9 +326,40 @@ The decisive problem was not that it was unused, but what it contained: alongsid
 
 `CompositeRouter.getCapacityDashboard()` and its helper `fetchCapacityData` were removed in the same change — a read-only surface whose only references were two test mocks.
 
-**Capacity-aware routing is not gone; it is relocating.** #4373 implements capacity exclusion as a predicate inside the existing stage chain (`Budget → Zero → Preference → Topsis → LinUCB`), which is the shape the routing path actually needs — a per-candidate decision input rather than a queue. The deleted component's capacity-semantics tests (exhausted flag, zero-remaining, the estimate-vs-remaining boundary) are preserved on #4373 as its seed specification.
+**Capacity-aware routing is not gone; it relocated.** See the Capacity Filter Stage below — #4373 landed the replacement as a predicate inside the stage chain, which is the shape the routing path actually needs: a per-candidate decision input rather than a queue.
 
 Adapter capacity remains directly available via `ICliAdapter.getCapacity()`.
+
+---
+
+## Capacity Filter Stage (#4373)
+
+Excludes a routing candidate whose adapter reports **measurably** exhausted capacity, so work is not routed to an adapter that cannot serve it. This is criterion 3 of #4351.
+
+Runs with the other hard filters, before any scoring stage — there is no point scoring an arm that cannot serve the request. Gated by the `enableCapacityBalancing` config flag (default `true`).
+
+### Classification, not a boolean
+
+Each candidate resolves to one of three states, and the third is the point of the design:
+
+| State        | Meaning                                                          | Effect                                |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------- |
+| `exhausted`  | `observed && (exhausted \|\| remainingTokens <= 0)`              | Excluded, reason `capacity_exhausted` |
+| `healthy`    | Observed, with capacity remaining                                | Kept                                  |
+| `unmeasured` | `observed === false`, no adapter registered, or the probe failed | Kept, counted separately              |
+
+`CapacityStatus.observed` (#4374) marks whether a reading is real. When it is false, every other field is a _default_ — an untracked adapter reports its full token limit and 0% utilization, which is indistinguishable from a genuinely idle one. So:
+
+- **Unmeasured never excludes.** Exclusion is destructive; absent evidence is not evidence.
+- **Unmeasured is never counted as healthy either.** It surfaces as a distinct `capacity:unmeasured-N` signal, so a downstream consumer can tell a measured-healthy pool from an unmeasured one. Collapsing the two is the failure mode #4436 was filed about.
+
+### Failing closed
+
+When every candidate is excluded, the stage sets `continuesPipeline: false` and the runner returns a `CompositeRoutingError` **naming each excluded arm and its reason**. #4351's original complaint was that nexus "did not represent that capacity state accurately, exclude those adapters from routing, or explain it in the terminal result" — a bare error code would have fixed only two of those three.
+
+### Known limitation
+
+The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one. The residual error is entirely on the false-negative side, which is the pre-existing behaviour it improves on.
 
 ---
 

@@ -92,7 +92,17 @@ export const CompositeRouterConfigSchema = z.object({
   linucbAlpha: z.number().positive().default(1.0),
   /** Billing mode: 'plan' zeroes cost weight, 'api' preserves current behavior (default: 'plan') */
   billingMode: z.enum(['plan', 'api']).default('plan'),
-  /** Enable capacity-aware load balancing (deprioritize exhausted CLIs) (default: true) (Issue #807) */
+  /**
+   * Enable capacity-aware routing exclusion — remove a candidate whose adapter
+   * reports *measurably* exhausted capacity (default: true) (#807, #4373).
+   *
+   * Declared for #807 but never read by any stage until #4373: for its whole
+   * life this flag defaulted to `true` while promising a behaviour that did not
+   * exist. It is reused rather than replaced by a new flag so there is one
+   * canonical switch for the concern. The wording changed from "deprioritize"
+   * to "exclude" to match #4351 criterion 3; nothing can depend on the former,
+   * since no deprioritization was ever implemented.
+   */
   enableCapacityBalancing: z.boolean().default(true),
   /** Maximum routing decision time in ms (default: 50) */
   maxDecisionTimeMs: z.number().positive().default(50),
