@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { CapacityFilterStage, CAPACITY_EXHAUSTED } from './routing/stages/index.js';
+import type { CapacityStatus, ICliAdapter, RoutingArmId } from './types.js';
 
 import { ok } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
@@ -27,6 +29,7 @@ import {
   runRoutingMemoryStage,
   runPipeline,
   type StageDependencies,
+  runCapacityStage,
 } from './composite-router-stages.js';
 
 // ============================================================================
@@ -85,6 +88,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
     resourceStrategyStage: undefined,
     distilledRuleStage: undefined,
     knnRoutingStage: undefined,
+    capacityFilterStage: undefined,
     ...overrides,
   };
 }
@@ -1000,4 +1004,130 @@ describe('runPipeline parameterized category overrides (#2415)', () => {
       }
     });
   }
+});
+
+// ============================================================================
+// runCapacityStage (#4373, #4351 criterion 3)
+// ============================================================================
+
+function capacityStatus(overrides: Partial<CapacityStatus> = {}): CapacityStatus {
+  return {
+    remainingTokens: 100_000,
+    remainingRequests: 1_000,
+    resetTime: new Date('2026-01-01T00:00:00Z'),
+    utilizationPercent: 10,
+    exhausted: false,
+    observed: true,
+    ...overrides,
+  };
+}
+
+function capacityAdapters(entries: Record<string, CapacityStatus>): Map<RoutingArmId, ICliAdapter> {
+  return new Map(
+    Object.entries(entries).map(([id, status]) => [
+      id as RoutingArmId,
+      { getCapacity: () => Promise.resolve(status) } as unknown as ICliAdapter,
+    ])
+  );
+}
+
+const capacityTask = { content: 'do the thing' } as CliTask;
+
+describe('runCapacityStage', () => {
+  it('drops an exhausted arm and keeps the rest', async () => {
+    const stage = new CapacityFilterStage(
+      capacityAdapters({
+        claude: capacityStatus({ exhausted: true }),
+        gemini: capacityStatus(),
+      }),
+      { enforceHardLimits: true }
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude', 'gemini'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['gemini']);
+  });
+
+  it('fails closed and NAMES every excluded arm when all are exhausted', async () => {
+    // Binding condition from the #4373 default-posture vote: a bare error code
+    // reproduces the #4351 complaint that nexus never explained the failure.
+    const stage = new CapacityFilterStage(
+      capacityAdapters({
+        claude: capacityStatus({ exhausted: true }),
+        gemini: capacityStatus({ exhausted: true }),
+      }),
+      { enforceHardLimits: true }
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude', 'gemini'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBeInstanceOf(CompositeRoutingError);
+    expect(result.error.message).toContain(CAPACITY_EXHAUSTED);
+    expect(result.error.message).toContain('claude');
+    expect(result.error.message).toContain('gemini');
+  });
+
+  it('is a no-op when enableCapacityBalancing is false', async () => {
+    const stage = new CapacityFilterStage(
+      capacityAdapters({ claude: capacityStatus({ exhausted: true }) })
+    );
+    const deps = makeDeps({ capacityFilterStage: stage });
+
+    const result = await runCapacityStage(capacityTask, ['claude'] as RoutingArmId[], [], {
+      ...deps,
+      config: { ...deps.config, enableCapacityBalancing: false },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['claude']);
+  });
+
+  it('records the stage in stagesExecuted', async () => {
+    const stage = new CapacityFilterStage(capacityAdapters({ claude: capacityStatus() }));
+    const stagesExecuted: string[] = [];
+
+    await runCapacityStage(
+      capacityTask,
+      ['claude'] as RoutingArmId[],
+      stagesExecuted,
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(stagesExecuted).toContain('capacity-filter');
+  });
+
+  it('the SHIPPED default is signal-only — an exhausted arm survives routing', async () => {
+    // Guards the #4456 decision at the wiring boundary, not just in the stage:
+    // CompositeRouter constructs this stage with `{}`, so a future change to
+    // DEFAULT_CONFIG that re-enables enforcement must break this test.
+    const stage = new CapacityFilterStage(
+      capacityAdapters({ claude: capacityStatus({ exhausted: true }) })
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['claude']);
+  });
 });

@@ -70,6 +70,7 @@ import {
   CapabilityMatchStage,
   QualityConstraintStage,
   ResourceStrategyStage,
+  CapacityFilterStage,
   DistilledRuleStage,
   KnnRoutingStage,
   type ConfidenceCascadeConfig,
@@ -207,6 +208,8 @@ export class CompositeRouter implements ICompositeRouter {
   private qualityConstraintStage?: QualityConstraintStage;
   /** Resource strategy stage instance (Issue #998) */
   private resourceStrategyStage?: ResourceStrategyStage;
+  /** Capacity filter stage instance (#4373, #4351 criterion 3) */
+  private capacityFilterStage?: CapacityFilterStage;
   /** Distilled rule stage instance (Issue #999) */
   private distilledRuleStage?: DistilledRuleStage;
   /** KNN routing stage instance (arXiv:2505.12601) */
@@ -376,6 +379,9 @@ export class CompositeRouter implements ICompositeRouter {
     }
     if (this.config.enableResourceStrategy) {
       this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs.resourceStrategy);
+    }
+    if (this.config.enableCapacityBalancing) {
+      this.capacityFilterStage = new CapacityFilterStage(this.adapters, {}, this.logger);
     }
     if (this.config.enableStrategyDistillation) {
       this.strategyDistiller = isPersistenceEnabled()
@@ -759,6 +765,8 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraintStage: this.qualityConstraintStage,
       // Issue #998 resource strategy
       resourceStrategyStage: this.resourceStrategyStage,
+      // #4373 capacity exclusion
+      capacityFilterStage: this.capacityFilterStage,
       // Issue #999 distilled rule stage
       distilledRuleStage: this.distilledRuleStage,
       // arXiv:2505.12601 KNN routing

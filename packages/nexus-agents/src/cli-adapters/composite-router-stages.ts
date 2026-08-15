@@ -36,6 +36,8 @@ import {
   ResourceStrategyStage,
   DistilledRuleStage,
   KnnRoutingStage,
+  CapacityFilterStage,
+  CAPACITY_EXHAUSTED,
 } from './routing/stages/index.js';
 import { createRoutingContext, getRemainingCandidates } from './routing/router-stage.js';
 import {
@@ -102,6 +104,7 @@ export interface StageDependencies {
   qualityConstraintStage: QualityConstraintStage | undefined;
   /** Resource strategy stage instance (Issue #998) */
   resourceStrategyStage: ResourceStrategyStage | undefined;
+  capacityFilterStage: CapacityFilterStage | undefined;
   /** Distilled rule stage instance (Issue #999) */
   distilledRuleStage: DistilledRuleStage | undefined;
   /** KNN routing stage instance (arXiv:2505.12601) */
@@ -142,6 +145,87 @@ export function runBudgetStage(
     return err(new CompositeRoutingError('No CLIs within budget', 'budget-filter'));
   }
   return ok({ candidates: result.eligible, withinBudget: result.withinBudget });
+}
+
+/**
+ * Runs the capacity filter stage (#4373, criterion 3 of #4351).
+ *
+ * Excludes candidates whose adapter reports measurably exhausted capacity. An
+ * unmeasured reading never excludes — see `assessCapacity`.
+ *
+ * Mirrors `runBudgetStage`: when every candidate is excluded this returns an
+ * error rather than handing an empty set downstream, so the caller fails closed
+ * with a named reason instead of routing to an adapter that cannot serve. That
+ * is the behaviour #4351 was filed for.
+ *
+ * KNOWN LIMITATION (#4455): capacity is assessed at display-slot granularity,
+ * because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot. When
+ * a CLI arm and an api arm share a slot, one arm's reading is applied to both —
+ * so an exhausted CLI can exclude a healthy `api:*` arm with its own independent
+ * quota, and vice versa. Quota is per serving route, not per vendor, so unlike
+ * the scoring stages (where slot granularity is a fair approximation) this is
+ * the wrong quantity rather than an imprecise one. Not reachable under the
+ * default `plan` billing mode, where no api arm is ever registered
+ * (`factory.ts:127`); reachable under `NEXUS_BILLING_MODE=api`. Resolves
+ * structurally with the #4391 gateway work.
+ */
+export async function runCapacityStage(
+  task: CliTask,
+  candidates: RoutingArmId[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): Promise<Result<RoutingArmId[], CompositeRoutingError>> {
+  if (!deps.config.enableCapacityBalancing || deps.capacityFilterStage === undefined) {
+    return ok(candidates);
+  }
+
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
+  stagesExecuted.push('capacity-filter');
+
+  // The try/catch is load-bearing, not defensive dressing: `route()` returning a
+  // Result does not stop it *throwing*, and an escaped throw here rejects
+  // runPipeline and the entire routing call. That is the same failure class as
+  // the synchronous-throw bug fixed inside assessAll — guarding one level down
+  // and leaving the boundary open would only have moved it.
+  let result;
+  try {
+    result = await deps.capacityFilterStage.route(ctx);
+  } catch (error) {
+    deps.logger.debug('Capacity stage threw - keeping all candidates', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return ok(candidates);
+  }
+
+  if (!result.ok) {
+    // A stage fault must not silently shrink the pool: keep every candidate.
+    deps.logger.debug('Capacity stage failed - keeping all candidates', {
+      error: result.error.message,
+    });
+    return ok(candidates);
+  }
+
+  // Use the canonical slot->arm mapping (#3422) so distinct `api:*` arms sharing
+  // a vendor slot are preserved rather than collapsed.
+  const eligible = keepArmsForSlots(candidates, getRemainingCandidates(result.value.context));
+
+  if (eligible.length === 0) {
+    // Name every excluded arm and why. Two voters on the #4373 default-posture
+    // panel made this binding: failing closed with a bare code reproduces the
+    // #4351 complaint that nexus "did not explain it in the terminal result",
+    // and an operator staring at an empty pool needs to know which adapters
+    // were dropped without re-running with debug logging.
+    const reasons = [...result.value.context.filtered.entries()]
+      .map(([cli, reason]) => `${cli} (${reason})`)
+      .join(', ');
+    return err(
+      new CompositeRoutingError(
+        `All routing candidates excluded — ${CAPACITY_EXHAUSTED}. Excluded: ${reasons}`,
+        'capacity-filter'
+      )
+    );
+  }
+  return ok(eligible);
 }
 
 /** Default complexity when no signal is available. */
@@ -926,6 +1010,12 @@ export async function runPipeline(
   if (!budgetResult.ok) return budgetResult;
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
+
+  // Capacity exclusion runs with the other hard filters, before any scoring —
+  // no point scoring an arm that cannot serve the request (#4373).
+  const capacityResult = await runCapacityStage(task, candidates, stagesExecuted, deps);
+  if (!capacityResult.ok) return capacityResult;
+  candidates = capacityResult.value;
 
   const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
   candidates = scoring.candidates;

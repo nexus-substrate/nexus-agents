@@ -26,6 +26,8 @@ The routing system intelligently selects the optimal CLI/model for each task thr
 ```
 Task
   → Budget                              (filter — eliminate over-budget CLIs)
+  → Capacity                            (classify + signal; exclusion is OFF by
+                                         default — see #4456, #4373)
   → Scoring (parallel)                  (ConfidenceCascade, CapabilityMatch,
                                          KnnRouting, DistilledRule,
                                          ResourceStrategy, ZeroRouter, Preference)
@@ -326,9 +328,61 @@ The decisive problem was not that it was unused, but what it contained: alongsid
 
 `CompositeRouter.getCapacityDashboard()` and its helper `fetchCapacityData` were removed in the same change — a read-only surface whose only references were two test mocks.
 
-**Capacity-aware routing is not gone; it is relocating.** #4373 implements capacity exclusion as a predicate inside the existing stage chain (`Budget → Zero → Preference → Topsis → LinUCB`), which is the shape the routing path actually needs — a per-candidate decision input rather than a queue. The deleted component's capacity-semantics tests (exhausted flag, zero-remaining, the estimate-vs-remaining boundary) are preserved on #4373 as its seed specification.
+**Capacity-aware routing is not gone; it relocated.** See the Capacity Filter Stage below — #4373 landed the replacement as a predicate inside the stage chain, which is the shape the routing path actually needs: a per-candidate decision input rather than a queue.
 
 Adapter capacity remains directly available via `ICliAdapter.getCapacity()`.
+
+---
+
+## Capacity Filter Stage (#4373)
+
+Classifies each routing candidate's adapter capacity and reports it. Under `enforceHardLimits: true` it also **excludes** measurably exhausted candidates, so work is not routed to an adapter that cannot serve it.
+
+**The shipped default is signal-only — it does not exclude.** See "Why enforcement is held" below. This means criterion 3 of #4351 is **not yet closed**.
+
+Runs with the other hard filters, before any scoring stage — there is no point scoring an arm that cannot serve the request. Gated by the `enableCapacityBalancing` config flag (default `true`).
+
+### Classification, not a boolean
+
+Each candidate resolves to one of three states, and the third is the point of the design:
+
+| State        | Meaning                                                          | Effect                                |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------- |
+| `exhausted`  | `observed && (exhausted \|\| remainingTokens <= 0)`              | Excluded, reason `capacity_exhausted` |
+| `healthy`    | Observed, with capacity remaining                                | Kept                                  |
+| `unmeasured` | `observed === false`, no adapter registered, or the probe failed | Kept, counted separately              |
+
+`CapacityStatus.observed` (#4374) marks whether a reading is real. When it is false, every other field is a _default_ — an untracked adapter reports its full token limit and 0% utilization, which is indistinguishable from a genuinely idle one. So:
+
+- **Unmeasured never excludes.** Exclusion is destructive; absent evidence is not evidence.
+- **Unmeasured is never counted as healthy either.** It surfaces as a distinct `capacity:unmeasured-N` signal, so a downstream consumer can tell a measured-healthy pool from an unmeasured one. Collapsing the two is the failure mode #4436 was filed about.
+
+### Failing closed
+
+When every candidate is excluded, the stage sets `continuesPipeline: false` and the runner returns a `CompositeRoutingError` **naming each excluded arm and its reason**. #4351's original complaint was that nexus "did not represent that capacity state accurately, exclude those adapters from routing, or explain it in the terminal result" — a bare error code would have fixed only two of those three.
+
+### Why enforcement is held (#4456)
+
+`CapacityStatus.exhausted` does not mean what its name suggests. `CapacityTracker` computes it over a **rolling 60-second window** against **hardcoded per-minute estimates** (`capacity-tracker.ts:22-37` — claude 100k tokens / 50 requests, described in-file as "conservative estimates"), and it self-clears within the minute:
+
+```ts
+const exhausted = remainingTokens === 0 || remainingRequests === 0;
+```
+
+So it is a **rate-limit heuristic**, not quota exhaustion. Two consequences:
+
+- It cannot detect #4351's actual incident — weekly _plan_ quota exhausted, possibly by another process. That never trips a per-minute counter.
+- It fires on ordinary bursty operation. A 7-voter consensus panel or a subagent fan-out can cross 50 requests/minute with plenty of quota left. Enforcing would empty the candidate pool and fail routing closed for a condition that resolves itself in under a minute.
+
+Enforcement is therefore opt-in (`enforceHardLimits: true`) until a durable, provider-asserted quota signal exists — #4456 proposes separating `rateLimited` from `quotaExhausted`, sourced from provider rate-limit headers or a classified quota error (#4382).
+
+### Known limitations
+
+**1. Local visibility only.** The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one.
+
+**2. Slot granularity vs. serving route (#4455).** Capacity is assessed per display slot, because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot (`api:anthropic` → `claude`). When a CLI arm and an api arm share a slot, one arm's reading is applied to both — an exhausted CLI can exclude a healthy `api:*` arm holding its own independent quota, and an exhausted api arm can go unexcluded.
+
+Slot granularity is a pre-existing property of every `RoutingContext`-based stage, and for _scoring_ it is a fair approximation. For capacity it is not: quota belongs to a credential and a serving route, not to a vendor, and this stage's action is exclusion rather than a score nudge. Not reachable under the default `plan` billing mode, where no api arm is registered; reachable under `NEXUS_BILLING_MODE=api`. Resolves structurally with the #4391 gateway work.
 
 ---
 
