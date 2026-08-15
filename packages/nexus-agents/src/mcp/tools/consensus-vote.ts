@@ -1122,7 +1122,10 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'or 3 with quickMode (architect, security, scope_steward), voting with configurable strategies. ' +
   'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
   "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
-  'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record.';
+  'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record. ' +
+  'CAVEAT (#4452): the tally is approve/reject/abstain only. A proposal that asks voters to pick ' +
+  'among named options records as unanimous even when they picked DIFFERENT options — recover the ' +
+  "real split from each voter's reasoning, and do not report the percentage as agreement.";
 
 /**
  * Registers the consensus_vote tool with the MCP server.
