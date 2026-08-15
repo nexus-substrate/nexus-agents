@@ -589,27 +589,11 @@ export function buildPreferenceStats(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Capacity-Aware Load Balancing (Issue #807)
-// ---------------------------------------------------------------------------
-
-import type { CapacityStatus, ICliAdapter } from './types.js';
-
-/**
- * Fetches capacity status from all adapters.
- * Returns a map of CLI name to capacity status.
- */
-export async function fetchCapacityData(
-  adapters: Map<RoutingArmId, ICliAdapter>
-): Promise<Map<RoutingArmId, CapacityStatus>> {
-  const result = new Map<RoutingArmId, CapacityStatus>();
-  const entries = [...adapters];
-  const settled = await Promise.allSettled(entries.map(([, a]) => a.getCapacity()));
-  for (const [idx, entry] of entries.entries()) {
-    const outcome = settled[idx];
-    if (outcome?.status === 'fulfilled') {
-      result.set(entry[0], outcome.value);
-    }
-  }
-  return result;
-}
+// `fetchCapacityData` was removed with #4378. Its only caller was
+// `CompositeRouter.getCapacityDashboard`, itself a read-only surface with no
+// production consumer (its only references were two test mocks), so it was
+// orphaned by that deletion rather than being independently useful.
+//
+// #4373 will reintroduce capacity reads as a routing *exclusion predicate*
+// inside the stage chain — a decision input, not a dashboard. Adapter capacity
+// is still available directly via `ICliAdapter.getCapacity()`.

@@ -37,25 +37,29 @@ export type {
   BudgetEnforcementMode,
 } from './token-budget-types.js';
 
-// Work balancer
-export {
-  WorkBalancer,
-  createWorkBalancer,
-  createTaskProfile,
-  capacityStatusToInfo,
-  BalancingError,
-} from './work-balancer.js';
-
-export type {
-  IWorkBalancer,
-  TaskProfile,
-  CapacityInfo,
-  QueuedTask,
-  BalancerOptions,
-  ScoreBreakdown,
-  BalanceResult,
-  BalancingErrorCode,
-} from './work-balancer.js';
+// Work balancer removed in #4378 (7/0 consensus vote). It was a second,
+// unconsumed routing implementation — it carried its own weighted capability
+// scoring alongside a task queue, duplicating the concern SharedTaskAnalyzer +
+// TopsisRouter own canonically. Capacity-aware routing exclusion belongs in the
+// CompositeRouter stage chain instead; see #4373, which carries the ported
+// capacity-semantics tests.
+//
+// Note for anyone chasing a symbol that used to be re-exported here: the names
+// below were NOT unique to the work balancer, so a same-named type elsewhere is
+// a different type, not a replacement. Exact status of each:
+//
+//   TaskProfile     — core/task-analysis/task-profile-adapter.ts:28. Exported
+//                     from its own module; NOT in any exports/*.ts public barrel.
+//   CapacityInfo    — adapters/capacity-monitor-types.ts:15. Same: module-level
+//                     export only, not public.
+//   ScoreBreakdown  — agents/experts/expert-selector-types.ts:71. This one IS
+//                     public, via exports/agents.ts.
+//   QueuedTask      — workflows/task-queue.ts:16 is `interface QueuedTask<T>`:
+//                     module-private (no `export`) AND generic, so it is neither
+//                     reachable nor substitutable for the deleted non-generic type.
+//
+// If you need the deleted shape, define it locally — do not reach for a
+// same-named type above expecting compatibility.
 
 // Memory Backend
 export {
