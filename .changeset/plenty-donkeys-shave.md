@@ -1,13 +1,11 @@
 ---
-'nexus-agents': minor
+'nexus-agents': major
 ---
 
-Remove `WorkBalancer` and `CompositeRouter.getCapacityDashboard()` (#4378, 7/0 consensus vote).
+**BREAKING:** Remove `CompositeRouter.getCapacityDashboard()` from the public API, and remove the internal `WorkBalancer` (#4378, 7/0 consensus vote).
 
-`WorkBalancer` had zero production consumers and was never wired into the routing chain. Beyond being unused, it carried its own weighted capability scoring alongside its task queue, duplicating the concern `SharedTaskAnalyzer` and `TopsisRouter` own canonically — so wiring it in would have introduced a second scoring-and-dispatch path into `CompositeRouter` rather than avoiding duplication.
+`getCapacityDashboard()` is removed from both the publicly-exported `ICompositeRouter` interface and its implementing `CompositeRouter` class. External code that calls this method, or that implements `ICompositeRouter`, will break. There is no drop-in replacement: adapter capacity is available directly via `ICliAdapter.getCapacity()`, and #4373 reintroduces capacity as a routing _exclusion predicate_ inside the stage chain rather than as a read-only dashboard.
 
-`getCapacityDashboard()` and its helper `fetchCapacityData` are removed with it: a read-only surface whose only references were two test mocks.
+The method had no in-tree production consumers — its only references were two test mocks — which is why it was removed rather than kept for compatibility.
 
-Not a breaking change for package consumers — neither symbol was reachable from the public entrypoint (`dist/index.d.ts` contained no reference to either), only from the internal `context/` barrel.
-
-Capacity-aware routing is not lost. #4373 reimplements capacity exclusion as a predicate inside the existing stage chain, which is the shape the router actually needs; the deleted component's capacity-semantics tests are preserved there as its seed specification. Adapter capacity remains available via `ICliAdapter.getCapacity()`.
+`WorkBalancer` (and its types, `createWorkBalancer`, `capacityStatusToInfo`, `BalancingError`, `IWorkBalancer`, `BalancerOptions`, `BalanceResult`) was **not** part of the public API — it was reachable only through the internal `context/` barrel, never through `exports/context.ts`. Its removal is not breaking for package consumers. It had zero production consumers and carried its own weighted capability scoring, duplicating the concern `SharedTaskAnalyzer` and `TopsisRouter` own canonically; wiring it in would have created a second scoring path inside the canonical router.
