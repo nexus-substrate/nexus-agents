@@ -158,13 +158,28 @@ jobs:
         run: |
           echo "## Phase 3: Issue Health" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          OPEN=$(gh issue list --state open --json number | jq 'length')
+          # Every count below MUST pass --limit. `gh issue list` defaults to a
+          # page size of 30, so an unlimited call silently returns a truncated
+          # page instead of a count (#4447). That is not a cosmetic bug: STALE
+          # feeds the create-issue gate below, and because gh returns the
+          # newest issues first, the 30 it returned were the ones least likely
+          # to be stale — so STALE was pinned at 0 and the stale-issue trigger
+          # never fired once. At the time of the fix the real numbers were 75
+          # open / 28 stale while this step reported 30 / 0.
+          ISSUE_LIMIT=1000
+          OPEN=$(gh issue list --state open --limit "$ISSUE_LIMIT" --json number | jq 'length')
           THIRTY_DAYS_AGO=$(date -d '30 days ago' --iso-8601)
-          STALE=$(gh issue list --state open --json updatedAt --jq "[.[] | select(.updatedAt < \"$THIRTY_DAYS_AGO\")] | length")
-          EPICS=$(gh issue list --state open --label epic --json number | jq 'length')
-          BUGS=$(gh issue list --state open --label bug --json number | jq 'length')
-          ENHANCEMENTS=$(gh issue list --state open --label enhancement --json number | jq 'length')
-          RESEARCH=$(gh issue list --state open --label research --json number | jq 'length')
+          STALE=$(gh issue list --state open --limit "$ISSUE_LIMIT" --json updatedAt --jq "[.[] | select(.updatedAt < \"$THIRTY_DAYS_AGO\")] | length")
+          EPICS=$(gh issue list --state open --limit "$ISSUE_LIMIT" --label epic --json number | jq 'length')
+          BUGS=$(gh issue list --state open --limit "$ISSUE_LIMIT" --label bug --json number | jq 'length')
+          ENHANCEMENTS=$(gh issue list --state open --limit "$ISSUE_LIMIT" --label enhancement --json number | jq 'length')
+          RESEARCH=$(gh issue list --state open --limit "$ISSUE_LIMIT" --label research --json number | jq 'length')
+          # Make a future truncation loud rather than silent. If OPEN lands
+          # exactly on the limit the list was almost certainly cut off again,
+          # and every derived count is suspect.
+          if [ "$OPEN" -ge "$ISSUE_LIMIT" ]; then
+            echo "::warning::Open-issue count hit the --limit ceiling ($ISSUE_LIMIT); counts are truncated and stale detection is unreliable. Raise ISSUE_LIMIT (#4447)."
+          fi
           echo "| Category | Count |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Open Issues | $OPEN |" >> $GITHUB_STEP_SUMMARY
