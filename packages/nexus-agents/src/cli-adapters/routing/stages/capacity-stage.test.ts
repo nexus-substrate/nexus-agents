@@ -51,6 +51,13 @@ function adapters(entries: Record<string, CapacityStatus | Error>): Map<RoutingA
 
 const CLIS = ['claude', 'gemini'] as const;
 
+/**
+ * The shipped default is signal-only (see DEFAULT_CONFIG). Exclusion tests must
+ * opt in explicitly — otherwise every "does not exclude" assertion below would
+ * pass trivially and prove nothing.
+ */
+const ENFORCING = { enforceHardLimits: true } as const;
+
 beforeEach(() => {
   setTimeProvider(new FixedTimeProvider(1_700_000_000_000));
 });
@@ -65,7 +72,8 @@ describe('CapacityFilterStage', () => {
   describe('exclusion on measured exhaustion', () => {
     it('excludes an adapter whose capacity is observed and exhausted', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true, remainingTokens: 0 }), gemini: capacity() })
+        adapters({ claude: capacity({ exhausted: true, remainingTokens: 0 }), gemini: capacity() }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -81,7 +89,11 @@ describe('CapacityFilterStage', () => {
       // independently (work-balancer.ts:378). A provider can report zero
       // remaining without setting the flag; the stricter form is ported.
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: false, remainingTokens: 0 }), gemini: capacity() })
+        adapters({
+          claude: capacity({ exhausted: false, remainingTokens: 0 }),
+          gemini: capacity(),
+        }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -93,7 +105,8 @@ describe('CapacityFilterStage', () => {
 
     it('uses a normalized capacity_exhausted diagnostic as the filter reason', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() })
+        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -122,7 +135,8 @@ describe('CapacityFilterStage', () => {
         adapters({
           claude: capacity({ observed: false, exhausted: true, remainingTokens: 0 }),
           gemini: capacity(),
-        })
+        }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -146,7 +160,60 @@ describe('CapacityFilterStage', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.value.context.signals.join(' ')).toContain('capacity:unmeasured-1');
-      expect(result.value.context.signals.join(' ')).not.toContain('capacity:unmeasured-0');
+    });
+
+    it('emits no unmeasured signal at all when every candidate was measured', async () => {
+      // The real complement of the case above. A previous version asserted
+      // `not.toContain('capacity:unmeasured-0')` inside the unmeasured===1 test,
+      // which no implementation could fail — a tautology, not coverage.
+      const stage = new CapacityFilterStage(adapters({ claude: capacity(), gemini: capacity() }));
+
+      const result = await stage.route(createRoutingContext('t', CLIS));
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.context.signals.join(' ')).not.toContain('capacity:unmeasured');
+    });
+  });
+
+  describe('shipped default is signal-only', () => {
+    it('does NOT exclude an exhausted adapter unless enforcement is opted into', async () => {
+      // The available `exhausted` flag is a rolling-60s rate heuristic against
+      // hardcoded per-minute estimates (capacity-tracker.ts:22-37), not quota
+      // exhaustion. Hard-excluding on it would let an ordinary burst empty the
+      // pool and fail routing closed for a condition that self-clears. See #4456.
+      const stage = new CapacityFilterStage(
+        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() })
+      );
+
+      const result = await stage.route(createRoutingContext('t', CLIS));
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.context.filtered.size).toBe(0);
+      expect(getRemainingCandidates(result.value.context)).toEqual(['claude', 'gemini']);
+      // ...but it is still reported, so the signal is available as evidence.
+      expect(result.value.context.signals.join(' ')).toContain(CAPACITY_EXHAUSTED);
+    });
+  });
+
+  describe('probe timeout', () => {
+    it('treats a hanging getCapacity() as unmeasured rather than stalling routing', async () => {
+      const hanging = { getCapacity: () => new Promise<CapacityStatus>(() => {}) };
+      const stage = new CapacityFilterStage(
+        new Map<RoutingArmId, ICliAdapter>([
+          ['claude', hanging as unknown as ICliAdapter],
+          ['gemini', adapterWith(capacity())],
+        ]),
+        { ...ENFORCING, probeTimeoutMs: 10 }
+      );
+
+      const result = await stage.route(createRoutingContext('t', CLIS));
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.context.filtered.has('claude')).toBe(false);
+      expect(result.value.context.signals.join(' ')).toContain('capacity:unmeasured-1');
     });
   });
 
@@ -174,7 +241,8 @@ describe('CapacityFilterStage', () => {
         adapters({
           claude: capacity({ exhausted: true }),
           gemini: capacity({ exhausted: true }),
-        })
+        }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -189,7 +257,8 @@ describe('CapacityFilterStage', () => {
   describe('resilience', () => {
     it('does not exclude an adapter whose getCapacity() rejects', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: new Error('probe failed'), gemini: capacity() })
+        adapters({ claude: new Error('probe failed'), gemini: capacity() }),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -210,7 +279,8 @@ describe('CapacityFilterStage', () => {
         new Map<RoutingArmId, ICliAdapter>([
           ['claude', partial],
           ['gemini', adapterWith(capacity())],
-        ])
+        ]),
+        ENFORCING
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -223,7 +293,7 @@ describe('CapacityFilterStage', () => {
     });
 
     it('does not exclude a candidate that has no registered adapter', async () => {
-      const stage = new CapacityFilterStage(adapters({ gemini: capacity() }));
+      const stage = new CapacityFilterStage(adapters({ gemini: capacity() }), ENFORCING);
 
       const result = await stage.route(createRoutingContext('t', CLIS));
 
@@ -234,7 +304,8 @@ describe('CapacityFilterStage', () => {
 
     it('skips candidates already filtered by an earlier stage', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() })
+        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() }),
+        ENFORCING
       );
       const ctx = createRoutingContext('t', CLIS);
       const preFiltered = { ...ctx, filtered: new Map([['claude' as const, 'budget']]) };

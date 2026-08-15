@@ -1039,7 +1039,8 @@ describe('runCapacityStage', () => {
       capacityAdapters({
         claude: capacityStatus({ exhausted: true }),
         gemini: capacityStatus(),
-      })
+      }),
+      { enforceHardLimits: true }
     );
 
     const result = await runCapacityStage(
@@ -1061,7 +1062,8 @@ describe('runCapacityStage', () => {
       capacityAdapters({
         claude: capacityStatus({ exhausted: true }),
         gemini: capacityStatus({ exhausted: true }),
-      })
+      }),
+      { enforceHardLimits: true }
     );
 
     const result = await runCapacityStage(
@@ -1107,5 +1109,25 @@ describe('runCapacityStage', () => {
     );
 
     expect(stagesExecuted).toContain('capacity-filter');
+  });
+
+  it('the SHIPPED default is signal-only — an exhausted arm survives routing', async () => {
+    // Guards the #4456 decision at the wiring boundary, not just in the stage:
+    // CompositeRouter constructs this stage with `{}`, so a future change to
+    // DEFAULT_CONFIG that re-enables enforcement must break this test.
+    const stage = new CapacityFilterStage(
+      capacityAdapters({ claude: capacityStatus({ exhausted: true }) })
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['claude']);
   });
 });

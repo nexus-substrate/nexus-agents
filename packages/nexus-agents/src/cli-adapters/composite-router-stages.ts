@@ -180,8 +180,22 @@ export async function runCapacityStage(
   }
 
   const ctx = createRoutingContext(task.content, armsToSlots(candidates));
-  const result = await deps.capacityFilterStage.route(ctx);
   stagesExecuted.push('capacity-filter');
+
+  // The try/catch is load-bearing, not defensive dressing: `route()` returning a
+  // Result does not stop it *throwing*, and an escaped throw here rejects
+  // runPipeline and the entire routing call. That is the same failure class as
+  // the synchronous-throw bug fixed inside assessAll — guarding one level down
+  // and leaving the boundary open would only have moved it.
+  let result;
+  try {
+    result = await deps.capacityFilterStage.route(ctx);
+  } catch (error) {
+    deps.logger.debug('Capacity stage threw - keeping all candidates', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return ok(candidates);
+  }
 
   if (!result.ok) {
     // A stage fault must not silently shrink the pool: keep every candidate.

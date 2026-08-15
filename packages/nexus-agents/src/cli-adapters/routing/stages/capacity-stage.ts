@@ -1,9 +1,14 @@
 /**
  * Capacity Filter Stage
  *
- * Excludes routing candidates whose provider capacity is measurably exhausted,
- * so a task is not routed to an adapter that cannot serve it (#4373, criterion
- * 3 of #4351).
+ * Classifies each routing candidate's adapter capacity and reports it. Under
+ * `enforceHardLimits: true` it also excludes measurably exhausted candidates so
+ * a task is not routed to an adapter that cannot serve it (#4373, criterion 3
+ * of #4351).
+ *
+ * The shipped default is SIGNAL-ONLY — see `DEFAULT_CONFIG` for why, and #4456
+ * for the missing signal that would make enforcement safe. Criterion 3 of #4351
+ * is therefore not yet closed.
  *
  * This replaces the capacity semantics of the deleted `WorkBalancer` (#4378).
  * Only the *predicate* was carried over — the queue/dispatch half was the shape
@@ -40,10 +45,43 @@ export interface CapacityStageConfig {
    * filters are configured the same way.
    */
   readonly enforceHardLimits: boolean;
+  /**
+   * Per-adapter capacity-probe budget (ms). `ICliAdapter.getCapacity()` is a
+   * promise on a public interface with no timeout of its own, so an adapter that
+   * hangs would hang every routing decision. A probe that overruns is treated as
+   * `unmeasured`, never as exhausted.
+   */
+  readonly probeTimeoutMs: number;
 }
 
+/**
+ * Signal-only by default — deliberately NOT enforcing.
+ *
+ * The available `exhausted` flag is not what its name suggests. `CapacityTracker`
+ * sets it from a **rolling 60-second** window against **hardcoded per-minute
+ * estimates** (`capacity-tracker.ts:22-37`: claude 100k tokens / 50 requests,
+ * commented "conservative estimates"), and `requestCount` increments on every
+ * call whether or not token usage was reported. So `exhausted === true` means
+ * "this process made 50 claude calls in the last minute", not "the account's
+ * quota is gone", and it self-clears within 60s (`resetTime = windowStart +
+ * windowMs`).
+ *
+ * That is a rate-limit heuristic, and #4351 — the bug this stage serves — is
+ * about *weekly quota* exhaustion. Different phenomena. Hard-excluding on the
+ * heuristic would let an ordinary burst (a 7-voter panel, a subagent fan-out)
+ * empty the candidate pool and fail routing closed for a condition that clears
+ * itself, which is a self-inflicted outage rather than a fix.
+ *
+ * A 7/7 panel voted to enforce by default, but on a proposal in which I
+ * described this signal as a local *quota* lower bound. That was wrong, and the
+ * panel's decisive reasoning ("observed exhaustion implies provider-side quota
+ * is at least as exhausted") does not survive the correction. Enforcement is
+ * therefore held until a real quota signal exists (#4456); `enforceHardLimits:
+ * true` remains available for callers who have one.
+ */
 const DEFAULT_CONFIG: CapacityStageConfig = {
-  enforceHardLimits: true,
+  enforceHardLimits: false,
+  probeTimeoutMs: 2_000,
 };
 
 /**
@@ -71,7 +109,8 @@ export function assessCapacity(status: CapacityStatus): Assessment {
 }
 
 /**
- * Capacity filter stage — excludes measurably exhausted candidates.
+ * Capacity filter stage — classifies candidates, and excludes the exhausted ones
+ * only when `enforceHardLimits` is opted into.
  */
 export class CapacityFilterStage implements IRouterStage {
   readonly name = 'capacity-filter';
@@ -164,6 +203,32 @@ export class CapacityFilterStage implements IRouterStage {
   }
 
   /**
+   * Races a capacity probe against `probeTimeoutMs`.
+   *
+   * `ICliAdapter.getCapacity()` carries no timeout of its own, and the router's
+   * `maxDecisionTimeMs` is declared but not enforced anywhere, so without this a
+   * single hanging adapter would stall every routing decision. A timed-out probe
+   * rejects, which lands in the `unmeasured` branch — never `exhausted`.
+   */
+  private async probeWithTimeout(adapter: ICliAdapter): Promise<CapacityStatus> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        adapter.getCapacity(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new Error(`capacity probe timed out after ${String(this.config.probeTimeoutMs)}ms`)
+            );
+          }, this.config.probeTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Reads capacity for every remaining candidate concurrently.
    *
    * A candidate with no registered adapter, whose probe rejects, or whose
@@ -188,7 +253,7 @@ export class CapacityFilterStage implements IRouterStage {
         // slot-keyed lookup finds the CLI arm directly.
         const adapter = this.adapters.get(cli);
         if (adapter === undefined) throw new Error('no adapter registered');
-        return adapter.getCapacity();
+        return this.probeWithTimeout(adapter);
       })
     );
 
@@ -208,9 +273,11 @@ export class CapacityFilterStage implements IRouterStage {
   /**
    * Emits counts for both exhausted and unmeasured candidates.
    *
-   * `capacity:unmeasured-N` is emitted so a downstream consumer can tell a
-   * genuinely healthy panel from one nobody has measured. Suppressing it at zero
-   * would make "all healthy" and "all unknown" look alike in the signal list.
+   * `capacity:unmeasured-N` lets a downstream consumer tell a genuinely healthy
+   * panel from one nobody has measured. It is emitted only when the count is
+   * non-zero — its *absence* therefore means every candidate was measured, which
+   * is the distinction that matters. (An earlier version of this comment claimed
+   * the signal was emitted at zero too; it never was.)
    */
   private buildSignals(existing: string[], exhausted: number, unmeasured: number): string[] {
     const signals = [...existing];

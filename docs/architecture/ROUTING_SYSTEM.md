@@ -26,8 +26,8 @@ The routing system intelligently selects the optimal CLI/model for each task thr
 ```
 Task
   → Budget                              (filter — eliminate over-budget CLIs)
-  → Capacity                            (filter — eliminate measurably exhausted
-                                         arms; unmeasured never excludes, #4373)
+  → Capacity                            (classify + signal; exclusion is OFF by
+                                         default — see #4456, #4373)
   → Scoring (parallel)                  (ConfidenceCascade, CapabilityMatch,
                                          KnnRouting, DistilledRule,
                                          ResourceStrategy, ZeroRouter, Preference)
@@ -336,7 +336,9 @@ Adapter capacity remains directly available via `ICliAdapter.getCapacity()`.
 
 ## Capacity Filter Stage (#4373)
 
-Excludes a routing candidate whose adapter reports **measurably** exhausted capacity, so work is not routed to an adapter that cannot serve it. This is criterion 3 of #4351.
+Classifies each routing candidate's adapter capacity and reports it. Under `enforceHardLimits: true` it also **excludes** measurably exhausted candidates, so work is not routed to an adapter that cannot serve it.
+
+**The shipped default is signal-only — it does not exclude.** See "Why enforcement is held" below. This means criterion 3 of #4351 is **not yet closed**.
 
 Runs with the other hard filters, before any scoring stage — there is no point scoring an arm that cannot serve the request. Gated by the `enableCapacityBalancing` config flag (default `true`).
 
@@ -359,9 +361,24 @@ Each candidate resolves to one of three states, and the third is the point of th
 
 When every candidate is excluded, the stage sets `continuesPipeline: false` and the runner returns a `CompositeRoutingError` **naming each excluded arm and its reason**. #4351's original complaint was that nexus "did not represent that capacity state accurately, exclude those adapters from routing, or explain it in the terminal result" — a bare error code would have fixed only two of those three.
 
+### Why enforcement is held (#4456)
+
+`CapacityStatus.exhausted` does not mean what its name suggests. `CapacityTracker` computes it over a **rolling 60-second window** against **hardcoded per-minute estimates** (`capacity-tracker.ts:22-37` — claude 100k tokens / 50 requests, described in-file as "conservative estimates"), and it self-clears within the minute:
+
+```ts
+const exhausted = remainingTokens === 0 || remainingRequests === 0;
+```
+
+So it is a **rate-limit heuristic**, not quota exhaustion. Two consequences:
+
+- It cannot detect #4351's actual incident — weekly _plan_ quota exhausted, possibly by another process. That never trips a per-minute counter.
+- It fires on ordinary bursty operation. A 7-voter consensus panel or a subagent fan-out can cross 50 requests/minute with plenty of quota left. Enforcing would empty the candidate pool and fail routing closed for a condition that resolves itself in under a minute.
+
+Enforcement is therefore opt-in (`enforceHardLimits: true`) until a durable, provider-asserted quota signal exists — #4456 proposes separating `rateLimited` from `quotaExhausted`, sourced from provider rate-limit headers or a classified quota error (#4382).
+
 ### Known limitations
 
-**1. Local visibility only.** The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one. The residual error is entirely on the false-negative side, which is the pre-existing behaviour it improves on.
+**1. Local visibility only.** The capacity tracker sees only the current process's spend, so `remainingTokens` is a local upper bound, never authoritative. Quota consumed by another process is invisible. Consequently this stage can **miss** a genuinely exhausted adapter; it will not invent one.
 
 **2. Slot granularity vs. serving route (#4455).** Capacity is assessed per display slot, because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot (`api:anthropic` → `claude`). When a CLI arm and an api arm share a slot, one arm's reading is applied to both — an exhausted CLI can exclude a healthy `api:*` arm holding its own independent quota, and an exhausted api arm can go unexcluded.
 
