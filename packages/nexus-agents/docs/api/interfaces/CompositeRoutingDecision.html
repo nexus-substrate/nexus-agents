@@ -1,5 +1,5 @@
-<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>CompositeRoutingDecision | nexus-agents - v3.0.0</title><meta name="description" content="Documentation for nexus-agents"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
-<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">nexus-agents - v3.0.0</a>
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>CompositeRoutingDecision | nexus-agents - v3.1.0</title><meta name="description" content="Documentation for nexus-agents"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">nexus-agents - v3.1.0</a>
 <div id="tsd-toolbar-links"><a href="https://github.com/nexus-substrate/nexus-agents">GitHub</a><a href="https://www.npmjs.com/package/nexus-agents">npm</a></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
 <ul role="listbox" id="tsd-search-results"></ul>
 <div id="tsd-search-status" aria-live="polite" aria-atomic="true">
@@ -15,7 +15,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">CompositeRoutingDecision</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#adapter">adapter</a><span class="tsd-signature-symbol">:</span> <a href="ICliAdapter.html" class="tsd-signature-type tsd-kind-interface">ICliAdapter</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#cliname">cliName</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">RoutingArmId</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#model">model</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#confidence">confidence</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#reason">reason</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#stagesexecuted">stagesExecuted</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#decisiontimems">decisionTimeMs</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#withinbudget">withinBudget</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#difficultyestimate">difficultyEstimate</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">DifficultyEstimate</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#difficultytier">difficultyTier</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">ModelTier</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#preferencescore">preferenceScore</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#preferencetier">preferenceTier</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">&quot;strong&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;weak&quot;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#topsisscore">topsisScore</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#ucbscore">ucbScore</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#latencyscore">latencyScore</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#alternatives">alternatives</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">RoutingArmId</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#taskprofile">taskProfile</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">TaskProfile</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L169">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:169</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L179">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:179</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -50,14 +50,14 @@
 <div class="tsd-comment tsd-typography"><p>Selected CLI adapter</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L171">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:171</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L181">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:181</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="cliname"><code class="tsd-tag">Readonly</code><span>cli<wbr/>Name</span><a href="#cliname" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">cliName</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">RoutingArmId</span></div>
 <div class="tsd-comment tsd-typography"><p>Selected routing arm — a CLI slot or a distinct <code>api:*</code> arm (#3422).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L173">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:173</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L183">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:183</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="model"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>model</span><a href="#model" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">model</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
@@ -66,105 +66,105 @@ route-time model selection is enabled (NEXUS_ROUTE_MODEL_SELECTION).
 Consumers should use <code>decision.model ?? getDefaultModelForCli(cliName)</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L179">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:179</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L189">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:189</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="confidence"><code class="tsd-tag">Readonly</code><span>confidence</span><a href="#confidence" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">confidence</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Overall confidence in decision (0-1)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L181">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:181</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L191">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:191</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="reason"><code class="tsd-tag">Readonly</code><span>reason</span><a href="#reason" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">reason</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Human-readable explanation</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L183">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:183</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L193">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:193</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="stagesexecuted"><code class="tsd-tag">Readonly</code><span>stages<wbr/>Executed</span><a href="#stagesexecuted" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">stagesExecuted</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Stages executed</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L185">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:185</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L195">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:195</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="decisiontimems"><code class="tsd-tag">Readonly</code><span>decision<wbr/>Time<wbr/>Ms</span><a href="#decisiontimems" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">decisionTimeMs</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Decision time in milliseconds</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L187">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:187</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L197">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:197</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="withinbudget"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>within<wbr/>Budget</span><a href="#withinbudget" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">withinBudget</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>Budget feasibility (if budget filter enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L189">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:189</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L199">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:199</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="difficultyestimate"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>difficulty<wbr/>Estimate</span><a href="#difficultyestimate" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">difficultyEstimate</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">DifficultyEstimate</span></div>
 <div class="tsd-comment tsd-typography"><p>ZeroRouter difficulty estimate (if ZeroRouter enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L191">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:191</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L201">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:201</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="difficultytier"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>difficulty<wbr/>Tier</span><a href="#difficultytier" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">difficultyTier</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">ModelTier</span></div>
 <div class="tsd-comment tsd-typography"><p>ZeroRouter recommended model tier (if ZeroRouter enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L193">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:193</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L203">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:203</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="preferencescore"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>preference<wbr/>Score</span><a href="#preferencescore" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">preferenceScore</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Preference routing score (if preference routing enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L195">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:195</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L205">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:205</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="preferencetier"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>preference<wbr/>Tier</span><a href="#preferencetier" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">preferenceTier</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">&quot;strong&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;weak&quot;</span></div>
 <div class="tsd-comment tsd-typography"><p>Selected tier from preference routing</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L197">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:197</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L207">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:207</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="topsisscore"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>topsis<wbr/>Score</span><a href="#topsisscore" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">topsisScore</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>TOPSIS score (if TOPSIS ranking enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L199">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:199</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L209">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:209</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="ucbscore"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>ucb<wbr/>Score</span><a href="#ucbscore" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">ucbScore</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>LinUCB UCB score (if LinUCB enabled)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L201">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:201</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L211">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:211</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="latencyscore"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>latency<wbr/>Score</span><a href="#latencyscore" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">latencyScore</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Latency score (if latency tracking enabled) (Issue #361)</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L203">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:203</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L213">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:213</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="alternatives"><code class="tsd-tag">Readonly</code><span>alternatives</span><a href="#alternatives" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">alternatives</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">RoutingArmId</span><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Alternative adapters in ranked order</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L205">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:205</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L215">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:215</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="taskprofile"><code class="tsd-tag">Readonly</code><span>task<wbr/>Profile</span><a href="#taskprofile" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">taskProfile</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">TaskProfile</span></div>
 <div class="tsd-comment tsd-typography"><p>Task analysis used for routing</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L207">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:207</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/packages/nexus-agents/src/cli-adapters/composite-router-types.ts#L217">packages/nexus-agents/src/cli-adapters/composite-router-types.ts:217</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
@@ -183,7 +183,7 @@ Consumers should use <code>decision.model ?? getDefaultModelForCli(cliName)</cod
 <div><a href="#adapter"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>adapter</span></a><a href="#cliname"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>cli<wbr/>Name</span></a><a href="#model"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>model</span></a><a href="#confidence"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>confidence</span></a><a href="#reason"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>reason</span></a><a href="#stagesexecuted"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>stages<wbr/>Executed</span></a><a href="#decisiontimems"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>decision<wbr/>Time<wbr/>Ms</span></a><a href="#withinbudget"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>within<wbr/>Budget</span></a><a href="#difficultyestimate"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>difficulty<wbr/>Estimate</span></a><a href="#difficultytier"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>difficulty<wbr/>Tier</span></a><a href="#preferencescore"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>preference<wbr/>Score</span></a><a href="#preferencetier"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>preference<wbr/>Tier</span></a><a href="#topsisscore"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>topsis<wbr/>Score</span></a><a href="#ucbscore"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>ucb<wbr/>Score</span></a><a href="#latencyscore"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>latency<wbr/>Score</span></a><a href="#alternatives"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>alternatives</span></a><a href="#taskprofile"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>task<wbr/>Profile</span></a></div></details></div></details></div>
 <div class="site-menu">
 <nav id="tsd-sidebar-links" class="tsd-navigation"><a href="https://github.com/nexus-substrate/nexus-agents" class="tsd-nav-link">GitHub</a><a href="https://www.npmjs.com/package/nexus-agents" class="tsd-nav-link">npm</a></nav>
-<nav class="tsd-navigation"><a href="../modules.html">nexus-agents - v3.0.0</a>
+<nav class="tsd-navigation"><a href="../modules.html">nexus-agents - v3.1.0</a>
 <ul class="tsd-small-nested-navigation" id="tsd-nav-container">
 <li>Loading...</li></ul></nav></div></div></div><footer>
 <p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
