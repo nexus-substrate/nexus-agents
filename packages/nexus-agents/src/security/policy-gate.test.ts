@@ -137,16 +137,19 @@ describe('evaluatePolicy', () => {
     expect(decision.violations).toHaveLength(0);
   });
 
-  it('does NOT require approval for reversible internal mutations (#4463)', () => {
-    // ProposeLabels and GeneratePatchPlan reach this point having already
-    // cleared citation, trust-tier, influence-block, Rule-of-Two and
-    // label-validity. Labels undo in one click; a patch PLAN applies nothing.
-    for (const action of [makePropose([maintainerSource]), makePatch([maintainerSource])]) {
-      const decision = evaluatePolicy(action, makeContext('1'));
-      expect(decision.allowed).toBe(true);
-      expect(decision.requiresApproval).toBe(false);
-      expect(decision.violations).toHaveLength(0);
-    }
+  it('does NOT require approval for a reversible internal mutation (#4463)', () => {
+    // ProposeLabels reaches this point having already cleared citation,
+    // trust-tier, influence-block, Rule-of-Two and label-validity, and undoes
+    // in one click.
+    const decision = evaluatePolicy(makePropose([maintainerSource]), makeContext('1'));
+    expect(decision.allowed).toBe(true);
+    expect(decision.requiresApproval).toBe(false);
+    expect(decision.violations).toHaveLength(0);
+
+    // GeneratePatchPlan stays gated: its schema encodes requiresApproval:
+    // literal(true) plus a two-source corroboration minimum.
+    const patch = evaluatePolicy(makePatch([maintainerSource, maintainerSource]), makeContext('1'));
+    expect(patch.requiresApproval).toBe(true);
   });
 
   it('blocks action missing required citation', () => {

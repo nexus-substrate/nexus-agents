@@ -422,12 +422,15 @@ describe('requiresHumanApproval', () => {
     expect(requiresHumanApproval('DraftReply')).toBe(true);
   });
 
+  it('gates GeneratePatchPlan — its schema mandates requiresApproval: true', () => {
+    expect(requiresHumanApproval('GeneratePatchPlan')).toBe(true);
+  });
+
   it('does NOT gate reversible internal mutations', () => {
     // Both reach the approval check having already cleared citation,
     // trust-tier, influence-block, Rule-of-Two and label-validity. Labels
     // are one click to undo; a patch PLAN applies nothing.
     expect(requiresHumanApproval('ProposeLabels')).toBe(false);
-    expect(requiresHumanApproval('GeneratePatchPlan')).toBe(false);
   });
 
   it('does not gate read-only actions', () => {
@@ -438,9 +441,7 @@ describe('requiresHumanApproval', () => {
   it('stays narrower than isMutatingAction, which the influence block still uses', () => {
     // Regression guard: narrowing approval must NOT narrow the untrusted-input
     // influence block. Low-trust input must not drive ANY mutating action.
-    for (const t of ['ProposeLabels', 'GeneratePatchPlan'] as const) {
-      expect(isMutatingAction(t)).toBe(true);
-      expect(requiresHumanApproval(t)).toBe(false);
-    }
+    expect(isMutatingAction('ProposeLabels')).toBe(true);
+    expect(requiresHumanApproval('ProposeLabels')).toBe(false);
   });
 });

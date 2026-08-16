@@ -212,7 +212,10 @@ const READ_ONLY_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentActionType>
 
 /**
  * Action types that can modify GitHub state (labels, comments, code).
- * These always require human approval before execution.
+ *
+ * Used for the untrusted-input influence block: low-trust input must not drive
+ * ANY of these, approved or not. NOT the approval set — see
+ * {@link APPROVAL_REQUIRED_ACTIONS}, which is narrower (#4463).
  */
 const MUTATING_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentActionType>([
   'ProposeLabels',
@@ -282,19 +285,24 @@ export function isMutatingAction(actionType: AgentActionType): boolean {
  * Deliberately narrower than {@link MUTATING_ACTIONS}. Approval is a gate on
  * IRREVERSIBILITY and EXTERNAL VISIBILITY, not on mutation as such:
  *
- * - `ProposeLabels` — reversible in one click, internal to the tracker.
- * - `GeneratePatchPlan` — produces a *plan*, not code; nothing is applied.
+ * - `ProposeLabels` — reversible in one click, internal to the tracker, and its
+ *   schema carries no `requiresApproval` field. Not gated: it reaches this point
+ *   having already passed citation, trust-tier, influence-block, Rule-of-Two and
+ *   label-validity checks, so pausing bought delay, not safety.
  * - `DraftReply` — **publishes text under the project's identity**, on a surface
  *   other people read. Untrusted issue/PR content is in scope by definition
  *   here, so a prompt-injected reply is attacker-authored text posted publicly.
  *   Deleting it afterwards does not un-publish it.
- *
- * Only the third is gated. The other two reach this point having already passed
- * citation, trust-tier, influence-block, Rule-of-Two and label-validity checks —
- * pausing there bought delay, not safety.
+ * - `GeneratePatchPlan` — gated, and deliberately so: its own schema encodes
+ *   `requiresApproval: z.literal(true)` alongside a two-source corroboration
+ *   minimum (`sources.min(2)`). Dropping the gate here while the schema still
+ *   mandates the flag would put two sources of truth in conflict, and the
+ *   two-factor design is intentional for an action that proposes file writes
+ *   from potentially untrusted input.
  */
 const APPROVAL_REQUIRED_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentActionType>([
   'DraftReply',
+  'GeneratePatchPlan',
 ]);
 
 /**
