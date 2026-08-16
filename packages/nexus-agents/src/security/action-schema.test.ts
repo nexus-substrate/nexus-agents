@@ -4,6 +4,7 @@ import {
   validateAgentAction,
   isReadOnlyAction,
   isMutatingAction,
+  requiresHumanApproval,
   requiresCitation,
   AgentActionSchema,
 } from './action-schema.js';
@@ -409,5 +410,37 @@ describe('AgentActionSchema', () => {
     };
     const result = AgentActionSchema.safeParse(input);
     expect(result.success).toBe(false);
+  });
+});
+
+// ============================================================================
+// requiresHumanApproval (#4463)
+// ============================================================================
+
+describe('requiresHumanApproval', () => {
+  it('gates DraftReply — it publishes under the project identity', () => {
+    expect(requiresHumanApproval('DraftReply')).toBe(true);
+  });
+
+  it('does NOT gate reversible internal mutations', () => {
+    // Both reach the approval check having already cleared citation,
+    // trust-tier, influence-block, Rule-of-Two and label-validity. Labels
+    // are one click to undo; a patch PLAN applies nothing.
+    expect(requiresHumanApproval('ProposeLabels')).toBe(false);
+    expect(requiresHumanApproval('GeneratePatchPlan')).toBe(false);
+  });
+
+  it('does not gate read-only actions', () => {
+    expect(requiresHumanApproval('SummarizeIssue')).toBe(false);
+    expect(requiresHumanApproval('ClassifyIssue')).toBe(false);
+  });
+
+  it('stays narrower than isMutatingAction, which the influence block still uses', () => {
+    // Regression guard: narrowing approval must NOT narrow the untrusted-input
+    // influence block. Low-trust input must not drive ANY mutating action.
+    for (const t of ['ProposeLabels', 'GeneratePatchPlan'] as const) {
+      expect(isMutatingAction(t)).toBe(true);
+      expect(requiresHumanApproval(t)).toBe(false);
+    }
   });
 });

@@ -21,8 +21,7 @@ import { TrustTierSchema } from './trust-types.js';
 
 /** Validation result using the project Result pattern. */
 export type ActionValidationResult =
-  | { ok: true; value: AgentAction }
-  | { ok: false; error: string };
+  { ok: true; value: AgentAction } | { ok: false; error: string };
 
 // ============================================================================
 // Source Citations
@@ -274,6 +273,42 @@ export function isReadOnlyAction(actionType: AgentActionType): boolean {
  */
 export function isMutatingAction(actionType: AgentActionType): boolean {
   return MUTATING_ACTIONS.has(actionType);
+}
+
+/**
+ * Action types that still require human approval after every policy check has
+ * passed (#4463).
+ *
+ * Deliberately narrower than {@link MUTATING_ACTIONS}. Approval is a gate on
+ * IRREVERSIBILITY and EXTERNAL VISIBILITY, not on mutation as such:
+ *
+ * - `ProposeLabels` — reversible in one click, internal to the tracker.
+ * - `GeneratePatchPlan` — produces a *plan*, not code; nothing is applied.
+ * - `DraftReply` — **publishes text under the project's identity**, on a surface
+ *   other people read. Untrusted issue/PR content is in scope by definition
+ *   here, so a prompt-injected reply is attacker-authored text posted publicly.
+ *   Deleting it afterwards does not un-publish it.
+ *
+ * Only the third is gated. The other two reach this point having already passed
+ * citation, trust-tier, influence-block, Rule-of-Two and label-validity checks —
+ * pausing there bought delay, not safety.
+ */
+const APPROVAL_REQUIRED_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentActionType>([
+  'DraftReply',
+]);
+
+/**
+ * Whether an action needs human approval even after passing every policy check.
+ *
+ * Distinct from {@link isMutatingAction}, which stays broad because it also
+ * drives the untrusted-input influence block — low-trust input must not be able
+ * to drive ANY mutating action, approved or not.
+ *
+ * @param actionType - The action type discriminator value.
+ * @returns True if a human must approve before execution.
+ */
+export function requiresHumanApproval(actionType: AgentActionType): boolean {
+  return APPROVAL_REQUIRED_ACTIONS.has(actionType);
 }
 
 /**

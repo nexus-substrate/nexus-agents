@@ -125,14 +125,28 @@ describe('evaluatePolicy', () => {
     expect(decision.violations).toHaveLength(0);
   });
 
-  it('requires approval for mutating action from tier 1', () => {
-    const action = makePropose([maintainerSource]);
+  it('requires approval for a PUBLISHING action from tier 1', () => {
+    // DraftReply posts text under the project's identity on a surface others
+    // read; deleting it later does not un-publish it.
+    const action = makeDraft([maintainerSource]);
     const context = makeContext('1');
     const decision = evaluatePolicy(action, context);
 
     expect(decision.allowed).toBe(true);
     expect(decision.requiresApproval).toBe(true);
     expect(decision.violations).toHaveLength(0);
+  });
+
+  it('does NOT require approval for reversible internal mutations (#4463)', () => {
+    // ProposeLabels and GeneratePatchPlan reach this point having already
+    // cleared citation, trust-tier, influence-block, Rule-of-Two and
+    // label-validity. Labels undo in one click; a patch PLAN applies nothing.
+    for (const action of [makePropose([maintainerSource]), makePatch([maintainerSource])]) {
+      const decision = evaluatePolicy(action, makeContext('1'));
+      expect(decision.allowed).toBe(true);
+      expect(decision.requiresApproval).toBe(false);
+      expect(decision.violations).toHaveLength(0);
+    }
   });
 
   it('blocks action missing required citation', () => {
