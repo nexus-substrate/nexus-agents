@@ -79,11 +79,26 @@ Baseline: 71 / 100
     demonstrated and what remains open
 ```
 
-**Wait for explicit operator approval before proceeding to Phase 3.**
+**Proceed to Phase 3 — but the plan is the contract** (#4463).
 
-This gate is the single most important rule in the workflow. Skipping
-it produces rewrites that diverge from operator intent — and rewrites
-are by definition destructive of the existing doc's voice.
+The old rule paused here for explicit operator approval. It no longer
+does: a rewrite is version-controlled and therefore reversible, and the
+plan above is a reviewable artifact whether or not someone reads it
+before the edit. Ship the rewrite and let the diff be the review surface.
+
+Two things still bind, because they are the risk the gate was really
+protecting against:
+
+- **The rewrite must not change technical meaning.** Restructuring,
+  tightening and re-voicing are in scope; altering a claim, an API
+  contract, a version number, or a stated limitation is not. If the
+  rewrite requires a meaning change to work, stop and surface it — that
+  is a content decision, not a prose one.
+- **The plan and the rewrite must match.** Do not expand scope mid-edit.
+  If Phase 3 wants to go beyond the plan, re-plan first.
+
+Run an adversarial factual pass over the result (`blog-factcheck` or the
+docs rubric) before calling it done.
 
 ### Phase 3 — Research (when claims need sources)
 

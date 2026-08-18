@@ -14,7 +14,12 @@
 import { z } from 'zod';
 
 import type { AgentAction, AgentActionType, SourceCitation } from './action-schema.js';
-import { isMutatingAction, isReadOnlyAction, requiresCitation } from './action-schema.js';
+import {
+  isMutatingAction,
+  isReadOnlyAction,
+  requiresCitation,
+  requiresHumanApproval,
+} from './action-schema.js';
 import type { TrustTier } from './trust-types.js';
 import { TRUST_TIER_NUMERIC } from './trust-types.js';
 import { getRequiredTrustTier, canInfluenceDecisions } from './trust-classifier.js';
@@ -218,7 +223,14 @@ export function evaluatePolicy(
   }
 
   const hasBlockingViolation = violations.some((v) => v.severity === 'block');
-  const needsApproval = !hasBlockingViolation && isMutatingAction(action.type);
+  // #4463: gate on irreversibility + external visibility, not on mutation as
+  // such. ProposeLabels and GeneratePatchPlan are reversible and internal, and
+  // reach here having already cleared citation, trust-tier, influence-block,
+  // Rule-of-Two and label-validity checks. DraftReply still gates because it
+  // publishes text under the project's identity on a surface others read.
+  // `isMutatingAction` stays broad above (line ~113) for the influence block:
+  // low-trust input must not drive ANY mutating action, approved or not.
+  const needsApproval = !hasBlockingViolation && requiresHumanApproval(action.type);
 
   const decision: PolicyDecision = {
     allowed: !hasBlockingViolation,

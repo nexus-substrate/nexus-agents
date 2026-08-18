@@ -100,6 +100,10 @@ export {
   validateAgentAction,
   isReadOnlyAction,
   isMutatingAction,
+  // #4463: the correct predicate for "does this need a human?". isMutatingAction
+  // stays exported for the untrusted-input influence block, but it is broader and
+  // no longer implies approval.
+  requiresHumanApproval,
   requiresCitation,
 } from '../security/action-schema.js';
 export type {

@@ -1,0 +1,15 @@
+---
+'nexus-agents': patch
+---
+
+Retire five human-in-the-loop gates that were slowing reversible decisions without buying safety (#4463).
+
+`.rules/autonomous.md` hard stops: dropped "waiting on an external system" (poll with backoff and take other work), "CI failure needing a design decision" (route to `consensus_vote` with review subagents), and "repeated failures" (three attempts means change strategy, not summon a human). Added the gates the audit found genuinely load-bearing but unstated: secret/credential handling and Rule-of-Two convergence, governance self-modification, and publishing/spending.
+
+`AGENTS.md` error protocol no longer waits for confirmation after a reversible failure — diagnose, act, verify, and change approach after the second failed attempt rather than repeating it.
+
+`skills/browser-testing-with-devtools`: URL navigation moves from a confirmation prompt to a fail-closed allowlist (auto-allow user-supplied, localhost, same-origin; reject private IPs, non-HTTP(S) schemes, credentialed URLs, cross-origin redirects), and page mutations are classified rather than blanket-confirmed — reversible test actions proceed, while destructive, publishing, spending, or production-account actions still stop.
+
+`skills/docs-rewrite`: the Phase-3 approval pause is replaced by the diff as the review surface, with two binding constraints retained — the rewrite must not change technical meaning, and must not exceed the agreed plan.
+
+`security/policy-gate.ts`: approval now gates on irreversibility and external visibility rather than on mutation as such. `ProposeLabels` no longer requires human approval — it is reversible in one click, internal to the tracker, carries no `requiresApproval` field in its schema, and reaches the approval check having already cleared citation, trust-tier, influence-block, Rule-of-Two and label-validity. `DraftReply` still gates, because it publishes text under the project's identity on a surface other people read, with untrusted input in scope by definition; deleting a reply does not un-publish it. `GeneratePatchPlan` also still gates: its schema encodes `requiresApproval: z.literal(true)` alongside a two-source corroboration minimum, and that two-factor design is deliberate for an action proposing file writes from potentially untrusted input. `isMutatingAction` is unchanged and still drives the untrusted-input influence block, so low-trust input cannot drive any mutating action, approved or not.
