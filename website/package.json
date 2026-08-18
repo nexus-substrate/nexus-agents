@@ -15,10 +15,10 @@
     "@astrojs/markdown-satteri": "^0.3.5",
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/svelte": "~9.0.1",
-    "astro": "~7.2.0",
+    "astro": "~7.2.2",
     "mermaid": "^11.16.1",
     "satteri": "^0.9.5",
-    "svelte": "^5.56.8",
+    "svelte": "^5.56.9",
     "typescript": "^5.9.3"
   }
 }
