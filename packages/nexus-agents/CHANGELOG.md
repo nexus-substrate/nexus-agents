@@ -1,5 +1,53 @@
 # nexus-agents
 
+## 3.2.0
+
+### Minor Changes
+
+- [#4471](https://github.com/nexus-substrate/nexus-agents/pull/4471) [`8f80f95`](https://github.com/nexus-substrate/nexus-agents/commit/8f80f95be7a145a2aa9f262a139da165807139b9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records can now represent a multi-option split ([#4452](https://github.com/nexus-substrate/nexus-agents/issues/4452), increment 1).
+
+  `consensus_vote` tallies approve/reject/abstain only. On a proposal offering named options, every engaged voter returns `approve` — so a real 6-1 or 5-2 split persists as `approve: 7, approvalPercentage: 100` and reads as unanimous. Three live votes did exactly that, one of them inside a vote whose own proposal warned about the bug.
+
+  Adds an optional `optionTally` to `VoteRecord` (schema 1.3), derived automatically from a new `AgentVoteResult.selectedOption`. When no voter declares an option — an ordinary yes/no vote — the field is absent and the record stays on schema 1.2.
+
+  **Back-compat is the load-bearing property.** `VoteRecord` is self-hashed and `verifyVoteRecordSet` rebuilds every field in schema order, so naively adding a field would flip every historical record to `hash_mismatch` — breaking the audit chain while fixing its fidelity. `optionTally` is therefore folded into the hash **only when present, appended after the stable base**, exactly as `ratifies` was for schema 1.2. A record without it re-hashes byte-identical to the pre-1.3 projection, pinned by a literal-hash regression test.
+
+  The tally is emitted in descending count with ties broken by label, so two vote sets differing only in voter arrival order produce the same hash — the array is hash-covered, so nondeterministic ordering would be a spurious `hash_mismatch`.
+
+  Not yet included, tracked as increment 2: the `options` input on `consensus_vote`, the voter prompt requesting a selection, and threshold evaluation over the option tally (so `unanimous` stops being trivially clearable on a multi-option proposal).
+
+### Patch Changes
+
+- [#4475](https://github.com/nexus-substrate/nexus-agents/pull/4475) [`cb1d19e`](https://github.com/nexus-substrate/nexus-agents/commit/cb1d19e6c77e475c29245e6b2b03e7821ccdea92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve two HIGH advisories in transitive `brace-expansion` (GHSA-rgw5-rvv9-x895 and the CVE-2026-14257 mitigation bypass).
+
+  The repo already carried a `brace-expansion@>=4.0.0 <5.0.6` → `>=5.0.6` override from an earlier advisory, but the range no longer matched: the tree had resolved to 5.0.7, which is outside `<5.0.6` and therefore un-overridden. Both new advisories require `>=5.0.9`.
+
+  Widened to `brace-expansion@>=4.0.0 <5.0.9` → `>=5.0.9`. Reached transitively via `minimatch@10.2.5` from `markdownlint-cli` and `typedoc`. `pnpm audit` now reports no known vulnerabilities.
+
+  Worth noting the failure mode for future overrides: a version-bounded override key silently stops applying once the dependency moves past its upper bound. It does not warn — the advisory simply reappears.
+
+- [#4462](https://github.com/nexus-substrate/nexus-agents/pull/4462) [`5969471`](https://github.com/nexus-substrate/nexus-agents/commit/5969471339ea0b0b5ef95c46e2cd783ade39b6ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Adopt a full-automation north star in AGENTS.md, with audit-trail fidelity as its enabling condition ([#3829](https://github.com/nexus-substrate/nexus-agents/issues/3829)).
+
+  The target is an engine that runs the lifecycle end to end without a human in the loop and is _more_ trustworthy for it — the mechanism being depth of independent scrutiny no human reviewer could sustain at volume: fan-out QA/security/vestigial subagents that read the actual artifact, `consensus_vote` panels on every real fork, adversarial verification that tries to refute rather than confirm, and mutation checks that prove a test fails for the reason it claims. Human gates are reserved for the genuinely irreversible or exceptionally high-risk.
+
+  The premise that makes this safe — everything is logged and a human can review it later — only holds if the logs mean what they say, so the amendment states audit-trail fidelity as load-bearing infrastructure rather than exhaust. A record that _misreports_ is worse than a missing one: it launders unreviewed work as reviewed, and it is exactly the artifact a human spot-check trusts. Four invariants follow (instruments must represent disagreement/absence/partial coverage; a check that cannot fail by construction is not a check; a review must consume the artifact and declare partial coverage honestly; provenance travels with evidence), and a fidelity defect in governance instrumentation is a p1 correctness bug on the governor path.
+
+  One gate stays human for a reason unrelated to blast radius: the governor must not be able to weaken its own governor. Governance-substrate changes require owner ratification and are never auto-merged, as `CODEOWNERS` already encodes.
+
+  Grounded in four verified instrumentation defects found this session — [#4447](https://github.com/nexus-substrate/nexus-agents/issues/4447) (a rot detector reporting `Stale: 0` against 28 stale issues), [#4451](https://github.com/nexus-substrate/nexus-agents/issues/4451) (a prose summary accepted as a diff, persisting `verified: true`), [#4452](https://github.com/nexus-substrate/nexus-agents/issues/4452) (6-1 and 5-2 vote splits recorded as unanimous), [#4459](https://github.com/nexus-substrate/nexus-agents/issues/4459) (records without provenance). CLAUDE.md's body regenerates from AGENTS.md.
+
+- [#4465](https://github.com/nexus-substrate/nexus-agents/pull/4465) [`ff0fe96`](https://github.com/nexus-substrate/nexus-agents/commit/ff0fe9645aed290111a1639024a1eb531c4017e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Retire five human-in-the-loop gates that were slowing reversible decisions without buying safety ([#4463](https://github.com/nexus-substrate/nexus-agents/issues/4463)).
+
+  `.rules/autonomous.md` hard stops: dropped "waiting on an external system" (poll with backoff and take other work), "CI failure needing a design decision" (route to `consensus_vote` with review subagents), and "repeated failures" (three attempts means change strategy, not summon a human). Added the gates the audit found genuinely load-bearing but unstated: secret/credential handling and Rule-of-Two convergence, governance self-modification, and publishing/spending.
+
+  `AGENTS.md` error protocol no longer waits for confirmation after a reversible failure — diagnose, act, verify, and change approach after the second failed attempt rather than repeating it.
+
+  `skills/browser-testing-with-devtools`: URL navigation moves from a confirmation prompt to a fail-closed allowlist (auto-allow user-supplied, localhost, same-origin; reject private IPs, non-HTTP(S) schemes, credentialed URLs, cross-origin redirects), and page mutations are classified rather than blanket-confirmed — reversible test actions proceed, while destructive, publishing, spending, or production-account actions still stop.
+
+  `skills/docs-rewrite`: the Phase-3 approval pause is replaced by the diff as the review surface, with two binding constraints retained — the rewrite must not change technical meaning, and must not exceed the agreed plan.
+
+  `security/policy-gate.ts`: approval now gates on irreversibility and external visibility rather than on mutation as such. `ProposeLabels` no longer requires human approval — it is reversible in one click, internal to the tracker, carries no `requiresApproval` field in its schema, and reaches the approval check having already cleared citation, trust-tier, influence-block, Rule-of-Two and label-validity. `DraftReply` still gates, because it publishes text under the project's identity on a surface other people read, with untrusted input in scope by definition; deleting a reply does not un-publish it. `GeneratePatchPlan` also still gates: its schema encodes `requiresApproval: z.literal(true)` alongside a two-source corroboration minimum, and that two-factor design is deliberate for an action proposing file writes from potentially untrusted input. `isMutatingAction` is unchanged and still drives the untrusted-input influence block, so low-trust input cannot drive any mutating action, approved or not.
+
 ## 3.1.1
 
 ### Patch Changes
