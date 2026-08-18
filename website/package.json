@@ -19,6 +19,6 @@
     "mermaid": "^11.16.1",
     "satteri": "^0.9.5",
     "svelte": "^5.56.9",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
