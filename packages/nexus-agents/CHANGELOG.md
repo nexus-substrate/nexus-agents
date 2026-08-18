@@ -1,5 +1,35 @@
 # nexus-agents
 
+## 3.2.2
+
+### Patch Changes
+
+- [#4484](https://github.com/nexus-substrate/nexus-agents/pull/4484) [`aa88115`](https://github.com/nexus-substrate/nexus-agents/commit/aa88115a45125456c9247f3eaf0398e1e721b5dc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Bring the repo-root `scripts/` tree into the lint scope ([#4483](https://github.com/nexus-substrate/nexus-agents/issues/4483)).
+
+  `pnpm lint` is `turbo lint`, which only reaches each workspace's own `eslint src/`. The root `scripts/` directory — governance generators, drift gates, the tool-reference generator, the release helper — was outside every lint scope. The code that enforces the repo's rules was itself unenforced, and had accumulated 7 deprecated-API errors nothing reported.
+
+  Adds `lint:scripts` and a CI step that runs it. The scope was extended **first** and confirmed to fail with all 7 errors before anything was fixed, so the gate is demonstrated to catch something rather than landing already-green.
+
+  Fixes the 7: `.passthrough()` → `.loose()` and `z.string().url()` → `z.url()` in `build-model-registry-types.ts`. Verified behaviour-preserving by running the generator — it exits clean and produces a byte-identical registry, so this is a rename, not a semantic change.
+
+  `sync-plugin-version.ts` gets the file-level `no-console` disable its 38 sibling scripts already carry; a build script's stdout is its interface.
+
+- [#4482](https://github.com/nexus-substrate/nexus-agents/pull/4482) [`c14e6b8`](https://github.com/nexus-substrate/nexus-agents/commit/c14e6b80698dbbe717b5dce49e0b36a4d3e9aafd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Land the low-risk tooling majors from [#4478](https://github.com/nexus-substrate/nexus-agents/issues/4478).
+
+  `eslint-plugin-jsdoc` 63 → 64, `lint-staged` 16 → 17, `@commitlint/{cli,config-conventional,types}` 20 → 21, `@changesets/changelog-github` 0.7 → 1.0, `turbo` 2.10.9 → 2.10.10.
+
+  Each was verified against the behaviour it gates rather than a green typecheck. commitlint was checked in **both** directions — it accepts a conforming message and still exits non-zero on a malformed one, since a linter that quietly stopped rejecting would pass a one-sided smoke test. `@changesets/changelog-github` v1 was confirmed to load under CLI v3 via `changeset status`, because it sits on the release path. `eslint-plugin-jsdoc` v64 — the bump most likely to flood the tree with new rule violations — produced zero across `packages/nexus-agents/src` and `packages/nexus-memory/src`.
+
+  No runtime dependencies touched. `pnpm audit` clean.
+
+- [#4481](https://github.com/nexus-substrate/nexus-agents/pull/4481) [`6f37ab0`](https://github.com/nexus-substrate/nexus-agents/commit/6f37ab0efe1ff1bc029bd6901bcec3eeaba3eee4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Align the website's TypeScript to the rest of the monorepo ([#4478](https://github.com/nexus-substrate/nexus-agents/issues/4478)).
+
+  `nexus-agents` and `nexus-memory` were on `^6.0.3` while `website` sat on `^5.9.3` — a full major behind, resolving two compiler copies in one workspace. A skew like that means the website type-checks against different inference and different lib definitions than the code it documents, so a type error can exist in one and not the other.
+
+  Website now on `^6.0.3`; the lockfile resolves a single `typescript@6.0.3`. Verified with `astro check` (0 errors, 0 warnings, 1 pre-existing hint) and a full website build (134 pages).
+
+  TypeScript 7 is available but deliberately not taken here — it is the native-port rewrite and warrants its own evaluation rather than riding along with a skew fix.
+
 ## 3.2.1
 
 ### Patch Changes
