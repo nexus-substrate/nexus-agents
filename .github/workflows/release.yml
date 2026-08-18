@@ -73,20 +73,23 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        # PINNED TO v1 DELIBERATELY — do not let dependabot bump this to v2+.
-        # changesets/action v2 requires Changesets CLI v3; this repo is on CLI
-        # v2 (`@changesets/cli: ^2.31.1`), and v2 also renamed every input
-        # (version->version-script, publish->publish-script, title->pr-title,
-        # commit->commit-message). Bumping the action alone fails the release
-        # with "Changesets CLI v2 is not supported" AND silently ignores all
-        # four inputs — and CI never catches it, because no CI job exercises
-        # release.yml. Upgrading requires moving the CLI to v3 first (#4473).
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        # v2 pairs with Changesets CLI v3 (#4473). The two MUST move together:
+        # action v2 + CLI v2 fails outright ("Changesets CLI v2 is not
+        # supported"), and action v1 + CLI v3 is equally unsupported. If you
+        # change one, change the other.
+        #
+        # Input names below are the v2 spellings. v1 used `version`, `publish`,
+        # `title`, `commit`; v2 renamed all four, and passing the old names is
+        # NOT an error — the action warns "Unexpected input(s)" and silently
+        # ignores them, so the release would run with no version script, no
+        # publish script, and default PR text. That silent-ignore is why the
+        # #4469 regression was invisible until release time.
+        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
         with:
-          version: pnpm changeset:version
-          publish: pnpm release
-          title: 'chore(release): version packages'
-          commit: 'chore(release): version packages'
+          version-script: pnpm changeset:version
+          publish-script: pnpm release
+          pr-title: 'chore(release): version packages'
+          commit-message: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Auth: npm trusted publishing via OIDC. NPM_TOKEN is no longer
