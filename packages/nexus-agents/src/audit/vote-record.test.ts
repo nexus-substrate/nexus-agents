@@ -279,3 +279,97 @@ describe('ratifies subject-binding field (#3927 item 1, schema 1.2)', () => {
     });
   });
 });
+
+// ============================================================================
+// optionTally — multi-option vote fidelity (#4452)
+// ============================================================================
+
+/** Strip the self-hash so a payload can be re-hashed with a variation applied. */
+function payloadOf(record: VoteRecord): Omit<VoteRecord, 'hash'> {
+  const copy: Record<string, unknown> = { ...record };
+  delete copy['hash'];
+  return copy as Omit<VoteRecord, 'hash'>;
+}
+
+describe('optionTally (#4452)', () => {
+  it('leaves the hash BYTE-IDENTICAL for a record without it', () => {
+    // The load-bearing back-compat property. Every historical 1.1/1.2 record
+    // lacks optionTally; if adding the field changed their projection, the whole
+    // persisted chain would flip to hash_mismatch — breaking the audit trail in
+    // the act of fixing its fidelity. Mirrors how `ratifies` was folded in.
+    const payload: Omit<VoteRecord, 'hash'> = {
+      version: '1.1',
+      id: 'r1',
+      sequence: 0,
+      recordedAt: '2026-06-15T00:00:00.000Z',
+      proposalHash: 'a'.repeat(64),
+      proposal: 'p',
+      strategy: 'higher_order',
+      decision: 'approved',
+      approvalPercentage: 100,
+      voteCounts: { approve: 7, reject: 0, abstain: 0, total: 7 },
+      voters: [{ role: 'architect', decision: 'approve', confidence: 0.9 }],
+    };
+    // PINNED LITERAL, not a self-comparison. Recomputing the hash and comparing
+    // it to itself cannot detect a projection change — mutation testing caught
+    // exactly that weakness in the first version of this test. This constant is
+    // the pre-#4452 projection; if a change alters it, historical records stop
+    // verifying, and this fails.
+    const PRE_4452 = 'edecd8cd8ea8d978733c73c77ffeddea85b04339b62db4c665b32165468c49a6';
+    expect(computeVoteRecordHash(payload)).toBe(PRE_4452);
+    // An explicitly-undefined tally must also take the absent path.
+    expect(computeVoteRecordHash({ ...payload, optionTally: undefined })).toBe(PRE_4452);
+  });
+
+  it('changes the hash when present — the tally is tamper-evident', () => {
+    const payload = payloadOf(makeRecord('r2', 0));
+    const withTally = computeVoteRecordHash({
+      ...payload,
+      optionTally: [
+        { option: 'A', count: 6 },
+        { option: 'C', count: 1 },
+      ],
+    });
+    expect(withTally).not.toBe(computeVoteRecordHash(payload));
+  });
+
+  it('is order-independent within the tally, like every other nested object', () => {
+    const payload = payloadOf(makeRecord('r3', 0));
+    const a = computeVoteRecordHash({
+      ...payload,
+      optionTally: [
+        { option: 'A', count: 6 },
+        { option: 'C', count: 1 },
+      ],
+    });
+    // Same tally, keys of each entry written in the other order.
+    const b = computeVoteRecordHash({
+      ...payload,
+      optionTally: [
+        { count: 6, option: 'A' },
+        { count: 1, option: 'C' },
+      ],
+    });
+    expect(b).toBe(a);
+  });
+
+  it('distinguishes a 6-1 split from a 7-0 unanimity at equal approve counts', () => {
+    // The #4452 defect in one assertion: both records are approve:7 / reject:0,
+    // and today they are indistinguishable. With the tally they are not.
+    const payload = payloadOf(
+      makeRecord('r4', 0, { voteCounts: { approve: 7, reject: 0, abstain: 0, total: 7 } })
+    );
+    const split = computeVoteRecordHash({
+      ...payload,
+      optionTally: [
+        { option: 'A', count: 6 },
+        { option: 'C', count: 1 },
+      ],
+    });
+    const unanimous = computeVoteRecordHash({
+      ...payload,
+      optionTally: [{ option: 'A', count: 7 }],
+    });
+    expect(split).not.toBe(unanimous);
+  });
+});
