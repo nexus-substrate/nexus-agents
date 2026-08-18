@@ -30,6 +30,7 @@ vi.mock('../config/nexus-data-dir.js', () => ({
   ),
 }));
 
+import type { VoteRecord } from './vote-record.js';
 import { verifyVoteRecordSet } from './vote-record.js';
 import {
   VOTE_RECORDS_PATH_ENV,
@@ -95,6 +96,56 @@ describe('buildVoteRecord', () => {
       { role: 'catfish', decision: 'reject', confidence: 0.8 },
     ]);
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('omits optionTally and stays on 1.2 when no voter declared an option (#4452)', () => {
+    const record = buildVoteRecord({
+      id: 'vote-noopt',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+    });
+    expect(record.optionTally).toBeUndefined();
+    expect(record.version).toBe('1.2');
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('derives optionTally from selectedOption and bumps to 1.3 (#4452)', () => {
+    // The defect this fixes: voteCounts says approve:2 for BOTH a genuine
+    // agreement and a split across options. The tally distinguishes them.
+    const withOptions = votes.map((v, i) => ({
+      ...v,
+      selectedOption: i === 0 ? 'A' : i === 1 ? 'A' : 'C',
+    }));
+    const record = buildVoteRecord({
+      id: 'vote-opt',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes: withOptions,
+    });
+    expect(record.version).toBe('1.3');
+    expect(record.optionTally).toEqual([
+      { option: 'A', count: 2 },
+      { option: 'C', count: 1 },
+    ]);
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('orders the tally deterministically regardless of voter arrival order (#4452)', () => {
+    // The array is hash-covered, so two vote sets differing only in order must
+    // not produce different hashes.
+    const mk = (opts: readonly string[]): VoteRecord =>
+      buildVoteRecord({
+        id: 'vote-ord',
+        recordedAt: '2026-06-15T00:00:00.000Z',
+        proposal: 'p',
+        strategy: 'higher_order',
+        result: consensusResult(),
+        votes: votes.map((v, i) => ({ ...v, selectedOption: opts[i] as string })),
+      });
+    expect(mk(['A', 'C', 'A']).hash).toBe(mk(['C', 'A', 'A']).hash);
   });
 
   it('excludes error-source voters from the per-voter summary', () => {

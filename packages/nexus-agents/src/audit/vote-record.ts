@@ -85,6 +85,23 @@ export const VoteRecordCountsSchema = z
 export type VoteRecordCounts = z.infer<typeof VoteRecordCountsSchema>;
 
 /**
+ * One option's share of a multi-option vote (#4452).
+ *
+ * The approve/reject/abstain tally cannot express WHICH option a voter chose, so
+ * a real 6-1 split over options A and C persists as `approve: 7` — indis-
+ * tinguishable from genuine unanimity. This carries the distribution.
+ */
+export const VoteRecordOptionCountSchema = z
+  .object({
+    /** The option label as declared in the proposal (e.g. 'A'). */
+    option: z.string().min(1),
+    /** How many voters selected it. */
+    count: z.number().int().nonnegative(),
+  })
+  .strict();
+export type VoteRecordOptionCount = z.infer<typeof VoteRecordOptionCountSchema>;
+
+/**
  * One authentic, self-hashed vote record. The `hash` covers every authenticity
  * field INCLUDING `sequence` but EXCLUDING `previousHash`, so the record is
  * tamper-EVIDENT and POSITION-INDEPENDENT: any edit to a persisted line is
@@ -100,7 +117,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2']),
+    version: z.enum(['1.1', '1.2', '1.3']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -140,6 +157,20 @@ export const VoteRecordSchema = z
     voters: z.array(VoterSummarySchema),
     /** Optional correlation/decision id linking to the cost rollup / trace. */
     correlationId: z.string().min(1).optional(),
+    /**
+     * Per-option distribution for a multi-option proposal (#4452, schema 1.3).
+     *
+     * Present only when the vote declared `options`. Absent on an ordinary
+     * yes/no vote, and absent on every 1.1/1.2 record — which is why it is
+     * folded into the self-hash ONLY when present (see
+     * {@link computeVoteRecordHash}), exactly as `ratifies` was.
+     *
+     * Without this, a 6-1 or 5-2 option split is recorded as `approve: 7` and
+     * reads as unanimous. Threshold semantics invert too: `unanimous` becomes
+     * the EASIEST bar to clear, because every engaged voter approves while
+     * choosing different things.
+     */
+    optionTally: z.array(VoteRecordOptionCountSchema).min(1).optional(),
     /**
      * The loop/strategy subject this vote RATIFIES (#3927 item 1). Present only on
      * a ratification vote; set at vote time and bound into the self-hash (so it is
@@ -211,8 +242,19 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
   // `ratifies`) re-hashes unchanged (back-compat). It stays fully tamper-evident:
   // adding, removing, or editing `ratifies` on a persisted record flips the hash
   // (an absent field re-hashes one way, a present field the other).
+  // `optionTally` (#4452) is folded in on the same principle as `ratifies`:
+  // ONLY when present, appended after the stable base, with each entry rebuilt
+  // field-by-field in schema order. A record without it re-hashes byte-identical
+  // to the pre-1.3 form, so every historical record still verifies.
+  const withTally =
+    payload.optionTally !== undefined
+      ? {
+          ...base,
+          optionTally: payload.optionTally.map((o) => ({ option: o.option, count: o.count })),
+        }
+      : base;
   const canonical = JSON.stringify(
-    payload.ratifies !== undefined ? { ...base, ratifies: payload.ratifies } : base
+    payload.ratifies !== undefined ? { ...withTally, ratifies: payload.ratifies } : withTally
   );
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }

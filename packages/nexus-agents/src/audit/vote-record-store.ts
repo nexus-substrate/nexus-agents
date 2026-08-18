@@ -48,7 +48,7 @@ import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 
-import type { VoteRecord, VoterSummary } from './vote-record.js';
+import type { VoteRecord, VoteRecordOptionCount, VoterSummary } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-record.js';
 
 /**
@@ -165,13 +165,44 @@ export interface BuildVoteRecordInput {
  * position-independent (#3927). The proposal is hashed in full but stored
  * truncated.
  */
+/**
+ * Counts how many voters chose each named option (#4452).
+ *
+ * Returns `undefined` when no vote carries a `selectedOption` — an ordinary
+ * yes/no vote — so the record stays on the pre-1.3 hash projection and every
+ * historical record keeps verifying.
+ *
+ * Options are emitted in DESCENDING count, ties broken by option label, so the
+ * tally is deterministic regardless of voter order. That matters: the array is
+ * hash-covered, and a set of votes that differed only in arrival order must not
+ * produce two different hashes.
+ */
+function tallySelectedOptions(
+  votes: readonly AgentVoteResult[]
+): VoteRecordOptionCount[] | undefined {
+  const counts = new Map<string, number>();
+  for (const v of votes) {
+    if (v.selectedOption === undefined) continue;
+    counts.set(v.selectedOption, (counts.get(v.selectedOption) ?? 0) + 1);
+  }
+  if (counts.size === 0) return undefined;
+  return [...counts.entries()]
+    .map(([option, count]) => ({ option, count }))
+    .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.option.localeCompare(b.option)));
+}
+
 export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   const proposalTruncated =
     input.proposal.length > MAX_PROPOSAL_RECORD_CHARS
       ? input.proposal.slice(0, MAX_PROPOSAL_RECORD_CHARS) + '...'
       : input.proposal;
+  // #4452: derive the per-option distribution from the votes themselves, so a
+  // multi-option split is recoverable from the structured record instead of by
+  // parsing seven free-text `reasoning` fields. Absent when no voter declared an
+  // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
+  const optionTally = tallySelectedOptions(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: '1.2',
+    version: optionTally !== undefined ? '1.3' : '1.2',
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -189,6 +220,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     voters: toVoterSummaries(input.votes),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
+    ...(optionTally !== undefined ? { optionTally } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };
