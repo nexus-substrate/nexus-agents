@@ -44,10 +44,13 @@ updates:
       - 'ci'
       - 'dependencies'
     ignore:
-      # changesets/action v2+ requires Changesets CLI v3; this repo is on CLI v2,
-      # and v2 also renamed every input. Bumping the action alone breaks the
-      # release with "Changesets CLI v2 is not supported" — and NO CI job
-      # exercises release.yml, so the PR goes green and the break only surfaces
-      # on the next release. Unignore once the CLI is on v3 (#4473).
+      # changesets/action and @changesets/cli must move together — action v2
+      # requires CLI v3, and neither combination is forward/backward compatible.
+      # A lone major bump of either breaks the release, and NO CI job exercises
+      # release.yml, so the PR goes green and the break surfaces only at release
+      # time (#4469 did exactly that). Both are now on the paired v2/v3, so a
+      # future major still needs to be done as a coordinated pair by hand.
       - dependency-name: 'changesets/action'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@changesets/cli'
         update-types: ['version-update:semver-major']
