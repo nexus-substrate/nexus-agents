@@ -7,6 +7,8 @@
  * @module scripts/sync-plugin-version
  */
 
+/* eslint-disable no-console -- build script; its stdout IS the interface (#4483) */
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

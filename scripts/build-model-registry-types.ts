@@ -7,7 +7,7 @@
  * generated registry pulls from upstream sources that cover hundreds of
  * providers and thousands of model ids we don't want to enumerate.
  *
- * `.passthrough()` is used on upstream shapes so a new field showing up in
+ * `.loose()` is used on upstream shapes so a new field showing up in
  * models.dev / LiteLLM doesn't break the build — it flows through and is
  * trimmed during output mapping.
  *
@@ -40,7 +40,7 @@ export const ModelsDevEntrySchema = z
         input: z.array(z.string()).optional(),
         output: z.array(z.string()).optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
     cost: z
       .object({
@@ -49,7 +49,7 @@ export const ModelsDevEntrySchema = z
         cache_read: z.number().nonnegative().optional(),
         cache_write: z.number().nonnegative().optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
     limit: z
       .object({
@@ -57,10 +57,10 @@ export const ModelsDevEntrySchema = z
         input: z.number().int().nonnegative().optional(),
         output: z.number().int().nonnegative().optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
   })
-  .passthrough();
+  .loose();
 
 export type ModelsDevEntry = z.infer<typeof ModelsDevEntrySchema>;
 
@@ -78,7 +78,7 @@ export const ModelsDevProviderSchema = z
     npm: z.string().optional(),
     models: z.record(z.string(), z.unknown()),
   })
-  .passthrough();
+  .loose();
 
 export type ModelsDevProvider = z.infer<typeof ModelsDevProviderSchema>;
 
@@ -113,7 +113,7 @@ export const LiteLlmEntrySchema = z
     supports_pdf_input: z.boolean().optional(),
     deprecation_date: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 
 export type LiteLlmEntry = z.infer<typeof LiteLlmEntrySchema>;
 
@@ -140,7 +140,7 @@ export const MAX_UPSTREAM_PAYLOAD_BYTES = 5 * 1024 * 1024;
 export const GeneratedProvenanceSchema = z.object({
   source: z.enum(['models.dev', 'litellm']),
   fetchedAt: z.string(),
-  upstreamUrl: z.string().url(),
+  upstreamUrl: z.url(),
 });
 
 export type GeneratedProvenance = z.infer<typeof GeneratedProvenanceSchema>;
