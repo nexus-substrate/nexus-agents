@@ -75,6 +75,13 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+      # #4483: `pnpm lint` is `turbo lint`, which only reaches each workspace's
+      # own `eslint src/`. The repo-root `scripts/` tree — governance
+      # generators, drift gates, the release helper — was outside every lint
+      # scope and had accumulated 7 deprecated-API errors nothing reported.
+      - name: Run lint (repo scripts)
+        run: pnpm lint:scripts
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
