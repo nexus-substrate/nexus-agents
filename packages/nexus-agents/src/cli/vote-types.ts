@@ -95,6 +95,16 @@ export interface AgentVoteResult {
   /** CLI that executed this vote (for adaptive routing feedback). */
   readonly cli?: string | undefined;
   /**
+   * Which named option this voter chose, when the proposal declared `options`
+   * (#4452). Absent on an ordinary yes/no vote.
+   *
+   * The approve/reject/abstain tally cannot express option choice: on a
+   * multi-option proposal every engaged voter returns `approve`, so a real 6-1
+   * split records as unanimous. This is what makes the split recoverable
+   * without parsing free-text `reasoning`.
+   */
+  readonly selectedOption?: string | undefined;
+  /**
    * Model id that executed this vote, when known (e.g. 'claude-sonnet'). Carried
    * so per-decision cost aggregation can attribute spend per model (#3855). Absent
    * for error/simulation votes that never reached a model.
