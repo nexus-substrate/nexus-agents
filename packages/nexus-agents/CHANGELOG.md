@@ -1,5 +1,40 @@
 # nexus-agents
 
+## 3.3.0
+
+### Minor Changes
+
+- [#4493](https://github.com/nexus-substrate/nexus-agents/pull/4493) [`1d9cd2c`](https://github.com/nexus-substrate/nexus-agents/commit/1d9cd2c435df43d5e0ceb7d11cb4575fdb160461) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `doctor` now reports headroom on the filesystem backing the scratch root ([#4488](https://github.com/nexus-substrate/nexus-agents/issues/4488)).
+
+  A full scratch filesystem is invisible until it bites, and it bites badly: a subprocess does its work and then dies at the _write_ step, so the output is lost rather than the command being refused. During a long autonomous run that reads as unexplained tool failure, not a disk problem.
+
+  `nexus-agents doctor` now prints a scratch-space line alongside the other storage checks:
+
+  ```
+  ✓ Scratch space (/repo/.nexus-agents/tmp): 226.9 GiB free of 912.8 GiB (75% used)
+  ```
+
+  Grading is on **absolute free bytes**, deliberately not percentage — the question is "can the next run write?", which is an absolute quantity. 3% free on a 4 TiB volume is ~123 GiB and entirely fine; 20% free on a 1 GiB volume is not enough for one agent run. Percentage is reported for context only. Warn below 2 GiB, critical below 512 MiB; remediation guidance (free space, or repoint `NEXUS_TMPDIR`) is printed only when space is actually short.
+
+  The check never throws — a platform without `statfs` reports as unreadable and grades `ok`, since an unreadable filesystem is not evidence of a full one and a diagnostic must not fail closed.
+
+### Patch Changes
+
+- [#4496](https://github.com/nexus-substrate/nexus-agents/pull/4496) [`5ae96d0`](https://github.com/nexus-substrate/nexus-agents/commit/5ae96d0b5218da9c8169d6460791c96a895b8235) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Assess routing capacity per arm, not per display slot ([#4455](https://github.com/nexus-substrate/nexus-agents/issues/4455)).
+
+  `CapacityFilterStage` collapsed candidates onto vendor display slots before probing, so `claude` and `api:anthropic` — which share a slot but hold entirely independent quotas, a CLI subscription and an API key — were treated as one route. In a stage whose action is destructive exclusion, that is the wrong quantity rather than an imprecise one.
+
+  Two observable failures, both now covered by regression tests:
+
+  - **False positive (destructive).** CLI `claude` exhausted, `api:anthropic` healthy → the shared slot was filtered and **both** arms were removed. If it was the last candidate, the task failed closed with `capacity_exhausted` naming an arm that had capacity.
+  - **False negative.** `api:anthropic` exhausted, CLI `claude` healthy → the api arm was never probed, so the router could select an exhausted arm — the exact [#4351](https://github.com/nexus-substrate/nexus-agents/issues/4351) case the stage exists to prevent.
+
+  `runCapacityStage` now calls a new arm-granular `CapacityFilterStage.filterArms`, bypassing the slot-collapsing `RoutingContext` that the scoring stages legitimately use. Enforcement policy and the metric counters stay inside the stage so both paths share one rule; an unmeasured arm is still never excluded, since absence of a reading is not a reading.
+
+  Not reachable under the default `plan` billing mode, where no api arm is registered — reachable under `NEXUS_BILLING_MODE=api`.
+
+  The stale `KNOWN LIMITATION` block documenting this defect is removed rather than left to contradict the code.
+
 ## 3.2.3
 
 ### Patch Changes
