@@ -24,6 +24,16 @@ vi.mock('../mcp/server.js', () => ({
 // Mock fs.existsSync for config file checks
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
+  // #4488: the scratch-space check reads statfs. A roomy reading keeps these
+  // tests about CLI/auth health rather than disk state.
+  statfsSync: vi.fn(() => ({
+    bsize: 4096,
+    blocks: (32 * 1024 ** 3) / 4096,
+    bfree: (20 * 1024 ** 3) / 4096,
+    bavail: (20 * 1024 ** 3) / 4096,
+    files: 0,
+    ffree: 0,
+  })),
 }));
 
 // Mock the auth probe — by default, every CLI is authenticated. Individual
@@ -129,6 +139,15 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       missingCount: 0,
     },
     voterTransport: { configured: false },
+    scratchSpace: {
+      root: '/tmp/nexus-test',
+      available: true,
+      freeBytes: 20 * 1024 ** 3,
+      totalBytes: 32 * 1024 ** 3,
+      percentUsed: 38,
+      severity: 'ok' as const,
+      message: '20.0 GiB free of 32.0 GiB (38% used)',
+    },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,

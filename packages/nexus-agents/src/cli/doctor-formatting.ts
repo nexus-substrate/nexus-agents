@@ -8,6 +8,7 @@
  */
 
 import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
+import { formatScratchSpace } from './doctor-scratch-space.js';
 import type { CapacityStatus } from '../cli-adapters/types.js';
 import type {
   CliCheckResult,
@@ -451,6 +452,9 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine('');
   printSqliteCheck(result.sqliteCheck);
   printDataDirectory(result.dataDirectory);
+  // #4488: a full scratch filesystem is invisible until a subprocess dies at
+  // the write step, so surface headroom alongside the other storage checks.
+  writeLine(formatScratchSpace(result.scratchSpace));
   writeLine('');
 
   printSandbox(result.sandbox);
