@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { join } from 'node:path';
 
-import { checkSecurity, checkTempDirCleanup, checkTestHygiene } from './arch-lint.js';
+import {
+  checkSecurity,
+  checkTempDirCleanup,
+  checkTestHygiene,
+  collectLintTargets,
+} from './arch-lint.js';
 import { SRC_ROOT } from './script-paths.js';
 
 const srcFile = (rel: string): string => join(SRC_ROOT, rel);
@@ -78,6 +83,25 @@ describe('checkTempDirCleanup', () => {
 
   it('ignores files that never touch the nexus tempdir helpers', () => {
     expect(checkTempDirCleanup(srcFile('core/thing.ts'), 'export const x = 1;')).toEqual([]);
+  });
+});
+
+describe('collectLintTargets', () => {
+  it('scans scripts/ as well as packages src (#4498)', () => {
+    // The rule shipped scanning SRC_ROOT only, so a leaking tempdir in
+    // scripts/ — review-pr.ts, which unlinked the file but never removed the
+    // directory — went unreported by the very guard added to catch it. The
+    // gap was in the file walk, not in the rule, so that is what is asserted.
+    const targets = collectLintTargets();
+
+    expect(targets.some((f) => f.includes(join('scripts', 'review-pr.ts')))).toBe(true);
+    expect(targets.some((f) => f.startsWith(SRC_ROOT))).toBe(true);
+  });
+
+  it('does not scan its own test files for production-code rules', () => {
+    const targets = collectLintTargets();
+
+    expect(targets.every((f) => !f.endsWith('arch-lint.test.ts'))).toBe(true);
   });
 });
 

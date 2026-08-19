@@ -22,7 +22,7 @@ import {
   type ChildProcessWithoutNullStreams,
 } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../packages/nexus-agents/src/config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 
@@ -280,26 +280,54 @@ function postReviewToGitHub(prNumber: number, comment: string, addLabel: boolean
       stdio: 'inherit',
     });
   } finally {
+    // #4498: remove the DIRECTORY, not just the file. `nexusMkdtempSync`
+    // creates a fresh dir per call; unlinking only its contents leaked one
+    // directory per review — the #4489 leak class, in a file the
+    // tmpdir-cleanup rule was not yet scanning.
     try {
-      unlinkSync(file);
+      rmSync(dir, { recursive: true, force: true });
     } catch {
       // best-effort cleanup
     }
   }
 
   if (addLabel) {
-    try {
-      execSync(`gh pr edit ${String(prNumber)} --add-label "cli-reviewed"`, { stdio: 'inherit' });
-    } catch {
-      console.warn('Creating cli-reviewed label...');
-      execSync(
-        'gh label create cli-reviewed --description "Reviewed using CLI tools" --color 0E8A16',
-        {
-          stdio: 'inherit',
-        }
-      );
-      execSync(`gh pr edit ${String(prNumber)} --add-label "cli-reviewed"`, { stdio: 'inherit' });
-    }
+    applyReviewedLabel(prNumber);
+  }
+}
+
+/**
+ * Add the `cli-reviewed` label via REST.
+ *
+ * #4498: `gh pr edit` fails repo-wide against this repo — it fetches
+ * `repository.pullRequest.projectCards`, which now hard-errors on the
+ * Projects-classic deprecation — and the edit is NOT applied. The previous
+ * code caught that failure and inferred "the label must not exist", so it ran
+ * `gh label create` on an already-existing label; that threw *inside* the
+ * catch, with no handler, and crashed the whole review.
+ *
+ * The REST endpoint is unaffected and creates the label implicitly if missing,
+ * so no create-then-retry dance is needed. Labelling is a convenience: a
+ * failure here must never discard a review that already posted.
+ */
+function applyReviewedLabel(prNumber: number): void {
+  try {
+    execFileSync(
+      'gh',
+      [
+        'api',
+        `repos/{owner}/{repo}/issues/${String(prNumber)}/labels`,
+        '-X',
+        'POST',
+        '-f',
+        'labels[]=cli-reviewed',
+      ],
+      { stdio: 'inherit' }
+    );
+  } catch (error) {
+    console.warn(
+      `Could not add the cli-reviewed label: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
