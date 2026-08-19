@@ -1,5 +1,37 @@
 # nexus-agents
 
+## 3.3.1
+
+### Patch Changes
+
+- [#4499](https://github.com/nexus-substrate/nexus-agents/pull/4499) [`001b5b2`](https://github.com/nexus-substrate/nexus-agents/commit/001b5b2bc35357ef01fc8865fcacf0709133a67f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `review-pr.ts` crashing on label add, plug a tempdir leak, and widen arch-lint to `scripts/` ([#4498](https://github.com/nexus-substrate/nexus-agents/issues/4498)).
+
+  **`gh pr edit` is broken repo-wide.** It fetches `repository.pullRequest.projectCards`, which now hard-errors on the Projects-classic deprecation. It exits 1 and **the edit is not applied** — verified by adding an already-existing label and watching the label list stay empty. Title and body edits fail the same way, silently leaving the old content live.
+
+  `review-pr.ts` caught that failure and inferred _"the label must not exist"_, so it ran `gh label create cli-reviewed` — but that label already exists, so the create threw **inside the catch**, with no handler, and crashed the whole review after it had already posted. The premise encoded in the handler no longer matched reality.
+
+  Labelling now goes through REST (`gh api repos/{owner}/{repo}/issues/N/labels`), which is unaffected and creates the label implicitly, so the create-then-retry dance is gone. It is wrapped so a labelling failure can never discard a review that already posted.
+
+  **Tempdir leak.** `postReviewToGitHub` creates a directory with `nexusMkdtempSync` but only `unlinkSync`'d the file inside it, leaking one directory per review — the same class as [#4489](https://github.com/nexus-substrate/nexus-agents/issues/4489).
+
+  **Why the guard missed it:** `arch-lint`'s `tmpdir-cleanup` rule was scanning `SRC_ROOT` only, so `scripts/` was invisible to the very check added to catch this. The walk now covers `scripts/` too, with a scope-appropriate rule subset — resource hygiene and hardcoded credentials apply everywhere, while layer boundaries, determinism and test hygiene remain package-source concepts (arch-lint _defines_ the mock patterns, so running test-hygiene over itself made it match itself). Widening the scan found the `review-pr.ts` leak immediately.
+
+- [#4501](https://github.com/nexus-substrate/nexus-agents/pull/4501) [`7f00278`](https://github.com/nexus-substrate/nexus-agents/commit/7f00278a1da1b428e79034bf91a37ead22014966) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a stuck-release detector ([#4500](https://github.com/nexus-substrate/nexus-agents/issues/4500)).
+
+  `changesets/action`'s PR-creation call has 502'd four times out of five in a single day, with GitHub Status green throughout. When it does, the release run ends **red** — but a failed `release.yml` is not a required check, blocks nothing, and alerts no one, so merging continues and `main` accumulates changesets with no version PR. It went unnoticed for several merges.
+
+  A scheduled check (every 6h) now evaluates the durable condition — **unconsumed `.changeset/*.md` on `main` AND no open "Version Packages" PR** — and files or updates a single deduplicated tracking issue.
+
+  Three deliberate exclusions, all decided by a 3-voter panel:
+
+  - **Not a required PR check.** Merging to `main` is the only path that has ever recovered this state, so a merge-blocking detector would deadlock its own remedy.
+  - **No automatic re-dispatch.** Re-running the failed run has never recovered it, so an automatic retry against a flaking API would be a retry storm with no demonstrated payoff.
+  - **Keyed on repo state, not run outcome.** A release run can finish green and still produce no PR, which an outcome-keyed check would miss entirely.
+
+  The issue, not the run's colour, is the output that matters — a red scheduled run would reproduce the exact "reported but nobody consumes it" failure the detector exists to fix.
+
+  The predicate is a pure function in `scripts/check-release-stuck.ts` with unit tests over all four state quadrants; the workflow is a thin shell. Verified against the live stalled state: it correctly reports stalled with a real pending changeset and clears when a version PR is open.
+
 ## 3.3.0
 
 ### Minor Changes
