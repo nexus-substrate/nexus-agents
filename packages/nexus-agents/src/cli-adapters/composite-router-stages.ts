@@ -158,16 +158,15 @@ export function runBudgetStage(
  * with a named reason instead of routing to an adapter that cannot serve. That
  * is the behaviour #4351 was filed for.
  *
- * KNOWN LIMITATION (#4455): capacity is assessed at display-slot granularity,
- * because `armsToSlots` de-duplicates `api:*` arms onto their vendor slot. When
- * a CLI arm and an api arm share a slot, one arm's reading is applied to both —
- * so an exhausted CLI can exclude a healthy `api:*` arm with its own independent
- * quota, and vice versa. Quota is per serving route, not per vendor, so unlike
- * the scoring stages (where slot granularity is a fair approximation) this is
- * the wrong quantity rather than an imprecise one. Not reachable under the
- * default `plan` billing mode, where no api arm is ever registered
- * (`factory.ts:127`); reachable under `NEXUS_BILLING_MODE=api`. Resolves
- * structurally with the #4391 gateway work.
+ * Assessment is ARM-granular (#4455). Unlike the scoring stages, this one does
+ * NOT collapse candidates onto vendor display slots: quota belongs to the
+ * serving route, so `claude` and `api:anthropic` are probed separately even
+ * though they share a slot. Collapsing them applied one arm's reading to both,
+ * which in an exclusion stage meant an exhausted CLI could remove a healthy
+ * `api:*` arm holding an entirely independent quota — and an exhausted api arm
+ * went unprobed, the exact #4351 case this stage exists to prevent. Slot
+ * granularity is a fair approximation when scoring; here it was the wrong
+ * quantity, not an imprecise one.
  */
 export async function runCapacityStage(
   task: CliTask,
@@ -179,17 +178,18 @@ export async function runCapacityStage(
     return ok(candidates);
   }
 
-  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   stagesExecuted.push('capacity-filter');
 
-  // The try/catch is load-bearing, not defensive dressing: `route()` returning a
-  // Result does not stop it *throwing*, and an escaped throw here rejects
-  // runPipeline and the entire routing call. That is the same failure class as
-  // the synchronous-throw bug fixed inside assessAll — guarding one level down
-  // and leaving the boundary open would only have moved it.
-  let result;
+  // #4455: filter at ARM granularity, not display-slot. Capacity belongs to the
+  // serving route — a CLI subscription's quota and an API key's quota are
+  // independent — so collapsing `claude` and `api:anthropic` onto one slot
+  // applied one arm's reading to both, in a stage whose action is exclusion.
+  //
+  // The try/catch is load-bearing, not defensive dressing: a throw here would
+  // reject runPipeline and the entire routing call.
+  let outcome;
   try {
-    result = await deps.capacityFilterStage.route(ctx);
+    outcome = await deps.capacityFilterStage.filterArms(candidates);
   } catch (error) {
     deps.logger.debug('Capacity stage threw - keeping all candidates', {
       error: error instanceof Error ? error.message : String(error),
@@ -197,26 +197,14 @@ export async function runCapacityStage(
     return ok(candidates);
   }
 
-  if (!result.ok) {
-    // A stage fault must not silently shrink the pool: keep every candidate.
-    deps.logger.debug('Capacity stage failed - keeping all candidates', {
-      error: result.error.message,
-    });
-    return ok(candidates);
-  }
-
-  // Use the canonical slot->arm mapping (#3422) so distinct `api:*` arms sharing
-  // a vendor slot are preserved rather than collapsed.
-  const eligible = keepArmsForSlots(candidates, getRemainingCandidates(result.value.context));
-
-  if (eligible.length === 0) {
+  if (outcome.eligible.length === 0) {
     // Name every excluded arm and why. Two voters on the #4373 default-posture
     // panel made this binding: failing closed with a bare code reproduces the
     // #4351 complaint that nexus "did not explain it in the terminal result",
     // and an operator staring at an empty pool needs to know which adapters
     // were dropped without re-running with debug logging.
-    const reasons = [...result.value.context.filtered.entries()]
-      .map(([cli, reason]) => `${cli} (${reason})`)
+    const reasons = [...outcome.excluded.entries()]
+      .map(([arm, reason]) => `${arm} (${reason})`)
       .join(', ');
     return err(
       new CompositeRoutingError(
@@ -225,7 +213,7 @@ export async function runCapacityStage(
       )
     );
   }
-  return ok(eligible);
+  return ok(outcome.eligible);
 }
 
 /** Default complexity when no signal is available. */

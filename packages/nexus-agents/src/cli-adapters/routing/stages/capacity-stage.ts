@@ -24,7 +24,6 @@ import type { ILogger } from '../../../core/index.js';
 import { ok, createLogger, getTimeProvider } from '../../../core/index.js';
 import type { IRouterStage, RoutingContext, StageResult, StageError } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
-import type { CliName } from '../router-stage.js';
 import type { CapacityStatus, ICliAdapter, RoutingArmId } from '../../types.js';
 
 /**
@@ -153,7 +152,11 @@ export class CapacityFilterStage implements IRouterStage {
     let exhausted = 0;
     let unmeasured = 0;
 
-    for (const [cli, assessment] of assessments) {
+    // Iterate the slot list, not the assessment map: `route()` operates on the
+    // slot-granular RoutingContext, so `filterCandidate` needs a CliName.
+    // Arm-granular callers use `assessArms` instead (#4455).
+    for (const cli of remaining) {
+      const assessment = assessments.get(cli) ?? 'unmeasured';
       if (assessment === 'unmeasured') {
         unmeasured++;
         continue;
@@ -246,18 +249,69 @@ export class CapacityFilterStage implements IRouterStage {
    * partial adapter reaches this path — which is exactly the case that must not
    * be fatal.
    */
-  private async assessAll(candidates: readonly CliName[]): Promise<Map<CliName, Assessment>> {
+  /**
+   * Assess capacity for a set of routing ARMS (#4455).
+   *
+   * Capacity belongs to the serving route, not the display slot: a CLI
+   * subscription's quota and an API key's quota are genuinely independent, so
+   * `claude` and `api:anthropic` must be probed separately even though they
+   * share a vendor slot. Callers that hold the arm list should use this rather
+   * than routing through the slot-collapsing `RoutingContext`.
+   */
+  async assessArms(arms: readonly RoutingArmId[]): Promise<Map<RoutingArmId, Assessment>> {
+    return this.assessAll(arms);
+  }
+
+  /**
+   * Arm-granular filter (#4455).
+   *
+   * The `route()` path filters at display-slot granularity because that is what
+   * `RoutingContext` carries, but capacity is a property of the serving route:
+   * `claude` and `api:anthropic` share a vendor slot and have entirely separate
+   * quotas. Assessing per slot meant one arm's exhaustion excluded both — a
+   * destructive false positive — while an exhausted api arm went unprobed.
+   *
+   * Enforcement and the metric counters stay in here rather than at the call
+   * site so both paths share one policy.
+   */
+  async filterArms(
+    arms: readonly RoutingArmId[]
+  ): Promise<{ eligible: RoutingArmId[]; excluded: Map<RoutingArmId, string> }> {
+    const assessments = await this.assessAll(arms);
+    const excluded = new Map<RoutingArmId, string>();
+    const eligible: RoutingArmId[] = [];
+    let unmeasured = 0;
+
+    for (const arm of arms) {
+      const assessment = assessments.get(arm) ?? 'unmeasured';
+      if (assessment === 'unmeasured') unmeasured++;
+
+      // Only a measured exhaustion excludes, and only under hard limits. An
+      // unmeasured arm is never dropped: absence of a reading is not a reading.
+      if (assessment === 'exhausted' && this.config.enforceHardLimits) {
+        excluded.set(arm, `${CAPACITY_EXHAUSTED}: no capacity remaining`);
+        this.excludedCount++;
+        continue;
+      }
+      eligible.push(arm);
+    }
+
+    this.unmeasuredCount += unmeasured;
+    return { eligible, excluded };
+  }
+
+  private async assessAll(
+    candidates: readonly RoutingArmId[]
+  ): Promise<Map<RoutingArmId, Assessment>> {
     const settled = await Promise.allSettled(
       candidates.map(async (cli) => {
-        // `CliName` is a member of the `RoutingArmId` union, so no cast: a
-        // slot-keyed lookup finds the CLI arm directly.
         const adapter = this.adapters.get(cli);
         if (adapter === undefined) throw new Error('no adapter registered');
         return this.probeWithTimeout(adapter);
       })
     );
 
-    const result = new Map<CliName, Assessment>();
+    const result = new Map<RoutingArmId, Assessment>();
     for (const [idx, cli] of candidates.entries()) {
       const outcome = settled[idx];
       if (outcome?.status === 'fulfilled') {
