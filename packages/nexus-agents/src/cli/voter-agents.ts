@@ -147,6 +147,10 @@ function buildLlmVoteResult(
     source: 'llm',
     cli: adapter.providerId,
     model: adapter.modelId,
+    // #4472: surface the voter's choice at the result level, where the tally
+    // and the record read it. Absent when no options were declared or the
+    // selection matched none of them.
+    ...(vote.selectedOption !== undefined ? { selectedOption: vote.selectedOption } : {}),
     ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
     ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
     ...(usage.cachedInputTokens !== undefined
@@ -164,17 +168,41 @@ function buildLlmVoteResult(
  * Per Issue #280: No simulation fallback by default. Returns error result
  * instead of simulated vote when execution fails.
  */
+/** Resolve per-call vote execution settings against their defaults. */
+function resolveVoteExecution(options?: {
+  timeoutMs?: number;
+  maxRetries?: number;
+  allowSimulation?: boolean;
+  voteOptions?: readonly string[];
+}): {
+  timeoutMs: number;
+  maxRetries: number;
+  allowSimulation: boolean;
+  voteOptions?: readonly string[];
+} {
+  return {
+    timeoutMs: options?.timeoutMs ?? resolveVoteTimeout(),
+    maxRetries: options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries,
+    allowSimulation: options?.allowSimulation ?? false,
+    ...(options?.voteOptions !== undefined ? { voteOptions: options.voteOptions } : {}),
+  };
+}
+
 export async function executeAgentVote(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   logger: ILogger,
-  options?: { timeoutMs?: number; maxRetries?: number; allowSimulation?: boolean }
+  options?: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    allowSimulation?: boolean;
+    /** Declared options for a multi-option proposal (#4472). */
+    voteOptions?: readonly string[];
+  }
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
-  const timeoutMs = options?.timeoutMs ?? resolveVoteTimeout();
-  const maxRetries = options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries;
-  const allowSimulation = options?.allowSimulation ?? false;
+  const { timeoutMs, maxRetries, allowSimulation, voteOptions } = resolveVoteExecution(options);
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
@@ -185,6 +213,7 @@ export async function executeAgentVote(
     logger,
     timeoutMs,
     maxRetries,
+    ...(voteOptions !== undefined ? { options: voteOptions } : {}),
   });
   const processingTimeMs = getTimeProvider().now() - start;
 

@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import type { Vote } from '../consensus/types.js';
+import { matchDeclaredOption } from '../consensus/option-tally.js';
 import type { VoterRole } from './vote-types.js';
 import { getErrorMessage } from '../core/index.js';
 
@@ -106,6 +107,10 @@ export const VoteResponseSchema = z.object({
   /** Top-level structured findings for PR-review mode (#2245 v4 follow-up).
    * Replaces the YAML-in-reasoning encoding that proved lossy. */
   findings: z.array(RawFindingSchema).optional().describe('Structured findings (PR review only)'),
+  /** Chosen option when the proposal declared `options` (#4472). Validated
+   * against the declared list by the caller; an unmatched value is dropped
+   * rather than recorded, so a parse miss surfaces as absent. */
+  selectedOption: z.string().optional().describe('Which declared option you choose'),
 });
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
@@ -147,6 +152,12 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
       type: 'array',
       items: { type: 'string' },
       description: 'Optional conditions for approval',
+    },
+    // #4472: without this, `additionalProperties: false` makes it impossible
+    // for a structured-output voter to emit a selection at all.
+    selectedOption: {
+      type: 'string',
+      description: 'Which declared option you choose (multi-option proposals only)',
     },
     rejectionCategories: {
       type: 'array',
@@ -268,12 +279,12 @@ Example PR-review request_changes response with structured findings:
  * Includes workflow-test evaluation criteria (Issue #1212) and
  * rejection category instructions (Issue #1213).
  */
-export function buildVotePrompt(proposal: string): string {
+export function buildVotePrompt(proposal: string, options?: readonly string[]): string {
   return `Evaluate the following proposal and provide your vote.
 
 PROPOSAL:
 ${proposal}
-
+${buildOptionsBlock(options)}
 In addition to your role-specific criteria, assess these workflow-test dimensions:
 - Testability: Can the proposed changes be verified with automated tests?
 - Workflow integration: Does this fit into existing CI/make/test workflows?
@@ -286,8 +297,29 @@ Respond with a JSON object containing:
 - conditions: Optional array of conditions for approval
 - rejectionCategories: Required when rejecting. Array of categories from: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE
 - findings: PR-REVIEW MODE ONLY. Optional top-level array of structured findings — see "PR-review mode" in the system prompt. OMIT this field entirely when reviewing a non-diff proposal or when approving a diff.
-
+${buildSelectionFieldDoc(options)}
 ${VOTE_PROMPT_EXAMPLES}`;
+}
+
+/**
+ * The OPTIONS block, present only when the proposal declares options (#4472).
+ *
+ * Empty string when none are declared, so a proposal without options produces
+ * a prompt byte-identical to the pre-#4472 one.
+ */
+function buildOptionsBlock(options?: readonly string[]): string {
+  if (options === undefined || options.length === 0) return '';
+  const list = options.map((o) => `- ${o}`).join('\n');
+  return `
+OPTIONS — choose exactly ONE of these and name it verbatim in \`selectedOption\`:
+${list}
+`;
+}
+
+/** The `selectedOption` field doc, present only when options are declared. */
+function buildSelectionFieldDoc(options?: readonly string[]): string {
+  if (options === undefined || options.length === 0) return '';
+  return '- selectedOption: REQUIRED. Exactly one option from the OPTIONS list above, copied verbatim. Do not invent an option, combine two, or leave it blank — your selection is what the threshold is measured over.';
 }
 
 // ============================================================================
@@ -443,7 +475,12 @@ function clampOversizeVoteStrings(parsed: unknown): unknown {
 }
 
 /** Maps a validated VoteResponse into a ParsedVote, threading optional fields. */
-function buildParsedVote(data: VoteResponse): ParsedVote {
+function buildParsedVote(data: VoteResponse, options?: readonly string[]): ParsedVote {
+  // #4472: resolve the voter's raw selection against the declared options.
+  // An unmatched or absent selection stays absent — never defaulted — so the
+  // tally can price it as unattributed rather than inventing agreement.
+  const selectedOption =
+    options === undefined ? undefined : matchDeclaredOption(data.selectedOption, options);
   return {
     decision: data.decision,
     reasoning: data.reasoning,
@@ -453,6 +490,7 @@ function buildParsedVote(data: VoteResponse): ParsedVote {
       ? { rejectionCategories: data.rejectionCategories }
       : {}),
     ...(data.findings !== undefined ? { findings: data.findings } : {}),
+    ...(selectedOption !== undefined ? { selectedOption } : {}),
     source: 'parsed',
   };
 }
@@ -470,7 +508,11 @@ function buildParsedVote(data: VoteResponse): ParsedVote {
  * @returns ParsedVote with source tracking
  * @throws SyntheticVoteError if parsing or validation fails
  */
-export function parseVoteResponse(output: string, _role: VoterRole): ParsedVote {
+export function parseVoteResponse(
+  output: string,
+  _role: VoterRole,
+  options?: readonly string[]
+): ParsedVote {
   try {
     const jsonStr = extractJsonFromResponse(output);
     const parsed = JSON.parse(jsonStr) as unknown;
@@ -479,7 +521,7 @@ export function parseVoteResponse(output: string, _role: VoterRole): ParsedVote 
     const validated = VoteResponseSchema.safeParse(clampOversizeVoteStrings(parsed));
 
     if (validated.success) {
-      return buildParsedVote(validated.data);
+      return buildParsedVote(validated.data, options);
     }
 
     const reason = `Validation failed: ${validated.error.issues.map((e: { message: string }) => e.message).join(', ')}`;
