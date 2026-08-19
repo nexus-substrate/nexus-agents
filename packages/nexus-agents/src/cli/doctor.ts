@@ -24,6 +24,7 @@ import {
   nexusDataPath,
 } from '../config/nexus-data-dir.js';
 import { detectSandbox } from '../config/sandbox-detection.js';
+import { checkScratchSpace, type ScratchSpaceCheck } from './doctor-scratch-space.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
@@ -245,6 +246,8 @@ export interface DoctorResult {
   readonly harnessAlignment: HarnessAlignmentCheck;
   /** Voter transport: in-process gateway vs CLI subprocess fallback (#4255). */
   readonly voterTransport: VoterTransportCheck;
+  /** Headroom on the filesystem backing the scratch root (#4488). */
+  readonly scratchSpace: ScratchSpaceCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -725,6 +728,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const sandbox = checkSandbox();
   const harnessAlignment = checkHarnessAlignment();
   const voterTransport = checkVoterTransport();
+  const scratchSpace = checkScratchSpace();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -750,6 +754,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     sandbox,
     harnessAlignment,
     voterTransport,
+    scratchSpace,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };
