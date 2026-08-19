@@ -14,10 +14,7 @@ const GIB = 1024 ** 3;
 const reading = (freeBytes: number, totalBytes: number): StatfsReading => ({
   bsize: 4096,
   blocks: totalBytes / 4096,
-  bfree: freeBytes / 4096,
   bavail: freeBytes / 4096,
-  files: 0,
-  ffree: 0,
 });
 
 describe('checkScratchSpace', () => {
