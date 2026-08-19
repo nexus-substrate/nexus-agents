@@ -1055,6 +1055,53 @@ describe('runCapacityStage', () => {
     expect(result.value).toEqual(['gemini']);
   });
 
+  it("does not let a CLI arm's quota exclude a healthy api arm on the same slot (#4455)", async () => {
+    // `claude` and `api:anthropic` share the vendor display slot but have
+    // genuinely independent quotas — a CLI subscription and an API key.
+    // Collapsing them made one arm's exhaustion remove BOTH.
+    const stage = new CapacityFilterStage(
+      capacityAdapters({
+        claude: capacityStatus({ exhausted: true }),
+        'api:anthropic': capacityStatus(),
+      }),
+      { enforceHardLimits: true }
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude', 'api:anthropic'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['api:anthropic']);
+  });
+
+  it('drops an exhausted api arm while keeping its healthy CLI sibling (#4455)', async () => {
+    // The mirror failure: the exhausted api arm was never probed at all, so
+    // the router could select it — the exact #4351 case the stage prevents.
+    const stage = new CapacityFilterStage(
+      capacityAdapters({
+        claude: capacityStatus(),
+        'api:anthropic': capacityStatus({ exhausted: true }),
+      }),
+      { enforceHardLimits: true }
+    );
+
+    const result = await runCapacityStage(
+      capacityTask,
+      ['claude', 'api:anthropic'] as RoutingArmId[],
+      [],
+      makeDeps({ capacityFilterStage: stage })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual(['claude']);
+  });
+
   it('fails closed and NAMES every excluded arm when all are exhausted', async () => {
     // Binding condition from the #4373 default-posture vote: a bare error code
     // reproduces the #4351 complaint that nexus never explained the failure.
