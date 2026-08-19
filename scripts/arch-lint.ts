@@ -17,7 +17,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { SRC_ROOT, DOCS_ROOT } from './script-paths.js';
+import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
 
 interface Violation {
   readonly file: string;
@@ -449,13 +449,44 @@ function checkGovernance(): Violation[] {
 }
 
 /**
+ * Files the linter walks.
+ *
+ * #4498: `scripts/` is included, not just the package source. The
+ * `tmpdir-cleanup` rule shipped scanning `SRC_ROOT` only, so a leaking tempdir
+ * in `scripts/review-pr.ts` went unreported by the guard added to catch
+ * exactly that — a blind spot in the checker, not a missing rule. Test files
+ * are excluded: the production-code rules do not apply to them, and each rule
+ * already re-checks `.test.` for its own reasons.
+ */
+export function collectLintTargets(): string[] {
+  return [...collectSrcTargets(), ...collectScriptTargets()];
+}
+
+/** Package source — subject to every rule. */
+function collectSrcTargets(): string[] {
+  return getAllTsFiles(SRC_ROOT).filter((f) => !f.includes('.test.'));
+}
+
+/**
+ * Repo-root `scripts/` — subject only to the rules that mean something here.
+ *
+ * Layer boundaries and determinism are package-source concepts, and this
+ * module *defines* the mock patterns, so running test-hygiene over it makes it
+ * match itself. Resource hygiene and hardcoded credentials apply everywhere.
+ */
+function collectScriptTargets(): string[] {
+  return getAllTsFiles(join(ROOT, 'scripts')).filter((f) => !f.includes('.test.'));
+}
+
+/**
  * Main linting function.
  */
 function lint(): LintResult {
-  const files = getAllTsFiles(SRC_ROOT);
+  const srcFiles = collectSrcTargets();
+  const scriptFiles = collectScriptTargets();
   const violations: Violation[] = [];
 
-  for (const filePath of files) {
+  for (const filePath of srcFiles) {
     try {
       const content = readFileSync(filePath, 'utf-8');
 
@@ -463,6 +494,18 @@ function lint(): LintResult {
       violations.push(...checkDeterminism(filePath, content));
       violations.push(...checkSecurity(filePath, content));
       violations.push(...checkTestHygiene(filePath, content));
+      violations.push(...checkTempDirCleanup(filePath, content));
+    } catch {
+      // Skip files that can't be read
+    }
+  }
+
+  // #4498: scripts/ gets the scope-appropriate subset (see collectScriptTargets).
+  for (const filePath of scriptFiles) {
+    try {
+      const content = readFileSync(filePath, 'utf-8');
+
+      violations.push(...checkSecurity(filePath, content));
       violations.push(...checkTempDirCleanup(filePath, content));
     } catch {
       // Skip files that can't be read
@@ -477,7 +520,7 @@ function lint(): LintResult {
 
   return {
     violations,
-    filesScanned: files.length,
+    filesScanned: srcFiles.length + scriptFiles.length,
     passed: errors.length === 0,
   };
 }
