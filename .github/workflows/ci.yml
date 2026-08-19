@@ -82,6 +82,14 @@ jobs:
       - name: Run lint (repo scripts)
         run: pnpm lint:scripts
 
+      # #4490: `lint:arch` has existed since #570 and exits non-zero on error,
+      # but was wired into no workflow and no hook, so nothing ever ran it. It
+      # had drifted red (5 false-positive Test Hygiene errors, 4 false-positive
+      # hardcoded-credential errors) — an unrun gate rots exactly like unrun
+      # code. Errors block; the 397 advisory warnings do not.
+      - name: Run architectural lint
+        run: pnpm lint:arch
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest

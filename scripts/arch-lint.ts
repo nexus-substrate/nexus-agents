@@ -98,6 +98,137 @@ function getAllTsFiles(dir: string): string[] {
 }
 
 /**
+ * True when the line is entirely a comment (`//`, or a `/* ... *​/` body line).
+ *
+ * Deliberately conservative: only whole-line comments qualify, so a trailing
+ * comment cannot mask real code earlier on the same line.
+ */
+function isCommentLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*');
+}
+
+/** True for tests, testing utilities, and fixture data. */
+function isTestOrFixtureFile(relPath: string): boolean {
+  return (
+    relPath.includes('.test.') ||
+    relPath.startsWith('testing/') ||
+    relPath.includes('/testing/') ||
+    relPath.includes('/fixtures/')
+  );
+}
+
+/**
+ * True for modules where a mock token is legitimate rather than production
+ * mock usage:
+ *  - tests and `testing/` mock infrastructure;
+ *  - `demo-command` files, whose demo data uses `Mock*` names illustratively;
+ *  - `expert-prompts`, which are prompt strings that *teach* testing practice
+ *    and therefore quote `vi.fn()` and friends as guidance.
+ */
+function isMockExemptFile(relPath: string): boolean {
+  return (
+    relPath.includes('.test.') ||
+    relPath.startsWith('testing/') ||
+    relPath.includes('/testing/') ||
+    relPath.includes('demo-command') ||
+    relPath.includes('expert-prompts')
+  );
+}
+
+/**
+ * True when an `arch-lint-ignore <rule>` directive covers line `index`.
+ *
+ * Accepted on the offending line itself, or anywhere in the contiguous comment
+ * block immediately above it — a suppression usually carries a multi-line
+ * justification, and the reason should not have to fit on one line. The rule
+ * name is required so every suppression is greppable by rule.
+ */
+function hasIgnoreDirective(lines: readonly string[], index: number, rule: string): boolean {
+  const directive = `arch-lint-ignore ${rule}`;
+
+  if (lines[index]?.includes(directive) === true) return true;
+
+  for (let i = index - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line === undefined || !isCommentLine(line)) return false;
+    if (line.includes(directive)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * True when a matched credential assignment reads its value indirectly at
+ * runtime — a `${...}` template interpolation or an `{env:NAME}` placeholder —
+ * rather than embedding a literal.
+ */
+function isIndirectValue(matchText: string): boolean {
+  return matchText.includes('${') || /\{env:[^}]+\}/.test(matchText);
+}
+
+/**
+ * Check that a module creating a nexus tempdir also tears one down.
+ *
+ * `nexusMkdtemp`/`nexusMkdtempSync` allocate a directory under the gitignored
+ * scratch root. Nothing reaps that root on a schedule, so a caller that never
+ * removes what it created leaks a directory per invocation (#4489).
+ *
+ * Scope, stated honestly: this is a module-level smoke check. It proves a
+ * teardown call *exists* alongside the creating call — not that every throw or
+ * early-return path reaches it. Ordering and path coverage remain a review
+ * concern; this rule only catches the case of a new caller landing with no
+ * teardown at all, which is the failure mode that has actually occurred.
+ */
+export function checkTempDirCleanup(filePath: string, content: string): Violation[] {
+  const violations: Violation[] = [];
+  const relPath = relative(SRC_ROOT, filePath);
+
+  // The module that defines the helpers, and tests (which tear down via their
+  // own fixtures), are not callers in the sense this rule polices.
+  if (relPath.includes('nexus-tmp-dir') || relPath.includes('.test.')) {
+    return violations;
+  }
+
+  if (!/\bnexusMkdtemp(?:Sync)?\s*\(/.test(content)) {
+    return violations;
+  }
+
+  // Recognised teardown idioms, matching what the existing callers do:
+  // `rmSync(dir, ...)`, `await rm(dir, ...)`, or an explicit rimraf.
+  const hasTeardown = /\b(?:rmSync|rm|rimraf)\s*\(/.test(content);
+  if (hasTeardown) {
+    return violations;
+  }
+
+  // Escape hatch for the legitimate case where the created path is handed to a
+  // caller that owns teardown. Requires naming the rule, so it is greppable.
+  if (content.includes('arch-lint-ignore tmpdir-cleanup')) {
+    return violations;
+  }
+
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    if (!/\bnexusMkdtemp(?:Sync)?\s*\(/.test(line)) continue;
+
+    violations.push({
+      file: relPath,
+      line: i + 1,
+      rule: 'tmpdir-cleanup',
+      category: 'Resource Hygiene',
+      message:
+        'Creates a nexus tempdir but the module has no rm/rmSync teardown ' +
+        '(add cleanup, or `// arch-lint-ignore tmpdir-cleanup -- <reason>`)',
+      severity: 'error',
+    });
+  }
+
+  return violations;
+}
+
+/**
  * Check for layer boundary violations.
  */
 function checkLayerBoundaries(filePath: string, content: string): Violation[] {
@@ -190,25 +321,30 @@ function shouldSkipSecurityPattern(relPath: string, message: string, isTestFile:
 /**
  * Check for security violations.
  */
-function checkSecurity(filePath: string, content: string): Violation[] {
+export function checkSecurity(filePath: string, content: string): Violation[] {
   const violations: Violation[] = [];
   const relPath = relative(SRC_ROOT, filePath);
   const lines = content.split('\n');
-  const isTestFile =
-    relPath.includes('.test.') ||
-    relPath.startsWith('testing/') ||
-    relPath.includes('/testing/') ||
-    relPath.includes('/fixtures/');
+  const isTestFile = isTestOrFixtureFile(relPath);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line === undefined) continue;
 
+    // A credential shape written in prose is documentation about secrets, not
+    // a secret. The secret-scanner modules describe their own patterns.
+    if (isCommentLine(line) || hasIgnoreDirective(lines, i, 'security')) continue;
+
     for (const { pattern, message } of SECURITY_PATTERNS) {
       if (shouldSkipSecurityPattern(relPath, message, isTestFile)) continue;
 
-      if (pattern.test(line)) {
-        pattern.lastIndex = 0;
+      pattern.lastIndex = 0;
+      const match = pattern.exec(line);
+      pattern.lastIndex = 0;
+
+      // `${x}` and `{env:NAME}` are indirections that read the value at
+      // runtime — the precise opposite of hardcoding it.
+      if (match !== null && !isIndirectValue(match[0])) {
         violations.push({
           file: relPath,
           line: i + 1,
@@ -227,28 +363,23 @@ function checkSecurity(filePath: string, content: string): Violation[] {
 /**
  * Check for mocks outside test files.
  */
-function checkTestHygiene(filePath: string, content: string): Violation[] {
+export function checkTestHygiene(filePath: string, content: string): Violation[] {
   const violations: Violation[] = [];
   const relPath = relative(SRC_ROOT, filePath);
   const lines = content.split('\n');
 
-  // Skip test files and testing utilities (testing/ contains mock infrastructure)
-  if (
-    relPath.includes('.test.') ||
-    relPath.startsWith('testing/') ||
-    relPath.includes('/testing/')
-  ) {
-    return violations;
-  }
-
-  // Skip demo-command files (they contain demo data with Mock* names for illustration)
-  if (relPath.includes('demo-command')) {
+  if (isMockExemptFile(relPath)) {
     return violations;
   }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line === undefined) continue;
+
+    // A mock name inside a comment is prose about tests, not a mock. Only
+    // whole-line comments are skipped so a trailing `// ...` cannot be used to
+    // hide real code, and a `//` inside a string literal (a URL) is untouched.
+    if (isCommentLine(line)) continue;
 
     for (const { pattern, message } of MOCK_PATTERNS) {
       if (pattern.test(line)) {
@@ -332,6 +463,7 @@ function lint(): LintResult {
       violations.push(...checkDeterminism(filePath, content));
       violations.push(...checkSecurity(filePath, content));
       violations.push(...checkTestHygiene(filePath, content));
+      violations.push(...checkTempDirCleanup(filePath, content));
     } catch {
       // Skip files that can't be read
     }
@@ -378,12 +510,21 @@ function printResults(result: LintResult): void {
 
   for (const [category, categoryViolations] of byCategory) {
     console.log(`── ${category} ──`);
-    for (const v of categoryViolations.slice(0, 10)) {
-      const icon = v.severity === 'error' ? '✗' : '⚠';
-      console.log(`  ${icon} ${v.file}:${String(v.line)} - ${v.message}`);
+
+    // Errors decide the exit code, so they are always printed in full and
+    // ahead of warnings. Truncating them behind a wall of warnings (as this
+    // did) makes a failing run unable to explain itself.
+    const errors = categoryViolations.filter((v) => v.severity === 'error');
+    const warnings = categoryViolations.filter((v) => v.severity !== 'error');
+
+    for (const v of errors) {
+      console.log(`  ✗ ${v.file}:${String(v.line)} - ${v.message}`);
     }
-    if (categoryViolations.length > 10) {
-      console.log(`  ... and ${String(categoryViolations.length - 10)} more`);
+    for (const v of warnings.slice(0, 10)) {
+      console.log(`  ⚠ ${v.file}:${String(v.line)} - ${v.message}`);
+    }
+    if (warnings.length > 10) {
+      console.log(`  ... and ${String(warnings.length - 10)} more warnings`);
     }
     console.log('');
   }
@@ -395,7 +536,10 @@ function printResults(result: LintResult): void {
   }
 }
 
-// Run linter
-const result = lint();
-printResults(result);
-process.exit(result.passed ? 0 : 1);
+// Run linter. Guarded so the rule functions can be imported by tests without
+// the module exiting the process at import time.
+if (process.argv[1]?.endsWith('arch-lint.ts') === true) {
+  const result = lint();
+  printResults(result);
+  process.exit(result.passed ? 0 : 1);
+}

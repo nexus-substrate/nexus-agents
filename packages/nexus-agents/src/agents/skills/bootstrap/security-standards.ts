@@ -170,6 +170,9 @@ export const SECURITY_SKILLS = [
       {
         description: 'Scan TypeScript file for leaked credentials',
         input: {
+          // arch-lint-ignore security -- deliberate insecure sample: this is the
+          // *input* to a credential-scanning example. AKIAIOSFODNN7EXAMPLE is
+          // AWS's published documentation placeholder, not a live credential.
           code: 'const apiKey = "AKIAIOSFODNN7EXAMPLE"; const db = "postgres://admin:pass@host/db";',
           fileType: 'ts',
         },
