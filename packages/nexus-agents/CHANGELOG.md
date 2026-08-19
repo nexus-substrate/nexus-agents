@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 3.2.3
+
+### Patch Changes
+
+- [#4491](https://github.com/nexus-substrate/nexus-agents/pull/4491) [`985c829`](https://github.com/nexus-substrate/nexus-agents/commit/985c829ff3ca71425425ea472e3e1ccc824043c8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `lint:arch` a gate that actually runs, and add a tempdir-cleanup rule ([#4490](https://github.com/nexus-substrate/nexus-agents/issues/4490)).
+
+  `scripts/arch-lint.ts` has existed since [#570](https://github.com/nexus-substrate/nexus-agents/issues/570) and exits non-zero on error, but it was wired into no workflow and no hook — nothing ever ran it. An unrun gate rots like unrun code: it had drifted to 9 errors, all false positives.
+
+  - **Test Hygiene (5)** — `vi.fn()`/`vi.mock(` matched inside _comments_ and inside `expert-prompts` text, which are prompt strings that teach testing practice. Whole-line comments are now skipped (trailing comments deliberately are not, so `//` cannot mask real code), and `expert-prompts` is exempt.
+  - **Security (4)** — "Hardcoded API key" fired on a `${apiKey}` template interpolation, an `{env:NAME}` placeholder, a pattern quoted in a comment, and AWS's published documentation placeholder used as the _input_ to a credential-scanning example. Runtime indirections no longer count as hardcoding; the last is suppressed with a documented `arch-lint-ignore security` directive.
+
+  New **`tmpdir-cleanup`** rule: a module calling `nexusMkdtemp`/`nexusMkdtempSync` must also contain an `rm`/`rmSync`/`rimraf` teardown. Stated honestly, this is a module-level smoke check — it proves teardown _exists_, not that every throw path reaches it; ordering stays a review concern. It catches the failure mode that actually occurred ([#4489](https://github.com/nexus-substrate/nexus-agents/issues/4489)): a new caller landing with no teardown at all.
+
+  Suppressions use `// arch-lint-ignore <rule> -- <reason>`, accepted on the line or anywhere in the contiguous comment block above it, so every suppression names its rule and is greppable.
+
+  Also fixed the reporter: errors were truncated behind a 10-item-per-category cap that warnings filled, so a failing run could not say what failed. Errors now print in full, ahead of warnings.
+
+  `lint:arch` now runs in CI's Lint job. Errors block; the 397 advisory warnings do not. Repo is at 0 errors.
+
+- [#4489](https://github.com/nexus-substrate/nexus-agents/pull/4489) [`746b048`](https://github.com/nexus-substrate/nexus-agents/commit/746b04880fffe1d27b9c2b2baed9d635fdc9f2f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Guarantee subprocess tempdir cleanup on every exit path ([#4488](https://github.com/nexus-substrate/nexus-agents/issues/4488)).
+
+  `CommandConfig.cleanup` removes a tempdir the command builder created — for codex that is `nexus-codex-sysprompt-*`, holding the system prompt. It was invoked inside a wrapped `resolve()`, which covers normal completion but not a synchronous throw: `spawn()` throws on some failures (EACCES, and ENOENT on certain platforms) and handler setup can throw too. Those paths skipped cleanup entirely and rejected the promise instead of returning a `Result`, breaking the never-throws contract this adapter is meant to honour.
+
+  The executor body is now wrapped, cleanup runs through a once-guard on every path, and a synchronous spawn failure returns a proper `EXECUTION_ERROR` Result.
+
+  This is the same leak class `codex-adapter` already documents as having "exhausted inodes on long-running MCP daemons" — the fix there attached cleanup to the command config; this attaches it to the paths that consume it.
+
+  Verified by mutation: removing the cleanup call from the new catch fails the regression test. The first version of that test passed the mutation because a nonexistent binary surfaces as an _async_ `error` event and never reaches the catch — it now forces a synchronous throw via the existing `spawn` mock.
+
 ## 3.2.2
 
 ### Patch Changes
