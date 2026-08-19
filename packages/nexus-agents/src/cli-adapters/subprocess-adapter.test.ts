@@ -1429,3 +1429,43 @@ describe('SubprocessCliAdapter - nested retry layers (#2824)', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 });
+
+// ============================================================================
+// Tempdir cleanup is guaranteed on every exit path (#4488)
+// ============================================================================
+
+describe('subprocess tempdir cleanup', () => {
+  it('runs cleanup when spawn fails, not only on the resolve path', async () => {
+    // spawn() throws synchronously on some failures (EACCES, and ENOENT on
+    // certain platforms). That path never reaches resolve(), so before the
+    // try/catch the tempdir the command builder created leaked once per
+    // invocation — the leak codex-adapter's own comment records as having
+    // exhausted inodes on long-running MCP daemons.
+    const cleanup = vi.fn();
+    const adapter = new TestSubprocessAdapter();
+    adapter.setCommandConfig({ command: 'whatever', args: [], cleanup });
+    // Force the SYNCHRONOUS throw. A nonexistent binary is not enough — on
+    // Linux that surfaces as an async 'error' event, which reaches resolve()
+    // and would exercise the pre-existing path instead of the new catch.
+    mockSpawn.mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    const result = await adapter.execute({ content: 'hi' });
+
+    expect(result.ok).toBe(false);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs cleanup exactly once', async () => {
+    // The once-guard is independent of resolveOnce: a second invocation must
+    // not re-rm a path that may have been reused by then.
+    const cleanup = vi.fn();
+    const adapter = new TestSubprocessAdapter();
+    adapter.setCommandConfig({ command: 'echo', args: ['ok'], cleanup });
+
+    await adapter.execute({ content: 'hi' });
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+});

@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
 import type { Result } from '../core/index.js';
-import { ok, err, getTimeProvider, createLogger } from '../core/index.js';
+import { ok, err, getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
   CliTransport,
@@ -385,6 +385,40 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * + model and surface tail-latency outliers") requires a way to
    * disambiguate which timing row belongs to which call.
    */
+  /**
+   * Wraps a command's cleanup in a once-guard (#4488).
+   *
+   * `CommandConfig.cleanup` removes a tempdir the command builder created (e.g.
+   * codex's `nexus-codex-sysprompt-*` holding the system prompt). It must run on
+   * EVERY exit path — a path that skips it leaks a directory per invocation, the
+   * leak codex-adapter's own comment records as having exhausted inodes on
+   * long-running MCP daemons — and exactly ONCE, since a second rm could hit a
+   * path the OS has already handed to someone else.
+   */
+  /**
+   * Result for a synchronous spawn failure (#4488).
+   *
+   * `spawn()` throws synchronously on some failures (EACCES, and ENOENT on
+   * certain platforms), and handler setup can throw too. Those paths never
+   * reach `resolve`, so without catching them the tempdir leaks AND the promise
+   * rejects instead of returning a Result — breaking the never-throws contract
+   * this adapter is supposed to honour.
+   */
+  private spawnFailure(command: string, error: unknown): Result<CliResponse, CliError> {
+    return err(
+      this.createError('EXECUTION_ERROR', `Failed to spawn ${command}: ${getErrorMessage(error)}`)
+    );
+  }
+
+  private onceCleanup(cleanup: CommandConfig['cleanup']): () => void {
+    let done = false;
+    return (): void => {
+      if (done) return;
+      done = true;
+      this.runSubprocessCleanup(cleanup);
+    };
+  }
+
   private spawnSubprocess(
     task: CliTask,
     options: ResolvedExecutionOptions,
@@ -402,43 +436,49 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     }
 
     return new Promise((resolveOuter) => {
-      const resolve = (result: Result<CliResponse, CliError>): void => {
-        this.runSubprocessCleanup(cmdConfig.cleanup);
-        resolveOuter(result);
+      const runCleanupOnce = this.onceCleanup(cmdConfig.cleanup);
+      const resolve = (r: Result<CliResponse, CliError>): void => {
+        runCleanupOnce();
+        resolveOuter(r);
       };
-      // Curated child env: base infrastructure vars + only this CLI's
-      // own vendor credentials, so cross-vendor API keys don't leak
-      // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
-      // CLI must not believe it's already inside Claude Code.
-      const childEnv = buildChildEnv(this.name);
+      try {
+        // Curated child env: base infrastructure vars + only this CLI's
+        // own vendor credentials, so cross-vendor API keys don't leak
+        // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
+        // CLI must not believe it's already inside Claude Code.
+        const childEnv = buildChildEnv(this.name);
 
-      const child = spawn(cmdConfig.command, cmdConfig.args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: childEnv,
-      });
+        const child = spawn(cmdConfig.command, cmdConfig.args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: childEnv,
+        });
 
-      const onProgress = options.onProgress;
-      const state = this.setupChildProcessHandlers({
-        child,
-        startTime,
-        timeoutMs: options.timeoutMs,
-        resolve,
-        requestId,
-        ...(onProgress !== undefined ? { onProgress } : {}),
-      });
+        const onProgress = options.onProgress;
+        const state = this.setupChildProcessHandlers({
+          child,
+          startTime,
+          timeoutMs: options.timeoutMs,
+          resolve,
+          requestId,
+          ...(onProgress !== undefined ? { onProgress } : {}),
+        });
 
-      if (signal !== undefined) {
-        this.attachAbortSignal(child, signal, resolve);
+        if (signal !== undefined) {
+          this.attachAbortSignal(child, signal, resolve);
+        }
+
+        // Write stdin content if provided and close stdin
+        if (cmdConfig.stdin !== undefined) {
+          child.stdin.write(cmdConfig.stdin);
+        }
+        child.stdin.end();
+
+        // Reference state to prevent unused variable warning
+        void state;
+      } catch (error: unknown) {
+        runCleanupOnce();
+        resolveOuter(this.spawnFailure(cmdConfig.command, error));
       }
-
-      // Write stdin content if provided and close stdin
-      if (cmdConfig.stdin !== undefined) {
-        child.stdin.write(cmdConfig.stdin);
-      }
-      child.stdin.end();
-
-      // Reference state to prevent unused variable warning
-      void state;
     });
   }
 
