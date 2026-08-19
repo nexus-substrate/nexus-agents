@@ -6,11 +6,6 @@
       "inputs": ["src/**", "*.config.*", "*.json", "tsconfig.json"],
       "outputs": ["dist/**"]
     },
-    "website#build": {
-      "dependsOn": [],
-      "inputs": ["src/**", "*.config.*", "*.json", "../../docs/**/*.md"],
-      "outputs": ["dist/**"]
-    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -35,6 +30,15 @@
     "typecheck": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "nexus-agents#docs:api:md": {
+      "dependsOn": ["nexus-memory#build"],
+      "cache": false
+    },
+    "nexus-agents-website#build": {
+      "dependsOn": ["nexus-agents#docs:api:md"],
+      "inputs": ["src/**", "*.config.*", "*.json", "../../docs/**/*.md"],
+      "outputs": ["dist/**"]
     }
   }
 }

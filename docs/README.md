@@ -501,7 +501,7 @@ The following are excluded from this index:
 - `.claude/skills/` - Agent skill definitions (loaded automatically)
 - `coverage/` - Test coverage reports (generated)
 - `node_modules/` - Dependencies
-- `packages/nexus-agents/docs/api/` - Generated TypeDoc output
+- `docs/api/` - Generated TypeDoc API reference (gitignored; produced by the website prebuild, rendered at `/api/`)
 
 ---
 
