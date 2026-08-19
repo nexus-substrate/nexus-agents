@@ -93,3 +93,4 @@ tsundoku/
 # Pinned by name so legitimate docs/research/ entries stay tracked.
 docs/research/timeout-mismatch-v1.md
 docs/research/nexus-agents-multi-harness-alignment-audit.md
+release-stall-body.md
