@@ -8,8 +8,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check",
-    "prebuild": "pnpm -C ../packages/nexus-agents docs:api:md"
+    "check": "astro check"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
