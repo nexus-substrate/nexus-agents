@@ -42,5 +42,6 @@
   "entryFileName": "index",
   "frontmatterGlobals": {
     "tier": 2
-  }
+  },
+  "gitRevision": "main"
 }

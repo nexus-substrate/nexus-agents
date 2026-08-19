@@ -24,10 +24,6 @@
       "rationale": "Tooling config files (tsup, vitest, eslint) loaded by tools, not imported."
     },
     {
-      "glob": "packages/nexus-agents/docs/api/assets/**",
-      "rationale": "TypeDoc-generated HTML assets. Consumed by static HTML, not by JS imports."
-    },
-    {
       "glob": "**/vitest.config.*.ts",
       "rationale": "Variant vitest configs (e.g. opencode-e2e) referenced by CI workflows via `--config` flag, not imported."
     },

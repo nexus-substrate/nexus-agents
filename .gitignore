@@ -94,3 +94,7 @@ tsundoku/
 docs/research/timeout-mismatch-v1.md
 docs/research/nexus-agents-multi-harness-alignment-audit.md
 release-stall-body.md
+
+# Generated TypeDoc output — derived from source, produced at build/publish time (#4449)
+docs/api/
+packages/nexus-agents/docs/api/

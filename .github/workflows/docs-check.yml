@@ -37,13 +37,19 @@ concurrency:
 jobs:
   # Job 1: TypeDoc Drift Detection
   #
-  # The TypeDoc HTML output is non-deterministic in small ways (hierarchy/
-  # navigation metadata re-orders when unrelated enum shapes change). Rather
-  # than blocking every PR that touches a typed function, we surface drift
-  # as a warning annotation and let humans regenerate when it accumulates.
-  # (#2027)
+  # #4449: the API reference is DERIVED from source + JSDoc and is no longer
+  # committed. Two trees used to be: 20 markdown files (126,712 lines) consumed
+  # by the website, and 1,931 HTML files (153,130 lines) consumed by nothing at
+  # all except this drift check. `changeset:version` regenerated the HTML tree
+  # every release, churning 5,886 lines of pure version-string diff into every
+  # version PR.
+  #
+  # The old drift gate was warning-only (#2027), i.e. a check that cannot fail
+  # — so the committed docs rotted until they documented deleted symbols. It is
+  # replaced by a check that CAN fail: generation must succeed from this PR's
+  # source. Output is discarded; only the exit status matters.
   typedoc-check:
-    name: TypeDoc Verification
+    name: TypeDoc Generation
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -51,20 +57,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
 
-      - name: Generate TypeDoc
+      - name: Generate TypeDoc (must succeed)
         run: |
           # nexus-memory must be built first so TypeDoc can resolve its types
           # (#2766 Phase 5+ adds nexus-memory as a workspace dep of nexus-agents).
           pnpm --filter nexus-memory build
-          pnpm --filter nexus-agents docs
+          # The markdown output is what the website renders, so that is the one
+          # whose generation must be green. A failure here means the published
+          # API reference would be missing, not merely stale.
+          pnpm --filter nexus-agents docs:api:md
 
-      - name: Check TypeDoc drift
+      - name: Confirm the reference was produced
         run: |
-          if git diff --exit-code packages/nexus-agents/docs/api/; then
-            echo "✅ TypeDoc output is in sync"
-          else
-            echo "::warning title=TypeDoc drift::Generated docs have drifted from committed version. Run 'pnpm --filter nexus-agents docs' and commit when convenient. Not blocking per #2027."
-            # Exit 0 — drift is non-blocking.
+          count=$(find docs/api -name '*.md' | wc -l)
+          echo "Generated $count markdown pages."
+          if [ "$count" -eq 0 ]; then
+            echo "::error::TypeDoc produced no output — the published API reference would be empty."
+            exit 1
           fi
 
   # Job 2: Link Validation
