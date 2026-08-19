@@ -1,0 +1,88 @@
+name: Release Stall Check
+
+# Detects a stalled release: unconsumed changesets on `main` with no open
+# "Version Packages" PR (#4500).
+#
+# Deliberately NOT a required PR check. Merging to `main` is the only path that
+# has ever recovered this state, so a merge-blocking detector would deadlock its
+# own remedy. Decided by a 3-voter panel on #4500, unanimous on that exclusion.
+#
+# Deliberately does NOT re-dispatch `release.yml`. Re-running the failed run has
+# never recovered it, so an automatic retry against a flaking API would be a
+# retry storm with no demonstrated payoff. This reports; a human decides.
+#
+# The issue — not this run's colour — is the output that matters. A red
+# scheduled run would reproduce the exact "reported but nobody consumes it"
+# failure the detector exists to fix.
+
+on:
+  schedule:
+    # Every 6h. The failure is accumulative and reversible, so detection lag
+    # costs little; historical stalls persisted for days.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: release-stall-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Release Stall Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Needed only to file/update the tracking issue.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Look for an open Version Packages PR
+        id: version-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh pr list --state open --json title \
+            --jq '[.[] | select(.title | startswith("chore(release): version packages"))] | length')
+          echo "has_open=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Assess release stall
+        id: assess
+        continue-on-error: true
+        env:
+          HAS_OPEN_VERSION_PR: ${{ steps.version-pr.outputs.has_open }}
+        run: npx tsx scripts/check-release-stuck.ts
+
+      - name: File or update the tracking issue
+        if: steps.assess.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'ops(release): release pipeline is stalled — changesets on main with no version PR'
+        run: |
+          set -euo pipefail
+          # The body was rendered by the assess step into release-stall-body.md.
+          # Dedupe on the exact title so repeated detection updates one issue
+          # rather than filing a new one every 6 hours.
+          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+          if [ -n "$existing" ]; then
+            echo "Updating existing issue #$existing"
+            gh issue edit "$existing" --body-file release-stall-body.md
+          else
+            echo "Filing a new stall issue"
+            gh issue create --title "$TITLE" --body-file release-stall-body.md
+          fi
+
+      - name: Fail the run when stalled
+        if: steps.assess.outcome == 'failure'
+        run: |
+          echo "::error::Release pipeline is stalled — see the tracking issue."
+          exit 1
