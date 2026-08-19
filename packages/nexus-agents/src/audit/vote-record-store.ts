@@ -48,7 +48,12 @@ import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 
-import type { VoteRecord, VoteRecordOptionCount, VoterSummary } from './vote-record.js';
+import type {
+  VoteRecord,
+  VoteRecordOptionCount,
+  VoteRecordOptionCoverage,
+  VoterSummary,
+} from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-record.js';
 
 /**
@@ -177,6 +182,53 @@ export interface BuildVoteRecordInput {
  * hash-covered, and a set of votes that differed only in arrival order must not
  * produce two different hashes.
  */
+/**
+ * Derive the option tally and its coverage together (#4472).
+ *
+ * They travel as a pair: coverage without a tally says nothing, and a tally
+ * without coverage is the ambiguity this fixes.
+ */
+function deriveOptionFields(votes: readonly AgentVoteResult[]): {
+  optionTally: VoteRecordOptionCount[] | undefined;
+  optionCoverage: VoteRecordOptionCoverage | undefined;
+} {
+  const optionTally = tallySelectedOptions(votes);
+  return {
+    optionTally,
+    optionCoverage: optionTally === undefined ? undefined : coverageOf(votes),
+  };
+}
+
+/**
+ * Schema version implied by the option fields present.
+ *
+ * 1.4 carries coverage, 1.3 a bare tally (historical only — a tally now always
+ * travels with coverage), 1.2 neither.
+ */
+function recordVersion(
+  optionTally: VoteRecordOptionCount[] | undefined,
+  optionCoverage: VoteRecordOptionCoverage | undefined
+): '1.2' | '1.3' | '1.4' {
+  if (optionCoverage !== undefined) return '1.4';
+  return optionTally !== undefined ? '1.3' : '1.2';
+}
+
+/**
+ * Selection coverage over the approving voters (#4472).
+ *
+ * Counts approvers, not all voters: a rejecter chose no option because they
+ * rejected the proposal, which the approve/reject counts already record.
+ */
+function coverageOf(votes: readonly AgentVoteResult[]): VoteRecordOptionCoverage {
+  const approvers = votes.filter((v) => v.vote.decision === 'approve');
+  const selectedCount = approvers.filter((v) => v.selectedOption !== undefined).length;
+  return {
+    approverCount: approvers.length,
+    selectedCount,
+    unattributedApprovals: approvers.length - selectedCount,
+  };
+}
+
 function tallySelectedOptions(
   votes: readonly AgentVoteResult[]
 ): VoteRecordOptionCount[] | undefined {
@@ -200,9 +252,9 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   // multi-option split is recoverable from the structured record instead of by
   // parsing seven free-text `reasoning` fields. Absent when no voter declared an
   // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
-  const optionTally = tallySelectedOptions(input.votes);
+  const { optionTally, optionCoverage } = deriveOptionFields(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: optionTally !== undefined ? '1.3' : '1.2',
+    version: recordVersion(optionTally, optionCoverage),
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -221,6 +273,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
     ...(optionTally !== undefined ? { optionTally } : {}),
+    ...(optionCoverage !== undefined ? { optionCoverage } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };

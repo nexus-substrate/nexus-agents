@@ -111,7 +111,7 @@ describe('buildVoteRecord', () => {
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
-  it('derives optionTally from selectedOption and bumps to 1.3 (#4452)', () => {
+  it('derives optionTally from selectedOption and bumps the schema (#4452, #4472)', () => {
     // The defect this fixes: voteCounts says approve:2 for BOTH a genuine
     // agreement and a split across options. The tally distinguishes them.
     const withOptions = votes.map((v, i) => ({
@@ -125,11 +125,38 @@ describe('buildVoteRecord', () => {
       result: consensusResult(),
       votes: withOptions,
     });
-    expect(record.version).toBe('1.3');
+    // #4472: a tally now always travels with its coverage, so a record
+    // carrying one is 1.4. Historical 1.3 records still verify.
+    expect(record.version).toBe('1.4');
     expect(record.optionTally).toEqual([
       { option: 'A', count: 2 },
       { option: 'C', count: 1 },
     ]);
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('records selection coverage so a diluted share reads as partial (#4472)', () => {
+    // Two approvers select, one approves without a usable selection. The
+    // tally alone would show A:2 with no hint that a third approver's choice
+    // was never measured.
+    const partial = votes.map((v, i) => ({
+      ...v,
+      ...(i < 2 ? { selectedOption: 'A' } : {}),
+    }));
+    const record = buildVoteRecord({
+      id: 'vote-coverage',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes: partial,
+    });
+
+    const approvers = partial.filter((v) => v.vote.decision === 'approve').length;
+    expect(record.optionCoverage).toEqual({
+      approverCount: approvers,
+      selectedCount: 2,
+      unattributedApprovals: approvers - 2,
+    });
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 

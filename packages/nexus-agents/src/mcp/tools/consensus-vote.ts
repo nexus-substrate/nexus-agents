@@ -32,6 +32,7 @@ import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../
 import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
   HigherOrderVotingResult,
@@ -613,8 +614,43 @@ export async function executeVoting(
   // recomputing the policy math (DRY; the decision can't diverge). `errorCount`
   // uses the identical definition `buildResponse` uses.
   const errorCount = result.votes.filter((v) => v.source === 'error').length;
+  // #4472: when the proposal declared options, the leading option must clear
+  // the bar too. Applied BEFORE the decision is stamped so the record and the
+  // response both reflect the gated verdict — a veto that only reached the
+  // response would leave the audit trail claiming an approval that did not
+  // happen. No-op when no options were declared.
+  applyOptionGate(input, result);
   result.decision = resolveVoteDecision(input, result, errorCount).decision;
   return result;
+}
+
+/**
+ * Veto an approved verdict whose declared-option split failed its bar.
+ *
+ * Mutates `result` in place: `executeVoting` owns it and has not yet published
+ * it. Only ever flips approved to rejected, never the reverse.
+ */
+function applyOptionGate(input: ConsensusVoteInput, result: ExtendedVotingResult): void {
+  const declaredOptions = input.options;
+  if (declaredOptions === undefined || declaredOptions.length === 0) return;
+
+  const outcome = evaluateOptionGate(
+    result.votes,
+    declaredOptions,
+    optionThresholdFor(result.strategy, input.threshold),
+    result.result.outcome === 'approved'
+  );
+
+  result.optionGate = outcome.verdict;
+
+  if (!outcome.vetoed) return;
+
+  result.result.outcome = 'rejected';
+  // Preserve an existing policy reason (an error-policy short-circuit is more
+  // urgent than an option split) rather than overwriting it.
+  if (result.policyReason === undefined && outcome.reason !== undefined) {
+    result.policyReason = outcome.reason;
+  }
 }
 
 // eslint-disable-next-line max-lines-per-function -- see block comment above
@@ -641,6 +677,7 @@ async function executeVotingInner(
     simulate: input.simulateVotes,
     ...(opts?.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
     ...(opts?.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
+    declaredOptions: input.options,
   });
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
@@ -1084,6 +1121,20 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // is present on the response whenever cost recording succeeds (common in `api`
   // billing mode). Shared schema lives with the type (single source of truth).
   costSummary: DecisionCostSummarySchema.optional(),
+  // #4472: declared-option outcome. Present whenever the proposal declared
+  // `options`. `unattributedApprovals` is part of the contract, not telemetry:
+  // without it a caller cannot tell a real split from unreadable responses.
+  optionOutcome: z
+    .object({
+      tally: z.array(z.object({ option: z.string(), count: z.number().int().nonnegative() })),
+      leadingOption: z.string().optional(),
+      leadingShare: z.number().min(0).max(1),
+      approverCount: z.number().int().nonnegative(),
+      selectedCount: z.number().int().nonnegative(),
+      unattributedApprovals: z.number().int().nonnegative(),
+      thresholdMet: z.boolean(),
+    })
+    .optional(),
 };
 
 /** Advertised MCP input schema for consensus_vote (hoisted to keep the register fn within its line budget). */

@@ -64,6 +64,19 @@ export const VoteRecordDecisionSchema = z.enum(['approved', 'rejected', 'no_quor
 export type VoteRecordDecision = z.infer<typeof VoteRecordDecisionSchema>;
 
 /** Per-voter summary carried in an authentic vote record. */
+/** Selection coverage for a multi-option vote (#4472). */
+export const VoteRecordOptionCoverageSchema = z
+  .object({
+    /** Every approving voter, selecting or not — the tally's denominator. */
+    approverCount: z.number().int().nonnegative(),
+    /** Approvers whose selection matched a declared option. */
+    selectedCount: z.number().int().nonnegative(),
+    /** Approvers with no usable selection; their choice is unmeasured. */
+    unattributedApprovals: z.number().int().nonnegative(),
+  })
+  .strict();
+export type VoteRecordOptionCoverage = z.infer<typeof VoteRecordOptionCoverageSchema>;
+
 export const VoterSummarySchema = z
   .object({
     role: z.string().min(1).max(100),
@@ -117,7 +130,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -171,6 +184,16 @@ export const VoteRecordSchema = z
      * choosing different things.
      */
     optionTally: z.array(VoteRecordOptionCountSchema).min(1).optional(),
+    /**
+     * Selection coverage for a multi-option vote (#4472, schema 1.4).
+     *
+     * `optionTally` alone cannot distinguish dissent from absence: `4 pick X
+     * + 3 unreadable` and a genuine 4/3 split both leave a leading share of
+     * 57%. Recording how many approvers produced no usable selection is what
+     * makes a partial measurement legible AS partial — the condition every
+     * voter attached to adopting the "credit no option" rule.
+     */
+    optionCoverage: VoteRecordOptionCoverageSchema.optional(),
     /**
      * The loop/strategy subject this vote RATIFIES (#3927 item 1). Present only on
      * a ratification vote; set at vote time and bound into the self-hash (so it is
@@ -253,8 +276,22 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
           optionTally: payload.optionTally.map((o) => ({ option: o.option, count: o.count })),
         }
       : base;
+  // `optionCoverage` (#4472, schema 1.4) follows the same append-when-present
+  // rule, inserted after `optionTally` and before `ratifies` so the canonical
+  // order matches the schema order. Absent ⇒ byte-identical to the 1.3 form.
+  const withCoverage =
+    payload.optionCoverage !== undefined
+      ? {
+          ...withTally,
+          optionCoverage: {
+            approverCount: payload.optionCoverage.approverCount,
+            selectedCount: payload.optionCoverage.selectedCount,
+            unattributedApprovals: payload.optionCoverage.unattributedApprovals,
+          },
+        }
+      : withTally;
   const canonical = JSON.stringify(
-    payload.ratifies !== undefined ? { ...withTally, ratifies: payload.ratifies } : withTally
+    payload.ratifies !== undefined ? { ...withCoverage, ratifies: payload.ratifies } : withCoverage
   );
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }

@@ -403,7 +403,7 @@ export interface RetryOptions {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   /** Declared options for a multi-option proposal (#4472); absent for yes/no. */
-  readonly options?: readonly string[];
+  readonly options?: readonly string[] | undefined;
 }
 
 /**
