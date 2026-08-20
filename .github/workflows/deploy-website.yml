@@ -28,9 +28,27 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # Must go through turbo from the repo root, NOT `pnpm build` inside
+      # website/. The API reference is generated at build time (#4449), and the
+      # ordering lives in turbo.json: nexus-agents-website#build dependsOn
+      # nexus-agents#docs:api:md dependsOn nexus-memory#build. Running astro
+      # directly bypasses that graph, so docs/api never exists and the Astro
+      # glob loader silently yields an empty `api` collection — the site
+      # deploys successfully with the entire /api section missing (#4507).
       - name: Build website
-        run: pnpm build
-        working-directory: website
+        run: npx turbo run build --filter=nexus-agents-website
+
+      # The failure mode this guards is silent: a missing collection is not a
+      # build error, so without this the site publishes minus its API
+      # reference and nothing reports it.
+      - name: Verify the API reference was generated
+        run: |
+          pages=$(find website/dist/api -name index.html 2>/dev/null | wc -l)
+          echo "Built $pages /api/ pages."
+          if [ "$pages" -eq 0 ]; then
+            echo "::error::No /api/ pages in the build output — the published API reference would 404."
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
