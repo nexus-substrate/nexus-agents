@@ -44,12 +44,21 @@ import { basename, join } from 'node:path';
 import { ROOT } from './script-paths.js';
 
 /**
- * Entry points known to emit no page, pending diagnosis in #4504.
+ * Entry points known to emit no page.
  *
- * Every entry here is a documented gap in the published API reference, not an
- * intentional omission. Remove an entry the moment it starts generating.
+ * **Empty, and that is the finding.** This list originally held `pipeline`,
+ * `benchmarks` and `agents-ictm` on the belief that they produced no
+ * documentation. They do: TypeDoc emits them to `docs/api/exports/*.md`
+ * because each carries a slash-bearing `@module exports/<name>` tag, and
+ * `outputFileStrategy: "modules"` derives the output path from the module
+ * name. All three are live on the published site. The gate's non-recursive
+ * scan could not see them, so the allowlist was documenting a defect in this
+ * script rather than a gap in the docs.
+ *
+ * Any entry added here must be verified against the PUBLISHED site, not just
+ * against a directory listing.
  */
-export const KNOWN_MISSING = ['pipeline', 'benchmarks', 'agents-ictm'] as const;
+export const KNOWN_MISSING: readonly string[] = [];
 
 export interface CoverageInput {
   readonly declared: readonly string[];
@@ -70,7 +79,13 @@ export interface CoverageVerdict {
 
 /** Compare declared entry points against pages actually produced. */
 export function assessCoverage(input: CoverageInput): CoverageVerdict {
-  const generated = new Set(input.generated);
+  // Compare on basename. TypeDoc emits a page into a SUBDIRECTORY when the
+  // module carries a slash-bearing `@module exports/<name>` tag, because
+  // outputFileStrategy:"modules" derives the path from the module name. Those
+  // pages are real and published — the gate's original non-recursive scan
+  // reported them absent, and the resulting allowlist documented a gate bug
+  // rather than a documentation gap (#4504).
+  const generated = new Set(input.generated.map((g) => g.split('/').pop() ?? g));
   const allowed = new Set(input.allowlist);
 
   const absent = input.declared.filter((e) => !generated.has(e)).sort();
@@ -116,8 +131,10 @@ function readDeclared(): string[] {
 function readGenerated(): string[] {
   const dir = join(ROOT, 'docs/api');
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && f !== 'index.md')
+  // Recursive: nested emissions are real pages. A non-recursive scan is what
+  // made three live, published pages read as missing (#4504).
+  return readdirSync(dir, { recursive: true, encoding: 'utf-8' })
+    .filter((f) => f.endsWith('.md') && basename(f) !== 'index.md')
     .map((f) => basename(f, '.md'));
 }
 

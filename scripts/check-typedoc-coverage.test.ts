@@ -20,6 +20,21 @@ describe('assessCoverage', () => {
     expect(v.reason).toContain('benchmarks');
   });
 
+  it('counts a page emitted into a subdirectory as present, not missing', () => {
+    // The gate shipped with a non-recursive readdir, so the three pages
+    // TypeDoc emits to docs/api/exports/ read as absent — and they are LIVE
+    // on the published site. The allowlist was documenting a gate bug, not a
+    // documentation gap.
+    const v = assessCoverage({
+      declared: EPS,
+      generated: ['core', 'exports/pipeline', 'exports/benchmarks'],
+      allowlist: [],
+    });
+
+    expect(v.missing).toEqual([]);
+    expect(v.ok).toBe(true);
+  });
+
   it('tolerates a known-missing entry point that is on the allowlist', () => {
     const v = assessCoverage({
       declared: EPS,
