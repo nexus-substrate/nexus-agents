@@ -1,0 +1,91 @@
+name: Deploy Staleness Check
+
+# Detects a published site that has fallen behind main (#4506).
+#
+# The website went 14 days without deploying. One run wedged in `queued` on
+# 2026-08-09 held the `pages` concurrency group and 34 later runs were
+# cancelled before starting a job. Nothing reported it — the site returned
+# HTTP 200 throughout, serving v2.173.6 while main reached v3.3.2, including
+# documentation for a method deleted weeks earlier.
+#
+# Measures the OUTCOME (is the published artifact current?) rather than a
+# mechanism (run age, queue state). Chosen 7/7 by a higher_order panel: this
+# catches every upstream cause — the wedged run, a fail-fast pipeline, a
+# disabled workflow, or a deploy that succeeds while publishing nothing.
+#
+# Read-only, no credentials, and it fails closed: an unreachable site reports
+# `unmeasured`, which is a failure, not a pass.
+
+on:
+  schedule:
+    # Every 6h. The harm is cumulative and reversible; the previous stall ran
+    # for 14 days, so this bounds exposure to hours.
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: deploy-stale-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Deploy Staleness Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Only to file/update the tracking issue.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Compare the live site against main
+        id: assess
+        continue-on-error: true
+        run: npx tsx scripts/check-deploy-stale.ts
+
+      - name: File or update the tracking issue
+        if: steps.assess.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'ops(website): published site is behind main'
+        run: |
+          set -euo pipefail
+          # Dedupe on the exact title so repeated detection updates one issue
+          # rather than filing a new one every 6 hours.
+          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+          npx tsx scripts/check-deploy-stale.ts > /tmp/detail.txt 2>&1 || true
+          {
+            echo "The published site does not match \`main\`."
+            echo
+            echo '```'
+            cat /tmp/detail.txt
+            echo '```'
+            echo
+            echo "A deploy that succeeds while publishing stale or missing content is not"
+            echo "visible from the Actions tab — the site returns HTTP 200 either way. This"
+            echo "issue is the durable surface (#4506)."
+            echo
+            echo "Check \`deploy-website.yml\` for a run stuck in \`queued\`: one wedged run holds"
+            echo "the \`pages\` concurrency group and silently cancels every later deploy."
+          } > /tmp/body.md
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file /tmp/body.md
+          else
+            gh issue create --title "$TITLE" --body-file /tmp/body.md
+          fi
+
+      - name: Fail the run when the site is behind
+        if: steps.assess.outcome == 'failure'
+        run: |
+          echo "::error::Published site is behind main — see the tracking issue."
+          exit 1
