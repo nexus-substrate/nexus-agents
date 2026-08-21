@@ -128,11 +128,37 @@ describe('buildVoteRecord', () => {
     // #4472: a tally now always travels with its coverage, so a record
     // carrying one is 1.4. Historical 1.3 records still verify.
     expect(record.version).toBe('1.4');
-    expect(record.optionTally).toEqual([
-      { option: 'A', count: 2 },
-      { option: 'C', count: 1 },
-    ]);
+    // The fixture's third voter is catfish(reject) and was assigned 'C'. Only
+    // approvers count — this expectation previously asserted `C: 1`, encoding
+    // the very defect e2e validation later surfaced in a live record.
+    expect(record.optionTally).toEqual([{ option: 'A', count: 2 }]);
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('tallies only approvers, matching the population the verdict was computed over', () => {
+    // Found by e2e validation: a REJECTING voter named an option, and the
+    // record counted it. The threshold is evaluated over approvers only, so a
+    // record whose tally includes rejecters describes a different population
+    // than the verdict it accompanies — and disagrees with its own
+    // optionCoverage, which was already approvers-only.
+    const mixed: readonly AgentVoteResult[] = [
+      { ...agentVote('architect', 'approve'), selectedOption: 'A' },
+      { ...agentVote('catfish', 'reject'), selectedOption: 'B' },
+    ];
+    const record = buildVoteRecord({
+      id: 'vote-mixed',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes: mixed,
+    });
+
+    // 'B' came from a rejecter and must not appear.
+    expect(record.optionTally).toEqual([{ option: 'A', count: 1 }]);
+
+    // The tally and the coverage must describe the same population.
+    const tallied = (record.optionTally ?? []).reduce((n, t) => n + t.count, 0);
+    expect(tallied).toBe(record.optionCoverage?.selectedCount);
   });
 
   it('records selection coverage so a diluted share reads as partial (#4472)', () => {

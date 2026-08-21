@@ -234,6 +234,12 @@ function tallySelectedOptions(
 ): VoteRecordOptionCount[] | undefined {
   const counts = new Map<string, number>();
   for (const v of votes) {
+    // Approvers only. The threshold is evaluated over approvers, so a tally
+    // that counted rejecters would describe a different population than the
+    // verdict it accompanies — and would disagree with `optionCoverage`,
+    // which is approvers-only. Found by e2e validation when a rejecting voter
+    // named an option and the record credited it (#4472 follow-up).
+    if (v.vote.decision !== 'approve') continue;
     if (v.selectedOption === undefined) continue;
     counts.set(v.selectedOption, (counts.get(v.selectedOption) ?? 0) + 1);
   }
