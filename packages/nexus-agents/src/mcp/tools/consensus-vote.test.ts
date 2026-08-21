@@ -9,6 +9,7 @@ import { RateLimiter } from '../middleware/index.js';
 import {
   ConsensusVoteInputSchema,
   CONSENSUS_VOTE_OUTPUT_SCHEMA,
+  CONSENSUS_VOTE_TOOL_SCHEMA,
   createPolicyFailedResult,
   maybeEscalateContrarian,
   type ConsensusVoteDeps,
@@ -1383,6 +1384,32 @@ describe('buildResponse error counting (Issue #815)', () => {
 // ============================================================================
 // Output Schema Validation (Issue #1246)
 // ============================================================================
+
+describe('CONSENSUS_VOTE_TOOL_SCHEMA input drift contract (#4494 follow-up)', () => {
+  // #4494 shipped `options` on ConsensusVoteInputSchema but NOT on the schema
+  // advertised to MCP clients, so the feature was unreachable through the tool
+  // — the surface every caller actually uses. Internal capability and
+  // advertised capability must not drift.
+  const internal = Object.keys(ConsensusVoteInputSchema.shape).sort();
+  const advertised = Object.keys(CONSENSUS_VOTE_TOOL_SCHEMA).sort();
+
+  it('advertises `options`, the field whose absence made #4472 unreachable', () => {
+    expect(advertised).toContain('options');
+  });
+
+  it('advertises every input the handler accepts, except documented internals', () => {
+    // `mode` and `idempotencyKey` are async-dispatch plumbing added by the
+    // job wrapper, not user-facing vote inputs.
+    const INTERNAL_ONLY = new Set(['mode', 'idempotencyKey']);
+    const missing = internal.filter((k) => !INTERNAL_ONLY.has(k) && !advertised.includes(k));
+
+    expect(missing).toEqual([]);
+  });
+
+  it('advertises nothing the handler would reject', () => {
+    expect(advertised.filter((k) => !internal.includes(k))).toEqual([]);
+  });
+});
 
 describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
   const outputValidator = z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA);
