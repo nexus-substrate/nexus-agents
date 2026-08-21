@@ -67,14 +67,13 @@ jobs:
           # API reference would be missing, not merely stale.
           pnpm --filter nexus-agents docs:api:md
 
-      - name: Confirm the reference was produced
-        run: |
-          count=$(find docs/api -name '*.md' | wc -l)
-          echo "Generated $count markdown pages."
-          if [ "$count" -eq 0 ]; then
-            echo "::error::TypeDoc produced no output — the published API reference would be empty."
-            exit 1
-          fi
+      # #4504: "some pages exist" is too weak a check — three declared entry
+      # points silently emitted nothing for months, so `PipelineRunner` (a
+      # canonical path) has no published reference. This asserts page count
+      # against DECLARED entry points, with an enumerated allowlist for the
+      # three known gaps. A fourth regression still fails.
+      - name: Confirm every declared entry point produced a page
+        run: npx tsx scripts/check-typedoc-coverage.ts
 
   # Job 2: Link Validation
   # Link validation happens in a dedicated workflow (.github/workflows/link-check.yml)
