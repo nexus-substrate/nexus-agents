@@ -8,7 +8,19 @@
  * @module mcp/gateway/gateway-keywords
  */
 
-/** Keywords that indicate security-related work (case-insensitive substring match). */
+/**
+ * Keywords that indicate security-related work.
+ *
+ * Matched on word boundaries by `keyword-match.ts`, NOT raw substring (#4518).
+ *
+ * `'auth'` used to be here as a bare stem and fired on **author**, escalating
+ * a CHANGELOG formatting task to a security supermajority. Replacing it with
+ * a bare word ALONE would have been worse: `\bauth\b` does not match
+ * "authentication" or "authorization", so real security work would stop being
+ * detected. Both are kept — `auth` on a word boundary catches "auth flow"
+ * without catching "author", and the longer forms are enumerated explicitly.
+ * Precision in the data rather than cleverness in the matcher.
+ */
 export const SECURITY_KEYWORDS = [
   'security',
   'vulnerabilit',
@@ -18,6 +30,13 @@ export const SECURITY_KEYWORDS = [
   'xss',
   'csrf',
   'auth',
+  'authentication',
+  'authorization',
+  'authn',
+  'authz',
+  'oauth',
+  'unauthenticated',
+  'unauthorized',
   'penetration',
   'threat',
   'malware',

@@ -15,6 +15,7 @@
  */
 
 import { SECURITY_KEYWORDS, ARCHITECTURE_KEYWORDS, PROMOTED_ROLES } from './gateway-keywords.js';
+import { matchesAnyKeyword } from './keyword-match.js';
 
 /** Request processing tier. Higher = more orchestration overhead. */
 export enum RequestTier {
@@ -147,12 +148,10 @@ export function parseTierOverrides(
 
 /** Checks if text contains any security or architecture promotion keyword. */
 function containsPromotionKeyword(text: string): boolean {
-  const lower = text.toLowerCase();
-  for (const kw of SECURITY_KEYWORDS) {
-    if (lower.includes(kw)) return true;
-  }
-  for (const kw of ARCHITECTURE_KEYWORDS) {
-    if (new RegExp(kw, 'i').test(text)) return true;
-  }
-  return false;
+  // #4518: shared word-boundary matcher. Previously security used raw
+  // substring (so "author" promoted) while architecture used bare RegExp —
+  // two different semantics over two lists documented as one.
+  return (
+    matchesAnyKeyword(text, SECURITY_KEYWORDS) || matchesAnyKeyword(text, ARCHITECTURE_KEYWORDS)
+  );
 }
