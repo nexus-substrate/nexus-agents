@@ -43,6 +43,13 @@ import { scanForSecrets, describeSecretFindings } from './diff-secret-scan.js';
 export function isSecuritySignal(signal: ImprovementSignal): boolean {
   if (signal.category === 'security') return true;
   const haystack = `${signal.signalKey}\n${signal.title}\n${signal.body}`.toLowerCase();
+  // #4518 DELIBERATELY NOT APPLIED HERE. The governance classifier moved to
+  // word-boundary matching because over-matching escalated unrelated work to a
+  // supermajority bar — an annoyance. This predicate has the opposite risk
+  // profile, stated above: a false negative auto-remediates a security issue
+  // WITHOUT human review. Broad substring matching is the fail-safe direction
+  // for this call site, so it stays, and the divergence is recorded rather
+  // than quietly unified for consistency's sake.
   return SECURITY_KEYWORDS.some((kw) => haystack.includes(kw));
 }
 

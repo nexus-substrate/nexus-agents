@@ -40,6 +40,7 @@ export interface GovernanceClassification {
   promotionReason: string | null;
 }
 
+import { matchesAnyKeyword, findMatchingKeyword as matchKeyword } from './keyword-match.js';
 import {
   SECURITY_KEYWORDS,
   ARCHITECTURE_KEYWORDS,
@@ -122,10 +123,10 @@ function detectGovernanceDomain(params: Record<string, unknown>): GovernanceDoma
   for (const field of textFields) {
     const value = params[field];
     if (typeof value !== 'string') continue;
-    const lower = value.toLowerCase();
-
-    if (SECURITY_KEYWORDS.some((kw) => lower.includes(kw))) return 'security';
-    if (ARCHITECTURE_KEYWORDS.some((kw) => lower.includes(kw))) return 'architecture';
+    // #4518: word-boundary matching. Raw substring escalated "author" to
+    // security supermajority via the 'auth' stem.
+    if (matchesAnyKeyword(value, SECURITY_KEYWORDS)) return 'security';
+    if (matchesAnyKeyword(value, ARCHITECTURE_KEYWORDS)) return 'architecture';
   }
 
   return 'none';
@@ -153,10 +154,9 @@ function buildPromotionReason(domain: GovernanceDomain, params: Record<string, u
 
 /** Finds the first matching keyword in text for the given domain. */
 function findMatchingKeyword(text: string, domain: GovernanceDomain): string | null {
-  const lower = text.toLowerCase();
+  // Must use the SAME matcher as classification — otherwise the recorded
+  // `promotionReason` can name a keyword that did not actually trigger the
+  // escalation, which is the fidelity defect #4518 is about.
   const keywords = domain === 'security' ? SECURITY_KEYWORDS : ARCHITECTURE_KEYWORDS;
-  for (const kw of keywords) {
-    if (lower.includes(kw)) return kw;
-  }
-  return null;
+  return matchKeyword(text, keywords) ?? null;
 }
