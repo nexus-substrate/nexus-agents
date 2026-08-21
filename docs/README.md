@@ -271,14 +271,15 @@ For contributors building on the control plane and operators running it.
 
 ### Operations & runbooks
 
-| Document                                                     | Description                    | Status    |
-| ------------------------------------------------------------ | ------------------------------ | --------- |
-| [docops-spec.md](./ops/docops-spec.md)                       | Canonical DocOps pipeline spec | Canonical |
-| [docops-manifest.json](./ops/docops-manifest.json)           | DocOps enforcement manifest    | Canonical |
-| [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
-| [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
-| [git-housekeeping.md](./ops/git-housekeeping.md)             | Git GC cleanup runbook (#3062) | Canonical |
-| [governed-decision-cost.md](./ops/governed-decision-cost.md) | Governed-decision cost (#3857) | Canonical |
+| Document                                                           | Description                    | Status    |
+| ------------------------------------------------------------------ | ------------------------------ | --------- |
+| [docops-spec.md](./ops/docops-spec.md)                             | Canonical DocOps pipeline spec | Canonical |
+| [docops-manifest.json](./ops/docops-manifest.json)                 | DocOps enforcement manifest    | Canonical |
+| [docs-inventory.md](./ops/docs-inventory.md)                       | Documentation inventory        | Canonical |
+| [release-changeset-race.md](./ops/release-changeset-race.md)       | Publish-race runbook (#2382)   | Canonical |
+| [git-housekeeping.md](./ops/git-housekeeping.md)                   | Git GC cleanup runbook (#3062) | Canonical |
+| [governed-decision-cost.md](./ops/governed-decision-cost.md)       | Governed-decision cost (#3857) | Canonical |
+| [e2e-validation-2026-08-21.md](./ops/e2e-validation-2026-08-21.md) | E2E validation run, 2026-08-21 | Canonical |
 
 ### CI gates & coverage
 
