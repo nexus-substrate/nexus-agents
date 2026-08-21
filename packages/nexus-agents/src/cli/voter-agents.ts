@@ -147,6 +147,10 @@ function buildLlmVoteResult(
     source: 'llm',
     cli: adapter.providerId,
     model: adapter.modelId,
+    // #4472: surface the voter's choice at the result level, where the tally
+    // and the record read it. Absent when no options were declared or the
+    // selection matched none of them.
+    ...(vote.selectedOption !== undefined ? { selectedOption: vote.selectedOption } : {}),
     ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
     ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
     ...(usage.cachedInputTokens !== undefined
@@ -164,17 +168,31 @@ function buildLlmVoteResult(
  * Per Issue #280: No simulation fallback by default. Returns error result
  * instead of simulated vote when execution fails.
  */
+/** Resolve per-call vote execution settings against their defaults. */
+function resolveVoteExecution(options?: VoteExecutionOverrides): VoteExecutionSettings {
+  return {
+    timeoutMs: options?.timeoutMs ?? resolveVoteTimeout(),
+    maxRetries: options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries,
+    allowSimulation: options?.allowSimulation ?? false,
+    declaredOptions: options?.declaredOptions,
+  };
+}
+
 export async function executeAgentVote(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   logger: ILogger,
-  options?: { timeoutMs?: number; maxRetries?: number; allowSimulation?: boolean }
+  options?: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    allowSimulation?: boolean;
+    /** Declared options for a multi-option proposal (#4472). */
+    declaredOptions?: readonly string[] | undefined;
+  }
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
-  const timeoutMs = options?.timeoutMs ?? resolveVoteTimeout();
-  const maxRetries = options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries;
-  const allowSimulation = options?.allowSimulation ?? false;
+  const { timeoutMs, maxRetries, allowSimulation, declaredOptions } = resolveVoteExecution(options);
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
@@ -185,6 +203,7 @@ export async function executeAgentVote(
     logger,
     timeoutMs,
     maxRetries,
+    options: declaredOptions,
   });
   const processingTimeMs = getTimeProvider().now() - start;
 
@@ -237,6 +256,8 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    * ⇒ the CLI round-robin path is used (unchanged).
    */
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
+  /** Named alternatives for a multi-option proposal (#4472); each voter picks one. */
+  readonly declaredOptions?: readonly string[] | undefined;
 }
 
 /**
@@ -452,13 +473,30 @@ async function resolveDiverseAdapters(
 }
 
 /** Options for staggered vote launching. */
+/** Caller-supplied vote execution overrides; unset fields take defaults. */
+export interface VoteExecutionOverrides {
+  timeoutMs?: number;
+  maxRetries?: number;
+  allowSimulation?: boolean;
+  declaredOptions?: readonly string[] | undefined;
+}
+
+/** Resolved per-call vote execution settings. */
+interface VoteExecutionSettings {
+  timeoutMs: number;
+  maxRetries: number;
+  allowSimulation: boolean;
+  declaredOptions?: readonly string[] | undefined;
+}
+
 interface StaggeredVoteInput {
   readonly roles: readonly VoterRole[];
   readonly proposal: string;
   readonly roleAdapters: Map<VoterRole, IModelAdapter>;
   readonly fallbackAdapter: IModelAdapter;
   readonly logger: ILogger;
-  readonly voteOptions: { timeoutMs: number; maxRetries: number; allowSimulation: boolean };
+  /** Passed straight to executeAgentVote; declaredOptions per #4472. */
+  readonly voteOptions: VoteExecutionSettings;
   readonly interDelay: number;
 }
 
@@ -547,7 +585,14 @@ export async function collectRealVotes(
 
   warnIfCodexConcurrencyExceeded(roleAdapters, logger);
 
-  const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
+  const voteOptions = {
+    timeoutMs,
+    maxRetries,
+    allowSimulation: allowSimulation ?? false,
+    // #4472: reaches executeAgentVote, which puts the declared options in the
+    // prompt and resolves each voter's selection against them.
+    declaredOptions: options.declaredOptions,
+  };
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
   return launchStaggeredVotes({

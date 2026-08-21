@@ -1511,6 +1511,16 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
   // properties`. The fixture is typed `ConsensusVoteResponse`, so a newly-added
   // required response field forces this fixture to set it, surfacing schema drift.
   const fullResponse: ConsensusVoteResponse = {
+    // #4472: present here so the key-parity guard actually covers optionOutcome.
+    optionOutcome: {
+      tally: [{ option: 'Rewrite', count: 2 }],
+      leadingOption: 'Rewrite',
+      leadingShare: 1,
+      approverCount: 2,
+      selectedCount: 2,
+      unattributedApprovals: 0,
+      thresholdMet: true,
+    },
     proposal: 'ship it',
     threshold: 'majority',
     strategy: 'higher_order',

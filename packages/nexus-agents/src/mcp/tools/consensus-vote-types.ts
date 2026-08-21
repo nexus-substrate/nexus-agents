@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
+import type { OptionThresholdVerdict } from '../../consensus/option-tally.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 
@@ -181,14 +182,24 @@ export const ConsensusVoteInputSchema = z.object({
     .min(1)
     .max(MAX_PROPOSAL_LENGTH)
     .describe(
-      'Proposal text to vote on. IMPORTANT (#4452): the tally records approve/reject/abstain ' +
-        'ONLY. If your proposal asks voters to choose among named options (A/B/C), every voter ' +
-        'who engages returns `approve`, so the result records as unanimous even when the panel ' +
-        'disagreed about WHICH option — a 6-1 split persists as 7-0, 100%. Threshold semantics ' +
-        'invert too: `unanimous` becomes trivially easy to clear, because everyone approves ' +
-        'while choosing different things. Prefer a single yes/no question; if you must offer ' +
-        "options, read each voter's `reasoning` to recover the real split and do NOT report the " +
-        'recorded percentage as agreement.'
+      'Proposal text to vote on. If the proposal asks voters to choose among named ' +
+        'alternatives, you MUST declare them in `options` (#4472). Without `options` the tally ' +
+        'records approve/reject/abstain only, so every voter who engages returns `approve` and ' +
+        'a 6-1 split on WHICH option persists as 7-0, 100% (#4452).'
+    ),
+  options: z
+    .array(z.string().min(1).max(200))
+    .min(2)
+    .max(10)
+    .optional()
+    .describe(
+      'Named alternatives for a multi-option proposal (#4472). When present, the threshold must ' +
+        'ALSO be cleared by the leading option, in addition to the ordinary approve/reject bar: ' +
+        '`unanimous` requires every approver to have chosen the SAME option, and ' +
+        "`supermajority`/`majority` measure the leading option's share of approvers. An " +
+        'approving voter whose selection is absent or matches no declared option stays in the ' +
+        'denominator and credits no option, so a degraded response can only lower the leading ' +
+        'share, never raise it. Omit for an ordinary yes/no vote — behaviour is then unchanged.'
     ),
   threshold: VoteThresholdSchema.optional().describe(
     'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
@@ -287,6 +298,9 @@ export interface AgentVoteSummary {
   modelUsed?: string;
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories?: readonly string[];
+  /** Which declared option this voter chose (#4472). Absent when the proposal
+   * declared none, or the voter's selection matched none of them. */
+  selectedOption?: string;
 }
 
 /**
@@ -352,6 +366,24 @@ export interface ConsensusVoteResponse {
    */
   costSummary?: DecisionCostSummary;
   /**
+   * #4472: declared-option outcome, present only when the proposal declared
+   * `options`. Separate from `approvalPercentage` — that stays the
+   * approve/reject figure — so a caller can tell WHICH bar failed.
+   *
+   * `unattributedApprovals` is load-bearing, not decoration: a share alone
+   * cannot distinguish dissent from absence, since `4 pick X + 3 unparseable`
+   * reads 57% exactly like a real 4/3 split.
+   */
+  optionOutcome?: {
+    tally: ReadonlyArray<{ option: string; count: number }>;
+    leadingOption?: string;
+    leadingShare: number;
+    approverCount: number;
+    selectedCount: number;
+    unattributedApprovals: number;
+    thresholdMet: boolean;
+  };
+  /**
    * #3991: whether the authentic vote record (#3897) was persisted at vote time.
    * Post-#3991 the runtime ledger routes through `nexusDataPath` under
    * `governance/`, so a writable `.nexus-agents/governance/` location almost
@@ -372,6 +404,12 @@ export interface ConsensusVoteResponse {
 /** Extended voting result with optional Higher-Order metadata. */
 export interface ExtendedVotingResult extends VotingResult {
   strategy: VotingStrategy;
+  /**
+   * #4472: the declared-option tally + verdict, present only when the proposal
+   * declared `options`. Reported alongside `approvalPercentage` rather than
+   * folded into it, so a reader can tell which bar failed.
+   */
+  optionGate?: OptionThresholdVerdict;
   higherOrderResult?: HigherOrderVotingResult;
   /** Reason an error policy short-circuited the vote (#3124); surfaced on the response. */
   policyReason?: string;
@@ -678,6 +716,19 @@ export function buildResponse(
   };
   if (voteRecord !== undefined && !voteRecord.persisted) {
     response.voteRecordNote = voteRecord.detail;
+  }
+
+  if (result.optionGate !== undefined) {
+    const g = result.optionGate;
+    response.optionOutcome = {
+      tally: g.tally.map((t) => ({ option: t.option, count: t.count })),
+      ...(g.leadingOption !== undefined ? { leadingOption: g.leadingOption } : {}),
+      leadingShare: g.leadingShare,
+      approverCount: g.approverCount,
+      selectedCount: g.selectedCount,
+      unattributedApprovals: g.unattributedApprovals,
+      thresholdMet: g.approved,
+    };
   }
 
   applyOptionalResponseFields(response, input, result, errorCount, costSummary);

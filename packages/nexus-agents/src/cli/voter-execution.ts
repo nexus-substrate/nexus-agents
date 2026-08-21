@@ -251,12 +251,13 @@ function buildVoteRequest(
   role: VoterRole,
   proposal: string,
   timeoutMs: number,
-  withResponseFormat: boolean
+  withResponseFormat: boolean,
+  options?: readonly string[]
 ): CompletionRequest {
   const base: CompletionRequest = {
     messages: [
       { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
-      { role: 'user', content: buildVotePrompt(proposal) },
+      { role: 'user', content: buildVotePrompt(proposal, options) },
     ],
     // 4000 (#4131): headroom so a findings-bearing verdict (JSON envelope +
     // reasoning + structured findings) isn't cut mid-JSON by the token cap and
@@ -309,14 +310,27 @@ function readTokenCount(value: unknown): number | undefined {
 }
 
 /** One completion attempt: build → complete (timeout-bounded) → extract text + usage. */
-async function runVoteCompletion(
-  role: VoterRole,
-  proposal: string,
-  adapter: IModelAdapter,
-  timeoutMs: number,
-  withResponseFormat: boolean
-): Promise<{ ok: true; output: string; usage: VoteUsage } | { ok: false; error: string }> {
-  const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat);
+interface VoteCompletionArgs {
+  readonly role: VoterRole;
+  readonly proposal: string;
+  readonly adapter: IModelAdapter;
+  readonly timeoutMs: number;
+  readonly withResponseFormat: boolean;
+  /** Declared options for a multi-option proposal (#4472). */
+  readonly options?: readonly string[] | undefined;
+}
+
+async function runVoteCompletion({
+  role,
+  proposal,
+  adapter,
+  timeoutMs,
+  withResponseFormat,
+  options,
+}: VoteCompletionArgs): Promise<
+  { ok: true; output: string; usage: VoteUsage } | { ok: false; error: string }
+> {
+  const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat, options);
   const timeoutResult = await withTimeout(
     adapter.complete(request),
     timeoutMs,
@@ -353,22 +367,24 @@ export async function executeSingleVoteAttempt(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
-  timeoutMs: number
+  timeoutMs: number,
+  options?: readonly string[]
 ): Promise<
   { ok: true; vote: Vote; output: string; usage: VoteUsage } | { ok: false; error: string }
 > {
-  let completion = await runVoteCompletion(role, proposal, adapter, timeoutMs, true);
+  const completionArgs = { role, proposal, adapter, timeoutMs, options };
+  let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
   if (!completion.ok && isStructuredOutputUnsupported(completion.error)) {
-    completion = await runVoteCompletion(role, proposal, adapter, timeoutMs, false);
+    completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: false });
   }
   if (!completion.ok) return { ok: false, error: completion.error };
 
   try {
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
     // accept real LLM votes, not synthetic fallbacks.
-    const vote = parseVoteResponse(completion.output, role);
+    const vote = parseVoteResponse(completion.output, role, options);
     return { ok: true, vote, output: completion.output, usage: completion.usage };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
@@ -386,6 +402,8 @@ export interface RetryOptions {
   readonly logger: ILogger;
   readonly timeoutMs: number;
   readonly maxRetries: number;
+  /** Declared options for a multi-option proposal (#4472); absent for yes/no. */
+  readonly options?: readonly string[] | undefined;
 }
 
 /**
@@ -395,7 +413,7 @@ export interface RetryOptions {
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<{ vote: Vote; usage: VoteUsage; ok: true } | { error: string; ok: false }> {
-  const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
+  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options } = opts;
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -411,7 +429,7 @@ export async function executeWithRetries(
     // retry succeeded (or which attempt blew the cap). Total vote time
     // is already captured at the call-site; this fills the per-attempt gap.
     const attemptStart = Date.now();
-    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs);
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, options);
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
       logger.info('Vote attempt timing', {

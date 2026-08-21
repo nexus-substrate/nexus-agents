@@ -100,6 +100,14 @@ export const VoteSchema = z.object({
   /** Pre-verified PR-review findings (#2245 v4 follow-up). Optional;
    * populated only when the voter emits the structured top-level array. */
   findings: z.array(FindingShapeSchema).optional().describe('PR-review findings (pre-verified)'),
+  /** Which declared option this voter chose, when the proposal declared
+   * `options` (#4472). Absent when the proposal declared none, or when the
+   * voter's selection matched no declared option — an unmatched selection is
+   * recorded as absent, never coerced onto a default. */
+  selectedOption: z
+    .string()
+    .optional()
+    .describe('Chosen option when the proposal declares options'),
   timestamp: z.iso.datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;
