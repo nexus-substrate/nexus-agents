@@ -1138,8 +1138,21 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
 };
 
 /** Advertised MCP input schema for consensus_vote (hoisted to keep the register fn within its line budget). */
-const CONSENSUS_VOTE_TOOL_SCHEMA = {
+export const CONSENSUS_VOTE_TOOL_SCHEMA = {
   proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
+  options: z
+    .array(z.string().min(1).max(200))
+    .min(2)
+    .max(10)
+    .optional()
+    .describe(
+      'Named alternatives for a multi-option proposal (#4472). When present, the threshold must ' +
+        'ALSO be cleared by the leading option: `unanimous` requires every approver to have chosen ' +
+        "the SAME option, and `supermajority`/`majority` measure the leading option's share of " +
+        'approvers. An approving voter whose selection is absent or matches no declared option ' +
+        'stays in the denominator and credits no option, so a degraded response can only lower the ' +
+        'leading share, never raise it. Omit for an ordinary yes/no vote.'
+    ),
   threshold: z
     .enum(['majority', 'supermajority', 'unanimous'])
     .optional()
@@ -1174,9 +1187,11 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
   "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
   'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record. ' +
-  'CAVEAT (#4452): the tally is approve/reject/abstain only. A proposal that asks voters to pick ' +
-  'among named options records as unanimous even when they picked DIFFERENT options — recover the ' +
-  "real split from each voter's reasoning, and do not report the percentage as agreement.";
+  'If your proposal asks voters to choose among named alternatives, you MUST pass them in ' +
+  '`options` (#4472) — the threshold is then measured over WHICH option won, and the record ' +
+  'carries the per-option tally plus selection coverage. WITHOUT `options` the tally is ' +
+  'approve/reject/abstain only, so every voter who engages returns `approve` and a 6-1 split on ' +
+  'which option persists as 7-0, 100% (#4452).';
 
 /**
  * Registers the consensus_vote tool with the MCP server.
