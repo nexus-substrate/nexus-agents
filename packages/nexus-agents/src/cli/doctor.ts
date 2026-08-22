@@ -28,6 +28,7 @@ import {
   checkScratchFilesystems,
   worstSeverity,
   type ScratchSpaceCheck,
+  type ScratchSpaceSeverity,
 } from './doctor-scratch-space.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
@@ -736,12 +737,35 @@ export interface HealthVerdictInput {
  * current run, and failing the whole command on it would collapse the
  * distinction between the two thresholds into one.
  */
+/**
+ * Whether a scratch severity permits a healthy verdict (#4563).
+ *
+ * Exhaustive rather than `!== 'critical'`: a severity added later — say
+ * `fatal` — would silently satisfy a negative test and let the verdict pass,
+ * which is the same shape as the `skip`-reaching-`!== 'fail'` regression on
+ * the ship gate. Each level must be classified deliberately.
+ */
+function scratchSeverityIsAcceptable(severity: ScratchSpaceSeverity): boolean {
+  switch (severity) {
+    case 'ok':
+    case 'warn':
+      // warn still leaves room for the current run.
+      return true;
+    case 'critical':
+      return false;
+    default: {
+      const exhaustive: never = severity;
+      throw new Error(`Unhandled scratch severity: ${String(exhaustive)}`);
+    }
+  }
+}
+
 export function isAllHealthy(input: HealthVerdictInput): boolean {
   return (
     input.nodeSupported &&
     input.hasAuthMethod &&
     input.mcpServerReady &&
-    worstSeverity(input.scratchSpace) !== 'critical' &&
+    scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
     input.clis.every((c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported')
   );
 }

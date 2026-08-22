@@ -354,25 +354,42 @@ export class CapacityFilterStage implements IRouterStage {
     let throttled = 0;
 
     for (const cli of remaining) {
-      const assessment = assessments.get(cli) ?? 'unmeasured';
-      if (assessment === 'unmeasured') {
-        unmeasured++;
-        continue;
-      }
-      if (assessment === 'throttled') {
-        throttled++;
-        continue;
-      }
-      if (assessment !== 'exhausted') continue;
-
-      exhausted++;
-      if (this.config.enforceHardLimits) {
-        updatedCtx = filterCandidate(
-          updatedCtx,
-          cli,
-          `${CAPACITY_EXHAUSTED}: no capacity remaining`
-        );
-        this.excludedCount++;
+      // Exhaustive switch, not an if/!== chain (#4563). When `throttled` was
+      // added to Assessment, the old chain's `if (assessment !== 'exhausted')
+      // continue;` swallowed it silently alongside `healthy` — the compiler
+      // had nothing to object to, so a rate-limited candidate went unreported
+      // in every trace. A switch with no default makes the next member a
+      // build error here instead of a silent fall-through.
+      const assessment: Assessment = assessments.get(cli) ?? 'unmeasured';
+      switch (assessment) {
+        case 'unmeasured':
+          unmeasured++;
+          break;
+        case 'throttled':
+          throttled++;
+          break;
+        case 'healthy':
+          break;
+        case 'exhausted':
+          exhausted++;
+          if (this.config.enforceHardLimits) {
+            updatedCtx = filterCandidate(
+              updatedCtx,
+              cli,
+              `${CAPACITY_EXHAUSTED}: no capacity remaining`
+            );
+            this.excludedCount++;
+          }
+          break;
+        default: {
+          // A bare switch does NOT force exhaustiveness in TypeScript —
+          // verified by adding a member and watching the build stay green.
+          // This assertion is what makes the next Assessment member a compile
+          // error here, using the `const exhaustive: never` idiom already used
+          // across the codebase rather than a new helper.
+          const exhaustive: never = assessment;
+          throw new Error(`Unhandled capacity assessment: ${String(exhaustive)}`);
+        }
       }
     }
 
