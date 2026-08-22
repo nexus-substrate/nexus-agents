@@ -5,10 +5,12 @@ import {
   WARN_FREE_BYTES,
   checkScratchFilesystems,
   checkScratchSpace,
+  formatScratchFilesystems,
   formatScratchSpace,
   worstSeverity,
 } from './doctor-scratch-space.js';
 import type {
+  ScratchRootLabel,
   ScratchSpaceCheck,
   ScratchSpaceSeverity,
   StatfsReading,
@@ -206,5 +208,49 @@ describe('worstSeverity', () => {
 
   it('is ok when nothing was measured, since absence is not evidence of a full disk', () => {
     expect(worstSeverity([])).toBe('ok');
+  });
+});
+
+describe('formatScratchFilesystems', () => {
+  const at = (label: ScratchRootLabel, root: string, free: number): ScratchSpaceCheck =>
+    checkScratchSpace(root, () => reading(free, 32 * GIB), label);
+
+  it('renders one line per filesystem', () => {
+    // The multi-line render was untested: the doctor-formatting fixture only
+    // ever supplied a single-element array, so nothing exercised the join.
+    const out = formatScratchFilesystems([
+      at('nexus', '/data/tmp', 20 * GIB),
+      at('system', '/tmp', 18 * GIB),
+    ]);
+
+    expect(out.split('\n')).toHaveLength(2);
+    expect(out).toContain('/data/tmp');
+    expect(out).toContain('/tmp');
+  });
+
+  it('labels each line so two roots are distinguishable', () => {
+    const out = formatScratchFilesystems([
+      at('nexus', '/data/tmp', 20 * GIB),
+      at('system', '/tmp', 18 * GIB),
+    ]);
+
+    expect(out).toContain('[nexus]');
+    expect(out).toContain('[system]');
+  });
+
+  it('says nothing could be identified rather than printing an empty line', () => {
+    // An empty render would read as "checked, all fine".
+    const out = formatScratchFilesystems([]);
+
+    expect(out).toContain('no scratch filesystem could be identified');
+  });
+
+  it('keeps the remediation on the starved line when roots are mixed', () => {
+    const out = formatScratchFilesystems([
+      at('nexus', '/data/tmp', 20 * GIB),
+      at('system', '/tmp', 0),
+    ]);
+
+    expect(out).toContain('NEXUS_TMPDIR');
   });
 });
