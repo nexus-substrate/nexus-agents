@@ -475,6 +475,19 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
     const diag = runDeepDiagnostics();
     process.stdout.write(formatDeepDiagnostics(diag) + '\n');
   }
+  // #4376: the `serves` readiness level. Opt-in because it spends generation
+  // quota; without it the ladder reports `serves` as not-attempted, which is
+  // the honest state rather than a pass.
+  if (args.options.live) {
+    const { runLiveReadiness, formatLiveReadiness } = await import('./cli/doctor-live.js');
+    const report = await runLiveReadiness();
+    process.stdout.write(formatLiveReadiness(report) + '\n');
+    // A failed live probe is a real not-ready finding, so it must reach the
+    // exit code — a level that reports and cannot fail is not a check.
+    if (report.some((r) => r.levels.serves.status === 'failed')) {
+      return cliExitFromStatus(1);
+    }
+  }
   return cliExitFromStatus(exitCode);
 }
 

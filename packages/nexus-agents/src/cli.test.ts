@@ -316,6 +316,7 @@ describe('CLI Argument Parsing', () => {
           skipCodex: false,
           mock: false,
           deep: false,
+          live: false,
         },
         positionals: [],
       };
@@ -361,6 +362,7 @@ describe('CLI Argument Parsing', () => {
           skipCodex: false,
           mock: false,
           deep: false,
+          live: false,
         },
         positionals: ['config', 'show'],
       };
@@ -398,6 +400,7 @@ describe('CLI Argument Parsing', () => {
           skipCodex: false,
           mock: false,
           deep: false,
+          live: false,
         },
         positionals: [],
       };

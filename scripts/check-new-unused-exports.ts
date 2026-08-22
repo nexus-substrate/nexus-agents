@@ -110,18 +110,36 @@ function safeRead(file: string): string {
  *   import { Foo } from '../path/to/file.js';
  *   import type { Bar } from '../path/to/file.js';
  *
+ * A DYNAMIC import counts too:
+ *
+ *   const { run } = await import('./path/to/file.js');
+ *
+ * It has no `from`, so a `from`-only pattern reports a genuinely-consumed
+ * module as dead — and lazy `await import(...)` is the established shape for
+ * opt-in CLI subcommands here (`doctor-deep`, `doctor-live`), precisely the
+ * code most likely to be new. A gate that fires on the repo's own convention
+ * teaches people to reach for the opt-out comment, which is how a gate stops
+ * meaning anything (#4376 hit this).
+ *
  * The simplest portable check: match the basename (without `.ts`) +
  * `.js` suffix as the tail of a quoted import path. Greedy by design —
  * collisions on common names (`index.js`, `types.js`) are possible
  * but the gate is advisory + opt-out-able, so a small false-positive
  * rate is acceptable.
  */
-function importSpecifierPatterns(file: string): RegExp[] {
+export function importSpecifierPatterns(file: string): RegExp[] {
   const base = basename(file).replace(/\.tsx?$/, '');
   // Escape regex metachars in `base` even though file basenames don't
   // usually contain them — defensive against e.g. `+`-suffixed names.
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return [new RegExp(`from\\s+['"][^'"]*\\/${escaped}\\.js['"]`)];
+  const tail = `['"][^'"]*\\/${escaped}\\.js['"]`;
+  return [
+    new RegExp(`from\\s+${tail}`),
+    // `import('...')` / `await import('...')`, and `require('...')` for the
+    // handful of CJS interop sites.
+    new RegExp(`\\bimport\\s*\\(\\s*${tail}`),
+    new RegExp(`\\brequire\\s*\\(\\s*${tail}`),
+  ];
 }
 
 /**
