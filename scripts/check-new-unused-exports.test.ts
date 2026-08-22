@@ -6,8 +6,11 @@ import { describe, it, expect } from 'vitest';
 
 import {
   classifyAddedFiles,
+  classifyDeadExports,
+  exportedNames,
   importSpecifierPatterns,
   isTestSupportFile,
+  nameHasProductionUse,
 } from './check-new-unused-exports.js';
 
 describe('classifyAddedFiles', () => {
@@ -137,5 +140,122 @@ describe('importSpecifierPatterns — a dynamic import is a consumer', () => {
   it('does not match the bare name outside an import position', () => {
     // A mention in a comment or a string is not a consumer.
     expect(matches('doctor-live.ts', '// see cli/doctor-live.js for details')).toBe(false);
+  });
+});
+
+describe('classifyDeadExports — block what this PR added, report what it inherited', () => {
+  const allDead = (): boolean => true;
+
+  it('flags an export this PR added as new', () => {
+    const result = classifyDeadExports(
+      'f.ts',
+      'export function old(): void {}',
+      'export function old(): void {}\nexport function fresh(): void {}',
+      allDead
+    );
+
+    expect(result.newDead.map((d) => d.name)).toEqual(['fresh']);
+  });
+
+  it('classifies an export that already existed as pre-existing', () => {
+    const result = classifyDeadExports(
+      'f.ts',
+      'export function old(): void {}',
+      'export function old(): void {}',
+      allDead
+    );
+
+    expect(result.preexistingDead.map((d) => d.name)).toEqual(['old']);
+    expect(result.newDead).toEqual([]);
+  });
+
+  it('does not flag an export that has a consumer', () => {
+    const result = classifyDeadExports(
+      'f.ts',
+      '',
+      'export function used(): void {}',
+      (n) => n !== 'used'
+    );
+
+    expect(result.newDead).toEqual([]);
+    expect(result.preexistingDead).toEqual([]);
+  });
+
+  it('separates the two kinds in one file', () => {
+    // The realistic case: you touch a file carrying old debt and add one thing.
+    const result = classifyDeadExports(
+      'f.ts',
+      'export const a = 1;',
+      'export const a = 1;\nexport const b = 2;',
+      allDead
+    );
+
+    expect(result.newDead.map((d) => d.name)).toEqual(['b']);
+    expect(result.preexistingDead.map((d) => d.name)).toEqual(['a']);
+  });
+
+  it('treats a brand-new file as all-new', () => {
+    const result = classifyDeadExports('f.ts', '', 'export type T = string;', allDead);
+
+    expect(result.newDead.map((d) => d.name)).toEqual(['T']);
+  });
+});
+
+describe('exportedNames', () => {
+  it('finds each exported declaration kind', () => {
+    const src = [
+      'export function f(): void {}',
+      'export const c = 1;',
+      'export class K {}',
+      'export interface I { a: string }',
+      'export type T = string;',
+      'export enum E { A }',
+      'export async function g(): Promise<void> {}',
+    ].join('\n');
+
+    expect(exportedNames(src).sort()).toEqual(['E', 'I', 'K', 'T', 'c', 'f', 'g']);
+  });
+
+  it('ignores a non-exported declaration', () => {
+    expect(exportedNames('function hidden(): void {}')).toEqual([]);
+  });
+
+  it('ignores the word export inside a comment or string', () => {
+    expect(exportedNames('// export function fake(): void {}')).toEqual([]);
+  });
+});
+
+describe('nameHasProductionUse', () => {
+  const read = (f: string): string => ({ 'a.ts': 'uses thing()', 'b.ts': 'nothing' })[f] ?? '';
+
+  it('counts a reference in another production file', () => {
+    expect(nameHasProductionUse('thing', 'decl.ts', ['a.ts', 'b.ts'], read)).toBe(true);
+  });
+
+  it('does not count the declaring file itself', () => {
+    expect(nameHasProductionUse('thing', 'a.ts', ['a.ts'], read)).toBe(false);
+  });
+
+  it('matches on a word boundary, not a substring', () => {
+    const r = (): string => 'somethingElse';
+    expect(nameHasProductionUse('thing', 'd.ts', ['x.ts'], r)).toBe(false);
+  });
+});
+
+describe('isTestSupportFile is not a test-file predicate', () => {
+  it('does NOT classify a .test.ts file as test-support', () => {
+    // The distinction that bit me: isTestSupportFile means "lives in
+    // src/testing/", not "is a test". Using it to filter the production
+    // haystack let a test-only import count as production use — the exact
+    // blindness that disqualified knip for this job.
+    expect(isTestSupportFile('packages/nexus-agents/src/cli-adapters/codex-limits.test.ts')).toBe(
+      false
+    );
+  });
+
+  it('classifies a src/testing/ module as test-support', () => {
+    expect(isTestSupportFile('packages/nexus-agents/src/testing/adapters/mock-adapter.ts')).toBe(
+      true
+    );
   });
 });
