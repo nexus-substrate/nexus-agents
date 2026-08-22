@@ -160,9 +160,14 @@ async function runQualityGateHandler(args: unknown, logger: ILogger): Promise<To
 const DESCRIPTION =
   'Run the QA quality gate (#1684 engine) against a project directory. ' +
   'Allowlisted checks: typecheck | lint | tests | build | security ' +
-  "(default ['typecheck','lint','tests']). Returns the structured " +
-  '{ stage, verdict, checks[], summary, feedback } verdict. projectDir must ' +
-  'stay inside the repository root; per-check output is capped at 500 chars.';
+  "(default ['typecheck','lint','tests']). Each check runs the REPOSITORY'S " +
+  'own declared package script through the lockfile-selected package manager ' +
+  '(#4355) — never a downloaded tool — and reports skip when no such script ' +
+  'is declared, rather than substituting one. A run in which nothing executed ' +
+  "reports verdict 'skip', never 'pass': no evidence is not a pass. Returns " +
+  'the structured { stage, verdict, checks[], summary, feedback } verdict. ' +
+  'projectDir must stay inside the repository root; per-check output is ' +
+  'capped at 500 chars.';
 
 /** @category MCP */
 export function registerRunQualityGateTool(server: McpServer, deps: RunQualityGateDeps): void {
