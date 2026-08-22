@@ -24,7 +24,11 @@ import {
   nexusDataPath,
 } from '../config/nexus-data-dir.js';
 import { detectSandbox } from '../config/sandbox-detection.js';
-import { checkScratchFilesystems, type ScratchSpaceCheck } from './doctor-scratch-space.js';
+import {
+  checkScratchFilesystems,
+  worstSeverity,
+  type ScratchSpaceCheck,
+} from './doctor-scratch-space.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
@@ -711,6 +715,37 @@ export function checkVoterTransport(): VoterTransportCheck {
   return { configured: readOpenAICompatEnv() !== null };
 }
 
+/** The inputs the overall verdict is computed from. */
+export interface HealthVerdictInput {
+  readonly nodeSupported: boolean;
+  readonly hasAuthMethod: boolean;
+  readonly mcpServerReady: boolean;
+  readonly scratchSpace: readonly ScratchSpaceCheck[];
+  readonly clis: readonly CliCheckResult[];
+}
+
+/**
+ * The overall doctor verdict.
+ *
+ * Extracted so the predicate is directly testable (#4488). It needed to be:
+ * `worstSeverity` shipped in #4528 and was then called nowhere, so `doctor`
+ * exited 0 with a 100%-full tmpfs — the check reported the very condition it
+ * was built for and still could not fail on it.
+ *
+ * Scratch space counts at `critical` only. `warn` still leaves room for the
+ * current run, and failing the whole command on it would collapse the
+ * distinction between the two thresholds into one.
+ */
+export function isAllHealthy(input: HealthVerdictInput): boolean {
+  return (
+    input.nodeSupported &&
+    input.hasAuthMethod &&
+    input.mcpServerReady &&
+    worstSeverity(input.scratchSpace) !== 'critical' &&
+    input.clis.every((c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported')
+  );
+}
+
 /**
  * Runs the complete doctor check.
  */
@@ -740,11 +775,13 @@ export async function runDoctor(): Promise<DoctorResult> {
   const hasAuthMethod =
     apiKeys.some((k) => k.configured) || clis.some((c) => c.installed && c.authenticated);
 
-  const allHealthy =
-    nodeVersion.supported &&
-    hasAuthMethod &&
-    mcpServerReady &&
-    clis.every((c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported');
+  const allHealthy = isAllHealthy({
+    nodeSupported: nodeVersion.supported,
+    hasAuthMethod,
+    mcpServerReady,
+    scratchSpace,
+    clis,
+  });
 
   return {
     clis,
