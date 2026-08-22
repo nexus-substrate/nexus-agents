@@ -158,6 +158,7 @@ interface ParsedValues {
   mock: boolean;
   // Doctor command options (Issue #1031)
   deep: boolean;
+  live: boolean;
   // Registry command options (#2179)
   json: boolean;
   source?: string;
@@ -372,6 +373,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     quick: values.quick,
     mock: values.mock,
     deep: values.deep,
+    live: values.live,
     json: values.json,
     // remediation-review command options (#3765)
     sound: values.sound,

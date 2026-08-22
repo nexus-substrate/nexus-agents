@@ -200,6 +200,7 @@ function createArgs(overrides: Record<string, unknown>): {
     skipCodex: boolean;
     mock: boolean;
     deep: boolean;
+    live: boolean;
   };
   positionals: string[];
 } {
@@ -232,6 +233,7 @@ function createArgs(overrides: Record<string, unknown>): {
       skipCodex: false,
       mock: false,
       deep: false,
+      live: false,
     },
     positionals: [],
   };

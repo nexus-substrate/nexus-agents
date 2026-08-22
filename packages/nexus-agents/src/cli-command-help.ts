@@ -117,9 +117,20 @@ const WORKFLOW_HELP: CommandHelpEntry = {
 
 const DOCTOR_HELP: CommandHelpEntry = {
   command: 'doctor',
-  examples: ['nexus-agents doctor', 'nexus-agents doctor --deep', 'nexus-agents doctor --fix'],
+  examples: [
+    'nexus-agents doctor',
+    'nexus-agents doctor --live',
+    'nexus-agents doctor --deep',
+    'nexus-agents doctor --fix',
+  ],
   flags: [
-    { flag: '--deep', description: 'Run deep health checks (adapter connectivity)' },
+    // #4376: the previous wording said "adapter connectivity", which this flag
+    // does not check — it reports learning-loop and routing health.
+    { flag: '--deep', description: 'Learning-loop, data-sufficiency and routing diagnostics' },
+    {
+      flag: '--live',
+      description: 'Verify each adapter actually serves a completion (spends quota)',
+    },
     { flag: '--fix', description: 'Auto-fix correctable issues (data dirs, config)' },
     { flag: '--verbose', description: 'Show detailed check output' },
   ],

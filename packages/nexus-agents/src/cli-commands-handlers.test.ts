@@ -73,6 +73,7 @@ function createMockArgs(overrides: Partial<ParsedCliArgs> = {}): ParsedCliArgs {
     skipCodex: false,
     mock: false,
     deep: false,
+    live: false,
   };
 
   return {

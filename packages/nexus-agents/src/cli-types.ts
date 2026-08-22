@@ -264,6 +264,14 @@ export interface ParsedCliArgs {
     mock: boolean;
     // Doctor command options (Issue #1031)
     deep: boolean;
+    /**
+     * Run the `serves` readiness level: a real completion per adapter (#4376).
+     *
+     * Opt-in because it spends generation quota. The default run proves
+     * `installed` and `authenticated` only, and reports `serves` as
+     * not-attempted rather than assuming it.
+     */
+    live: boolean;
     // Registry command options (#2179)
     json?: boolean;
     source?: string;
@@ -541,6 +549,11 @@ export const PARSE_ARGS_CONFIG = {
     },
     // Doctor command options (Issue #1031)
     deep: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // Doctor live readiness probe (#4376)
+    live: {
       type: 'boolean' as const,
       default: false,
     },
