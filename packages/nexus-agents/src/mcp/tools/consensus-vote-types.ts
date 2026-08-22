@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
-import type { OptionThresholdVerdict } from '../../consensus/option-tally.js';
+import type { OptionGateVerdict } from './consensus-vote-option-gate.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 
@@ -382,6 +382,13 @@ export interface ConsensusVoteResponse {
     selectedCount: number;
     unattributedApprovals: number;
     thresholdMet: boolean;
+    /**
+     * #4529: why the gate vetoed, present only when it did. Carried here rather
+     * than on `policyReason`, which means "an error policy voided this vote" —
+     * a split is a decision, not a void, and conflating them let a retry policy
+     * re-roll a panel that had already disagreed.
+     */
+    vetoReason?: string;
   };
   /**
    * #3991: whether the authentic vote record (#3897) was persisted at vote time.
@@ -409,7 +416,7 @@ export interface ExtendedVotingResult extends VotingResult {
    * declared `options`. Reported alongside `approvalPercentage` rather than
    * folded into it, so a reader can tell which bar failed.
    */
-  optionGate?: OptionThresholdVerdict;
+  optionGate?: OptionGateVerdict;
   higherOrderResult?: HigherOrderVotingResult;
   /** Reason an error policy short-circuited the vote (#3124); surfaced on the response. */
   policyReason?: string;
@@ -728,6 +735,7 @@ export function buildResponse(
       selectedCount: g.selectedCount,
       unattributedApprovals: g.unattributedApprovals,
       thresholdMet: g.approved,
+      ...(g.reason !== undefined ? { vetoReason: g.reason } : {}),
     };
   }
 

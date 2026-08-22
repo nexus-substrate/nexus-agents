@@ -628,9 +628,15 @@ export async function executeVoting(
  * Veto an approved verdict whose declared-option split failed its bar.
  *
  * Mutates `result` in place: `executeVoting` owns it and has not yet published
- * it. Only ever flips approved to rejected, never the reverse.
+ * it. Only ever flips approved to rejected, never the reverse — and the
+ * resulting `decision` must be `rejected`, not `no_quorum` (#4529): the panel
+ * convened and disagreed, which is the opposite of a voided vote.
+ *
+ * Exported for the composition test (#4529): the defect this guards against
+ * lives in how this function's output feeds `resolveVoteDecision` on the very
+ * next line of `executeVoting`, not in either function alone.
  */
-function applyOptionGate(input: ConsensusVoteInput, result: ExtendedVotingResult): void {
+export function applyOptionGate(input: ConsensusVoteInput, result: ExtendedVotingResult): void {
   const declaredOptions = input.options;
   if (declaredOptions === undefined || declaredOptions.length === 0) return;
 
@@ -641,16 +647,21 @@ function applyOptionGate(input: ConsensusVoteInput, result: ExtendedVotingResult
     result.result.outcome === 'approved'
   );
 
-  result.optionGate = outcome.verdict;
-
-  if (!outcome.vetoed) return;
+  if (!outcome.vetoed) {
+    result.optionGate = outcome.verdict;
+    return;
+  }
 
   result.result.outcome = 'rejected';
-  // Preserve an existing policy reason (an error-policy short-circuit is more
-  // urgent than an option split) rather than overwriting it.
-  if (result.policyReason === undefined && outcome.reason !== undefined) {
-    result.policyReason = outcome.reason;
-  }
+  // #4529: the reason rides on the verdict, NOT on policyReason. policyReason
+  // means "an error policy voided this vote", and resolveVoteDecision
+  // short-circuits any non-undefined value straight to `no_quorum` — so
+  // borrowing the field filed a measured split as "nothing was decided", and
+  // `--on-no-quorum=retry` then re-rolled the panel and discarded the dissent
+  // the gate had just detected. Decided by a 7-voter higher_order panel
+  // (6 approvers, all selecting this shape).
+  result.optionGate =
+    outcome.reason !== undefined ? { ...outcome.verdict, reason: outcome.reason } : outcome.verdict;
 }
 
 // eslint-disable-next-line max-lines-per-function -- see block comment above
@@ -1133,6 +1144,10 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       selectedCount: z.number().int().nonnegative(),
       unattributedApprovals: z.number().int().nonnegative(),
       thresholdMet: z.boolean(),
+      // #4529: present only on a veto. Declared here because a strict MCP
+      // client rejects any property the advertised schema omits — the same
+      // drift that made degraded-panel votes unusable before #4032.
+      vetoReason: z.string().max(400).optional(),
     })
     .optional(),
 };

@@ -31,6 +31,10 @@ import {
 import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
+import { applyOptionGate } from './consensus-vote.js';
+import { buildVoteRecord } from '../../audit/vote-record-store.js';
+import { resolveVoteDecision } from './consensus-vote-types.js';
+import type { ConsensusVoteInput } from './consensus-vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
 
 // #4132: force the contrarian expert-bridge to fail so runContrarianCheck reports
@@ -1919,5 +1923,138 @@ describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)'
     );
     expect(out.escalated).toBeUndefined();
     expect(out.degradeReason).toBeUndefined();
+  });
+});
+
+describe('#4529: an option-split veto is a rejection, not a void', () => {
+  /** Seven approvers, `forLeading` of them choosing OPTION_A and the rest OPTION_B. */
+  const splitPanel = (forLeading: number, total = 7): AgentVoteResult[] =>
+    Array.from({ length: total }, (_, i) => ({
+      role: 'architect',
+      vote: { decision: 'approve' as const, reasoning: 'engaged', confidence: 0.9 },
+      processingTimeMs: 10,
+      source: 'llm' as const,
+      selectedOption: i < forLeading ? 'Rewrite' : 'Patch',
+    }));
+
+  const approvedResult = (votes: AgentVoteResult[]): ExtendedVotingResult => ({
+    proposal: 'Rewrite or patch?',
+    threshold: 'unanimous',
+    result: {
+      proposalId: 'p-4529',
+      proposal: { title: 't', description: 'Rewrite or patch?', algorithm: 'unanimous' },
+      // Every voter approved, so the approve/reject bar reads 100% — the #4452
+      // inversion the option gate exists to catch.
+      outcome: 'approved',
+      votes: new Map(),
+      voteCounts: { approve: votes.length, reject: 0, abstain: 0, total: votes.length },
+      approvalPercentage: 100,
+      quorumReached: true,
+      startedAt: 'now',
+      closedAt: 'now',
+      durationMs: 1,
+    },
+    votes,
+    totalTimeMs: 10,
+    simulateVotes: false,
+    strategy: 'unanimous',
+  });
+
+  const input: ConsensusVoteInput = {
+    proposal: 'Rewrite or patch?',
+    simulateVotes: false,
+    quickMode: false,
+    strategy: 'unanimous',
+    options: ['Rewrite', 'Patch'],
+  };
+
+  it('stamps rejected — the panel decided and disagreed; it was not voided', () => {
+    // Reproduces the exact two-line sequence in executeVoting (L622-623).
+    const result = approvedResult(splitPanel(6));
+
+    applyOptionGate(input, result);
+    const { decision } = resolveVoteDecision(input, result, 0);
+
+    expect(result.result.outcome).toBe('rejected');
+    // no_quorum means "a voice was missing, nothing was decided" and is
+    // recoverable by re-running. A 6-1 split is the opposite: every voice was
+    // heard. Filing it as a void lets --on-no-quorum=retry re-roll the panel
+    // and discard the dissent the gate just detected.
+    expect(decision).toBe('rejected');
+  });
+
+  it('does not mark the vote error-voided when no voter errored', () => {
+    // errorVoided is derived from policyReason (consensus-vote.ts:845) and
+    // forces the PERSISTED record's decision to no_quorum, so borrowing that
+    // field for a split corrupts the audit trail, not just the response.
+    const result = approvedResult(splitPanel(6));
+
+    applyOptionGate(input, result);
+
+    expect(result.votes.some((v) => v.source === 'error')).toBe(false);
+    expect(result.policyReason).toBeUndefined();
+  });
+
+  it('still explains the veto to the operator', () => {
+    const result = approvedResult(splitPanel(6));
+
+    applyOptionGate(input, result);
+
+    // Whatever channel carries it, the reason must survive the veto.
+    const explanation = JSON.stringify(result);
+    expect(explanation).toContain('Rewrite');
+    expect(explanation.toLowerCase()).toContain('option');
+  });
+
+  it('leaves a genuine error-policy void reading as no_quorum', () => {
+    // The gate must not steal the meaning of a real void in the other direction.
+    const result = approvedResult(splitPanel(7));
+    result.policyReason = 'fail_closed: 4 of 7 voters errored';
+
+    applyOptionGate(input, result);
+
+    expect(resolveVoteDecision(input, result, 4).decision).toBe('no_quorum');
+  });
+
+  it('surfaces the veto reason on the response, not on policyReason', () => {
+    const result = approvedResult(splitPanel(6));
+    applyOptionGate(input, result);
+    result.decision = resolveVoteDecision(input, result, 0).decision;
+
+    const response = buildResponse(input, result);
+
+    expect(response.optionOutcome?.vetoReason).toContain('Rewrite');
+    expect(response.policyReason).toBeUndefined();
+    expect(response.decision).toBe('rejected');
+  });
+
+  it('persists the split as rejected, so the audit trail is not a void', () => {
+    // errorVoided is derived from policyReason at consensus-vote.ts:845 and
+    // forces the persisted decision to no_quorum. With the reason off that
+    // field, a split records as what it was.
+    const result = approvedResult(splitPanel(6));
+    applyOptionGate(input, result);
+
+    // Drive the REAL record builder rather than reimplementing its mapping —
+    // a test that recomputes the thing it checks cannot fail for the bug.
+    const record = buildVoteRecord({
+      id: 'vr-4529',
+      proposal: result.proposal,
+      result: result.result,
+      votes: result.votes,
+      strategy: result.strategy,
+      errorVoided: result.policyReason !== undefined,
+    });
+
+    expect(record.decision).toBe('rejected');
+  });
+
+  it('does not veto — or relabel — a panel that agreed on one option', () => {
+    const result = approvedResult(splitPanel(7));
+
+    applyOptionGate(input, result);
+
+    expect(result.result.outcome).toBe('approved');
+    expect(resolveVoteDecision(input, result, 0).decision).toBe('approved');
   });
 });
