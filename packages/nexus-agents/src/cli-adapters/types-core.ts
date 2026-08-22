@@ -195,8 +195,49 @@ export interface CapacityStatus {
   readonly resetTime: Date;
   /** Current utilization percentage (0-100) */
   readonly utilizationPercent: number;
-  /** Whether capacity is exhausted */
+  /**
+   * Whether this process's rolling rate window is used up (#4456).
+   *
+   * Local arithmetic only: this process's own spend over the last
+   * {@link RATE_LIMIT_WINDOW_MS}, measured against a per-CLI constant the
+   * source calls a conservative estimate. It self-clears within the window,
+   * and an ordinary burst (a 7-voter panel, a subagent fan-out) sets it while
+   * plenty of provider quota remains.
+   *
+   * This is a throttling hint, NOT evidence that the account is out of
+   * capacity. Do not exclude a candidate on it — see {@link quotaExhausted}.
+   */
+  readonly rateLimited: boolean;
+  /**
+   * @deprecated Since #4456 — renamed to {@link rateLimited}, which says what
+   * it actually measures. The name `exhausted` promised an account/plan
+   * capacity signal while reporting a 60-second local rate heuristic, so every
+   * reader inherited a claim the value could not support. Identical value;
+   * scheduled for removal in the next major.
+   */
   readonly exhausted: boolean;
+  /**
+   * Whether a PROVIDER asserted that durable quota is gone (#4456).
+   *
+   * Set only from provider-asserted evidence — a rate-limit error whose
+   * `retry-after` exceeds the local window, which is the provider itself
+   * saying the wait is longer than a per-minute throttle. Never inferred from
+   * local counting.
+   *
+   * `false` means "no provider has asserted exhaustion to THIS process". It is
+   * NOT a measurement that quota remains: a weekly quota burned by another
+   * process is invisible here. Read it with {@link observed}; absence of
+   * evidence must not be presented as capacity.
+   */
+  readonly quotaExhausted: boolean;
+  /**
+   * When the provider said the quota window clears, from `retry-after`.
+   *
+   * Present only alongside `quotaExhausted: true`. Absent means the provider
+   * asserted exhaustion without a horizon, which is a weaker signal, not a
+   * shorter one.
+   */
+  readonly quotaResetAt?: Date;
   /**
    * Whether this process has observed any usage of the adapter (#4374).
    *

@@ -1016,7 +1016,9 @@ function capacityStatus(overrides: Partial<CapacityStatus> = {}): CapacityStatus
     remainingRequests: 1_000,
     resetTime: new Date('2026-01-01T00:00:00Z'),
     utilizationPercent: 10,
+    rateLimited: false,
     exhausted: false,
+    quotaExhausted: false,
     observed: true,
     ...overrides,
   };
@@ -1037,7 +1039,7 @@ describe('runCapacityStage', () => {
   it('drops an exhausted arm and keeps the rest', async () => {
     const stage = new CapacityFilterStage(
       capacityAdapters({
-        claude: capacityStatus({ exhausted: true }),
+        claude: capacityStatus({ quotaExhausted: true }),
         gemini: capacityStatus(),
       }),
       { enforceHardLimits: true }
@@ -1061,7 +1063,7 @@ describe('runCapacityStage', () => {
     // Collapsing them made one arm's exhaustion remove BOTH.
     const stage = new CapacityFilterStage(
       capacityAdapters({
-        claude: capacityStatus({ exhausted: true }),
+        claude: capacityStatus({ quotaExhausted: true }),
         'api:anthropic': capacityStatus(),
       }),
       { enforceHardLimits: true }
@@ -1085,7 +1087,7 @@ describe('runCapacityStage', () => {
     const stage = new CapacityFilterStage(
       capacityAdapters({
         claude: capacityStatus(),
-        'api:anthropic': capacityStatus({ exhausted: true }),
+        'api:anthropic': capacityStatus({ quotaExhausted: true }),
       }),
       { enforceHardLimits: true }
     );
@@ -1107,8 +1109,8 @@ describe('runCapacityStage', () => {
     // reproduces the #4351 complaint that nexus never explained the failure.
     const stage = new CapacityFilterStage(
       capacityAdapters({
-        claude: capacityStatus({ exhausted: true }),
-        gemini: capacityStatus({ exhausted: true }),
+        claude: capacityStatus({ quotaExhausted: true }),
+        gemini: capacityStatus({ quotaExhausted: true }),
       }),
       { enforceHardLimits: true }
     );
@@ -1130,7 +1132,7 @@ describe('runCapacityStage', () => {
 
   it('is a no-op when enableCapacityBalancing is false', async () => {
     const stage = new CapacityFilterStage(
-      capacityAdapters({ claude: capacityStatus({ exhausted: true }) })
+      capacityAdapters({ claude: capacityStatus({ quotaExhausted: true }) })
     );
     const deps = makeDeps({ capacityFilterStage: stage });
 
@@ -1163,7 +1165,7 @@ describe('runCapacityStage', () => {
     // CompositeRouter constructs this stage with `{}`, so a future change to
     // DEFAULT_CONFIG that re-enables enforcement must break this test.
     const stage = new CapacityFilterStage(
-      capacityAdapters({ claude: capacityStatus({ exhausted: true }) })
+      capacityAdapters({ claude: capacityStatus({ quotaExhausted: true }) })
     );
 
     const result = await runCapacityStage(

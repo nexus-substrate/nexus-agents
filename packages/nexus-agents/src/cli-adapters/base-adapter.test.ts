@@ -304,7 +304,7 @@ describe('BaseCliAdapter', () => {
       expect(capacity.remainingTokens).toBe(100_000); // claude DEFAULT_TOKEN_LIMIT
       expect(capacity.remainingRequests).toBe(50); // claude DEFAULT_REQUEST_LIMIT
       expect(capacity.utilizationPercent).toBe(0);
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
     });
   });
 

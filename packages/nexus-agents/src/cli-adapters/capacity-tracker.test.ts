@@ -39,7 +39,7 @@ describe('CapacityTracker', () => {
       expect(capacity.remainingTokens).toBe(10000);
       expect(capacity.remainingRequests).toBe(100);
       expect(capacity.utilizationPercent).toBe(0);
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
     });
 
     it('tracks token usage correctly', () => {
@@ -50,7 +50,7 @@ describe('CapacityTracker', () => {
       expect(capacity.remainingTokens).toBe(8500);
       expect(capacity.remainingRequests).toBe(99);
       expect(capacity.utilizationPercent).toBe(15);
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
     });
 
     it('calculates utilization from tokens when higher than requests', () => {
@@ -81,7 +81,7 @@ describe('CapacityTracker', () => {
       const capacity = tracker.getCapacity();
 
       expect(capacity.remainingTokens).toBe(0);
-      expect(capacity.exhausted).toBe(true);
+      expect(capacity.rateLimited).toBe(true);
     });
 
     it('marks exhausted when requests are depleted', () => {
@@ -92,7 +92,7 @@ describe('CapacityTracker', () => {
       const capacity = tracker.getCapacity();
 
       expect(capacity.remainingRequests).toBe(0);
-      expect(capacity.exhausted).toBe(true);
+      expect(capacity.rateLimited).toBe(true);
     });
 
     it('provides valid reset time', () => {
@@ -205,14 +205,14 @@ describe('CapacityTracker', () => {
     it('clears all tracked usage', () => {
       tracker.recordUsage({ inputTokens: 5000, outputTokens: 5000, totalTokens: 10000 });
 
-      expect(tracker.getCapacity().exhausted).toBe(true);
+      expect(tracker.getCapacity().rateLimited).toBe(true);
 
       tracker.reset();
 
       const capacity = tracker.getCapacity();
       expect(capacity.remainingTokens).toBe(10000);
       expect(capacity.remainingRequests).toBe(100);
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
     });
   });
 
@@ -348,5 +348,122 @@ describe('DEFAULT_REQUEST_LIMITS', () => {
     expect(DEFAULT_REQUEST_LIMITS.claude).toBeGreaterThan(0);
     expect(DEFAULT_REQUEST_LIMITS.gemini).toBeGreaterThan(0);
     expect(DEFAULT_REQUEST_LIMITS.codex).toBeGreaterThan(0);
+  });
+});
+
+describe('#4456: a local rate window is not provider-asserted quota', () => {
+  const config: CapacityTrackerConfig = {
+    tokenLimit: 1_000,
+    requestLimit: 2,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  };
+
+  let tracker: CapacityTracker;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    tracker = new CapacityTracker(config);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Burn the rolling request window. */
+  const burnWindow = (): void => {
+    tracker.recordUsage(undefined);
+    tracker.recordUsage(undefined);
+  };
+
+  it('reports rateLimited when this process fills its own rolling window', () => {
+    burnWindow();
+
+    expect(tracker.getCapacity().rateLimited).toBe(true);
+  });
+
+  it('does NOT report quotaExhausted for a purely local burst', () => {
+    // The whole point of #4456. A 7-voter panel fills the window while the
+    // account has plenty of quota; calling that "exhausted" is what kept
+    // enforcement switched off.
+    burnWindow();
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+
+  it('keeps the deprecated exhausted field equal to rateLimited', () => {
+    // The single deliberate read of the deprecated name in the tree: it is the
+    // alias contract, so it must be asserted somewhere or the alias could
+    // silently drift from the field it claims to mirror. Everywhere else the
+    // type-aware no-deprecated rule blocks new readers.
+    burnWindow();
+    const status = tracker.getCapacity();
+
+    expect(status.rateLimited).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- asserts the alias itself
+    expect(status.exhausted).toBe(status.rateLimited);
+  });
+
+  it('records quota exhaustion when the provider asks for longer than the window', () => {
+    const retryAfterMs = RATE_LIMIT_WINDOW_MS * 60;
+
+    expect(tracker.recordProviderQuotaExhaustion(retryAfterMs)).toBe(true);
+
+    const status = tracker.getCapacity();
+    expect(status.quotaExhausted).toBe(true);
+    expect(status.quotaResetAt?.getTime()).toBe(Date.now() + retryAfterMs);
+  });
+
+  it('treats a short retry-after as a throttle, not quota exhaustion', () => {
+    // Shorter than our own window means a per-minute limit, which rateLimited
+    // already covers. Escalating it would empty the candidate pool for a
+    // condition that clears within the minute.
+    expect(tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS - 1)).toBe(false);
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+
+  it('asserts nothing when the provider gave no horizon', () => {
+    // An exhaustion with no stated end is indistinguishable here from a
+    // transient error. Inventing a horizon would manufacture a measurement.
+    expect(tracker.recordProviderQuotaExhaustion(undefined)).toBe(false);
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+
+  it('clears the assertion once the provider-stated horizon passes', () => {
+    const retryAfterMs = RATE_LIMIT_WINDOW_MS * 10;
+    tracker.recordProviderQuotaExhaustion(retryAfterMs);
+
+    vi.advanceTimersByTime(retryAfterMs + 1);
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+
+  it('holds the assertion right up to the stated horizon', () => {
+    const retryAfterMs = RATE_LIMIT_WINDOW_MS * 10;
+    tracker.recordProviderQuotaExhaustion(retryAfterMs);
+
+    vi.advanceTimersByTime(retryAfterMs - 1);
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(true);
+  });
+
+  it('does not let a provider assertion decay with the local window', () => {
+    // The two clocks are independent: a week-long quota must survive the 60s
+    // rolling window rolling over many times.
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 1000);
+
+    vi.advanceTimersByTime(RATE_LIMIT_WINDOW_MS * 5);
+
+    const status = tracker.getCapacity();
+    expect(status.rateLimited).toBe(false);
+    expect(status.quotaExhausted).toBe(true);
+  });
+
+  it('drops the assertion on reset', () => {
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 10);
+
+    tracker.reset();
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
   });
 });

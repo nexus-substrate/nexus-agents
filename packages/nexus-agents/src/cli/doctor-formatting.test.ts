@@ -397,7 +397,9 @@ describe('doctor-formatting', () => {
           remainingRequests: 100,
           resetTime: new Date(),
           utilizationPercent: tc.util,
+          rateLimited: tc.util >= 100,
           exhausted: tc.util >= 100,
+          quotaExhausted: false,
           // #4374: these cases assert the percentage banding, which only applies
           // to a reading we actually measured.
           observed: true,
@@ -427,7 +429,9 @@ describe('doctor-formatting', () => {
         remainingRequests: 100,
         resetTime: new Date(),
         utilizationPercent: 0,
+        rateLimited: false,
         exhausted: false,
+        quotaExhausted: false,
         observed: false,
       };
       const result = createDoctorResult({
@@ -449,7 +453,9 @@ describe('doctor-formatting', () => {
         remainingRequests: 100,
         resetTime: new Date(),
         utilizationPercent: 0,
+        rateLimited: false,
         exhausted: false,
+        quotaExhausted: false,
         observed: true,
       };
       const result = createDoctorResult({

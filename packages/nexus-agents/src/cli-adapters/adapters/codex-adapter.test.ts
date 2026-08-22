@@ -559,7 +559,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       expect(capacity.remainingTokens).toBe(500_000); // codex DEFAULT_TOKEN_LIMIT
       expect(capacity.remainingRequests).toBe(500); // codex DEFAULT_REQUEST_LIMIT
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });
   });

@@ -88,7 +88,12 @@ const DEFAULT_CONFIG: CapacityStageConfig = {
  * `healthy`: an unobserved reading is a set of defaults, and collapsing the two
  * is exactly the blindness #4436 was filed about.
  */
-type Assessment = 'exhausted' | 'healthy' | 'unmeasured';
+/**
+ * `throttled` (#4456) sits between healthy and exhausted: this process's own
+ * rolling window is full, which is a reason to prefer another candidate but
+ * never a reason to exclude one — it clears on its own within the minute.
+ */
+type Assessment = 'exhausted' | 'throttled' | 'healthy' | 'unmeasured';
 
 /**
  * Classifies one capacity reading.
@@ -97,13 +102,23 @@ type Assessment = 'exhausted' | 'healthy' | 'unmeasured';
  * measurement (#4374), so such a reading can neither exclude a candidate nor
  * vouch for one.
  *
- * Note `remainingTokens <= 0` is checked independently of the `exhausted` flag:
- * a provider can report zero remaining without setting it. This is the stricter
- * of the two forms the deleted WorkBalancer carried.
+ * Note `remainingTokens <= 0` is checked independently: a provider can report
+ * zero remaining without any flag being set. This is the stricter of the two
+ * forms the deleted WorkBalancer carried.
+ *
+ * #4456: `quotaExhausted` and `rateLimited` are graded differently on purpose.
+ * `quotaExhausted` is provider-asserted and durable, so it is the only signal
+ * strong enough to justify excluding a candidate. `rateLimited` is this
+ * process's own rolling-60s arithmetic against an estimated constant — an
+ * ordinary 7-voter panel trips it while plenty of quota remains, so enforcing
+ * on it would empty the candidate pool for a condition that clears within the
+ * minute. That is why enforcement shipped switched off; grading them apart is
+ * what makes it safe to switch on.
  */
 export function assessCapacity(status: CapacityStatus): Assessment {
   if (!status.observed) return 'unmeasured';
-  if (status.exhausted || status.remainingTokens <= 0) return 'exhausted';
+  if (status.quotaExhausted || status.remainingTokens <= 0) return 'exhausted';
+  if (status.rateLimited) return 'throttled';
   return 'healthy';
 }
 
