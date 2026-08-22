@@ -83,6 +83,33 @@ jobs:
   # devDep cleanup in #2101 (epic #2096).
 
   # Job 3: Documentation Coverage Check (non-blocking warning per DevEx amendment)
+  schema-fanout:
+    name: Schema-Fan-Out Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    # #2408 designed this job and two documents have asserted it exists since
+    # 2026-05-07 — `docs/architecture/SCHEMA_FANOUT_COVERAGE.md` ("runs in CI")
+    # and the documentation-management skill ("Runs ... on every PR"). It was
+    # never added. The gate, its tests and its docs all shipped; only the
+    # wiring did not, so the cascade it was built to catch (#2253 → #2254 →
+    # #2255) has been unguarded while the docs said otherwise.
+    #
+    # Warn-only, as v1 was designed: the script exits 0 on warnings and only
+    # fails on a missing schema or under `--strict`. Promotion to `--strict` is
+    # a separate decision that needs a false-positive rate to justify it.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The check diffs the PR against its base, so it needs history.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Check schema fan-out
+        run: npx tsx scripts/check-schema-fanout.ts ${{ github.event.pull_request.base.sha }} --verbose
+
   docs-coverage:
     name: Documentation Coverage
     runs-on: ubuntu-latest
