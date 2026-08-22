@@ -160,6 +160,14 @@ export class CapacityTracker {
     this.hasObserved = true;
     this.pruneOldEntries(now);
 
+    // #4456 follow-up: a completed request is direct evidence that the
+    // provider is serving, and it outranks an earlier `retry-after` that has
+    // not yet elapsed. Without this, a provider that says "wait an hour" and
+    // then recovers in a minute stays reported as quota-exhausted — and
+    // excludable, once enforcement is on — for the full hour, against a
+    // success that contradicts it.
+    this.quotaExhaustedUntil = null;
+
     this.requestTimestamps.push(now);
     this.requestCount = this.requestTimestamps.length;
 

@@ -467,3 +467,52 @@ describe('#4456: a local rate window is not provider-asserted quota', () => {
     expect(tracker.getCapacity().quotaExhausted).toBe(false);
   });
 });
+
+describe('#4456 follow-up: a success outranks a stale provider assertion', () => {
+  const config: CapacityTrackerConfig = {
+    tokenLimit: 1_000_000,
+    requestLimit: 1_000,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  };
+
+  let tracker: CapacityTracker;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    tracker = new CapacityTracker(config);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('clears quota exhaustion when a request subsequently succeeds', () => {
+    // A provider that says "retry after an hour" and then serves the next call
+    // has contradicted itself. The success is the more recent, more direct
+    // evidence; honouring the stale horizon would keep a working adapter
+    // excluded for an hour on a claim reality just refuted.
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 60);
+    expect(tracker.getCapacity().quotaExhausted).toBe(true);
+
+    tracker.recordUsage(undefined);
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+
+  it('drops the reset horizon along with the assertion', () => {
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 60);
+    tracker.recordUsage(undefined);
+
+    expect(tracker.getCapacity().quotaResetAt).toBeUndefined();
+  });
+
+  it('does not resurrect the assertion on a later reading', () => {
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 60);
+    tracker.recordUsage(undefined);
+
+    vi.advanceTimersByTime(RATE_LIMIT_WINDOW_MS * 10);
+
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+});

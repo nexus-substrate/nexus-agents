@@ -24,7 +24,7 @@ import type { ILogger } from '../../../core/index.js';
 import { ok, createLogger, getTimeProvider } from '../../../core/index.js';
 import type { IRouterStage, RoutingContext, StageResult, StageError } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
-import type { CapacityStatus, ICliAdapter, RoutingArmId } from '../../types.js';
+import type { CapacityStatus, CliName, ICliAdapter, RoutingArmId } from '../../types.js';
 
 /**
  * Normalized exhaustion diagnostic (#4373).
@@ -90,8 +90,15 @@ const DEFAULT_CONFIG: CapacityStageConfig = {
  */
 /**
  * `throttled` (#4456) sits between healthy and exhausted: this process's own
- * rolling window is full, which is a reason to prefer another candidate but
- * never a reason to exclude one — it clears on its own within the minute.
+ * rolling window is full. It never excludes a candidate — the window clears
+ * within the minute — but it IS reported, via a `capacity:throttled-N` signal
+ * and a `throttledCount` stat.
+ *
+ * Reported rather than acted on, deliberately. Preferring another candidate
+ * would be a routing behaviour change, and local rate-limiting is common
+ * enough (an ordinary 7-voter panel trips it) that silently reordering on it
+ * needs its own evidence. Until then the honest position is to surface the
+ * state, not to hide it and not to claim a preference nothing implements.
  */
 type Assessment = 'exhausted' | 'throttled' | 'healthy' | 'unmeasured';
 
@@ -141,6 +148,8 @@ export class CapacityFilterStage implements IRouterStage {
   private readonly logger: ILogger;
   private excludedCount = 0;
   private unmeasuredCount = 0;
+  /** Candidates whose own rolling window was full (#4456). Never excluded. */
+  private throttledCount = 0;
 
   constructor(
     adapters: Map<RoutingArmId, ICliAdapter>,
@@ -163,34 +172,13 @@ export class CapacityFilterStage implements IRouterStage {
 
     const assessments = await this.assessAll(remaining);
 
-    let updatedCtx = ctx;
-    let exhausted = 0;
-    let unmeasured = 0;
+    const { updatedCtx, exhausted, unmeasured, throttled } = this.classifyAndFilter(
+      ctx,
+      remaining,
+      assessments
+    );
 
-    // Iterate the slot list, not the assessment map: `route()` operates on the
-    // slot-granular RoutingContext, so `filterCandidate` needs a CliName.
-    // Arm-granular callers use `assessArms` instead (#4455).
-    for (const cli of remaining) {
-      const assessment = assessments.get(cli) ?? 'unmeasured';
-      if (assessment === 'unmeasured') {
-        unmeasured++;
-        continue;
-      }
-      if (assessment !== 'exhausted') continue;
-
-      exhausted++;
-      if (this.config.enforceHardLimits) {
-        updatedCtx = filterCandidate(
-          updatedCtx,
-          cli,
-          `${CAPACITY_EXHAUSTED}: no capacity remaining`
-        );
-        this.excludedCount++;
-      }
-    }
-    this.unmeasuredCount += unmeasured;
-
-    const signals = this.buildSignals(ctx.signals, exhausted, unmeasured);
+    const signals = this.buildSignals(ctx.signals, exhausted, unmeasured, throttled);
     const eligible = getRemainingCandidates(updatedCtx);
     const durationMs = time.now() - startTime;
 
@@ -217,7 +205,11 @@ export class CapacityFilterStage implements IRouterStage {
   }
 
   getStats(): Record<string, unknown> {
-    return { excludedCount: this.excludedCount, unmeasuredCount: this.unmeasuredCount };
+    return {
+      excludedCount: this.excludedCount,
+      unmeasuredCount: this.unmeasuredCount,
+      throttledCount: this.throttledCount,
+    };
   }
 
   /**
@@ -300,6 +292,8 @@ export class CapacityFilterStage implements IRouterStage {
     for (const arm of arms) {
       const assessment = assessments.get(arm) ?? 'unmeasured';
       if (assessment === 'unmeasured') unmeasured++;
+      // Throttled arms stay eligible, but the count must not vanish (#4456).
+      if (assessment === 'throttled') this.throttledCount++;
 
       // Only a measured exhaustion excludes, and only under hard limits. An
       // unmeasured arm is never dropped: absence of a reading is not a reading.
@@ -340,6 +334,54 @@ export class CapacityFilterStage implements IRouterStage {
   }
 
   /**
+   * Tally each candidate's grade, excluding only the exhausted ones.
+   *
+   * Iterates the slot list rather than the assessment map: `route()` operates
+   * on the slot-granular RoutingContext, so `filterCandidate` needs a
+   * CliName. Arm-granular callers use `assessArms` instead (#4455).
+   *
+   * Extracted from `route()` to keep it inside its line budget once
+   * `throttled` gained a counter (#4456 follow-up).
+   */
+  private classifyAndFilter(
+    ctx: RoutingContext,
+    remaining: readonly CliName[],
+    assessments: Map<RoutingArmId, Assessment>
+  ): { updatedCtx: RoutingContext; exhausted: number; unmeasured: number; throttled: number } {
+    let updatedCtx = ctx;
+    let exhausted = 0;
+    let unmeasured = 0;
+    let throttled = 0;
+
+    for (const cli of remaining) {
+      const assessment = assessments.get(cli) ?? 'unmeasured';
+      if (assessment === 'unmeasured') {
+        unmeasured++;
+        continue;
+      }
+      if (assessment === 'throttled') {
+        throttled++;
+        continue;
+      }
+      if (assessment !== 'exhausted') continue;
+
+      exhausted++;
+      if (this.config.enforceHardLimits) {
+        updatedCtx = filterCandidate(
+          updatedCtx,
+          cli,
+          `${CAPACITY_EXHAUSTED}: no capacity remaining`
+        );
+        this.excludedCount++;
+      }
+    }
+
+    this.unmeasuredCount += unmeasured;
+    this.throttledCount += throttled;
+    return { updatedCtx, exhausted, unmeasured, throttled };
+  }
+
+  /**
    * Emits counts for both exhausted and unmeasured candidates.
    *
    * `capacity:unmeasured-N` lets a downstream consumer tell a genuinely healthy
@@ -348,13 +390,24 @@ export class CapacityFilterStage implements IRouterStage {
    * is the distinction that matters. (An earlier version of this comment claimed
    * the signal was emitted at zero too; it never was.)
    */
-  private buildSignals(existing: string[], exhausted: number, unmeasured: number): string[] {
+  private buildSignals(
+    existing: string[],
+    exhausted: number,
+    unmeasured: number,
+    throttled: number
+  ): string[] {
     const signals = [...existing];
     if (exhausted > 0) {
       signals.push(`${CAPACITY_EXHAUSTED}:${String(exhausted)}`);
     }
     if (unmeasured > 0) {
       signals.push(`capacity:unmeasured-${String(unmeasured)}`);
+    }
+    // #4456 follow-up: without this, a rate-limited candidate was
+    // indistinguishable from a healthy one in every trace — the grade existed
+    // in the type and nowhere in the output.
+    if (throttled > 0) {
+      signals.push(`capacity:throttled-${String(throttled)}`);
     }
     return signals;
   }
