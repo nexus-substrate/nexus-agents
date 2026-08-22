@@ -1,15 +1,27 @@
 /**
  * Tests for symbol-extractor.ts
  *
- * Validates tree-sitter AST symbol extraction on real nexus-agents source files.
- * Uses the actual codebase as test fixtures — no mocks needed.
+ * Validates TypeScript-compiler-API symbol extraction on real nexus-agents
+ * source files. Uses the actual codebase as test fixtures — no mocks needed.
+ *
+ * (The header previously said "tree-sitter". There is no tree-sitter in the
+ * tree; adding it for non-TS languages is #4517.)
  *
  * @module indexer/symbol-extractor.test
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
-import { extractSymbols, extractSymbolIndex } from './symbol-extractor.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { extractSymbols, extractSymbolIndexResult } from './symbol-extractor.js';
+
+/** The rendered index, failing loudly if extraction reported empty instead. */
+async function indexOf(filePath: string): Promise<string> {
+  const result = await extractSymbolIndexResult(filePath);
+  if (result.kind !== 'index') throw new Error(`expected an index, got ${result.reason}`);
+  return result.index;
+}
 
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
@@ -65,7 +77,7 @@ describe('token savings measurement', () => {
     for (const file of files) {
       const filePath = resolve(SRC_DIR, file);
       const result = await extractSymbols(filePath);
-      const index = await extractSymbolIndex(filePath);
+      const index = await indexOf(filePath);
       totalOriginal += result.totalChars;
       totalIndex += index.length;
       expect(result.symbols.length).toBeGreaterThan(0);
@@ -78,7 +90,7 @@ describe('token savings measurement', () => {
 
 describe('extractSymbolIndex', () => {
   it('returns compact index string', async () => {
-    const index = await extractSymbolIndex(resolve(SRC_DIR, 'config/model-capabilities-types.ts'));
+    const index = await indexOf(resolve(SRC_DIR, 'config/model-capabilities-types.ts'));
     expect(index).toContain('// ');
     expect(index).toContain('symbols');
     expect(index).toContain('CLI_NAMES');
@@ -87,7 +99,47 @@ describe('extractSymbolIndex', () => {
   });
 
   it('includes line numbers', async () => {
-    const index = await extractSymbolIndex(resolve(SRC_DIR, 'config/model-capabilities-types.ts'));
+    const index = await indexOf(resolve(SRC_DIR, 'config/model-capabilities-types.ts'));
     expect(index).toMatch(/L\d+-\d+/);
+  });
+});
+
+describe('#4517: an unparsed file is not an empty file', () => {
+  const tmp = (name: string, body: string): string => {
+    const p = join(mkdtempSync(join(tmpdir(), 'symext-')), name);
+    writeFileSync(p, body, 'utf-8');
+    return p;
+  };
+
+  it('marks an unsupported extension as not parsed', async () => {
+    const result = await extractSymbols(tmp('service.py', 'def handler():\n    return 1\n'));
+
+    expect(result.parsed).toBe(false);
+    expect(result.symbols).toEqual([]);
+  });
+
+  it('marks a supported file as parsed even when it declares nothing', async () => {
+    // The #4517 case: a valid TypeScript barrel. Zero symbols is a
+    // measurement here, not a failure to read.
+    const result = await extractSymbols(tmp('barrel.ts', "export { a } from './a.js';\n"));
+
+    expect(result.parsed).toBe(true);
+    expect(result.symbols).toEqual([]);
+  });
+
+  it('reports unsupported and no-declarations as different reasons', async () => {
+    const unsupported = await extractSymbolIndexResult(tmp('main.go', 'package main\n'));
+    const barrel = await extractSymbolIndexResult(tmp('b.ts', "export { a } from './a.js';\n"));
+
+    expect(unsupported).toEqual({ kind: 'empty', reason: 'unsupported' });
+    expect(barrel).toEqual({ kind: 'empty', reason: 'no-declarations' });
+  });
+
+  it('returns the index when there are declarations', async () => {
+    const result = await extractSymbolIndexResult(tmp('f.ts', 'export function go(): void {}\n'));
+
+    expect(result.kind).toBe('index');
+    if (result.kind !== 'index') return;
+    expect(result.index).toContain('go');
   });
 });
