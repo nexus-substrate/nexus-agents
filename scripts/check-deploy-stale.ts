@@ -101,6 +101,23 @@ export function assessDeployStaleness(input: StalenessInput): StalenessVerdict {
     };
   }
 
+  // An unreadable publish time is not "a long time ago". Defaulting it that
+  // way is what made the grace window dead: the workflow never supplied
+  // MINUTES_SINCE_PUBLISH, the script fell back to 9999, and the branch below
+  // could not be reached — so the detector fired on every release during the
+  // normal deploy window. Report the gap in the input rather than guessing
+  // past it.
+  if (!Number.isFinite(input.minutesSincePublish) || input.minutesSincePublish < 0) {
+    return {
+      status: 'unmeasured',
+      ok: false,
+      reason:
+        `Site at ${input.siteVersion}, repo at ${input.repoVersion}, but the publish time ` +
+        'could not be read — so whether this gap is a normal deploy window or a real stall ' +
+        'is unmeasured. Not evidence of either.',
+    };
+  }
+
   if (input.minutesSincePublish < GRACE_MINUTES) {
     return {
       status: 'deploying',
@@ -144,7 +161,10 @@ async function main(): Promise<void> {
     repoVersion: readRepoVersion(),
     // The workflow supplies elapsed minutes; absent it, assume past the window
     // so a genuine divergence is reported rather than excused.
-    minutesSincePublish: Number(process.env['MINUTES_SINCE_PUBLISH'] ?? '9999'),
+    // NaN when unset or unparseable, which `assessDeployStaleness` reports as
+    // unmeasured. Deliberately NOT a large default: that silently disabled the
+    // grace window for the detector's whole life.
+    minutesSincePublish: Number(process.env['MINUTES_SINCE_PUBLISH'] ?? 'nan'),
   });
 
   console.log(`[${verdict.status}] ${verdict.reason}`);
