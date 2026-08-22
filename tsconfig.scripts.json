@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // scripts/ runs under `tsx`, which resolves a `.ts` specifier directly.
+    // check-harness-alignment.ts imports one that way deliberately.
+    "allowImportingTsExtensions": true
+  },
+  // The ambient better-sqlite3 augmentation lives in the package and is only
+  // loaded when its source tree is in the project. scripts/ imports package
+  // modules transitively, so without it those imports report phantom errors
+  // that the package's own typecheck does not see.
+  "include": ["scripts/**/*.ts", "packages/nexus-agents/src/**/*.d.ts"],
+  "exclude": ["node_modules", "**/node_modules", "dist", "coverage"]
+}

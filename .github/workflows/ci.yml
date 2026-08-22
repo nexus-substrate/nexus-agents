@@ -82,6 +82,14 @@ jobs:
       - name: Run lint (repo scripts)
         run: pnpm lint:scripts
 
+      # #4558: `pnpm typecheck` is `turbo typecheck`, which fans out to each
+      # workspace's own tsc. `scripts/` is not a workspace, so nothing
+      # typechecked the tree that holds the governance gates — 14 errors had
+      # accumulated, including two genuine API drifts. Same gap #4483 found
+      # for lint.
+      - name: Type check (repo scripts)
+        run: pnpm typecheck:scripts
+
       # #4490: `lint:arch` has existed since #570 and exits non-zero on error,
       # but was wired into no workflow and no hook, so nothing ever ran it. It
       # had drifted red (5 false-positive Test Hygiene errors, 4 false-positive

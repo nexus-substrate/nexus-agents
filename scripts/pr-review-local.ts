@@ -41,6 +41,7 @@ import {
   isFindingVerified,
   type Finding,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
+import type { VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import {
   ensurePrCommitsLocal,
   generateCanonicalReviewDiff,
@@ -163,8 +164,21 @@ async function applyLabel(prNumber: number, label: string): Promise<void> {
 // Voter run
 // ============================================================================
 
+/**
+ * Local mirror of `PrReviewVote`, narrowed to `VoterRole` (#4558).
+ *
+ * It declared `role: string`, which is wider than `PrReviewVote['role']` and
+ * therefore not assignable to `aggregatePrDecisions`. Nothing reported it
+ * because no gate typechecked `scripts/`.
+ */
 interface VoterResult {
-  readonly role: string;
+  readonly role: VoterRole;
+  /**
+   * Required by `PrReviewVote` and previously absent here (#4558) — the local
+   * mirror drifted from the type it feeds. `collectRealVotes` already returns
+   * it, so it was available all along and simply not carried through.
+   */
+  readonly processingTimeMs: number;
   readonly decision: 'approve' | 'request_changes' | 'abstain';
   readonly confidence: number;
   readonly reasoning: string;
@@ -236,6 +250,7 @@ function mapVoterResults(voteResults: Awaited<ReturnType<typeof collectRealVotes
         : [];
     return {
       role: r.role,
+      processingTimeMs: r.processingTimeMs,
       decision: mapVoteDecisionToPrDecision(r.vote.decision),
       confidence: r.vote.confidence,
       reasoning: r.vote.reasoning,
@@ -261,7 +276,6 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
     prDiff: reviewDiff,
     ...(meta.baseRef !== '' && { baseRef: meta.baseRef }),
     ...(meta.headRef !== '' && { headRef: meta.headRef }),
-    simulate: false,
   });
 
   console.log(`  running ${String(PR_REVIEW_ROLES.length)} voters via local CLI auth…`);

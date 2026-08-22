@@ -567,6 +567,15 @@ describe('recoverTransitions — reads the chained transition log (#3842)', () =
         enableHashChain: true,
         flushIntervalMs: 60_000,
         minSeverity: 'info',
+        // #4558: AuditLogConfig requires these; the Zod schema supplies the
+        // same values as defaults, so the runtime never noticed and no gate
+        // typechecked scripts/. Stated explicitly rather than relying on a
+        // validation step to paper over a type error.
+        filePrefix: 'audit',
+        maxFileSizeBytes: 10 * 1024 * 1024,
+        maxFiles: 10,
+        enableCompression: false,
+        maxQueueDepth: 10_000,
       },
       storage
     );

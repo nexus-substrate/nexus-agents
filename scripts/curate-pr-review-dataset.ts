@@ -65,7 +65,11 @@ export function rubricDocVersion(rubricPath: string = RUBRIC_PATH): string {
   if (m === null) {
     throw new Error(`Could not find "**Rubric version:**" in ${rubricPath}`);
   }
-  return m[1];
+  const version = m[1];
+  if (version === undefined) {
+    throw new Error(`"**Rubric version:**" matched but captured nothing in ${rubricPath}`);
+  }
+  return version;
 }
 
 export interface ValidationResult {
