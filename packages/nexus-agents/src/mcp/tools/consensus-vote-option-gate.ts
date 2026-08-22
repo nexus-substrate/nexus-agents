@@ -36,6 +36,21 @@ import {
   type OptionThreshold,
   type OptionThresholdVerdict,
 } from '../../consensus/option-tally.js';
+
+/**
+ * The option verdict as `executeVoting` stores it, with the veto explanation
+ * attached (#4529).
+ *
+ * The prose lives here rather than on {@link OptionThresholdVerdict} to keep
+ * `consensus/option-tally.ts` a pure tally module, and rather than on
+ * `policyReason` because that field means exactly one thing — "an error policy
+ * VOIDED this vote". Borrowing it for a split made `resolveVoteDecision` stamp
+ * `no_quorum` on a panel that had in fact convened and disagreed.
+ */
+export interface OptionGateVerdict extends OptionThresholdVerdict {
+  /** Human-readable explanation, present only when the gate vetoed. */
+  readonly reason?: string;
+}
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 
 /** Strategies whose bar the option gate mirrors. */
