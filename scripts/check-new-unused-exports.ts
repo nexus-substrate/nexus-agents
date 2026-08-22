@@ -226,20 +226,100 @@ function findConsumers(file: string, patterns: RegExp[]): string[] {
   return [...consumers];
 }
 
+/**
+ * Exported declaration names in a source text (#4560).
+ *
+ * Regex-level, matching the import-detection heuristic already used here.
+ * Deliberately not an AST pass: the file-level check has always been greedy
+ * and opt-out-able, and a heavier analysis would not change which cases this
+ * ratchet blocks on — only how many pre-existing ones it can list.
+ */
+export function exportedNames(source: string): string[] {
+  const names = new Set<string>();
+  const decl =
+    /^export\s+(?:async\s+)?(?:function|const|let|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
+  for (const m of source.matchAll(decl)) {
+    if (m[1] !== undefined) names.add(m[1]);
+  }
+  return [...names];
+}
+
+/**
+ * Is `name` referenced by any production file other than the one declaring it?
+ *
+ * Barrels COUNT here, unlike the file-level check. A re-export is how most
+ * callers reach a symbol, and excluding barrels made 2,509 of ~2,700 exports
+ * look dead — measured, not assumed.
+ */
+export function nameHasProductionUse(
+  name: string,
+  declaringFile: string,
+  productionFiles: readonly string[],
+  read: (f: string) => string
+): boolean {
+  const re = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  return productionFiles.some((f) => f !== declaringFile && re.test(read(f)));
+}
+
 /** True when the file opts out of the gate via the marker comment. */
 function hasOptOutMarker(file: string): boolean {
   return OPT_OUT_MARKER.test(safeRead(file));
 }
 
+/** An export with no production consumer, and whether this PR introduced it. */
+export interface DeadExport {
+  readonly file: string;
+  readonly name: string;
+}
+
 export interface CheckResult {
   /** New source files that have no production consumer. */
   unconsumed: string[];
+  /**
+   * Exports this PR ADDED that nothing consumes (#4560). Blocking: the author
+   * wrote them in this change, so the finding is actionable and near-zero
+   * false-positive.
+   */
+  newDeadExports: DeadExport[];
+  /**
+   * Exports that were ALREADY dead in a file this PR touched. Advisory only.
+   *
+   * Measured before choosing: blocking on these flagged 14 exports on a real
+   * two-file merge, because touching a file surfaces every pre-existing dead
+   * export in it. A gate that punishes an unrelated PR for old debt teaches
+   * people to reach for the opt-out marker, which is how a gate stops meaning
+   * anything.
+   */
+  preexistingDeadExports: DeadExport[];
   /** New source files that opted out via the marker. */
   optedOut: string[];
   /** New source files with at least one production consumer. */
   consumed: { file: string; consumers: string[] }[];
   /** Files skipped (tests, barrels, declarations). */
   skipped: string[];
+}
+
+/**
+ * Classify dead exports in a MODIFIED file as newly-added or pre-existing.
+ *
+ * `baseSource` is the file as it was at the merge base; `headSource` is now.
+ * A name absent from base and dead at head is this PR's doing.
+ */
+export function classifyDeadExports(
+  file: string,
+  baseSource: string,
+  headSource: string,
+  isDead: (name: string) => boolean
+): { newDead: DeadExport[]; preexistingDead: DeadExport[] } {
+  const before = new Set(exportedNames(baseSource));
+  const newDead: DeadExport[] = [];
+  const preexistingDead: DeadExport[] = [];
+
+  for (const name of exportedNames(headSource)) {
+    if (!isDead(name)) continue;
+    (before.has(name) ? preexistingDead : newDead).push({ file, name });
+  }
+  return { newDead, preexistingDead };
 }
 
 /** Run the producer-without-consumer check across the PR's added files. */
@@ -262,7 +342,14 @@ export function checkAddedFiles(files: string[]): CheckResult {
       consumed.push({ file, consumers });
     }
   }
-  return { unconsumed, optedOut, consumed, skipped };
+  return {
+    unconsumed,
+    optedOut,
+    consumed,
+    skipped,
+    newDeadExports: [],
+    preexistingDeadExports: [],
+  };
 }
 
 /** Log the success-path summary lines (consumed / opted-out / skipped). */
@@ -308,6 +395,111 @@ function logFailure(unconsumed: string[]): void {
   console.error('  3. Delete the file if the consumer is no longer needed.');
 }
 
+/** Files MODIFIED (not added) since `base`, filtered to production source. */
+function modifiedSourceFiles(base: string): string[] {
+  const out = execSync(`git diff --name-status --diff-filter=M ${base}...HEAD`, {
+    encoding: 'utf-8',
+  });
+  return out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => l.split(/\s+/).slice(1).join(' '))
+    .filter(
+      (f) =>
+        f.startsWith('packages/nexus-agents/src/') &&
+        /\.tsx?$/.test(f) &&
+        !isTestSupportFile(f) &&
+        !/\/index\.tsx?$/.test(f) &&
+        !f.endsWith('.d.ts')
+    );
+}
+
+/** Every production source file, used as the haystack for name references. */
+function productionSourceFiles(): string[] {
+  // isTestFile, NOT isTestSupportFile — the latter means "lives in src/testing/",
+  // a different concept. Using it here let a test-only import count as
+  // production use, which is precisely the blindness that disqualified knip
+  // for this job. Caught by running the ratchet against a known-dead export
+  // and getting no advisory line.
+  return listSourceFiles(SRC_DIR).filter((f) => !isTestFile(f));
+}
+
+/**
+ * Export-level ratchet over MODIFIED files (#4560).
+ *
+ * Blocks only on exports this PR added, and merely reports ones already dead
+ * in a file it touched. That split is measured, not stylistic: blocking on
+ * pre-existing dead exports flagged 14 on a real two-file merge, and a gate
+ * that bills an unrelated PR for old debt gets routed around.
+ */
+function checkModifiedFiles(base: string): {
+  newDead: DeadExport[];
+  preexisting: DeadExport[];
+} {
+  const modified = modifiedSourceFiles(base);
+  if (modified.length === 0) return { newDead: [], preexisting: [] };
+
+  const production = productionSourceFiles();
+  const cache = new Map<string, string>();
+  const read = (f: string): string => {
+    const hit = cache.get(f);
+    if (hit !== undefined) return hit;
+    const body = safeRead(f);
+    cache.set(f, body);
+    return body;
+  };
+
+  const newDead: DeadExport[] = [];
+  const preexisting: DeadExport[] = [];
+
+  for (const rel of modified) {
+    const abs = rel;
+    if (hasOptOutMarker(abs)) continue;
+
+    let baseSource = '';
+    try {
+      baseSource = execSync(`git show ${base}:${rel}`, { encoding: 'utf-8' });
+    } catch {
+      // Absent at base (renamed, or the ref is shallow): treat every export as
+      // pre-existing rather than blaming this PR for code it may not have added.
+      baseSource = safeRead(abs);
+    }
+
+    const classified = classifyDeadExports(
+      rel,
+      baseSource,
+      safeRead(abs),
+      (name) => !nameHasProductionUse(name, abs, production, read)
+    );
+    newDead.push(...classified.newDead);
+    preexisting.push(...classified.preexistingDead);
+  }
+  return { newDead, preexisting };
+}
+
+/** Print the export ratchet's two lists, blocking one and advisory one. */
+function reportExportRatchet(ratchet: { newDead: DeadExport[]; preexisting: DeadExport[] }): void {
+  if (ratchet.preexisting.length > 0) {
+    console.log(
+      `\nAlready-dead exports in files this PR touched (${String(ratchet.preexisting.length)}, advisory):`
+    );
+    for (const d of ratchet.preexisting) console.log(`  - ${d.file} :: ${d.name}`);
+    console.log('  Not blocking — this PR did not add them. Removing one is a welcome cleanup.');
+  }
+
+  if (ratchet.newDead.length === 0) return;
+
+  console.error(
+    `\nExports added by this PR with no production consumer (${String(ratchet.newDead.length)}):`
+  );
+  for (const d of ratchet.newDead) console.error(`  ✗ ${d.file} :: ${d.name}`);
+  console.error(
+    '\nA test importing it is not a consumer. Wire it up, or add the\n' +
+      '`@export-no-consumer-yet — see #<issue>` marker with a tracking issue.'
+  );
+}
+
 function main(): number {
   const base = process.argv[2] ?? 'origin/main';
   let files: string[];
@@ -325,9 +517,24 @@ function main(): number {
 
   const result = checkAddedFiles(files);
   logSummary(result);
-  if (result.unconsumed.length === 0) return 0;
-  logFailure(result.unconsumed);
-  return 1;
+
+  let exportRatchet = { newDead: [] as DeadExport[], preexisting: [] as DeadExport[] };
+  try {
+    exportRatchet = checkModifiedFiles(base);
+  } catch (err) {
+    console.warn(
+      'check-new-unused-exports: export ratchet skipped — ' +
+        (err instanceof Error ? err.message : String(err))
+    );
+  }
+
+  reportExportRatchet(exportRatchet);
+
+  if (result.unconsumed.length > 0) {
+    logFailure(result.unconsumed);
+    return 1;
+  }
+  return exportRatchet.newDead.length > 0 ? 1 : 0;
 }
 
 // Guard the CLI so the test file can import the check functions without a run.
