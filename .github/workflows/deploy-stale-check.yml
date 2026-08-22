@@ -45,36 +45,14 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      # The grace window exists so a normal deploy in flight is not reported as
-      # a stall. It was never wired: the script fell back to a 9999-minute
-      # default, so the window could not apply and the check failed on every
-      # release. npm's publish timestamp is the right clock — it is when this
-      # version actually became something the site could be behind.
-      - name: Minutes since the current version was published
-        id: published
-        run: |
-          set -uo pipefail
-          version=$(node -p "require('./packages/nexus-agents/package.json').version")
-          published=$(npm view "nexus-agents@$version" time --json 2>/dev/null \
-            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
-                try { const t=JSON.parse(s); process.stdout.write(t['$version'] ?? ''); }
-                catch { process.stdout.write(''); }
-              })" || echo "")
-          if [ -z "$published" ]; then
-            # Empty, not a large number: the assessor reports an unreadable
-            # publish time as unmeasured rather than assuming it was long ago.
-            echo "minutes=" >> "$GITHUB_OUTPUT"
-          else
-            now=$(date -u +%s)
-            then_s=$(date -u -d "$published" +%s)
-            echo "minutes=$(( (now - then_s) / 60 ))" >> "$GITHUB_OUTPUT"
-          fi
-
+      # The script derives elapsed-since-publish itself from the npm registry.
+      # It used to take that as an env input this workflow was supposed to set,
+      # and never did — leaving the grace window unreachable for the whole life
+      # of the detector. An input supplied from outside is an input that can be
+      # forgotten, so the script owns it now and there is no wiring to drop.
       - name: Compare the live site against main
         id: assess
         continue-on-error: true
-        env:
-          MINUTES_SINCE_PUBLISH: ${{ steps.published.outputs.minutes }}
         run: npx tsx scripts/check-deploy-stale.ts
 
       # #4521: catch the CAUSE early, not just the consequence. A run wedged in

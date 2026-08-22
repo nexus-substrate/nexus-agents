@@ -141,6 +141,42 @@ function readRepoVersion(): string {
   return (JSON.parse(readFileSync(p, 'utf-8')) as { version: string }).version;
 }
 
+/** npm registry metadata endpoint; `time` maps each version to its publish ISO date. */
+const REGISTRY_URL = 'https://registry.npmjs.org/nexus-agents';
+
+/**
+ * Minutes since `version` was published to npm, or undefined if unreadable.
+ *
+ * The script derives this itself rather than taking it from the environment.
+ * It was an env input supplied by the workflow, the workflow never supplied
+ * it, and the grace window that depends on it was therefore unreachable for
+ * the detector's entire life — a guard broken by the one thing about it that
+ * lived somewhere else. Owning the input removes that failure mode: there is
+ * no wiring left to forget.
+ *
+ * `MINUTES_SINCE_PUBLISH` still overrides, for tests and for a caller that
+ * already knows.
+ */
+async function minutesSincePublish(version: string): Promise<number> {
+  const override = process.env['MINUTES_SINCE_PUBLISH'];
+  if (override !== undefined && override.trim() !== '') return Number(override);
+
+  try {
+    const res = await fetch(REGISTRY_URL, { redirect: 'follow' });
+    if (!res.ok) return Number.NaN;
+    const body = (await res.json()) as { time?: Record<string, string> };
+    const published = body.time?.[version];
+    if (published === undefined) return Number.NaN;
+
+    const publishedMs = Date.parse(published);
+    if (Number.isNaN(publishedMs)) return Number.NaN;
+    return (Date.now() - publishedMs) / 60_000;
+  } catch {
+    // Unreadable, which the assessor reports as unmeasured — not as "long ago".
+    return Number.NaN;
+  }
+}
+
 /** Fetch the live page, bounded; undefined on any failure (reported as unmeasured). */
 async function fetchSite(): Promise<string | undefined> {
   try {
@@ -155,16 +191,13 @@ async function fetchSite(): Promise<string | undefined> {
 
 /* eslint-disable no-console */
 async function main(): Promise<void> {
-  const html = await fetchSite();
+  const repoVersion = readRepoVersion();
+  const [html, elapsed] = await Promise.all([fetchSite(), minutesSincePublish(repoVersion)]);
+
   const verdict = assessDeployStaleness({
     siteVersion: html === undefined ? undefined : parseSiteVersion(html),
-    repoVersion: readRepoVersion(),
-    // The workflow supplies elapsed minutes; absent it, assume past the window
-    // so a genuine divergence is reported rather than excused.
-    // NaN when unset or unparseable, which `assessDeployStaleness` reports as
-    // unmeasured. Deliberately NOT a large default: that silently disabled the
-    // grace window for the detector's whole life.
-    minutesSincePublish: Number(process.env['MINUTES_SINCE_PUBLISH'] ?? 'nan'),
+    repoVersion,
+    minutesSincePublish: elapsed,
   });
 
   console.log(`[${verdict.status}] ${verdict.reason}`);
