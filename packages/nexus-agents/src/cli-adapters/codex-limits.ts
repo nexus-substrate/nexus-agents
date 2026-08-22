@@ -43,6 +43,16 @@ export function checkCodexConcurrency(codexBoundConcurrency: number): string | n
   );
 }
 
+// @export-no-consumer-yet — see #4555. Its sibling `checkCodexConcurrency` is
+// wired at `cli/voter-agents.ts:307`, but this one needs a *planned nesting
+// depth* and nothing in the tree tracks one: the voter fan-out is flat (voters
+// are leaf calls), and the only other `depth` values are MCTS and
+// reasoning-forest tree depths, which are unrelated concepts. So this was
+// written against information no caller has — wiring it means first
+// introducing depth tracking through the dispatch path, which is a feature and
+// not a missing line. Marked rather than deleted because the knowledge it
+// encodes (Codex `max_depth=1` rejects a nested spawn) is real and was added
+// deliberately in #2689.
 /**
  * A structured warning when a planned subagent nesting `depth` exceeds
  * Codex's default `max_depth`. Returns `null` when within limits.

@@ -22,6 +22,7 @@ import {
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getResearchStatus, findOverlaps } from '../../cli/research-helpers.js';
+import { checkRejected, formatRejectionWarning } from '../../research/negative-results.js';
 import { parseRegistry } from '../../indexer/research-index/index.js';
 import { generateStatsJson } from '../../indexer/research-index/index.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -83,11 +84,38 @@ export interface ResearchQueryResponse {
   success: boolean;
   /** Query results */
   data: unknown;
+  /**
+   * A recorded rejection for the queried technique, when one exists (#4555).
+   *
+   * Advisory. The registry says a prior attempt failed and why; it does not
+   * suppress the result, because a prior rejection is evidence to weigh, not
+   * a veto.
+   */
+  rejectionNotice?: string;
 }
 
 // =============================================================================
 // HANDLERS
 // =============================================================================
+
+/**
+ * Surface a recorded rejection for `techniqueId`, if the registry holds one.
+ *
+ * `docs/research/registry/negative-results.yaml` exists to "prevent
+ * re-researching failed implementations", and until now nothing read it —
+ * maintained data with no consumer, so a technique explicitly recorded as
+ * rejected was re-suggested with no warning (#4555). This is the read.
+ *
+ * Advisory: the rejection is attached to the response, never used to suppress
+ * a result. A prior rejection is evidence to weigh, not a veto — the failure
+ * mode may not apply, or the record may be stale.
+ */
+function rejectionNoticeFor(techniqueId: string | undefined): string | undefined {
+  if (techniqueId === undefined || techniqueId === '') return undefined;
+  const rejected = checkRejected(techniqueId);
+  if (rejected === undefined) return undefined;
+  return formatRejectionWarning(techniqueId, rejected);
+}
 
 /** Handles status action. */
 async function handleStatus(input: ResearchQueryInput): Promise<ResearchQueryResponse> {
@@ -96,7 +124,13 @@ async function handleStatus(input: ResearchQueryInput): Promise<ResearchQueryRes
     status: input.status,
     format: 'json',
   });
-  return { action: 'status', success: result.success, data: result };
+  const rejection = rejectionNoticeFor(input.techniqueId);
+  return {
+    action: 'status',
+    success: result.success,
+    data: result,
+    ...(rejection !== undefined ? { rejectionNotice: rejection } : {}),
+  };
 }
 
 /** Handles overlap action. */
@@ -113,7 +147,13 @@ async function handleOverlap(input: ResearchQueryInput): Promise<ResearchQueryRe
     threshold: input.threshold,
     format: 'json',
   });
-  return { action: 'overlap', success: result.success, data: result };
+  const rejection = rejectionNoticeFor(input.techniqueId);
+  return {
+    action: 'overlap',
+    success: result.success,
+    data: result,
+    ...(rejection !== undefined ? { rejectionNotice: rejection } : {}),
+  };
 }
 
 /** Handles stats action. */
