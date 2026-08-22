@@ -138,6 +138,12 @@ export class CapacityTracker {
    */
   private hasObserved = false;
 
+  /**
+   * Provider-asserted quota exhaustion (#4456), with the horizon the provider
+   * gave. Null until a provider says so — never inferred from local counting.
+   */
+  private quotaExhaustedUntil: number | null = null;
+
   constructor(config: CapacityTrackerConfig) {
     this.config = config;
     this.usageHistory = [];
@@ -181,17 +187,54 @@ export class CapacityTracker {
     const requestUtilization = (this.requestCount / this.config.requestLimit) * 100;
     const utilizationPercent = clampPercent(Math.max(tokenUtilization, requestUtilization));
 
-    const exhausted = remainingTokens === 0 || remainingRequests === 0;
+    const rateLimited = remainingTokens === 0 || remainingRequests === 0;
     const resetTime = new Date(this.windowStart + this.config.windowMs);
+
+    // Expire a provider assertion once its own stated horizon passes. The
+    // provider set the deadline, so we do not extend or shorten it.
+    if (this.quotaExhaustedUntil !== null && now >= this.quotaExhaustedUntil) {
+      this.quotaExhaustedUntil = null;
+    }
+    const quotaExhausted = this.quotaExhaustedUntil !== null;
 
     return {
       remainingTokens,
       remainingRequests,
       resetTime,
       utilizationPercent: Math.round(utilizationPercent * 100) / 100,
-      exhausted,
+      rateLimited,
+      // #4456: identical value, deprecated name. Kept so the rename is not a
+      // breaking change to an exported type; removal is scheduled for the next
+      // major, and `no-restricted-syntax` blocks new reads in the meantime.
+      exhausted: rateLimited,
+      quotaExhausted,
+      ...(this.quotaExhaustedUntil !== null
+        ? { quotaResetAt: new Date(this.quotaExhaustedUntil) }
+        : {}),
       observed: this.hasObserved,
     };
+  }
+
+  /**
+   * Record a PROVIDER's assertion that durable quota is exhausted (#4456).
+   *
+   * Only a `retryAfterMs` longer than the local window counts. A shorter one
+   * is an ordinary per-minute throttle, which {@link CapacityStatus.rateLimited}
+   * already covers — treating it as quota exhaustion would empty the candidate
+   * pool for a condition that clears in under a minute, the failure mode that
+   * kept #4373's enforcement stage switched off.
+   *
+   * Without a `retryAfterMs` the provider gave no horizon, so nothing is
+   * asserted: an exhaustion with no end is not distinguishable here from a
+   * transient error, and inventing a horizon would manufacture a measurement.
+   *
+   * @param retryAfterMs - The provider's stated wait, from `retry-after`.
+   * @returns true when the assertion was durable enough to record.
+   */
+  recordProviderQuotaExhaustion(retryAfterMs: number | undefined): boolean {
+    if (retryAfterMs === undefined || retryAfterMs <= this.config.windowMs) return false;
+    this.quotaExhaustedUntil = getTimeProvider().now() + retryAfterMs;
+    return true;
   }
 
   /**
@@ -211,6 +254,7 @@ export class CapacityTracker {
     this.requestTimestamps.length = 0;
     this.requestCount = 0;
     this.windowStart = getTimeProvider().now();
+    this.quotaExhaustedUntil = null;
   }
 
   /**

@@ -100,7 +100,7 @@ describe('ModelToCliAdapter (#3422)', () => {
   it('reports non-exhausted capacity (API rate limits surface via execute)', async () => {
     const adapter = createModelToCliAdapter(makeModelAdapter(), { name: 'claude' });
     const cap = await adapter.getCapacity();
-    expect(cap.exhausted).toBe(false);
+    expect(cap.rateLimited).toBe(false);
   });
 
   it('delegates listModels to the model adapter when present', async () => {

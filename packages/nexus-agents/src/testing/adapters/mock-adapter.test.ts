@@ -374,7 +374,7 @@ describe('MockCliAdapter', () => {
 
       expect(capacity.remainingTokens).toBe(100_000);
       expect(capacity.remainingRequests).toBe(100_000);
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });
   });

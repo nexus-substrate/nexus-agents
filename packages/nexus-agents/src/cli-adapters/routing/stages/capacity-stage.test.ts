@@ -11,7 +11,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CapacityFilterStage, createCapacityStage, CAPACITY_EXHAUSTED } from './capacity-stage.js';
+import {
+  CapacityFilterStage,
+  createCapacityStage,
+  CAPACITY_EXHAUSTED,
+  assessCapacity,
+} from './capacity-stage.js';
 import { createRoutingContext, getRemainingCandidates } from '../router-stage.js';
 import type { RoutingArmId, CapacityStatus, ICliAdapter } from '../../types.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from '../../../core/index.js';
@@ -30,7 +35,9 @@ function capacity(overrides: Partial<CapacityStatus> = {}): CapacityStatus {
     remainingRequests: 1_000,
     resetTime: new Date('2026-01-01T00:00:00Z'),
     utilizationPercent: 10,
+    rateLimited: false,
     exhausted: false,
+    quotaExhausted: false,
     observed: true,
     ...overrides,
   };
@@ -72,7 +79,10 @@ describe('CapacityFilterStage', () => {
   describe('exclusion on measured exhaustion', () => {
     it('excludes an adapter whose capacity is observed and exhausted', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true, remainingTokens: 0 }), gemini: capacity() }),
+        adapters({
+          claude: capacity({ quotaExhausted: true, remainingTokens: 0 }),
+          gemini: capacity(),
+        }),
         ENFORCING
       );
 
@@ -105,7 +115,7 @@ describe('CapacityFilterStage', () => {
 
     it('uses a normalized capacity_exhausted diagnostic as the filter reason', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() }),
+        adapters({ claude: capacity({ quotaExhausted: true }), gemini: capacity() }),
         ENFORCING
       );
 
@@ -133,7 +143,7 @@ describe('CapacityFilterStage', () => {
       // reading is a default, not evidence.
       const stage = new CapacityFilterStage(
         adapters({
-          claude: capacity({ observed: false, exhausted: true, remainingTokens: 0 }),
+          claude: capacity({ observed: false, quotaExhausted: true, remainingTokens: 0 }),
           gemini: capacity(),
         }),
         ENFORCING
@@ -183,7 +193,7 @@ describe('CapacityFilterStage', () => {
       // exhaustion. Hard-excluding on it would let an ordinary burst empty the
       // pool and fail routing closed for a condition that self-clears. See #4456.
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() })
+        adapters({ claude: capacity({ quotaExhausted: true }), gemini: capacity() })
       );
 
       const result = await stage.route(createRoutingContext('t', CLIS));
@@ -220,7 +230,7 @@ describe('CapacityFilterStage', () => {
   describe('warn-only mode', () => {
     it('annotates without filtering when enforceHardLimits is false', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() }),
+        adapters({ claude: capacity({ quotaExhausted: true }), gemini: capacity() }),
         { enforceHardLimits: false }
       );
 
@@ -239,8 +249,8 @@ describe('CapacityFilterStage', () => {
       // lets the pipeline own the no_candidates verdict.
       const stage = new CapacityFilterStage(
         adapters({
-          claude: capacity({ exhausted: true }),
-          gemini: capacity({ exhausted: true }),
+          claude: capacity({ quotaExhausted: true }),
+          gemini: capacity({ quotaExhausted: true }),
         }),
         ENFORCING
       );
@@ -304,7 +314,7 @@ describe('CapacityFilterStage', () => {
 
     it('skips candidates already filtered by an earlier stage', async () => {
       const stage = new CapacityFilterStage(
-        adapters({ claude: capacity({ exhausted: true }), gemini: capacity() }),
+        adapters({ claude: capacity({ quotaExhausted: true }), gemini: capacity() }),
         ENFORCING
       );
       const ctx = createRoutingContext('t', CLIS);
@@ -350,5 +360,39 @@ describe('CapacityFilterStage', () => {
       expect(stage).toBeInstanceOf(CapacityFilterStage);
       expect(stage.name).toBe('capacity-filter');
     });
+  });
+});
+
+describe('#4456: rate limiting is graded apart from quota exhaustion', () => {
+  it('grades a local rate limit as throttled, not exhausted', () => {
+    expect(assessCapacity(capacity({ rateLimited: true }))).toBe('throttled');
+  });
+
+  it('grades a provider-asserted quota exhaustion as exhausted', () => {
+    expect(assessCapacity(capacity({ quotaExhausted: true }))).toBe('exhausted');
+  });
+
+  it('does NOT exclude a merely rate-limited adapter, even under enforcement', async () => {
+    // The regression this issue exists for. `rateLimited` is this process's
+    // own rolling-60s arithmetic against an estimated constant — a 7-voter
+    // panel trips it while plenty of provider quota remains. Excluding on it
+    // would empty the candidate pool for a condition that clears within the
+    // minute, which is why enforcement shipped switched off.
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity({ rateLimited: true }), gemini: capacity() }),
+      ENFORCING
+    );
+
+    const result = await stage.route(createRoutingContext('t', CLIS));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.context.filtered.has('claude')).toBe(false);
+    expect(getRemainingCandidates(result.value.context)).toEqual(CLIS);
+  });
+
+  it('still refuses to act on an unobserved reading, whatever the flags say', () => {
+    // Absence of a reading is not a reading (#4374) — unchanged by this issue.
+    expect(assessCapacity(capacity({ observed: false, quotaExhausted: true }))).toBe('unmeasured');
   });
 });

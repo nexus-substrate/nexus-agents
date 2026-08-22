@@ -220,12 +220,36 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       return { ok: true, value: result.value.response };
     }
 
+    this.recordQuotaSignal(result.error);
     this.logger.warn('Task execution failed', {
       cli: this.name,
       error: result.error.message,
       retryable: result.error.retryable,
     });
     return result;
+  }
+
+  /**
+   * Feed a provider's own rate-limit assertion into capacity tracking (#4456).
+   *
+   * A `retry-after` the provider stated is far stronger evidence than local
+   * counting: the tracker otherwise sees only this process's spend and cannot
+   * observe a plan quota burned gradually or burned elsewhere, which is the
+   * incident #4351 reported. Only RATE_LIMITED carries that assertion; the
+   * tracker itself decides whether the stated wait is long enough to mean
+   * durable quota rather than a per-minute throttle.
+   */
+  protected recordQuotaSignal(error: CliError): void {
+    if (error.code !== 'RATE_LIMITED') return;
+    if (this.capacityTracker === null) return;
+
+    const recorded = this.capacityTracker.recordProviderQuotaExhaustion(error.retryAfterMs);
+    if (recorded) {
+      this.logger.warn('Provider asserted durable quota exhaustion', {
+        cli: this.name,
+        retryAfterMs: error.retryAfterMs,
+      });
+    }
   }
 
   /**

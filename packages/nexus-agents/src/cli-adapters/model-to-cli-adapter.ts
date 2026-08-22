@@ -187,7 +187,9 @@ export class ModelToCliAdapter implements ICliAdapter {
       remainingRequests: Number.POSITIVE_INFINITY,
       resetTime: new Date(0),
       utilizationPercent: 0,
+      rateLimited: false,
       exhausted: false,
+      quotaExhausted: false,
       observed: false,
     });
   }

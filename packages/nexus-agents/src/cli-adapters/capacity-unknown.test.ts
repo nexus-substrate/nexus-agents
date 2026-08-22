@@ -48,8 +48,8 @@ describe('capacity observation state (#4374)', () => {
     expect(usedStatus.observed).toBe(true);
     // The numbers still look similar — `observed` is the only thing that
     // separates them, which is why consumers must read it.
-    expect(freshStatus.exhausted).toBe(false);
-    expect(usedStatus.exhausted).toBe(false);
+    expect(freshStatus.rateLimited).toBe(false);
+    expect(usedStatus.rateLimited).toBe(false);
   });
 
   it('stays observed after the usage window prunes back to empty', () => {

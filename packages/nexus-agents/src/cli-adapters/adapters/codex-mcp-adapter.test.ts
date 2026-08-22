@@ -342,7 +342,7 @@ describe('CodexMcpAdapter', () => {
       const capacity = await adapter.getCapacity();
 
       expect(capacity.remainingTokens).toBe(500_000); // codex DEFAULT_TOKEN_LIMIT
-      expect(capacity.exhausted).toBe(false);
+      expect(capacity.rateLimited).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });
   });
