@@ -107,8 +107,23 @@ export function buildReadiness(
  * that never tested serving — which is precisely how #4351 went unnoticed.
  */
 export function formatReadiness(readiness: CliReadiness): string {
-  const icon = (o: LevelOutcome): string =>
-    o.status === 'verified' ? '✓' : o.status === 'failed' ? '✗' : '·';
+  // Exhaustive rather than a ternary chain (#4563): a new LevelOutcome status
+  // would otherwise fall into the '·' arm and render as "not attempted",
+  // quietly misreporting whatever the new state actually means.
+  const icon = (o: LevelOutcome): string => {
+    switch (o.status) {
+      case 'verified':
+        return '✓';
+      case 'failed':
+        return '✗';
+      case 'not-attempted':
+        return '·';
+      default: {
+        const exhaustive: never = o;
+        throw new Error(`Unhandled level outcome: ${JSON.stringify(exhaustive)}`);
+      }
+    }
+  };
 
   const lines = READINESS_LEVELS.map((level) => {
     const outcome = readiness.levels[level];
