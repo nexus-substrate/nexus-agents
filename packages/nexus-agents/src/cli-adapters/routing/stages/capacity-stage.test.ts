@@ -396,3 +396,62 @@ describe('#4456: rate limiting is graded apart from quota exhaustion', () => {
     expect(assessCapacity(capacity({ observed: false, quotaExhausted: true }))).toBe('unmeasured');
   });
 });
+
+describe('#4456 follow-up: a throttled candidate is reported, not silently dropped', () => {
+  it('emits a throttled signal so the state is visible in a trace', async () => {
+    // The grade existed in the type and nowhere in the output: `route()` sent
+    // throttled down the same `continue` as healthy, so a rate-limited
+    // candidate was indistinguishable from a healthy one everywhere downstream.
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity({ rateLimited: true }), gemini: capacity() }),
+      ENFORCING
+    );
+
+    const result = await stage.route(createRoutingContext('t', CLIS));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.context.signals).toContain('capacity:throttled-1');
+  });
+
+  it('counts throttled candidates in the stage stats', async () => {
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity({ rateLimited: true }), gemini: capacity() }),
+      ENFORCING
+    );
+
+    await stage.route(createRoutingContext('t', CLIS));
+
+    expect(stage.getStats()['throttledCount']).toBe(1);
+  });
+
+  it('emits no throttled signal when nothing is throttled', async () => {
+    // Absence of the signal has to mean something, so it must not be emitted
+    // at zero — same contract as capacity:unmeasured-N.
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity(), gemini: capacity() }),
+      ENFORCING
+    );
+
+    const result = await stage.route(createRoutingContext('t', CLIS));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.context.signals.some((s) => s.startsWith('capacity:throttled'))).toBe(
+      false
+    );
+  });
+
+  it('still does not exclude the throttled candidate', async () => {
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity({ rateLimited: true }), gemini: capacity() }),
+      ENFORCING
+    );
+
+    const result = await stage.route(createRoutingContext('t', CLIS));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(getRemainingCandidates(result.value.context)).toEqual(CLIS);
+  });
+});
