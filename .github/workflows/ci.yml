@@ -90,6 +90,36 @@ jobs:
       - name: Run architectural lint
         run: pnpm lint:arch
 
+      # #4562: a check script no workflow invokes is indistinguishable from no
+      # gate, except that its existence implies coverage. check-schema-fanout
+      # sat unwired for three months while two documents said it ran in CI
+      # (#4553); an audit then found six more, including one whose own header
+      # calls it "the CI half of the authority-ladder enforcement layer".
+      # This gate asserts its own reachability first.
+      - name: Check every gate script is reachable from CI
+        run: npx tsx scripts/check-script-wiring.ts
+
+      # The six gates that audit found unwired (#4562). All pass today —
+      # verified before wiring, because an unrun gate rots (lint:arch had
+      # drifted red with nine false positives by the time #4490 found it).
+      - name: Authority-tier declaration gate (#3841)
+        run: npx tsx scripts/check-authority-tier-drift.ts
+
+      - name: Strategy-manifest drift gate (#3837)
+        run: npx tsx scripts/check-strategy-manifest-drift.ts
+
+      - name: Memory-contract drift gate (#2766)
+        run: npx tsx scripts/check-memory-contract.ts
+
+      - name: Catalogue drift sweep (#4417)
+        run: npx tsx scripts/check-catalogue-drift.ts
+
+      - name: Tool-description distinctness (#2650)
+        run: npx tsx scripts/check-tool-distinctness.ts
+
+      - name: Tool-output consistency (#2653)
+        run: npx tsx scripts/check-tool-output-consistency.ts
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
