@@ -144,7 +144,13 @@ function aggregateResults(checks: readonly GateCheckResult[]): {
     else if (c.verdict === 'fail') fail++;
     else skip++;
   }
-  const verdict: GateVerdict = fail > 0 ? 'fail' : pass === 0 && skip > 0 ? 'skip' : 'pass';
+  // Ordered so that "nothing passed" is `skip` regardless of WHY nothing
+  // passed. The earlier form (`pass === 0 && skip > 0`) required at least one
+  // skip, so an EMPTY check list fell through to `pass` — a gate with zero
+  // checks reporting success, which is the same cannot-fail defect one step
+  // further out. No caller passes an empty list today; the point is that the
+  // aggregator should not depend on that.
+  const verdict: GateVerdict = fail > 0 ? 'fail' : pass > 0 ? 'pass' : 'skip';
   return { verdict, summary: { pass, fail, skip } };
 }
 

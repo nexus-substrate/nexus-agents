@@ -78,8 +78,11 @@ describe('runQualityGate', () => {
   });
 
   it('handles empty checks list', async () => {
+    // Reports `skip`, not `pass`. This test previously asserted `pass`, which
+    // encoded the defect: a gate that ran nothing at all cannot report success
+    // without laundering "we did not look" as "we looked and it was fine".
     const result = await runQualityGate('ship', []);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('skip');
     expect(result.summary).toEqual({ pass: 0, fail: 0, skip: 0 });
   });
 });
@@ -133,5 +136,16 @@ describe('#4355: a gate that ran nothing does not pass', () => {
 
     expect(result.feedback).toContain('1 check(s) failed');
     expect(result.feedback).toContain('did not run');
+  });
+});
+
+describe('partial coverage still passes on what ran', () => {
+  it('passes when something passed and something else was skipped', async () => {
+    const passing: GateCheckFn = () =>
+      Promise.resolve({ name: 'tests', verdict: 'pass' as const, details: 'ok' });
+    const skipped: GateCheckFn = () =>
+      Promise.resolve({ name: 'lint', verdict: 'skip' as const, details: 'no script' });
+
+    expect((await runQualityGate('qa', [passing, skipped])).verdict).toBe('pass');
   });
 });
