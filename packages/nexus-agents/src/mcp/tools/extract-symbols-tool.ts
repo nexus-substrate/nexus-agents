@@ -8,13 +8,15 @@
  * @module mcp/tools/extract-symbols-tool
  */
 
-import { resolve, sep } from 'node:path';
+import { extname, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import {
   extractSymbols,
-  extractSymbolIndex,
+  extractSymbolIndexResult,
+  SUPPORTED_EXTENSIONS,
+  type EmptyIndexReason,
   type CodeSymbol,
 } from '../../indexer/symbol-extractor.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -251,11 +253,15 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
     }
 
     // Default: index mode (minimal tokens)
-    const index = await extractSymbolIndex(resolvedPath);
-    if (index === '') {
-      return toolSuccess('No symbols found (file may not be TypeScript/JavaScript)');
+    // #4517: report WHICH of the two empty cases this is. The old single
+    // message guessed "file may not be TypeScript/JavaScript" for both, and
+    // sent a reader hunting a file-type problem on a valid .ts barrel whose
+    // 20 exports were all re-exports declaring nothing locally.
+    const result = await extractSymbolIndexResult(resolvedPath);
+    if (result.kind === 'empty') {
+      return toolSuccess(emptyIndexMessage(result.reason, resolvedPath));
     }
-    return toolSuccess(index);
+    return toolSuccess(result.index);
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     ctx.logger.error('Symbol extraction failed', e);
@@ -264,6 +270,31 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
       message: `Symbol extraction failed: ${e.message}`,
     });
   }
+}
+
+/**
+ * Explain an empty index in terms of what was actually determined (#4517).
+ *
+ * `unsupported` is an absence of measurement — the file was never parsed, so
+ * nothing is claimed about its contents. `no-declarations` is a measurement:
+ * the file parsed and declares nothing locally. Naming the re-export case
+ * matters because it is the common one and it looks like a failure otherwise.
+ */
+function emptyIndexMessage(reason: EmptyIndexReason, filePath: string): string {
+  if (reason === 'unsupported') {
+    const ext = extname(filePath).toLowerCase();
+    const shown = ext === '' ? '(no extension)' : ext;
+    return (
+      `Not parsed: extract_symbols cannot read ${shown} files. ` +
+      `Supported: ${SUPPORTED_EXTENSIONS.join(', ')}. ` +
+      `This says nothing about whether the file contains symbols.`
+    );
+  }
+  return (
+    'Parsed successfully; no local declarations found. ' +
+    'A re-export barrel (`export { X } from ...`) reports zero symbols because ' +
+    're-exports declare nothing locally.'
+  );
 }
 
 // ============================================================================

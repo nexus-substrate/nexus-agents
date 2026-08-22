@@ -10,7 +10,18 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { extractSymbols, extractSymbolIndex } from './symbol-extractor.js';
+import { extractSymbols, extractSymbolIndexResult } from './symbol-extractor.js';
+
+/**
+ * The rendered index, or '' when there is none.
+ *
+ * These suites sweep real source files, and a re-export barrel genuinely has
+ * no local declarations — that is a valid reading, not a failure.
+ */
+async function indexOf(filePath: string): Promise<string> {
+  const result = await extractSymbolIndexResult(filePath);
+  return result.kind === 'index' ? result.index : '';
+}
 
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
@@ -135,7 +146,7 @@ describe('reconstruction quality', () => {
 
   it('index format is parseable and useful', async () => {
     const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
-    const index = await extractSymbolIndex(filePath);
+    const index = await indexOf(filePath);
 
     // Index should start with file comment
     expect(index.startsWith('//')).toBe(true);

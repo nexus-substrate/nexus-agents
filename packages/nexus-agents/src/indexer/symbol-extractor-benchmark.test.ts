@@ -10,7 +10,18 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { readdir } from 'node:fs/promises';
-import { extractSymbols, extractSymbolIndex } from './symbol-extractor.js';
+import { extractSymbols, extractSymbolIndexResult } from './symbol-extractor.js';
+
+/**
+ * The rendered index, or '' when there is none.
+ *
+ * These suites sweep real source files, and a re-export barrel genuinely has
+ * no local declarations — that is a valid reading, not a failure.
+ */
+async function indexOf(filePath: string): Promise<string> {
+  const result = await extractSymbolIndexResult(filePath);
+  return result.kind === 'index' ? result.index : '';
+}
 
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
@@ -52,7 +63,7 @@ describe('codebase-wide benchmark', () => {
 
     for (const file of sample) {
       const result = await extractSymbols(file);
-      const index = await extractSymbolIndex(file);
+      const index = await indexOf(file);
       totalOriginal += result.totalChars;
       totalIndex += index.length;
       totalSymbolCount += result.symbols.length;
@@ -139,7 +150,7 @@ describe('edge cases', () => {
   it('extractSymbolIndex stays under 5KB for typical files', async () => {
     const files = await findTsFiles(SRC_DIR, 2);
     for (const file of files.slice(0, 20)) {
-      const index = await extractSymbolIndex(file);
+      const index = await indexOf(file);
       // Index should be compact — under 5KB for any single file
       expect(index.length).toBeLessThan(5000);
     }
