@@ -99,7 +99,7 @@ function extractExpertKeys(): string[] {
 }
 
 /** Verify every expert in BUILT_IN_EXPERTS has a corresponding agent file. */
-function checkGapCoverage(entries: IndexEntry[]): string[] {
+function checkGapCoverage(entries: readonly IndexEntry[]): string[] {
   const expertKeys = extractExpertKeys();
   const agentNames = new Set(entries.map((e) => e.name));
   const missing: string[] = [];

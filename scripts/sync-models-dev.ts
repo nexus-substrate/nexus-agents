@@ -140,7 +140,13 @@ function mapRecord(raw: ModelsDevRecord, vendor: ModelVendor): ModelEntry | null
     source: 'models-dev',
   };
   attachOptionalFields(entry, raw);
-  return entry as ModelEntry;
+  // #4558: the entry is assembled field-by-field as a `Record<string, unknown>`
+  // because `attachOptionalFields` mutates it, so TypeScript cannot see that
+  // every required `ModelEntry` field is present. The double cast says that
+  // plainly instead of a single cast the compiler rejects. There is no
+  // `ModelEntry` schema to validate against; if one is ever added, this is the
+  // call site that should use it rather than asserting.
+  return entry as unknown as ModelEntry;
 }
 
 function attachOptionalFields(entry: Record<string, unknown>, raw: ModelsDevRecord): void {

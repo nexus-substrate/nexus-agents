@@ -65,8 +65,9 @@ function extractBuiltInTemplates(): string[] {
   const arrayMatch = src.match(/BUILT_IN_TEMPLATES\s*(?::[^=]*)?\s*=\s*\[([\s\S]*?)\]/);
   if (arrayMatch) {
     let m: RegExpExecArray | null;
-    while ((m = regex.exec(arrayMatch[1])) !== null) {
-      names.push(m[1]);
+    while ((m = regex.exec(arrayMatch[1] ?? '')) !== null) {
+      const name = m[1];
+      if (name !== undefined) names.push(name);
     }
   }
   return names;
@@ -83,8 +84,9 @@ function extractAgentRoles(): string[] {
   if (typeMatch) {
     const regex = /['"]([a-z_]+)['"]/g;
     let m: RegExpExecArray | null;
-    while ((m = regex.exec(typeMatch[1])) !== null) {
-      roles.push(m[1]);
+    while ((m = regex.exec(typeMatch[1] ?? '')) !== null) {
+      const role = m[1];
+      if (role !== undefined) roles.push(role);
     }
   }
   return roles;
@@ -155,7 +157,7 @@ function checkMcpToolCount(): void {
     const content = readFileSync(inventoryPath, 'utf-8');
     const match = content.match(/(\d+)\s+MCP\s+[Tt]ools/i);
     if (match) {
-      const documented = parseInt(match[1], 10);
+      const documented = Number.parseInt(match[1] ?? '', 10);
       if (documented !== actual) {
         drifts.push({
           file: 'docs/ops/docs-inventory.md',
@@ -177,7 +179,7 @@ function checkMcpToolCount(): void {
   if (!compMatches) return;
   const firstStale = compMatches.find((m) => {
     const numMatch = m.match(/(\d+)/);
-    return numMatch && parseInt(numMatch[1], 10) !== actual;
+    return numMatch !== null && Number.parseInt(numMatch[1] ?? '', 10) !== actual;
   });
   if (firstStale !== undefined) {
     const num = firstStale.match(/(\d+)/);
@@ -185,7 +187,7 @@ function checkMcpToolCount(): void {
       file: 'docs/design/components.md',
       section: 'MCP tool count',
       expected: String(actual),
-      actual: num ? num[1] : 'unknown',
+      actual: num?.[1] ?? 'unknown',
     });
   }
 }
@@ -197,7 +199,7 @@ function checkAdrCount(): void {
     const content = readFileSync(inventoryPath, 'utf-8');
     const match = content.match(/(\d+)\s+ADRs?/i);
     if (match) {
-      const documented = parseInt(match[1], 10);
+      const documented = Number.parseInt(match[1] ?? '', 10);
       if (documented !== actual) {
         drifts.push({
           file: 'docs/ops/docs-inventory.md',
