@@ -754,7 +754,14 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         checkLint(target),
         checkTests(target),
       ]);
-      const passed = result.verdict !== 'fail';
+      // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
+      // and `skip` means no check actually ran — every declared script was
+      // missing. Reading that as passed lets a blocking gate ship code with
+      // zero typecheck/lint/test coverage and record it as a success, which is
+      // the "unreviewed work laundered as reviewed" failure the gate exists to
+      // prevent. `!== 'fail'` was equivalent while these checks could only
+      // pass or fail; making `skip` reachable is what broke it.
+      const passed = result.verdict === 'pass';
       const ms = getTimeProvider().now() - start;
       emitStageEvent('quality-gate', passed ? 'completed' : 'failed', { durationMs: ms });
       recordOutcome({
@@ -764,11 +771,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         success: passed,
         durationMs: ms,
       });
-      await postProgress(
-        config,
-        'QualityGate',
-        passed ? 'Passed' : `Gate failed: ${result.feedback}`
-      );
+      // A skip is not a failure, and saying "Gate failed" for one would send
+      // the reader looking for a broken check rather than a missing script.
+      const verdictNote =
+        result.verdict === 'skip'
+          ? `Gate unmeasured: ${result.feedback}`
+          : `Gate failed: ${result.feedback}`;
+      await postProgress(config, 'QualityGate', passed ? 'Passed' : verdictNote);
       return { passed, feedback: result.feedback };
     },
 
@@ -779,7 +788,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Security', `Scanning ${target}...`);
       const check = checkSecurityScan(target);
       const result = await check();
-      const passed = result.verdict !== 'fail';
+      // #4355: same tri-state discipline as the quality gate above. This one
+      // predates that change: `checkSecurityScan` returns `skip` when the scan
+      // itself ERRORED (security-gate.ts:99-102), so a scanner that failed to
+      // run was recorded as "security passed" on a blocking ship gate. Fail
+      // closed instead — `.rules/untrusted-input.md` requires it, and an
+      // unmeasured scan is the one result that must never read as clean.
+      const passed = result.verdict === 'pass';
       const ms = getTimeProvider().now() - start;
       emitStageEvent('security', passed ? 'completed' : 'failed', { durationMs: ms });
       // security scan is a deterministic local check (no CLI dispatch),
