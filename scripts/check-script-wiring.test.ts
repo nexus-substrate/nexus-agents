@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest';
+
+import { assessWiring, isReachableFromCi } from './check-script-wiring.js';
+
+describe('isReachableFromCi', () => {
+  const noNpm = {};
+
+  it('counts a direct filename reference in a workflow', () => {
+    expect(isReachableFromCi('check-x.ts', 'run: npx tsx scripts/check-x.ts', noNpm)).toBe(true);
+  });
+
+  it('counts an npm-script hop', () => {
+    // check-pricing-drift.ts appears in no workflow; `check:pricing-drift` does.
+    expect(
+      isReachableFromCi('check-x.ts', 'run: pnpm check:x', {
+        'check:x': 'npx tsx scripts/check-x.ts',
+      })
+    ).toBe(true);
+  });
+
+  it('tolerates flags between the package manager and the script name', () => {
+    // ci.yml uses `pnpm --silent check:model-drift`. A stricter pattern reported
+    // that script as unwired — a false positive found by running the gate.
+    expect(
+      isReachableFromCi('check-x.ts', 'OUTPUT=$(pnpm --silent check:x 2>&1)', {
+        'check:x': 'npx tsx scripts/check-x.ts',
+      })
+    ).toBe(true);
+  });
+
+  it('does NOT count an npm script that no workflow invokes', () => {
+    // The exact state of check-authority-tier-drift before #4562: an npm
+    // script existed, nothing ran it.
+    expect(
+      isReachableFromCi('check-x.ts', 'run: pnpm lint', { 'check:x': 'npx tsx scripts/check-x.ts' })
+    ).toBe(false);
+  });
+
+  it('does not count a bare mention of the script name in prose', () => {
+    expect(
+      isReachableFromCi('check-x.ts', '# see check:x for details', {
+        'check:x': 'npx tsx scripts/check-x.ts',
+      })
+    ).toBe(false);
+  });
+
+  it('reports a script with neither a workflow nor an npm script as unreachable', () => {
+    expect(isReachableFromCi('check-x.ts', 'run: pnpm lint', noNpm)).toBe(false);
+  });
+});
+
+describe('assessWiring', () => {
+  it('partitions reachable from unreachable', () => {
+    const verdict = assessWiring({
+      checkScripts: ['check-a.ts', 'check-b.ts'],
+      workflowText: 'npx tsx scripts/check-a.ts',
+      npmScripts: {},
+    });
+
+    expect(verdict.wired).toEqual(['check-a.ts']);
+    expect(verdict.unwired).toEqual(['check-b.ts']);
+  });
+
+  it('reports nothing unwired when everything is reachable', () => {
+    const verdict = assessWiring({
+      checkScripts: ['check-a.ts'],
+      workflowText: 'npx tsx scripts/check-a.ts',
+      npmScripts: {},
+    });
+
+    expect(verdict.unwired).toEqual([]);
+  });
+});
