@@ -806,7 +806,16 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         success: passed,
         durationMs: ms,
       });
-      await postProgress(config, 'Security', passed ? 'Passed' : `BLOCKED: ${result.details}`);
+      // A scan that could not run is not a finding. `checkSecurityScan`
+      // returns `skip` when the scanner itself errored — most often because
+      // semgrep is not installed — and reporting that as BLOCKED reads
+      // identically to a discovered vulnerability. Same distinction the
+      // quality gate above makes.
+      const securityNote =
+        result.verdict === 'skip'
+          ? `Security scan did not run: ${result.details}. Install the scanner, or use qualityGate 'advisory' to proceed without security evidence.`
+          : `BLOCKED: ${result.details}`;
+      await postProgress(config, 'Security', passed ? 'Passed' : securityNote);
       // Flush pipeline memory session at end of run
       flushPipelineMemory();
       return { passed, feedback: result.details };
