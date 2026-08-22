@@ -7,11 +7,28 @@
  * that reads as unexplained tool failure, not a disk problem. This check makes
  * the condition visible before it bites.
  *
+ * ## Why two roots, not one
+ *
+ * The check originally measured only `getNexusTmpDir()`. That is the wrong
+ * filesystem for the incident it was written for: `getNexusTmpDir()` defaults
+ * to `<dataDir>/tmp` inside the repo, which on the reporting machine sits on a
+ * 900 GiB volume, while the #4488 outage was a **32 GiB tmpfs at `os.tmpdir()`**
+ * hitting 100%. Every subprocess failed, and the check graded `ok` throughout,
+ * because the volume it measured had 200 GiB free the entire time.
+ *
+ * So both roots are measured: the nexus scratch root and the system temp dir
+ * the harness and other tooling share. They are deduplicated by device id, so
+ * the common case where both live on one filesystem still reports one line.
+ * The overall grade is the WORST across filesystems — a roomy nexus root must
+ * never mask a starved shared one, which is exactly the masking that made the
+ * original check unable to fail for its own motivating incident.
+ *
  * @module cli/doctor-scratch-space
  * (Source: Issue #4488)
  */
 
-import { statfsSync } from 'node:fs';
+import { statSync, statfsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
 
@@ -36,7 +53,18 @@ export const WARN_FREE_BYTES = 2 * GIB;
 
 export type ScratchSpaceSeverity = 'ok' | 'warn' | 'critical';
 
+/** Which scratch root a reading describes, for operator-facing output. */
+export type ScratchRootLabel = 'nexus' | 'system';
+
+/** A scratch root to measure, paired with the label its line is reported under. */
+export interface ScratchRoot {
+  readonly label: ScratchRootLabel;
+  readonly root: string;
+}
+
 export interface ScratchSpaceCheck {
+  /** Which of the scratch roots this reading describes. */
+  readonly label: ScratchRootLabel;
   /** The scratch root whose backing filesystem was measured. */
   readonly root: string;
   /** False when the filesystem could not be interrogated at all. */
@@ -87,16 +115,19 @@ function grade(freeBytes: number): ScratchSpaceSeverity {
  *
  * @param root - Scratch root to measure; defaults to the configured tmp dir.
  * @param statfs - Injection seam for tests.
+ * @param label - Which root this is, for the reported line.
  */
 export function checkScratchSpace(
   root: string = getNexusTmpDir(),
-  statfs: StatfsFn = statfsSync
+  statfs: StatfsFn = statfsSync,
+  label: ScratchRootLabel = 'nexus'
 ): ScratchSpaceCheck {
   let reading: StatfsReading;
   try {
     reading = statfs(root);
   } catch {
     return {
+      label,
       root,
       available: false,
       freeBytes: 0,
@@ -114,6 +145,7 @@ export function checkScratchSpace(
   const severity = grade(freeBytes);
 
   return {
+    label,
     root,
     available: true,
     freeBytes,
@@ -124,14 +156,95 @@ export function checkScratchSpace(
   };
 }
 
+/** Resolves a path to the id of the device backing it. */
+type DeviceFn = (path: string) => number;
+
+/** Severity ranking, worst last. */
+const SEVERITY_ORDER: readonly ScratchSpaceSeverity[] = ['ok', 'warn', 'critical'];
+
+export interface ScratchFilesystemsOptions {
+  /** Roots to consider; defaults to the nexus scratch root and the system temp dir. */
+  readonly roots?: readonly ScratchRoot[];
+  readonly statfs?: StatfsFn;
+  readonly deviceOf?: DeviceFn;
+}
+
+/** The roots worth measuring by default, in reporting order. */
+function defaultRoots(): readonly ScratchRoot[] {
+  return [
+    { label: 'nexus', root: getNexusTmpDir() },
+    { label: 'system', root: tmpdir() },
+  ];
+}
+
+/**
+ * Measure every distinct filesystem backing a scratch root.
+ *
+ * Roots that resolve to the same device are measured once, keeping the common
+ * single-volume machine to one line. A root whose device cannot be identified
+ * is skipped rather than guessed at: it is dropped from the report entirely,
+ * because a path that cannot be resolved is unmeasured, and reporting an
+ * unmeasured root as healthy is the failure this whole check exists to avoid.
+ */
+export function checkScratchFilesystems(
+  options: ScratchFilesystemsOptions = {}
+): readonly ScratchSpaceCheck[] {
+  const roots = options.roots ?? defaultRoots();
+  const statfs = options.statfs ?? statfsSync;
+  const deviceOf = options.deviceOf ?? ((path: string): number => statSync(path).dev);
+
+  const seen = new Set<number>();
+  const checks: ScratchSpaceCheck[] = [];
+
+  for (const { label, root } of roots) {
+    let device: number;
+    try {
+      device = deviceOf(root);
+    } catch {
+      continue;
+    }
+
+    if (seen.has(device)) continue;
+    seen.add(device);
+    checks.push(checkScratchSpace(root, statfs, label));
+  }
+
+  return checks;
+}
+
+/**
+ * The worst grade across measured filesystems.
+ *
+ * Worst rather than first, so a roomy volume cannot mask a full one. An empty
+ * list grades `ok`: nothing was measured, and absence of a reading is not
+ * evidence of a full disk — doctor must not fail closed on a diagnostic.
+ */
+export function worstSeverity(checks: readonly ScratchSpaceCheck[]): ScratchSpaceSeverity {
+  return checks.reduce<ScratchSpaceSeverity>(
+    (worst, check) =>
+      SEVERITY_ORDER.indexOf(check.severity) > SEVERITY_ORDER.indexOf(worst)
+        ? check.severity
+        : worst,
+    'ok'
+  );
+}
+
+/** Render every measured filesystem, one line each. */
+export function formatScratchFilesystems(checks: readonly ScratchSpaceCheck[]): string {
+  if (checks.length === 0) {
+    return '  ⚠ Scratch space: no scratch filesystem could be identified';
+  }
+  return checks.map(formatScratchSpace).join('\n');
+}
+
 /** Render the check as a doctor line, with remediation only when it is needed. */
 export function formatScratchSpace(check: ScratchSpaceCheck): string {
   if (!check.available) {
-    return `  ⚠ Scratch space: ${check.message}`;
+    return `  ⚠ Scratch space [${check.label}]: ${check.message}`;
   }
 
   const icon = check.severity === 'ok' ? '✓' : check.severity === 'warn' ? '⚠' : '✗';
-  const line = `  ${icon} Scratch space (${check.root}): ${check.message}`;
+  const line = `  ${icon} Scratch space [${check.label}] (${check.root}): ${check.message}`;
 
   if (check.severity === 'ok') return line;
 

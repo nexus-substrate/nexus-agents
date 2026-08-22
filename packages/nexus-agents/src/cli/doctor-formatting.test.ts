@@ -181,15 +181,18 @@ describe('doctor-formatting', () => {
       missingCount: 0,
     },
     voterTransport: options.voterTransport ?? { configured: false },
-    scratchSpace: {
-      root: '/tmp/nexus-test',
-      available: true,
-      freeBytes: 20 * 1024 ** 3,
-      totalBytes: 32 * 1024 ** 3,
-      percentUsed: 38,
-      severity: 'ok' as const,
-      message: '20.0 GiB free of 32.0 GiB (38% used)',
-    },
+    scratchSpace: [
+      {
+        label: 'nexus' as const,
+        root: '/tmp/nexus-test',
+        available: true,
+        freeBytes: 20 * 1024 ** 3,
+        totalBytes: 32 * 1024 ** 3,
+        percentUsed: 38,
+        severity: 'ok' as const,
+        message: '20.0 GiB free of 32.0 GiB (38% used)',
+      },
+    ],
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
