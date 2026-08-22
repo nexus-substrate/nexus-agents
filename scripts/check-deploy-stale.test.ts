@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { assessDeployStaleness, parseSiteVersion } from './check-deploy-stale.js';
+import { GRACE_MINUTES, assessDeployStaleness, parseSiteVersion } from './check-deploy-stale.js';
+import type { StalenessInput } from './check-deploy-stale.js';
 
 describe('parseSiteVersion', () => {
   it('extracts a semver from the real page markup', () => {
@@ -94,5 +95,53 @@ describe('assessDeployStaleness', () => {
 
     expect(v.ok).toBe(false);
     expect(v.status).toBe('stale');
+  });
+});
+
+describe('#4516 follow-up: the grace window has to be reachable', () => {
+  const gap = (minutesSincePublish: number): StalenessInput => ({
+    siteVersion: '3.5.5',
+    repoVersion: '3.5.6',
+    minutesSincePublish,
+  });
+
+  it('reports deploying inside the grace window', () => {
+    // The real 2026-08-22 case: 3.5.6 published at 06:40Z, the check ran at
+    // 07:09Z — 29 minutes, well inside the window — and still failed, because
+    // the workflow never supplied the input and the script defaulted to 9999.
+    const verdict = assessDeployStaleness(gap(29));
+
+    expect(verdict.status).toBe('deploying');
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('still reports stale once the window has passed', () => {
+    expect(assessDeployStaleness(gap(GRACE_MINUTES + 1)).status).toBe('stale');
+  });
+
+  it('reports unmeasured when the publish time could not be read', () => {
+    // NOT "a long time ago". Treating an unreadable input as a large number is
+    // exactly what made the window unreachable for the detector's whole life.
+    const verdict = assessDeployStaleness(gap(Number.NaN));
+
+    expect(verdict.status).toBe('unmeasured');
+    expect(verdict.reason).toContain('unmeasured');
+  });
+
+  it('reports unmeasured rather than trusting a negative elapsed time', () => {
+    // Clock skew between the runner and the registry should not silently buy
+    // an unbounded grace.
+    expect(assessDeployStaleness(gap(-5)).status).toBe('unmeasured');
+  });
+
+  it('does not consult the window at all when the versions already agree', () => {
+    const verdict = assessDeployStaleness({
+      siteVersion: '3.5.6',
+      repoVersion: '3.5.6',
+      minutesSincePublish: Number.NaN,
+    });
+
+    expect(verdict.status).toBe('current');
+    expect(verdict.ok).toBe(true);
   });
 });
