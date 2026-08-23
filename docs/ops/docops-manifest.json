@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "description": "DocOps pipeline manifest for enforcement gates",
   "created": "2026-02-01",

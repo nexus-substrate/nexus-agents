@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "generated": "2026-01-29T00:00:00Z",
   "description": "Nexus-Agents System Wiring Graph - Machine-readable topology",
