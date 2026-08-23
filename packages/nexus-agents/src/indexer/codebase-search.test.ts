@@ -10,7 +10,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { resolve, join } from 'node:path';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { CodebaseIndex, MAX_INDEX_MAX_DEPTH } from './codebase-search.js';
+import { CodebaseIndex, MAX_INDEX_MAX_DEPTH, findSourceFiles } from './codebase-search.js';
+import { SUPPORTED_EXTENSIONS } from './symbol-extractor.js';
 
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
@@ -170,5 +171,44 @@ describe('CodebaseIndex maxDepth (#4243)', () => {
     const zeroIndex = new CodebaseIndex(tmpRoot);
     const stats = await zeroIndex.index(0);
     expect(stats.skippedDirs).toBeGreaterThan(0);
+  });
+});
+
+describe('supported extensions are a single list (#4640)', () => {
+  let root: string;
+
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'ext-agreement-'));
+    for (const ext of SUPPORTED_EXTENSIONS) {
+      await writeFile(join(root, `sample${ext}`), 'export const x = 1;\n', 'utf-8');
+    }
+    await writeFile(join(root, 'sample.py'), 'def f():\n    return 1\n', 'utf-8');
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('walks every extension the extractor claims to support', async () => {
+    // `codebase-search` used to hardcode its own copy of this list, so the two
+    // sat on opposite sides of the same decision: `extract_symbols` reaches the
+    // extension gate, while this sweep pre-filters *before* it. Adding a
+    // language to SUPPORTED_EXTENSIONS therefore taught extract_symbols to parse
+    // it while search_codebase silently indexed none of it — no error, just an
+    // index quietly missing a language. This test fails if the lists diverge
+    // again, which a shared constant alone cannot guarantee.
+    const { files } = await findSourceFiles(root, 1);
+    const found = files.map((f) => f.slice(f.lastIndexOf('.')));
+
+    for (const ext of SUPPORTED_EXTENSIONS) {
+      expect(found).toContain(ext);
+    }
+  });
+
+  it('still excludes an extension the extractor does not support', async () => {
+    // Guards the other direction: agreement must not be achieved by walking
+    // everything.
+    const { files } = await findSourceFiles(root, 1);
+    expect(files.some((f) => f.endsWith('.py'))).toBe(false);
   });
 });
