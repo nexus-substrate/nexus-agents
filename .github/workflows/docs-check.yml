@@ -75,6 +75,16 @@ jobs:
       - name: Confirm every declared entry point produced a page
         run: npx tsx scripts/check-typedoc-coverage.ts
 
+      # #4523: a page existing is not the same as a page existing at the URL
+      # it has always had. Three barrels emit to docs/api/exports/ because
+      # their `@module` tag carries a slash; the other sixteen land flat. A
+      # 7-voter panel chose to keep that asymmetry — published URLs are a
+      # stable interface — and every voter said a comment would not survive
+      # the next tidy-up. This runs against the tree the step above just
+      # generated; it does not detect a stale one.
+      - name: Confirm the generated page layout has not moved
+        run: npx tsx scripts/check-typedoc-layout.ts
+
   # Job 2: Link Validation
   # Link validation happens in a dedicated workflow (.github/workflows/link-check.yml)
   # using lychee (broader coverage: external URLs, relative paths, anchors).

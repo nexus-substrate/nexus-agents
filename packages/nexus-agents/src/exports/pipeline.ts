@@ -1,3 +1,10 @@
+// Do NOT de-slash the `@module` tag below. This file is a TypeDoc entry point
+// and `outputFileStrategy: "modules"` derives the output path from the module
+// name, so `exports/pipeline` is what publishes this page at `/api/exports/pipeline`
+// rather than `/api/pipeline`. Sixteen sibling barrels land flat because they
+// carry no tag; the asymmetry is deliberate. A 7-voter panel on #4523 resolved
+// that a published doc URL is a stable interface and declined to normalise
+// these three for symmetry. Pinned by `scripts/check-typedoc-layout.ts`.
 /**
  * Pipeline module exports — V2 Pipeline OS types and adapters.
  * @module exports/pipeline

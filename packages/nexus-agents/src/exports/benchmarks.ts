@@ -1,3 +1,10 @@
+// Do NOT de-slash the `@module` tag below. This file is a TypeDoc entry point
+// and `outputFileStrategy: "modules"` derives the output path from the module
+// name, so `exports/benchmarks` is what publishes this page at `/api/exports/benchmarks`
+// rather than `/api/benchmarks`. Sixteen sibling barrels land flat because they
+// carry no tag; the asymmetry is deliberate. A 7-voter panel on #4523 resolved
+// that a published doc URL is a stable interface and declined to normalise
+// these three for symmetry. Pinned by `scripts/check-typedoc-layout.ts`.
 /**
  * Benchmarks barrel exports
  *
