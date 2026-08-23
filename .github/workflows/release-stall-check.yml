@@ -86,3 +86,21 @@ jobs:
         run: |
           echo "::error::Release pipeline is stalled — see the tracking issue."
           exit 1
+
+      # A second, independent question on the same schedule (#4648): did main's
+      # head get its push-triggered runs at all? On 2026-08-23 a merge produced
+      # ZERO — no CI, no Release — while its neighbours got 7-9 each. The
+      # release half of that is already covered by the assess step above, but
+      # nothing noticed that main had never been CI'd: the commit is not marked
+      # failing, it is unmarked, so main looks green.
+      #
+      # `always()` because the stall step above exits 1 and would otherwise skip
+      # this. No tracking issue: unlike a stall, a dropped event is transient and
+      # clears on the next push, so a red scheduled run is the proportionate
+      # alarm and duplicating the issue-filing block would not earn its keep.
+      - name: Check main's head has push-triggered runs
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: npx tsx scripts/check-missing-push-runs.ts
