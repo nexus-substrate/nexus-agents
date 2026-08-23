@@ -132,6 +132,24 @@ describe('executeConsensusPlan', () => {
     summary: 'Four-phase iterative development with TDD',
   });
 
+  it('says so when every CLI answered but none produced a parseable plan (#4585)', async () => {
+    // Both CLIs succeed, so `clisUsed` is non-empty, but neither output parses,
+    // so `successPlans` is empty. The summary used to render as an ordinary
+    // consensus plan that happened to have zero steps — a clean sheet over zero
+    // evidence — rather than saying nothing was comparable.
+    const adapters = buildAdapters(
+      ['claude', createPlanAdapter('claude', 'I would start by thinking about it.')],
+      ['codex', createPlanAdapter('codex', 'Here are some thoughts, no structure.')]
+    );
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.summary).toContain('No parseable plan');
+    expect(result.value.summary).not.toMatch(/\*\*0 steps\*\*/);
+  });
+
   it('dispatches plan to multiple CLIs', async () => {
     const adapters = buildAdapters(
       ['claude', createPlanAdapter('claude', claudePlan)],

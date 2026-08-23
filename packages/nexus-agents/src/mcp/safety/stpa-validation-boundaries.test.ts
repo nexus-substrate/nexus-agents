@@ -104,7 +104,9 @@ describe('STPA Validation - Input Validation', () => {
       const constraints: SafetyConstraint[] = [];
 
       const result = validateToolAgainstConstraints(tool, constraints);
-      expect(result.valid).toBe(true);
+      // Previously pinned the vacuous pass: zero constraints and no declared
+      // input properties means nothing was measured (#4585).
+      expect(result.valid).toBe(false);
     });
 
     it('should handle tool with empty description', () => {
@@ -112,7 +114,8 @@ describe('STPA Validation - Input Validation', () => {
       const constraints: SafetyConstraint[] = [];
 
       const result = validateToolAgainstConstraints(tool, constraints);
-      expect(result.valid).toBe(true);
+      // Previously pinned the vacuous pass (see above) — unmeasured, not valid (#4585).
+      expect(result.valid).toBe(false);
     });
   });
 
@@ -144,7 +147,10 @@ describe('STPA Validation - Input Validation', () => {
       const constraints: SafetyConstraint[] = [];
 
       const result = validateToolAgainstConstraints(tool, constraints);
-      expect(result.valid).toBe(true);
+      // Previously pinned the vacuous pass: the properties are rich, but zero
+      // constraints were evaluated, so no verdict was earned (#4585).
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some((w) => w.code === 'NO_CONSTRAINTS_EVALUATED')).toBe(true);
     });
 
     it('should detect path parameters without validation', () => {
@@ -671,11 +677,14 @@ describe('STPA Validation - Result Structure', () => {
     expect(result.validatedAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
-  it('should set valid=true when no violations', () => {
+  it('should set valid=false when nothing could be measured', () => {
     const tool = createTool('safe_tool', 'A safe tool', {});
     const result = validateToolAgainstConstraints(tool, []);
 
-    expect(result.valid).toBe(true);
+    // Previously pinned the vacuous pass (`valid=true when no violations`) for
+    // a tool with no declared inputs checked against zero constraints (#4585).
+    expect(result.valid).toBe(false);
+    expect(result.violations).toHaveLength(0);
   });
 
   it('should set valid=false when violations exist', () => {

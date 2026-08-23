@@ -366,4 +366,20 @@ describe('shouldFinalize', () => {
     const votes = [{ decision: 'approve' } as VoteMessage];
     expect(shouldFinalize('consensus', participants, new Map(), votes, [])).toBe(true);
   });
+
+  // `results.size === participants.length` and `votes.length === participants.length`
+  // are both `0 === 0` for a session with no participants, so an empty session
+  // finalized as though its work were complete. The `review` branch already
+  // guarded with `> 0`; the other two did not (#4585).
+  it('does not finalize an empty parallel session (#4585)', () => {
+    expect(shouldFinalize('parallel', [], new Map(), [], [])).toBe(false);
+  });
+
+  it('does not finalize an empty sequential session (#4585)', () => {
+    expect(shouldFinalize('sequential', [], new Map(), [], [])).toBe(false);
+  });
+
+  it('does not finalize an empty consensus session (#4585)', () => {
+    expect(shouldFinalize('consensus', [], new Map(), [], [])).toBe(false);
+  });
 });

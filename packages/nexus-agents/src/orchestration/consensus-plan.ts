@@ -87,7 +87,7 @@ export async function executeConsensusPlan(
       const { agreedSteps, divergences } = synthesize(successPlans);
       const risks = collectRisks(successPlans);
       const alternatives = collectAlternatives(successPlans);
-      const summary = buildPlanSummary(agreedSteps, divergences, clisUsed);
+      const summary = buildPlanSummary(agreedSteps, divergences, clisUsed, successPlans.length);
 
       recordPlanOutcomes(partitions);
 
@@ -367,14 +367,20 @@ function stepsOverlap(a: string, b: string): boolean {
   return overlap / smaller > STEP_OVERLAP_THRESHOLD;
 }
 
-/** Finds divergence points between plans. */
+/**
+ * Finds divergence points between plans.
+ *
+ * `synthesize` only reaches this with two or more parsed plans, so the
+ * `Math.min(...[])`/`Math.max(...[])` empty case cannot occur here. The
+ * unmeasured-comparison verdict belongs at the summary instead (#4585).
+ */
 function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
   const divergences: Divergence[] = [];
 
+  const comparable = plans.filter((p) => p.plan !== null);
+
   // Compare step counts
-  const stepCounts = plans
-    .filter((p) => p.plan !== null)
-    .map((p) => ({ cli: p.cli, count: p.plan?.steps.length ?? 0 }));
+  const stepCounts = comparable.map((p) => ({ cli: p.cli, count: p.plan?.steps.length ?? 0 }));
 
   const counts = stepCounts.map((s) => s.count);
   const minSteps = Math.min(...counts);
@@ -389,9 +395,7 @@ function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
   }
 
   // Compare risk assessments
-  const riskCounts = plans
-    .filter((p) => p.plan !== null)
-    .map((p) => ({ cli: p.cli, count: p.plan?.risks.length ?? 0 }));
+  const riskCounts = comparable.map((p) => ({ cli: p.cli, count: p.plan?.risks.length ?? 0 }));
 
   const highRiskClis = riskCounts.filter((r) => r.count > 0);
   const noRiskClis = riskCounts.filter((r) => r.count === 0);
@@ -444,10 +448,19 @@ function collectAlternatives(plans: readonly CliPlanPartition[]): string[] {
 function buildPlanSummary(
   agreedSteps: readonly AgreedStep[],
   divergences: readonly Divergence[],
-  clisUsed: readonly CliName[]
+  clisUsed: readonly CliName[],
+  parsedPlanCount: number
 ): string {
   if (clisUsed.length === 0) {
     return 'All planning CLIs failed. No plan to synthesize.';
+  }
+
+  // Every CLI answered, none of them parseably (#4585). Without this the
+  // summary rendered as an ordinary consensus plan that happened to contain
+  // zero steps and zero divergences — a clean sheet over zero evidence, which
+  // reads in the record as agreement rather than as nothing to compare.
+  if (parsedPlanCount === 0) {
+    return `No parseable plan from any of ${String(clisUsed.length)} CLI(s): ${clisUsed.join(', ')}. Nothing was compared.`;
   }
 
   const multiAgreed = agreedSteps.filter((s) => s.proposedBy.length > 1).length;

@@ -229,6 +229,24 @@ export function createBenchmarkSummary(
   config: Partial<BenchmarkConfig> = {}
 ): BenchmarkSummary {
   const cfg = { ...DEFAULT_BENCHMARK_CONFIG, ...config };
+
+  // A suite that benchmarked nothing measured nothing: every threshold check
+  // below is inside a loop over `operations`, so an empty run left `failures`
+  // empty and reported the perf gate as passed (#4585). `passed` is a plain
+  // boolean and cannot say "unmeasured", so report the honest `false` and name
+  // the reason in `failures`. The aggregates are 0 rather than NaN (0/0) for
+  // the same reason: an unmeasured run should not print as a metric.
+  if (operations.length === 0) {
+    return {
+      totalDurationMs: 0,
+      totalOperations: 0,
+      overallThroughput: 0,
+      avgP95Latency: 0,
+      passed: false,
+      failures: ['No operations were benchmarked - thresholds unmeasured'],
+    };
+  }
+
   const failures: string[] = [];
 
   // Calculate aggregates

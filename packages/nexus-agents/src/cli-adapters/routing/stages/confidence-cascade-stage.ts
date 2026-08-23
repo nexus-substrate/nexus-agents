@@ -187,12 +187,22 @@ export class ConfidenceCascadeStage implements IRouterStage {
 
   /**
    * Check if task should escalate to more capable model.
+   *
+   * Zero candidates escalate, deliberately (#4585). That was already the
+   * behaviour, but only as an accident of `Math.max(...[]) === -Infinity`
+   * landing below any threshold. Keeping it is correct — with no candidate
+   * models there is no confidence evidence, and for a non-simple task the
+   * fail-safe direction is to escalate rather than to accept a model nobody
+   * scored — so state it instead of leaving it emergent. `buildSignals`
+   * records `confidence:no-candidates` so the trace does not imply that a
+   * measured score fell short.
    */
   private checkEscalation(
     scores: Array<{ cli: CliName; score: number }>,
     complexity: TaskComplexity
   ): boolean {
     if (complexity === 'simple') return false;
+    if (scores.length === 0) return true;
 
     const maxScore = Math.max(...scores.map((s) => s.score));
     return maxScore < this.config.escalationThreshold;
@@ -210,6 +220,12 @@ export class ConfidenceCascadeStage implements IRouterStage {
     const signals = [...existing];
 
     signals.push(`confidence:complexity-${complexity}`);
+
+    // Distinguish "nothing was scored" from "the best score was too low"
+    // (#4585) — both escalate, but only one of them is a measurement.
+    if (scores.length === 0) {
+      signals.push('confidence:no-candidates');
+    }
 
     if (shouldEscalate) {
       signals.push('confidence:should-escalate');

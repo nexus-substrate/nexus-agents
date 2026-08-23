@@ -463,6 +463,25 @@ describe('createBenchmarkSummary', () => {
     expect(summary.failures).toHaveLength(0);
   });
 
+  // #4585: `passed` was `failures.length === 0` over a loop that never ran for
+  // an empty suite, so a run that benchmarked nothing certified the perf gate.
+  it('should not pass when zero operations were benchmarked', () => {
+    const summary = createBenchmarkSummary([]);
+
+    expect(summary.passed).toBe(false);
+    expect(summary.failures).toHaveLength(1);
+    expect(summary.failures[0]).toContain('No operations were benchmarked');
+  });
+
+  it('should report zero rather than NaN aggregates for an empty suite', () => {
+    const summary = createBenchmarkSummary([]);
+
+    expect(summary.totalOperations).toBe(0);
+    expect(summary.totalDurationMs).toBe(0);
+    expect(summary.overallThroughput).toBe(0);
+    expect(summary.avgP95Latency).toBe(0);
+  });
+
   it('should fail when p95 latency exceeds threshold', () => {
     const operations = [
       createMockOperation({

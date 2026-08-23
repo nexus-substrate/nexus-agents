@@ -96,6 +96,17 @@ const formatters = {
   bytes: (v: number): string => `${v.toFixed(0)}B/op`,
 };
 
+/**
+ * Outcome of one threshold check.
+ *
+ * `applied: false` (no threshold configured) is deliberately distinct from a
+ * clean `failure: null`: without that distinction an unconfigured check and a
+ * passing check are indistinguishable, which is what let a benchmark with zero
+ * thresholds report `pass` (#4585).
+ */
+type AppliedThresholdCheck = { readonly applied: true; readonly failure: string | null };
+type ThresholdCheck = { readonly applied: false } | AppliedThresholdCheck;
+
 /** Helper to check a single threshold condition. */
 function checkThreshold(
   value: number,
@@ -103,15 +114,18 @@ function checkThreshold(
   comparison: 'min' | 'max',
   label: string,
   format: (v: number) => string
-): string | null {
-  if (threshold === undefined) return null;
+): ThresholdCheck {
+  if (threshold === undefined) return { applied: false };
   const failed = comparison === 'min' ? value < threshold : value > threshold;
-  if (!failed) return null;
-  return `${label} ${format(value)} ${comparison === 'min' ? '<' : '>'} ${format(threshold)}`;
+  if (!failed) return { applied: true, failure: null };
+  return {
+    applied: true,
+    failure: `${label} ${format(value)} ${comparison === 'min' ? '<' : '>'} ${format(threshold)}`,
+  };
 }
 
 /** Build array of threshold checks for validation. */
-function buildThresholdChecks(r: MemoryBenchmarkResult, t: BenchmarkThresholds): (string | null)[] {
+function buildThresholdChecks(r: MemoryBenchmarkResult, t: BenchmarkThresholds): ThresholdCheck[] {
   const { pct, dec, ms, bytes } = formatters;
   return [
     checkThreshold(r.recallAtK[5] ?? 0, t.minRecallAt5, 'min', 'Recall@5', pct),
@@ -143,7 +157,17 @@ export function validateBenchmarkResults(
   result: MemoryBenchmarkResult,
   thresholds: BenchmarkThresholds
 ): { pass: boolean; failures: string[] } {
-  const checks = buildThresholdChecks(result, thresholds);
-  const failures = checks.filter((c): c is string => c !== null);
+  const applied = buildThresholdChecks(result, thresholds).filter(
+    (c): c is AppliedThresholdCheck => c.applied
+  );
+
+  // No configured threshold means no check ran, and `failures.length === 0`
+  // would certify a benchmark nobody measured (#4585). `pass` is a plain
+  // boolean with no way to say "unmeasured", so report `false` and name why.
+  if (applied.length === 0) {
+    return { pass: false, failures: ['No thresholds configured - benchmark unmeasured'] };
+  }
+
+  const failures = applied.map((c) => c.failure).filter((f): f is string => f !== null);
   return { pass: failures.length === 0, failures };
 }

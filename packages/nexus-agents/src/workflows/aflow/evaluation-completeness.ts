@@ -79,26 +79,62 @@ export function calculateConstraintScore(
 
   const checks: boolean[] = [];
 
+  // Every check below reads its evidence off `workflow.steps`. With zero steps
+  // `![].some(isForbidden)` and `[].every(withinRetries)` are both vacuously
+  // true, so an empty workflow used to score a perfect 1 on constraints it was
+  // never measured against (#4585). Name the empty case once: no steps, no
+  // evidence of satisfaction — consistent with `hasValidSteps`, which already
+  // treats a zero-step workflow as invalid.
+  const hasSteps = workflow.steps.length > 0;
+
   // Check forbidden agents
   if (constraints.forbiddenAgents && constraints.forbiddenAgents.length > 0) {
     const forbidden = new Set<AgentRole>(constraints.forbiddenAgents);
-    checks.push(!workflow.steps.some((s) => forbidden.has(s.agent)));
+    checks.push(hasSteps && !workflow.steps.some((s) => forbidden.has(s.agent)));
   }
 
   // Check max retries
   if (constraints.maxRetriesPerStep !== undefined) {
     const maxRetries = constraints.maxRetriesPerStep;
-    checks.push(workflow.steps.every((s) => (s.retries ?? 0) <= maxRetries));
+    checks.push(hasSteps && workflow.steps.every((s) => (s.retries ?? 0) <= maxRetries));
   }
 
   // Check parallel requirement
   if (constraints.requireParallel !== undefined) {
     const hasParallel = workflow.steps.some((s) => s.parallel === true);
-    checks.push(hasParallel === constraints.requireParallel);
+    checks.push(hasSteps && hasParallel === constraints.requireParallel);
   }
 
+  // `checks.length === 0` is absence of *criteria*, not absence of *evidence*,
+  // and 1 is the honest answer (#4585). The `hasSteps` guard above covers the
+  // vacuous case: a declared constraint that no step was read to verify.
+  // Here the task declared no step-derived constraint at all, so the ratio's
+  // denominator is genuinely zero and nothing can be violated - the same
+  // convention as `!constraints` above and as the two coverage scores, which
+  // both return 1 when nothing is required. Returning 0 instead would depress
+  // completeness by a constant that depends only on the task's constraint
+  // shape, identically for every candidate workflow, so it could never
+  // discriminate between workflows - it would only make the weighted score
+  // report "unconstrained task" as "bad workflow".
   if (checks.length === 0) return 1;
   return checks.filter(Boolean).length / checks.length;
+}
+
+/**
+ * Structural complaint about the workflow shape, or null if it is well-formed.
+ *
+ * `hasNoCycles` now reports a zero-step workflow as unverifiable rather than
+ * vacuously acyclic (#4585), so the two failures are named separately — an
+ * empty workflow has no cycle to report.
+ */
+function structuralFeedback(workflow: WorkflowDefinition): string | null {
+  if (workflow.steps.length === 0) {
+    return 'Workflow has no steps - nothing to execute or verify';
+  }
+  if (!hasNoCycles(workflow)) {
+    return 'Workflow contains dependency cycles - invalid structure';
+  }
+  return null;
 }
 
 /**
@@ -136,8 +172,9 @@ export function generateFeedback(
   }
 
   // Check for valid structure
-  if (!hasNoCycles(workflow)) {
-    feedback.push('Workflow contains dependency cycles - invalid structure');
+  const structural = structuralFeedback(workflow);
+  if (structural !== null) {
+    feedback.push(structural);
   }
 
   if (feedback.length === 0) {

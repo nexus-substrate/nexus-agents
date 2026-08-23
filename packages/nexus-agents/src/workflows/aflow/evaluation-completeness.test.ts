@@ -177,6 +177,33 @@ describe('calculateConstraintScore', () => {
     expect(calculateConstraintScore(wf, constraints)).toBe(1);
   });
 
+  it('does not credit a zero-step workflow with forbidden-agent compliance (#4585)', () => {
+    const constraints: TaskConstraints = { forbiddenAgents: ['code_expert'] };
+    // `![].some(isForbidden)` is true: an empty workflow used to score a
+    // perfect 1 on a constraint it was never measured against.
+    expect(calculateConstraintScore(makeWorkflow({ steps: [] }), constraints)).toBe(0);
+  });
+
+  it('does not credit a zero-step workflow on step-derived constraints (#4585)', () => {
+    const constraints: TaskConstraints = { maxRetriesPerStep: 3, requireParallel: false };
+    expect(calculateConstraintScore(makeWorkflow({ steps: [] }), constraints)).toBe(0);
+  });
+
+  it('returns 1 when constraints declare nothing this score measures (#4585)', () => {
+    // Deliberate: unlike the zero-step cases above, this is absence of
+    // criteria, not absence of evidence. `requiredAgents` is scored by
+    // calculateAgentCoverageScore and `maxTotalTimeout` by the efficiency
+    // score, so no step-derived check is applicable here and nothing can be
+    // violated. Holds for an empty workflow too - emptiness is penalised by
+    // evaluateStructure, not by inventing a constraint failure.
+    const constraints: TaskConstraints = {
+      requiredAgents: ['code_expert'],
+      maxTotalTimeout: 60000,
+    };
+    expect(calculateConstraintScore(makeWorkflow(), constraints)).toBe(1);
+    expect(calculateConstraintScore(makeWorkflow({ steps: [] }), constraints)).toBe(1);
+  });
+
   it('averages multiple constraint checks', () => {
     const constraints: TaskConstraints = {
       forbiddenAgents: ['security_expert'], // passes
@@ -234,6 +261,12 @@ describe('generateFeedback', () => {
     });
     const feedback = generateFeedback(wf, makeTask());
     expect(feedback.some((f) => f.includes('no dependencies'))).toBe(true);
+  });
+
+  it('reports a zero-step workflow as empty, not as cyclic (#4585)', () => {
+    const feedback = generateFeedback(makeWorkflow({ steps: [] }), makeTask());
+    expect(feedback.some((f) => f.includes('no steps'))).toBe(true);
+    expect(feedback.some((f) => f.includes('cycle'))).toBe(false);
   });
 
   it('returns "looks good" when no issues', () => {
