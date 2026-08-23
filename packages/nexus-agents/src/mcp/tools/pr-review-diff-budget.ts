@@ -106,7 +106,10 @@ function extractPath(fileText: string): string {
  * provenance stamp it feeds) reads the split's own verdict instead of
  * re-deriving one.
  */
-export const UNSTRUCTURED_SEGMENT_PATH = '(unstructured)';
+// Module-local by design: `splitByFile` and `hasFileBoundaries` are its only
+// readers, and the export ratchet (#4561) correctly flagged it as a producer
+// with no consumer when it was exported for a test that never imported it.
+const UNSTRUCTURED_SEGMENT_PATH = '(unstructured)';
 
 /**
  * Split a unified diff into whole-file segments on `^diff --git ` boundaries
