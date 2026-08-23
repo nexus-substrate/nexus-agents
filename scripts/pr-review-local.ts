@@ -267,7 +267,15 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
   const { reviewDiff, canonicalDiff } = await resolveReviewDiff(prNumber, meta);
   console.log(`  ${meta.title}`);
   console.log(
-    `  diff size: ${String(reviewDiff.length)} chars${canonicalDiff !== undefined ? ' (canonical, ledger-excluded)' : ' (gh fallback)'}`
+    // #4459: the old wording was `(canonical, ledger-excluded)`, which reads as
+    // "this review is excluded from the ledger" — the opposite of the truth. It
+    // is the DIFF that excludes the ledger FILE, which is precisely what makes
+    // the review ledger-eligible.
+    `  diff size: ${String(reviewDiff.length)} chars${
+      canonicalDiff !== undefined
+        ? ' (canonical git diff, excluding the ledger file — feeds the ledger)'
+        : ' (gh fallback diff — no ledger record)'
+    }`
   );
 
   const proposal = buildPrReviewProposal({

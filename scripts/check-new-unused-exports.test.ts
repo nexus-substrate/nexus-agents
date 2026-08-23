@@ -8,6 +8,7 @@ import {
   classifyAddedFiles,
   classifyDeadExports,
   exportedNames,
+  configPathPatterns,
   importSpecifierPatterns,
   isTestSupportFile,
   nameHasProductionUse,
@@ -100,6 +101,38 @@ describe('isTestSupportFile (#4412)', () => {
 
   it('does NOT match a production file merely named like testing', () => {
     expect(isTestSupportFile('packages/nexus-agents/src/cli/testing-command.ts')).toBe(false);
+  });
+});
+
+describe('configPathPatterns — a build-config path reference is a consumer', () => {
+  const matches = (file: string, source: string): boolean =>
+    configPathPatterns(file).some((p) => p.test(source));
+
+  it('matches a vitest globalSetup entry naming the module by path', () => {
+    // `globalSetup` / `setupFiles` name a module by PATH, not by import, so
+    // the import-shaped patterns never see it. Reporting a wired-up hook as
+    // having no consumer left only `@export-no-consumer-yet` as an escape —
+    // a marker that promises a production consumer which already existed.
+    // A gate whose opt-out requires a false statement is worse than no gate.
+    expect(matches('global-setup.ts', "globalSetup: ['./src/testing/global-setup.ts'],")).toBe(
+      true
+    );
+  });
+
+  it('matches the same reference written with a .js extension', () => {
+    expect(matches('global-setup.ts', "setupFiles: ['./src/testing/global-setup.js'],")).toBe(true);
+  });
+
+  it('does not match an unquoted mention of the name', () => {
+    expect(matches('global-setup.ts', '// see src/testing/global-setup.ts for details')).toBe(
+      false
+    );
+  });
+
+  it('does not match a different module', () => {
+    expect(matches('global-setup.ts', "globalSetup: ['./src/testing/other-setup.ts'],")).toBe(
+      false
+    );
   });
 });
 

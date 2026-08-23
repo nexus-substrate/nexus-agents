@@ -527,6 +527,9 @@ async function executePrReviewBody(
   // a structured outcome and never throws — an audit sink must not break the
   // review it observes.
   const recordOutcome = persistReviewRecord({
+    // #4459: `input.prDiff` is opaque MCP input — it passed the unified-diff
+    // shape gate (#4451), but nothing here establishes it is the PR's real diff.
+    diffSource: 'caller-supplied',
     input,
     aggregate,
     counts,

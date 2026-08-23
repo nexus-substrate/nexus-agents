@@ -7,11 +7,10 @@
  * @module vitest.config
  */
 
-import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+import { ensureTestScratchRoot } from './src/testing/test-scratch-root.js';
 
 /**
  * Scratch root for the test run (#4412).
@@ -22,13 +21,21 @@ import { defineConfig } from 'vitest/config';
  * a 32G tmpfs anything on the box can fill, and when it filled, this suite
  * failed to *collect* ~1,100 files while reporting zero assertion failures.
  * A disk fault that presents as a code fault costs hours; a repo-local dir on
- * real disk removes the whole failure mode. Gitignored via `.nexus-agents/`.
+ * real disk removes the *contention* — nothing else on the box can fill it.
+ *
+ * It does not remove the growth. The tmpfs cleared on reboot and this does not,
+ * so the same leak accumulates permanently here instead of self-clearing; this
+ * root reached 9.7 GB across 1,987 entries before anything measured it. The
+ * `globalSetup` reaper below is the other half of that trade (#4413).
+ * Gitignored via `.nexus-agents/`.
  */
-const TEST_TMP = join(dirname(fileURLToPath(import.meta.url)), '.nexus-agents', 'tmp');
-mkdirSync(TEST_TMP, { recursive: true });
+const TEST_TMP = ensureTestScratchRoot();
 
 export default defineConfig({
   test: {
+    // Reap scratch older than a day before the run — see testing/global-setup.ts.
+    globalSetup: ['./src/testing/global-setup.ts'],
+
     // Keep scratch out of the shared tmpfs — see TEST_TMP above.
     // Tests asserting repo-*detection* need a dir with no `.git` ancestor,
     // which TEST_TMP cannot provide. Hand them the real system temp dir; see

@@ -40,7 +40,7 @@
 
 import { execSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 const SRC_DIR = 'packages/nexus-agents/src';
 const SRC_PATTERN = /^packages\/nexus-agents\/src\/.+\.tsx?$/;
@@ -196,6 +196,55 @@ export function isTestSupportFile(file: string): boolean {
 }
 
 /**
+ * Patterns matching a build-config *path reference* to `file` (#4633).
+ *
+ * Vitest names a module by path rather than importing it — `globalSetup`,
+ * `setupFiles`, `globalTeardown` are all `['./src/…/x.ts']`. The import-shaped
+ * patterns cannot see that, so a fully wired hook looked exactly like a dead
+ * file, and the only way past the gate was `@export-no-consumer-yet` — a
+ * marker asserting that a production consumer is still to come, when one
+ * already existed. An opt-out that requires a false statement is not an
+ * opt-out; it is the gate teaching people to lie to it.
+ *
+ * Deliberately narrower than a bare substring match: the reference must be
+ * quoted and end in the module's own basename, so a prose mention of the path
+ * in a comment does not silently satisfy the gate. Applied ONLY to config
+ * files ({@link packageConfigFiles}), never to the source scan, so ordinary
+ * source files still need a real import.
+ */
+export function configPathPatterns(file: string): RegExp[] {
+  const base = basename(file).replace(/\.tsx?$/, '');
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [new RegExp(`['"][^'"]*\\/${escaped}\\.(?:js|ts)['"]`)];
+}
+
+/**
+ * Build/test config files at the package root, scanned as consumer candidates.
+ *
+ * These live outside `SRC_DIR`, so the source walk never sees them, yet a
+ * module they reference by path is as consumed as one that is imported.
+ */
+function packageConfigFiles(): string[] {
+  const pkgRoot = dirname(SRC_DIR);
+  let entries: string[];
+  try {
+    entries = readdirSync(pkgRoot);
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => /\.config\.tsx?$/.test(e))
+    .map((e) => join(pkgRoot, e))
+    .filter((p) => {
+      try {
+        return statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    });
+}
+
+/**
  * Returns the set of `.ts` files under `SRC_DIR` that contain at least
  * one import matching `patterns`. Excludes the candidate file itself
  * (so a file importing its own siblings doesn't self-consume) and
@@ -221,6 +270,21 @@ function findConsumers(file: string, patterns: RegExp[]): string[] {
     }
     if (patterns.some((re) => re.test(content))) {
       consumers.add(candidate);
+    }
+  }
+
+  // A module named by path in a build config is consumed just as surely as an
+  // imported one — see configPathPatterns.
+  const configPatterns = configPathPatterns(file);
+  for (const config of packageConfigFiles()) {
+    let content: string;
+    try {
+      content = readFileSync(config, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (configPatterns.some((re) => re.test(content))) {
+      consumers.add(config);
     }
   }
   return [...consumers];

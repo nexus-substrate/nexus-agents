@@ -41,6 +41,14 @@
  * rejected `headSha` binding (a head pointer is mutable; the reviewed bytes are
  * what the voters actually saw).
  *
+ * DIFF PROVENANCE (#4459). The binding says WHICH bytes were reviewed; it does not
+ * say where those bytes CAME FROM. `diffProvenance` closes that gap: `canonical-git`
+ * means the diff is the pinned `git diff` the gate itself recomputes, while
+ * `caller-supplied` means an MCP caller handed over opaque bytes that merely passed
+ * the `looksLikeUnifiedDiff` shape gate (#4451). It is HASH-COVERED like every other
+ * authenticity field — a provenance claim outside the hash could be upgraded by
+ * editing one word.
+ *
  * WHY A DEDICATED PAYLOAD-COVERING HASH (and not the audit-event head hash).
  * As in #3897/#3927: the audit-event chain (`computeEventHash` in
  * audit-logger.ts) hashes only the stable HEAD fields and intentionally NOT
@@ -79,8 +87,57 @@ export const PrReviewVoteCountsSchema = z
 export type PrReviewVoteCounts = z.infer<typeof PrReviewVoteCountsSchema>;
 
 /**
+ * Where the bytes behind `reviewedDiffHash` came from (#4459). Only two values
+ * exist because only two non-test producers write records:
+ *  - `canonical-git` — the diff is the pinned `git diff <base>..<head>` output
+ *    (`audit/reviewed-diff-hash.ts`), the same invocation the CI gate recomputes.
+ *    Written by `scripts/pr-review-local-ledger.ts`.
+ *  - `caller-supplied` — the diff arrived as opaque `prDiff` input on the
+ *    `pr_review` MCP call. It PASSED the `looksLikeUnifiedDiff` shape gate
+ *    (#4451), but nothing establishes that it is the PR's actual diff. Written
+ *    by `mcp/tools/pr-review-tool.ts`.
+ *
+ * There is deliberately NO `gh-api` member: the `gh` v3.diff fallback in
+ * `scripts/pr-review-local.ts` skips the ledger entirely (it sets
+ * `canonicalDiff: undefined`, and the feeder writes no record), so a `gh-api`
+ * record cannot be produced. An enum member no producer can emit is a value a
+ * consumer would have to handle without ever meeting it.
+ */
+export const PrReviewDiffSourceSchema = z.enum(['canonical-git', 'caller-supplied']);
+export type PrReviewDiffSource = z.infer<typeof PrReviewDiffSourceSchema>;
+
+/**
+ * What the record was DERIVED FROM — the provenance descriptor a consumer reads
+ * to decide how much the record's diff-binding is worth (#4459).
+ *
+ * Both fields are HASH-COVERED (see {@link computePrReviewRecordHash}). That is
+ * the whole point: a provenance claim outside the self-hash could be upgraded
+ * from `caller-supplied` to `canonical-git` by editing one word in the ledger,
+ * with no `hash_mismatch` — the record would then assert a stronger derivation
+ * than it has, which is exactly the "record that misreports" failure mode.
+ */
+export const PrReviewDiffProvenanceSchema = z
+  .object({
+    /** How the reviewed diff was obtained. */
+    source: PrReviewDiffSourceSchema,
+    /**
+     * Whether the reviewed diff carried parseable `^diff --git` FILE BOUNDARIES
+     * (sourced from the real `splitByFile` result, not a second regex). The one
+     * signal a consumer genuinely CANNOT re-derive from the other record fields:
+     * `looksLikeUnifiedDiff` deliberately accepts plain `diff -u` output, which
+     * has no `diff --git` headers, so a record can be bound to a real diff whose
+     * per-file attribution is unavailable. `false` means "a diff, but the packer
+     * saw it as one undifferentiated blob".
+     */
+    fileBoundaries: z.boolean(),
+  })
+  .strict();
+export type PrReviewDiffProvenance = z.infer<typeof PrReviewDiffProvenanceSchema>;
+
+/**
  * One authentic, self-hashed pr-review record. The `hash` covers every
- * authenticity field INCLUDING `prNumber`, `baseSha`, `reviewedDiffHash`, `verdict`, and `sequence`
+ * authenticity field INCLUDING `prNumber`, `baseSha`, `reviewedDiffHash`, `verdict`,
+ * `diffProvenance`, and `sequence`
  * but EXCLUDING `previousHash`, so the record is tamper-EVIDENT and
  * POSITION-INDEPENDENT: any edit to a persisted line is detected by
  * {@link verifyPrReviewRecordSet} as a `hash_mismatch`, while reordering file
@@ -89,13 +146,17 @@ export type PrReviewVoteCounts = z.infer<typeof PrReviewVoteCountsSchema>;
 export const PrReviewRecordSchema = z
   .object({
     /**
-     * Schema version. '1.1' is the Option-C binding (#3831): the record binds to
+     * Schema version. '1.1' was the Option-C binding (#3831): the record binds to
      * `{prNumber, baseSha, reviewedDiffHash}` instead of the rejected `headSha`.
-     * Clean break — the committed `governance/pr-review-records.jsonl` ledger is
-     * empty on every install (no producer ever wrote a '1.0' record), so there is
-     * no '1.0' data to migrate.
+     * '1.2' (#4459) marks the boundary at which records began carrying
+     * {@link diffProvenance} — an honest pre/post marker so a reader can tell
+     * "this record predates provenance" from "this record's provenance was
+     * dropped". Clean break, as with '1.0'→'1.1': the committed
+     * `governance/pr-review-records.jsonl` ledger is EMPTY on every install (0
+     * records at the time of this bump), so there is no data to migrate and no
+     * reason to keep a tolerant version union.
      */
-    version: z.literal('1.1'),
+    version: z.literal('1.2'),
     /**
      * Monotonic sequence number (integer ≥ 0). Assigned as (max existing
      * sequence)+1 at write time. Sorted, the set of sequences must cover
@@ -139,6 +200,13 @@ export const PrReviewRecordSchema = z
     /** Optional correlation/decision id linking to the cost rollup / trace. */
     correlationId: z.string().min(1).optional(),
     /**
+     * What this record was DERIVED FROM (#4459). OPTIONAL by necessity: the
+     * schema is `.strict()`, so a required field would reject every record
+     * written before it existed. Absent ⇒ the producer did not state a
+     * provenance; a consumer must NOT read that as `canonical-git`.
+     */
+    diffProvenance: PrReviewDiffProvenanceSchema.optional(),
+    /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
      * the record-set model is position-independent (mirrors #3927).
@@ -156,7 +224,8 @@ type PrReviewRecordPayload = Omit<PrReviewRecord, 'hash'>;
 /**
  * Compute the SHA-256 over the canonical payload projection. Folds in EVERY
  * authenticity-bearing field — crucially `prNumber`, `baseSha`, `reviewedDiffHash`, and `verdict`
- * (the diff-binding, Option-C) plus the monotonic `sequence` — but EXCLUDES
+ * (the diff-binding, Option-C), `diffProvenance` (#4459), plus the monotonic
+ * `sequence` — but EXCLUDES
  * `previousHash`, so the hash is position-independent and stable across
  * concurrent-branch merges and file reorders. Built field-by-field (not
  * `JSON.stringify(record)`) so key-order is deterministic regardless of how the
@@ -185,6 +254,25 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
     },
     summary: payload.summary,
     correlationId: payload.correlationId ?? null,
+    // #4459 provenance, INSIDE the hash. This projection is an explicit
+    // allowlist, so a schema field omitted here would sit OUTSIDE
+    // tamper-evidence — `caller-supplied` could be edited to `canonical-git`
+    // with no `hash_mismatch`.
+    //
+    // Absent ⇒ the key is OMITTED entirely (not emitted as `null`, unlike
+    // `correlationId` which has always been in the projection). `JSON.stringify`
+    // drops `undefined` values, so a record written WITHOUT provenance produces
+    // a canonical string byte-identical to the pre-#4459 one and keeps its hash.
+    // Emitting `null` here would flip every such record to `hash_mismatch`.
+    // Rebuilt in schema order for the same reason `voteCounts` is (#3962).
+    ...(payload.diffProvenance !== undefined
+      ? {
+          diffProvenance: {
+            source: payload.diffProvenance.source,
+            fileBoundaries: payload.diffProvenance.fileBoundaries,
+          },
+        }
+      : {}),
   });
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
