@@ -241,6 +241,14 @@ export class CapacityTracker {
    */
   recordProviderQuotaExhaustion(retryAfterMs: number | undefined): boolean {
     if (retryAfterMs === undefined || retryAfterMs <= this.config.windowMs) return false;
+    // #4602: a recorded assertion is an observation. `assessCapacity`
+    // short-circuits to 'unmeasured' on `observed === false`, so without this
+    // the strongest evidence we can get about an arm — the provider stating
+    // its quota is gone — would be stored and then ignored on any adapter
+    // whose first call rate-limits (no success has run, so `recordUsage`
+    // never fired). Only set on a recorded assertion: a rejected one
+    // observed nothing.
+    this.hasObserved = true;
     this.quotaExhaustedUntil = getTimeProvider().now() + retryAfterMs;
     return true;
   }

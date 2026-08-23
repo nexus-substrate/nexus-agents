@@ -20,7 +20,8 @@ import type {
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
-import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { isRateLimitText, parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
+import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -78,10 +79,19 @@ export class ModelToCliAdapter implements ICliAdapter {
 
   private readonly modelAdapter: IModelAdapter;
 
+  /**
+   * Per-arm capacity state (#4602). The same canonical `CapacityTracker` the
+   * subprocess adapters use — this bridge previously answered `getCapacity()`
+   * from literals, so no API/SDK arm could report a quota signal at all.
+   * Per-instance, so one arm's exhaustion never speaks for another's.
+   */
+  private readonly capacityTracker: CapacityTracker;
+
   constructor(modelAdapter: IModelAdapter, config: ModelToCliAdapterConfig) {
     this.modelAdapter = modelAdapter;
     this.name = config.name;
     this.capabilities = config.capabilities ?? NEUTRAL_CAPABILITIES;
+    this.capacityTracker = createCapacityTracker(config.name);
   }
 
   /** Build a single-turn CompletionRequest from a CliTask. */
@@ -139,25 +149,54 @@ export class ModelToCliAdapter implements ICliAdapter {
    * Convert a ModelError to a CliError. Rate-limit text → RATE_LIMITED
    * (retryable); everything else → EXECUTION_ERROR (non-retryable) so the
    * routing/circuit layers see a real, typed failure.
+   *
+   * #4602: parses `retryAfterMs` off the message, mirroring
+   * `base-adapter.ts`'s `createError`. Pre-fix this bridge classified
+   * RATE_LIMITED and then threw the provider's stated horizon away — and that
+   * horizon is the sole input `CapacityTracker.recordProviderQuotaExhaustion`
+   * accepts, so the API/SDK arms could never assert quota exhaustion.
+   *
+   * Only parsed on a retryable error, as on the subprocess path: a wait hint
+   * inside a 500 body is not a rate-limit assertion.
    */
   private toCliError(error: ModelError): CliError {
     const rateLimited = isRateLimitText(error.message);
     const code: CliErrorCode = rateLimited ? 'RATE_LIMITED' : 'EXECUTION_ERROR';
+    const retryAfterMs = rateLimited ? parseRetryAfterMs(error.message) : undefined;
     const base: CliError = {
       code,
       message: error.message,
       cli: this.name,
       retryable: rateLimited,
+      ...(retryAfterMs !== undefined && { retryAfterMs }),
     };
     return error.cause instanceof Error ? { ...base, cause: error.cause } : base;
+  }
+
+  /**
+   * Feed a provider's own rate-limit assertion into capacity tracking (#4602).
+   *
+   * The API-side counterpart of `BaseCliAdapter.recordQuotaSignal`. The
+   * tracker — not this adapter — decides whether the stated wait is long
+   * enough to mean durable quota rather than a per-minute throttle.
+   */
+  private recordQuotaSignal(error: CliError): void {
+    if (error.code !== 'RATE_LIMITED') return;
+    this.capacityTracker.recordProviderQuotaExhaustion(error.retryAfterMs);
   }
 
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
     const result = await this.modelAdapter.complete(this.toCompletionRequest(task, options));
     if (!result.ok) {
-      return err(this.toCliError(result.error));
+      const cliError = this.toCliError(result.error);
+      this.recordQuotaSignal(cliError);
+      return err(cliError);
     }
-    return ok(this.toCliResponse(result.value));
+    const response = this.toCliResponse(result.value);
+    // A served request is direct evidence the provider is serving; the tracker
+    // uses it both to count the window and to retire a stale assertion.
+    this.capacityTracker.recordUsage(response.usage);
+    return ok(response);
   }
 
   /** Health is derived from the model adapter's config validation. */
@@ -173,25 +212,22 @@ export class ModelToCliAdapter implements ICliAdapter {
   }
 
   /**
-   * API adapters don't expose subprocess-style rate windows; report
-   * non-exhausted capacity. Real rate-limit signals surface via execute()'s
-   * RATE_LIMITED error, which the resilience layer acts on.
+   * Report this arm's capacity from its `CapacityTracker` (#4602).
    *
-   * #4374: `observed: false` — the infinities below are a stand-in for "this
-   * adapter has no rate window to report", not a measurement. Reporting them as
-   * observed would tell consumers we had checked and found unlimited capacity.
+   * Previously this returned literals: `POSITIVE_INFINITY` remaining,
+   * `quotaExhausted: false`, `observed: false`. The `observed: false` half was
+   * honest (#4374 — nothing had been observed), but `quotaExhausted: false`
+   * asserted a measurement that never happened, and since `assessCapacity`
+   * reaches `'exhausted'` only through `quotaExhausted`, it made every
+   * API/SDK arm unexcludable for quota by construction — a check that cannot
+   * fail, whatever the provider said.
+   *
+   * The tracker keeps the honest empty case: until this arm has served a call
+   * or a provider has asserted a horizon, it reports `observed: false` and the
+   * stage grades it `unmeasured`, never `healthy`.
    */
   getCapacity(): Promise<CapacityStatus> {
-    return Promise.resolve({
-      remainingTokens: Number.POSITIVE_INFINITY,
-      remainingRequests: Number.POSITIVE_INFINITY,
-      resetTime: new Date(0),
-      utilizationPercent: 0,
-      rateLimited: false,
-      exhausted: false,
-      quotaExhausted: false,
-      observed: false,
-    });
+    return Promise.resolve(this.capacityTracker.getCapacity());
   }
 
   getVersion(): Promise<string> {
