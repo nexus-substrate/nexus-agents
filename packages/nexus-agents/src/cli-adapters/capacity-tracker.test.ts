@@ -414,6 +414,27 @@ describe('#4456: a local rate window is not provider-asserted quota', () => {
     expect(status.quotaResetAt?.getTime()).toBe(Date.now() + retryAfterMs);
   });
 
+  it('counts a recorded provider assertion as an observation (#4602)', () => {
+    // `assessCapacity` short-circuits to 'unmeasured' on `observed === false`,
+    // so a tracker that records a provider's quota assertion but still reports
+    // itself unobserved can never reach 'exhausted' — the assertion would be
+    // stored and then ignored. A provider telling us our quota is gone IS an
+    // observation about this arm; it is in fact the strongest one available.
+    // Matters most on a first call that rate-limits, where no success has run.
+    expect(tracker.getCapacity().observed).toBe(false);
+
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS * 60);
+
+    expect(tracker.getCapacity().observed).toBe(true);
+  });
+
+  it('does not mark the tracker observed when the assertion is rejected', () => {
+    // A sub-window retry-after records nothing, so it observed nothing.
+    tracker.recordProviderQuotaExhaustion(RATE_LIMIT_WINDOW_MS - 1);
+
+    expect(tracker.getCapacity().observed).toBe(false);
+  });
+
   it('treats a short retry-after as a throttle, not quota exhaustion', () => {
     // Shorter than our own window means a per-minute limit, which rateLimited
     // already covers. Escalating it would empty the candidate pool for a
