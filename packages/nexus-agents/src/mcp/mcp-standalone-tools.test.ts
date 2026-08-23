@@ -7,7 +7,7 @@
  *
  * @module mcp/mcp-standalone-tools.test
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -31,6 +31,21 @@ import {
   registerRunWorkflowTool,
 } from './tools/index.js';
 import type { IWorkflowEngine } from '../core/index.js';
+
+// #4629: this test reached a real CLI binary through the CLI-detection layer.
+// The memory_query call below runs reflective retrieval, which asks the
+// registry for a default adapter, and the auto-adapter probes every CLI to
+// find one, so `opencode --version` and `opencode auth list` were actually
+// spawned. Stub the factory so detection answers "nothing available"; every
+// tool under test stays real. Keep this a full module replacement — with an
+// `importOriginal` spread the real module still wins for auto-adapter's own
+// import and the spawns come back.
+vi.mock('../cli-adapters/factory.js', () => ({
+  createCliAdapter: vi.fn(),
+  createAllAdapters: vi.fn(() => new Map()),
+  isCliAvailable: vi.fn().mockResolvedValue(false),
+  getAvailableClis: vi.fn().mockResolvedValue([]),
+}));
 
 // ============================================================================
 // Test Infrastructure

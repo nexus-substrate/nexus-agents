@@ -4,8 +4,33 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+
 import { runVerify, printVerifyResult, verifyCommand } from './verify-command.js';
 import type { VerifyResult, VerifyCheck } from './verify-command.js';
+
+/**
+ * Stub the CLI auth probe (#4629).
+ *
+ * `runVerify()` calls `checkAdapterAvailability()` → `probeAllClis()`, which
+ * spawns each CLI binary for real. This file has 17 `runVerify`/`verifyCommand`
+ * calls, so an unmocked run produced 17 real `opencode auth list` subprocesses
+ * — 8.2 MB of leaked scratch each, and, worse, a suite whose result depended on
+ * which CLIs happened to be installed on the machine. On a box without
+ * `opencode` these tests exercised a different branch, and nothing reported
+ * which branch had run.
+ *
+ * The canned panel is deliberately mixed — one authenticated, one not — so the
+ * assertions below exercise both sides of the availability check rather than a
+ * uniform all-authed shape that would hide a branch.
+ */
+vi.mock('./cli-auth-probe.js', () => ({
+  probeAllClis: vi.fn().mockResolvedValue([
+    { cli: 'claude', state: 'authenticated', via: 'cli-credentials' },
+    { cli: 'gemini', state: 'needs-login', reason: 'stubbed', fixCommand: 'gemini auth login' },
+    { cli: 'codex', state: 'needs-login', reason: 'stubbed', fixCommand: 'codex login' },
+    { cli: 'opencode', state: 'needs-login', reason: 'stubbed', fixCommand: 'opencode auth login' },
+  ]),
+}));
 
 describe('verify-command', () => {
   describe('runVerify', () => {
