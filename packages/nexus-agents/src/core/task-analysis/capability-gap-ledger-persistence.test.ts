@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { CAPABILITY_GAP_TYPES } from './capability-gap-detector.js';
 import type { CapabilityGapReport } from './capability-gap-detector.js';
 import { createPersistentCapabilityGapLedger } from './capability-gap-ledger-persistence.js';
 
@@ -121,5 +122,29 @@ describe('createPersistentCapabilityGapLedger', () => {
     );
     expect(ledger.size()).toBe(0);
     expect(ledger.loadReport().fileExisted).toBe(false);
+  });
+});
+
+describe('every declared gap type survives a round trip (#4651)', () => {
+  // The regression that motivated this: the validator hardcoded 'tool' |
+  // 'expert', so persisted tool_refusal entries loaded as malformed and the
+  // producer's output vanished between processes. Unit tests missed it because
+  // the persistence tests used 'tool' and the producer tests used an in-memory
+  // ledger — neither crossed the seam. Iterating CAPABILITY_GAP_TYPES makes a
+  // newly added type fail here instead of silently disappearing on disk.
+  it.each([...CAPABILITY_GAP_TYPES])('round-trips a %s gap', (type) => {
+    const filePath = scratchFile();
+    createPersistentCapabilityGapLedger({ filePath }).record(
+      {
+        available: { tools: [], experts: [] },
+        gaps: [{ type, name: `x:${type}`, suggestion: 's' }],
+        allSatisfied: false,
+      },
+      {}
+    );
+
+    const reloaded = createPersistentCapabilityGapLedger({ filePath });
+    expect(reloaded.loadReport().malformedLines).toBe(0);
+    expect(reloaded.summarize()[0]?.type).toBe(type);
   });
 });

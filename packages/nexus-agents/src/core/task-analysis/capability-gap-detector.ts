@@ -37,6 +37,20 @@ export interface AvailableCapabilities {
 }
 
 /**
+ * Every kind of capability gap, as runtime data.
+ *
+ * The array is the single source and {@link CapabilityGapType} derives from it,
+ * so a validator that needs to check a type at runtime cannot drift from the
+ * union. It did: the persistence layer hardcoded `'tool' | 'expert'`, so every
+ * persisted `tool_refusal` was discarded as malformed on load — the producer
+ * wrote three entries and the next process read zero (#4651).
+ */
+export const CAPABILITY_GAP_TYPES = ['tool', 'expert', 'tool_refusal'] as const;
+
+/** What kind of capability gap this is. Derived from {@link CAPABILITY_GAP_TYPES}. */
+export type CapabilityGapType = (typeof CAPABILITY_GAP_TYPES)[number];
+
+/**
  * A single capability gap with suggestion.
  */
 export interface CapabilityGap {
@@ -55,7 +69,7 @@ export interface CapabilityGap {
    * of refusal. Added by the #4651 panel decision (option C, unanimous among
    * approvers) because the registry diff could not represent it.
    */
-  readonly type: 'tool' | 'expert' | 'tool_refusal';
+  readonly type: CapabilityGapType;
   readonly name: string;
   readonly suggestion: string;
 }
