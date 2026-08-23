@@ -66,7 +66,7 @@ export interface RoutingDecision {
 /**
  * Running token totals for an observability SESSION, aggregated across calls.
  *
- * Named to distinguish it from the per-call `SessionTokenTotals` in
+ * Named to distinguish it from the per-call `TokenUsage` in
  * `core/types/model.ts` (#4440). The two shared a name and a shape while
  * modelling different things — session aggregate vs. one call's usage — and
  * `exports/observability.ts` already had to alias this one as

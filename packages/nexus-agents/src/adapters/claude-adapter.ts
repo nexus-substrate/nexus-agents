@@ -322,10 +322,26 @@ export class ClaudeAdapter extends BaseAdapter {
       ? mapResponseWithRespondTool(response.content)
       : response.content.map(mapContentBlock);
 
+    // Cache figures come through in full (#4440). The CLI-side
+    // `parsers/claude-parser.ts` has extracted these since #4435 — a panel's
+    // FIRST call is the one that writes the cache, so dropping them loses its
+    // largest input measurement — but this direct-API path was never updated,
+    // the same one-arm-fixed shape as #4602.
+    //
+    // The SDK types both as `number | null` — never undefined, which is why a
+    // null check alone suffices here. Null stays absent rather than
+    // becoming 0: a fabricated 0 reads as "no cache write happened", which is
+    // a claim the API did not make. `totalTokens` deliberately remains
+    // uncached input + output, matching the CLI parser — folding the cache
+    // figures in would change semantics for every existing consumer.
+    const cachedInputTokens = response.usage.cache_read_input_tokens;
+    const cacheCreationInputTokens = response.usage.cache_creation_input_tokens;
     const usage: TokenUsage = {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
       totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      ...(cachedInputTokens !== null && { cachedInputTokens }),
+      ...(cacheCreationInputTokens !== null && { cacheCreationInputTokens }),
     };
 
     return {

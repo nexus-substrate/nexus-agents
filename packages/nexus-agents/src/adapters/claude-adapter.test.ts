@@ -205,6 +205,69 @@ describe('ClaudeAdapter', () => {
       }
     });
 
+    // The CLI-side parser has extracted these since #4435, with a comment
+    // recording why: a panel's FIRST call is the one that writes the cache, so
+    // dropping the figures loses its largest input measurement entirely. The
+    // direct-API path was never updated — same defect as #4602, where the CLI
+    // arm worked and the API arm did not (#4440).
+    it('threads Anthropic cache token fields through to usage', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Hello!' }],
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 900,
+          cache_creation_input_tokens: 1200,
+        },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        maxTokens: 1024,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.usage?.cachedInputTokens).toBe(900);
+        expect(result.value.usage?.cacheCreationInputTokens).toBe(1200);
+        // totalTokens deliberately stays uncached input + output, matching
+        // parsers/claude-parser.ts — folding the cache figures in would change
+        // semantics for every existing consumer of totalTokens.
+        expect(result.value.usage?.totalTokens).toBe(15);
+      }
+    });
+
+    it('leaves cache fields absent when the API reports null, never 0', async () => {
+      // A fabricated 0 reads as "no cache write happened", which is a claim.
+      // Absence is the honest report when the API states nothing.
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Hello!' }],
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: null,
+          cache_creation_input_tokens: null,
+        },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        maxTokens: 1024,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.usage).not.toHaveProperty('cachedInputTokens');
+        expect(result.value.usage).not.toHaveProperty('cacheCreationInputTokens');
+      }
+    });
+
     it('should include system prompt when provided', async () => {
       mockCreate.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'Response' }],
