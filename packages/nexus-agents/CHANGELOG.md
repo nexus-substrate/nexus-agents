@@ -1,5 +1,26 @@
 # nexus-agents
 
+## 3.8.0
+
+### Minor Changes
+
+- [#4601](https://github.com/nexus-substrate/nexus-agents/pull/4601) [`b5592dd`](https://github.com/nexus-substrate/nexus-agents/commit/b5592ddbe0b9599f8e5763f28397bf3e1839b934) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Per-decision cost records now say whether the dollar figure rests on a resolved rate or on no price at all.
+
+  A cost derived from the registry's pricing chain was recorded identically to one verified against the operator's bill. Under `NEXUS_BILLING_MODE=api` that number is not decorative — it feeds TOPSIS cost weighting and the per-task-class ceilings in `cli-adapters/budget-router.ts`, so routing decisions are made on a figure whose provenance the record did not carry.
+
+  The vocabulary already existed and had zero production consumers: `PriceBasis`, `priceBasisFor()` and `priceBasisCaveat()` shipped in [#4409](https://github.com/nexus-substrate/nexus-agents/issues/4409) and were referenced only by their own test. This wires it through.
+
+  - `learning/usage-log.ts` gains `priceBasisOf(detail)`. It **derives** the basis rather than storing a field, because `CostDetail.priced` already carries the only distinction the two-member union can express: the chain resolved a rate, or it did not. A `priceBasis` property beside `priced` would be a second spelling of the same boolean. The other provenance field, `priceSource`, answers a different question (which registry entry supplied the number, not what kind of rate it is), so the basis has to travel separately into records that persist neither field.
+  - **What `'list'` asserts, precisely:** that a rate was resolved and should be read as an _assumed published_ rate. It is not a guarantee the number is a vendor's advertised public rate. The operator manifest overlay is the highest-precedence registry tier and passes `pricing` through — overriding pricing is its purpose — so a negotiated rate entered there reports `'list'`, and the caveat then warns the reader their contract may differ over the contract rate. The normalized/fuzzy identity tier lets a decorated gateway id inherit a _different_ canonical entry's rate. In the other direction, `config/models-generated-loader.ts` discards a published $0/$0 rate unless the id ends `:free`, so `'unknown'` means "the chain produced nothing", not "no price exists". The label is conservative in the right direction — it invites a caveat rather than suppressing one — and the doc comments now say so instead of claiming every tier is a public list rate.
+  - `VoterCostInput` / `VoterCostBreakdown` / `DecisionCostSummary` gain an optional `priceBasis`, extending the existing `unmeasured` / `measuredVoters` vocabulary rather than adding a fourth provenance concept. It is deliberately orthogonal to `unmeasured`: that flag is about evidence of consumption, this is about the rate the money figure rests on.
+  - Absent is not a claim. A voter whose price was never looked up carries no basis, distinct from `'unknown'`. **Plan mode — the default — omits the basis at every level**, decision total and per-voter row alike: plan mode forces `costUsd` to 0, and a zero that rests on no price must not be attributed to one. `billingMode` already explains the figure.
+  - `PriceBasis`, `PriceBasisSchema` and `priceBasisCaveat` now live in a new dependency-free leaf module, `core/price-basis.ts`, with the TypeScript union **derived from** the zod schema. This replaces a hand-written mirror of the union that existed to dodge an import cycle: its `satisfies` guard rejected a member being renamed or dropped but accepted one being _added_, and an unrecognised value makes `JsonlStore.safeParse` reject the entire decision record — `append` returning `persisted: false`, and on read the line skipped with only an aggregate debug count. One definition, so the validator and the union cannot drift.
+  - The JSONL schema addition is optional, so decision-cost records written before this change still parse; a fixture pins that, and a data-driven case round-trips every member of the union through the store.
+
+  No routing behaviour changes. What a budget ceiling should _do_ with an estimated price is a separate decision that has not been made; this only makes the distinction visible.
+
+  One known limit, stated rather than hidden: there is no `'contract'` member. The gap is not that an operator has no way to state a negotiated rate — the manifest overlay is exactly that mechanism — it is that the mechanism carries no label distinguishing a negotiated rate from a published one, so nothing downstream could populate `'contract'` truthfully. Adding that label is a separate decision.
+
 ## 3.7.0
 
 ### Minor Changes
