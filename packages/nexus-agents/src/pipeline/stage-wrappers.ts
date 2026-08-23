@@ -17,6 +17,7 @@ import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
 import { getContextPromptPrefix } from '../context/context-retriever.js';
 import { runConsensusGate } from '../orchestration/graph/consensus-node.js';
 import type { ConsensusVoter } from '../orchestration/graph/consensus-node.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 // ============================================================================
 // Helper
@@ -213,7 +214,13 @@ export function createQaStageWrapper(stages: DevPipelineStages): IPipelineStage 
         : [];
       try {
         const reviews = await Promise.all(tasks.map((t, i) => stages.qaReview(t, impls[i] ?? '')));
-        const allPass = reviews.every((r) => r.verdict === 'pass');
+        // #4580: `[].every()` is true, so reviewing ZERO tasks reported
+        // success and `pipeline-graph.ts:174` advanced the graph — a QA pass
+        // indistinguishable in the trace from "reviewed N, all passed".
+        // Reachable: `parseTasksFromResponse` returns `[]` when the PM's
+        // response parses to an empty array, with no fallback on that path.
+        // Empty means nothing was reviewed, which is not a pass.
+        const allPass = allOf(reviews, (r) => r.verdict === 'pass', false);
         return output(K.QA_ITERATIONS, reviews, getTimeProvider().now() - start, allPass);
       } catch (e) {
         return failOutput(K.QA_ITERATIONS, getErrorMessage(e), getTimeProvider().now() - start);
