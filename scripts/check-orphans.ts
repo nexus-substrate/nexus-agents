@@ -3,25 +3,39 @@
  * check-orphans.ts — surface src/ subtrees with no outside callers.
  *
  * Wraps knip (already a devDependency) and applies an allowlist to filter
- * known-intentional orphans (CLI scripts, examples, migrations). Output is
- * the filtered orphan-file list — used in audit mode (v1) for visibility,
- * with no enforcement.
+ * known-intentional orphans (CLI scripts, examples, migrations). A flagged
+ * orphan fails the check.
  *
  * Counterfactual: would have caught the dead self-development engine
  * (#2402, deleted ~7,700 LOC) at week 1 instead of week 6.
  *
- * v1 = audit only (this PR). v2 = orphan-count contributes to fitness
- * score. v3 = fitness floor + threshold gates CI. Promotion gated on
- * dry-run review per the design (#2409 / PR #2420).
+ * Shipped audit-only in v1 (#2410) with a docstring promising promotion "in
+ * v2/v3" and nothing tracking it. #4583 promoted it instead of restating the
+ * promise: with the allowlist as it stands the check is already green (22
+ * orphans, all allowlisted), and it is demonstrably able to fire — an
+ * unreferenced non-exempt module gets flagged. A check that cannot fail by
+ * construction is not a check.
  *
- * See docs/architecture/IMPORT_GRAPH_ORPHANS.md (#2409). Implements #2410.
+ * Two things keep the allowlist from becoming the loophole:
+ *   - Every `specific_files` entry must declare exactly one of `expires`
+ *     (dated debt) or `permanent: true` (a structural fact) — never neither,
+ *     never both. An undeclared exemption fails the check by name.
+ *   - An `expires` date that has passed stops exempting, so the file flags.
+ *
+ * Scope: knip's unused-*files* category only. The unused-*exports* half is
+ * the #4561 ratchet's job and is deliberately not duplicated here.
+ *
+ * See docs/architecture/IMPORT_GRAPH_ORPHANS.md (#2409). Implements #2410,
+ * promoted to blocking in #4583.
  *
  * Usage:
- *   npx tsx scripts/check-orphans.ts            # Audit mode
+ *   npx tsx scripts/check-orphans.ts            # Check
  *   npx tsx scripts/check-orphans.ts --verbose  # Show every flagged orphan
  *
  * Exit codes:
- *   0 - Always (v1 is audit-only; promotes to fail in v2/v3)
+ *   0 - No flagged orphans and every allowlist exemption is well-formed
+ *   1 - An orphan is flagged, an exemption declares neither expires nor
+ *       permanent, or the allowlist is missing/unparseable
  */
 
 /* eslint-disable no-console */
@@ -38,10 +52,19 @@ interface AllowlistEntry {
   readonly rationale: string;
 }
 
+/**
+ * A one-off exemption. It MUST declare which kind it is: `expires` for dated
+ * debt, or `permanent: true` for a file that structurally can never be
+ * imported. Exactly one — neither is an undeclared exemption, and both is a
+ * contradiction. See {@link validateAllowlist}.
+ */
 interface SpecificFileEntry {
   readonly path: string;
   readonly rationale: string;
+  /** ISO `YYYY-MM-DD`. The exemption holds through the end of this day (UTC). */
   readonly expires?: string;
+  /** `true` when the file can never be imported by construction. */
+  readonly permanent?: boolean;
 }
 
 interface OrphanAllowlist {
@@ -136,9 +159,80 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`);
 }
 
-/** Is `filePath` covered by any allowlist pattern or specific file entry? */
-export function isAllowlisted(filePath: string, allowlist: OrphanAllowlist): boolean {
-  if (allowlist.specific_files.some((e) => e.path === filePath)) return true;
+// ============================================================================
+// Exemption declaration + expiry (#4583)
+// ============================================================================
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parse `YYYY-MM-DD` as the last instant of that day (UTC), or null if malformed. */
+function parseExpiry(expires: string): number | null {
+  if (!ISO_DATE.test(expires)) return null;
+  const ms = Date.parse(`${expires}T23:59:59.999Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Check that every `specific_files` entry declares its intent.
+ *
+ * Returns one human-readable error per malformed entry, each naming the file.
+ * An empty array means the allowlist is well-formed. Structural `patterns`
+ * are permanent facts about the repo layout and are not validated here.
+ */
+export function validateAllowlist(allowlist: OrphanAllowlist): readonly string[] {
+  const errors: string[] = [];
+  for (const entry of allowlist.specific_files) {
+    const isPermanent = entry.permanent === true;
+    const hasExpiry = typeof entry.expires === 'string';
+
+    if (isPermanent && hasExpiry) {
+      errors.push(
+        `${entry.path}: declares both "expires" and "permanent" — an exemption is either dated debt or a permanent structural fact, not both. Drop one.`
+      );
+      continue;
+    }
+    if (!isPermanent && !hasExpiry) {
+      errors.push(
+        `${entry.path}: declares neither "expires" nor "permanent" — say which it is. Add "expires": "YYYY-MM-DD" if the exemption is debt with an end date, or "permanent": true with a rationale saying why the file can never be imported.`
+      );
+      continue;
+    }
+    if (hasExpiry && parseExpiry(entry.expires) === null) {
+      errors.push(
+        `${entry.path}: "expires": ${JSON.stringify(entry.expires)} is not a YYYY-MM-DD date — an unparseable expiry would silently never expire.`
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Is this one-off exemption still in force at `now`?
+ *
+ * Permanent entries always are. Dated entries hold through the end of their
+ * `expires` day and stop afterwards, so the file flags. An entry declaring
+ * neither is treated as in force here — {@link validateAllowlist} is the
+ * enforcement point for that, and it fails the whole check by name.
+ */
+function isExemptionActive(entry: SpecificFileEntry, now: Date): boolean {
+  if (entry.permanent === true) return true;
+  if (typeof entry.expires !== 'string') return true;
+  const deadline = parseExpiry(entry.expires);
+  if (deadline === null) return true; // validateAllowlist reports this as an error.
+  return now.getTime() <= deadline;
+}
+
+/**
+ * Is `filePath` covered by any allowlist pattern, or by a specific-file
+ * exemption that is still in force at `now`?
+ */
+export function isAllowlisted(
+  filePath: string,
+  allowlist: OrphanAllowlist,
+  now: Date = new Date()
+): boolean {
+  if (allowlist.specific_files.some((e) => e.path === filePath && isExemptionActive(e, now)))
+    return true;
   for (const entry of allowlist.patterns) {
     if (globToRegExp(entry.glob).test(filePath)) return true;
   }
@@ -203,12 +297,13 @@ export function extractOrphans(issues: readonly KnipIssue[]): readonly string[] 
   return [...seen].sort();
 }
 
-/** Return orphans NOT covered by the allowlist. */
+/** Return orphans NOT covered by the allowlist as of `now`. */
 export function filterOrphans(
   orphans: readonly string[],
-  allowlist: OrphanAllowlist
+  allowlist: OrphanAllowlist,
+  now: Date = new Date()
 ): readonly string[] {
-  return orphans.filter((p) => !isAllowlisted(p, allowlist));
+  return orphans.filter((p) => !isAllowlisted(p, allowlist, now));
 }
 
 // ============================================================================
@@ -221,13 +316,23 @@ interface CheckResult {
   readonly flagged: readonly string[];
 }
 
-export function performCheck(): CheckResult | null {
+export function performCheck(now: Date = new Date()): CheckResult | null {
   const allowlist = loadAllowlist();
   if (allowlist === null) return null;
 
+  const declarationErrors = validateAllowlist(allowlist);
+  if (declarationErrors.length > 0) {
+    console.error('✗ Allowlist exemptions that do not declare their intent:\n');
+    for (const message of declarationErrors) {
+      console.error(`  - ${message}`);
+    }
+    console.error('\nSee docs/ops/orphan-allowlist.json (#4583).');
+    return null;
+  }
+
   const issues = runKnip();
   const all = extractOrphans(issues);
-  const flagged = filterOrphans(all, allowlist);
+  const flagged = filterOrphans(all, allowlist, now);
 
   return {
     total: all.length,
@@ -236,9 +341,14 @@ export function performCheck(): CheckResult | null {
   };
 }
 
+/** The gate's verdict: any flagged orphan fails the check. */
+export function isPassing(result: CheckResult): boolean {
+  return result.flagged.length === 0;
+}
+
 function checkOrphans(verbose: boolean): boolean {
-  console.log('Orphan Detection (#2410 — v1 audit-only)');
-  console.log('=========================================\n');
+  console.log('Orphan Detection (#2410, blocking since #4583)');
+  console.log('==============================================\n');
 
   const result = performCheck();
   if (result === null) return false;
@@ -247,13 +357,13 @@ function checkOrphans(verbose: boolean): boolean {
   console.log(`Allowlisted: ${String(result.allowlisted)}`);
   console.log(`Flagged: ${String(result.flagged.length)}\n`);
 
-  if (result.flagged.length === 0) {
+  if (isPassing(result)) {
     console.log('✓ No flagged orphans.\n');
     return true;
   }
 
   if (verbose || result.flagged.length <= 20) {
-    console.log('Flagged orphans (audit-only — not blocking):');
+    console.log('Flagged orphans (blocking):');
     for (const p of result.flagged) {
       console.log(`  - ${p}`);
     }
@@ -270,12 +380,13 @@ function checkOrphans(verbose: boolean): boolean {
   console.log('To resolve:');
   console.log('  1. Wire the orphan into something that imports it, OR');
   console.log('  2. Delete it if it is genuinely dead, OR');
-  console.log('  3. Add it to docs/ops/orphan-allowlist.json with rationale.');
+  console.log('  3. Add it to docs/ops/orphan-allowlist.json with a rationale and');
+  console.log('     either "expires": "YYYY-MM-DD" or "permanent": true.');
   console.log('');
   console.log('See: docs/architecture/IMPORT_GRAPH_ORPHANS.md');
-  console.log('Note: v1 is audit-only. Will not fail CI. Promotes in v2/v3.\n');
+  console.log('This check blocks CI (audit-only through v1; promoted in #4583).\n');
 
-  return true;
+  return isPassing(result);
 }
 
 function main(): void {
@@ -284,7 +395,7 @@ function main(): void {
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
-check-orphans.ts — surface src/ subtrees with no outside callers (v1 audit-only)
+check-orphans.ts — surface src/ subtrees with no outside callers (blocking)
 
 Usage:
   npx tsx scripts/check-orphans.ts [options]
@@ -294,7 +405,9 @@ Options:
   --help, -h     Show this help
 
 Exit codes:
-  0 - Always (v1 is audit-only; promotes to fail in v2/v3)
+  0 - No flagged orphans and every allowlist exemption is well-formed
+  1 - An orphan is flagged, an exemption declares neither expires nor
+      permanent, or the allowlist is missing/unparseable
 `);
     process.exit(0);
   }
