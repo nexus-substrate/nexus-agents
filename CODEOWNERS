@@ -39,7 +39,7 @@
 /governance/ @williamzujkowski
 /governance/claims-registry.* @williamzujkowski
 
-# The governor's own gates (#4634). A gate an agent can quietly weaken without
+# The governor's own gates (#4635). A gate an agent can quietly weaken without
 # tripping it is not a gate — these must route through ratification like the
 # paths they protect.
 /.github/workflows/governor-review.yml @williamzujkowski

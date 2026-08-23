@@ -1,5 +1,5 @@
 /**
- * Tests for the governor-path ratification gate (#4634).
+ * Tests for the governor-path ratification gate (#4635).
  *
  * @module scripts/check-governor-ratification.test
  */

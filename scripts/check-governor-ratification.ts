@@ -1,5 +1,5 @@
 /**
- * Governor-path RATIFICATION gate (#4634).
+ * Governor-path RATIFICATION gate (#4635).
  *
  * ## Why this exists
  *

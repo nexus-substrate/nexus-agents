@@ -2,7 +2,7 @@
 'nexus-agents': patch
 ---
 
-Enforce owner ratification on governance-of-the-governor paths (#4634)
+Enforce owner ratification on governance-of-the-governor paths (#4635)
 
 CODEOWNERS and CLAUDE.md both state that the governor's own paths — the audit
 hash chain, governance source, drift machinery, `CLAUDE.md`/`AGENTS.md`,

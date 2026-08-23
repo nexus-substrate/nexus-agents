@@ -99,7 +99,7 @@ jobs:
         run: npx tsx scripts/check-governor-review.ts
 
   # ---------------------------------------------------------------------------
-  # RATIFICATION gate (#4634).
+  # RATIFICATION gate (#4635).
   #
   # Distinct from the audit gate above, which asks whether the change was
   # REVIEWED. This asks whether the owner RATIFIED it — the requirement
