@@ -19,6 +19,20 @@ import {
 import { createDefaultRateLimiter } from './middleware/rate-limiter.js';
 import type { Expert } from '../agents/index.js';
 
+// #4629: this test reached a real CLI binary through the CLI-detection layer.
+// The expert tools call checkAdapterAvailability(), which probes every CLI for
+// a usable adapter, so `opencode --version` and `opencode auth list` were
+// actually spawned. Stub the factory so detection answers "nothing available";
+// the availability middleware and the tools under test stay real. Keep this a
+// full module replacement — with an `importOriginal` spread the real module
+// still wins for the middleware's own import and the spawns come back.
+vi.mock('../cli-adapters/factory.js', () => ({
+  createCliAdapter: vi.fn(),
+  createAllAdapters: vi.fn(() => new Map()),
+  isCliAvailable: vi.fn().mockResolvedValue(false),
+  getAvailableClis: vi.fn().mockResolvedValue([]),
+}));
+
 // ============================================================================
 // Test Infrastructure
 // ============================================================================

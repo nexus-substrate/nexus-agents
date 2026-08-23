@@ -14,6 +14,21 @@ import {
   type MemoryQueryInput,
 } from './memory-query.js';
 
+// #4629: this test reached a real CLI binary through the CLI-detection layer.
+// resolveReflection() asks the registry for a default adapter, and the
+// auto-adapter probes every CLI to find one, so `opencode --version` and
+// `opencode auth list` were actually spawned. Stub the factory so detection
+// answers "nothing available"; the registry, retriever, and keyword-fallback
+// path under test stay real. Keep this a full module replacement — with an
+// `importOriginal` spread the real module still wins for auto-adapter's own
+// import and the spawns come back.
+vi.mock('../../cli-adapters/factory.js', () => ({
+  createCliAdapter: vi.fn(),
+  createAllAdapters: vi.fn(() => new Map()),
+  isCliAvailable: vi.fn().mockResolvedValue(false),
+  getAvailableClis: vi.fn().mockResolvedValue([]),
+}));
+
 // Mock getToolMemory at module level
 const mockQueryAll = vi.fn();
 const mockQueryBySource = vi.fn();
