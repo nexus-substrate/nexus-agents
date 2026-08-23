@@ -157,6 +157,41 @@ const REGISTRY_URL = 'https://registry.npmjs.org/nexus-agents';
  * `MINUTES_SINCE_PUBLISH` still overrides, for tests and for a caller that
  * already knows.
  */
+/** The `time` map shape this reads out of the npm registry response. */
+export interface RegistryTimes {
+  readonly time?: Record<string, string>;
+}
+
+/**
+ * Minutes since `version` was published, from a registry body.
+ *
+ * Extracted as a pure function because this seam is where all three of this
+ * detector's bugs lived (#4551, #4557, and the unpublished-version case) while
+ * its unit tests stayed green throughout — they exercised the assessor with
+ * SUPPLIED inputs, and every bug was in what the input turned out to be. The
+ * I/O wrapper below is now the only untested part.
+ *
+ * Three outcomes, deliberately distinct:
+ *  - published → elapsed minutes
+ *  - **absent** → `0`, a deploy in flight; npm does not have the version, so
+ *    the site cannot be serving it
+ *  - unparseable or no `time` map → `NaN`, reported as unmeasured
+ */
+export function elapsedMinutesFrom(body: RegistryTimes, version: string, nowMs: number): number {
+  // No `time` map at all is a malformed or unexpected response — unmeasured.
+  // Collapsing it into the absent-version case would report a registry we
+  // could not understand as "just published", i.e. healthy. Caught by the
+  // test written for this seam, before it shipped.
+  if (body.time === undefined) return Number.NaN;
+
+  const published = body.time[version];
+  if (published === undefined) return 0;
+
+  const publishedMs = Date.parse(published);
+  if (Number.isNaN(publishedMs)) return Number.NaN;
+  return (nowMs - publishedMs) / 60_000;
+}
+
 async function minutesSincePublish(version: string): Promise<number> {
   const override = process.env['MINUTES_SINCE_PUBLISH'];
   if (override !== undefined && override.trim() !== '') return Number(override);
@@ -164,19 +199,7 @@ async function minutesSincePublish(version: string): Promise<number> {
   try {
     const res = await fetch(REGISTRY_URL, { redirect: 'follow' });
     if (!res.ok) return Number.NaN;
-    const body = (await res.json()) as { time?: Record<string, string> };
-    const published = body.time?.[version];
-    // Registry reachable but this version absent means it is NOT PUBLISHED
-    // YET — the window between a version PR merging and the publish landing.
-    // The site cannot be serving a version that does not exist, so this is a
-    // deploy in flight, not an unreadable input. Reporting it as unmeasured
-    // failed the check on every release, which is the same false alarm on the
-    // normal path that the grace window exists to prevent.
-    if (published === undefined) return 0;
-
-    const publishedMs = Date.parse(published);
-    if (Number.isNaN(publishedMs)) return Number.NaN;
-    return (Date.now() - publishedMs) / 60_000;
+    return elapsedMinutesFrom((await res.json()) as RegistryTimes, version, Date.now());
   } catch {
     // Unreadable, which the assessor reports as unmeasured — not as "long ago".
     return Number.NaN;

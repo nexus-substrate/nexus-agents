@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { GRACE_MINUTES, assessDeployStaleness, parseSiteVersion } from './check-deploy-stale.js';
+import {
+  GRACE_MINUTES,
+  assessDeployStaleness,
+  elapsedMinutesFrom,
+  parseSiteVersion,
+} from './check-deploy-stale.js';
 import type { StalenessInput } from './check-deploy-stale.js';
 
 describe('parseSiteVersion', () => {
@@ -169,6 +174,51 @@ describe('#4516 follow-up: not-yet-published is a deploy in flight', () => {
         siteVersion: '3.6.9',
         repoVersion: '3.6.10',
         minutesSincePublish: Number.NaN,
+      }).status
+    ).toBe('unmeasured');
+  });
+});
+
+describe('elapsedMinutesFrom — the seam all three bugs lived in', () => {
+  const NOW = Date.parse('2026-08-23T01:00:00.000Z');
+
+  it('computes elapsed minutes for a published version', () => {
+    const body = { time: { '3.6.10': '2026-08-23T00:30:00.000Z' } };
+
+    expect(elapsedMinutesFrom(body, '3.6.10', NOW)).toBe(30);
+  });
+
+  it('returns 0 for a version absent from the registry', () => {
+    // Not published yet — the window between a version PR merging and the
+    // publish landing. Returning NaN here made the check fail on every release.
+    expect(
+      elapsedMinutesFrom({ time: { '3.6.9': '2026-08-23T00:00:00.000Z' } }, '3.6.10', NOW)
+    ).toBe(0);
+  });
+
+  it('returns NaN when the registry body has no time map at all', () => {
+    // A malformed or unexpected response is unmeasured, not "just published".
+    expect(Number.isNaN(elapsedMinutesFrom({}, '3.6.10', NOW))).toBe(true);
+  });
+
+  it('returns NaN for an unparseable publish date', () => {
+    expect(
+      Number.isNaN(elapsedMinutesFrom({ time: { '3.6.10': 'not-a-date' } }, '3.6.10', NOW))
+    ).toBe(true);
+  });
+
+  it('yields a negative value on clock skew, which the assessor treats as unmeasured', () => {
+    // Registry ahead of the runner. The assessor rejects negatives rather than
+    // granting an unbounded grace, so the two halves compose correctly.
+    const body = { time: { '3.6.10': '2026-08-23T01:30:00.000Z' } };
+    const elapsed = elapsedMinutesFrom(body, '3.6.10', NOW);
+
+    expect(elapsed).toBeLessThan(0);
+    expect(
+      assessDeployStaleness({
+        siteVersion: '3.6.9',
+        repoVersion: '3.6.10',
+        minutesSincePublish: elapsed,
       }).status
     ).toBe('unmeasured');
   });
