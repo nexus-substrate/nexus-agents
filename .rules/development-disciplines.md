@@ -37,8 +37,34 @@ Every piece of knowledge must have a single, unambiguous, authoritative represen
 
 **How to apply:** wait for the third occurrence before extracting. When you extract, make sure the abstraction names the _concept_, not the _implementation_. If the extraction would force consumers to pass flags to opt out of behavior they don't want, the abstraction is wrong — keep the duplicates.
 
+## Name the empty case
+
+When a check aggregates a verdict over a collection, state what an empty collection means. Never let a language default answer it.
+
+`[].every(p)` is `true`. `![].some(p)` is `true`. A `for` loop with an early failure return never runs its body on an empty collection, so it falls through to the pass. `errors.length === 0` holds when the producing loop iterated nothing. `Math.min(...[])` is `Infinity`. And `0 === 0`. Every one of these renders **absence as health**.
+
+**Why:** a gate that reports success because it had nothing to check is worse than no gate. It launders unreviewed work as reviewed, and it is exactly the artifact a later human spot-check trusts. This is the concrete form of the Mission's rule that a check which cannot fail by construction is not a check — see `.rules/governance.md` and the fidelity-defect bar in CLAUDE.md.
+
+**How to apply:**
+
+- Reach for `allOf` / `anyOf` / `verdictOver` in `packages/nexus-agents/src/utils/verdict-aggregation.ts`. Their `whenEmpty` argument is required, so the empty case cannot be left implicit. Where the helper does not fit, an explicit `if (nothingWasMeasured) return <honest value>` is equally good — the requirement is that the empty case is **named**, not that a particular helper is used.
+- Ask what an empty collection is evidence _of_. Usually nothing, in which case the honest answer is the non-committal verdict (`pending`, `unmeasured`, `skip`), not the optimistic one. Reserve the optimistic value for cases where vacuous truth is genuinely the contract, and say so at the call site.
+- **Absence of criteria is not absence of evidence.** A score over zero declared constraints may legitimately be a perfect score; a score over zero _measured_ constraints never is. Distinguish the two before changing anything.
+- **Every fix in this class needs an empty-input test**, and it is the test — not the type system and not the lint rule — that actually catches the class.
+
+**Three failure modes specific to fixing this class**, all observed while closing #4585:
+
+1. **A guard that cannot fire.** Before adding an empty-case branch, trace whether the caller can produce the empty input. An unreachable guard plus tests that exercise shapes production cannot produce is dead code reported as a fix.
+2. **A control test that certifies without measuring.** The test proving a fix does not over-fire must assert on input the check genuinely _evaluates_. A positive control whose subject is skipped certifies "measured" on zero measurements — the defect, reproduced inside its own regression test.
+3. **An assertion that pins the half-fixed number.** If a fix names one check and leaves its neighbours vacuous, do not write the test against the resulting score. That encodes the survivors as correct.
+
+Assume existing tests may **assert** the defect. Three did in the `.every()` sweep, including one expecting `success: true` for a release that announced zero channels. Repoint the assertion, never delete it, and leave a comment recording what it previously pinned.
+
+**Enforcement:** `nexus/no-vacuous-verdict` (`eslint-rules/no-vacuous-verdict.js`) flags the syntactic shape when the value lands in a verdict-shaped name. It is a floor, not a proof — measured recall was 7 of 10 on the known corpus, and it cannot see reachability or applicability at all. The empty-input test and an adversarial review pass are what cover the rest.
+
 ## Related canonical sources
 
 - `.rules/typescript.md` — Zero `any` policy, strict-mode enforcement.
 - `.rules/testing.md` — test layout, integration test rules, vitest specifics.
 - `.rules/governance.md` — fitness target, supermajority rules, refactor gates.
+- `packages/nexus-agents/src/utils/verdict-aggregation.ts` — the empty-verdict helpers and how to choose `whenEmpty`.
