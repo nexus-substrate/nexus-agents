@@ -196,8 +196,28 @@ export interface HookCliOptions {
   reason?: string;
 }
 
+/**
+ * The option keys the boolean setter handles (#4563).
+ *
+ * Narrower than `keyof HookCliOptions` on purpose: the setter's switch covers
+ * exactly these, and typing the parameter as every key meant an unhandled one
+ * silently did nothing. Naming the set makes a mismatch a compile error at the
+ * flag map instead of a no-op at runtime.
+ */
+type BooleanOptionKey =
+  | 'validate'
+  | 'loadContext'
+  | 'trackMetrics'
+  | 'format'
+  | 'checkTasks'
+  | 'generateSummary'
+  | 'exportMetrics';
+
+/** The option keys the string setter handles (#4563). */
+type StringOptionKey = 'tool' | 'source' | 'reason';
+
 /** Boolean flags that don't require a value */
-const BOOLEAN_FLAGS: ReadonlyMap<string, keyof HookCliOptions> = new Map([
+const BOOLEAN_FLAGS: ReadonlyMap<string, BooleanOptionKey> = new Map([
   ['--validate', 'validate'],
   ['--load-context', 'loadContext'],
   ['--track-metrics', 'trackMetrics'],
@@ -208,7 +228,7 @@ const BOOLEAN_FLAGS: ReadonlyMap<string, keyof HookCliOptions> = new Map([
 ]);
 
 /** Value flags that require a following argument */
-const VALUE_FLAGS: ReadonlyMap<string, keyof HookCliOptions> = new Map([
+const VALUE_FLAGS: ReadonlyMap<string, StringOptionKey> = new Map([
   ['--tool', 'tool'],
   ['--source', 'source'],
   ['--reason', 'reason'],
@@ -247,7 +267,7 @@ export function parseHookArgs(args: string[]): HookCliOptions {
 }
 
 /** Sets a boolean option on HookCliOptions. */
-function setBooleanOption(options: HookCliOptions, key: keyof HookCliOptions): void {
+function setBooleanOption(options: HookCliOptions, key: BooleanOptionKey): void {
   switch (key) {
     case 'validate':
       options.validate = true;
@@ -274,7 +294,7 @@ function setBooleanOption(options: HookCliOptions, key: keyof HookCliOptions): v
 }
 
 /** Sets a string option on HookCliOptions. */
-function setStringOption(options: HookCliOptions, key: keyof HookCliOptions, value: string): void {
+function setStringOption(options: HookCliOptions, key: StringOptionKey, value: string): void {
   switch (key) {
     case 'tool':
       options.tool = value;

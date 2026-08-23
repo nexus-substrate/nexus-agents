@@ -51,6 +51,10 @@ export default defineConfig([
       },
     },
     rules: {
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        { considerDefaultExhaustiveForUnions: true },
+      ],
       // Code structure limits (enforced)
       'max-lines': [
         'error',
