@@ -65,7 +65,13 @@ export const GREENFIELD_PIPELINE_TEMPLATE: PipelineTemplate = {
 export const GENERAL_PIPELINE_TEMPLATE: PipelineTemplate = {
   id: 'general',
   name: 'General Pipeline',
-  stages: ['research', 'plan', 'vote', 'implement', 'qa', 'security'],
+  // #4580: `decompose` was missing. Both `implement` and `qa` read
+  // `state[TASKS]`, which only `decompose` writes — so this template
+  // implemented nothing and reviewed nothing, and the QA stage reported
+  // success over an empty review set (`[].every()` is true). Surfaced by
+  // making that verdict honest; a template with implement+qa stages that
+  // cannot receive tasks is the bug, not the honest verdict.
+  stages: ['research', 'plan', 'vote', 'decompose', 'implement', 'qa', 'security'],
   dryRunStopAfter: 'vote',
 };
 
