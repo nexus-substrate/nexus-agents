@@ -11,6 +11,7 @@ import { getErrorMessage, ok, err, WorkflowError, getTimeProvider } from '../cor
 import type { WorkflowStep, StepResult } from '../core/index.js';
 import { TaskQueue } from './task-queue.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 /**
  * Options for parallel execution.
@@ -363,11 +364,19 @@ export function withRetries(baseExecutor: StepExecutor, defaultRetries = 0): Ste
 /**
  * Checks if all step results are successful.
  *
+ * Empty is `false` (#4581): zero step results is not evidence that a parallel
+ * branch succeeded, it is evidence that nothing was measured. The prior
+ * `results.every(...)` returned `true` for `[]`, so a branch whose steps never
+ * ran — cancelled, filtered to nothing, or lost — was reported fully
+ * successful. A caller that legitimately expects zero steps must say so at its
+ * own call site (`steps.length === 0 || allSucceeded(results)`) rather than
+ * inherit a pass from an aggregation over nothing.
+ *
  * @param results - Array of step results
- * @returns True if all steps succeeded
+ * @returns True if there is at least one result and every step succeeded
  */
 export function allSucceeded(results: StepResult[]): boolean {
-  return results.every((r) => r.status === 'success');
+  return allOf(results, (r) => r.status === 'success', false);
 }
 
 /**

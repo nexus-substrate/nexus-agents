@@ -658,8 +658,10 @@ describe('ParallelExecutor', () => {
       expect(allSucceeded(results)).toBe(false);
     });
 
-    it('returns true for empty results', () => {
-      expect(allSucceeded([])).toBe(true);
+    // Previously pinned the vacuous pass (`[].every(p) === true`), which let a
+    // parallel branch that ran no steps report full success (#4581).
+    it('returns false for empty results', () => {
+      expect(allSucceeded([])).toBe(false);
     });
   });
 

@@ -49,13 +49,25 @@ describe('allSucceeded', () => {
     expect(allSucceeded([successResult('a'), failResult('b')])).toBe(false);
   });
 
-  it('returns true for empty array', () => {
-    expect(allSucceeded([])).toBe(true);
+  // This assertion previously pinned the vacuous pass: `[].every(p)` is `true`,
+  // so a branch that produced zero step results was reported fully successful
+  // (#4581). Repointed, not deleted — the empty case is now "nothing measured".
+  it('returns false for empty array — zero results is not evidence of success', () => {
+    expect(allSucceeded([])).toBe(false);
   });
 
   it('returns false for skipped results', () => {
     const skipped: StepResult = { stepId: 'a', output: null, durationMs: 0, status: 'skipped' };
     expect(allSucceeded([skipped])).toBe(false);
+  });
+
+  // Regression for the shape in #4581: a caller that legitimately runs zero
+  // steps must decide that for itself (`steps.length === 0 || allSucceeded(r)`)
+  // rather than inheriting a pass from an aggregation that measured nothing.
+  it('does not report success for a branch that produced no step results', () => {
+    const noStepsRan: StepResult[] = [];
+    expect(allSucceeded(noStepsRan)).toBe(false);
+    expect(getFailedSteps(noStepsRan)).toHaveLength(0);
   });
 });
 

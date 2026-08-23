@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from '../core/logger.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type {
@@ -307,7 +308,17 @@ export class VotingProtocol implements IVotingProtocol {
     const consensusRound = session.rounds[2];
     if (!consensusRound) return Promise.resolve(null);
 
-    const allVoted = session.committee.every((agentId) => consensusRound.finalVotes.has(agentId));
+    // whenEmpty = false: a committee of zero members has cast zero votes, and
+    // `[].every()` used to report that as "everyone voted" — finalizing the
+    // session as `completed` with an outcome derived from no ballots at all.
+    // Zero voters is the absence of consensus, not unanimous consensus, so the
+    // empty case takes the same path as a partial vote: no result, session stays
+    // active, and the record never claims a vote that was never held. (#4581)
+    const allVoted = allOf(
+      session.committee,
+      (agentId) => consensusRound.finalVotes.has(agentId),
+      false
+    );
     if (!allVoted) return Promise.resolve(null);
 
     const result = this.buildFinalResult(session);

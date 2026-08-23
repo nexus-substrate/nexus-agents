@@ -476,6 +476,26 @@ describe('VotingProtocol', () => {
       const result = await protocol.getResult(session.id);
       expect(result).toBeNull();
     });
+
+    it('should not finalize a session whose committee became empty (#4581)', async () => {
+      const ownCommittee = [...committee];
+      const session = protocol.createSession(topic, ownCommittee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      // createSession stores the caller's array by reference, so a caller that
+      // clears its own committee array empties the session's committee. Zero
+      // members have cast zero votes: `[].every()` used to make that read as
+      // "everyone voted" and finalize the session on no evidence.
+      const live = protocol.getSession(session.id);
+      live?.committee.splice(0);
+
+      const result = await protocol.getResult(session.id);
+      expect(result).toBeNull();
+      expect(protocol.getSession(session.id)?.status).toBe('active');
+      expect(protocol.getSession(session.id)?.finalResult).toBeUndefined();
+    });
   });
 
   describe('Error branches', () => {

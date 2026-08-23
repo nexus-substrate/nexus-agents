@@ -15,6 +15,7 @@ import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 
 import { WorkflowDefinitionSchema } from '../../workflows/workflow-types.js';
 import { logger } from '../../core/logger.js';
+import { allOf } from '../../utils/verdict-aggregation.js';
 import type {
   IScenarioRunner,
   ScenarioFixture,
@@ -110,7 +111,10 @@ export class ScenarioRunner implements IScenarioRunner {
       // Validate results against expectations
       const validations = this.validateResults(stepResults, scenario.expectedOutputs);
 
-      const passed = validations.every((v) => v.passed);
+      // A scenario that asserted nothing did not pass (#4581): with no
+      // expectations (or none surviving validation) `passed` would otherwise be
+      // vacuously true and a CI gate would read "nothing measured" as green.
+      const passed = allOf(validations, (v) => v.passed, false);
       const durationMs = getTimeProvider().now() - startTime;
 
       this.log.info('Scenario completed', { scenarioId: scenario.id, passed, durationMs });

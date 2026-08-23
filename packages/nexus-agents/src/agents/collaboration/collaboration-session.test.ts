@@ -451,6 +451,27 @@ describe('CollaborationSession', () => {
     });
   });
 
+  describe('progress checks with no participants (#4581)', () => {
+    it('should not report "All experts failed" when the participant list is empty', () => {
+      session.start(createTestConfig({ pattern: 'parallel' }));
+
+      // getStatus() returns a shallow copy that shares the live participants
+      // array, and emitEvent runs before checkProgress — so a listener can empty
+      // the roster mid-call. `[].every()` used to make zero participants read as
+      // a total expert failure that never happened.
+      session.addEventListener(() => {
+        session.getStatus()?.participants.splice(0);
+      });
+
+      session.submitResult('expert-1', createTestResult('test-task-1'));
+
+      const status = session.getStatus();
+      expect(status?.participants).toHaveLength(0);
+      expect(status?.error).toBeUndefined();
+      expect(status?.status).not.toBe('failed');
+    });
+  });
+
   describe('getTaskAssignments', () => {
     it('should return empty array when no session', () => {
       expect(session.getTaskAssignments()).toEqual([]);

@@ -9,6 +9,7 @@
  */
 
 import { getTimeProvider } from '../core/index.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 import type {
   ExperimentDefinition,
   ExperimentOutcome,
@@ -172,7 +173,14 @@ export class AbTestTracker implements IAbTestTracker {
 
     const outcomes = this.outcomes.get(experimentId) ?? [];
     const variantStats = this.calculateVariantStats(experiment, outcomes);
-    const hasMinimumSampleSize = variantStats.every((vs) => vs.n >= experiment.minSampleSize);
+    // No variants means no samples, not a powered experiment (#4581): `true`
+    // here would tell getRecommendation the experiment is statistically powered
+    // on zero observations. Empty must take the "not enough data" path.
+    const hasMinimumSampleSize = allOf(
+      variantStats,
+      (vs) => vs.n >= experiment.minSampleSize,
+      false
+    );
 
     const result = this.calculateExperimentResult(experiment, variantStats);
     const recommendation = this.getRecommendation(experiment, result, hasMinimumSampleSize);

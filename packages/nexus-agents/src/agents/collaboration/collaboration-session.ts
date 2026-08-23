@@ -30,6 +30,7 @@ import type {
   ConsensusReachedEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
+import { allOf } from '../../utils/verdict-aggregation.js';
 import { validateConfig, createSessionState, shouldFinalize } from './session-helpers.js';
 import {
   MAX_EVENT_LISTENERS,
@@ -404,7 +405,13 @@ export class CollaborationSession {
       this.setStatus('finalizing');
     }
 
-    if (participants.every((p) => p.status === 'failed')) {
+    // whenEmpty = false: "all experts failed" is a claim about experts that ran.
+    // With zero participants no expert failed, so `[].every()` used to record a
+    // total failure that never happened. An empty roster is a different
+    // condition — absence of participants, not their collective failure — and
+    // this check is not the instrument that measures it, so it stays silent
+    // rather than attributing a failure to nobody. (#4581)
+    if (allOf(participants, (p) => p.status === 'failed', false)) {
       this.state.error = 'All experts failed';
       this.setStatus('failed');
     }
