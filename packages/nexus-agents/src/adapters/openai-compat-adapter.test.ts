@@ -11,16 +11,23 @@ import {
   createOpenAICompatAdapter,
   type OpenAICompatConfig,
 } from './openai-compat-adapter.js';
-import { ConfigError } from '../core/index.js';
+import { ConfigError, ErrorCode } from '../core/index.js';
 
-// Mock the OpenAI SDK so tests don't make real HTTP calls.
-const { mockList } = vi.hoisted(() => ({ mockList: vi.fn() }));
-vi.mock('openai', () => {
+// Mock the OpenAI SDK so tests don't make real HTTP calls. `mockChatCreate` is
+// hoisted so the #4606 delegation test can drive a 429 through the inner
+// OpenAIAdapter; keep the real `APIError`, which that adapter does
+// `instanceof` against.
+const { mockList, mockChatCreate } = vi.hoisted(() => ({
+  mockList: vi.fn(),
+  mockChatCreate: vi.fn(),
+}));
+vi.mock('openai', async () => {
+  const actual = await vi.importActual<typeof import('openai')>('openai');
   class MockOpenAI {
     models = { list: mockList };
-    chat = { completions: { create: vi.fn() } };
+    chat = { completions: { create: mockChatCreate } };
   }
-  return { default: MockOpenAI };
+  return { default: MockOpenAI, APIError: actual.APIError };
 });
 
 // #2503: stub the opencode-bridge so these tests stay focused on env-var
@@ -332,5 +339,37 @@ describe('buildOpenAICompatAdapters (#2468)', () => {
     mockList.mockRejectedValue(new Error('gateway down'));
     const result = await buildOpenAICompatAdapters();
     expect(result?.ok).toBe(false);
+  });
+});
+
+/**
+ * The gateway adapter delegates the actual request to an inner `OpenAIAdapter`
+ * and returns its `Result` untouched, so the #4606 header capture reaches this
+ * path for free. Pinned here so a future refactor that rebuilds the error on
+ * the way out cannot silently drop the horizon again.
+ */
+describe('openai-compat retry-after delegation (#4606)', () => {
+  it("passes the inner adapter's captured Retry-After straight through", async () => {
+    const { APIError } = await import('openai');
+    mockChatCreate.mockRejectedValueOnce(
+      new APIError(
+        429,
+        { error: { message: 'Rate limit reached', type: 'rate_limit_exceeded' } },
+        'Rate limit reached',
+        new Headers({ 'retry-after': '3600' })
+      )
+    );
+    const adapter = createOpenAICompatAdapter('gateway-model', {
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'test-key',
+    });
+
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(ErrorCode.MODEL_RATE_LIMITED);
+      expect(result.error.context?.['retryAfterMs']).toBe(3_600_000);
+    }
   });
 });

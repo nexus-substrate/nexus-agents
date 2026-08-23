@@ -6,7 +6,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SdkAdapter, extractAiSdkFunctions } from './sdk-adapter.js';
-import type { CompletionRequest } from '../../core/index.js';
+import type { CompletionRequest, ModelError } from '../../core/index.js';
+import { ErrorCode } from '../../core/index.js';
+import { createModelToCliAdapter } from '../../cli-adapters/model-to-cli-adapter.js';
+import { assessCapacity } from '../../cli-adapters/routing/stages/capacity-stage.js';
 // Mock the AI SDK modules. The full `ai` mock stays installed for the whole
 // suite — the "missing export" cases (#3433) are unit-tested directly against
 // `extractAiSdkFunctions` (#3449) rather than swapping the global mock, so no
@@ -580,5 +583,105 @@ describe('SdkAdapter', () => {
       await adapter.complete(TEST_REQUEST);
       expect(dnsLookupMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * Retry-horizon capture on the AI-SDK arm (#4606).
+ *
+ * `toErrorResult` builds its `ModelError` directly instead of going through
+ * `BaseAdapter.transformError`, so it needed the capture wired separately or
+ * this whole arm would keep reporting `unmeasured` on a 429 that named its own
+ * horizon. The Vercel AI SDK exposes it as `APICallError.responseHeaders` — a
+ * plain record, not a `Headers` instance.
+ */
+describe('SdkAdapter retry-after capture (#4606)', () => {
+  /** Longer than the CapacityTracker's 60s window: quota, not throttle. */
+  const DURABLE_MS = 3_600_000;
+
+  async function failWith(error: unknown): Promise<ModelError | undefined> {
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockRejectedValueOnce(error);
+    const adapter = new SdkAdapter({
+      providerId: 'anthropic',
+      modelId: 'claude-sonnet-4-6',
+      apiKey: 'test-key',
+    });
+    const result = await adapter.complete(TEST_REQUEST);
+    expect(result.ok).toBe(false);
+    return result.ok ? undefined : result.error;
+  }
+
+  it('captures Retry-After from the SDK error responseHeaders record', async () => {
+    const error = await failWith(
+      Object.assign(new Error('rate limit exceeded'), {
+        statusCode: 429,
+        responseHeaders: { 'content-type': 'application/json', 'retry-after': '3600' },
+      })
+    );
+
+    expect(error?.code).toBe(ErrorCode.MODEL_RATE_LIMITED);
+    expect(error?.context?.['retryAfterMs']).toBe(DURABLE_MS);
+  });
+
+  it('leaves the horizon ABSENT — never 0 — when the 429 states none anywhere', async () => {
+    const error = await failWith(
+      Object.assign(new Error('429 too many requests'), { statusCode: 429 })
+    );
+
+    expect(error?.code).toBe(ErrorCode.MODEL_RATE_LIMITED);
+    expect(error?.context?.['retryAfterMs']).toBeUndefined();
+  });
+
+  it('never parks anything but the horizon from the header bag', async () => {
+    const error = await failWith(
+      Object.assign(new Error('rate limit exceeded'), {
+        statusCode: 429,
+        responseHeaders: {
+          authorization: 'Bearer sk-test-not-a-real-key',
+          'retry-after': '3600',
+        },
+      })
+    );
+
+    expect(error?.context).toEqual({ retryAfterMs: DURABLE_MS });
+  });
+
+  it('does not capture a horizon off a non-rate-limit failure', async () => {
+    // A wait hint inside a 500 body is not a rate-limit assertion.
+    const error = await failWith(
+      Object.assign(new Error('upstream 500'), {
+        statusCode: 500,
+        responseHeaders: { 'retry-after': '3600' },
+      })
+    );
+
+    expect(error?.code).not.toBe(ErrorCode.MODEL_RATE_LIMITED);
+    expect(error?.context?.['retryAfterMs']).toBeUndefined();
+  });
+
+  it('reaches exhausted through the bridge, and stays unmeasured without a horizon', async () => {
+    const { generateText } = await import('ai');
+    const makeAdapter = (): SdkAdapter =>
+      new SdkAdapter({ providerId: 'anthropic', modelId: 'claude-sonnet-4-6', apiKey: 'test-key' });
+
+    vi.mocked(generateText).mockRejectedValueOnce(
+      Object.assign(new Error('rate limit exceeded'), {
+        statusCode: 429,
+        responseHeaders: { 'retry-after': '3600' },
+      })
+    );
+    const stated = createModelToCliAdapter(makeAdapter(), { name: 'claude' });
+    await stated.execute({ content: 'hi' });
+    const statedCapacity = await stated.getCapacity();
+    expect(statedCapacity.quotaExhausted).toBe(true);
+    expect(assessCapacity(statedCapacity)).toBe('exhausted');
+
+    vi.mocked(generateText).mockRejectedValueOnce(new Error('429 too many requests'));
+    const silent = createModelToCliAdapter(makeAdapter(), { name: 'claude' });
+    await silent.execute({ content: 'hi' });
+    const silentCapacity = await silent.getCapacity();
+    expect(silentCapacity.quotaExhausted).toBe(false);
+    expect(assessCapacity(silentCapacity)).toBe('unmeasured');
   });
 });

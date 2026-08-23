@@ -26,7 +26,11 @@ import {
 } from '../../core/index.js';
 import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
 import { ErrorCode } from '../../core/index.js';
-import { isRateLimitLikeError } from '../rate-limit-detector.js';
+import {
+  isRateLimitLikeError,
+  resolveRetryAfterMs,
+  RETRY_AFTER_CONTEXT_KEY,
+} from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
@@ -568,9 +572,20 @@ export class SdkAdapter extends BaseAdapter {
     const safeMessage = sanitizeOutput(message);
     const errorObj = error instanceof Error ? error : new Error(safeMessage);
     this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
+    // #4606: this path builds the ModelError itself rather than going through
+    // `BaseAdapter.transformError`, so it has to capture the horizon too. The
+    // AI SDK's `APICallError` carries `responseHeaders` as a plain record;
+    // `resolveRetryAfterMs` reads only `retry-after` out of it and returns a
+    // number, so no header bag reaches the error or the logs. Parsed off the
+    // SANITIZED message, so a scrubbed credential can't be re-read from it.
+    const retryAfterMs =
+      code === ErrorCode.MODEL_RATE_LIMITED ? resolveRetryAfterMs(error, safeMessage) : undefined;
     // AdapterModelError extends ModelError — no cast needed
     const modelError = new AdapterModelError(`${this.sdkProviderId} SDK error: ${safeMessage}`, {
       code,
+      ...(retryAfterMs !== undefined
+        ? { context: { [RETRY_AFTER_CONTEXT_KEY]: retryAfterMs } }
+        : {}),
     });
     return { ok: false, error: modelError };
   }

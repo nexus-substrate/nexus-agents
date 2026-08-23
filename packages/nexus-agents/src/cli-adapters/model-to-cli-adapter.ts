@@ -20,7 +20,11 @@ import type {
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
-import { isRateLimitText, parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
+import {
+  isRateLimitText,
+  parseRetryAfterMs,
+  retryAfterMsFromContext,
+} from '../adapters/rate-limit-detector.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import type {
   ICliAdapter,
@@ -158,11 +162,18 @@ export class ModelToCliAdapter implements ICliAdapter {
    *
    * Only parsed on a retryable error, as on the subprocess path: a wait hint
    * inside a 500 body is not a rate-limit assertion.
+   *
+   * #4606: the adapter that raised this error already captured the HTTP
+   * `Retry-After` header, which the message never carries — Anthropic states
+   * no horizon in its 429 body at all. That captured value wins; the message
+   * parse remains the fallback for a `ModelError` raised outside `BaseAdapter`.
    */
   private toCliError(error: ModelError): CliError {
     const rateLimited = isRateLimitText(error.message);
     const code: CliErrorCode = rateLimited ? 'RATE_LIMITED' : 'EXECUTION_ERROR';
-    const retryAfterMs = rateLimited ? parseRetryAfterMs(error.message) : undefined;
+    const retryAfterMs = rateLimited
+      ? (retryAfterMsFromContext(error.context) ?? parseRetryAfterMs(error.message))
+      : undefined;
     const base: CliError = {
       code,
       message: error.message,

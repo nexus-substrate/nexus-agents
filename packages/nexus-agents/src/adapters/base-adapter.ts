@@ -16,7 +16,11 @@ import type {
   ModelCapability,
 } from '../core/index.js';
 import { getErrorMessage } from '../core/index.js';
-import { isRateLimitLikeError } from './rate-limit-detector.js';
+import {
+  isRateLimitLikeError,
+  resolveRetryAfterMs,
+  RETRY_AFTER_CONTEXT_KEY,
+} from './rate-limit-detector.js';
 import { recordWouldHaveSelfHealed } from './optional-params.js';
 
 import {
@@ -329,7 +333,18 @@ export abstract class BaseAdapter implements IModelAdapter {
       recordWouldHaveSelfHealed(this.modelId, param);
     }
 
-    const modelError = this.createModelError(errorMessage, errorCode, error, param);
+    // #4606: capture the provider's stated retry horizon HERE, while the
+    // thrown SDK error — the last place the HTTP response is reachable — is
+    // still in hand. Header first (RFC 9110 `Retry-After`), body prose second.
+    // Only on a rate limit: a wait hint inside a 500 body is not a rate-limit
+    // assertion, matching the subprocess path's `retryable ? parse : undefined`.
+    // `resolveRetryAfterMs` returns a NUMBER; no header object travels inward.
+    const retryAfterMs =
+      errorCode === ErrorCode.MODEL_RATE_LIMITED
+        ? resolveRetryAfterMs(error, errorMessage)
+        : undefined;
+
+    const modelError = this.createModelError(errorMessage, errorCode, error, param, retryAfterMs);
 
     this.logger.error('Model adapter error', modelError, {
       errorCode,
@@ -347,7 +362,8 @@ export abstract class BaseAdapter implements IModelAdapter {
     message: string,
     errorCode: (typeof ErrorCode)[keyof typeof ErrorCode],
     originalError: unknown,
-    param?: string
+    param?: string,
+    retryAfterMs?: number
   ): ModelError {
     const fullMessage = `${this.providerId}/${this.modelId}: ${message}`;
 
@@ -360,6 +376,13 @@ export abstract class BaseAdapter implements IModelAdapter {
     // and the reactive self-heal path (#4071) can read which param to retry without.
     if (param !== undefined) {
       context.param = param;
+    }
+    // #4606: the provider-stated retry horizon, in ms. Set only when a horizon
+    // was actually read — absent means "the provider said nothing", which is
+    // what `CapacityTracker.recordProviderQuotaExhaustion` needs to see rather
+    // than a substituted 0.
+    if (retryAfterMs !== undefined) {
+      context[RETRY_AFTER_CONTEXT_KEY] = retryAfterMs;
     }
     const options: NexusErrorOptions = {
       code: errorCode,
