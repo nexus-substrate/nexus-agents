@@ -321,8 +321,7 @@ jobs:
 
       - name: Check repository index
         run: |
-          npx tsx scripts/generate-repo-index.ts --check
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/generate-repo-index.ts --check; then
             echo "✅ Repository capability index is up to date"
           else
             echo "::error::Repository capability index is out of date"
@@ -352,8 +351,7 @@ jobs:
 
       - name: Check generated tool reference
         run: |
-          npx tsx scripts/generate-tool-reference.ts --check
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/generate-tool-reference.ts --check; then
             echo "✅ Generated tool reference is up to date"
           else
             echo "::error::Generated tool reference is out of date"
@@ -378,8 +376,7 @@ jobs:
 
       - name: Check generated strategy reference
         run: |
-          npx tsx scripts/generate-strategy-reference.ts --check
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/generate-strategy-reference.ts --check; then
             echo "✅ Generated strategy reference is up to date"
           else
             echo "::error::Generated strategy reference is out of date"
@@ -404,8 +401,7 @@ jobs:
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
-          npx tsx scripts/check-docops-skill.ts --verbose
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/check-docops-skill.ts --verbose; then
             echo "✅ DocOps skill sync check passed"
           else
             echo "::error::DocOps pipeline changed without skill update"
@@ -476,8 +472,7 @@ jobs:
 
       - name: Check all docs are indexed
         run: |
-          npx tsx scripts/check-docs-indexed.ts
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/check-docs-indexed.ts; then
             echo "✅ All documentation properly indexed in docs/README.md"
           else
             echo "::error::Unindexed documentation files found"
@@ -514,8 +509,7 @@ jobs:
 
       - name: Lint markdown files
         run: |
-          pnpm lint:md
-          if [ $? -eq 0 ]; then
+          if pnpm lint:md; then
             echo "✅ All markdown files pass linting"
           else
             echo "::error::Markdown linting errors found"
@@ -535,8 +529,7 @@ jobs:
 
       - name: Check documentation content drift
         run: |
-          npx tsx scripts/generate-docs-content.ts --check
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/generate-docs-content.ts --check; then
             echo "✅ Documentation content matches source of truth"
           else
             echo "::error::Documentation content has drifted from source"
@@ -699,8 +692,7 @@ jobs:
 
       - name: Check skills/index.yaml freshness
         run: |
-          npx tsx scripts/generate-skills-index.ts --check
-          if [ $? -ne 0 ]; then
+          if ! npx tsx scripts/generate-skills-index.ts --check; then
             echo "::error::skills/index.yaml is stale"
             echo "Run: npx tsx scripts/generate-skills-index.ts"
             exit 1
@@ -718,8 +710,7 @@ jobs:
 
       - name: Check agents/index.yaml freshness + coverage
         run: |
-          npx tsx scripts/generate-agents-index.ts --check
-          if [ $? -ne 0 ]; then
+          if ! npx tsx scripts/generate-agents-index.ts --check; then
             echo "::error::agents/index.yaml is stale or an expert is missing its agent file"
             echo "Run: npx tsx scripts/generate-agents-index.ts"
             exit 1
@@ -742,8 +733,7 @@ jobs:
 
       - name: Check governance registries
         run: |
-          npx tsx scripts/inject-governance.ts check
-          if [ $? -eq 0 ]; then
+          if npx tsx scripts/inject-governance.ts check; then
             echo "✅ Governance registries are in sync"
           else
             echo "::error::Governance registries have drifted from source code"
@@ -788,8 +778,7 @@ jobs:
 
       - name: Check claims registry
         run: |
-          pnpm claims:check
-          if [ $? -eq 0 ]; then
+          if pnpm claims:check; then
             echo "✅ All documented claims are backed by live evidence"
           else
             echo "::error::A documented claim is unbacked or stale"
