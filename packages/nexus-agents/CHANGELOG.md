@@ -1,5 +1,53 @@
 # nexus-agents
 
+## 3.9.3
+
+### Patch Changes
+
+- [#4644](https://github.com/nexus-substrate/nexus-agents/pull/4644) [`e7caa41`](https://github.com/nexus-substrate/nexus-agents/commit/e7caa41835c97195a89bc83428894ed4ce6bd242) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fail any unit test that spawns a real agent-CLI binary ([#4639](https://github.com/nexus-substrate/nexus-agents/issues/4639))
+
+  [#4629](https://github.com/nexus-substrate/nexus-agents/issues/4629) fixed four tests that shelled out to a real `opencode`. This stops the
+  fifth. A vitest `setupFiles` interceptor blocks the five agent CLIs (`claude`,
+  `gemini`, `codex`, `opencode`, `agy`) and records the attempt; anything else —
+  `git`, `node`, `npm` — passes through untouched, because 16 test files spawn
+  those legitimately and a blanket guard would be reverted within a day.
+
+  Full-suite spawn count goes from 23 to 0.
+
+  Two mechanisms that look right and are not, recorded in the module so they are
+  not retried: mutating the `node:child_process` namespace throws
+  `Cannot redefine property`, and a `Proxy` apply-trap misses
+  `promisify(execFile)` entirely because promisify resolves via
+  `util.promisify.custom` — that alone would have let 17 of the 23 spawns
+  through while the guard reported success.
+
+  Blocking is also not enough on its own. Every CLI probe catches the throw and
+  reports "CLI unavailable", so the spawn stopped while the test still passed,
+  silently, on a branch it never meant to take. Attempts are re-raised from an
+  `afterEach` outside any production catch block.
+
+- [#4647](https://github.com/nexus-substrate/nexus-agents/pull/4647) [`b5af10e`](https://github.com/nexus-substrate/nexus-agents/commit/b5af10e8f8e8407293909ee99da039b2d92d9431) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Count non-empty changesets in the publish-race fallback ([#4646](https://github.com/nexus-substrate/nexus-agents/issues/4646))
+
+  The `[#2382](https://github.com/nexus-substrate/nexus-agents/issues/2382)` fallback counted `.changeset/*.md` **files**. `changesets/action`
+  counts **releases**. An empty changeset — one file, zero releases, and what
+  `pnpm changeset --empty` produces — meant the two disagreed about the same
+  directory.
+
+  Consequence: when a version PR merged while an empty changeset sat on `main`,
+  the action published nothing _and opened no PR_ (its `All changesets are empty;
+not creating PR` branch), while the fallback stood down logging "the next
+  release-PR merge should close the loop." No such PR existed. The release stalled
+  silently with both components exiting 0.
+
+  `scripts/count-pending-changesets.ts` now supplies the count via
+  `@changesets/read` — the same library the action uses — so the predicate cannot
+  drift. It materialises the ref's `.changeset/` from the commit object rather
+  than reading the working tree, preserving the [#4625](https://github.com/nexus-substrate/nexus-agents/issues/4625) hardening that keeps an
+  uncommitted version bump from swaying the verdict.
+
+  Also corrects `docs/ops/release-changeset-race.md`, which described two action
+  modes; v2 has four, and the third is the one that stalls.
+
 ## 3.9.2
 
 ### Patch Changes
