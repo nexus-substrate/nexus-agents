@@ -555,7 +555,7 @@ describe('generateSafetyConstraints', () => {
 // =============================================================================
 
 describe('validateToolAgainstConstraints', () => {
-  it('should return valid for a parameterless tool with no violations', () => {
+  it('is not valid for a parameterless tool whose only constraint was never evaluated', () => {
     const constraints: SafetyConstraint[] = [
       {
         id: 'SC-001',
@@ -567,12 +567,16 @@ describe('validateToolAgainstConstraints', () => {
     ];
 
     const result = validateToolAgainstConstraints(safeTool, constraints);
-    // `get_time` is genuinely parameterless: its empty `properties` map is a
-    // measurement (nothing to sanitize), not an absent schema, so a constraint
-    // that finds nothing wrong yields a real pass (#4585). Only an
-    // absent/unreadable schema is unmeasured — covered separately in
-    // stpa-validation.test.ts.
-    expect(result.valid).toBe(true);
+    // This previously asserted `valid: true`, on the reasoning that
+    // `get_time`'s empty `properties` map is a measurement rather than an
+    // absent schema — which is still true, and is why the NO_INPUT_SCHEMA
+    // warning below is not itself disqualifying. What was wrong is the leap
+    // from there to a pass: the single RATE_LIMIT constraint was never
+    // evaluated, so nothing about this tool was actually checked (#4592). A
+    // parameterless tool CAN be valid — see the applicable-constraint case in
+    // stpa-validation.test.ts — but not on the strength of zero evaluations.
+    expect(result.valid).toBe(false);
+    expect(result.evaluated).toHaveLength(0);
     expect(result.violations).toHaveLength(0);
     expect(result.warnings.some((w) => w.code === 'NO_INPUT_SCHEMA')).toBe(true);
   });
@@ -623,8 +627,12 @@ describe('validateToolAgainstConstraints', () => {
     ];
 
     const result = validateToolAgainstConstraints(safeTool, constraints);
-    // Alert constraints don't cause violations
-    expect(result.passed.length).toBeGreaterThanOrEqual(0);
+    // Repointed in #4592. `passed.length >= 0` is true of every array, so this
+    // pinned nothing at all. The real behaviour: an ALERT constraint that does
+    // not apply to this tool is a skip, not a pass — it is recorded in
+    // `notApplicable` and contributes nothing to measured coverage.
+    expect(result.notApplicable).toContain('SC-001');
+    expect(result.evaluated).toEqual([]);
   });
 
   it('should include timestamp in result', () => {

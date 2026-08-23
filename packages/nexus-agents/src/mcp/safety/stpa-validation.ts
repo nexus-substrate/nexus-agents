@@ -23,7 +23,7 @@ import { classifyTool, ToolCategory } from './hazard-catalog.js';
  * Validates a tool against a set of safety constraints.
  *
  * `valid` is an assertion that the tool was *measured* and passed. It is true
- * only when at least one constraint was evaluated, the tool's inputs were
+ * only when at least one constraint was supplied, the tool's inputs were
  * inspectable, and nothing was violated. Two vacuous-pass cases used to report
  * `valid: true` because `violations.length === 0` (#4585):
  *
@@ -45,33 +45,90 @@ import { classifyTool, ToolCategory } from './hazard-catalog.js';
  * for "could not be measured" is `false` — fail closed rather than launder an
  * uninspected tool as safe.
  *
+ * Coverage is a separate question from `valid`, and `evaluated` answers it
+ * (#4592). `valid` can still be `true` with `evaluated` empty — a tool none of
+ * the supplied constraints govern violates nothing — so a caller asking "how
+ * much of the constraint set was actually checked?" must read `evaluated` and
+ * the `UNMEASURED_ENFORCEMENT` warning, not `valid` and not `passed`.
+ *
  * @param tool - Tool definition to validate
  * @param constraints - Safety constraints to check against
- * @returns Validation result with violations and warnings
+ * @returns Validation result with violations, coverage buckets, and warnings
  */
 export function validateToolAgainstConstraints(
   tool: ToolDefinition,
   constraints: readonly SafetyConstraint[]
 ): ValidationResult {
-  const violations: ConstraintViolation[] = [];
-  const passed: string[] = [];
+  const { violations, passed, evaluated, notApplicable, unmeasured } = bucketConstraints(
+    tool,
+    constraints
+  );
+
+  // Nothing was checked: the constraint loop iterated zero times (#4585).
+  const noConstraintsEvaluated = constraints.length === 0;
+  const inputs = inspectInputSchema(tool);
+  const warnings = collectWarnings(tool, { noConstraintsEvaluated, inputs, unmeasured });
+
+  // `valid` asserts the tool was measured and passed, so the condition is that
+  // at least one constraint was actually *evaluated* — applicable, and judged
+  // by a check that could have failed (#4592).
+  //
+  // Two weaker rules were tried and both are wrong, verified against the real
+  // analyzer pipeline rather than reasoned about:
+  //
+  //  - `constraints.length > 0` lets the vacuous pass through the side door. A
+  //    shell tool whose single generated constraint does not apply reported
+  //    `valid: true` having evaluated nothing at all.
+  //  - additionally requiring `unmeasured.length === 0` fails closed so hard it
+  //    can never open. The catalog emits an unmeasurable RATE_LIMIT or
+  //    REQUIRE_CONFIRMATION constraint for file-read, file-delete and shell
+  //    hazards, so those tools would be permanently `valid: false` with no
+  //    schema edit able to clear it — a gate that is always red on the highest
+  //    risk categories is a false alarm, not a signal.
+  //
+  // The unmeasured remainder is reported as coverage instead: it is named in
+  // `UNMEASURED_ENFORCEMENT` and excluded from `evaluated`, which is where a
+  // caller asking "how much was checked?" must look.
+  const measured = evaluated.length > 0 && !inputs.uninspectable;
+
+  return {
+    valid: measured && violations.length === 0,
+    toolName: tool.name,
+    violations,
+    passed,
+    evaluated,
+    notApplicable,
+    warnings,
+    validatedAt: new Date(getTimeProvider().now()),
+  };
+}
+
+/** Inputs the warning set is derived from. */
+interface WarningContext {
+  readonly noConstraintsEvaluated: boolean;
+  readonly inputs: InputSchemaInspection;
+  /** Applicable constraints no check could judge (#4592). */
+  readonly unmeasured: readonly string[];
+}
+
+/**
+ * Builds the non-blocking warnings, each of which names a way the result is
+ * less complete than it looks.
+ */
+function collectWarnings(tool: ToolDefinition, ctx: WarningContext): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
 
-  const category = classifyTool(tool.name);
-
-  for (const constraint of constraints) {
-    const violation = checkConstraint(tool, constraint, category);
-
-    if (violation) {
-      violations.push(violation);
-    } else {
-      passed.push(constraint.id);
-    }
+  if (ctx.unmeasured.length > 0) {
+    warnings.push({
+      code: 'UNMEASURED_ENFORCEMENT',
+      message:
+        `No check exists for the enforcement type of ${String(ctx.unmeasured.length)} applicable ` +
+        `constraint(s), so they were not measured: ${ctx.unmeasured.join(', ')}`,
+      affected: 'constraints',
+    });
   }
 
-  // Nothing was checked: the constraint loop above iterated zero times (#4585).
-  const noConstraintsEvaluated = constraints.length === 0;
-  if (noConstraintsEvaluated) {
+  if (ctx.noConstraintsEvaluated) {
     warnings.push({
       code: 'NO_CONSTRAINTS_EVALUATED',
       message: 'No safety constraints were supplied; the tool was not measured',
@@ -79,9 +136,7 @@ export function validateToolAgainstConstraints(
     });
   }
 
-  // Add warnings for tools without schema validation
-  const inputs = inspectInputSchema(tool);
-  if (inputs.noParameters) {
+  if (ctx.inputs.noParameters) {
     warnings.push({
       code: 'NO_INPUT_SCHEMA',
       message: 'Tool has no input schema defined; cannot validate inputs',
@@ -89,8 +144,7 @@ export function validateToolAgainstConstraints(
     });
   }
 
-  // Add warning for unknown tool categories
-  if (category === ToolCategory.UNKNOWN) {
+  if (classifyTool(tool.name) === ToolCategory.UNKNOWN) {
     warnings.push({
       code: 'UNKNOWN_CATEGORY',
       message: 'Tool category could not be determined; manual review recommended',
@@ -98,18 +152,64 @@ export function validateToolAgainstConstraints(
     });
   }
 
-  // Name the empty case instead of letting `violations.length === 0` speak for
-  // it: an unmeasured tool is not a passing tool (#4585).
-  const measured = !noConstraintsEvaluated && !inputs.uninspectable;
+  return warnings;
+}
 
-  return {
-    valid: measured && violations.length === 0,
-    toolName: tool.name,
-    violations,
-    passed,
-    warnings,
-    validatedAt: new Date(getTimeProvider().now()),
+/** Constraint ids sorted into the buckets `ValidationResult` reports (#4592). */
+interface ConstraintBuckets {
+  readonly violations: ConstraintViolation[];
+  /** Historical field: satisfied ids AND non-applicable ids. See `evaluated`. */
+  readonly passed: string[];
+  readonly evaluated: string[];
+  readonly notApplicable: string[];
+  /** Applicable, but no check exists for the enforcement type. */
+  readonly unmeasured: string[];
+}
+
+/**
+ * Sorts each constraint into exactly one of evaluated / notApplicable /
+ * unmeasured, and mirrors the historical `passed` contents alongside.
+ */
+function bucketConstraints(
+  tool: ToolDefinition,
+  constraints: readonly SafetyConstraint[]
+): ConstraintBuckets {
+  const buckets: ConstraintBuckets = {
+    violations: [],
+    passed: [],
+    evaluated: [],
+    notApplicable: [],
+    unmeasured: [],
   };
+  const category = classifyTool(tool.name);
+
+  for (const constraint of constraints) {
+    const outcome = checkConstraint(tool, constraint, category);
+
+    switch (outcome.kind) {
+      case 'violated':
+        buckets.violations.push(outcome.violation);
+        buckets.evaluated.push(constraint.id);
+        break;
+      case 'satisfied':
+        buckets.passed.push(constraint.id);
+        buckets.evaluated.push(constraint.id);
+        break;
+      case 'not_applicable':
+        // `passed` keeps its historical contents so persisted records stay
+        // comparable, but the skip is now also named for what it is (#4592).
+        buckets.passed.push(constraint.id);
+        buckets.notApplicable.push(constraint.id);
+        break;
+      case 'unmeasured':
+        // Applicable, but no check exists that could have failed it. Crediting
+        // it to `passed` is what made coverage a fiction (#4592).
+        buckets.unmeasured.push(constraint.id);
+        break;
+    }
+  }
+
+  return buckets;
 }
 
 /** What the tool's declared input schema does and does not tell us (#4585). */
@@ -141,28 +241,53 @@ function inspectInputSchema(tool: ToolDefinition): InputSchemaInspection {
 }
 
 /**
+ * What checking one constraint against one tool established.
+ *
+ * Before #4592 all four of these collapsed to `null`, and the caller read
+ * `null` as "passed". Only `satisfied` is a pass.
+ */
+type ConstraintOutcome =
+  /** A check ran and failed. */
+  | { readonly kind: 'violated'; readonly violation: ConstraintViolation }
+  /** A check ran that could have failed, and did not. */
+  | { readonly kind: 'satisfied' }
+  /** The constraint does not govern this tool; nothing was checked. */
+  | { readonly kind: 'not_applicable' }
+  /** The constraint applies, but no check exists for its enforcement type. */
+  | { readonly kind: 'unmeasured' };
+
+/**
  * Checks a single constraint against a tool.
+ *
+ * Enforcement types with no schema-level check — `RATE_LIMIT`, `ALERT`,
+ * `REQUIRE_CONFIRMATION`, `REQUIRE_PRIVILEGE` — are reported as `unmeasured`
+ * rather than passed. They are runtime properties; nothing in a JSON Schema
+ * expresses "how often may this be called" or "was a human asked", so a
+ * schema-time verdict on them would be invented, not measured (#4592).
  */
 function checkConstraint(
   tool: ToolDefinition,
   constraint: SafetyConstraint,
   category: ToolCategory
-): ConstraintViolation | null {
+): ConstraintOutcome {
   // Check if constraint applies to this tool category
   const constraintApplies = doesConstraintApply(constraint, tool, category);
-  if (!constraintApplies) return null;
+  if (!constraintApplies) return { kind: 'not_applicable' };
 
   // Check for common violations based on enforcement type
   switch (constraint.enforcement) {
     case ConstraintEnforcement.SANITIZE:
-      return checkSanitizationViolation(tool, constraint);
+      return toOutcome(checkSanitizationViolation(tool, constraint));
     case ConstraintEnforcement.PREVENT:
-      return checkPreventionViolation(tool, constraint);
-    case ConstraintEnforcement.RATE_LIMIT:
-      return checkRateLimitViolation(tool, constraint);
+      return toOutcome(checkPreventionViolation(tool, constraint));
     default:
-      return null;
+      return { kind: 'unmeasured' };
   }
+}
+
+/** Lifts a check's `violation | null` return into the outcome vocabulary. */
+function toOutcome(violation: ConstraintViolation | null): ConstraintOutcome {
+  return violation === null ? { kind: 'satisfied' } : { kind: 'violated', violation };
 }
 
 /** Category-to-keyword mapping for constraint matching. */
@@ -261,14 +386,13 @@ function checkPreventionViolation(
   return null;
 }
 
-/**
- * Checks for rate limit-related violations.
- */
-function checkRateLimitViolation(
-  _tool: ToolDefinition,
-  _constraint: SafetyConstraint
-): ConstraintViolation | null {
-  // Rate limiting is typically enforced at runtime, not in schema
-  // This check would need runtime context to be meaningful
-  return null;
-}
+// `checkRateLimitViolation` was removed in #4592. It returned `null`
+// unconditionally, so every RATE_LIMIT constraint it was pointed at landed in
+// `passed` — a check that could not fail, silently certifying tools it never
+// examined. Rate limiting needs call counts and a window, neither of which is
+// reachable from a tool's JSON Schema, so there was nothing to implement here.
+// RATE_LIMIT constraints now fall to the `unmeasured` arm of `checkConstraint`
+// and are reported as such. The constraints themselves are unchanged: the
+// generator still emits RATE_LIMIT for RESOURCE_EXHAUSTION / DENIAL_OF_SERVICE
+// hazards (see `getEnforcementForCategory` in stpa-helpers.ts) and the runtime
+// enforcer that can actually judge them is `mcp/middleware/tool-rate-limiter.ts`.

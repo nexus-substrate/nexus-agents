@@ -179,6 +179,18 @@ export const ValidationResultSchema = z.object({
   toolName: z.string().min(1),
   violations: z.array(ConstraintViolationSchema),
   passed: z.array(z.string()),
+  // Optional rather than required, deliberately. `ValidationResult` declares
+  // both fields required because every result this package produces has them;
+  // the schema is the lenient inbound edge for a result that arrived from
+  // somewhere else. There is no in-tree persistence path today — this schema is
+  // a published export with no producer or consumer in this repo — so the case
+  // is a holder outside the tree, not a stored record here. Absent then means
+  // "predates coverage tracking", which is distinct from an empty array meaning
+  // "nothing was evaluated". The strict/lenient split is safe because nothing
+  // bridges the two with `z.infer`: a parsed result will not typecheck as a
+  // `ValidationResult` without handling the absent fields.
+  evaluated: z.array(z.string()).optional(),
+  notApplicable: z.array(z.string()).optional(),
   warnings: z.array(ValidationWarningSchema),
   validatedAt: z.date(),
 });
