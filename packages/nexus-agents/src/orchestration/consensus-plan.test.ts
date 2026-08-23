@@ -6,9 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ok, err } from '../core/index.js';
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
-import { executeConsensusPlan, findDivergences } from './consensus-plan.js';
+import { executeConsensusPlan } from './consensus-plan.js';
 import { createDefaultPlanConfig } from './consensus-plan-types.js';
-import type { CliPlan, CliPlanPartition } from './consensus-plan-types.js';
 import { resetOutcomeStore, getOutcomeStore } from './outcomes/index.js';
 
 // Force in-memory outcome store (avoid hydrating from disk in tests)
@@ -131,6 +130,24 @@ describe('executeConsensusPlan', () => {
     ],
     alternatives: ['Use monorepo structure'],
     summary: 'Four-phase iterative development with TDD',
+  });
+
+  it('says so when every CLI answered but none produced a parseable plan (#4585)', async () => {
+    // Both CLIs succeed, so `clisUsed` is non-empty, but neither output parses,
+    // so `successPlans` is empty. The summary used to render as an ordinary
+    // consensus plan that happened to have zero steps — a clean sheet over zero
+    // evidence — rather than saying nothing was comparable.
+    const adapters = buildAdapters(
+      ['claude', createPlanAdapter('claude', 'I would start by thinking about it.')],
+      ['codex', createPlanAdapter('codex', 'Here are some thoughts, no structure.')]
+    );
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.summary).toContain('No parseable plan');
+    expect(result.value.summary).not.toMatch(/\*\*0 steps\*\*/);
   });
 
   it('dispatches plan to multiple CLIs', async () => {
@@ -441,75 +458,5 @@ describe('executeConsensusPlan', () => {
     if (!result.ok) return;
     expect(result.value.partitions[0]?.model).toBe('claude');
     expect(getOutcomeStore().query({})[0]?.model).toBe('claude');
-  });
-});
-
-// ============================================================================
-// findDivergences — empty-collection verdicts (#4585)
-// ============================================================================
-
-function makePartition(cli: CliName, plan: CliPlan | null): CliPlanPartition {
-  return {
-    cli,
-    success: plan !== null,
-    plan,
-    rawOutput: '',
-    durationMs: 1,
-    model: `${cli}-model`,
-  };
-}
-
-function makePlan(stepCount: number, riskCount: number): CliPlan {
-  return {
-    steps: Array.from({ length: stepCount }, (_, i) => ({
-      description: `step ${String(i)}`,
-      complexity: 'medium' as const,
-      dependencies: [],
-    })),
-    risks: Array.from({ length: riskCount }, (_, i) => ({
-      description: `risk ${String(i)}`,
-      impact: 'medium' as const,
-      mitigation: '',
-    })),
-    alternatives: [],
-    summary: '',
-  };
-}
-
-describe('findDivergences', () => {
-  it('reports comparison as unmeasured when no plan parsed (#4585)', () => {
-    // Math.min(...[]) is Infinity and Math.max(...[]) is -Infinity, so every
-    // threshold below evaluated false and synthesis reported a clean sheet
-    // over zero plans.
-    const divergences = findDivergences([
-      makePartition('claude', null),
-      makePartition('codex', null),
-    ]);
-
-    expect(divergences).toHaveLength(1);
-    expect(divergences[0]?.topic).toContain('unmeasured');
-    expect(divergences[0]?.positions.get('claude')).toBeDefined();
-  });
-
-  it('reports comparison as unmeasured for an empty plan list (#4585)', () => {
-    const divergences = findDivergences([]);
-    expect(divergences).toHaveLength(1);
-    expect(divergences[0]?.topic).toContain('unmeasured');
-  });
-
-  it('still detects real step-count divergence', () => {
-    const divergences = findDivergences([
-      makePartition('claude', makePlan(2, 0)),
-      makePartition('codex', makePlan(10, 0)),
-    ]);
-    expect(divergences.some((d) => d.topic === 'Plan granularity')).toBe(true);
-  });
-
-  it('reports no divergence when plans agree', () => {
-    const divergences = findDivergences([
-      makePartition('claude', makePlan(3, 1)),
-      makePartition('codex', makePlan(3, 1)),
-    ]);
-    expect(divergences).toHaveLength(0);
   });
 });

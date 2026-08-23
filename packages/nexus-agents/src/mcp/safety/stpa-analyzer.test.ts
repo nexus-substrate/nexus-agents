@@ -555,7 +555,7 @@ describe('generateSafetyConstraints', () => {
 // =============================================================================
 
 describe('validateToolAgainstConstraints', () => {
-  it('should return valid when no violations found', () => {
+  it('should return valid for a parameterless tool with no violations', () => {
     const constraints: SafetyConstraint[] = [
       {
         id: 'SC-001',
@@ -567,12 +567,12 @@ describe('validateToolAgainstConstraints', () => {
     ];
 
     const result = validateToolAgainstConstraints(safeTool, constraints);
-    // Previously pinned the vacuous pass: `safeTool` declares no input
-    // properties, so every schema-driven check is a no-op and "no violations"
-    // is evidence of nothing. Unmeasured is now reported as not-valid (#4585);
-    // the empty `violations` list plus the NO_INPUT_SCHEMA warning is what
-    // distinguishes it from a real violation.
-    expect(result.valid).toBe(false);
+    // `get_time` is genuinely parameterless: its empty `properties` map is a
+    // measurement (nothing to sanitize), not an absent schema, so a constraint
+    // that finds nothing wrong yields a real pass (#4585). Only an
+    // absent/unreadable schema is unmeasured — covered separately in
+    // stpa-validation.test.ts.
+    expect(result.valid).toBe(true);
     expect(result.violations).toHaveLength(0);
     expect(result.warnings.some((w) => w.code === 'NO_INPUT_SCHEMA')).toBe(true);
   });

@@ -105,6 +105,17 @@ export function calculateConstraintScore(
     checks.push(hasSteps && hasParallel === constraints.requireParallel);
   }
 
+  // `checks.length === 0` is absence of *criteria*, not absence of *evidence*,
+  // and 1 is the honest answer (#4585). The `hasSteps` guard above covers the
+  // vacuous case: a declared constraint that no step was read to verify.
+  // Here the task declared no step-derived constraint at all, so the ratio's
+  // denominator is genuinely zero and nothing can be violated - the same
+  // convention as `!constraints` above and as the two coverage scores, which
+  // both return 1 when nothing is required. Returning 0 instead would depress
+  // completeness by a constant that depends only on the task's constraint
+  // shape, identically for every candidate workflow, so it could never
+  // discriminate between workflows - it would only make the weighted score
+  // report "unconstrained task" as "bad workflow".
   if (checks.length === 0) return 1;
   return checks.filter(Boolean).length / checks.length;
 }

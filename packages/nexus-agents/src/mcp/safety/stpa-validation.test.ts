@@ -406,11 +406,27 @@ describe('vacuous validity (#4585)', () => {
     expect(result.warnings.some((w) => w.code === 'NO_INPUT_SCHEMA')).toBe(true);
   });
 
-  it('does not report a tool with an empty properties map as valid', () => {
-    const result = validateToolAgainstConstraints(makeTool('bare2', 'No params', {}), [
-      makeConstraint('U2', 'Sanitize to prevent injection', ConstraintEnforcement.SANITIZE),
-    ]);
-    expect(result.valid).toBe(false);
+  it('reports a parameterless tool as valid when an applicable constraint passes', () => {
+    // An empty `properties` map is a *measurement*, not a missing one: this
+    // tool genuinely takes no parameters, so there is nothing to sanitize and
+    // the sanitization constraint below genuinely passes. Treating the empty
+    // map as unmeasured made `valid: true` unreachable for every parameterless
+    // tool — a permanent false alarm (#4585 follow-up).
+    const result = validateToolAgainstConstraints(
+      makeTool('list_workspace_files', 'List every file in the workspace root', {}),
+      // Applies via the ('path' in constraint, 'file' in tool) description
+      // pattern in doesConstraintApply, so this constraint is really evaluated.
+      [
+        makeConstraint(
+          'U2',
+          'Sanitize path input to prevent traversal',
+          ConstraintEnforcement.SANITIZE
+        ),
+      ]
+    );
+    expect(result.valid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+    expect(result.passed).toContain('U2');
   });
 
   it('does not report validity when zero constraints were evaluated', () => {
@@ -430,12 +446,39 @@ describe('vacuous validity (#4585)', () => {
     expect(result.warnings.every((w) => w.code !== 'NO_CONSTRAINTS_EVALUATED')).toBe(true);
   });
 
-  it('still reports valid for a measured tool with no violations', () => {
+  it('still reports valid when an applicable constraint is evaluated and passes', () => {
+    // Positive control. The constraint must genuinely APPLY to the tool,
+    // otherwise checkConstraint returns null and the id lands in `passed`
+    // without being evaluated — which would certify "measured" on zero
+    // applicable constraints, the same defect this suite exists to catch.
+    // Applicability here comes from doesConstraintApply's ('path', 'file')
+    // description pattern; the second assertion block proves the check is live
+    // by removing the property pattern and getting a violation.
+    const constraints = [
+      makeConstraint(
+        'U4',
+        'Sanitize path input to prevent traversal',
+        ConstraintEnforcement.SANITIZE
+      ),
+    ];
+
     const result = validateToolAgainstConstraints(
-      makeTool('calculator', 'Math', { x: { type: 'number' } }),
-      [makeConstraint('U4', 'Prevent random stuff', ConstraintEnforcement.PREVENT)]
+      makeTool('read_file', 'Read a file from disk', {
+        path: { type: 'string', pattern: '^[\\w./-]+$' },
+      }),
+      constraints
     );
     expect(result.valid).toBe(true);
+    expect(result.violations).toHaveLength(0);
+    expect(result.passed).toContain('U4');
+
+    // Same tool, same constraint, no validation pattern: the constraint fires,
+    // so the pass above was earned rather than skipped.
+    const unpatterned = validateToolAgainstConstraints(
+      makeTool('read_file', 'Read a file from disk', { path: { type: 'string' } }),
+      constraints
+    );
+    expect(unpatterned.violations.map((v) => v.constraintId)).toContain('U4');
   });
 
   it('reports invalid (not unmeasured) when a real violation exists', () => {

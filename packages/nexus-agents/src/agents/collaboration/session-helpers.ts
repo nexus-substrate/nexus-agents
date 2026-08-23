@@ -359,9 +359,15 @@ export function shouldFinalize(
   reviews: ReviewResponseMessage[]
 ): boolean {
   // A session with no participants has nothing to finalize. Both equality
-  // comparisons below are `0 === 0` on an empty roster, so an empty session
-  // used to transition to `finalizing` as though its work were complete — the
-  // `review` branch already guarded with `> 0`, the other two did not (#4585).
+  // comparisons below are `0 === 0` on an empty roster, so a session whose
+  // roster emptied transitioned to `finalizing` as though its work were
+  // complete — the `review` branch already guarded with `> 0`, the other two
+  // did not (#4585).
+  //
+  // Reachable despite `CollaborationConfigSchema` requiring at least one
+  // expert: `getStatus()` returns `{ ...this.state }`, a shallow copy that
+  // shares the live `participants` array, so any holder can empty it between
+  // construction and the next `checkProgress`.
   if (participants.length === 0) return false;
 
   switch (pattern) {

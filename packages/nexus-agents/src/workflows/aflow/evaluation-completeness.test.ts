@@ -189,6 +189,21 @@ describe('calculateConstraintScore', () => {
     expect(calculateConstraintScore(makeWorkflow({ steps: [] }), constraints)).toBe(0);
   });
 
+  it('returns 1 when constraints declare nothing this score measures (#4585)', () => {
+    // Deliberate: unlike the zero-step cases above, this is absence of
+    // criteria, not absence of evidence. `requiredAgents` is scored by
+    // calculateAgentCoverageScore and `maxTotalTimeout` by the efficiency
+    // score, so no step-derived check is applicable here and nothing can be
+    // violated. Holds for an empty workflow too - emptiness is penalised by
+    // evaluateStructure, not by inventing a constraint failure.
+    const constraints: TaskConstraints = {
+      requiredAgents: ['code_expert'],
+      maxTotalTimeout: 60000,
+    };
+    expect(calculateConstraintScore(makeWorkflow(), constraints)).toBe(1);
+    expect(calculateConstraintScore(makeWorkflow({ steps: [] }), constraints)).toBe(1);
+  });
+
   it('averages multiple constraint checks', () => {
     const constraints: TaskConstraints = {
       forbiddenAgents: ['security_expert'], // passes

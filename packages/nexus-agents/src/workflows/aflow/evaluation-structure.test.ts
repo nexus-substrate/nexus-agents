@@ -86,10 +86,13 @@ describe('evaluateStructure', () => {
     expect(evaluateStructure(wf)).toBeLessThan(1.0);
   });
 
-  it('does not score a zero-step workflow as mostly sound (#4585)', () => {
-    // Four of the five structural checks pass vacuously on an empty workflow,
-    // which used to score 0.8 for a workflow `hasValidSteps` calls invalid.
-    expect(evaluateStructure(makeWorkflow({ steps: [] }))).toBeLessThanOrEqual(0.6);
+  it('scores a zero-step workflow at zero, not on vacuous passes (#4585)', () => {
+    // Previously asserted `toBeLessThanOrEqual(0.6)`, which encoded the
+    // half-fixed state: only `hasValidSteps` and `hasNoCycles` named the empty
+    // case, so `hasValidDependencies` / `hasUniqueStepIds` /
+    // `hasValidAgentRoles` still passed vacuously and handed an empty workflow
+    // 3 of 5. A workflow with zero steps satisfies no structural property.
+    expect(evaluateStructure(makeWorkflow({ steps: [] }))).toBe(0);
   });
 });
 
@@ -165,6 +168,12 @@ describe('hasValidDependencies', () => {
     });
     expect(hasValidDependencies(wf)).toBe(false);
   });
+
+  it('returns false for a zero-step workflow instead of a vacuous pass (#4585)', () => {
+    // `[].every()` is true, so an empty workflow used to certify that all of
+    // its (nonexistent) dependencies resolve. There is nothing to resolve.
+    expect(hasValidDependencies(makeWorkflow({ steps: [] }))).toBe(false);
+  });
 });
 
 // ============================================================================
@@ -185,6 +194,12 @@ describe('hasUniqueStepIds', () => {
     });
     expect(hasUniqueStepIds(wf)).toBe(false);
   });
+
+  it('returns false for a zero-step workflow instead of a vacuous pass (#4585)', () => {
+    // `0 === new Set([]).size` is true, so an empty workflow used to certify
+    // uniqueness over an empty id list. No ids means no uniqueness observed.
+    expect(hasUniqueStepIds(makeWorkflow({ steps: [] }))).toBe(false);
+  });
 });
 
 // ============================================================================
@@ -202,6 +217,12 @@ describe('hasValidAgentRoles', () => {
     });
     expect(hasValidAgentRoles(wf)).toBe(false);
   });
+
+  it('returns false for a zero-step workflow instead of a vacuous pass (#4585)', () => {
+    // `[].every()` is true, so an empty workflow used to certify that every
+    // agent role is valid without ever reading a role.
+    expect(hasValidAgentRoles(makeWorkflow({ steps: [] }))).toBe(false);
+  });
 });
 
 // ============================================================================
@@ -215,6 +236,14 @@ describe('isViableWorkflow', () => {
 
   it('returns false for workflow below min steps', () => {
     expect(isViableWorkflow(makeWorkflow(), 5)).toBe(false);
+  });
+
+  it('rejects a zero-step workflow even when minSteps is 0 (#4585)', () => {
+    // `minSteps: 0` makes the length guard vacuous, so viability rests
+    // entirely on the structural checks. This was already false before the
+    // #4585 empty-case work (`hasValidSteps` requires >= 1 step) - the change
+    // to `hasNoCycles` did not flip it - but nothing pinned it, so pin it.
+    expect(isViableWorkflow(makeWorkflow({ steps: [] }), 0)).toBe(false);
   });
 });
 
