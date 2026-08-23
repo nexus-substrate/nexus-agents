@@ -166,7 +166,13 @@ async function minutesSincePublish(version: string): Promise<number> {
     if (!res.ok) return Number.NaN;
     const body = (await res.json()) as { time?: Record<string, string> };
     const published = body.time?.[version];
-    if (published === undefined) return Number.NaN;
+    // Registry reachable but this version absent means it is NOT PUBLISHED
+    // YET — the window between a version PR merging and the publish landing.
+    // The site cannot be serving a version that does not exist, so this is a
+    // deploy in flight, not an unreadable input. Reporting it as unmeasured
+    // failed the check on every release, which is the same false alarm on the
+    // normal path that the grace window exists to prevent.
+    if (published === undefined) return 0;
 
     const publishedMs = Date.parse(published);
     if (Number.isNaN(publishedMs)) return Number.NaN;
