@@ -19,6 +19,7 @@ const healthyCli: CliCheckResult = {
   name: 'claude',
   installed: true,
   authenticated: true,
+  authState: 'authenticated',
   version: '1.0.0',
   versionStatus: 'supported',
 };

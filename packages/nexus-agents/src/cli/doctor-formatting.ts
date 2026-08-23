@@ -79,9 +79,14 @@ function formatCapacity(capacity?: CapacityStatus): string {
 function printInstalledCliDetails(cli: CliCheckResult): void {
   writeLine(`  Version: ${cli.version} (${formatVersionStatus(cli.versionStatus)})`);
 
-  const authText = cli.authenticated
-    ? `${colors.green}${cli.authMethod ?? 'Authenticated'}${colors.reset}`
-    : `${colors.red}Not authenticated${colors.reset}`;
+  // Three states, not two (#4661). `unverified` is yellow because nothing was
+  // measured — the same honest register as the `Capacity: unknown` line below.
+  const authText =
+    cli.authState === 'authenticated'
+      ? `${colors.green}${cli.authMethod ?? 'Authenticated'}${colors.reset}`
+      : cli.authState === 'unverified'
+        ? `${colors.yellow}unverified (no non-interactive auth check)${colors.reset}`
+        : `${colors.red}Not authenticated${colors.reset}`;
   writeLine(`  Auth: ${authText}`);
 
   if (cli.capacity !== undefined) {

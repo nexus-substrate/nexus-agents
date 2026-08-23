@@ -106,11 +106,13 @@ describe('doctor-formatting', () => {
       capacity?: CapacityStatus;
       error?: string;
       fix?: string;
+      authState?: 'authenticated' | 'unverified' | 'not-authenticated';
     } = {}
   ): CliCheckResult => ({
     name: name as CliName,
     installed,
     authenticated,
+    authState: options.authState ?? (authenticated ? 'authenticated' : 'not-authenticated'),
     versionStatus,
     version: options.version ?? '',
     ...(options.authMethod !== undefined && { authMethod: options.authMethod }),
@@ -633,6 +635,44 @@ describe('doctor-formatting', () => {
       const calls = getCalls();
       // 2 unhealthy CLIs + 1 Node issue + 1 MCP issue = 4 total
       expect(calls.some((call) => call.includes('4 issue(s) found'))).toBe(true);
+    });
+  });
+
+  describe('an unverified auth probe is not a failed one (#4661)', () => {
+    it('renders "unverified" rather than "Not authenticated"', () => {
+      // The probe for this CLI can only ever return `unknown` — the gateway
+      // exposes no non-interactive auth check, so nothing was measured. Routing
+      // admits that state deliberately (#4391); doctor collapsed it to a red
+      // negative, and told the operator to re-auth a CLI that was working.
+      const result = createDoctorResult({
+        clis: [
+          createCliCheckResult('gemini', true, false, 'supported', {
+            version: '1.1.19',
+            authState: 'unverified',
+          }),
+        ],
+      });
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      expect(calls.some((c) => c.includes('unverified'))).toBe(true);
+      expect(calls.some((c) => c.includes('Not authenticated'))).toBe(false);
+    });
+
+    it('still renders a genuine needs-login as "Not authenticated"', () => {
+      // The distinction has to survive both ways round, or this fix just moves
+      // the misreport rather than removing it.
+      const result = createDoctorResult({
+        clis: [
+          createCliCheckResult('claude', true, false, 'supported', {
+            version: '0.2.0',
+            authState: 'not-authenticated',
+          }),
+        ],
+      });
+      printDoctorResults(result);
+
+      expect(getCalls().some((c) => c.includes('Not authenticated'))).toBe(true);
     });
   });
 });

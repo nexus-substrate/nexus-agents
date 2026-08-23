@@ -37,6 +37,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
         version: '1.0.0',
         versionStatus: 'supported' as const,
         authenticated: true,
+        authState: 'authenticated',
       },
       {
         name: 'gemini' as const,
@@ -44,6 +45,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
         version: '1.0.0',
         versionStatus: 'supported' as const,
         authenticated: true,
+        authState: 'authenticated',
       },
       {
         name: 'codex' as const,
@@ -51,6 +53,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
         version: '1.0.0',
         versionStatus: 'supported' as const,
         authenticated: true,
+        authState: 'authenticated',
       },
       {
         name: 'opencode' as const,
@@ -58,6 +61,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
         version: '1.0.0',
         versionStatus: 'supported' as const,
         authenticated: true,
+        authState: 'authenticated',
       },
     ],
     nodeVersion: { version: 'v22.0.0', major: 22, supported: true },

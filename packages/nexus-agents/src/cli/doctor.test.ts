@@ -64,6 +64,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         version: '2.0.76',
         versionStatus: 'supported',
         authenticated: true,
+        authState: 'authenticated',
         authMethod: 'CLI auth',
       },
       {
@@ -72,6 +73,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         version: '0.22.5',
         versionStatus: 'supported',
         authenticated: true,
+        authState: 'authenticated',
         authMethod: 'ADC/CLI auth',
       },
       {
@@ -80,6 +82,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         version: '0.77.0',
         versionStatus: 'supported',
         authenticated: true,
+        authState: 'authenticated',
         authMethod: 'CLI auth',
       },
     ],
@@ -929,6 +932,7 @@ describe('Doctor Command', () => {
             version: 'N/A',
             versionStatus: 'unsupported',
             authenticated: false,
+            authState: 'not-authenticated',
             error: 'Not found in PATH',
             fix: 'npm install -g @anthropic-ai/claude-code',
           },
@@ -938,6 +942,7 @@ describe('Doctor Command', () => {
             version: '0.22.5',
             versionStatus: 'supported',
             authenticated: true,
+            authState: 'authenticated',
           },
           {
             name: 'codex',
@@ -945,6 +950,7 @@ describe('Doctor Command', () => {
             version: '0.77.0',
             versionStatus: 'supported',
             authenticated: true,
+            authState: 'authenticated',
           },
         ],
         allHealthy: false,
@@ -971,6 +977,7 @@ describe('Doctor Command', () => {
             version: '2.0.76',
             versionStatus: 'supported',
             authenticated: true,
+            authState: 'authenticated',
             capacity: {
               remainingTokens: 100000,
               remainingRequests: 100,
@@ -988,6 +995,7 @@ describe('Doctor Command', () => {
             version: '0.22.5',
             versionStatus: 'supported',
             authenticated: true,
+            authState: 'authenticated',
           },
           {
             name: 'codex',
@@ -995,6 +1003,7 @@ describe('Doctor Command', () => {
             version: '0.77.0',
             versionStatus: 'supported',
             authenticated: true,
+            authState: 'authenticated',
           },
         ],
       });
@@ -1018,6 +1027,7 @@ describe('Doctor Command', () => {
             version: 'N/A',
             versionStatus: 'unsupported',
             authenticated: false,
+            authState: 'not-authenticated',
             error: 'Not found',
           },
           {
@@ -1026,6 +1036,7 @@ describe('Doctor Command', () => {
             version: 'N/A',
             versionStatus: 'unsupported',
             authenticated: false,
+            authState: 'not-authenticated',
             error: 'Not found',
           },
           {
@@ -1034,6 +1045,7 @@ describe('Doctor Command', () => {
             version: 'N/A',
             versionStatus: 'unsupported',
             authenticated: false,
+            authState: 'not-authenticated',
             error: 'Not found',
           },
         ],

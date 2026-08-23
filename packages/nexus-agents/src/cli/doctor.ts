@@ -76,6 +76,17 @@ export interface CliCheckResult {
   readonly version: string;
   readonly versionStatus: 'supported' | 'outdated' | 'unsupported' | 'breaking';
   readonly authenticated: boolean;
+  /**
+   * The auth probe's THREE-valued result (#4661).
+   *
+   * `authenticated` above is a boolean and cannot express "we did not check".
+   * Some gateways expose no non-interactive auth check, so their probe can only
+   * ever return `unknown` — routing admits that deliberately (#4391: absence of
+   * evidence is not failure). Collapsing it to `false` printed a red
+   * "Not authenticated" for a CLI that was demonstrably working, and offered a
+   * login command that fixes nothing.
+   */
+  readonly authState: 'authenticated' | 'unverified' | 'not-authenticated';
   readonly authMethod?: string;
   readonly capacity?: CapacityStatus;
   readonly error?: string;
@@ -299,6 +310,10 @@ function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): st
 function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
   return {
     name,
+    // Not installed, so auth was never probed. `not-authenticated` would claim
+    // a determination nobody made; the auth line is not printed for an
+    // uninstalled CLI anyway (#4661).
+    authState: 'unverified',
     installed: false,
     version: 'N/A',
     versionStatus: 'unsupported',
@@ -324,6 +339,22 @@ function detectAuthMethod(name: CliName): string {
 }
 
 /**
+ * Maps the probe's three-valued state onto the reported one (#4661).
+ *
+ * `unknown` means the probe ran and could not determine auth — a gateway with
+ * no non-interactive auth check. That is distinct from a probe that determined
+ * the CLI is logged out, and collapsing the two printed a red "Not
+ * authenticated" for a CLI that was demonstrably working.
+ */
+function resolveAuthState(
+  authenticated: boolean,
+  probeState: AuthProbeResult['state']
+): CliCheckResult['authState'] {
+  if (authenticated) return 'authenticated';
+  return probeState === 'unknown' ? 'unverified' : 'not-authenticated';
+}
+
+/**
  * Creates a result from a successful health check.
  *
  * Authentication state comes from the auth probe (#2439, #2447), not from
@@ -339,6 +370,7 @@ function createHealthyResult(
 ): CliCheckResult {
   const versionOk = health.healthy;
   const authenticated = versionOk && authProbe.state === 'authenticated';
+  const authState = resolveAuthState(authenticated, authProbe.state);
 
   const result: CliCheckResult = {
     name,
@@ -346,6 +378,7 @@ function createHealthyResult(
     version: health.version,
     versionStatus: health.versionStatus,
     authenticated,
+    authState,
     ...(authenticated && { authMethod: detectAuthMethod(name) }),
     ...(capacity !== undefined && { capacity }),
   };
@@ -361,7 +394,11 @@ function createHealthyResult(
       fix: authProbe.fixCommand,
     };
   }
-  if (!authenticated) {
+  // Only offer a login command when the probe actually determined a logout.
+  // An unverified state has nothing to fix, and naming one sends operators to
+  // re-authenticate a working CLI (#4661).
+  // `not-authenticated` already implies `!authenticated` — see resolveAuthState.
+  if (authState === 'not-authenticated') {
     return { ...result, fix: getFixCommand(name, 'auth') };
   }
   if (health.versionStatus === 'outdated') {
