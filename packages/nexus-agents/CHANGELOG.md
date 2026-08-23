@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 3.9.5
+
+### Patch Changes
+
+- [#4662](https://github.com/nexus-substrate/nexus-agents/pull/4662) [`6e5290f`](https://github.com/nexus-substrate/nexus-agents/commit/6e5290f212b08e86d1602fdc920ca4d46b1d0cb0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report an unverified auth probe as unverified, not as a failure ([#4661](https://github.com/nexus-substrate/nexus-agents/issues/4661))
+
+  `doctor` printed a red **"Not authenticated"** with `Fix: gemini auth login` for
+  a CLI that was working — a vote succeeded on it 30 seconds earlier in the same
+  session.
+
+  The auth probe is three-valued. For a gateway with no non-interactive auth
+  check it can only ever return `unknown`, explicitly _"admitted unverified"_.
+  Routing treats that correctly and deliberately ([#4391](https://github.com/nexus-substrate/nexus-agents/issues/4391): absence of evidence is
+  not failure, and [#4346](https://github.com/nexus-substrate/nexus-agents/issues/4346) is what happens when you get it wrong). `doctor`
+  collapsed it to a boolean at the last step, so an unmeasured state rendered as
+  a definite negative with a remediation that fixes nothing.
+
+  `CliCheckResult` now carries `authState: 'authenticated' | 'unverified' |
+'not-authenticated'`. Unverified prints in yellow as
+  `unverified (no non-interactive auth check)` — the same honest register as the
+  existing `Capacity: unknown (no usage observed this session)` line — and no fix
+  command is offered, because there is nothing to fix.
+
+  `authState` is required rather than optional, so every construction site has to
+  say which state it means.
+
 ## 3.9.4
 
 ### Patch Changes
