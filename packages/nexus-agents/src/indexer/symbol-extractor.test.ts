@@ -10,8 +10,8 @@
  * @module indexer/symbol-extractor.test
  */
 
-import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, it, expect } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { extractSymbols, extractSymbolIndexResult } from './symbol-extractor.js';
@@ -105,11 +105,21 @@ describe('extractSymbolIndex', () => {
 });
 
 describe('#4517: an unparsed file is not an empty file', () => {
+  /** Scratch roots created here, removed in afterAll — this suite does not leak (#4630). */
+  const scratch: string[] = [];
+
   const tmp = (name: string, body: string): string => {
-    const p = join(mkdtempSync(join(tmpdir(), 'symext-')), name);
+    const dir = mkdtempSync(join(tmpdir(), 'symext-'));
+    scratch.push(dir);
+    const p = join(dir, name);
     writeFileSync(p, body, 'utf-8');
     return p;
   };
+
+  afterAll(() => {
+    for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+    scratch.length = 0;
+  });
 
   it('marks an unsupported extension as not parsed', async () => {
     const result = await extractSymbols(tmp('service.py', 'def handler():\n    return 1\n'));
