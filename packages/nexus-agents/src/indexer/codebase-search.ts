@@ -14,6 +14,7 @@ import { readdir } from 'node:fs/promises';
 import { resolve, extname, relative } from 'node:path';
 import {
   extractSymbols,
+  SUPPORTED_EXTENSIONS,
   type CodeSymbol,
   type SymbolExtractionResult,
 } from './symbol-extractor.js';
@@ -66,7 +67,12 @@ const SCORE_EXPORTED_BONUS = 3;
 function isSourceFile(name: string): boolean {
   const ext = extname(name).toLowerCase();
   return (
-    ['.ts', '.tsx', '.js', '.jsx'].includes(ext) &&
+    // #4640: take the list from the extractor rather than keeping a copy. The
+    // two sat on opposite sides of the same decision — `extract_symbols` reaches
+    // the extension gate at symbol-extractor.ts:162, while this sweep filters
+    // *before* it — so a language added to SUPPORTED_EXTENSIONS was parsed by
+    // one tool and silently never indexed by the other.
+    SUPPORTED_EXTENSIONS.includes(ext) &&
     !name.endsWith('.test.ts') &&
     !name.endsWith('.test.tsx') &&
     !name.endsWith('.d.ts')
