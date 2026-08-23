@@ -3,8 +3,24 @@
  * @module cli/review-demo-helpers.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { SetupStatus, ProgressStep, PreflightResult } from './review-demo-types.js';
+import type { Result } from '../core/index.js';
+import type { ScmToken } from '../scm/types.js';
+
+// runPreflightChecks resolves a real GitHub token; stub the resolver so the
+// preflight shape is testable without credentials or network. An empty token
+// value is the "no token configured" path. Partial mock via importOriginal —
+// other modules in this graph import `getTokenEnvVars` from here.
+vi.mock('../scm/token-resolver.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../scm/token-resolver.js')>();
+  const noToken: Result<ScmToken, Error> = {
+    ok: true,
+    value: { value: '', strategy: 'env', platform: 'github' },
+  };
+  return { ...actual, resolveToken: vi.fn(() => Promise.resolve(noToken)) };
+});
+
 import {
   formatSetupStatus,
   formatPreflightResults,
@@ -12,6 +28,7 @@ import {
   createProgressSteps,
   updateProgress,
   getSetupInstructions,
+  runPreflightChecks,
 } from './review-demo-helpers.js';
 
 // ============================================================================
@@ -246,5 +263,23 @@ describe('getSetupInstructions', () => {
   it('includes dry-run option', () => {
     const instructions = getSetupInstructions();
     expect(instructions).toContain('--dry-run');
+  });
+});
+
+// ============================================================================
+// runPreflightChecks
+// ============================================================================
+
+describe('runPreflightChecks', () => {
+  it('always reports the two unconditional checks, even when the token fails (#4581)', async () => {
+    // The checks array is now built as a literal containing the token and URL
+    // checks, so `checks.every(...)` can never run over an empty collection
+    // and report a vacuous pass. The scope check is the only conditional one,
+    // and it is skipped precisely when the token check has already failed.
+    const result = await runPreflightChecks('https://github.com/owner/repo/pull/123');
+
+    expect(result.checks.length).toBeGreaterThanOrEqual(2);
+    expect(result.checks.map((c) => c.name)).toEqual(['GitHub Token', 'PR URL']);
+    expect(result.passed).toBe(false);
   });
 });

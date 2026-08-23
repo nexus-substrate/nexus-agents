@@ -23,6 +23,7 @@ import type {
 } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 /** Required Node.js major version (for warning message). */
 const REQUIRED_NODE_MAJOR = 22;
@@ -306,8 +307,10 @@ function printDataDirGroup(
  * exactly where per-repo vs cross-repo state lives.
  */
 function printDataDirectory(check: DataDirectoryCheck): void {
-  const allExist = check.subdirectories.every((d) => d.exists);
-  const allWritable = check.subdirectories.every((d) => !d.exists || d.writable);
+  // whenEmpty = false: a layout with zero known subdirectories was not
+  // measured, and printing it as healthy is the vacuous pass (#4581).
+  const allExist = allOf(check.subdirectories, (d) => d.exists, false);
+  const allWritable = allOf(check.subdirectories, (d) => !d.exists || d.writable, false);
   const healthy = check.rootExists && allWritable;
 
   writeLine(`${formatStatus(healthy, !healthy)} Data directory layout:`);

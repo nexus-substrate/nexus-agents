@@ -23,7 +23,14 @@ export default defineConfig({
     // website/src/plugins/ — the markdown plugins that shape the published docs
     // site. The website package has no test runner of its own, and these were
     // uncovered until the Astro 7 migration (#4359) needed a regression net.
-    include: ['scripts/**/*.test.ts', 'website/src/plugins/**/*.test.ts'],
+    // eslint-rules/ — the in-repo custom lint rules (#4581). They are plain
+    // ESM so that eslint.config.js can import them directly, and their
+    // RuleTester fixtures are the only thing proving they still fire.
+    include: [
+      'scripts/**/*.test.ts',
+      'website/src/plugins/**/*.test.ts',
+      'eslint-rules/**/*.test.js',
+    ],
     exclude: [
       'node_modules',
       '**/node_modules/**',

@@ -20,6 +20,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import type { ExpertValidationResult, ValidationFinding } from './release-validate-types.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import { anyOf } from '../utils/verdict-aggregation.js';
 
 /** Options passed to each expert validator. */
 export interface ValidatorOptions {
@@ -83,12 +84,24 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
       });
     }
   } catch {
-    // No matches found, which is good
+    // The pipeline ends in `head`, so grep finding nothing still exits 0 —
+    // reaching this catch means the scan itself failed (git error, timeout),
+    // not that the tree is clean. Record the gap instead of inheriting a pass
+    // from an empty finding list (#4581).
+    findings.push({
+      severity: 'warning',
+      category: 'security',
+      title: 'Secret scan did not run',
+      description: 'The hardcoded-secret scan over recent commits failed to execute.',
+      remediation: 'Re-run with a full git history available, then review the output.',
+    });
   }
 
   return {
     expert: 'security',
-    passed: !findings.some((f) => f.severity === 'error'),
+    // whenEmpty = false: with the failure above recorded as a finding, an empty
+    // list now genuinely means "scanned, nothing found" (#4581).
+    passed: !anyOf(findings, (f) => f.severity === 'error', false),
     confidence: 0.85,
     findings,
     durationMs: Date.now() - startTime,

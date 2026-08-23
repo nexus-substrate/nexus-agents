@@ -163,7 +163,19 @@ describe('doctor-formatting', () => {
       rootExists: true,
       rootPath: '/home/test/.nexus-agents',
       repoRoot: null,
-      subdirectories: [],
+      // A real doctor run always resolves the standard subdirectory set, and
+      // since #4581 the printer no longer calls an unmeasured layout healthy —
+      // an empty list here would emit a remediation line the test does not
+      // expect, and would be an unrealistic fixture besides.
+      subdirectories: [
+        {
+          name: 'memory',
+          path: '/home/test/.nexus-agents/memory',
+          scope: 'cross-repo' as const,
+          exists: true,
+          writable: true,
+        },
+      ],
     },
     sandbox: {
       active: false,
@@ -219,6 +231,25 @@ describe('doctor-formatting', () => {
 
       const calls = getCalls();
       expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
+    });
+
+    it('does NOT render a zero-subdirectory data layout as healthy (#4581)', () => {
+      // `[].every()` is `true`, so an empty subdirectory list made both
+      // `allExist` and `allWritable` true and the layout printed with a green
+      // check — a healthy verdict over a layout that was never measured. The
+      // shared fixture now carries a realistic non-empty list, so this test
+      // overrides just that field rather than weakening the fixture.
+      const fixture = createDoctorResult();
+      const result: DoctorResult = {
+        ...fixture,
+        dataDirectory: { ...fixture.dataDirectory, rootExists: true, subdirectories: [] },
+      };
+      printDoctorResults(result);
+
+      const layoutLine = getCalls().find((call) => call.includes('Data directory layout:'));
+      expect(layoutLine).toBeDefined();
+      expect(layoutLine).not.toContain('\u2713');
+      expect(layoutLine).toContain('\u26a0');
     });
 
     it('should print issues summary when checks fail', () => {

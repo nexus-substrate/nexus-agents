@@ -679,6 +679,32 @@ describe('RubricScorer', () => {
       }
     });
 
+    it('picks the general rubric method for zero criteria, not exact-match (#4581)', () => {
+      // `[].every()` is `true`, so a rubric with no criteria satisfied
+      // `allExact` and selected 'exact-match' — the most restrictive scoring
+      // mode — on the strength of no evidence at all. Empty now falls through
+      // to the general 'rubric' method.
+      //
+      // Reached directly rather than through `scoreResponse`: the public entry
+      // point runs `validateScoringInputs` first, which rejects an empty
+      // rubric with INVALID_RUBRIC (pinned above in 'should reject rubric with
+      // no criteria'), so the empty branch is unreachable from outside. The
+      // fix is defensive depth behind that gate, and this is the only way to
+      // pin it without weakening the validator.
+      const emptyRubric: ScoringRubric = {
+        id: 'empty',
+        name: 'Empty Rubric',
+        totalPoints: 100,
+        passingScore: 70,
+        criteria: [],
+      };
+      const reachPrivate = scorer as unknown as {
+        determineEvaluationMethod(rubric: ScoringRubric): 'rubric' | 'exact-match' | 'contains';
+      };
+
+      expect(reachPrivate.determineEvaluationMethod(emptyRubric)).toBe('rubric');
+    });
+
     it('should determine evaluation method correctly', () => {
       const rubric = createMinimalRubric();
       const expected = createMinimalExpectedOutcome();

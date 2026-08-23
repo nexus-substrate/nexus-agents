@@ -130,6 +130,16 @@ describe('checksPasses', () => {
     const violations = [makeViolation({ severity: 'critical' })];
     expect(checksPasses(violations, ['critical'])).toBe(false);
   });
+
+  it('treats zero violations as a deliberate pass, not an inherited default (#4581)', () => {
+    // The #4581 sweep replaced `!violations.some(...)` with
+    // `!anyOf(violations, ..., false)`. Unlike the other call sites, the
+    // vacuous verdict is the RIGHT one here: the critic having found nothing
+    // to object to genuinely is a pass. Whether the critic actually ran is the
+    // caller's question, not this predicate's. Pinned so a future sweep does
+    // not "fix" it into a failure.
+    expect(checksPasses([], ['critical'])).toBe(true);
+  });
 });
 
 // ============================================================================

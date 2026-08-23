@@ -72,6 +72,14 @@ describe('isAllHealthy', () => {
     expect(isAllHealthy({ ...base, scratchSpace: [] })).toBe(true);
   });
 
+  it('is UNHEALTHY when no CLI was detected at all (#4581)', () => {
+    // `[].every()` is `true`, so an empty CLI list used to satisfy the CLI
+    // clause outright: doctor reported a healthy install having measured no
+    // CLI whatsoever. Zero detected CLIs is an unusable install, not a clean
+    // bill of health.
+    expect(isAllHealthy({ ...base, clis: [] })).toBe(false);
+  });
+
   it('still fails on the pre-existing inputs', () => {
     expect(isAllHealthy({ ...base, nodeSupported: false })).toBe(false);
     expect(isAllHealthy({ ...base, hasAuthMethod: false })).toBe(false);

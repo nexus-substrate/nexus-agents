@@ -1,6 +1,14 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import jsdoc from 'eslint-plugin-jsdoc';
+import noVacuousVerdict from './eslint-rules/no-vacuous-verdict.js';
+
+/**
+ * In-repo custom rules (#4581). Flat config lets a plugin be an object literal,
+ * so this needs no separate package — the rules live in `eslint-rules/` and are
+ * covered by RuleTester fixtures under the root vitest config.
+ */
+const nexusRules = { rules: { 'no-vacuous-verdict': noVacuousVerdict } };
 
 export default defineConfig([
   globalIgnores(['**/dist/**', '**/node_modules/**', '**/coverage/**']),
@@ -50,34 +58,28 @@ export default defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: { nexus: nexusRules },
     rules: {
+      // A verdict aggregated over an empty collection reports a pass having
+      // measured nothing. Measured before enabling: 68 `.every()` sites, 10
+      // real defects — hence verdict-position scoping rather than a blanket
+      // ban. See the rule's own header for its known blind spot (#4581).
+      'nexus/no-vacuous-verdict': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': [
         'error',
         { considerDefaultExhaustiveForUnions: true },
       ],
       // Code structure limits (enforced)
-      'max-lines': [
-        'error',
-        { max: 400, skipBlankLines: true, skipComments: true },
-      ],
-      'max-lines-per-function': [
-        'error',
-        { max: 50, skipBlankLines: true, skipComments: true },
-      ],
+      'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }],
       complexity: ['error', 10],
       'max-params': ['error', 5],
       'max-depth': ['error', 4],
 
       // TypeScript strict rules
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/explicit-function-return-type': [
-        'error',
-        { allowExpressions: true },
-      ],
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_' },
-      ],
+      '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/strict-boolean-expressions': 'error',
@@ -89,6 +91,19 @@ export default defineConfig([
       'prefer-const': 'error',
       'no-var': 'error',
     },
+  },
+
+  // The one site the rule flags that this repo may not fix unilaterally.
+  // `src/governance/claims-verify.ts:202` reports `passed: true` over an empty
+  // claims registry, but governance source requires owner ratification and is
+  // never auto-merged (CODEOWNERS, and the Mission section of CLAUDE.md). The
+  // exemption is deliberately a single file at warn rather than a silent `off`
+  // or a directory-wide skip, so the governor's own violation stays visible in
+  // every lint run until #4586 lands and this block is deleted.
+  {
+    name: 'nexus-agents/vacuous-verdict-governance-pending-4586',
+    files: ['packages/nexus-agents/src/governance/claims-verify.ts'],
+    rules: { 'nexus/no-vacuous-verdict': 'warn' },
   },
 
   // Test files - relaxed rules
