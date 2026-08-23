@@ -1,5 +1,64 @@
 # nexus-agents
 
+## 3.9.0
+
+### Minor Changes
+
+- [#4632](https://github.com/nexus-substrate/nexus-agents/pull/4632) [`a48aa88`](https://github.com/nexus-substrate/nexus-agents/commit/a48aa881d8068fb683e764cffe59af3b5198a64e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(audit): record what a pr-review record was derived from ([#4459](https://github.com/nexus-substrate/nexus-agents/issues/4459))
+
+  PR-review ledger records now carry an optional, **hash-covered** `diffProvenance`
+  descriptor so a consumer can tell what the record was derived from:
+
+  - `source: 'canonical-git' | 'caller-supplied'` — `canonical-git` when the reviewed
+    bytes are the pinned `git diff <base>..<head>` the CI gate itself recomputes
+    (`scripts/pr-review-local-ledger.ts`), `caller-supplied` when they arrived as
+    opaque `prDiff` input on a `pr_review` MCP call. Those are the only two producers,
+    so there are only two values: the `gh` v3.diff fallback skips the ledger entirely
+    and can never write a record.
+  - `fileBoundaries: boolean` — whether the real `splitByFile` result attributed the
+    diff to files. `looksLikeUnifiedDiff` deliberately accepts plain `diff -u` output,
+    which has no `diff --git` headers, so this is the one signal a consumer cannot
+    re-derive from the record's other fields.
+
+  `computePrReviewRecordHash` builds its canonical form from an explicit field
+  allowlist, so the field is added **to the projection**, not just the schema — a
+  provenance claim outside the self-hash could be upgraded from `caller-supplied` to
+  `canonical-git` with no `hash_mismatch`. A record written without provenance still
+  hashes exactly as before (the key is omitted, not emitted as `null`), pinned by a
+  golden-hash test.
+
+  Record `version` moves `'1.1'` → `'1.2'` as the pre/post-provenance boundary marker.
+  No migration: `governance/pr-review-records.jsonl` holds 0 records.
+
+  Also fixes a misleading log in `scripts/pr-review-local.ts` that printed
+  `(canonical, ledger-excluded)` — it means the diff excludes the ledger _file_, not
+  that the review is excluded from the ledger.
+
+### Patch Changes
+
+- [#4632](https://github.com/nexus-substrate/nexus-agents/pull/4632) [`a48aa88`](https://github.com/nexus-substrate/nexus-agents/commit/a48aa881d8068fb683e764cffe59af3b5198a64e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reap stale test scratch before each vitest run ([#4413](https://github.com/nexus-substrate/nexus-agents/issues/4413))
+
+  `vitest.config.ts` now runs a `globalSetup` hook that removes entries older than
+  24 hours from the suite's scratch root, and logs what it removed.
+
+  [#4412](https://github.com/nexus-substrate/nexus-agents/issues/4412) moved that scratch off the shared `/tmp` tmpfs, because the tmpfs filled
+  and the suite failed to _collect_ ~1,100 test files while reporting zero
+  assertion failures. That fixed the contention but removed the one property the
+  tmpfs had — it cleared on reboot. On real disk the same leak accumulated
+  permanently: the root reached 9.7 GB across 1,987 entries before anything
+  measured it. The sweep is the other half of that trade.
+
+  The reaper reports rather than tidies silently. `ReapReport` distinguishes four
+  outcomes a naive implementation collapses into one cheerful "cleaned up" — root
+  absent, root empty, swept-but-nothing-stale, and reaped-N — because a reaper
+  pointed at the wrong directory otherwise looks exactly like a working one. A
+  rising reap count each run is the leak detector; a silent net would just hide
+  the next 9.7 GB.
+
+  Ties are retained, not reaped, so a clock skew of a millisecond cannot delete a
+  concurrent run's scratch, and stale symlinks are removed as links rather than
+  followed.
+
 ## 3.8.9
 
 ### Patch Changes
