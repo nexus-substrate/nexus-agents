@@ -12,32 +12,23 @@
 
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
+import type { PriceBasis } from './price-basis.js';
+
+// The vocabulary lives in a dependency-free leaf module (#4406 review) so the
+// persisted decision-cost records can import the zod schema at runtime without
+// closing an import cycle back through the model registry. Re-exported here so
+// this module stays the one-stop pricing surface for existing callers.
+export { PriceBasisSchema, priceBasisCaveat, type PriceBasis } from './price-basis.js';
 
 /**
- * Where a price came from, so a consumer can caveat it honestly (#4406).
+ * Whether the pricing chain resolved a rate for this model.
  *
- * There is deliberately no `'contract'` member yet: nexus-agents has no way for
- * an operator to state their negotiated rate, so claiming one would be a lie.
- * Adding that mechanism is tracked separately; when it lands, this union grows
- * and anything still reporting `'list'` is visibly an estimate.
+ * `'list'` means a rate WAS resolved and should be read as an assumed published
+ * rate — not a guarantee that it is the vendor's list price rather than an
+ * operator override or a fuzzy-matched sibling's rate. `'unknown'` means the
+ * chain produced nothing, which is not the same as "no price exists". Both
+ * caveats are spelled out on {@link PriceBasis} in `core/price-basis.ts`.
  */
-export type PriceBasis =
-  /** Vendor's advertised public rate. May not match the operator's actual bill. */
-  | 'list'
-  /** No price known for this model from any source. */
-  | 'unknown';
-
-/**
- * Human-readable caveat for a {@link PriceBasis}, for surfaces that show a cost
- * to a person. Keeps the wording in one place rather than restated per caller.
- */
-export function priceBasisCaveat(basis: PriceBasis): string | undefined {
-  return basis === 'list'
-    ? 'Estimated from public list prices — your contract, gateway or free-tier rate may differ.'
-    : undefined;
-}
-
-/** Whether a model has a price from any source. */
 export function priceBasisFor(model: string): PriceBasis {
   return lookupCanonicalPricing(model) === undefined ? 'unknown' : 'list';
 }

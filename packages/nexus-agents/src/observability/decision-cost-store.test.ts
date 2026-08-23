@@ -13,6 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { PriceBasisSchema } from '../core/price-basis.js';
 import { DecisionCostStore } from './decision-cost-store.js';
 import type { VoterCostInput } from './decision-cost.js';
 
@@ -129,5 +130,125 @@ describe('DecisionCostStore', () => {
       'b',
     ]);
     expect(store.query()).toHaveLength(2);
+  });
+});
+
+describe('DecisionCostStore price-basis persistence (#4406)', () => {
+  let dir: string;
+  let file: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'decision-cost-basis-'));
+    file = join(dir, 'decision-costs.jsonl');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('round-trips the per-voter and decision-level basis through the JSONL schema', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    store.record({
+      decisionId: 'd-basis',
+      gate: 'consensus_vote',
+      voters: [
+        {
+          role: 'architect',
+          model: 'claude-sonnet',
+          inputTokens: 1000,
+          outputTokens: 200,
+          costUsd: 0.006,
+          priceBasis: 'list',
+        },
+      ],
+      billingMode: 'api',
+      timestamp: TS,
+    });
+
+    const rehydrated = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const record = rehydrated.all()[0];
+    expect(record?.summary.priceBasis).toBe('list');
+    expect(record?.summary.perVoter[0]?.priceBasis).toBe('list');
+  });
+
+  it.each(PriceBasisSchema.options)(
+    'persists a %s basis without the store rejecting the whole record (#4406 review)',
+    (basis) => {
+      // Driven off the union's OWN member list, so a member added later is
+      // exercised here automatically. That is the point: the store schema used
+      // to hand-mirror the union, and a mirror that fell behind would make
+      // `JsonlStore.safeParse` reject the ENTIRE decision record — `append`
+      // returning persisted:false and the line skipped on read with only an
+      // aggregate debug count. Whole-record governance/billing data loss from
+      // one unrecognised field value.
+      const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+      const { persisted } = store.record({
+        decisionId: `d-${basis}`,
+        gate: 'consensus_vote',
+        voters: [
+          {
+            role: 'architect',
+            model: 'claude-sonnet',
+            inputTokens: 10,
+            costUsd: 0.001,
+            priceBasis: basis,
+          },
+        ],
+        billingMode: 'api',
+        timestamp: TS,
+      });
+      expect(persisted).toBe(true);
+
+      const rehydrated = new DecisionCostStore({ filePath: file, dataDir: dir });
+      expect(rehydrated.all()).toHaveLength(1);
+      expect(rehydrated.all()[0]?.summary.perVoter[0]?.priceBasis).toBe(basis);
+    }
+  );
+
+  it('still parses records written BEFORE the basis existed (additive + optional)', () => {
+    // A pre-#4406 line carries no priceBasis at any level. The schema change
+    // must not orphan the existing history, so it stays optional.
+    const legacy = {
+      decisionId: 'd-legacy',
+      gate: 'consensus_vote',
+      timestamp: TS,
+      summary: {
+        billingMode: 'api',
+        voterCount: 1,
+        measuredVoters: 1,
+        unmeasuredVoters: 0,
+        totalInputTokens: 1000,
+        totalOutputTokens: 200,
+        totalTokens: 1200,
+        totalCostUsd: 0.006,
+        perVoter: [
+          {
+            role: 'architect',
+            model: 'claude-sonnet',
+            inputTokens: 1000,
+            outputTokens: 200,
+            totalTokens: 1200,
+            costUsd: 0.006,
+            unmeasured: false,
+          },
+        ],
+        perModel: [
+          {
+            model: 'claude-sonnet',
+            voterCount: 1,
+            inputTokens: 1000,
+            outputTokens: 200,
+            totalTokens: 1200,
+            costUsd: 0.006,
+          },
+        ],
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(legacy)}\n`, 'utf-8');
+
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(store.all()).toHaveLength(1);
+    expect(store.all()[0]?.decisionId).toBe('d-legacy');
+    expect(store.all()[0]?.summary.priceBasis).toBeUndefined();
   });
 });

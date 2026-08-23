@@ -39,6 +39,16 @@
 
 import { z } from 'zod';
 
+// `core/price-basis` is a dependency-free leaf module (zod only), so importing
+// it at RUNTIME here is safe: the cycle this import used to close — via
+// `core/trace-pricing` → model registry → weather-report → decision-cost-store
+// → this module, which left the schema undefined at evaluation time — does not
+// exist through the leaf. It previously came in type-only alongside a
+// hand-written zod mirror of the union; that mirror's `satisfies` guard could
+// not catch a member being ADDED, and an unrecognised value makes JsonlStore
+// reject the whole decision record. One definition, so nothing can drift.
+import { PriceBasisSchema, type PriceBasis } from '../core/price-basis.js';
+
 /** Billing mode in effect for a decision. Mirrors `NEXUS_BILLING_MODE`. */
 export type DecisionBillingMode = 'plan' | 'api';
 
@@ -75,6 +85,22 @@ export interface VoterCostInput {
    * neither token count is unmeasured regardless of cost (#4430).
    */
   readonly costUsd?: number | undefined;
+  /**
+   * What kind of rate `costUsd` rests on (#4406). A cost the registry chain
+   * resolved arrives as `'list'` — an assumed published rate, so an estimate
+   * rather than a figure verified against the operator's bill. It is NOT a
+   * guarantee the number is a vendor list price: see {@link PriceBasis} for the
+   * overlay and fuzzy-match paths that report something else under that label.
+   *
+   * Orthogonal to `unmeasured`: that flag is about evidence of CONSUMPTION
+   * (were tokens reported?), this is about the PRICE the money figure was
+   * computed from. A voter can be unmeasured and still have a list-derived
+   * cost, and it still reaches `totalCostUsd`.
+   *
+   * Absent means the caller never looked a price up — NOT `'unknown'`, which
+   * is the positive claim that the chain resolved no price for the model.
+   */
+  readonly priceBasis?: PriceBasis | undefined;
 }
 
 /** Per-voter line in the decision rollup. */
@@ -108,6 +134,16 @@ export interface VoterCostBreakdown {
    * placeholder, not a measured $0.
    */
   readonly unmeasured: boolean;
+  /**
+   * What kind of rate `costUsd` rests on, when the caller stated one (#4406).
+   * Omitted when it did not — absent is not a claim, the same discipline the
+   * cache counters follow (#4439).
+   *
+   * Also omitted in `plan` mode, where `costUsd` was forced to 0: that zero
+   * rests on no price, so attributing it to one would be a fiction. Same rule
+   * as {@link DecisionCostSummary.priceBasis}, applied at the row level.
+   */
+  readonly priceBasis?: PriceBasis | undefined;
 }
 
 /** Per-model rollup line within a single decision. */
@@ -148,6 +184,17 @@ export interface DecisionCostSummary {
    * real cost).
    */
   readonly totalCostUsd: number;
+  /**
+   * What kind of rate `totalCostUsd` rests on (#4406) — `'list'` if ANY voter
+   * that contributed a price used a list rate, `'unknown'` if every voter that
+   * stated a basis had no price at all.
+   *
+   * OMITTED when no voter stated a basis (nothing was claimed) and in `plan`
+   * mode, where the recorded $0 is pre-covered by a subscription and rests on
+   * no price at all — `billingMode` already explains that figure, and labelling
+   * it `'list'` would credit a rate that produced nothing.
+   */
+  readonly priceBasis?: PriceBasis | undefined;
   /** Per-voter breakdown, in input order. */
   readonly perVoter: readonly VoterCostBreakdown[];
   /** Per-model breakdown, sorted by total cost desc then total tokens desc. */
@@ -173,6 +220,7 @@ export const DecisionCostSummarySchema = z.object({
   totalOutputTokens: z.number(),
   totalTokens: z.number(),
   totalCostUsd: z.number(),
+  priceBasis: PriceBasisSchema.optional(),
   perVoter: z.array(
     z.object({
       role: z.string(),
@@ -184,6 +232,7 @@ export const DecisionCostSummarySchema = z.object({
       cacheCreationInputTokens: z.number().optional(),
       costUsd: z.number(),
       unmeasured: z.boolean(),
+      priceBasis: PriceBasisSchema.optional(),
     })
   ),
   perModel: z.array(
@@ -239,9 +288,10 @@ interface ModelAcc {
 
 /**
  * Resolve one voter into its per-decision breakdown line under the billing mode.
- * Plan mode zeroes cost (tokens kept); unmeasured voters surface zeros flagged
- * as placeholders — including the TOKEN zeros, which previously passed as a
- * measurement whenever a cost happened to be present (#4430).
+ * Plan mode zeroes cost (tokens kept) and, because that zero rests on no price,
+ * drops the stated price basis with it (#4406). Unmeasured voters surface zeros
+ * flagged as placeholders — including the TOKEN zeros, which previously passed
+ * as a measurement whenever a cost happened to be present (#4430).
  */
 function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdown {
   const measured = isMeasured(v);
@@ -263,7 +313,28 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
       : {}),
     costUsd,
     unmeasured: !measured,
+    // Plan mode forced `costUsd` to 0, so this row's money figure rests on no
+    // price — the same reasoning the decision total applies (#4406 review).
+    // Echoing 'list' here would attribute a $0 to a rate that produced nothing,
+    // and since `plan` is the DEFAULT billing mode that fiction would be on
+    // most persisted rows. `billingMode` already explains the zero.
+    ...(isPlan ? {} : basisField(v.priceBasis)),
   };
+}
+
+/**
+ * The basis the decision TOTAL rests on (#4406), or undefined when the record
+ * should stay silent.
+ *
+ * Silent when no voter stated a basis: emitting `'unknown'` there would assert
+ * that no price existed for anyone, when in fact nobody looked. `'list'` wins
+ * over `'unknown'` because the total is a sum — one list-derived contribution
+ * makes the whole figure an estimate, and that is the caveat a reader needs.
+ */
+function decisionPriceBasis(voters: readonly VoterCostInput[]): PriceBasis | undefined {
+  const stated = voters.filter((v) => v.priceBasis !== undefined);
+  if (stated.length === 0) return undefined;
+  return stated.some((v) => v.priceBasis === 'list') ? 'list' : 'unknown';
 }
 
 /**
@@ -315,9 +386,17 @@ export function rollupDecisionCost(
     totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,
     totalCostUsd: roundUsd(totalCostUsd),
+    // Plan mode's $0 is pre-covered spend, not a priced figure — no basis to
+    // report, so the field stays off rather than crediting a rate.
+    ...(isPlan ? {} : basisField(decisionPriceBasis(voters))),
     perVoter,
     perModel,
   };
+}
+
+/** Spread-friendly optional wrapper so an absent basis stays absent, not `undefined`. */
+function basisField(basis: PriceBasis | undefined): { priceBasis?: PriceBasis } {
+  return basis === undefined ? {} : { priceBasis: basis };
 }
 
 /** Aggregate the per-model accumulator into sorted {@link ModelCostBreakdown} rows. */

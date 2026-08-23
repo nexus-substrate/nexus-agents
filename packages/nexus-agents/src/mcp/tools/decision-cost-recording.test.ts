@@ -76,6 +76,29 @@ describe('votesToCostInputs', () => {
     expect(inputs[0]?.costUsd).toBeUndefined();
     expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
   });
+
+  it('states the price basis alongside the cost (#4406 — list, not contract-accurate)', () => {
+    const inputs = votesToCostInputs([
+      vote({ role: 'security', model: 'claude-sonnet', inputTokens: 1000, outputTokens: 200 }),
+    ]);
+    expect(inputs[0]?.costUsd).toBeGreaterThan(0);
+    expect(inputs[0]?.priceBasis).toBe('list');
+  });
+
+  it("states 'unknown' when the model resolved with no pricing anywhere in the chain", () => {
+    const inputs = votesToCostInputs([
+      vote({ role: 'devex', model: 'mystery-model-xyz', inputTokens: 500, outputTokens: 100 }),
+    ]);
+    expect(inputs[0]?.costUsd).toBeUndefined();
+    expect(inputs[0]?.priceBasis).toBe('unknown');
+  });
+
+  it('OMITS the basis when no price was ever looked up (no usage reported)', () => {
+    // We never consulted the registry for this voter, so we have nothing to
+    // say about its price basis — absent, not 'unknown'.
+    const inputs = votesToCostInputs([vote({ role: 'architect', model: 'claude-sonnet' })]);
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('priceBasis');
+  });
 });
 
 describe('resolveBillingMode', () => {

@@ -33,6 +33,7 @@ import { getNexusDataDir } from '../config/nexus-data-dir.js';
 // the manifest overlay/snapshot from disk). All calls happen at invocation
 // time inside computeCostDetail.
 import { getDefaultRegistry, type MatchedVia } from '../config/model-registry.js';
+import type { PriceBasis } from '../core/price-basis.js';
 
 export interface UsageEvent {
   /** ISO 8601 timestamp of the call. */
@@ -124,6 +125,43 @@ export function computeCostDetail(
     inputTokens * entry.pricing.inputPer1M + outputTokens * entry.pricing.outputPer1M
   );
   return { costUsd: microUsd / 1_000_000, priced: true, resolvedId, ...provenance };
+}
+
+/**
+ * The {@link PriceBasis} the cost in a {@link CostDetail} rests on (#4406).
+ *
+ * DELIBERATELY derived rather than stored, because `CostDetail.priced` already
+ * carries the only distinction the current two-member union can express: the
+ * chain resolved a rate, or it did not. A `priceBasis` property beside `priced`
+ * would be a second spelling of the same boolean.
+ *
+ * WHAT THE `'list'` VALUE ASSERTS. Only that a rate was resolved, and that it
+ * should be read as an assumed published rate. It is NOT a guarantee that the
+ * number is a vendor's advertised public rate — at least two paths put
+ * something else behind the label, and one puts a real published rate behind
+ * `'unknown'`:
+ *
+ *  - The operator manifest overlay is the highest-precedence tier and passes
+ *    `pricing` through; overriding pricing is its purpose. A negotiated rate
+ *    entered there reports `'list'`, and the caveat then warns the reader their
+ *    contract may differ over the contract rate.
+ *  - The normalized/fuzzy identity tier lets a decorated gateway id inherit a
+ *    DIFFERENT canonical entry's rate.
+ *  - `config/models-generated-loader.ts` discards a published $0/$0 rate unless
+ *    the id ends `:free`, so `'unknown'` does not mean no price exists.
+ *
+ * The derivation is therefore an assumption about the chain, not a fact about
+ * it — conservative in the right direction (it invites a caveat rather than
+ * suppressing one), and honest only if described this way. Narrowing it needs a
+ * per-entry label the registry does not carry today; see {@link PriceBasis}.
+ *
+ * `priceSource`, the other provenance field, answers a different question: WHICH
+ * registry entry supplied the number, not what KIND of rate it is. It does not
+ * encode the basis, which is why the basis has to travel separately into records
+ * (the decision-cost store) that persist neither field.
+ */
+export function priceBasisOf(detail: CostDetail): PriceBasis {
+  return detail.priced ? 'list' : 'unknown';
 }
 
 /**
