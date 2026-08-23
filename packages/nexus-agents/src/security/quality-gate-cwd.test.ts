@@ -13,8 +13,8 @@
  * @module security/quality-gate-cwd.test
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,8 +38,17 @@ vi.mock('node:child_process', () => ({
  * directory with no package.json resolves to `unconfigured` and never execs —
  * correctly. These tests are about cwd, so they need a real project.
  */
+/** Scratch dirs created here, removed in afterAll — this suite does not leak (#4630). */
+const scratch: string[] = [];
+
+afterAll(() => {
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+  scratch.length = 0;
+});
+
 function fixtureProject(): string {
   const dir = mkdtempSync(join(tmpdir(), 'qgate-cwd-'));
+  scratch.push(dir);
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({
@@ -110,6 +119,7 @@ describe('quality-gate checks run in projectDir (#4355)', () => {
     // an unpinned ESLint and failed a project whose own lint was green.
     const { checkLint } = await import('./quality-gate.js');
     const bare = mkdtempSync(join(tmpdir(), 'qgate-bare-'));
+    scratch.push(bare);
 
     const result = await checkLint(bare)();
 

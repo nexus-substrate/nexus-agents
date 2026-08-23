@@ -1,13 +1,22 @@
-import { describe, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { detectPackageManager, resolveCheckCommand } from './quality-gate-commands.js';
 
+/** Scratch dirs created here, removed in afterAll — this suite does not leak (#4630). */
+const scratch: string[] = [];
+
+afterAll(() => {
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+  scratch.length = 0;
+});
+
 /** A throwaway project dir with the given files. */
 function project(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'qgate-'));
+  scratch.push(dir);
   for (const [name, body] of Object.entries(files)) {
     writeFileSync(join(dir, name), body, 'utf-8');
   }
