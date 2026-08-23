@@ -36,6 +36,10 @@ export default defineConfig({
     // Reap scratch older than a day before the run — see testing/global-setup.ts.
     globalSetup: ['./src/testing/global-setup.ts'],
 
+    // Fail any test that spawns a real agent-CLI binary (#4639). Blocks only
+    // the named CLIs; git/node/npm pass through. See testing/cli-spawn-guard.ts.
+    setupFiles: ['./src/testing/cli-spawn-guard.setup.ts'],
+
     // Keep scratch out of the shared tmpfs — see TEST_TMP above.
     // Tests asserting repo-*detection* need a dir with no `.git` ancestor,
     // which TEST_TMP cannot provide. Hand them the real system temp dir; see
