@@ -1,5 +1,58 @@
 # nexus-agents
 
+## 3.9.4
+
+### Patch Changes
+
+- [#4652](https://github.com/nexus-substrate/nexus-agents/pull/4652) [`bb9d8e1`](https://github.com/nexus-substrate/nexus-agents/commit/bb9d8e105b3b96c762bd3a969c5b8100dc448a02) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist the capability-gap ledger ([#4645](https://github.com/nexus-substrate/nexus-agents/issues/4645))
+
+  `getGapLedger()` is now backed by a JSONL file under the nexus data dir instead
+  of process memory.
+
+  Its consumer — `pipeline/research-trigger.ts` — ranks gaps **by frequency** and
+  turns the frequent ones into research. In memory, "frequent" meant "since this
+  process started": seconds for a CLI invocation. A gap recurring once a day for a
+  month never became frequent, because each observation landed in a different
+  process — and a gap that recurs across sessions is precisely the kind worth
+  researching.
+
+  Four of seven voters on the [#4651](https://github.com/nexus-substrate/nexus-agents/issues/4651) panel raised this independently, including the
+  one who voted against the proposal outright, so persistence lands **before** the
+  first producer rather than after it.
+
+  `loadReport()` distinguishes states that all summarize to "no gaps": file absent
+  (nothing was ever written, or the ledger is aimed at the wrong path), malformed
+  lines (counted, never silently skipped — a silent skip under-reports demand),
+  and entries dropped by the 90-day retention window.
+
+  Switching the default is a no-op today: `detectCapabilityGaps` cannot currently
+  produce a gap ([#4651](https://github.com/nexus-substrate/nexus-agents/issues/4651)), so nothing is written until the tool-refusal producer
+  lands.
+
+- [#4654](https://github.com/nexus-substrate/nexus-agents/pull/4654) [`ec671e8`](https://github.com/nexus-substrate/nexus-agents/commit/ec671e866d1c2198226fda6f86763d0b88599394) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record tool-refusal capability gaps ([#4651](https://github.com/nexus-substrate/nexus-agents/issues/4651))
+
+  The capability-gap loop was inert: `detectCapabilityGaps` compares required
+  against available capabilities, and the required set is drawn from static
+  lookup tables whose every entry is already available — a subset of a superset,
+  so the difference is always empty. The ledger recorded nothing and
+  `research-trigger` ranked frequency over an always-empty list.
+
+  This gives it a real producer, chosen by a 7-voter panel (option C, unanimous
+  among approvers). `CapabilityGap['type']` gains `tool_refusal`: a tool that
+  exists, ran, and declined work it can name — as opposed to a registry gap,
+  which is a capability that does not exist at all.
+
+  First emitter is `extract_symbols` hitting its extension gate. It records at
+  the MCP tool boundary rather than in the extractor, so the count reflects what
+  agents actually asked for; the `search_codebase` sweep pre-filters by extension
+  and cannot inflate it. `no-declarations` is deliberately not recorded — a file
+  that parsed and declares nothing is a measured zero, not a missing capability.
+
+  `research-trigger`'s generated tasks are now phrased per gap kind. The single
+  wording was routing-specific ("observed Nx in routing decisions … route the
+  goal through the MetaOrchestrator"), which would have made the loop's first
+  real signal produce a task that misdescribes its own evidence.
+
 ## 3.9.3
 
 ### Patch Changes
