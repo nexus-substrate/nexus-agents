@@ -145,3 +145,31 @@ describe('#4516 follow-up: the grace window has to be reachable', () => {
     expect(verdict.ok).toBe(true);
   });
 });
+
+describe('#4516 follow-up: not-yet-published is a deploy in flight', () => {
+  it('treats a zero elapsed time as inside the window', () => {
+    // What an unpublished repo version resolves to: the release is mid-flight
+    // and the site cannot be serving a version npm does not have yet.
+    // Reporting that as unmeasured failed the check on every single release.
+    const verdict = assessDeployStaleness({
+      siteVersion: '3.6.9',
+      repoVersion: '3.6.10',
+      minutesSincePublish: 0,
+    });
+
+    expect(verdict.status).toBe('deploying');
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('still reports unmeasured when the publish time is genuinely unreadable', () => {
+    // A registry that could not be fetched is a different fact from a version
+    // that is not there yet, and must not be laundered into either verdict.
+    expect(
+      assessDeployStaleness({
+        siteVersion: '3.6.9',
+        repoVersion: '3.6.10',
+        minutesSincePublish: Number.NaN,
+      }).status
+    ).toBe('unmeasured');
+  });
+});
