@@ -14,7 +14,9 @@
  * @module core/task-analysis/capability-gap-ledger
  */
 
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import { getTimeProvider } from '../time-provider.js';
+import { createPersistentCapabilityGapLedger } from './capability-gap-ledger-persistence.js';
 import type { CapabilityGapReport, CapabilityGap } from './capability-gap-detector.js';
 
 /** Context attached to a recorded gap, for traceability and examples. */
@@ -148,9 +150,23 @@ export function createCapabilityGapLedger(maxEntries = DEFAULT_MAX_ENTRIES): ICa
 
 let singletonLedger: ICapabilityGapLedger | undefined;
 
-/** Returns the process-wide gap ledger, creating it on first use. */
+/**
+ * Returns the process-wide gap ledger, creating it on first use.
+ *
+ * Durable since #4645. The consumer (`pipeline/research-trigger.ts`) ranks gaps
+ * by frequency, and an in-memory ledger measured that over "since this process
+ * started" — so a gap recurring across sessions could never become frequent.
+ *
+ * Switching the default is a no-op today: `detectCapabilityGaps` cannot
+ * currently produce a gap (#4651), so nothing is written until the tool-refusal
+ * producer lands. That is deliberate ordering — persistence must be in place
+ * *before* the first producer, or its first weeks of signal evaporate on
+ * restart.
+ */
 export function getGapLedger(): ICapabilityGapLedger {
-  singletonLedger ??= createCapabilityGapLedger();
+  singletonLedger ??= createPersistentCapabilityGapLedger({
+    filePath: nexusDataPath('capability-gaps.jsonl'),
+  });
   return singletonLedger;
 }
 

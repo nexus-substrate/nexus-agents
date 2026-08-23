@@ -145,11 +145,31 @@ describe('recordRoutingGaps', () => {
   });
 
   it('defaults to the shared singleton ledger', () => {
-    resetGapLedger();
+    // Assert DELEGATION, not an absolute count. Since #4645 the default
+    // singleton is durable, so it loads prior occurrences from disk and its
+    // size is a property of the machine's history rather than of this test.
+    // Injecting a known in-memory ledger tests the actual contract — "with no
+    // ledger argument, recordRoutingGaps writes to getGapLedger()" — and stays
+    // hermetic.
+    const shared = createCapabilityGapLedger();
+    setGapLedger(shared);
     recordRoutingGaps(
       { capabilityGaps: report({ type: 'expert', name: 'ml_expert' }) },
       { goal: 'g' }
     );
-    expect(getGapLedger().size()).toBe(1);
+    expect(shared.size()).toBe(1);
+    expect(getGapLedger()).toBe(shared);
+    resetGapLedger();
+  });
+
+  it('the default singleton is durable, so resetGapLedger does not empty it', () => {
+    // Recording the consequence of #4645 explicitly: a process-wide ledger
+    // backed by a file cannot be reset by dropping the in-process reference.
+    // Tests needing a clean ledger must inject one via setGapLedger.
+    resetGapLedger();
+    const first = getGapLedger();
+    resetGapLedger();
+    expect(getGapLedger()).not.toBe(first);
+    expect(getGapLedger().size()).toBe(first.size());
   });
 });
