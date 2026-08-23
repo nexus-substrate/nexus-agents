@@ -18,6 +18,11 @@ import {
   ConstraintEnforcement,
   ConstraintPriority,
 } from './stpa-types.js';
+
+/* eslint-disable @typescript-eslint/no-deprecated -- `ValidationResult.passed`
+   is deprecated for CONSUMERS (#4592) but is still part of the contract: it is
+   retained unchanged so persisted records stay comparable. These are the
+   regression tests that pin that unchanged behaviour, so they must read it. */
 // ToolCategory may be used in future tests for hazard mapping
 void 0; // Intentionally unused import removed
 
@@ -252,6 +257,9 @@ describe('STPA Validation - Input Validation', () => {
       const result = validateToolAgainstConstraints(tool, constraints);
       expect(result.violations).toHaveLength(0);
       expect(result.passed).toHaveLength(0);
+      // #4592: with zero constraints there is nothing to evaluate or skip.
+      expect(result.evaluated).toHaveLength(0);
+      expect(result.notApplicable).toHaveLength(0);
     });
 
     it('should handle multiple constraints', () => {
@@ -349,23 +357,43 @@ describe('STPA Validation - Security Boundaries', () => {
       expect(result.violations.every((v) => !v.details.includes('arbitrary commands'))).toBe(true);
     });
 
-    it('should detect execute tool patterns', () => {
-      const executeTools = ['execute', 'run_command', 'shell_exec', 'exec'];
+    const executeConstraint = (): SafetyConstraint[] => [
+      createConstraint('SC-001', 'Prevent command injection', ConstraintEnforcement.PREVENT),
+    ];
 
-      for (const toolName of executeTools) {
-        const tool = createTool(toolName, 'Execute commands', {
-          command: { type: 'string' },
-        });
-        const constraints = [
-          createConstraint('SC-001', 'Prevent command injection', ConstraintEnforcement.PREVENT),
-        ];
+    // Repointed in #4592. The old assertion summed three array lengths and
+    // compared to 0 — true for every possible result, including one that
+    // measured nothing. `evaluated` alone is not enough either: the constraint
+    // applies via the ('command', 'execut') description pattern, so it stays
+    // evaluated even when `classifyTool` fails entirely. Only the violation
+    // depends on classification, which is what this test is named for.
+    it.each(['execute', 'run_command', 'exec'])(
+      'detects %s as a shell tool and flags an unrestricted command property',
+      (toolName) => {
+        const tool = createTool(toolName, 'Execute commands', { command: { type: 'string' } });
 
-        const result = validateToolAgainstConstraints(tool, constraints);
-        // Should detect shell execution pattern
-        expect(
-          result.violations.length + result.passed.length + result.warnings.length
-        ).toBeGreaterThanOrEqual(0);
+        const result = validateToolAgainstConstraints(tool, executeConstraint());
+
+        expect(result.evaluated).toContain('SC-001');
+        expect(result.violations.map((v) => v.constraintId)).toContain('SC-001');
       }
+    );
+
+    it('does NOT yet detect shell_exec — recorded classifier gap', () => {
+      // `shell_exec` was in this test's own fixture list and the old assertion
+      // could not see that it fails to classify: `classifyTool` returns UNKNOWN
+      // for it, so `checkPreventionViolation` returns early and the injection
+      // constraint is recorded as satisfied without being enforced. Pinned as
+      // the current behaviour rather than quietly dropped from the list, so
+      // widening the matcher will break this test and force the update.
+      // Logged to .security-discoveries.jsonl as
+      // 2026-08-23-stpa-classifytool-shell-exec-gap.
+      const tool = createTool('shell_exec', 'Execute commands', { command: { type: 'string' } });
+
+      const result = validateToolAgainstConstraints(tool, executeConstraint());
+
+      expect(result.violations).toHaveLength(0);
+      expect(result.passed).toContain('SC-001');
     });
   });
 
@@ -662,6 +690,17 @@ describe('STPA Validation - Result Structure', () => {
     expect(Array.isArray(result.passed)).toBe(true);
   });
 
+  it('should always include the coverage arrays', () => {
+    const tool = createTool('test', 'Test', {});
+    const result = validateToolAgainstConstraints(tool, []);
+
+    // #4592: `evaluated` and `notApplicable` are always present on a live
+    // result, even though the Zod schema keeps them optional so that records
+    // persisted before the fields existed still parse.
+    expect(Array.isArray(result.evaluated)).toBe(true);
+    expect(Array.isArray(result.notApplicable)).toBe(true);
+  });
+
   it('should always include warnings array', () => {
     const tool = createTool('test', 'Test', {});
     const result = validateToolAgainstConstraints(tool, []);
@@ -720,11 +759,10 @@ describe('STPA Validation - Constraint Matching', () => {
     ];
 
     const result = validateToolAgainstConstraints(tool, constraints);
-    // Should either have violation or be in passed list
-    const constraintProcessed =
-      result.violations.some((v) => v.constraintId === 'SC-001') ||
-      result.passed.includes('SC-001');
-    expect(constraintProcessed).toBe(true);
+    // Repointed in #4592. "violated OR in passed" was satisfied by a
+    // constraint that never applied, since non-applicable ids land in
+    // `passed`. `evaluated` is true only when a check that could fail ran.
+    expect(result.evaluated).toContain('SC-001');
   });
 
   it('should match data loss constraints to file tools', () => {

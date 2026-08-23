@@ -70,6 +70,19 @@ export interface PropertySchema {
 
 /**
  * Result of validating a tool against safety constraints.
+ *
+ * Three fields describe coverage and they answer different questions (#4592):
+ *
+ *  - `evaluated` — the constraint was applicable AND a check ran that could
+ *    have failed. This is the honest coverage number.
+ *  - `notApplicable` — the constraint was judged not to apply to this tool.
+ *    Nothing was checked, but the skip itself was a decision.
+ *  - neither list — the constraint applied but no check exists for its
+ *    enforcement type, so it was **unmeasured**. These carry an
+ *    `UNMEASURED_ENFORCEMENT` warning rather than being silently credited.
+ *
+ * `evaluated` and `notApplicable` never overlap, and together with the
+ * unmeasured remainder they account for every constraint supplied.
  */
 export interface ValidationResult {
   /** Whether the tool passes all constraints */
@@ -78,8 +91,30 @@ export interface ValidationResult {
   readonly toolName: string;
   /** Constraints that were violated */
   readonly violations: readonly ConstraintViolation[];
-  /** Constraints that passed */
+  /**
+   * Constraints that did not produce a violation.
+   *
+   * @deprecated Not a coverage signal — use {@link ValidationResult.evaluated}.
+   * `passed` still contains constraints that were never evaluated: those
+   * {@link ValidationResult.notApplicable} to this tool contribute to `passed`
+   * despite no check having run, so `passed.length` overstates how much of the
+   * constraint set was actually measured.
+   *
+   * Its contents did change in one direction (#4592): applicable constraints
+   * whose enforcement type has no schema-time check used to land here too, and
+   * now land in no bucket and raise `UNMEASURED_ENFORCEMENT`. So `passed` got
+   * *less* wrong, not unchanged — it no longer credits a constraint that a
+   * permanently-null check waved through. It is still not a coverage signal.
+   */
   readonly passed: readonly string[];
+  /**
+   * Constraints that applied to this tool and were checked by a check that
+   * could have failed. `evaluated.length` is the coverage number; every id
+   * here is either in `passed` or produced an entry in `violations`.
+   */
+  readonly evaluated: readonly string[];
+  /** Constraints judged not to apply to this tool; nothing was checked. */
+  readonly notApplicable: readonly string[];
   /** Warnings (non-blocking issues) */
   readonly warnings: readonly ValidationWarning[];
   /** Timestamp of validation */

@@ -7,7 +7,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { validateToolAgainstConstraints } from './stpa-validation.js';
 import type { ToolDefinition, SafetyConstraint } from './stpa-types.js';
+import { ValidationResultSchema } from './stpa-schemas.js';
 import { HazardSeverity, ConstraintEnforcement, ConstraintPriority } from './stpa-types.js';
+
+/* eslint-disable @typescript-eslint/no-deprecated -- `ValidationResult.passed`
+   is deprecated for CONSUMERS (#4592) but is still part of the contract: it is
+   retained unchanged so persisted records stay comparable. These are the
+   regression tests that pin that unchanged behaviour, so they must read it. */
 
 // -- Factories ----------------------------------------------------------------
 
@@ -65,12 +71,20 @@ describe('validateToolAgainstConstraints - happy path', () => {
     expect(result.passed).toHaveLength(0);
   });
 
-  it('passes constraint that does not apply to tool category', () => {
+  it('is not valid when the only constraint does not apply to the tool', () => {
     const result = validateToolAgainstConstraints(
       makeTool('calculator', 'Math', { x: { type: 'number' } }),
       [makeConstraint('SC-1', 'Prevent random stuff', ConstraintEnforcement.PREVENT)]
     );
-    expect(result.valid).toBe(true);
+    // This asserted `valid: true` before #4592, and an intermediate revision
+    // annotated it as deliberate on the grounds that `valid` only required a
+    // constraint to be *supplied*. That is the vacuous pass with an extra step:
+    // the constraint never applied, so `evaluated` is empty and nothing about
+    // this tool was checked. `passed` still contains SC-1 — which is exactly
+    // why `passed` is not a coverage signal.
+    expect(result.valid).toBe(false);
+    expect(result.evaluated).toEqual([]);
+    expect(result.notApplicable).toContain('SC-1');
     expect(result.passed).toContain('SC-1');
   });
 
@@ -116,6 +130,12 @@ describe('constraint matching - category keywords', () => {
       makeTool('bash', 'Shell', { command: { type: 'string' } }),
       [makeConstraint('SC-X', 'Constraint about timeouts', ConstraintEnforcement.SANITIZE)]
     );
+    // Repointed in #4592. This pinned `passed`, which cannot tell "checked and
+    // clean" from "never checked" — and non-applicability is what it was
+    // really asserting. `passed` still contains SC-X (unchanged behaviour);
+    // `notApplicable` is the field that says why.
+    expect(result.notApplicable).toContain('SC-X');
+    expect(result.evaluated).not.toContain('SC-X');
     expect(result.passed).toContain('SC-X');
   });
 });
@@ -144,7 +164,10 @@ describe('constraint matching - description patterns', () => {
       makeTool('calculator', 'Adds numbers', { a: { type: 'number' } }),
       [makeConstraint('SC-Y', 'Check path bounds', ConstraintEnforcement.SANITIZE)]
     );
-    expect(result.passed).toContain('SC-Y');
+    // Repointed in #4592: was `expect(result.passed).toContain('SC-Y')`, which
+    // read a non-match as a pass. `notApplicable` is the honest bucket.
+    expect(result.notApplicable).toContain('SC-Y');
+    expect(result.evaluated).not.toContain('SC-Y');
   });
 });
 
@@ -340,7 +363,13 @@ describe('multiple constraints', () => {
         makeConstraint('N', 'Alert on cosmic rays', ConstraintEnforcement.ALERT),
       ]
     );
-    expect(result.passed).toContain('N');
+    // Repointed in #4592. This asserted `passed` contains 'N' and read as
+    // "the ALERT constraint was checked and held". It never was: 'N' does not
+    // apply to bash at all, so no check ran. M is the one actually measured.
+    expect(result.violations.map((v) => v.constraintId)).toContain('M');
+    expect(result.evaluated).toContain('M');
+    expect(result.notApplicable).toContain('N');
+    expect(result.evaluated).not.toContain('N');
   });
 });
 
@@ -488,5 +517,263 @@ describe('vacuous validity (#4585)', () => {
     );
     expect(result.valid).toBe(false);
     expect(result.violations.length).toBeGreaterThan(0);
+  });
+});
+
+// -- Coverage Fidelity (#4592) ------------------------------------------------
+
+/**
+ * `passed` conflates four outcomes (#4592): a real pass, a constraint that did
+ * not apply, a RATE_LIMIT check that could never fail, and an enforcement type
+ * the switch does not recognise. `evaluated` names the subset that was really
+ * measured; `notApplicable` names what was skipped; anything in neither was
+ * unmeasured.
+ */
+describe('coverage fidelity - evaluated / notApplicable (#4592)', () => {
+  /** Applies via doesConstraintApply's ('path', 'file') description pattern. */
+  const applicable = (id: string, enforcement: ConstraintEnforcement): SafetyConstraint =>
+    makeConstraint(id, 'Sanitize path input to prevent traversal', enforcement);
+
+  const fileTool = (
+    props: Record<string, { type: string; pattern?: string }> = {}
+  ): ToolDefinition => makeTool('read_file', 'Read a file from disk', props);
+
+  it('counts an applicable constraint that is satisfied as evaluated', () => {
+    const result = validateToolAgainstConstraints(
+      fileTool({ path: { type: 'string', pattern: '^[\\w./-]+$' } }),
+      [applicable('E1', ConstraintEnforcement.SANITIZE)]
+    );
+    expect(result.evaluated).toContain('E1');
+    expect(result.passed).toContain('E1');
+    expect(result.notApplicable).not.toContain('E1');
+  });
+
+  it('counts an applicable constraint that is violated as evaluated', () => {
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      applicable('E2', ConstraintEnforcement.SANITIZE),
+    ]);
+    expect(result.violations.map((v) => v.constraintId)).toContain('E2');
+    expect(result.evaluated).toContain('E2');
+    expect(result.passed).not.toContain('E2');
+  });
+
+  it('records a non-applicable constraint as notApplicable, not evaluated', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('calculator', 'Adds numbers', { a: { type: 'number' } }),
+      [makeConstraint('NA1', 'Alert on cosmic rays', ConstraintEnforcement.ALERT)]
+    );
+    expect(result.notApplicable).toContain('NA1');
+    expect(result.evaluated).not.toContain('NA1');
+  });
+
+  // An applicable constraint that no check could judge leaves the tool
+  // unmeasured against it. Reporting `valid: true` there is the vacuous pass
+  // this whole issue is about, relocated into the verdict field — and it is
+  // the same fail-closed rule the function already applies to zero supplied
+  // constraints and to an uninspectable input schema (#4592).
+  it('is not valid when an applicable constraint could not be measured', () => {
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      applicable('RL1', ConstraintEnforcement.RATE_LIMIT),
+    ]);
+
+    expect(result.violations).toHaveLength(0);
+    expect(result.evaluated).toHaveLength(0);
+    expect(result.valid).toBe(false);
+  });
+
+  it('is not valid when every supplied constraint was judged not to apply', () => {
+    // The side door the first attempt at this rule left open. Verified against
+    // the real analyzer pipeline: a shell tool whose single generated
+    // constraint does not apply reported `valid: true` having evaluated
+    // nothing. Not applicable is still not measured.
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      makeConstraint('NA9', 'Throttle unrelated widget calls', ConstraintEnforcement.RATE_LIMIT),
+    ]);
+
+    expect(result.notApplicable).toContain('NA9');
+    expect(result.evaluated).toHaveLength(0);
+    expect(result.valid).toBe(false);
+  });
+
+  it('stays valid when something was evaluated and only the remainder is unmeasurable', () => {
+    // The opposite failure. Requiring `unmeasured.length === 0` made file-read,
+    // file-delete and shell tools permanently invalid, because the catalog
+    // emits an unmeasurable RATE_LIMIT or REQUIRE_CONFIRMATION constraint for
+    // those hazards by construction — no schema edit could ever clear it. The
+    // gap belongs in coverage, not in the verdict.
+    const result = validateToolAgainstConstraints(
+      fileTool({ path: { type: 'string', pattern: '^[\\w./-]+$' } }),
+      [
+        applicable('E9', ConstraintEnforcement.SANITIZE),
+        applicable('RL9', ConstraintEnforcement.RATE_LIMIT),
+      ]
+    );
+
+    expect(result.evaluated).toEqual(['E9']);
+    expect(result.violations).toHaveLength(0);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((w) => w.code === 'UNMEASURED_ENFORCEMENT')).toBe(true);
+  });
+
+  it('records an applicable RATE_LIMIT constraint as unmeasured, not passed', () => {
+    // checkRateLimitViolation returned null unconditionally: a check that
+    // silently credited every tool it was pointed at. Rate limiting is a
+    // runtime property with no representation in a JSON Schema, so the honest
+    // report is "unmeasured" — neither passed nor evaluated.
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      applicable('RL1', ConstraintEnforcement.RATE_LIMIT),
+    ]);
+    expect(result.passed).not.toContain('RL1');
+    expect(result.evaluated).not.toContain('RL1');
+    expect(result.notApplicable).not.toContain('RL1');
+    expect(result.warnings.some((w) => w.code === 'UNMEASURED_ENFORCEMENT')).toBe(true);
+  });
+
+  it.each([
+    ConstraintEnforcement.ALERT,
+    ConstraintEnforcement.REQUIRE_CONFIRMATION,
+    ConstraintEnforcement.REQUIRE_PRIVILEGE,
+  ])('records applicable but unhandled enforcement %s as unmeasured', (enforcement) => {
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      applicable('UE1', enforcement),
+    ]);
+    expect(result.passed).not.toContain('UE1');
+    expect(result.evaluated).not.toContain('UE1');
+    expect(result.notApplicable).not.toContain('UE1');
+  });
+
+  it('names the unmeasured constraint ids in the warning', () => {
+    const result = validateToolAgainstConstraints(fileTool({ path: { type: 'string' } }), [
+      applicable('UE2', ConstraintEnforcement.ALERT),
+    ]);
+    const warning = result.warnings.find((w) => w.code === 'UNMEASURED_ENFORCEMENT');
+    expect(warning?.message).toContain('UE2');
+  });
+
+  it('omits the unmeasured warning when every constraint was judged', () => {
+    const result = validateToolAgainstConstraints(
+      fileTool({ path: { type: 'string', pattern: '^ok$' } }),
+      [applicable('E3', ConstraintEnforcement.SANITIZE)]
+    );
+    expect(result.warnings.every((w) => w.code !== 'UNMEASURED_ENFORCEMENT')).toBe(true);
+  });
+});
+
+// -- Bucket Invariants (#4592) ------------------------------------------------
+
+describe('coverage buckets partition the constraint set (#4592)', () => {
+  const mixed: readonly SafetyConstraint[] = [
+    // applies + violated. Labelled "satisfied" in an earlier revision, which
+    // was wrong: `checkSanitizationViolation` scans every property, so the
+    // unpatterned `command` below makes BOTH sanitization constraints fail on
+    // this tool. The satisfied-and-evaluated branch is covered by its own test
+    // under a fully patterned tool, below.
+    makeConstraint('P1', 'Sanitize path input', ConstraintEnforcement.SANITIZE),
+    // applies + violated (command param, no pattern)
+    makeConstraint('V1', 'Validate command inputs', ConstraintEnforcement.SANITIZE),
+    // does not apply
+    makeConstraint('N1', 'Alert on cosmic rays', ConstraintEnforcement.ALERT),
+    // applies but unmeasurable
+    makeConstraint('U1', 'Rate limit path access', ConstraintEnforcement.RATE_LIMIT),
+  ];
+  const tool = makeTool('read_file', 'Executes a file read', {
+    path: { type: 'string', pattern: '^[\\w./-]+$' },
+    command: { type: 'string' },
+  });
+
+  it('never places the same id in both evaluated and notApplicable', () => {
+    const { evaluated, notApplicable } = validateToolAgainstConstraints(tool, mixed);
+    const overlap = evaluated.filter((id) => notApplicable.includes(id));
+    expect(overlap).toEqual([]);
+  });
+
+  it('places every constraint in exactly one of evaluated / notApplicable / unmeasured', () => {
+    const result = validateToolAgainstConstraints(tool, mixed);
+    const ids = mixed.map((c) => c.id);
+    const unmeasured = ids.filter(
+      (id) => !result.evaluated.includes(id) && !result.notApplicable.includes(id)
+    );
+    expect([...result.evaluated, ...result.notApplicable, ...unmeasured].sort()).toEqual(
+      [...ids].sort()
+    );
+    // The unmeasured bucket is not empty by accident — U1 is in it.
+    expect(unmeasured).toEqual(['U1']);
+  });
+
+  it('makes every evaluated id either passed or violated', () => {
+    const result = validateToolAgainstConstraints(tool, mixed);
+    const violated = result.violations.map((v) => v.constraintId);
+    for (const id of result.evaluated) {
+      expect(result.passed.includes(id) || violated.includes(id)).toBe(true);
+    }
+    expect(result.evaluated.length).toBeGreaterThan(0);
+    // Both halves of the disjunction must be reachable, or this loop proves
+    // only that the violated branch works. `mixed` on this tool yields no
+    // satisfied constraint, so that half is pinned separately below.
+    expect(violated.length).toBeGreaterThan(0);
+  });
+
+  it('routes an evaluated-and-satisfied constraint to both passed and evaluated', () => {
+    // The other half of the invariant above. Every property is patterned, so
+    // the sanitization check runs and finds nothing — a real pass, not a skip.
+    const patterned = makeTool('read_file', 'Executes a file read', {
+      path: { type: 'string', pattern: '^[\\w./-]+$' },
+      command: { type: 'string', pattern: '^[\\w ]+$' },
+    });
+    const result = validateToolAgainstConstraints(patterned, [
+      makeConstraint('S1', 'Sanitize path input', ConstraintEnforcement.SANITIZE),
+    ]);
+
+    expect(result.violations).toHaveLength(0);
+    expect(result.evaluated).toEqual(['S1']);
+    expect(result.passed).toContain('S1');
+  });
+
+  it('keeps `passed` overstating coverage, which is why `evaluated` exists', () => {
+    const result = validateToolAgainstConstraints(tool, mixed);
+    // The whole point of #4592: `passed` absorbs the non-applicable N1, so it
+    // credits a constraint that no check ever looked at. `evaluated` does not.
+    expect(result.passed).toContain('N1');
+    expect(result.evaluated).not.toContain('N1');
+    const unevaluatedButPassed = result.passed.filter((id) => !result.evaluated.includes(id));
+    expect(unevaluatedButPassed).toEqual(['N1']);
+  });
+});
+
+// -- Persisted-Record Compatibility (#4592) -----------------------------------
+
+describe('ValidationResultSchema round-trip (#4592)', () => {
+  const legacyRecord = {
+    valid: true,
+    toolName: 'read_file',
+    violations: [],
+    passed: ['SC-001'],
+    warnings: [],
+    validatedAt: new Date('2026-01-15T12:00:00-05:00'),
+  };
+
+  it('parses a record persisted before evaluated/notApplicable existed', () => {
+    const parsed = ValidationResultSchema.parse(legacyRecord);
+    expect(parsed.passed).toEqual(['SC-001']);
+    expect(parsed.evaluated).toBeUndefined();
+    expect(parsed.notApplicable).toBeUndefined();
+  });
+
+  it('parses a record carrying the new coverage fields', () => {
+    const parsed = ValidationResultSchema.parse({
+      ...legacyRecord,
+      evaluated: ['SC-001'],
+      notApplicable: ['SC-002'],
+    });
+    expect(parsed.evaluated).toEqual(['SC-001']);
+    expect(parsed.notApplicable).toEqual(['SC-002']);
+  });
+
+  it('accepts a live validation result unchanged', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('read_file', 'Read a file from disk', { path: { type: 'string' } }),
+      [makeConstraint('R1', 'Sanitize path input', ConstraintEnforcement.SANITIZE)]
+    );
+    expect(() => ValidationResultSchema.parse(result)).not.toThrow();
   });
 });
