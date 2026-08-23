@@ -53,11 +53,19 @@ export function tournamentSelect(
 
 /**
  * Check if two workflows are compatible for crossover (same structure).
+ *
+ * Two zero-step parents are reported INCOMPATIBLE (#4585): the loop below
+ * never runs on empty inputs, so the trailing `return true` used to declare
+ * "compatible" from a comparison that never happened. Crossover of two empty
+ * parents can only produce an empty child, so `performCrossover` returning
+ * `null` (skip this pair) is the honest outcome rather than a wasted
+ * generation of empty offspring.
  */
 export function areWorkflowsCompatible(
   p1Steps: readonly WorkflowStep[],
   p2Steps: readonly WorkflowStep[]
 ): boolean {
+  if (p1Steps.length === 0 || p2Steps.length === 0) return false;
   if (p1Steps.length !== p2Steps.length) return false;
   for (let i = 0; i < p1Steps.length; i++) {
     if (p1Steps[i]?.id !== p2Steps[i]?.id) return false;

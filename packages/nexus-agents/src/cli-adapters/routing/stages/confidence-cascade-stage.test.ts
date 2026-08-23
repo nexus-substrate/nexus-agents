@@ -128,6 +128,32 @@ describe('ConfidenceCascadeStage', () => {
       }
     });
 
+    it('escalates for zero candidates and says why (#4585)', async () => {
+      // `Math.max(...[])` is -Infinity, so escalation for a task with no
+      // candidate models was an emergent side effect of an empty spread.
+      // Escalating is the right call — no candidates means no confidence
+      // evidence — but the record must name the reason, not imply that a
+      // measured confidence score fell below the threshold.
+      const ctx = createContext('design a distributed architecture with security review', []);
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.context.signals).toContain('confidence:should-escalate');
+        expect(result.value.context.signals).toContain('confidence:no-candidates');
+      }
+    });
+
+    it('does not claim no-candidates when candidates were scored (#4585)', async () => {
+      const ctx = createContext('design a distributed architecture with security review');
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.context.signals).not.toContain('confidence:no-candidates');
+      }
+    });
+
     it('updates scores for all candidates', async () => {
       const ctx = createContext('test task');
       const result = await stage.route(ctx);

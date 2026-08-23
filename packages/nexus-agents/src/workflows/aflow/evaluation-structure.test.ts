@@ -85,6 +85,12 @@ describe('evaluateStructure', () => {
     });
     expect(evaluateStructure(wf)).toBeLessThan(1.0);
   });
+
+  it('does not score a zero-step workflow as mostly sound (#4585)', () => {
+    // Four of the five structural checks pass vacuously on an empty workflow,
+    // which used to score 0.8 for a workflow `hasValidSteps` calls invalid.
+    expect(evaluateStructure(makeWorkflow({ steps: [] }))).toBeLessThanOrEqual(0.6);
+  });
 });
 
 // ============================================================================
@@ -135,6 +141,12 @@ describe('hasNoCycles', () => {
       ],
     });
     expect(hasNoCycles(wf)).toBe(true);
+  });
+
+  it('returns false for a zero-step workflow instead of a vacuous pass (#4585)', () => {
+    // `[].some()` is false, so the old `!steps.some(hasCycle)` certified a
+    // workflow with nothing in it as acyclic. There is no DAG to verify.
+    expect(hasNoCycles(makeWorkflow({ steps: [] }))).toBe(false);
   });
 });
 

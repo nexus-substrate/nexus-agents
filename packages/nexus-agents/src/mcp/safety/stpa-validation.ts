@@ -22,6 +22,22 @@ import { classifyTool, ToolCategory } from './hazard-catalog.js';
 /**
  * Validates a tool against a set of safety constraints.
  *
+ * `valid` is an assertion that the tool was *measured* and passed. It is true
+ * only when at least one constraint was evaluated, the tool's inputs were
+ * inspectable, and nothing was violated. Two vacuous-pass cases used to report
+ * `valid: true` because `violations.length === 0` (#4585):
+ *
+ *  - zero constraints — the check loop never ran, so nothing was measured
+ *  - no input schema — inputs cannot be inspected, so no input-shaped
+ *    constraint can be judged (the code already said as much in a warning)
+ *
+ * Callers distinguish "unmeasured" from "violated" with the existing fields:
+ * `violations` is non-empty for a real violation, while an unmeasured result
+ * carries the `NO_CONSTRAINTS_EVALUATED` / `NO_INPUT_SCHEMA` warning codes.
+ * `ValidationResult.valid` is a boolean in the shared type, so the honest value
+ * for "could not be measured" is `false` — fail closed rather than launder an
+ * uninspected tool as safe.
+ *
  * @param tool - Tool definition to validate
  * @param constraints - Safety constraints to check against
  * @returns Validation result with violations and warnings
@@ -46,8 +62,20 @@ export function validateToolAgainstConstraints(
     }
   }
 
+  // Nothing was checked: the constraint loop above iterated zero times (#4585).
+  const noConstraintsEvaluated = constraints.length === 0;
+  if (noConstraintsEvaluated) {
+    warnings.push({
+      code: 'NO_CONSTRAINTS_EVALUATED',
+      message: 'No safety constraints were supplied; the tool was not measured',
+      affected: 'constraints',
+    });
+  }
+
   // Add warnings for tools without schema validation
-  if (!tool.inputSchema.properties || Object.keys(tool.inputSchema.properties).length === 0) {
+  const inputsUnvalidatable =
+    !tool.inputSchema.properties || Object.keys(tool.inputSchema.properties).length === 0;
+  if (inputsUnvalidatable) {
     warnings.push({
       code: 'NO_INPUT_SCHEMA',
       message: 'Tool has no input schema defined; cannot validate inputs',
@@ -64,8 +92,12 @@ export function validateToolAgainstConstraints(
     });
   }
 
+  // Name the empty case instead of letting `violations.length === 0` speak for
+  // it: an unmeasured tool is not a passing tool (#4585).
+  const measured = !noConstraintsEvaluated && !inputsUnvalidatable;
+
   return {
-    valid: violations.length === 0,
+    valid: measured && violations.length === 0,
     toolName: tool.name,
     violations,
     passed,

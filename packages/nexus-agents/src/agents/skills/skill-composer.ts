@@ -94,11 +94,24 @@ export class SkillComposer {
 
   /**
    * Validates that a composition is executable.
+   *
+   * A zero-step composition is reported invalid rather than valid: the step
+   * loop below never runs, so `errors.length === 0` would report "executable"
+   * having checked nothing, and executing it would do nothing (#4585).
    */
   validateComposition(composition: SkillComposition): CompositionValidation {
     const errors: string[] = [];
     const warnings: string[] = [];
     const seenSkills = new Set<string>();
+
+    // Name the empty case (#4585): nothing to execute is not a passing check.
+    if (composition.steps.length === 0) {
+      return {
+        valid: false,
+        errors: ['Composition has no steps; there is nothing to execute or validate'],
+        warnings,
+      };
+    }
 
     for (const step of composition.steps) {
       const skill = this.library.getSkill(step.skillId);

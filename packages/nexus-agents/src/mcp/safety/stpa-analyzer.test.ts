@@ -567,8 +567,14 @@ describe('validateToolAgainstConstraints', () => {
     ];
 
     const result = validateToolAgainstConstraints(safeTool, constraints);
-    expect(result.valid).toBe(true);
+    // Previously pinned the vacuous pass: `safeTool` declares no input
+    // properties, so every schema-driven check is a no-op and "no violations"
+    // is evidence of nothing. Unmeasured is now reported as not-valid (#4585);
+    // the empty `violations` list plus the NO_INPUT_SCHEMA warning is what
+    // distinguishes it from a real violation.
+    expect(result.valid).toBe(false);
     expect(result.violations).toHaveLength(0);
+    expect(result.warnings.some((w) => w.code === 'NO_INPUT_SCHEMA')).toBe(true);
   });
 
   it('should detect missing input validation for path parameters', () => {

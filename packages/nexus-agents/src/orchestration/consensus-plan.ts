@@ -367,14 +367,34 @@ function stepsOverlap(a: string, b: string): boolean {
   return overlap / smaller > STEP_OVERLAP_THRESHOLD;
 }
 
-/** Finds divergence points between plans. */
-function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
+/**
+ * Finds divergence points between plans.
+ *
+ * Exported for direct testing of the zero-plan contract below (#4585); the
+ * production caller is `synthesize`.
+ */
+export function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
   const divergences: Divergence[] = [];
 
+  const comparable = plans.filter((p) => p.plan !== null);
+
+  // Zero comparable plans is not agreement (#4585). `Math.min(...[])` is
+  // `Infinity` and `Math.max(...[])` is `-Infinity`, so the granularity test
+  // below evaluated false and the risk test found neither side — and the
+  // synthesis reported "no divergences" over nothing at all, which reads in
+  // the record as "the CLIs agreed". Name the empty case: comparison was
+  // unmeasured, and say so instead of emitting a clean sheet.
+  if (comparable.length === 0) {
+    const positions = new Map<CliName, string>();
+    for (const p of plans) {
+      positions.set(p.cli, 'No parsed plan');
+    }
+    divergences.push({ topic: 'Plan comparison unmeasured (no parsed plans)', positions });
+    return divergences;
+  }
+
   // Compare step counts
-  const stepCounts = plans
-    .filter((p) => p.plan !== null)
-    .map((p) => ({ cli: p.cli, count: p.plan?.steps.length ?? 0 }));
+  const stepCounts = comparable.map((p) => ({ cli: p.cli, count: p.plan?.steps.length ?? 0 }));
 
   const counts = stepCounts.map((s) => s.count);
   const minSteps = Math.min(...counts);
@@ -389,9 +409,7 @@ function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
   }
 
   // Compare risk assessments
-  const riskCounts = plans
-    .filter((p) => p.plan !== null)
-    .map((p) => ({ cli: p.cli, count: p.plan?.risks.length ?? 0 }));
+  const riskCounts = comparable.map((p) => ({ cli: p.cli, count: p.plan?.risks.length ?? 0 }));
 
   const highRiskClis = riskCounts.filter((r) => r.count > 0);
   const noRiskClis = riskCounts.filter((r) => r.count === 0);

@@ -358,6 +358,12 @@ export function shouldFinalize(
   votes: VoteMessage[],
   reviews: ReviewResponseMessage[]
 ): boolean {
+  // A session with no participants has nothing to finalize. Both equality
+  // comparisons below are `0 === 0` on an empty roster, so an empty session
+  // used to transition to `finalizing` as though its work were complete — the
+  // `review` branch already guarded with `> 0`, the other two did not (#4585).
+  if (participants.length === 0) return false;
+
   switch (pattern) {
     case 'sequential':
     case 'parallel':

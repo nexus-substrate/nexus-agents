@@ -42,8 +42,17 @@ export function hasValidSteps(workflow: WorkflowDefinition): boolean {
 /**
  * Check if workflow has no dependency cycles.
  * Uses DFS with recursion stack to detect cycles.
+ *
+ * A zero-step workflow is reported as NOT acyclic (#4585): `[].some()` is
+ * `false`, so `!steps.some(hasCycle)` used to certify an empty workflow as
+ * structurally sound purely because there was nothing to walk. That vacuous
+ * pass handed an empty workflow 4 of the 5 checks in `evaluateStructure`
+ * (0.8), even though `hasValidSteps` in this same module already declares a
+ * zero-step workflow invalid. Empty means "no DAG to verify", not "verified".
  */
 export function hasNoCycles(workflow: WorkflowDefinition): boolean {
+  if (workflow.steps.length === 0) return false;
+
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
 

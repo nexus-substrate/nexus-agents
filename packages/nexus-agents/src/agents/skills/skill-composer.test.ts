@@ -161,6 +161,20 @@ describe('SkillComposer', () => {
         expect(validation.errors.length).toBeGreaterThan(0);
       }
     });
+
+    it('does not report an empty composition as valid (#4585)', () => {
+      // A composition with zero steps executes nothing; the step loop never
+      // runs, so `errors.length === 0` used to render absence as validity.
+      const validation = composer.validateComposition({
+        steps: [],
+        description: 'Empty composition',
+        estimatedComplexity: 'primitive',
+        confidence: 1,
+      });
+
+      expect(validation.valid).toBe(false);
+      expect(validation.errors.some((e) => e.includes('no steps'))).toBe(true);
+    });
   });
 
   describe('configuration', () => {

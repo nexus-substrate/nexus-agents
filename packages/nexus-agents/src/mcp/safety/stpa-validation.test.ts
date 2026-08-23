@@ -52,12 +52,14 @@ afterEach(() => {
 // -- Happy Path ---------------------------------------------------------------
 
 describe('validateToolAgainstConstraints - happy path', () => {
-  it('returns valid=true with no constraints', () => {
+  it('returns valid=false with no constraints (nothing was evaluated)', () => {
     const result = validateToolAgainstConstraints(
       makeTool('my_tool', 'Does something', { data: { type: 'string' } }),
       []
     );
-    expect(result.valid).toBe(true);
+    // Previously pinned the vacuous pass (`valid: true` over an empty
+    // constraint loop). Zero constraints means the tool was not measured (#4585).
+    expect(result.valid).toBe(false);
     expect(result.toolName).toBe('my_tool');
     expect(result.violations).toHaveLength(0);
     expect(result.passed).toHaveLength(0);
@@ -383,5 +385,65 @@ describe('edge cases', () => {
       [makeConstraint('F1', 'Sanitize to prevent injection', ConstraintEnforcement.SANITIZE)]
     );
     expect(result.violations.filter((v) => v.constraintId === 'F1')).toHaveLength(1);
+  });
+});
+
+// -- Vacuous validity (#4585) -------------------------------------------------
+
+describe('vacuous validity (#4585)', () => {
+  it('does not report a tool with no input schema as valid', () => {
+    const tool: ToolDefinition = {
+      name: 'bare_tool',
+      description: 'Takes no declared parameters',
+      inputSchema: { type: 'object' },
+    };
+    const result = validateToolAgainstConstraints(tool, [
+      makeConstraint('U1', 'Sanitize to prevent injection', ConstraintEnforcement.SANITIZE),
+    ]);
+    // Inputs could not be inspected at all, so "passes all constraints" is
+    // unmeasured, not true.
+    expect(result.valid).toBe(false);
+    expect(result.warnings.some((w) => w.code === 'NO_INPUT_SCHEMA')).toBe(true);
+  });
+
+  it('does not report a tool with an empty properties map as valid', () => {
+    const result = validateToolAgainstConstraints(makeTool('bare2', 'No params', {}), [
+      makeConstraint('U2', 'Sanitize to prevent injection', ConstraintEnforcement.SANITIZE),
+    ]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('does not report validity when zero constraints were evaluated', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('my_tool', 'Does something', { data: { type: 'string' } }),
+      []
+    );
+    expect(result.valid).toBe(false);
+    expect(result.warnings.some((w) => w.code === 'NO_CONSTRAINTS_EVALUATED')).toBe(true);
+  });
+
+  it('omits NO_CONSTRAINTS_EVALUATED when at least one constraint was evaluated', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('my_tool', 'Does something', { data: { type: 'string' } }),
+      [makeConstraint('U3', 'Alert on cosmic rays', ConstraintEnforcement.ALERT)]
+    );
+    expect(result.warnings.every((w) => w.code !== 'NO_CONSTRAINTS_EVALUATED')).toBe(true);
+  });
+
+  it('still reports valid for a measured tool with no violations', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('calculator', 'Math', { x: { type: 'number' } }),
+      [makeConstraint('U4', 'Prevent random stuff', ConstraintEnforcement.PREVENT)]
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('reports invalid (not unmeasured) when a real violation exists', () => {
+    const result = validateToolAgainstConstraints(
+      makeTool('bash', 'Shell', { command: { type: 'string' } }),
+      [makeConstraint('U5', 'Prevent injection', ConstraintEnforcement.PREVENT)]
+    );
+    expect(result.valid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
   });
 });

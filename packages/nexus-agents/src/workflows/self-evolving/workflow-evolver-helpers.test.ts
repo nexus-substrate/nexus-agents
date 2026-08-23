@@ -72,8 +72,11 @@ describe('areWorkflowsCompatible', () => {
     expect(areWorkflowsCompatible(steps1, steps2)).toBe(false);
   });
 
-  it('returns true for empty arrays', () => {
-    expect(areWorkflowsCompatible([], [])).toBe(true);
+  // Previously asserted `true` — that assertion pinned the vacuous pass: two
+  // zero-step parents share no genes, so "compatible for crossover" was a
+  // verdict reached by having nothing to compare (#4585).
+  it('returns false for empty arrays — no genes to exchange (#4585)', () => {
+    expect(areWorkflowsCompatible([], [])).toBe(false);
   });
 });
 

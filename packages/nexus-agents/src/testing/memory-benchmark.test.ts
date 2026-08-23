@@ -368,8 +368,19 @@ describe('memory-benchmark', () => {
       expect(validation.failures.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('should pass with empty thresholds', () => {
+    // Previously pinned the vacuous pass: with no thresholds configured every
+    // check is skipped, so `failures.length === 0` reported an unmeasured
+    // benchmark as green. A gate that checked nothing has not passed (#4585).
+    it('should not pass with empty thresholds - nothing was measured', () => {
       const validation = validateBenchmarkResults(baseResult, {});
+
+      expect(validation.pass).toBe(false);
+      expect(validation.failures).toHaveLength(1);
+      expect(validation.failures[0]).toContain('No thresholds configured');
+    });
+
+    it('should pass when the one configured threshold is met', () => {
+      const validation = validateBenchmarkResults(baseResult, { minMrr: 0.8 });
 
       expect(validation.pass).toBe(true);
       expect(validation.failures).toEqual([]);
