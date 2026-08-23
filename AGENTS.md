@@ -54,6 +54,7 @@ Non-negotiable across all building, reviewing, architecture work:
 - **YAGNI (bounded by capability-bias — see Mission)** — Implement what a named consumer or near-term mission loop will measurably use; no speculative abstractions, unused parameters, or "just in case" code with no named consumer. For nexus-agents the bar is "a named loop within the current epic/vector will use it, and it's instrumented to measure" — not "build everything that might help." Build ahead of demand only under that bar.
 - **DRY** — Every piece of knowledge must have a single, unambiguous, authoritative representation. Extract when you see the same logic in three places (two is a coincidence).
 - **Zero `any` policy** — ESLint enforces `@typescript-eslint/no-explicit-any: 'error'`. Use `unknown` + type guards or Zod at boundaries. See `.rules/typescript.md` for the full rule.
+- **Name the empty case** — when a check aggregates a verdict over a collection, state what empty means; never let a language default answer it. `[].every(p)`, `![].some(p)`, a loop that never runs its body, `errors.length === 0`, `Math.min(...[])` and `0 === 0` all render absence as health. Use `allOf`/`anyOf`/`verdictOver` from `utils/verdict-aggregation` (their `whenEmpty` is required) or an explicit guard, and write the empty-input test — that, not the type system and not `nexus/no-vacuous-verdict`, is what actually catches the class. See `.rules/development-disciplines.md`.
 
 ## Default working mode
 
