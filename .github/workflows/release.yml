@@ -124,16 +124,29 @@ jobs:
         # The third condition prevents publishing partial state when changesets
         # are still pending; in that case the next merge will close the loop.
         #
-        # CRITICAL (#2696, 2026-05-14): in PR-update mode the changesets/action
-        # runs `changeset version` on a `changeset-release/main` branch and
-        # LEAVES THE WORKING TREE CHECKED OUT THERE. Reading package.json or
-        # .changeset/ from the working tree would see the NEXT version already
-        # bumped and the changesets already consumed — making this step
-        # force-publish an unreleased version straight off the changeset-release
-        # branch on every changeset-bearing feature merge, with no git tag
-        # pushed and no GitHub Release created (2.68.0–2.76.0 all published this
-        # way). `git checkout "$GITHUB_SHA"` pins the whole step to the
-        # triggering main commit so the skew check only ever reasons about main.
+        # CRITICAL (#2696, 2026-05-14; corrected #4487, 2026-08-23): in PR-update
+        # mode the changesets/action bumps package.json and consumes .changeset/*.md
+        # WITHOUT COMMITTING. Reading either from the working tree sees the NEXT
+        # version already bumped and the changesets already gone — making this step
+        # force-publish an unreleased version on every changeset-bearing feature
+        # merge, with no git tag and no GitHub Release (2.68.0–2.76.0 published
+        # this way).
+        #
+        # The original guard was `git checkout "$GITHUB_SHA"`, which worked under
+        # changesets/action v1 because v1 checked out `changeset-release/main`
+        # locally, so the checkout was a real branch switch that restored main's
+        # files. v2.0.0 (#692) pushes release commits via the GitHub API and never
+        # checks that branch out: HEAD is ALREADY on main at $GITHUB_SHA with the
+        # bump uncommitted, so `git checkout <sha-at-HEAD>` is a bare detach that
+        # PRESERVES modified files. The guard kept running, kept logging correctly,
+        # and did nothing — 17 of 17 runs on 2026-08-23 force-published an unmerged
+        # version, and every release tag landed one commit early (#4624).
+        #
+        # Two independent fixes, because they protect different things:
+        #   * the DECISION reads the commit object (`git show`/`git ls-tree`), so no
+        #     tree state any future action version leaves behind can fool it;
+        #   * the PUBLISH gets `--force`, so `pnpm release` ships the commit's
+        #     content rather than an uncommitted bump the decision never approved.
         if: steps.changesets.outputs.published != 'true'
         shell: bash
         env:
@@ -144,11 +157,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Pin to the triggering main commit — never trust the working tree,
-          # which changesets/action may have left on changeset-release/main.
-          git checkout --quiet "$GITHUB_SHA"
+          # `--force` is load-bearing (#4487): HEAD is already at $GITHUB_SHA with
+          # the action's uncommitted bump in the tree, so a plain checkout is a
+          # no-op that leaves those files in place. This restores the commit's
+          # content for the `pnpm release` further down.
+          git checkout --quiet --force "$GITHUB_SHA"
 
-          local_version=$(jq -r '.version' packages/nexus-agents/package.json)
+          # Read the DECISION inputs from the commit object, not the tree. Even
+          # with --force above, deriving the verdict from an immutable artifact is
+          # what stops a future action version from silently voiding this guard
+          # again the way v2 did.
+          local_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
           published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
 
           # Use sort -V to pick the larger of the two versions.
@@ -158,7 +177,8 @@ jobs:
             exit 0
           fi
 
-          pending_changesets=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l)
+          pending_changesets=$(git ls-tree --name-only "$GITHUB_SHA" .changeset/ \
+            | grep -E '\.md$' | grep -cv 'README\.md' || true)
           if [ "$pending_changesets" -gt 0 ]; then
             echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets changeset(s) are still pending. The next release-PR merge should close the loop. Not force-publishing."
             exit 0
@@ -179,6 +199,20 @@ jobs:
             echo "::warning::changeset publish did not create tag $TAG — creating it now"
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
+          fi
+
+          # Assert the tag points at a commit that actually holds this version
+          # (#4624). Before #4487 the fallback fired on feature merges and tagged
+          # $GITHUB_SHA, whose package.json was the PREVIOUS version — 14 of 14
+          # tags checked were off by one, and nothing noticed for weeks. Now that
+          # the decision reads the commit object, a legitimate firing means
+          # $GITHUB_SHA genuinely holds $local_version, so this assertion should
+          # never fire; it exists so that if that stops being true, a release
+          # fails loudly instead of quietly mislabelling its own provenance.
+          tagged_version=$(git show "$TAG:packages/nexus-agents/package.json" | jq -r '.version')
+          if [ "$tagged_version" != "$local_version" ]; then
+            echo "::error::Tag $TAG points at a commit whose package.json is $tagged_version, not $local_version (#4624)."
+            exit 1
           fi
           # Release notes = this version's section of the changesets CHANGELOG.
           notes=$(awk -v v="## $local_version" '
