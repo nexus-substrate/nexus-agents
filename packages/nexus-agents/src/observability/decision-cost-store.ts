@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { JsonlStore } from '../config/jsonl-store.js';
 import { ensureLearningDir, getDecisionCostFile } from '../config/learning-persistence.js';
+import { PriceBasisSchema } from '../core/price-basis.js';
 import { rollupDecisionCost } from './decision-cost.js';
 import type { DecisionBillingMode, DecisionCostSummary, VoterCostInput } from './decision-cost.js';
 
@@ -41,6 +42,10 @@ const VoterCostBreakdownSchema = z.object({
   cacheCreationInputTokens: z.number().int().nonnegative().optional(),
   costUsd: z.number().nonnegative(),
   unmeasured: z.boolean(),
+  // #4406 — optional: records written before the basis existed carry no
+  // provenance at all, and absent must stay absent rather than becoming the
+  // positive claim 'unknown'.
+  priceBasis: PriceBasisSchema.optional(),
 });
 
 const ModelCostBreakdownSchema = z.object({
@@ -61,6 +66,8 @@ const DecisionCostSummarySchema = z.object({
   totalOutputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
   totalCostUsd: z.number().nonnegative(),
+  // #4406 — optional for the same reason as the per-voter field above.
+  priceBasis: PriceBasisSchema.optional(),
   perVoter: z.array(VoterCostBreakdownSchema).readonly(),
   perModel: z.array(ModelCostBreakdownSchema).readonly(),
 });

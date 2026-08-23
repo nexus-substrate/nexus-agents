@@ -22,7 +22,7 @@
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
-import { computeCostDetail } from '../../learning/usage-log.js';
+import { computeCostDetail, priceBasisOf } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
 import type {
   DecisionBillingMode,
@@ -47,6 +47,10 @@ export function resolveBillingMode(): DecisionBillingMode {
  * When the model resolves WITHOUT pricing anywhere in the registry chain
  * (#4165), `costUsd` is OMITTED — tokens are kept — so the rollup counts the
  * voter as UNMEASURED (#3855: missing cost is unmeasured, never a measured $0).
+ *
+ * Whenever a price WAS looked up, the resulting {@link PriceBasis} rides along
+ * (#4406) so the recorded figure says whether it came from a vendor list rate
+ * rather than reading as contract-accurate.
  */
 /**
  * Copy only the token counters the adapter actually reported. Every field is
@@ -80,6 +84,10 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
       model: v.model,
       ...reportedTokenFields(v),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
+      // #4406 — state what kind of rate the cost rests on, but only when we
+      // actually consulted the registry. No lookup ⇒ no claim (absent), which
+      // is distinct from 'unknown' ("we looked and there is no price").
+      ...(detail !== undefined ? { priceBasis: priceBasisOf(detail) } : {}),
     };
     return input;
   });
