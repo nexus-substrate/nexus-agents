@@ -52,6 +52,9 @@ importers:
       '@changesets/cli':
         specifier: ^3.0.0
         version: 3.0.0
+      '@changesets/read':
+        specifier: 1.0.0
+        version: 1.0.0
       '@commitlint/cli':
         specifier: ^21.2.2
         version: 21.2.2(@types/node@25.9.5)(conventional-commits-parser@7.1.2)(typescript@6.0.3)

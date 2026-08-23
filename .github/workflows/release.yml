@@ -177,10 +177,16 @@ jobs:
             exit 0
           fi
 
-          pending_changesets=$(git ls-tree --name-only "$GITHUB_SHA" .changeset/ \
-            | grep -E '\.md$' | grep -cv 'README\.md' || true)
+          # Count NON-EMPTY changesets, matching changesets/action's own
+          # `hasNonEmptyChangesets` predicate via the same @changesets/read
+          # library (#4646). Counting FILES here was a real hole: an empty
+          # changeset (`pnpm changeset --empty`, which CLAUDE.md prescribes) is
+          # one file and zero releases, so the action published nothing AND
+          # opened no PR, while this step stood down waiting for a release-PR
+          # merge that was never going to happen. Both green, release stalled.
+          pending_changesets=$(npx tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
           if [ "$pending_changesets" -gt 0 ]; then
-            echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets changeset(s) are still pending. The next release-PR merge should close the loop. Not force-publishing."
+            echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets non-empty changeset(s) are still pending, so changesets/action will open a version PR. That merge closes the loop. Not force-publishing."
             exit 0
           fi
 
