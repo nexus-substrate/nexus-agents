@@ -36,10 +36,18 @@ If `LOCAL > PUBLISHED`, the publish step did not run on the merge of the most re
 
 ## Root cause
 
-`changesets/action` runs in one of two modes per push to `main`:
+`changesets/action` v2 selects one of four cases per push to `main`, on a plain
+switch over what `@changesets/read` finds in `.changeset/` (verified against the
+pinned source in #4626):
 
-1. **Publish mode** — when `pnpm changeset:version` finds **no** pending changesets in `.changeset/` → runs `pnpm release` and publishes to npm.
-2. **PR-update mode** — when `.changeset/*.md` files exist → consumes them on the side branch, force-pushes `changeset-release/main`, updates the open release PR.
+1. **Publish mode** — **no** pending changesets → runs `pnpm release` and publishes to npm. This is the _only_ branch that publishes.
+2. **PR-update mode** — non-empty changesets exist → consumes them on the side branch, force-pushes `changeset-release/main`, updates the open release PR.
+3. **All-empty** — changesets exist but every one declares zero releases → logs `All changesets are empty; not creating PR` and returns. **No publish and no PR.**
+4. **No changesets, no publish script** — returns.
+
+Case 3 is easy to miss and is the one behind the stall in #4646: an empty
+changeset (`pnpm changeset --empty`) is a file with no releases, so it suppresses
+publishing without producing a release PR to clear it.
 
 The race: between the moment a release PR is opened and the moment it merges, **other PRs on `main` add new changesets**. When the release PR squash-merges, only the changesets it knew about are deleted from `main`. The new changesets are still there. The post-merge release run sees them, enters PR-update mode, creates a _new_ release PR for the _next_ version, and **skips publishing the just-bumped version**.
 
