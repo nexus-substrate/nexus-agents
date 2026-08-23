@@ -1,5 +1,47 @@
 # nexus-agents
 
+## 3.9.2
+
+### Patch Changes
+
+- [#4641](https://github.com/nexus-substrate/nexus-agents/pull/4641) [`306f9b2`](https://github.com/nexus-substrate/nexus-agents/commit/306f9b24a549f6fba8f9470ef98b43491cfcdcda) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Stop four unit tests from spawning the real `opencode` binary ([#4629](https://github.com/nexus-substrate/nexus-agents/issues/4629))
+
+  Measured with a `PATH` shim over the full 1,185-file suite: 23 real `opencode`
+  spawns, all from four test files, none of them an opt-in integration test.
+
+  The disk cost was visible (each spawn unpacks an 8.2 MB `libopentui.so` into
+  `$TMPDIR` and never removes it). The determinism cost was not: a unit test that
+  shells out to an installed binary makes the suite's result depend on what is on
+  the machine. On a box without `opencode` these four exercised a different branch
+  and nothing reported which branch had run.
+
+  `verify-command.test.ts` mocks the auth probe with a deliberately mixed panel —
+  one authenticated, three not — so both sides of the availability check stay
+  exercised rather than collapsing to a uniform all-authed shape.
+
+  The three MCP tests needed a **wholesale** module mock of the CLI factory. The
+  narrow `vi.mock(path, async (importOriginal) => ({ ...actual, stub }))` form does
+  not stop the spawn: the test file's own import is mocked, but other importers
+  still reach the real `getAvailableClis`. Each mock carries a comment saying so.
+
+- [#4642](https://github.com/nexus-substrate/nexus-agents/pull/4642) [`43a5f50`](https://github.com/nexus-substrate/nexus-agents/commit/43a5f50d54d2d918a50c4188e20b4e7e5a30d985) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Take the supported-extension list from one place ([#4640](https://github.com/nexus-substrate/nexus-agents/issues/4640))
+
+  `codebase-search.ts` hardcoded its own copy of `['.ts','.tsx','.js','.jsx']`
+  while `symbol-extractor.ts` exports `SUPPORTED_EXTENSIONS` — whose JSDoc says it
+  is exported to be the single source.
+
+  The copies were not merely redundant: they sat on opposite sides of the same
+  decision. `extract_symbols` reaches the extension gate at
+  `symbol-extractor.ts:162`, while the `search_codebase` sweep filters _before_ it.
+  So adding a language to `SUPPORTED_EXTENSIONS` taught `extract_symbols` to parse
+  it while `search_codebase` silently indexed none of it — no error, just an index
+  quietly missing a language.
+
+  Adds a test that fails when the lists diverge, since a shared constant alone
+  cannot prevent someone reintroducing a local copy. Verified red/green: with a
+  fifth extension added to the canonical list the test fails before the fix and
+  passes after.
+
 ## 3.9.1
 
 ### Patch Changes
