@@ -49,6 +49,12 @@ export {
   isRateLimitText,
   RATE_LIMIT_PATTERNS,
   parseRetryAfterMs,
+  // HTTP `Retry-After` capture (#4606)
+  parseRetryAfterHeader,
+  extractRetryAfterMs,
+  resolveRetryAfterMs,
+  retryAfterMsFromContext,
+  RETRY_AFTER_CONTEXT_KEY,
   toRateLimitError,
   recordRateLimitEvent,
   getRateLimitStats,

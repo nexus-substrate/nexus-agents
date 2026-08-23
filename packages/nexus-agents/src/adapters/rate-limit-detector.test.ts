@@ -4,18 +4,21 @@
  * (Source: Issue #996 — Rate limit error surfacing)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isRateLimitLikeError,
   isRateLimitText,
   RATE_LIMIT_PATTERNS,
   parseRetryAfterMs,
+  parseRetryAfterHeader,
+  extractRetryAfterMs,
   toRateLimitError,
   recordRateLimitEvent,
   getRateLimitStats,
   clearRateLimitEvents,
 } from './rate-limit-detector.js';
 import { RateLimitError } from '../core/errors.js';
+import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from '../core/index.js';
 
 beforeEach(() => {
   clearRateLimitEvents();
@@ -211,5 +214,155 @@ describe('rate limit tracking', () => {
     // Should cap at 200
     const testStat = stats.find((s) => s.provider === 'test');
     expect(testStat?.totalHits).toBe(200);
+  });
+});
+
+// ============================================================================
+// Retry-After HEADER Capture Tests (#4606)
+// ============================================================================
+
+/**
+ * The horizon only ever arrived for the OpenAI family, because it was parsed
+ * out of prose and the HTTP `Retry-After` header was dropped with the
+ * response. Anthropic states nothing in its 429 body and Gemini states it as
+ * `"retryDelay":"33s"` — so neither arm could report a quota horizon at all.
+ */
+describe('parseRetryAfterHeader (#4606)', () => {
+  beforeEach(() => {
+    setTimeProvider(new FixedTimeProvider(Date.parse('Wed, 21 Oct 2015 07:28:00 GMT')));
+  });
+
+  afterEach(() => {
+    resetTimeProvider();
+  });
+
+  it('parses the delta-seconds form', () => {
+    expect(parseRetryAfterHeader('120')).toBe(120_000);
+  });
+
+  it('parses the HTTP-date form against the current clock', () => {
+    expect(parseRetryAfterHeader('Wed, 21 Oct 2015 07:29:00 GMT')).toBe(60_000);
+  });
+
+  it('clamps an HTTP-date already in the past to zero rather than negative', () => {
+    expect(parseRetryAfterHeader('Wed, 21 Oct 2015 07:27:00 GMT')).toBe(0);
+  });
+
+  it('tolerates surrounding whitespace', () => {
+    expect(parseRetryAfterHeader('  45  ')).toBe(45_000);
+  });
+
+  /**
+   * Names the empty case. A `0` horizon reads downstream as "retry
+   * immediately", which is a measurement; defaulting to it when the header
+   * could not be read would report a vacuous default as a provider assertion.
+   */
+  it('reports an UNPARSEABLE header as absent, never as a zero horizon', () => {
+    for (const bogus of ['soon', '', '   ', 'later today', '-30', '12.5', 'NaN']) {
+      const parsed = parseRetryAfterHeader(bogus);
+      expect(parsed, `"${bogus}" must be absent, not 0`).toBeUndefined();
+    }
+  });
+
+  it('reports an ABSENT header as absent, never as a zero horizon', () => {
+    expect(parseRetryAfterHeader(undefined)).toBeUndefined();
+    expect(parseRetryAfterHeader(null)).toBeUndefined();
+  });
+
+  it('keeps a literal "0" distinguishable from an absent header', () => {
+    // A server that really said 0 said "retry now"; that is a measurement and
+    // survives as one. Only the unreadable case collapses to undefined.
+    expect(parseRetryAfterHeader('0')).toBe(0);
+  });
+});
+
+describe('extractRetryAfterMs (#4606)', () => {
+  it('reads a Headers-style bag (Anthropic/OpenAI SDK APIError.headers)', () => {
+    const error = Object.assign(new Error('429 rate_limit_error'), {
+      status: 429,
+      headers: new Headers({ 'retry-after': '3600' }),
+    });
+    expect(extractRetryAfterMs(error)).toBe(3_600_000);
+  });
+
+  it('reads a plain record bag (Vercel AI SDK APICallError.responseHeaders)', () => {
+    const error = Object.assign(new Error('rate limit exceeded'), {
+      responseHeaders: { 'content-type': 'application/json', 'Retry-After': '90' },
+    });
+    expect(extractRetryAfterMs(error)).toBe(90_000);
+  });
+
+  it('follows the cause chain, so a re-classification probe keeps the horizon', () => {
+    // The OpenAI adapter classifies on a clean probe Error and sets
+    // `probe.cause = originalError`; the header lives on the original.
+    const original = Object.assign(new Error('429'), {
+      headers: new Headers({ 'retry-after': '75' }),
+    });
+    const probe = Object.assign(new Error('429'), { cause: original });
+    expect(extractRetryAfterMs(probe)).toBe(75_000);
+  });
+
+  it('returns absent for an error with no header bag at all', () => {
+    expect(extractRetryAfterMs(new Error('429 too many requests'))).toBeUndefined();
+    expect(extractRetryAfterMs('a string')).toBeUndefined();
+    expect(extractRetryAfterMs(undefined)).toBeUndefined();
+  });
+
+  it('returns absent — not zero — when the bag holds an unparseable value', () => {
+    const error = Object.assign(new Error('429'), {
+      headers: new Headers({ 'retry-after': 'whenever' }),
+    });
+    expect(extractRetryAfterMs(error)).toBeUndefined();
+  });
+
+  it('extracts ONLY retry-after and never returns the header bag itself', () => {
+    // Security constraint: Authorization and API keys ride in the same bag.
+    const error = Object.assign(new Error('429'), {
+      headers: new Headers({
+        authorization: 'Bearer sk-test-not-a-real-key',
+        'x-api-key': 'sk-test-also-not-real',
+        'retry-after': '30',
+      }),
+    });
+    const captured = extractRetryAfterMs(error);
+    expect(typeof captured).toBe('number');
+    expect(JSON.stringify(captured)).not.toContain('Bearer');
+    expect(JSON.stringify(captured)).not.toContain('sk-test');
+  });
+});
+
+describe('parseRetryAfterMs body fallbacks (#4606)', () => {
+  it('parses the Gemini RetryInfo shape stringified into the message', () => {
+    const body =
+      '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":' +
+      '[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"33s"}]}}';
+    expect(parseRetryAfterMs(body)).toBe(33_000);
+  });
+
+  it('parses a fractional Gemini retryDelay', () => {
+    expect(parseRetryAfterMs('{"retryDelay":"1.5s"}')).toBe(1500);
+  });
+
+  it('parses the sub-second OpenAI phrasing that the second-granularity rule missed', () => {
+    expect(parseRetryAfterMs('Please try again in 632ms')).toBe(632);
+  });
+
+  it('still parses the whole-second OpenAI phrasing', () => {
+    expect(parseRetryAfterMs('Please try again in 20s')).toBe(20_000);
+  });
+
+  it('stays absent when the body states no horizon (Anthropic 429)', () => {
+    expect(
+      parseRetryAfterMs('{"type":"error","error":{"type":"rate_limit_error","message":"..."}}')
+    ).toBeUndefined();
+  });
+});
+
+describe('toRateLimitError header capture (#4606)', () => {
+  it('prefers the header horizon over the message prose', () => {
+    const error = Object.assign(new Error('rate limit; try again in 20s'), {
+      headers: new Headers({ 'retry-after': '600' }),
+    });
+    expect(toRateLimitError(error, 'openai').retryAfterMs).toBe(600_000);
   });
 });
