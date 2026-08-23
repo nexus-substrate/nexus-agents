@@ -448,7 +448,7 @@ jobs:
       - name: Check MCP tool description drift
         run: npx tsx scripts/check-mcp-description-drift.ts --verbose
 
-  # Job 8d: Orphan Detection (#2410) — audit-only v1
+  # Job 8d: Orphan Detection (#2410) — blocking since #4583
   orphan-detection:
     name: Orphan Detection
     runs-on: ubuntu-latest
@@ -461,7 +461,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
 
-      - name: Run orphan detection (audit-only)
+      - name: Run orphan detection
         run: npx tsx scripts/check-orphans.ts --verbose
 
   # Job 9: Canonical Index Validation

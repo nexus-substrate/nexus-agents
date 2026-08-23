@@ -1,7 +1,7 @@
 {
   "$schema": "./orphan-allowlist.schema.json",
   "version": "1.0.0",
-  "description": "Allowlist for the orphan-detection check (#2410). Files matching these patterns or paths are exempted from orphan flagging — typically because they're invoked by name (CLI scripts, migrations) or intentionally not imported (examples, illustrative code).",
+  "description": "Allowlist for the orphan-detection check (#2410, blocking since #4583). Files matching these patterns or paths are exempted from orphan flagging — typically because they're invoked by name (CLI scripts, migrations) or intentionally not imported (examples, illustrative code). `patterns` are permanent structural facts about the repo layout. Each `specific_files` entry must declare exactly one of `expires` (YYYY-MM-DD, dated debt — the file flags once the date passes) or `permanent: true` (the file can never be imported); an entry declaring neither fails the check by name.",
   "patterns": [
     {
       "glob": "scripts/**/*.ts",
@@ -35,7 +35,8 @@
   "specific_files": [
     {
       "path": "packages/nexus-agents/scripts/typedoc-astro-title.mjs",
-      "rationale": "Loaded by TypeDoc as a markdown-hooks plugin via typedoc.markdown.json (`plugin` array), not imported by JS code."
+      "rationale": "TypeDoc markdown-hooks plugin, named in the `plugin` array of typedoc.markdown.json and loaded by TypeDoc itself. Nothing can import it: it exports only a `load(app)` hook that TypeDoc calls, and its only caller is the docs build invoking TypeDoc by config. Permanent, not debt.",
+      "permanent": true
     }
   ]
 }
