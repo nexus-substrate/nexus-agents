@@ -327,7 +327,10 @@ describe('runReleaseAnnounce', () => {
     logSpy.mockRestore();
   });
 
-  it('should handle empty channels array', async () => {
+  // This test previously asserted `success: true` for an empty channel list —
+  // it pinned the vacuous pass rather than catching it (#4581). Announcing
+  // nothing is not a successful announcement.
+  it('should not report success when no channels were announced', async () => {
     const result = await runReleaseAnnounce({
       version: '3.0.0',
       channels: [],
@@ -335,7 +338,7 @@ describe('runReleaseAnnounce', () => {
       verbose: false,
     });
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
     expect(result.channels).toHaveLength(0);
   });
 });
@@ -519,5 +522,24 @@ describe('releaseAnnounceCommand', () => {
     });
 
     expect(exitCode).toBe(0);
+  });
+  it('should reject an unrecognised channel rather than announcing nothing', async () => {
+    const exitCode = await releaseAnnounceCommand({
+      positionals: ['release-announce'],
+      options: { version: '3.0.0', channels: 'bogus', dryRun: true },
+    });
+
+    expect(exitCode).toBe(1);
+  });
+
+  it('should not print the all-clear banner when no channels were announced', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    printReleaseAnnounceResult(makeSuccessResult({ success: false, channels: [] }));
+
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(output).not.toContain('All announcements generated');
+    expect(output).toContain('No announcements');
+    logSpy.mockRestore();
   });
 });

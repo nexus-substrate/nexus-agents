@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AbTestTracker, createAbTestTracker } from './ab-test-tracker.js';
-import type { ExperimentOutcome } from './ab-test-types.js';
+import type { ExperimentDefinition, ExperimentOutcome } from './ab-test-types.js';
 
 describe('ab-test-tracker', () => {
   let tracker: AbTestTracker;
@@ -342,6 +342,29 @@ describe('ab-test-tracker', () => {
 
       expect(summary?.result?.comparison.significant).toBe(true);
       expect(summary?.recommendation).toBe('stop_winner');
+    });
+
+    it('should not report minimum sample size for an experiment with zero variants (#4581)', () => {
+      // createExperiment rejects <2 variants, so set the definition directly to
+      // exercise the aggregation guard behind that gate.
+      const zeroVariantExperiment: ExperimentDefinition = {
+        ...validExperiment,
+        id: 'exp-zero-variants',
+        status: 'running',
+        variants: [],
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      };
+      (tracker as unknown as { experiments: Map<string, ExperimentDefinition> }).experiments.set(
+        zeroVariantExperiment.id,
+        zeroVariantExperiment
+      );
+
+      const summary = tracker.getSummary('exp-zero-variants');
+
+      expect(summary?.variantStats).toHaveLength(0);
+      expect(summary?.hasMinimumSampleSize).toBe(false);
+      expect(summary?.recommendation).toBe('continue');
     });
 
     it('should recommend continue when sample size not reached', () => {

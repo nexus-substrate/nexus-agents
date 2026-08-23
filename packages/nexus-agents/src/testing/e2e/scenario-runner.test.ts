@@ -65,6 +65,15 @@ describe('ScenarioRunner', () => {
       expect(result.executedAt).toBeDefined();
     });
 
+    it('should not pass a scenario that asserted nothing (#4581)', async () => {
+      const emptyScenario: ScenarioFixture = { ...basicScenario, expectedOutputs: [] };
+
+      const result = await runner.run(emptyScenario);
+
+      expect(result.stepResults).toHaveLength(0);
+      expect(result.passed).toBe(false);
+    });
+
     it('should validate step status matches expectation', async () => {
       const result = await runner.run(basicScenario);
 

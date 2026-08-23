@@ -28,6 +28,7 @@ import {
   DECISION_EMOJI,
 } from './pr-review-types.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 import {
   assessReputation,
   gateWithReputation,
@@ -256,7 +257,10 @@ export function determineDecision(
 ): ReviewDecision {
   const hasCritical = findings.some((f) => f.severity === 'critical');
   const hasHigh = findings.some((f) => f.severity === 'high');
-  const allApproved = reviews.every((r) => r.approved);
+  // Zero expert reviews is not unanimous approval (#4581): with `true` here the
+  // `hasHigh && !allApproved` branch could never fire on an unreviewed PR, so a
+  // HIGH finding silently downgraded from request_changes to comment.
+  const allApproved = allOf(reviews, (r) => r.approved, false);
 
   if (hasCritical) return 'request_changes';
   if (hasHigh && !allApproved) return 'request_changes';

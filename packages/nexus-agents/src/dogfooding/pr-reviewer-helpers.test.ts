@@ -360,6 +360,14 @@ describe('Decision Helpers', () => {
       expect(determineDecision(reviews, findings)).toBe('comment');
     });
 
+    it('should request changes on high findings when there are no reviews at all (#4581)', () => {
+      const findings: ReviewFinding[] = [createMockFinding({ severity: 'high' })];
+
+      // Zero expert reviews is not unanimous approval: nobody signed off, so a
+      // HIGH finding must not be downgraded to a comment.
+      expect(determineDecision([], findings)).toBe('request_changes');
+    });
+
     it('should comment when medium/low findings exist', () => {
       const findings: ReviewFinding[] = [createMockFinding({ severity: 'medium' })];
       const reviews: ExpertReviewResult[] = [createMockExpertReview({ approved: true })];

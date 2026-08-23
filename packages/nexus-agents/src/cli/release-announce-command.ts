@@ -33,6 +33,7 @@ import {
   groupCommitsByCategory,
 } from './release-notes-helpers.js';
 import { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 /**
  * Default options for the release-announce command.
@@ -373,7 +374,9 @@ export async function runReleaseAnnounce(
     results.push(result);
   }
 
-  const allSuccess = results.every((r) => r.success);
+  // Announcing nothing is not a successful announcement (#4581): `[].every()`
+  // is `true`, so a filtered-to-empty channel list used to report a clean run.
+  const allSuccess = allOf(results, (r) => r.success, false);
 
   return {
     success: allSuccess,
@@ -418,8 +421,9 @@ export function printReleaseAnnounceResult(result: ReleaseAnnounceResult, verbos
     console.log('');
   }
 
-  const allSuccess = result.channels.every((c) => c.success);
-  if (allSuccess) {
+  if (result.channels.length === 0) {
+    console.log(`${colors.yellow}${colors.bold}⚠ No announcements were generated${colors.reset}`);
+  } else if (allOf(result.channels, (c) => c.success, false)) {
     console.log(`${colors.green}${colors.bold}✓ All announcements generated${colors.reset}`);
   } else {
     console.log(`${colors.yellow}${colors.bold}⚠ Some announcements failed${colors.reset}`);
@@ -465,6 +469,13 @@ export async function releaseAnnounceCommand(args: {
   const channels = channelList.filter(
     (c): c is AnnouncementChannel => c === 'blog' || c === 'bluesky'
   );
+  if (channels.length === 0) {
+    console.error(
+      `${colors.red}Error: No known announcement channels in "${channelList.join(',')}" ` +
+        `(known: blog, bluesky)${colors.reset}`
+    );
+    return 1;
+  }
 
   const result = await runReleaseAnnounce({
     version,
@@ -475,5 +486,5 @@ export async function releaseAnnounceCommand(args: {
   });
 
   printReleaseAnnounceResult(result, args.options.verbose);
-  return result.channels.every((c) => c.success) ? 0 : 1;
+  return allOf(result.channels, (c) => c.success, false) ? 0 : 1;
 }
