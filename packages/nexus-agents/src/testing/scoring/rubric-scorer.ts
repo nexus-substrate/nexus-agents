@@ -23,6 +23,7 @@ import {
 } from './scoring-checks.js';
 import { scoreAgainstOutcome } from './outcome-scorer.js';
 import { validateScoringInputs } from './rubric-validation.js';
+import { allOf } from '../../utils/verdict-aggregation.js';
 import type {
   CriterionScore,
   QualityResult,
@@ -304,12 +305,22 @@ export class RubricScorer {
    * Determine the evaluation method based on rubric configuration.
    */
   private determineEvaluationMethod(rubric: ScoringRubric): 'rubric' | 'exact-match' | 'contains' {
-    const allExact = rubric.criteria.every(
-      (c) => c.automatedCheck?.type === 'pattern_match' && c.scoringType === 'binary'
+    // whenEmpty = false for both: a rubric with zero criteria is no evidence
+    // for either shortcut, and used to select 'exact-match' — the most
+    // restrictive scoring — on nothing at all. Empty now falls through to the
+    // general 'rubric' method below (#4581).
+    const allExact = allOf(
+      rubric.criteria,
+      (c) => c.automatedCheck?.type === 'pattern_match' && c.scoringType === 'binary',
+      false
     );
     if (allExact) return 'exact-match';
 
-    const allContains = rubric.criteria.every((c) => c.automatedCheck?.type === 'keyword_presence');
+    const allContains = allOf(
+      rubric.criteria,
+      (c) => c.automatedCheck?.type === 'keyword_presence',
+      false
+    );
     if (allContains) return 'contains';
 
     return 'rubric';

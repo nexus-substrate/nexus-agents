@@ -31,6 +31,7 @@ vi.mock('./verify-command.js', () => ({
 import { setupCommandAsync } from './setup-command.js';
 import { runVerify } from './verify-command.js';
 import type { VerifyResult } from './verify-command.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 const mockedRunVerify = vi.mocked(runVerify);
 
@@ -40,7 +41,9 @@ function makeVerifyResult(checks: VerifyResult['checks'], noHardFailures: boolea
     version: '2.55.1',
     nodeVersion: 'v22.0.0',
     checks,
-    allPassed: checks.every((c) => c.passed),
+    // whenEmpty = false: a fixture with zero checks must not hand the gate a
+    // passing verdict it never earned (#4581).
+    allPassed: allOf(checks, (c) => c.passed, false),
     noHardFailures,
     durationMs: 1,
   };

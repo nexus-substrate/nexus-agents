@@ -92,20 +92,16 @@ async function validateToken(
  * Runs pre-flight checks before starting the review.
  */
 export async function runPreflightChecks(prUrl: string): Promise<PreflightResult> {
-  const checks: PreflightCheck[] = [];
-
-  // Check 1: GitHub token
+  // Check 1: GitHub token. Check 2: PR URL format. Both always run, so the
+  // list is built as a literal — the aggregation below can never be over an
+  // empty collection, and that is now structural rather than incidental (#4581).
   const tokenCheck = await checkToken();
-  checks.push(tokenCheck);
-
-  // Check 2: PR URL format
   const urlCheck = checkPrUrl(prUrl);
-  checks.push(urlCheck);
+  const checks: PreflightCheck[] = [tokenCheck, urlCheck];
 
-  // Check 3: Token has required scopes
+  // Check 3: Token has required scopes — only meaningful if the token works.
   if (tokenCheck.passed) {
-    const scopeCheck = await checkTokenScopes();
-    checks.push(scopeCheck);
+    checks.push(await checkTokenScopes());
   }
 
   const passed = checks.every((c) => c.passed);

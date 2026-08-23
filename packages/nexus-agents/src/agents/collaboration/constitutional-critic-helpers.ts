@@ -11,6 +11,7 @@
 import type { Violation, ViolationSeverity } from './constitutional-types.js';
 import { AstFixer, type AstFixResult } from './ast-fixer.js';
 import { clampScore } from '../../utils/math-utils.js';
+import { anyOf } from '../../utils/verdict-aggregation.js';
 
 /**
  * Severity ordering for comparisons.
@@ -82,7 +83,10 @@ export function checksPasses(
   failingSeverities: readonly ViolationSeverity[]
 ): boolean {
   const failingSet = new Set(failingSeverities);
-  return !violations.some((v) => failingSet.has(v.severity));
+  // whenEmpty = false: no violations found IS a pass here, and that is the
+  // deliberate reading rather than an inherited default (#4581). The caller
+  // owns the harder question — whether the critic actually ran.
+  return !anyOf(violations, (v) => failingSet.has(v.severity), false);
 }
 
 /**

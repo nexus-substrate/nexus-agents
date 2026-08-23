@@ -87,6 +87,35 @@ describe('validateSecurity', () => {
     });
   });
 
+  it('records a warning finding when the secret scan itself fails (#4581)', () => {
+    // The scan pipeline ends in `head`, so grep matching nothing still exits
+    // 0. Reaching the catch means the scan did not run (bad revision, no
+    // history, timeout) — which used to be swallowed, leaving an empty
+    // findings list that read as "scanned, clean".
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === 'string' && cmd.includes('git diff')) {
+        throw new Error('fatal: bad revision HEAD~10');
+      }
+      return '';
+    });
+    mockExistsSync.mockReturnValue(false);
+    return validateSecurity(defaultOptions).then((result) => {
+      const scanFinding = result.findings.find((f) => f.title === 'Secret scan did not run');
+      expect(scanFinding).toBeDefined();
+      expect(scanFinding!.severity).toBe('warning');
+    });
+  });
+
+  it('does not record a scan-did-not-run finding when the scan runs clean (#4581)', () => {
+    // The counterpart: a scan that ran and matched nothing must stay silent,
+    // or the new finding would fire on every clean release and be ignored.
+    mockExecSync.mockReturnValue('');
+    mockExistsSync.mockReturnValue(false);
+    return validateSecurity(defaultOptions).then((result) => {
+      expect(result.findings.map((f) => f.title)).not.toContain('Secret scan did not run');
+    });
+  });
+
   it('includes durationMs', () => {
     mockExecSync.mockReturnValue('');
     mockExistsSync.mockReturnValue(false);

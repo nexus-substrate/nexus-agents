@@ -47,6 +47,7 @@ import { probeCli } from './cli-auth-probe.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 /** Required Node.js major version. */
 const REQUIRED_NODE_MAJOR = 22;
@@ -766,7 +767,12 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     input.hasAuthMethod &&
     input.mcpServerReady &&
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
-    input.clis.every((c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported')
+    // whenEmpty = false: zero detected CLIs is not a healthy install (#4581).
+    allOf(
+      input.clis,
+      (c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported',
+      false
+    )
   );
 }
 

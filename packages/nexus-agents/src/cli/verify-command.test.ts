@@ -79,7 +79,10 @@ describe('verify-command', () => {
     it('allPassed is true when all checks pass', async () => {
       const result = await runVerify();
 
-      // In test environment, all checks should pass
+      // Pin that there was something to check before comparing — otherwise a
+      // run that produced zero checks satisfies this assertion vacuously on
+      // both sides (#4581).
+      expect(result.checks.length).toBeGreaterThan(0);
       const expectedAllPassed = result.checks.every((c) => c.passed);
       expect(result.allPassed).toBe(expectedAllPassed);
     });
