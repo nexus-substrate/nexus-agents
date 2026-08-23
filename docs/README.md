@@ -504,6 +504,25 @@ The following are excluded from this index:
 - `node_modules/` - Dependencies
 - `docs/api/` - Generated TypeDoc API reference (gitignored; produced by the website prebuild, rendered at `/api/`)
 
+### Why three API pages are nested and sixteen are not
+
+`docs/api/` holds sixteen flat pages plus `docs/api/exports/{pipeline,benchmarks,agents-ictm}.md`.
+That asymmetry looks like an oversight and is not. Those three are the aggregate
+`src/exports/*` barrels; each carries a slash-bearing `@module exports/<name>` tag, and
+TypeDoc's `outputFileStrategy: "modules"` derives the output path from the module name.
+The other sixteen carry no tag and fall back to the filename.
+
+A 7-voter `higher_order` panel on [#4523](https://github.com/nexus-substrate/nexus-agents/issues/4523)
+resolved to leave it that way: `/api/exports/pipeline` and its two siblings are published
+URLs, and a published URL is a stable interface. Symmetry for its own sake is not worth
+breaking three live links.
+
+**Do not de-slash those `@module` tags.** `scripts/check-typedoc-layout.ts` runs in the
+`typedoc-check` job of `.github/workflows/docs-check.yml`, immediately after generation,
+and fails if any page moves in either direction — so this is enforced, not merely asserted.
+If you genuinely intend to move a page, change `NESTED_MODULES` in that script in the same
+commit and say why.
+
 ---
 
 _This index follows the documentation governance defined in [CLAUDE.md](../CLAUDE.md)._
