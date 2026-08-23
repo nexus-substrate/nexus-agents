@@ -252,6 +252,12 @@ export async function feedLedgerFromReview(
       : {}),
   };
   return persistReviewRecord({
+    // #4459: this feeder ALWAYS hashes the pinned `git diff base..head` output —
+    // either passed in from the review it just ran, or regenerated above by
+    // `generateCanonicalReviewDiff`. There is no path here that writes a record
+    // from a caller-supplied or gh-fetched diff (the gh fallback sets
+    // `canonicalDiff: undefined`, which returns before this call).
+    diffSource: 'canonical-git',
     input,
     aggregate: params.aggregate,
     counts: params.counts,

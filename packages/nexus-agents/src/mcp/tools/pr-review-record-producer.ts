@@ -20,7 +20,8 @@ import {
   reviewedDiffWasTruncated,
 } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
-import { looksLikeUnifiedDiff } from './pr-review-diff-budget.js';
+import type { PrReviewDiffProvenance, PrReviewDiffSource } from '../../audit/pr-review-record.js';
+import { hasFileBoundaries, looksLikeUnifiedDiff } from './pr-review-diff-budget.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -88,8 +89,42 @@ export interface PersistReviewRecordArgs {
   readonly counts: PrReviewCounts;
   readonly reviewCount: number;
   readonly logger: ILogger;
+  /**
+   * REQUIRED (#4459): where `input.prDiff` came from. Every door into the ledger
+   * must NAME its provenance — a default would let a caller that never thought
+   * about it emit a record asserting something about its own derivation. There
+   * are exactly two doors: the pr_review MCP tool (`caller-supplied`, the diff is
+   * opaque input) and `scripts/pr-review-local-ledger.ts` (`canonical-git`).
+   */
+  readonly diffSource: PrReviewDiffSource;
   /** #4140: large-diff coverage; stamped into the record summary when partial. */
   readonly coverage?: PrReviewCoverageStamp | undefined;
+}
+
+/**
+ * Diff-hash parity contract (#4031): the gate recomputes `reviewedDiffHash` over the
+ * first MAX_REVIEWED_DIFF_BYTES of the canonical `git diff`. If the reviewed diff
+ * exceeds that byte cap, content past it is UNBOUND, so a record can match a
+ * different tail than the voters saw. Warn so the silent truncation is observable
+ * (the diff-hash module documents this producer obligation).
+ */
+function warnIfDiffTruncated(diff: string, prNumber: number, logger: ILogger): void {
+  if (!reviewedDiffWasTruncated(diff)) return;
+  logger.warn(
+    'Reviewed diff exceeds the hash byte cap; content past it is unbound in reviewedDiffHash',
+    { prNumber }
+  );
+}
+
+/**
+ * The #4459 provenance descriptor for a reviewed diff: WHERE the bytes came from
+ * (asserted by the producer's door — see {@link PersistReviewRecordArgs.diffSource})
+ * and whether the REAL {@link hasFileBoundaries} split attributed them to files.
+ * Hash-covered downstream, so neither half can be upgraded after the fact. Computed
+ * over the SAME `input.prDiff` bytes the `reviewedDiffHash` binding covers.
+ */
+function diffProvenanceOf(source: PrReviewDiffSource, diff: string): PrReviewDiffProvenance {
+  return { source, fileBoundaries: hasFileBoundaries(diff) };
 }
 
 /**
@@ -103,7 +138,7 @@ function buildAndPersist(
   baseSha: string,
   args: PersistReviewRecordArgs
 ): PrReviewRecordOutcome {
-  const { input, aggregate, counts, reviewCount, logger, coverage } = args;
+  const { input, aggregate, counts, reviewCount, logger, coverage, diffSource } = args;
   // #4140: honest completeness — stamp partial coverage into the (hash-covered)
   // summary so an auditor reading the ledger sees the review was partial. Does NOT
   // touch reviewedDiffHash (the gate's binding), so gate parity is preserved.
@@ -111,21 +146,12 @@ function buildAndPersist(
     coverage?.partial === true
       ? ` [partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}]`
       : '';
-  // Diff-hash parity contract (#4031): the gate recomputes this hash over the
-  // first MAX_REVIEWED_DIFF_BYTES of the canonical `git diff`. If the reviewed
-  // diff exceeds that byte cap, content past it is UNBOUND, so a record can match
-  // a different tail than the voters saw. Warn so the silent truncation is
-  // observable (the diff-hash module documents this producer obligation).
-  if (reviewedDiffWasTruncated(input.prDiff)) {
-    logger.warn(
-      'Reviewed diff exceeds the hash byte cap; content past it is unbound in reviewedDiffHash',
-      { prNumber }
-    );
-  }
+  warnIfDiffTruncated(input.prDiff, prNumber, logger);
   const record = persistPrReviewRecord({
     prNumber,
     baseSha,
     reviewedDiffHash: computeReviewedDiffHash(input.prDiff),
+    diffProvenance: diffProvenanceOf(diffSource, input.prDiff),
     verdict: aggregate.decision,
     verified: aggregate.verified,
     voteCounts: {

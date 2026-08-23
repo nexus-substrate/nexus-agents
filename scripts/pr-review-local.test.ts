@@ -150,6 +150,12 @@ describe('pr-review-local ledger feeder (#4229 Part 2 — real git)', () => {
     expect(records[0]?.reviewedDiffHash).toBe(gateHash);
     expect(records[0]?.prNumber).toBe(4229);
     expect(records[0]?.baseSha).toBe(baseSha);
+    // #4459: the feeder's diff is ALWAYS the canonical git diff, and this
+    // fixture is a real git diff, so both provenance signals are pinned here.
+    expect(records[0]?.diffProvenance).toEqual({
+      source: 'canonical-git',
+      fileBoundaries: true,
+    });
   });
 
   it('does NOT bypass the producer live-review guard (all-errored panel → no record)', async () => {

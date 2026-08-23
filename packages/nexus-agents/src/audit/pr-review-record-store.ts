@@ -30,7 +30,12 @@ import { findRepoRoot } from '../config/repo-root-detection.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
-import type { PrReviewRecord, PrReviewVerdict, PrReviewVoteCounts } from './pr-review-record.js';
+import type {
+  PrReviewDiffProvenance,
+  PrReviewRecord,
+  PrReviewVerdict,
+  PrReviewVoteCounts,
+} from './pr-review-record.js';
 import { PrReviewRecordSchema, computePrReviewRecordHash } from './pr-review-record.js';
 
 /** Repo-relative committable artifact path (read by the gate/CI). */
@@ -61,6 +66,14 @@ export interface BuildPrReviewRecordInput {
   readonly correlationId?: string | undefined;
   readonly recordedAt?: string | undefined;
   /**
+   * What the reviewed diff was DERIVED FROM (#4459). Optional here because the
+   * schema field is optional (a record written without it must still parse and
+   * still hash as it did pre-#4459). Producers that KNOW their provenance —
+   * both in-tree ones do — must pass it; omitting it is a record that declines
+   * to say, never a record that is `canonical-git`.
+   */
+  readonly diffProvenance?: PrReviewDiffProvenance | undefined;
+  /**
    * Monotonic sequence number for this record. Defaults to 0 (first record)
    * when omitted; the future producer supplies (max existing sequence)+1.
    */
@@ -85,7 +98,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       ? input.summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
       : input.summary;
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.1',
+    version: '1.2',
     sequence: input.sequence ?? 0,
     prNumber: input.prNumber,
     baseSha: input.baseSha,
@@ -101,6 +114,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       total: input.voteCounts.total,
     },
     summary: summaryTruncated,
+    ...(input.diffProvenance !== undefined ? { diffProvenance: input.diffProvenance } : {}),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };

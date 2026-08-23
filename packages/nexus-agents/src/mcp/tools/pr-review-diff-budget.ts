@@ -100,6 +100,15 @@ function extractPath(fileText: string): string {
 }
 
 /**
+ * Path label for the single segment {@link splitByFile} returns when the input
+ * carries NO `^diff --git ` header at all — i.e. the content could not be
+ * attributed to files. Exported so {@link hasFileBoundaries} (and the #4459
+ * provenance stamp it feeds) reads the split's own verdict instead of
+ * re-deriving one.
+ */
+export const UNSTRUCTURED_SEGMENT_PATH = '(unstructured)';
+
+/**
  * Split a unified diff into whole-file segments on `^diff --git ` boundaries
  * (multiline). Each returned {@link DiffFile} is a complete file segment — header
  * plus every hunk up to the next file header — so the packer can only ever include
@@ -125,7 +134,7 @@ export function splitByFile(diff: string): DiffFile[] {
   }
 
   if (starts.length === 0) {
-    return [{ path: '(unstructured)', text: diff, bytes: byteLen(diff) }];
+    return [{ path: UNSTRUCTURED_SEGMENT_PATH, text: diff, bytes: byteLen(diff) }];
   }
 
   const files: DiffFile[] = [];
@@ -141,6 +150,25 @@ export function splitByFile(diff: string): DiffFile[] {
     files.push({ path: extractPath(text), text, bytes: byteLen(text) });
   }
   return files;
+}
+
+/**
+ * Whether `diff` carries parseable per-file boundaries (#4459) — i.e. whether the
+ * REAL {@link splitByFile} result attributes content to files, rather than falling
+ * back to the single {@link UNSTRUCTURED_SEGMENT_PATH} segment.
+ *
+ * Answered from the split itself, deliberately NOT from a second `^diff --git`
+ * regex: a re-derivation can drift from what the packer actually sees, and this
+ * value is written into a hash-covered audit record. Lives beside `splitByFile` so
+ * there stays ONE place that knows what a file boundary is.
+ *
+ * Note this is genuinely independent of {@link looksLikeUnifiedDiff}: that gate
+ * ACCEPTS plain `diff -u` output (no `diff --git` headers), which lands here as
+ * `false`. Empty input is `false` — no boundaries were observed.
+ */
+export function hasFileBoundaries(diff: string): boolean {
+  const segments = splitByFile(diff);
+  return segments.length > 0 && segments.every((s) => s.path !== UNSTRUCTURED_SEGMENT_PATH);
 }
 
 /**

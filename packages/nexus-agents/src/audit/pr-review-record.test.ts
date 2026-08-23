@@ -12,8 +12,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type { PrReviewRecord } from './pr-review-record.js';
-import { computePrReviewRecordHash, verifyPrReviewRecordSet } from './pr-review-record.js';
+import type { PrReviewDiffProvenance, PrReviewRecord } from './pr-review-record.js';
+import {
+  PrReviewRecordSchema,
+  computePrReviewRecordHash,
+  verifyPrReviewRecordSet,
+} from './pr-review-record.js';
 import { buildPrReviewRecord } from './pr-review-record-store.js';
 
 const SHA_A = 'a'.repeat(40);
@@ -31,7 +35,7 @@ function makeRecord(
   overrides: Partial<Omit<PrReviewRecord, 'hash'>> = {}
 ): PrReviewRecord {
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.1',
+    version: '1.2',
     sequence,
     prNumber,
     baseSha: SHA_A,
@@ -147,5 +151,105 @@ describe('buildPrReviewRecord (#3831)', () => {
     expect(rec.summary.length).toBeLessThan(long.length);
     expect(rec.summary.endsWith('...')).toBe(true);
     expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
+  });
+});
+
+describe('diffProvenance (#4459)', () => {
+  const CALLER_SUPPLIED: PrReviewDiffProvenance = {
+    source: 'caller-supplied',
+    fileBoundaries: true,
+  };
+
+  /**
+   * THE load-bearing test. `computePrReviewRecordHash` builds its canonical form
+   * from an explicit field ALLOWLIST, not `JSON.stringify(record)` — so a field
+   * present in the schema but absent from the projection sits OUTSIDE
+   * tamper-evidence. If this passes with the projection unchanged, `source` could
+   * be edited from `caller-supplied` to `canonical-git` — upgrading a record's
+   * apparent provenance — with no `hash_mismatch`.
+   */
+  it('folds diffProvenance.source into the self-hash: flipping it is a hash_mismatch', () => {
+    const authentic = makeRecord(4459, 0, { diffProvenance: CALLER_SUPPLIED });
+    const forged: PrReviewRecord = {
+      ...authentic,
+      diffProvenance: { source: 'canonical-git', fileBoundaries: true },
+    };
+    expect(computePrReviewRecordHash(forged)).not.toBe(authentic.hash);
+    const verification = verifyPrReviewRecordSet([forged]);
+    expect(verification.ok).toBe(false);
+    if (!verification.ok) expect(verification.reason).toBe('hash_mismatch');
+  });
+
+  it('folds diffProvenance.fileBoundaries into the self-hash', () => {
+    const authentic = makeRecord(4459, 0, { diffProvenance: CALLER_SUPPLIED });
+    const forged: PrReviewRecord = {
+      ...authentic,
+      diffProvenance: { source: 'caller-supplied', fileBoundaries: false },
+    };
+    expect(computePrReviewRecordHash(forged)).not.toBe(authentic.hash);
+    expect(verifyPrReviewRecordSet([forged]).ok).toBe(false);
+  });
+
+  it('DETECTS deletion of the whole diffProvenance field as a hash_mismatch', () => {
+    const authentic = makeRecord(4459, 0, { diffProvenance: CALLER_SUPPLIED });
+    const stripped = { ...authentic };
+    Reflect.deleteProperty(stripped, 'diffProvenance');
+    expect(verifyPrReviewRecordSet([stripped]).ok).toBe(false);
+  });
+
+  /**
+   * BACKWARD COMPATIBILITY PIN. A record written WITHOUT `diffProvenance` must
+   * hash exactly as it did before the field existed — otherwise every previously
+   * written record flips to `hash_mismatch` on the next verification. The golden
+   * hex below was computed with the pre-#4459 projection; it must never change.
+   * (This is why the projection OMITS the key when absent rather than emitting
+   * `null`: `JSON.stringify` drops `undefined` values, so the canonical string is
+   * byte-identical to the pre-field one.)
+   */
+  it('hashes a record with NO diffProvenance identically to the pre-#4459 projection', () => {
+    const payload: Omit<PrReviewRecord, 'hash'> = {
+      version: '1.2',
+      sequence: 7,
+      prNumber: 4459,
+      baseSha: SHA_A,
+      reviewedDiffHash: DIFF_HASH_A,
+      recordedAt: '2026-06-15T00:00:00.000Z',
+      verdict: 'approve',
+      verified: true,
+      voteCounts: { approve: 5, request_changes: 0, abstain: 0, error: 0, total: 5 },
+      summary: 'looks good',
+    };
+    expect(computePrReviewRecordHash(payload)).toBe(
+      'ca8f09d59e628b2b9f7bf7be988dc796efe6b641df3f0b12fce49bfc76cb75a8'
+    );
+  });
+
+  it('is OPTIONAL: a record without it still parses under the .strict() schema', () => {
+    const rec = makeRecord(4459, 0);
+    expect(PrReviewRecordSchema.safeParse(rec).success).toBe(true);
+  });
+
+  it('parses a record that carries it', () => {
+    const parsed = PrReviewRecordSchema.safeParse(
+      makeRecord(4459, 0, { diffProvenance: { source: 'canonical-git', fileBoundaries: false } })
+    );
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.diffProvenance?.source).toBe('canonical-git');
+  });
+
+  it('rejects an unreachable source value (gh-api was measured to be unreachable)', () => {
+    const bad = {
+      ...makeRecord(4459, 0),
+      diffProvenance: { source: 'gh-api', fileBoundaries: true },
+    };
+    expect(PrReviewRecordSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('record version (#4459)', () => {
+  it('pins the schema version at 1.2 — the pre/post diffProvenance boundary', () => {
+    expect(makeRecord(1, 0).version).toBe('1.2');
+    const stale = { ...makeRecord(1, 0), version: '1.1' };
+    expect(PrReviewRecordSchema.safeParse(stale).success).toBe(false);
   });
 });

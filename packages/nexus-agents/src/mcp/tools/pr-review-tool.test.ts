@@ -737,6 +737,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
   it('persists a record bound to {prNumber, baseSha, reviewedDiffHash} when both inputs + live review', () => {
     const parsed = input({ prNumber: 99, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -768,6 +769,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     // `verified: true` LEDGER RECORD, the writer needs its own gate — otherwise
     // the check covers one of two doors into the thing it protects.
     const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
       // Bypass the schema exactly as the script does.
       input: {
         ...input({ prNumber: 101, baseSha: BASE_SHA }),
@@ -788,6 +790,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
 
   it('skips with binding-inputs-absent when prNumber or baseSha is missing', () => {
     const onlyPr = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: input({ prNumber: 99 }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -798,6 +801,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       expect.objectContaining({ persisted: false, reason: 'binding-inputs-absent' })
     );
     const onlySha = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: input({ baseSha: BASE_SHA }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -814,6 +818,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
 
   it('skips with reason=simulated even when the binding is present (no governance from non-live output)', () => {
     const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: input({ prNumber: 99, baseSha: BASE_SHA, simulate: true }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -828,6 +833,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
   it('stamps partial coverage into the (hash-covered) record summary without breaking verification (#4140)', () => {
     const parsed = input({ prNumber: 77, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: parsed,
       // A partial review degrades to abstain/verified:false per the C1 gate.
       aggregate: {
@@ -856,6 +862,50 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     expect(verifyPrReviewRecordSet(records).ok).toBe(true);
   });
 
+  it('stamps diffProvenance {source, fileBoundaries} onto the record (#4459)', () => {
+    const parsed = input({ prNumber: 4459, baseSha: BASE_SHA });
+    const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(outcome.persisted).toBe(true);
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    const { records } = readPrReviewRecords(path);
+    // The MCP tool's prDiff is opaque caller input — it is never canonical-git.
+    expect(records[0]?.diffProvenance).toEqual({
+      source: 'caller-supplied',
+      fileBoundaries: true,
+    });
+    // Stamped INSIDE the hash, so it verifies and cannot be edited silently.
+    expect(verifyPrReviewRecordSet(records).ok).toBe(true);
+  });
+
+  it('records fileBoundaries:false for a boundary-less diff the unified gate accepts (#4459)', () => {
+    // `looksLikeUnifiedDiff` deliberately accepts plain `diff -u` output, which
+    // carries no `diff --git` headers — the one provenance signal a consumer
+    // cannot re-derive from the record's other fields.
+    const parsed = {
+      ...input({ prNumber: 4460, baseSha: BASE_SHA }),
+      prDiff: '--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b\n',
+    };
+    const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(outcome.persisted).toBe(true);
+    const path = process.env[PR_REVIEW_RECORDS_PATH_ENV] as string;
+    const { records } = readPrReviewRecords(path);
+    expect(records[0]?.diffProvenance?.fileBoundaries).toBe(false);
+  });
+
   it('skips with reason=no-live-votes when every voter errored (no false gate pass)', () => {
     // An all-errored panel still aggregates to {abstain, verified:true}, but no
     // voter actually reviewed — persisting would write a gate-satisfying record
@@ -867,6 +917,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       errorCount: 5,
     };
     const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
       input: input({ prNumber: 99, baseSha: BASE_SHA }),
       aggregate: APPROVE_AGG,
       counts: allErrored,
@@ -949,6 +1000,7 @@ describe('pr_review repoPath input (#4278)', () => {
       });
 
       const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
         input: parsed,
         aggregate: APPROVE_AGG,
         counts: COUNTS,
@@ -974,6 +1026,7 @@ describe('pr_review repoPath input (#4278)', () => {
       });
 
       const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
         input: parsed,
         aggregate: APPROVE_AGG,
         counts: COUNTS,
@@ -999,6 +1052,7 @@ describe('pr_review repoPath input (#4278)', () => {
         });
 
         const outcome = persistReviewRecord({
+          diffSource: 'caller-supplied',
           input: parsed,
           aggregate: APPROVE_AGG,
           counts: COUNTS,

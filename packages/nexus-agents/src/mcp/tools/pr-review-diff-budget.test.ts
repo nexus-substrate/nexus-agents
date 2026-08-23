@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SENSITIVE_PATH_PATTERNS,
+  hasFileBoundaries,
   looksLikeUnifiedDiff,
   securityFirstPack,
   splitByFile,
@@ -277,5 +278,38 @@ describe('looksLikeUnifiedDiff', () => {
   it('requires the marker at the start of a line, not merely present', () => {
     // Prose that merely mentions the tokens must not pass.
     expect(looksLikeUnifiedDiff('I ran diff --git and saw @@ markers in the output.')).toBe(false);
+  });
+});
+
+describe('hasFileBoundaries (#4459)', () => {
+  it('is true for a git diff whose segments are real files', () => {
+    expect(hasFileBoundaries(fileDiff('src/a.ts', 2) + fileDiff('src/b.ts', 2))).toBe(true);
+  });
+
+  it('is true when a preamble precedes the first file header', () => {
+    expect(hasFileBoundaries('From 1234 Mon Sep 17\n\n' + fileDiff('src/a.ts', 1))).toBe(true);
+  });
+
+  /**
+   * The one genuinely non-derivable signal (#4459). `looksLikeUnifiedDiff`
+   * deliberately ACCEPTS plain `diff -u` output, which carries no `diff --git`
+   * headers — so a record can be bound to a real diff that `splitByFile` cannot
+   * attribute to files. The consumer needs to know that.
+   */
+  it('is false for plain `diff -u` output that passes the unified-diff gate', () => {
+    const plain = '--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b\n';
+    expect(looksLikeUnifiedDiff(plain)).toBe(true);
+    expect(hasFileBoundaries(plain)).toBe(false);
+  });
+
+  it('is false for an empty diff', () => {
+    expect(hasFileBoundaries('')).toBe(false);
+  });
+
+  it('agrees with the real split result, not a re-derivation', () => {
+    const diff = fileDiff('src/a.ts', 1);
+    expect(hasFileBoundaries(diff)).toBe(
+      splitByFile(diff).every((f) => f.path !== '(unstructured)')
+    );
   });
 });
