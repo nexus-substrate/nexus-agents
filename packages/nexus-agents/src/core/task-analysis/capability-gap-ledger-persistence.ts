@@ -40,12 +40,12 @@ import { dirname } from 'node:path';
 
 import { getTimeProvider } from '../time-provider.js';
 import { CAPABILITY_GAP_TYPES } from './capability-gap-detector.js';
-import type { CapabilityGapReport, CapabilityGap } from './capability-gap-detector.js';
+import type { CapabilityGapReport, CapabilityGapType } from './capability-gap-detector.js';
 import type { GapContext, GapSummary, ICapabilityGapLedger } from './capability-gap-ledger.js';
 
 /** One persisted occurrence. Mirrors the in-memory entry, plus nothing. */
 interface PersistedGapEntry {
-  readonly type: CapabilityGap['type'];
+  readonly type: CapabilityGapType;
   readonly name: string;
   readonly suggestion: string;
   readonly goal?: string | undefined;
@@ -113,7 +113,7 @@ function summarize(entries: readonly PersistedGapEntry[]): readonly GapSummary[]
   const groups = new Map<
     string,
     {
-      type: CapabilityGap['type'];
+      type: CapabilityGapType;
       name: string;
       count: number;
       suggestion: string;
