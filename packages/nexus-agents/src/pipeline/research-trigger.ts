@@ -94,6 +94,52 @@ export interface CapabilityGapTriggerConfig {
 const DEFAULT_MIN_OCCURRENCES = 3;
 
 /**
+ * Title for a gap-derived task, phrased for the kind of gap it is.
+ *
+ * A registry gap asks for a capability to be *added*; a tool refusal asks for
+ * an existing tool to be *extended*. Same ledger, different remedy.
+ */
+function gapTaskTitle(gap: GapSummary): string {
+  if (gap.type === 'tool_refusal') {
+    return `Extend capability: ${gap.name}`;
+  }
+  return `Build capability: ${gap.type} "${gap.name}"`;
+}
+
+/**
+ * Description for a gap-derived task.
+ *
+ * Split by kind because the generic wording was routing-specific — "observed
+ * Nx in routing decisions … route the goal through the MetaOrchestrator". A
+ * tool refusal was not observed in a routing decision and that is not its
+ * remedy, so the single phrasing would have made the loop's first real signal
+ * produce a task that misdescribes its own evidence (#4651).
+ *
+ * Occurrence counts span sessions since the ledger became durable (#4645), so
+ * the wording says so rather than letting a reader assume one run.
+ */
+function gapTaskDescription(gap: GapSummary): string {
+  const examples = gap.exampleGoals.join('; ') || '(none recorded)';
+  const seen = `observed ${String(gap.count)}x across sessions`;
+
+  if (gap.type === 'tool_refusal') {
+    return (
+      `Auto-suggested from the capability-gap ledger (#4651): a tool ran and declined work it ` +
+      `cannot do — ${seen}. Suggestion: ${gap.suggestion}. ` +
+      `Example requests: ${examples}. ` +
+      `Assess whether extending the tool is worth it; the count is the demand evidence.`
+    );
+  }
+
+  return (
+    `Auto-suggested from the capability-gap ledger (#3555): ${seen} in routing decisions. ` +
+    `Suggestion: ${gap.suggestion}. ` +
+    `Example goals: ${examples}. ` +
+    `Assess whether to add this ${gap.type} (e.g. route the goal through the MetaOrchestrator, #3540).`
+  );
+}
+
+/**
  * Convert recurring capability gaps (from the shared ledger, #3555) into
  * candidate pipeline tasks for a human/orchestrator to review. SUGGEST-ONLY:
  * builds task objects in memory; files/executes nothing. The human-gated front
@@ -114,12 +160,8 @@ export function checkForCapabilityGapTriggers(
 
   const tasks: PipelineTask[] = qualified.slice(0, maxTriggers).map((gap) => ({
     id: gapTaskId(gap),
-    title: `Build capability: ${gap.type} "${gap.name}"`,
-    description:
-      `Auto-suggested from the capability-gap ledger (#3555): observed ${String(gap.count)}x ` +
-      `in routing decisions. Suggestion: ${gap.suggestion}. ` +
-      `Example goals: ${gap.exampleGoals.join('; ') || '(none recorded)'}. ` +
-      `Assess whether to add this ${gap.type} (e.g. route the goal through the MetaOrchestrator, #3540).`,
+    title: gapTaskTitle(gap),
+    description: gapTaskDescription(gap),
     assignedTo: 'researcher' as const,
     status: 'pending' as const,
   }));

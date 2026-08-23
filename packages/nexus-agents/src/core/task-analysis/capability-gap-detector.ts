@@ -40,7 +40,22 @@ export interface AvailableCapabilities {
  * A single capability gap with suggestion.
  */
 export interface CapabilityGap {
-  readonly type: 'tool' | 'expert';
+  /**
+   * What kind of gap this is.
+   *
+   * `tool` and `expert` are *registry* gaps — a task required something the
+   * registry does not contain. They are produced by {@link detectCapabilityGaps},
+   * which is currently unable to emit one: `requiredCapabilities` is drawn from
+   * static lookup tables whose every entry is already available, so the required
+   * set is a subset of the available set by construction (#4651).
+   *
+   * `tool_refusal` is a *capability* gap of a different kind — a tool that
+   * exists, ran, and declined the work for a reason it can name. It is not
+   * derived from the registry diff; producers record it directly at the point
+   * of refusal. Added by the #4651 panel decision (option C, unanimous among
+   * approvers) because the registry diff could not represent it.
+   */
+  readonly type: 'tool' | 'expert' | 'tool_refusal';
   readonly name: string;
   readonly suggestion: string;
 }

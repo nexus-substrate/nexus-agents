@@ -21,6 +21,7 @@ import {
 } from '../../indexer/symbol-extractor.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { recordToolRefusal } from '../../core/task-analysis/tool-refusal-gap.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -259,6 +260,18 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
     // 20 exports were all re-exports declaring nothing locally.
     const result = await extractSymbolIndexResult(resolvedPath);
     if (result.kind === 'empty') {
+      // #4651: an `unsupported` result is a tool that ran and declined work it
+      // cannot do — real, agent-chosen demand for a capability we lack. Record
+      // it so the frequency is measurable (#4517 gates a tree-sitter dependency
+      // on exactly this number). Recorded HERE and not in the extractor: this
+      // is the boundary an agent actually asks across, so internal callers and
+      // the search_codebase sweep — which pre-filters by extension and never
+      // reaches the gate — cannot inflate the count.
+      //
+      // `no-declarations` is deliberately NOT recorded. The file parsed fine
+      // and genuinely declares nothing; that is a measured zero, not a missing
+      // capability, and conflating them would make the count meaningless.
+      recordRefusalIfUnsupported(result.reason, resolvedPath);
       return toolSuccess(emptyIndexMessage(result.reason, resolvedPath));
     }
     return toolSuccess(result.index);
@@ -270,6 +283,35 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
       message: `Symbol extraction failed: ${e.message}`,
     });
   }
+}
+
+/**
+ * Record a tool-refusal capability gap when the file could not be parsed (#4651).
+ *
+ * `unsupported` is a tool that ran and declined work it cannot do — real,
+ * agent-chosen demand for a capability we lack, and what #4517 gates a
+ * tree-sitter dependency on. `no-declarations` is deliberately NOT recorded:
+ * the file parsed fine and genuinely declares nothing, which is a measured
+ * zero rather than a missing capability. Conflating them makes the count
+ * meaningless — the same distinction #4534 drew in the user-facing message.
+ *
+ * Recorded at this boundary rather than in the extractor because this is where
+ * an agent actually asks. Internal callers and the `search_codebase` sweep —
+ * which pre-filters by extension and never reaches the gate — cannot inflate it.
+ */
+function recordRefusalIfUnsupported(reason: EmptyIndexReason, resolvedPath: string): void {
+  if (reason !== 'unsupported') return;
+  const ext = extname(resolvedPath).toLowerCase();
+  recordToolRefusal(
+    {
+      tool: 'extract_symbols',
+      capability: ext,
+      suggestion:
+        `extract_symbols parses ${SUPPORTED_EXTENSIONS.join(', ')} only. ` +
+        `Supporting ${ext === '' ? 'extensionless files' : ext} needs a parser for it.`,
+    },
+    { goal: `extract_symbols ${resolvedPath}` }
+  );
 }
 
 /**

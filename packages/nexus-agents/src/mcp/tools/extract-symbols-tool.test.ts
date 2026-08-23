@@ -10,7 +10,7 @@
  * isolation. The wrappers are covered elsewhere.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resolve } from 'node:path';
 
 // Mock the symbol extractor so we don't need real source files for every test.
@@ -26,6 +26,11 @@ import {
   DEFAULT_EXTRACT_MAX_SYMBOLS,
 } from './extract-symbols-tool.js';
 import { createLogger } from '../../core/index.js';
+import {
+  createCapabilityGapLedger,
+  resetGapLedger,
+  setGapLedger,
+} from '../../core/task-analysis/capability-gap-ledger.js';
 import * as symbolExtractor from '../../indexer/symbol-extractor.js';
 import type { CodeSymbol } from '../../indexer/symbol-extractor.js';
 
@@ -313,5 +318,70 @@ describe('extract-symbols-tool (#2159)', () => {
       const result = await extractSymbolsHandler({ filePath: resolve('./x.ts') }, makeCtx());
       expect(result.isError).toBe(true);
     });
+  });
+});
+
+describe('tool-refusal gap recording (#4651)', () => {
+  let ledger: ReturnType<typeof createCapabilityGapLedger>;
+
+  beforeEach(() => {
+    ledger = createCapabilityGapLedger();
+    setGapLedger(ledger);
+  });
+
+  afterEach(() => {
+    resetGapLedger();
+  });
+
+  it('records a gap when the tool declines an unsupported extension', async () => {
+    mockedExtractIndexResult.mockResolvedValueOnce({ kind: 'empty', reason: 'unsupported' });
+
+    await extractSymbolsHandler({ filePath: resolve('./service.py') }, makeCtx());
+
+    const [summary] = ledger.summarize();
+    expect(summary?.type).toBe('tool_refusal');
+    expect(summary?.name).toBe('extract_symbols:.py');
+    expect(summary?.count).toBe(1);
+  });
+
+  it('records NOTHING when the file parsed and simply declares nothing', async () => {
+    // The measured zero. A re-export barrel is not a missing capability, and
+    // counting it would make the demand number meaningless — this is the
+    // distinction #4534 drew in the message and it has to hold here too.
+    mockedExtractIndexResult.mockResolvedValueOnce({ kind: 'empty', reason: 'no-declarations' });
+
+    await extractSymbolsHandler({ filePath: resolve('./barrel.ts') }, makeCtx());
+
+    expect(ledger.size()).toBe(0);
+  });
+
+  it('records nothing on a successful extraction', async () => {
+    mockedExtractIndexResult.mockResolvedValueOnce({ kind: 'index', index: 'fn foo:10' });
+
+    await extractSymbolsHandler({ filePath: resolve('./ok.ts') }, makeCtx());
+
+    expect(ledger.size()).toBe(0);
+  });
+
+  it('buckets repeated refusals of the same language together', async () => {
+    for (const f of ['./a.py', './b.py', './c.py']) {
+      mockedExtractIndexResult.mockResolvedValueOnce({ kind: 'empty', reason: 'unsupported' });
+      await extractSymbolsHandler({ filePath: resolve(f) }, makeCtx());
+    }
+    expect(ledger.summarize()).toHaveLength(1);
+    expect(ledger.summarize()[0]?.count).toBe(3);
+  });
+
+  it('keeps different languages in different buckets', async () => {
+    for (const f of ['./a.py', './b.go']) {
+      mockedExtractIndexResult.mockResolvedValueOnce({ kind: 'empty', reason: 'unsupported' });
+      await extractSymbolsHandler({ filePath: resolve(f) }, makeCtx());
+    }
+    expect(
+      ledger
+        .summarize()
+        .map((g) => g.name)
+        .sort()
+    ).toEqual(['extract_symbols:.go', 'extract_symbols:.py']);
   });
 });
