@@ -13,7 +13,10 @@ vi.mock('./expert-bridge.js', () => ({
 }));
 
 import { checkForResearchTriggers, checkForCapabilityGapTriggers } from './research-trigger.js';
-import { createCapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
+import {
+  createCapabilityGapLedger,
+  type ICapabilityGapLedger,
+} from '../core/task-analysis/capability-gap-ledger.js';
 import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
 
 /** Build a gap report with a single tool gap for ledger seeding. */
@@ -182,5 +185,45 @@ describe('checkForCapabilityGapTriggers (#3576)', () => {
 
   it('returns empty for an empty ledger', () => {
     expect(checkForCapabilityGapTriggers({ ledger: createCapabilityGapLedger() })).toEqual([]);
+  });
+});
+
+describe('gap task wording is accurate per gap kind (#4651)', () => {
+  const ledgerWith = (type: 'tool' | 'tool_refusal', name: string): ICapabilityGapLedger => {
+    const ledger = createCapabilityGapLedger();
+    for (let i = 0; i < 3; i += 1) {
+      ledger.record(
+        {
+          available: { tools: [], experts: [] },
+          gaps: [{ type, name, suggestion: 'do the thing' }],
+          allSatisfied: false,
+        },
+        { goal: 'a goal' }
+      );
+    }
+    return ledger;
+  };
+
+  it('describes a tool refusal as a tool that declined, not a routing observation', () => {
+    const [task] = checkForCapabilityGapTriggers({
+      ledger: ledgerWith('tool_refusal', 'extract_symbols:.py'),
+    });
+    expect(task?.title).toBe('Extend capability: extract_symbols:.py');
+    expect(task?.description).toContain('declined work it cannot do');
+    // The routing phrasing would be false here — the refusal never went
+    // through a routing decision and the MetaOrchestrator is not the remedy.
+    expect(task?.description).not.toContain('in routing decisions');
+    expect(task?.description).not.toContain('MetaOrchestrator');
+  });
+
+  it('still describes a registry gap as a routing observation', () => {
+    const [task] = checkForCapabilityGapTriggers({ ledger: ledgerWith('tool', 'ml_thing') });
+    expect(task?.title).toBe('Build capability: tool "ml_thing"');
+    expect(task?.description).toContain('in routing decisions');
+  });
+
+  it('says counts span sessions, since the ledger became durable', () => {
+    const [task] = checkForCapabilityGapTriggers({ ledger: ledgerWith('tool_refusal', 'x:.py') });
+    expect(task?.description).toContain('across sessions');
   });
 });

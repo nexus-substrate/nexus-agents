@@ -39,12 +39,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { getTimeProvider } from '../time-provider.js';
-import type { CapabilityGapReport, CapabilityGap } from './capability-gap-detector.js';
+import { CAPABILITY_GAP_TYPES } from './capability-gap-detector.js';
+import type { CapabilityGapReport, CapabilityGapType } from './capability-gap-detector.js';
 import type { GapContext, GapSummary, ICapabilityGapLedger } from './capability-gap-ledger.js';
 
 /** One persisted occurrence. Mirrors the in-memory entry, plus nothing. */
 interface PersistedGapEntry {
-  readonly type: CapabilityGap['type'];
+  readonly type: CapabilityGapType;
   readonly name: string;
   readonly suggestion: string;
   readonly goal?: string | undefined;
@@ -94,7 +95,13 @@ function isEntry(value: unknown): value is PersistedGapEntry {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    (v['type'] === 'tool' || v['type'] === 'expert') &&
+    // Derived from CAPABILITY_GAP_TYPES, never re-listed here — hardcoding the
+    // union is what made every persisted tool_refusal load as malformed.
+    // The array is widened rather than the value asserted: `includes` on a
+    // readonly tuple will not accept `unknown`, and asserting the value would
+    // claim a narrowing this guard has not yet done.
+    typeof v['type'] === 'string' &&
+    (CAPABILITY_GAP_TYPES as readonly string[]).includes(v['type']) &&
     typeof v['name'] === 'string' &&
     typeof v['suggestion'] === 'string' &&
     typeof v['timestamp'] === 'string'
@@ -106,7 +113,7 @@ function summarize(entries: readonly PersistedGapEntry[]): readonly GapSummary[]
   const groups = new Map<
     string,
     {
-      type: CapabilityGap['type'];
+      type: CapabilityGapType;
       name: string;
       count: number;
       suggestion: string;
