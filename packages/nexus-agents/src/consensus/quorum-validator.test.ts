@@ -435,6 +435,26 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
     expect(breakdown.eligibleAgents).not.toContain('a2');
   });
 
+  // #4666: the tests above prove exclusion WORKS when an AgentRecord is
+  // supplied. This one pins the production reality — no caller supplies one,
+  // so nothing is ever excluded. If a producer is wired, this test should fail
+  // and be replaced by one asserting the real screening.
+  it('excludes nobody when no agent records are supplied — the production shape', () => {
+    const breakdown = validator.getQuorumBreakdown({
+      votes: makeVotes([
+        ['a1', 'approve'],
+        ['a2', 'approve'],
+      ]),
+      config: makeConfig({ enableByzantineDetection: true }),
+    });
+
+    // Byzantine detection is ON and still excludes nothing: with no record the
+    // eligibility check returns early. A full eligible list is NOT evidence
+    // that screening ran.
+    expect(breakdown.eligibleAgents).toContain('a1');
+    expect(breakdown.eligibleAgents).toContain('a2');
+  });
+
   it('includes reasoning string', () => {
     const breakdown = validator.getQuorumBreakdown({
       votes: makeVotes([
