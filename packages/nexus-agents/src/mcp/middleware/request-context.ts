@@ -284,9 +284,17 @@ export function measuredTrustTier(context: RequestContext): string | undefined {
   // a non-empty check would have called the '3' fallback a measurement as soon
   // as a producer supplied only those — reintroducing the constant this
   // function exists to prevent, in the function that prevents it.
+  // `clientId` is NOT sufficient, and including it was a bug in the previous
+  // version of this guard: `deriveTrustTier` reads `clientId` only INSIDE the
+  // `authenticated === true` branch, so `{ clientId: 'claude-cli' }` returns
+  // the same '3' fallback as `{}`. The one in-tree producer,
+  // `extractCallerInfo`, returns exactly that shape on its CLAUDE_SESSION_ID
+  // path — so wiring it would have relabelled the constant as a measurement,
+  // inside the function written to prevent exactly that.
   const info = caller as Partial<CallerInfo>;
-  const derivable =
-    info.transport !== undefined || info.authenticated !== undefined || info.clientId !== undefined;
+  // `authenticated: false` counts: it is a measured fact ("we checked, they
+  // are not authenticated"), which is different from the field being absent.
+  const derivable = info.transport !== undefined || info.authenticated !== undefined;
 
   return derivable ? context.trustTier : undefined;
 }
