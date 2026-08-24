@@ -75,8 +75,24 @@ export interface CapacityStageConfig {
  * described this signal as a local *quota* lower bound. That was wrong, and the
  * panel's decisive reasoning ("observed exhaustion implies provider-side quota
  * is at least as exhausted") does not survive the correction. Enforcement is
- * therefore held until a real quota signal exists (#4456); `enforceHardLimits:
- * true` remains available for callers who have one.
+ * therefore held until a real quota signal exists (#4456).
+ *
+ * WIRING, corrected (#4658). This previously said `enforceHardLimits: true`
+ * "remains available for callers who have one". No caller can set it, and the
+ * reason is broader than the flag: `createCapacityStage` has **no non-test
+ * caller at all**. The stage is not part of the production routing chain
+ * (`Task -> BudgetRouter -> ZeroRouter -> PreferenceRouter -> TopsisRouter ->
+ * LinUCB`), so neither the signal nor the exclusion runs today, and
+ * `excludedCount` is structurally 0.
+ *
+ * Do not read a passing capacity check as evidence of available capacity —
+ * nothing is measuring it. Making the flag settable without first wiring the
+ * stage AND supplying a real quota producer would only relocate the hole #4456
+ * deliberately left open.
+ *
+ * (`BudgetStageConfig.enforceHardLimits` is a different setting on a different
+ * router and IS enforced — see `budget-router.ts`. The mirrored name here is
+ * why this one reads as live.)
  */
 const DEFAULT_CONFIG: CapacityStageConfig = {
   enforceHardLimits: false,
