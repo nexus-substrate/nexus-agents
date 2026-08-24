@@ -15,15 +15,11 @@ import type {
 import type { ResolvedConfig, ExecutionContext } from './workflow-engine-helpers.js';
 import { MAX_TRACKED_EXECUTIONS } from './workflow-engine-helpers.js';
 import type { ActiveExecution } from './workflow-engine-types.js';
-import type { IBudgetCircuitBreaker } from './budget-circuit-breaker-types.js';
-import type { WorkflowStep } from './workflow-types.js';
 import {
   cleanupOldExecutions,
   createContextManagerForWorkflow,
-  createBudgetCircuitBreakerForWorkflow,
   initializeExecution,
   applyInputDefaults,
-  enforceStepBudgets,
   recordPhaseUsage,
 } from './workflow-engine-execution.js';
 
@@ -55,8 +51,6 @@ function createResolvedConfig(overrides?: Partial<ResolvedConfig>): ResolvedConf
     templatePaths: [],
     contextManagerConfig: undefined,
     defaultBudget: DEFAULT_BUDGET,
-    budgetCircuitBreakerConfig: undefined,
-    enableBudgetEnforcement: false,
     ...overrides,
   };
 }
@@ -72,22 +66,6 @@ const MOCK_WORKFLOW_RESULT: WorkflowResult = {
 const COMPLETED_STATUS: ExecutionStatus = { state: 'completed', result: MOCK_WORKFLOW_RESULT };
 const RUNNING_STATUS: ExecutionStatus = { state: 'running', currentStep: '', progress: 0 };
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function createMockCircuitBreaker(overrides: Partial<IBudgetCircuitBreaker> = {}) {
-  return {
-    checkBudget: vi.fn(),
-    recordUsage: vi.fn(),
-    allocateForStep: vi.fn(),
-    getState: vi.fn(),
-    getSnapshot: vi.fn(),
-    reset: vi.fn(),
-    forceOpen: vi.fn(),
-    addStateChangeListener: vi.fn(),
-    removeStateChangeListener: vi.fn(),
-    ...overrides,
-  };
-}
-
 function createMockWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDefinition {
   return {
     name: 'test-workflow',
@@ -96,15 +74,6 @@ function createMockWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDe
     steps: [],
     inputs: [],
     ...overrides,
-  };
-}
-
-function createMockStep(id: string): WorkflowStep {
-  return {
-    id,
-    agent: 'code_expert',
-    action: 'test-action',
-    inputs: {},
   };
 }
 
@@ -258,42 +227,6 @@ describe('createContextManagerForWorkflow', () => {
 // createBudgetCircuitBreakerForWorkflow
 // ============================================================================
 
-describe('createBudgetCircuitBreakerForWorkflow', () => {
-  it('returns undefined when contextManager is undefined', () => {
-    const config = createResolvedConfig();
-    const workflow = createMockWorkflow();
-    const logger = createMockLogger();
-    const result = createBudgetCircuitBreakerForWorkflow(undefined, workflow, config, logger);
-    expect(result).toBeUndefined();
-  });
-
-  it('includes workflow default budget when set', () => {
-    const workflowBudget: ContextBudget = {
-      system: 0.1,
-      task: 0.3,
-      active: 0.2,
-      reserved: 0.1,
-    };
-    const config = createResolvedConfig({
-      contextManagerConfig: { maxTokens: 10000 },
-    });
-    const workflow = createMockWorkflow({ defaultBudget: workflowBudget });
-    const logger = createMockLogger();
-    // Create a context manager first
-    const cm = createContextManagerForWorkflow(config, workflow, logger);
-    // Create circuit breaker - may return undefined or a breaker depending on CM state
-    const result = createBudgetCircuitBreakerForWorkflow(cm, workflow, config, logger);
-    // With a valid context manager, it should create a breaker
-    if (cm !== undefined) {
-      expect(result).toBeDefined();
-    }
-  });
-});
-
-// ============================================================================
-// initializeExecution
-// ============================================================================
-
 describe('initializeExecution', () => {
   let logger: ILogger;
 
@@ -364,20 +297,6 @@ describe('initializeExecution', () => {
     const workflow = createMockWorkflow();
     const result = initializeExecution({ workflow, inputs: {}, config, logger });
     expect(result.context.contextManager).toBeUndefined();
-  });
-
-  it('does not create budget circuit breaker when enforcement is disabled', () => {
-    const config = createResolvedConfig({ enableBudgetEnforcement: false });
-    const workflow = createMockWorkflow();
-    const result = initializeExecution({ workflow, inputs: {}, config, logger });
-    expect(result.context.budgetCircuitBreaker).toBeUndefined();
-  });
-
-  it('initializes empty budget events array', () => {
-    const config = createResolvedConfig();
-    const workflow = createMockWorkflow();
-    const result = initializeExecution({ workflow, inputs: {}, config, logger });
-    expect(result.context.budgetEvents).toEqual([]);
   });
 
   it('applies input defaults from workflow definition', () => {
@@ -455,168 +374,50 @@ describe('applyInputDefaults', () => {
 // enforceStepBudgets
 // ============================================================================
 
-describe('enforceStepBudgets', () => {
-  it('returns ok when no circuit breaker and no context manager', () => {
-    const logger = createMockLogger();
-    const config = createResolvedConfig();
-    const workflow = createMockWorkflow();
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: undefined,
-      budgetEvents: [],
-      budgetCircuitBreaker: undefined,
-    };
-    const steps = [createMockStep('step-1'), createMockStep('step-2')];
-    const result = enforceStepBudgets({
-      steps,
-      context,
-      workflow,
-      totalSteps: 2,
-      config,
-      logger,
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  it('logs budget events for legacy enforcement (no circuit breaker)', () => {
-    const logger = createMockLogger();
-    const config = createResolvedConfig({
-      contextManagerConfig: { maxTokens: 10000 },
-    });
-    const workflow = createMockWorkflow();
-    const cm = createContextManagerForWorkflow(config, workflow, logger);
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: cm,
-      budgetEvents: [],
-      budgetCircuitBreaker: undefined,
-    };
-    const steps = [createMockStep('step-1')];
-    const result = enforceStepBudgets({
-      steps,
-      context,
-      workflow,
-      totalSteps: 1,
-      config,
-      logger,
-    });
-    expect(result.ok).toBe(true);
-    // With context manager but no circuit breaker, legacy enforcement is used
-    if (cm !== undefined) {
-      expect(context.budgetEvents.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ============================================================================
 // recordPhaseUsage
 // ============================================================================
 
 describe('recordPhaseUsage', () => {
-  it('does nothing when no budget circuit breaker', () => {
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: undefined,
-      budgetEvents: [],
-      budgetCircuitBreaker: undefined,
-    };
-    const results: StepResult[] = [
-      { stepId: 's1', status: 'success', output: 'ok', durationMs: 100 },
-    ];
-    // Should not throw
-    recordPhaseUsage(results, context);
-  });
-
-  it('records usage when circuit breaker is present', () => {
-    const mockRecordUsage = vi.fn();
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: undefined,
-      budgetEvents: [],
-      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
-    };
-    // #4673: this asserted `200ms * 0.5 = 100 tokens` — a wall-clock reading
-    // recorded into a token budget. It pinned the defect as intended
-    // behaviour. Real usage is now carried on the step result.
+  // #4673: usage accounting no longer takes an ExecutionContext or a circuit
+  // breaker. It ran only when budget enforcement was enabled, which no
+  // production caller could do — so the coverage report was permanently zeros.
+  // Counting never needed a breaker; only enforcement did.
+  it('records real token usage per step', () => {
     const results: StepResult[] = [
       { stepId: 's1', status: 'success', output: 'ok', durationMs: 200, tokensUsed: 1500 },
       { stepId: 's2', status: 'success', output: 'ok', durationMs: 400, tokensUsed: 90 },
     ];
-    const report = recordPhaseUsage(results, context);
-    expect(mockRecordUsage).toHaveBeenCalledTimes(2);
-    expect(mockRecordUsage).toHaveBeenCalledWith(1500);
-    expect(mockRecordUsage).toHaveBeenCalledWith(90);
-    // Note the ordering the old heuristic would have produced: s1 ran for less
-    // than half as long as s2 yet cost ~17x more. A budget enforced on
-    // duration would have capped the cheap step and let the expensive one run.
-    expect(report).toEqual({ recordedSteps: 2, unmeasuredSteps: 0, tokensRecorded: 1590 });
+
+    // Note the ordering the old `durationMs * 0.5` heuristic would have
+    // produced: s1 ran for less than half as long as s2 yet cost ~17x more.
+    expect(recordPhaseUsage(results)).toEqual({
+      recordedSteps: 2,
+      unmeasuredSteps: 0,
+      tokensRecorded: 1590,
+    });
   });
 
-  it('does NOT treat an unmeasured step as zero spend (#4673)', () => {
-    const mockRecordUsage = vi.fn();
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: undefined,
-      budgetEvents: [],
-      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
-    };
+  it('does NOT treat an unmeasured step as zero spend', () => {
     const results: StepResult[] = [
       { stepId: 's1', status: 'success', output: 'ok', durationMs: 200, tokensUsed: 500 },
       // No tokensUsed — the step reported nothing.
       { stepId: 's2', status: 'success', output: 'ok', durationMs: 400 },
     ];
 
-    const report = recordPhaseUsage(results, context);
-
-    // Recording 0 for s2 would under-count spend, which for a CAP is the
-    // dangerous direction — the budget would believe it had more headroom
-    // than it does.
-    expect(mockRecordUsage).toHaveBeenCalledTimes(1);
-    expect(mockRecordUsage).toHaveBeenCalledWith(500);
-    expect(report.unmeasuredSteps).toBe(1);
-    expect(report.recordedSteps).toBe(1);
-    expect(report.tokensRecorded).toBe(500);
+    // Recording 0 for s2 would under-count spend. `unmeasuredSteps > 0` is what
+    // lets a reader treat `tokensRecorded` as a lower bound.
+    expect(recordPhaseUsage(results)).toEqual({
+      recordedSteps: 1,
+      unmeasuredSteps: 1,
+      tokensRecorded: 500,
+    });
   });
 
-  it('handles empty results array', () => {
-    const mockRecordUsage = vi.fn();
-    const context: ExecutionContext = {
-      workflowId: 'test',
-      executionId: 'exec-1',
-      inputs: {},
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager: undefined,
-      budgetEvents: [],
-      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
-    };
-    recordPhaseUsage([], context);
-    expect(mockRecordUsage).not.toHaveBeenCalled();
+  it('names the empty case rather than reporting a confident zero', () => {
+    expect(recordPhaseUsage([])).toEqual({
+      recordedSteps: 0,
+      unmeasuredSteps: 0,
+      tokensRecorded: 0,
+    });
   });
 });

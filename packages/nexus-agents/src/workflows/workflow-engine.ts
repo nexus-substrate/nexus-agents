@@ -12,11 +12,6 @@ import type {
 } from '../core/index.js';
 import { WorkflowError, ParseError } from '../core/index.js';
 import type { ContextManager } from '../agents/context-manager.js';
-import {
-  copyBudgetEvents,
-  type BudgetEnforcementEvent,
-  type IBudgetCircuitBreaker,
-} from './budget-enforcement.js';
 // WorkflowStep is used in workflow-engine-execution.ts
 import {
   type WorkflowEngineConfig,
@@ -32,7 +27,6 @@ import type { WorkflowEngineDeps, ActiveExecution } from './workflow-engine-type
 import {
   cleanupOldExecutions,
   initializeExecution,
-  enforceStepBudgets,
   recordPhaseUsage,
 } from './workflow-engine-execution.js';
 
@@ -174,17 +168,8 @@ export class WorkflowEngine implements IWorkflowEngine {
     return exec ? exec.status : { state: 'failed', error: 'Execution not found' };
   }
 
-  getBudgetEvents(executionId: string): BudgetEnforcementEvent[] {
-    const exec = this.executions.get(executionId);
-    return exec ? copyBudgetEvents(exec.context.budgetEvents) : [];
-  }
-
   getContextManager(executionId: string): ContextManager | undefined {
     return this.executions.get(executionId)?.context.contextManager;
-  }
-
-  getBudgetCircuitBreaker(executionId: string): IBudgetCircuitBreaker | undefined {
-    return this.executions.get(executionId)?.context.budgetCircuitBreaker;
   }
 
   cancel(executionId: string): Promise<Result<void, WorkflowError>> {
@@ -318,17 +303,6 @@ export class WorkflowEngine implements IWorkflowEngine {
         progress: completedSteps / totalSteps,
       });
 
-      // Check budget enforcement for each step
-      const enforceResult = enforceStepBudgets({
-        steps: phase.steps,
-        context,
-        workflow,
-        totalSteps,
-        config: this.config,
-        logger: this.logger,
-      });
-      if (!enforceResult.ok) return enforceResult;
-
       // #3017: per-call `phaseTimeoutMs` from run_workflow MCP input wins
       // over both `workflow.timeout` and `this.config.defaultTimeoutMs`.
       const options: ExecutionOptions = {
@@ -340,9 +314,11 @@ export class WorkflowEngine implements IWorkflowEngine {
       const phaseResult = await this.deps.executePhase(phase.steps, context, options);
       if (!phaseResult.ok) return phaseResult;
 
-      // Record usage in circuit breaker after phase completion (#4673): the
-      // coverage report is consumed, not discarded — see reportUsageCoverage.
-      this.reportUsageCoverage(recordPhaseUsage(phaseResult.value, context), workflow.name);
+      // #4673: usage accounting is measurement, not enforcement — it no longer
+      // needs a circuit breaker, so it runs on every phase instead of only when
+      // an unreachable enforcement flag was set. The coverage report is
+      // consumed, not discarded — see reportUsageCoverage.
+      this.reportUsageCoverage(recordPhaseUsage(phaseResult.value), workflow.name);
 
       for (const result of phaseResult.value) {
         context.stepResults.set(result.stepId, result);
