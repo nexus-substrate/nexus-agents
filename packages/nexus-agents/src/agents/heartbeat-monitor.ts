@@ -300,11 +300,6 @@ export function runInHeartbeatSession<T>(sessionId: string, fn: () => Promise<T>
   return sessionAls.run(sessionId, fn);
 }
 
-/** The session owning the current async context, if any. Exported for tests. */
-export function currentHeartbeatSession(): string | undefined {
-  return sessionAls.getStore();
-}
-
 let subscribed = false;
 
 /**

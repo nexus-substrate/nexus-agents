@@ -11,7 +11,6 @@ import {
   getHeartbeatMonitor,
   resetHeartbeatMonitor,
   runInHeartbeatSession,
-  currentHeartbeatSession,
   type HealthTransition,
 } from './heartbeat-monitor.js';
 import { stepBus } from '../core/step-bus.js';
@@ -430,10 +429,6 @@ describe('heartbeat-monitor', () => {
       await Promise.resolve();
 
       expect(monitor.getSessionHealth(sid)?.heartbeatCount).toBe(0);
-    });
-
-    it('exposes no ambient session outside a scope', () => {
-      expect(currentHeartbeatSession()).toBeUndefined();
     });
   });
 });
