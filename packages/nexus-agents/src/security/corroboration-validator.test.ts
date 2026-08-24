@@ -381,9 +381,27 @@ describe('the governance text matches the code (#4688)', () => {
     }
   });
 
+  /**
+   * The two safety valves carry no corroboration requirement on purpose:
+   * requiring evidence in order to refuse or escalate would make refusal
+   * blockable, which is the opposite of failing closed. Named here so a THIRD
+   * empty entry has to be added deliberately.
+   */
+  const NO_CORROBORATION_REQUIRED = new Set(['RequestHumanApproval', 'RefuseAction']);
+
   it('every typed action has corroboration rules in code', () => {
+    // #4698-review: this asserted `toBeDefined()`, which could not fail —
+    // ACTION_CORROBORATION_RULES is a total `Record<AgentActionType, ...>`, so
+    // TypeScript already guarantees a value for every key and an action
+    // registered with `[]` passed silently. Assert the rules are non-empty
+    // instead, exempting the two that are deliberately empty.
     for (const action of TYPED_ACTIONS) {
-      expect(getCorroborationRules(action), `'${action}' has no rules entry`).toBeDefined();
+      const rules = getCorroborationRules(action);
+      if (NO_CORROBORATION_REQUIRED.has(action)) {
+        expect(rules, `'${action}' is a safety valve and must stay unconditional`).toHaveLength(0);
+        continue;
+      }
+      expect(rules.length, `'${action}' has an empty rules entry`).toBeGreaterThan(0);
     }
   });
 
