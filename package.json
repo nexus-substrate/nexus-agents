@@ -36,6 +36,8 @@
     "lint:scripts": "eslint scripts/",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
     "lint:arch": "npx tsx scripts/arch-lint.ts",
+    "api:surface": "npx tsx scripts/extract-api-surface.ts > api-surface.txt",
+    "api:check": "npx tsx scripts/check-api-surface.ts",
     "lint:md": "markdownlint 'docs/**/*.md' '*.md' --ignore 'docs/api/**' --ignore 'node_modules' --config .markdownlint.json",
     "lint:md:fix": "markdownlint 'docs/**/*.md' '*.md' --ignore 'docs/api/**' --ignore 'node_modules' --config .markdownlint.json --fix",
     "spell": "cspell 'docs/**/*.md' '*.md' --config cspell.json",

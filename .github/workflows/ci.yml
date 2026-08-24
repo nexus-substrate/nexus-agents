@@ -64,6 +64,12 @@ jobs:
       - name: Check producer-without-consumer (#3024)
         run: npx tsx scripts/check-new-unused-exports.ts ${{ github.event.pull_request.base.sha }}
 
+      - name: Public API surface
+        # #4749: a name grep cannot answer a reachability question. Three type
+        # changes shipped mis-versioned before this existed (#4736, #4740,
+        # #4744). The gate reports what moved; a human decides the semver level.
+        run: npx tsx scripts/check-api-surface.ts
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
