@@ -273,6 +273,27 @@ export class WorkflowEngine implements IWorkflowEngine {
     return ok(undefined);
   }
 
+  /**
+   * Surface incomplete budget accounting (#4673).
+   *
+   * `recordPhaseUsage` returns which steps it could actually account for. A
+   * ledger containing unmeasured steps is a LOWER BOUND on spend, and that is
+   * precisely what anyone enabling enforcement needs to know before trusting
+   * the cap — so it is reported rather than dropped.
+   */
+  private reportUsageCoverage(
+    usage: ReturnType<typeof recordPhaseUsage>,
+    workflowName: string
+  ): void {
+    if (usage.unmeasuredSteps === 0) return;
+    this.logger.warn('Budget ledger is incomplete — recorded spend is a lower bound', {
+      workflow: workflowName,
+      unmeasuredSteps: usage.unmeasuredSteps,
+      recordedSteps: usage.recordedSteps,
+      tokensRecorded: usage.tokensRecorded,
+    });
+  }
+
   private async executePhases(
     plan: ExecutionPlan,
     context: ExecutionContext,
@@ -319,8 +340,9 @@ export class WorkflowEngine implements IWorkflowEngine {
       const phaseResult = await this.deps.executePhase(phase.steps, context, options);
       if (!phaseResult.ok) return phaseResult;
 
-      // Record usage in circuit breaker after phase completion
-      recordPhaseUsage(phaseResult.value, context);
+      // Record usage in circuit breaker after phase completion (#4673): the
+      // coverage report is consumed, not discarded — see reportUsageCoverage.
+      this.reportUsageCoverage(recordPhaseUsage(phaseResult.value, context), workflow.name);
 
       for (const result of phaseResult.value) {
         context.stepResults.set(result.stepId, result);

@@ -220,14 +220,54 @@ export function enforceStepBudgets(
 /**
  * Record token usage after phase completion.
  */
-export function recordPhaseUsage(results: StepResult[], context: ExecutionContext): void {
-  if (context.budgetCircuitBreaker === undefined) return;
+/**
+ * What a phase's usage accounting actually covered (#4673).
+ *
+ * Returned rather than logged so the coverage is assertable: a caller enabling
+ * budget enforcement can see whether the ledger it is enforcing against is
+ * complete. `unmeasuredSteps > 0` means the recorded spend is a LOWER BOUND.
+ */
+interface PhaseUsageReport {
+  /** Steps that reported real token usage and were recorded. */
+  recordedSteps: number;
+  /** Steps that reported no usage — not counted, and not treated as zero. */
+  unmeasuredSteps: number;
+  /** Total tokens recorded to the breaker for this phase. */
+  tokensRecorded: number;
+}
 
-  // Estimate token usage from step duration (rough heuristic)
-  // In real usage, this would come from actual token counting
-  const estimatedTokensPerMs = 0.5;
-  for (const result of results) {
-    const estimatedTokens = Math.round(result.durationMs * estimatedTokensPerMs);
-    context.budgetCircuitBreaker.recordUsage(estimatedTokens);
+export function recordPhaseUsage(
+  results: StepResult[],
+  context: ExecutionContext
+): PhaseUsageReport {
+  if (context.budgetCircuitBreaker === undefined) {
+    return { recordedSteps: 0, unmeasuredSteps: 0, tokensRecorded: 0 };
   }
+
+  // #4673: record REAL token usage. This used to be
+  // `Math.round(result.durationMs * 0.5)` — a wall-clock reading in a field
+  // named tokens, with a comment conceding "in real usage, this would come
+  // from actual token counting". A budget enforced against that would cap on
+  // elapsed time, so a slow-but-cheap step could exhaust it while a fast
+  // expensive one passed.
+  //
+  // The real count was already on the step's task metadata; `step-executor`
+  // simply dropped it.
+  let unmeasuredSteps = 0;
+  let recordedSteps = 0;
+  let tokensRecorded = 0;
+  for (const result of results) {
+    if (typeof result.tokensUsed !== 'number') {
+      // Unmeasured is NOT zero. Recording zero would under-count spend, which
+      // for a cap is the dangerous direction — so it is counted and reported
+      // rather than letting absence quietly look free.
+      unmeasuredSteps += 1;
+      continue;
+    }
+    context.budgetCircuitBreaker.recordUsage(result.tokensUsed);
+    recordedSteps += 1;
+    tokensRecorded += result.tokensUsed;
+  }
+
+  return { recordedSteps, unmeasuredSteps, tokensRecorded };
 }

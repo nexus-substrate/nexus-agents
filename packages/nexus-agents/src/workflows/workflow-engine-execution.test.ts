@@ -555,15 +555,52 @@ describe('recordPhaseUsage', () => {
       budgetEvents: [],
       budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
     };
+    // #4673: this asserted `200ms * 0.5 = 100 tokens` — a wall-clock reading
+    // recorded into a token budget. It pinned the defect as intended
+    // behaviour. Real usage is now carried on the step result.
     const results: StepResult[] = [
-      { stepId: 's1', status: 'success', output: 'ok', durationMs: 200 },
+      { stepId: 's1', status: 'success', output: 'ok', durationMs: 200, tokensUsed: 1500 },
+      { stepId: 's2', status: 'success', output: 'ok', durationMs: 400, tokensUsed: 90 },
+    ];
+    const report = recordPhaseUsage(results, context);
+    expect(mockRecordUsage).toHaveBeenCalledTimes(2);
+    expect(mockRecordUsage).toHaveBeenCalledWith(1500);
+    expect(mockRecordUsage).toHaveBeenCalledWith(90);
+    // Note the ordering the old heuristic would have produced: s1 ran for less
+    // than half as long as s2 yet cost ~17x more. A budget enforced on
+    // duration would have capped the cheap step and let the expensive one run.
+    expect(report).toEqual({ recordedSteps: 2, unmeasuredSteps: 0, tokensRecorded: 1590 });
+  });
+
+  it('does NOT treat an unmeasured step as zero spend (#4673)', () => {
+    const mockRecordUsage = vi.fn();
+    const context: ExecutionContext = {
+      workflowId: 'test',
+      executionId: 'exec-1',
+      inputs: {},
+      stepResults: new Map(),
+      variables: new Map(),
+      abortController: new AbortController(),
+      contextManager: undefined,
+      budgetEvents: [],
+      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
+    };
+    const results: StepResult[] = [
+      { stepId: 's1', status: 'success', output: 'ok', durationMs: 200, tokensUsed: 500 },
+      // No tokensUsed — the step reported nothing.
       { stepId: 's2', status: 'success', output: 'ok', durationMs: 400 },
     ];
-    recordPhaseUsage(results, context);
-    expect(mockRecordUsage).toHaveBeenCalledTimes(2);
-    // 200ms * 0.5 = 100 tokens, 400ms * 0.5 = 200 tokens
-    expect(mockRecordUsage).toHaveBeenCalledWith(100);
-    expect(mockRecordUsage).toHaveBeenCalledWith(200);
+
+    const report = recordPhaseUsage(results, context);
+
+    // Recording 0 for s2 would under-count spend, which for a CAP is the
+    // dangerous direction — the budget would believe it had more headroom
+    // than it does.
+    expect(mockRecordUsage).toHaveBeenCalledTimes(1);
+    expect(mockRecordUsage).toHaveBeenCalledWith(500);
+    expect(report.unmeasuredSteps).toBe(1);
+    expect(report.recordedSteps).toBe(1);
+    expect(report.tokensRecorded).toBe(500);
   });
 
   it('handles empty results array', () => {
