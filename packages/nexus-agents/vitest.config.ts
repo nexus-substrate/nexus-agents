@@ -83,7 +83,14 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/testing/**', 'src/**/*.d.ts'],
-      reporter: ['text', 'json', 'html'],
+      // #4668: `json-summary` writes `coverage-summary.json`. Without it that
+      // file is never produced, yet THREE consumers read it — the SICA
+      // test-generation workflow, the system-review workflow, and
+      // `cli/system-review.ts`. All three silently saw no coverage: the
+      // existsSync guards were permanently false, and the workflow's
+      // `jq '.total.lines.pct // 0'` fallback turned absence into 0%.
+      // (`json` writes coverage-final.json, which is a different shape.)
+      reporter: ['text', 'json', 'json-summary', 'html'],
       // Thresholds
       thresholds: {
         statements: 60,

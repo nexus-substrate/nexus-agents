@@ -3,7 +3,9 @@
  * (Source: Issue #137)
  */
 
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { ComponentScanner, createComponentScanner, scanComponents } from './component-scanner.js';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
@@ -233,5 +235,76 @@ export default function() {}
   // Cleanup after all tests
   afterAll(async () => {
     await cleanupTestDir();
+  });
+});
+
+describe('per-file test coverage (#4668)', () => {
+  // `deprecate` was unreachable: `analyzeFile` hardcoded `testCoverage: null`,
+  // which gated the -0.2 low-coverage penalty and left the score floor at 0.45
+  // against a `deprecate` boundary of < 0.3.
+  //
+  // The existing regression test for this hand-builds a ComponentInfo with
+  // `testCoverage: 20` — a value the real scanner never produced — so it proved
+  // the evaluator's arithmetic while the feature was dead. These run against
+  // scanner output instead.
+
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'scanner-cov-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reads per-file coverage from coverage-summary.json', async () => {
+    const src = join(dir, 'thing.ts');
+    writeFileSync(src, 'export const a = 1;\n');
+
+    const covDir = join(dir, 'coverage');
+    mkdirSync(covDir, { recursive: true });
+    writeFileSync(
+      join(covDir, 'coverage-summary.json'),
+      JSON.stringify({ total: { lines: { pct: 50 } }, [src]: { lines: { pct: 17 } } })
+    );
+
+    const scanner = new ComponentScanner({ coverageDir: covDir });
+    const inventory = await scanner.scan(dir);
+    const thing = inventory.components.find((c) => c.name === 'thing');
+
+    // 17, the file's own coverage — NOT 50, the project total. A project-wide
+    // number stamped onto every file would be a fabricated per-file metric.
+    expect(thing?.testCoverage).toBe(17);
+  });
+
+  it('leaves coverage NULL when no report exists — unmeasured is not 0%', async () => {
+    // The condition that makes this fix safe. Coercing absence to 0 would make
+    // every file without a coverage run look maximally bad and turn `deprecate`
+    // from "can never fire" into "fires for the wrong reason".
+    writeFileSync(join(dir, 'thing.ts'), 'export const a = 1;\n');
+
+    const scanner = new ComponentScanner({ coverageDir: join(dir, 'nope') });
+    const inventory = await scanner.scan(dir);
+
+    expect(inventory.components[0]?.testCoverage).toBeNull();
+  });
+
+  it('leaves coverage NULL for a file absent from the report', async () => {
+    writeFileSync(join(dir, 'thing.ts'), 'export const a = 1;\n');
+    const covDir = join(dir, 'coverage');
+    mkdirSync(covDir, { recursive: true });
+    writeFileSync(
+      join(covDir, 'coverage-summary.json'),
+      JSON.stringify({
+        total: { lines: { pct: 50 } },
+        '/some/other/file.ts': { lines: { pct: 90 } },
+      })
+    );
+
+    const scanner = new ComponentScanner({ coverageDir: covDir });
+    const inventory = await scanner.scan(dir);
+
+    expect(inventory.components[0]?.testCoverage).toBeNull();
   });
 });
