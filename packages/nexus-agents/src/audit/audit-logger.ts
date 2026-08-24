@@ -9,6 +9,15 @@
  * @module audit/audit-logger
  */
 
+/* eslint-disable max-lines --
+ * This file sat EXACTLY at the 400-line cap before #4703, so the 16 lines the
+ * unanchored-head check adds push it over. Taking the exemption rather than
+ * bundling a refactor into a security fix: the right split is to move
+ * `verifyChain`/`verifyEvent` beside their existing test
+ * (`audit-chain-verify.test.ts`), tracked as #4702. Do not add to
+ * this file without doing that extraction first.
+ */
+
 import * as crypto from 'node:crypto';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -88,7 +97,17 @@ function computeEventHash(event: AuditEvent): string {
  * or one of three named tampering signals fires at a specific event index.
  */
 export type ChainVerification =
-  | { ok: true; eventCount: number }
+  | {
+      ok: true;
+      eventCount: number;
+      /**
+       * Set when the chain's first event carries a `previousHash` (#4703):
+       * links verified, ORIGIN unverified. Rotation and front-truncation look
+       * identical here and the verifier cannot tell them apart, so it reports
+       * rather than judges — see T6 in the audit hash-chain threat model.
+       */
+      unanchoredHead?: { previousHash: string; detail: string };
+    }
   | {
       ok: false;
       reason: 'hash_mismatch' | 'previous_hash_mismatch' | 'missing_hash';
@@ -162,6 +181,26 @@ export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
     if (failure !== null) return failure;
     priorHash = event.hash;
   }
+
+  // #4703: links verified — but did the chain START where it claims to?
+  // `verifyEvent` skips the previousHash comparison at index 0, so a
+  // front-truncated chain used to return a clean `ok: true` while its head
+  // still carried a live pointer to the deleted event.
+  const headPreviousHash = events[0].previousHash;
+  if (headPreviousHash !== undefined) {
+    return {
+      ok: true,
+      eventCount: events.length,
+      unanchoredHead: {
+        previousHash: headPreviousHash,
+        detail:
+          `chain head references predecessor ${headPreviousHash} which is not in this chain — ` +
+          `expected after log rotation/pruning, and also what front-truncation looks like. ` +
+          `Links all verify; the chain's ORIGIN is unverified.`,
+      },
+    };
+  }
+
   return { ok: true, eventCount: events.length };
 }
 

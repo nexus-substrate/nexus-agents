@@ -147,3 +147,58 @@ describe('verifyChain', () => {
     }
   });
 });
+
+describe('front-truncation is detected (#4703)', () => {
+  // The threat model is tamper-EVIDENT, not tamper-proof, and it accepts that
+  // an adversary who recomputes the whole chain wins. What it claims to catch
+  // is "naive deletions by an adversary who does not recompute the chain".
+  //
+  // Deleting the FIRST n lines is exactly that class, and it needed no rehash:
+  // `verifyEvent` guarded the previousHash comparison with `index > 0`, so it
+  // never asserted the chain starts at a genesis. The remainder verified clean
+  // while its new head still carried a live 64-hex pointer to a deleted event —
+  // the evidence was in hand and discarded.
+
+  it('reports unanchored_head when the head still points at a predecessor', () => {
+    const full = chain(6);
+    const truncated = full.slice(3);
+
+    // Precondition: nothing was rehashed. The head carries its old pointer.
+    expect(truncated[0]?.previousHash).toBeDefined();
+
+    const verdict = verifyChain(truncated);
+
+    // Deliberately NOT ok:false. Routine log rotation produces this identical
+    // shape, and a verifier that reports tamper on every rotated deployment is
+    // one operators learn to dismiss — which is how a real tamper gets waved
+    // through. The links DO all verify; what is unverified is the origin.
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) {
+      expect(verdict.unanchoredHead).toBeDefined();
+      // The pointer to the deleted predecessor belongs in the record, not the bin.
+      expect(verdict.unanchoredHead?.previousHash).toBe(truncated[0]?.previousHash);
+      expect(verdict.unanchoredHead?.detail).toContain('ORIGIN is unverified');
+    }
+  });
+
+  it('a genesis chain carries NO unanchoredHead — absence is meaningful', () => {
+    const verdict = verifyChain(chain(6));
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(verdict.unanchoredHead).toBeUndefined();
+  });
+
+  it('a genuine genesis chain still verifies', () => {
+    const verdict = verifyChain(chain(6));
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('a single genesis event verifies', () => {
+    expect(verifyChain(chain(1)).ok).toBe(true);
+  });
+
+  it('an empty chain is unchanged — documented and accepted', () => {
+    // Not in scope here: the threat model explicitly accepts this (§1.4).
+    // Asserted so a future change to the empty case is a deliberate one.
+    expect(verifyChain([]).ok).toBe(true);
+  });
+});

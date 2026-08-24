@@ -248,14 +248,34 @@ omission is invisible — same root cause as T3.
 to bind to. An adversary can substitute a fabricated "genesis" event, or splice
 a fabricated history before the real first event.
 
-**Detected?** **No.** `verifyEvent` deliberately skips the `previousHash` check
-for `index === 0` (`audit-logger.ts:91`, the `index > 0` guard). The head of the
-chain is unanchored, so its provenance is unverifiable. This is the structural
-twin of T1 (tail) at the head.
+**Detected?** **Partially, since #4703.** `verifyEvent` still skips the
+`previousHash` comparison at `index === 0` — there is genuinely nothing in the
+chain to compare against. But `verifyChain` now reports `unanchoredHead` when
+the first event carries a `previousHash` at all, which is the observable trace
+of a front-deletion that did not recompute anything.
 
-**Residual risk: HIGH.** No genesis anchor, no binding of the first hash to any
-external value (a config commit, a deployment ID, a previous log file's final
-hash). Each log directory's chain floats free.
+This closes a specific gap rather than T6 as a whole. Before #4703 a
+front-truncated chain returned a clean `ok: true` **while its head still
+carried a live 64-hex pointer to the deleted predecessor** — the evidence was
+present and discarded. That contradicted this document's own claim (§ Threat
+Coverage) to detect naive deletions by an adversary who does not recompute the
+chain, since deleting the first _n_ lines is exactly that class.
+
+What is reported is deliberately **not** `ok: false`. Routine log rotation
+(`pruneOldFiles`, `audit-storage.ts`) produces an identical shape, and a
+verifier that reports tamper on every rotated deployment is one operators learn
+to dismiss — which is how a real tamper gets waved through. The verifier cannot
+distinguish the two cases, so it says so: links verified, origin unverified.
+
+**Still undetected:** a fabricated genesis (`previousHash` absent, hashes
+recomputed from a forged first event) is indistinguishable from a real one.
+That is the part needing an external anchor.
+
+**Residual risk: MEDIUM** (was HIGH). No genesis anchor and no binding of the
+first hash to an external value (a config commit, a deployment ID, a previous
+log file's final hash) — each log directory's chain still floats free. What
+changed is that a chain which _claims_ a predecessor it cannot show now says so
+instead of reporting clean.
 
 ### T7: Content tampering in unhashed fields
 
@@ -328,7 +348,7 @@ of the log. The single-key/no-key in-repo design cannot self-defend here.
 | T3  | Rewrite-and-rehash                   | **No** (fundamental)                      | HIGH          |
 | T4  | Reordering                           | Yes if not rehashed; No if rehashed       | MEDIUM        |
 | T5  | Missing / selective omission         | Yes if not re-stitched; No if re-stitched | MEDIUM–HIGH   |
-| T6  | First-record integrity (no anchor)   | No                                        | HIGH          |
+| T6  | First-record integrity (no anchor)   | Partial (unanchoredHead, #4703)           | MEDIUM        |
 | T7  | Content tampering in unhashed fields | **No**                                    | HIGH          |
 | T8  | Chain-disable / downgrade            | No (reports OK)                           | HIGH          |
 | T9  | Verifier tampering                   | No (by definition)                        | HIGH          |
