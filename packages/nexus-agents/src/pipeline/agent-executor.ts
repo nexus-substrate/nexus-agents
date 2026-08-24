@@ -105,6 +105,17 @@ function classifyVoteStageResult(votingResult: {
 }
 
 // DRY: delegate to shared pipeline-observability.ts (#1734 Phase 1.1)
+/**
+ * What a stage records when no trust tier reached it (#4694).
+ *
+ * The empty case is NAMED rather than defaulted. Recording an absent tier as
+ * `'1'`, or omitting the field, would make an unmeasured run indistinguishable
+ * from a trusted one — and four voters made this an explicit condition of
+ * approving the record-first approach: "a check that cannot fail is not a
+ * check, and neither is a recorder that fills in trusted-by-default."
+ */
+export const UNMEASURED_TRUST_TIER = 'unmeasured';
+
 function emitStageEvent(
   stage: string,
   status: 'started' | 'completed' | 'failed',
@@ -192,6 +203,20 @@ export interface AgentExecutorConfig {
    * rather than aborting mid-pipeline. Absent → no enforcement (default).
    */
   readonly budget?: AgentBudgetConfig | undefined;
+  /**
+   * Trust tier of the input driving this run (#4694), threaded from the MCP
+   * request context.
+   *
+   * RECORD-ONLY today: no stage refuses on it. The consensus vote (7-0, option
+   * D) established why enforcement cannot land yet — the tier was unreachable
+   * here at all, so a fail-closed guard would have blocked every `pipeline` and
+   * `research` run rather than only untrusted ones. Threading and measuring
+   * comes first; the enforcement point is chosen on the measured distribution.
+   *
+   * `undefined` means NOT MEASURED, and is recorded as such — never defaulted
+   * to a trusted value. See {@link UNMEASURED_TRUST_TIER}.
+   */
+  readonly trustTier?: string | undefined;
 }
 
 /**
@@ -493,13 +518,24 @@ function getTrendContext(): string {
 export function createAgentStages(config: AgentExecutorConfig = {}): DevPipelineStages {
   // Per-run budget guard (#3395). No-op unless config.budget is set.
   const guard = createBudgetGuard(config.budget);
+
+  // #4694: stamp every stage entry with the tier of the input driving the run.
+  // Stage entry is the one point BOTH model paths pass through — `runExpert`
+  // (plan/decompose/implement/qaReview) and `executeVoting`, which dispatches
+  // consensus voters through its own adapters and never touches `runExpert`.
+  // Recording here therefore has no coverage gap, which a `runExpert` guard
+  // would have had while reporting success.
+  const trustTier = config.trustTier ?? UNMEASURED_TRUST_TIER;
+  const startStage = (stage: string): void => {
+    emitStageEvent(stage, 'started', { trustTier });
+  };
   return {
     research: async (task) => {
       // #3372 Option A (7/7 vote): call the research tools DIRECTLY for structured
       // data instead of routing through an LLM expert that discards it. The text
       // returned here is DERIVED from that same structure (single source of truth);
       // increment 2 threads the structured metadata through plan/vote.
-      emitStageEvent('research', 'started');
+      startStage('research');
       await postProgress(config, 'Research', 'Querying research tools (structured)...');
       const start = getTimeProvider().now();
       const topic = task.slice(0, 200);
@@ -550,7 +586,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     plan: async (task, research, feedback) => {
-      emitStageEvent('plan', 'started');
+      startStage('plan');
       const outcomeCtx = getOutcomeContext();
       const trendCtx = getTrendContext();
       const weatherCtx = await getWeatherContext();
@@ -578,7 +614,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     vote: async (plan, research) => {
-      emitStageEvent('vote', 'started');
+      startStage('vote');
       const start = getTimeProvider().now();
       const strategy = config.votingStrategy ?? 'higher_order';
       await postProgress(config, 'Vote', `Running consensus with ${strategy} strategy...`);
@@ -654,7 +690,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     decompose: async (plan) => {
-      emitStageEvent('decompose', 'started');
+      startStage('decompose');
       await postProgress(config, 'PM', 'PM expert decomposing...');
       const r = await runExpert(
         guard,
@@ -676,7 +712,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     implement: async (task) => {
-      emitStageEvent(`impl-${task.id}`, 'started');
+      startStage(`impl-${task.id}`);
       await postProgress(config, `Code [${task.id}]`, task.title);
       const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
       const r = await runExpert(
@@ -709,7 +745,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     qaReview: async (task, implementation) => {
-      emitStageEvent(`qa-${task.id}`, 'started');
+      startStage(`qa-${task.id}`);
       await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
       const r = await runExpert(
         guard,
@@ -744,7 +780,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     qualityGate: async () => {
-      emitStageEvent('quality-gate', 'started');
+      startStage('quality-gate');
       const start = getTimeProvider().now();
       const target = config.scanTarget ?? process.cwd();
       await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
@@ -782,7 +818,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     },
 
     securityScan: async () => {
-      emitStageEvent('security', 'started');
+      startStage('security');
       const start = getTimeProvider().now();
       const target = config.scanTarget ?? process.cwd();
       await postProgress(config, 'Security', `Scanning ${target}...`);

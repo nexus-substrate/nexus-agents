@@ -214,7 +214,11 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
 
 /** Create pipeline stages wired to real agents via agent-executor. */
 async function createStages(
-  input: DevPipelineInput
+  input: DevPipelineInput,
+  // #4694: record-only. The consensus→execute seam already ENFORCES on this
+  // tier; the executor stages have never even recorded it, so a run's stage
+  // telemetry could not say what provenance drove it.
+  trustTier?: string
 ): Promise<ReturnType<typeof createAgentStages>> {
   // Auto-detect tracker backend if set to 'auto' or default
   const backendChoice = input.trackerBackend;
@@ -225,6 +229,7 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
+    ...(trustTier !== undefined ? { trustTier } : {}),
     scanTarget: input.workingDir,
     simulateVotes: input.simulateVotes,
     votingStrategy: input.votingStrategy,
@@ -250,7 +255,7 @@ export async function runDevPipelineForGoal(
   trustTier?: string
 ): Promise<DevPipelineResult> {
   const input = DevPipelineInputSchema.parse({ task: goal });
-  const stages = await createStages(input);
+  const stages = await createStages(input, trustTier);
   // #3712: thread the caller's real content-provenance trust tier into the
   // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
   // (never infer trust from absence). The `run` entry point passes the caller's
@@ -367,7 +372,7 @@ async function runDevPipelineHandler(
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
     const taskText = await resolveTaskInput(input);
-    const stages = await createStages(input);
+    const stages = await createStages(input, trustTier);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const resolvedOptions = hasOptions ? pipelineOptions : undefined;
