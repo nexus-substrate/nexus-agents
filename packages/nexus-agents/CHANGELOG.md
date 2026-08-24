@@ -1,5 +1,47 @@
 # nexus-agents
 
+## 3.11.2
+
+### Patch Changes
+
+- [#4689](https://github.com/nexus-substrate/nexus-agents/pull/4689) [`2dd6b21`](https://github.com/nexus-substrate/nexus-agents/commit/2dd6b21f14ce412524d8027dbb0315040b2c0d34) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): never let an agent propose a label that grants privilege or skips review
+
+  Labels in this repository are not all descriptive taxonomy — some are CI
+  control inputs. `owner-ratified` is the label `check-governor-ratification.ts`
+  accepts as proof of ratification, so applying it bypasses the
+  governance-of-the-governor gate on `src/audit/`, `.rules/` and `CODEOWNERS`.
+  `skip-pr-review` suppresses the review workflow.
+
+  `ProposeLabels` was constrained only by "must exist in the repository label
+  set", which these do. No production code applies a proposed label today
+  (`addLabels` has no non-test caller), so the path is latent — but it stops
+  being latent the moment triage output is wired to `addLabels`, and a guard
+  added after that wiring is a guard added after the incident.
+
+  Proposals naming a privilege-granting label are now refused with
+  `PRIVILEGED_LABEL`. The check keys on the action's effect, not the author's
+  trust: an OWNER-authored body proposing its own ratification is exactly the
+  self-modification the governor exists to prevent. It is also independent of
+  `checkLabelValidity`, which returns early when the repository label set is
+  unknown — a denylist layered on that would inherit the vacuous pass.
+
+- [#4682](https://github.com/nexus-substrate/nexus-agents/pull/4682) [`baba91b`](https://github.com/nexus-substrate/nexus-agents/commit/baba91be3710db7eb454193d82223712422e26d5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(testing): guard every child_process spawn entry point, not a hand-picked subset
+
+  The CLI spawn guard wrapped `exec`, `execFile`, `execSync` and `spawn`, and
+  described that list in-line as "only the entry points this tree uses to reach a
+  CLI". It was not. `execFileSync` is the second most used spawner in production
+  (23 call sites), including `detectCliBinary`, which calls
+  `execFileSync(name, ['--version'])` with a guarded CLI name — so the guard let a
+  real `opencode` process launch, unblocked and unrecorded.
+
+  The wrapped set is now enumerated from the module's spawners
+  (`exec`, `execFile`, `execSync`, `execFileSync`, `spawn`, `spawnSync`, `fork`).
+  A subset chosen from current usage silently reopens the hole the next time a
+  caller reaches for a different entry point.
+
+  Adds probes that call each synchronous entry point with a guarded binary and
+  assert the guard message, so the gap is a test failure rather than a comment.
+
 ## 3.11.1
 
 ### Patch Changes
