@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 3.13.1
+
+### Patch Changes
+
+- [#4705](https://github.com/nexus-substrate/nexus-agents/pull/4705) [`40466e4`](https://github.com/nexus-substrate/nexus-agents/commit/40466e43e7f03ca16cad662efbb6e060a0b5e012) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(workflows): stop retrying validation failures
+
+  `isNonRetryableError` could not return true. `step-executor` wraps every
+  failure in a `WorkflowError`, and `WorkflowError` hardcodes
+  `code: ErrorCode.WORKFLOW_ERROR` while `Omit`-ing `code` from its options — so
+  a caller cannot set `VALIDATION_ERROR` even deliberately, and `name` is always
+  `'WorkflowError'`. Both branches of the guard were unreachable from the one
+  call site that uses it, and a validation failure was retried to exhaustion:
+  same input, same failure, every time.
+
+  The original error survives as `cause` on the wrap, so the guard now walks the
+  cause chain rather than changing the error class. The walk is cycle-guarded —
+  `cause` is untyped at that boundary, and a loop would hang the retry rather
+  than fail it.
+
+  Absence of a cause still means retry. No evidence of a permanent failure is not
+  evidence of one.
+
 ## 3.13.0
 
 ### Minor Changes
