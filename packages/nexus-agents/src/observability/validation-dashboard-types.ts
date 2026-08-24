@@ -112,7 +112,14 @@ export interface DashboardHealthIndicators {
   /** Whether any model is significantly underperforming */
   readonly noUnderperformers: boolean;
   /** Overall health score (0-1) */
-  readonly healthScore: number;
+  /**
+   * Overall health, or `null` when there is not enough data to score (#4714).
+   *
+   * `null` is not zero and not a bad score — it means the indicators would be
+   * defaults rather than measurements. Render it as "unmeasured"; do not
+   * coerce it to a number.
+   */
+  readonly healthScore: number | null;
   /** Warning messages */
   readonly warnings: readonly string[];
 }

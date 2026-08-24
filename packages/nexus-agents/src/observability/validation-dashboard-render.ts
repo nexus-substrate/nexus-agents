@@ -147,7 +147,13 @@ export function renderHealthIndicators(health: DashboardHealthIndicators): strin
   lines.push(`${check(health.healthyExploration)} Healthy Exploration`);
   lines.push(`${check(health.noUnderperformers)} No Underperformers`);
   lines.push('');
-  lines.push(`Overall Health: ${(health.healthScore * 100).toFixed(0)}%`);
+  // #4714: absence renders as absence. A percentage here computed from
+  // default indicators looked like a measurement and was always 80%.
+  lines.push(
+    health.healthScore === null
+      ? 'Overall Health: unmeasured (not enough recorded outcomes to score)'
+      : `Overall Health: ${(health.healthScore * 100).toFixed(0)}%`
+  );
 
   if (health.warnings.length > 0) {
     lines.push('');

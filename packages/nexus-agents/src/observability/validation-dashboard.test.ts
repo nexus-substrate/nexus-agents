@@ -205,11 +205,15 @@ describe('validation-dashboard', () => {
       expect(summary.healthIndicators.healthyExploration).toBe(true);
     });
 
-    it('should calculate health score', () => {
+    it('reports the health score as unmeasured with no recorded outcomes (#4714)', () => {
+      // This previously asserted `>= 0 && <= 1` — true of every possible
+      // value, including the constant 0.8 the dashboard actually produced on
+      // every real run. A check that cannot fail.
+      //
+      // `recordOutcome` has no production caller, so an unmeasured score is
+      // the real shipped state, and saying so is the point.
       const summary = dashboard.getSummary();
-
-      expect(summary.healthIndicators.healthScore).toBeGreaterThanOrEqual(0);
-      expect(summary.healthIndicators.healthScore).toBeLessThanOrEqual(1);
+      expect(summary.healthIndicators.healthScore).toBeNull();
     });
   });
 
