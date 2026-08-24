@@ -12,10 +12,21 @@ So `enforceStepBudgets` was structurally incapable of returning `err`,
 `budgetEvents` was permanently `[]`, and `getBudgetEvents` returned that empty
 list to nobody.
 
-Removed: `enableBudgetEnforcement`, `contextManagerConfig`,
-`budgetCircuitBreakerConfig`, `applyBudgetEnforcement`, `enforceStepBudgets`,
-`getBudgetEvents`, `getBudgetCircuitBreaker`, and `ExecutionContext.budgetEvents`
-/ `.budgetCircuitBreaker`.
+Removed from the workflow engine: `enableBudgetEnforcement`,
+`budgetCircuitBreakerConfig`, `enforceStepBudgets`, `getBudgetEvents`,
+`getBudgetCircuitBreaker`, and `ExecutionContext.budgetEvents` /
+`.budgetCircuitBreaker`.
+
+NOT removed, contrary to an earlier draft of this note: `applyBudgetEnforcement`
+still exists in `budget-enforcement.ts`, and `contextManagerConfig` is still a
+`WorkflowEngineConfig` field — the context manager is unrelated to budget
+enforcement and survives it.
+
+This removes ten types from the package's public surface — `IBudgetCircuitBreaker`,
+`BudgetCircuitState`, `BudgetEnforcementEvent` and siblings — which were
+reachable only through the two deleted `ExecutionContext` fields rather than by
+direct export. That makes this a BREAKING change despite the `minor` header
+above; the version decision is tracked in #4759.
 
 **`BudgetCircuitBreaker` itself is untouched** — `pipeline/budget-guard.ts`
 wraps it as "the single budget authority" for `agent-executor`, and that path
