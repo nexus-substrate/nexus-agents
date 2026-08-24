@@ -1,5 +1,79 @@
 # nexus-agents
 
+## 3.10.0
+
+### Minor Changes
+
+- [#4675](https://github.com/nexus-substrate/nexus-agents/pull/4675) [`c1ab35e`](https://github.com/nexus-substrate/nexus-agents/commit/c1ab35eeae89eb891dbb670bcf7f37795684e18d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce reputation gating by default, and refuse hostile input explicitly ([#4667](https://github.com/nexus-substrate/nexus-agents/issues/4667))
+
+  `NEXUS_REPUTATION_GATING` defaulted to `audit`, which computed the trust
+  demotion for an issue carrying a prompt injection, logged _"would block under
+  enforce"_, and then let the actions through. Detection worked; enforcement was
+  off.
+
+  Two changes, deliberately together:
+
+  - **The default is now `enforce`.** `audit` remains available for rollback.
+  - **A hostile enforced tier now emits a `RefuseAction`** escalating to
+    `security`. Previously tier 4 only meant every generated action failed the
+    policy gate — the caller saw fewer approvals and no statement that anything
+    had been refused, so the fail-closed escalation the rules mandate had no
+    producer. Flipping the default alone would have converted a logged non-event
+    into an unlogged one.
+
+  Measured before flipping, over the real triage path with only the SCM provider
+  mocked: **5/5 hostile inputs blocked, 0 false positives** across ordinary
+  maintainer language (_"please close this"_, _"URGENT"_, _"you should merge [#88](https://github.com/nexus-substrate/nexus-agents/issues/88)
+  first"_) and across five real repository issues run as both OWNER and
+  unaffiliated author.
+
+  `issue-triage-corpus.test.ts` commits that corpus, so the false-positive rate is
+  measured rather than assumed whenever the detection patterns change.
+
+### Patch Changes
+
+- [#4678](https://github.com/nexus-substrate/nexus-agents/pull/4678) [`460ae14`](https://github.com/nexus-substrate/nexus-agents/commit/460ae14564ec49ce0188d0e35301fd5a5bc35c81) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Let task-classification confidence report "no evidence" ([#4677](https://github.com/nexus-substrate/nexus-agents/issues/4677))
+
+  `classifyTask` floored its own confidence at 1/3 with
+  `Math.max(...Object.values(scores), 1)` — a guard against a `0/3` division that
+  was never harmful. The low-confidence enrichment gate is `< 0.2`, so the gate
+  could never open: `tryIssueTriage` and the LLM classification refinement
+  ([#1779](https://github.com/nexus-substrate/nexus-agents/issues/1779)/[#1798](https://github.com/nexus-substrate/nexus-agents/issues/1798)) were unreachable from the day they were written.
+
+  Measured over 20 realistic goals and 10 pathological inputs including the empty
+  string: minimum confidence was **0.3333** in every case.
+
+  The floor also masked something worse than a dead branch. A task matching no
+  keywords was reported at 0.33 confidence in a pipeline type it had been
+  _defaulted_ into — absence rendered as a real measurement.
+
+  Removing the floor makes the gate reachable for ~60% of realistic goals, each of
+  which would otherwise fall through to an LLM call. That is a new behaviour with
+  a per-task cost, not a restoration, so LLM refinement is now behind
+  `NEXUS_LLM_CLASSIFICATION=1` (default off). Issue-triage enrichment, which is
+  local and only fires on GitHub issue URLs, stays enabled.
+
+- [#4636](https://github.com/nexus-substrate/nexus-agents/pull/4636) [`845b887`](https://github.com/nexus-substrate/nexus-agents/commit/845b887d7e1c3378342beee130f8792d6846e075) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce owner ratification on governance-of-the-governor paths ([#4635](https://github.com/nexus-substrate/nexus-agents/issues/4635))
+
+  CODEOWNERS and CLAUDE.md both state that the governor's own paths — the audit
+  hash chain, governance source, drift machinery, `CLAUDE.md`/`AGENTS.md`,
+  `CODEOWNERS` — are never auto-merged. Nothing enforced it. `governor-review.yml`
+  checked whether a change was _reviewed_, which is a different question from
+  whether the owner _ratified_ it, and it warns rather than blocks.
+
+  Adds `scripts/check-governor-ratification.ts` and wires it as two jobs: a
+  pre-merge check, and a post-merge backstop on `main`. The backstop exists
+  because `gh pr merge --admin` bypasses required status checks, so a pre-merge
+  check alone cannot stop the merge it is meant to stop.
+
+  The gate's own machinery is now itself a governor path. A gate an agent can
+  weaken without tripping it is not a gate.
+
+  Four verdicts stay distinct — `not-applicable`, `ratified`, `unratified`,
+  `indeterminate`. "No governor path touched" must never render as "ratified", and
+  an unreadable CODEOWNERS must never render as "unratified" and blame the PR for
+  a broken gate.
+
 ## 3.9.5
 
 ### Patch Changes
