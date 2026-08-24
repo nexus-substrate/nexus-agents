@@ -139,6 +139,11 @@ const NexusEnvSchema = z.object({
   // to context for structural tasks (#4254, getRepoMapForTask); pull-shaped +
   // rank-gated, off by default.
   NEXUS_REPO_MAP: z.enum(['0', '1']).optional(),
+  // Allow LLM-based pipeline classification when keyword scoring finds no
+  // evidence (#4677). Off by default: fixing the confidence floor made the
+  // enrichment gate reachable for the first time, and measurement put that at
+  // ~60% of realistic goals — one LLM call each. Opt in deliberately.
+  NEXUS_LLM_CLASSIFICATION: z.enum(['0', '1']).optional(),
   // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
   NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
   // Resolve a concrete model from the difficulty tier at route time (#3394,

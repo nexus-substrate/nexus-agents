@@ -156,7 +156,14 @@ export function classifyTask(task: string): TaskClassification {
   const scores = calculateTypeScores(lower);
   const pipelineType = selectBestType(scores);
   const complexity = estimateComplexity(lower);
-  const maxScore = Math.max(...Object.values(scores), 1);
+  // #4677: NO `, 1` floor. That guard (against a 0/3 division that is in fact
+  // harmless) pinned confidence at a minimum of 1/3, and the low-confidence
+  // enrichment gate below is `< 0.2` — so it could never open and neither
+  // `tryIssueTriage` nor the LLM refinement ever ran. A task matching no
+  // keywords has no evidence behind its classification, and must be able to
+  // say so. `Object.values(scores)` always has five entries, so the spread is
+  // never empty and this cannot produce -Infinity.
+  const maxScore = Math.max(...Object.values(scores));
   const keywords = extractMatchedKeywords(lower, pipelineType);
 
   return {
@@ -221,6 +228,17 @@ const TRIAGE_CATEGORY_MAP: Record<string, PipelineType> = {
   security: 'audit',
   research: 'research',
 };
+
+/**
+ * Whether LLM classification refinement is enabled (#4677).
+ *
+ * Defaults OFF. See `NEXUS_LLM_CLASSIFICATION` in `config/env-schema.ts` for
+ * why: the gate guarding this call could never open until #4677, so switching
+ * it on is a new behaviour with a real per-task cost, not a restoration.
+ */
+function llmClassificationEnabled(): boolean {
+  return process.env['NEXUS_LLM_CLASSIFICATION'] === '1';
+}
 
 /** Try using issue_triage for richer classification when confidence is low. */
 async function tryIssueTriage(task: string): Promise<TaskClassification | null> {
@@ -339,8 +357,13 @@ export async function runAdaptiveOrchestrator(
         enriched: enriched.pipelineType,
       });
       classification = enriched;
-    } else {
-      // LLM refinement: delegate to expert for semantic classification (#1798)
+    } else if (llmClassificationEnabled()) {
+      // LLM refinement: delegate to expert for semantic classification (#1798).
+      // Gated since #4677. This branch was unreachable from the day it was
+      // written — the confidence floor kept the gate above it permanently shut.
+      // Removing the floor makes it reachable for ~60% of realistic goals, which
+      // is an LLM call per task; enabling that silently as a side effect of a
+      // correctness fix would be the wrong trade to make on someone's behalf.
       const llmResult = await classifyWithLLM(cleanTask);
       if (llmResult !== null) {
         logger.info('Classification refined via LLM', {
