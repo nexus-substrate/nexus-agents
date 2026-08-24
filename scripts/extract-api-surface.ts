@@ -45,19 +45,40 @@ interface SurfaceEntry {
   readonly lines: readonly string[];
 }
 
+/**
+ * Strips machine-specific absolute paths out of printed type text.
+ *
+ * ts-morph prints an imported type as `import("/abs/path/to/module").Thing`.
+ * The snapshot would then only match on the machine that generated it — CI
+ * uses /home/runner, so the gate failed on its own first PR and would have
+ * failed on every PR forever. A gate that always fails gets switched off,
+ * which is no better than one that never fires.
+ */
+function normalizeTypeText(text: string): string {
+  return text.replace(
+    /import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g,
+    'import("src/$1")'
+  );
+}
+
 function propertyLines(node: Node): string[] {
   if (!Node.isInterfaceDeclaration(node) && !Node.isClassDeclaration(node)) return [];
   const lines = node.getProperties().map((prop) => {
     const optional = prop.hasQuestionToken() ? '?' : '';
     const readonly = prop.isReadonly() ? 'readonly ' : '';
-    return `  ${readonly}${prop.getName()}${optional}: ${prop.getType().getText(prop)}`;
+    return `  ${readonly}${prop.getName()}${optional}: ${normalizeTypeText(prop.getType().getText(prop))}`;
   });
-  return [...lines, ...node.getMethods().map((m) => `  ${m.getName()}${m.getType().getText(m)}`)];
+  return [
+    ...lines,
+    ...node.getMethods().map((m) => `  ${m.getName()}${normalizeTypeText(m.getType().getText(m))}`),
+  ];
 }
 
 function aliasLines(node: Node): string[] {
   if (Node.isTypeAliasDeclaration(node)) {
-    return [`  = ${node.getTypeNode()?.getText() ?? node.getType().getText(node)}`];
+    return [
+      `  = ${normalizeTypeText(node.getTypeNode()?.getText() ?? node.getType().getText(node))}`,
+    ];
   }
   if (Node.isEnumDeclaration(node)) {
     return node.getMembers().map((m) => `  ${m.getName()} = ${String(m.getValue())}`);
@@ -67,7 +88,7 @@ function aliasLines(node: Node): string[] {
 
 function signatureLines(node: Node): string[] {
   if (Node.isFunctionDeclaration(node) || Node.isVariableDeclaration(node)) {
-    return [`  : ${node.getType().getText(node)}`];
+    return [`  : ${normalizeTypeText(node.getType().getText(node))}`];
   }
   return [];
 }

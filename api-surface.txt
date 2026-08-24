@@ -46,7 +46,7 @@ VariableDeclaration ActivationStrategySchema
   : z.ZodEnum<{ adaptive: "adaptive"; ucb: "ucb"; greedy: "greedy"; diverse: "diverse"; }>
 ImportSpecifier|InterfaceDeclaration ActivityItem
   readonly agentId: string
-  readonly eventType: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/observability/swarm-observer-core-types").EventType
+  readonly eventType: import("src/observability/swarm-observer-core-types").EventType
   readonly severity: "error" | "info" | "warning"
   readonly summary: string
   readonly timestamp: string
@@ -748,7 +748,7 @@ ClassDeclaration BaseAgent
   recordLearning(learning: Omit<TaskLearning, "id" | "learnedAt">) => void
   recordPattern(p: Omit<ExecutionPattern, "id" | "lastSeen" | "occurrences">) => void
   recordResolution(r: Omit<ErrorResolution, "resolvedAt">) => void
-  relevantMemories: readonly TypedMemoryEntry<import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/context/memory-types").MemoryType>[]
+  relevantMemories: readonly TypedMemoryEntry<import("src/context/memory-types").MemoryType>[]
   sharedState: Record<string, unknown>
   transformError(error: unknown, taskId: string) => AgentError
 ImportSpecifier|InterfaceDeclaration BaseAgentOptions
@@ -1614,7 +1614,7 @@ ClassDeclaration CompositeRouter
   qualityConstraintStage?: QualityConstraintStage | undefined
   readonly TASK_TYPE_KEYWORDS: readonly (readonly [string, readonly string[]])[]
   readonly adapters: Map<RoutingArmId, ICliAdapter>
-  readonly availableModelsCache?: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/config/available-models-cache").AvailableModelsCache | undefined
+  readonly availableModelsCache?: import("src/config/available-models-cache").AvailableModelsCache | undefined
   readonly cliNames: RoutingArmId[]
   readonly config: { enableConfidenceCascade: boolean; enableBudgetFilter: boolean; enableCapabilityMatch: boolean; enableZeroRouter: boolean; enablePreferenceRouting: boolean; enableTopsisRanking: boolean; enableLinUCBSelection: boolean; enableQualityConstraint: boolean; enableResourceStrategy: boolean; enableStrategyDistillation: boolean; enableLatencyTracking: boolean; enableRoutingMemory: boolean; enableKnnRouting: boolean; latencyScoreWeight: number; linucbAlpha: number; billingMode: "plan" | "api"; enableCapacityBalancing: boolean; maxDecisionTimeMs: number; preferenceMinDataPoints: number; budgetConstraints?: { maxTokens?: number | undefined; maxCostUsd?: number | undefined; maxLatencyMs?: number | undefined; taskClassMaxCostUsd?: Partial<Record<"research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration", number>> | undefined; } | undefined; }
   readonly logger: ILogger
@@ -1960,9 +1960,9 @@ ImportSpecifier|ClassDeclaration ContextManager
   totalTokenCount: number
   validateBudgetConstraints(category: ContextItemCategory, tokenCount: number) => ValidationError | null
 InterfaceDeclaration|ImportSpecifier ContextManagerConfig
-  adapter?: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/core/index").IModelAdapter | undefined
+  adapter?: import("src/core/index").IModelAdapter | undefined
   budget?: ContextBudget | undefined
-  logger?: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/core/logger").ILogger | undefined
+  logger?: import("src/core/logger").ILogger | undefined
   maxTokens: number
   warningThreshold?: number | undefined
 VariableDeclaration ContextManagerConfigSchema
@@ -3149,7 +3149,7 @@ VariableDeclaration ExpertFactory
   : { readonly create: typeof createExpert; readonly createBuiltIn: typeof createBuiltInExpert; readonly createMany: typeof createManyExperts; readonly createAllBuiltIn: typeof createAllBuiltInExperts; readonly validate: typeof validateExpertConfigStrict; readonly getBuiltInConfig: typeof getBuiltInExpertConfig; readonly createFromICTM: typeof createFromICTM; }
 ClassDeclaration ExpertFactoryAdapter
   createForRole(role: AgentRole) => Result<Expert, Error>
-  readonly factory: { readonly create: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").createExpert; readonly createBuiltIn: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").createBuiltInExpert; readonly createMany: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").createManyExperts; readonly createAllBuiltIn: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").createAllBuiltInExperts; readonly validate: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").validateExpertConfigStrict; readonly getBuiltInConfig: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/experts/expert-factory").getBuiltInExpertConfig; readonly createFromICTM: typeof import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/agents/index").createFromICTM; }
+  readonly factory: { readonly create: typeof import("src/agents/experts/expert-factory").createExpert; readonly createBuiltIn: typeof import("src/agents/experts/expert-factory").createBuiltInExpert; readonly createMany: typeof import("src/agents/experts/expert-factory").createManyExperts; readonly createAllBuiltIn: typeof import("src/agents/experts/expert-factory").createAllBuiltInExperts; readonly validate: typeof import("src/agents/experts/expert-factory").validateExpertConfigStrict; readonly getBuiltInConfig: typeof import("src/agents/experts/expert-factory").getBuiltInExpertConfig; readonly createFromICTM: typeof import("src/agents/index").createFromICTM; }
 InterfaceDeclaration ExpertInfo
   capabilities: readonly string[]
   description: string
@@ -4063,7 +4063,7 @@ ClassDeclaration HostileInputFirewall
   buildATL(meta: SourceMetadata, effectiveTrustTier: TrustTier, sanitized: SanitizedInput, reputation?: ReputationAssessment) => string
   getAuditTrail() => AuditTrail
   process(input: unknown) => Result<FirewallResult, FirewallError>
-  readonly adapter: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/security/firewall/firewall-types").ISourceAdapter
+  readonly adapter: import("src/security/firewall/firewall-types").ISourceAdapter
   readonly allowlisted: readonly string[]
   readonly auditTrail: AuditTrail
   readonly context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean; }
@@ -5317,8 +5317,8 @@ InterfaceDeclaration|ImportSpecifier OperationComparison
 InterfaceDeclaration OrchestrateContractOpts
   readonly trustTier?: string | undefined
 InterfaceDeclaration|ImportSpecifier OrchestrateDeps
-  auditLogger?: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/audit/audit-types").IAuditLogger | undefined
-  modelAdapter?: import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/core/index").IModelAdapter | undefined
+  auditLogger?: import("src/audit/audit-types").IAuditLogger | undefined
+  modelAdapter?: import("src/core/index").IModelAdapter | undefined
   notifier?: IMcpNotifier | undefined
   orchestrator?: IOrchestrator | undefined
 TypeAliasDeclaration OrchestrateInput
@@ -9272,7 +9272,7 @@ ImportSpecifier|InterfaceDeclaration WeightedVotingConfig
   readonly weightDecayFactor: number
   readonly weightRecoveryFactor: number
 InterfaceDeclaration|ImportSpecifier WeightedVotingOptions
-  config?: Partial<import("/home/william/git/nexus-substrate/nexus-agents/packages/nexus-agents/src/consensus/types-weighted-voting").WeightedVotingConfig> | undefined
+  config?: Partial<import("src/consensus/types-weighted-voting").WeightedVotingConfig> | undefined
   emitEvents?: boolean | undefined
   eventBus?: IEventBus | undefined
 ImportSpecifier|InterfaceDeclaration WinLossAnalysis
