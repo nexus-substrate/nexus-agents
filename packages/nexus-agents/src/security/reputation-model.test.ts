@@ -153,6 +153,40 @@ describe('assessReputation', () => {
     expect(result.effectiveTrustTier).toBe('3'); // contributor base 2 + 1
   });
 
+  // #4681: Tier 4 is the HOSTILE tier (.rules/untrusted-input.md: "injection
+  // patterns, hidden HTML, instruction-like content"). Before this fix the
+  // generic multi-signal downgrade could also reach it, and `new_account` +
+  // `no_prior_contributions` — which BOTH fire automatically for any genuine
+  // first-time reporter — were enough. With enforce-mode default-on (#4675)
+  // that refused every new account's first bug report.
+  it('good-faith first-time reporter is NOT hostile (Tier 4 reserved for hostile signals)', () => {
+    const result = assessReputation(
+      makeMetadata({
+        authorAssociation: 'NONE',
+        accountAgeDays: 3,
+        priorContributions: 0,
+        injectionFlags: [],
+      })
+    );
+    expect(result.suspiciousSignals).toEqual(
+      expect.arrayContaining(['new_account', 'no_prior_contributions'])
+    );
+    expect(result.effectiveTrustTier).not.toBe('4');
+    expect(result.effectiveTrustTier).toBe('3');
+  });
+
+  it('generic downgrade clamps at Tier 3 even from a member base', () => {
+    const result = assessReputation(
+      makeMetadata({
+        authorAssociation: 'MEMBER',
+        accountAgeDays: 5,
+        priorContributions: 0,
+      })
+    );
+    expect(result.suspiciousSignals.length).toBeGreaterThanOrEqual(2);
+    expect(result.effectiveTrustTier).toBe('3');
+  });
+
   it('hostile signals force Tier 4', () => {
     const result = assessReputation(
       makeMetadata({

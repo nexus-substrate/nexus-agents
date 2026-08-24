@@ -19,6 +19,7 @@
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
+import { hasToken } from '../scm/token-resolver.js';
 import { classifyTrust } from '../security/trust-classifier.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
 import type { TrustTier } from '../security/trust-types.js';
@@ -290,7 +291,14 @@ export class IssueTriage {
   ): ReputationAssessment | undefined {
     if (!this.config.enableReputation) return undefined;
 
-    const sanitizeResult = sanitizeInput(issue.body, 'unknown', issue.author);
+    // #4681: scan BOTH the title and the body. Scanning only the body left a
+    // real bypass: an injection payload is plain text, so content-sanitization
+    // does not strip it from the title, and its flags were discarded here — the
+    // identical payload was refused at Tier 4 in the body but raised no signal
+    // at all in the title, then reached the emitted SummarizeIssue verbatim.
+    const bodyScan = sanitizeInput(issue.body, 'unknown', issue.author);
+    const titleScan = sanitizeInput(issue.title, 'unknown', issue.author);
+    const injectionFlags = [...new Set([...titleScan.injectionFlags, ...bodyScan.injectionFlags])];
 
     // #3121: accountAgeDays is the author's REAL account age (fetched in
     // fetchIssueData) or undefined when the lookup failed. When undefined it is
@@ -303,7 +311,7 @@ export class IssueTriage {
       recentCommentCount: countRecentComments(issue.author, comments),
       recentCommentWindowMinutes: 10,
       authorAssociation: issue.authorAssociation,
-      injectionFlags: sanitizeResult.injectionFlags,
+      injectionFlags,
     };
 
     return assessReputation(metadata, this.reputationCache);
@@ -370,10 +378,14 @@ export class IssueTriage {
     const context: ActionContext = {
       inputTrustTier: gateDecision.enforcedTier,
       hasWriteAccess: !this.config.dryRun,
-      // #4667: derived, not hardcoded. Triage holds a GitHub token when one is
-      // configured, so Rule of Two's third conjunct is a real property of the
-      // run rather than a constant that made the rule unable to trip.
-      hasSecretAccess: this.config.githubToken !== undefined,
+      // #4681: read the token from where it ACTUALLY comes from. The previous
+      // form (`this.config.githubToken !== undefined`) was written to make this
+      // conjunct "real", but no production caller ever sets `githubToken` — the
+      // SCM provider resolves the live credential from GITHUB_TOKEN/GH_TOKEN.
+      // So the conjunct was permanently false and Rule of Two could never trip,
+      // which is precisely the constant it was introduced to remove.
+      // `hasToken()` is the canonical resolver-backed check.
+      hasSecretAccess: this.config.githubToken !== undefined || hasToken('github'),
     };
 
     return actions.map((action) => {
