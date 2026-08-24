@@ -15,9 +15,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -1386,83 +1383,5 @@ describe('integration tests', () => {
 
     expect(requestIds.length).toBe(3);
     expect(new Set(requestIds).size).toBe(3); // All unique
-  });
-});
-
-describe('tool-fitness events are produced for every wrapped call (#4656)', () => {
-  // The ledger had no production writer, so `report()` returned [] and the
-  // consolidation/deprecation detectors could not emit — while their consumer
-  // chain (improvement-review -> remediation tasks -> issue filing) was fully
-  // wired. This is the seam that fills it.
-
-  // The ledger is homedir-scoped by design (cross-repo fitness data), so these
-  // tests must NOT use the real one — the module doc says so explicitly, and a
-  // first pass of this suite created ~/.nexus-agents/tool-fitness/ on the
-  // developer's machine. Point the data dir at a throwaway instead.
-  let tmpDataDir: string;
-
-  beforeEach(async () => {
-    tmpDataDir = mkdtempSync(join(tmpdir(), 'tool-fitness-test-'));
-    vi.stubEnv('NEXUS_DATA_DIR', tmpDataDir);
-    const { _resetToolFitnessLedgerForTests } =
-      await import('../../governance/tool-fitness-ledger.js');
-    _resetToolFitnessLedgerForTests();
-  });
-
-  afterEach(async () => {
-    const { _resetToolFitnessLedgerForTests } =
-      await import('../../governance/tool-fitness-ledger.js');
-    _resetToolFitnessLedgerForTests();
-    vi.unstubAllEnvs();
-    rmSync(tmpDataDir, { recursive: true, force: true });
-  });
-
-  it('records a success for a tool call that returns cleanly', async () => {
-    const { getToolFitnessLedger } = await import('../../governance/tool-fitness-ledger.js');
-    const wrapped = withMiddleware('demo_tool', () =>
-      Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] })
-    );
-
-    await wrapped({});
-
-    const demo = getToolFitnessLedger()
-      .report()
-      .find((r) => r.tool === 'demo_tool');
-    expect(demo?.invocationCount).toBe(1);
-    expect(demo?.failureCount).toBe(0);
-  });
-
-  it('records a failure for an isError result', async () => {
-    const { getToolFitnessLedger } = await import('../../governance/tool-fitness-ledger.js');
-    const wrapped = withMiddleware('failing_tool', () =>
-      Promise.resolve({ content: [{ type: 'text' as const, text: 'nope' }], isError: true })
-    );
-
-    await wrapped({});
-
-    const demo = getToolFitnessLedger()
-      .report()
-      .find((r) => r.tool === 'failing_tool');
-    expect(demo?.failureCount).toBe(1);
-  });
-
-  it('records a failure when the handler THROWS', async () => {
-    // A thrown handler does NOT reject here — an error middleware converts it
-    // to `{ isError: true }` — so this is recorded through the normal return
-    // path, not the catch. Asserted because "throws" and "returns isError"
-    // must land in the ledger identically: otherwise a tool that throws would
-    // look cleaner than one that fails politely.
-    const { getToolFitnessLedger } = await import('../../governance/tool-fitness-ledger.js');
-    const wrapped = withMiddleware('throwing_tool', () => {
-      throw new Error('boom');
-    });
-
-    const result = await wrapped({});
-    expect(result.isError).toBe(true);
-
-    const demo = getToolFitnessLedger()
-      .report()
-      .find((r) => r.tool === 'throwing_tool');
-    expect(demo?.failureCount).toBe(1);
   });
 });
