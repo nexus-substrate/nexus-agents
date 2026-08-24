@@ -198,7 +198,7 @@ export const MaturityTierSchema = z.enum(['experimental', 'beta', 'stable']);
  * ("may write anything") recreates the vacuous check one level down. A closed
  * vocabulary is what makes that unrepresentable rather than merely discouraged.
  */
-export const FilesystemScopeSchema = z.enum([
+const FilesystemScopeSchema = z.enum([
   /** No filesystem writes at all. */
   'none',
   /** Writes confined to the gitignored `.nexus-agents/` data + scratch tree. */
@@ -208,20 +208,18 @@ export const FilesystemScopeSchema = z.enum([
   /** Writes into the user's repository checkout. */
   'repo',
 ]);
-export type FilesystemScope = z.infer<typeof FilesystemScopeSchema>;
 
 /** Whether a strategy may start a subprocess when executed. */
-export const SpawnScopeSchema = z.enum([
+const SpawnScopeSchema = z.enum([
   'none',
   /** May invoke the agent CLIs the adapter layer wraps. */
   'agent-cli',
   /** May invoke arbitrary developer tooling (build, test, package managers). */
   'dev-tooling',
 ]);
-export type SpawnScope = z.infer<typeof SpawnScopeSchema>;
 
 /** Outbound network classes a strategy may reach when executed. */
-export const NetworkScopeSchema = z.enum([
+const NetworkScopeSchema = z.enum([
   'none',
   /** Model/LLM provider endpoints only. */
   'llm-provider',
@@ -230,10 +228,9 @@ export const NetworkScopeSchema = z.enum([
   /** General web fetch / search. */
   'web',
 ]);
-export type NetworkScope = z.infer<typeof NetworkScopeSchema>;
 
 /** How far a strategy may mutate source control when executed. */
-export const VcsScopeSchema = z.enum([
+const VcsScopeSchema = z.enum([
   'none',
   /** Read-only queries. */
   'read',
@@ -242,7 +239,6 @@ export const VcsScopeSchema = z.enum([
   /** May commit and push. */
   'push',
 ]);
-export type VcsScope = z.infer<typeof VcsScopeSchema>;
 
 /**
  * The bounded envelope a strategy is permitted to act within when `run` is
@@ -261,7 +257,7 @@ export type VcsScope = z.infer<typeof VcsScopeSchema>;
  * refused, a mis-declared one is not caught by this mechanism. Sandboxing is
  * `NEXUS_SANDBOX` (epic #2500), a separate control.
  */
-export const ExecuteEnvelopeSchema = z
+const ExecuteEnvelopeSchema = z
   .object({
     filesystem: FilesystemScopeSchema,
     spawn: SpawnScopeSchema,

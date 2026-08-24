@@ -276,7 +276,7 @@ export class ExecuteEnvelopeRefusalError extends Error {
 }
 
 /** Outcome of the execute-envelope precondition. */
-export type ExecuteEnvelopeDecision =
+type ExecuteEnvelopeDecision =
   | { readonly permitted: true; readonly envelope: ExecuteEnvelope }
   | { readonly permitted: false; readonly refusal: ExecuteEnvelopeRefusalError };
 
@@ -293,7 +293,7 @@ export type ExecuteEnvelopeDecision =
  * Pure and returns the refusal as DATA so the router can refuse without
  * exceptions; {@link guardExecuteEnvelope} is the throwing wrapper.
  */
-export function evaluateExecuteEnvelope(strategy: ExecutionStrategy): ExecuteEnvelopeDecision {
+function evaluateExecuteEnvelope(strategy: ExecutionStrategy): ExecuteEnvelopeDecision {
   const envelope = getStrategyManifest(strategy)?.executeEnvelope;
   if (envelope === undefined) {
     return { permitted: false, refusal: new ExecuteEnvelopeRefusalError(strategy) };
