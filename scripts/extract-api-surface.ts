@@ -122,6 +122,21 @@ function referencedDeclarations(node: Node): Node[] {
   return found;
 }
 
+/**
+ * Resolves an import specifier to what it actually names.
+ *
+ * `getExportedDeclarations` yields the re-export site as well as the real
+ * declaration, so without this a symbol is recorded twice and its kind reads
+ * `ImportSpecifier|InterfaceDeclaration`. Harmless noise on its own — an
+ * ImportSpecifier contributes no members — but it puts a second entry under the
+ * same name, which is how a genuine name collision would hide.
+ */
+function resolveAlias(decl: Node): Node {
+  if (!Node.isImportSpecifier(decl) && !Node.isExportSpecifier(decl)) return decl;
+  const aliased = decl.getSymbol()?.getAliasedSymbol()?.getDeclarations()[0];
+  return aliased ?? decl;
+}
+
 /** Multiple declarations under one name (overloads, merged decls) accumulate. */
 function record(entries: Map<string, SurfaceEntry>, name: string, decl: Node): void {
   const kind = decl.getKindName();
@@ -163,11 +178,12 @@ export function extractSurface(entry: SourceFile): SurfaceEntry[] {
     const item = queue.pop();
     if (item === undefined) break;
     const { name, decl } = item;
-    if (seen.has(decl)) continue;
-    seen.add(decl);
+    const resolved = resolveAlias(decl);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
 
-    record(entries, name, decl);
-    enqueueReferences(queue, seen, decl);
+    record(entries, name, resolved);
+    enqueueReferences(queue, seen, resolved);
   }
 
   return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name));
