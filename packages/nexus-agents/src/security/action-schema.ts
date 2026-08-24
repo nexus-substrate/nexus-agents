@@ -47,6 +47,26 @@ const IssueCommentSource = z.object({
   authorTrustTier: TrustTierSchema,
 });
 
+/**
+ * Source citation from the body of a GitHub issue (#4667).
+ *
+ * Triage previously cited the issue as a `repoFile` with a synthesised path
+ * (`issues/42`). That is not a repo file, and the mislabel is why corroboration
+ * always passed: `hasSourceAtTier` treats repo files as Tier 1 unconditionally,
+ * so untrusted issue text was corroborating actions at maintainer trust.
+ *
+ * Modelled on `IssueCommentSource` — it carries the author and their tier, so
+ * the trust of the content travels with the citation. It is deliberately NOT an
+ * `issueComment`: that requires a `commentId`, and faking one to fix a mislabel
+ * would trade an honest error for a dishonest one.
+ */
+const IssueBodySource = z.object({
+  type: z.literal('issueBody'),
+  issueNumber: z.number().int().positive(),
+  author: z.string().min(1),
+  authorTrustTier: TrustTierSchema,
+});
+
 /** Source citation from a CI pipeline result. */
 const CIResultSource = z.object({
   type: z.literal('ciResult'),
@@ -74,6 +94,7 @@ const MaintainerCommandSource = z.object({
  * Every decision-making action MUST cite at least one source.
  */
 export const SourceCitationSchema = z.discriminatedUnion('type', [
+  IssueBodySource,
   RepoFileSource,
   IssueCommentSource,
   CIResultSource,
