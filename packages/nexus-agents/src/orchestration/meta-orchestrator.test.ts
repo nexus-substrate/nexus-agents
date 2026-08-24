@@ -408,3 +408,39 @@ describe('MetaOrchestrator.select — authority-tier enforcement (#3841, ADR-001
     expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
   });
 });
+
+describe('run does NOT enrich classification via issue_triage (#4676)', () => {
+  // Deliberate asymmetry, pinned so a future change flips it on purpose.
+  //
+  // `runAdaptiveOrchestrator` enriches low-confidence classifications; the live
+  // half of that chain is `tryIssueTriage`, which calls `issue_triage` — a
+  // consumer of UNTRUSTED GitHub content. `select()` does not, which keeps that
+  // surface opt-in behind `run_pipeline` rather than ambient on the default
+  // entry point.
+  //
+  // A 7-voter panel chose to keep it (unanimous among approvers) on exactly
+  // that reasoning. Without this test the decision lives only in prose, and
+  // prose does not fail CI.
+
+  it('select() stays synchronous — the structural reason enrichment is unreachable', () => {
+    const meta = createMetaOrchestrator();
+    const result = meta.select({ goal: 'https://github.com/owner/repo/issues/42' });
+
+    // Not a promise. `select()` cannot await, so the async enrichment chain
+    // cannot run behind it — this is the constraint any future change starts from.
+    expect(result).not.toBeInstanceOf(Promise);
+    expect(typeof (result as { then?: unknown }).then).toBe('undefined');
+  });
+
+  it('classifies an issue URL by keywords alone, without triaging it', () => {
+    const meta = createMetaOrchestrator();
+    const decision = meta.select({ goal: 'https://github.com/owner/repo/issues/42' });
+
+    // It still returns a usable decision — the point is HOW it got there.
+    expect(decision.strategy).toBeDefined();
+    // Keyword scoring over a bare URL yields no triage-derived category. If a
+    // future change routes issue_triage into `select()`, this is the assertion
+    // that should be updated deliberately rather than silently.
+    expect(decision.reasoning.toLowerCase()).not.toContain('triage');
+  });
+});

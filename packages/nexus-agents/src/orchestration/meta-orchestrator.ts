@@ -311,6 +311,22 @@ export function createMetaOrchestrator(options?: {
     select(input: MetaOrchestratorInput): MetaDecision {
       const signals: TaskSignals = { description: input.goal, ...input.signals };
       const routing = router.route(signals);
+      // #4676: keyword scoring ONLY. `runAdaptiveOrchestrator` additionally
+      // runs an enrichment chain on low confidence; `select()` deliberately
+      // does not, and this asymmetry is intentional rather than an oversight.
+      //
+      // WHY IT STAYS (7-voter panel, unanimous among approvers): the live half
+      // of that chain is `tryIssueTriage`, which fires only for GitHub issue
+      // URLs and calls `issue_triage` — a consumer of UNTRUSTED GitHub content.
+      // Keeping it off `run` means an operator opts INTO that surface by
+      // choosing `run_pipeline`, rather than every default invocation carrying
+      // it. The other half, LLM refinement, is gated off by default (#4677).
+      //
+      // So `run` is fast and deterministic; `run_pipeline` is slower and
+      // better ONLY on low-confidence issue-URL goals. If telemetry ever shows
+      // issue-URL goals reaching `run` at volume and misrouting, revisit —
+      // with numbers. `select()` being synchronous is what makes the async
+      // chain unreachable here, so any change starts there.
       const classification = classifyTask(input.goal);
 
       const forced = input.forceStrategy !== undefined;
