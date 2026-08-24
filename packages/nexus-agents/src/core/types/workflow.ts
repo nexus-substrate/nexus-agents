@@ -103,6 +103,15 @@ export interface StepResult {
   status: 'success' | 'failed' | 'skipped';
   /** Error message if failed */
   error?: string;
+  /**
+   * Real tokens consumed by this step (#4673).
+   *
+   * `undefined` means the step reported no usage — a step that ran no model,
+   * or an adapter that returned none. It does NOT mean zero. That distinction
+   * matters for budgets specifically: silently treating unmeasured as zero
+   * under-counts spend, which is the dangerous direction for a cap.
+   */
+  tokensUsed?: number;
 }
 
 /**

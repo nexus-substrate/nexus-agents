@@ -66,13 +66,7 @@ export class ExpertFactoryAdapter implements IExpertFactory {
     }
 
     type BuiltInType =
-      | 'code'
-      | 'architecture'
-      | 'security'
-      | 'documentation'
-      | 'testing'
-      | 'devops'
-      | 'research';
+      'code' | 'architecture' | 'security' | 'documentation' | 'testing' | 'devops' | 'research';
     return this.factory.createBuiltIn(expertType as BuiltInType);
   }
 }
@@ -307,11 +301,17 @@ export class StepExecutor {
         );
       }
 
+      // #4673: carry the REAL token count through. It was already on
+      // `taskResult.value.metadata` (populated from adapter usage) and was
+      // dropped here, which is why the budget ledger had to estimate from
+      // wall-clock duration.
+      const tokensUsed = taskResult.value.metadata.tokensUsed;
       return ok({
         stepId: step.id,
         output: taskResult.value.output,
         durationMs: getTimeProvider().now() - startTime,
         status: 'success',
+        ...(typeof tokensUsed === 'number' ? { tokensUsed } : {}),
       });
     } catch (error) {
       return this.handleExecutionError(error, step, timeoutMs);
