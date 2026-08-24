@@ -1,11 +1,26 @@
 /**
  * Unified Quorum Validator
  *
- * Abstracts quorum validation across VotingProtocol, WeightedVoting, and ConsensusEngine.
- * Per redundancy-analysis.md Section 3.4 - consolidates three quorum implementations.
+ * SCOPE, corrected (#4666). This module's docstring claimed it "abstracts
+ * quorum validation across VotingProtocol, WeightedVoting, and ConsensusEngine"
+ * and consolidates three implementations. It has exactly ONE consumer:
+ * `voting-protocol-helpers.ts`. `WeightedVoting` and `ConsensusEngine` do not
+ * use it. The intent from #576 was real; the consolidation did not happen, and
+ * the doc has been describing the plan as though it were the state.
+ *
+ * A second, sharper caveat for anyone relying on this: `VotingProtocol` — the
+ * one path that reaches here — has **no in-tree caller**. `createVotingProtocol`
+ * is exported through `exports/consensus.ts` as public API and is constructed
+ * only by tests. So this validator runs only for an external embedder.
+ *
+ * {@link QuorumValidator.isAgentEligible} in particular cannot exclude anyone
+ * in practice: its sole caller passes no `record`, so it early-returns, and no
+ * producer of trust scores or Byzantine flags exists anywhere in `src/`.
+ * Removing it would be a breaking public-API change, so it stays — documented
+ * as inert rather than presented as a working eligibility filter.
  *
  * @module consensus/quorum-validator
- * (Source: Issue #576, ADR-0003)
+ * (Source: Issue #576, ADR-0003; scope corrected #4666)
  */
 
 import { createLogger, formatPercentage, type ILogger } from '../core/index.js';
