@@ -1,5 +1,69 @@
 # nexus-agents
 
+## 3.14.1
+
+### Patch Changes
+
+- [#4704](https://github.com/nexus-substrate/nexus-agents/pull/4704) [`b5948fd`](https://github.com/nexus-substrate/nexus-agents/commit/b5948fdcaccf23f66ebe50bc54d922094365098a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): report an unanchored chain head instead of verifying it clean
+
+  `verifyEvent` guarded the `previousHash` comparison with `index > 0`, so
+  `verifyChain` never asserted that a chain STARTS at a genesis. Deleting the
+  first n lines needed no rehash — the remainder returned `{ ok: true }` while its
+  new head still carried a live 64-hex pointer to the deleted predecessor. The
+  evidence was present and discarded.
+
+  This is a gap against what the threat model claims, not accepted risk: the
+  document says the chain reliably detects naive deletions by an adversary who
+  does not recompute it, and front-deletion is exactly that class. Tail truncation
+  and the empty chain remain documented and accepted, and are unchanged.
+
+  `verifyChain` now reports `unanchoredHead: { previousHash, detail }`.
+  Deliberately not `ok: false` — routine log rotation produces an identical shape
+  and the verifier cannot distinguish the two, so reporting tamper would flag
+  every rotated deployment and teach operators to dismiss it. The honest verdict
+  is: links verified, origin unverified.
+
+  Threat-model T6 moves from "Detected? No / HIGH" to partial / MEDIUM, naming
+  what is still undetected — a fabricated genesis with recomputed hashes remains
+  indistinguishable, and needs an external anchor.
+
+- [#4738](https://github.com/nexus-substrate/nexus-agents/pull/4738) [`1925686`](https://github.com/nexus-substrate/nexus-agents/commit/1925686cb0585b27cdb81cc85d6fac023a198c92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): stop recording a constant trust tier as if it were a measurement
+
+  `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
+  returns `'3'`. Nothing in the tree supplies `callerInfo` — its only references
+  are the declaration and one forward — so every recorded tier was that fallback.
+  The stage-entry telemetry added in [#4699](https://github.com/nexus-substrate/nexus-agents/issues/4699) therefore recorded `'3'` on every run,
+  which reads as a measurement and is not one.
+
+  `measuredTrustTier` returns the tier only when it was actually derived from
+  caller information, so consumers record `unmeasured` instead of a constant. When
+  a real `callerInfo` producer lands it starts returning values with no further
+  change.
+
+  This does not make the tier vary — that needs the producer. It stops the record
+  claiming otherwise. Also documents at the helper that this is caller
+  AUTHENTICATION, not content provenance: a trusted client can submit hostile
+  content, and `classifyTrust` (the closest provenance signal) requires a GitHub
+  actor and does not apply to a bare goal string.
+
+- [#4732](https://github.com/nexus-substrate/nexus-agents/pull/4732) [`5d8c772`](https://github.com/nexus-substrate/nexus-agents/commit/5d8c772077806c430962615d65deca232d14a82b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): two checks I added yesterday that could not fail
+
+  Found by an adversarial review of my own self-merged commits.
+
+  The privileged-label denylist matched exactly, while the gate it protects
+  (`check-governor-ratification.ts`) compares `l.toLowerCase()`. So
+  `Owner-Ratified` would have slipped the guard and still satisfied ratification.
+  A guard must reject at least as broadly as its consumer accepts.
+
+  The envelope anti-vacuity assertion required an envelope to be at the widest
+  value in all four dimensions, including `vcs === 'push'` — and every envelope
+  declares `vcs: none`, so it could never fail. It was added specifically to
+  answer a warning that an unbounded envelope recreates the vacuous check one
+  level down, and it was itself vacuous. It now counts widest-value dimensions
+  and fails at 4 of 4, which is a value that varies.
+
+  Both mutation-verified.
+
 ## 3.14.0
 
 ### Minor Changes
