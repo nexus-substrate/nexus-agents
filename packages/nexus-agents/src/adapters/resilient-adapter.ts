@@ -246,6 +246,11 @@ export class ResilientAdapter implements IResilientAdapter {
 
   private applySelection(selection: AdapterSelection): void {
     const isFailover = this.hasEverDetected;
+    // #4670: capture the OUTGOING health before it is overwritten below. The
+    // failover signal is about the adapter we are leaving — `unhealthyCliFrom`
+    // reads `payload.source` as "which CLI is unhealthy" — and that state was
+    // being destroyed one statement before `emitFailover` read it.
+    const outgoingHealth = this.health;
     this.currentAdapter = selection.adapter;
     this.currentSelection = selection;
     this.hasEverDetected = true;
@@ -269,7 +274,11 @@ export class ResilientAdapter implements IResilientAdapter {
     });
 
     if (isFailover) {
-      this.emitFailover();
+      // The state/source describe the adapter we LEFT; `failoverCount` is a
+      // run-level counter, so it carries the post-increment value.
+      this.emitFailover(
+        outgoingHealth === undefined ? undefined : { ...outgoingHealth, failoverCount }
+      );
     }
   }
 
@@ -342,8 +351,22 @@ export class ResilientAdapter implements IResilientAdapter {
     }
   }
 
-  private emitFailover(): void {
-    const info = this.health;
+  /**
+   * Emit the failover signal describing the adapter we failed AWAY FROM (#4670).
+   *
+   * This used to read `this.health`, which `applySelection` had just replaced
+   * with the incoming adapter's `state: 'healthy'`. So every `adapter.failover`
+   * payload said healthy, `unhealthyCliFrom` (`observability/failover-signals.ts`)
+   * returned undefined for all of them, and `signal.swarm_unhealthy` was never
+   * produced by this — the more reliable of its two producers.
+   *
+   * An undefined outgoing health emits NOTHING rather than falling back to the
+   * current one. Falling back would silently restore the old behaviour, and a
+   * failover whose prior state we cannot describe is not evidence that the
+   * prior adapter was healthy.
+   */
+  private emitFailover(outgoingHealth: AdapterHealthInfo | undefined): void {
+    const info = outgoingHealth;
     if (info === undefined) return;
 
     for (const cb of this.failoverCallbacks) {

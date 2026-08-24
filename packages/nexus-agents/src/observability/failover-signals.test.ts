@@ -129,3 +129,82 @@ describe('startFailoverSignals / shutdownFailoverSignals (#3321)', () => {
     expect(seen).toHaveLength(1); // no emissions after shutdown
   });
 });
+
+describe('the production failover payload carries the outgoing state (#4670)', () => {
+  // The unit tests above hand-build `state: 'degraded'` payloads and assert
+  // `unhealthyCliFrom` narrows them correctly. It does. What none of them
+  // covered is the payload ResilientAdapter ACTUALLY emits — which was the new
+  // adapter's `state: 'healthy'`, because `applySelection` overwrote
+  // `this.health` one statement before `emitFailover` read it.
+  //
+  // So the narrowing was right, the producer was wrong, and every test passed.
+  // This asserts across that seam instead of on either side of it.
+
+  it('emits the health of the adapter it failed AWAY from, not the new one', async () => {
+    const { ResilientAdapter } = await import('../adapters/resilient-adapter.js');
+    const adapter = new ResilientAdapter();
+
+    const payloads: unknown[] = [];
+    adapter.onFailover((info) => payloads.push(info));
+
+    const internals = adapter as unknown as {
+      hasEverDetected: boolean;
+      health: { source: string; state: string; selectedAt: Date; failoverCount: number };
+      applySelection: (s: unknown) => void;
+    };
+
+    // Simulate an established, then degraded, gemini adapter.
+    internals.hasEverDetected = true;
+    internals.health = {
+      source: 'gemini',
+      state: 'degraded',
+      selectedAt: new Date(),
+      failoverCount: 0,
+    };
+
+    // Fail over to a healthy claude adapter.
+    internals.applySelection({
+      adapter: { providerId: 'p', modelId: 'm' },
+      source: 'cli',
+      name: 'claude',
+      reason: 'failover',
+    });
+
+    expect(payloads.length).toBe(1);
+    const narrowed = unhealthyCliFrom(payloads[0]);
+    // The unhealthy CLI is the one we LEFT.
+    expect(narrowed?.cli).toBe('gemini');
+    expect(narrowed?.reason).toContain('degraded');
+
+    adapter.dispose();
+  });
+
+  it('emits nothing when the outgoing state is unknown, rather than claiming healthy', async () => {
+    // The named empty case. Falling back to the current health would silently
+    // restore the original bug, and a failover whose prior state we cannot
+    // describe is not evidence the prior adapter was fine.
+    const { ResilientAdapter } = await import('../adapters/resilient-adapter.js');
+    const adapter = new ResilientAdapter();
+
+    const payloads: unknown[] = [];
+    adapter.onFailover((info) => payloads.push(info));
+
+    const internals = adapter as unknown as {
+      hasEverDetected: boolean;
+      health: unknown;
+      applySelection: (s: unknown) => void;
+    };
+    internals.hasEverDetected = true;
+    internals.health = undefined;
+
+    internals.applySelection({
+      adapter: { providerId: 'p', modelId: 'm' },
+      source: 'cli',
+      name: 'claude',
+      reason: 'failover',
+    });
+
+    expect(payloads).toEqual([]);
+    adapter.dispose();
+  });
+});
