@@ -358,3 +358,75 @@ describe('evaluatePolicy audit emission (#3191)', () => {
     ).toContain('REQUIRE_CITATION');
   });
 });
+
+describe('privilege-granting labels are never proposable (#4688)', () => {
+  // A consensus panel chose tier-aware corroboration, which lets a bounded
+  // proposal cite the input it was derived from. The dissenting seat objected
+  // that labels are not zero-blast-radius because they gate CI — and in THIS
+  // repo that is verifiably true:
+  //
+  //   .github/workflows/governor-review.yml triggers on label events, and
+  //   `owner-ratified` is the label that BYPASSES the governor ratification
+  //   gate. .github/workflows/pr-review.yml honours `skip-pr-review`.
+  //
+  // Nothing applies a proposed label today (`addLabels` has no non-test
+  // caller), so this is latent rather than live. It stops being latent the
+  // moment someone wires triage output to `addLabels` — exactly the kind of
+  // change that looks harmless in review. The denylist has to exist BEFORE
+  // that wiring, not after.
+  //
+  // These use TIER 1 deliberately. At tier 3 ProposeLabels is already refused
+  // by the influence block, so a tier-3 fixture would pass without exercising
+  // the denylist at all — green for the wrong reason.
+
+  it('blocks the governance-bypass label even from a Tier 1 source', () => {
+    const decision = evaluatePolicy(
+      makePropose([repoSource], ['bug', 'owner-ratified']),
+      makeContext('1')
+    );
+    expect(decision.allowed).toBe(false);
+    expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
+  });
+
+  it('blocks a label that would skip review', () => {
+    const decision = evaluatePolicy(
+      makePropose([repoSource], ['skip-pr-review']),
+      makeContext('1')
+    );
+    expect(decision.allowed).toBe(false);
+    expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
+  });
+
+  it('blocks on the ACTION effect, not the author — OWNER included', () => {
+    // An OWNER-authored issue body must not be able to propose its own
+    // ratification. That is the self-modification hazard the governor exists
+    // to prevent, and it does not soften with author trust.
+    const decision = evaluatePolicy(
+      makePropose([maintainerSource], ['owner-ratified']),
+      makeContext('1')
+    );
+    expect(decision.allowed).toBe(false);
+    expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
+  });
+
+  it('still allows ordinary labels', () => {
+    const decision = evaluatePolicy(
+      makePropose([repoSource], ['bug', 'documentation']),
+      makeContext('1')
+    );
+    expect(JSON.stringify(decision)).not.toContain('PRIVILEGED_LABEL');
+  });
+
+  it('does not depend on existingLabels being supplied', () => {
+    // checkLabelValidity returns early when the repo label set is unknown, so
+    // a denylist layered on top of it would inherit that vacuous pass.
+    // `makeContext` supplies no `existingLabels`, which is exactly the
+    // unknown-label-set state that makes checkLabelValidity return early.
+    const decision = evaluatePolicy(
+      makePropose([repoSource], ['owner-ratified']),
+      makeContext('1')
+    );
+    expect(decision.allowed).toBe(false);
+    expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
+  });
+});
