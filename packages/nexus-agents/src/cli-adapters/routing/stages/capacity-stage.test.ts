@@ -455,3 +455,33 @@ describe('#4456 follow-up: a throttled candidate is reported, not silently dropp
     expect(getRemainingCandidates(result.value.context)).toEqual(CLIS);
   });
 });
+
+/**
+ * #4658: pins the two facts the file comment asserts, because that comment has
+ * now been wrong in both directions — first promising an opt-in no caller could
+ * set, then claiming the stage does not run at all. The second error is the
+ * dangerous one: it reads as permission to delete live code.
+ */
+describe('capacity stage wiring claims (#4658)', () => {
+  it('is default-on, so the assessment really does run on every route', async () => {
+    const { DEFAULT_COMPOSITE_CONFIG } = await import('../../composite-router-types.js');
+
+    expect(DEFAULT_COMPOSITE_CONFIG.enableCapacityBalancing).toBe(true);
+  });
+
+  it('assesses but cannot exclude, because enforceHardLimits is not settable in production', async () => {
+    // The production construction passes a hardcoded `{}`, so the default
+    // stands. If a caller ever supplies real config, this test should fail and
+    // be replaced by one that exercises the opt-in.
+    const stage = new CapacityFilterStage(adapters({ claude: capacity({ quotaExhausted: true }) }));
+
+    const outcome = await stage.filterArms(['claude'] as RoutingArmId[]);
+
+    // Exhaustion IS observed...
+    expect(outcome.eligible).toEqual(['claude']);
+    // ...and deliberately not acted on. `excludedCount` stays 0 while the
+    // exclusion is held pending a real quota signal (#4456).
+    expect(outcome.excluded.size).toBe(0);
+    expect(stage.getStats().excludedCount).toBe(0);
+  });
+});
