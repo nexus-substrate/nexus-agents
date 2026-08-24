@@ -28,6 +28,25 @@
 
 import { afterEach, vi } from 'vitest';
 
+/**
+ * Wrap EVERY spawning entry point in `node:child_process` (#4682).
+ *
+ * This was previously a hand-picked subset, described in-line as "only the
+ * entry points this tree uses to reach a CLI". That was wrong, and wrong in the
+ * expensive direction: `execFileSync` is the second most used spawner in
+ * production (23 call sites), including `detectCliBinary`, which calls
+ * `execFileSync(name, ['--version'])` with a guarded CLI name. Probes confirmed
+ * a real `opencode` process launching unblocked and unrecorded.
+ *
+ * Enumerating the module's spawners is the only form that cannot drift: a
+ * subset chosen from current usage silently reopens the hole the next time some
+ * caller reaches for a different entry point.
+ */
+// `vi.mock` factories are hoisted, so every helper this wrapper needs (the
+// guarded-binary set, the promisify.custom handling) must be declared INSIDE
+// the factory — extracting them to module scope would run before the mock is
+// installed. Hence the length exemption directly below.
+// eslint-disable-next-line max-lines-per-function
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   const { promisify } = await import('node:util');
@@ -76,15 +95,21 @@ vi.mock('node:child_process', async (importOriginal) => {
     return wrapper as unknown as T;
   }
 
-  // Only the entry points this tree uses to reach a CLI. Everything else in the
-  // module passes through unwrapped.
-  return {
-    ...actual,
-    exec: guard('exec', actual.exec),
-    execFile: guard('execFile', actual.execFile),
-    execSync: guard('execSync', actual.execSync),
-    spawn: guard('spawn', actual.spawn),
-  };
+  // Every spawning entry point — see the note above this mock (#4682).
+  const SPAWNERS = [
+    'exec',
+    'execFile',
+    'execSync',
+    'execFileSync',
+    'spawn',
+    'spawnSync',
+    'fork',
+  ] as const;
+  const guarded = Object.fromEntries(SPAWNERS.map((n) => [n, guard(n, actual[n])])) as Pick<
+    typeof actual,
+    (typeof SPAWNERS)[number]
+  >;
+  return { ...actual, ...guarded };
 });
 
 /**
