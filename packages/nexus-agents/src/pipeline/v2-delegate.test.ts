@@ -403,3 +403,46 @@ describe('blast radius — compilePlan default unchanged (#3703)', () => {
     expect(gate?.status).toBe('success'); // no-op pass, did not throw/evaluate
   });
 });
+
+describe('the entry gate guards a stage that does not execute (#4657)', () => {
+  // The compiled-gate machinery works: plan-compiler.test.ts proves a gate in
+  // front of an `execute`-typed stage throws PolicyBlockedError in block mode.
+  // What is missing is a PRODUCTION plan that gives it something to deny.
+  //
+  // These assertions pin the honest current state so it is a stated fact
+  // rather than something the next reader rediscovers by tracing four files —
+  // and so the day someone declares this stage `execute`, they are forced to
+  // confront that `nexus:model-router` is a no-op skeleton and the gate would
+  // then be firing against a stub.
+
+  it('the guarded stage is route-typed, so the trust-tier rule cannot deny here', async () => {
+    const { buildDelegatePlan } = await import('./v2-delegate.js');
+    const plan = buildDelegatePlan(makeTask());
+
+    const gate = plan.policyGates?.[0];
+    expect(gate).toBeDefined();
+    const guarded = plan.stages.find((s) => s.id === gate?.beforeStage);
+    expect(guarded).toBeDefined();
+
+    // `trustTierRule` denies only on stageType === 'execute'.
+    expect(guarded?.type).toBe('route');
+    expect(guarded?.type).not.toBe('execute');
+  });
+
+  it('no stage in the production delegate plan is execute-typed', async () => {
+    const { buildDelegatePlan } = await import('./v2-delegate.js');
+    const plan = buildDelegatePlan(makeTask());
+    expect(plan.stages.filter((s) => s.type === 'execute')).toEqual([]);
+  });
+
+  it('the plan is backed by a skeleton plugin, which is why route is honest', async () => {
+    const { MODEL_ROUTER_PLUGIN } = await import('./core-plugins.js');
+    const { buildDelegatePlan } = await import('./v2-delegate.js');
+    const plan = buildDelegatePlan(makeTask());
+
+    expect(plan.stages[0]?.pluginId).toBe(MODEL_ROUTER_PLUGIN.manifest.id);
+    // If this description ever stops saying SKELETON, the plugin gained a real
+    // handler and this whole block should be revisited.
+    expect(MODEL_ROUTER_PLUGIN.manifest.description).toContain('SKELETON');
+  });
+});

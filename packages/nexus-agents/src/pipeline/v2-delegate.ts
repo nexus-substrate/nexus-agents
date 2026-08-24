@@ -261,6 +261,28 @@ const ROUTE_STAGE_ID = 'route-model';
  * Enforcement is resolved by the runtime enforcement bundle (warn by default;
  * block opt-in via `NEXUS_POLICY_GATE_MODE`), NOT a per-gate field (#4019).
  */
+/**
+ * The v2-delegate entry gate.
+ *
+ * HONEST SCOPE (#4657): this gate cannot deny, and the reason is worth stating
+ * where the gate is defined rather than leaving it to be rediscovered.
+ *
+ * `trustTierRule` — the only policy rule — denies on
+ * `tier >= 3 && stageType === 'execute'`. This gate guards `route-model`, which
+ * is declared `type: 'route'`, so the rule always allows. Declaring the stage
+ * `execute` would make the gate fire, but it would be a lie: `nexus:model-router`
+ * resolves to a no-op skeleton plugin (`core-plugins.ts`) and the whole pipeline
+ * runs fire-and-forget as `instrumentV2Pipeline`.
+ *
+ * The consequence to watch is the telemetry, not the missing refusal. This gate
+ * emits `policy.evaluated` on every run and always allows, which reads as
+ * "policy enforced at the stage boundary, no violations" in the #3653 autonomy
+ * soak. It is really "policy evaluated against a stage that does nothing". Do
+ * not count these events as evidence of enforcement.
+ *
+ * Real trust-tier enforcement lives at `dev-pipeline.ts` (`enforceConsensusExecutePolicy`,
+ * `stageType: 'execute'`, fails closed), which guards an actual invocation.
+ */
 const ENTRY_GATE: PolicyGateSpec = {
   id: 'gate-delegate-entry',
   afterStage: START,
