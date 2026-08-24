@@ -25,7 +25,7 @@ name: Governor Review Gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - 'packages/nexus-agents/src/audit/**'
       - 'packages/nexus-agents/src/governance/**'
@@ -34,6 +34,22 @@ on:
       - 'CLAUDE.md'
       - 'AGENTS.md'
       - 'CODEOWNERS'
+      - '.github/workflows/governor-review.yml'
+      - 'scripts/check-governor-review.ts'
+      - 'scripts/check-governor-ratification.ts'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/nexus-agents/src/audit/**'
+      - 'packages/nexus-agents/src/governance/**'
+      - 'scripts/inject-governance.ts'
+      - 'governance/**'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - 'CODEOWNERS'
+      - '.github/workflows/governor-review.yml'
+      - 'scripts/check-governor-review.ts'
+      - 'scripts/check-governor-ratification.ts'
 
 permissions:
   contents: read
@@ -41,6 +57,7 @@ permissions:
 jobs:
   governor-review:
     name: Governor-path pr_review audit gate
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -80,3 +97,117 @@ jobs:
         # integrity break (exit 1) in its exit code. A non-zero exit here is a
         # tampered ledger and SHOULD surface as a job failure.
         run: npx tsx scripts/check-governor-review.ts
+
+  # ---------------------------------------------------------------------------
+  # RATIFICATION gate (#4635).
+  #
+  # Distinct from the audit gate above, which asks whether the change was
+  # REVIEWED. This asks whether the owner RATIFIED it — the requirement
+  # CODEOWNERS and CLAUDE.md both state and nothing enforced until now.
+  # ---------------------------------------------------------------------------
+  governor-ratification:
+    name: Governor-path ratification gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Collect ratification evidence
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
+          LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            --jq '.labels[].name' | tr '\n' ',')
+          {
+            echo 'files<<FILES_EOF'
+            echo "${FILES}"
+            echo 'FILES_EOF'
+            echo "approvals=${APPROVALS}"
+            echo "labels=${LABELS}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run ratification gate
+        env:
+          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
+          APPROVALS: ${{ steps.evidence.outputs.approvals }}
+          PR_LABELS: ${{ steps.evidence.outputs.labels }}
+        run: npx tsx scripts/check-governor-ratification.ts
+
+  # ---------------------------------------------------------------------------
+  # BACKSTOP: the same question, asked after the merge.
+  #
+  # `gh pr merge --admin` bypasses required status checks, so the pre-merge job
+  # above cannot actually stop the merge it is meant to stop — which is exactly
+  # how a48aa881d8 landed. This job runs on push to main and turns an unratified
+  # governor-path merge into a red X on main that nobody can bypass, because by
+  # then there is nothing left to bypass.
+  # ---------------------------------------------------------------------------
+  governor-ratification-backstop:
+    name: Governor-path ratification backstop (post-merge)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Collect ratification evidence for the merged PR
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          FILES=$(git diff --name-only "${SHA}~1" "${SHA}")
+          PR_NUMBER=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/pulls" \
+            --jq '.[0].number // empty')
+          if [ -z "${PR_NUMBER}" ]; then
+            # A direct push to main touching governor paths is never ratified
+            # by construction — there is no PR to carry the evidence.
+            APPROVALS=""
+            LABELS=""
+          else
+            APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+              --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
+            LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              --jq '.labels[].name' | tr '\n' ',')
+          fi
+          {
+            echo 'files<<FILES_EOF'
+            echo "${FILES}"
+            echo 'FILES_EOF'
+            echo "approvals=${APPROVALS}"
+            echo "labels=${LABELS}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run ratification gate against what actually landed
+        env:
+          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
+          APPROVALS: ${{ steps.evidence.outputs.approvals }}
+          PR_LABELS: ${{ steps.evidence.outputs.labels }}
+        run: npx tsx scripts/check-governor-ratification.ts
