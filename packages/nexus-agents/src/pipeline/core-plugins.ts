@@ -57,24 +57,47 @@ function createCorePlugin(
 // Core Plugin Definitions
 // ============================================================================
 
-/** Task analyzer plugin — wraps SharedTaskAnalyzer for pipeline stages. */
+/**
+ * Task analyzer plugin — SKELETON (#4657). Registered so `analyze` stages
+ * resolve, but `createCorePlugin` gives it a no-op handler: it does not wrap
+ * SharedTaskAnalyzer, and it analyses nothing.
+ */
 export const TASK_ANALYZER_PLUGIN = createCorePlugin(
   'nexus:task-analyzer',
-  'Analyzes task complexity, type, and required capabilities',
+  'SKELETON: no-op placeholder for analyze stages (does not analyze)',
   ['analyze']
 );
 
-/** Model router plugin — wraps CompositeRouter for pipeline routing stages. */
+/**
+ * Model router plugin — SKELETON (#4657). It does NOT wrap CompositeRouter and
+ * does NOT route: `createCorePlugin` gives it a no-op handler returning
+ * `{ stub: true }`. Real routing is the V1 path (`tryCompositeRoute` in
+ * `mcp/tools/delegate-to-model.ts`).
+ *
+ * The previous description ("Routes tasks to optimal model via
+ * Budget→TOPSIS→LinUCB pipeline") named a real subsystem this plugin has never
+ * touched, which is what made the v2-delegate policy gate look like it guarded
+ * a routing decision.
+ */
 export const MODEL_ROUTER_PLUGIN = createCorePlugin(
   'nexus:model-router',
-  'Routes tasks to optimal model via Budget→TOPSIS→LinUCB pipeline',
+  'SKELETON: no-op placeholder for route stages (does not route)',
   ['route']
 );
 
-/** CLI executor plugin — executes tasks via CLI adapters (claude/gemini/codex). */
+/**
+ * CLI executor plugin — SKELETON (#4657). It does NOT invoke a CLI adapter and
+ * has no retry: `createCorePlugin` gives it a no-op handler.
+ *
+ * This is the plugin that would serve an `execute`-typed stage, and it is worth
+ * being loud about: it is the ONLY registration for that stage type, so the
+ * first plan to declare `type: 'execute'` would satisfy the trust-tier policy
+ * rule while executing nothing. Wire a real handler before declaring an
+ * execute stage, or the gate becomes fireable against a stub.
+ */
 export const CLI_EXECUTOR_PLUGIN = createCorePlugin(
   'nexus:cli-executor',
-  'Executes tasks via external CLI adapters with resilient retry',
+  'SKELETON: no-op placeholder for execute stages (does not execute)',
   ['execute']
 );
 

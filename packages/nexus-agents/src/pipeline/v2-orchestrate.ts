@@ -69,6 +69,21 @@ export function orchestrateInputToTaskContract(
 
 /** Executes the V2 orchestrate pipeline and returns metrics. */
 export async function executeOrchestratePipeline(task: TaskContract): Promise<PipelineMetrics> {
+  // #4657: this 'execute' does NOT correspond to an execute-typed stage. The
+  // plan compiled below has one stage, `route-model`, declared `type: 'route'`
+  // and backed by a no-op skeleton plugin — nothing in it executes.
+  //
+  // It is kept anyway, deliberately. Passing the real stage type ('route')
+  // would make `trustTierRule` allow, which REMOVES a fail-closed refusal on
+  // untrusted input in exchange for nothing: the only thing the current
+  // refusal suppresses is fire-and-forget instrumentation. Weakening a
+  // fail-closed path to make a label accurate is the wrong trade, and a test
+  // pins this refusal as intended behaviour.
+  //
+  // What must not be inferred from it: a denial here is NOT evidence that an
+  // execution was blocked, and an allow here is NOT evidence that an execution
+  // was authorised. Real trust-tier enforcement over an actual invocation is
+  // `dev-pipeline.ts` (`enforceConsensusExecutePolicy`).
   const policyResult = checkPipelinePolicy(task, 'execute');
   if (!policyResult.allowed) {
     const violations = policyResult.violations.map((v) => `${v.ruleId}: ${v.reason}`);
