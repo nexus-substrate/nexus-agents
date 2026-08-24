@@ -177,7 +177,25 @@ describe('WaveScheduler.execute', () => {
 
     // First wave executes, second wave aborted due to budget
     expect(result.aborted).toBe(true);
-    expect(result.abortReason).toContain('Token budget exhausted');
+    expect(result.abortReason).toContain('Estimated token budget exhausted');
+    // #4761: the caller-visible reason must say the figure is an estimate.
+    // The sum ignores input tokens and counts failed tasks as zero, so actual
+    // spend at the abort point is higher than the number quoted.
+    expect(result.abortReason).toContain('excludes input and failed tasks');
+  });
+
+  it('reports zero estimated tokens for a task that threw, and says so', async () => {
+    // Not a claim that the task was free — there is no usable number once the
+    // executor throws. The budget summing this under-counts, which is why the
+    // abort reason is worded as an estimate (#4761).
+    const scheduler = createWaveScheduler({ maxConcurrency: 1 });
+    const tasks = [createTask('boom')];
+    const executor: WaveTaskExecutor<string> = () => Promise.reject(new Error('adapter died'));
+
+    const result = await scheduler.execute(tasks, executor);
+
+    expect(result.allResults[0]?.success).toBe(false);
+    expect(result.allResults[0]?.estimatedTokens).toBe(0);
   });
 
   it('should estimate tokens from output length', async () => {
