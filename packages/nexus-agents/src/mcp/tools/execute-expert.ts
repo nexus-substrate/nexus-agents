@@ -352,6 +352,11 @@ function observeExpertContextIfOk(
     role: expert.role,
     modelId: expertModelId as ExpertContextObservation['modelId'],
     tokensUsed: result.value.metadata.tokensUsed,
+    // #4743: provenance travels with the number, so a consumer can tell a
+    // measured zero from an unreported one.
+    ...(result.value.metadata.tokensMeasured !== undefined
+      ? { tokensMeasured: result.value.metadata.tokensMeasured }
+      : {}),
     taskDescription: task.description,
     durationMs,
   };

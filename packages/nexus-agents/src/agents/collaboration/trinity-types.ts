@@ -111,8 +111,17 @@ export interface TrinityPhaseResult {
   readonly output: string;
   /** Duration in milliseconds */
   readonly durationMs: number;
-  /** Tokens used */
+  /** Tokens used. Meaningful only when `tokensMeasured` is not `false`. */
   readonly tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4743).
+   *
+   * `false` means the adapter reported no usage, so `tokensUsed` is a
+   * placeholder zero rather than a count. Absent means the producer predates
+   * the distinction — unknown, not measured. Additive and optional, so no
+   * existing reader breaks.
+   */
+  readonly tokensMeasured?: boolean;
 }
 
 /** Thinker's analysis output. */
