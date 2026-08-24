@@ -68,8 +68,6 @@ export interface GapLedgerLoadReport {
 export interface PersistentGapLedgerConfig {
   /** JSONL file backing the ledger. */
   readonly filePath: string;
-  /** Occurrences retained in memory for summarizing. */
-  readonly maxEntries?: number;
   /** Entries older than this are ignored on load. */
   readonly retentionDays?: number;
 }
@@ -219,7 +217,9 @@ function loadEntries(
 export function createPersistentCapabilityGapLedger(
   config: PersistentGapLedgerConfig
 ): IPersistentCapabilityGapLedger {
-  const maxEntries = config.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  // #4684: not configurable — no caller ever set it. The cap stays a constant
+  // rather than a knob nothing turns.
+  const maxEntries = DEFAULT_MAX_ENTRIES;
   const retentionMs = (config.retentionDays ?? DEFAULT_RETENTION_DAYS) * 24 * 60 * 60 * 1000;
   const cutoff = getTimeProvider().now() - retentionMs;
 

@@ -53,9 +53,6 @@ import type {
 } from './issue-triage-types.js';
 import { DEFAULT_ISSUE_TRIAGE_CONFIG } from './issue-triage-types.js';
 
-// Re-export for convenience
-export { formatTriageComment } from './issue-triage-helpers.js';
-
 const logger = createLogger({ component: 'IssueTriage' });
 
 /**
