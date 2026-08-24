@@ -88,6 +88,11 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    executeEnvelope:
+      filesystem: repo
+      spawn: dev-tooling
+      network: [llm-provider, web]
+      vcs: none
     costProfile: medium
     selectionRules:
       - priority: 30
@@ -103,6 +108,11 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    executeEnvelope:
+      filesystem: repo
+      spawn: dev-tooling
+      network: [llm-provider, web]
+      vcs: none
     costProfile: medium
     selectionRules:
       - priority: 80
@@ -149,6 +159,11 @@ manifests:
     maturityTier: stable
     latencyClass: multi-llm-panel
     authorityTier: advisory
+    executeEnvelope:
+      filesystem: nexus-data-dir
+      spawn: agent-cli
+      network: [llm-provider]
+      vcs: none
     costProfile: high
     selectionRules:
       - priority: 100
@@ -179,6 +194,11 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    executeEnvelope:
+      filesystem: repo
+      spawn: dev-tooling
+      network: [llm-provider, web]
+      vcs: none
     costProfile: variable
     selectionRules:
       - priority: 90

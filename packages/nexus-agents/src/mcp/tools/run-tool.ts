@@ -139,10 +139,15 @@ export interface RunResponse {
   readonly note: string;
 }
 
+// #4655: the previous wording told callers to "wait for inline execution
+// (run execute: true) in a later release". It shipped — `execute: true`
+// dispatches the real engine (see runWithExecution below). This NOTE is
+// returned on the ROUTE path, so it describes that path and points at the
+// executing one rather than describing it as unavailable.
 const NOTE =
   'Routing decision only (read-only). Invoke the recommendedTool to execute, or ' +
-  'wait for inline execution (run execute: true) in a later release. The other ' +
-  'pipeline tools remain available as advanced force-strategy paths.';
+  're-run with execute: true for inline execution. The other pipeline tools ' +
+  'remain available as advanced force-strategy paths.';
 
 /**
  * Maps validated input to the MetaOrchestrator input shape.
@@ -167,6 +172,8 @@ function toMetaInput(
   return {
     goal: input.goal,
     requiredAuthority: dispatchActionClass(mode),
+    // #4655: an executing dispatch must also clear the envelope precondition.
+    requiresExecuteEnvelope: mode === 'execute',
     ...(Object.keys(signals).length > 0 ? { signals } : {}),
     ...(input.forceStrategy !== undefined ? { forceStrategy: input.forceStrategy } : {}),
   };

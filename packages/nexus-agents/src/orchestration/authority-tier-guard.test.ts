@@ -20,6 +20,9 @@ import {
   dispatchActionClass,
   AuthorityRefusalError,
   type ActionClass,
+  evaluateExecuteEnvelope,
+  guardExecuteEnvelope,
+  ExecuteEnvelopeRefusalError,
 } from './authority-tier-guard.js';
 import { getStrategyManifest, STRATEGY_MANIFEST_REGISTRY } from './strategy-manifest-registry.js';
 import type { AuthorityTier } from './strategy-manifest.js';
@@ -189,5 +192,44 @@ describe('execute-path dispatch floor invariant (#3925)', () => {
 
   it('covers a non-empty registry (the invariant is not vacuously true)', () => {
     expect(STRATEGY_MANIFEST_REGISTRY.manifests.length).toBeGreaterThan(0);
+  });
+});
+
+describe('execute-envelope guard (#4655)', () => {
+  // The point of #4655: before this, NEITHER authority refusal code could fire
+  // in production. `above_declared_tier` needed an action above `suggest`, and
+  // both dispatch modes floored at `suggest`; `tier_undeclared` needed a
+  // strategy with no manifest, and the union is exactly the 8 that have one.
+  // A guard that cannot refuse is not a guard. These tests exist to prove this
+  // one can, from a real production path.
+
+  it('permits a strategy that has declared an envelope', () => {
+    const decision = evaluateExecuteEnvelope('dev-pipeline');
+    expect(decision.permitted).toBe(true);
+    if (decision.permitted) {
+      expect(decision.envelope.filesystem).toBe('repo');
+    }
+  });
+
+  it('REFUSES a strategy with no declared envelope — the reachable refusal', () => {
+    // `spec` has no wired executor and therefore no envelope.
+    const decision = evaluateExecuteEnvelope('spec');
+    expect(decision.permitted).toBe(false);
+    if (!decision.permitted) {
+      expect(decision.refusal.code).toBe('envelope_undeclared');
+      expect(decision.refusal.strategy).toBe('spec');
+      expect(decision.refusal.message).toContain('never "unbounded"');
+    }
+  });
+
+  it('guardExecuteEnvelope throws at the dispatch boundary', () => {
+    expect(() => guardExecuteEnvelope('spec')).toThrow(ExecuteEnvelopeRefusalError);
+    expect(() => guardExecuteEnvelope('consensus')).not.toThrow();
+  });
+
+  it('every executable strategy clears the gate, so nothing working is broken', () => {
+    for (const s of ['dev-pipeline', 'pipeline', 'consensus', 'research'] as const) {
+      expect(evaluateExecuteEnvelope(s).permitted, `'${s}' must still execute`).toBe(true);
+    }
   });
 });

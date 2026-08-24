@@ -184,6 +184,93 @@ export type LatencyClass = z.infer<typeof LatencyClassSchema>;
  * which is about permission, not proven-ness.
  */
 export const MaturityTierSchema = z.enum(['experimental', 'beta', 'stable']);
+
+// ---------------------------------------------------------------------------
+// Execute envelope (#4655, ADR-0017)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a strategy may touch on the filesystem when EXECUTED, least→most.
+ *
+ * There is deliberately no wildcard member. The consensus panel that chose the
+ * envelope approach (6-1, option D) flagged one failure mode twice, from a
+ * dissenting and an approving seat: an envelope broad enough to be unfalsifiable
+ * ("may write anything") recreates the vacuous check one level down. A closed
+ * vocabulary is what makes that unrepresentable rather than merely discouraged.
+ */
+export const FilesystemScopeSchema = z.enum([
+  /** No filesystem writes at all. */
+  'none',
+  /** Writes confined to the gitignored `.nexus-agents/` data + scratch tree. */
+  'nexus-data-dir',
+  /** Writes into a dedicated working copy (worktree/sandbox), not the checkout. */
+  'workspace',
+  /** Writes into the user's repository checkout. */
+  'repo',
+]);
+export type FilesystemScope = z.infer<typeof FilesystemScopeSchema>;
+
+/** Whether a strategy may start a subprocess when executed. */
+export const SpawnScopeSchema = z.enum([
+  'none',
+  /** May invoke the agent CLIs the adapter layer wraps. */
+  'agent-cli',
+  /** May invoke arbitrary developer tooling (build, test, package managers). */
+  'dev-tooling',
+]);
+export type SpawnScope = z.infer<typeof SpawnScopeSchema>;
+
+/** Outbound network classes a strategy may reach when executed. */
+export const NetworkScopeSchema = z.enum([
+  'none',
+  /** Model/LLM provider endpoints only. */
+  'llm-provider',
+  /** Source-control APIs (issues, PRs, contents). */
+  'vcs-api',
+  /** General web fetch / search. */
+  'web',
+]);
+export type NetworkScope = z.infer<typeof NetworkScopeSchema>;
+
+/** How far a strategy may mutate source control when executed. */
+export const VcsScopeSchema = z.enum([
+  'none',
+  /** Read-only queries. */
+  'read',
+  /** May post comments/reviews, but not change refs. */
+  'comment',
+  /** May commit and push. */
+  'push',
+]);
+export type VcsScope = z.infer<typeof VcsScopeSchema>;
+
+/**
+ * The bounded envelope a strategy is permitted to act within when `run` is
+ * called with `execute: true` (#4655).
+ *
+ * ADR-0017 gates `enforce` on acting "within its declared, bounded envelope".
+ * Until #4655 that clause had no representation, so the authority guard could
+ * only compare tiers — and since every dispatch mode floored at `suggest` while
+ * every strategy declared `suggest` or higher, it could not refuse anything.
+ * The envelope gives the execute path a precondition that can actually fail.
+ *
+ * IMPORTANT — this is a DECLARATION check, not runtime sandboxing. It verifies
+ * that a strategy has stated its blast radius and that the statement is bounded;
+ * it does not intercept syscalls. The dissenting vote made exactly this point
+ * and it is recorded here rather than papered over: an undeclared strategy is
+ * refused, a mis-declared one is not caught by this mechanism. Sandboxing is
+ * `NEXUS_SANDBOX` (epic #2500), a separate control.
+ */
+export const ExecuteEnvelopeSchema = z
+  .object({
+    filesystem: FilesystemScopeSchema,
+    spawn: SpawnScopeSchema,
+    /** Network classes reachable. `['none']` means no outbound calls. */
+    network: z.array(NetworkScopeSchema).min(1),
+    vcs: VcsScopeSchema,
+  })
+  .strict();
+export type ExecuteEnvelope = z.infer<typeof ExecuteEnvelopeSchema>;
 export type MaturityTier = z.infer<typeof MaturityTierSchema>;
 
 /**
@@ -332,6 +419,14 @@ export const StrategyManifestSchema = z
      * applies the highest-priority matching rule across the whole registry.
      */
     selectionRules: z.array(SelectionRuleSchema).min(1).optional(),
+    /**
+     * The bounded blast radius this strategy is permitted when EXECUTED
+     * (#4655). Optional in the schema so a manifest can register before its
+     * envelope is graded — but a strategy with no envelope is REFUSED at
+     * execute-time (fail-closed), and the CI gate requires one for all live
+     * strategies. Absent therefore means "cannot execute", never "unbounded".
+     */
+    executeEnvelope: ExecuteEnvelopeSchema.optional(),
   })
   .strict();
 export type StrategyManifest = z.infer<typeof StrategyManifestSchema>;

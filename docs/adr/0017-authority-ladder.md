@@ -314,6 +314,46 @@ Each is an unbundled, per-loop migration governed by this ADR — not new behavi
   hash-covered tier-transition projection (`packages/nexus-agents/src/audit/tier-transition-hash.ts`;
   see the [audit hash-chain threat model](../security/audit-hash-chain-threat-model.md)).
 
+### Amendment (#4655) — the execute envelope
+
+The tier comparison alone could not refuse anything in production. Measured on
+2026-08-24: `dispatchActionClass` returned `'suggest'` unconditionally for both
+dispatch modes, every live strategy declared `suggest` or higher, and the
+strategy union is exactly the eight that have manifests. So neither
+`above_declared_tier` nor `tier_undeclared` was reachable — the guard was
+structurally incapable of refusing, which by this project's own standard is not
+a check at all.
+
+Raising the mapping was measured before being attempted, and does not work on
+its own:
+
+| `execute` maps to      | strategies refused |
+| ---------------------- | ------------------ |
+| `suggest` (status quo) | 0/8                |
+| `advisory`             | 7/8                |
+| `enforce`              | 8/8                |
+
+A consensus panel (higher_order, absolute_quorum) chose the envelope approach
+6-1, with the leading option taking 4/6 selections. Rather than inflate tiers
+until the ladder refuses everything, this ADR's own phrase — `enforce` acts
+"within its declared, bounded envelope" — becomes a representable precondition:
+
+- `StrategyManifest.executeEnvelope` declares `filesystem`, `spawn`, `network`
+  and `vcs` scope from closed enums. There is no wildcard member, so "may do
+  anything" is unrepresentable rather than merely discouraged.
+- `run { execute: true }` refuses fail-closed when the selected strategy has
+  declared no envelope. **Absence means "cannot execute", never "unbounded".**
+- The declaration is cross-checked, not trusted: a manifest must declare an
+  envelope exactly when `executorAvailable` is true, `research`'s envelope must
+  equal `pipeline`'s (it is a literal alias of that executor), and no envelope
+  may be maximal in every dimension.
+
+**Scope limit, stated plainly.** This is a _declaration_ check, not runtime
+sandboxing. It refuses an undeclared strategy; it does not detect a
+mis-declared one. The dissenting vote made exactly this point and it is
+recorded here rather than papered over. Runtime confinement is `NEXUS_SANDBOX`
+(epic #2500), a separate control.
+
 ### Future Work
 
 - #3843: migrate the four un-issued loops (declare current tiers).
