@@ -98,3 +98,10 @@ release-stall-body.md
 # Generated TypeDoc output — derived from source, produced at build/publish time (#4449)
 docs/api/
 packages/nexus-agents/docs/api/
+
+# Ad-hoc probe scripts. A subagent wrote scratch.js/scratch2.js into the repo
+# root during a verification run and `git add -A` committed them (#4770); the
+# Orphan Detection gate caught it. Temp files belong in the scratchpad dir, but
+# ignoring the pattern removes the trap.
+scratch*.js
+scratch*.ts
