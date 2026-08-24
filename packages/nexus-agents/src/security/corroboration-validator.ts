@@ -78,11 +78,30 @@ function hasPolicyDocRef(sources: readonly SourceCitation[]): boolean {
   return sources.some((s) => s.type === 'policyDoc');
 }
 
+/**
+ * True when an ISSUE BODY source is authored at or above `maxTier` (#4667).
+ *
+ * Deliberately narrower than {@link hasSourceAtTier}, which returns `true` for
+ * any non-authored source — repo files, CI results and policy docs are all
+ * Tier 1 there. Reusing it here made a CI result alone satisfy ProposeLabels,
+ * which the corroboration tests correctly forbid.
+ */
+function hasIssueBodyAtTier(sources: readonly SourceCitation[], maxTier: TrustTier): boolean {
+  const maxNumeric = TRUST_TIER_NUMERIC[maxTier];
+  return sources.some(
+    (s) => s.type === 'issueBody' && TRUST_TIER_NUMERIC[s.authorTrustTier] <= maxNumeric
+  );
+}
+
 /** Check if at least one source meets a minimum trust tier. */
 function hasSourceAtTier(sources: readonly SourceCitation[], maxTier: TrustTier): boolean {
   const maxNumeric = TRUST_TIER_NUMERIC[maxTier];
   return sources.some((s) => {
-    if (s.type === 'issueComment') {
+    // Author-attributed content carries its author's trust, not the repo's.
+    // `issueBody` was previously cited as a `repoFile` and so counted as Tier 1
+    // unconditionally — untrusted issue text corroborating at maintainer trust
+    // (#4667).
+    if (s.type === 'issueComment' || s.type === 'issueBody') {
       return TRUST_TIER_NUMERIC[s.authorTrustTier] <= maxNumeric;
     }
     // Repo files, CI results, policy docs, maintainer commands = Tier 1
@@ -108,8 +127,22 @@ const ACTION_CORROBORATION_RULES: Readonly<Record<AgentActionType, readonly Corr
     ],
     ProposeLabels: [
       {
-        description: 'Keyword match in issue body (repo file) OR maintainer instruction',
-        isSatisfied: (s) => hasRepoFileRef(s) || hasMaintainerCommand(s) || hasPolicyDocRef(s),
+        // #4667: the old description read "issue body (repo file)" — the rule
+        // was written when triage cited the issue as a `repoFile`, so an issue
+        // body satisfied it unconditionally regardless of who wrote it. Now
+        // that the citation is honest (`issueBody`, carrying its author's
+        // tier), the rule has to say what it always meant: an issue body
+        // corroborates a label proposal only from a sufficiently trusted
+        // author. Dropping the clause entirely would make this rule
+        // unsatisfiable for every author including the repo owner — trading a
+        // check that could never fail for one that can never pass.
+        description:
+          'Issue body from a Tier 1/2 author, OR repo file / maintainer instruction / policy doc',
+        isSatisfied: (s) =>
+          hasIssueBodyAtTier(s, '2') ||
+          hasRepoFileRef(s) ||
+          hasMaintainerCommand(s) ||
+          hasPolicyDocRef(s),
       },
     ],
     DraftReply: [

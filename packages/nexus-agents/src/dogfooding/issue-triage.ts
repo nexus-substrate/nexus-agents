@@ -21,6 +21,7 @@ import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
 import { classifyTrust } from '../security/trust-classifier.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
+import type { TrustTier } from '../security/trust-types.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { validateCorroboration } from '../security/corroboration-validator.js';
@@ -55,6 +56,75 @@ import { DEFAULT_ISSUE_TRIAGE_CONFIG } from './issue-triage-types.js';
 export { formatTriageComment } from './issue-triage-helpers.js';
 
 const logger = createLogger({ component: 'IssueTriage' });
+
+/**
+ * Applies the two safety actions the untrusted-input rules mandate (#4667).
+ *
+ * They are mutually exclusive by construction: a hostile tier refuses, a
+ * suspicious-but-not-hostile one escalates. Emitting both would ask a human to
+ * approve something the system has already declined.
+ */
+function applySafetyActions(
+  actions: readonly AgentAction[],
+  gateDecision: ReputationGateDecision,
+  reputation: ReputationAssessment | undefined,
+  issue: IssueMetadata
+): AgentAction[] {
+  const withRefusal = appendRefusalIfHostile(actions, gateDecision, issue);
+  return appendApprovalIfBorderline(withRefusal, gateDecision, reputation, issue);
+}
+
+/**
+ * Appends a `RequestHumanApproval` for suspicious-but-not-hostile input (#4667).
+ *
+ * Triage was binary: tier 4 refuses, everything else proceeds. That left no way
+ * to express the common real case — reputation noticed something (a new
+ * account, rapid comments, a weak signal) without it amounting to hostility.
+ * Those proposals are not safe to auto-apply and not fair to refuse, so they
+ * escalate.
+ *
+ * Deliberately mutually exclusive with the refusal: a hostile tier already
+ * emits `RefuseAction`, and stacking "refused" with "please approve" would ask
+ * a human to approve something the system just declined.
+ */
+function appendApprovalIfBorderline(
+  actions: readonly AgentAction[],
+  gateDecision: ReputationGateDecision,
+  reputation: ReputationAssessment | undefined,
+  issue: IssueMetadata
+): AgentAction[] {
+  if (gateDecision.enforcedTier === '4') return [...actions];
+  // Tier 1 is the allowlist escape hatch — asking a maintainer to approve a
+  // maintainer's own issue is noise, and it would undo the "allowlist wins"
+  // guarantee that tier exists to provide.
+  if (gateDecision.enforcedTier === '1') return [...actions];
+  if (reputation?.isSuspicious !== true) return [...actions];
+
+  // `no_prior_contributions` counts the author's comments ON THIS ISSUE
+  // (`countAuthorComments(author, comments)`), so a freshly filed issue always
+  // trips it — it is true for essentially every new issue and therefore carries
+  // no information. Escalating on it alone would escalate on everything, which
+  // is how an approval gate becomes noise and then gets ignored. Require at
+  // least one signal that actually distinguishes this author.
+  const distinguishing = reputation.suspiciousSignals.filter(
+    (sig) => sig !== 'no_prior_contributions'
+  );
+  if (distinguishing.length === 0) return [...actions];
+
+  const signals = distinguishing.join(', ');
+  return [
+    ...actions,
+    {
+      type: 'RequestHumanApproval',
+      reason:
+        `Issue #${String(issue.number)} carries suspicious reputation signals but did not ` +
+        `reach the hostile tier. Proposed actions need a human decision.`,
+      context:
+        `Author ${issue.author} at enforced tier ${gateDecision.enforcedTier} ` +
+        `(${gateDecision.mode} mode). Signals: ${signals.length > 0 ? signals : '(none recorded)'}.`,
+    },
+  ];
+}
 
 /**
  * Appends an explicit `RefuseAction` when the enforced tier is hostile (#4667).
@@ -157,8 +227,8 @@ export class IssueTriage {
     // refused, so the fail-closed escalation the rules mandate had no producer.
     // RefuseAction is tier-4 "always allowed" (trust-classifier.ts:170), so it
     // survives the gate that blocks the rest.
-    const withRefusal = appendRefusalIfHostile(actions, gateDecision, issueResult);
-    const validatedActions = this.validateActions(withRefusal, gateDecision);
+    const withEscalation = applySafetyActions(actions, gateDecision, reputation, issueResult);
+    const validatedActions = this.validateActions(withEscalation, gateDecision);
 
     const result = this.buildResult({
       issue: issueResult,
@@ -249,7 +319,7 @@ export class IssueTriage {
     trustResult: ClassifyResult
   ): AgentAction[] {
     const actions: AgentAction[] = [];
-    const source = this.createRepoSource(issue);
+    const source = this.createIssueSource(issue, trustResult.trustTier);
 
     // Always generate ClassifyIssue action
     const [category, confidence] = categorizeIssue(safeTitle, safeBody);
@@ -300,7 +370,10 @@ export class IssueTriage {
     const context: ActionContext = {
       inputTrustTier: gateDecision.enforcedTier,
       hasWriteAccess: !this.config.dryRun,
-      hasSecretAccess: false,
+      // #4667: derived, not hardcoded. Triage holds a GitHub token when one is
+      // configured, so Rule of Two's third conjunct is a real property of the
+      // run rather than a constant that made the rule unable to trip.
+      hasSecretAccess: this.config.githubToken !== undefined,
     };
 
     return actions.map((action) => {
@@ -375,10 +448,12 @@ export class IssueTriage {
   /**
    * Creates a repo file source citation for the triage.
    */
-  private createRepoSource(issue: IssueMetadata): SourceCitation {
+  private createIssueSource(issue: IssueMetadata, trustTier: TrustTier): SourceCitation {
     return {
-      type: 'repoFile',
-      path: `issues/${String(issue.number)}`,
+      type: 'issueBody',
+      issueNumber: issue.number,
+      author: issue.author,
+      authorTrustTier: trustTier,
     };
   }
 
