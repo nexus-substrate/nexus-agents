@@ -253,6 +253,16 @@ export interface AggregationMetadata {
   conflictCount: number;
   averageConfidence: number;
   totalTokensUsed: number;
+  /**
+   * How many contributors reported no measured usage (#4743).
+   *
+   * `totalTokensUsed` sums what was measured. A contributor whose adapter
+   * reported nothing carries a placeholder `0` (`ResultMetadata.tokensMeasured
+   * === false`), so without this count the total reads as complete when it is a
+   * LOWER BOUND. Absent means the aggregate predates the distinction — unknown,
+   * not zero.
+   */
+  unmeasuredResults?: number;
   aggregatedAt: string;
 }
 

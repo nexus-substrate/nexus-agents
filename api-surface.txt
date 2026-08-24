@@ -404,6 +404,7 @@ InterfaceDeclaration AggregationMetadata
   conflictCount: number
   resultCount: number
   totalTokensUsed: number
+  unmeasuredResults?: number | undefined
 TypeAliasDeclaration AggregationStrategy
   = 'merge' | 'select_best' | 'consensus' | 'sequential_chain'
 InterfaceDeclaration AggregatorInput
