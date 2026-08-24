@@ -50,6 +50,12 @@ export interface ExpertContextObservation {
   readonly role: string;
   readonly modelId: ModelId | undefined;
   readonly tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4743). `false` means the adapter
+   * reported no usage and the number is a placeholder zero; absent means the
+   * producer predates the distinction.
+   */
+  readonly tokensMeasured?: boolean;
   readonly taskDescription: string;
   readonly durationMs: number;
 }

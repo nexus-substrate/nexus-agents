@@ -9249,6 +9249,7 @@ InterfaceDeclaration TrinityPhaseResult
   readonly output: string
   readonly phase: TrinityPhase
   readonly role: TrinityRole
+  readonly tokensMeasured?: boolean | undefined
   readonly tokensUsed: number
 VariableDeclaration TrinityPhaseSchema
   : z.ZodEnum<{ thinking: "thinking"; working: "working"; complete: "complete"; verifying: "verifying"; }>

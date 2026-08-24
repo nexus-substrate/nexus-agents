@@ -230,6 +230,9 @@ export class TrinityCoordinator {
 
     const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+    // #4743: a failed phase has no measurement at all, so it is unmeasured
+    // rather than a measured zero.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -244,13 +247,10 @@ export class TrinityCoordinator {
 
     const output = String(result.value.output);
     ctx.history.push(
-      this.createPhaseResult(
-        'thinking',
-        'thinker',
-        output,
-        phaseStart,
-        result.value.metadata.tokensUsed
-      )
+      this.createPhaseResult('thinking', 'thinker', output, phaseStart, {
+        tokensUsed,
+        ...(tokensMeasured !== undefined ? { tokensMeasured } : {}),
+      })
     );
 
     return ok(parseThinkerOutput(output));
@@ -283,6 +283,9 @@ export class TrinityCoordinator {
 
     const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+    // #4743: a failed phase has no measurement at all, so it is unmeasured
+    // rather than a measured zero.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -296,7 +299,12 @@ export class TrinityCoordinator {
     if (!result.ok) return err(new AgentError('Worker phase failed', { cause: result.error }));
 
     const output = String(result.value.output);
-    ctx.history.push(this.createPhaseResult('working', 'worker', output, phaseStart, tokensUsed));
+    ctx.history.push(
+      this.createPhaseResult('working', 'worker', output, phaseStart, {
+        tokensUsed,
+        ...(tokensMeasured !== undefined ? { tokensMeasured } : {}),
+      })
+    );
 
     return ok(parseWorkerOutput(output));
   }
@@ -324,6 +332,9 @@ export class TrinityCoordinator {
 
     const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+    // #4743: a failed phase has no measurement at all, so it is unmeasured
+    // rather than a measured zero.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -338,7 +349,10 @@ export class TrinityCoordinator {
 
     const output = String(result.value.output);
     ctx.history.push(
-      this.createPhaseResult('verifying', 'verifier', output, phaseStart, tokensUsed)
+      this.createPhaseResult('verifying', 'verifier', output, phaseStart, {
+        tokensUsed,
+        ...(tokensMeasured !== undefined ? { tokensMeasured } : {}),
+      })
     );
 
     return ok(parseVerifierOutput(output));
@@ -349,9 +363,20 @@ export class TrinityCoordinator {
     role: TrinityRole,
     output: string,
     startTime: number,
-    tokensUsed: number
+    // #4743: the count and its provenance travel together — passing them as
+    // separate positional arguments is what let them drift apart. `undefined`
+    // provenance means the caller had none to pass on, which is different from
+    // knowing the count was unmeasured.
+    usage: { tokensUsed: number; tokensMeasured?: boolean }
   ): TrinityPhaseResult {
-    return { phase, role, output, durationMs: getTimeProvider().now() - startTime, tokensUsed };
+    return {
+      phase,
+      role,
+      output,
+      durationMs: getTimeProvider().now() - startTime,
+      tokensUsed: usage.tokensUsed,
+      ...(usage.tokensMeasured !== undefined ? { tokensMeasured: usage.tokensMeasured } : {}),
+    };
   }
 
   private isTimedOut(ctx: CoordinationContext): boolean {

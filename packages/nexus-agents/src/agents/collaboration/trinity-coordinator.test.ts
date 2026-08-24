@@ -13,7 +13,7 @@ import type {
   AgentResponse,
   AgentCapability,
 } from '../../core/index.js';
-import { ok, AgentCapability as Cap } from '../../core/index.js';
+import { ok, err, AgentError, AgentCapability as Cap } from '../../core/index.js';
 
 // =============================================================================
 // Test Helpers
@@ -473,5 +473,61 @@ describe('duration tracking', () => {
         expect(phase.tokensUsed).toBeDefined();
       }
     }
+  });
+
+  // #4743: the count alone cannot distinguish "the model reported 0" from "the
+  // adapter reported nothing". A phase result carries the provenance so a
+  // consumer summing these can tell.
+  it('carries measurement provenance onto each phase result', async () => {
+    // The agent reports tokensUsed: 0 WITH tokensMeasured: false — the case the
+    // count alone cannot express. A first draft used the default mock, whose
+    // metadata has no flag, so `expect(...).not.toBe(false)` passed whether or
+    // not the coordinator propagated anything. It has to be a producer that
+    // sets the flag, or the test cannot fail.
+    const agent = createMockAgent(['thinking', 'working', 'verifying']);
+    agent.execute = vi.fn((task: Task) =>
+      Promise.resolve(
+        ok({
+          taskId: task.id,
+          output: 'response',
+          metadata: {
+            durationMs: 100,
+            tokensUsed: 0,
+            tokensMeasured: false,
+            toolsUsed: [],
+            model: 'mock',
+          },
+        })
+      )
+    );
+    const coordinator = createTrinityCoordinator();
+
+    const result = await coordinator.execute({ task: basicTask, agent });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.history.length).toBeGreaterThan(0);
+      for (const phase of result.value.history) {
+        expect(phase.tokensMeasured).toBe(false);
+      }
+    }
+  });
+
+  it('marks a phase unmeasured when the agent call failed', async () => {
+    // A failed phase produced no usage at all; recording 0 without provenance
+    // would let a downstream total read it as a measured zero.
+    const failing = createMockAgent([]);
+    failing.execute = vi.fn(() =>
+      Promise.resolve(err(new AgentError('adapter died', { context: {} })))
+    );
+    const coordinator = createTrinityCoordinator();
+
+    const result = await coordinator.execute({ task: basicTask, agent: failing });
+
+    // The coordinator surfaces the phase failure, so assert THAT rather than
+    // wrapping the check in `if (result.ok)` — a first draft of this test did,
+    // and the body never ran. A test that cannot execute its assertion is the
+    // same defect class this change is about.
+    expect(result.ok).toBe(false);
   });
 });
