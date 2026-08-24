@@ -145,6 +145,61 @@ export function checkRuleOfTwo(context: ActionContext): Violation | undefined {
   return undefined;
 }
 
+/**
+ * Labels that GRANT PRIVILEGE or REDUCE SCRUTINY, and so may never be proposed
+ * by an agent acting on external input (#4688).
+ *
+ * These are not ordinary taxonomy labels. In this repository they are control
+ * inputs to CI:
+ *
+ * - `owner-ratified` — the label `check-governor-ratification.ts` accepts as
+ *   proof of owner ratification. Applying it BYPASSES the governance-of-the-
+ *   governor gate on `src/audit/`, `.rules/`, `CODEOWNERS` and friends.
+ * - `skip-pr-review` — suppresses the PR review workflow.
+ * - `pr-review-ci` — triggers the review workflow; less dangerous than the
+ *   two above, but still a workflow control rather than a description.
+ *
+ * Why this exists BEFORE it is needed: no production code applies a proposed
+ * label today (`addLabels` has no non-test caller), so the path is latent. But
+ * the consensus panel's dissenting seat was right that labels are not
+ * zero-blast-radius, and the day someone wires triage output to `addLabels` is
+ * the day an issue body can propose its own ratification. A guard added after
+ * that wiring is a guard added after the incident.
+ *
+ * This is deliberately checked on the ACTION's effect rather than the author's
+ * trust: an OWNER-authored body proposing `owner-ratified` is precisely the
+ * self-modification the governor exists to prevent, so author trust must not
+ * soften it.
+ */
+const PRIVILEGE_GRANTING_LABELS: ReadonlySet<string> = new Set([
+  'owner-ratified',
+  'skip-pr-review',
+  'pr-review-ci',
+]);
+
+/**
+ * Refuse any proposal naming a privilege-granting label.
+ *
+ * Independent of {@link checkLabelValidity} on purpose: that check returns
+ * early when the repository label set is unknown, and a denylist layered on
+ * top of it would inherit that vacuous pass. This one needs no world state.
+ */
+function checkPrivilegedLabels(action: AgentAction): Violation | undefined {
+  if (action.type !== 'ProposeLabels') return undefined;
+
+  const privileged = action.labels.filter((l) => PRIVILEGE_GRANTING_LABELS.has(l));
+  if (privileged.length === 0) return undefined;
+
+  return {
+    rule: 'PRIVILEGED_LABEL',
+    message:
+      `Proposed labels grant privilege or reduce review scrutiny: ` +
+      `${privileged.join(', ')}. These are CI control inputs, not descriptions, ` +
+      `and are never proposable from agent-processed input (#4688).`,
+    severity: 'block',
+  };
+}
+
 /** Check that proposed labels exist in the repository's label set. */
 function checkLabelValidity(action: AgentAction, context: ActionContext): Violation | undefined {
   if (action.type !== 'ProposeLabels') return undefined;
@@ -213,6 +268,7 @@ export function evaluatePolicy(
     checkInfluenceBlock(action, context),
     checkRuleOfTwo(context),
     checkLabelValidity(action, context),
+    checkPrivilegedLabels(action),
     checkSourceTrustTiers(action),
   ];
 
