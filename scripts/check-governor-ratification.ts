@@ -78,6 +78,16 @@ export interface RatificationInputs {
   readonly approvals: readonly string[];
   /** Labels currently on the PR. */
   readonly labels: readonly string[];
+  /**
+   * Login of whoever applied {@link RATIFICATION_LABEL}, from the PR timeline
+   * (#4690).
+   *
+   * `undefined` means the applier could not be established — the timeline was
+   * unavailable, or the label is present with no corresponding `labeled` event.
+   * That is NOT the same as "nobody applied it", so it resolves to
+   * `indeterminate` rather than ratified or unratified.
+   */
+  readonly labelAppliedBy?: string | undefined;
   /** Logins permitted to ratify, from the CODEOWNERS governor section. */
   readonly owners: readonly string[];
 }
@@ -128,11 +138,34 @@ export function evaluateRatification(inputs: RatificationInputs): RatificationVe
     return { kind: 'ratified', via: 'owner-approval', detail: `approved by @${approver}` };
   }
 
+  // The label route, attributed (#4690).
+  //
+  // This branch used to accept the label's mere PRESENCE and record no
+  // applier, while the approval branch above resolves a login and records
+  // `approved by @who`. That made the two routes unequal in both directions:
+  // applying a label is a weaker permission than submitting an owner review,
+  // and it was the route with no provenance in the record.
   if (inputs.labels.some((l) => l.toLowerCase() === RATIFICATION_LABEL)) {
+    const appliedBy = inputs.labelAppliedBy;
+
+    if (appliedBy === undefined) {
+      return {
+        kind: 'indeterminate',
+        reason:
+          `the \`${RATIFICATION_LABEL}\` label is present but we could not establish ` +
+          'who applied it — an unattributable ratification must not be recorded as ' +
+          'ratified, because that is exactly what a later human spot-check trusts',
+      };
+    }
+
+    if (!ownerSet.has(appliedBy.toLowerCase())) {
+      return { kind: 'unratified', touched: inputs.touchedGovernorFiles };
+    }
+
     return {
       kind: 'ratified',
       via: 'ratification-label',
-      detail: `carries the \`${RATIFICATION_LABEL}\` label`,
+      detail: `labelled by @${appliedBy}`,
     };
   }
 
@@ -154,7 +187,9 @@ export function formatVerdict(verdict: RatificationVerdict): string {
         '::error::This PR modifies governance-of-the-governor paths without ratification.\n' +
         `${list}\n` +
         'These are NEVER auto-merged (CODEOWNERS, CLAUDE.md). To proceed, either\n' +
-        `obtain an approving review from a governor-path owner, or apply the \`${RATIFICATION_LABEL}\` label.\n` +
+        `obtain an approving review from a governor-path owner, or have one of them\n` +
+        `apply the \`${RATIFICATION_LABEL}\` label — since #4690 the label counts only when\n` +
+        `the person who applied it is a governor-path owner.\n` +
         'If these files are here by accident, the usual cause is a branch created\n' +
         'off another feature branch instead of main — check `git log --oneline main..HEAD`.'
       );
@@ -185,11 +220,17 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     return 1;
   }
 
+  // #4690: WHO applied the ratification label. Supplied by the workflow from the
+  // PR timeline's most recent `labeled` event. Empty/absent ⇒ undefined ⇒ the
+  // gate reports `indeterminate` rather than accepting an unattributed label.
+  const labelActor = (env['RATIFICATION_LABEL_ACTOR'] ?? '').trim();
+
   const verdict = evaluateRatification({
     touchedGovernorFiles: governorFilesTouched(changed, governorPathsFromCodeowners(codeowners)),
     approvals,
     labels,
     owners: governorOwnersFromCodeowners(codeowners),
+    ...(labelActor !== '' ? { labelAppliedBy: labelActor } : {}),
   });
 
   // stderr for every verdict, matching check-governor-review.ts — CI annotations

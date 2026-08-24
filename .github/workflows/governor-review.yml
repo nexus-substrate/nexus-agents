@@ -136,12 +136,21 @@ jobs:
             --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
           LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
             --jq '.labels[].name' | tr '\n' ',')
+          # #4690: WHO applied the ratification label, not merely that it is
+          # present. Most recent `labeled` event wins (a label can be removed
+          # and re-applied). Empty when the timeline has no such event — the
+          # gate treats that as indeterminate, never as ratified.
+          LABEL_ACTOR=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/timeline" \
+            --paginate \
+            --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .actor.login // empty' \
+            2>/dev/null || echo '')
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
             echo 'FILES_EOF'
             echo "approvals=${APPROVALS}"
             echo "labels=${LABELS}"
+            echo "label_actor=${LABEL_ACTOR}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate
@@ -149,6 +158,7 @@ jobs:
           CHANGED_FILES: ${{ steps.evidence.outputs.files }}
           APPROVALS: ${{ steps.evidence.outputs.approvals }}
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
+          RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
         run: npx tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------
@@ -210,4 +220,5 @@ jobs:
           CHANGED_FILES: ${{ steps.evidence.outputs.files }}
           APPROVALS: ${{ steps.evidence.outputs.approvals }}
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
+          RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
         run: npx tsx scripts/check-governor-ratification.ts
