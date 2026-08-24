@@ -187,7 +187,12 @@ const PRIVILEGE_GRANTING_LABELS: ReadonlySet<string> = new Set([
 function checkPrivilegedLabels(action: AgentAction): Violation | undefined {
   if (action.type !== 'ProposeLabels') return undefined;
 
-  const privileged = action.labels.filter((l) => PRIVILEGE_GRANTING_LABELS.has(l));
+  // Case-insensitive, because the gate this protects is (#4689 follow-up):
+  // `check-governor-ratification.ts` compares `l.toLowerCase()`, so
+  // `Owner-Ratified` would satisfy ratification while slipping an exact-match
+  // denylist. A guard must be at least as permissive in what it REJECTS as its
+  // consumer is in what it ACCEPTS.
+  const privileged = action.labels.filter((l) => PRIVILEGE_GRANTING_LABELS.has(l.toLowerCase()));
   if (privileged.length === 0) return undefined;
 
   return {

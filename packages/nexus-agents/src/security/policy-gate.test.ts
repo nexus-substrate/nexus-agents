@@ -409,6 +409,18 @@ describe('privilege-granting labels are never proposable (#4688)', () => {
     expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
   });
 
+  it('blocks a privileged label regardless of case (#4689 follow-up)', () => {
+    // The denylist was exact-match while `check-governor-ratification.ts:131`
+    // compares `l.toLowerCase()` — so `Owner-Ratified` would have slipped the
+    // guard and still satisfied the ratification gate. A guard must reject at
+    // least as broadly as its consumer accepts.
+    for (const variant of ['Owner-Ratified', 'OWNER-RATIFIED', 'Skip-PR-Review']) {
+      const decision = evaluatePolicy(makePropose([repoSource], [variant]), makeContext('1'));
+      expect(decision.allowed, `variant '${variant}' must be blocked`).toBe(false);
+      expect(JSON.stringify(decision)).toContain('PRIVILEGED_LABEL');
+    }
+  });
+
   it('still allows ordinary labels', () => {
     const decision = evaluatePolicy(
       makePropose([repoSource], ['bug', 'documentation']),

@@ -424,12 +424,25 @@ describe('executeEnvelope declaration gate (#4655)', () => {
     for (const s of ALL_STRATEGIES) {
       const env = getStrategyManifest(s)?.executeEnvelope;
       if (env === undefined) continue;
-      const maxedOut =
-        env.filesystem === 'repo' &&
-        env.spawn === 'dev-tooling' &&
-        env.network.includes('web') &&
-        env.vcs === 'push';
-      expect(maxedOut, `'${s}' declares an envelope that permits everything`).toBe(false);
+      // #4687 follow-up: this required `vcs === 'push'`, and every envelope
+      // declares `vcs: none` — so the check could not fail. It was added
+      // specifically to answer the panel's warning that an unbounded envelope
+      // recreates the vacuous check one level down, and it was itself vacuous.
+      //
+      // `dev-pipeline` already maxes the other three dimensions, so requiring
+      // ALL FOUR made the assertion unreachable. Counting instead: an envelope
+      // at the widest value in 3+ of 4 dimensions is unbounded enough to
+      // warrant a deliberate decision, and the count is a value that varies.
+      const widest = [
+        env.filesystem === 'repo',
+        env.spawn === 'dev-tooling',
+        env.network.includes('web'),
+        env.vcs === 'push',
+      ].filter(Boolean).length;
+      expect(
+        widest,
+        `'${s}' declares an envelope at the widest value in ${String(widest)} of 4 dimensions`
+      ).toBeLessThan(4);
     }
   });
 
