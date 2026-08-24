@@ -401,3 +401,43 @@ describe('governance YAML mirror', () => {
     expect(fromYaml).toEqual(STRATEGY_MANIFEST_REGISTRY);
   });
 });
+
+describe('executeEnvelope declaration gate (#4655)', () => {
+  // The consensus panel (6-1, option D) made one condition explicit, raised
+  // independently by the dissenting seat and an approving one: an envelope
+  // broad enough to be unfalsifiable recreates the vacuous check one level
+  // down. These are the checks that keep the declaration a measurement.
+
+  it('an envelope is declared for exactly the strategies that can execute', () => {
+    for (const s of ALL_STRATEGIES) {
+      const manifest = getStrategyManifest(s);
+      const declared = manifest?.executeEnvelope !== undefined;
+      // Absence means "cannot execute", never "unbounded" — so the envelope and
+      // the wired-executor flag must agree, or one of them is lying.
+      expect(declared, `executeEnvelope/executorAvailable disagree for '${s}'`).toBe(
+        executorAvailableFor(s)
+      );
+    }
+  });
+
+  it('no envelope is unbounded — the maximum in every dimension is refused', () => {
+    for (const s of ALL_STRATEGIES) {
+      const env = getStrategyManifest(s)?.executeEnvelope;
+      if (env === undefined) continue;
+      const maxedOut =
+        env.filesystem === 'repo' &&
+        env.spawn === 'dev-tooling' &&
+        env.network.includes('web') &&
+        env.vcs === 'push';
+      expect(maxedOut, `'${s}' declares an envelope that permits everything`).toBe(false);
+    }
+  });
+
+  it("research's envelope matches pipeline's, because it is a literal alias", () => {
+    // run-tool.ts:288 registers the pipeline executor under `research`. If the
+    // two envelopes drift, one of them is describing code it does not run.
+    expect(getStrategyManifest('research')?.executeEnvelope).toEqual(
+      getStrategyManifest('pipeline')?.executeEnvelope
+    );
+  });
+});

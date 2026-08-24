@@ -84,6 +84,24 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      /**
+       * #4655. Shared runner (`createAgentStages`, agent-executor.ts:493).
+       * `filesystem: 'repo'` is the HONEST call rather than 'nexus-data-dir':
+       * the pipeline's own writes stay in the data dir (dev-pipeline.ts:446),
+       * but the quality gate runs the repo's `typecheck`/`lint`/`tests` scripts
+       * in `process.cwd()` (agent-executor.ts:749-755, quality-gate.ts:88), and
+       * what those write is arbitrary by definition. Declaring the narrower
+       * scope would be a statement we cannot stand behind.
+       */
+      executeEnvelope: {
+        filesystem: 'repo',
+        spawn: 'dev-tooling',
+        // OSV advisory API (osv-lookup.ts:158) alongside the model providers.
+        network: ['llm-provider', 'web'],
+        // The gh/glab tracker exists (task-tracker.ts:106) but is wired only
+        // when `repo` is set, which the run path never sets.
+        vcs: 'none',
+      },
       // Multi-stage dev gate (test / lint / typecheck) — bounded fan-out.
       costProfile: 'medium',
       // The default for any non-trivial sequential task (single-shot outranks it
@@ -102,6 +120,13 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      /** #4655. Same shared runner and quality gate as dev-pipeline. */
+      executeEnvelope: {
+        filesystem: 'repo',
+        spawn: 'dev-tooling',
+        network: ['llm-provider', 'web'],
+        vcs: 'none',
+      },
       // Templated multi-stage pipeline — bounded fan-out.
       costProfile: 'medium',
       // The audit template is more specific than the plain sequential default:
@@ -151,6 +176,17 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'multi-llm-panel',
       authorityTier: 'advisory',
+      /**
+       * #4655. Voters run through the same CLI bridge (consensus-vote.ts:444),
+       * but the strategy itself only persists vote records and cost summaries
+       * into the nexus data dir — it runs no repo tooling.
+       */
+      executeEnvelope: {
+        filesystem: 'nexus-data-dir',
+        spawn: 'agent-cli',
+        network: ['llm-provider'],
+        vcs: 'none',
+      },
       // N independent voter calls per decision (up to the 7-voter panel) — high.
       costProfile: 'high',
       // An explicit consensus requirement outranks every template/pattern choice.
@@ -185,6 +221,16 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      /**
+       * #4655. `research` is a literal alias of the pipeline executor
+       * (run-tool.ts:288), so its envelope must match `pipeline` exactly.
+       */
+      executeEnvelope: {
+        filesystem: 'repo',
+        spawn: 'dev-tooling',
+        network: ['llm-provider', 'web'],
+        vcs: 'none',
+      },
       // Spend scales with research breadth (sources gathered, depth) — input-dependent.
       costProfile: 'variable',
       // A research template outranks the structural pattern fallback.

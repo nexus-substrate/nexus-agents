@@ -27,7 +27,7 @@
 
 import type { ExecutionStrategy } from './meta-orchestrator.js';
 import { getStrategyManifest } from './strategy-manifest-registry.js';
-import type { AuthorityTier } from './strategy-manifest.js';
+import type { AuthorityTier, ExecuteEnvelope } from './strategy-manifest.js';
 
 /**
  * The authority classes an action can carry, ordered least→most authoritative —
@@ -242,4 +242,68 @@ export function guardAuthority(strategy: ExecutionStrategy, actionClass: ActionC
   if (!decision.permitted) {
     throw decision.refusal;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Execute-envelope guard (#4655)
+// ---------------------------------------------------------------------------
+
+/**
+ * Refusal raised when a strategy is dispatched for EXECUTION without having
+ * declared the blast radius it may act within.
+ *
+ * Separate from {@link AuthorityRefusalError} because it answers a different
+ * question. The tier guard asks "is this action above the strategy's declared
+ * authority?"; this asks "has the strategy declared what executing it can
+ * touch at all?". Conflating them would put an undeclared envelope and an
+ * above-tier action behind one code, and the operator response differs:
+ * declare an envelope vs. seek ratification for a promotion.
+ */
+export class ExecuteEnvelopeRefusalError extends Error {
+  readonly code = 'envelope_undeclared' as const;
+  readonly strategy: ExecutionStrategy;
+
+  constructor(strategy: ExecutionStrategy) {
+    super(
+      `Strategy '${strategy}' was dispatched for EXECUTION but declares no ` +
+        `executeEnvelope. Refused fail-closed (ADR-0017, #4655): an undeclared ` +
+        `envelope means "cannot execute", never "unbounded". Declare one in ` +
+        `governance/strategy-manifests.yaml (and its in-tree mirror).`
+    );
+    this.name = 'ExecuteEnvelopeRefusalError';
+    this.strategy = strategy;
+  }
+}
+
+/** Outcome of the execute-envelope precondition. */
+type ExecuteEnvelopeDecision =
+  | { readonly permitted: true; readonly envelope: ExecuteEnvelope }
+  | { readonly permitted: false; readonly refusal: ExecuteEnvelopeRefusalError };
+
+/**
+ * Whether `strategy` may be EXECUTED — i.e. whether it has declared a bounded
+ * envelope.
+ *
+ * This is the refusal path the authority ladder was missing. Before #4655 both
+ * dispatch modes floored at `suggest` and every live strategy declared
+ * `suggest` or higher, so neither refusal code could fire in production: the
+ * guard was structurally incapable of refusing. The envelope precondition is
+ * reachable from a real production path, which is the whole point.
+ *
+ * Pure and returns the refusal as DATA so the router can refuse without
+ * exceptions; {@link guardExecuteEnvelope} is the throwing wrapper.
+ */
+function evaluateExecuteEnvelope(strategy: ExecutionStrategy): ExecuteEnvelopeDecision {
+  const envelope = getStrategyManifest(strategy)?.executeEnvelope;
+  if (envelope === undefined) {
+    return { permitted: false, refusal: new ExecuteEnvelopeRefusalError(strategy) };
+  }
+  return { permitted: true, envelope };
+}
+
+/** Throwing form of {@link evaluateExecuteEnvelope}, for the dispatch boundary. */
+export function guardExecuteEnvelope(strategy: ExecutionStrategy): ExecuteEnvelope {
+  const decision = evaluateExecuteEnvelope(strategy);
+  if (!decision.permitted) throw decision.refusal;
+  return decision.envelope;
 }

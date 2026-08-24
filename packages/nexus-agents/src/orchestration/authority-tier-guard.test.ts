@@ -20,6 +20,8 @@ import {
   dispatchActionClass,
   AuthorityRefusalError,
   type ActionClass,
+  guardExecuteEnvelope,
+  ExecuteEnvelopeRefusalError,
 } from './authority-tier-guard.js';
 import { getStrategyManifest, STRATEGY_MANIFEST_REGISTRY } from './strategy-manifest-registry.js';
 import type { AuthorityTier } from './strategy-manifest.js';
@@ -189,5 +191,54 @@ describe('execute-path dispatch floor invariant (#3925)', () => {
 
   it('covers a non-empty registry (the invariant is not vacuously true)', () => {
     expect(STRATEGY_MANIFEST_REGISTRY.manifests.length).toBeGreaterThan(0);
+  });
+});
+
+describe('execute-envelope guard (#4655)', () => {
+  // The point of #4655: before this, NEITHER authority refusal code could fire
+  // in production. `above_declared_tier` needed an action above `suggest`, and
+  // both dispatch modes floored at `suggest`; `tier_undeclared` needed a
+  // strategy with no manifest, and the union is exactly the 8 that have one.
+  // A guard that cannot refuse is not a guard. These tests exercise
+  // `guardExecuteEnvelope` — the function the router actually calls — so they
+  // cover the production path rather than a pure helper beside it.
+
+  it('permits a strategy that has declared an envelope, and returns it', () => {
+    expect(guardExecuteEnvelope('dev-pipeline')).toEqual({
+      filesystem: 'repo',
+      spawn: 'dev-tooling',
+      network: ['llm-provider', 'web'],
+      vcs: 'none',
+    });
+  });
+
+  it('REFUSES a strategy with no declared envelope — the reachable refusal', () => {
+    // `spec` has no wired executor and therefore no envelope.
+    let refusal: unknown;
+    try {
+      guardExecuteEnvelope('spec');
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal).toBeInstanceOf(ExecuteEnvelopeRefusalError);
+    const typed = refusal as ExecuteEnvelopeRefusalError;
+    expect(typed.code).toBe('envelope_undeclared');
+    expect(typed.strategy).toBe('spec');
+    // Absence must read as "cannot execute", never as permission.
+    expect(typed.message).toContain('never "unbounded"');
+  });
+
+  it('refuses every strategy that has no wired executor', () => {
+    for (const s of ['single-shot', 'graph-workflow', 'orchestrate', 'spec'] as const) {
+      expect(() => guardExecuteEnvelope(s), `'${s}' must be refused`).toThrow(
+        ExecuteEnvelopeRefusalError
+      );
+    }
+  });
+
+  it('every executable strategy clears the gate, so nothing working is broken', () => {
+    for (const s of ['dev-pipeline', 'pipeline', 'consensus', 'research'] as const) {
+      expect(() => guardExecuteEnvelope(s), `'${s}' must still execute`).not.toThrow();
+    }
   });
 });

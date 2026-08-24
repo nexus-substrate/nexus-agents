@@ -35,7 +35,7 @@ import {
   buildSelectedDecision,
   toRecord,
 } from './meta-orchestrator-decision.js';
-import { guardAuthority, type ActionClass } from './authority-tier-guard.js';
+import { guardAuthority, guardExecuteEnvelope, type ActionClass } from './authority-tier-guard.js';
 
 /**
  * Execution strategies the MetaOrchestrator can select. Each maps to an
@@ -78,6 +78,19 @@ export interface MetaOrchestratorInput {
    * requested, so nothing to refuse).
    */
   readonly requiredAuthority?: ActionClass | undefined;
+  /**
+   * Whether this dispatch will EXECUTE the selected strategy (#4655).
+   *
+   * When true the router additionally requires the strategy to have declared an
+   * {@link ExecuteEnvelope} — the bounded blast radius ADR-0017 refers to as a
+   * "declared, bounded envelope" — and refuses fail-closed
+   * ({@link ExecuteEnvelopeRefusalError}) when it has not.
+   *
+   * This is the ladder's reachable refusal path. The tier comparison alone
+   * could not refuse anything in production: both dispatch modes floored at
+   * `suggest` while every live strategy declared `suggest` or higher.
+   */
+  readonly requiresExecuteEnvelope?: boolean | undefined;
 }
 
 /**
@@ -315,6 +328,14 @@ export function createMetaOrchestrator(options?: {
       // authority-ladder ratification panel required.
       if (input.requiredAuthority !== undefined) {
         guardAuthority(decision.strategy, input.requiredAuthority);
+      }
+
+      // Execute-envelope precondition (#4655, ADR-0017). Refused BEFORE the
+      // decision is recorded, same as the tier guard: a strategy that has not
+      // declared what executing it can touch must not execute. Absence means
+      // "cannot execute", never "unbounded".
+      if (input.requiresExecuteEnvelope === true) {
+        guardExecuteEnvelope(decision.strategy);
       }
 
       const timestamp = new Date(getTimeProvider().now()).toISOString();
