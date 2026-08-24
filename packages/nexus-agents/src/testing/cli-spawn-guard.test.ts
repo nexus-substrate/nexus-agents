@@ -145,3 +145,53 @@ describe('the installed guard (integration — the setup file is active here)', 
     expect(stdout).toMatch(/^v\d+/);
   });
 });
+
+// #4682: the guard wrapped a hand-picked subset of node:child_process entry
+// points and its comment claimed that subset was "only the entry points this
+// tree uses to reach a CLI". `execFileSync` was missing — and it is the SECOND
+// most used spawner in production (23 call sites), including
+// `detectCliBinary`, which calls `execFileSync(name, ['--version'])` with a
+// guarded CLI name. So the guard silently let a real CLI spawn through.
+//
+// These probes run under the real setupFile, so they exercise the actual
+// wrapper rather than a reimplementation of it.
+describe('every spawning entry point is guarded (#4682)', () => {
+  const GUARDED_BINARY = 'opencode';
+
+  async function attempt(
+    fn: (cp: typeof import('node:child_process')) => unknown
+  ): Promise<string> {
+    const cp = await import('node:child_process');
+    try {
+      const out = fn(cp);
+      if (out instanceof Promise) await out;
+      return 'NO THROW';
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  it.each([
+    [
+      'execFileSync',
+      (cp: typeof import('node:child_process')) =>
+        cp.execFileSync(GUARDED_BINARY, ['--version'], { stdio: 'pipe' }),
+    ],
+    [
+      'execSync',
+      (cp: typeof import('node:child_process')) =>
+        cp.execSync(`${GUARDED_BINARY} --version`, { stdio: 'pipe' }),
+    ],
+    [
+      'spawnSync',
+      (cp: typeof import('node:child_process')) =>
+        cp.spawnSync(GUARDED_BINARY, ['--version'], { stdio: 'pipe' }),
+    ],
+  ])('blocks %s', async (_name, fn) => {
+    const message = await attempt(fn);
+    // These probes deliberately trip the guard, so drain the recorded
+    // violation — otherwise the setup's afterEach re-raises our own probe.
+    takeSpawnViolations();
+    expect(message).toContain('cli-spawn-guard');
+  });
+});
