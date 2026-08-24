@@ -63,6 +63,7 @@ const CODEOWNERS_SAMPLE = [
   '/governance/ @owner',
   '/CLAUDE.md @owner',
   '/CODEOWNERS @owner',
+  '# END governor-owned paths',
 ].join('\n');
 
 const GOVERNOR_PATTERNS = governorPathsFromCodeowners(CODEOWNERS_SAMPLE);

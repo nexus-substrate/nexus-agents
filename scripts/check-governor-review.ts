@@ -65,6 +65,54 @@ const GENESIS_FILE = join(ROOT, 'governance/governor-review-genesis.txt');
 const GOVERNOR_SECTION_MARKER = "Governor's own core";
 
 /**
+ * Sentinel that ends the governor section (#4683).
+ *
+ * The section previously ran from its heading to end of file, and `#` lines are
+ * skipped as comments, so a later section heading could not end it either. Any
+ * CODEOWNERS entry appended below therefore became a governor path AND — far
+ * worse — its owners became ratifiers of governor changes. That was latent only
+ * because the governor section happens to be last today; appending one ordinary
+ * section would have silently handed ratification rights to its owners.
+ */
+export const GOVERNOR_SECTION_END_MARKER = 'END governor-owned paths';
+
+/** The literal CODEOWNERS line that terminates the governor section. */
+export const GOVERNOR_SECTION_END_LINE = `# ${GOVERNOR_SECTION_END_MARKER}`;
+
+/**
+ * The governor section's owner-rule lines, plus whether the section was
+ * explicitly terminated.
+ *
+ * Shared by the path and owner parsers so the two cannot disagree about where
+ * the section ends. `terminated` is reported rather than assumed, because the
+ * two callers fail closed in OPPOSITE directions: an unterminated section must
+ * yield MORE protected paths (protect everything below) but NO ratifiers (we
+ * cannot say who is authorised).
+ */
+export function governorSectionLines(codeownersText: string): {
+  lines: string[];
+  terminated: boolean;
+} {
+  const lines: string[] = [];
+  let inSection = false;
+  let terminated = false;
+  for (const raw of codeownersText.split('\n')) {
+    if (!inSection) {
+      if (raw.includes(GOVERNOR_SECTION_MARKER)) inSection = true;
+      continue;
+    }
+    if (raw.includes(GOVERNOR_SECTION_END_MARKER)) {
+      terminated = true;
+      break;
+    }
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    lines.push(line);
+  }
+  return { lines, terminated };
+}
+
+/**
  * Genesis allowlist (condition 5): PR numbers that pre-date the pr_review record
  * convention and so legitimately carry no record. Seeded with the introducing PR
  * via the committed {@link GENESIS_FILE}; the embedded fallback is empty. ONE-TIME
@@ -99,17 +147,11 @@ function readGenesisExemptions(filePath: string): Set<number> {
  * SINGLE SOURCE — the gate never hardcodes a divergent copy.
  */
 export function governorPathsFromCodeowners(codeownersText: string): string[] {
-  const lines = codeownersText.split('\n');
+  // An UNterminated section falls back to end-of-file (#4683). For paths that
+  // is the fail-closed direction: more paths treated as governor-owned, not
+  // fewer. The owner parser fails closed the other way.
   const patterns: string[] = [];
-  let inSection = false;
-  for (const raw of lines) {
-    if (raw.includes(GOVERNOR_SECTION_MARKER)) {
-      inSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) continue;
+  for (const line of governorSectionLines(codeownersText).lines) {
     const pattern = line.split(/\s+/)[0];
     if (pattern !== undefined && pattern !== '') patterns.push(pattern);
   }
