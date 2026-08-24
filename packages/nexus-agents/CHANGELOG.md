@@ -1,5 +1,56 @@
 # nexus-agents
 
+## 3.14.0
+
+### Minor Changes
+
+- [#4726](https://github.com/nexus-substrate/nexus-agents/pull/4726) [`c8603ac`](https://github.com/nexus-substrate/nexus-agents/commit/c8603acc9765f9e9f4e186142f61d7b346354ee1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(self-eval): produce coverage-summary.json, and read per-file coverage from it
+
+  `component-scanner` hardcoded `testCoverage: null` with the comment "Would need
+  coverage report integration". Integration was impossible for a reason nobody had
+  traced: **`coverage-summary.json` is never written.** The vitest coverage
+  reporter list was `['text', 'json', 'html']`, and `json` produces
+  `coverage-final.json` — a different file.
+
+  Three consumers read the missing one — the SICA test-generation workflow, the
+  system-review workflow, and `cli/system-review.ts`. All three silently saw no
+  coverage, their `existsSync` guards permanently false. The SICA workflow's
+  `jq '.total.lines.pct // 0'` then turns that absence into 0%, the dangerous
+  direction for a coverage figure.
+
+  Adding `json-summary` to the reporter list produces the file (verified: 1406
+  per-file entries alongside `total`), which unblocks all three and makes per-file
+  coverage available to the scanner.
+
+  The scanner now reads its own file's entry, not the project total — a
+  project-wide number stamped onto every component would be a fabricated per-file
+  metric. An absent report, or a file missing from it, stays `null`: unmeasured is
+  not 0%, and coercing it would turn the `deprecate` recommendation from one that
+  could never fire into one that fires for the wrong reason.
+
+- [#4723](https://github.com/nexus-substrate/nexus-agents/pull/4723) [`e031453`](https://github.com/nexus-substrate/nexus-agents/commit/e031453970a3fec3a4acc2b905358db34a957cd1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): give the tool-fitness ledger its first production writer
+
+  `report()` returned `[]` because nothing ever called `record()`, so
+  `detectConsolidationCandidates` and `detectDeprecationCandidates` could not
+  emit — while the consumer chain below them was fully wired all the way to
+  remediation tasks and GitHub issue filing.
+
+  Every wrapped MCP tool call now appends one fitness event at the middleware
+  chain's per-call completion point.
+
+  Site choice matters here. The obvious-looking site — `tool-wrapper.ts`'s
+  `classifyResult` — is reached only from `runMismatchedCall`, the
+  timeout-mismatch path. Writing there would have recorded a sample biased toward
+  mismatched calls and systematically mislabelled tools as unfit; a biased
+  producer is worse than none, because its output looks like data.
+
+  Known gap, documented in code so absence is not misread: `execute_expert`
+  registers via `registerToolTask` and does not pass through this chain, so it
+  produces no fitness events. "No data" means unmeasured, not unused.
+
+  Best-effort — a ledger write never fails a tool call — and bounded by the
+  ledger's existing retained-event cap.
+
 ## 3.13.6
 
 ### Patch Changes
