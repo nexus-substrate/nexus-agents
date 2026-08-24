@@ -577,29 +577,39 @@ describe('computeHealthScore', () => {
     expect(computeHealthScore(true, true, true, true)).toBe(1.0);
   });
 
-  it('returns minimum when all indicators are false', () => {
-    const score = computeHealthScore(false, false, false, false);
-    // (0.5 + 0.5 + 0.7 + 0.8) / 4 = 0.625
-    expect(score).toBeCloseTo(0.625, 10);
+  // #4714: these three asserted that no data still yields a score. It did —
+  // exactly 0.625 here, and exactly 0.8 on every real run, because with no
+  // outcomes the other three indicators are defaults rather than measurements.
+  // A confident number computed from nothing reads as a live signal, which is
+  // harder to distrust than an obvious gap.
+  it('returns null when there is not enough data to score', () => {
+    expect(computeHealthScore(false, false, false, false)).toBeNull();
+    // Null even when every OTHER indicator is true — those "trues" are
+    // defaults (empty regret gives optimalRate 1; no performers means no
+    // underperformers), not evidence of health.
+    expect(computeHealthScore(false, true, true, true)).toBeNull();
   });
 
-  it('weights indicators differently', () => {
-    // hasMinimumData false => 0.5 (biggest penalty)
-    const noData = computeHealthScore(false, true, true, true);
-    // noUnderperformers false => 0.8 (smallest penalty)
+  it('weights indicators differently once there IS data', () => {
+    const healthy = computeHealthScore(true, true, true, true);
+    const notLearning = computeHealthScore(true, false, true, true);
     const hasUnder = computeHealthScore(true, true, true, false);
-    expect(noData).toBeLessThan(hasUnder);
+    // isLearning false => 0.5 (bigger penalty); noUnderperformers false => 0.8
+    expect(notLearning).toBeLessThan(hasUnder as number);
+    expect(hasUnder).toBeLessThan(healthy as number);
   });
 
-  it('returns between 0.5 and 1.0', () => {
-    const allFalse = computeHealthScore(false, false, false, false);
+  it('a measured score stays within 0.5 and 1.0', () => {
+    const worstMeasured = computeHealthScore(true, false, false, false);
     const allTrue = computeHealthScore(true, true, true, true);
-    expect(allFalse).toBeGreaterThanOrEqual(0.5);
-    expect(allTrue).toBeLessThanOrEqual(1.0);
+    expect(worstMeasured).toBeGreaterThanOrEqual(0.5);
+    expect(allTrue).toBe(1.0);
   });
 
-  it('hasMinimumData false gives (0.5+1+1+1)/4 = 0.875', () => {
-    expect(computeHealthScore(false, true, true, true)).toBeCloseTo(0.875, 10);
+  it('hasMinimumData false is unmeasured, not 0.875 (#4714)', () => {
+    // Previously (0.5+1+1+1)/4 = 0.875. The three "1"s are defaults, not
+    // measurements, so the average was arithmetic over nothing.
+    expect(computeHealthScore(false, true, true, true)).toBeNull();
   });
 
   it('isLearning false gives (1+0.5+1+1)/4 = 0.875', () => {

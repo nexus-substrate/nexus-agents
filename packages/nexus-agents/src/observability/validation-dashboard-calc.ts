@@ -200,15 +200,31 @@ export function calculateAvgReward(outcomes: readonly DashboardOutcome[]): numbe
   return outcomes.reduce((sum, o) => sum + o.reward, 0) / outcomes.length;
 }
 
-/** Compute overall health score from indicators. */
+/**
+ * Compute overall health score from indicators — or `null` when there is not
+ * enough data to score at all (#4714).
+ *
+ * Without `hasMinimumData` the other three indicators are not measurements,
+ * they are defaults: an empty outcome set makes `calculateRegret` return
+ * `optimalRate: 1`, so `isLearning` answers "yes" on the strength of no data,
+ * and `noUnderperformers` is vacuously true because there are no performers.
+ * The arithmetic then produced exactly 0.8 on every real run — a confident
+ * number computed from nothing, which reads as a live signal and is harder to
+ * distrust than an obvious gap.
+ *
+ * Returning `null` is the same rule this codebase applies elsewhere: a gate
+ * that reports `unmeasured` beats one that reports a default as a measurement.
+ */
 export function computeHealthScore(
   hasMinimumData: boolean,
   isLearning: boolean,
   healthyExploration: boolean,
   noUnderperformers: boolean
-): number {
+): number | null {
+  if (!hasMinimumData) return null;
+
   const scores = [
-    hasMinimumData ? 1 : 0.5,
+    1, // hasMinimumData, established above
     isLearning ? 1 : 0.5,
     healthyExploration ? 1 : 0.7,
     noUnderperformers ? 1 : 0.8,
