@@ -73,8 +73,15 @@ export function diffSurface(
 
   for (const [symbol, body] of after) {
     const prior = before.get(symbol);
-    if (prior === undefined) added.push(`${symbol}  [new symbol]`);
-    else if (prior !== body) added.push(...changedLines(symbol, body, prior));
+    if (prior === undefined) {
+      added.push(`${symbol}  [new symbol]`);
+    } else if (prior !== body) {
+      const lines = changedLines(symbol, body, prior);
+      // Fail safe: `changedLines` compares membership, so a change in how many
+      // times an identical line appears yields nothing. The blocks differ, so
+      // say so rather than reporting "unchanged".
+      added.push(...(lines.length > 0 ? lines : [`${symbol}  [block changed]`]));
+    }
   }
   for (const [symbol, body] of before) {
     const now = after.get(symbol);

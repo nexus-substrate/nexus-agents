@@ -55,23 +55,59 @@ interface SurfaceEntry {
  * which is no better than one that never fires.
  */
 function normalizeTypeText(text: string): string {
-  return text.replace(
-    /import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g,
-    'import("src/$1")'
+  return (
+    text
+      .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
+      // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
+      // format uses "starts at column 0" to mean "new symbol" — a wrapped type
+      // put 7 continuation lines at column 0, which the checker read as phantom
+      // symbols. Two were a bare `}`, so they collided and silently swallowed
+      // the members that followed.
+      .replace(/\s*\n\s*/g, ' ')
+      .trim()
   );
 }
 
 function propertyLines(node: Node): string[] {
   if (!Node.isInterfaceDeclaration(node) && !Node.isClassDeclaration(node)) return [];
-  const lines = node.getProperties().map((prop) => {
-    const optional = prop.hasQuestionToken() ? '?' : '';
-    const readonly = prop.isReadonly() ? 'readonly ' : '';
-    return `  ${readonly}${prop.getName()}${optional}: ${normalizeTypeText(prop.getType().getText(prop))}`;
-  });
-  return [
-    ...lines,
-    ...node.getMethods().map((m) => `  ${m.getName()}${normalizeTypeText(m.getType().getText(m))}`),
+
+  // Private/protected members are not API. Recording them made the gate fire on
+  // renaming a private helper — an always-fails direction that trains people to
+  // regenerate the snapshot without reading it.
+  const isPublic = (m: { hasModifier?: unknown; getScope?: () => string }): boolean =>
+    typeof m.getScope !== 'function' || m.getScope() === 'public';
+
+  const props = node
+    .getProperties()
+    .filter((p) => isPublic(p))
+    .map((prop) => {
+      const optional = prop.hasQuestionToken() ? '?' : '';
+      const readonly = prop.isReadonly() ? 'readonly ' : '';
+      return `  ${readonly}${prop.getName()}${optional}: ${normalizeTypeText(prop.getType().getText(prop))}`;
+    });
+
+  const methods = node
+    .getMethods()
+    .filter((m) => isPublic(m))
+    .map((m) => `  ${m.getName()}${normalizeTypeText(m.getType().getText(m))}`);
+
+  // An interface whose only member is `[key: string]: unknown` recorded NOTHING,
+  // so its shape could change with no diff. Same for accessors.
+  const indexes = Node.isInterfaceDeclaration(node)
+    ? node.getIndexSignatures().map((i) => `  ${normalizeTypeText(i.getText())}`)
+    : [];
+  const accessors = [
+    ...node
+      .getGetAccessors()
+      .filter((a) => isPublic(a))
+      .map((a) => `  get ${a.getName()}(): ${normalizeTypeText(a.getType().getText(a))}`),
+    ...node
+      .getSetAccessors()
+      .filter((a) => isPublic(a))
+      .map((a) => `  set ${a.getName()}`),
   ];
+
+  return [...props, ...methods, ...indexes, ...accessors];
 }
 
 function aliasLines(node: Node): string[] {
