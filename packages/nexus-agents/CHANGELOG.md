@@ -1,5 +1,140 @@
 # nexus-agents
 
+## 3.15.0
+
+### Minor Changes
+
+- [#4752](https://github.com/nexus-substrate/nexus-agents/pull/4752) [`737569e`](https://github.com/nexus-substrate/nexus-agents/commit/737569e160bbfac16b0d137ef7bfb675f4060653) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): the stall detector can now detect a stall — the watchdog no longer pets itself
+
+  `heartbeat()` was only ever called from the same `setInterval` that read the
+  session's health, so `timeSinceHeartbeat` could never exceed the 15s tick. The
+  60s `slow` and 120s `stalled` thresholds were unreachable, `stalledSessions` was
+  structurally `0`, and a session whose work had genuinely hung reported `alive`
+  for as long as the process lived. In `orchestrate.ts` the pet was on the line
+  immediately above the check.
+
+  Progress now drives the heartbeat. The three monitored regions each wrap a
+  single opaque `await`, so there was nowhere in-line to emit from — but
+  `withStep` already emits on `stepBus` for every nested step inside that await,
+  and `EventEmitter` handlers run synchronously within `emit()`, so the emitting
+  code's async context is live in the handler. A session-scoped
+  `AsyncLocalStorage` plus one subscriber therefore attributes step activity to
+  exactly the session that produced it, at a single wiring point. The timers now
+  only read.
+
+  Adds a `SessionHealth` state of `unmeasured` for sessions nothing has claimed to
+  report progress for — silence only means something once something has spoken.
+  Sessions that ARE instrumented and still emit nothing keep reporting `stalled`,
+  which is the immediate-hang case and the most important one to preserve.
+
+  `weather-report` gains an additive `unmeasuredSessions` count rather than a
+  widened `health` union: `AgentSessionEntry` is reachable from the exported
+  `generateWeatherReport`, so adding a member would break downstream readers
+  ([#4740](https://github.com/nexus-substrate/nexus-agents/issues/4740) class).
+
+  The regression guard is source-level on purpose. Restoring the timer pet leaves
+  the entire behavioural suite green — a timer-driven heartbeat is
+  indistinguishable from a healthy session — so `heartbeat-self-petting.test.ts`
+  asserts that only the progress subscriber calls `heartbeat()`.
+
+  Resolves the reachability half of [#4665](https://github.com/nexus-substrate/nexus-agents/issues/4665). Panel chose this over deleting the
+  liveness layer, 6-1.
+
+- [#4744](https://github.com/nexus-substrate/nexus-agents/pull/4744) [`5a4626b`](https://github.com/nexus-substrate/nexus-agents/commit/5a4626b7cdfb6d53a45621ee3408588e66764918) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(workflows): an unmeasured step no longer reports as having spent zero tokens
+
+  `ResultMetadata.tokensUsed` is required, and producers coerced absence away with
+  `usage?.totalTokens ?? 0`. So the workflow ledger's unmeasured branch
+  (`typeof result.tokensUsed !== 'number'`) could never run, `unmeasuredSteps` was
+  permanently `0`, and `reportUsageCoverage` could never warn. The coverage
+  reporting added in [#4710](https://github.com/nexus-substrate/nexus-agents/issues/4710) was decoration over a signal already destroyed upstream.
+
+  Adds `ResultMetadata.tokensMeasured?: boolean` — additive and optional, so no
+  existing reader breaks. Producers set it to `false` when the adapter reported no
+  usage, and `step-executor` then omits `StepResult.tokensUsed` (already optional)
+  so the ledger counts the step as unmeasured rather than free. For a spend cap,
+  under-counting is the dangerous direction.
+
+  An absent flag means "legacy producer, unknown" and is left alone — a value is
+  dropped only on an explicit `false`.
+
+  Chosen over widening `tokensUsed` to `number | undefined` by a 6-1 panel (5/6
+  selecting this option). That widening would have been a **breaking** change:
+  `ResultMetadata` is not exported by name, but `TaskResult` is
+  (`exports/core.ts:52`) and carries `metadata: ResultMetadata`, so it is publicly
+  reachable and every downstream `const n: number = r.metadata.tokensUsed` would
+  stop compiling. Detection gap tracked in [#4749](https://github.com/nexus-substrate/nexus-agents/issues/4749).
+
+  Also fixes a second `?? 0` on the retry path in the same producer
+  (`simple-agent.ts:93`) that the first-attempt test could not reach.
+
+### Patch Changes
+
+- [#4753](https://github.com/nexus-substrate/nexus-agents/pull/4753) [`2845046`](https://github.com/nexus-substrate/nexus-agents/commit/2845046ad40345eb8fea68234dc997be17a0bf75) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(routing): the capacity stage does run — correcting a correction
+
+  The `[#4658](https://github.com/nexus-substrate/nexus-agents/issues/4658)` wiring note claimed the capacity stage "is not part of the
+  production routing chain" and that "neither the signal nor the exclusion runs
+  today". Both are false, and false in the direction that invites deleting live
+  code.
+
+  `enableCapacityBalancing` defaults to `true`, `composite-router.ts` constructs
+  `CapacityFilterStage` directly, and `composite-router-stages.ts` awaits
+  `filterArms` in the pipeline. Every route is assessed. What does not run is the
+  EXCLUSION, because `enforceHardLimits` stays at its `false` default via a
+  hardcoded `{}` — so `excludedCount` really is structurally 0.
+
+  The earlier note reasoned from `createCapacityStage`, the factory, having no
+  non-test caller. That is true and remains true; production does not use the
+  factory. "The factory is unused" is not "the stage is unused".
+
+  Two tests now pin the claims — that the stage is default-on, and that an
+  observed exhaustion is assessed but not excluded — so the comment cannot drift
+  in either direction again without a failure.
+
+- [#4741](https://github.com/nexus-substrate/nexus-agents/pull/4741) [`1319cd2`](https://github.com/nexus-substrate/nexus-agents/commit/1319cd257235fd85c2128ddba1ed446408d57815) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): the higher-order strategy reports an empty or all-abstain panel as no votes cast, not 50%
+
+  `OWVoting.toVotingOutcome` published `aggregateSimple`'s `posteriorApproval = 0.5`
+  fallback as `approvalPercentage: 50` whenever nothing countable was cast — a
+  measured-looking midpoint standing in for an unmeasured panel.
+
+  This was the only one of the four strategies missing the guard;
+  `SimpleMajorityStrategy` and `SupermajorityStrategy` already answer the same
+  input with `0` and `'No votes cast (excluding abstentions)'`. The fix matches
+  them, so the four strategies now give one answer to the empty case.
+
+  Reachable in production rather than theoretical: an errored voter
+  (`voter-execution.ts:92`) and an unparseable response
+  (`protocol-helpers.ts:101`) both produce `abstain`.
+
+  Scope: this is the non-breaking half of [#4701](https://github.com/nexus-substrate/nexus-agents/issues/4701)'s defect 2. A split panel is
+  still recorded as `rejected` — distinguishing it needs a new
+  `VoteDecisionStatus` member, which is a breaking change to an exported type and
+  is tracked in [#4740](https://github.com/nexus-substrate/nexus-agents/issues/4740) behind a unanimous vote.
+
+- [#4751](https://github.com/nexus-substrate/nexus-agents/pull/4751) [`786c93c`](https://github.com/nexus-substrate/nexus-agents/commit/786c93cbbacdf4f0b179a82040ac172f72bed474) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): two checks from an adversarial review that could not fail
+
+  **The corroboration-rules test could not fail.** It asserted
+  `getCorroborationRules(action)` is `toBeDefined()`, but
+  `ACTION_CORROBORATION_RULES` is a total `Record<AgentActionType, ...>` — TypeScript
+  already guarantees a value for every key, so an action registered with `[]` passed
+  silently. It now asserts the rules are non-empty, with the two deliberate
+  exemptions (`RequestHumanApproval`, `RefuseAction`) named: requiring corroboration
+  in order to refuse or escalate would make refusal blockable.
+
+  **`measuredTrustTier` accepted a caller that cannot be derived from.** It gated on
+  `Object.keys(caller).length > 0`, but `extractCallerInfo` can return `{ sessionId }`
+  or `{ userAgent }` alone, and neither is an input to `deriveTrustTier`. The first
+  producer supplying only those would have made the `'3'` fallback read as a
+  measurement — reintroducing the constant this function exists to prevent. It now
+  gates on `transport` / `authenticated` / `clientId`.
+
+  Both were found by an adversarial review of my own self-merged work, and both are
+  mutation-verified: emptying `ClassifyIssue`'s rules fails the first, and restoring
+  the non-empty predicate fails the second.
+
+  Not fixed here: the drift tests iterate a hand-maintained action list rather than
+  the schema, and `HandoffMessage` is missing from both it and the citation-floor
+  table. That touches a governor-owned path — [#4750](https://github.com/nexus-substrate/nexus-agents/issues/4750).
+
 ## 3.14.1
 
 ### Patch Changes
