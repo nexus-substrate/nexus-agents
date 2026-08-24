@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-08-17",
+  "fetchedAt": "2026-08-24",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1994,6 +1994,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "deepseek-v4-flash-vision-exp",
+      "vendor": "deepseek",
+      "family": "deepseek-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-deepseek",
+      "source": "models-dev",
+      "displayName": "DeepSeek V4 Flash Vision Exp",
+      "verifiedAt": "2026-08-21",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.14,
+        "outputPer1M": 0.28
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "deepseek-v4-pro",
       "vendor": "deepseek",
       "family": "deepseek-thinking",
@@ -2006,7 +2030,7 @@
       "profileId": "models-dev-deepseek",
       "source": "models-dev",
       "displayName": "DeepSeek V4 Pro",
-      "verifiedAt": "2026-08-12",
+      "verifiedAt": "2026-08-22",
       "contextWindow": 1000000,
       "maxOutputTokens": 384000,
       "inputModalities": ["text"],
@@ -2603,8 +2627,8 @@
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 1.5,
-        "outputPer1M": 7.5
+        "inputPer1M": 0.75,
+        "outputPer1M": 3.75
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2691,14 +2715,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash Latest",
-      "verifiedAt": "2026-05-19",
+      "verifiedAt": "2026-08-13",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 1.5,
-        "outputPer1M": 9
+        "inputPer1M": 0.75,
+        "outputPer1M": 3.75
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2715,14 +2739,14 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash-Lite Latest",
-      "verifiedAt": "2026-05-07",
+      "verifiedAt": "2026-07-21",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.25,
-        "outputPer1M": 1.5
+        "inputPer1M": 0.3,
+        "outputPer1M": 2.5
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2911,6 +2935,30 @@
       "contextWindow": 480,
       "maxOutputTokens": 8192,
       "inputModalities": ["text", "image"]
+    },
+    {
+      "id": "claude-fable-5@default",
+      "vendor": "google",
+      "family": "claude-fable",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Claude Fable 5",
+      "verifiedAt": "2026-06-09",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 10,
+        "outputPer1M": 50
+      },
+      "toolCapabilities": ["function-calling"]
     },
     {
       "id": "claude-haiku-4-5@20251001",
@@ -3622,8 +3670,8 @@
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 1.5,
-        "outputPer1M": 7.5
+        "inputPer1M": 0.75,
+        "outputPer1M": 3.75
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -3687,7 +3735,7 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash Latest",
-      "verifiedAt": "2026-05-19",
+      "verifiedAt": "2026-08-13",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
@@ -3711,7 +3759,7 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini Flash-Lite Latest",
-      "verifiedAt": "2026-05-07",
+      "verifiedAt": "2026-07-21",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "video", "audio", "pdf"],
@@ -4955,6 +5003,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "deepseek-ai/deepseek-v4-flash-0731",
+      "vendor": "nvidia",
+      "family": "deepseek-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "DeepSeek V4 Flash 0731",
+      "verifiedAt": "2026-07-31",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "deepseek-ai/deepseek-v4-pro",
       "vendor": "nvidia",
       "family": "deepseek-thinking",
@@ -5802,6 +5874,30 @@
       "verifiedAt": "2026-04-21",
       "contextWindow": 262144,
       "maxOutputTokens": 262144,
+      "inputModalities": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "moonshotai/kimi-k3",
+      "vendor": "nvidia",
+      "family": "kimi-k3",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "Kimi K3",
+      "verifiedAt": "2026-07-16",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
       "inputModalities": ["text", "image", "video"],
       "outputModalities": ["text"],
       "pricing": {
