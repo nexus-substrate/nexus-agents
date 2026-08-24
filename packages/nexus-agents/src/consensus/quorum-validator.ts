@@ -225,6 +225,29 @@ export class QuorumValidator implements IQuorumValidator {
     };
   }
 
+  /**
+   * Decides whether an agent's vote counts, and with what weight.
+   *
+   * WIRING (#4666): this works and is tested, but **nothing in production can
+   * reach an exclusion**. The three exclusion branches all require an
+   * `AgentRecord`, and `getQuorumBreakdown`'s only production caller
+   * (`voting-protocol-helpers`) passes `{ votes, config }` with no
+   * `agentRecords` — `grep -rn agentRecords src --include=*.ts`, excluding
+   * tests and this file, returns nothing. With no record the method returns
+   * `{ eligible: true, weight: 1.0 }` on the first line.
+   *
+   * `enableByzantineDetection` additionally has zero writers anywhere in
+   * `src/`: only this read and its declaration.
+   *
+   * So `eligibleAgents` is every voter, always. Do NOT read a full eligible
+   * list as evidence that trust or Byzantine screening ran — nothing screened.
+   * Wiring it needs a producer for `AgentRecord` (trust scores, Byzantine
+   * flags), which the engine does not currently maintain.
+   *
+   * Kept rather than deleted: the behaviour is correct and covered by tests, so
+   * this is unwired capability, not dead code. Removing a working trust model
+   * is a decision about the resilience posture, not a cleanup — see #4666.
+   */
   isAgentEligible(
     agentId: string,
     record: AgentRecord | undefined,
