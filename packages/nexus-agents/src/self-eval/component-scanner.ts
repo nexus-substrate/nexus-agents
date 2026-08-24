@@ -8,6 +8,7 @@
  * (Source: Issue #137, Multi-Agent Evaluation research)
  */
 
+import { readFileSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, basename, extname, relative } from 'node:path';
 import type { ILogger } from '../core/index.js';
@@ -71,6 +72,11 @@ export interface ScannerConfig {
   readonly maxFileSize?: number;
   /** Logger instance */
   readonly logger?: ILogger;
+  /**
+   * Directory holding `coverage-summary.json` (#4668). Defaults to `coverage`.
+   * Absent report ⇒ every component's `testCoverage` is `null` (unmeasured).
+   */
+  readonly coverageDir?: string;
 }
 
 // ============================================================================
@@ -109,17 +115,48 @@ const EXPORT_PATTERN =
 /**
  * Scans codebase components and extracts metrics.
  */
+/** Shape of istanbul/v8 `coverage-summary.json` (#4668) — `total` plus one key per absolute file path. */
+interface CoverageSummary {
+  readonly [absolutePath: string]: { readonly lines?: { readonly pct?: number } } | undefined;
+}
+
+/** Default location of the coverage report, relative to the package root. */
+const DEFAULT_COVERAGE_DIR = 'coverage';
+
+/** Apply scanner defaults in one place, so the constructor stays a plain assignment. */
+function resolveScannerConfig(config: ScannerConfig = {}): {
+  extensions: readonly string[];
+  skipTests: boolean;
+  maxFileSize: number;
+  logger: ILogger;
+  coverageDir: string;
+} {
+  return {
+    extensions: config.extensions ?? DEFAULT_EXTENSIONS,
+    skipTests: config.skipTests ?? false,
+    maxFileSize: config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE,
+    logger: config.logger ?? createLogger({ component: 'component-scanner' }),
+    coverageDir: config.coverageDir ?? DEFAULT_COVERAGE_DIR,
+  };
+}
+
 export class ComponentScanner {
   private readonly extensions: readonly string[];
   private readonly skipTests: boolean;
   private readonly maxFileSize: number;
   private readonly log: ILogger;
+  /** Where `coverage-summary.json` lives (#4668). */
+  private readonly coverageDir: string;
+  /** Memoized report: `undefined` = not loaded, `null` = absent/unreadable. */
+  private coverageSummary: CoverageSummary | null | undefined;
 
   constructor(config?: ScannerConfig) {
-    this.extensions = config?.extensions ?? DEFAULT_EXTENSIONS;
-    this.skipTests = config?.skipTests ?? false;
-    this.maxFileSize = config?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-    this.log = config?.logger ?? createLogger({ component: 'component-scanner' });
+    const resolved = resolveScannerConfig(config);
+    this.extensions = resolved.extensions;
+    this.skipTests = resolved.skipTests;
+    this.maxFileSize = resolved.maxFileSize;
+    this.log = resolved.logger;
+    this.coverageDir = resolved.coverageDir;
   }
 
   /**
@@ -186,6 +223,41 @@ export class ComponentScanner {
   }
 
   /**
+   * Per-file line coverage, or `null` when it was not measured (#4668).
+   *
+   * `null` is NOT zero. An unmeasured file must not look maximally bad — the
+   * `deprecate` recommendation is gated on a low score, so coercing absence to
+   * 0% would make every file without a coverage run a deprecation candidate.
+   * That trades a recommendation that could never fire for one that fires
+   * for the wrong reason.
+   *
+   * The report is only present after a coverage run, and is loaded once per
+   * scan rather than per file.
+   */
+  private coverageFor(absolutePath: string): number | null {
+    const report = this.loadCoverageSummary();
+    if (report === null) return null;
+    const entry = report[absolutePath];
+    return typeof entry?.lines?.pct === 'number' ? entry.lines.pct : null;
+  }
+
+  /** Load + memoize `coverage-summary.json`; `null` when absent or unreadable. */
+  private loadCoverageSummary(): CoverageSummary | null {
+    if (this.coverageSummary !== undefined) return this.coverageSummary;
+
+    const file = join(this.coverageDir, 'coverage-summary.json');
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, 'utf-8'));
+      this.coverageSummary = parsed as CoverageSummary;
+    } catch {
+      // Absent (no coverage run) or malformed — both mean unmeasured, and
+      // neither should fail a scan.
+      this.coverageSummary = null;
+    }
+    return this.coverageSummary;
+  }
+
+  /**
    * Analyze a single file and extract metrics.
    */
   private async analyzeFile(root: string, filePath: string): Promise<ComponentInfo | null> {
@@ -207,7 +279,7 @@ export class ComponentScanner {
         name,
         lines: this.countLines(content),
         complexity: this.estimateComplexity(content),
-        testCoverage: null, // Would need coverage report integration
+        testCoverage: this.coverageFor(filePath),
         dependencies: this.extractDependencies(content),
         isTest,
         sizeBytes: stats.size,
