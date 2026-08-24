@@ -846,6 +846,80 @@ describe('StepExecutor', () => {
       }
     });
 
+    // #4734: the SEAM, not the parts. `recordPhaseUsage` already had a passing
+    // unit test for its unmeasured branch, but that test hand-built a
+    // StepResult with no tokensUsed — an input production could not produce
+    // while every producer coerced absence to 0. This asserts the executor
+    // really drops the placeholder, so the branch is reachable from a real run.
+    it('omits tokensUsed when the agent marked the count unmeasured', async () => {
+      const unmeasuredFactory: IExpertFactory = {
+        createForRole: () =>
+          ok(
+            createMockExpert({
+              executeResult: ok({
+                taskId: 'test',
+                output: 'done',
+                metadata: {
+                  durationMs: 100,
+                  tokensUsed: 0,
+                  tokensMeasured: false,
+                  toolsUsed: [],
+                  model: 'test',
+                },
+              }),
+            })
+          ),
+      };
+
+      const unmeasuredExecutor = createStepExecutor({ expertFactory: unmeasuredFactory });
+      const step: WorkflowStep = {
+        id: 'step1',
+        agent: 'code_expert',
+        action: 'analyze',
+        inputs: {},
+      };
+
+      const result = await unmeasuredExecutor.execute(step, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect('tokensUsed' in result.value).toBe(false);
+      }
+    });
+
+    // A legacy producer that sets no flag must keep its current behaviour:
+    // unknown is not the same as known-unmeasured, and silently dropping real
+    // counts would under-report spend in the other direction.
+    it('keeps tokensUsed when the producer sets no measured flag', async () => {
+      const legacyFactory: IExpertFactory = {
+        createForRole: () =>
+          ok(
+            createMockExpert({
+              executeResult: ok({
+                taskId: 'test',
+                output: 'done',
+                metadata: { durationMs: 100, tokensUsed: 42, toolsUsed: [], model: 'test' },
+              }),
+            })
+          ),
+      };
+
+      const legacyExecutor = createStepExecutor({ expertFactory: legacyFactory });
+      const step: WorkflowStep = {
+        id: 'step1',
+        agent: 'code_expert',
+        action: 'analyze',
+        inputs: {},
+      };
+
+      const result = await legacyExecutor.execute(step, context);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.tokensUsed).toBe(42);
+      }
+    });
+
     it('should capture step output on success', async () => {
       const outputFactory: IExpertFactory = {
         createForRole: () => {

@@ -138,6 +138,75 @@ describe('SimpleAgent', () => {
       }
     });
 
+    // #4734: `tokensUsed` stays 0 here because the field is required on a
+    // public type. `tokensMeasured: false` is what tells the ledger that 0 is a
+    // placeholder, not a count — without it the unmeasured-step branch is
+    // unreachable from any real run.
+    it('marks tokens unmeasured when the adapter reports no usage', async () => {
+      const adapter = createMockAdapter({
+        content: [{ type: 'text', text: 'output' }],
+        stopReason: 'end_turn',
+        model: 'large-model',
+      });
+      const agent = createTestAgent({ adapter });
+
+      const result = await agent.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metadata.tokensMeasured).toBe(false);
+        expect(result.value.metadata.tokensUsed).toBe(0);
+      }
+    });
+
+    it('marks tokens measured when the adapter does report usage', async () => {
+      const adapter = createMockAdapter({
+        content: [{ type: 'text', text: 'output' }],
+        usage: { inputTokens: 50, outputTokens: 75, totalTokens: 125 },
+        stopReason: 'end_turn',
+        model: 'large-model',
+      });
+      const agent = createTestAgent({ adapter });
+
+      const result = await agent.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metadata.tokensMeasured).toBe(true);
+      }
+    });
+
+    // The retry path is a SECOND producer in the same file. The first-attempt
+    // test cannot reach it, because its response has text and never retries.
+    it('marks tokens unmeasured when a successful RETRY reports no usage', async () => {
+      const emptyResponse: CompletionResponse = {
+        content: [{ type: 'text', text: '' }],
+        usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      };
+      const adapter = createMockAdapter(emptyResponse);
+      adapter.complete = vi
+        .fn()
+        .mockResolvedValueOnce(ok(emptyResponse))
+        .mockResolvedValueOnce(
+          ok({
+            content: [{ type: 'text', text: 'recovered' }],
+            stopReason: 'end_turn',
+            model: 'test-model',
+          })
+        );
+      const agent = createTestAgent({ adapter });
+
+      const result = await agent.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.output).toBe('recovered');
+        expect(result.value.metadata.tokensMeasured).toBe(false);
+      }
+    });
+
     it('should include model name from adapter response', async () => {
       const adapter = createMockAdapter({
         content: [{ type: 'text', text: 'output' }],
@@ -460,8 +529,7 @@ describe('SimpleAgent', () => {
       await agent.execute(createTestTask());
 
       const callArg = (adapter.complete as Mock).mock.calls[0]?.[0] as
-        | CompletionRequest
-        | undefined;
+        CompletionRequest | undefined;
       expect(callArg).toBeDefined();
       expect(callArg).not.toHaveProperty('systemPrompt');
     });

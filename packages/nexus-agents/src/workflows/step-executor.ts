@@ -305,13 +305,19 @@ export class StepExecutor {
       // `taskResult.value.metadata` (populated from adapter usage) and was
       // dropped here, which is why the budget ledger had to estimate from
       // wall-clock duration.
-      const tokensUsed = taskResult.value.metadata.tokensUsed;
+      // #4734: `tokensUsed` is required on ResultMetadata, so an unmeasured
+      // step still carries a placeholder 0. `tokensMeasured: false` is the
+      // producer saying that 0 is not a count — drop it here so the ledger
+      // counts the step as unmeasured rather than free. Absent (legacy
+      // producer) is left alone: unknown is not the same as known-unmeasured.
+      const { tokensUsed, tokensMeasured } = taskResult.value.metadata;
+      const isMeasured = tokensMeasured !== false && typeof tokensUsed === 'number';
       return ok({
         stepId: step.id,
         output: taskResult.value.output,
         durationMs: getTimeProvider().now() - startTime,
         status: 'success',
-        ...(typeof tokensUsed === 'number' ? { tokensUsed } : {}),
+        ...(isMeasured ? { tokensUsed } : {}),
       });
     } catch (error) {
       return this.handleExecutionError(error, step, timeoutMs);

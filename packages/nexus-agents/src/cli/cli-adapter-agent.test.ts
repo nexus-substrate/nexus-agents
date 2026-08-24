@@ -228,6 +228,8 @@ describe('CliAdapterAgent - execute', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.metadata.tokensUsed).toBe(0);
+      // #4734: the 0 above is a placeholder. This is the field that says so.
+      expect(result.value.metadata.tokensMeasured).toBe(false);
     }
   });
 
