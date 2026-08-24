@@ -70,7 +70,7 @@ import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
-import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import { getHeartbeatMonitor, runInHeartbeatSession } from '../../agents/heartbeat-monitor.js';
 import {
   getContextForTask,
   inferTaskCategory,
@@ -614,6 +614,39 @@ async function executeExpertUnderPolicy(
   );
 }
 
+/**
+ * Runs expert work under a heartbeat session whose liveness comes from progress
+ * (#4665).
+ *
+ * The timer only OBSERVES. It used to call `heartbeat()` on its own tick, which
+ * made the watchdog measure the clock rather than the work and left the
+ * stall thresholds unreachable. Step activity emitted inside
+ * `runInHeartbeatSession` is now the only thing that keeps the session alive.
+ */
+async function runExpertUnderHeartbeat<T>(
+  expertId: string,
+  logger: ILogger | undefined,
+  work: () => Promise<T>
+): Promise<T> {
+  const monitor = getHeartbeatMonitor();
+  const sessionId = monitor.startSession(expertId);
+  const heartbeatTimer = setInterval(() => {
+    if (monitor.isExpired(sessionId)) {
+      logger?.warn('Expert session expired', { expertId, sessionId });
+    }
+    if (monitor.isStalled(sessionId)) {
+      logger?.warn('Expert session stalled — no step activity', { expertId, sessionId });
+    }
+  }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
+
+  try {
+    return await runInHeartbeatSession(sessionId, work);
+  } finally {
+    clearInterval(heartbeatTimer);
+    monitor.endSession(sessionId);
+  }
+}
+
 /** Runs the expert task and records outcomes. Assumes permit is held. */
 async function runExpertTask(
   deps: ExecuteExpertDeps,
@@ -638,24 +671,10 @@ async function runExpertTask(
   return withStep(
     { name: `expert:${expert.role}`, kind: 'expert.exec', attrs: { expertId, role: expert.role } },
     async (ctx) => {
-      const monitor = getHeartbeatMonitor();
-      const sessionId = monitor.startSession(expertId);
       const startTime = getTimeProvider().now();
-
-      const heartbeatTimer = setInterval(() => {
-        if (monitor.isExpired(sessionId)) {
-          deps.logger?.warn('Expert session expired', { expertId, sessionId });
-        }
-        monitor.heartbeat(sessionId);
-      }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
-
-      let result;
-      try {
-        result = await executeExpertUnderPolicy(deps, expert, task, policyObjective);
-      } finally {
-        clearInterval(heartbeatTimer);
-        monitor.endSession(sessionId);
-      }
+      const result = await runExpertUnderHeartbeat(expertId, deps.logger, () =>
+        executeExpertUnderPolicy(deps, expert, task, policyObjective)
+      );
       const durationMs = getTimeProvider().now() - startTime;
       observeExpertContextIfOk(result, expert, task, durationMs, deps.logger);
       const classified = await classifyExpertResult({

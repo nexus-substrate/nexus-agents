@@ -200,6 +200,19 @@ export interface ExpertPerformanceEntry {
 export interface AgentHealthSummary {
   readonly activeSessions: number;
   readonly stalledSessions: number;
+  /**
+   * Sessions that have reported no progress yet (#4665), so their silence
+   * carries no information either way. Counted rather than listed: the
+   * per-session `health` union below is reachable from the exported
+   * `generateWeatherReport` return type, so adding `'unmeasured'` to it would
+   * break downstream readers. Widening it is tracked with the other
+   * return-position unions in #4740.
+   *
+   * `activeSessions - unmeasuredSessions` is the number this report can
+   * actually speak to.
+   */
+  readonly unmeasuredSessions?: number;
+  /** Sessions with a measured health verdict. Excludes unmeasured ones. */
   readonly sessions: readonly AgentSessionEntry[];
 }
 

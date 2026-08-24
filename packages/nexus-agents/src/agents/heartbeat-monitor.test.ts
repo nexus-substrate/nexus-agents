@@ -10,8 +10,11 @@ import {
   HeartbeatMonitor,
   getHeartbeatMonitor,
   resetHeartbeatMonitor,
+  runInHeartbeatSession,
+  currentHeartbeatSession,
   type HealthTransition,
 } from './heartbeat-monitor.js';
+import { stepBus } from '../core/step-bus.js';
 
 describe('heartbeat-monitor', () => {
   beforeEach(() => {
@@ -27,6 +30,7 @@ describe('heartbeat-monitor', () => {
     it('should start and end sessions', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       expect(sid).toContain('expert-1');
       expect(monitor.activeCount).toBe(1);
 
@@ -45,6 +49,7 @@ describe('heartbeat-monitor', () => {
     it('should record heartbeats', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
@@ -57,6 +62,7 @@ describe('heartbeat-monitor', () => {
     it('should classify session as alive when recent heartbeat', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
 
       const health = monitor.getHealth();
@@ -67,6 +73,7 @@ describe('heartbeat-monitor', () => {
     it('should classify session as slow after threshold', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(15_000);
 
@@ -78,6 +85,7 @@ describe('heartbeat-monitor', () => {
     it('should classify session as stalled after threshold', () => {
       const monitor = new HeartbeatMonitor({ stalledThresholdMs: 20_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(25_000);
 
@@ -89,6 +97,7 @@ describe('heartbeat-monitor', () => {
     it('should reset stall timer on heartbeat', () => {
       const monitor = new HeartbeatMonitor({ stalledThresholdMs: 20_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.heartbeat(sid);
@@ -100,6 +109,7 @@ describe('heartbeat-monitor', () => {
     it('should detect expired sessions', () => {
       const monitor = new HeartbeatMonitor({ absoluteMaxMs: 50_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(60_000);
 
@@ -109,6 +119,7 @@ describe('heartbeat-monitor', () => {
     it('should not expire if within max', () => {
       const monitor = new HeartbeatMonitor({ absoluteMaxMs: 100_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(50_000);
 
@@ -135,6 +146,7 @@ describe('heartbeat-monitor', () => {
     it('should include elapsed and timeSince in snapshot', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(5_000);
 
@@ -149,7 +161,9 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 10_000,
       });
       const sid1 = monitor.startSession('expert-1');
-      monitor.startSession('expert-2');
+      monitor.markInstrumented(sid1);
+      const sid2 = monitor.startSession('expert-2');
+      monitor.markInstrumented(sid2);
 
       vi.advanceTimersByTime(15_000);
       monitor.heartbeat(sid1); // expert-1 alive, expert-2 stalled
@@ -167,6 +181,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 60_000,
       });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       // Simulate periodic heartbeats every 15s for 90s
       for (let i = 0; i < 6; i++) {
@@ -187,6 +202,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 60_000,
       });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       // Heartbeat for a while
       vi.advanceTimersByTime(15_000);
@@ -206,6 +222,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 40_000,
       });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       // Initially alive
       expect(monitor.getHealth().sessions[0]?.health).toBe('alive');
@@ -230,18 +247,33 @@ describe('heartbeat-monitor', () => {
       expect(monitor.getSessionHealth('nope')).toBeUndefined();
     });
 
-    it('returns alive with no transition for new session', () => {
+    // #4665: a new session starts at `unmeasured` — nothing has been observed
+    // yet — so its first health read is a real unmeasured → alive transition
+    // rather than a no-op. Only 'slow' and 'stalled' transitions are logged, so
+    // this is silent in production.
+    it('reports the first observation of a new session as unmeasured → alive', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       const t = monitor.getSessionHealth(sid) as HealthTransition;
       expect(t.health).toBe('alive');
-      expect(t.previousHealth).toBe('alive');
+      expect(t.previousHealth).toBe('unmeasured');
+      expect(t.changed).toBe(true);
+    });
+
+    it('reports no transition on a second read with no change', () => {
+      const monitor = new HeartbeatMonitor();
+      const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
+      monitor.getSessionHealth(sid);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
       expect(t.changed).toBe(false);
     });
 
     it('detects alive → slow transition', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       // First check — alive
       monitor.getSessionHealth(sid);
 
@@ -258,6 +290,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 20_000,
       });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.getSessionHealth(sid); // alive → slow
@@ -272,6 +305,7 @@ describe('heartbeat-monitor', () => {
     it('does not report change when health is stable', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.getSessionHealth(sid); // alive → slow
@@ -288,6 +322,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 20_000,
       });
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(25_000);
       monitor.getSessionHealth(sid); // alive → stalled
@@ -302,6 +337,7 @@ describe('heartbeat-monitor', () => {
     it('includes correct elapsedMs and heartbeatCount', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
+      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
 
@@ -325,6 +361,79 @@ describe('heartbeat-monitor', () => {
       resetHeartbeatMonitor();
       const b = getHeartbeatMonitor();
       expect(a).not.toBe(b);
+    });
+  });
+
+  // #4665: the durable fix. Before this, NO caller could produce a session that
+  // reports `stalled` — the three monitored regions pet their own watchdog on a
+  // timer, so `timeSince` never exceeded the 15s tick. A test that the monitor
+  // CAN report a stall is what makes the thresholds mean something.
+  describe('progress-driven liveness (#4665)', () => {
+    it('reports stalled once a session that HAS reported progress goes silent', () => {
+      const monitor = new HeartbeatMonitor();
+      const sid = monitor.startSession('expert-stall');
+
+      monitor.heartbeat(sid); // real progress happened at least once
+      vi.advanceTimersByTime(130_000); // past the 120s stalled threshold
+
+      expect(monitor.isStalled(sid)).toBe(true);
+      expect(monitor.getHealth().stalledSessions).toBe(1);
+      expect(monitor.getSessionHealth(sid)?.health).toBe('stalled');
+    });
+
+    it('reports unmeasured, not stalled, when no progress was ever reported', () => {
+      // Silence only means something once something has spoken. Calling this
+      // `stalled` would blame a session for running on an uninstrumented path.
+      const monitor = new HeartbeatMonitor();
+      const sid = monitor.startSession('expert-quiet');
+
+      vi.advanceTimersByTime(130_000);
+
+      expect(monitor.getSessionHealth(sid)?.health).toBe('unmeasured');
+      expect(monitor.isStalled(sid)).toBe(false);
+      expect(monitor.getHealth().stalledSessions).toBe(0);
+    });
+
+    it('counts step activity inside the session scope as progress', async () => {
+      const monitor = getHeartbeatMonitor();
+      const sid = monitor.startSession('expert-progress');
+
+      await runInHeartbeatSession(sid, async () => {
+        stepBus.emit('step', {
+          event: 'step.completed',
+          stepId: 's1',
+          name: 'x',
+          kind: 'expert.exec',
+          durationMs: 1,
+          status: 'ok',
+        });
+        return Promise.resolve();
+      });
+
+      expect(monitor.getHealth().sessions[0]?.heartbeatCount).toBeGreaterThan(0);
+    });
+
+    it('does NOT credit step activity emitted outside the session scope', async () => {
+      // The correlation guarantee. Without it a busy session would pet a hung
+      // one, which is the same self-petting defect at process granularity.
+      const monitor = getHeartbeatMonitor();
+      const sid = monitor.startSession('expert-isolated');
+
+      stepBus.emit('step', {
+        event: 'step.completed',
+        stepId: 's2',
+        name: 'y',
+        kind: 'expert.exec',
+        durationMs: 1,
+        status: 'ok',
+      });
+      await Promise.resolve();
+
+      expect(monitor.getSessionHealth(sid)?.heartbeatCount).toBe(0);
+    });
+
+    it('exposes no ambient session outside a scope', () => {
+      expect(currentHeartbeatSession()).toBeUndefined();
     });
   });
 });
