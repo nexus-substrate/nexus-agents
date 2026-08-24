@@ -157,11 +157,12 @@ let singletonLedger: ICapabilityGapLedger | undefined;
  * by frequency, and an in-memory ledger measured that over "since this process
  * started" — so a gap recurring across sessions could never become frequent.
  *
- * Switching the default is a no-op today: `detectCapabilityGaps` cannot
- * currently produce a gap (#4651), so nothing is written until the tool-refusal
- * producer lands. That is deliberate ordering — persistence must be in place
- * *before* the first producer, or its first weeks of signal evaporate on
- * restart.
+ * Persistence deliberately landed BEFORE the first producer — otherwise the
+ * first weeks of signal would evaporate on restart. That producer has since
+ * arrived: `extract-symbols-tool.ts` calls `recordToolRefusal`, which defaults
+ * to this ledger and writes `type: 'tool_refusal'` entries (#4654). This
+ * comment previously still said "nothing is written until the tool-refusal
+ * producer lands".
  */
 export function getGapLedger(): ICapabilityGapLedger {
   singletonLedger ??= createPersistentCapabilityGapLedger({
