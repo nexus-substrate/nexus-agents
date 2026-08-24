@@ -18,8 +18,13 @@ and no in-tree caller sets it — but `WaveScheduler` is public API, so a consum
 who enables the documented budget gets a cap with no signal that the figure is
 approximate.
 
-No behaviour change. The estimate stays, because `WaveTaskExecutor` returns a
-bare string and real usage never reaches the scheduler. What changes is that it
+No change to what is computed or capped. One caller-visible string does change:
+`abortReason` now begins "Estimated token budget exhausted" rather than "Token
+budget exhausted", so an external matcher on the old substring would break. That
+is the point of the change, but calling it "no behaviour change" was wrong.
+
+The estimate itself stays, because `WaveTaskExecutor` returns a bare string and
+real usage never reaches the scheduler. What changes is that it
 no longer implies precision: the field and config docs state what is excluded,
 and the caller-visible abort reason now reads "Estimated token budget exhausted
 … (estimate excludes input and failed tasks)".

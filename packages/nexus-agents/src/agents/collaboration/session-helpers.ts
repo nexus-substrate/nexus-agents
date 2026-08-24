@@ -6,6 +6,7 @@
  */
 
 import type { Result, TaskResult, AgentRole } from '../../core/index.js';
+import { summarizeTokenUsage } from './token-usage-summary.js';
 import { ok, err, AgentError, getTimeProvider, formatZodError } from '../../core/index.js';
 import type {
   CollaborationConfig,
@@ -288,14 +289,9 @@ export function buildAggregatedResult(input: AggregatedResultInput): AggregatedR
       resultCount: results.length,
       conflictCount: 0,
       averageConfidence: 1.0,
-      // #4743: measured contributors only; the count of the rest sits beside it
-      // so the total is readable as a lower bound rather than a complete figure.
-      totalTokensUsed: results
-        .filter((r) => r.metadata.tokensMeasured !== false)
-        .reduce((sum, r) => sum + r.metadata.tokensUsed, 0),
-      ...(results.some((r) => r.metadata.tokensMeasured === false)
-        ? { unmeasuredResults: results.filter((r) => r.metadata.tokensMeasured === false).length }
-        : {}),
+      // #4743: shared with result-aggregator so the two cannot drift — they
+      // were duplicate expressions computing the same thing.
+      ...summarizeTokenUsage(results.map((r) => r.metadata)),
       aggregatedAt: endTime.toISOString(),
     },
   };

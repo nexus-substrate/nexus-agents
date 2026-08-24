@@ -8,6 +8,7 @@
 import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type { AggregatedResult, ResultConflict } from './collaboration-types.js';
+import { summarizeTokenUsage } from './token-usage-summary.js';
 import type {
   AggregationStrategy,
   ExpertResult,
@@ -136,11 +137,7 @@ export class ResultAggregator {
     conflicts: ResultConflict[],
     qualityScore: number
   ): AggregatedResult {
-    // #4743: sum what was measured, and say how much was not. Adding the
-    // placeholder zeros in silently would make the total look complete.
-    const measured = results.filter((r) => r.result.metadata.tokensMeasured !== false);
-    const totalTokensUsed = measured.reduce((s, r) => s + r.result.metadata.tokensUsed, 0);
-    const unmeasuredResults = results.length - measured.length;
+    const usage = summarizeTokenUsage(results.map((r) => r.result.metadata));
     const avgConfidence = results.reduce((s, r) => s + (r.confidence ?? 0.5), 0) / results.length;
 
     return {
@@ -152,8 +149,7 @@ export class ResultAggregator {
         resultCount: results.length,
         conflictCount: conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
-        totalTokensUsed,
-        ...(unmeasuredResults > 0 ? { unmeasuredResults } : {}),
+        ...usage,
         aggregatedAt: getTimeProvider().nowIso(),
       },
     };

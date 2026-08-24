@@ -513,7 +513,43 @@ describe('duration tracking', () => {
     }
   });
 
-  it('marks a phase unmeasured when the agent call failed', async () => {
+  // #4743 review: the earlier version of this test asserted only
+  // `expect(result.ok).toBe(false)`, which passes whether or not any provenance
+  // is carried — and the history-record branch it was written for turned out to
+  // be unreachable, since each phase returns `err` BEFORE pushing to history.
+  // The failed phase is observable only through the emitted event, so that is
+  // what this asserts now.
+  it('emits a failed phase with tokensMeasured false, not a bare zero', async () => {
+    const events: Array<{ tokensUsed: number; tokensMeasured?: boolean }> = [];
+    const bus = {
+      emit: vi.fn((e: { payload?: unknown }) => {
+        const p = e.payload as { tokensUsed?: number; tokensMeasured?: boolean } | undefined;
+        if (p?.tokensUsed !== undefined) {
+          events.push({
+            tokensUsed: p.tokensUsed,
+            ...(p.tokensMeasured !== undefined && { tokensMeasured: p.tokensMeasured }),
+          });
+        }
+      }),
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+    };
+    const failing = createMockAgent([]);
+    failing.execute = vi.fn(() =>
+      Promise.resolve(err(new AgentError('adapter died', { context: {} })))
+    );
+    const coordinator = new TrinityCoordinator({ eventBus: bus as never });
+
+    await coordinator.execute({ task: basicTask, agent: failing });
+
+    expect(events.length).toBeGreaterThan(0);
+    // The failure emits tokensUsed 0 — the flag is what stops that reading as
+    // a measured zero.
+    expect(events[0]?.tokensUsed).toBe(0);
+    expect(events[0]?.tokensMeasured).toBe(false);
+  });
+
+  it('surfaces the phase failure to the caller', async () => {
     // A failed phase produced no usage at all; recording 0 without provenance
     // would let a downstream total read it as a measured zero.
     const failing = createMockAgent([]);

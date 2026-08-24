@@ -10,8 +10,14 @@ Since #4744 a step whose adapter reported no usage carries `tokensUsed: 0` with
 
 `TrinityPhaseResult` and `ExpertContextObservation` now carry `tokensMeasured`
 alongside `tokensUsed`, and `trinity-coordinator` threads it through all three
-phases — a phase whose agent call FAILED records `false` rather than an
-unqualified `0`, because a failed call produced no measurement at all.
+phases.
+
+An earlier draft of this note claimed a FAILED phase records `false`. It did not:
+each phase returns `err` before pushing to history, so a failed phase never
+becomes a `TrinityPhaseResult` and that branch was unreachable. The failure IS
+observable through `protocol.trinity.phase_completed`, which fires either way —
+so the flag is carried on that event instead, which is where the failed phase's
+`0` was actually visible.
 
 `createPhaseResult` takes a single `usage: { tokensUsed, tokensMeasured? }`.
 Passing a count and its provenance as separate positional arguments is what let
