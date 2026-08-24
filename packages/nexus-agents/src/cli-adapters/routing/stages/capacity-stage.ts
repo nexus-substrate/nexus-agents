@@ -77,18 +77,30 @@ export interface CapacityStageConfig {
  * is at least as exhausted") does not survive the correction. Enforcement is
  * therefore held until a real quota signal exists (#4456).
  *
- * WIRING, corrected (#4658). This previously said `enforceHardLimits: true`
- * "remains available for callers who have one". No caller can set it, and the
- * reason is broader than the flag: `createCapacityStage` has **no non-test
- * caller at all**. The stage is not part of the production routing chain
- * (`Task -> BudgetRouter -> ZeroRouter -> PreferenceRouter -> TopsisRouter ->
- * LinUCB`), so neither the signal nor the exclusion runs today, and
- * `excludedCount` is structurally 0.
+ * WIRING, corrected twice (#4658). The original text promised
+ * `enforceHardLimits: true` "remains available for callers who have one", which
+ * no caller can set. The first correction then over-shot, claiming the stage is
+ * not in the production routing chain and that neither the signal nor the
+ * exclusion runs. That is wrong, and wrong in the dangerous direction — it
+ * reads as an invitation to delete live code.
  *
- * Do not read a passing capacity check as evidence of available capacity —
- * nothing is measuring it. Making the flag settable without first wiring the
- * stage AND supplying a real quota producer would only relocate the hole #4456
- * deliberately left open.
+ * What is actually true:
+ *
+ * - The stage RUNS on every route. `enableCapacityBalancing` defaults to `true`
+ *   (`composite-router-types.ts`), `composite-router.ts` constructs this class
+ *   directly, and `composite-router-stages.ts` awaits `filterArms` in the
+ *   pipeline. Each arm is assessed and logged.
+ * - The EXCLUSION does not run. `filterArms` only drops an arm when
+ *   `enforceHardLimits` is true, and the sole production construction passes a
+ *   hardcoded `{}`, leaving the `false` default. So `excludedCount` is
+ *   structurally 0 and `outcome.excluded` is always empty.
+ * - `createCapacityStage` — the FACTORY — has no non-test caller. That is a
+ *   fact about the factory, not about the stage, and conflating the two is what
+ *   produced the previous error.
+ *
+ * So: a passing capacity check is a real assessment, but it can never exclude.
+ * Making the flag settable without a real quota producer would only relocate
+ * the hole #4456 deliberately left open.
  *
  * (`BudgetStageConfig.enforceHardLimits` is a different setting on a different
  * router and IS enforced — see `budget-router.ts`. The mirrored name here is
