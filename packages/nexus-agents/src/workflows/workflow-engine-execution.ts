@@ -227,7 +227,7 @@ export function enforceStepBudgets(
  * budget enforcement can see whether the ledger it is enforcing against is
  * complete. `unmeasuredSteps > 0` means the recorded spend is a LOWER BOUND.
  */
-export interface PhaseUsageReport {
+interface PhaseUsageReport {
   /** Steps that reported real token usage and were recorded. */
   recordedSteps: number;
   /** Steps that reported no usage — not counted, and not treated as zero. */
