@@ -267,6 +267,21 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
 
     const voteCounts: VoteCounts = { approve, reject, abstain, total: votes.size };
 
+    // #4701: name the empty case, and name it the same way the other three
+    // strategies do (`strategies.ts:136`, `:174`, `:210`). `aggregateSimple`
+    // falls back to `posteriorApproval = 0.5` when nothing countable was cast,
+    // which this method would otherwise publish as a measured-looking 50% —
+    // absence rendered as a split. An all-abstain panel is reachable in
+    // production: an errored voter and an unparseable response both abstain.
+    if (approve + reject === 0) {
+      return {
+        approved: false,
+        approvalPercentage: 0,
+        voteCounts,
+        reason: 'No votes cast (excluding abstentions)',
+      };
+    }
+
     const rawPercentage = result.posteriorApproval * 100;
     const approvalPercentage = Number.isFinite(rawPercentage) ? rawPercentage : 0;
 
