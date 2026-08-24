@@ -31,6 +31,7 @@ import { listTemplateIds } from '../../pipeline/templates.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { measuredTrustTier } from '../middleware/request-context.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -392,7 +393,7 @@ export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): 
     // without a context has genuinely NOT measured a tier, and that flows to
     // UNMEASURED_TRUST_TIER rather than to a default. Absence stays absence.
     (args: unknown, ctx?: HandlerContext) =>
-      runPipelineHandler(args, logger, ctx?.requestContext.trustTier),
+      runPipelineHandler(args, logger, ctx && measuredTrustTier(ctx.requestContext)),
     { toolName: 'run_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_pipeline', deps.security);

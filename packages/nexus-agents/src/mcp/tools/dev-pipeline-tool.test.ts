@@ -46,9 +46,13 @@ import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import type { CallerInfo } from '../middleware/request-context.js';
 
 interface HandlerCtx {
-  requestContext: { trustTier: string };
+  // `caller` is part of the real RequestContext and is what makes the tier a
+  // measurement rather than the `deriveTrustTier({})` fallback (#4733), so the
+  // fixture type has to carry it.
+  requestContext: { trustTier: string; caller?: CallerInfo };
 }
 type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
 
@@ -57,8 +61,14 @@ interface CapturedToolResult {
   content: Array<{ type: string; text: string }>;
 }
 
-/** A stdio-tier (trusted) context, the production default for a local CLI caller. */
-const STDIO_CTX: HandlerCtx = { requestContext: { trustTier: '1' } };
+/**
+ * A stdio-tier (trusted) context, the production default for a local CLI caller.
+ * The `caller` is what a real stdio request carries; without it the tier is the
+ * constant fallback and is deliberately not threaded (#4733).
+ */
+const STDIO_CTX: HandlerCtx = {
+  requestContext: { trustTier: '1', caller: { transport: 'stdio' } },
+};
 
 /**
  * Registers the tool against a mock server and returns the captured callback.
@@ -343,16 +353,33 @@ describe('registerDevPipelineTool', () => {
 describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
   beforeEach(() => runDevPipelineMock.mockClear());
 
+  // #4733: these fixtures now carry `caller`, because a tier without one is
+  // not a measurement — `createRequestContext` derives from `caller = {}` and
+  // no production site supplies `options.trustTier` explicitly, so a
+  // caller-less tier is the constant fallback rather than a threaded value.
   it('threads the real RequestContext.trustTier into runDevPipeline options', async () => {
     const handler = captureHandler();
-    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '1' } });
+    await handler(
+      { task: 'Build feature X' },
+      { requestContext: { trustTier: '1', caller: { transport: 'stdio' } } }
+    );
     expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('1');
   });
 
   it("forwards an untrusted tier '3' unchanged (not silently downgraded to trusted)", async () => {
     const handler = captureHandler();
-    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
+    await handler(
+      { task: 'Build feature X' },
+      { requestContext: { trustTier: '3', caller: { authenticated: false } } }
+    );
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('3');
+  });
+
+  it('does NOT thread a caller-less tier — that is the constant, not a measurement', async () => {
+    // The shipped reality until a callerInfo producer exists (#4733).
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
   });
 });

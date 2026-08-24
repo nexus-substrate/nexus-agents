@@ -14,6 +14,7 @@ import {
   extractCallerInfo,
   contextForLogging,
   isRequestContext,
+  measuredTrustTier,
 } from './request-context.js';
 
 // ============================================================================
@@ -310,5 +311,44 @@ describe('isRequestContext', () => {
       trustTier: '5',
     };
     expect(isRequestContext(invalid)).toBe(false);
+  });
+});
+
+describe('measuredTrustTier (#4733)', () => {
+  // `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
+  // returns '3'. Since nothing supplies callerInfo today, EVERY tier is that
+  // fallback — so recording `context.trustTier` records a constant that reads
+  // as a measurement. That is what #4699 shipped.
+
+  it('returns undefined when no caller info was supplied — the shipped reality', () => {
+    const ctx = createRequestContext({ toolName: 'run_pipeline' });
+    // The raw field looks like a measurement...
+    expect(ctx.trustTier).toBe('3');
+    // ...and is not one.
+    expect(measuredTrustTier(ctx)).toBeUndefined();
+  });
+
+  it('returns the tier once caller info exists', () => {
+    const ctx = createRequestContext({
+      toolName: 'run_pipeline',
+      caller: { transport: 'stdio' },
+    });
+    expect(measuredTrustTier(ctx)).toBe('1');
+  });
+
+  it('distinguishes a genuine tier 3 from the fallback tier 3', () => {
+    // The case the raw field cannot express: an authenticated caller with an
+    // unknown client is really tier 3, and must not be conflated with "we did
+    // not measure".
+    const real = createRequestContext({
+      toolName: 'run_pipeline',
+      caller: { authenticated: false, clientId: 'something-unknown' },
+    });
+    expect(real.trustTier).toBe('3');
+    expect(measuredTrustTier(real)).toBe('3');
+
+    const fallback = createRequestContext({ toolName: 'run_pipeline' });
+    expect(fallback.trustTier).toBe('3');
+    expect(measuredTrustTier(fallback)).toBeUndefined();
   });
 });

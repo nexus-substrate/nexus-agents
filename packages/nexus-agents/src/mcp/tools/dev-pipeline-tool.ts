@@ -22,6 +22,7 @@ import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js
 import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { measuredTrustTier } from '../middleware/request-context.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -475,7 +476,7 @@ export function registerDevPipelineTool(server: McpServer, deps: DevPipelineTool
   // so the gate persists policy decisions to the shared hash chain.
   const secureHandler = createSecureHandler(
     (args: unknown, ctx: HandlerContext) =>
-      runDevPipelineHandler(args, logger, ctx.requestContext.trustTier, deps.auditLogger),
+      runDevPipelineHandler(args, logger, measuredTrustTier(ctx.requestContext), deps.auditLogger),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_dev_pipeline', deps.security);

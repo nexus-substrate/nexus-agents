@@ -250,3 +250,33 @@ export function isRequestContext(value: unknown): value is RequestContext {
     ['1', '2', '3', '4'].includes(obj['trustTier'])
   );
 }
+
+/**
+ * The request's trust tier ONLY when it was actually derived from caller
+ * information (#4733).
+ *
+ * `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
+ * returns `'3'` — so an absent caller is indistinguishable from a genuinely
+ * untrusted one at the reading end. Nothing in this tree supplies `callerInfo`
+ * today (its only references are the declaration and one forward in
+ * `secure-handler.ts`), so every tier is that fallback.
+ *
+ * Returning `undefined` for the fallback lets a consumer record `unmeasured`
+ * rather than a constant that reads as a measurement. When a real
+ * `callerInfo` producer lands this starts returning values without further
+ * change.
+ *
+ * NOTE this is caller AUTHENTICATION (transport / authenticated / clientId),
+ * not content provenance. A trusted client can submit hostile content. Consumers
+ * wanting provenance need a different signal — `classifyTrust` is the closest,
+ * but it requires a GitHub actor and does not apply to a bare goal string.
+ */
+export function measuredTrustTier(context: RequestContext): string | undefined {
+  // `caller` is always set by `createRequestContext` (to `{}` at minimum), but
+  // a partially-constructed context can omit it — and an absent caller is the
+  // same condition as an empty one: nothing was measured.
+  const caller: unknown = context.caller;
+  const hasCallerInfo =
+    typeof caller === 'object' && caller !== null && Object.keys(caller).length > 0;
+  return hasCallerInfo ? context.trustTier : undefined;
+}
