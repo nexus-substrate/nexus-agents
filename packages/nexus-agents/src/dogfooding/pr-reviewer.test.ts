@@ -147,15 +147,21 @@ describe('PRReviewer', () => {
       return r.value;
     }
 
-    it('defaults to audit: reports the would-be demotion but enforces the classifier tier', async () => {
+    it('defaults to enforce: the demotion is actually applied (#4667)', async () => {
       suspiciousPR();
       const v = await review();
-      expect(v.trustAssessment.gatingMode).toBe('audit');
-      // Demotion is reported for telemetry…
+      expect(v.trustAssessment.gatingMode).toBe('enforce');
       expect(Number(v.trustAssessment.reputationReconciledTier)).toBeGreaterThan(
         Number(v.trustAssessment.trustTier)
       );
-      // …but the enforced tier is the classifier tier.
+      expect(v.trustAssessment.enforcedTrustTier).toBe(v.trustAssessment.reputationReconciledTier);
+    });
+
+    it('audit still suppresses the demotion when explicitly requested', async () => {
+      suspiciousPR();
+      vi.stubEnv('NEXUS_REPUTATION_GATING', 'audit');
+      const v = await review();
+      expect(v.trustAssessment.gatingMode).toBe('audit');
       expect(v.trustAssessment.enforcedTrustTier).toBe(v.trustAssessment.trustTier);
     });
 

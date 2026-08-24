@@ -57,6 +57,32 @@ export { formatTriageComment } from './issue-triage-helpers.js';
 const logger = createLogger({ component: 'IssueTriage' });
 
 /**
+ * Appends an explicit `RefuseAction` when the enforced tier is hostile (#4667).
+ *
+ * The generated actions are kept rather than replaced: they are the audit trail
+ * of what was declined, and every one of them is already blocked by the policy
+ * gate at tier 4. What was missing is a positive statement that the input was
+ * refused and where to escalate it.
+ */
+function appendRefusalIfHostile(
+  actions: readonly AgentAction[],
+  gateDecision: ReputationGateDecision,
+  issue: IssueMetadata
+): AgentAction[] {
+  if (gateDecision.enforcedTier !== '4') return [...actions];
+  return [
+    ...actions,
+    {
+      type: 'RefuseAction',
+      reason:
+        `Issue #${String(issue.number)} was classified at hostile trust tier 4 ` +
+        `(${gateDecision.mode} mode). Automated triage actions are withheld pending human review.`,
+      escalateTo: 'security',
+    },
+  ];
+}
+
+/**
  * GitHub issue triage processor.
  *
  * Wires all 8 security modules into a read-only triage pipeline:
@@ -125,7 +151,14 @@ export class IssueTriage {
 
     // Generate and validate actions
     const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
-    const validatedActions = this.validateActions(actions, gateDecision);
+    // #4667: a hostile enforced tier must produce an explicit refusal. Before
+    // this, tier 4 merely meant every generated action failed the policy gate —
+    // the caller saw fewer approved actions and no statement that anything was
+    // refused, so the fail-closed escalation the rules mandate had no producer.
+    // RefuseAction is tier-4 "always allowed" (trust-classifier.ts:170), so it
+    // survives the gate that blocks the rest.
+    const withRefusal = appendRefusalIfHostile(actions, gateDecision, issueResult);
+    const validatedActions = this.validateActions(withRefusal, gateDecision);
 
     const result = this.buildResult({
       issue: issueResult,
