@@ -237,18 +237,25 @@ jobs:
           if ! pnpm lint 2>/dev/null; then
             LINT_RESULT="Fail"
           fi
+          # #4727 sibling: this correctly defaults to Unknown rather than 0%,
+          # but rendered it as "Unknown%" — and a bare `jq` (no -e) returns the
+          # string "null" for a missing field, which rendered as "null%". The
+          # unit now travels with the value so the summary cannot append "%" to
+          # a non-number.
           COVERAGE="Unknown"
           if pnpm test:coverage 2>/dev/null; then
             COVERAGE_FILE="packages/nexus-agents/coverage/coverage-summary.json"
             if [ -f "$COVERAGE_FILE" ]; then
-              COVERAGE=$(jq '.total.lines.pct' "$COVERAGE_FILE")
+              PCT=$(jq -er '.total.lines.pct' "$COVERAGE_FILE" 2>/dev/null) \
+                && COVERAGE="${PCT}%" \
+                || COVERAGE="Unknown (report present, .total.lines.pct missing)"
             fi
           fi
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| TypeScript | $TYPECHECK_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| ESLint | $LINT_RESULT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${COVERAGE} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
   create-issue:
