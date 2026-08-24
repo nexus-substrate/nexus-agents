@@ -4,9 +4,14 @@
  * @module scripts/check-governor-ratification.test
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
+import { governorPathsFromCodeowners } from './check-governor-review.js';
 import {
+  GOVERNOR_SECTION_END_LINE,
   evaluateRatification,
   governorOwnersFromCodeowners,
 } from './check-governor-ratification.js';
@@ -21,6 +26,7 @@ describe('governorOwnersFromCodeowners', () => {
     "# Governor's own core — never auto-merged",
     '/packages/nexus-agents/src/audit/ @williamzujkowski',
     '/CODEOWNERS @williamzujkowski @second-owner',
+    GOVERNOR_SECTION_END_LINE,
   ].join('\n');
 
   it('reads ratifiers from the governor section only', () => {
@@ -116,5 +122,61 @@ describe('evaluateRatification', () => {
     });
     expect(verdict.kind).toBe('unratified');
     if (verdict.kind === 'unratified') expect(verdict.touched).toHaveLength(2);
+  });
+});
+
+describe('governor section is bounded (#4683)', () => {
+  // The section ran from its heading to EOF, and `#` lines are skipped as
+  // comments, so a section heading below it could not end it either. Any
+  // CODEOWNERS entry appended after the governor section therefore became a
+  // governor path AND its owners became ratifiers. Latent only because the
+  // governor section happens to be last today.
+  const WITH_TRAILING_SECTION = [
+    "# Governor's own core — the governance-of-the-governor paths.",
+    '/packages/nexus-agents/src/audit/ @owner',
+    '/CODEOWNERS @owner',
+    GOVERNOR_SECTION_END_LINE,
+    '',
+    '# Docs — added later by someone with no governor authority',
+    '/docs/ @docs-maintainer',
+  ].join('\n');
+
+  it('does not let a later section grant ratification rights', () => {
+    const owners = governorOwnersFromCodeowners(WITH_TRAILING_SECTION);
+    expect(owners).toEqual(['owner']);
+    expect(owners).not.toContain('docs-maintainer');
+  });
+
+  it('does not absorb a later section into the governor paths', () => {
+    const paths = governorPathsFromCodeowners(WITH_TRAILING_SECTION);
+    expect(paths).toContain('/packages/nexus-agents/src/audit/');
+    expect(paths).not.toContain('/docs/');
+  });
+
+  it('yields NO ratifiers when the end marker is missing — fail closed', () => {
+    const unterminated = [
+      "# Governor's own core — the governance-of-the-governor paths.",
+      '/packages/nexus-agents/src/audit/ @owner',
+    ].join('\n');
+    // No end marker ⇒ the boundary is unknown ⇒ we cannot say who may ratify.
+    // `evaluateRatification` turns an empty owner set into `indeterminate`.
+    expect(governorOwnersFromCodeowners(unterminated)).toEqual([]);
+  });
+
+  it('still protects every governor path when the end marker is missing', () => {
+    const unterminated = [
+      "# Governor's own core — the governance-of-the-governor paths.",
+      '/packages/nexus-agents/src/audit/ @owner',
+    ].join('\n');
+    // Paths fail closed in the OTHER direction: more protected paths, not fewer.
+    expect(governorPathsFromCodeowners(unterminated)).toContain(
+      '/packages/nexus-agents/src/audit/'
+    );
+  });
+
+  it('the real CODEOWNERS carries the end marker', () => {
+    const real = readFileSync(resolve(import.meta.dirname, '../CODEOWNERS'), 'utf8');
+    expect(real).toContain(GOVERNOR_SECTION_END_LINE);
+    expect(governorOwnersFromCodeowners(real).length).toBeGreaterThan(0);
   });
 });

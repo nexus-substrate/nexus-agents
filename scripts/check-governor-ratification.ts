@@ -48,13 +48,17 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { governorFilesTouched, governorPathsFromCodeowners } from './check-governor-review.js';
+import {
+  GOVERNOR_SECTION_END_LINE,
+  governorFilesTouched,
+  governorPathsFromCodeowners,
+  governorSectionLines,
+} from './check-governor-review.js';
+
+export { GOVERNOR_SECTION_END_LINE };
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
-
-/** The marker heading for the governance-of-the-governor CODEOWNERS section. */
-const GOVERNOR_SECTION_MARKER = "Governor's own core";
 
 /** The one label that asserts out-of-band owner ratification. */
 export const RATIFICATION_LABEL = 'owner-ratified';
@@ -81,23 +85,23 @@ export interface RatificationInputs {
 /**
  * Extract the logins that may ratify a governor-path change.
  *
- * Reads the same governance-of-the-governor section as
- * {@link governorPathsFromCodeowners}, taking every `@login` token after the
- * path pattern. Owners of *other* CODEOWNERS sections cannot ratify a governor
- * change — being trusted with `src/security/` is not being trusted with the
- * audit hash chain.
+ * Scoped to the governor section only — owners of *other* CODEOWNERS sections
+ * cannot ratify a governor change, because being trusted with `src/security/`
+ * is not being trusted with the audit hash chain. Before #4683 that sentence
+ * was a comment rather than behaviour: the section ran to end of file, so any
+ * entry appended below it granted ratification rights.
+ *
+ * Fails CLOSED on an unterminated section by returning NO owners. An unbounded
+ * section means we cannot say who is authorised, and
+ * {@link evaluateRatification} turns an empty owner set into `indeterminate` —
+ * which is the honest verdict, not a default dressed as a measurement.
  */
 export function governorOwnersFromCodeowners(codeownersText: string): string[] {
+  const { lines, terminated } = governorSectionLines(codeownersText);
+  if (!terminated) return [];
+
   const owners = new Set<string>();
-  let inSection = false;
-  for (const raw of codeownersText.split('\n')) {
-    if (raw.includes(GOVERNOR_SECTION_MARKER)) {
-      inSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) continue;
+  for (const line of lines) {
     for (const token of line.split(/\s+/).slice(1)) {
       if (token.startsWith('@')) owners.add(token.slice(1).toLowerCase());
     }

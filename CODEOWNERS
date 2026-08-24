@@ -50,3 +50,10 @@
 /CLAUDE.md @williamzujkowski
 /AGENTS.md @williamzujkowski
 /CODEOWNERS @williamzujkowski
+
+# END governor-owned paths
+# ^ Sentinel (#4683). The governor section is bounded by this line. Entries
+# BELOW it are ordinary CODEOWNERS rules: they are not governor paths, and
+# their owners cannot ratify a governor change. Add new governor paths ABOVE
+# this marker. Removing it makes the ratification verdict `indeterminate`,
+# which fails closed.
