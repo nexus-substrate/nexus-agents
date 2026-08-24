@@ -7,10 +7,14 @@
  * @module security/corroboration-validator.test
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import type { AgentAction, SourceCitation } from './action-schema.js';
 import { validateCorroboration, getCorroborationRules } from './corroboration-validator.js';
+import { getRequiredTrustTier } from './trust-classifier.js';
 
 // ============================================================================
 // Test Fixtures: Source Citations
@@ -303,5 +307,98 @@ describe('getCorroborationRules', () => {
   it('returns empty array for RefuseAction', () => {
     const rules = getCorroborationRules('RefuseAction');
     expect(rules).toHaveLength(0);
+  });
+});
+
+describe('the governance text matches the code (#4688)', () => {
+  // `.rules/untrusted-input.md` said FOUR contradictory things about what
+  // corroborates a typed action: "always cite Tier 1" (Mandatory Rule 2), "Tier
+  // 1 or Tier 2" (the CLAUDE.md/AGENTS.md summary), a canonical POSITIVE
+  // example citing Tier 3, and a Forbidden clause implying nothing below
+  // GeneratePatchPlan needs corroboration.
+  //
+  // The implementation oscillated as a result — each swing was defensible
+  // against the text a reviewer happened to read, and an adversarial review
+  // reported the code as violating a rule whose own worked example did the
+  // thing it called forbidden. A consensus vote resolved the reading; the code
+  // already implemented it. These tests stop the texts drifting apart again.
+
+  const RULES_DOC = readFileSync(
+    resolve(import.meta.dirname, '../../../../.rules/untrusted-input.md'),
+    'utf8'
+  );
+
+  const TYPED_ACTIONS = [
+    'SummarizeIssue',
+    'ProposeLabels',
+    'DraftReply',
+    'RequestHumanApproval',
+    'ClassifyIssue',
+    'IdentifyDuplicates',
+    'RefuseAction',
+    'GeneratePatchPlan',
+  ] as const;
+
+  /**
+   * The action names in the FIRST COLUMN of the per-action table only.
+   *
+   * Parsing the column rather than searching the section matters: a first pass
+   * of this test used `toContain` over the rest of the file and did not notice
+   * a renamed table row, because the name still appeared in the worked
+   * examples further down. A drift test that a rename walks past is decoration.
+   */
+  function documentedActions(): Set<string> {
+    const section = RULES_DOC.slice(RULES_DOC.indexOf('## Per-Action Citation Floor'));
+    const body = section.slice(0, section.indexOf('\n\n**'));
+    const names = new Set<string>();
+    for (const line of body.split('\n')) {
+      if (!line.startsWith('|')) continue;
+      const firstCell = line.split('|')[1];
+      if (firstCell === undefined) continue;
+      for (const m of firstCell.matchAll(/`([A-Za-z]+)`/g)) {
+        if (m[1] !== undefined) names.add(m[1]);
+      }
+    }
+    return names;
+  }
+
+  it('every typed action has a row in the citation-floor table', () => {
+    const documented = documentedActions();
+    expect(documented.size).toBeGreaterThan(0);
+    for (const action of TYPED_ACTIONS) {
+      expect(documented.has(action), `'${action}' has no row in the table`).toBe(true);
+    }
+  });
+
+  it('the table documents no action that does not exist', () => {
+    // Catches the other drift direction: a row left behind after an action is
+    // renamed or removed would otherwise sit there looking authoritative.
+    for (const documented of documentedActions()) {
+      expect(
+        (TYPED_ACTIONS as readonly string[]).includes(documented),
+        `table documents '${documented}', which is not a typed action`
+      ).toBe(true);
+    }
+  });
+
+  it('every typed action has corroboration rules in code', () => {
+    for (const action of TYPED_ACTIONS) {
+      expect(getCorroborationRules(action), `'${action}' has no rules entry`).toBeDefined();
+    }
+  });
+
+  it('the documented fail-closed default matches the code', () => {
+    // The AI/ML seat made this a condition of the vote: an action absent from
+    // the table must get the STRICT floor, so the table fails closed on drift.
+    expect(RULES_DOC).toMatch(/absent from the table gets the STRICT floor/i);
+    expect(getRequiredTrustTier('SomeActionInventedTomorrow')).toBe('1');
+  });
+
+  it('documents that privilege-granting labels are never proposable', () => {
+    // Shipped in #4689 as PRIVILEGED_LABEL. The rule is keyed on the action's
+    // effect, not author trust, and the doc has to say so or the next reader
+    // will "relax" it for trusted authors.
+    expect(RULES_DOC).toContain('owner-ratified');
+    expect(RULES_DOC).toMatch(/never proposable/i);
   });
 });
