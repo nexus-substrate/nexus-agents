@@ -260,3 +260,61 @@ describe('isNonRetryableError', () => {
     expect(isNonRetryableError(error)).toBe(false);
   });
 });
+
+describe('isNonRetryableError sees through the WorkflowError wrap (#4672)', () => {
+  // The guard could not fire in production. `step-executor.ts` wraps EVERY
+  // failure in a `WorkflowError` (`executeAttempt`'s error paths), and
+  // `WorkflowError` hardcodes `code: ErrorCode.WORKFLOW_ERROR` while `Omit`-ing
+  // `code` from its options — so a caller cannot set VALIDATION_ERROR even
+  // deliberately, and `name` is always `'WorkflowError'`. Both branches of the
+  // guard were therefore unreachable from the one call site that uses it, and
+  // validation failures were retried to exhaustion.
+  //
+  // The original error survives as `cause` (step-executor.ts:341), so the fix
+  // is to look there rather than to change the error class.
+
+  it('is non-retryable when a ValidationError is wrapped', () => {
+    const original = new Error('bad input');
+    original.name = 'ValidationError';
+    const wrapped = new WorkflowError("Unexpected error in step 's1': bad input", {
+      cause: original,
+    });
+    expect(isNonRetryableError(wrapped)).toBe(true);
+  });
+
+  it('is non-retryable when a VALIDATION_ERROR-coded NexusError is wrapped', () => {
+    const original = new NexusError('bad input', { code: ErrorCode.VALIDATION_ERROR });
+    const wrapped = new WorkflowError('wrapped', { cause: original });
+    expect(isNonRetryableError(wrapped)).toBe(true);
+  });
+
+  it('is non-retryable for INVALID_INPUT and WORKFLOW_PARSE_ERROR too', () => {
+    for (const code of [ErrorCode.INVALID_INPUT, ErrorCode.WORKFLOW_PARSE_ERROR]) {
+      const wrapped = new WorkflowError('wrapped', {
+        cause: new NexusError('nope', { code }),
+      });
+      expect(isNonRetryableError(wrapped), `code ${code}`).toBe(true);
+    }
+  });
+
+  it('stays RETRYABLE for a wrapped transient failure', () => {
+    // The whole point of retrying. A network blip must not be mistaken for a
+    // validation failure just because it arrived wrapped.
+    const wrapped = new WorkflowError('wrapped', { cause: new Error('ECONNRESET') });
+    expect(isNonRetryableError(wrapped)).toBe(false);
+  });
+
+  it('handles an absent cause — the named empty case', () => {
+    // No cause is not evidence of non-retryability. Absence must read as
+    // "retry", the pre-existing behaviour, not as a default in either direction.
+    expect(isNonRetryableError(new WorkflowError('step failed'))).toBe(false);
+  });
+
+  it('terminates on a self-referential cause chain', () => {
+    // Defensive: `cause` is untyped at the boundary and a cycle would hang the
+    // retry loop rather than fail it.
+    const a = new WorkflowError('a');
+    (a as { cause?: unknown }).cause = a;
+    expect(isNonRetryableError(a)).toBe(false);
+  });
+});

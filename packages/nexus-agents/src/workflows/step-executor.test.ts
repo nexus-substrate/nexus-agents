@@ -578,6 +578,71 @@ describe('StepExecutor', () => {
   });
 
   describe('retry logic', () => {
+    // #4672 seam test. `isNonRetryableError` was structurally unable to fire —
+    // every failure reaches it wrapped in a `WorkflowError`, whose code is
+    // hardcoded and whose name is never 'ValidationError'. Unit-testing the
+    // helper alone would not have caught that: the helper looked correct, and
+    // the defect lived in the join between the wrap and the guard. So this
+    // asserts the observable consequence — attempt COUNT — through the real
+    // executor.
+    it('does NOT retry a validation failure (#4672)', async () => {
+      let attemptCount = 0;
+      const validationFactory: IExpertFactory = {
+        createForRole: () => {
+          attemptCount++;
+          const validation = new Error('input "target" is required');
+          validation.name = 'ValidationError';
+          return ok(createMockExpert({ executeResult: err(validation as AgentError) }));
+        },
+      };
+
+      const executor = createStepExecutor({ expertFactory: validationFactory });
+      const step: WorkflowStep = {
+        id: 'step1',
+        agent: 'code_expert',
+        action: 'analyze',
+        inputs: {},
+        retries: 3,
+      };
+
+      const result = await executor.execute(step, context, { retryDelayMs: 1 });
+
+      // Retrying a validation failure cannot succeed — the input is identical
+      // every time — so it must stop after the first attempt.
+      expect(attemptCount).toBe(1);
+
+      // And it surfaces as an ERROR result, not the ok({status:'failed'})
+      // envelope that exhausted retries produce. The two are different
+      // outcomes and the caller can tell them apart: "this will never work"
+      // versus "this kept not working".
+      expect(result.ok).toBe(false);
+    });
+
+    it('still retries a transient failure the full allowance (#4672 control)', async () => {
+      // The other direction: the fix must not turn every wrapped error into a
+      // permanent one. Without this, "does not retry" could pass by breaking
+      // retries entirely.
+      let attemptCount = 0;
+      const transientFactory: IExpertFactory = {
+        createForRole: () => {
+          attemptCount++;
+          return ok(createMockExpert({ executeResult: err(new AgentError('ECONNRESET')) }));
+        },
+      };
+
+      const executor = createStepExecutor({ expertFactory: transientFactory });
+      const step: WorkflowStep = {
+        id: 'step1',
+        agent: 'code_expert',
+        action: 'analyze',
+        inputs: {},
+        retries: 3,
+      };
+
+      await executor.execute(step, context, { retryDelayMs: 1 });
+      expect(attemptCount).toBeGreaterThan(1);
+    });
+
     it('should retry on failure', async () => {
       let attemptCount = 0;
       const failingFactory: IExpertFactory = {

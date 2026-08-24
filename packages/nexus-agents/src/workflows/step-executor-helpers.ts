@@ -8,7 +8,7 @@
  */
 
 import type { WorkflowStep } from '../core/index.js';
-import { WorkflowError, TimeoutError, ErrorCode } from '../core/index.js';
+import { WorkflowError, TimeoutError, ErrorCode, NexusError } from '../core/index.js';
 import type { WorkflowExecutionContext } from './execution-context.js';
 
 /** Maximum retry delay (capped with exponential backoff). */
@@ -150,18 +150,46 @@ export function extractErrorMessage(error: Error | undefined): string {
   return error.message;
 }
 
+/** Error codes that mean "this will fail identically next time — stop". */
+const NON_RETRYABLE_CODES: ReadonlySet<string> = new Set<string>([
+  ErrorCode.VALIDATION_ERROR,
+  ErrorCode.WORKFLOW_PARSE_ERROR,
+  ErrorCode.INVALID_INPUT,
+]);
+
+/** Whether THIS error (ignoring its cause) is one we must not retry. */
+function isNonRetryableSelf(error: Error): boolean {
+  if (error.name === 'ValidationError') return true;
+  return error instanceof NexusError && NON_RETRYABLE_CODES.has(error.code);
+}
+
 /**
  * Determines if an error should not be retried.
+ *
+ * Walks the `cause` chain (#4672). It has to: `step-executor` wraps EVERY
+ * failure in a `WorkflowError`, and `WorkflowError` hardcodes
+ * `code: ErrorCode.WORKFLOW_ERROR` while `Omit`-ing `code` from its options —
+ * so a wrapped validation failure arrives with `name === 'WorkflowError'` and
+ * the workflow code, and neither of the original checks could ever be true.
+ * The guard was structurally incapable of stopping a retry, and validation
+ * failures were retried to exhaustion.
+ *
+ * The original error survives as `cause` (`step-executor.ts` sets it on the
+ * wrap), so the identity is recoverable — it was just never looked at.
+ *
+ * Absence of a cause means RETRY, the prior behaviour: no evidence of a
+ * permanent failure is not evidence of one.
  */
 export function isNonRetryableError(error: Error): boolean {
-  if (error.name === 'ValidationError') return true;
-  if (error instanceof WorkflowError) {
-    const code = error.code;
-    return (
-      code === ErrorCode.VALIDATION_ERROR ||
-      code === ErrorCode.WORKFLOW_PARSE_ERROR ||
-      code === ErrorCode.INVALID_INPUT
-    );
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  // `cause` is untyped at the boundary, and a cycle would hang the retry loop
+  // rather than fail it — so track what we have visited.
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    if (isNonRetryableSelf(current)) return true;
+    current = (current as { cause?: unknown }).cause;
   }
   return false;
 }
