@@ -30,7 +30,7 @@ import {
 import { listTemplateIds } from '../../pipeline/templates.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
-import { createSecureHandler } from '../middleware/secure-handler.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -306,7 +306,11 @@ async function executePipelineBody(
 }
 
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
-async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+async function runPipelineHandler(
+  args: unknown,
+  logger: ILogger,
+  trustTier?: string
+): Promise<ToolResult> {
   const parsed = PipelineInputSchema.safeParse(args);
   if (!parsed.success) {
     return toolStructuredError({
@@ -333,6 +337,9 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
       simulateVotes: input.simulateVotes,
       votingStrategy: input.votingStrategy,
       quickMode: input.quickMode,
+      // #4694: record-only. Absent stays absent — createAgentStages stamps
+      // UNMEASURED_TRUST_TIER rather than inventing a trusted default.
+      ...(trustTier !== undefined ? { trustTier } : {}),
       budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
@@ -375,11 +382,19 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
  */
 export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_pipeline' });
-  const secureHandler = createSecureHandler((args: unknown) => runPipelineHandler(args, logger), {
-    toolName: 'run_pipeline',
-    rateLimiter: deps.rateLimiter,
-    logger,
-  });
+  // #4694: 2-arg context-aware form, mirroring dev-pipeline-tool (#3712).
+  // `run_pipeline` had NO trust tier at all — zero references in this file —
+  // so the shared executor path it drives could not record, let alone enforce,
+  // the provenance of its input. createSecureHandler always supplies a
+  // HandlerContext with a derived trustTier.
+  const secureHandler = createSecureHandler(
+    // Optional chaining is deliberate, not defensive noise: a handler invoked
+    // without a context has genuinely NOT measured a tier, and that flows to
+    // UNMEASURED_TRUST_TIER rather than to a default. Absence stays absence.
+    (args: unknown, ctx?: HandlerContext) =>
+      runPipelineHandler(args, logger, ctx?.requestContext.trustTier),
+    { toolName: 'run_pipeline', rateLimiter: deps.rateLimiter, logger }
+  );
   const timeoutMs = getToolTimeout('run_pipeline', deps.security);
   const wrapped = wrapToolWithTimeout('run_pipeline', secureHandler, { timeoutMs, logger });
 
