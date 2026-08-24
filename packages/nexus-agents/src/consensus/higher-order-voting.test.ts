@@ -20,6 +20,7 @@ import {
   type AgentPairKey,
 } from './higher-order-types.js';
 import { CorrelationTracker, createCorrelationTracker } from './correlation-tracker.js';
+import { SimpleMajorityStrategy } from './strategies.js';
 import {
   OWVoting,
   createOWVoting,
@@ -679,6 +680,60 @@ describe('OWVoting', () => {
       expect(outcome.approvalPercentage).toBeDefined();
       expect(outcome.voteCounts).toBeDefined();
       expect(outcome.reason).toBeDefined();
+    });
+  });
+
+  // #4701: the higher-order strategy was the only one of the four missing the
+  // zero-voting-votes guard its siblings have (`strategies.ts:136`, `:174`).
+  // `aggregateSimple` fell to `total > 0 ? approve/total : 0.5`, so a panel that
+  // cast no countable votes reported a measured-looking 50%.
+  describe('empty and all-abstain panels (#4701)', () => {
+    it('reports 0% and says no votes were cast, not a fabricated 50% midpoint', () => {
+      const outcome = voting.calculateOutcome(new Map());
+
+      expect(outcome.approvalPercentage).toBe(0);
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No votes cast');
+    });
+
+    it('treats an all-abstain panel as no votes cast — abstentions are not a split', () => {
+      // Reachable in production: an errored voter (voter-execution.ts:92) and an
+      // unparseable response (protocol-helpers.ts:101) both yield `abstain`.
+      const votes = createVoteMap([
+        ['alice', 'abstain'],
+        ['bob', 'abstain'],
+        ['charlie', 'abstain'],
+      ]);
+
+      const outcome = voting.calculateOutcome(new Map(votes));
+
+      expect(outcome.approvalPercentage).toBe(0);
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No votes cast');
+      expect(outcome.voteCounts).toEqual({ approve: 0, reject: 0, abstain: 3, total: 3 });
+    });
+
+    it('matches SimpleMajorityStrategy on the same empty input', () => {
+      // The point of the fix is consistency: four strategies, one empty-case answer.
+      const simple = new SimpleMajorityStrategy();
+
+      const higherOrder = voting.calculateOutcome(new Map());
+      const simpleOutcome = simple.calculateOutcome(new Map());
+
+      expect(higherOrder.approvalPercentage).toBe(simpleOutcome.approvalPercentage);
+      expect(higherOrder.approved).toBe(simpleOutcome.approved);
+    });
+
+    it('still reports a real 1-1 split as 50% — the guard must not swallow a genuine tie', () => {
+      const votes = createVoteMap([
+        ['alice', 'approve'],
+        ['bob', 'reject'],
+      ]);
+
+      const outcome = voting.calculateOutcome(new Map(votes));
+
+      expect(outcome.approvalPercentage).toBe(50);
+      expect(outcome.reason).not.toContain('No votes cast');
     });
   });
 
