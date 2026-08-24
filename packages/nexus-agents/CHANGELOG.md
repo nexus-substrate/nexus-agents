@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 3.13.5
+
+### Patch Changes
+
+- [#4716](https://github.com/nexus-substrate/nexus-agents/pull/4716) [`684a197`](https://github.com/nexus-substrate/nexus-agents/commit/684a197f6debe5c6f0ae8e50177d8f37a1fe58d2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): say whether the higher-order analysis actually decided the vote
+
+  `strategy: 'higher_order'` does not produce a higher-order verdict. The decision
+  comes from `ConsensusEngine.close()` → `HigherOrderVotingStrategy.calculateOutcome`,
+  which calls `aggregateSimpleInternal` — a plain `approve / (approve + reject)`
+  ratio with no correlation input. The correlation-aware run happens separately
+  and is consumed only as response metadata plus one escalation check.
+
+  That made the metadata actively misleading rather than merely incomplete:
+  `method` can read `'ow'` with a non-empty `downweightedAgents`, from which a
+  reader reasonably concludes the correlation analysis produced the verdict. It
+  did not — the "several voters that are really one opinion" case is detected and
+  then discarded.
+
+  `HigherOrderMetadata.appliedToDecision` now states this, and it travels into the
+  persisted vote record, which is the artifact a later reviewer trusts. It is
+  hardcoded `false` rather than computed, because no code path currently routes
+  that result to the verdict and a computed `false` would imply one exists.
+
+  Making the tally genuinely correlation-aware changes governance outcomes and is
+  tracked separately. This makes the current state legible in the meantime.
+
 ## 3.13.4
 
 ### Patch Changes
