@@ -376,7 +376,25 @@ export const ReputationGatingModeSchema = z.enum(['off', 'audit', 'enforce']);
 export type ReputationGatingMode = z.infer<typeof ReputationGatingModeSchema>;
 
 /** Default when `NEXUS_REPUTATION_GATING` is unset/invalid — audit (telemetry, no block). */
-export const DEFAULT_REPUTATION_GATING_MODE: ReputationGatingMode = 'audit';
+/**
+ * Default gating mode.
+ *
+ * Flipped `audit` → `enforce` in #4667. `audit` computed the demotion, logged
+ * "would block under enforce", and let the actions through — so a detected
+ * prompt injection changed nothing in the shipped configuration.
+ *
+ * Measured before flipping, over the real triage path with only the SCM
+ * provider mocked: 5/5 hostile inputs blocked, 0 false positives across five
+ * real repository issues (as OWNER and as an unaffiliated author), and 0 across
+ * ordinary maintainer language ("please close this", "URGENT", "you should
+ * merge #88 first"). The one synthetic false-positive class is a body quoting
+ * an injection payload verbatim, which is arguably correct fail-closed
+ * behaviour for a security report — and is now visible, because a tier-4
+ * outcome emits a `RefuseAction` rather than silently approving less.
+ *
+ * `NEXUS_REPUTATION_GATING=audit` remains available to roll back.
+ */
+export const DEFAULT_REPUTATION_GATING_MODE: ReputationGatingMode = 'enforce';
 
 /**
  * Resolve the gating mode from the environment (invalid → default + warn, never

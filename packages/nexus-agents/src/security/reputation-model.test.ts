@@ -453,9 +453,9 @@ describe('reputation gating rollout (#3122)', () => {
   }
 
   describe('resolveReputationGatingMode', () => {
-    it('defaults to audit when unset', () => {
-      expect(resolveReputationGatingMode({})).toBe('audit');
-      expect(DEFAULT_REPUTATION_GATING_MODE).toBe('audit');
+    it('defaults to enforce when unset (#4667)', () => {
+      expect(resolveReputationGatingMode({})).toBe('enforce');
+      expect(DEFAULT_REPUTATION_GATING_MODE).toBe('enforce');
     });
 
     it('parses off/audit/enforce case-insensitively', () => {
@@ -465,8 +465,8 @@ describe('reputation gating rollout (#3122)', () => {
     });
 
     it('coerces an invalid value to the default (never throws — security layer)', () => {
-      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'banana' })).toBe('audit');
-      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: '' })).toBe('audit');
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'banana' })).toBe('enforce');
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: '' })).toBe('enforce');
     });
   });
 
