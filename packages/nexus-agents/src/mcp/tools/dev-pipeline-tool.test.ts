@@ -46,9 +46,13 @@ import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import type { CallerInfo } from '../middleware/request-context.js';
 
 interface HandlerCtx {
-  requestContext: { trustTier: string };
+  // `caller` is part of the real RequestContext and is what makes the tier a
+  // measurement rather than the `deriveTrustTier({})` fallback (#4733), so the
+  // fixture type has to carry it.
+  requestContext: { trustTier: string; caller?: CallerInfo };
 }
 type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
 
@@ -57,8 +61,14 @@ interface CapturedToolResult {
   content: Array<{ type: string; text: string }>;
 }
 
-/** A stdio-tier (trusted) context, the production default for a local CLI caller. */
-const STDIO_CTX: HandlerCtx = { requestContext: { trustTier: '1' } };
+/**
+ * A stdio-tier (trusted) context, the production default for a local CLI caller.
+ * The `caller` is what a real stdio request carries; without it the tier is the
+ * constant fallback and is deliberately not threaded (#4733).
+ */
+const STDIO_CTX: HandlerCtx = {
+  requestContext: { trustTier: '1', caller: { transport: 'stdio' } },
+};
 
 /**
  * Registers the tool against a mock server and returns the captured callback.
