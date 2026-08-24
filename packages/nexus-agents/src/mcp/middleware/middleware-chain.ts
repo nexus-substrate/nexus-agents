@@ -9,6 +9,7 @@
  */
 
 import type { z } from 'zod';
+import { getToolFitnessLedger } from '../../governance/tool-fitness-ledger.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import { validateToolInput } from './validation.js';
@@ -399,9 +400,53 @@ export function createMiddlewareChain(
       const requestContext = createRequestContext({ toolName: config.toolName });
       const requestLogger = logger.child(contextForLogging(requestContext));
       const ctx: MiddlewareContext = { requestContext, logger: requestLogger };
-      return composed(args, ctx, (finalArgs, finalCtx) => handler(finalArgs, finalCtx));
+      try {
+        const result = await composed(args, ctx, (finalArgs, finalCtx) =>
+          handler(finalArgs, finalCtx)
+        );
+        recordToolFitness(config.toolName, result.isError !== true);
+        return result;
+      } catch (error: unknown) {
+        // BACKSTOP, not the normal path: an error middleware converts a thrown
+        // handler into `{ isError: true }`, so throws are already recorded
+        // above. This catches a throw that escapes that middleware — if it is
+        // ever removed or itself fails, the ledger must not silently lose the
+        // failure and make the tool look cleaner than it is.
+        recordToolFitness(config.toolName, false);
+        throw error;
+      }
     };
   };
+}
+
+/**
+ * Append one tool-call outcome to the tool-fitness ledger (#4656).
+ *
+ * This is the ledger's first production writer. Without it `report()` returned
+ * `[]`, so `detectConsolidationCandidates` and `detectDeprecationCandidates`
+ * could not emit — while the consumer chain below them was fully wired
+ * (`improvement-review.ts` → remediation tasks → issue filing).
+ *
+ * SITE CHOICE. The obvious-looking site, `tool-wrapper.ts`'s `classifyResult`,
+ * is reached only from `runMismatchedCall` — the timeout-mismatch path. Writing
+ * there would have recorded a sample biased toward mismatched calls and
+ * systematically mislabelled tools as unfit. This is the per-call completion
+ * point every wrapped tool passes through.
+ *
+ * KNOWN GAP, stated so absence is not misread: `execute_expert` registers via
+ * `registerToolTask` and does not go through this chain, so it produces no
+ * fitness events. "No data for execute_expert" means unmeasured, NOT unused.
+ *
+ * Best-effort: a ledger write must never fail a tool call. Growth is bounded by
+ * the ledger's own retained-event cap.
+ */
+function recordToolFitness(toolName: string, success: boolean): void {
+  try {
+    getToolFitnessLedger().record({ tool: toolName, success });
+  } catch {
+    // Intentionally silent — this is telemetry on the hot path, and a logger
+    // call here would itself be a failure mode on a broken data dir.
+  }
 }
 
 /**
