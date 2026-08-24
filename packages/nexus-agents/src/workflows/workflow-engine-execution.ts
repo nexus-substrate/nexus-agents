@@ -5,20 +5,11 @@
  * workflow-engine.ts to keep files under 400 lines.
  */
 
-import { ok, err, getTimeProvider } from '../core/index.js';
-import type { Result, ILogger, StepResult } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
+import type { ILogger, StepResult } from '../core/index.js';
 import type { WorkflowDefinition } from '../core/index.js';
-import { WorkflowError } from '../core/index.js';
 import { generateUUID } from '../utils/index.js';
 import { ContextManager } from '../agents/context-manager.js';
-import {
-  applyBudgetEnforcement,
-  enforceBudgetForStep,
-  createWorkflowCircuitBreaker,
-  type BudgetEnforcementConfig,
-  type IBudgetCircuitBreaker,
-} from './budget-enforcement.js';
-import type { WorkflowStep } from './workflow-types.js';
 import type { ExecutionContext, ResolvedConfig } from './workflow-engine-helpers.js';
 import { MAX_TRACKED_EXECUTIONS } from './workflow-engine-helpers.js';
 import type { ActiveExecution } from './workflow-engine-types.js';
@@ -50,28 +41,6 @@ export function createContextManagerForWorkflow(
   if (config.contextManagerConfig === undefined) return undefined;
   const budget = workflow.defaultBudget ?? config.defaultBudget;
   return new ContextManager({ ...config.contextManagerConfig, budget, logger });
-}
-
-/**
- * Create a budget circuit breaker for workflow execution.
- */
-export function createBudgetCircuitBreakerForWorkflow(
-  contextManager: ContextManager | undefined,
-  workflow: WorkflowDefinition,
-  config: ResolvedConfig,
-  logger: ILogger
-): IBudgetCircuitBreaker | undefined {
-  const budgetConfig: BudgetEnforcementConfig = {
-    engineDefaultBudget: config.defaultBudget,
-    logger,
-  };
-  if (workflow.defaultBudget !== undefined) {
-    budgetConfig.workflowDefaultBudget = workflow.defaultBudget;
-  }
-  if (config.budgetCircuitBreakerConfig !== undefined) {
-    budgetConfig.circuitBreakerConfig = config.budgetCircuitBreakerConfig;
-  }
-  return createWorkflowCircuitBreaker(contextManager, budgetConfig);
 }
 
 /**
@@ -124,11 +93,6 @@ export function initializeExecution(params: InitExecutionParams): InitExecutionR
   // Create context manager if configured
   const contextManager = createContextManagerForWorkflow(config, workflow, logger);
 
-  // Create circuit breaker if enforcement is enabled
-  const budgetCircuitBreaker = config.enableBudgetEnforcement
-    ? createBudgetCircuitBreakerForWorkflow(contextManager, workflow, config, logger)
-    : undefined;
-
   const context: ExecutionContext = {
     workflowId: workflow.name,
     executionId,
@@ -137,8 +101,6 @@ export function initializeExecution(params: InitExecutionParams): InitExecutionR
     variables: new Map(),
     abortController: new AbortController(),
     contextManager,
-    budgetEvents: [],
-    budgetCircuitBreaker,
   };
 
   const execution: ActiveExecution = {
@@ -160,63 +122,6 @@ export function initializeExecution(params: InitExecutionParams): InitExecutionR
   return { executionId, context, startTime, execution };
 }
 
-/** Options for enforceStepBudgets. */
-export interface EnforceStepBudgetsOptions {
-  steps: WorkflowStep[];
-  context: ExecutionContext;
-  workflow: WorkflowDefinition;
-  totalSteps: number;
-  config: ResolvedConfig;
-  logger: ILogger;
-}
-
-/**
- * Enforce budget for steps in a phase.
- */
-export function enforceStepBudgets(
-  options: EnforceStepBudgetsOptions
-): Result<void, WorkflowError> {
-  const { steps, context, workflow, totalSteps, config, logger } = options;
-  const budgetConfig: BudgetEnforcementConfig = {
-    engineDefaultBudget: config.defaultBudget,
-    logger,
-  };
-  if (workflow.defaultBudget !== undefined) {
-    budgetConfig.workflowDefaultBudget = workflow.defaultBudget;
-  }
-  if (config.budgetCircuitBreakerConfig !== undefined) {
-    budgetConfig.circuitBreakerConfig = config.budgetCircuitBreakerConfig;
-  }
-
-  for (const step of steps) {
-    // Use circuit breaker if available, otherwise fall back to logging-only
-    if (context.budgetCircuitBreaker !== undefined) {
-      const remainingSteps = totalSteps - context.stepResults.size;
-      const allocation = context.budgetCircuitBreaker.allocateForStep(step.id, remainingSteps);
-      const result = enforceBudgetForStep({
-        step,
-        contextManager: context.contextManager,
-        circuitBreaker: context.budgetCircuitBreaker,
-        budgetEvents: context.budgetEvents,
-        config: budgetConfig,
-        estimatedTokens: allocation.allocatedTokens,
-      });
-      if (!result.ok) {
-        return err(
-          new WorkflowError(`Budget exceeded for step '${step.id}': ${result.error.message}`, {
-            context: { stepId: step.id, circuitState: result.error.circuitState },
-            cause: result.error,
-          })
-        );
-      }
-    } else {
-      // Legacy logging-only enforcement
-      applyBudgetEnforcement(step, context.contextManager, context.budgetEvents, budgetConfig);
-    }
-  }
-  return ok(undefined);
-}
-
 /**
  * Record token usage after phase completion.
  */
@@ -236,14 +141,7 @@ interface PhaseUsageReport {
   tokensRecorded: number;
 }
 
-export function recordPhaseUsage(
-  results: StepResult[],
-  context: ExecutionContext
-): PhaseUsageReport {
-  if (context.budgetCircuitBreaker === undefined) {
-    return { recordedSteps: 0, unmeasuredSteps: 0, tokensRecorded: 0 };
-  }
-
+export function recordPhaseUsage(results: StepResult[]): PhaseUsageReport {
   // #4673: record REAL token usage. This used to be
   // `Math.round(result.durationMs * 0.5)` — a wall-clock reading in a field
   // named tokens, with a comment conceding "in real usage, this would come
@@ -264,7 +162,6 @@ export function recordPhaseUsage(
       unmeasuredSteps += 1;
       continue;
     }
-    context.budgetCircuitBreaker.recordUsage(result.tokensUsed);
     recordedSteps += 1;
     tokensRecorded += result.tokensUsed;
   }

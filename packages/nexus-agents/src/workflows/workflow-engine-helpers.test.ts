@@ -41,7 +41,6 @@ describe('resolveConfig', () => {
     expect(config.defaultTimeoutMs).toBe(DEFAULT_TIMEOUT_MS);
     expect(config.maxConcurrency).toBe(DEFAULT_MAX_CONCURRENCY);
     expect(config.templatePaths).toEqual([]);
-    expect(config.enableBudgetEnforcement).toBe(false);
   });
 
   it('returns defaults when undefined passed', () => {
@@ -69,15 +68,9 @@ describe('resolveConfig', () => {
     expect(config.templatePaths).toEqual([]);
   });
 
-  it('overrides budget enforcement', () => {
-    const config = resolveConfig({ enableBudgetEnforcement: true });
-    expect(config.enableBudgetEnforcement).toBe(true);
-  });
-
   it('preserves unset fields at defaults', () => {
     const config = resolveConfig({ defaultTimeoutMs: 1000 });
     expect(config.maxConcurrency).toBe(DEFAULT_MAX_CONCURRENCY);
-    expect(config.enableBudgetEnforcement).toBe(false);
   });
 });
 
