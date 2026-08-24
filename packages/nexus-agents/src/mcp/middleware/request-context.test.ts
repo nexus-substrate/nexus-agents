@@ -315,6 +315,28 @@ describe('isRequestContext', () => {
 });
 
 describe('measuredTrustTier (#4733)', () => {
+  // #4738 review: `extractCallerInfo` can return `{ sessionId }` or
+  // `{ userAgent }` alone. Neither is an input to `deriveTrustTier`, so a
+  // "caller object is non-empty" test would have labelled the '3' fallback a
+  // measurement the moment a producer supplied only those.
+  it('does not treat a caller with only sessionId as measured', () => {
+    const context = createRequestContext({ toolName: 'test', caller: { sessionId: 'abc123' } });
+
+    expect(measuredTrustTier(context)).toBeUndefined();
+  });
+
+  it('does not treat a caller with only userAgent as measured', () => {
+    const context = createRequestContext({ toolName: 'test', caller: { userAgent: 'curl/8' } });
+
+    expect(measuredTrustTier(context)).toBeUndefined();
+  });
+
+  it('treats a caller with a derivation input as measured', () => {
+    const context = createRequestContext({ toolName: 'test', caller: { transport: 'stdio' } });
+
+    expect(measuredTrustTier(context)).toBe('1');
+  });
+
   // `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
   // returns '3'. Since nothing supplies callerInfo today, EVERY tier is that
   // fallback — so recording `context.trustTier` records a constant that reads

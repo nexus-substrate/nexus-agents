@@ -276,7 +276,17 @@ export function measuredTrustTier(context: RequestContext): string | undefined {
   // a partially-constructed context can omit it — and an absent caller is the
   // same condition as an empty one: nothing was measured.
   const caller: unknown = context.caller;
-  const hasCallerInfo =
-    typeof caller === 'object' && caller !== null && Object.keys(caller).length > 0;
-  return hasCallerInfo ? context.trustTier : undefined;
+  if (typeof caller !== 'object' || caller === null) return undefined;
+
+  // Gate on the fields `deriveTrustTier` actually reads, not on "the object has
+  // any key at all" (#4738 review). `extractCallerInfo` can return
+  // `{ sessionId }` or `{ userAgent }` alone; neither feeds the derivation, so
+  // a non-empty check would have called the '3' fallback a measurement as soon
+  // as a producer supplied only those — reintroducing the constant this
+  // function exists to prevent, in the function that prevents it.
+  const info = caller as Partial<CallerInfo>;
+  const derivable =
+    info.transport !== undefined || info.authenticated !== undefined || info.clientId !== undefined;
+
+  return derivable ? context.trustTier : undefined;
 }
