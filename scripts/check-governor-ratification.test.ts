@@ -14,6 +14,7 @@ import {
   GOVERNOR_SECTION_END_LINE,
   evaluateRatification,
   governorOwnersFromCodeowners,
+  RATIFICATION_LABEL,
 } from './check-governor-ratification.js';
 
 const OWNERS = ['williamzujkowski'];
@@ -69,12 +70,16 @@ describe('evaluateRatification', () => {
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('owner-approval');
   });
 
-  it('ratifies on the explicit ratification label', () => {
+  it('ratifies on the explicit ratification label, applied by an owner', () => {
+    // #4690 added `labelAppliedBy`. Before that this case passed with no
+    // applier at all, which is the gap that change closes — see the
+    // attribution suite below.
     const verdict = evaluateRatification({
       touchedGovernorFiles: ['CLAUDE.md'],
       approvals: [],
       labels: ['owner-ratified'],
       owners: OWNERS,
+      labelAppliedBy: 'williamzujkowski',
     });
     expect(verdict.kind).toBe('ratified');
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('ratification-label');
@@ -178,5 +183,67 @@ describe('governor section is bounded (#4683)', () => {
     const real = readFileSync(resolve(import.meta.dirname, '../CODEOWNERS'), 'utf8');
     expect(real).toContain(GOVERNOR_SECTION_END_LINE);
     expect(governorOwnersFromCodeowners(real).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the ratification label must be attributed to an owner (#4690)', () => {
+  // The label branch checked only that the label was PRESENT — never who
+  // applied it — and recorded no attribution, while the sibling approval
+  // branch records `approved by @login`. Applying a label is a weaker
+  // permission than submitting an owner review, so the weaker route was also
+  // the one with no provenance.
+  //
+  // This was latent for a different reason: the `owner-ratified` label did not
+  // exist in the repository at all until 2026-08-24, so the route was dead and
+  // owner approval was the only working one. Creating the label to record a
+  // real ratification activated it. That is what surfaced this.
+
+  const base = {
+    touchedGovernorFiles: ['CODEOWNERS'],
+    approvals: [] as string[],
+    labels: [RATIFICATION_LABEL],
+    owners: OWNERS,
+  };
+
+  it('ratifies when a governor-path owner applied the label, and names them', () => {
+    const v = evaluateRatification({ ...base, labelAppliedBy: 'williamzujkowski' });
+    expect(v.kind).toBe('ratified');
+    if (v.kind === 'ratified') {
+      expect(v.via).toBe('ratification-label');
+      // The record must name a person, not just report a label.
+      expect(v.detail).toContain('williamzujkowski');
+    }
+  });
+
+  it('does NOT ratify when a non-owner applied the label', () => {
+    const v = evaluateRatification({ ...base, labelAppliedBy: 'drive-by-contributor' });
+    expect(v.kind).toBe('unratified');
+  });
+
+  it('is INDETERMINATE when the label cannot be attributed — never ratified', () => {
+    // Timeline unavailable, or a label present with no corresponding event.
+    // An unattributable ratification recorded as `ratified` launders an
+    // unreviewed governance change as reviewed.
+    const v = evaluateRatification({ ...base, labelAppliedBy: undefined });
+    expect(v.kind).toBe('indeterminate');
+    if (v.kind === 'indeterminate') {
+      expect(v.reason).toMatch(/who applied/i);
+    }
+  });
+
+  it('owner approval still wins without any label attribution', () => {
+    const v = evaluateRatification({
+      ...base,
+      labels: [],
+      approvals: ['williamzujkowski'],
+      labelAppliedBy: undefined,
+    });
+    expect(v.kind).toBe('ratified');
+    if (v.kind === 'ratified') expect(v.via).toBe('owner-approval');
+  });
+
+  it('the applier check is case-insensitive, like the approver check', () => {
+    const v = evaluateRatification({ ...base, labelAppliedBy: 'WilliamZujkowski' });
+    expect(v.kind).toBe('ratified');
   });
 });
