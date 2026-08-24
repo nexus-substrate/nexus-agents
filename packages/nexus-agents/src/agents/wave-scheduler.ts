@@ -183,7 +183,10 @@ export class WaveScheduler {
 
       if (this.isTokenBudgetExhausted(totalTokensUsed)) {
         aborted = true;
-        abortReason = `Token budget exhausted: ${String(totalTokensUsed)}/${String(this.config.maxTotalTokens)}`;
+        // #4761: "estimated" is load-bearing. The figure sums outputChars/4,
+        // ignores input, and counts failed tasks as zero, so actual spend at
+        // the abort point is higher than the number quoted here.
+        abortReason = `Estimated token budget exhausted: ${String(totalTokensUsed)}/${String(this.config.maxTotalTokens)} (estimate excludes input and failed tasks)`;
         break;
       }
 
@@ -225,9 +228,13 @@ export class WaveScheduler {
     if (this.config.maxTotalTokens <= 0 || totalTokensUsed < this.config.maxTotalTokens) {
       return false;
     }
-    this.logger.warn('Wave execution aborted: token budget exhausted', {
+    this.logger.warn('Wave execution aborted: estimated token budget exhausted', {
       totalTokensUsed,
       maxTotalTokens: this.config.maxTotalTokens,
+      // #4761: say what the figure is. It sums output-char estimates, ignores
+      // input, and counts failed tasks as zero — so the real spend at the point
+      // of abort is HIGHER than the number that triggered it.
+      basis: 'sum of outputChars/4 estimates; excludes input and failed tasks',
     });
     return true;
   }
@@ -286,7 +293,10 @@ export class WaveScheduler {
         ? truncateWithInfo(rawOutput, this.config.maxOutputChars)
         : rawOutput;
 
-      // Estimate tokens as ~4 chars per token (rough approximation)
+      // #4761: OUTPUT chars only — input is not counted, so this understates
+      // spend for a large prompt with a terse answer. Kept because
+      // `WaveTaskExecutor` returns a bare string and real usage never reaches
+      // the scheduler; named honestly on the type rather than dressed up.
       const estimatedTokens = Math.ceil(originalLength / 4);
       const durationMs = getTimeProvider().now() - taskStart;
 
@@ -319,6 +329,10 @@ export class WaveScheduler {
         output: '',
         truncated: false,
         originalLength: 0,
+        // #4761: a task that ran and then threw did not cost nothing — this 0
+        // is "unknown", and it under-counts any budget summing it. There is no
+        // better number available: the executor threw instead of returning
+        // output, and it reports no usage.
         estimatedTokens: 0,
         durationMs,
         error: message,

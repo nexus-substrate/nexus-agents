@@ -21,7 +21,15 @@ export interface WaveSchedulerConfig {
   readonly maxConcurrency: number;
   /** Maximum output length (chars) per task result. Default: 2000. */
   readonly maxOutputChars: number;
-  /** Maximum total token budget across all waves. 0 = unlimited. Default: 0. */
+  /**
+   * Maximum total token budget across all waves. 0 = unlimited. Default: 0.
+   *
+   * Enforced against the SUM OF ESTIMATES described on
+   * `WaveTaskResult.estimatedTokens`, which excludes input tokens and counts a
+   * failed task as zero. Both errors run in the same direction: the budget
+   * believes it has more headroom than it does, so enabling this does not give
+   * you a reliable spend cap (#4761).
+   */
   readonly maxTotalTokens: number;
   /** Whether to abort remaining waves on first task failure. Default: false. */
   readonly abortOnFailure: boolean;
@@ -79,7 +87,19 @@ export interface WaveTaskResult {
   readonly truncated: boolean;
   /** Original output length before truncation. */
   readonly originalLength: number;
-  /** Estimated tokens consumed by this task. */
+  /**
+   * Rough token estimate for this task, derived as `outputChars / 4` (#4761).
+   *
+   * NOT a measurement, and specifically NOT comparable to
+   * `ResultMetadata.tokensUsed`:
+   * - **Input is not counted.** Prompt and context usually dominate an agent
+   *   task's spend, so a large prompt with a terse answer looks nearly free.
+   * - **A failed task reports 0**, however long it ran before throwing.
+   *
+   * Real usage is not available here: `WaveTaskExecutor` returns a bare string,
+   * so the scheduler has nothing better to sum. Treat this as a coarse
+   * output-size signal, not a spend figure.
+   */
   readonly estimatedTokens: number;
   /** Duration of this task in ms. */
   readonly durationMs: number;
