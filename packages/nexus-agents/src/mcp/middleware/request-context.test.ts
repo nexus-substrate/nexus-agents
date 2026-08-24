@@ -358,6 +358,20 @@ describe('measuredTrustTier (#4733)', () => {
     expect(measuredTrustTier(ctx)).toBe('1');
   });
 
+  // The exact shape `extractCallerInfo` returns on its CLAUDE_SESSION_ID path.
+  // A previous version of the guard accepted `clientId` as a derivation input,
+  // but `deriveTrustTier` reads it only inside `authenticated === true` — so
+  // this shape yields the '3' fallback and must NOT be reported as measured.
+  it('does not treat a clientId-only caller as measured', () => {
+    const context = createRequestContext({
+      toolName: 'run_pipeline',
+      caller: { clientId: 'claude-cli', sessionId: 'sess_abc' },
+    });
+
+    expect(context.trustTier).toBe('3');
+    expect(measuredTrustTier(context)).toBeUndefined();
+  });
+
   it('distinguishes a genuine tier 3 from the fallback tier 3', () => {
     // The case the raw field cannot express: an authenticated caller with an
     // unknown client is really tier 3, and must not be conflated with "we did

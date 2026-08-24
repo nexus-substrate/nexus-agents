@@ -76,8 +76,6 @@ interface SessionEntry {
   readonly startedAt: number;
   lastHeartbeat: number;
   heartbeatCount: number;
-  /** Set once the session's work is running under a progress scope (#4665). */
-  instrumented: boolean;
   /** Previous health state for transition detection (Issue #1088 Phase 4). */
   previousHealth: SessionHealth;
 }
@@ -127,25 +125,9 @@ export class HeartbeatMonitor {
       startedAt: now,
       lastHeartbeat: now,
       heartbeatCount: 0,
-      instrumented: false,
       previousHealth: 'unmeasured',
     });
     return sessionId;
-  }
-
-  /**
-   * Declares that this session's work runs under a progress scope (#4665), so
-   * silence from it is meaningful.
-   *
-   * This separates two facts that `heartbeatCount === 0` conflates: a session
-   * on an uninstrumented path (nothing is watching, so say `unmeasured`) and a
-   * session that hung BEFORE emitting its first step (the worst stall there is,
-   * and one an `unmeasured` verdict would hide forever).
-   */
-  markInstrumented(sessionId: string): void {
-    const entry = this.sessions.get(sessionId);
-    if (entry === undefined) return;
-    entry.instrumented = true;
   }
 
   /** Record a heartbeat for an active session. */
@@ -168,7 +150,7 @@ export class HeartbeatMonitor {
     // #4665: silence from an uninstrumented session means nothing — no scope
     // ever claimed to report its progress. Silence from an instrumented one is
     // the signal.
-    if (!entry.instrumented && entry.heartbeatCount === 0) return false;
+    if (entry.heartbeatCount === 0) return false;
     const elapsed = getTimeProvider().now() - entry.lastHeartbeat;
     return elapsed >= this.config.stalledThresholdMs;
   }
@@ -188,7 +170,7 @@ export class HeartbeatMonitor {
 
     for (const [sessionId, entry] of this.sessions) {
       const timeSince = now - entry.lastHeartbeat;
-      const health = this.classifyHealth(timeSince, entry.heartbeatCount, entry.instrumented);
+      const health = this.classifyHealth(timeSince, entry.heartbeatCount);
       if (health === 'stalled') stalledCount++;
 
       sessions.push({
@@ -220,7 +202,7 @@ export class HeartbeatMonitor {
     if (entry === undefined) return undefined;
     const now = getTimeProvider().now();
     const timeSince = now - entry.lastHeartbeat;
-    const health = this.classifyHealth(timeSince, entry.heartbeatCount, entry.instrumented);
+    const health = this.classifyHealth(timeSince, entry.heartbeatCount);
     const changed = health !== entry.previousHealth;
     const result: HealthTransition = {
       sessionId,
@@ -240,16 +222,19 @@ export class HeartbeatMonitor {
     return this.sessions.size;
   }
 
-  private classifyHealth(
-    timeSinceMs: number,
-    heartbeatCount: number,
-    instrumented: boolean
-  ): SessionHealth {
-    // Nothing ever claimed to report this session's progress, so `lastHeartbeat`
-    // is still just `startedAt` and the elapsed time measures the clock, not the
-    // work. An INSTRUMENTED session with no heartbeats is a different fact — it
-    // hung before its first step — and falls through to the thresholds.
-    if (!instrumented && heartbeatCount === 0) return 'unmeasured';
+  private classifyHealth(timeSinceMs: number, heartbeatCount: number): SessionHealth {
+    // No progress has ever been credited, so `lastHeartbeat` is still just
+    // `startedAt` and the elapsed time measures the clock, not the work.
+    //
+    // A first version marked a session "instrumented" when its scope opened and
+    // let that fall through to the thresholds, on the theory that a scoped
+    // session with no steps had hung before its first step. That was wrong:
+    // opening a scope is not evidence that anything will report progress, and
+    // nothing under `src/agents/` emits a step at all — so EVERY expert task
+    // over 120s reported `stalled`. Trading "structurally 0" for "structurally
+    // stalled" is not an improvement. An immediate hang is covered by the 900s
+    // absolute cap (`isExpired`), which does work.
+    if (heartbeatCount === 0) return 'unmeasured';
     if (timeSinceMs >= this.config.stalledThresholdMs) return 'stalled';
     if (timeSinceMs >= this.config.slowThresholdMs) return 'slow';
     return 'alive';
@@ -296,7 +281,6 @@ const sessionAls = new AsyncLocalStorage<string>();
  * progress for that session.
  */
 export function runInHeartbeatSession<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
-  getHeartbeatMonitor().markInstrumented(sessionId);
   return sessionAls.run(sessionId, fn);
 }
 

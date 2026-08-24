@@ -29,7 +29,6 @@ describe('heartbeat-monitor', () => {
     it('should start and end sessions', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
       expect(sid).toContain('expert-1');
       expect(monitor.activeCount).toBe(1);
 
@@ -48,7 +47,6 @@ describe('heartbeat-monitor', () => {
     it('should record heartbeats', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
@@ -61,7 +59,6 @@ describe('heartbeat-monitor', () => {
     it('should classify session as alive when recent heartbeat', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
 
       const health = monitor.getHealth();
@@ -72,7 +69,7 @@ describe('heartbeat-monitor', () => {
     it('should classify session as slow after threshold', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid); // progress must be credited before silence means anything
 
       vi.advanceTimersByTime(15_000);
 
@@ -84,7 +81,7 @@ describe('heartbeat-monitor', () => {
     it('should classify session as stalled after threshold', () => {
       const monitor = new HeartbeatMonitor({ stalledThresholdMs: 20_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
 
       vi.advanceTimersByTime(25_000);
 
@@ -96,7 +93,6 @@ describe('heartbeat-monitor', () => {
     it('should reset stall timer on heartbeat', () => {
       const monitor = new HeartbeatMonitor({ stalledThresholdMs: 20_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.heartbeat(sid);
@@ -108,7 +104,6 @@ describe('heartbeat-monitor', () => {
     it('should detect expired sessions', () => {
       const monitor = new HeartbeatMonitor({ absoluteMaxMs: 50_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(60_000);
 
@@ -118,7 +113,6 @@ describe('heartbeat-monitor', () => {
     it('should not expire if within max', () => {
       const monitor = new HeartbeatMonitor({ absoluteMaxMs: 100_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(50_000);
 
@@ -145,7 +139,6 @@ describe('heartbeat-monitor', () => {
     it('should include elapsed and timeSince in snapshot', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       vi.advanceTimersByTime(5_000);
 
@@ -160,9 +153,9 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 10_000,
       });
       const sid1 = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid1);
+      monitor.heartbeat(sid1);
       const sid2 = monitor.startSession('expert-2');
-      monitor.markInstrumented(sid2);
+      monitor.heartbeat(sid2);
 
       vi.advanceTimersByTime(15_000);
       monitor.heartbeat(sid1); // expert-1 alive, expert-2 stalled
@@ -180,7 +173,6 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 60_000,
       });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       // Simulate periodic heartbeats every 15s for 90s
       for (let i = 0; i < 6; i++) {
@@ -201,7 +193,6 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 60_000,
       });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
 
       // Heartbeat for a while
       vi.advanceTimersByTime(15_000);
@@ -221,7 +212,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 40_000,
       });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
 
       // Initially alive
       expect(monitor.getHealth().sessions[0]?.health).toBe('alive');
@@ -246,14 +237,12 @@ describe('heartbeat-monitor', () => {
       expect(monitor.getSessionHealth('nope')).toBeUndefined();
     });
 
-    // #4665: a new session starts at `unmeasured` — nothing has been observed
-    // yet — so its first health read is a real unmeasured → alive transition
-    // rather than a no-op. Only 'slow' and 'stalled' transitions are logged, so
-    // this is silent in production.
-    it('reports the first observation of a new session as unmeasured → alive', () => {
+    // #4665: a session starts `unmeasured` and stays there until progress is
+    // actually credited. The first credited heartbeat is what makes it `alive`.
+    it('reports unmeasured → alive once progress is credited', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
       const t = monitor.getSessionHealth(sid) as HealthTransition;
       expect(t.health).toBe('alive');
       expect(t.previousHealth).toBe('unmeasured');
@@ -263,7 +252,6 @@ describe('heartbeat-monitor', () => {
     it('reports no transition on a second read with no change', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
       monitor.getSessionHealth(sid);
       const t = monitor.getSessionHealth(sid) as HealthTransition;
       expect(t.changed).toBe(false);
@@ -272,7 +260,7 @@ describe('heartbeat-monitor', () => {
     it('detects alive → slow transition', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
       // First check — alive
       monitor.getSessionHealth(sid);
 
@@ -289,7 +277,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 20_000,
       });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.getSessionHealth(sid); // alive → slow
@@ -304,7 +292,7 @@ describe('heartbeat-monitor', () => {
     it('does not report change when health is stable', () => {
       const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid);
 
       vi.advanceTimersByTime(15_000);
       monitor.getSessionHealth(sid); // alive → slow
@@ -321,7 +309,7 @@ describe('heartbeat-monitor', () => {
         stalledThresholdMs: 20_000,
       });
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
+      monitor.heartbeat(sid); // credit progress so silence is meaningful
 
       vi.advanceTimersByTime(25_000);
       monitor.getSessionHealth(sid); // alive → stalled
@@ -336,7 +324,6 @@ describe('heartbeat-monitor', () => {
     it('includes correct elapsedMs and heartbeatCount', () => {
       const monitor = new HeartbeatMonitor();
       const sid = monitor.startSession('expert-1');
-      monitor.markInstrumented(sid);
       monitor.heartbeat(sid);
       monitor.heartbeat(sid);
 
