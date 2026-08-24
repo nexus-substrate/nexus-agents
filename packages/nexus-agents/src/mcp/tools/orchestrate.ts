@@ -9,7 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
 import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS, getMcpSafeDeadlineMs } from '../../config/timeouts.js';
-import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import { getHeartbeatMonitor, runInHeartbeatSession } from '../../agents/heartbeat-monitor.js';
 import { raceAgainstDeadline } from '../../core/race/race-against-deadline.js';
 import {
   createOrchestrationStateSnapshot,
@@ -518,16 +518,22 @@ function handleOrchestrationException(
 }
 
 /** Starts a heartbeat session with periodic stall detection (Issue #1087). */
-function startHeartbeatTracking(label: string, logger: ILogger): { cleanup: () => void } {
+function startHeartbeatTracking(
+  label: string,
+  logger: ILogger
+): { sessionId: string; cleanup: () => void } {
   const monitor = getHeartbeatMonitor();
   const sessionId = monitor.startSession(label);
+  // #4665: the timer OBSERVES. It used to pet the session on the line above
+  // this check, so `isStalled` compared `now` against a value it had just set
+  // to `now` and could never be true.
   const timer = setInterval(() => {
-    monitor.heartbeat(sessionId);
     if (monitor.isStalled(sessionId)) {
       logger.warn('Orchestration session stalled', { label, sessionId });
     }
   }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
   return {
+    sessionId,
     cleanup: (): void => {
       clearInterval(timer);
       monitor.endSession(sessionId);
@@ -641,6 +647,20 @@ interface ExecuteOrchestrationOpts {
   readonly taskId?: string;
 }
 
+/**
+ * Runs the orchestration attributed to its heartbeat session (#4665).
+ *
+ * Step activity emitted inside this scope is what keeps the session alive — the
+ * health timer only observes, so silence here is a real stall signal rather
+ * than a clock reading.
+ */
+function runTrackedOrchestration(
+  sessionId: string,
+  args: Parameters<typeof runOrchestratorWithStateTracking>[0]
+): Promise<Result<OrchestrateOutput, OrchestrationError>> {
+  return runInHeartbeatSession(sessionId, () => runOrchestratorWithStateTracking(args));
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -675,7 +695,7 @@ async function executeOrchestration(
   // no-logger path so that path establishes no trail and stays byte-identical.
   const auditTrail = createDurableAuditTrail(deps.auditLogger);
   try {
-    return await runOrchestratorWithStateTracking({
+    return await runTrackedOrchestration(hb.sessionId, {
       taskId,
       taskInput: input.task,
       definition,

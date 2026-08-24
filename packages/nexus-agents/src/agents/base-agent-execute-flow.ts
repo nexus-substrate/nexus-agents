@@ -23,7 +23,7 @@ import {
 } from './base-agent-task-helpers.js';
 import { recordFailedTaskError, persistMemoryAfterTask } from './base-agent-execution-helpers.js';
 import { HEARTBEAT_TIMEOUTS } from '../config/timeouts.js';
-import { getHeartbeatMonitor } from './heartbeat-monitor.js';
+import { getHeartbeatMonitor, runInHeartbeatSession } from './heartbeat-monitor.js';
 import { createLogger } from '../core/index.js';
 
 const MAX_HISTORY_ITEMS = 100;
@@ -144,7 +144,9 @@ export async function runTaskWithTimeout(
         heartbeatLogger.info(msg, { agentId, sessionId, elapsedMs: transition.elapsedMs });
       }
     }
-    monitor.heartbeat(sessionId);
+    // #4665: the timer OBSERVES only. It used to pet the session here, one
+    // line after reading its health, so `timeSince` could never exceed the
+    // 15s tick and the 60s/120s thresholds were unreachable.
     if (monitor.isExpired(sessionId)) {
       heartbeatLogger.warn('Agent session expired — aborting', { agentId, sessionId });
       controller.abort();
@@ -152,13 +154,16 @@ export async function runTaskWithTimeout(
   }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
 
   try {
-    return await executeWithTimeout({
-      task,
-      maxDurationMs: maxDuration,
-      executeTask,
-      transformError: (error, taskId) => transformTaskError(error, agentId, taskId),
-      signal: controller.signal,
-    });
+    // Step activity inside this scope is what keeps the session alive.
+    return await runInHeartbeatSession(sessionId, () =>
+      executeWithTimeout({
+        task,
+        maxDurationMs: maxDuration,
+        executeTask,
+        transformError: (error, taskId) => transformTaskError(error, agentId, taskId),
+        signal: controller.signal,
+      })
+    );
   } finally {
     clearInterval(healthCheckTimer);
     monitor.endSession(sessionId);

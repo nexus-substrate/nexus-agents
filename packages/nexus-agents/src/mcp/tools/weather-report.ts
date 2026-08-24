@@ -46,7 +46,7 @@ import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive
 import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 import { getToolStats } from '../middleware/tool-metrics.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
-import type { AgentHealthSummary, CostSection } from './weather-report-types.js';
+import type { AgentHealthSummary, AgentSessionEntry, CostSection } from './weather-report-types.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import { aggregateDecisionCosts } from '../../observability/decision-cost-aggregate.js';
 import {
@@ -162,13 +162,19 @@ function buildAgentHealth(): AgentHealthSummary | undefined {
   const monitor = getHeartbeatMonitor();
   if (monitor.activeCount === 0) return undefined;
   const health = monitor.getHealth();
+  // #4665: an unmeasured session has no verdict to report. Report the count so
+  // the gap is visible, rather than picking one of the three declared values
+  // and calling a non-measurement a measurement.
+  const measured = health.sessions.filter((s) => s.health !== 'unmeasured');
+  const unmeasuredSessions = health.sessions.length - measured.length;
   return {
     activeSessions: health.activeSessions,
     stalledSessions: health.stalledSessions,
-    sessions: health.sessions.map((s) => ({
+    ...(unmeasuredSessions > 0 ? { unmeasuredSessions } : {}),
+    sessions: measured.map((s) => ({
       sessionId: s.sessionId,
       expertId: s.expertId,
-      health: s.health,
+      health: s.health as AgentSessionEntry['health'],
       elapsedMs: s.elapsedMs,
       timeSinceHeartbeatMs: s.timeSinceHeartbeatMs,
       heartbeatCount: s.heartbeatCount,
