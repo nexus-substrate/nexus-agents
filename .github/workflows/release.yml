@@ -84,7 +84,7 @@ jobs:
         # ignores them, so the release would run with no version script, no
         # publish script, and default PR text. That silent-ignore is why the
         # #4469 regression was invisible until release time.
-        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           version-script: pnpm changeset:version
           publish-script: pnpm release
