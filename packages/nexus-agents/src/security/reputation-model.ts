@@ -286,10 +286,24 @@ function determineEffectiveTier(
   ];
   if (signals.some((s) => hostileSignals.includes(s))) return '4';
 
-  // Multiple suspicious signals → downgrade by 1
+  // Multiple suspicious signals → downgrade by 1, CLAMPED AT TIER 3 (#4681).
+  //
+  // Tier 4 is the HOSTILE tier — `.rules/untrusted-input.md` defines it as
+  // "injection patterns, hidden HTML, instruction-like content". It is reached
+  // ONLY via `hostileSignals` above. The generic downgrade must not manufacture
+  // it, because the two most common signals (`new_account` and
+  // `no_prior_contributions`) BOTH fire automatically for any genuine
+  // first-time reporter — they are two readings of one fact, not independent
+  // evidence of hostility. Clamping at 4 meant an `unknown` author (base 3)
+  // filing an ordinary bug report was classified hostile; once enforce mode
+  // became the default (#4675) that refused every new account's first issue
+  // and escalated it to security.
+  //
+  // Tier 3 is the correct destination: "untrusted" — still processed, but
+  // never treated as instructions.
   if (signals.length >= 2) {
     const baseNumeric = TRUST_TIER_NUMERIC[baseTier];
-    const downgraded = Math.min(baseNumeric + 1, 4);
+    const downgraded = Math.min(baseNumeric + 1, 3);
     return String(downgraded) as TrustTier;
   }
 
@@ -369,13 +383,13 @@ export function reconcileTrustTier(
  * Rollout mode for reputation-based tier gating, mirroring
  * `NEXUS_ACCESS_POLICY_MODE` (#1977): `off` (no reputation effect), `audit`
  * (compute + report the would-be demotion but enforce the classifier tier), or
- * `enforce` (apply the demotion). Default `audit` — surface telemetry without
- * blocking until the false-positive rate is known, then flip to `enforce`.
+ * `enforce` (apply the demotion). Default `enforce` since #4667 — see
+ * {@link DEFAULT_REPUTATION_GATING_MODE} for the measurement that justified the
+ * flip. (This block previously still described the pre-flip `audit` default.)
  */
 export const ReputationGatingModeSchema = z.enum(['off', 'audit', 'enforce']);
 export type ReputationGatingMode = z.infer<typeof ReputationGatingModeSchema>;
 
-/** Default when `NEXUS_REPUTATION_GATING` is unset/invalid — audit (telemetry, no block). */
 /**
  * Default gating mode.
  *
