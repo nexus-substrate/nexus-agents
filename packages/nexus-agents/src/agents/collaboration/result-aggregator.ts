@@ -136,7 +136,11 @@ export class ResultAggregator {
     conflicts: ResultConflict[],
     qualityScore: number
   ): AggregatedResult {
-    const totalTokensUsed = results.reduce((s, r) => s + r.result.metadata.tokensUsed, 0);
+    // #4743: sum what was measured, and say how much was not. Adding the
+    // placeholder zeros in silently would make the total look complete.
+    const measured = results.filter((r) => r.result.metadata.tokensMeasured !== false);
+    const totalTokensUsed = measured.reduce((s, r) => s + r.result.metadata.tokensUsed, 0);
+    const unmeasuredResults = results.length - measured.length;
     const avgConfidence = results.reduce((s, r) => s + (r.confidence ?? 0.5), 0) / results.length;
 
     return {
@@ -149,6 +153,7 @@ export class ResultAggregator {
         conflictCount: conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
         totalTokensUsed,
+        ...(unmeasuredResults > 0 ? { unmeasuredResults } : {}),
         aggregatedAt: getTimeProvider().nowIso(),
       },
     };

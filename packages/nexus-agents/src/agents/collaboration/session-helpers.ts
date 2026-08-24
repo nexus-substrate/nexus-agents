@@ -288,7 +288,14 @@ export function buildAggregatedResult(input: AggregatedResultInput): AggregatedR
       resultCount: results.length,
       conflictCount: 0,
       averageConfidence: 1.0,
-      totalTokensUsed: results.reduce((sum, r) => sum + r.metadata.tokensUsed, 0),
+      // #4743: measured contributors only; the count of the rest sits beside it
+      // so the total is readable as a lower bound rather than a complete figure.
+      totalTokensUsed: results
+        .filter((r) => r.metadata.tokensMeasured !== false)
+        .reduce((sum, r) => sum + r.metadata.tokensUsed, 0),
+      ...(results.some((r) => r.metadata.tokensMeasured === false)
+        ? { unmeasuredResults: results.filter((r) => r.metadata.tokensMeasured === false).length }
+        : {}),
       aggregatedAt: endTime.toISOString(),
     },
   };

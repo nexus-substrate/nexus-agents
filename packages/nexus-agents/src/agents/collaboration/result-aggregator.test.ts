@@ -124,6 +124,51 @@ describe('ResultAggregator', () => {
       }
     });
 
+    // #4743: a contributor whose adapter reported nothing carries a placeholder
+    // zero. Summing it in silently made the total look complete when it is a
+    // lower bound.
+    it('excludes unmeasured contributors from the total and counts them', () => {
+      const aggregator = createResultAggregator();
+      const unmeasured = createExpertResult('e2', 'output2');
+      const input: AggregatorInput = {
+        pattern: 'parallel',
+        results: [
+          createExpertResult('e1', 'output1'),
+          {
+            ...unmeasured,
+            result: {
+              ...unmeasured.result,
+              metadata: { ...unmeasured.result.metadata, tokensUsed: 0, tokensMeasured: false },
+            },
+          },
+        ],
+      };
+
+      const result = aggregator.aggregate(input);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metadata.totalTokensUsed).toBe(50);
+        expect(result.value.metadata.unmeasuredResults).toBe(1);
+      }
+    });
+
+    it('omits the unmeasured count when every contributor reported usage', () => {
+      const aggregator = createResultAggregator();
+      const input: AggregatorInput = {
+        pattern: 'parallel',
+        results: [createExpertResult('e1', 'output1'), createExpertResult('e2', 'output2')],
+      };
+
+      const result = aggregator.aggregate(input);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metadata.totalTokensUsed).toBe(100);
+        expect(result.value.metadata.unmeasuredResults).toBeUndefined();
+      }
+    });
+
     it('should calculate quality score', () => {
       const aggregator = createResultAggregator();
       const input: AggregatorInput = {
