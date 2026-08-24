@@ -69,6 +69,7 @@ export class CliAdapterAgent implements IAgent {
       metadata: {
         durationMs: getTimeProvider().now() - startTime,
         tokensUsed: result.value.usage?.totalTokens ?? 0,
+        tokensMeasured: result.value.usage?.totalTokens !== undefined,
         toolsUsed: [],
         model: this.cliName,
       },

@@ -58,6 +58,7 @@ export class SimpleAgent extends BaseAgent {
       metadata: {
         durationMs,
         tokensUsed: result.value.usage?.totalTokens ?? 0,
+        tokensMeasured: result.value.usage?.totalTokens !== undefined,
         toolsUsed: [],
         model: result.value.model,
       },
@@ -91,6 +92,7 @@ export class SimpleAgent extends BaseAgent {
       metadata: {
         durationMs,
         tokensUsed: retry.value.usage?.totalTokens ?? 0,
+        tokensMeasured: retry.value.usage?.totalTokens !== undefined,
         toolsUsed: [],
         model: retry.value.model,
       },

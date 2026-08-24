@@ -119,8 +119,27 @@ export interface Task {
 export interface ResultMetadata {
   /** Execution duration in ms */
   durationMs: number;
-  /** Tokens used */
+  /** Tokens used. Meaningful only when {@link ResultMetadata.tokensMeasured} is not `false`. */
   tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4734).
+   *
+   * `false` means the adapter reported no usage, so `tokensUsed` is a
+   * placeholder zero and NOT a count — a step that consumed unreported tokens
+   * must not be read as having spent nothing, which for a spend cap
+   * under-counts in the dangerous direction.
+   *
+   * Absent means the producer predates this distinction: unknown, not
+   * measured. `step-executor` only drops a value on an explicit `false`, so a
+   * legacy producer keeps its current behaviour.
+   *
+   * This flag exists because `tokensUsed` is required on a structurally public
+   * type (`TaskResult.metadata`, exported via `exports/core.ts:52`), so making
+   * it optional would break every downstream reader. The workflow ledger reads
+   * `StepResult.tokensUsed`, which is already optional and CAN represent
+   * absence — see #4744.
+   */
+  tokensMeasured?: boolean;
   /** Tools invoked */
   toolsUsed: string[];
   /** Model used */
