@@ -343,16 +343,33 @@ describe('registerDevPipelineTool', () => {
 describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
   beforeEach(() => runDevPipelineMock.mockClear());
 
+  // #4733: these fixtures now carry `caller`, because a tier without one is
+  // not a measurement — `createRequestContext` derives from `caller = {}` and
+  // no production site supplies `options.trustTier` explicitly, so a
+  // caller-less tier is the constant fallback rather than a threaded value.
   it('threads the real RequestContext.trustTier into runDevPipeline options', async () => {
     const handler = captureHandler();
-    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '1' } });
+    await handler(
+      { task: 'Build feature X' },
+      { requestContext: { trustTier: '1', caller: { transport: 'stdio' } } }
+    );
     expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('1');
   });
 
   it("forwards an untrusted tier '3' unchanged (not silently downgraded to trusted)", async () => {
     const handler = captureHandler();
-    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
+    await handler(
+      { task: 'Build feature X' },
+      { requestContext: { trustTier: '3', caller: { authenticated: false } } }
+    );
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('3');
+  });
+
+  it('does NOT thread a caller-less tier — that is the constant, not a measurement', async () => {
+    // The shipped reality until a callerInfo producer exists (#4733).
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
   });
 });
