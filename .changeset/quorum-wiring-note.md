@@ -21,8 +21,14 @@ something to slip into a cleanup.
 What changes is that the code no longer implies screening happens: the method
 documents that a full eligible list is not evidence anything was screened, and a
 new test pins that production shape — Byzantine detection enabled, no records
-supplied, nobody excluded. If a producer for `AgentRecord` is ever wired, that
-test fails and should be replaced by one asserting the real screening.
+supplied, nobody excluded.
+
+That test is a characterization test, **not** a tripwire. An earlier draft of
+this note claimed it "fails" if a producer is wired; it would not — it builds
+its own input literal with no `agentRecords`, so it is unaffected by whatever
+`voting-protocol-helpers` passes. Catching that automatically would need a
+source-level assertion that no production caller supplies `agentRecords`, which
+is not worth the maintenance cost on a non-production path.
 
 Severity is low and unchanged: this is `VotingProtocol`, not the live
 `consensus_vote` engine, so trust screening is not silently disabled on the path

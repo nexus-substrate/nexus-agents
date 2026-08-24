@@ -232,7 +232,11 @@ export class TrinityCoordinator {
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
     // #4743: a failed phase has no measurement at all, so it is unmeasured
     // rather than a measured zero.
-    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
+    // #4743 review: this used to say `: false` for the failure case, which was
+    // unreachable — each phase returns `err` before pushing to history, so a
+    // failed phase never becomes a TrinityPhaseResult. The observable
+    // failed-phase zero is the emitted event below, not this record.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : undefined;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -240,6 +244,10 @@ export class TrinityCoordinator {
       phase: 'thinker',
       durationMs,
       tokensUsed,
+      // #4743: a failed phase emits this event with tokensUsed 0. Without the
+      // flag that 0 is indistinguishable from a phase that genuinely spent
+      // nothing — and this event is the only observable record of a failure.
+      tokensMeasured: result.ok ? result.value.metadata.tokensMeasured : false,
       sessionId: ctx.sessionId,
     });
 
@@ -285,7 +293,11 @@ export class TrinityCoordinator {
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
     // #4743: a failed phase has no measurement at all, so it is unmeasured
     // rather than a measured zero.
-    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
+    // #4743 review: this used to say `: false` for the failure case, which was
+    // unreachable — each phase returns `err` before pushing to history, so a
+    // failed phase never becomes a TrinityPhaseResult. The observable
+    // failed-phase zero is the emitted event below, not this record.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : undefined;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -293,6 +305,10 @@ export class TrinityCoordinator {
       phase: 'worker',
       durationMs,
       tokensUsed,
+      // #4743: a failed phase emits this event with tokensUsed 0. Without the
+      // flag that 0 is indistinguishable from a phase that genuinely spent
+      // nothing — and this event is the only observable record of a failure.
+      tokensMeasured: result.ok ? result.value.metadata.tokensMeasured : false,
       sessionId: ctx.sessionId,
     });
 
@@ -334,7 +350,11 @@ export class TrinityCoordinator {
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
     // #4743: a failed phase has no measurement at all, so it is unmeasured
     // rather than a measured zero.
-    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : false;
+    // #4743 review: this used to say `: false` for the failure case, which was
+    // unreachable — each phase returns `err` before pushing to history, so a
+    // failed phase never becomes a TrinityPhaseResult. The observable
+    // failed-phase zero is the emitted event below, not this record.
+    const tokensMeasured = result.ok ? result.value.metadata.tokensMeasured : undefined;
 
     // Emit phase completed event (Issue #216)
     emitPhaseCompleted(this.eventBus, {
@@ -342,6 +362,10 @@ export class TrinityCoordinator {
       phase: 'verifier',
       durationMs,
       tokensUsed,
+      // #4743: a failed phase emits this event with tokensUsed 0. Without the
+      // flag that 0 is indistinguishable from a phase that genuinely spent
+      // nothing — and this event is the only observable record of a failure.
+      tokensMeasured: result.ok ? result.value.metadata.tokensMeasured : false,
       sessionId: ctx.sessionId,
     });
 

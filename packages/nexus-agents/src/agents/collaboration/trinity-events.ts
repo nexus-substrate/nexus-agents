@@ -125,6 +125,13 @@ export interface TrinityPhaseCompletedParams {
   readonly phase: TrinityPhase;
   readonly durationMs: number;
   readonly tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4743). This event DOES fire for a
+   * failed phase — unlike the history record, which the phase returns before
+   * writing — so it is the one place a failed phase's `0` is observable, and
+   * the one place the distinction has to be carried.
+   */
+  readonly tokensMeasured?: boolean | undefined;
   readonly sessionId: string;
 }
 
@@ -137,6 +144,7 @@ export function emitPhaseCompleted(eventBus: IEventBus, params: TrinityPhaseComp
       phase: params.phase,
       durationMs: params.durationMs,
       tokensUsed: params.tokensUsed,
+      ...(params.tokensMeasured !== undefined ? { tokensMeasured: params.tokensMeasured } : {}),
     },
     { sessionId: params.sessionId }
   );
