@@ -213,6 +213,9 @@ export class SicaAgent {
       return {
         durationMs,
         tokensUsed: 0,
+        // #4743: a failed execution produced no measurement; this 0 is unknown,
+        // not a measured zero, and averaging it in understates cost.
+        tokensMeasured: false,
         success: false,
         errorType: result.error.message,
       };
@@ -221,6 +224,9 @@ export class SicaAgent {
     return {
       durationMs,
       tokensUsed: result.value.metadata.tokensUsed,
+      ...(result.value.metadata.tokensMeasured !== undefined && {
+        tokensMeasured: result.value.metadata.tokensMeasured,
+      }),
       success: true,
       qualityScore: estimateQuality(result.value),
     };

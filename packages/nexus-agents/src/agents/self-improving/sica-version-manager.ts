@@ -256,7 +256,15 @@ export class SicaVersionManager {
     const successes = history.filter((e) => e.success).length;
 
     const avgDuration = history.reduce((s, e) => s + e.durationMs, 0) / count;
-    const avgTokens = history.reduce((s, e) => s + e.tokensUsed, 0) / count;
+    // #4743: average over measured executions only. Averaging placeholder
+    // zeros in understated cost and could suppress the cost-focused
+    // improvement path. Mirrors how avgQuality below already handles absence.
+    const measuredTokens = history.filter((e) => e.tokensMeasured !== false);
+    const avgTokens =
+      measuredTokens.length > 0
+        ? measuredTokens.reduce((s, e) => s + e.tokensUsed, 0) / measuredTokens.length
+        : 0;
+    const unmeasuredExecutions = count - measuredTokens.length;
 
     const qualityScores = history.filter((e) => e.qualityScore !== undefined);
     const avgQuality =
@@ -271,6 +279,7 @@ export class SicaVersionManager {
       successRate: count > 0 ? successes / count : 0,
       avgDurationMs: avgDuration,
       avgTokensUsed: avgTokens,
+      ...(unmeasuredExecutions > 0 && { unmeasuredExecutions }),
       ...(avgQuality !== undefined && { avgQualityScore: avgQuality }),
       lastUpdatedAt: new Date(getTimeProvider().now()),
     };
