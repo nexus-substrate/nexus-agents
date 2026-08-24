@@ -41,6 +41,20 @@ const logger = createLogger({ component: 'OutcomeFeedback' });
 /**
  * Outcome feedback collector implementation.
  */
+/**
+ * A "lower than target is better" bonus, with absence named (#4669).
+ *
+ * Returns 0 when `actual` is not a positive finite measurement. Dividing by
+ * zero yields `Infinity`, which `Math.min(1, …)` silently converts into a
+ * perfect score — so without this guard, "we did not measure" and "we used no
+ * resources at all" are indistinguishable, and the missing measurement is the
+ * one that scores best.
+ */
+function ratioBonus(target: number, actual: number, weight: number): number {
+  if (!Number.isFinite(actual) || actual <= 0) return 0;
+  return Math.min(1, target / actual) * weight;
+}
+
 export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   private readonly config: FeedbackCollectorConfig;
   private readonly pendingDecisions: Map<TraceId, RoutingDecision> = new Map();
@@ -165,13 +179,30 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     // Quality bonus from quality score
     const qualityBonus = outcome.qualityScore * this.config.qualityWeight;
 
-    // Speed bonus (faster than target = bonus)
-    const speedRatio = Math.min(1, this.config.targetDurationMs / outcome.durationMs);
-    const speedBonus = speedRatio * this.config.speedWeight;
-
-    // Efficiency bonus (fewer tokens than target = bonus)
-    const efficiencyRatio = Math.min(1, this.config.targetTokenUsage / outcome.tokenUsage);
-    const efficiencyBonus = efficiencyRatio * this.config.efficiencyWeight;
+    // Speed and efficiency bonuses — "used less than target" earns a bonus.
+    //
+    // #4669: a non-positive measurement means UNMEASURED, and earns nothing.
+    // `Math.min(1, target / 0)` is `Math.min(1, Infinity)` = 1, so an outcome
+    // carrying no measurement previously scored the FULL bonus, as though it
+    // had used zero tokens (or zero time) against target. The only production
+    // caller passes `tokenUsage: 0` deliberately — delegate-to-model
+    // recommends rather than executes and genuinely has no token count — so
+    // EVERY routed decision was collecting a maximal efficiency bonus, and
+    // `efficiencyWeight` was a tuning knob attached to a constant.
+    //
+    // Absence must not be able to RAISE a reward. Scoring it zero is the
+    // conservative direction: an unmeasured run earns nothing rather than
+    // everything, and a genuinely efficient measured run still out-scores it.
+    const speedBonus = ratioBonus(
+      this.config.targetDurationMs,
+      outcome.durationMs,
+      this.config.speedWeight
+    );
+    const efficiencyBonus = ratioBonus(
+      this.config.targetTokenUsage,
+      outcome.tokenUsage,
+      this.config.efficiencyWeight
+    );
 
     // Retry penalty
     const retryPenalty = signals.retryCount * this.config.retryPenalty;

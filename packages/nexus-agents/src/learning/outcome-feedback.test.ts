@@ -266,6 +266,58 @@ describe('OutcomeFeedbackCollector', () => {
       );
     });
 
+    // #4669: absence must not read as perfection. `Math.min(1, target / 0)` is
+    // `Math.min(1, Infinity)` = 1, so an outcome carrying NO measurement scored
+    // the FULL bonus — as though it had used zero tokens against target. The
+    // only production caller (`delegate-to-model-router.ts`) passes
+    // `tokenUsage: 0` deliberately, because delegate-to-model recommends rather
+    // than executes and genuinely has no token count. So every routed decision
+    // received a maximal efficiency bonus, which made `efficiencyWeight` a
+    // tuning knob attached to a constant.
+    it('gives NO efficiency bonus when token usage is unmeasured (#4669)', () => {
+      const decision = createTestDecision();
+      collector.recordRoutingDecision(decision);
+
+      const unmeasured = collector.computeReward(createTestOutcome(decision.id, { tokenUsage: 0 }));
+      const wasteful = collector.computeReward(
+        createTestOutcome(decision.id, { tokenUsage: 100_000 })
+      );
+
+      expect(unmeasured.components.efficiencyBonus).toBe(0);
+      // And specifically NOT the maximal bonus it used to receive.
+      const efficient = collector.computeReward(createTestOutcome(decision.id, { tokenUsage: 1 }));
+      expect(unmeasured.components.efficiencyBonus).toBeLessThan(
+        efficient.components.efficiencyBonus
+      );
+      // Unmeasured must not beat a genuinely wasteful measured run either way
+      // round: it earns nothing, rather than earning everything.
+      expect(unmeasured.components.efficiencyBonus).toBeLessThanOrEqual(
+        wasteful.components.efficiencyBonus
+      );
+    });
+
+    it('gives NO speed bonus when duration is unmeasured (#4669)', () => {
+      // Same arithmetic, same trap: target / 0 -> Infinity -> clamped to a
+      // full bonus.
+      const decision = createTestDecision();
+      collector.recordRoutingDecision(decision);
+
+      const unmeasured = collector.computeReward(createTestOutcome(decision.id, { durationMs: 0 }));
+      expect(unmeasured.components.speedBonus).toBe(0);
+    });
+
+    it('a measured-good run still earns its bonuses', () => {
+      // Control: the fix must not zero the terms for real measurements.
+      const decision = createTestDecision();
+      collector.recordRoutingDecision(decision);
+
+      const good = collector.computeReward(
+        createTestOutcome(decision.id, { tokenUsage: 100, durationMs: 100 })
+      );
+      expect(good.components.efficiencyBonus).toBeGreaterThan(0);
+      expect(good.components.speedBonus).toBeGreaterThan(0);
+    });
+
     it('should clamp reward to 0-1 range', () => {
       const decision = createTestDecision();
       collector.recordRoutingDecision(decision);
