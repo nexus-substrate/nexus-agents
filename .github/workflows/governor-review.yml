@@ -143,7 +143,7 @@ jobs:
           LABEL_ACTOR=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/timeline" \
             --paginate \
             --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .actor.login // empty' \
-            2>/dev/null || echo '')
+            2>/dev/null | tail -n1 || echo '')
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -201,11 +201,19 @@ jobs:
             # by construction — there is no PR to carry the evidence.
             APPROVALS=""
             LABELS=""
+            LABEL_ACTOR=""
           else
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
               --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
             LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
               --jq '.labels[].name' | tr '\n' ',')
+            # Must mirror the pre-merge job: the gate step below consumes
+            # `label_actor`, and without a producer here every label-ratified
+            # governor PR lands as `indeterminate` and reddens main.
+            LABEL_ACTOR=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/timeline" \
+              --paginate \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .actor.login // empty' \
+              2>/dev/null | tail -n1 || echo '')
           fi
           {
             echo 'files<<FILES_EOF'
@@ -213,6 +221,7 @@ jobs:
             echo 'FILES_EOF'
             echo "approvals=${APPROVALS}"
             echo "labels=${LABELS}"
+            echo "label_actor=${LABEL_ACTOR}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
