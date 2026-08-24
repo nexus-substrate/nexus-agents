@@ -5,6 +5,15 @@
  * @module mcp/tools/consensus-vote-types
  */
 
+/* eslint-disable max-lines --
+ * #4701: this file sat exactly at the 400-line cap, so adding
+ * `HigherOrderMetadata.appliedToDecision` (a field plus its assignment) puts it
+ * one over. Taking the exemption rather than splitting an 18-export types
+ * module inside a two-line governance-fidelity fix. Second file this session to
+ * hit the cap this way — see #4702 for the same situation in `audit-logger.ts`.
+ * Do not keep adding here; split it.
+ */
+
 import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
@@ -322,16 +331,46 @@ export const VoteDecisionStatusSchema = z.enum([
 
 export type VoteDecisionStatus = z.infer<typeof VoteDecisionStatusSchema>;
 
-/** Higher-Order Voting metadata (Issue #514). */
+/**
+ * Higher-Order Voting metadata (Issue #514).
+ *
+ * ADVISORY, not the verdict (#4701). Read `appliedToDecision` before drawing
+ * any conclusion from the rest of this object.
+ */
 export interface HigherOrderMetadata {
   posteriorApproval: number;
   posteriorRejection: number;
   effectiveVoteCount: number;
+  /**
+   * Aggregation used for THIS correlation-aware run — not necessarily the one
+   * that produced `decision`. See {@link HigherOrderMetadata.appliedToDecision}.
+   */
   method: 'ow' | 'isp' | 'simple';
   usedCorrelationData: boolean;
   improvementOverBaseline: number;
   downweightedAgents: readonly string[];
   reasoning: string;
+  /**
+   * Whether this correlation-aware result actually produced the response's
+   * `decision` (#4701).
+   *
+   * Currently ALWAYS FALSE. The verdict comes from `ConsensusEngine.close()`,
+   * which calls `HigherOrderVotingStrategy.calculateOutcome` — and that calls
+   * `aggregateSimpleInternal`, a plain `approve / (approve + reject)` ratio
+   * with no correlation input. This object is computed separately and consumed
+   * only as metadata plus one escalation check.
+   *
+   * The field exists because the omission was actively misleading: `method`
+   * can read `'ow'` while `downweightedAgents` is non-empty, from which any
+   * reasonable reader concludes the correlation analysis decided the vote. It
+   * did not — the "seven voters that are really one opinion" case is detected
+   * here and then discarded.
+   *
+   * Making the decision genuinely correlation-aware changes governance
+   * outcomes and is tracked separately; this field makes the current state
+   * legible in the meantime, including in persisted vote records.
+   */
+  appliedToDecision: boolean;
 }
 
 export interface ConsensusVoteResponse {
@@ -785,5 +824,10 @@ function toHigherOrderMetadata(r: HigherOrderVotingResult): HigherOrderMetadata 
     improvementOverBaseline: r.improvementOverBaseline,
     downweightedAgents: r.downweightedAgents,
     reasoning: r.reasoning,
+    // #4701: the engine's `calculateOutcome` decides, and it aggregates simple.
+    // Hardcoded false rather than computed, because there is currently no code
+    // path where this result reaches the verdict — a computed `false` would
+    // imply one exists.
+    appliedToDecision: false,
   };
 }
