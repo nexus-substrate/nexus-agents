@@ -68,21 +68,41 @@ jobs:
           # it to a non-staged path with a non-JSON extension.
           pnpm test:coverage > coverage-report.log 2>&1 || true
 
-          # Extract coverage metrics
-          if [ -f packages/nexus-agents/coverage/coverage-summary.json ]; then
-            LINE_COV=$(jq '.total.lines.pct // 0' packages/nexus-agents/coverage/coverage-summary.json)
-            BRANCH_COV=$(jq '.total.branches.pct // 0' packages/nexus-agents/coverage/coverage-summary.json)
-            FUNC_COV=$(jq '.total.functions.pct // 0' packages/nexus-agents/coverage/coverage-summary.json)
+          # Extract coverage metrics (#4727).
+          #
+          # These are REPORTING only — the generator targets $TARGET_COVERAGE and
+          # never reads them. But they are printed in the PR body and the job
+          # summary, so a wrong number here is read by a human as fact.
+          #
+          # `// 0` and the else-branch previously turned "no measurement" into
+          # "0% coverage" at two levels. Absence must not read as the worst
+          # possible measurement; it reads as `unmeasured`.
+          #
+          # Until #4668 added the `json-summary` reporter this file was never
+          # produced, so the else-branch was the only path and every run
+          # reported 0%.
+          SUMMARY=packages/nexus-agents/coverage/coverage-summary.json
+          # Emits "87.5%" or "unmeasured" — the unit travels with the value so
+          # consumers cannot append "%" to a non-number.
+          read_pct() {
+            local pct
+            pct=$(jq -er "$1" "$SUMMARY" 2>/dev/null) && echo "${pct}%" || echo "unmeasured"
+          }
+          if [ -f "$SUMMARY" ]; then
+            LINE_COV=$(read_pct '.total.lines.pct')
+            BRANCH_COV=$(read_pct '.total.branches.pct')
+            FUNC_COV=$(read_pct '.total.functions.pct')
           else
-            LINE_COV=0
-            BRANCH_COV=0
-            FUNC_COV=0
+            echo "::warning::$SUMMARY not found — coverage reported as unmeasured, not 0%"
+            LINE_COV=unmeasured
+            BRANCH_COV=unmeasured
+            FUNC_COV=unmeasured
           fi
 
           echo "line_coverage=$LINE_COV" >> $GITHUB_OUTPUT
           echo "branch_coverage=$BRANCH_COV" >> $GITHUB_OUTPUT
           echo "function_coverage=$FUNC_COV" >> $GITHUB_OUTPUT
-          echo "Current coverage: Lines=$LINE_COV%, Branches=$BRANCH_COV%, Functions=$FUNC_COV%"
+          echo "Current coverage: Lines=$LINE_COV, Branches=$BRANCH_COV, Functions=$FUNC_COV"
 
       - name: Run SICA Test Generator
         id: generate
@@ -180,9 +200,9 @@ jobs:
             **Target Coverage:** ${{ env.TARGET_COVERAGE }}%
 
             ### Coverage Metrics (Before)
-            - Line: ${{ steps.coverage.outputs.line_coverage }}%
-            - Branch: ${{ steps.coverage.outputs.branch_coverage }}%
-            - Function: ${{ steps.coverage.outputs.function_coverage }}%
+            - Line: ${{ steps.coverage.outputs.line_coverage }}
+            - Branch: ${{ steps.coverage.outputs.branch_coverage }}
+            - Function: ${{ steps.coverage.outputs.function_coverage }}
 
             ### Generated
             - Tests: ${{ steps.generate.outputs.test_count }}
@@ -211,9 +231,9 @@ jobs:
           echo "**Target Coverage:** ${{ env.TARGET_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Coverage Before" >> $GITHUB_STEP_SUMMARY
-          echo "- Line: ${{ steps.coverage.outputs.line_coverage }}%" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch: ${{ steps.coverage.outputs.branch_coverage }}%" >> $GITHUB_STEP_SUMMARY
-          echo "- Function: ${{ steps.coverage.outputs.function_coverage }}%" >> $GITHUB_STEP_SUMMARY
+          echo "- Line: ${{ steps.coverage.outputs.line_coverage }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ steps.coverage.outputs.branch_coverage }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Function: ${{ steps.coverage.outputs.function_coverage }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Results" >> $GITHUB_STEP_SUMMARY
           echo "- Tests Generated: ${{ steps.generate.outputs.test_count || 0 }}" >> $GITHUB_STEP_SUMMARY
