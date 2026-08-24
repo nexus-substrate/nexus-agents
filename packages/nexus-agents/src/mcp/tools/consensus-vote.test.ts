@@ -1165,6 +1165,20 @@ describe('opinion_wise is treated as a higher_order alias (#3271)', () => {
     expect(buildResponse(input, makeResult('higher_order')).higherOrderMetadata).toBeDefined();
   });
 
+  it('marks the metadata as NOT having decided the vote (#4701)', () => {
+    // `strategy: 'higher_order'` does not produce a higher-order verdict. The
+    // decision comes from ConsensusEngine.close() ->
+    // HigherOrderVotingStrategy.calculateOutcome -> aggregateSimpleInternal, a
+    // plain approve/(approve+reject) ratio. The correlation-aware run happens
+    // separately and is consumed only as metadata plus one escalation check.
+    //
+    // Without this flag the metadata is actively misleading: `method` can read
+    // a correlation method with a non-empty `downweightedAgents` while the
+    // verdict ignored all of it — and the vote record is governance evidence.
+    const r = buildResponse(input, makeResult('higher_order'));
+    expect(r.higherOrderMetadata?.appliedToDecision).toBe(false);
+  });
+
   it('simple_majority does NOT surface higherOrderMetadata', () => {
     expect(buildResponse(input, makeResult('simple_majority')).higherOrderMetadata).toBeUndefined();
   });
@@ -1577,6 +1591,10 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
       posteriorRejection: 0.2,
       effectiveVoteCount: 2.4,
       method: 'ow',
+      // #4701: 'ow' with correlation data, and it still did not decide — the
+      // exact shape that reads as "the correlation analysis produced this
+      // verdict" when it did not.
+      appliedToDecision: false,
       usedCorrelationData: true,
       improvementOverBaseline: 0.05,
       downweightedAgents: ['devex'],
