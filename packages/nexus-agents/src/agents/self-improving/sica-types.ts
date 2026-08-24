@@ -61,8 +61,14 @@ export interface AgentVersion {
 export interface ExecutionMetrics {
   /** Time taken in milliseconds */
   readonly durationMs: number;
-  /** Tokens consumed */
+  /** Tokens consumed. Meaningful only when `tokensMeasured` is not `false`. */
   readonly tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4743). `false` means the adapter
+   * reported nothing — or the execution failed before reporting — so the number
+   * is a placeholder. Absent means the producer predates the distinction.
+   */
+  readonly tokensMeasured?: boolean;
   /** Whether the task succeeded */
   readonly success: boolean;
   /** Quality score if available (0-1) */
@@ -85,8 +91,17 @@ export interface VersionMetrics {
   readonly successRate: number;
   /** Average execution time in ms */
   readonly avgDurationMs: number;
-  /** Average tokens used per execution */
+  /**
+   * Average tokens per execution, over MEASURED executions only (#4743).
+   *
+   * Unmeasured executions used to be averaged in as zeros, which pulled this
+   * below the `> 2000` cost threshold in `sica-agent-helpers` and suppressed
+   * the cost-focused improvement path. `0` here now means either a genuine zero
+   * or no measured executions — read `unmeasuredExecutions` to tell.
+   */
   readonly avgTokensUsed: number;
+  /** How many executions in the window reported no measured usage (#4743). */
+  readonly unmeasuredExecutions?: number;
   /** Average quality score if available (0-1) */
   readonly avgQualityScore?: number;
   /** When metrics were last updated */

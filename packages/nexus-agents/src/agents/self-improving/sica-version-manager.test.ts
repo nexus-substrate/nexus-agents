@@ -112,6 +112,40 @@ describe('SicaVersionManager', () => {
       expect(metrics?.avgDurationMs).toBe(1000);
     });
 
+    // #4743: unmeasured executions were averaged in as zeros, which understates
+    // cost. `sica-agent-helpers` gates the cost-focused improvement path on
+    // `avgTokensUsed > 2000`, so the understatement could suppress it.
+    it('averages tokens over measured executions only', () => {
+      const version = manager.createInitialVersion(sampleConfig);
+
+      manager.recordExecution(version.id, { durationMs: 100, tokensUsed: 3000, success: true });
+      manager.recordExecution(version.id, {
+        durationMs: 100,
+        tokensUsed: 0,
+        tokensMeasured: false,
+        success: false,
+      });
+
+      const metrics = manager.getMetrics(version.id);
+
+      // Averaging both would give 1500 and drop below the 2000 cost threshold.
+      expect(metrics?.avgTokensUsed).toBe(3000);
+      expect(metrics?.unmeasuredExecutions).toBe(1);
+      // The execution still counts for every other metric.
+      expect(metrics?.executionCount).toBe(2);
+    });
+
+    it('omits the unmeasured count when every execution reported usage', () => {
+      const version = manager.createInitialVersion(sampleConfig);
+
+      manager.recordExecution(version.id, { durationMs: 100, tokensUsed: 500, success: true });
+
+      const metrics = manager.getMetrics(version.id);
+
+      expect(metrics?.avgTokensUsed).toBe(500);
+      expect(metrics?.unmeasuredExecutions).toBeUndefined();
+    });
+
     it('should calculate correct success rate over multiple executions', () => {
       const version = manager.createInitialVersion(sampleConfig);
 
