@@ -33,7 +33,7 @@
  *
  * @module scripts/extract-api-surface
  */
-import { Project, Node, SyntaxKind, type SourceFile } from 'ts-morph';
+import { Project, Node, Scope, SyntaxKind, type SourceFile } from 'ts-morph';
 import { join } from 'node:path';
 
 const PKG = join(process.cwd(), 'packages', 'nexus-agents');
@@ -73,9 +73,10 @@ function propertyLines(node: Node): string[] {
 
   // Private/protected members are not API. Recording them made the gate fire on
   // renaming a private helper — an always-fails direction that trains people to
-  // regenerate the snapshot without reading it.
-  const isPublic = (m: { hasModifier?: unknown; getScope?: () => string }): boolean =>
-    typeof m.getScope !== 'function' || m.getScope() === 'public';
+  // regenerate the snapshot without reading it. Interface members carry no
+  // scope, so they are public by definition.
+  const isPublic = (member: Node): boolean =>
+    !Node.isScoped(member) || member.getScope() === Scope.Public;
 
   const props = node
     .getProperties()
