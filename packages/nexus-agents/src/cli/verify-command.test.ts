@@ -5,6 +5,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runVerify, printVerifyResult, verifyCommand } from './verify-command.js';
 import type { VerifyResult, VerifyCheck } from './verify-command.js';
 
@@ -272,30 +275,63 @@ describe('verify-command', () => {
       expect(failing.noHardFailures).toBe(false);
     });
 
-    it('reports Configuration as failed (warn) with a fix hint when config access throws (#4181)', async () => {
-      vi.resetModules();
-      vi.doMock('../config/index.js', async (importOriginal) => {
-        const actual = await importOriginal<typeof import('../config/index.js')>();
-        return {
-          ...actual,
-          get defaultConfig(): never {
-            throw new Error('simulated config loader failure');
-          },
-        };
-      });
+    it('reports Configuration as failed (warn) when the project config file is malformed (#4844)', async () => {
+      // #4181 added this failure branch, and #4181's test reached it by
+      // turning `defaultConfig` into a throwing getter — something a plain
+      // object export cannot do in production. The branch was guarding a
+      // step that could not break. This drives the failure the remediation
+      // text actually describes: a real config file that does not parse.
+      const dir = mkdtempSync(join(tmpdir(), 'nexus-verify-cfg-'));
+      writeFileSync(join(dir, 'nexus-agents.yaml'), 'models: [unclosed\n  bad: : :\n');
+      const original = process.cwd();
+      process.chdir(dir);
       try {
-        const mod = await import('./verify-command.js');
-        const result = await mod.runVerify();
+        const result = await runVerify();
         const configCheck = result.checks.find((c) => c.name === 'Configuration');
-        expect(configCheck).toBeDefined();
+
         expect(configCheck?.passed).toBe(false);
         // Diagnostic-only: degraded, not a hard gate.
         expect(configCheck?.severity).toBe('warn');
-        expect(configCheck?.message).toBe('Failed to load default configuration');
-        expect(configCheck?.fix).toContain('Reinstall nexus-agents');
+        expect(configCheck?.message).toContain('nexus-agents.yaml');
       } finally {
-        vi.doUnmock('../config/index.js');
-        vi.resetModules();
+        process.chdir(original);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports Configuration as passed when a project config file parses (#4844)', async () => {
+      // The pair. Without it, "always fail" satisfies the test above.
+      const dir = mkdtempSync(join(tmpdir(), 'nexus-verify-cfg-ok-'));
+      writeFileSync(join(dir, 'nexus-agents.yaml'), 'version: "1.0"\n');
+      const original = process.cwd();
+      process.chdir(dir);
+      try {
+        const configCheck = (await runVerify()).checks.find((c) => c.name === 'Configuration');
+
+        expect(configCheck?.passed).toBe(true);
+        expect(configCheck?.message).toContain('nexus-agents.yaml');
+      } finally {
+        process.chdir(original);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports Configuration as passed, and says so, when there is no config file (#4844)', async () => {
+      // The benign population: most installs have no config file at all and
+      // must not be told their configuration is broken. The message has to
+      // distinguish "defaults" from "your file is fine" — otherwise a pass
+      // implies a validation that never happened.
+      const dir = mkdtempSync(join(tmpdir(), 'nexus-verify-cfg-none-'));
+      const original = process.cwd();
+      process.chdir(dir);
+      try {
+        const configCheck = (await runVerify()).checks.find((c) => c.name === 'Configuration');
+
+        expect(configCheck?.passed).toBe(true);
+        expect(configCheck?.message).toContain('default');
+      } finally {
+        process.chdir(original);
+        rmSync(dir, { recursive: true, force: true });
       }
     });
 

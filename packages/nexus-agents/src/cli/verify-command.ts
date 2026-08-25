@@ -10,7 +10,7 @@
 
 import { VERSION } from '../version.js';
 import { getTimeProvider } from '../core/index.js';
-import { defaultConfig } from '../config/index.js';
+import { defaultConfig, loadConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
 import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
@@ -134,37 +134,47 @@ function checkPackageExports(): VerifyCheck {
 }
 
 /**
- * Checks if default configuration is accessible.
+ * Checks that the project's configuration file loads and validates.
+ *
+ * #4844: this used to read two properties off the compiled-in `defaultConfig`
+ * constant. That cannot throw once the module has imported, so the failure
+ * branch #4181 added was unreachable and both live branches returned a pass —
+ * a user with a malformed `nexus-agents.yaml` saw Configuration succeed. It
+ * now loads the real file, which is what #4181's own remediation text
+ * described ("if a local config override exists, check it for syntax errors").
  */
 function checkConfigLoading(): VerifyCheck {
-  try {
-    const hasModels = typeof defaultConfig.models === 'object';
-    const hasSecurity = typeof defaultConfig.security === 'object';
+  const result = loadConfig();
 
-    if (hasModels && hasSecurity) {
-      return {
-        name: 'Configuration',
-        passed: true,
-        message: 'Default config accessible',
-      };
-    }
-
-    return {
-      name: 'Configuration',
-      passed: true, // Config errors are not fatal for verification
-      message: 'Using default configuration',
-    };
-  } catch {
-    // #4181: config breakage must SURFACE in the diagnostic instead of being
-    // reported as a pass. Warn severity — degraded, not a hard gate (exit 0).
+  if (!result.ok) {
+    // Degraded, not a hard gate: the CLI still runs on defaults (exit 0).
     return {
       name: 'Configuration',
       passed: false,
       severity: 'warn',
-      message: 'Failed to load default configuration',
-      fix: 'Reinstall nexus-agents (npm install -g nexus-agents); if a local config override exists, check it for syntax errors',
+      message: `Failed to load nexus-agents.yaml: ${result.error.message}`,
+      fix: 'Fix the syntax errors in nexus-agents.yaml, or remove it to fall back to defaults',
     };
   }
+
+  const { configPath, warnings } = result.value;
+
+  // No config file is the common case and is genuinely healthy — but the
+  // message must not imply a file was validated when none was read.
+  if (configPath === undefined) {
+    return {
+      name: 'Configuration',
+      passed: true,
+      message: 'No config file found — using defaults',
+    };
+  }
+
+  const suffix = warnings.length > 0 ? ` (${String(warnings.length)} warning(s))` : '';
+  return {
+    name: 'Configuration',
+    passed: true,
+    message: `Loaded ${configPath}${suffix}`,
+  };
 }
 
 /**
