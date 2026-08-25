@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskResult } from '../../core/index.js';
 import type {
+  AggregatedResult,
   CollaborationConfig,
   ExpertParticipation,
   VoteMessage,
@@ -22,6 +23,7 @@ import {
   calculateQualityScore,
   buildExpertResults,
   shouldFinalize,
+  buildAggregatedResult,
 } from './session-helpers.js';
 
 // ============================================================================
@@ -381,5 +383,47 @@ describe('shouldFinalize', () => {
 
   it('does not finalize an empty consensus session (#4585)', () => {
     expect(shouldFinalize('consensus', [], new Map(), [], [])).toBe(false);
+  });
+});
+
+// ============================================================================
+// buildAggregatedResult confidence disclosure (#4831)
+// ============================================================================
+
+describe('buildAggregatedResult does not report an unmeasured confidence (#4831)', () => {
+  function build(results: TaskResult[]): AggregatedResult {
+    return buildAggregatedResult({
+      pattern: 'parallel',
+      results,
+      participants: [makeParticipant({ status: 'submitted' })],
+      votes: [],
+      reviews: [],
+      endTime: new Date('2026-01-01T00:01:00.000Z'),
+    });
+  }
+
+  it('marks averageConfidence as unmeasured', () => {
+    // Nothing reaching this builder carries a confidence signal: TaskResult,
+    // ResultMetadata, VoteMessage and ExpertParticipation all lack the field.
+    // The sibling aggregator computes it from ExpertResult.confidence, which
+    // this path does not have. Same shape as `unmeasuredResults` (#4743).
+    const result = build([makeTaskResult()]);
+
+    expect(result.metadata.confidenceMeasured).toBe(false);
+  });
+
+  it('does not report a perfect confidence as the placeholder', () => {
+    // It reported 1.0 — the best possible score — for a session whose
+    // confidence was never measured. A consumer thresholding on it passed
+    // unconditionally; the placeholder has to fail in the safe direction.
+    expect(build([makeTaskResult()]).metadata.averageConfidence).toBe(0);
+  });
+
+  it('keeps conflictCount consistent with the conflicts it reports', () => {
+    // Derived rather than restated, so the two cannot drift. This path still
+    // performs no conflict detection — see #4854.
+    const result = build([makeTaskResult(), makeTaskResult({ taskId: 'task-2' })]);
+
+    expect(result.metadata.conflictCount).toBe(result.conflicts.length);
   });
 });

@@ -401,6 +401,7 @@ FunctionDeclaration aggregateResults
 InterfaceDeclaration AggregationMetadata
   aggregatedAt: string
   averageConfidence: number
+  confidenceMeasured?: boolean | undefined
   conflictCount: number
   resultCount: number
   totalTokensUsed: number

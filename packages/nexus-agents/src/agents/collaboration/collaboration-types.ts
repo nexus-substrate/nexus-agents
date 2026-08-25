@@ -263,6 +263,20 @@ export interface AggregationMetadata {
    * not zero.
    */
   unmeasuredResults?: number;
+  /**
+   * Whether `averageConfidence` is a measurement (#4831).
+   *
+   * `false` means no contributor carried a confidence signal, so
+   * `averageConfidence` is a placeholder `0` and NOT a score — a session whose
+   * confidence was never assessed must not read as a confident one. The
+   * collaboration-session builder is in that position: `TaskResult` has no
+   * confidence field, while the `ResultAggregator` path computes the value
+   * from `ExpertResult.confidence`.
+   *
+   * Absent means the producer predates the distinction — unknown, not
+   * measured. Mirrors `ResultMetadata.tokensMeasured` (#4734).
+   */
+  confidenceMeasured?: boolean;
   aggregatedAt: string;
 }
 
