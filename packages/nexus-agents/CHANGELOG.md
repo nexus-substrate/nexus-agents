@@ -1,5 +1,80 @@
 # nexus-agents
 
+## 4.5.0
+
+### Minor Changes
+
+- [#4855](https://github.com/nexus-substrate/nexus-agents/pull/4855) [`4599209`](https://github.com/nexus-substrate/nexus-agents/commit/4599209ed939b23f39d33f12cd8fa809d0e2fa06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop reporting a perfect confidence for a session that never measured one
+
+  `buildAggregatedResult` returned `averageConfidence: 1.0` — the best possible
+  score — for every collaboration session, and `conflictCount: 0` as a literal.
+  Its sibling `ResultAggregator.buildResult` computes both from the same
+  `AggregatedResult` shape.
+
+  The two are not symmetric, though, and the asymmetry is the point: **no input
+  reaching the session builder carries a confidence signal at all.** Neither
+  `TaskResult`, `ResultMetadata`, `VoteMessage` nor `ExpertParticipation` has the
+  field; the aggregator path computes it from `ExpertResult.confidence`. So there
+  was nothing to compute, and the value was a placeholder presented as a score.
+
+  Following the precedent already in this interface (`unmeasuredResults`, [#4743](https://github.com/nexus-substrate/nexus-agents/issues/4743),
+  and `ResultMetadata.tokensMeasured`, [#4734](https://github.com/nexus-substrate/nexus-agents/issues/4734)), `AggregationMetadata` gains an
+  optional `confidenceMeasured`. The session builder reports `0` with
+  `confidenceMeasured: false`; the aggregator reports its computed value with
+  `confidenceMeasured: true`. The placeholder now fails in the safe direction — a
+  consumer thresholding on confidence previously passed unconditionally.
+
+  `AggregationMetadata` gaining an optional field is an additive public-API
+  change, so this is a minor rather than a patch.
+
+  `conflictCount` is now derived from the `conflicts` list so the two cannot
+  drift. That path still performs no conflict detection, which is [#4854](https://github.com/nexus-substrate/nexus-agents/issues/4854).
+
+  Fixes [#4831](https://github.com/nexus-substrate/nexus-agents/issues/4831).
+
+### Patch Changes
+
+- [#4856](https://github.com/nexus-substrate/nexus-agents/pull/4856) [`fabec92`](https://github.com/nexus-substrate/nexus-agents/commit/fabec92278575ee39e82e1cdbf1df2520b5809c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop execute_spec passing a spec that has no acceptance criteria
+
+  `executeSpec` short-circuited an empty acceptance-criteria list to a hardcoded
+  `satisfaction: 1, metCount: 0, allMet: true` — a perfect score for a spec that
+  was never checked against anything.
+
+  The empty list is reachable in production: `parseSpec` returns `[]` when the
+  `## Acceptance Criteria` heading is absent or misspelled, and records the gap in
+  `missingSections` without erroring. Nothing upstream rejects it — the decomposer
+  requires only non-empty requirements, and the tool schema only checks the spec
+  is a string.
+
+  `validateScenario` already refuses this input; the short-circuit bypassed the
+  sibling that got it right. It now returns a `validate`-stage error naming the
+  missing section, so the caller is told what to add rather than told it passed.
+
+  This matters beyond the returned value: `execute_spec` persists `satisfaction`
+  into tool memory as a learning and appends a `success: true` outcome record used
+  for adaptive routing. A vacuous pass was poisoning both.
+
+  Fixes [#4826](https://github.com/nexus-substrate/nexus-agents/issues/4826).
+
+- [#4858](https://github.com/nexus-substrate/nexus-agents/pull/4858) [`e681fd1`](https://github.com/nexus-substrate/nexus-agents/commit/e681fd1bc0ea728e9108878312a8034233a94166) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make verify's Configuration check read the real config file
+
+  `checkConfigLoading` read two properties off `defaultConfig`, a compiled-in
+  imported constant. That cannot throw once the module has imported, so the
+  failure branch added by [#4181](https://github.com/nexus-substrate/nexus-agents/issues/4181) was unreachable and both live branches returned a
+  pass. A user with a malformed `nexus-agents.yaml` ran `verify` and saw
+  Configuration succeed — no file was ever opened.
+
+  [#4181](https://github.com/nexus-substrate/nexus-agents/issues/4181)'s own remediation text described the check it wanted ("if a local config
+  override exists, check it for syntax errors"); the implementation hardened the
+  verdict one layer away from the thing that can break.
+
+  It now calls `loadConfig()` and reports three distinguishable outcomes: a parse
+  or validation failure as a `warn` carrying the loader's message, a loaded file
+  by path with its warning count, and — the common case — no config file as a
+  pass that says defaults were used rather than implying a file was validated.
+
+  Fixes [#4844](https://github.com/nexus-substrate/nexus-agents/issues/4844).
+
 ## 4.4.0
 
 ### Minor Changes
