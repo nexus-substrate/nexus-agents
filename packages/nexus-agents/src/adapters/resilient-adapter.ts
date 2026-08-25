@@ -87,6 +87,13 @@ export class ResilientAdapter implements IResilientAdapter {
     this.logger = config?.logger ?? createLogger({ component: 'resilient-adapter' });
     this.preferredCli = config?.preferredCli;
     this.defaultCliTimeoutMs = config?.defaultCliTimeoutMs;
+
+    // #4659: arm at construction. The previous `attach`-only API was not on
+    // IResilientAdapter, so neither production construction site could reach
+    // it and the breaker never fired.
+    if (config?.circuitBreakerRegistry !== undefined) {
+      this.attachCircuitBreakerRegistry(config.circuitBreakerRegistry);
+    }
   }
 
   // --- IModelAdapter properties (forwarded) ---
@@ -188,6 +195,11 @@ export class ResilientAdapter implements IResilientAdapter {
    * When the current adapter's circuit opens, the cached adapter
    * is cleared so the next call triggers re-detection.
    */
+  /** The registry arming failover, or undefined if this adapter is unarmed (#4659). */
+  getCircuitBreakerRegistry(): CircuitBreakerRegistry | undefined {
+    return this.circuitBreakerRegistry;
+  }
+
   attachCircuitBreakerRegistry(registry: CircuitBreakerRegistry): void {
     this.detachCircuitBreakerRegistry();
     this.circuitBreakerRegistry = registry;
