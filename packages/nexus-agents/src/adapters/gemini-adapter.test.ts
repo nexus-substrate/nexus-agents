@@ -533,6 +533,28 @@ describe('GeminiAdapter', () => {
       });
     });
 
+    it('emits no usage when the stream reports none (#4835)', async () => {
+      // This path used to emit `{inputTokens: 0, outputTokens: 0,
+      // totalTokens: 0}` — byte-identical to a call that consumed nothing, in
+      // the same file whose NON-streaming path already documents the
+      // omit-rather-than-zero-fill policy (#4439).
+      async function* mockStreamGenerator() {
+        yield { text: 'Hello' };
+      }
+      mockGenerateContentStream.mockResolvedValueOnce(mockStreamGenerator());
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of new GeminiAdapter(validConfig).stream({
+        messages: [{ role: 'user', content: 'Hi!' }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      const delta = chunks.find((c) => c.type === 'message_delta');
+      expect(delta).toBeDefined();
+      expect(delta).not.toHaveProperty('usage');
+    });
+
     it('should map content_block_start events correctly', async () => {
       async function* mockStreamGenerator() {
         yield { text: 'Initial' };

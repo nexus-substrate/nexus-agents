@@ -306,7 +306,9 @@ function mapFinishChunks(
       type: 'message_delta',
       delta: { stop_reason: mapStopReason(choice.finish_reason) },
       usage: {
+        // OpenAI streaming omits prompt_tokens on the final chunk (#4835).
         inputTokens: 0,
+        inputTokensMeasured: false,
         outputTokens: chunk.usage?.completion_tokens ?? 0,
         totalTokens: chunk.usage?.total_tokens ?? 0,
       },

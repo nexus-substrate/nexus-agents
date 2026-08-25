@@ -232,7 +232,9 @@ export class GeminiAdapter extends BaseAdapter {
     controller.push({
       type: 'message_delta',
       delta: { stop_reason: 'end_turn' },
-      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      // #4835: no usage is reported on this path, so none is emitted —
+      // zero-filling all three made an unmeasured stream indistinguishable
+      // from one that consumed nothing. `usage` is optional on the chunk.
     });
     controller.push({ type: 'message_stop' });
     controller.complete();
