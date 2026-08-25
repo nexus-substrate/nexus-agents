@@ -28,14 +28,20 @@ vi.mock('../core/index.js', async (importOriginal) => {
   };
 });
 
+// Hoisted so the execute call can be inspected (#4833). The recommendation
+// is deliberately 'parallel', which DIFFERS from the 'consensus' pattern
+// buildCollabConfig sets — with both the same, a test cannot tell whether the
+// executed pattern came from the config or from the recommendation.
+const { executeSelectorMock } = vi.hoisted(() => ({ executeSelectorMock: vi.fn() }));
+
 vi.mock('./collaboration/adaptive-protocol-selector.js', () => ({
   createAdaptiveProtocolSelector: () => ({
     getRecommendation: vi.fn(() => ({
-      recommendedPattern: 'consensus',
+      recommendedPattern: 'parallel',
       taskType: 'synthesis',
       confidence: 0.9,
     })),
-    execute: vi.fn(() =>
+    execute: executeSelectorMock.mockImplementation(() =>
       Promise.resolve({
         ok: true,
         value: {
@@ -199,6 +205,28 @@ describe('collaborativeSynthesis', () => {
       expect(result.value.resultSummaries).toHaveLength(3);
       expect(result.value.qualityScore).toBeGreaterThan(0);
     }
+  });
+
+  it('executes the configured pattern, not the recommended one (#4833)', async () => {
+    // Before #4833, `getRecommendation` returned this call's own
+    // `config.pattern`, so forwarding it into `execute` was a no-op and
+    // adaptive selection never affected what ran. Now that the recommendation
+    // is a real adaptive choice, forwarding it would silently activate that
+    // selection in production, with nothing measuring whether it helps. The
+    // mock recommends 'parallel'; buildCollabConfig sets 'consensus'.
+    const helper = new OrchestratorCollaborationHelper();
+    const results = [
+      makeTaskResult('e1', 'out1'),
+      makeTaskResult('e2', 'out2'),
+      makeTaskResult('e3', 'out3'),
+    ];
+
+    await helper.collaborativeSynthesis(results, makeAgentsMap(), makeTask());
+
+    expect(executeSelectorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pattern: 'consensus' }),
+      expect.anything()
+    );
   });
 
   it('includes collaboration metadata', async () => {
