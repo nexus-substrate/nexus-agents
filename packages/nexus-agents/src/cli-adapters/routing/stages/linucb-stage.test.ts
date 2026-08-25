@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LinUCBStage, createLinUCBStage } from './linucb-stage.js';
 import type { RoutingOutcome } from '../router-stage.js';
+import type { RoutingContext } from '../router-stage.js';
 import { createRoutingContext } from '../router-stage.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from '../../../core/index.js';
 
@@ -23,8 +24,8 @@ beforeEach(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeCtx(task = 'test task', signals: string[] = []) {
-  const ctx = createRoutingContext(task);
+function makeCtx(task = 'test task', signals: string[] = [], metadata?: Record<string, unknown>) {
+  const ctx = createRoutingContext(task, undefined, metadata);
   return { ...ctx, signals: [...ctx.signals, ...signals] };
 }
 
@@ -207,21 +208,41 @@ describe('LinUCBStage.route task detection', () => {
   });
 });
 
-describe('LinUCBStage.route budget signals', () => {
-  it('extracts budget utilization from signals', async () => {
-    expect((await new LinUCBStage().route(makeCtx('task', ['budget:utilization-0.8']))).ok).toBe(
-      true
-    );
+describe('LinUCBStage budget utilization (#4834)', () => {
+  // These three tests were named for extraction and asserted only `.ok`, so
+  // they passed against a consumer reading `budget:utilization-` (hyphen)
+  // that no producer ever emitted. The signal channel is gone (#4866 option
+  // B); the value now arrives as validated context metadata, and the stage
+  // states which value it used so the choice is observable.
+
+  function utilizationFromTrace(ctx: RoutingContext): string {
+    return ctx.trace.map((t) => t.details ?? '').join(' ');
+  }
+
+  it('uses the utilization supplied in metadata', async () => {
+    const result = await new LinUCBStage().route(makeCtx('task', [], { budgetUtilization: 0.8 }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(utilizationFromTrace(result.value.context)).toContain('budget=0.80');
   });
 
-  it('uses default utilization when no signal present', async () => {
-    expect((await new LinUCBStage().route(makeCtx('task', ['other-signal']))).ok).toBe(true);
+  it('falls back to the neutral 0.5 when metadata carries none', async () => {
+    // Neutral matches what `warmStart` replays, so an unknown budget is the
+    // same value the learned weights were reconstructed against.
+    const result = await new LinUCBStage().route(makeCtx('task', ['other-signal']));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(utilizationFromTrace(result.value.context)).toContain('budget=0.50');
   });
 
-  it('handles malformed budget signal gracefully', async () => {
-    expect(
-      (await new LinUCBStage().route(makeCtx('task', ['budget:utilization-notanumber']))).ok
-    ).toBe(true);
+  it('falls back to neutral for an out-of-range value', async () => {
+    const result = await new LinUCBStage().route(makeCtx('task', [], { budgetUtilization: 42 }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(utilizationFromTrace(result.value.context)).toContain('budget=0.50');
   });
 });
 

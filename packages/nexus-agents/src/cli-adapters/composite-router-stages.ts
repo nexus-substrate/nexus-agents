@@ -657,12 +657,13 @@ export function runLinUCBStage(
   taskProfile: TaskProfile,
   topsisRanking: RoutingArmId[],
   stagesExecuted: string[],
-  deps: StageDependencies
+  deps: StageDependencies,
+  budgetUtilization?: number
 ): { selectedCli: RoutingArmId | undefined; ucbScore: number | undefined } {
   if (!deps.config.enableLinUCBSelection || deps.linucbBandit === undefined) {
     return { selectedCli: topsisRanking[0], ucbScore: undefined };
   }
-  const banditContext = taskProfileToBanditContext(taskProfile);
+  const banditContext = taskProfileToBanditContext(taskProfile, budgetUtilization);
   const selection = deps.linucbBandit.select(banditContext);
   stagesExecuted.push('linucb-selection');
   // armName is the routing arm id — a CLI slot or a distinct api:* arm (#3422).
@@ -1110,7 +1111,13 @@ export async function runPipeline(
   if (stageScores.size > 0) topsisOpts.stageScores = stageScores;
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps, topsisOpts);
 
-  const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
+  const linucbResult = runLinUCBStage(
+    taskProfile,
+    topsisResult.ranking,
+    stagesExecuted,
+    deps,
+    budgetResult.value.budgetUtilization
+  );
   if (linucbResult.selectedCli === undefined) {
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }

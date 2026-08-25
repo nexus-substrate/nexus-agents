@@ -45,16 +45,36 @@ export function adjustProfileForTask(
   return profile;
 }
 
+/** Neutral feature value — what {@link LinUCBBandit.warmStart} replays. */
+const NEUTRAL_FEATURE = 0.5;
+
 /**
  * Converts a task profile to LinUCB bandit context.
+ *
+ * `budgetUtilization` was hardcoded to 0.5 on every call, so the bandit's
+ * budget feature was constant and carried no information — a dead input to a
+ * learned model, and the actual reason the feature never varied (#4834). It
+ * now takes the figure the pipeline computes, falling back to neutral when no
+ * cost ceiling is configured and there is nothing to measure.
+ *
+ * Neutral rather than zero: zero would read as "budget untouched" and is a
+ * claim; 0.5 is the same value `warmStart` replays historical outcomes at, so
+ * an unknown budget matches the context the weights were reconstructed
+ * against.
+ *
+ * `timePressure` remains hardcoded — no producer computes one anywhere in the
+ * tree, so there is nothing to thread. Tracked separately.
  */
-export function taskProfileToBanditContext(profile: TaskProfile): BanditContext {
+export function taskProfileToBanditContext(
+  profile: TaskProfile,
+  budgetUtilization?: number
+): BanditContext {
   return {
     taskComplexity: profile.reasoningComplexity / 10,
     contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
     isCodeTask: profile.codeGeneration ? 1 : 0,
     isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
-    budgetUtilization: 0.5,
+    budgetUtilization: budgetUtilization ?? NEUTRAL_FEATURE,
     timePressure: 0.3,
   };
 }
