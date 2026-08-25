@@ -134,6 +134,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       mismatch: false,
       dataDirInsideRepo: false,
     },
+    installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     harnessAlignment: {
       agentsMdExists: true,
       files: [],

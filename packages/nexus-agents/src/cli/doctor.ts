@@ -47,6 +47,13 @@ import { probeCli } from './cli-auth-probe.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
+import {
+  assessInstallFreshness,
+  readGlobalVersion,
+  type InstallFreshness,
+} from './doctor-install-freshness.js';
+import { execFileSync } from 'node:child_process';
+import { VERSION } from '../version.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 
 /** Required Node.js major version. */
@@ -261,6 +268,13 @@ export interface DoctorResult {
   readonly sandbox: SandboxCheck;
   /** Per-harness config alignment with AGENTS.md federation (#2805). */
   readonly harnessAlignment: HarnessAlignmentCheck;
+  /**
+   * Whether the globally installed package matches this build (#4767).
+   *
+   * `.mcp.json` runs the MCP server off the global install, so drift here
+   * means every MCP call executes code the operator is not looking at.
+   */
+  readonly installFreshness: InstallFreshness;
   /** Voter transport: in-process gateway vs CLI subprocess fallback (#4255). */
   readonly voterTransport: VoterTransportCheck;
   /**
@@ -750,6 +764,43 @@ export function checkSandbox(): SandboxCheck {
  * Presence-only — mirrors {@link checkApiKeys}, no network probe and the
  * key value never leaves `process.env`.
  */
+/**
+ * Compare the globally installed version with this build (#4767).
+ *
+ * Deliberately NOT exported: this is only the `npm ls -g` call. The verdict it
+ * wraps lives in `doctor-install-freshness.ts`, where it is pure and testable
+ * without npm — exporting this too would be an export whose only importer is a
+ * test, which the producer/consumer ratchet correctly rejects.
+ */
+function checkInstallFreshness(): InstallFreshness {
+  const { version, reason } = readGlobalVersion((cmd, args) => {
+    try {
+      return execFileSync(cmd, [...args], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      return null;
+    }
+  });
+  return assessInstallFreshness(version, VERSION, reason);
+}
+
+/** The environment sub-checks, grouped so `runDoctor` stays under its line cap. */
+function collectEnvironmentChecks(): {
+  harnessAlignment: HarnessAlignmentCheck;
+  installFreshness: InstallFreshness;
+  voterTransport: VoterTransportCheck;
+  scratchSpace: readonly ScratchSpaceCheck[];
+} {
+  return {
+    harnessAlignment: checkHarnessAlignment(),
+    installFreshness: checkInstallFreshness(),
+    voterTransport: checkVoterTransport(),
+    scratchSpace: checkScratchFilesystems(),
+  };
+}
+
 export function checkVoterTransport(): VoterTransportCheck {
   return { configured: readOpenAICompatEnv() !== null };
 }
@@ -812,9 +863,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const sqliteCheck = await checkSqlite();
   const dataDirectory = checkDataDirectory();
   const sandbox = checkSandbox();
-  const harnessAlignment = checkHarnessAlignment();
-  const voterTransport = checkVoterTransport();
-  const scratchSpace = checkScratchFilesystems();
+  const env = collectEnvironmentChecks();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -824,7 +873,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     nodeSupported: nodeVersion.supported,
     hasAuthMethod,
     mcpServerReady,
-    scratchSpace,
+    scratchSpace: env.scratchSpace,
     clis,
   });
 
@@ -840,9 +889,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     sqliteCheck,
     dataDirectory,
     sandbox,
-    harnessAlignment,
-    voterTransport,
-    scratchSpace,
+    ...env,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };
