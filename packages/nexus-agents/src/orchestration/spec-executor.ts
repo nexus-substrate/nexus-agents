@@ -23,15 +23,6 @@ import type {
 } from './spec-executor-types.js';
 import type { ScenarioResult } from './scenario-validator-types.js';
 
-/** Validation result when no acceptance criteria are defined. */
-const NO_CRITERIA_VALIDATION: ScenarioResult = {
-  satisfaction: 1,
-  totalCriteria: 0,
-  metCount: 0,
-  criteria: [],
-  allMet: true,
-};
-
 /** Executes a markdown specification end-to-end. */
 export async function executeSpec(
   markdown: string,
@@ -53,9 +44,22 @@ export async function executeSpec(
   if (!execResult.ok) return err({ message: execResult.error.message, stage: 'execute' });
 
   const outputs = extractOutputs(execResult.value.finalState);
-  const validation =
-    spec.acceptanceCriteria.length === 0 ? NO_CRITERIA_VALIDATION : validateOrErr(spec, outputs);
 
+  // A spec with no acceptance criteria has nothing to be validated against.
+  // This used to short-circuit to satisfaction 1 / allMet true — a perfect
+  // score for a check that never ran, which `execute_spec` then persisted as
+  // a successful outcome and a learning (#4826). `validateScenario` already
+  // refuses this input; the short-circuit was bypassing it.
+  if (spec.acceptanceCriteria.length === 0) {
+    return err({
+      message:
+        'Spec has no acceptance criteria, so the execution cannot be validated. ' +
+        'Add an "## Acceptance Criteria" section.',
+      stage: 'validate',
+    });
+  }
+
+  const validation = validateOrErr(spec, outputs);
   if (validation === null) {
     return err({ message: 'Scenario validation failed', stage: 'validate' });
   }
