@@ -285,6 +285,10 @@ describe('SecurityConfigSchema', () => {
     ).toThrow();
   });
 
+  // #4768: this test supplies `audit: {}` — a key a real deployment never
+  // writes. The inner defaults only fire once the object EXISTS, so this
+  // asserts the declared intent, not what production gets. Read it together
+  // with the sibling below, which pins the actual behaviour.
   it('parses audit config with defaults', () => {
     const result = SecurityConfigSchema.parse({
       audit: {},
@@ -296,6 +300,24 @@ describe('SecurityConfigSchema', () => {
       maxFileSizeBytes: 10485760,
       maxFiles: 10,
     });
+  });
+
+  // #4768: the seam the test above cannot see. `audit` is `.optional()`, so a
+  // config with no audit block parses to `undefined` and the inner
+  // `enabled: default(true)` never runs — `initializeAuditLogger` then returns
+  // null and audit logging is OFF, while the schema, its JSDoc and the test
+  // above all say the default is `true`.
+  //
+  // Pinned as characterization, NOT as endorsement: whichever way #4768 is
+  // resolved — make the default real, or document audit as opt-in — this test
+  // should change deliberately rather than a future reader inferring the
+  // default is live because `parse({audit:{}})` says so.
+  it('yields NO audit config when the block is absent — the production shape', () => {
+    const result = SecurityConfigSchema.parse({});
+
+    expect(result.audit).toBeUndefined();
+    // The consequence: the guard in cli-server-audit.ts reads this as disabled.
+    expect(result.audit?.enabled).not.toBe(true);
   });
 
   it('validates audit minSeverity enum', () => {
