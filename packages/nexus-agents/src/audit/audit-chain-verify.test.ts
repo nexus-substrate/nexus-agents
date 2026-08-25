@@ -201,4 +201,52 @@ describe('front-truncation is detected (#4703)', () => {
     // Asserted so a future change to the empty case is a deliberate one.
     expect(verifyChain([]).ok).toBe(true);
   });
+
+  // #4768: `ok` stays true — the threat model accepts that, and nothing
+  // contradicts an absent chain. What changes is that the verdict now says it
+  // verified NOTHING, which T8 names as the required mitigation for its HIGH
+  // residual risk: "OK" was ambiguous between "verified chained log" and
+  // "un-chained log, nothing to verify".
+  describe('says what it did not verify (#4768, #4660)', () => {
+    it('marks an empty chain as unverified rather than silently clean', () => {
+      const r = verifyChain([]);
+
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.notVerified).toBe('empty');
+        expect(r.eventCount).toBe(0);
+      }
+    });
+
+    it('marks an un-chained log as unverified — T8, residual risk HIGH', () => {
+      // First event carries no hash, so the whole batch is treated as
+      // un-chained and no links are checked. Previously indistinguishable from
+      // a verified chain.
+      const unhashed = chain(2).map((e) => {
+        const copy: AuditEvent = { ...e };
+        delete (copy as { hash?: string }).hash;
+        return copy;
+      });
+
+      const r = verifyChain(unhashed);
+
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.notVerified).toBe('unchained');
+        expect(r.eventCount).toBe(2);
+      }
+    });
+
+    it('leaves notVerified absent when links were actually checked', () => {
+      // The guard-rail in the other direction: a genuinely verified chain must
+      // NOT be labelled unverified, or the field is noise.
+      const r = verifyChain(chain(3));
+
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.notVerified).toBeUndefined();
+        expect(r.eventCount).toBe(3);
+      }
+    });
+  });
 });

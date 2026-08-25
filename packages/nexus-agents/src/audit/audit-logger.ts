@@ -107,6 +107,21 @@ export type ChainVerification =
        * rather than judges — see T6 in the audit hash-chain threat model.
        */
       unanchoredHead?: { previousHash: string; detail: string };
+      /**
+       * Set when `ok: true` carries NO cryptographic assurance (#4768, #4660).
+       *
+       * - `'empty'` — zero events. Nothing was verified. Reported because
+       *   pointing the verifier at the wrong directory produces exactly this,
+       *   and a bare `ok: true` reads as "the chain is intact".
+       * - `'unchained'` — events exist but the first carries no `hash`, so the
+       *   whole batch is treated as un-hashed and no links are checked.
+       *
+       * Absent means links were actually verified. Callers deciding whether
+       * tamper-evidence holds MUST read this: `ok: true` alone does not
+       * distinguish a verified chain from an absent one, which is the
+       * "default reported as a measurement" shape the mission text rules out.
+       */
+      notVerified?: 'empty' | 'unchained';
     }
   | {
       ok: false;
@@ -170,8 +185,14 @@ function verifyEvent(
  * @returns ChainVerification result
  */
 export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
-  if (events.length === 0) return { ok: true, eventCount: 0 };
-  if (events[0]?.hash === undefined) return { ok: true, eventCount: events.length };
+  // Both early exits below are honest `ok: true` verdicts — there is nothing to
+  // contradict — but neither verified anything, so they say so. #4768: an empty
+  // log verified clean was indistinguishable from a correct one, including when
+  // the caller pointed at the wrong directory.
+  if (events.length === 0) return { ok: true, eventCount: 0, notVerified: 'empty' };
+  if (events[0]?.hash === undefined) {
+    return { ok: true, eventCount: events.length, notVerified: 'unchained' };
+  }
 
   let priorHash: string | undefined = undefined;
   for (let i = 0; i < events.length; i++) {
