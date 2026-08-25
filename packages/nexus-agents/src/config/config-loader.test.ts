@@ -160,6 +160,11 @@ describe('config-loader', () => {
     });
 
     it('falls back to global config in ~/.nexus-agents/ (#1265)', () => {
+      // The homedir branch specifically, so the `NEXUS_DATA_DIR` override has
+      // to be cleared — it outranks homedir, and the test would otherwise
+      // assert one branch while measuring whichever the environment picked
+      // (#4722).
+      vi.stubEnv('NEXUS_DATA_DIR', undefined);
       const home = process.env['HOME'] ?? '/home/test';
       const globalPath = `${home}/.nexus-agents/nexus-agents.yaml`;
       mockExistsSync.mockImplementation((p) => {
@@ -178,6 +183,7 @@ describe('config-loader', () => {
         expect(result.value.configPath).toContain('.nexus-agents');
         expect(result.value.config.models.default).toBe('global-model');
       }
+      vi.unstubAllEnvs();
     });
   });
 

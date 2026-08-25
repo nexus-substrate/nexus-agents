@@ -6,6 +6,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Repo root, from `<root>/packages/nexus-agents/src/config/`. */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
 describe('env-schema', () => {
   beforeEach(() => {
@@ -258,5 +264,48 @@ describe('env-schema', () => {
         expect(name).toMatch(/^NEXUS_/);
       }
     });
+  });
+});
+
+// =============================================================================
+// The schema must know every variable the docs tell people to set (#4722)
+// =============================================================================
+
+describe('documented NEXUS_* vars are all in the schema (#4722)', () => {
+  // `NEXUS_DATA_DIR` sat in CLAUDE.md's most-used table and not in this schema,
+  // so setting the documented variable made `validateNexusEnv` report it as an
+  // UNKNOWN var — with a typo suggestion for a name spelled correctly. Three
+  // siblings were missing the same way. Nothing connected the two lists.
+  const CLAUDE_MD = readFileSync(join(REPO_ROOT, 'CLAUDE.md'), 'utf8');
+
+  /** Every `NEXUS_*` name appearing in backticks in CLAUDE.md. */
+  function documentedVars(): string[] {
+    const found = new Set<string>();
+    for (const m of CLAUDE_MD.matchAll(/`(NEXUS_[A-Z0-9_]+)`/g)) {
+      const name = m[1];
+      if (name !== undefined) found.add(name);
+    }
+    return [...found].sort();
+  }
+
+  it('finds the documented list it is checking against', () => {
+    // Guard the guard: a regex that matched nothing would make the assertion
+    // below pass over an empty set, which is the failure this file is about.
+    expect(documentedVars().length).toBeGreaterThan(10);
+  });
+
+  it('recognizes every documented variable', () => {
+    // CLAUDE.md also names variables that were REMOVED (#2977, #4180) and
+    // documents them as removed; those must stay out of the schema.
+    const removed = new Set(
+      documentedVars().filter((v) =>
+        new RegExp(`\`${v}\`[^\\n]*(?:removed|were removed)`, 'i').test(CLAUDE_MD)
+      )
+    );
+    const schemaKeys = new Set(getKnownNexusVarNames());
+
+    const missing = documentedVars().filter((v) => !schemaKeys.has(v) && !removed.has(v));
+
+    expect(missing).toEqual([]);
   });
 });

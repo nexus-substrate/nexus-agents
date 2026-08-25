@@ -156,9 +156,14 @@ describe('saveCorrelationData and loadCorrelationData', () => {
   beforeEach(() => {
     testDir = fs.mkdtempSync(path.join('/tmp', 'nexus-corr-test-'));
     mocks.setTestHomedir(testDir);
+    // Isolation cannot rest on the homedir mock alone: `NEXUS_DATA_DIR`
+    // outranks the homedir branch, so with it set every test in this file
+    // shared one directory and state accumulated across them (#4722).
+    vi.stubEnv('NEXUS_DATA_DIR', path.join(testDir, '.nexus-agents'));
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true });
     }
@@ -353,10 +358,12 @@ describe('createPersistentCorrelationTracker', () => {
 
   beforeEach(() => {
     testDir = fs.mkdtempSync(path.join('/tmp', 'nexus-tracker-test-'));
+    vi.stubEnv('NEXUS_DATA_DIR', path.join(testDir, '.nexus-agents'));
     mocks.setTestHomedir(testDir);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true });
     }

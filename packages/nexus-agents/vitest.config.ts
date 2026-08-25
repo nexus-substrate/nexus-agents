@@ -10,7 +10,7 @@
 import { tmpdir } from 'node:os';
 import { defineConfig } from 'vitest/config';
 
-import { ensureTestScratchRoot } from './src/testing/test-scratch-root.js';
+import { ensureTestDataDir, ensureTestScratchRoot } from './src/testing/test-scratch-root.js';
 
 /**
  * Scratch root for the test run (#4412).
@@ -31,6 +31,17 @@ import { ensureTestScratchRoot } from './src/testing/test-scratch-root.js';
  */
 const TEST_TMP = ensureTestScratchRoot();
 
+/**
+ * Runtime data root for the test run (#4722).
+ *
+ * `NEXUS_DATA_DIR` overrides the per-repo/cross-repo split, so setting it here
+ * keeps the suite out of `~/.nexus-agents/` — the real cross-repo governance
+ * and learning store. Isolation belongs in the config rather than in each
+ * module, for the same reason the CLI spawn guard is a setup file rather than
+ * a convention: code reaching a singleton through middleware cannot opt in.
+ */
+const TEST_DATA_DIR = ensureTestDataDir();
+
 export default defineConfig({
   test: {
     // Reap scratch older than a day before the run — see testing/global-setup.ts.
@@ -44,7 +55,12 @@ export default defineConfig({
     // Tests asserting repo-*detection* need a dir with no `.git` ancestor,
     // which TEST_TMP cannot provide. Hand them the real system temp dir; see
     // src/testing/non-repo-temp-dir.ts.
-    env: { TMPDIR: TEST_TMP, NEXUS_TMPDIR: TEST_TMP, VITEST_SYSTEM_TMPDIR: tmpdir() },
+    env: {
+      TMPDIR: TEST_TMP,
+      NEXUS_TMPDIR: TEST_TMP,
+      NEXUS_DATA_DIR: TEST_DATA_DIR,
+      VITEST_SYSTEM_TMPDIR: tmpdir(),
+    },
 
     // Test file patterns
     include: ['src/**/*.test.ts'],

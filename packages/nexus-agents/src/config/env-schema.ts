@@ -117,9 +117,21 @@ const NexusEnvSchema = z.object({
   // NEXUS_EVENTBUS_MAX_HISTORY removed in #2977 — silent no-op (no production reader).
   NEXUS_BILLING_MODE: z.enum(['plan', 'api']).optional(),
   NEXUS_CONFIG_PATH: z.string().optional(),
+  // Explicit runtime data root; overrides the per-repo/cross-repo split. In
+  // CLAUDE.md's most-used table since it shipped, and absent from this schema
+  // until #4722 — so setting the documented variable made `validateNexusEnv`
+  // report it as an UNKNOWN NEXUS_* var, typo suggestion and all.
+  NEXUS_DATA_DIR: z.string().optional(),
+  // `0` opts out of the per-repo data dir (epic #2872; default ON).
+  NEXUS_REPO_PREFERRED: z.enum(['0', '1']).optional(),
   // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
   // resolves to `<dataDir>/tmp`; set it to relocate scratch off the repo.
   NEXUS_TMPDIR: z.string().optional(),
+  // ClawGuard access-policy mode.
+  NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
+  // Sandbox mode (epic #2500).
+  NEXUS_SANDBOX: boolStr.optional(),
+  NEXUS_SANDBOX_ROOT: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
   // Explicit opt-in for simulateVotes outside test runners (#4170) — read by
   // checkSimulationAllowed (mcp/tools/simulation-guard.ts). Unset = fail closed.
