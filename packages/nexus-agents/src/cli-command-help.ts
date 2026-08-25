@@ -65,13 +65,13 @@ const VOTE_HELP: CommandHelpEntry = {
   command: 'vote',
   examples: [
     'nexus-agents vote --proposal "Add caching layer"',
-    'nexus-agents vote -p "Migrate to PostgreSQL" -t supermajority',
+    'nexus-agents vote -p "Migrate to PostgreSQL" --threshold supermajority',
     'nexus-agents vote -p "Quick decision" --quick',
     'nexus-agents vote -p "Test idea" --dry-run',
   ],
   flags: [
     { flag: '-p, --proposal <text>', description: 'Proposal text to vote on (required)' },
-    { flag: '-t, --threshold <t>', description: 'Threshold: majority, supermajority, unanimous' },
+    { flag: '--threshold <t>', description: 'Threshold: majority, supermajority, unanimous' },
     { flag: '--quick', description: 'Use 3 agents instead of the full 7 for faster votes' },
     { flag: '--dry-run', description: 'Simulate votes without agent execution' },
     { flag: '--timeout=<seconds>', description: 'Timeout per vote in seconds', defaultValue: '90' },
