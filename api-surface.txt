@@ -4717,6 +4717,7 @@ InterfaceDeclaration IRegistryStats
   total: number
 InterfaceDeclaration IResilientAdapter
   dispose() => void
+  getCircuitBreakerRegistry(() => import("../cli-adapters/circuit-breaker.js").CircuitBreakerRegistry | undefined) | undefined
   getHealth() => AdapterHealthInfo | undefined
   onFailover(cb: (info: AdapterHealthInfo) => void) => () => void
   refresh() => Promise<void>

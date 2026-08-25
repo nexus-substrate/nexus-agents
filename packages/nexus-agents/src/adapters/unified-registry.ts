@@ -18,6 +18,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
@@ -143,6 +144,10 @@ export class UnifiedAdapterRegistry {
     const raw = createResilientAdapter({
       logger: this.logger,
       preferredCli: cli,
+      // #4659: the SHARED registry — the same one that already gates
+      // voter-panel availability (#4330). Per-adapter registries would let one
+      // adapter keep routing to a CLI another has already seen fail.
+      circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
       ...(this.defaultCliTimeoutMs !== undefined && {
         defaultCliTimeoutMs: this.defaultCliTimeoutMs,
       }),
@@ -209,6 +214,7 @@ export class UnifiedAdapterRegistry {
     if (this.defaultAdapter !== undefined) return this.defaultAdapter;
     const raw = createResilientAdapter({
       logger: this.logger,
+      circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
       ...(this.defaultCliTimeoutMs !== undefined && {
         defaultCliTimeoutMs: this.defaultCliTimeoutMs,
       }),

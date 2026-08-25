@@ -40,6 +40,16 @@ export interface ResilientAdapterConfig {
   readonly preferredCli?: CliName;
   /** Default timeout for CLI subprocess calls (ms). Overrides auto-detection. */
   readonly defaultCliTimeoutMs?: number;
+  /**
+   * Circuit-breaker registry to arm this adapter's failover with (#4659).
+   *
+   * Supplied at CONSTRUCTION rather than through a separate `attach` call
+   * because the separate call is exactly what never happened: `attach` was on
+   * the class but not on {@link IResilientAdapter}, so the two production
+   * construction sites could not reach it without a cast, and the breaker sat
+   * disarmed. Arming is now part of building the thing.
+   */
+  readonly circuitBreakerRegistry?: import('../cli-adapters/circuit-breaker.js').CircuitBreakerRegistry;
 }
 
 /**
@@ -58,6 +68,16 @@ export interface IResilientAdapter extends IModelAdapter {
   setPreferredCli(cli: CliName | undefined): void;
   /** Register failover callback */
   onFailover(cb: (info: AdapterHealthInfo) => void): () => void;
+  /**
+   * The registry arming this adapter's failover, or `undefined` if none (#4659).
+   *
+   * Read-only on purpose: exposing `attach` here would re-create the "someone
+   * must remember to call it" shape that left the breaker disarmed. Supply it
+   * via {@link ResilientAdapterConfig.circuitBreakerRegistry} instead. This
+   * accessor exists so a caller can VERIFY the adapter is armed.
+   */
+  getCircuitBreakerRegistry?():
+    import('../cli-adapters/circuit-breaker.js').CircuitBreakerRegistry | undefined;
   /** Cleanup listeners and timers */
   dispose(): void;
 }

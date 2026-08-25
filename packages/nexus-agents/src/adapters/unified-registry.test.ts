@@ -19,6 +19,7 @@ import {
   getGlobalRegistry,
   resetGlobalRegistry,
 } from './unified-registry.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 import * as modelConfigHelpers from '../config/model-config-helpers.js';
@@ -45,6 +46,30 @@ describe('UnifiedAdapterRegistry', () => {
 
   afterEach(() => {
     registry.dispose();
+  });
+
+  // #4659: the ResilientAdapter's failover listener could never fire. Its
+  // `recordBreakerFailure` returns early unless a CircuitBreakerRegistry was
+  // attached, and NO production caller attached one — both construction sites
+  // here built the adapter and stopped. A shared registry already existed and
+  // already gated voter-panel availability (#4330); the adapter simply never
+  // saw it, so a CLI whose circuit opened kept being handed out.
+  describe('circuit-breaker arming (#4659)', () => {
+    it('arms the CLI-specific adapter with the shared registry', () => {
+      const adapter = registry.getAdapterForCli('claude');
+
+      expect(adapter.getCircuitBreakerRegistry?.()).toBe(getDefaultCliCircuitBreakerRegistry());
+    });
+
+    it('arms the default adapter with the SAME shared registry', () => {
+      // Same instance, not merely a registry: a per-adapter registry would let
+      // one adapter keep routing to a CLI another already saw fail.
+      const viaDefault = registry.getDefault();
+      const viaCli = registry.getAdapterForCli('codex');
+
+      expect(viaDefault.getCircuitBreakerRegistry?.()).toBe(viaCli.getCircuitBreakerRegistry?.());
+      expect(viaDefault.getCircuitBreakerRegistry?.()).toBe(getDefaultCliCircuitBreakerRegistry());
+    });
   });
 
   describe('constructor', () => {
