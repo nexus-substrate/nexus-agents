@@ -110,11 +110,18 @@ invalidates everything downstream.
 
 Two short-circuits matter for the threat analysis:
 
-- **Empty log ⇒ `{ ok: true, eventCount: 0 }`** (`audit-logger.ts:130`).
+- **Empty log ⇒ `{ ok: true, eventCount: 0, notVerified: 'empty' }`**
+  (`audit-logger.ts:192`).
 - **First event has no `hash` ⇒ the whole batch is treated as un-chained and
-  returns `{ ok: true }`** (`audit-logger.ts:131`). This is the backward-compat
-  path for logs written with `enableHashChain: false`. It is also an attack
-  surface — see [T3](#t3-rewrite-and-rehash) / [T8](#t8-chain-disable--downgrade).
+  returns `{ ok: true, notVerified: 'unchained' }`** (`audit-logger.ts:193-195`).
+  This is the backward-compat path for logs written with `enableHashChain:
+false`. It is also an attack surface — see [T3](#t3-rewrite-and-rehash) /
+  [T8](#t8-chain-disable--downgrade).
+
+Both still return `ok: true` — there is nothing to contradict — but since #4773
+they carry `notVerified`, so a caller can tell "verified" from "verified
+nothing". The verdict is only as good as the caller's willingness to read that
+field; nothing fails closed.
 
 The MCP tool (`verify-audit-chain-tool.ts`) loads every `audit-*.jsonl` file in
 the directory in **lexicographic filename order** (`:67-69`), concatenates the
@@ -191,8 +198,10 @@ consistent.
 **Detected?** **No.** This is the fundamental limitation. `verifyChain` only
 checks internal consistency; a fully-recomputed chain is internally consistent
 by construction. The adversary can even start the rewritten log with an
-un-hashed first event to hit the `{ ok: true }` un-chained short-circuit
-(`audit-logger.ts:131`) and skip hashing entirely.
+un-hashed first event to hit the un-chained short-circuit
+(`audit-logger.ts:193-195`) and skip hashing entirely — though since #4773 that
+path is labelled `notVerified: 'unchained'` rather than a bare `ok: true`, so
+the downgrade is visible to a caller who checks.
 
 **Residual risk: HIGH.** Nothing in the current implementation defends against
 this. Closing it **requires a secret the attacker cannot reproduce** (an HMAC
@@ -309,16 +318,29 @@ specifically; the general case remains open.
 **first** retained event un-hashed (delete the leading hashed file, or strip the
 first line's `hash`).
 
-**Detected?** **No.** In both cases `verifyChain` hits the un-chained
-short-circuit `events[0]?.hash === undefined ⇒ { ok: true }`
-(`audit-logger.ts:131`) and reports success on a completely unprotected log. A
-green `verify_audit_chain` result does **not** prove the log was hash-chained —
-only that _if_ it claims to be chained, it is internally consistent.
+**Detected? Partial** (since #4773). `verifyChain` still returns `ok: true` for
+an un-chained log — there is nothing to contradict — but it no longer returns it
+bare. Both sub-cases now set `notVerified: 'unchained'`
+(`audit-logger.ts:193-195`), and a log with no events at all sets
+`notVerified: 'empty'`, which is what pointing the verifier at the wrong
+directory produces. The marker is serialised straight through the MCP tool, so
+a `verify_audit_chain` caller sees it.
 
-**Residual risk: HIGH.** "OK" is ambiguous between "verified chained log" and
-"un-chained log, nothing to verify". Mitigation would require the tool to report
-whether the log was chained at all and to fail-closed (or at least warn loudly)
-on an un-chained log when chaining is expected by policy.
+Since #4788 the tool also reports `skippedLines` / `unreadableFiles` when part
+of the log could not be parsed, so a verdict over a partially-read log is no
+longer reported as one over the whole log.
+
+**What is still open.** `ok: true` remains the verdict, so a caller that reads
+only `ok` and ignores `notVerified` is fooled exactly as before — the marker
+moves the burden to the caller rather than removing it. There is **no**
+fail-closed path: nothing compares the log's chained-ness against a policy that
+expects chaining, so sub-case (a) — an operator setting `enableHashChain:
+false` — is reported but never refused.
+
+**Residual risk: MEDIUM** (was HIGH). The ambiguity between "verified chained
+log" and "un-chained log, nothing to verify" is resolved _in the record_. The
+remaining risk is that the record has to be read: full mitigation requires
+failing closed on an un-chained log when policy expects chaining.
 
 ### T9: Tampering with the verification tool itself
 
@@ -350,7 +372,7 @@ of the log. The single-key/no-key in-repo design cannot self-defend here.
 | T5  | Missing / selective omission         | Yes if not re-stitched; No if re-stitched | MEDIUM–HIGH   |
 | T6  | First-record integrity (no anchor)   | Partial (unanchoredHead, #4703)           | MEDIUM        |
 | T7  | Content tampering in unhashed fields | **No**                                    | HIGH          |
-| T8  | Chain-disable / downgrade            | No (reports OK)                           | HIGH          |
+| T8  | Chain-disable / downgrade            | Partial (`notVerified`, #4773)            | MEDIUM        |
 | T9  | Verifier tampering                   | No (by definition)                        | HIGH          |
 
 **The chain reliably detects exactly one class of attack:** in-place edits or
@@ -431,10 +453,14 @@ Ranked by risk-reduction-per-effort. All are **out of scope for this doc**
    > closing it requires per-record signing (rec #3 / #3927 item 4), not the
    > sequence mechanism alone.
 
-5. **Make `verify_audit_chain` fail-closed (or warn loudly) on an un-chained
-   log when chaining is expected**, and report `chained: true/false` in its
-   result. Removes the ambiguous "OK" of **T8**. Low effort —
-   adjust the short-circuit at `audit-logger.ts:131` and the tool response shape.
+5. **Make `verify_audit_chain` fail-closed on an un-chained log when chaining is
+   expected.** _Partly done._ #4773 added `notVerified: 'empty' | 'unchained'`
+   (`audit-logger.ts:192-195`), which removed the ambiguous "OK" of **T8** — the
+   reporting half of this recommendation. #4788 added `skippedLines` /
+   `unreadableFiles` so partial reads are visible too. What remains is the
+   fail-closed half: nothing compares the log's chained-ness against a policy
+   that expects chaining, so a caller reading only `ok` is still misled. Low
+   effort — thread the expected-chaining policy into the tool and refuse.
 
 6. **Independent out-of-band verifier + WORM storage.** Run a verifier built
    from a separate codebase/host over an externally-anchored, append-only copy;
