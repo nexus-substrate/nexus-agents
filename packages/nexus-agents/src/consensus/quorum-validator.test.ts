@@ -1,7 +1,7 @@
 /**
  * Tests for QuorumValidator - Unified quorum validation
  *
- * Covers: validateQuorum, getQuorumBreakdown, isAgentEligible, createQuorumValidator
+ * Covers: validateQuorum, getQuorumBreakdown, createQuorumValidator
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,7 +12,6 @@ import {
   DEFAULT_QUORUM_THRESHOLDS,
   QuorumValidator,
   createQuorumValidator,
-  type AgentRecord,
   type QuorumValidationConfig,
   type QuorumValidationInput,
 } from './quorum-validator.js';
@@ -36,15 +35,6 @@ function makeConfig(overrides: Partial<QuorumValidationConfig> = {}): QuorumVali
     algorithm: 'simple_majority',
     threshold: 0.5,
     minVoters: 1,
-    ...overrides,
-  };
-}
-
-function makeAgentRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
-  return {
-    agentId: 'agent-1',
-    weight: 1.0,
-    trustScore: 0.9,
     ...overrides,
   };
 }
@@ -81,7 +71,6 @@ describe('createQuorumValidator', () => {
     expect(validator).toBeDefined();
     expect(typeof validator.validateQuorum).toBe('function');
     expect(typeof validator.getQuorumBreakdown).toBe('function');
-    expect(typeof validator.isAgentEligible).toBe('function');
   });
 });
 
@@ -400,61 +389,6 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
     }
   });
 
-  it('uses agent records for weights when agentWeights not provided', () => {
-    const agentRecords = new Map([
-      ['a1', makeAgentRecord({ agentId: 'a1', weight: 3.0 })],
-      ['a2', makeAgentRecord({ agentId: 'a2', weight: 1.0 })],
-    ]);
-    const breakdown = validator.getQuorumBreakdown({
-      votes: makeVotes([
-        ['a1', 'approve'],
-        ['a2', 'reject'],
-      ]),
-      agentRecords,
-      config: makeConfig({ algorithm: 'proof_of_learning', threshold: 0.5 }),
-    });
-
-    expect(breakdown.totalWeight).toBeCloseTo(4.0);
-  });
-
-  it('returns eligible agents list', () => {
-    const agentRecords = new Map([
-      ['a1', makeAgentRecord({ agentId: 'a1', trustScore: 0.9 })],
-      ['a2', makeAgentRecord({ agentId: 'a2', trustScore: 0.1 })], // low trust
-    ]);
-    const breakdown = validator.getQuorumBreakdown({
-      votes: makeVotes([
-        ['a1', 'approve'],
-        ['a2', 'approve'],
-      ]),
-      agentRecords,
-      config: makeConfig({ enableByzantineDetection: true }),
-    });
-
-    expect(breakdown.eligibleAgents).toContain('a1');
-    expect(breakdown.eligibleAgents).not.toContain('a2');
-  });
-
-  // #4666: the tests above prove exclusion WORKS when an AgentRecord is
-  // supplied. This one pins the production reality — no caller supplies one,
-  // so nothing is ever excluded. If a producer is wired, this test should fail
-  // and be replaced by one asserting the real screening.
-  it('excludes nobody when no agent records are supplied — the production shape', () => {
-    const breakdown = validator.getQuorumBreakdown({
-      votes: makeVotes([
-        ['a1', 'approve'],
-        ['a2', 'approve'],
-      ]),
-      config: makeConfig({ enableByzantineDetection: true }),
-    });
-
-    // Byzantine detection is ON and still excludes nothing: with no record the
-    // eligibility check returns early. A full eligible list is NOT evidence
-    // that screening ran.
-    expect(breakdown.eligibleAgents).toContain('a1');
-    expect(breakdown.eligibleAgents).toContain('a2');
-  });
-
   it('includes reasoning string', () => {
     const breakdown = validator.getQuorumBreakdown({
       votes: makeVotes([
@@ -471,118 +405,6 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
 
 // ============================================================================
 // QuorumValidator.isAgentEligible
-// ============================================================================
-
-describe('QuorumValidator.isAgentEligible', () => {
-  const validator = new QuorumValidator();
-
-  it('returns eligible with default weight when no record exists', () => {
-    const result = validator.isAgentEligible('agent-1', undefined, makeConfig());
-    expect(result.eligible).toBe(true);
-    if (result.eligible) {
-      expect(result.weight).toBe(1.0);
-    }
-  });
-
-  it('returns eligible for valid agent record', () => {
-    const record = makeAgentRecord({ trustScore: 0.8, weight: 1.5 });
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(true);
-    if (result.eligible) {
-      expect(result.weight).toBe(1.5);
-    }
-  });
-
-  it('rejects agent with Byzantine flags when detection enabled', () => {
-    const record = makeAgentRecord({ byzantineFlags: 3 });
-    const config = makeConfig({ enableByzantineDetection: true });
-    const result = validator.isAgentEligible('agent-1', record, config);
-    expect(result.eligible).toBe(false);
-    if (!result.eligible) {
-      expect(result.reason).toBe('byzantine_flagged');
-    }
-  });
-
-  it('allows Byzantine-flagged agent when detection disabled', () => {
-    const record = makeAgentRecord({ byzantineFlags: 3 });
-    const config = makeConfig({ enableByzantineDetection: false });
-    const result = validator.isAgentEligible('agent-1', record, config);
-    expect(result.eligible).toBe(true);
-  });
-
-  it('allows Byzantine-flagged agent when detection not configured', () => {
-    const record = makeAgentRecord({ byzantineFlags: 3 });
-    const config = makeConfig(); // enableByzantineDetection not set
-    const result = validator.isAgentEligible('agent-1', record, config);
-    expect(result.eligible).toBe(true);
-  });
-
-  it('rejects agent with low trust score', () => {
-    const record = makeAgentRecord({ trustScore: 0.2 }); // below 0.3 threshold
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(false);
-    if (!result.eligible) {
-      expect(result.reason).toBe('low_trust');
-      expect(result.weight).toBe(record.weight);
-    }
-  });
-
-  it('allows agent at exactly the trust threshold boundary', () => {
-    const record = makeAgentRecord({ trustScore: 0.3 }); // exactly at 0.3
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(true);
-  });
-
-  it('rejects agent with insufficient weight', () => {
-    const record = makeAgentRecord({ weight: 0.05 }); // below 0.1 threshold
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(false);
-    if (!result.eligible) {
-      expect(result.reason).toBe('insufficient_weight');
-    }
-  });
-
-  it('allows agent at exactly the weight threshold boundary', () => {
-    const record = makeAgentRecord({ weight: 0.1 }); // exactly at 0.1
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(true);
-  });
-
-  it('checks Byzantine before trust (order matters)', () => {
-    // Agent has both: Byzantine flag AND low trust
-    const record = makeAgentRecord({ byzantineFlags: 1, trustScore: 0.1 });
-    const config = makeConfig({ enableByzantineDetection: true });
-    const result = validator.isAgentEligible('agent-1', record, config);
-    expect(result.eligible).toBe(false);
-    if (!result.eligible) {
-      // Should return 'byzantine_flagged', not 'low_trust'
-      expect(result.reason).toBe('byzantine_flagged');
-    }
-  });
-
-  it('checks trust before weight (order matters)', () => {
-    // Agent has low trust AND low weight
-    const record = makeAgentRecord({ trustScore: 0.1, weight: 0.05 });
-    const result = validator.isAgentEligible('agent-1', record, makeConfig());
-    expect(result.eligible).toBe(false);
-    if (!result.eligible) {
-      // Should return 'low_trust', not 'insufficient_weight'
-      expect(result.reason).toBe('low_trust');
-    }
-  });
-
-  it('treats zero byzantineFlags as not flagged', () => {
-    const record = makeAgentRecord({ byzantineFlags: 0 });
-    const config = makeConfig({ enableByzantineDetection: true });
-    const result = validator.isAgentEligible('agent-1', record, config);
-    expect(result.eligible).toBe(true);
-  });
-});
-
-// ============================================================================
-// Weighted quorum scenarios
-// ============================================================================
-
 describe('QuorumValidator weighted quorum scenarios', () => {
   const validator = new QuorumValidator();
 

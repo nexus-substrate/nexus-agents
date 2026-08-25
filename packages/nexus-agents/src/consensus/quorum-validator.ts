@@ -13,11 +13,13 @@
  * is exported through `exports/consensus.ts` as public API and is constructed
  * only by tests. So this validator runs only for an external embedder.
  *
- * {@link QuorumValidator.isAgentEligible} in particular cannot exclude anyone
- * in practice: its sole caller passes no `record`, so it early-returns, and no
- * producer of trust scores or Byzantine flags exists anywhere in `src/`.
- * Removing it would be a breaking public-API change, so it stays — documented
- * as inert rather than presented as a working eligibility filter.
+ * Agent eligibility screening was REMOVED here under #4666 (consensus_vote 7-0).
+ * It could never exclude anyone: its sole caller passed no `AgentRecord`, and no
+ * producer of trust scores or Byzantine flags exists anywhere in `src/`. The
+ * breakdown nonetheless emitted an `eligibleAgents` list containing every voter,
+ * which a machine consumer reads as evidence that screening ran — a comment
+ * cannot travel with a serialized record. Git history holds the implementation
+ * for whenever a real trust-score producer appears.
  *
  * @module consensus/quorum-validator
  * (Source: Issue #576, ADR-0003; scope corrected #4666)
@@ -32,18 +34,6 @@ import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
 // ============================================================================
 
 /**
- * Agent record for eligibility checks and Byzantine detection.
- */
-export interface AgentRecord {
-  readonly agentId: string;
-  readonly weight: number;
-  readonly trustScore: number;
-  readonly byzantineFlags?: number;
-  readonly successRate?: number;
-  readonly totalTasks?: number;
-}
-
-/**
  * Quorum validation configuration.
  */
 export interface QuorumValidationConfig {
@@ -53,8 +43,6 @@ export interface QuorumValidationConfig {
   readonly threshold: number;
   /** Minimum voters required */
   readonly minVoters: number;
-  /** Enable Byzantine detection */
-  readonly enableByzantineDetection?: boolean;
   /** Apply confidence multiplier to weights */
   readonly confidenceMultiplier?: boolean;
   /** Include abstentions in quorum calculation */
@@ -71,8 +59,6 @@ export interface QuorumValidationInput {
   readonly agentWeights?: ReadonlyMap<string, number>;
   /** Configuration */
   readonly config: QuorumValidationConfig;
-  /** Optional: Agent records for eligibility checks */
-  readonly agentRecords?: ReadonlyMap<string, AgentRecord>;
   /** Optional: Required participant count (for ratio-based quorum) */
   readonly requiredParticipants?: number;
 }
@@ -106,20 +92,8 @@ export interface QuorumBreakdown {
   readonly threshold: number;
   readonly actualQuorum: number;
   readonly quorumReached: boolean;
-  readonly eligibleAgents: readonly string[];
   readonly reasoning: string;
 }
-
-/**
- * Eligibility check result.
- */
-export type EligibilityResult =
-  | { readonly eligible: true; readonly weight: number }
-  | {
-      readonly eligible: false;
-      readonly reason: 'insufficient_weight' | 'low_trust' | 'byzantine_flagged' | 'excluded';
-      readonly weight: number;
-    };
 
 /**
  * Unified quorum validator interface.
@@ -127,11 +101,6 @@ export type EligibilityResult =
 export interface IQuorumValidator {
   validateQuorum(input: QuorumValidationInput): QuorumValidationResult;
   getQuorumBreakdown(input: QuorumValidationInput): QuorumBreakdown;
-  isAgentEligible(
-    agentId: string,
-    record: AgentRecord | undefined,
-    config: QuorumValidationConfig
-  ): EligibilityResult;
 }
 
 // ============================================================================
@@ -154,9 +123,6 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   // Byzantine fault tolerance also requires 2/3 — the same supermajority.
   weighted_byzantine: SUPERMAJORITY_THRESHOLD,
 };
-
-const DEFAULT_MIN_TRUST = 0.3;
-const DEFAULT_MIN_WEIGHT = 0.1;
 
 /**
  * Unified quorum validator implementation.
@@ -189,19 +155,13 @@ export class QuorumValidator implements IQuorumValidator {
   }
 
   getQuorumBreakdown(input: QuorumValidationInput): QuorumBreakdown {
-    const { votes, agentWeights, config, agentRecords, requiredParticipants } = input;
+    const { votes, agentWeights, config, requiredParticipants } = input;
 
     // Count votes
     const voteCounts = this.countVotes(votes);
-    const eligibleAgents = this.getEligibleAgents(votes, agentRecords, config);
 
     // Calculate weights if applicable
-    const { totalWeight, weightedCounts } = this.calculateWeights(
-      votes,
-      agentWeights,
-      agentRecords,
-      config
-    );
+    const { totalWeight, weightedCounts } = this.calculateWeights(votes, agentWeights, config);
 
     // Calculate quorum based on algorithm
     const { threshold, actualQuorum, quorumReached, reasoning } = this.calculateQuorumStatus(
@@ -220,65 +180,8 @@ export class QuorumValidator implements IQuorumValidator {
       threshold,
       actualQuorum,
       quorumReached,
-      eligibleAgents,
       reasoning,
     };
-  }
-
-  /**
-   * Decides whether an agent's vote counts, and with what weight.
-   *
-   * WIRING (#4666): this works and is tested, but **nothing in production can
-   * reach an exclusion**. The three exclusion branches all require an
-   * `AgentRecord`, and `getQuorumBreakdown`'s only production caller
-   * (`voting-protocol-helpers`) passes `{ votes, config }` with no
-   * `agentRecords` — `grep -rn agentRecords src --include=*.ts`, excluding
-   * tests and this file, returns nothing. With no record the method returns
-   * `{ eligible: true, weight: 1.0 }` on the first line.
-   *
-   * `enableByzantineDetection` additionally has zero writers anywhere in
-   * `src/`: only this read and its declaration.
-   *
-   * So `eligibleAgents` is every voter, always. Do NOT read a full eligible
-   * list as evidence that trust or Byzantine screening ran — nothing screened.
-   * Wiring it needs a producer for `AgentRecord` (trust scores, Byzantine
-   * flags), which the engine does not currently maintain.
-   *
-   * Kept rather than deleted: the behaviour is correct and covered by tests, so
-   * this is unwired capability, not dead code. Removing a working trust model
-   * is a decision about the resilience posture, not a cleanup — see #4666.
-   */
-  isAgentEligible(
-    agentId: string,
-    record: AgentRecord | undefined,
-    config: QuorumValidationConfig
-  ): EligibilityResult {
-    if (record === undefined) {
-      return { eligible: true, weight: 1.0 }; // Default eligibility
-    }
-
-    // Check Byzantine flags
-    if (config.enableByzantineDetection === true && (record.byzantineFlags ?? 0) > 0) {
-      this.logger.debug('Agent flagged as Byzantine', { agentId, flags: record.byzantineFlags });
-      return { eligible: false, reason: 'byzantine_flagged', weight: record.weight };
-    }
-
-    // Check trust score
-    if (record.trustScore < DEFAULT_MIN_TRUST) {
-      this.logger.debug('Agent trust score below threshold', {
-        agentId,
-        trustScore: record.trustScore,
-      });
-      return { eligible: false, reason: 'low_trust', weight: record.weight };
-    }
-
-    // Check weight
-    if (record.weight < DEFAULT_MIN_WEIGHT) {
-      this.logger.debug('Agent weight below threshold', { agentId, weight: record.weight });
-      return { eligible: false, reason: 'insufficient_weight', weight: record.weight };
-    }
-
-    return { eligible: true, weight: record.weight };
   }
 
   private countVotes(votes: ReadonlyMap<string, Vote>): VoteCounts {
@@ -303,28 +206,9 @@ export class QuorumValidator implements IQuorumValidator {
     return { approve, reject, abstain, total: votes.size };
   }
 
-  private getEligibleAgents(
-    votes: ReadonlyMap<string, Vote>,
-    agentRecords: ReadonlyMap<string, AgentRecord> | undefined,
-    config: QuorumValidationConfig
-  ): readonly string[] {
-    const eligible: string[] = [];
-
-    for (const agentId of votes.keys()) {
-      const record = agentRecords?.get(agentId);
-      const result = this.isAgentEligible(agentId, record, config);
-      if (result.eligible) {
-        eligible.push(agentId);
-      }
-    }
-
-    return eligible;
-  }
-
   private calculateWeights(
     votes: ReadonlyMap<string, Vote>,
     agentWeights: ReadonlyMap<string, number> | undefined,
-    agentRecords: ReadonlyMap<string, AgentRecord> | undefined,
     config: QuorumValidationConfig
   ): { totalWeight: number | undefined; weightedCounts: WeightedVoteCounts | undefined } {
     // Skip weight calculation for simple algorithms
@@ -335,7 +219,7 @@ export class QuorumValidator implements IQuorumValidator {
     const counts = { totalWeight: 0, approve: 0, reject: 0, abstain: 0 };
 
     for (const [agentId, vote] of votes.entries()) {
-      const weight = this.getVoteWeight(agentId, vote, agentWeights, agentRecords, config);
+      const weight = this.getVoteWeight(agentId, vote, agentWeights, config);
       counts.totalWeight += weight;
       this.addWeightToDecision(counts, vote.decision, weight);
     }
@@ -355,10 +239,9 @@ export class QuorumValidator implements IQuorumValidator {
     agentId: string,
     vote: Vote,
     agentWeights: ReadonlyMap<string, number> | undefined,
-    agentRecords: ReadonlyMap<string, AgentRecord> | undefined,
     config: QuorumValidationConfig
   ): number {
-    let weight = agentWeights?.get(agentId) ?? agentRecords?.get(agentId)?.weight ?? 1.0;
+    let weight = agentWeights?.get(agentId) ?? 1.0;
     if (config.confidenceMultiplier === true) {
       weight *= vote.confidence;
     }
