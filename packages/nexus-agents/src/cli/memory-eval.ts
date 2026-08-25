@@ -29,6 +29,14 @@ export interface EvalMetrics {
   readonly avgLatencyMs: number;
   readonly p95LatencyMs: number;
   readonly totalQueries: number;
+  /**
+   * Queries the recall mean was actually taken over (#4850).
+   *
+   * A query with no relevant memory cannot measure recall. Such a query is
+   * excluded rather than credited 1.0, so this can be lower than
+   * `totalQueries` — and when it is, `recallAt5` describes a subset.
+   */
+  readonly recallQueries: number;
 }
 
 /** Comparative evaluation report. */
@@ -52,6 +60,9 @@ export interface EvalImprovement {
 // Evaluation Dataset
 // ============================================================================
 
+/** Rank cut for recall@k / precision@k. */
+const TOP_K = 5;
+
 /** Generate synthetic evaluation dataset. */
 export function generateEvalDataset(size: number = 50): readonly EvalPair[] {
   const pairs: EvalPair[] = [];
@@ -69,17 +80,29 @@ export function generateEvalDataset(size: number = 50): readonly EvalPair[] {
     { query: 'security vulnerability scan', content: 'Dependabot and CodeQL automated scans' },
   ];
 
+  // Distinct queries are capped so that every query group holds more than
+  // TOP_K memories. A group that fits inside the top-k cut is returned whole
+  // however it is ordered, and ordering is the only thing a scorer controls
+  // (#4850).
+  const queryCount = Math.max(1, Math.min(topics.length, Math.floor(size / (TOP_K * 2))));
+
   for (let i = 0; i < size; i++) {
-    const topicIdx = i % topics.length;
+    const topicIdx = i % queryCount;
     const topic = topics[topicIdx];
     const source = sources[i % sources.length] ?? 'session';
     const isRelevant = i % 3 !== 0; // ~67% relevant, ~33% irrelevant
 
-    if (topic !== undefined) {
+    // An irrelevant memory answers the SAME query with ANOTHER topic's
+    // content. Giving it a query of its own instead — as this did — made
+    // every group homogeneous, so no scorer could change any metric.
+    const offset = 1 + (i % (topics.length - 1));
+    const contentTopic = isRelevant ? topic : topics[(topicIdx + offset) % topics.length];
+
+    if (topic !== undefined && contentTopic !== undefined) {
       pairs.push({
-        query: isRelevant ? topic.query : `unrelated query ${String(i)}`,
+        query: topic.query,
         memoryKey: `mem-${String(i)}-${source}`,
-        memoryContent: topic.content,
+        memoryContent: contentTopic.content,
         source,
         expectedRelevant: isRelevant,
       });
@@ -149,8 +172,9 @@ function evaluateScorer(
   dataset: readonly EvalPair[],
   scorer: (q: string, c: string) => number
 ): EvalMetrics {
-  const k = 5;
+  const k = TOP_K;
   let totalRecall = 0;
+  let recallQueries = 0;
   let totalPrecision = 0;
   let totalMrr = 0;
   const latencies: number[] = [];
@@ -177,7 +201,13 @@ function evaluateScorer(
     const relevantInTopK = topK.filter((s) => s.relevant).length;
     const totalRelevant = pairs.filter((p) => p.expectedRelevant).length;
 
-    totalRecall += totalRelevant > 0 ? relevantInTopK / totalRelevant : 1;
+    // A query with nothing relevant cannot measure recall. Crediting it 1.0
+    // put a free perfect score into the mean for every such query (#4850);
+    // it is excluded from both numerator and denominator instead.
+    if (totalRelevant > 0) {
+      totalRecall += relevantInTopK / totalRelevant;
+      recallQueries += 1;
+    }
     totalPrecision += topK.length > 0 ? relevantInTopK / topK.length : 0;
 
     // MRR: rank of first relevant
@@ -190,12 +220,13 @@ function evaluateScorer(
   const p95Idx = Math.floor(latencies.length * 0.95);
 
   return {
-    recallAt5: n > 0 ? round(totalRecall / n) : 0,
+    recallAt5: recallQueries > 0 ? round(totalRecall / recallQueries) : 0,
     precisionAt5: n > 0 ? round(totalPrecision / n) : 0,
     mrr: n > 0 ? round(totalMrr / n) : 0,
     avgLatencyMs: round(average(latencies)),
     p95LatencyMs: round(latencies[p95Idx] ?? 0),
     totalQueries: n,
+    recallQueries,
   };
 }
 
@@ -254,6 +285,15 @@ function formatEvalDetails(
   datasetSize: number
 ): string[] {
   const lines: string[] = [`Dataset: ${String(datasetSize)} query-memory pairs`];
+  if (baseline.recallQueries < baseline.totalQueries) {
+    // Recall is undefined for a query with no relevant memory, so those are
+    // excluded from the mean. Printing the bare number would present a
+    // partial measurement as a complete one (#4850).
+    lines.push(
+      `Recall measured over ${String(baseline.recallQueries)} of ` +
+        `${String(baseline.totalQueries)} queries — the rest had no relevant memory.`
+    );
+  }
 
   lines.push('\nBaseline (keyword search):');
   lines.push(`  Recall@5:    ${baseline.recallAt5.toFixed(3)}`);
