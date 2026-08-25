@@ -147,16 +147,21 @@ export interface DevPipelineResult {
    * Whether the security gate passed.
    *
    * Read together with {@link DevPipelineResult.securityRan} (#4772): `false`
-   * with `securityRan: false` means the gate never executed — a dry run stops
-   * after plan+vote — and is NOT a failed security review.
+   * with `securityRan: false` means the gate never executed and is NOT a failed
+   * security review.
    */
   readonly securityPassed: boolean;
   /**
    * Whether the security gate actually ran (#4772).
    *
-   * Absent on results from before the distinction existed. `false` means the
-   * run stopped before security, so `securityPassed: false` reports absence,
-   * not a verdict.
+   * Set on every path `runDevPipeline` can return through, so
+   * `securityPassed: false` is always readable as verdict-vs-absence. Three
+   * paths stop before the scan: a dry run (plan+vote only), harness mode (tasks
+   * are handed back for external implementation), and a red quality gate in
+   * `blocking` mode. Only the post-scan return reports `true`.
+   *
+   * Absent means the producer predates the distinction (#4782), not that the
+   * scan's status is unknown — treat an absent value as unmeasured, not `false`.
    */
   readonly securityRan?: boolean;
   /**
@@ -826,7 +831,10 @@ function buildHarnessResult(
     tasks,
     voteIterations: planResult.iterations,
     qaIterations: 0,
+    // Harness mode hands the tasks back for someone else to implement, so the
+    // scan never ran. `securityPassed: false` alone would read as a rejection.
     securityPassed: false,
+    securityRan: false,
   };
 }
 
@@ -853,7 +861,9 @@ async function runImplSecurityPhase(
       tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
       voteIterations: planResult.iterations,
       qaIterations: implResult.totalIterations,
+      // The gate short-circuited before the scan — absence, not a verdict.
       securityPassed: false,
+      securityRan: false,
     };
   }
 
@@ -877,6 +887,7 @@ async function runImplSecurityPhase(
     voteIterations: planResult.iterations,
     qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
+    securityRan: true,
   };
 }
 
