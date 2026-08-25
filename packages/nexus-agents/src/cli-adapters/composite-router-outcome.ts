@@ -15,7 +15,13 @@ import { routingArmDisplaySlot } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
-import { cliTaskToTask, buildDifficultyOutcome } from './composite-router-helpers.js';
+import {
+  cliTaskToTask,
+  buildDifficultyOutcome,
+  budgetUtilizationForTask,
+} from './composite-router-helpers.js';
+import type { BudgetRouter } from './budget-router.js';
+import type { CompositeRouterConfig } from './composite-router-types.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { clamp01 } from '../utils/math-utils.js';
 
@@ -37,6 +43,13 @@ export interface OutcomeDependencies {
   preferenceRouter: PreferenceRouter | undefined;
   zeroRouter: IZeroRouter | undefined;
   lastRoutedTask: LastRoutedTaskInfo | undefined;
+  /**
+   * Present so the outcome path can reproduce the budget feature the routing
+   * path scored with. Undefined when budget routing is off, which puts both
+   * paths on the same neutral default (#4910).
+   */
+  budgetRouter?: BudgetRouter | undefined;
+  budgetConstraints?: CompositeRouterConfig['budgetConstraints'];
 }
 
 /** Records a bandit outcome for the given routing arm (CLI slot or api:* arm). */
@@ -54,7 +67,18 @@ export function recordBanditOutcome(
   }
   const internalTask = cliTaskToTask(task);
   const analysis = sharedAnalyzer.analyze(internalTask);
-  const context = taskAnalysisResultToBanditContext(analysis);
+  // Recomputed rather than defaulted: `selectArm` scored this task with the
+  // real utilization, and LinUCB is only consistent if `update` sees the same
+  // feature vector (#4910).
+  const budgetUtilization = budgetUtilizationForTask(
+    task,
+    deps.budgetRouter,
+    deps.budgetConstraints
+  );
+  const context = taskAnalysisResultToBanditContext(
+    analysis,
+    budgetUtilization === undefined ? {} : { budgetUtilization }
+  );
   deps.linucbBandit.update(armIndex, context, reward);
   deps.logger.debug('Recorded outcome', { cliName, reward });
 }

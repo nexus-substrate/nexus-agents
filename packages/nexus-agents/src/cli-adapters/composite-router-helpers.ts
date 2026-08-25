@@ -9,7 +9,7 @@
 
 import type { Task } from '../core/types/agent.js';
 import { getTimeProvider, type TaskProfile } from '../core/index.js';
-import type { CliName, RoutingArmId, CliTask, BudgetConstraint } from './types.js';
+import type { CliName, RoutingArmId, CliTask } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
@@ -23,6 +23,11 @@ import {
 import type { BillingMode } from '../mcp/tools/delegate-to-model-types.js';
 import type { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
+import {
+  toBudgetConstraint,
+  budgetUtilizationOf,
+  budgetUtilizationForTask,
+} from './composite-router-budget-feature.js';
 import type { CompositeRouterConfig } from './composite-router-types.js';
 import type { IZeroRouter } from './zero-router.js';
 import type { DifficultyEstimate, DifficultyOutcome, ModelTier } from './zero-router-types.js';
@@ -187,21 +192,6 @@ export interface BudgetFilterResult {
   budgetUtilization?: number;
 }
 
-/** Narrows the router config's budget constraints to a {@link BudgetConstraint}. */
-function toBudgetConstraint(raw: CompositeRouterConfig['budgetConstraints']): BudgetConstraint {
-  const constraint: BudgetConstraint = {};
-  if (raw?.maxTokens !== undefined) {
-    (constraint as { maxTokens: number }).maxTokens = raw.maxTokens;
-  }
-  if (raw?.maxCostUsd !== undefined) {
-    (constraint as { maxCostUsd: number }).maxCostUsd = raw.maxCostUsd;
-  }
-  if (raw?.maxLatencyMs !== undefined) {
-    (constraint as { maxLatencyMs: number }).maxLatencyMs = raw.maxLatencyMs;
-  }
-  return constraint;
-}
-
 /**
  * Applies budget filtering to candidate CLIs.
  */
@@ -218,14 +208,8 @@ export function applyBudgetFilter(
   const result = budgetRouter.checkBudget(task, constraint);
   if (!result.withinBudget) return { eligible: [], withinBudget: false };
 
-  // Mirrors BudgetFilterStage's formula (budget-stage.ts:233), over the
-  // selected adapter's projected cost rather than an average across
-  // candidates — this is the spend actually being contemplated.
-  const maxCostUsd = constraint.maxCostUsd;
-  const utilization =
-    maxCostUsd !== undefined && maxCostUsd > 0
-      ? { budgetUtilization: Math.min(1, result.estimatedCostUsd / maxCostUsd) }
-      : {};
+  const share = budgetUtilizationOf(result.estimatedCostUsd, constraint.maxCostUsd);
+  const utilization = share === undefined ? {} : { budgetUtilization: share };
 
   if (config.billingMode !== 'api')
     return { eligible: candidates, withinBudget: true, ...utilization };
@@ -642,3 +626,5 @@ export function buildPreferenceStats(
 // #4373 will reintroduce capacity reads as a routing *exclusion predicate*
 // inside the stage chain — a decision input, not a dashboard. Adapter capacity
 // is still available directly via `ICliAdapter.getCapacity()`.
+
+export { budgetUtilizationOf, budgetUtilizationForTask };
