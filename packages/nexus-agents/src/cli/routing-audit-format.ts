@@ -35,11 +35,42 @@ export function formatHeader(result: RoutingAuditResult): string[] {
 /**
  * Formats the task analysis section.
  */
+/**
+ * Pack `a | b | c` segments into lines no wider than `width` (#4913).
+ *
+ * `summarizeTaskProfile` returns a single pipe-joined string that reached 78
+ * display columns in a 63-column box. ANSI-aware padding cannot help there —
+ * the content genuinely does not fit — so the caller splits it, which is the
+ * one honest option that neither truncates nor spills.
+ *
+ * A single segment longer than `width` is emitted on its own line rather than
+ * broken mid-word; it will still overflow, and that is visible rather than
+ * silently cut.
+ */
+function wrapPipeSeparated(text: string, width: number): string[] {
+  const segments = text.split(' | ');
+  const lines: string[] = [];
+  let current = '';
+  for (const segment of segments) {
+    const candidate = current === '' ? segment : `${current} | ${segment}`;
+    if (current !== '' && candidate.length > width) {
+      lines.push(current);
+      current = segment;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current !== '') lines.push(current);
+  return lines;
+}
+
 export function formatTaskAnalysis(result: RoutingAuditResult): string[] {
   const lines: string[] = [];
   lines.push(boxLine(color(' Task Analysis:', ANSI.bold)));
   const profileSummary = summarizeTaskProfile(result.taskProfile);
-  lines.push(boxLine(`   ${profileSummary}`));
+  for (const segment of wrapPipeSeparated(profileSummary, BOX_WIDTH - 5)) {
+    lines.push(boxLine(`   ${segment}`));
+  }
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
   return lines;
 }
@@ -116,7 +147,7 @@ export function formatLinUCBSelection(result: RoutingAuditResult): string[] {
     const ucb = arm.ucbScore.toFixed(2);
     const pulls = String(arm.pullCount);
     const content = `   ${arm.cliName.padEnd(8)} UCB: ${ucb.padStart(5)} pulls: ${pulls.padStart(3)} ${marker}`;
-    lines.push(color('│', ANSI.cyan) + content.padEnd(BOX_WIDTH + 8) + color('│', ANSI.cyan));
+    lines.push(boxLine(content));
   }
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
   return lines;
@@ -128,7 +159,7 @@ export function formatLinUCBSelection(result: RoutingAuditResult): string[] {
 export function formatFinalSelection(result: RoutingAuditResult, explain: boolean): string[] {
   const lines: string[] = [];
   const selectionText = color(` Final Selection: ${result.selectedCli}`, ANSI.bold + ANSI.green);
-  lines.push(color('│', ANSI.cyan) + selectionText.padEnd(BOX_WIDTH + 11) + color('│', ANSI.cyan));
+  lines.push(boxLine(selectionText));
   lines.push(boxLine(`   Reason: ${result.selectionReason}`));
   lines.push(color('╰' + horizontalLine() + '╯', ANSI.cyan));
 
@@ -156,9 +187,7 @@ function formatBanditStatsHeader(): string[] {
   return [
     '',
     color('╭' + horizontalLine() + '╮', ANSI.yellow),
-    color('│', ANSI.yellow) +
-      color(' LinUCB Detailed Statistics (--bandit-stats)', ANSI.bold).padEnd(BOX_WIDTH + 7) +
-      color('│', ANSI.yellow),
+    boxLine(color(' LinUCB Detailed Statistics (--bandit-stats)', ANSI.bold), ANSI.yellow),
     color('├' + horizontalLine() + '┤', ANSI.yellow),
   ];
 }
@@ -201,18 +230,10 @@ function formatExplorationSection(stats: BanditStats): string[] {
 function formatFeatureImportanceSection(stats: BanditStats): string[] {
   const lines: string[] = [];
 
-  lines.push(
-    color('│', ANSI.yellow) +
-      color(' Feature Importance by Arm:', ANSI.bold).padEnd(BOX_WIDTH + 7) +
-      color('│', ANSI.yellow)
-  );
+  lines.push(boxLine(color(' Feature Importance by Arm:', ANSI.bold), ANSI.yellow));
 
   for (const arm of stats.detailedArms) {
-    lines.push(
-      color('│', ANSI.yellow) +
-        `   ${color(arm.cliName, ANSI.cyan)}:`.padEnd(BOX_WIDTH + 5) +
-        color('│', ANSI.yellow)
-    );
+    lines.push(boxLine(`   ${color(arm.cliName, ANSI.cyan)}:`, ANSI.yellow));
     const top3 = arm.featureImportance.slice(0, 3);
     for (const fi of top3) {
       const pct = formatPercentage(fi.importance, 1);
