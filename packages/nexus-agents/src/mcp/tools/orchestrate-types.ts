@@ -99,6 +99,14 @@ export const OrchestrateOutputSchema = z.object({
   metadata: z.object({
     durationMs: z.number(),
     tokensUsed: z.number(),
+    /**
+     * Whether `tokensUsed` is a measurement (#4829).
+     *
+     * `false` means no usage was reported, so `tokensUsed` is a placeholder
+     * `0` and not a count. Without it a caller cannot tell a run that spent
+     * nothing from a run nobody counted.
+     */
+    tokensMeasured: z.boolean().optional(),
     expertsUsed: z.array(z.string()),
     /**
      * Populated only when the outer wall-clock deadline fires before

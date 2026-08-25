@@ -5766,7 +5766,7 @@ FunctionDeclaration orchestrateInputToTaskContract
 TypeAliasDeclaration OrchestrateOutput
   = z.infer<typeof OrchestrateOutputSchema>
 VariableDeclaration OrchestrateOutputSchema
-  : z.ZodObject<{ analysis: z.ZodObject<{ approach: z.ZodString; complexity: z.ZodNumber; estimatedEffort: z.ZodNumber; needsDecomposition: z.ZodBoolean; requirements: z.ZodArray<z.ZodString>; risks: z.ZodArray<z.ZodString>; taskId: z.ZodString; taskType: z.ZodString; }, z.core.$strip>; metadata: z.ZodObject<{ durationMs: z.ZodNumber; expertsUsed: z.ZodArray<z.ZodString>; timeoutReason: z.ZodOptional<z.ZodString>; tokensUsed: z.ZodNumber; }, z.core.$strip>; result: z.ZodUnknown; routing: z.ZodOptional<z.ZodObject<{ confidence: z.ZodNumber; orchestratorType: z.ZodString; pattern: z.ZodString; reasoning: z.ZodString; }, z.core.$strip>>; stepsCompleted: z.ZodNumber; taskId: z.ZodString; workerDispatchStatus: z.ZodOptional<z.ZodEnum<{ failed: "failed"; partial: "partial"; success: "success"; }>>; }, z.core.$strip>
+  : z.ZodObject<{ analysis: z.ZodObject<{ approach: z.ZodString; complexity: z.ZodNumber; estimatedEffort: z.ZodNumber; needsDecomposition: z.ZodBoolean; requirements: z.ZodArray<z.ZodString>; risks: z.ZodArray<z.ZodString>; taskId: z.ZodString; taskType: z.ZodString; }, z.core.$strip>; metadata: z.ZodObject<{ durationMs: z.ZodNumber; expertsUsed: z.ZodArray<z.ZodString>; timeoutReason: z.ZodOptional<z.ZodString>; tokensMeasured: z.ZodOptional<z.ZodBoolean>; tokensUsed: z.ZodNumber; }, z.core.$strip>; result: z.ZodUnknown; routing: z.ZodOptional<z.ZodObject<{ confidence: z.ZodNumber; orchestratorType: z.ZodString; pattern: z.ZodString; reasoning: z.ZodString; }, z.core.$strip>>; stepsCompleted: z.ZodNumber; taskId: z.ZodString; workerDispatchStatus: z.ZodOptional<z.ZodEnum<{ failed: "failed"; partial: "partial"; success: "success"; }>>; }, z.core.$strip>
 ClassDeclaration OrchestrationError
 TypeAliasDeclaration OrchestrationObserverEvent
   = | { agentId: string; previousState: AgentState; state: AgentState; type: 'agent_state_changed'; } | { decision: RoutingDecision; type: 'routing_decision'; } | { pattern: string; sessionId: string; type: 'session_started'; } | { durationMs: number; sessionId: string; success: boolean; type: 'session_completed'; } | { metrics: OrchestrationStats; type: 'metrics_updated'; } | { error: string; source: string; type: 'error'; }
@@ -5846,6 +5846,7 @@ InterfaceDeclaration OrchestratorResult
   orchestratorType: OrchestratorType
   output: unknown
   steps: OrchestratorStep[]
+  tokensMeasured?: boolean | undefined
   totalDurationMs: number
   totalTokensUsed: number
 InterfaceDeclaration OrchestratorStep
@@ -5857,6 +5858,7 @@ InterfaceDeclaration OrchestratorStep
   output: unknown
   role: AgentRole
   status: "success" | "failed" | "skipped"
+  tokensMeasured?: boolean | undefined
   tokensUsed: number
 TypeAliasDeclaration OrchestratorType
   = 'orchestrator' | 'puppeteer' | 'workflow' | 'custom'

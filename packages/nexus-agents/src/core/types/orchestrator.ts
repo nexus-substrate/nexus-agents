@@ -64,8 +64,17 @@ export interface OrchestratorStep {
   output: unknown;
   /** Duration in ms */
   durationMs: number;
-  /** Tokens used in this step */
+  /** Tokens used in this step. Meaningful only when {@link OrchestratorStep.tokensMeasured} is not `false`. */
   tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4829).
+   *
+   * `false` means no usage was reported for this step, so `tokensUsed` is a
+   * placeholder `0` and NOT a count. Absent means the producer predates the
+   * distinction — unknown, not measured. Mirrors `ResultMetadata.tokensMeasured`
+   * (#4734).
+   */
+  tokensMeasured?: boolean;
   /** Status */
   status: 'success' | 'failed' | 'skipped';
   /** Error if failed */
@@ -86,8 +95,16 @@ export interface OrchestratorResult {
   output: unknown;
   /** Total execution time in ms */
   totalDurationMs: number;
-  /** Total tokens consumed */
+  /** Total tokens consumed. Meaningful only when {@link OrchestratorResult.tokensMeasured} is not `false`. */
   totalTokensUsed: number;
+  /**
+   * Whether `totalTokensUsed` is a measurement (#4829).
+   *
+   * `false` means no step reported usage, so the total is a placeholder `0`
+   * and NOT a count — for anything cap-shaped, reading it as a count
+   * under-counts in the dangerous direction.
+   */
+  tokensMeasured?: boolean;
   /** Agents involved */
   agentsUsed: string[];
 }

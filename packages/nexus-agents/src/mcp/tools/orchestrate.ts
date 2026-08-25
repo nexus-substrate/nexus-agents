@@ -265,6 +265,9 @@ function buildOutputFromOrchestratorResult(
     metadata: {
       durationMs,
       tokensUsed: orchResult.totalTokensUsed,
+      ...(orchResult.tokensMeasured === undefined
+        ? {}
+        : { tokensMeasured: orchResult.tokensMeasured }),
       expertsUsed: orchResult.agentsUsed,
     },
   };

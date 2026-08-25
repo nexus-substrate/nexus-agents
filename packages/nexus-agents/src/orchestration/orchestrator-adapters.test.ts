@@ -358,3 +358,43 @@ describe('WorkflowAdapter', () => {
     expect(adapter.getHistory()).toHaveLength(2);
   });
 });
+
+// ============================================================================
+// Token counts are placeholders and say so (#4829)
+// ============================================================================
+
+describe('unmeasured token counts are disclosed (#4829)', () => {
+  // `OrchestratorAgentLike.execute` returns `Result<unknown, unknown>` — no
+  // usage metadata reaches this seam at all, so both `createStep` and
+  // `createResult` hardcode 0. A consumer could not tell "used no tokens"
+  // from "nobody counted", and the live `orchestrate` MCP tool published the
+  // zero straight through.
+  it('marks the result and its steps as unmeasured rather than zero-cost', async () => {
+    const adapter = new OrchestratorAdapter(makeMockLogger());
+
+    const result = await adapter.execute(makeTaskDef(), {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.tokensMeasured).toBe(false);
+    expect(result.value.steps.every((s) => s.tokensMeasured === false)).toBe(true);
+  });
+
+  it('applies to every adapter in this file, not just the first', async () => {
+    // createStep/createResult are shared by all three, so a fix reaching only
+    // one would be worse than none — the flag would then imply the others HAD
+    // measured. Each adapter needs the definition kind it accepts; passing a
+    // task definition to all three made an earlier version of this test pass
+    // vacuously, because the two that rejected it never reached the assertion.
+    const cases: ReadonlyArray<[string, Promise<unknown>]> = [
+      ['puppeteer', new PuppeteerAdapter().execute(makePolicyDef(), {})],
+      ['workflow', new WorkflowAdapter().execute(makeWorkflowDef(), {})],
+    ];
+
+    for (const [name, pending] of cases) {
+      const result = (await pending) as { ok: boolean; value?: { tokensMeasured?: boolean } };
+      expect(result.ok, `${name} should execute`).toBe(true);
+      expect(result.value?.tokensMeasured, name).toBe(false);
+    }
+  });
+});
