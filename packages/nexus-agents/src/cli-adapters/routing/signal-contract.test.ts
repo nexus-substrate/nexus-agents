@@ -37,8 +37,6 @@ const ROUTING_DIR = join(process.cwd(), 'src', 'cli-adapters', 'routing');
  * something nobody sends.
  */
 const KNOWN_BROKEN: ReadonlyMap<string, string> = new Map([
-  ['task-category:', '#4832 — no producer; DistilledRuleStage category filter never narrows'],
-  ['capability:type=', '#4832 — CapabilityMatchStage emits `capability:task-`, not `type=`'],
   ['budget:utilization-', '#4834 — BudgetStage emits `budget:utilization=` (equals, not hyphen)'],
 ]);
 

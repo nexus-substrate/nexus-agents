@@ -507,13 +507,22 @@ export async function runDistilledRuleStage(
   task: CliTask,
   candidates: RoutingArmId[],
   stagesExecuted: string[],
-  deps: StageDependencies
+  deps: StageDependencies,
+  taskCategory?: string
 ): Promise<DistilledRuleStageResult> {
   if (!deps.config.enableStrategyDistillation || deps.distilledRuleStage === undefined) {
     return { scores: new Map(), rulesApplied: 0 };
   }
 
-  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
+  // Typed argument rather than a cross-stage signal (#4866 option B). The
+  // vocabulary matters: rules carry a `TaskCategory`, and `detectTaskCategory`
+  // is the only producer that speaks it — `capability:task-` emits an
+  // unrelated four-value set (#4832).
+  const ctx = createRoutingContext(
+    task.content,
+    armsToSlots(candidates),
+    taskCategory === undefined ? undefined : { taskCategory }
+  );
   const result = await deps.distilledRuleStage.route(ctx);
   stagesExecuted.push('distilled-rule');
 
@@ -821,6 +830,17 @@ function mergeScoreMaps(
   return merged;
 }
 
+/**
+ * The task's category in the vocabulary a {@link DistilledRule} carries.
+ *
+ * `detectTaskCategory` is the only producer speaking `TASK_CATEGORIES`;
+ * `capability:task-` emits an unrelated four-value set (#4832). `undefined`
+ * when nothing scores, which leaves rules unscoped as before.
+ */
+function detectedCategory(task: CliTask): string | undefined {
+  return detectTaskCategory(task.content)?.category;
+}
+
 /** Runs scoring stages (priorities 10-55) and returns intermediate results. */
 async function runScoringStages(
   task: CliTask,
@@ -845,7 +865,8 @@ async function runScoringStages(
   const knnResult = await runKnnRoutingStage(task, candidates, stagesExecuted, deps);
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   let filtered = zeroResult.filteredCandidates;
-  const distilledResult = await runDistilledRuleStage(task, filtered, stagesExecuted, deps);
+  const cat = detectedCategory(task);
+  const distilledResult = await runDistilledRuleStage(task, filtered, stagesExecuted, deps, cat);
   const prefResult = runPreferenceStage(task, filtered, stagesExecuted, deps);
   filtered = prefResult.preferredCandidates;
   const resourceResult = await runResourceStrategyStage(

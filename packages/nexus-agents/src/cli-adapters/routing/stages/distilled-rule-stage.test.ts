@@ -18,11 +18,12 @@ import type { DistilledRule, RuleStatus } from '../../../learning/strategy-disti
 function createContext(
   task: string,
   clis: CliName[] = ['claude', 'gemini', 'codex'],
-  signals: string[] = []
+  signals: string[] = [],
+  metadata?: Record<string, unknown>
 ): RoutingContext {
   return {
     task,
-    metadata: undefined,
+    metadata,
     availableClis: clis,
     scores: new Map(clis.map((c) => [c, 0])),
     filtered: new Map(),
@@ -263,5 +264,77 @@ describe('DistilledRuleStage', () => {
       const stage = createDistilledRuleStage(createMockDistiller());
       expect(stage).toBeInstanceOf(DistilledRuleStage);
     });
+  });
+});
+
+// ============================================================================
+// Category scoping (#4832 / #4866)
+// ============================================================================
+
+describe('rules are scoped to the category they were learned for (#4832)', () => {
+  // Rules are grouped and fingerprinted by `(cli, category)` in the distiller,
+  // so a rule means "penalize claude ON code_generation". Every rule was being
+  // applied to every task regardless, because the category was read from a
+  // `task-category:` signal nothing emits.
+
+  it('applies a rule whose category matches the task', async () => {
+    const stage = new DistilledRuleStage(createMockDistiller([makeRule()]));
+
+    const result = await stage.route(
+      createContext('write a function', ['claude'], [], { taskCategory: 'code_generation' })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.value.context.signals.some((sig) => sig.startsWith('distilled-rule:applied='))
+    ).toBe(true);
+  });
+
+  it('does NOT apply a rule from a different category', async () => {
+    // The behaviour the whole issue is about. Nothing asserted this before.
+    const stage = new DistilledRuleStage(createMockDistiller([makeRule()]));
+
+    const result = await stage.route(
+      createContext('write the README', ['claude'], [], { taskCategory: 'documentation' })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.value.context.signals.some((sig) => sig.startsWith('distilled-rule:applied='))
+    ).toBe(false);
+  });
+
+  it('rejects a category outside the TaskCategory vocabulary', async () => {
+    // The trap: `capability:task-` emits `code` / `reasoning` / `creative` /
+    // `general`, which share NO values with the `TASK_CATEGORIES` a rule
+    // carries. Wiring that producer in would match nothing and silently take
+    // the whole distillation loop dark. Anything off-vocabulary must be
+    // treated as unknown, not as a category that simply matches no rule.
+    const stage = new DistilledRuleStage(createMockDistiller([makeRule()]));
+
+    const result = await stage.route(
+      createContext('write a function', ['claude'], [], { taskCategory: 'code' })
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.context.signals.includes('distilled-rule:category-unknown')).toBe(true);
+  });
+
+  it('applies every matching-CLI rule when the category is unknown, and says so', async () => {
+    // Preserves today's behaviour for undetectable tasks rather than silently
+    // dropping all rules — but the record now states that the check did not
+    // run, so an unscoped application is not mistaken for a scoped one.
+    const stage = new DistilledRuleStage(createMockDistiller([makeRule()]));
+
+    const result = await stage.route(createContext('zzz', ['claude'], []));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { signals } = result.value.context;
+    expect(signals.some((sig) => sig.startsWith('distilled-rule:applied='))).toBe(true);
+    expect(signals).toContain('distilled-rule:category-unknown');
   });
 });
