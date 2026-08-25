@@ -43,6 +43,22 @@ const DEV_PIPELINE_ASYNC_HINT =
   "Retry with `dispatch: 'async'` to get a jobId immediately, then poll " +
   'get_job_result({ jobId }) for the result.';
 
+/**
+ * What to tell a caller whose DRY run failed (#4933).
+ *
+ * `dispatch: 'async'` is ignored when `dryRun` is true, so the hint above is
+ * remediation the caller cannot take — following it verbatim produces another
+ * synchronous run. Say what is true instead.
+ */
+const DEV_PIPELINE_DRY_RUN_NOTE =
+  'This was a dry run (plan+vote), which always runs synchronously; async ' +
+  'dispatch is ignored for dry runs, so retrying with it changes nothing.';
+
+/** The failure-time note that matches the dispatch mode actually available. */
+function dispatchNoteFor(dryRun: boolean): string {
+  return dryRun ? DEV_PIPELINE_DRY_RUN_NOTE : DEV_PIPELINE_ASYNC_HINT;
+}
+
 // ============================================================================
 // Input Schema
 // ============================================================================
@@ -408,7 +424,7 @@ async function runDevPipelineHandler(
     // for runs that exceed the 900s request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `${DEV_PIPELINE_ASYNC_HINT} Pipeline error: ${getErrorMessage(error)}`,
+      message: `${dispatchNoteFor(input.dryRun)} Pipeline error: ${getErrorMessage(error)}`,
     });
   }
 }
