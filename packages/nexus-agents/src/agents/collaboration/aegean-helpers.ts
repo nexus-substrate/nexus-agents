@@ -78,6 +78,35 @@ export interface BuildResultOptions {
   readonly terminationReason: AegeanResult['terminationReason'];
   readonly startTime: number;
   readonly tokensUsed: number;
+  /**
+   * How many contributors reported no usage (#4743).
+   *
+   * Required, not defaulted: this type has five call sites and an optional
+   * field let four of them silently omit it, so the count reached only the
+   * least-common exit path. The compiler names them instead.
+   */
+  readonly unmeasuredTokenContributions: number;
+}
+
+/**
+ * The token figure from a result's metadata, and whether it was a measurement.
+ *
+ * `ResultMetadata.tokensMeasured === false` means the adapter reported no
+ * usage, so `tokensUsed` is a placeholder rather than a count (#4734). Summing
+ * it as `0` is an UNDER-count, which for anything cap-shaped is the dangerous
+ * direction — so the placeholder contributes nothing to the total and is
+ * counted separately, letting the total be read as a lower bound (#4743).
+ *
+ * Scope: this counts contributions the adapter declared unmeasured. A vote that
+ * timed out or whose agent was missing contributes zero by a different route —
+ * no execution to measure — and is not counted here.
+ */
+export function tokensFromMetadata(metadata: {
+  readonly tokensUsed: number;
+  readonly tokensMeasured?: boolean | undefined;
+}): { readonly tokens: number; readonly unmeasured: number } {
+  if (metadata.tokensMeasured === false) return { tokens: 0, unmeasured: 1 };
+  return { tokens: metadata.tokensUsed, unmeasured: 0 };
 }
 
 /** Builds the final Aegean result. */
@@ -88,6 +117,7 @@ export function buildAegeanResult(opts: BuildResultOptions): AegeanResult {
     totalRounds: opts.rounds.length,
     totalDurationMs: getTimeProvider().now() - opts.startTime,
     tokensUsed: opts.tokensUsed,
+    unmeasuredTokenContributions: opts.unmeasuredTokenContributions,
     rounds: opts.rounds,
     terminationReason: opts.terminationReason,
   };
@@ -159,7 +189,8 @@ export function determinePreRoundAction(
   cancelled: boolean,
   rounds: readonly AegeanRound[],
   startTime: number,
-  tokensUsed: number
+  tokensUsed: number,
+  unmeasuredTokenContributions: number
 ): AegeanResult | null {
   if (cancelled) {
     return buildAegeanResult({
@@ -168,6 +199,7 @@ export function determinePreRoundAction(
       terminationReason: 'error',
       startTime,
       tokensUsed,
+      unmeasuredTokenContributions,
     });
   }
   return null;
@@ -178,15 +210,20 @@ export interface IterationContext {
   readonly rounds: readonly AegeanRound[];
   readonly startTime: number;
   readonly tokensUsed: number;
+  /** Carried beside the total so every exit path reports it (#4743). */
+  readonly unmeasuredTokenContributions: number;
 }
 
 /** Creates context object for iteration handling. */
 export function createIterationContext(
   rounds: readonly AegeanRound[],
   startTime: number,
-  totalTokensUsed: number
+  totalTokensUsed: number,
+  // Required, like the field it feeds: a default here is what let the protocol
+  // omit the count and report every round as fully measured (#4743).
+  unmeasuredTokenContributions: number
 ): IterationContext {
-  return { rounds, startTime, tokensUsed: totalTokensUsed };
+  return { rounds, startTime, tokensUsed: totalTokensUsed, unmeasuredTokenContributions };
 }
 
 // =============================================================================
@@ -221,6 +258,7 @@ export function processIterationAction(opts: ProcessIterationActionOptions): Aeg
         terminationReason: 'consensus',
         startTime: ctx.startTime,
         tokensUsed: ctx.tokensUsed,
+        unmeasuredTokenContributions: ctx.unmeasuredTokenContributions,
       });
     case 'early_termination':
       if (onEarlyTermination) onEarlyTermination(round);
@@ -231,6 +269,7 @@ export function processIterationAction(opts: ProcessIterationActionOptions): Aeg
         terminationReason: 'max_rounds',
         startTime: ctx.startTime,
         tokensUsed: ctx.tokensUsed,
+        unmeasuredTokenContributions: ctx.unmeasuredTokenContributions,
       });
     case 'continue':
       emitIterationEvent(round, 'in_progress', sessionId);
@@ -242,6 +281,7 @@ export function processIterationAction(opts: ProcessIterationActionOptions): Aeg
         terminationReason: 'error',
         startTime: ctx.startTime,
         tokensUsed: ctx.tokensUsed,
+        unmeasuredTokenContributions: ctx.unmeasuredTokenContributions,
       });
   }
 }
@@ -251,14 +291,8 @@ export function processIterationAction(opts: ProcessIterationActionOptions): Aeg
 // =============================================================================
 
 /** Builds the final loop result with provided parameters. */
-export function buildLoopResult(
-  rounds: readonly AegeanRound[],
-  consensusValue: unknown,
-  terminationReason: AegeanResult['terminationReason'],
-  startTime: number,
-  tokensUsed: number
-): AegeanResult {
-  return buildAegeanResult({ rounds, consensusValue, terminationReason, startTime, tokensUsed });
+export function buildLoopResult(opts: BuildResultOptions): AegeanResult {
+  return buildAegeanResult(opts);
 }
 
 // =============================================================================
@@ -315,6 +349,10 @@ export function buildSessionTaskResult(
     metadata: {
       durationMs: getTimeProvider().now() - startTime,
       tokensUsed: result.tokensUsed,
+      // The count becomes the disclosure the rest of the tree already reads
+      // (#4734): a total assembled from contributors that reported nothing is
+      // a lower bound, and must not be handed on as a measurement (#4743).
+      tokensMeasured: result.unmeasuredTokenContributions === 0,
       toolsUsed: [],
       model: 'aegean-protocol',
     },
