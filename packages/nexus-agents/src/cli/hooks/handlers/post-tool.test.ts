@@ -21,14 +21,27 @@ vi.mock('../../../core/logger.js', () => ({
   })),
 }));
 
+// #4842: hoisted so a test can assert WHAT was written, not merely that the
+// handler exited 0. The previous mock returned a fresh object per construction
+// and an empty session list, so `recordToolTask` returned early at its
+// `activeSession === undefined` guard and the update path was never exercised.
+// `vi.hoisted` is required, not stylistic: `vi.mock` factories are hoisted
+// above module-scope consts, so a plain `const` here is in the temporal dead
+// zone when the factory runs. The ReferenceError is then swallowed by
+// trackToolMetrics' try/catch and the test fails with "0 calls" and no clue.
+const { updateTaskMock, listSessionsMock } = vi.hoisted(() => ({
+  updateTaskMock: vi.fn(),
+  listSessionsMock: vi.fn(),
+}));
+
 // Mock session storage
 vi.mock('../../session-storage.js', () => ({
   SQLiteSessionStorage: vi.fn().mockImplementation(function () {
     return {
       initialize: vi.fn().mockResolvedValue({ ok: true }),
-      listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
+      listSessions: listSessionsMock,
       addTask: vi.fn().mockResolvedValue({ ok: true, value: { id: 'tsk_123' } }),
-      updateTask: vi.fn().mockResolvedValue({ ok: true }),
+      updateTask: updateTaskMock,
       close: vi.fn(),
     };
   }),
@@ -236,6 +249,65 @@ describe('post-tool handler', () => {
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('Tool Bash completed');
+      });
+    });
+
+    // #4842: `TaskStatus.FAILED` had exactly one occurrence in src — the READ in
+    // stop.ts's summary. Nothing wrote it, so `failedCount` was structurally 0.
+    // The error was already detected one line above the status that contradicted
+    // it: `result: summarizeToolResponse(...)` returns "Error: …" while
+    // `status:` was hardcoded COMPLETED.
+    describe('task status reflects the tool outcome (#4842)', () => {
+      beforeEach(() => {
+        // The outer beforeEach calls vi.clearAllMocks(), so both implementations
+        // must be re-established here or listSessions resolves undefined and
+        // recordToolTask returns at its `!sessionsResult.ok` guard.
+        listSessionsMock.mockResolvedValue({ ok: true, value: [{ id: 'ses_active' }] });
+        updateTaskMock.mockResolvedValue({ ok: true });
+      });
+
+      it('records FAILED when the tool response carries stderr', async () => {
+        const input = createInput({ tool_response: { stderr: 'command not found' } });
+
+        void handlePostTool(input, { trackMetrics: true, dbPath: '/tmp/test.db' });
+
+        // `post-tool.ts:66` fires the write with `void trackToolMetrics(...)`,
+        // and handlePostTool is synchronous — so the assertion must wait for the
+        // detached promise rather than for the handler.
+        await vi.waitFor(() => {
+          expect(updateTaskMock).toHaveBeenCalledWith(
+            'tsk_123',
+            expect.objectContaining({ status: 'failed', result: expect.stringContaining('Error:') })
+          );
+        });
+      });
+
+      it('records FAILED when the tool response carries an error field', async () => {
+        const input = createInput({ tool_response: { error: 'permission denied' } });
+
+        void handlePostTool(input, { trackMetrics: true, dbPath: '/tmp/test.db' });
+
+        await vi.waitFor(() => {
+          expect(updateTaskMock).toHaveBeenCalledWith(
+            'tsk_123',
+            expect.objectContaining({ status: 'failed' })
+          );
+        });
+      });
+
+      it('still records COMPLETED for a clean response', async () => {
+        // The pair that must differ: a success and a failure cannot both be
+        // COMPLETED, which is exactly what the defect did.
+        const input = createInput({ tool_response: { stdout: 'all good' } });
+
+        void handlePostTool(input, { trackMetrics: true, dbPath: '/tmp/test.db' });
+
+        await vi.waitFor(() => {
+          expect(updateTaskMock).toHaveBeenCalledWith(
+            'tsk_123',
+            expect.objectContaining({ status: 'completed' })
+          );
+        });
       });
     });
 

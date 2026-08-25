@@ -141,9 +141,10 @@ async function recordToolTask(
   const taskResult = await storage.addTask(activeSession.id, taskDescription);
   if (!taskResult.ok) return;
 
+  const outcome = classifyToolResponse(input.tool_response);
   await storage.updateTask(taskResult.value.id, {
-    result: summarizeToolResponse(input.tool_response),
-    status: TaskStatus.COMPLETED,
+    result: outcome.summary,
+    status: outcome.status,
     durationMs: metrics.durationMs,
     tokensUsed: metrics.tokensUsed,
   });
@@ -182,20 +183,41 @@ function summarizeToolInput(toolInput: Record<string, unknown>): string {
   return keys.length > 0 ? keys.join(', ') : '(no input)';
 }
 
-/** Creates a summary of tool response for logging. */
-function summarizeToolResponse(toolResponse: Record<string, unknown>): string {
+/**
+ * Classifies a tool response into the status to record and a human summary.
+ *
+ * Returns both from ONE function on purpose (#4842). The error condition
+ * previously lived only inside the summariser, so the caller wrote
+ * `status: COMPLETED` unconditionally on the line below `result:
+ * summarizeToolResponse(...)` — the failure was detected and then contradicted
+ * in the same object literal. `TaskStatus.FAILED` had no writer anywhere in
+ * `src/`, so the session summary's `failedCount` was structurally always 0.
+ *
+ * Splitting the check across two functions would leave the same two places to
+ * keep in step; returning a pair keeps "what counts as an error" in one spot.
+ */
+function classifyToolResponse(toolResponse: Record<string, unknown>): {
+  status: TaskStatus;
+  summary: string;
+} {
   const error = toolResponse.error ?? toolResponse.stderr;
   if (error !== undefined && error !== '') {
-    return `Error: ${safeString(error).substring(0, 100)}`;
+    return {
+      status: TaskStatus.FAILED,
+      summary: `Error: ${safeString(error).substring(0, 100)}`,
+    };
   }
 
   const stdout = toolResponse.stdout ?? toolResponse.output ?? toolResponse.content;
   if (stdout !== undefined) {
     const out = safeString(stdout);
-    return out.length > 100 ? `${out.substring(0, 100)}...` : out;
+    return {
+      status: TaskStatus.COMPLETED,
+      summary: out.length > 100 ? `${out.substring(0, 100)}...` : out,
+    };
   }
 
-  return 'completed';
+  return { status: TaskStatus.COMPLETED, summary: 'completed' };
 }
 
 /** Extracts file path from tool input. */
