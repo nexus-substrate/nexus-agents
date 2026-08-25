@@ -148,6 +148,70 @@ describe('verify_audit_chain handler behavior', () => {
     expect(body).toContain('empty');
   });
 
+  // #4787: the loader drops unreadable files and unparseable/invalid lines with
+  // nothing but a logger.warn, so a verdict computed over PART of the log was
+  // reported identically to one computed over all of it. A bounded read is
+  // fine; a bounded read recorded as complete is the failure.
+  describe('coverage reporting (#4787)', () => {
+    /** Invokes the registered handler and returns the parsed response body. */
+    async function callHandler(dir: string): Promise<VerifyAuditChainResponse> {
+      type Captured =
+        ((a: unknown, c: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+      let captured: Captured;
+      const server = {
+        registerTool: (_n: string, _s: unknown, h: unknown) => {
+          captured = h as Captured;
+        },
+      };
+      registerVerifyAuditChainTool(server as never, {} as never);
+      const res = await captured?.({ logDir: dir }, {});
+      return JSON.parse(res?.content[0]?.text ?? '{}') as VerifyAuditChainResponse;
+    }
+
+    it('reports the number of lines it could not read', async () => {
+      const events = chain(3);
+      const good = events.map((e) => JSON.stringify(e));
+      // Two lines an adversary or a truncated write would leave behind: one
+      // that is not JSON at all, one that is JSON but not an AuditEvent.
+      fs.writeFileSync(
+        path.join(tmpDir, 'audit-2026-04-28-12-00-00.jsonl'),
+        [good[0]!, 'not json at all', good[1]!, '{"id":"x"}', good[2]!].join('\n') + '\n'
+      );
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.skippedLines).toBe(2);
+      // The parsed subset still chains, so without the count this reads as a
+      // clean verdict over the whole log.
+      expect(body.eventCount).toBe(3);
+      expect(body.verification.ok).toBe(true);
+    });
+
+    it('omits the count when nothing was skipped, so absence stays meaningful', async () => {
+      writeAuditFile('audit-2026-04-28-12-00-00.jsonl', chain(3));
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.skippedLines).toBeUndefined();
+      expect(body.unreadableFiles).toBeUndefined();
+    });
+
+    it('distinguishes a wholly unparseable log from an empty one', async () => {
+      // The worst case: every line is garbage. Before this the response was
+      // eventCount 0 + notVerified "empty" — identical to an empty directory.
+      fs.writeFileSync(
+        path.join(tmpDir, 'audit-2026-04-28-12-00-00.jsonl'),
+        ['garbage', 'more garbage'].join('\n') + '\n'
+      );
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.eventCount).toBe(0);
+      expect(body.skippedLines).toBe(2);
+      expect(body.fileCount).toBe(1);
+    });
+  });
+
   it('verifies a clean multi-file chain in lexicographic order', async () => {
     const all = chain(6);
     writeAuditFile('audit-2026-04-28-12-00-00.jsonl', all.slice(0, 3));
