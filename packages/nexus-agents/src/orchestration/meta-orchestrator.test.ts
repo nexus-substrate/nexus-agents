@@ -338,6 +338,37 @@ describe('MetaOrchestrator.select — shadow-mode learned selection (#3551)', ()
     expect(rec?.taskClass).toBe(d.analysis.taskType);
   });
 
+  it('records that the prediction came from an untrained model (#4825)', () => {
+    // Without this the agreement rate computed over these records reads as a
+    // learned comparison, when a cold bandit returns its tie-break arm every
+    // time. The seam matters: the selector reports `trained` and the summary
+    // reads `modelTrained`, and nothing else joins them.
+    const shadowSink = createRecordingShadowSink();
+    const meta = createMetaOrchestrator({
+      shadowSelector: createLearnedStrategySelector(),
+      shadowSink,
+    });
+
+    meta.select({ goal: 'should we adopt approach A or B', signals: { requiresConsensus: true } });
+
+    expect(shadowSink.getRecords()[0]?.modelTrained).toBe(false);
+  });
+
+  it('records a trained prediction as trained (#4825)', () => {
+    // The pair: hardcoding false would satisfy the test above and reinstate
+    // the same defect from the other side — an agreement rate stuck at zero.
+    const shadowSink = createRecordingShadowSink();
+    const selector = createLearnedStrategySelector();
+    const shadowSelector = selector;
+    const meta = createMetaOrchestrator({ shadowSelector, shadowSink });
+    const first = meta.select({ goal: 'implement the feature' });
+    selector.recordOutcome('single-shot', first, true);
+
+    meta.select({ goal: 'implement another feature' });
+
+    expect(shadowSink.getRecords()[1]?.modelTrained).toBe(true);
+  });
+
   it('does not log when only one of selector/sink is provided', () => {
     const shadowSink = createRecordingShadowSink();
     const meta = createMetaOrchestrator({ shadowSink }); // no selector

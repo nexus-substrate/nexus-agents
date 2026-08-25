@@ -253,6 +253,7 @@ function recordShadow(
       agree: learned.strategy === decision.strategy,
       taskClass: decision.analysis.taskType,
       learnedScore: learned.score,
+      modelTrained: learned.trained,
     });
   } catch (err) {
     logger.warn('Shadow selection failed (non-fatal)', { error: getErrorMessage(err) });
