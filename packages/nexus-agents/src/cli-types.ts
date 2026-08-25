@@ -407,9 +407,12 @@ export const PARSE_ARGS_CONFIG = {
       type: 'string' as const,
       short: 'p',
     },
+    // No `short`. `parseArgs` takes one options object for every command, so
+    // a short letter is global: `-t` was already `task`, which won, and
+    // `vote -t supermajority` silently ran a simple-majority vote. Long form
+    // only — `cli-types.test.ts` pins that no two options share a letter.
     threshold: {
       type: 'string' as const,
-      short: 't',
     },
     quick: {
       type: 'boolean' as const,
@@ -484,9 +487,10 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     // Learning-metrics command options
+    // No `short` — `-p` is `proposal`, which was declared first and won. See
+    // the note on `threshold`.
     period: {
       type: 'string' as const,
-      short: 'p',
     },
     export: {
       type: 'string' as const,
