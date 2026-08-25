@@ -1,5 +1,355 @@
 # nexus-agents
 
+## 4.0.0
+
+### Major Changes
+
+- [#4771](https://github.com/nexus-substrate/nexus-agents/pull/4771) [`b8d2b2b`](https://github.com/nexus-substrate/nexus-agents/commit/b8d2b2bc7e20d053cd69bb0c5e80688ab76dc3b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - BREAKING: the workflow engine's budget-enforcement types are no longer exported
+
+  [#4755](https://github.com/nexus-substrate/nexus-agents/issues/4755) removed the workflow engine's dormant budget enforcement. That removal took
+  ten types off the package's public surface, and shipped declared as `minor`. This
+  changeset corrects the version level; it adds no further code change.
+
+  Removed from the public API:
+
+  - `IBudgetCircuitBreaker`
+  - `BudgetCircuitBreakerConfig`
+  - `BudgetCircuitSnapshot`
+  - `BudgetCircuitState`
+  - `BudgetCircuitStateChangeEvent`
+  - `BudgetCircuitStateChangeListener`
+  - `BudgetEnforcementEvent`
+  - `BudgetEnforcementResult`
+  - `BudgetUsageSnapshot`
+  - `StepBudgetAllocation`
+
+  plus the `ExecutionContext.budgetCircuitBreaker` and `.budgetEvents` fields.
+
+  None was exported by name from `exports/workflows.ts` — they were reachable only
+  _through_ `ExecutionContext`, which is why a name-based grep reported the change
+  as internal. The AST surface gate added in [#4749](https://github.com/nexus-substrate/nexus-agents/issues/4749) caught it on its first real run,
+  before publication.
+
+  **Migration.** If you imported any of these, they still exist internally and the
+  `BudgetCircuitBreaker` class itself is unchanged and still used by
+  `pipeline/budget-guard.ts` — the pipeline's budget enforcement is unaffected.
+  What is gone is the workflow engine's copy, which could never fire: it required
+  `enableBudgetEnforcement` plus a `contextManagerConfig`, and no caller set either.
+  Workflow runs had no budget enforcement before this change and have none after
+  ([#4754](https://github.com/nexus-substrate/nexus-agents/issues/4754)).
+
+  Chosen over re-exporting the ten types to preserve the surface. Re-exporting
+  would keep the version at `minor`, but it would commit the project to a public
+  API that exists only by accident of type reachability, and export symbols with
+  no consumer — which the export ratchet ([#3024](https://github.com/nexus-substrate/nexus-agents/issues/3024)) exists to discourage.
+
+  Resolves [#4759](https://github.com/nexus-substrate/nexus-agents/issues/4759).
+
+### Minor Changes
+
+- [#4764](https://github.com/nexus-substrate/nexus-agents/pull/4764) [`f1e3821`](https://github.com/nexus-substrate/nexus-agents/commit/f1e38218354e2083118b49d2baf6495a87182f39) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): carry measurement provenance onto trinity phases and expert observations
+
+  Since [#4744](https://github.com/nexus-substrate/nexus-agents/issues/4744) a step whose adapter reported no usage carries `tokensUsed: 0` with
+  `tokensMeasured: false`. Consumers that copied only the number turned a
+  "nothing was reported" into an indistinguishable "the model spent zero".
+
+  `TrinityPhaseResult` and `ExpertContextObservation` now carry `tokensMeasured`
+  alongside `tokensUsed`, and `trinity-coordinator` threads it through all three
+  phases.
+
+  An earlier draft of this note claimed a FAILED phase records `false`. It did not:
+  each phase returns `err` before pushing to history, so a failed phase never
+  becomes a `TrinityPhaseResult` and that branch was unreachable. The failure IS
+  observable through `protocol.trinity.phase_completed`, which fires either way —
+  so the flag is carried on that event instead, which is where the failed phase's
+  `0` was actually visible.
+
+  `createPhaseResult` takes a single `usage: { tokensUsed, tokensMeasured? }`.
+  Passing a count and its provenance as separate positional arguments is what let
+  them drift apart.
+
+  Additive and optional throughout: absent means the producer predates the
+  distinction, which is unknown rather than measured. The [#4749](https://github.com/nexus-substrate/nexus-agents/issues/4749) surface gate
+  confirms exactly one public change —
+  `TrinityPhaseResult > readonly tokensMeasured?: boolean | undefined`.
+
+  This corrects a stale claim on [#4743](https://github.com/nexus-substrate/nexus-agents/issues/4743) that these consumers were blocked because
+  `TrinityPhaseResult` is public. That applied to _widening_ `tokensUsed`, not to
+  adding an optional sibling.
+
+  `sica-agent`, `puppeteer-helpers` and `aegean-protocol` still read `tokensUsed`
+  alone; they are unblocked, just separate decisions.
+
+- [#4755](https://github.com/nexus-substrate/nexus-agents/pull/4755) [`8b63c88`](https://github.com/nexus-substrate/nexus-agents/commit/8b63c881f465440de4d324a495651fb05243ee46) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(workflows): remove unreachable budget enforcement, and make usage accounting actually run
+
+  The workflow engine's budget enforcement could not block a step. The circuit
+  breaker was built only when `enableBudgetEnforcement` was true AND a
+  `contextManagerConfig` was supplied, and no production caller set either — the
+  only non-test references were the two type declarations and the `false` default.
+  So `enforceStepBudgets` was structurally incapable of returning `err`,
+  `budgetEvents` was permanently `[]`, and `getBudgetEvents` returned that empty
+  list to nobody.
+
+  Removed from the workflow engine: `enableBudgetEnforcement`,
+  `budgetCircuitBreakerConfig`, `enforceStepBudgets`, `getBudgetEvents`,
+  `getBudgetCircuitBreaker`, and `ExecutionContext.budgetEvents` /
+  `.budgetCircuitBreaker`.
+
+  NOT removed, contrary to an earlier draft of this note: `applyBudgetEnforcement`
+  still exists in `budget-enforcement.ts`, and `contextManagerConfig` is still a
+  `WorkflowEngineConfig` field — the context manager is unrelated to budget
+  enforcement and survives it.
+
+  This removes ten types from the package's public surface — `IBudgetCircuitBreaker`,
+  `BudgetCircuitState`, `BudgetEnforcementEvent` and siblings — which were
+  reachable only through the two deleted `ExecutionContext` fields rather than by
+  direct export. That makes this a BREAKING change despite the `minor` header
+  above; the version decision is tracked in [#4759](https://github.com/nexus-substrate/nexus-agents/issues/4759).
+
+  **`BudgetCircuitBreaker` itself is untouched** — `pipeline/budget-guard.ts`
+  wraps it as "the single budget authority" for `agent-executor`, and that path
+  still enforces. Only the workflow engine's dormant copy is gone.
+
+  Usage ACCOUNTING is kept and decoupled. `recordPhaseUsage` took an
+  `ExecutionContext` purely to reach the breaker, and returned zeros whenever the
+  breaker was absent — which was every production run. Counting never needed a
+  breaker; only `recordUsage` did. It now takes just the step results and runs on
+  every phase, so `reportUsageCoverage` can genuinely warn that a phase's recorded
+  spend is a lower bound. This is the first time the [#4744](https://github.com/nexus-substrate/nexus-agents/issues/4744) unmeasured-step work
+  has any production effect.
+
+  Panel chose removal 6-1 over wiring it, on the capability-bias bar: no named
+  consumer wants per-step workflow budget caps, and git history preserves the
+  machinery if one appears.
+
+  Workflows now have no budget enforcement — which was already true, and is now
+  visible rather than implied. Tracked in [#4754](https://github.com/nexus-substrate/nexus-agents/issues/4754).
+
+- [#4762](https://github.com/nexus-substrate/nexus-agents/pull/4762) [`34675ac`](https://github.com/nexus-substrate/nexus-agents/commit/34675ac44b5cc4b5a9d36cd73c5e45e10fea4599) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): aggregate token totals no longer absorb unmeasured contributors
+
+  `AggregationMetadata` reported a token total with no way to say how much of it
+  was actually measured. Since [#4744](https://github.com/nexus-substrate/nexus-agents/issues/4744) a contributor whose adapter reported no usage
+  carries `tokensUsed: 0` with `tokensMeasured: false`, and the aggregate could not
+  distinguish that from a contributor that genuinely spent nothing.
+
+  To be precise about what changed arithmetically: **nothing**. Every producer that
+  sets `tokensMeasured: false` pairs it with `0`, so excluding those from the sum is
+  a no-op today. The filter is there so the sum stays correct if a producer ever
+  reports a number it cannot vouch for. The real delivery is the new count.
+
+  The two aggregation sites (`result-aggregator.ts`, `session-helpers.ts`) now sum
+  measured contributors only and report `unmeasuredResults` beside the total. The
+  field is additive and optional — absent means the aggregate predates the
+  distinction, which is unknown rather than zero.
+
+  Confirmed non-breaking by the [#4749](https://github.com/nexus-substrate/nexus-agents/issues/4749) surface gate, which reported exactly one
+  public change: `AggregationMetadata > unmeasuredResults?: number | undefined`.
+  That is the first time a change here has been checked against the real API
+  surface rather than a grep.
+
+  Part of [#4743](https://github.com/nexus-substrate/nexus-agents/issues/4743). The propagating consumers (trinity, execute-expert, sica,
+  puppeteer, aegean) still read `tokensUsed` alone and are unchanged.
+
+### Patch Changes
+
+- [#4757](https://github.com/nexus-substrate/nexus-agents/pull/4757) [`eb3efb4`](https://github.com/nexus-substrate/nexus-agents/commit/eb3efb41fa82e60bc05d7713263d0f7b666b854f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - ci: derive the public API surface from the AST instead of grepping for names
+
+  Three type changes shipped or were nearly shipped mis-versioned in one day, all
+  from the same mistake: grepping `src/exports/*.ts` for a symbol's NAME, finding
+  nothing, and concluding the change was internal.
+
+  - [#4736](https://github.com/nexus-substrate/nexus-agents/issues/4736) `healthScore` widened to `number | null`, shipped as a patch.
+  - [#4740](https://github.com/nexus-substrate/nexus-agents/issues/4740) a `VoteDecisionStatus` enum widening proposed as semver-minor.
+  - [#4744](https://github.com/nexus-substrate/nexus-agents/issues/4744) `ResultMetadata` called "not public" — but `TaskResult` is exported and
+    carries `metadata: ResultMetadata`, so it is reachable structurally.
+
+  A name grep answers "is this symbol re-exported?". The question that decides
+  semver is "is this type reachable from the entry point?", and those differ
+  whenever one exported type references another. The failure is also
+  one-directional: it always reads as "not public", i.e. as permission to proceed.
+
+  `scripts/extract-api-surface.ts` walks from `src/index.ts` and follows type
+  references transitively, so a type that is public only through another type's
+  signature is included. That transitive step is the whole point: it adds **313
+  symbols** the export list alone does not mention. `scripts/check-api-surface.ts`
+  diffs the result against the committed `api-surface.txt` and fails on any
+  change.
+
+  The gate reports what moved and attributes it to a symbol; it deliberately does
+  not classify severity, because it cannot know whether a removed symbol was
+  load-bearing downstream, and a gate that guessed would be trusted more than it
+  deserves.
+
+  Uses `ts-morph`, already a dependency. No new tooling.
+
+- [#4745](https://github.com/nexus-substrate/nexus-agents/pull/4745) [`2b448cd`](https://github.com/nexus-substrate/nexus-agents/commit/2b448cded00ee626633fb83af9ebafe50ee0f446) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): the post-merge ratification backstop can see who applied the label
+
+  [#4698](https://github.com/nexus-substrate/nexus-agents/issues/4698) taught the ratification gate to require an owner-applied label and pass
+  `RATIFICATION_LABEL_ACTOR`. The pre-merge job produces it. The post-merge
+  backstop job **consumes it and never produced it** — its own evidence step wrote
+  only `approvals` and `labels`.
+
+  An unset step output is an empty string, not an error, so the backstop read
+  "applier unknown", correctly refused to treat that as ratified, and failed. Every
+  governor-path PR ratified by label reddened `main` after merge, unfixable by
+  re-running. [#4698](https://github.com/nexus-substrate/nexus-agents/issues/4698) and [#4704](https://github.com/nexus-substrate/nexus-agents/issues/4704) did exactly that.
+
+  Adds the missing producer, and `| tail -n1` on both timeline queries: `gh api
+--paginate --jq` applies the filter per page, so `| last` can emit one line per
+  page and corrupt the step output.
+
+  Also adds `scripts/workflow-output-wiring.test.ts`, which asserts every
+  `steps.<id>.outputs.<name>` a job consumes has a producer in the same job. It
+  fails against the pre-fix workflow and passes after — the defect class is
+  mechanically detectable and should not need a human to catch it twice.
+
+  Governance path (the governor workflow) — requires owner ratification.
+
+- [#4758](https://github.com/nexus-substrate/nexus-agents/pull/4758) [`3720f85`](https://github.com/nexus-substrate/nexus-agents/commit/3720f85eba930389750f315f3f17e24cbe1976aa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): stop reporting a false stall on every long expert task
+
+  [#4752](https://github.com/nexus-substrate/nexus-agents/issues/4752) marked a heartbeat session "instrumented" when its scope opened, and let
+  an instrumented session with no heartbeats fall through to the stall
+  thresholds. The reasoning was that a scoped session emitting nothing must have
+  hung before its first step. Two facts make that wrong:
+
+  - **Nothing under `src/agents/` emits a `withStep`.** `SimpleAgent.executeTask`
+    is a bare model call, so no step event is ever published from the agent work
+    path and no heartbeat is ever credited.
+  - **The sessions nest.** `execute-expert` opens a session, then
+    `base-agent-execute-flow` opens a second one inside it. The inner
+    `AsyncLocalStorage` store shadows the outer, so even once producers exist the
+    outer session receives no credit.
+
+  Net effect: every expert or agent task running past 120s logged
+  `Expert session stalled — no step activity` every 15s and inflated
+  `stalledSessions`. [#4752](https://github.com/nexus-substrate/nexus-agents/issues/4752) traded "structurally 0" for "structurally stalled",
+  which is not an improvement — the record was wrong in a new direction.
+
+  A session is now measured only once a heartbeat is actually **credited**.
+  Opening a scope is not evidence that anything will report progress. Nesting
+  becomes benign: an outer session with no credit stays `unmeasured` rather than
+  claiming a stall. An immediate hang remains covered by the 900s absolute cap
+  (`isExpired`), which does work.
+
+  Also fixes the same class in `measuredTrustTier` ([#4751](https://github.com/nexus-substrate/nexus-agents/issues/4751)): it accepted `clientId`
+  as a derivation input, but `deriveTrustTier` reads `clientId` only inside its
+  `authenticated === true` branch — and `extractCallerInfo` returns exactly
+  `{ clientId, sessionId }` on its CLAUDE_SESSION_ID path. Wiring that producer
+  would have relabelled the `'3'` fallback as a measurement. `authenticated:
+false` still counts, because "we checked and they are not authenticated" is a
+  measurement; only an absent field is not.
+
+  Found by an adversarial review of my own merged work.
+
+- [#4763](https://github.com/nexus-substrate/nexus-agents/pull/4763) [`94d7402`](https://github.com/nexus-substrate/nexus-agents/commit/94d74027eb8bacd67442d030ddf62d8cff4f6b9b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(agents): say that WaveScheduler's token budget enforces an estimate
+
+  `WaveScheduler.maxTotalTokens` aborts the wave loop when a running total exceeds
+  the configured budget. That total is `Math.ceil(outputChars / 4)` summed per
+  task, which:
+
+  - **omits input entirely** — prompt and context usually dominate an agent task's
+    spend, so a large prompt with a terse answer looks nearly free; and
+  - **records a failed task as `0`**, however long it ran before throwing.
+
+  Both errors run in the same direction: the budget believes it has more headroom
+  than it does. Nothing in this repo is affected — `maxTotalTokens` defaults to `0`
+  and no in-tree caller sets it — but `WaveScheduler` is public API, so a consumer
+  who enables the documented budget gets a cap with no signal that the figure is
+  approximate.
+
+  No change to what is computed or capped. One caller-visible string does change:
+  `abortReason` now begins "Estimated token budget exhausted" rather than "Token
+  budget exhausted", so an external matcher on the old substring would break. That
+  is the point of the change, but calling it "no behaviour change" was wrong.
+
+  The estimate itself stays, because `WaveTaskExecutor` returns a bare string and
+  real usage never reaches the scheduler. What changes is that it
+  no longer implies precision: the field and config docs state what is excluded,
+  and the caller-visible abort reason now reads "Estimated token budget exhausted
+  … (estimate excludes input and failed tasks)".
+
+  Replacing the estimate needs a wider executor contract — a public-type change
+  tracked in [#4761](https://github.com/nexus-substrate/nexus-agents/issues/4761), alongside [#4754](https://github.com/nexus-substrate/nexus-agents/issues/4754) and [#4743](https://github.com/nexus-substrate/nexus-agents/issues/4743) as the same "measurement does not
+  reach its consumer" thread.
+
+- [#4769](https://github.com/nexus-substrate/nexus-agents/pull/4769) [`eddd4b0`](https://github.com/nexus-substrate/nexus-agents/commit/eddd4b0cded89509342d50765d265c96f84826b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(consensus): say that quorum eligibility screening never runs in production
+
+  `QuorumValidator.isAgentEligible` has three exclusion branches —
+  `byzantine_flagged`, `low_trust`, `insufficient_weight` — and none can fire from
+  a real run. All require an `AgentRecord`, and the only production path in
+  (`voting-protocol-helpers` → `validateQuorum` → `getQuorumBreakdown`) passes
+  `{ votes, config }` with no `agentRecords`. With no record the method returns
+  `{ eligible: true, weight: 1.0 }` immediately, so `eligibleAgents` is always
+  every voter. `enableByzantineDetection` additionally has zero writers anywhere
+  in `src/`.
+
+  Deliberately NOT deleted. The behaviour is correct and covered by four tests, so
+  this is unwired capability rather than dead code, and removing a working trust
+  model is a decision about the resilience posture — tracked in [#4666](https://github.com/nexus-substrate/nexus-agents/issues/4666), not
+  something to slip into a cleanup.
+
+  What changes is that the code no longer implies screening happens: the method
+  documents that a full eligible list is not evidence anything was screened, and a
+  new test pins that production shape — Byzantine detection enabled, no records
+  supplied, nobody excluded.
+
+  That test is a characterization test, **not** a tripwire. An earlier draft of
+  this note claimed it "fails" if a producer is wired; it would not — it builds
+  its own input literal with no `agentRecords`, so it is unaffected by whatever
+  `voting-protocol-helpers` passes. Catching that automatically would need a
+  source-level assertion that no production caller supplies `agentRecords`, which
+  is not worth the maintenance cost on a non-production path.
+
+  Severity is low and unchanged: this is `VotingProtocol`, not the live
+  `consensus_vote` engine, so trust screening is not silently disabled on the path
+  that decides real things.
+
+- [#4770](https://github.com/nexus-substrate/nexus-agents/pull/4770) [`d896d12`](https://github.com/nexus-substrate/nexus-agents/commit/d896d12ca2d5c7159e9e51ff51f3de237d4f942d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): correct the token-provenance count, and carry it where a failure is visible
+
+  Follow-up to an adversarial review of [#4762](https://github.com/nexus-substrate/nexus-agents/issues/4762)/[#4764](https://github.com/nexus-substrate/nexus-agents/issues/4764), which found two real defects
+  and three overstated claims in my own merged work.
+
+  **The count treated legacy zeros as measured.** `unmeasuredResults` was computed
+  with `!== false`, so a contributor from a producer that sets no flag — the
+  majority of them — landed in the measured set. Absent then meant both "all
+  measured" and "all legacy", contradicting the field's documented meaning. It
+  tests `=== false` now.
+
+  The sum and the count genuinely need different predicates: the sum excludes
+  known-unmeasured, the count includes only known-unmeasured. `result-aggregator`
+  and `session-helpers` held duplicate expressions that agreed by coincidence and
+  would have diverged the moment one was corrected — extracted to
+  `summarizeTokenUsage` so there is one answer.
+
+  **A failed trinity phase never recorded provenance.** The branch that set
+  `tokensMeasured: false` on failure was unreachable: each phase returns `err`
+  before pushing to history, so a failed phase never becomes a
+  `TrinityPhaseResult`. The failure IS observable through
+  `protocol.trinity.phase_completed`, which fires either way and carried a bare
+  `tokensUsed: 0`. The flag now rides on that event, and the test asserts it there
+  rather than on a record that cannot exist.
+
+- [#4765](https://github.com/nexus-substrate/nexus-agents/pull/4765) [`2cdb28e`](https://github.com/nexus-substrate/nexus-agents/commit/2cdb28e7e52c04408d7e83b732061ba1b4846e3b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): SICA's cost metric no longer averages in unmeasured executions
+
+  `SicaVersionManager.updateMetrics` averaged `tokensUsed` across all execution
+  history. Since [#4744](https://github.com/nexus-substrate/nexus-agents/issues/4744) an execution whose adapter reported nothing carries a
+  placeholder `0`, and a FAILED execution recorded `0` unconditionally — so both
+  were averaged in as if the version had genuinely run for free.
+
+  This is decision-affecting, not just telemetry. `sica-agent-helpers` gates the
+  cost-focused improvement path on `metrics.avgTokensUsed > 2000`, so
+  understating the average can suppress the improvement SICA would otherwise
+  pursue. Two executions at 3000 and "unmeasured" averaged to 1500 and fell below
+  the threshold; they now average to 3000 with `unmeasuredExecutions: 1` recorded
+  beside it.
+
+  Failed executions record `tokensMeasured: false` rather than a bare `0` — a
+  failure produced no measurement, which is not the same as measuring zero.
+
+  `avgQualityScore` in the same function already filtered absent values and
+  returned `undefined`; the token average was the outlier. Internal types only,
+  confirmed by the [#4749](https://github.com/nexus-substrate/nexus-agents/issues/4749) surface gate.
+
 ## 3.15.0
 
 ### Minor Changes
