@@ -21,6 +21,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import type { ExpertValidationResult, ValidationFinding } from './release-validate-types.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import { anyOf } from '../utils/verdict-aggregation.js';
+import { scanRecentCommitsForSecrets } from './release-secret-scan.js';
 
 /** Options passed to each expert validator. */
 export interface ValidatorOptions {
@@ -65,42 +66,30 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
   }
 
   // Check for hardcoded secrets patterns
-  try {
-    const result = execSync(
-      'git diff HEAD~10..HEAD -- "*.ts" "*.js" | grep -iE "(api[_-]?key|secret|password|token)" | head -5',
-      {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
-      }
-    );
-    if (result.trim()) {
-      findings.push({
-        severity: 'warning',
-        category: 'security',
-        title: 'Potential secrets in recent commits',
-        description: 'Recent commits may contain hardcoded secrets.',
-        remediation: 'Review commits for any exposed credentials.',
-      });
-    }
-  } catch {
-    // The pipeline ends in `head`, so grep finding nothing still exits 0 —
-    // reaching this catch means the scan itself failed (git error, timeout),
-    // not that the tree is clean. Record the gap instead of inheriting a pass
-    // from an empty finding list (#4581).
+  const scan = scanRecentCommitsForSecrets();
+  if (!scan.ok) {
     findings.push({
       severity: 'warning',
       category: 'security',
       title: 'Secret scan did not run',
-      description: 'The hardcoded-secret scan over recent commits failed to execute.',
+      description: `The hardcoded-secret scan over recent commits failed to execute: ${scan.reason}`,
       remediation: 'Re-run with a full git history available, then review the output.',
+    });
+  } else if (scan.matches.length > 0) {
+    findings.push({
+      severity: 'warning',
+      category: 'security',
+      title: 'Potential secrets in recent commits',
+      description: 'Recent commits may contain hardcoded secrets.',
+      remediation: 'Review commits for any exposed credentials.',
     });
   }
 
   return {
     expert: 'security',
-    // whenEmpty = false: with the failure above recorded as a finding, an empty
-    // list now genuinely means "scanned, nothing found" (#4581).
+    // whenEmpty = false: an empty list genuinely means "scanned, nothing
+    // found" — every check above records a finding when it cannot run, which
+    // for the secret scan required #4839 as well as #4581.
     passed: !anyOf(findings, (f) => f.severity === 'error', false),
     confidence: 0.85,
     findings,
