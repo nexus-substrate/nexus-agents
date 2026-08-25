@@ -78,11 +78,22 @@ function relevanceLabelToScore(relevance: string): number {
 
 /** Neutral recency for an item whose publication date is unknown. */
 const NEUTRAL_RECENCY = 0.5;
-/** Linear decay window: two years. */
-const RECENCY_DECAY_DAYS = 730;
+/**
+ * Age at which recency halves. Chosen to match the point the previous linear
+ * curve passed through 0.5, so the 0.6 review gate and the 0.8 P1 boundary in
+ * `executeReview` keep the calibration they were tuned against (#4882).
+ */
+const RECENCY_HALF_LIFE_DAYS = 365;
 
 /**
- * Score recency from the item's PUBLICATION date, decaying over two years.
+ * Score recency from the item's PUBLICATION date, halving each year.
+ *
+ * Exponential rather than linear because a linear decay has to bottom out
+ * somewhere, and the old `max(0, 1 - days/730)` bottomed out at two years:
+ * every source older than that scored exactly 0.0, so a 2024 paper and a 2015
+ * paper were indistinguishable to a ranking that sorts on composite alone
+ * (#4882). Halving approaches zero without ever reaching it, so age keeps
+ * separating sources however old they get.
  *
  * `undefined` or unparseable yields neutral with `measured: false`. Not 1.0:
  * an unknown age is not evidence of freshness, and reporting it as fresh is
@@ -98,7 +109,10 @@ function scoreRecency(publishedAt: string | undefined): {
   const published = new Date(publishedAt);
   if (isNaN(published.getTime())) return { value: NEUTRAL_RECENCY, measured: false };
   const daysSince = (Date.now() - published.getTime()) / (1000 * 60 * 60 * 24);
-  return { value: Math.max(0, 1 - daysSince / RECENCY_DECAY_DAYS), measured: true };
+  // Clamped at the top, not just the bottom: a future publication date is a
+  // real input — Semantic Scholar stamps year-only dates as `${year}-01-01` —
+  // and it used to score above 1.0, outscoring anything actually published.
+  return { value: Math.min(1, 0.5 ** (daysSince / RECENCY_HALF_LIFE_DAYS)), measured: true };
 }
 
 /** Score reproducibility based on source type. */
