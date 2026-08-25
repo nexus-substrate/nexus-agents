@@ -100,3 +100,48 @@ describe('executeSpec errors', () => {
     expect(result.error.stage).toBe('decompose');
   });
 });
+
+// ============================================================================
+// A spec with no acceptance criteria cannot pass (#4826)
+// ============================================================================
+
+describe('executeSpec with no acceptance criteria (#4826)', () => {
+  const NO_CRITERIA_SPEC = `# Add Auth
+
+## Overview
+Implement OAuth2 login for the app.
+
+## Requirements
+- Add login endpoint
+- Add logout endpoint
+`;
+
+  it('does not report a spec with nothing to check as fully satisfied', async () => {
+    // `## Acceptance Criteria` absent or misspelled yields an empty list from
+    // the parser with no error, and the executor short-circuited it to
+    // satisfaction 1 / allMet true — a perfect score for a spec that was
+    // never checked against anything.
+    const result = await executeSpec(NO_CRITERIA_SPEC);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.stage).toBe('validate');
+    expect(result.error.message).toContain('acceptance criteria');
+  });
+
+  it('still validates a spec that does have acceptance criteria', async () => {
+    // The pair: refusing everything would satisfy the test above.
+    const result = await executeSpec(`# Add Auth
+
+## Requirements
+- Add login endpoint
+
+## Acceptance Criteria
+- [ ] User can log in
+`);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.validation.totalCriteria).toBe(1);
+  });
+});
