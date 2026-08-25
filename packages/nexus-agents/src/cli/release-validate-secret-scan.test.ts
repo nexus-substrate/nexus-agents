@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scanRecentCommitsForSecrets } from './release-validate-helpers.js';
+import { scanRecentCommitsForSecrets } from './release-secret-scan.js';
 
 /** A repo with a single commit: `git diff HEAD~10..HEAD` cannot resolve. */
 let shallowRepo: string;
