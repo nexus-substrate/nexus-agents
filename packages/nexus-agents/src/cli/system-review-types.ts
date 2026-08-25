@@ -32,6 +32,12 @@ export const SYSTEM_REVIEW_CONSTANTS = {
   /** Security severity penalties */
   SECURITY_HIGH_PENALTY: 20,
   SECURITY_MODERATE_PENALTY: 5,
+  /**
+   * Applied when the audit could not run (#4838). An unmeasured audit is not
+   * evidence of health, so it must not score the same as a clean one; it is
+   * set below SECURITY_HIGH_PENALTY because "unknown" is not "known bad".
+   */
+  SECURITY_UNMEASURED_PENALTY: 10,
 
   /** Code quality penalties */
   TYPECHECK_FAIL_PENALTY: 15,
@@ -93,7 +99,12 @@ export interface SecurityAudit {
   readonly high: number;
   readonly moderate: number;
   readonly low: number;
-  /** True if parsing failed and values are defaults (Issue #515) */
+  /**
+   * True when the audit did not produce a usable result, so the counts above
+   * are defaults rather than measurements (#515). Every consumer must branch
+   * on this before reading the counts: zero-because-unmeasured and
+   * zero-because-clean are the same numbers with opposite meanings (#4838).
+   */
   readonly parseError?: boolean;
 }
 

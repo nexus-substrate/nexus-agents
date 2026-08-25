@@ -11,7 +11,12 @@ vi.mock('./sandbox-exec.js', async (importOriginal) => ({
 }));
 
 import type { SystemReviewResult } from './system-review-types.js';
-import { calculateHealthScore, createIssue } from './system-review-helpers.js';
+import {
+  calculateHealthScore,
+  createIssue,
+  createIssueBody,
+  printPhase4,
+} from './system-review-helpers.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 
 // ============================================================================
@@ -177,5 +182,64 @@ describe('createIssue', () => {
   it('returns null when output has no GitHub URL', () => {
     mockExec.mockReturnValue('something went wrong');
     expect(createIssue(makeReviewResult())).toBeNull();
+  });
+});
+
+// ============================================================================
+// Unmeasured security audit (#4838)
+// ============================================================================
+
+describe('an unmeasured security audit is not reported as clean (#4838)', () => {
+  // `pnpm audit --json` exits non-zero when it FINDS vulnerabilities, so the
+  // failure path and the detection path were the same path. When the audit
+  // genuinely cannot run, parseError is set and the counts are all zero — the
+  // three places a reader forms a judgement must not read that as a pass.
+  const unmeasured = { totalVulns: 0, high: 0, moderate: 0, low: 0, parseError: true };
+  const clean = { totalVulns: 0, high: 0, moderate: 0, low: 0, parseError: false };
+
+  function capturePhase4(security: SystemReviewResult['security']): string {
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      printPhase4(security);
+    } finally {
+      spy.mockRestore();
+    }
+    return lines.join('');
+  }
+
+  it('does not print "No vulnerabilities found" when the audit did not run', () => {
+    const output = capturePhase4(unmeasured);
+
+    expect(output).not.toContain('No vulnerabilities found');
+    expect(output).toContain('did not run');
+  });
+
+  it('still prints the clean verdict when the audit did run', () => {
+    // The pair. Without it, "never print the pass line" would satisfy the
+    // test above while making the phase useless.
+    expect(capturePhase4(clean)).toContain('No vulnerabilities found');
+  });
+
+  it('penalises the health score for an audit that did not run', () => {
+    const unmeasuredScore = calculateHealthScore(makeReviewResult({ security: unmeasured }));
+    const cleanScore = calculateHealthScore(makeReviewResult({ security: clean }));
+
+    expect(unmeasuredScore).toBeLessThan(cleanScore);
+  });
+
+  it('carries the caveat into the filed issue body', () => {
+    // The issue outlives the terminal session, so it is the artifact most
+    // likely to be trusted later without the context that produced it.
+    const body = createIssueBody(makeReviewResult({ security: unmeasured }));
+
+    expect(body).toContain('did not run');
+  });
+
+  it('does not caveat the issue body when the audit did run', () => {
+    expect(createIssueBody(makeReviewResult({ security: clean }))).not.toContain('did not run');
   });
 });

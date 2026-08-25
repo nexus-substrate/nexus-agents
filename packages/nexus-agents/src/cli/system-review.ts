@@ -50,7 +50,7 @@ export type { SystemReviewOptions, SystemReviewResult } from './system-review-ty
 // Re-export printSystemReviewResult for backward compatibility
 export { printSystemReviewResult } from './system-review-helpers.js';
 
-function safeExec(command: string, cwd?: string): string | null {
+function safeExec(command: string, cwd?: string, allowNonZeroExit = false): string | null {
   // Use sandbox-aware execution with appropriate context
   // gh/git = git context, pnpm = write context (runs build/lint), others = read
   const context = command.startsWith('gh ')
@@ -62,8 +62,8 @@ function safeExec(command: string, cwd?: string): string | null {
         : 'read';
   // Only include cwd if defined (exactOptionalPropertyTypes)
   return cwd !== undefined
-    ? safeExecSandboxed(command, { context, cwd })
-    : safeExecSandboxed(command, { context });
+    ? safeExecSandboxed(command, { context, cwd, allowNonZeroExit })
+    : safeExecSandboxed(command, { context, allowNonZeroExit });
 }
 
 function parseGhIssueList(json: string, context: string): GhIssueItem[] {
@@ -149,7 +149,11 @@ function runPhase3(): IssueHealth {
 
 function runPhase4(projectRoot: string): SecurityAudit {
   const def = { totalVulns: 0, high: 0, moderate: 0, low: 0, parseError: false };
-  const out = safeExec('pnpm audit --json', projectRoot);
+  // allowNonZeroExit: `pnpm audit` exits 1 *because* it found vulnerabilities,
+  // while still writing the full JSON report to stdout. Discarding that output
+  // made the detection path and the failure path the same path — a vulnerable
+  // repo scored as clean (#4838).
+  const out = safeExec('pnpm audit --json', projectRoot, true);
   if (out === null) {
     logger.warn('pnpm audit command failed or returned null', { projectRoot });
     return { ...def, parseError: true };
