@@ -45,11 +45,9 @@ import {
   saveCorrelationData,
 } from '../../consensus/correlation-persistence.js';
 import {
-  MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
   VoteDecisionStatusSchema,
   VoteThresholdSchema,
-  ErrorPolicySchema,
   ConsensusVoteInputSchema,
   buildResponse,
   getDefaultErrorPolicy,
@@ -1153,46 +1151,16 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
 };
 
 /** Advertised MCP input schema for consensus_vote (hoisted to keep the register fn within its line budget). */
-export const CONSENSUS_VOTE_TOOL_SCHEMA = {
-  proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
-  options: z
-    .array(z.string().min(1).max(200))
-    .min(2)
-    .max(10)
-    .optional()
-    .describe(
-      'Named alternatives for a multi-option proposal (#4472). When present, the threshold must ' +
-        'ALSO be cleared by the leading option: `unanimous` requires every approver to have chosen ' +
-        "the SAME option, and `supermajority`/`majority` measure the leading option's share of " +
-        'approvers. An approving voter whose selection is absent or matches no declared option ' +
-        'stays in the denominator and credits no option, so a degraded response can only lower the ' +
-        'leading share, never raise it. Omit for an ordinary yes/no vote.'
-    ),
-  threshold: z
-    .enum(['majority', 'supermajority', 'unanimous'])
-    .optional()
-    .describe('Voting threshold (legacy). Use strategy instead.'),
-  strategy: VotingStrategySchema.optional().describe(
-    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
-  ),
-  errorPolicy: ErrorPolicySchema.optional().describe(
-    'How to treat errored/timed-out voters (#2630): reduce_denominator (default non-strict) | count_as_abstain | fail_closed (default unanimous) | absolute_quorum (#4132 opt-in — an errored voter, esp. the contrarian, degrades the verdict to no_quorum instead of being dropped; never manufactures approved/rejected from an induced error). Errors > 50% always fails.'
-  ),
-  quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 7'),
-  simulateVotes: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
-  ratifies: z
-    .string()
-    .min(1)
-    .max(256)
-    .optional()
-    .describe(
-      'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
-    ),
-};
+/**
+ * The schema advertised to MCP clients.
+ *
+ * Registered from {@link ConsensusVoteInputSchema}'s shape rather than
+ * hand-copied. A subset drifts: `options` shipped internally in #4494 and was
+ * unreachable through the tool until someone noticed, and `mode` stayed
+ * unadvertised while this tool's own description told callers to pass it —
+ * so the documented async path could not be invoked at all (#4969).
+ */
+export const CONSENSUS_VOTE_TOOL_SCHEMA = ConsensusVoteInputSchema.shape;
 
 /** Advertised MCP tool description for consensus_vote. */
 const CONSENSUS_VOTE_DESCRIPTION =

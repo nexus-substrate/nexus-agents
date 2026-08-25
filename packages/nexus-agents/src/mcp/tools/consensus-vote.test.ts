@@ -1415,13 +1415,23 @@ describe('CONSENSUS_VOTE_TOOL_SCHEMA input drift contract (#4494 follow-up)', ()
     expect(advertised).toContain('options');
   });
 
-  it('advertises every input the handler accepts, except documented internals', () => {
-    // `mode` and `idempotencyKey` are async-dispatch plumbing added by the
-    // job wrapper, not user-facing vote inputs.
-    const INTERNAL_ONLY = new Set(['mode', 'idempotencyKey']);
-    const missing = internal.filter((k) => !INTERNAL_ONLY.has(k) && !advertised.includes(k));
+  it('advertises every input the handler accepts, with no exemptions', () => {
+    // This assertion used to exempt `mode` and `idempotencyKey` as
+    // "async-dispatch plumbing… not user-facing vote inputs". That exemption
+    // contradicted the tool's own description, which tells callers
+    // `Supports async mode (mode: 'async')`, and nothing set the field on
+    // their behalf — so the documented async path could not be invoked at all
+    // (#4969). The schema is now registered from the internal shape, so there
+    // is no subset to exempt from.
+    expect(internal.filter((k) => !advertised.includes(k))).toEqual([]);
+  });
 
-    expect(missing).toEqual([]);
+  it('advertises the async-dispatch fields the description promises', () => {
+    // Named explicitly, not just covered by the parity check above: these two
+    // are the ones that were exempted, and a future exemption would want to
+    // start with them again.
+    expect(advertised).toContain('mode');
+    expect(advertised).toContain('idempotencyKey');
   });
 
   it('advertises nothing the handler would reject', () => {
