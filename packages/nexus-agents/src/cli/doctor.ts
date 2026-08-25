@@ -767,10 +767,12 @@ export function checkSandbox(): SandboxCheck {
 /**
  * Compare the globally installed version with this build (#4767).
  *
- * Exported so the sub-check can be exercised directly; the pure verdict lives
- * in `doctor-install-freshness.ts` and this is only the I/O around it.
+ * Deliberately NOT exported: this is only the `npm ls -g` call. The verdict it
+ * wraps lives in `doctor-install-freshness.ts`, where it is pure and testable
+ * without npm — exporting this too would be an export whose only importer is a
+ * test, which the producer/consumer ratchet correctly rejects.
  */
-export function checkInstallFreshness(): InstallFreshness {
+function checkInstallFreshness(): InstallFreshness {
   const { version, reason } = readGlobalVersion((cmd, args) => {
     try {
       return execFileSync(cmd, [...args], {
