@@ -80,7 +80,13 @@ const VOTE_HELP: CommandHelpEntry = {
     },
     { flag: '--quick', description: 'Use 3 agents instead of the full 7 for faster votes' },
     { flag: '--dry-run', description: 'Simulate votes without agent execution' },
-    { flag: '--timeout=<seconds>', description: 'Timeout per vote in seconds', defaultValue: '90' },
+    {
+      flag: '--timeout=<seconds>',
+      description: 'Timeout per vote in seconds',
+      // VOTE_TIMEOUTS.defaultMs, raised to 300s by #1640 after architecture and
+      // security voters were observed averaging 315s. The help said 90 (#4965).
+      defaultValue: '300',
+    },
     {
       flag: '--error-policy <p>',
       description:

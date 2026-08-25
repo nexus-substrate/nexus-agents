@@ -519,6 +519,35 @@ describe('handleVoteCommand forwards --option (#4963)', () => {
     expect(voteMock.mock.calls[0]?.[0]).toMatchObject({ options: ['A', 'B'] });
   });
 
+  it('passes --timeout through as timeoutMs', async () => {
+    // #4965: same handler, same shape. Every vote today printed
+    // "timeout: 300s each" — the default — however the operator set it,
+    // because this field was never named here.
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'p', timeoutMs: 250_000 },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 250_000 });
+  });
+
+  it('omits timeoutMs when the operator did not set one', async () => {
+    // The pair: forwarding a default here would override the engine's own,
+    // which is the value the help now documents.
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'p' },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).not.toHaveProperty('timeoutMs');
+  });
+
   it('omits the field for an ordinary yes/no vote', async () => {
     // The pair: a present-but-empty array tells the engine this is a
     // multi-option vote and adds the leading-option bar to a plain vote.

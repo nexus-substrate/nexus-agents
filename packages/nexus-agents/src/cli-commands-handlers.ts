@@ -57,6 +57,7 @@ import {
   type ParsedCliArgs,
 } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
+import type { VoteCommandOptions } from './cli/vote-types.js';
 import {
   isValidExpertListFormat,
   isValidThreshold,
@@ -306,33 +307,44 @@ export function handleSystemReviewCommand(args: ParsedCliArgs): CliExitResult {
  * Handles the vote command for consensus voting.
  * (Source: Issue #212, Process Automation Epic #209)
  */
-export async function handleVoteCommand(args: ParsedCliArgs): Promise<CliExitResult> {
-  const proposal = args.options.proposal;
-  if (proposal === undefined) {
-    printVoteUsage();
-    return cliExit(EXIT_CODES.INVALID_ARGS);
-  }
+/** A defined value that passes its guard, or undefined. */
+function validated<T>(value: T | undefined, guard: (v: T) => boolean): T | undefined {
+  return value !== undefined && guard(value) ? value : undefined;
+}
 
-  const threshold = args.options.threshold;
-  const validThreshold =
-    threshold !== undefined && isValidThreshold(threshold) ? threshold : undefined;
-  const errorPolicy = args.options.errorPolicy;
-  const validErrorPolicy =
-    errorPolicy !== undefined && isValidErrorPolicy(errorPolicy) ? errorPolicy : undefined;
+/**
+ * Map parsed CLI args onto {@link VoteCommandOptions}.
+ *
+ * Extracted so the mapping is one reviewable list rather than an inline
+ * enumeration inside the handler. Every field on `VoteCommandOptions` is
+ * optional, so the compiler cannot notice one that is missing — `--option` and
+ * `--timeout` were both dropped here (#4963, #4965). When adding a field to
+ * that type, add it here too.
+ */
+function buildVoteCommandOptions(args: ParsedCliArgs): VoteCommandOptions {
+  const validThreshold = validated(args.options.threshold, isValidThreshold);
+  const validErrorPolicy = validated(args.options.errorPolicy, isValidErrorPolicy);
 
-  const exitCode = await voteCommand({
-    proposal,
-    // #4963: this handler rebuilds VoteCommandOptions field by field, so a new
-    // field is dropped unless it is named here. `--option` parsed, reached
-    // `args.options.options`, and died at this line.
+  return {
+    proposal: args.options.proposal ?? '',
     ...(args.options.options !== undefined && { options: args.options.options }),
     ...(validThreshold !== undefined && { threshold: validThreshold }),
     ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
     ...(args.options.onNoQuorum !== undefined && { onNoQuorum: args.options.onNoQuorum }),
+    ...(args.options.timeoutMs !== undefined && { timeoutMs: args.options.timeoutMs }),
     dryRun: args.options.dryRun,
     quick: args.options.quick,
     verbose: args.options.verbose,
-  });
+  };
+}
+
+export async function handleVoteCommand(args: ParsedCliArgs): Promise<CliExitResult> {
+  if (args.options.proposal === undefined) {
+    printVoteUsage();
+    return cliExit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const exitCode = await voteCommand(buildVoteCommandOptions(args));
   // #4135: use `cliExit` (not `cliExitFromStatus`) so a distinct `--on-no-quorum=exit2`
   // code (2) survives to the process instead of being collapsed to 1. Codes 0/1 map
   // identically, so back-compat holds.
