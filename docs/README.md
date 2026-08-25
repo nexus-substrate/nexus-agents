@@ -66,8 +66,6 @@ The word "pipeline" gets used for several distinct things. This table disambigua
 ```
 docs/
 ├── README.md              # THIS FILE - Canonical index (control-plane organized)
-├── INDEX.yaml             # Machine-parseable index
-│
 ├── getting-started/       # Entry point: installation and configuration
 ├── architecture/          # System design — scheduler, gates, event log, data plane
 ├── development/           # Build & operate: contributor guides
@@ -477,7 +475,14 @@ Documents at repository root (for discoverability):
 
 ## Machine-Parseable Index
 
-For programmatic access, see [INDEX.yaml](./INDEX.yaml).
+There is no separate machine index. `docs/INDEX.yaml` was retired in #4810: it
+covered 17 of 208 documents (~8%), carried a `Generated:` header for a generator
+that was never built, and was skiplisted out of the Canonical Index Check that
+gates this file. An 8% index offered for programmatic access is worse than none,
+because the gap is invisible to the caller.
+
+This README is the canonical index and is gated for completeness. For structured
+access, parse it, or use `artifacts/repo-index.json` for the code graph.
 
 ---
 

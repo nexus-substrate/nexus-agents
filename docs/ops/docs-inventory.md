@@ -152,12 +152,12 @@ Hub documents for each major section:
 
 ### Remaining Gaps
 
-| Gap                              | Priority | Issue | Action                        |
-| -------------------------------- | -------- | ----- | ----------------------------- |
-| README freshness validator       | Medium   | #634  | Create script                 |
-| ARCHITECTURE freshness validator | Medium   | #634  | Create script                 |
-| INDEX.yaml → README.md generator | Medium   | #630  | Deterministic generation      |
-| Cross-reference validation       | Medium   | #632  | Validate code symbols in docs |
+| Gap                                  | Priority | Issue | Action                            |
+| ------------------------------------ | -------- | ----- | --------------------------------- |
+| README freshness validator           | Medium   | #634  | Create script                     |
+| ARCHITECTURE freshness validator     | Medium   | #634  | Create script                     |
+| ~~INDEX.yaml → README.md generator~~ | —        | #630  | Moot: INDEX.yaml retired in #4810 |
+| Cross-reference validation           | Medium   | #632  | Validate code symbols in docs     |
 
 ---
 
