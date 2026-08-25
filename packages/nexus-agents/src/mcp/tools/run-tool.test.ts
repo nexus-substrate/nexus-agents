@@ -25,7 +25,7 @@ interface FakeDevPipelineResult {
   planStatus?: 'empty';
 }
 const runDevPipelineForGoalMock = vi.fn(
-  (_goal: string, _trustTier?: string): Promise<FakeDevPipelineResult> =>
+  (_goal: string, _trustTier?: string, _dryRun?: boolean): Promise<FakeDevPipelineResult> =>
     Promise.resolve({
       completed: true,
       plan: 'plan',
@@ -36,8 +36,10 @@ const runDevPipelineForGoalMock = vi.fn(
     })
 );
 vi.mock('./dev-pipeline-tool.js', () => ({
-  runDevPipelineForGoal: (goal: string, trustTier?: string) =>
-    runDevPipelineForGoalMock(goal, trustTier),
+  // Forwards all three parameters: a wrapper that drops `dryRun` would make the
+  // #4806 forwarding assertions unfalsifiable.
+  runDevPipelineForGoal: (goal: string, trustTier?: string, dryRun?: boolean) =>
+    runDevPipelineForGoalMock(goal, trustTier, dryRun),
 }));
 
 // #4362: drive the pipeline executor's reported success/failure. run-tool only
@@ -585,6 +587,90 @@ describe('run async dispatch (execute:true, #3732)', () => {
       const env = errorEnvelope(result);
       expect(env?.['message']).toContain('did not complete');
       expect(env?.['message']).not.toContain('security gate');
+    });
+
+    // #4806: `run` is the documented default entry point but could not express
+    // a dry run at all, so a cautious caller could not ask it to plan and vote
+    // without implementing. consensus_vote 6-1, Option B unanimous among
+    // approvers — forward dryRun only, and REFUSE where it cannot be honoured.
+    describe('dryRun (#4806)', () => {
+      it('forwards dryRun to the dev pipeline', async () => {
+        const handler = captureHandler();
+        await handler({
+          goal: 'implement the feature',
+          forceStrategy: 'dev-pipeline',
+          execute: true,
+          dryRun: true,
+        });
+
+        expect(runDevPipelineForGoalMock).toHaveBeenCalledWith(
+          'implement the feature',
+          undefined,
+          true
+        );
+      });
+
+      it('leaves the pipeline untouched when dryRun is omitted', async () => {
+        const handler = captureHandler();
+        await handler({
+          goal: 'implement the feature',
+          forceStrategy: 'dev-pipeline',
+          execute: true,
+        });
+
+        expect(runDevPipelineForGoalMock).toHaveBeenCalledWith(
+          'implement the feature',
+          undefined,
+          undefined
+        );
+      });
+
+      // The condition every voter attached, and the contrarian's whole
+      // objection: a strategy that cannot honour "do not act" must REFUSE.
+      // Silently executing a run the caller asked to be dry is the one
+      // unacceptable outcome for a governance substrate.
+      it('refuses rather than executing when the selected strategy cannot honour it', async () => {
+        const handler = captureHandler();
+        const result = await handler({
+          goal: 'analyze the repository',
+          forceStrategy: 'pipeline',
+          execute: true,
+          dryRun: true,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(errorEnvelope(result)?.['errorCategory']).toBe('business');
+        expect(errorEnvelope(result)?.['message']).toContain('dryRun');
+        expect(errorEnvelope(result)?.['message']).toContain('pipeline');
+        // The point of refusing: the engine must not have run.
+        expect(runPipelineForGoalMock).not.toHaveBeenCalled();
+      });
+
+      it('refuses a dry run on the consensus strategy too', async () => {
+        const handler = captureHandler();
+        const result = await handler({
+          goal: 'decide A or B',
+          forceStrategy: 'consensus',
+          execute: true,
+          dryRun: true,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(errorEnvelope(result)?.['message']).toContain('dryRun');
+      });
+
+      it('does not refuse those strategies when dryRun is absent', async () => {
+        // Guard the guard: the refusal must key on dryRun, not on the strategy.
+        const handler = captureHandler();
+        const result = await handler({
+          goal: 'analyze the repository',
+          forceStrategy: 'pipeline',
+          execute: true,
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(runPipelineForGoalMock).toHaveBeenCalled();
+      });
     });
 
     it('surfaces a pipeline that reported success:false as a structured error', async () => {

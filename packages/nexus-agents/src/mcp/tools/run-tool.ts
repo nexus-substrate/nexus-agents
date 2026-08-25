@@ -26,6 +26,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
+import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -52,7 +53,6 @@ import { evaluateMetaStrategyReadiness } from '../../orchestration/meta-strategy
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import {
   createMetaDispatcher,
-  MetaDispatchError,
   type StrategyExecutorMap,
   type MetaOutcomeSink,
   type MetaOutcomeObserver,
@@ -60,7 +60,6 @@ import {
 import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import {
   dispatchActionClass,
-  AuthorityRefusalError,
   type DispatchMode,
 } from '../../orchestration/authority-tier-guard.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
@@ -105,6 +104,25 @@ export const RunInputSchema = z.object({
     .describe(
       'When true, actually run the selected strategy (if an executor is wired) and return ' +
         'its result; otherwise return the routing decision only (default false, read-only).'
+    ),
+  /**
+   * Plan and vote without implementing (#4806).
+   *
+   * `run` is the documented default entry point, but until now it could not
+   * express the cautious caller's first request — "show me the plan, don't
+   * build it". `execute: false` is not a substitute: that returns the SELECTED
+   * STRATEGY, having done no planning and no voting.
+   *
+   * Only the dev-pipeline strategy can honour it. When the router selects any
+   * other, the call is REFUSED rather than executed: silently ignoring a
+   * do-not-act flag is the one outcome a governance substrate cannot allow.
+   */
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe(
+      'Plan and vote only, no implementation (#4806). Requires the dev-pipeline strategy — ' +
+        'refused (never silently executed) when the router selects another.'
     ),
   /**
    * Dispatch mode (#3732). Only meaningful with `execute: true` — `run`
@@ -279,11 +297,12 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
  */
 export function buildDefaultExecutors(
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  dryRun?: boolean
 ): StrategyExecutorMap {
   return {
     'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
-      runDevPipelineForGoal(metaInput.goal, trustTier),
+      runDevPipelineForGoal(metaInput.goal, trustTier, dryRun),
     pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
     // #3988: `research` deliberately ALIASES the `pipeline` engine — it runs the
     // SAME generic stage registry (selectStageRegistry only branches greenfield/
@@ -366,9 +385,15 @@ export async function executeGoal(
   // dispatch is refused fail-closed (AuthorityRefusalError) here, BEFORE any
   // executor runs.
   const decision = selectDecision(input, 'execute', opts.logger);
+  // #4806: fail closed BEFORE any executor runs. Only the dev pipeline stops
+  // after plan+vote; every other strategy would execute for real, so honouring
+  // the request is impossible and ignoring it would act against an explicit
+  // instruction not to.
+  assertDryRunSupported(input.dryRun, decision.strategy);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
-    executors: opts.executors ?? buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters),
+    executors:
+      opts.executors ?? buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters, input.dryRun),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
@@ -486,13 +511,8 @@ async function executeRunBody(
     }
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
-    const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
-    // #3920: an authority-ladder refusal is a fail-closed POLICY outcome (the
-    // caller asked an above-tier strategy to act), not an internal fault — it is
-    // a `business` error, same class as a missing executor.
-    const refused = err instanceof AuthorityRefusalError;
     return toolStructuredError({
-      errorCategory: noExecutor || refused ? 'business' : 'internal',
+      errorCategory: classifyDispatchError(err),
       message: err instanceof Error ? err.message : String(err),
     });
   }
