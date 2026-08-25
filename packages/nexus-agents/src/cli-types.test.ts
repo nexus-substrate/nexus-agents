@@ -52,3 +52,32 @@ describe('PARSE_ARGS_CONFIG short flags', () => {
     expect(values.task).toBeUndefined();
   });
 });
+
+describe('--option is repeatable (#4941)', () => {
+  it('collects every occurrence into an array', () => {
+    // A multi-option vote needs at least two alternatives, so a flag that kept
+    // only the last one would be useless. `multiple: true` is what makes the
+    // repetition work; without it parseArgs keeps a single string.
+    const { values } = parseArgs({
+      args: ['vote', '-p', 'pick one', '--option', 'A', '--option', 'B', '--option', 'C'],
+      options: PARSE_ARGS_CONFIG.options,
+      allowPositionals: true,
+      strict: false,
+    });
+
+    expect(values.option).toEqual(['A', 'B', 'C']);
+  });
+
+  it('leaves it undefined for an ordinary yes/no vote', () => {
+    // The pair: an empty array would reach the engine as "multi-option with no
+    // options", which the schema rejects with min(2).
+    const { values } = parseArgs({
+      args: ['vote', '-p', 'ship it'],
+      options: PARSE_ARGS_CONFIG.options,
+      allowPositionals: true,
+      strict: false,
+    });
+
+    expect(values.option).toBeUndefined();
+  });
+});

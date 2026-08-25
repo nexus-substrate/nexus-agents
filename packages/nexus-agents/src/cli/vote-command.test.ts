@@ -517,3 +517,50 @@ describe('auditLineFor (#4924)', () => {
     expect(line).not.toMatch(/NOT recorded/i);
   });
 });
+
+// =============================================================================
+// Multi-option votes from the CLI (#4941)
+// =============================================================================
+
+describe('voteCommand forwards options to the engine (#4941)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function extendedResult() {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+    };
+  }
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    executeVotingMock.mockResolvedValue(extendedResult());
+    recordAuthenticVoteMock.mockClear();
+  });
+
+  it('passes the declared alternatives through', async () => {
+    // Without this the engine records `optionTally: null` and the decision
+    // cannot say which of A/B/C the panel chose — verified on two real votes
+    // before this flag existed.
+    await voteCommand({ proposal: 'pick one', options: ['A', 'B'] });
+
+    const input = executeVotingMock.mock.calls[0]?.[0] as { options?: string[] } | undefined;
+    expect(input?.options).toEqual(['A', 'B']);
+  });
+
+  it('omits the field entirely for an ordinary vote', async () => {
+    // The pair, and it matters: the engine treats a PRESENT `options` array as
+    // "this is a multi-option vote" and applies the leading-option bar on top
+    // of the approve/reject one. Sending an empty array would change the
+    // threshold semantics of every yes/no vote.
+    await voteCommand({ proposal: 'ship it' });
+
+    const input = executeVotingMock.mock.calls[0]?.[0] as { options?: string[] } | undefined;
+    expect(input).not.toHaveProperty('options');
+  });
+});

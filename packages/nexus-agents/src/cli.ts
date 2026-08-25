@@ -121,6 +121,8 @@ interface ParsedValues {
   fix: boolean;
   proposal?: string;
   threshold?: string;
+  /** Repeatable `--option` for a multi-option vote (#4941). */
+  option?: string[];
   quick: boolean;
   timeout?: string;
   'error-policy'?: string;
@@ -234,8 +236,10 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
   const errorPolicy = parseErrorPolicy(values['error-policy']);
   const onNoQuorum = parseNoQuorumPolicy(values['on-no-quorum']);
+  const options = values.option;
   return {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
+    ...(options !== undefined && options.length > 0 && { options }),
     ...(threshold !== undefined && { threshold }),
     ...(timeoutMs !== undefined && { timeoutMs }),
     ...(errorPolicy !== undefined && { errorPolicy }),

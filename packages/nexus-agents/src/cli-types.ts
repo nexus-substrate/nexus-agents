@@ -407,6 +407,12 @@ export const PARSE_ARGS_CONFIG = {
       type: 'string' as const,
       short: 'p',
     },
+    // Repeatable. No short letter: every free one is taken, and the two
+    // collisions that already existed silently bound the wrong option (#4922).
+    option: {
+      type: 'string' as const,
+      multiple: true as const,
+    },
     // No `short`. `parseArgs` takes one options object for every command, so
     // a short letter is global: `-t` was already `task`, which won, and
     // `vote -t supermajority` silently ran a simple-majority vote. Long form
