@@ -1,5 +1,4 @@
 {
-  "$schema": "./registry-coverage-manifest.schema.json",
   "version": "1.0.0",
   "description": "Registry-coverage manifest. When the source file changes in a way that touches the marker, every peer file MUST also change in the same PR. Hard-fail in CI. See docs/architecture/REGISTRY_COVERAGE.md (#2405).",
   "registries": [
