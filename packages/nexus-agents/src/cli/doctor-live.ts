@@ -14,6 +14,7 @@
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { probeAllClis } from './cli-auth-probe.js';
+import { detectCliBinary } from './setup-cli-detection.js';
 import {
   buildReadiness,
   formatReadiness,
@@ -38,15 +39,22 @@ export async function runLiveReadiness(
   deps: {
     readonly adapters?: Map<CliName, ServesProbeTarget>;
     readonly authStates?: ReadonlyMap<CliName, 'authenticated' | 'unknown' | 'not-ok'>;
+    /**
+     * Whether a CLI's binary is on PATH. Defaults to a real `which` +
+     * `--version` probe (#4840); overridable so the ladder can be exercised
+     * without the host's actual toolchain.
+     */
+    readonly isInstalled?: (cli: CliName) => boolean;
   } = {}
 ): Promise<readonly CliReadiness[]> {
   const adapters =
     deps.adapters ?? (createAllAdapters() as unknown as Map<CliName, ServesProbeTarget>);
   const authStates = deps.authStates ?? (await readAuthStates());
+  const isInstalled = deps.isInstalled ?? ((cli: CliName) => detectCliBinary(cli).installed);
 
   const results: CliReadiness[] = [];
   for (const [cli, adapter] of adapters) {
-    results.push(await ladderFor(cli, adapter, authStates.get(cli)));
+    results.push(await ladderFor(cli, adapter, authStates.get(cli), isInstalled(cli)));
   }
   return results;
 }
@@ -54,8 +62,19 @@ export async function runLiveReadiness(
 async function ladderFor(
   cli: CliName,
   adapter: ServesProbeTarget,
-  auth: 'authenticated' | 'unknown' | 'not-ok' | undefined
+  auth: 'authenticated' | 'unknown' | 'not-ok' | undefined,
+  binaryPresent: boolean
 ): Promise<CliReadiness> {
+  // Was the literal `{ status: 'verified' }` — the first rung of a readiness
+  // ladder asserting itself (#4840). It also made the auth rung report "no
+  // usable credentials found" for a CLI that simply is not installed.
+  if (!binaryPresent) {
+    return buildReadiness(cli, {
+      installed: { status: 'failed', reason: 'binary not found on PATH' },
+      authenticated: { status: 'not-attempted', reason: NOT_REACHED },
+      serves: { status: 'not-attempted', reason: NOT_REACHED },
+    });
+  }
   const installed: LevelOutcome = { status: 'verified' };
 
   // `unknown` (#4391: a CLI exposing no readable auth signal) is admitted
