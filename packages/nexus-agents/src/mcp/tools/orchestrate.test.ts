@@ -311,6 +311,36 @@ describe('OrchestrateOutputSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts tokensMeasured so an uncounted run is distinguishable (#4829)', () => {
+    // The orchestrator adapters hardcode 0 because no usage metadata reaches
+    // that seam. Without this field a client cannot tell "spent nothing" from
+    // "nobody counted", and 0 under-counts in the dangerous direction for
+    // anything cap-shaped.
+    const output = {
+      taskId: 'orch-abc123',
+      analysis: {
+        taskId: 'orch-abc123',
+        complexity: 5,
+        taskType: 'implementation',
+        requirements: [],
+        risks: [],
+        needsDecomposition: false,
+        approach: 'Direct',
+        estimatedEffort: 1,
+      },
+      result: null,
+      stepsCompleted: 1,
+      metadata: { durationMs: 100, tokensUsed: 0, tokensMeasured: false, expertsUsed: [] },
+    };
+
+    const parsed = OrchestrateOutputSchema.safeParse(output);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.metadata.tokensMeasured).toBe(false);
+    }
+  });
+
   it('should reject invalid complexity range', () => {
     const output = {
       taskId: 'orch-abc123',

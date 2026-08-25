@@ -55,7 +55,11 @@ function createStep(
     action,
     output,
     durationMs,
+    // `OrchestratorAgentLike.execute` returns `Result<unknown, unknown>` — no
+    // usage metadata reaches this seam, so there is nothing to count. Say so
+    // rather than reporting a zero that reads as a measurement (#4829).
     tokensUsed: 0,
+    tokensMeasured: false,
     status: 'success',
     error: undefined,
   };
@@ -74,7 +78,9 @@ function createResult(
     steps,
     output,
     totalDurationMs: durationMs,
+    // Every step is unmeasured (see createStep), so the total is too (#4829).
     totalTokensUsed: 0,
+    tokensMeasured: steps.every((s) => s.tokensMeasured !== false),
     agentsUsed: steps.map((s) => s.agentId),
   };
 }
