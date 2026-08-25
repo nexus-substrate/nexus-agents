@@ -940,3 +940,62 @@ describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () =
     expect(getTokenLedger().summarize().bySource['repo-map']).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Belief recall must survive a realistic task string (#4845)
+// ============================================================================
+
+describe('belief recall for a real task description (#4845)', () => {
+  it('finds a belief whose subject is not the whole task string', async () => {
+    // Every existing belief test writes and reads the SAME literal, so they
+    // stayed green while an exact `subjectIndex.get(task)` lookup missed for
+    // any multi-word task. Real subjects come from producers like
+    // `skill:${name}` (cli-server-skills) and `learning.context`
+    // (tool-memory) — never the caller's prose.
+    const { getToolMemory, shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+    const tm = getToolMemory();
+    await tm.recordBelief('skill:oauth-login', 'is_reliable_for', 'authentication', 'high');
+
+    const ctx = await getContextForTask({
+      task: 'add an oauth login flow to the settings page',
+      category: 'security_review',
+    });
+
+    expect(ctx.beliefs.some((b) => b.subject === 'skill:oauth-login')).toBe(true);
+  });
+
+  it('does not return beliefs that share no words with the task', async () => {
+    // The pair. Returning everything would satisfy the test above and make
+    // the belief section noise.
+    const { getToolMemory, shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+    const tm = getToolMemory();
+    await tm.recordBelief('skill:database-migration', 'is_reliable_for', 'schema', 'high');
+
+    const ctx = await getContextForTask({
+      task: 'render the marketing homepage hero',
+      category: 'documentation',
+    });
+
+    // Asserting only that this ONE subject is absent proved too weak: with
+    // the filter disabled the list is truncated by `limit`, so the unrelated
+    // belief can fall off the end and the assertion passes for the wrong
+    // reason. The task shares no non-stopword token with anything stored, so
+    // the honest expectation is nothing at all.
+    expect(ctx.beliefs).toEqual([]);
+  });
+
+  it('still returns an exact-subject match', async () => {
+    // The path that already worked must keep working — short and
+    // identifier-shaped tasks do hit the exact index.
+    const { getToolMemory, shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+    const tm = getToolMemory();
+    await tm.recordBelief('arXiv:2502.12110', 'has_topic', 'agentic memory', 'high');
+
+    const ctx = await getContextForTask({ task: 'arXiv:2502.12110', category: 'research' });
+
+    expect(ctx.beliefs.some((b) => b.subject === 'arXiv:2502.12110')).toBe(true);
+  });
+});

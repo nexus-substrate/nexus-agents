@@ -47,6 +47,7 @@ import {
 import { createTokenCounter } from './token-counter.js';
 import { getTokenLedger } from './token-ledger.js';
 import { getRepoMapForTask, REPO_MAP_FLAG } from './repo-map.js';
+import { tokenizeFiltered } from '../utils/text-utils.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -314,6 +315,24 @@ function fetchPriorStrategies(
   }
 }
 
+/** Upper bound on the belief scan behind the keyword fallback. */
+const BELIEF_KEYWORD_SCAN_LIMIT = 1000;
+
+/**
+ * Fetch beliefs relevant to a task.
+ *
+ * `recallBySubject` is an exact lookup against the subject index, and subjects
+ * are written by producers like `skill:${name}` and `learning.context` — never
+ * the caller's prose. So for any ordinary multi-word task the exact lookup
+ * missed and the Beliefs section was silently dropped from the prompt (#4845).
+ * Short or identifier-shaped tasks did match, which is why this was
+ * intermittent rather than total.
+ *
+ * The fallback is the one `queryBeliefMemory` already uses for the same store
+ * (#1225): when the exact lookup misses, scan and keyword-match the belief
+ * text. Kept behind the exact lookup so the path that already worked is
+ * unchanged and the scan only runs when it would otherwise return nothing.
+ */
 async function fetchBeliefs(
   task: string,
   limit: number,
@@ -322,8 +341,28 @@ async function fetchBeliefs(
   try {
     const tm = getToolMemory(logger);
     const beliefs = tm.getBeliefMemory();
-    const result = await beliefs.recallBySubject(task, limit);
-    return result.ok ? result.value : [];
+    const exact = await beliefs.recallBySubject(task, limit);
+    if (exact.ok && exact.value.length > 0) return exact.value;
+
+    const keywords = tokenizeFiltered(task);
+    if (keywords.length === 0) return [];
+
+    const all = await beliefs.query({ includeSuperseded: false, limit: BELIEF_KEYWORD_SCAN_LIMIT });
+    if (!all.ok) return [];
+
+    const matched = all.value.filter((b) => {
+      const text = `${b.subject} ${b.predicate} ${b.object}`.toLowerCase();
+      return keywords.some((k) => text.includes(k));
+    });
+    if (matched.length === 0) {
+      // An empty belief list is indistinguishable from "nothing stored", so
+      // say which one happened rather than leaving the caller to guess.
+      logger.debug('ContextRetriever: no beliefs matched', {
+        scanned: all.value.length,
+        keywords: keywords.length,
+      });
+    }
+    return matched.slice(0, limit);
   } catch (error: unknown) {
     logger.debug('ContextRetriever: belief fetch failed', { error: formatError(error) });
     return [];
