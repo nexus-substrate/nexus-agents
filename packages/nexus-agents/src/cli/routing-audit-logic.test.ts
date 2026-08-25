@@ -80,6 +80,23 @@ describe('routing-audit-logic', () => {
     });
   });
 
+  describe('bandit context matches the production builder (#4843)', () => {
+    it('produces the same context the composite router would', async () => {
+      // The audit kept its own copy of the builder. #4874 gave the production
+      // one an optional real budget figure, and the copy did not follow — so
+      // the audit reported a bandit context the router no longer uses. An
+      // audit that silently diverges from the thing it audits is worse than
+      // no audit.
+      const { taskProfileToBanditContext } =
+        await import('../cli-adapters/composite-router-helpers.js');
+      const profile = analyzeTaskString('Write a function to sort an array');
+
+      expect(taskProfileToBanditContextFromProfile(profile)).toEqual(
+        taskProfileToBanditContext(profile)
+      );
+    });
+  });
+
   describe('taskProfileToBanditContextFromProfile', () => {
     it('should convert task profile to bandit context', () => {
       const profile = analyzeTaskString('Write a complex algorithm with optimization');
