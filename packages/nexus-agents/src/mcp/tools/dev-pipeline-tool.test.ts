@@ -165,6 +165,49 @@ describe('DevPipelineInputSchema', () => {
   });
 });
 
+// #4933: the async hint is remediation text, and remediation that does not
+// apply to the request it answers is worse than none — a caller following it
+// verbatim gets another synchronous run.
+describe('the async hint matches whether async is actually available (#4933)', () => {
+  /** Drives the handler's catch block: no task and no planFile. */
+  async function errorEnvelope(extra: Record<string, unknown>): Promise<string> {
+    const handler = captureHandler();
+    const result = await handler(extra, STDIO_CTX);
+    return result.content[0]!.text;
+  }
+
+  it('omits the async hint for a dry run, which ignores dispatch entirely', async () => {
+    // `input.dispatch === 'async' && !input.dryRun` is false for a dry run, so
+    // `dispatch: 'async'` is silently discarded. Telling the caller to retry
+    // with it sends them back through the same synchronous path.
+    const text = await errorEnvelope({ dryRun: true });
+
+    expect(text).not.toContain("dispatch: 'async'");
+  });
+
+  it('says instead that dry runs are synchronous', async () => {
+    // The pair: deleting the hint entirely would satisfy the assertion above
+    // while leaving the caller with no explanation at all.
+    const text = await errorEnvelope({ dryRun: true });
+
+    expect(text).toMatch(/dry run/i);
+  });
+
+  it('still carries the hint for a real run, where async does apply', async () => {
+    // The other pair, and the regression this must not cause: a non-dryRun
+    // run genuinely can exceed the 900s ceiling, and async is its escape.
+    const text = await errorEnvelope({ dryRun: false });
+
+    expect(text).toContain("dispatch: 'async'");
+  });
+
+  it('reports the underlying error in both cases', async () => {
+    // Whatever the hint says, the actual failure has to survive it.
+    expect(await errorEnvelope({ dryRun: true })).toContain('planFile');
+    expect(await errorEnvelope({ dryRun: false })).toContain('planFile');
+  });
+});
+
 // #3726: async dispatch mode. A real run can exceed the 900s MCP request
 // timeout, so `dispatch: 'async'` returns a jobId immediately and runs the
 // pipeline in the background (poll get_job_result).
