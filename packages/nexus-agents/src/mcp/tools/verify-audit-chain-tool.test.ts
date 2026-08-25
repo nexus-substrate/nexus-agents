@@ -196,6 +196,26 @@ describe('verify_audit_chain handler behavior', () => {
       expect(body.unreadableFiles).toBeUndefined();
     });
 
+    it('counts a file it could not open at all', async () => {
+      // A directory named like a log file: `readFile` throws EISDIR, taking the
+      // loader's unreadable-file path. Portable, and does not depend on running
+      // as a non-root user the way a chmod-000 fixture would.
+      //
+      // #4788 shipped this counter with no test — deleting `unreadableFiles++`
+      // left all twelve tests green, because every fixture exercised unparseable
+      // LINES and none an unopenable FILE.
+      writeAuditFile('audit-2026-04-28-12-00-00.jsonl', chain(2));
+      fs.mkdirSync(path.join(tmpDir, 'audit-2026-04-28-13-00-00.jsonl'));
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.unreadableFiles).toBe(1);
+      // The readable file still verifies — resilient reading is the policy;
+      // the caller is just told what it cost.
+      expect(body.eventCount).toBe(2);
+      expect(body.fileCount).toBe(2);
+    });
+
     it('distinguishes a wholly unparseable log from an empty one', async () => {
       // The worst case: every line is garbage. Before this the response was
       // eventCount 0 + notVerified "empty" — identical to an empty directory.
