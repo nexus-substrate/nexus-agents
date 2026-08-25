@@ -21,6 +21,7 @@ import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { taskProfileToBanditContext } from '../cli-adapters/composite-router-helpers.js';
 import type { Task } from '../core/types/agent.js';
 import type {
   RoutingAuditOptions,
@@ -43,7 +44,6 @@ const sharedAnalyzer = createSharedTaskAnalyzer();
 const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
 /** Normalization ceiling for context length (tokens). */
-const CONTEXT_NORMALIZATION_TOKENS = 100_000;
 
 // =============================================================================
 // Helper Functions
@@ -63,18 +63,20 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
 }
 
 /**
- * Converts task profile to bandit context using core adapter.
+ * Converts task profile to bandit context, delegating to the production builder.
+ *
+ * This was a byte-equivalent copy of `taskProfileToBanditContext`. The two
+ * agreed only by coincidence: #4874 gave the production one an optional real
+ * budget figure whose default is the same neutral 0.5 this copy hardcoded, so
+ * outputs matched while the definitions had already parted. An audit that can
+ * drift from the router it audits reports a decision the router would not make.
+ *
+ * No utilization is passed, which yields that neutral default — correct here,
+ * because the audit's budget stage is simulated (#4843) and there is no real
+ * figure to supply.
  */
 export function taskProfileToBanditContextFromProfile(profile: TaskProfile): BanditContext {
-  // For backward compatibility, convert profile back to context using original formula
-  return {
-    taskComplexity: profile.reasoningComplexity / 10,
-    contextLengthNormalized: Math.min(profile.contextRequired / CONTEXT_NORMALIZATION_TOKENS, 1),
-    isCodeTask: profile.codeGeneration ? 1 : 0,
-    isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
-    budgetUtilization: 0.5,
-    timePressure: 0.3,
-  };
+  return taskProfileToBanditContext(profile);
 }
 
 /**

@@ -144,6 +144,26 @@ describe('routing-audit-format', () => {
       expect(output).toContain('codex');
     });
 
+    it('marks the stage as simulated (#4843)', () => {
+      // `simulateBudgetFilter` passes every CLI unconditionally — no cost
+      // estimate, no config read. The source says so (the function name, its
+      // JSDoc, and the call-site comment), but NONE of that reached the
+      // terminal: the stage rendered identically to the TOPSIS and LinUCB
+      // stages beside it, which construct real routers. Someone debugging a
+      // selection saw budget filtering apparently evaluated and ruled it out.
+      const output = formatBudgetFilter(mockResult).join('\n');
+
+      expect(output).toContain('simulated');
+    });
+
+    it('does not mark the other stages as simulated', () => {
+      // The pair: the label must identify THIS stage, not decorate the whole
+      // report — TOPSIS and LinUCB really do run.
+      const topsis = formatTopsisRanking(mockResult).join('\n');
+
+      expect(topsis).not.toContain('simulated');
+    });
+
     it('should show failed budget checks', () => {
       const failedBudgetResult: RoutingAuditResult = {
         ...mockResult,

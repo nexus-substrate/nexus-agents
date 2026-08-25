@@ -55,8 +55,17 @@ export function formatBudgetFilter(result: RoutingAuditResult): string[] {
   const lines: string[] = [];
   const passCount = result.budgetResults.filter((r) => r.withinBudget).length;
   const total = result.budgetResults.length;
+  // #4843: `simulateBudgetFilter` passes every CLI unconditionally — no cost
+  // estimate, no token count, no config read. The source is candid about that
+  // (the function name, its JSDoc, the call-site comment), but none of it
+  // reached the terminal, so this stage rendered identically to the TOPSIS and
+  // LinUCB stages beside it, which construct real routers. Say it here, where
+  // the reader is.
   lines.push(
-    boxLine(color(` Budget Filter (${String(passCount)}/${String(total)} pass):`, ANSI.bold))
+    boxLine(
+      color(` Budget Filter (${String(passCount)}/${String(total)} pass):`, ANSI.bold) +
+        color(' [simulated — not evaluated against real cost or config]', ANSI.dim)
+    )
   );
   for (const br of result.budgetResults) {
     const status = br.withinBudget ? color('✓', ANSI.green) : color('✗', ANSI.red);
