@@ -22,6 +22,16 @@ export interface QualityScore {
   readonly impact: number;
   /** Recency decay (0-1) - newer items score higher. */
   readonly recency: number;
+  /**
+   * Whether {@link QualityScore.recency} is a measurement (#4841).
+   *
+   * `false` means the item carried no usable publication date, so `recency`
+   * is the neutral 0.5 and NOT a decay. It was previously scored from
+   * `discoveredAt` — when WE found the source, which every producer stamps as
+   * today — so the 730-day decay was unreachable and every composite carried
+   * a flat +0.2.
+   */
+  readonly recencyMeasured: boolean;
   /** Code availability (0-1) - items with repos score higher. */
   readonly reproducibility: number;
   /** Weighted composite score (0-1). */
@@ -66,14 +76,29 @@ function relevanceLabelToScore(relevance: string): number {
   }
 }
 
-/** Score recency based on discovered date. Decays over 2 years. */
-function scoreRecency(discoveredAt: string): number {
-  const discoveredDate = new Date(discoveredAt);
-  if (isNaN(discoveredDate.getTime())) return 0.5;
-  const now = new Date();
-  const daysSince = (now.getTime() - discoveredDate.getTime()) / (1000 * 60 * 60 * 24);
-  // Linear decay over 730 days (2 years)
-  return Math.max(0, 1 - daysSince / 730);
+/** Neutral recency for an item whose publication date is unknown. */
+const NEUTRAL_RECENCY = 0.5;
+/** Linear decay window: two years. */
+const RECENCY_DECAY_DAYS = 730;
+
+/**
+ * Score recency from the item's PUBLICATION date, decaying over two years.
+ *
+ * `undefined` or unparseable yields neutral with `measured: false`. Not 1.0:
+ * an unknown age is not evidence of freshness, and reporting it as fresh is
+ * what made this term a constant (#4841).
+ */
+function scoreRecency(publishedAt: string | undefined): {
+  value: number;
+  measured: boolean;
+} {
+  if (publishedAt === undefined || publishedAt === '') {
+    return { value: NEUTRAL_RECENCY, measured: false };
+  }
+  const published = new Date(publishedAt);
+  if (isNaN(published.getTime())) return { value: NEUTRAL_RECENCY, measured: false };
+  const daysSince = (Date.now() - published.getTime()) / (1000 * 60 * 60 * 24);
+  return { value: Math.max(0, 1 - daysSince / RECENCY_DECAY_DAYS), measured: true };
 }
 
 /** Score reproducibility based on source type. */
@@ -100,19 +125,20 @@ export function scoreDiscoveredItem(item: DiscoveredSource, topic: string): Qual
   const relevance =
     topic !== '' ? scoreRelevance(item.title, topic) : relevanceLabelToScore(item.relevance);
   const impact = relevanceLabelToScore(item.relevance);
-  const recency = scoreRecency(item.discoveredAt);
+  const recency = scoreRecency(item.publishedAt);
   const reproducibility = scoreReproducibility(item.source);
 
   const composite =
     WEIGHTS.relevance * relevance +
     WEIGHTS.impact * impact +
-    WEIGHTS.recency * recency +
+    WEIGHTS.recency * recency.value +
     WEIGHTS.reproducibility * reproducibility;
 
   return {
     relevance: Math.round(relevance * 100) / 100,
     impact: Math.round(impact * 100) / 100,
-    recency: Math.round(recency * 100) / 100,
+    recency: Math.round(recency.value * 100) / 100,
+    recencyMeasured: recency.measured,
     reproducibility: Math.round(reproducibility * 100) / 100,
     composite: Math.round(composite * 100) / 100,
   };

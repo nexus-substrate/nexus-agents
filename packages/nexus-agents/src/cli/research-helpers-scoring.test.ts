@@ -18,6 +18,7 @@ function createItem(overrides: Partial<DiscoveredSource> = {}): DiscoveredSource
     description: 'A framework for multi-agent orchestration.',
     relevance: 'medium',
     discoveredAt: new Date().toISOString().split('T')[0] ?? '',
+    publishedAt: '2026-08-01',
     ...overrides,
   };
 }
@@ -80,11 +81,15 @@ describe('scoreDiscoveredItem', () => {
     expect(score.impact).toBe(0.2);
   });
 
-  it('should score recent items higher on recency', () => {
-    const today = new Date().toISOString().split('T')[0] ?? '';
-    const item = createItem({ discoveredAt: today });
-    const score = scoreDiscoveredItem(item, 'test');
-    expect(score.recency).toBeGreaterThan(0.9);
+  it('scores a recently PUBLISHED item higher than an old one (#4841)', () => {
+    // This replaces a test whose name promised a comparison and whose body
+    // scored a single item stamped today, asserting > 0.9. Every producer
+    // stamps `discoveredAt` with today's date, so it passed no matter what —
+    // including with the 730-day decay deleted entirely.
+    const fresh = scoreDiscoveredItem(createItem({ publishedAt: '2026-08-01' }), 'test');
+    const old = scoreDiscoveredItem(createItem({ publishedAt: '2019-03-01' }), 'test');
+
+    expect(fresh.recency).toBeGreaterThan(old.recency);
   });
 
   it('should handle empty topic gracefully', () => {
@@ -94,9 +99,50 @@ describe('scoreDiscoveredItem', () => {
   });
 
   it('should handle invalid date gracefully', () => {
-    const item = createItem({ discoveredAt: 'invalid' });
+    const item = createItem({ publishedAt: 'invalid' });
     const score = scoreDiscoveredItem(item, 'test');
     expect(score.recency).toBe(0.5);
+    expect(score.recencyMeasured).toBe(false);
+  });
+});
+
+// =============================================================================
+// Recency is scored on publication, not discovery (#4841)
+// =============================================================================
+
+describe('recency uses the publication date (#4841)', () => {
+  it('does not score recency from discoveredAt', () => {
+    // `discoveredAt` records when WE found the source, which every producer
+    // stamps as today. Scoring it made the 730-day decay unreachable and put
+    // a flat +0.2 on every composite: a 2019 paper and a 2026 preprint
+    // scored identically.
+    const old = createItem({ publishedAt: '2019-03-01', discoveredAt: '2026-08-25' });
+
+    expect(scoreDiscoveredItem(old, 'test').recency).toBeLessThan(0.5);
+  });
+
+  it('reports recency as unmeasured when no publication date is available', () => {
+    // Not every producer can supply one. Neutral rather than fresh, and said
+    // out loud — 1.0 would keep claiming the source is new.
+    const item = createItem();
+    delete (item as { publishedAt?: string }).publishedAt;
+
+    const score = scoreDiscoveredItem(item, 'test');
+
+    expect(score.recency).toBe(0.5);
+    expect(score.recencyMeasured).toBe(false);
+  });
+
+  it('marks recency measured when a publication date is present', () => {
+    // The pair: always-false would satisfy the test above.
+    expect(
+      scoreDiscoveredItem(createItem({ publishedAt: '2026-08-01' }), 'test').recencyMeasured
+    ).toBe(true);
+  });
+
+  it('still decays a genuinely old publication toward zero', () => {
+    // The decay the original code documented and could never reach.
+    expect(scoreDiscoveredItem(createItem({ publishedAt: '2015-01-01' }), 'test').recency).toBe(0);
   });
 });
 

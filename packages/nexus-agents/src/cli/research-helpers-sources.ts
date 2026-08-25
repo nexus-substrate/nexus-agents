@@ -38,7 +38,13 @@ export interface DiscoveredSource {
   readonly url: string;
   readonly description: string;
   readonly relevance: 'high' | 'medium' | 'low';
+  /** When WE found this source — always the run date. NOT its age (#4841). */
   readonly discoveredAt: string;
+  /**
+   * When the source itself was published, ISO date, if the producer supplies
+   * one (#4841). Absent means unknown, which scores neutral rather than fresh.
+   */
+  readonly publishedAt?: string;
 }
 
 // =============================================================================
@@ -51,6 +57,14 @@ const GitHubRepoSchema = z.object({
   html_url: z.string().optional(),
   description: z.string().nullable().optional(),
   stargazers_count: z.number().optional(),
+  /**
+   * Last push, used as the recency signal for a repository (#4841).
+   *
+   * `created_at` would answer "how old is this project", which is the wrong
+   * question — an actively maintained 2019 repo is not stale. For a paper the
+   * publication date is the age; for a repo it is the last activity.
+   */
+  pushed_at: z.string().nullable().optional(),
 });
 
 const GitHubSearchResponseSchema = z.object({
@@ -150,6 +164,9 @@ function parseGitHubRepos(data: z.infer<typeof GitHubSearchResponseSchema>): Dis
           ? 'medium'
           : 'low',
     discoveredAt: getToday(),
+    ...(repo.pushed_at === null || repo.pushed_at === undefined
+      ? {}
+      : { publishedAt: repo.pushed_at }),
   }));
 }
 
@@ -425,6 +442,11 @@ function parseArxivEntries(xml: string, source: string, topic = ''): DiscoveredS
       description: truncate(extractTag(entry, 'summary')),
       relevance: topic !== '' ? scoreRelevance(title, topic) : 'medium',
       discoveredAt: getToday(),
+      // arXiv returns <published> on every entry; extractTag already existed
+      // and was simply never called for it (#4841).
+      ...(extractTag(entry, 'published') === ''
+        ? {}
+        : { publishedAt: extractTag(entry, 'published') }),
     });
   }
   return items;

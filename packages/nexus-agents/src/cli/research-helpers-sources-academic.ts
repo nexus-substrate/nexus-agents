@@ -96,6 +96,9 @@ function mapSemanticScholarPaper(
     description: truncate(paper.abstract ?? ''),
     relevance: citationRelevance(paper.citationCount ?? 0),
     discoveredAt: getToday(),
+    // Year only — the API gives no finer granularity. Jan 1 of that year is
+    // the conservative reading: it never scores a paper fresher than it is.
+    ...(paper.year === undefined ? {} : { publishedAt: `${String(paper.year)}-01-01` }),
   };
 }
 
@@ -292,6 +295,10 @@ function mapOpenAlexWork(work: z.infer<typeof OpenAlexWorkSchema>): DiscoveredSo
     description: truncate(reconstructAbstract(work.abstract_inverted_index)),
     relevance: citationRelevance(work.cited_by_count ?? 0),
     discoveredAt: getToday(),
+    // Already parsed by the schema and previously discarded here (#4841).
+    ...(work.publication_date === null || work.publication_date === undefined
+      ? {}
+      : { publishedAt: work.publication_date }),
   };
 }
 

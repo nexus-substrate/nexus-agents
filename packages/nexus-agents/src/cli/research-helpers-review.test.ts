@@ -78,6 +78,7 @@ const mockQualityScore: QualityScore = {
   relevance: 0.9,
   impact: 0.8,
   recency: 0.7,
+  recencyMeasured: true,
   reproducibility: 0.6,
   composite: 0.75,
 };
