@@ -163,16 +163,32 @@ async function checkIndex(options: IndexCommandOptions): Promise<IndexCommandRes
  * Generates a Mermaid dependency diagram.
  */
 async function generateDiagram(options: IndexCommandOptions): Promise<IndexCommandResult> {
-  const indexPath = options.output ?? 'docs/codebase-index.yaml';
-  const diagramPath = 'docs/dependency-graph.md';
+  // #4799: `--output` names this subcommand's PRODUCT — the diagram — not the
+  // index it happens to read. It used to mean the index, and the destination
+  // was hardcoded, so there was no way to aim the generator at a repo's real
+  // docs location; nexus-agents' own canonical graph went seven months without
+  // a regeneration for exactly that reason.
+  //
+  // The default stays cwd-relative. This CLI runs inside other people's
+  // repositories, so it must write into their tree, never a layout of ours.
+  const indexPath = 'docs/codebase-index.yaml';
+  const diagramPath = options.output ?? 'docs/dependency-graph.md';
 
   // Check if index file exists
   try {
     await fs.access(indexPath);
   } catch {
-    // Generate index first
+    // Generate index first.
+    //
+    // `output` is deliberately dropped here (#4799): it now names the DIAGRAM
+    // destination, and `generateIndex` reads the same field as the INDEX
+    // destination. Forwarding it makes the self-heal write a multi-megabyte
+    // YAML index over the diagram the caller asked for — which is exactly what
+    // happened the first time this ran against a real tree.
     logger.info('Index not found, generating...');
-    await generateIndex({ ...options, subcommand: 'generate' });
+    const indexOptions: IndexCommandOptions = { ...options, subcommand: 'generate' };
+    delete (indexOptions as { output?: string }).output;
+    await generateIndex(indexOptions);
   }
 
   // Load index

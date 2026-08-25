@@ -329,6 +329,95 @@ describe('index-command', () => {
 
       expect(result.success).toBe(true);
     });
+
+    // #4799: `--output` set where the diagram READ FROM, not where it wrote to,
+    // and the destination was hardcoded. That is why this repo's canonical
+    // docs/architecture/dependency-graph.md still says `Generated: 2026-01-12` —
+    // there was no way to aim the generator at it.
+    it('writes the diagram to --output when given', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.readFile.mockResolvedValue('yaml');
+      mockYaml.parse.mockReturnValue({ modules: {} });
+      mockCodebaseIndexSchema.parse.mockReturnValue({} as never);
+      mockGenerateDiagram.mockReturnValue('```mermaid\ngraph TD\n```');
+
+      const result = await indexCommand({
+        subcommand: 'diagram',
+        output: 'docs/architecture/dependency-graph.md',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        'docs/architecture/dependency-graph.md',
+        expect.stringContaining('mermaid'),
+        'utf-8'
+      );
+    });
+
+    it('still reads the index from its default location when --output is given', async () => {
+      // The half that would break if `--output` simply moved from one path to
+      // the other: the index it reads must NOT follow the diagram destination.
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.readFile.mockResolvedValue('yaml');
+      mockYaml.parse.mockReturnValue({ modules: {} });
+      mockCodebaseIndexSchema.parse.mockReturnValue({} as never);
+      mockGenerateDiagram.mockReturnValue('```mermaid```');
+
+      await indexCommand({ subcommand: 'diagram', output: 'somewhere/else.md' });
+
+      expect(mockFs.readFile).toHaveBeenCalledWith('docs/codebase-index.yaml', 'utf-8');
+    });
+
+    it('does not write the regenerated INDEX over the --output diagram', async () => {
+      // Found by running the real CLI, not by a mock: the self-heal forwarded
+      // `output` to generateIndex, which reads it as the index destination, so
+      // a missing index caused a 3.4MB YAML to be written over the caller's
+      // requested diagram path. It clobbered a real committed doc.
+      mockFs.access.mockRejectedValueOnce(new Error('ENOENT')).mockResolvedValue(undefined);
+      mockExtractProject.mockReturnValue({ files: [], errors: [], durationMs: 10 });
+      mockBuildIndex.mockReturnValue({
+        stats: { totalFiles: 0, moduleCount: 0 },
+        modules: {},
+      } as never);
+      mockIndexToYaml.mockReturnValue('yaml-index-content');
+      mockFs.readFile.mockResolvedValue('yaml');
+      mockYaml.parse.mockReturnValue({ modules: {} });
+      mockCodebaseIndexSchema.parse.mockReturnValue({} as never);
+      mockGenerateDiagram.mockReturnValue('```mermaid```');
+
+      await indexCommand({ subcommand: 'diagram', output: 'docs/architecture/graph.md' });
+
+      // The index goes to the index path...
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        'docs/codebase-index.yaml',
+        'yaml-index-content',
+        'utf-8'
+      );
+      // ...and the requested path receives the DIAGRAM, not the index.
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        'docs/architecture/graph.md',
+        expect.stringContaining('mermaid'),
+        'utf-8'
+      );
+    });
+
+    it('keeps the cwd-relative default so other repos are unaffected', async () => {
+      // This CLI ships to other projects. The default must stay relative to the
+      // user's tree, never this repository's layout.
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.readFile.mockResolvedValue('yaml');
+      mockYaml.parse.mockReturnValue({ modules: {} });
+      mockCodebaseIndexSchema.parse.mockReturnValue({} as never);
+      mockGenerateDiagram.mockReturnValue('```mermaid```');
+
+      await indexCommand({ subcommand: 'diagram' });
+
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        'docs/dependency-graph.md',
+        expect.anything(),
+        'utf-8'
+      );
+    });
   });
 
   describe('validate subcommand', () => {

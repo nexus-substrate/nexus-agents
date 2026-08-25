@@ -110,8 +110,8 @@ scratch*.ts
 # Not tracked: an 88k-line snapshot with no consumer drifted 6 months unnoticed,
 # and `index diagram` writes it as a side effect — untracked it would otherwise
 # dirty every working tree that runs the command.
-packages/nexus-agents/docs/codebase-index.yaml
-# Same reason: `index diagram` writes here, but this is the WRONG path — the
-# canonical, docs-linked graph is docs/architecture/dependency-graph.md. Ignored
-# so the stray output stops dirtying the tree; the generator is fixed in #4799.
-packages/nexus-agents/docs/dependency-graph.md
+**/docs/codebase-index.yaml
+# The generator's cwd-relative default. This repo's canonical, docs-linked graph
+# is docs/architecture/dependency-graph.md, produced with an explicit --output
+# (#4799); anything written to the default path here is a stray local run.
+**/packages/nexus-agents/docs/dependency-graph.md
