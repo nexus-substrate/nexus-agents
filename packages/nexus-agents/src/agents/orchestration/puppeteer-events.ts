@@ -87,7 +87,8 @@ export interface PuppeteerStepCompletedPayload {
   /** Tokens used */
   readonly tokensUsed: number;
   /** Reward for this step */
-  readonly reward: number;
+  /** Step reward, `null` when the step was excluded for unmeasured usage (#4766). */
+  readonly reward: number | null;
   /** Current progress */
   readonly progress: number;
   /** Whether this step terminates orchestration */

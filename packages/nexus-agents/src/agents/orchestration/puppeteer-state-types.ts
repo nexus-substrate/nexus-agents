@@ -21,8 +21,18 @@ export interface AgentStepOutput {
   readonly output: unknown;
   /** Execution duration in milliseconds */
   readonly durationMs: number;
-  /** Tokens consumed */
+  /** Tokens consumed. Meaningful only when {@link AgentStepOutput.tokensMeasured} is not `false`. */
   readonly tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is a measurement (#4766).
+   *
+   * `false` means the adapter reported no usage, so `tokensUsed` is a
+   * placeholder `0` — and the step is EXCLUDED from reward scoring rather
+   * than credited a zero cost penalty, which made it outscore a step that
+   * reported honestly. Absent means measured, so no existing producer changes
+   * meaning.
+   */
+  readonly tokensMeasured?: boolean;
   /** Model used for execution */
   readonly model: string;
 }
@@ -35,8 +45,16 @@ export interface PuppeteerStateMetadata {
   readonly progress: number;
   /** Accumulated cost in dollars */
   readonly totalCost: number;
-  /** Accumulated tokens */
+  /** Accumulated tokens, over measured steps only. */
   readonly totalTokens: number;
+  /**
+   * Steps whose usage was never measured and so contributed nothing to
+   * `totalCost` / `totalTokens` (#4766).
+   *
+   * Without this the accumulators read as complete when they are a LOWER
+   * BOUND. Absent means the state predates the distinction.
+   */
+  readonly unmeasuredSteps?: number;
   /** Time elapsed in milliseconds */
   readonly elapsedMs: number;
   /** Start timestamp (ISO 8601) */

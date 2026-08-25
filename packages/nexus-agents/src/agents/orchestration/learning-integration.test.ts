@@ -52,6 +52,7 @@ function makeStep(overrides: Partial<PolicyTrajectoryStep> = {}) {
 
 const ZERO_METRICS = {
   avgReward: 0,
+  scoredSteps: 0,
   taskCompletionRate: 0,
   efficiencyScore: 0,
   compactionScore: 0,
@@ -118,6 +119,7 @@ function makeResult(overrides: Partial<PuppeteerResult> = {}) {
     emergentPatterns: { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 },
     metrics: {
       avgReward: 0.8,
+      scoredSteps: 3,
       taskCompletionRate: 1.0,
       efficiencyScore: 0.5,
       compactionScore: 0.3,
@@ -200,6 +202,7 @@ describe('processOrchestrationForLearning', () => {
       totalSteps: 4,
       metrics: {
         avgReward: 0.5,
+        scoredSteps: 0,
         taskCompletionRate: 1.0,
         efficiencyScore: 0.5,
         compactionScore: 0.3,
@@ -402,6 +405,7 @@ describe('computeEpisodeReward', () => {
       totalSteps: 5,
       metrics: {
         avgReward: 0.6,
+        scoredSteps: 0,
         taskCompletionRate: 1.0,
         efficiencyScore: 0.5,
         compactionScore: 0.3,

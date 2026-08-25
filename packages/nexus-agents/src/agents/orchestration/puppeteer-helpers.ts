@@ -66,7 +66,17 @@ export function computeStepReward(
   output: AgentStepOutput,
   progressDelta: number,
   config: RewardConfig = DEFAULT_REWARD_CONFIG
-): number {
+): number | null {
+  // #4766: the cost penalty is `tokensUsed * rate`, so a step whose adapter
+  // reported nothing paid ZERO and outscored one that reported honestly — the
+  // reward preferred the step it knew least about. There is no defensible
+  // per-step substitute (a mean or a worst-case would invent a number for
+  // THIS step), so an unmeasured step is excluded from the trajectory the
+  // learner fits. Decided by a 7-voter panel, option B.
+  //
+  // A MEASURED zero is still scored: absence and a real zero are different.
+  if (output.tokensMeasured === false) return null;
+
   // Progress reward
   const progressReward = progressDelta * config.progressWeight;
 
@@ -186,6 +196,7 @@ export function computeMetrics(
   if (trajectory.length === 0) {
     return {
       avgReward: 0,
+      scoredSteps: 0,
       taskCompletionRate: success ? 1 : 0,
       efficiencyScore: 0,
       compactionScore: 0,
@@ -193,8 +204,15 @@ export function computeMetrics(
     };
   }
 
-  // Average reward
-  const avgReward = trajectory.reduce((sum, step) => sum + step.reward, 0) / trajectory.length;
+  // Average over SCORED steps only. A step excluded for unmeasured usage
+  // (#4766) has no reward to average, and counting it as 0 would reintroduce
+  // the same distortion at the trajectory level. `scoredSteps` reports the
+  // coverage so the mean is not read as covering the whole trajectory.
+  const scored = trajectory.filter(
+    (step): step is PuppeteerStepResult & { reward: number } => step.reward !== null
+  );
+  const avgReward =
+    scored.length > 0 ? scored.reduce((sum, step) => sum + step.reward, 0) / scored.length : 0;
 
   // Efficiency score (lower is better: fewer steps, less cost)
   const totalTokens = trajectory.reduce((sum, s) => sum + s.agentOutput.tokensUsed, 0);
@@ -206,6 +224,7 @@ export function computeMetrics(
 
   return {
     avgReward: Math.round(avgReward * 1000) / 1000,
+    scoredSteps: scored.length,
     taskCompletionRate: success ? 1 : 0,
     efficiencyScore: Math.round(efficiencyScore * 1000) / 1000,
     compactionScore: Math.round(compactionScore * 100) / 100,
@@ -274,6 +293,9 @@ export function buildAgentStepOutput(
     output: result.output,
     durationMs: result.metadata.durationMs,
     tokensUsed: result.metadata.tokensUsed,
+    ...(result.metadata.tokensMeasured === undefined
+      ? {}
+      : { tokensMeasured: result.metadata.tokensMeasured }),
     model: result.metadata.model,
   };
 }

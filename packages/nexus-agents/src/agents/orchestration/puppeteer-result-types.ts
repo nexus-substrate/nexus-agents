@@ -15,12 +15,7 @@ import type {
 
 /** Reasons for terminating orchestration. */
 export type PuppeteerTerminationReason =
-  | 'task_complete'
-  | 'max_steps'
-  | 'timeout'
-  | 'error'
-  | 'cancelled'
-  | 'convergence';
+  'task_complete' | 'max_steps' | 'timeout' | 'error' | 'cancelled' | 'convergence';
 
 /**
  * Result of one orchestration step.
@@ -35,7 +30,14 @@ export interface PuppeteerStepResult {
   /** Updated state after this step */
   readonly newState: PuppeteerState;
   /** Reward for this step */
-  readonly reward: number;
+  /**
+   * Step reward, or `null` when the step could not be scored (#4766).
+   *
+   * `null` means its token usage was never measured, so no defensible cost
+   * term existed — the step is excluded from the trajectory the learner fits
+   * rather than credited a zero cost and scored as maximally efficient.
+   */
+  readonly reward: number | null;
   /** Whether orchestration should terminate */
   readonly shouldTerminate: boolean;
   /** Reason for termination (if shouldTerminate) */
@@ -82,8 +84,16 @@ export interface EmergentPatterns {
  * Metrics from orchestration execution.
  */
 export interface PuppeteerMetrics {
-  /** Average reward across steps */
+  /** Average reward across SCORED steps. See {@link PuppeteerMetrics.scoredSteps}. */
   readonly avgReward: number;
+  /**
+   * Steps the average was actually taken over (#4766).
+   *
+   * Lower than the trajectory length when steps were excluded for unmeasured
+   * token usage. `0` means nothing was scored, so `avgReward` is `0` over
+   * nothing rather than a measured zero.
+   */
+  readonly scoredSteps: number;
   /** Task completion rate (0-1) */
   readonly taskCompletionRate: number;
   /** Efficiency score (lower is better) */
