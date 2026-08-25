@@ -257,3 +257,26 @@ export function formatScratchSpace(check: ScratchSpaceCheck): string {
     '    Free space, or point NEXUS_TMPDIR at a roomier filesystem.',
   ].join('\n');
 }
+
+/**
+ * Whether a scratch severity permits a healthy verdict (#4563).
+ *
+ * Exhaustive rather than `!== 'critical'`: a severity added later — say
+ * `fatal` — would silently satisfy a negative test and let the verdict pass,
+ * which is the same shape as the `skip`-reaching-`!== 'fail'` regression on
+ * the ship gate. Each level must be classified deliberately.
+ */
+export function scratchSeverityIsAcceptable(severity: ScratchSpaceSeverity): boolean {
+  switch (severity) {
+    case 'ok':
+    case 'warn':
+      // warn still leaves room for the current run.
+      return true;
+    case 'critical':
+      return false;
+    default: {
+      const exhaustive: never = severity;
+      throw new Error(`Unhandled scratch severity: ${String(exhaustive)}`);
+    }
+  }
+}
