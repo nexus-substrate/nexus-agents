@@ -49,7 +49,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
     permissions:
       contents: read
-      pull-requests: write
+      # Read-only. Nothing in this job writes a comment or a label, and with
+      # model credentials present it would otherwise hold untrusted input,
+      # write access and secrets at once — the Rule of Two (#4919).
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -233,7 +236,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.issue_number != '')
     permissions:
       contents: read
-      issues: write
+      # Read-only — see the note on the review job. The issue body is
+      # untrusted input and this job carries model credentials.
+      issues: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -251,24 +256,46 @@ jobs:
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Detect model credentials
+        id: creds
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Triage Issue
         id: triage
+        if: steps.creds.outputs.available == 'true'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ISSUE_NUM: ${{ steps.issue.outputs.number }}
+          REPO: ${{ github.repository }}
         run: |
-          ISSUE_NUM="${{ steps.issue.outputs.number }}"
-          echo "📋 Triaging Issue #$ISSUE_NUM using task classification"
+          set -uo pipefail
+          ISSUE_TITLE="$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title -q '.title' 2>/dev/null || true)"
+          ISSUE_BODY="$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json body -q '.body' 2>/dev/null | head -100 || true)"
+          if [ -z "$ISSUE_TITLE" ]; then
+            echo "::warning::Could not fetch issue #$ISSUE_NUM — nothing to triage."
+            echo "outcome=no_issue" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          # Get issue details
-          ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --repo "${{ github.repository }}" --json title -q '.title' 2>/dev/null || echo "Unknown")
-          ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --repo "${{ github.repository }}" --json body -q '.body' 2>/dev/null | head -100)
-
-          # Construct triage task
-          TASK="Triage Issue #$ISSUE_NUM: $ISSUE_TITLE
+          TASK="Triage Issue #${ISSUE_NUM}: ${ISSUE_TITLE}
 
           Body:
-          $ISSUE_BODY
+          ${ISSUE_BODY}
 
           Classify this issue:
           1. Type: bug, enhancement, documentation, question, research
@@ -279,19 +306,65 @@ jobs:
 
           Provide brief reasoning for each classification."
 
-          # Run orchestrate
-          npx nexus-agents orchestrate "$TASK" --dry-run --verbose || true
+          CLI="packages/nexus-agents/dist/cli.js"
+          if [ ! -f "$CLI" ]; then
+            echo "::error::Built CLI not found at $CLI — the build step did not produce it."
+            echo "outcome=cli_missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          echo "triage_complete=true" >> $GITHUB_OUTPUT
+          if node "$CLI" orchestrate "$TASK" --format=json > triage-result.json 2> triage-error.log; then
+            :
+          else
+            echo "::warning::orchestrate exited non-zero; triage did not complete."
+            sed -n '1,40p' triage-error.log
+            echo "outcome=cli_failed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if node -e "const r=JSON.parse(require('fs').readFileSync('triage-result.json','utf8')); if(typeof r!=='object'||r===null) throw new Error('not an object');" 2>/dev/null; then
+            cat triage-result.json
+            echo "outcome=triaged" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::orchestrate succeeded but its output was not valid JSON."
+            sed -n '1,40p' triage-result.json
+            echo "outcome=malformed_output" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Post Triage Summary
         if: always()
+        env:
+          OUTCOME: ${{ steps.triage.outputs.outcome }}
+          CREDS: ${{ steps.creds.outputs.available }}
+          ISSUE_NUM: ${{ steps.issue.outputs.number }}
         run: |
-          echo "### 🏷️ Issue Triage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Issue: #${{ steps.issue.outputs.number }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.triage.outputs.triage_complete }}" = "true" ]; then
-            echo "✅ Triage analysis complete" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Triage skipped" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "### 🏷️ Issue Triage"
+            echo ""
+            echo "Issue: #${ISSUE_NUM}"
+            echo ""
+            case "${OUTCOME:-}" in
+              triaged)
+                echo "✅ Triage analysis produced. It is advisory — no label or comment is applied."
+                ;;
+              no_issue)
+                echo "⚠️ NOT TRIAGED — the issue could not be fetched."
+                ;;
+              cli_missing)
+                echo "⚠️ NOT TRIAGED — the built CLI was missing."
+                ;;
+              cli_failed)
+                echo "⚠️ NOT TRIAGED — orchestrate failed. See the step log."
+                ;;
+              malformed_output)
+                echo "⚠️ NOT TRIAGED — orchestrate returned output this job could not parse."
+                ;;
+              *)
+                if [ "${CREDS}" != "true" ]; then
+                  echo "⚠️ NOT TRIAGED — no model API key is configured, so no triage ran."
+                else
+                  echo "⚠️ NOT TRIAGED — the triage step did not report an outcome."
+                fi
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
