@@ -268,10 +268,58 @@ export interface GovernorReviewInputs {
  * a mismatch when the base is directly comparable to the record's pinned
  * `^[0-9a-f]{40}$` format — otherwise we PASS rather than risk a spurious warn.
  */
+/**
+ * Verdict of a set of diff-bound records, aggregated (#4058 follow-up).
+ *
+ * `request_changes` wins over `approve`. The gate used to take
+ * `records.find(...)` — the FIRST match in an append-only ledger — so the
+ * EARLIEST review for a diff decided the outcome and every later one was
+ * ignored: an early approve shadowed a subsequent refusal on the identical
+ * diff. Aggregating removes ledger position from the decision.
+ *
+ * A refusal does not block forever: the record is bound to
+ * `reviewedDiffHash`, so pushing a fix changes the hash, the old record stops
+ * matching, and the gate falls back to warn-on-absence until a new review
+ * lands.
+ */
+function aggregateVerdict(
+  matches: readonly PrReviewRecord[]
+): 'approve' | 'request_changes' | 'abstain' {
+  if (matches.some((r) => r.verdict === 'request_changes')) return 'request_changes';
+  if (matches.some((r) => r.verdict === 'approve')) return 'approve';
+  return 'abstain';
+}
+
 function matchedRecordOutcome(
+  matches: readonly PrReviewRecord[],
   match: PrReviewRecord,
   inputs: GovernorReviewInputs
 ): GovernorReviewOutcome {
+  // A review that HAPPENED is not a review that APPROVED. This returned pass
+  // on record existence alone, and interpolated the verdict into the pass
+  // reason — so it could emit "pass ... verdict=request_changes" (#4058).
+  const verdict = aggregateVerdict(matches);
+  if (verdict === 'request_changes') {
+    return {
+      kind: 'fail',
+      message:
+        `PR #${String(inputs.prNumber)} touches governor paths and its diff-bound ` +
+        `pr_review verdict is request_changes — the review ran and REFUSED. ` +
+        `This is fail-closed regardless of warn-first: warn-first covers a review ` +
+        `that has not happened yet, not one that happened and said no. ` +
+        `Address the review and re-run pr_review at the current head.`,
+    };
+  }
+  if (verdict === 'abstain') {
+    return {
+      kind: 'warn',
+      message:
+        `PR #${String(inputs.prNumber)} touches governor paths and its diff-bound ` +
+        `pr_review verdict is abstain — nothing was affirmed and nothing refused. ` +
+        `An abstention is not an approval; it is treated as absence, which is ` +
+        `warn-first pending the enforce flip (#4058). Re-run pr_review for a verdict.`,
+    };
+  }
   const ciBase = inputs.baseSha.toLowerCase();
   const comparable = /^[0-9a-f]{40}$/.test(ciBase);
   if (comparable && match.baseSha.toLowerCase() !== ciBase) {
@@ -322,11 +370,12 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
   }
 
   // (4) Diff-bound record present? (Option-C — number AND reviewedDiffHash match.)
-  const match = inputs.records.find(
+  const matches = inputs.records.filter(
     (r) => r.prNumber === inputs.prNumber && r.reviewedDiffHash === inputs.reviewedDiffHash
   );
+  const match = matches[0];
   if (match !== undefined) {
-    return matchedRecordOutcome(match, inputs);
+    return matchedRecordOutcome(matches, match, inputs);
   }
 
   // (5) Absence → WARN-FIRST (condition 2): actionable, non-blocking this stage.
