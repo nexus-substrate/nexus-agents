@@ -349,6 +349,10 @@ function buildPipelineOptions(
     ...(input.dryRun ? { dryRun: true } : {}),
     ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
     ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
+    // #4939: both were advertised, bounds-checked and defaulted since the tool
+    // shipped, and neither was ever read off `parsed.data`.
+    maxVoteIterations: input.maxVoteIterations,
+    maxQaIterations: input.maxQaIterations,
     ...(trustTier !== undefined ? { trustTier } : {}),
     // #3710: thread the server's durable audit logger so the consensus→execute
     // policy gate persists decisions to the shared hash chain.

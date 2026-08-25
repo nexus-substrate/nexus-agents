@@ -463,3 +463,40 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
   });
 });
+
+// ============================================================================
+// The iteration caps reach the pipeline (#4939)
+// ============================================================================
+
+describe('run_dev_pipeline iteration caps are wired (#4939)', () => {
+  // Both were bounds-checked, defaulted and described in the generated tool
+  // reference, and neither was read off `parsed.data` — a documented parameter
+  // a caller could set to no effect. The schema tests above prove parsing; this
+  // proves the value leaves the handler.
+  beforeEach(() => {
+    runDevPipelineMock.mockClear();
+  });
+
+  it('passes both caps through to the pipeline', async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X', maxVoteIterations: 1, maxQaIterations: 2 }, STDIO_CTX);
+
+    const options = runDevPipelineMock.mock.calls[0]?.[2] as
+      { maxVoteIterations?: number; maxQaIterations?: number } | undefined;
+    expect(options?.maxVoteIterations).toBe(1);
+    expect(options?.maxQaIterations).toBe(2);
+  });
+
+  it('passes the schema defaults when the caller sets neither', async () => {
+    // The pair: forwarding `undefined` would satisfy nothing above and let the
+    // pipeline fall back on its own constants, which happen to agree today and
+    // would diverge the moment either changed.
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, STDIO_CTX);
+
+    const options = runDevPipelineMock.mock.calls[0]?.[2] as
+      { maxVoteIterations?: number; maxQaIterations?: number } | undefined;
+    expect(options?.maxVoteIterations).toBe(3);
+    expect(options?.maxQaIterations).toBe(3);
+  });
+});
