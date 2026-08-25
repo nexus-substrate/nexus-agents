@@ -428,6 +428,10 @@ export function mapModelErrorToCategory(error: ModelError): FailureCategory {
 // `CapacityMonitorIntegrationConfig` interface and its default config)
 // were removed in #3018 — both had only test-file callers in the tree.
 // The `CircuitBreakerRegistry` above is what production adapters use;
-// if metrics-logging or capacity-monitor integration come back as real
-// requirements, reintroduce them alongside the consumer code in the
-// same PR (activation-or-delete YAGNI — same pattern as #2937–#2940).
+// if metrics-logging integration comes back as a real requirement,
+// reintroduce it alongside the consumer code in the same PR
+// (activation-or-delete YAGNI — same pattern as #2937–#2940).
+//
+// The capacity-monitor half of that sentence is gone: the provider-header
+// monitor it referred to was removed in #4532 after 7 months unwired, so
+// there is nothing to "come back". Header parsing is now a BUILD.

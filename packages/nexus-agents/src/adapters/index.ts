@@ -22,24 +22,6 @@ export {
 } from './rate-limiter.js';
 
 // Capacity monitoring
-export {
-  CapacityMonitor,
-  createCapacityMonitor,
-  type ICapacityMonitor,
-  type CapacityInfo,
-  type CapacityProvider,
-  type LowCapacityCallback,
-  type HeadersLike,
-  type CapacityMonitorConfig,
-} from './capacity-monitor.js';
-
-export {
-  parseAnthropicHeaders,
-  parseOpenAIHeaders,
-  GoogleQuotaTracker,
-  createGoogleQuotaTracker,
-} from './capacity-monitor-helpers.js';
-
 // Prompt extraction utilities (Issue #1596 — DRY adapter standardization)
 export { extractRequestSystemPrompt } from './prompt-utils.js';
 
