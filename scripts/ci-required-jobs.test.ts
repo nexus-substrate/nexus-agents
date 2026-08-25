@@ -25,11 +25,6 @@ import { parse } from 'yaml';
  * reason. Tracked for review in #4790.
  */
 const ADVISORY_JOBS = new Set([
-  // Cannot fail even if required: `continue-on-error: true` at the job level
-  // AND `|| echo` swallowing the CLI's exit code at the step level. Adding it
-  // to `needs` would wait on a job structurally incapable of reporting failure.
-  // Decide whether index staleness should block, then remove both layers — #4790.
-  'index-check',
   // Runs `pnpm audit`, a function of (tree x npm advisory DB at time t), so a
   // third-party publication can redden every open PR. Requiring it is approved
   // (consensus_vote 6-1) but gated on the reviewed-allowlist mechanism — #4794.

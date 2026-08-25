@@ -347,28 +347,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit $STATUS
 
-  index-check:
-    name: Index Freshness Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # Warning only - does not block CI
-    continue-on-error: true
-    needs: [build]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-node
-
-      - name: Download build output
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
-        with:
-          name: build-dist
-          path: packages/nexus-agents/dist/
-
-      - name: Check index freshness
-        run: |
-          cd packages/nexus-agents
-          node dist/cli.js index check || echo "::warning::Codebase index is out of date. Run 'nexus-agents index generate' to update."
-
   security:
     name: Security Audit
     runs-on: ubuntu-latest
