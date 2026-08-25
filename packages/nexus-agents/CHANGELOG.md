@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 4.2.1
+
+### Patch Changes
+
+- [#4811](https://github.com/nexus-substrate/nexus-agents/pull/4811) [`34a10df`](https://github.com/nexus-substrate/nexus-agents/commit/34a10df087184d11a4bc0eb41a899f20d01886e0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - strip nested injection tags the single-pass sanitizer reassembled
+
+  `sanitizeString` in the MCP tool-input sanitizer did one `replace`, which
+  reconstructs the tag it removes. Verified against the file's own regex:
+  `<sys<system>tem>x</sys</system>tem>` came out as a live `<system>x</system>`.
+
+  It now loops to a fixed point, the same approach `input-sanitizer.ts` has used
+  since [#1496](https://github.com/nexus-substrate/nexus-agents/issues/1496). This copy guards the path that ingests fork-authored PR
+  descriptions, so it is the one that mattered most.
+
 ## 4.2.0
 
 ### Minor Changes
