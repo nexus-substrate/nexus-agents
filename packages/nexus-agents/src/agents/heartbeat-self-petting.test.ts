@@ -45,8 +45,8 @@ describe('heartbeat self-petting guard (#4665)', () => {
   });
 
   it('the health timers read but never write', () => {
-    // The three regions that own a heartbeat session. Each must call
-    // markInstrumented (via runInHeartbeatSession) and never heartbeat().
+    // The three regions that own a heartbeat session. Each must scope its work
+    // with runInHeartbeatSession and never heartbeat().
     const monitored = [
       join('mcp', 'tools', 'orchestrate.ts'),
       join('mcp', 'tools', 'execute-expert.ts'),
