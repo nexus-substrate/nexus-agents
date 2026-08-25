@@ -228,3 +228,70 @@ describe('rankDiscoveredItems', () => {
     expect(ranked[0]?.score.composite).toBeGreaterThan(0);
   });
 });
+
+// =============================================================================
+// An unmeasured recency is excluded, not defaulted (#4956)
+// =============================================================================
+
+describe('undated sources get no recency credit (#4956)', () => {
+  // `NEUTRAL_RECENCY` is 0.5. Under the old LINEAR curve that was the one-year
+  // point — mid-range. Under exponential decay it is the two-year point, so an
+  // undated source scored EXACTLY as well as a real one-year-old source: 0.28
+  // composite for both. Changing the curve should have moved the constant with
+  // it. Excluding the term instead means it cannot drift again.
+
+  function undated(): DiscoveredSource {
+    const item = createItem();
+    delete (item as { publishedAt?: string }).publishedAt;
+    return item;
+  }
+
+  it('no longer ties a genuinely fresh source', () => {
+    // The concrete regression: before this, both scored 0.28.
+    const fresh = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(365) }), 'test');
+    const unknown = scoreDiscoveredItem(undated(), 'test');
+
+    expect(unknown.composite).toBeLessThan(fresh.composite);
+  });
+
+  it('is scored purely on its measured dimensions', () => {
+    // Recency excluded and the remaining weights renormalised, so the missing
+    // term contributes nothing in either direction.
+    const unknown = scoreDiscoveredItem(undated(), 'test');
+    const measuredOnly =
+      (0.35 * unknown.relevance + 0.25 * unknown.impact + 0.2 * unknown.reproducibility) / 0.8;
+
+    expect(Math.abs(unknown.composite - measuredOnly)).toBeLessThan(0.02);
+  });
+
+  it('is not punished for the missing date either', () => {
+    // The pair. Absence of a date is not evidence of freshness, and it is not
+    // evidence of staleness — an undated source must still outrank one known
+    // to be twenty years old.
+    const ancient = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(20 * 365) }), 'test');
+    const unknown = scoreDiscoveredItem(undated(), 'test');
+
+    expect(unknown.composite).toBeGreaterThan(ancient.composite);
+  });
+
+  it('leaves a dated source scored over all four dimensions', () => {
+    // The other pair: renormalising unconditionally would inflate every score.
+    const dated = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(365) }), 'test');
+    const allFour =
+      0.35 * dated.relevance +
+      0.25 * dated.impact +
+      0.2 * dated.recency +
+      0.2 * dated.reproducibility;
+
+    expect(Math.abs(dated.composite - allFour)).toBeLessThan(0.02);
+  });
+
+  it('reports recencyMeasured so a consumer can tell the two apart', () => {
+    // The flag existed since #4841 with no reader anywhere. The composite is
+    // now its first consumer; this pins that it still says which case it was.
+    expect(scoreDiscoveredItem(undated(), 'test').recencyMeasured).toBe(false);
+    expect(
+      scoreDiscoveredItem(createItem({ publishedAt: daysAgo(365) }), 'test').recencyMeasured
+    ).toBe(true);
+  });
+});

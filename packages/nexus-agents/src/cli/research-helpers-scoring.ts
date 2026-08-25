@@ -135,6 +135,39 @@ function scoreReproducibility(source: string): number {
  * @param topic - The search topic for relevance scoring
  * @returns Quality score breakdown and composite
  */
+/**
+ * Weighted composite, with an UNMEASURED recency excluded rather than defaulted.
+ *
+ * `NEUTRAL_RECENCY` is 0.5, which was mid-range under the old linear curve but
+ * is the two-year point under exponential decay — so scoring an undated source
+ * at 0.5 made it beat a real three-year-old source by 0.075 composite, above
+ * the resolution of the 0.6 review gate. Absence of a publication date is not
+ * evidence of freshness, and it must not be evidence of staleness either
+ * (#4956).
+ *
+ * Excluding the term and renormalising the rest is the same treatment the
+ * unmeasured-token and unscored-step aggregates get: judge on what was
+ * measured, over the weight that was measured.
+ */
+function compositeOf(parts: {
+  relevance: number;
+  impact: number;
+  recency: { value: number; measured: boolean };
+  reproducibility: number;
+}): number {
+  const measuredWeight =
+    WEIGHTS.relevance +
+    WEIGHTS.impact +
+    WEIGHTS.reproducibility +
+    (parts.recency.measured ? WEIGHTS.recency : 0);
+  const weighted =
+    WEIGHTS.relevance * parts.relevance +
+    WEIGHTS.impact * parts.impact +
+    WEIGHTS.reproducibility * parts.reproducibility +
+    (parts.recency.measured ? WEIGHTS.recency * parts.recency.value : 0);
+  return weighted / measuredWeight;
+}
+
 export function scoreDiscoveredItem(item: DiscoveredSource, topic: string): QualityScore {
   const relevance =
     topic !== '' ? scoreRelevance(item.title, topic) : relevanceLabelToScore(item.relevance);
@@ -142,11 +175,7 @@ export function scoreDiscoveredItem(item: DiscoveredSource, topic: string): Qual
   const recency = scoreRecency(item.publishedAt);
   const reproducibility = scoreReproducibility(item.source);
 
-  const composite =
-    WEIGHTS.relevance * relevance +
-    WEIGHTS.impact * impact +
-    WEIGHTS.recency * recency.value +
-    WEIGHTS.reproducibility * reproducibility;
+  const composite = compositeOf({ relevance, impact, recency, reproducibility });
 
   return {
     relevance: Math.round(relevance * 100) / 100,
