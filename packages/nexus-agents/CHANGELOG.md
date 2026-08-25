@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 4.3.2
+
+### Patch Changes
+
+- [#4820](https://github.com/nexus-substrate/nexus-agents/pull/4820) [`95bac80`](https://github.com/nexus-substrate/nexus-agents/commit/95bac800329275f3d3c3a0519e7a6b52f7bb8644) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop advertising higher_order as a correlation-aware verdict
+
+  The `consensus_vote` tool description told callers that `higher_order` provides
+  "Bayesian-optimal aggregation with correlation awareness". It does not decide
+  the verdict that way. `OWVoting.calculateOutcome` — the `IVotingStrategy` the
+  `ConsensusEngine` calls — runs `aggregateSimpleInternal` and discards weights,
+  so approve/reject is a simple tally and correlated voters each carry full
+  independent weight.
+
+  The Bayesian analysis is real and does run, but its `posteriorApproval` reaches
+  only contrarian escalation, never the verdict.
+
+  Corrects the tool description, the module docstring, and three docs that
+  repeated the claim. No behaviour change — the aggregation itself is unchanged,
+  and whether to wire it into the verdict is [#4701](https://github.com/nexus-substrate/nexus-agents/issues/4701).
+
 ## 4.3.1
 
 ### Patch Changes
