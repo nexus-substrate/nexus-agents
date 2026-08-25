@@ -22,6 +22,51 @@ import type { ExpertValidationResult, ValidationFinding } from './release-valida
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import { anyOf } from '../utils/verdict-aggregation.js';
 
+/** Outcome of the recent-commit secret scan: it either ran, or it did not. */
+export type SecretScanResult =
+  | { readonly ok: true; readonly matches: readonly string[] }
+  | { readonly ok: false; readonly reason: string };
+
+/** Options for {@link scanRecentCommitsForSecrets}; both exist for testing. */
+export interface SecretScanOptions {
+  readonly cwd?: string;
+  readonly range?: string;
+}
+
+const SECRET_LINE_PATTERN = /api[_-]?key|secret|password|token/i;
+const MAX_REPORTED_MATCHES = 5;
+
+/**
+ * Scan recent commits for secret-like tokens, distinguishing "scanned, nothing
+ * found" from "did not scan".
+ *
+ * This runs `git diff` on its own and filters in JS. It previously piped git
+ * through `grep | head`, and a shell pipeline's exit status is its *last*
+ * command's: `head` succeeds essentially always, so a git failure — a shallow
+ * clone, or any branch with fewer than ten commits — exited 0 with empty
+ * output and was indistinguishable from a clean tree (#4839).
+ */
+export function scanRecentCommitsForSecrets(options: SecretScanOptions = {}): SecretScanResult {
+  const range = options.range ?? 'HEAD~10..HEAD';
+  let diff: string;
+  try {
+    diff = execSync(`git diff ${range} -- "*.ts" "*.js"`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    });
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+
+  const matches = diff
+    .split('\n')
+    .filter((line) => SECRET_LINE_PATTERN.test(line))
+    .slice(0, MAX_REPORTED_MATCHES);
+  return { ok: true, matches };
+}
+
 /** Options passed to each expert validator. */
 export interface ValidatorOptions {
   readonly version: string;
@@ -65,42 +110,30 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
   }
 
   // Check for hardcoded secrets patterns
-  try {
-    const result = execSync(
-      'git diff HEAD~10..HEAD -- "*.ts" "*.js" | grep -iE "(api[_-]?key|secret|password|token)" | head -5',
-      {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
-      }
-    );
-    if (result.trim()) {
-      findings.push({
-        severity: 'warning',
-        category: 'security',
-        title: 'Potential secrets in recent commits',
-        description: 'Recent commits may contain hardcoded secrets.',
-        remediation: 'Review commits for any exposed credentials.',
-      });
-    }
-  } catch {
-    // The pipeline ends in `head`, so grep finding nothing still exits 0 —
-    // reaching this catch means the scan itself failed (git error, timeout),
-    // not that the tree is clean. Record the gap instead of inheriting a pass
-    // from an empty finding list (#4581).
+  const scan = scanRecentCommitsForSecrets();
+  if (!scan.ok) {
     findings.push({
       severity: 'warning',
       category: 'security',
       title: 'Secret scan did not run',
-      description: 'The hardcoded-secret scan over recent commits failed to execute.',
+      description: `The hardcoded-secret scan over recent commits failed to execute: ${scan.reason}`,
       remediation: 'Re-run with a full git history available, then review the output.',
+    });
+  } else if (scan.matches.length > 0) {
+    findings.push({
+      severity: 'warning',
+      category: 'security',
+      title: 'Potential secrets in recent commits',
+      description: 'Recent commits may contain hardcoded secrets.',
+      remediation: 'Review commits for any exposed credentials.',
     });
   }
 
   return {
     expert: 'security',
-    // whenEmpty = false: with the failure above recorded as a finding, an empty
-    // list now genuinely means "scanned, nothing found" (#4581).
+    // whenEmpty = false: an empty list genuinely means "scanned, nothing
+    // found" — every check above records a finding when it cannot run, which
+    // for the secret scan required #4839 as well as #4581.
     passed: !anyOf(findings, (f) => f.severity === 'error', false),
     confidence: 0.85,
     findings,
