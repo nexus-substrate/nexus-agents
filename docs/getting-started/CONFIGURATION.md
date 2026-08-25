@@ -168,6 +168,14 @@ logging:
 
 All configuration can be overridden with environment variables:
 
+**Every `NEXUS_*` variable is validated at startup** against
+`packages/nexus-agents/src/config/env-schema.ts`. A name the schema does not
+recognize is reported as unknown, with a typo suggestion — including a name
+that is correct and documented here but absent from the schema, which is how
+`NEXUS_DATA_DIR` came to be flagged (#4722). A variable added to this document
+must be added to the schema in the same change, and a test now cross-checks the
+two lists so they cannot drift apart again.
+
 ### Core Variables
 
 | Variable                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default                   |
