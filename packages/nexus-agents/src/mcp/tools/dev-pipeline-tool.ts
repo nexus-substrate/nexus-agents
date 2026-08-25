@@ -253,9 +253,16 @@ async function createStages(
  */
 export async function runDevPipelineForGoal(
   goal: string,
-  trustTier?: string
+  trustTier?: string,
+  dryRun?: boolean
 ): Promise<DevPipelineResult> {
-  const input = DevPipelineInputSchema.parse({ task: goal });
+  // #4806: `dryRun` is the one pipeline option `run` forwards. `mode` and
+  // `qualityGate` stay pipeline-specific vocabulary — a caller who wants those
+  // has already decided on the strategy and should call `run_dev_pipeline`.
+  const input = DevPipelineInputSchema.parse({
+    task: goal,
+    ...(dryRun !== undefined ? { dryRun } : {}),
+  });
   const stages = await createStages(input, trustTier);
   // #3712: thread the caller's real content-provenance trust tier into the
   // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
