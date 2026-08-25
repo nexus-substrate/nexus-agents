@@ -111,7 +111,7 @@ function ensureDir(
 }
 
 /** What `doctor --fix` should report after asking setup to create data dirs. */
-export interface DataDirFixOutcome {
+interface DataDirFixOutcome {
   /** Operator-facing line. */
   readonly line: string;
   /** Whether this counts toward "N issue(s) fixed". */
