@@ -10,10 +10,19 @@
  * Being advisory is a legitimate choice. Being advisory by accident is not.
  * This test forces a new job to declare which it is.
  *
+ * SCOPE — read this before trusting a green run (#4802). This file covers
+ * `ci.yml` ONLY. Ten other workflows also run on pull requests, and because
+ * `CI Success` aggregates `ci.yml` alone, every one of their jobs is advisory
+ * too — including `governor-ratification` and the gitleaks `secrets-scan`.
+ * That is a real hole, but it is not one a `needs:` entry can close: those jobs
+ * would have to be added to branch protection's required contexts directly.
+ * Tracked in #4802 as an owner decision. A green run here means "ci.yml is
+ * classified", never "every PR gate can block".
+ *
  * @module scripts/ci-required-jobs.test
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 
@@ -48,7 +57,7 @@ describe('CI required-job wiring', () => {
     expect(gateScript).toContain('needs.');
   });
 
-  it('classifies every job as either required or explicitly advisory', () => {
+  it('classifies every job in ci.yml as either required or explicitly advisory', () => {
     const unclassified = Object.keys(ci.jobs).filter(
       (job) => job !== 'ci-success' && !required.has(job) && !ADVISORY_JOBS.has(job)
     );
@@ -68,6 +77,41 @@ describe('CI required-job wiring', () => {
     expect(
       unchecked,
       `In ci-success.needs but never checked in the gate script, so a failure is awaited and then ignored: ${unchecked.join(', ')}`
+    ).toEqual([]);
+  });
+
+  it('names the other PR workflows whose jobs this file does not govern', () => {
+    // Guard against a false sense of coverage (#4802). If a new PR-triggered
+    // workflow appears, this fails and forces the author to decide whether its
+    // jobs need to be required contexts — the question `ci-success.needs`
+    // cannot answer for a job in another file.
+    const known = new Set([
+      'ci.yml',
+      'benchmark-extraction-gate.yml',
+      'codeql.yml',
+      'docs-check.yml',
+      'governor-review.yml',
+      'link-check.yml',
+      'npm-verify.yml',
+      'pr-review.yml',
+      'self-dogfood.yml',
+      'semgrep.yml',
+      'verify-review.yml',
+    ]);
+    const dir = join(process.cwd(), '.github', 'workflows');
+    const prTriggered = readdirSync(dir)
+      .filter((f) => f.endsWith('.yml'))
+      .filter((f) => {
+        const wf = parse(readFileSync(join(dir, f), 'utf8')) as { on?: unknown; true?: unknown };
+        // `on:` parses as the boolean `true` in YAML 1.1.
+        const on = (wf.true ?? wf.on) as Record<string, unknown> | undefined;
+        return typeof on === 'object' && on !== null && 'pull_request' in on;
+      });
+
+    expect(prTriggered.length).toBeGreaterThan(1);
+    expect(
+      prTriggered.filter((f) => !known.has(f)),
+      'New PR-triggered workflow: decide whether its jobs must be required contexts (#4802), then add it here'
     ).toEqual([]);
   });
 
