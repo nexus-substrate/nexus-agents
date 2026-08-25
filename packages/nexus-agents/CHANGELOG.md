@@ -1,5 +1,80 @@
 # nexus-agents
 
+## 4.1.3
+
+### Patch Changes
+
+- [#4788](https://github.com/nexus-substrate/nexus-agents/pull/4788) [`228785f`](https://github.com/nexus-substrate/nexus-agents/commit/228785fc84a01de9aa1fbb8aaddcd1c6d78cebe9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - report how much of the audit log verify_audit_chain could not read
+
+  `loadAuditEvents` dropped unreadable files and unparseable/schema-invalid lines
+  with nothing but a `logger.warn`, and the response carried only `eventCount` —
+  the number of events that _parsed_, not the size of the log. A verdict computed
+  over 60 of 100 lines was reported identically to one computed over all 100.
+
+  Counts the skips and surfaces them as `skippedLines` / `unreadableFiles`,
+  omitted when zero so absence means full coverage rather than "unreported".
+  Resilient reading stays the policy; the caller is now told what it cost.
+
+  Fixes [#4787](https://github.com/nexus-substrate/nexus-agents/issues/4787).
+
+- [#4778](https://github.com/nexus-substrate/nexus-agents/pull/4778) [`7711a2c`](https://github.com/nexus-substrate/nexus-agents/commit/7711a2c2f063684b1e88cde588b5afccb629213d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(config): pin what the audit default actually does
+
+  `SecurityConfigSchema` declares `audit.enabled: z.boolean().default(true)` and
+  its JSDoc says "default: true", but the enclosing `audit` object is `.optional()`
+  — so a config with no audit block parses to `audit: undefined`, the inner
+  default never fires, and `initializeAuditLogger` treats it as disabled.
+
+  The existing test parses `{ audit: {} }`, supplying a key a real deployment never
+  writes, so it asserts the declared intent rather than the production result.
+
+  Adds a sibling that parses `{}` and pins the actual shape, and a comment on the
+  original explaining what it does and does not cover. Characterization only — no
+  behaviour change, and deliberately not an endorsement of either resolution in
+  [#4768](https://github.com/nexus-substrate/nexus-agents/issues/4768).
+
+  Useful for whoever implements that fix: making the default real (`.default(() =>
+({}))`) fails BOTH this new test and `parses valid security config with
+defaults`, so the change is one line with two deliberate test updates.
+
+- [#4781](https://github.com/nexus-substrate/nexus-agents/pull/4781) [`9696752`](https://github.com/nexus-substrate/nexus-agents/commit/9696752a31fa35bf329a69235e77fbe3c24d9ab8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - pin the "a scope is not a measurement" fix with a test that fails on revert
+
+  [#4758](https://github.com/nexus-substrate/nexus-agents/issues/4758) removed the [#4752](https://github.com/nexus-substrate/nexus-agents/issues/4752) regression where opening a heartbeat scope marked the
+  session measured, so every scoped expert task over 120s logged a false stall.
+  Nothing pinned it: restoring the pre-fix `heartbeat-monitor.ts` wholesale left
+  all 34 tests green, because every touched test calls `heartbeat()` (satisfying
+  both predicates) and the one zero-heartbeat test never enters a scope.
+
+  Adds the missing case — scope opened, no step emitted, clock advanced past the
+  stalled threshold — which is the only test that goes red on that revert. Also
+  drops a comment still instructing callers to use `markInstrumented`, removed in
+  [#4758](https://github.com/nexus-substrate/nexus-agents/issues/4758).
+
+- [#4792](https://github.com/nexus-substrate/nexus-agents/pull/4792) [`2c2493a`](https://github.com/nexus-substrate/nexus-agents/commit/2c2493a8db606e42f6a310ed37c410411b826ff3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - say why the dev pipeline did not complete on the `run` path, and keep the result
+
+  Every non-completion reaching `run` collapsed to "the dev pipeline did not
+  complete", and `exec.result` was discarded — so a caller could not tell a
+  security gate that REJECTED the change from one that never ran, which is the
+  distinction [#4772](https://github.com/nexus-substrate/nexus-agents/issues/4772)/[#4783](https://github.com/nexus-substrate/nexus-agents/issues/4783) added `securityRan` to provide.
+
+  The message now names the reason (empty plan, security rejected, stopped before
+  the gate) and the engine's result travels in the error envelope's `detail`.
+  `securityRan` is read as three-valued: absent means a producer predating the
+  field, not `false`, so the generic message stands rather than claiming a reason
+  we do not have.
+
+  Fixes [#4789](https://github.com/nexus-substrate/nexus-agents/issues/4789).
+
+- [#4783](https://github.com/nexus-substrate/nexus-agents/pull/4783) [`efcea8c`](https://github.com/nexus-substrate/nexus-agents/commit/efcea8cb1ee302545bc523d8875d8913d0fecb42) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - report securityRan on every dev-pipeline return, not just dry runs
+
+  [#4774](https://github.com/nexus-substrate/nexus-agents/issues/4774) added `securityRan` so a caller could tell a failed security review from
+  one that never executed, but only assigned it in `buildDryRunResult`. On the
+  paths that actually ship code — harness mode, a red quality gate in `blocking`
+  mode, and the normal post-scan return — the field was absent, so a real security
+  rejection stayed byte-identical to a run where the gate never ran.
+
+  Sets it on all three: `false` where the run stops before the scan, `true` after
+  the scan executes. Fixes [#4782](https://github.com/nexus-substrate/nexus-agents/issues/4782).
+
 ## 4.1.2
 
 ### Patch Changes
