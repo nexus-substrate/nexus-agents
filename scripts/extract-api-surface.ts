@@ -55,7 +55,7 @@ interface SurfaceEntry {
  * which is no better than one that never fires.
  */
 function normalizeTypeText(text: string): string {
-  return (
+  return sortTypeMembers(
     text
       .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
       // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
@@ -66,6 +66,65 @@ function normalizeTypeText(text: string): string {
       .replace(/\s*\n\s*/g, ' ')
       .trim()
   );
+}
+
+/**
+ * Sorts the members inside every `{ ... }` group of a printed type.
+ *
+ * TypeScript's type printer does not guarantee member ORDER for inferred
+ * object/enum types, and the order shifts with unrelated edits: adding two
+ * fields to `DevPipelineResult` reordered
+ * `z.ZodEnum<{ error; partial; empty }>` to `{ error; empty; partial }` in a
+ * completely different module. Same members, different text, spurious diff.
+ *
+ * That is the "gate that always fails" direction — a checker crying wolf on
+ * untouched code teaches people to regenerate the snapshot without reading it,
+ * which is worse than having no gate. Sorting makes the rendering canonical so
+ * only real membership changes show.
+ */
+/** Index of the brace matching the one at `open`, or -1. */
+function matchingBrace(text: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** Splits on `;` that are not inside a nested group. */
+function splitTopLevel(inner: string): string[] {
+  const OPENERS = '{(<[';
+  const CLOSERS = '})>]';
+  const out: string[] = [];
+  let buf = '';
+  let nest = 0;
+  for (const ch of inner) {
+    if (OPENERS.includes(ch)) nest++;
+    else if (CLOSERS.includes(ch)) nest--;
+    if (ch === ';' && nest === 0) {
+      out.push(buf.trim());
+      buf = '';
+    } else {
+      buf += ch;
+    }
+  }
+  out.push(buf.trim());
+  return out.filter((m) => m !== '');
+}
+
+function sortTypeMembers(text: string): string {
+  const open = text.indexOf('{');
+  if (open === -1) return text;
+  const close = matchingBrace(text, open);
+  if (close === -1) return text;
+
+  const sorted = splitTopLevel(text.slice(open + 1, close))
+    .map(sortTypeMembers)
+    .sort((a, b) => a.localeCompare(b));
+
+  const body = sorted.length > 0 ? ` ${sorted.join('; ')}; ` : ' ';
+  return `${text.slice(0, open + 1)}${body}${sortTypeMembers(text.slice(close))}`;
 }
 
 function propertyLines(node: Node): string[] {

@@ -610,7 +610,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         durationMs: r.durationMs,
       });
       await postProgress(config, 'Plan', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
-      return r.text || prompt;
+      // #4772: do NOT fall back to `prompt`. Returning the input as the output
+      // made a failed planner indistinguishable from a successful one — the
+      // vote, and then decompose, ran against the prompt text as if it were a
+      // plan. `runExpert` already returns `{ success: false, text: '' }` on
+      // failure, so the empty string carries the signal; `planVoteLoop` stops
+      // on it rather than voting on nothing.
+      return r.text;
     },
 
     vote: async (plan, research) => {

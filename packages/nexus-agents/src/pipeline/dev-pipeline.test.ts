@@ -239,6 +239,24 @@ describe('runDevPipeline', () => {
     expect(planCalls[1]?.[2]).toBe('Add retry logic'); // Second call: has feedback
   });
 
+  // #4772: found by running the same dry run twice — one planned well, one's
+  // planner returned nothing, and both produced identical result envelopes. The
+  // plan stage used to substitute the PROMPT when the model returned empty, so
+  // the vote (and then decompose) ran against the input text as if it were a plan.
+  it('reports planStatus empty when the planner returns nothing, and does not vote', async () => {
+    const stages = createMockStages({
+      plan: vi.fn().mockResolvedValue(''),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+
+    expect(result.planStatus).toBe('empty');
+    expect(result.plan).toBe('');
+    // Voting on an empty plan wastes a panel and yields a verdict about no
+    // proposal — the loop must stop before it.
+    expect(stages.vote).not.toHaveBeenCalled();
+  });
+
   it('stops after plan+vote in dryRun mode (#1717)', async () => {
     const stages = createMockStages();
     const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
@@ -248,6 +266,11 @@ describe('runDevPipeline', () => {
     expect(result.tasks).toHaveLength(0);
     expect(result.qaIterations).toBe(0);
     expect(result.securityPassed).toBe(false);
+    // #4772: `securityPassed: false` here means the gate never ran, not that it
+    // rejected. Without this the two are indistinguishable to a caller.
+    expect(result.securityRan).toBe(false);
+    // A real plan came back, so no failure marker.
+    expect(result.planStatus).toBeUndefined();
     // Should NOT have called decompose, implement, qa, or security
     expect(stages.decompose).not.toHaveBeenCalled();
     expect(stages.implement).not.toHaveBeenCalled();
