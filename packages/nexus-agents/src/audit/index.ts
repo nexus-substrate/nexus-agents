@@ -52,9 +52,10 @@ export {
   AuditLogger,
   createAuditLogger,
   verifyChain,
+  withCoverage,
   extractTierTransition,
 } from './audit-logger.js';
-export type { ChainVerification } from './audit-logger.js';
+export type { ChainVerification, ChainCoverage } from './audit-logger.js';
 
 // Storage
 export { FileAuditStorage, InMemoryAuditStorage } from './audit-storage.js';

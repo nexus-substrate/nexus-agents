@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as crypto from 'node:crypto';
-import { verifyChain } from './audit-logger.js';
+import { verifyChain, withCoverage } from './audit-logger.js';
 import type { AuditEvent } from './audit-types.js';
 
 function realHash(event: AuditEvent): string {
@@ -248,5 +248,65 @@ describe('front-truncation is detected (#4703)', () => {
         expect(r.eventCount).toBe(3);
       }
     });
+  });
+});
+
+// ============================================================================
+// Coverage travels with the verdict (#4805, panel Option A 4-1)
+// ============================================================================
+
+describe('withCoverage (#4805)', () => {
+  it('states full coverage positively rather than by omission', () => {
+    // `skipped: 0` is a claim. An absent `coverage` is not the same claim —
+    // that distinction is the entire point of the field.
+    const r = withCoverage(verifyChain(chain(3)), { skipped: 0, unreadableFiles: 0 });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.coverage).toEqual({ skipped: 0, unreadableFiles: 0 });
+  });
+
+  it('carries a partial read on the verdict, not only beside it', () => {
+    // The reported case: the tool already published `skippedLines` as a sibling
+    // field, but `ChainVerification` is what gets serialized and passed on
+    // without its siblings.
+    const r = withCoverage(verifyChain(chain(3)), { skipped: 2, unreadableFiles: 1 });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.coverage).toEqual({ skipped: 2, unreadableFiles: 1 });
+  });
+
+  it('leaves coverage absent when nobody stated it', () => {
+    // `verifyChain` receives only events, so it cannot know. Absent must mean
+    // UNKNOWN — defaulting it to zero would manufacture the assurance this
+    // field exists to stop manufacturing.
+    const r = verifyChain(chain(3));
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.coverage).toBeUndefined();
+  });
+
+  it('does not overload notVerified, which is a different axis', () => {
+    // `notVerified` means nothing was verified. A partial read verified real
+    // links, just not all of them — conflating them would break the meaning
+    // #4768/#4660 gave that field.
+    const r = withCoverage(verifyChain(chain(3)), { skipped: 2, unreadableFiles: 0 });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.notVerified).toBeUndefined();
+  });
+
+  it('leaves a failing verdict untouched', () => {
+    // A detected break names an event index; coverage does not qualify it, and
+    // spreading onto the failure shape would invent fields on it.
+    const broken = chain(3);
+    broken[1] = { ...broken[1]!, hash: 'tampered' };
+    const r = withCoverage(verifyChain(broken), { skipped: 5, unreadableFiles: 0 });
+
+    expect(r.ok).toBe(false);
+    expect(r).not.toHaveProperty('coverage');
   });
 });
