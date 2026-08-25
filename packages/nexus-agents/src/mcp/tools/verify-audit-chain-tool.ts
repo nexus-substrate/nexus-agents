@@ -49,6 +49,17 @@ export interface VerifyAuditChainResponse {
   readonly logDir: string;
   readonly fileCount: number;
   readonly eventCount: number;
+  /**
+   * Lines the loader could not turn into an event (#4787).
+   *
+   * `eventCount` counts what parsed, not what the log contained, so a verdict
+   * over a partially-read log used to be reported identically to one over the
+   * whole thing. Omitted when zero: absent means full coverage, a number means
+   * the verdict below covers `eventCount` of `eventCount + skippedLines` lines.
+   */
+  readonly skippedLines?: number;
+  /** Files that could not be opened at all (#4787). Omitted when zero. */
+  readonly unreadableFiles?: number;
   readonly verification: ChainVerification;
 }
 
@@ -58,16 +69,28 @@ export type VerifyAuditChainDeps = BaseMcpToolDeps;
  * Read all audit-prefixed JSONL log files from `dir` in lexicographic order
  * and parse each line into an AuditEvent. Malformed lines are skipped with a
  * warning (matches the read-resilience policy in structured-task-state.ts).
+ *
+ * Skips are COUNTED as well as logged (#4787). Resilient reading is the right
+ * policy for an audit reader — one corrupt line should not blind the verifier
+ * to the rest — but the caller has to be told how much was dropped, or a
+ * partial verdict is indistinguishable from a complete one.
  */
 async function loadAuditEvents(
   dir: string,
   logger: HandlerContext['logger']
-): Promise<{ events: AuditEvent[]; fileCount: number }> {
+): Promise<{
+  events: AuditEvent[];
+  fileCount: number;
+  skippedLines: number;
+  unreadableFiles: number;
+}> {
   const entries = await fs.readdir(dir);
   const auditFiles = entries
     .filter((name) => name.startsWith('audit-') && name.endsWith('.jsonl'))
     .sort();
   const events: AuditEvent[] = [];
+  let skippedLines = 0;
+  let unreadableFiles = 0;
   for (const filename of auditFiles) {
     const fullPath = path.join(dir, filename);
     let content: string;
@@ -76,6 +99,7 @@ async function loadAuditEvents(
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause);
       logger.warn('Skipping unreadable audit log file', { filename, error: msg });
+      unreadableFiles++;
       continue;
     }
     for (const line of content.split('\n')) {
@@ -90,14 +114,16 @@ async function loadAuditEvents(
             filename,
             error: validated.error.message,
           });
+          skippedLines++;
         }
       } catch (cause) {
         const msg = cause instanceof Error ? cause.message : String(cause);
         logger.warn('Skipping unparseable audit event', { filename, error: msg });
+        skippedLines++;
       }
     }
   }
-  return { events, fileCount: auditFiles.length };
+  return { events, fileCount: auditFiles.length, skippedLines, unreadableFiles };
 }
 
 async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
@@ -127,13 +153,19 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
     });
   }
 
-  const { events, fileCount } = await loadAuditEvents(resolvedDir, ctx.logger);
+  const { events, fileCount, skippedLines, unreadableFiles } = await loadAuditEvents(
+    resolvedDir,
+    ctx.logger
+  );
   const verification = verifyChain(events);
 
+  // Omitted when zero so absence means full coverage rather than "unreported".
   const response: VerifyAuditChainResponse = {
     logDir: resolvedDir,
     fileCount,
     eventCount: events.length,
+    ...(skippedLines > 0 ? { skippedLines } : {}),
+    ...(unreadableFiles > 0 ? { unreadableFiles } : {}),
     verification,
   };
   return toolSuccess(JSON.stringify(response, null, 2));
@@ -158,7 +190,9 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
     'and runs `verifyChain()` to detect tampering. Returns a structured ' +
     'result with eventCount, fileCount, and one of three tamper signals if ' +
     'detected (hash_mismatch, previous_hash_mismatch, missing_hash). ' +
-    'Read-only — never writes or deletes events.';
+    'Reports skippedLines/unreadableFiles when part of the log could not be ' +
+    'read, so a verdict over a partial log is never mistaken for a complete ' +
+    'one. Read-only — never writes or deletes events.';
 
   const secureHandler = createSecureHandler(handler, {
     toolName: 'verify_audit_chain',
