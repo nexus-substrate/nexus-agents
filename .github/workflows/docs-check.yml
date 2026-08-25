@@ -819,3 +819,73 @@ jobs:
           else
             echo "✅ No spelling issues found"
           fi
+
+  # ==========================================================================
+  # Aggregate verdict (#4809)
+  # ==========================================================================
+  docs-success:
+    name: Docs Success
+    # This workflow had twenty jobs and no aggregator, so none of them could
+    # block a merge: branch protection requires named contexts, and there was
+    # no single context expressing "the documentation gate passed". #4808
+    # drifted docs/reference/tools/run.md, `Tool Reference Drift` went red, and
+    # only a duplicate assertion inside the required `Script Tests` job stopped
+    # the merge.
+    #
+    # NOT BLOCKING BY ITSELF. Adding "Docs Success" to branch protection's
+    # required contexts is owner work, tracked in #4802. What this job does
+    # today is collapse twenty scattered results into one honest verdict, and
+    # scripts/ci-required-jobs.test.ts keeps its `needs` list complete so the
+    # context is correct the moment protection starts requiring it.
+    #
+    # docs-coverage and spell-check are excluded deliberately: both carry
+    # continue-on-error, so requiring them would be a gate that cannot fail.
+    needs:
+      - typedoc-check
+      - schema-fanout
+      - secrets-scan
+      - repo-index
+      - tool-reference-drift
+      - strategy-reference-drift
+      - docops-skill-sync
+      - registry-coverage
+      - mcp-description-drift
+      - orphan-detection
+      - canonical-index
+      - harness-alignment
+      - markdown-lint
+      - docs-content-drift
+      - skills-index-check
+      - agents-index-check
+      - governance-drift
+      - claims-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Check required jobs
+        run: |
+          # A skipped job counts as a pass: the push trigger is path-filtered, so
+          # jobs legitimately skip on unrelated changes.
+          if [[ "${{ needs.typedoc-check.result }}" != "success" && "${{ needs.typedoc-check.result }}" != "skipped" ]] || \
+             [[ "${{ needs.schema-fanout.result }}" != "success" && "${{ needs.schema-fanout.result }}" != "skipped" ]] || \
+             [[ "${{ needs.secrets-scan.result }}" != "success" && "${{ needs.secrets-scan.result }}" != "skipped" ]] || \
+             [[ "${{ needs.repo-index.result }}" != "success" && "${{ needs.repo-index.result }}" != "skipped" ]] || \
+             [[ "${{ needs.tool-reference-drift.result }}" != "success" && "${{ needs.tool-reference-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.strategy-reference-drift.result }}" != "success" && "${{ needs.strategy-reference-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.docops-skill-sync.result }}" != "success" && "${{ needs.docops-skill-sync.result }}" != "skipped" ]] || \
+             [[ "${{ needs.registry-coverage.result }}" != "success" && "${{ needs.registry-coverage.result }}" != "skipped" ]] || \
+             [[ "${{ needs.mcp-description-drift.result }}" != "success" && "${{ needs.mcp-description-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.orphan-detection.result }}" != "success" && "${{ needs.orphan-detection.result }}" != "skipped" ]] || \
+             [[ "${{ needs.canonical-index.result }}" != "success" && "${{ needs.canonical-index.result }}" != "skipped" ]] || \
+             [[ "${{ needs.harness-alignment.result }}" != "success" && "${{ needs.harness-alignment.result }}" != "skipped" ]] || \
+             [[ "${{ needs.markdown-lint.result }}" != "success" && "${{ needs.markdown-lint.result }}" != "skipped" ]] || \
+             [[ "${{ needs.docs-content-drift.result }}" != "success" && "${{ needs.docs-content-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.skills-index-check.result }}" != "success" && "${{ needs.skills-index-check.result }}" != "skipped" ]] || \
+             [[ "${{ needs.agents-index-check.result }}" != "success" && "${{ needs.agents-index-check.result }}" != "skipped" ]] || \
+             [[ "${{ needs.governance-drift.result }}" != "success" && "${{ needs.governance-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.claims-check.result }}" != "success" && "${{ needs.claims-check.result }}" != "skipped" ]]; then
+            echo "::error::One or more documentation gates failed."
+            exit 1
+          fi
+          echo "All documentation gates passed."
