@@ -81,19 +81,22 @@ describe('routing-audit-logic', () => {
   });
 
   describe('bandit context matches the production builder (#4843)', () => {
-    it('produces the same context the composite router would', async () => {
+    it('is the production builder, not a copy that agrees with it today', async () => {
       // The audit kept its own copy of the builder. #4874 gave the production
       // one an optional real budget figure, and the copy did not follow — so
       // the audit reported a bandit context the router no longer uses. An
       // audit that silently diverges from the thing it audits is worse than
       // no audit.
+      //
+      // This asserts function IDENTITY. The first version of this test called
+      // both and compared outputs, which was vacuous once the audit side
+      // became a one-line delegation: `f(x)` equalling `g(x)` where `f` is
+      // `return g(x)` is true for every input, forever. Identity fails the
+      // moment anyone reintroduces a body here, which is the actual risk.
       const { taskProfileToBanditContext } =
         await import('../cli-adapters/composite-router-helpers.js');
-      const profile = analyzeTaskString('Write a function to sort an array');
 
-      expect(taskProfileToBanditContextFromProfile(profile)).toEqual(
-        taskProfileToBanditContext(profile)
-      );
+      expect(taskProfileToBanditContextFromProfile).toBe(taskProfileToBanditContext);
     });
   });
 

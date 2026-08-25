@@ -61,12 +61,13 @@ export function formatBudgetFilter(result: RoutingAuditResult): string[] {
   // reached the terminal, so this stage rendered identically to the TOPSIS and
   // LinUCB stages beside it, which construct real routers. Say it here, where
   // the reader is.
+  // Two lines, not one: `boxLine` pads to BOX_WIDTH - 2 = 63 and `padEnd`
+  // silently no-ops past that, so the 82-character single line this started as
+  // pushed the right border off the box on every render.
   lines.push(
-    boxLine(
-      color(` Budget Filter (${String(passCount)}/${String(total)} pass):`, ANSI.bold) +
-        color(' [simulated — not evaluated against real cost or config]', ANSI.dim)
-    )
+    boxLine(color(` Budget Filter (${String(passCount)}/${String(total)} pass):`, ANSI.bold))
   );
+  lines.push(boxLine(color('   [simulated — not evaluated against cost or config]', ANSI.dim)));
   for (const br of result.budgetResults) {
     const status = br.withinBudget ? color('✓', ANSI.green) : color('✗', ANSI.red);
     lines.push(boxLine(`   ${status} ${br.cliName.padEnd(8)} - ${br.reason}`));
