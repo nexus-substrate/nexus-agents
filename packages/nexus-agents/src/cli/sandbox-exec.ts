@@ -43,6 +43,18 @@ export interface SandboxExecOptions {
    * `| ( ) ; &` would be rejected by `validateArgs`.
    */
   readonly stdin?: string;
+  /**
+   * Return the child's stdout even when it exits non-zero (#4838).
+   *
+   * Some tools report their *findings* through a non-zero exit code —
+   * `pnpm audit` exits 1 when it finds vulnerabilities, while still writing
+   * the full JSON report to stdout. Without this, the detection path and the
+   * failure path are the same path, and the caller reads a clean result.
+   *
+   * A command that exits non-zero with no output still yields `null`: "ran
+   * and reported something" and "could not run" must stay distinguishable.
+   */
+  readonly allowNonZeroExit?: boolean;
 }
 
 /** Parser state for command string tokenization. */
@@ -142,6 +154,23 @@ export function validateCommandWithPolicy(
 }
 
 /**
+ * Read a child process's stdout off the error thrown by a non-zero exit.
+ *
+ * Returns null when the process produced no output — including when it never
+ * ran at all (ENOENT, policy denial upstream), which is the case the caller
+ * must not mistake for a measurement.
+ */
+function readErrorStdout(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('stdout' in error)) return null;
+  const { stdout } = error;
+  const text =
+    typeof stdout === 'string' ? stdout : Buffer.isBuffer(stdout) ? stdout.toString('utf-8') : null;
+  if (text === null) return null;
+  const trimmed = text.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
  * Execute a command with sandbox policy validation (synchronous).
  *
  * This validates the command against the sandbox policy before execution.
@@ -181,6 +210,13 @@ export function safeExecSandboxed(
     const result = execSync(commandString, execOptions);
     return typeof result === 'string' ? result.trim() : result.toString('utf-8').trim();
   } catch (error) {
+    if (options.allowNonZeroExit === true) {
+      const stdout = readErrorStdout(error);
+      if (stdout !== null) {
+        logger.debug('Command exited non-zero but produced output', { command: commandString });
+        return stdout;
+      }
+    }
     logger.debug('Command execution failed', {
       command: commandString,
       error: getErrorMessage(error),

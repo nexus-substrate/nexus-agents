@@ -508,3 +508,45 @@ describe('system-review', () => {
     });
   });
 });
+
+describe('phase 4 asks for output a non-zero audit still produced (#4838)', () => {
+  // `pnpm audit --json` exits 1 *because* it found vulnerabilities. Without
+  // allowNonZeroExit the JSON is discarded and a vulnerable repo is reported
+  // clean — the failure path and the detection path are the same path.
+  it('passes allowNonZeroExit for the pnpm audit call', () => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecSync.mockReturnValue('');
+
+    runSystemReview();
+
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'pnpm audit --json',
+      expect.objectContaining({ allowNonZeroExit: true })
+    );
+  });
+
+  it('counts vulnerabilities reported through a non-zero exit', () => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecSync.mockImplementation((cmd: string) =>
+      cmd === 'pnpm audit --json'
+        ? JSON.stringify({
+            metadata: { vulnerabilities: { total: 3, high: 2, moderate: 1, low: 0 } },
+          })
+        : ''
+    );
+
+    const result = runSystemReview();
+
+    expect(result.security.high).toBe(2);
+    expect(result.security.parseError).toBe(false);
+  });
+
+  it('marks the audit unmeasured when it produced nothing at all', () => {
+    // The distinction that must survive: an audit that could not run is not
+    // an audit that found nothing.
+    mockExistsSync.mockReturnValue(false);
+    mockExecSync.mockImplementation((cmd: string) => (cmd === 'pnpm audit --json' ? null : ''));
+
+    expect(runSystemReview().security.parseError).toBe(true);
+  });
+});
