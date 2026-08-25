@@ -60,36 +60,71 @@ jobs:
       - name: Build nexus-agents
         run: pnpm build
 
+      # A review needs a model. Without one there is nothing to run, and the
+      # honest report is "not measured" — not a green check (#4919).
+      - name: Detect model credentials
+        id: creds
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Get PR number
         id: pr
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
           else
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Self-Review PR
         id: review
+        if: steps.creds.outputs.available == 'true'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # OAuth-based CLI authentication (no stored API keys)
-          # Requires user to have authenticated via: claude auth, gemini auth, or codex auth
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PR_NUM: ${{ steps.pr.outputs.number }}
+          REPO: ${{ github.repository }}
+          # Bounded read. CLAUDE.md permits reviewing part of a large diff; it
+          # requires the record to say which part.
+          MAX_DIFF_BYTES: '200000'
         run: |
-          PR_NUM="${{ steps.pr.outputs.number }}"
-          echo "📋 Reviewing PR #$PR_NUM using nexus-agents self-dogfooding"
-          echo ""
+          set -uo pipefail
 
-          # Get PR diff for context
-          PR_DIFF=$(gh pr diff "$PR_NUM" --repo "${{ github.repository }}" 2>/dev/null || echo "Could not fetch diff")
-          PR_FILES=$(gh pr view "$PR_NUM" --repo "${{ github.repository }}" --json files -q '.files[].path' 2>/dev/null | head -20)
+          PR_DIFF="$(gh pr diff "$PR_NUM" --repo "$REPO" 2>/dev/null || true)"
+          if [ -z "$PR_DIFF" ]; then
+            echo "::warning::Could not fetch the diff for PR #$PR_NUM — nothing to review."
+            echo "outcome=no_diff" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          # Construct review task
-          TASK="Review PR #$PR_NUM in ${{ github.repository }}.
+          DIFF_BYTES="$(printf '%s' "$PR_DIFF" | wc -c | tr -d ' ')"
+          BOUNDED="$(printf '%s' "$PR_DIFF" | head -c "$MAX_DIFF_BYTES")"
+          if [ "$DIFF_BYTES" -gt "$MAX_DIFF_BYTES" ]; then
+            COVERAGE="first ${MAX_DIFF_BYTES} of ${DIFF_BYTES} bytes"
+          else
+            COVERAGE="all ${DIFF_BYTES} bytes"
+          fi
+          echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"
 
-          Files changed:
-          $PR_FILES
+          # The DIFF is the artifact. Reviewing the file list is reviewing a
+          # description of the change, which CLAUDE.md rules out.
+          TASK="Review this diff from PR #${PR_NUM} in ${REPO}.
+
+          Diff (${COVERAGE}):
+          ${BOUNDED}
 
           Focus on:
           1. Code quality (TypeScript best practices, Result<T,E> pattern)
@@ -100,41 +135,77 @@ jobs:
           Provide findings by severity: critical, high, medium, low, info.
           Reference CLAUDE.md and CODING_STANDARDS.md for project standards."
 
-          # Run orchestrate with dry-run to show routing decision
-          echo "🔄 Routing decision:"
-          npx nexus-agents orchestrate "$TASK" --dry-run --verbose || echo "⚠️ Dry run failed"
+          CLI="packages/nexus-agents/dist/cli.js"
+          if [ ! -f "$CLI" ]; then
+            echo "::error::Built CLI not found at $CLI — the build step did not produce it."
+            echo "outcome=cli_missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          # If CLI is available, execute review
-          echo ""
-          echo "📝 Executing review (if CLI available):"
-          npx nexus-agents orchestrate "$TASK" --format=json > review-result.json 2>&1 || true
-
-          if [ -f review-result.json ] && [ -s review-result.json ]; then
-            cat review-result.json
-            echo "review_available=true" >> $GITHUB_OUTPUT
+          if node "$CLI" orchestrate "$TASK" --format=json > review-result.json 2> review-error.log; then
+            :
           else
-            echo "⚠️ No CLI available for automated review"
-            echo "review_available=false" >> $GITHUB_OUTPUT
+            echo "::warning::orchestrate exited non-zero; review did not complete."
+            sed -n '1,40p' review-error.log
+            echo "outcome=cli_failed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A non-empty file is not evidence of a review: the previous version
+          # redirected stderr into this same file, so an npm resolution error
+          # satisfied its `-s` check and reported a completed review.
+          if node -e "const r=JSON.parse(require('fs').readFileSync('review-result.json','utf8')); if(typeof r!=='object'||r===null) throw new Error('not an object');" 2>/dev/null; then
+            cat review-result.json
+            echo "outcome=reviewed" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::orchestrate succeeded but its output was not valid JSON."
+            sed -n '1,40p' review-result.json
+            echo "outcome=malformed_output" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Post Review Summary
         if: always()
+        env:
+          OUTCOME: ${{ steps.review.outputs.outcome }}
+          COVERAGE: ${{ steps.review.outputs.coverage }}
+          CREDS: ${{ steps.creds.outputs.available }}
+          PR_NUM: ${{ steps.pr.outputs.number }}
         run: |
-          echo "### 🤖 Self-Dogfood Review" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "PR: #${{ steps.pr.outputs.number }}" >> $GITHUB_STEP_SUMMARY
-          echo "Protocol: $NEXUS_PROTOCOL" >> $GITHUB_STEP_SUMMARY
-          echo "Experts: $NEXUS_EXPERTS" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.review.outputs.review_available }}" = "true" ]; then
-            echo "✅ Review completed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Review skipped (no CLI available)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "To enable automated review:" >> $GITHUB_STEP_SUMMARY
-            echo "1. Install and authenticate a CLI: \`claude auth\`, \`gemini auth\`, or \`codex auth\`" >> $GITHUB_STEP_SUMMARY
-            echo "2. Or use \`pnpm review <PR#>\` locally" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "### 🤖 Self-Dogfood Review"
+            echo ""
+            echo "PR: #${PR_NUM}"
+            echo "Protocol: ${NEXUS_PROTOCOL}"
+            echo "Experts: ${NEXUS_EXPERTS}"
+            echo ""
+            case "${OUTCOME:-}" in
+              reviewed)
+                echo "✅ Reviewed — diff read: ${COVERAGE}"
+                ;;
+              no_diff)
+                echo "⚠️ NOT REVIEWED — the diff could not be fetched."
+                ;;
+              cli_missing)
+                echo "⚠️ NOT REVIEWED — the built CLI was missing."
+                ;;
+              cli_failed)
+                echo "⚠️ NOT REVIEWED — orchestrate failed. See the step log."
+                ;;
+              malformed_output)
+                echo "⚠️ NOT REVIEWED — orchestrate returned output this job could not parse."
+                ;;
+              *)
+                if [ "${CREDS}" != "true" ]; then
+                  echo "⚠️ NOT REVIEWED — no model API key is configured, so no review ran."
+                  echo ""
+                  echo "Add one of \`ANTHROPIC_API_KEY\`, \`OPENAI_API_KEY\`, \`GOOGLE_AI_API_KEY\`,"
+                  echo "\`OPENROUTER_API_KEY\` under Settings → Secrets and variables → Actions."
+                else
+                  echo "⚠️ NOT REVIEWED — the review step did not report an outcome."
+                fi
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # #2662 — the dogfood run exercises the agents and accumulates
       # OutcomeStore data; stratify it into a JSON artifact for trend
