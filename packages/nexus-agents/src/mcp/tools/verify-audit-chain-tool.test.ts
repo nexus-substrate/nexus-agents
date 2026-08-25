@@ -12,6 +12,7 @@ import * as crypto from 'node:crypto';
 import type { AuditEvent } from '../../audit/audit-types.js';
 import {
   VerifyAuditChainInputSchema,
+  registerVerifyAuditChainTool,
   type VerifyAuditChainResponse,
 } from './verify-audit-chain-tool.js';
 
@@ -121,6 +122,30 @@ describe('verify_audit_chain handler behavior', () => {
     const result = verifyChain(events);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.eventCount).toBe(3);
+  });
+
+  // #4768: the handler serialises the whole verdict, so the unverified marker
+  // reaches the caller without extra wiring — asserted through the REGISTERED
+  // handler rather than by re-calling verifyChain, because "the field exists"
+  // and "a caller sees it" are different claims.
+  it('surfaces notVerified through the tool response for an empty directory', async () => {
+    type Captured =
+      ((a: unknown, c: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    let captured: Captured;
+    const server = {
+      registerTool: (_n: string, _s: unknown, h: unknown) => {
+        captured = h as Captured;
+      },
+    };
+    registerVerifyAuditChainTool(server as never, {} as never);
+    expect(captured).toBeDefined();
+
+    const res = await captured?.({ logDir: tmpDir }, {});
+    const body = res?.content[0]?.text ?? '';
+
+    // The directory has no audit files in this test, so the verdict must say so.
+    expect(body).toContain('"notVerified"');
+    expect(body).toContain('empty');
   });
 
   it('verifies a clean multi-file chain in lexicographic order', async () => {
