@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 4.15.2
+
+### Patch Changes
+
+- [#4923](https://github.com/nexus-substrate/nexus-agents/pull/4923) [`0d14e4e`](https://github.com/nexus-substrate/nexus-agents/commit/0d14e4ebf1d9573d1f122113527297d01c2a27b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop `vote -t supermajority` silently running a simple-majority vote
+
+  `parseArgs` takes one options object for the whole CLI, so a short letter is
+  global even when the two long options belong to different commands. `-t` was
+  claimed by both `task` and `threshold`; `task` is declared first and won, so
+  `--threshold` was never set from the short form, `resolveStrategy` fell through
+  to its `simple_majority` default, and the summary reported that default as the
+  chosen threshold. No error — `strict: false` makes the misbinding silent.
+
+  `-p` had the same collision between `proposal` and `period`, leaving
+  `learning-metrics -p` unable to set its reporting window.
+
+  Both losers drop their short form and keep the long one; neither was reachable,
+  so nothing that worked before changes. The help entry and its example now show
+  `--threshold`.
+
+  The durable part is a test that walks the options table and asserts no letter
+  is claimed twice — nothing in the type system or the parser objects to a
+  duplicate, so the next one would recur silently.
+
 ## 4.15.1
 
 ### Patch Changes
