@@ -1,5 +1,28 @@
 # nexus-agents
 
+## 4.11.1
+
+### Patch Changes
+
+- [#4878](https://github.com/nexus-substrate/nexus-agents/pull/4878) [`187e8a2`](https://github.com/nexus-substrate/nexus-agents/commit/187e8a24417f08a786489cc968c145806fb62d39) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make doctor --live actually check whether a CLI is installed
+
+  The `installed` rung of the readiness ladder was the literal
+  `{ status: 'verified' }` — the first level of a readiness report asserting
+  itself. Nothing probed PATH.
+
+  It now calls `detectCliBinary`, and a missing binary fails the ladder at
+  `installed` with `authenticated` and `serves` reported `not-attempted`, per the
+  ladder's own rule that a skipped level is never `failed`. That also fixes a
+  misattributed reason: a CLI that was simply absent previously surfaced as
+  "no usable credentials found", because the auth rung was consulted for a
+  binary that does not exist.
+
+  Narrower than [#4840](https://github.com/nexus-substrate/nexus-agents/issues/4840) claimed — the `authenticated` rung was not inventing a pass,
+  and the base `doctor` output already printed a truthful "Not installed" line
+  just above the ladder. Details on the issue.
+
+  Fixes [#4840](https://github.com/nexus-substrate/nexus-agents/issues/4840).
+
 ## 4.11.0
 
 ### Minor Changes
