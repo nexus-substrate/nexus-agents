@@ -280,6 +280,13 @@ function buildStructuredOutput(
     ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
     securityPassed: result.securityPassed,
+    // #4772: these two are what make `completed: false` legible. Without them a
+    // caller cannot tell a failed planner from a successful dry run, or a
+    // security rejection from a gate that never ran — which is the whole point
+    // of the fields. They were added to DevPipelineResult and then not listed
+    // here, so they never reached the MCP surface.
+    ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
+    ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
     voteIterations: result.voteIterations,
     qaIterations: result.qaIterations,
     plan: result.plan,

@@ -321,6 +321,43 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['simulated']).toBe(true);
   });
 
+  // #4772: the fields exist on DevPipelineResult and must reach the MCP
+  // envelope. A live dry run on 4.1.1 showed they did not — the response is
+  // built from an explicit field list, so adding them to the result type was
+  // not enough. "The field exists" and "a caller sees it" are different claims.
+  it('surfaces securityRan and planStatus in the response envelope', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      plan: '',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+      planStatus: 'empty',
+    } as never);
+    const handler = captureHandler();
+
+    const result = await handler({ task: 'Build feature X', dryRun: true }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    // securityPassed:false alone reads as "security rejected this".
+    expect(output['securityPassed']).toBe(false);
+    expect(output['securityRan']).toBe(false);
+    expect(output['planStatus']).toBe('empty');
+  });
+
+  it('omits both fields when the pipeline did not report them', async () => {
+    // Absent means the producer predates the distinction — not false, not 'empty'.
+    const handler = captureHandler();
+
+    const result = await handler({ task: 'Build feature X' }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output).not.toHaveProperty('securityRan');
+    expect(output).not.toHaveProperty('planStatus');
+  });
+
   it('stays allowed inside a test runner with no simulated flag (existing suites unaffected)', async () => {
     // Default vitest env: VITEST=true.
     const handler = captureHandler();
