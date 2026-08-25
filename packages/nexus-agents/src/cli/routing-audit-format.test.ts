@@ -163,11 +163,9 @@ describe('routing-audit-format', () => {
       // the 63-character content area, `padEnd` no-opped, and the right border
       // was pushed off every line of the budget section.
       //
-      // Scoped to this stage. Widening it to the whole report fails on five
-      // pre-existing overflows with a different root cause — `boxLine` pads on
-      // `.length`, which counts ANSI escapes — filed separately as #4913
-      // rather than folded into a regression fix.
-      const output = formatBudgetFilter(mockResult);
+      // Widened to the whole report now that #4913 is fixed: `boxLine` measures
+      // display width, so every caller is covered rather than just this stage.
+      const output = formatAsciiOutput(mockResult, { task: 'test', explain: true }).split('\n');
       const visible = (line: string): string => line.replace(/\u001b\[[0-9;]*m/g, '');
       const overflowing = output
         .filter((line) => visible(line).startsWith('│'))
