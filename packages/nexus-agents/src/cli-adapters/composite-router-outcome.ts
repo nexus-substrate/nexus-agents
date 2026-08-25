@@ -7,7 +7,7 @@ import {
   type ILogger,
   createLogger,
   createSharedTaskAnalyzer,
-  taskAnalysisResultToBanditContext,
+  taskAnalysisResultToTaskProfile,
   getTimeProvider,
 } from '../core/index.js';
 import type { CliName, CliTask, RoutingArmId } from './types.js';
@@ -19,6 +19,7 @@ import {
   cliTaskToTask,
   buildDifficultyOutcome,
   budgetUtilizationForTask,
+  taskProfileToBanditContext,
 } from './composite-router-helpers.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { CompositeRouterConfig } from './composite-router-types.js';
@@ -75,9 +76,15 @@ export function recordBanditOutcome(
     deps.budgetRouter,
     deps.budgetConstraints
   );
-  const context = taskAnalysisResultToBanditContext(
-    analysis,
-    budgetUtilization === undefined ? {} : { budgetUtilization }
+  // Built through the SAME converter chain the select path uses
+  // (`composite-router-stages.ts:666`). LinUCB is only consistent if `update`
+  // sees the vector `selectArm` scored, and the two converters disagree on
+  // three of six columns: `taskProfileToBanditContext` quantizes complexity to
+  // 0.1 steps, adds the legacy +500 token offset, and emits `isReasoningTask`
+  // as 0/1 where the analysis-based one emits 0/0.5/1 (#4953).
+  const context = taskProfileToBanditContext(
+    taskAnalysisResultToTaskProfile(analysis),
+    budgetUtilization
   );
   deps.linucbBandit.update(armIndex, context, reward);
   deps.logger.debug('Recorded outcome', { cliName, reward });

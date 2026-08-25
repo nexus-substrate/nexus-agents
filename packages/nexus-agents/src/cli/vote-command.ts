@@ -279,9 +279,13 @@ export function recordVoteToGitHub(
  * CLI-specific concerns (timeout clamping + diagnostic line) remain here
  * because they belong to the operator UX, not the voting flow itself.
  */
-async function runVote(
-  options: VoteCommandOptions
-): Promise<VotingResult & { readonly decision: VoteDecisionStatus; readonly strategy: string }> {
+async function runVote(options: VoteCommandOptions): Promise<
+  VotingResult & {
+    readonly decision: VoteDecisionStatus;
+    readonly strategy: string;
+    readonly policyReason?: string;
+  }
+> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -328,6 +332,9 @@ async function runVote(
     // Carried past the narrowing above so the audit record states the strategy
     // that was applied. `threshold` is the display value and can differ (#4924).
     strategy: result.strategy,
+    // Likewise: an error-policy short-circuit voided the vote, and without it
+    // the record calls a void a `rejected` (#4953).
+    ...(result.policyReason !== undefined ? { policyReason: result.policyReason } : {}),
   };
 }
 
@@ -398,7 +405,7 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
  */
 function persistToAuditChain(
   options: VoteCommandOptions,
-  result: VotingResult & { readonly strategy: string }
+  result: VotingResult & { readonly strategy: string; readonly policyReason?: string }
 ): void {
   if (options.dryRun === true) return;
   writeLine(
@@ -408,6 +415,9 @@ function persistToAuditChain(
         strategy: result.strategy,
         result: result.result,
         votes: result.votes,
+        // A vote an error policy voided is not a rejection. Without this the
+        // chain records `rejected` while the CLI exits `no_quorum` (#4953).
+        errorVoided: result.policyReason !== undefined,
       })
     )
   );

@@ -564,3 +564,56 @@ describe('voteCommand forwards options to the engine (#4941)', () => {
     expect(input).not.toHaveProperty('options');
   });
 });
+
+// =============================================================================
+// A voided vote is recorded as a void, not a rejection (#4953)
+// =============================================================================
+
+describe('voteCommand records an error-policy void correctly (#4953)', () => {
+  // #4925 added the CLI audit record and passed four fields, omitting
+  // `errorVoided`. `outcomeToDecision` then reads it as false and returns
+  // `rejected` — the CLI prints `no_quorum` and the chain disagrees.
+  //
+  // Every test in #4925 asserted what was passed TO the mocked recorder, so
+  // the one field missing from the call was the one field no assertion
+  // mentioned. These assert it explicitly.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function voidedResult() {
+    return {
+      proposal: 'p',
+      threshold: 'unanimous',
+      result: createMockConsensusResult({ outcome: 'rejected' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'unanimous',
+      decision: 'no_quorum',
+      policyReason: 'fail_closed: 4 voters errored',
+    };
+  }
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockClear();
+  });
+
+  it('flags the record as voided when an error policy short-circuited', async () => {
+    executeVotingMock.mockResolvedValue(voidedResult());
+
+    await voteCommand({ proposal: 'p' });
+
+    const call = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
+    expect(call?.[0]).toMatchObject({ errorVoided: true });
+  });
+
+  it('does not flag an ordinary rejection as voided', async () => {
+    // The pair. Always-true would make every genuine rejection read as a void,
+    // which is the same conflation in the other direction.
+    executeVotingMock.mockResolvedValue({ ...voidedResult(), policyReason: undefined });
+
+    await voteCommand({ proposal: 'p' });
+
+    const call = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
+    expect(call?.[0]).toMatchObject({ errorVoided: false });
+  });
+});
