@@ -67,6 +67,15 @@ export interface MetaShadowRecord {
   readonly taskClass: string;
   /** UCB score the learned selector assigned its choice. */
   readonly learnedScore: number;
+  /**
+   * Whether the bandit had been trained when this prediction was made (#4825).
+   *
+   * `false` means every arm still held identical parameters, so the "learned"
+   * choice was the tie-break — arm 0, `single-shot` — and carries no learning.
+   * Absent means the record predates this field and was produced by that same
+   * cold bandit, so it is treated as untrained.
+   */
+  readonly modelTrained?: boolean;
 }
 
 /** A sink that receives every shadow comparison. Must not throw. */
@@ -114,8 +123,18 @@ export interface ShadowArmStat {
 
 /** The learned selector: predict a strategy + learn from outcomes. */
 export interface ILearnedStrategySelector {
-  /** Predict the best strategy for a decision's signals (shadow — not executed). */
-  predict(decision: MetaDecision): { strategy: ExecutionStrategy; score: number };
+  /**
+   * Predict the best strategy for a decision's signals (shadow — not executed).
+   *
+   * `trained` is false while no arm has been pulled: the bandit then scores
+   * every arm identically and `select` resolves the tie to arm 0, so the
+   * returned strategy is a constant, not a prediction (#4825).
+   */
+  predict(decision: MetaDecision): {
+    strategy: ExecutionStrategy;
+    score: number;
+    trained: boolean;
+  };
   /** Train: record whether `strategy` succeeded for a decision's context. */
   recordOutcome(strategy: ExecutionStrategy, decision: MetaDecision, success: boolean): void;
   /** Per-arm pull counts + reward means — bandit-movement telemetry (#3593). */
@@ -171,12 +190,17 @@ function createHydratableSelector(): IHydratableSelector {
     bandit.update(idx, context, success ? SUCCESS_REWARD : FAILURE_REWARD);
   };
   return {
-    predict(decision: MetaDecision): { strategy: ExecutionStrategy; score: number } {
+    predict(decision: MetaDecision): {
+      strategy: ExecutionStrategy;
+      score: number;
+      trained: boolean;
+    } {
       const { armName, ucbScore } = bandit.select(toBanditContext(decision));
       const strategy = SHADOW_STRATEGY_ARMS.includes(armName as ExecutionStrategy)
         ? (armName as ExecutionStrategy)
         : FALLBACK_STRATEGY;
-      return { strategy, score: ucbScore };
+      const trained = bandit.getStats().some((st) => st.pullCount > 0);
+      return { strategy, score: ucbScore, trained };
     },
     recordOutcome(strategy: ExecutionStrategy, decision: MetaDecision, success: boolean): void {
       apply(strategy, toBanditContext(decision), success);
@@ -204,6 +228,14 @@ export interface TaskClassAgreement {
 /** Offline policy-evaluation summary: agreement overall + per task class. */
 export interface ShadowAgreementSummary {
   readonly total: number;
+  /**
+   * Records whose prediction came from a trained bandit (#4825).
+   *
+   * `agreementRate` is taken over these only. When it is 0 the rate is 0 over
+   * nothing — which is what the default configuration produces, since
+   * `NEXUS_META_SHADOW_TRAIN` is off and the bandit never learns.
+   */
+  readonly trainedRecords: number;
   readonly agreements: number;
   readonly agreementRate: number;
   readonly perTaskClass: Readonly<Record<string, TaskClassAgreement>>;
@@ -219,7 +251,11 @@ export function summarizeShadowAgreement(
 ): ShadowAgreementSummary {
   const perTaskClass: Record<string, { total: number; agree: number; rate: number }> = {};
   let agreements = 0;
-  for (const r of records) {
+  // Only a trained bandit produces a comparison. An untrained one returns its
+  // tie-break arm every time, so counting those would report the rules'
+  // preference for that strategy as a learned agreement rate (#4825).
+  const trained = records.filter((r) => r.modelTrained === true);
+  for (const r of trained) {
     if (r.agree) agreements++;
     const cur = perTaskClass[r.taskClass] ?? { total: 0, agree: 0, rate: 0 };
     cur.total++;
@@ -227,11 +263,11 @@ export function summarizeShadowAgreement(
     cur.rate = cur.agree / cur.total;
     perTaskClass[r.taskClass] = cur;
   }
-  const total = records.length;
   return {
-    total,
+    total: records.length,
+    trainedRecords: trained.length,
     agreements,
-    agreementRate: total === 0 ? 0 : agreements / total,
+    agreementRate: trained.length === 0 ? 0 : agreements / trained.length,
     perTaskClass,
   };
 }

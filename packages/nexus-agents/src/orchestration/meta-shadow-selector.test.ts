@@ -149,6 +149,9 @@ describe('createRecordingShadowSink', () => {
 
 describe('summarizeShadowAgreement', () => {
   it('computes overall and per-task-class agreement rates', () => {
+    // `modelTrained: true` is required for these to count at all (#4825) —
+    // this case tests the aggregation math, not the training gate, which has
+    // its own describe block below.
     const rec = (taskClass: string, agree: boolean): MetaShadowRecord => ({
       decisionId: 'x',
       timestamp: 't',
@@ -157,6 +160,7 @@ describe('summarizeShadowAgreement', () => {
       agree,
       taskClass,
       learnedScore: 0,
+      modelTrained: true,
     });
     const summary = summarizeShadowAgreement([
       rec('code_implementation', true),
@@ -173,10 +177,89 @@ describe('summarizeShadowAgreement', () => {
   it('returns a zero summary for no records', () => {
     expect(summarizeShadowAgreement([])).toEqual({
       total: 0,
+      trainedRecords: 0,
       agreements: 0,
       agreementRate: 0,
       perTaskClass: {},
     });
+  });
+});
+
+describe('predict reports whether the bandit has learned anything (#4825)', () => {
+  it('is untrained before any outcome is recorded', () => {
+    // The production default: NEXUS_META_SHADOW_TRAIN is off, so recordOutcome
+    // is never called and this stays false for the process's whole life.
+    const selector = createLearnedStrategySelector();
+
+    expect(selector.predict(decision()).trained).toBe(false);
+  });
+
+  it('becomes trained once an outcome lands', () => {
+    // The pair — hardcoding false would satisfy the test above.
+    const selector = createLearnedStrategySelector();
+    selector.recordOutcome('pipeline', decision(), true);
+
+    expect(selector.predict(decision()).trained).toBe(true);
+  });
+
+  it('returns the tie-break arm while untrained, which is the whole defect', () => {
+    // Every arm scores identically on a cold bandit and `select` resolves the
+    // tie to index 0. Recorded here so the constant is visible rather than
+    // being inferred from the issue.
+    const selector = createLearnedStrategySelector();
+
+    expect(selector.predict(decision()).strategy).toBe(SHADOW_STRATEGY_ARMS[0]);
+  });
+});
+
+describe('agreement excludes predictions from an untrained model (#4825)', () => {
+  // With NEXUS_META_SHADOW_TRAIN off — the default — the bandit is never
+  // updated, every arm scores identically, and ties resolve to index 0, which
+  // is 'single-shot'. The resulting "agreement rate" is really the frequency
+  // with which the RULES chose single-shot, wearing the label of a learned
+  // comparison. That number is the evidence base for #3552.
+  const rec = (agree: boolean, modelTrained: boolean): MetaShadowRecord => ({
+    decisionId: 'x',
+    timestamp: 't',
+    ruleStrategy: 'single-shot',
+    learnedStrategy: agree ? 'single-shot' : 'pipeline',
+    agree,
+    taskClass: 'general',
+    learnedScore: 0,
+    modelTrained,
+  });
+
+  it('counts only trained predictions in the agreement rate', () => {
+    const summary = summarizeShadowAgreement([
+      rec(true, false),
+      rec(true, false),
+      rec(false, true),
+      rec(true, true),
+    ]);
+
+    expect(summary.total).toBe(4);
+    expect(summary.trainedRecords).toBe(2);
+    expect(summary.agreementRate).toBeCloseTo(0.5);
+  });
+
+  it('reports a rate of zero over zero trained records, not a high one', () => {
+    // Today's actual state: every record untrained. The old summary reported
+    // ~100% agreement here, which reads as a learned selector matching the
+    // rules almost perfectly.
+    const summary = summarizeShadowAgreement([rec(true, false), rec(true, false)]);
+
+    expect(summary.total).toBe(2);
+    expect(summary.trainedRecords).toBe(0);
+    expect(summary.agreementRate).toBe(0);
+  });
+
+  it('treats a record with no training flag as untrained', () => {
+    // Records written before this field existed cannot be assumed trained;
+    // they were produced by the cold bandit this issue is about.
+    const legacy: MetaShadowRecord = { ...rec(true, false) };
+    delete (legacy as { modelTrained?: boolean }).modelTrained;
+
+    expect(summarizeShadowAgreement([legacy]).trainedRecords).toBe(0);
   });
 });
 
