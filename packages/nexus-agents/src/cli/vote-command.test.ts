@@ -32,8 +32,8 @@ import {
   explainOutcome,
   recordVoteToGitHub,
   voteCommand,
-  auditLineFor,
 } from './vote-command.js';
+import { auditLineFor } from './vote-audit-line.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
   return {

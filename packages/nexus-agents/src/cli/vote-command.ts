@@ -34,10 +34,8 @@ import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
-import {
-  recordAuthenticVote,
-  type VoteRecordPersistOutcome,
-} from '../mcp/tools/consensus-vote-recording.js';
+import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
+import { auditLineFor } from './vote-audit-line.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
@@ -387,23 +385,6 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
   if (decision === 'approved') return 0;
   if (decision === 'no_quorum') return policy === 'exit2' ? 2 : 1;
   return 1;
-}
-
-/**
- * One operator-facing line describing what reached the audit chain.
- *
- * A persist failure is stated rather than swallowed: the vote itself must not
- * fail because its record could not be written, but a decision that left no
- * record must not look like one that did (#4924).
- */
-export function auditLineFor(outcome: VoteRecordPersistOutcome): string {
-  if (outcome.persisted) {
-    return `${colors.dim}Audit record #${String(outcome.record.sequence)} written (${outcome.record.id})${colors.reset}\n`;
-  }
-  if (outcome.reason === 'all-simulated') {
-    return `${colors.dim}No audit record — votes were simulated${colors.reset}\n`;
-  }
-  return `${colors.yellow}Vote NOT recorded to the audit chain: ${outcome.detail}${colors.reset}\n`;
 }
 
 /**
