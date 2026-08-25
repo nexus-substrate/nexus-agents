@@ -398,6 +398,8 @@ jobs:
         fitness-audit,
         consolidation-test,
         producer-consumer-check,
+        script-tests,
+        model-string-drift,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -420,7 +422,9 @@ jobs:
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.consolidation-test.result }}" != "success" ]] || \
-             [[ "${{ needs.fitness-audit.result }}" != "success" ]]; then
+             [[ "${{ needs.fitness-audit.result }}" != "success" ]] || \
+             [[ "${{ needs.script-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.model-string-drift.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
