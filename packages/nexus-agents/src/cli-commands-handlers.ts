@@ -322,6 +322,10 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<CliExitRes
 
   const exitCode = await voteCommand({
     proposal,
+    // #4963: this handler rebuilds VoteCommandOptions field by field, so a new
+    // field is dropped unless it is named here. `--option` parsed, reached
+    // `args.options.options`, and died at this line.
+    ...(args.options.options !== undefined && { options: args.options.options }),
     ...(validThreshold !== undefined && { threshold: validThreshold }),
     ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
     ...(args.options.onNoQuorum !== undefined && { onNoQuorum: args.options.onNoQuorum }),
