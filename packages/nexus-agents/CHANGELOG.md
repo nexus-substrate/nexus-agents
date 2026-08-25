@@ -1,5 +1,43 @@
 # nexus-agents
 
+## 4.17.0
+
+### Minor Changes
+
+- [#4948](https://github.com/nexus-substrate/nexus-agents/pull/4948) [`2bf811f`](https://github.com/nexus-substrate/nexus-agents/commit/2bf811feef88015d25475b4cba5194729591f53b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - let `nexus-agents vote` declare named options, so a multi-option decision records which one won
+
+  The engine has recorded `optionTally` and `optionCoverage` since [#4472](https://github.com/nexus-substrate/nexus-agents/issues/4472), and the
+  CLI had no way to supply the options they measure. Every multi-option vote run
+  from a terminal persisted as a bare `approved` with `optionTally: null` — the
+  panel deliberated over three alternatives and the record could not say which it
+  chose.
+
+  `--option` is repeatable (2-10, enforced by the existing schema). Omit it and
+  behaviour is unchanged: the field is left off entirely rather than sent as an
+  empty array, because the engine treats a present `options` array as "this is a
+  multi-option vote" and adds the leading-option bar on top of the ordinary
+  approve/reject one.
+
+  No short flag. Every free letter is taken, and the two collisions that already
+  existed silently bound the wrong option ([#4922](https://github.com/nexus-substrate/nexus-agents/issues/4922)).
+
+### Patch Changes
+
+- [#4946](https://github.com/nexus-substrate/nexus-agents/pull/4946) [`48c62d9`](https://github.com/nexus-substrate/nexus-agents/commit/48c62d97570be7acc3a57dc10f3972150045dfc8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - remove two configuration fields nothing reads
+
+  `RouterConfig.minCapacityThreshold` was declared on the interface and in
+  `RouterConfigSchema` with a `0.1` default, and had exactly two occurrences
+  repo-wide — both of them those declarations. No reader, no test, no consumer.
+  `RouterConfigSchema` is not strict, so a YAML that still sets the key is
+  ignored rather than rejected.
+
+  `BaseAdapter.lastHealthCheck` was assigned after every health check and never
+  read by the base class or any subclass. `checkHealth` already returns the
+  status it was caching.
+
+  Public API surface is unchanged by both, confirming neither was reachable from
+  outside the package. Found in a vestigial-code sweep ([#4939](https://github.com/nexus-substrate/nexus-agents/issues/4939)).
+
 ## 4.16.0
 
 ### Minor Changes
