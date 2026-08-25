@@ -246,6 +246,32 @@ describe('discoverArxiv', () => {
     }
   });
 
+  it('carries the arXiv publication date through as publishedAt (#4841)', async () => {
+    // <published> is on every arXiv entry and `extractTag` already existed —
+    // it was simply never called for that tag, so recency was scored on the
+    // discovery date instead and the 730-day decay was unreachable.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () =>
+        Promise.resolve(`<?xml version="1.0" encoding="UTF-8"?>
+<feed>
+  <entry>
+    <id>http://arxiv.org/abs/1901.00001v1</id>
+    <title>An Older Paper</title>
+    <summary>Published years ago.</summary>
+    <published>2019-01-15T00:00:00Z</published>
+  </entry>
+</feed>`),
+    });
+
+    const result = await discoverArxiv('orchestration', 10);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value[0]?.publishedAt).toBe('2019-01-15T00:00:00Z');
+    }
+  });
+
   it('should use ti:/abs: query prefix', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -357,6 +383,32 @@ describe('arXiv-based providers', () => {
         const result = await fn('test', 5);
         expect(result.ok).toBe(false);
         if (!result.ok) expect(result.error.code).toBe('NETWORK');
+      });
+
+      it('carries the arXiv publication date through as publishedAt (#4841)', async () => {
+        // <published> is on every arXiv entry and `extractTag` already existed —
+        // it was simply never called for that tag, so recency was scored on the
+        // discovery date instead and the 730-day decay was unreachable.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          text: () =>
+            Promise.resolve(`<?xml version="1.0" encoding="UTF-8"?>
+<feed>
+  <entry>
+    <id>http://arxiv.org/abs/1901.00001v1</id>
+    <title>An Older Paper</title>
+    <summary>Published years ago.</summary>
+    <published>2019-01-15T00:00:00Z</published>
+  </entry>
+</feed>`),
+        });
+
+        const result = await discoverArxiv('orchestration', 10);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value[0]?.publishedAt).toBe('2019-01-15T00:00:00Z');
+        }
       });
 
       it('should use ti:/abs: query prefix', async () => {
