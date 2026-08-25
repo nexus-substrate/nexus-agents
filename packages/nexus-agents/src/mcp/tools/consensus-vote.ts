@@ -1199,7 +1199,10 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'Execute multi-model consensus voting on a proposal. ' +
   'Uses 7 roles by default (architect, security, devex, ai_ml, pm, catfish, scope_steward) ' +
   'or 3 with quickMode (architect, security, scope_steward), voting with configurable strategies. ' +
-  'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
+  'higher_order does NOT decide the verdict by correlation-aware aggregation (#4701): approve/reject ' +
+  'is a simple tally of the panel, so correlated voters each carry full independent weight. The ' +
+  'Bayesian correlation analysis is computed and feeds contrarian escalation only. Choose it for the ' +
+  'escalation behaviour, not for a weighted verdict. ' +
   "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
   'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record. ' +
   'If your proposal asks voters to choose among named alternatives, you MUST pass them in ' +
