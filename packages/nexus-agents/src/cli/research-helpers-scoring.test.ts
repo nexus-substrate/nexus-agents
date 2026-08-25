@@ -23,6 +23,11 @@ function createItem(overrides: Partial<DiscoveredSource> = {}): DiscoveredSource
   };
 }
 
+/** ISO date `n` days before now; negative `n` yields a future date. */
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().split('T')[0] ?? '';
+}
+
 describe('scoreDiscoveredItem', () => {
   it('should return scores between 0 and 1', () => {
     const item = createItem();
@@ -141,8 +146,57 @@ describe('recency uses the publication date (#4841)', () => {
   });
 
   it('still decays a genuinely old publication toward zero', () => {
-    // The decay the original code documented and could never reach.
-    expect(scoreDiscoveredItem(createItem({ publishedAt: '2015-01-01' }), 'test').recency).toBe(0);
+    // The decay the original code documented and could never reach. Asserted
+    // as a bound, not `=== 0`: the exact-zero form pinned the saturation that
+    // #4882 removes, and a decay that never reaches zero is the point.
+    expect(
+      scoreDiscoveredItem(createItem({ publishedAt: daysAgo(11 * 365) }), 'test').recency
+    ).toBeLessThan(0.05);
+  });
+});
+
+// =============================================================================
+// The decay must not saturate (#4882)
+// =============================================================================
+
+describe('recency decay does not saturate (#4882)', () => {
+  it('ranks a 3-year-old publication above an 11-year-old one', () => {
+    // The linear `max(0, 1 - days/730)` floored both at exactly 0.0, so a 2024
+    // paper and a 2015 paper were indistinguishable. `rankDiscoveredItems`
+    // sorts on composite alone with no age tie-break, so which of the two
+    // entered the top-5 issue-filing slice was decided by sort order.
+    const old = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(3 * 365) }), 'test');
+    const ancient = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(11 * 365) }), 'test');
+
+    expect(old.recency).toBeGreaterThan(ancient.recency);
+  });
+
+  it('separates two publications that are both past the old 730-day floor', () => {
+    // The boundary case specifically: both of these scored 0.0 before.
+    const justPast = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(800) }), 'test');
+    const wellPast = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(2000) }), 'test');
+
+    expect(justPast.recency).toBeGreaterThan(wellPast.recency);
+    expect(wellPast.recency).toBeGreaterThan(0);
+  });
+
+  it('holds the one-year half-life the previous curve was calibrated on', () => {
+    // The 0.6 review gate and the 0.8 P1 boundary in `executeReview` were tuned
+    // against the old curve, which passed through 0.5 at one year. Keeping that
+    // point fixed is what makes this a tail fix rather than a recalibration.
+    const oneYear = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(365) }), 'test');
+
+    expect(oneYear.recency).toBeCloseTo(0.5, 2);
+  });
+
+  it('never scores above 1.0 for a future publication date', () => {
+    // `Math.max(0, 1 - days/730)` clamped the floor and left the ceiling open:
+    // a date one year ahead scored 1.5. Semantic Scholar stamps year-only dates
+    // as `${year}-01-01`, so a paper carrying next year's volume year produces
+    // exactly this.
+    const future = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(-365) }), 'test');
+
+    expect(future.recency).toBeLessThanOrEqual(1);
   });
 });
 
