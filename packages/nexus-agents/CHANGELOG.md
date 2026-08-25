@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 4.18.5
+
+### Patch Changes
+
+- [#4967](https://github.com/nexus-substrate/nexus-agents/pull/4967) [`f941dc5`](https://github.com/nexus-substrate/nexus-agents/commit/f941dc57a6322802ce72c929440858e9b738b86f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make `vote --timeout` take effect, and document its real default
+
+  The same handler that dropped `--option` also dropped `timeoutMs`, so every
+  vote used the 300s default however the operator set it — the "timeout: 300s
+  each" line reported the default rather than the request.
+
+  The help was separately wrong: it advertised `default: 90` when
+  `VOTE_TIMEOUTS.defaultMs` has been 300 since it was raised from 180, on the
+  observation that architecture and security voters average 315s. An operator
+  reading 90 would conclude a 250s vote had hung. A test now ties the documented
+  value to the constant so they cannot drift again.
+
+  The mapping from parsed args to `VoteCommandOptions` is extracted into one
+  function. Every field on that type is optional, so the compiler cannot notice a
+  missing one — enumerating them inline is what let two flags disappear.
+
 ## 4.18.4
 
 ### Patch Changes
