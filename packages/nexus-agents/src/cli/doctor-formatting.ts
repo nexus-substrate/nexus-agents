@@ -8,7 +8,11 @@
  */
 
 import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
-import { formatScratchFilesystems } from './doctor-scratch-space.js';
+import {
+  formatScratchFilesystems,
+  scratchSeverityIsAcceptable,
+  worstSeverity,
+} from './doctor-scratch-space.js';
 import type { CapacityStatus } from '../cli-adapters/types.js';
 import type {
   CliCheckResult,
@@ -384,7 +388,13 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 function printDoctorSummary(result: DoctorResult): void {
   const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
   const nodeIssue = result.nodeVersion.supported ? 0 : 1;
-  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1);
+  // #4851: the count enumerated CLIs, node and MCP while `isAllHealthy` ALSO
+  // fails on an unacceptable scratch severity — so a critical scratch
+  // filesystem with everything else fine printed "Summary: 0 issue(s) found",
+  // a summary shown only because something is wrong, saying nothing is wrong.
+  // Every term the verdict reads must be a term the count reads.
+  const scratchIssue = scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace)) ? 0 : 1;
+  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1) + scratchIssue;
   const summary = result.allHealthy
     ? `${colors.green}${colors.bold}Status: Ready${colors.reset}`
     : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}`;

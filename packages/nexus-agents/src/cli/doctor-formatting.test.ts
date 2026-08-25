@@ -66,6 +66,27 @@ vi.mock('../cli-adapters/types.js', () => ({
   },
 }));
 
+/** Applies a scratchSpace override outside the fixture literal (keeps its complexity under the cap). */
+function withScratch(
+  override: DoctorResult['scratchSpace'] | undefined,
+  base: DoctorResult
+): DoctorResult {
+  return override === undefined ? base : { ...base, scratchSpace: override };
+}
+
+const DEFAULT_SCRATCH_SPACE: DoctorResult['scratchSpace'] = [
+  {
+    label: 'nexus' as const,
+    root: '/tmp/nexus-test',
+    available: true,
+    freeBytes: 20 * 1024 ** 3,
+    totalBytes: 32 * 1024 ** 3,
+    percentUsed: 38,
+    severity: 'ok' as const,
+    message: '20.0 GiB free of 32.0 GiB (38% used)',
+  },
+];
+
 describe('doctor-formatting', () => {
   let writeLineMock: MockedFunction<typeof ansiOutput.writeLine>;
 
@@ -131,84 +152,75 @@ describe('doctor-formatting', () => {
       mcpServerReady?: boolean;
       mcpClientReady?: boolean;
       voterTransport?: { configured: boolean };
+      scratchSpace?: DoctorResult['scratchSpace'];
     } = {}
-  ): DoctorResult => ({
-    allHealthy: options.allHealthy ?? true,
-    nodeVersion: options.nodeVersion ?? createNodeVersionCheck(true, 'v22.0.0'),
-    apiKeys: options.apiKeys ?? [],
-    configFile: options.configFile ?? createConfigFileCheck(true, './nexus-agents.yaml'),
-    clis: options.clis ?? [],
-    mcpServerReady: options.mcpServerReady ?? true,
-    mcpClientReady: options.mcpClientReady ?? true,
-    registryAdvisory: {
-      totalModels: 10,
-      availableModels: 10,
-      unavailableModels: 0,
-      models: [],
-      registryAgeDays: 1,
-      registryStale: false,
-    },
-    learningPersistence: {
-      enabled: false,
-      dirExists: false,
-      dirWritable: false,
-      outcomeCount: 0,
-      ruleCount: 0,
-      rulesLastSaved: null,
-      error: null,
-    },
-    sqliteCheck: {
-      available: true,
-      error: null,
-    },
-    dataDirectory: {
-      rootExists: true,
-      rootPath: '/home/test/.nexus-agents',
-      repoRoot: null,
-      // A real doctor run always resolves the standard subdirectory set, and
-      // since #4581 the printer no longer calls an unmeasured layout healthy —
-      // an empty list here would emit a remediation line the test does not
-      // expect, and would be an unrealistic fixture besides.
-      subdirectories: [
-        {
-          name: 'memory',
-          path: '/home/test/.nexus-agents/memory',
-          scope: 'cross-repo' as const,
-          exists: true,
-          writable: true,
-        },
-      ],
-    },
-    sandbox: {
-      active: false,
-      flavor: undefined,
-      root: undefined,
-      heuristicMatch: 'unknown' as const,
-      mismatch: false,
-      dataDirInsideRepo: false,
-    },
-    harnessAlignment: {
-      agentsMdExists: true,
-      files: [],
-      alignedCount: 0,
-      driftCount: 0,
-      missingCount: 0,
-    },
-    voterTransport: options.voterTransport ?? { configured: false },
-    scratchSpace: [
-      {
-        label: 'nexus' as const,
-        root: '/tmp/nexus-test',
-        available: true,
-        freeBytes: 20 * 1024 ** 3,
-        totalBytes: 32 * 1024 ** 3,
-        percentUsed: 38,
-        severity: 'ok' as const,
-        message: '20.0 GiB free of 32.0 GiB (38% used)',
+  ): DoctorResult =>
+    withScratch(options.scratchSpace, {
+      allHealthy: options.allHealthy ?? true,
+      nodeVersion: options.nodeVersion ?? createNodeVersionCheck(true, 'v22.0.0'),
+      apiKeys: options.apiKeys ?? [],
+      configFile: options.configFile ?? createConfigFileCheck(true, './nexus-agents.yaml'),
+      clis: options.clis ?? [],
+      mcpServerReady: options.mcpServerReady ?? true,
+      mcpClientReady: options.mcpClientReady ?? true,
+      registryAdvisory: {
+        totalModels: 10,
+        availableModels: 10,
+        unavailableModels: 0,
+        models: [],
+        registryAgeDays: 1,
+        registryStale: false,
       },
-    ],
-    timestamp: new Date('2024-01-01T00:00:00Z'),
-  });
+      learningPersistence: {
+        enabled: false,
+        dirExists: false,
+        dirWritable: false,
+        outcomeCount: 0,
+        ruleCount: 0,
+        rulesLastSaved: null,
+        error: null,
+      },
+      sqliteCheck: {
+        available: true,
+        error: null,
+      },
+      dataDirectory: {
+        rootExists: true,
+        rootPath: '/home/test/.nexus-agents',
+        repoRoot: null,
+        // A real doctor run always resolves the standard subdirectory set, and
+        // since #4581 the printer no longer calls an unmeasured layout healthy —
+        // an empty list here would emit a remediation line the test does not
+        // expect, and would be an unrealistic fixture besides.
+        subdirectories: [
+          {
+            name: 'memory',
+            path: '/home/test/.nexus-agents/memory',
+            scope: 'cross-repo' as const,
+            exists: true,
+            writable: true,
+          },
+        ],
+      },
+      sandbox: {
+        active: false,
+        flavor: undefined,
+        root: undefined,
+        heuristicMatch: 'unknown' as const,
+        mismatch: false,
+        dataDirInsideRepo: false,
+      },
+      harnessAlignment: {
+        agentsMdExists: true,
+        files: [],
+        alignedCount: 0,
+        driftCount: 0,
+        missingCount: 0,
+      },
+      voterTransport: options.voterTransport ?? { configured: false },
+      scratchSpace: DEFAULT_SCRATCH_SPACE,
+      timestamp: new Date('2024-01-01T00:00:00Z'),
+    });
 
   describe('printDoctorResults', () => {
     it('should print header and section titles', () => {
@@ -635,6 +647,54 @@ describe('doctor-formatting', () => {
       const calls = getCalls();
       // 2 unhealthy CLIs + 1 Node issue + 1 MCP issue = 4 total
       expect(calls.some((call) => call.includes('4 issue(s) found'))).toBe(true);
+    });
+  });
+
+  describe('the summary count agrees with the verdict (#4851)', () => {
+    it('does not report zero issues when the verdict is unhealthy', () => {
+      // `totalIssues` counted CLIs, node version and mcpServerReady;
+      // `isAllHealthy` ALSO fails on an unacceptable scratch severity. So a
+      // critical scratch filesystem with everything else fine printed
+      // "Summary: 0 issue(s) found" — a summary shown only because something
+      // is wrong, saying nothing is wrong.
+      const result = createDoctorResult({
+        allHealthy: false,
+        scratchSpace: [
+          {
+            label: 'system' as const,
+            root: '/tmp',
+            available: true,
+            freeBytes: 0,
+            totalBytes: 34_359_738_368,
+            percentUsed: 100,
+            severity: 'critical' as const,
+            message: '/tmp is full',
+          },
+        ],
+      });
+
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      expect(calls.some((call) => call.includes('0 issue(s) found'))).toBe(false);
+      expect(calls.some((call) => call.includes('1 issue(s) found'))).toBe(true);
+    });
+
+    it('still counts the CLI, node and MCP issues it always did', () => {
+      // The pair: the scratch term must add to the count, not replace it.
+      const result = createDoctorResult({
+        allHealthy: false,
+        nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+        clis: [
+          createCliCheckResult('claude', false, false, 'unsupported'),
+          createCliCheckResult('codex', true, false, 'supported', { version: '0.1.0' }),
+        ],
+        mcpServerReady: false,
+      });
+
+      printDoctorResults(result);
+
+      expect(getCalls().some((call) => call.includes('4 issue(s) found'))).toBe(true);
     });
   });
 

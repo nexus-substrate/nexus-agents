@@ -120,3 +120,46 @@ describe('initDataDirectories (#1249)', () => {
     }
   });
 });
+
+// ============================================================================
+// doctor --fix reporting (#4851)
+// ============================================================================
+
+describe('describeDataDirFix (#4851)', () => {
+  const base = { rootPath: '/tmp/x', alreadyExisted: [], error: null };
+
+  it('does not claim a fix when nothing was created', async () => {
+    const { describeDataDirFix } = await import('./setup-data-dir.js');
+    // The exact case that triggers the fix: `doctor --fix` runs when a
+    // subdirectory is missing OR not writable, but `ensureDir` returns early
+    // for an existing path and never checks writability — so an unwritable
+    // directory yields success with an empty `created`. Doctor printed
+    // "✓ Created missing data directories" and counted it.
+    const outcome = describeDataDirFix({ ...base, success: true, created: [] });
+
+    expect(outcome.counted).toBe(false);
+    expect(outcome.line).toContain('not writable');
+  });
+
+  it('claims a fix when directories were actually created', async () => {
+    const { describeDataDirFix } = await import('./setup-data-dir.js');
+    // The pair: never counting would make --fix report nothing it does.
+    const outcome = describeDataDirFix({ ...base, success: true, created: ['/tmp/x/memory'] });
+
+    expect(outcome.counted).toBe(true);
+    expect(outcome.line).toContain('Created 1');
+  });
+
+  it('reports an outright failure as a failure, not a fix', async () => {
+    const { describeDataDirFix } = await import('./setup-data-dir.js');
+    const outcome = describeDataDirFix({
+      ...base,
+      success: false,
+      created: [],
+      error: 'EACCES',
+    });
+
+    expect(outcome.counted).toBe(false);
+    expect(outcome.line).toContain('EACCES');
+  });
+});

@@ -28,7 +28,7 @@ import {
   checkScratchFilesystems,
   worstSeverity,
   type ScratchSpaceCheck,
-  type ScratchSpaceSeverity,
+  scratchSeverityIsAcceptable,
 } from './doctor-scratch-space.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
@@ -775,28 +775,6 @@ export interface HealthVerdictInput {
  * current run, and failing the whole command on it would collapse the
  * distinction between the two thresholds into one.
  */
-/**
- * Whether a scratch severity permits a healthy verdict (#4563).
- *
- * Exhaustive rather than `!== 'critical'`: a severity added later — say
- * `fatal` — would silently satisfy a negative test and let the verdict pass,
- * which is the same shape as the `skip`-reaching-`!== 'fail'` regression on
- * the ship gate. Each level must be classified deliberately.
- */
-function scratchSeverityIsAcceptable(severity: ScratchSpaceSeverity): boolean {
-  switch (severity) {
-    case 'ok':
-    case 'warn':
-      // warn still leaves room for the current run.
-      return true;
-    case 'critical':
-      return false;
-    default: {
-      const exhaustive: never = severity;
-      throw new Error(`Unhandled scratch severity: ${String(exhaustive)}`);
-    }
-  }
-}
 
 export function isAllHealthy(input: HealthVerdictInput): boolean {
   return (
@@ -911,18 +889,19 @@ async function runDoctorFix(result: DoctorResult): Promise<void> {
     !result.dataDirectory.rootExists ||
     result.dataDirectory.subdirectories.some((d) => !d.exists || !d.writable)
   ) {
-    const { runSetup } = await import('./setup-command.js');
-    const setupResult = runSetup({
-      skipMcp: true,
-      skipRules: true,
-      skipHooks: true,
-      skipConfig: true,
-      skipOpencode: true,
-    });
-    if (setupResult.success) {
-      writeLine('✓ Created missing data directories');
-      fixCount++;
-    }
+    // Calls the data-dir initializer directly rather than `runSetup` with
+    // every other step skipped: the result carries `created`, and that is the
+    // only thing distinguishing a real fix from a no-op.
+    //
+    // #4851: this reported on `setupResult.success` alone and so claimed
+    // "✓ Created missing data directories" for the unwritable case — which
+    // setup cannot repair. `ensureDir` returns early for a path that already
+    // exists and never checks writability, so nothing is created and success
+    // is still true, for precisely the condition that triggered the fix.
+    const { initDataDirectories, describeDataDirFix } = await import('./setup-data-dir.js');
+    const outcome = describeDataDirFix(initDataDirectories());
+    writeLine(outcome.line);
+    if (outcome.counted) fixCount++;
   }
 
   // Fix: config file
