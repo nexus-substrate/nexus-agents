@@ -9,15 +9,31 @@ import { join } from 'node:path';
 // #3712: capture the trustTier handed to runDevPipelineForGoal through the
 // run → dev-pipeline executor path (the "hole" — a real RequestContext that ran
 // a real research stage on a possibly-untrusted goal with an absent tier).
-const runDevPipelineForGoalMock = vi.fn((_goal: string, _trustTier?: string) =>
-  Promise.resolve({
-    completed: true,
-    plan: 'plan',
-    tasks: [],
-    voteIterations: 1,
-    qaIterations: 1,
-    securityPassed: true,
-  })
+/**
+ * The pipeline result shape the mock returns. Declared rather than inferred so
+ * a test can set the #4783 provenance fields — inference from the happy-path
+ * literal alone rejects `securityRan`/`planStatus` as unknown properties.
+ */
+interface FakeDevPipelineResult {
+  completed: boolean;
+  plan: string;
+  tasks: never[];
+  voteIterations: number;
+  qaIterations: number;
+  securityPassed: boolean;
+  securityRan?: boolean;
+  planStatus?: 'empty';
+}
+const runDevPipelineForGoalMock = vi.fn(
+  (_goal: string, _trustTier?: string): Promise<FakeDevPipelineResult> =>
+    Promise.resolve({
+      completed: true,
+      plan: 'plan',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 1,
+      securityPassed: true,
+    })
 );
 vi.mock('./dev-pipeline-tool.js', () => ({
   runDevPipelineForGoal: (goal: string, trustTier?: string) =>
@@ -473,6 +489,102 @@ describe('run async dispatch (execute:true, #3732)', () => {
       });
       expect(result.isError).toBe(true);
       expect(errorEnvelope(result)?.['errorCategory']).toBe('business');
+    });
+
+    // #4789: both of the reachable non-completions on the `run` path produced
+    // the identical message and discarded `exec.result`, so a caller could not
+    // tell "security rejected your change" from "security never ran" — the
+    // distinction #4783 put into the result one layer down.
+    it('says the security gate REJECTED when the scan actually ran', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 1,
+        securityPassed: false,
+        securityRan: true,
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('security gate rejected');
+      // The verdict itself must survive, not just a sentence about it.
+      expect((env?.['detail'] as Record<string, unknown>)?.['securityRan']).toBe(true);
+    });
+
+    it('says the run stopped BEFORE the security gate when it never ran', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 1,
+        securityPassed: false,
+        securityRan: false,
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('stopped before the security gate');
+      expect(env?.['message']).not.toContain('rejected');
+      expect((env?.['detail'] as Record<string, unknown>)?.['securityRan']).toBe(false);
+    });
+
+    it('names an empty plan as the reason rather than a generic non-completion', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: '',
+        tasks: [],
+        voteIterations: 0,
+        qaIterations: 0,
+        securityPassed: false,
+        securityRan: false,
+        planStatus: 'empty',
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('planner returned no plan');
+      expect((env?.['detail'] as Record<string, unknown>)?.['planStatus']).toBe('empty');
+    });
+
+    it('still reports a bare non-completion when the result says nothing more', async () => {
+      // A producer predating #4783 sets neither field. The message must not
+      // claim a reason it does not have.
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 0,
+        securityPassed: false,
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('did not complete');
+      expect(env?.['message']).not.toContain('security gate');
     });
 
     it('surfaces a pipeline that reported success:false as a structured error', async () => {

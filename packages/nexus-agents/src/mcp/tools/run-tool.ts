@@ -397,18 +397,47 @@ export async function executeGoal(
  * `ExtendedVotingResult` (consensus) is deliberately absent: a `rejected`
  * outcome is the verdict the caller asked for, not an engine fault.
  */
-function detectEngineFailure(result: unknown): string | null {
+function detectEngineFailure(
+  result: unknown
+): { message: string; detail?: Record<string, unknown> } | null {
   if (typeof result !== 'object' || result === null) return null;
   const record = result as Record<string, unknown>;
 
   if (record['success'] === false) {
     const detail = typeof record['error'] === 'string' ? record['error'] : 'no error message';
-    return `Engine reported failure: ${detail}`;
+    return { message: `Engine reported failure: ${detail}` };
   }
   if (record['completed'] === false) {
-    return 'Engine reported failure: the dev pipeline did not complete';
+    return { message: describeIncompletePipeline(record), detail: record };
   }
   return null;
+}
+
+/**
+ * Says WHY the dev pipeline did not complete (#4789).
+ *
+ * Every non-completion used to read `the dev pipeline did not complete`, and
+ * `exec.result` was dropped — so a caller could not tell a security gate that
+ * REJECTED the change from one that never ran, which is precisely the
+ * distinction #4772/#4783 put into `securityRan`. The reason has to survive the
+ * trip through the error envelope or it may as well not have been recorded.
+ *
+ * Reads `securityRan` as three-valued on purpose: absent means a producer that
+ * predates the field, NOT `false`, so the generic message stands rather than
+ * claiming a reason we do not have.
+ */
+function describeIncompletePipeline(record: Record<string, unknown>): string {
+  const prefix = 'Engine reported failure:';
+  if (record['planStatus'] === 'empty') {
+    return `${prefix} the planner returned no plan, so nothing was built`;
+  }
+  if (record['securityRan'] === true) {
+    return `${prefix} the security gate rejected the change`;
+  }
+  if (record['securityRan'] === false) {
+    return `${prefix} the run stopped before the security gate, which never ran`;
+  }
+  return `${prefix} the dev pipeline did not complete`;
 }
 
 /**
@@ -447,7 +476,13 @@ async function executeRunBody(
         decisionId: exec.decisionId,
         strategy: exec.strategy,
       });
-      return toolStructuredError({ errorCategory: 'business', message: engineFailure });
+      // #4789: carry the engine's own result through. The message names the
+      // reason; `detail` keeps the verdict a caller can act on.
+      return toolStructuredError({
+        errorCategory: 'business',
+        message: engineFailure.message,
+        ...(engineFailure.detail !== undefined ? { detail: engineFailure.detail } : {}),
+      });
     }
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
