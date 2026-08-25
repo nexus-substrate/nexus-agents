@@ -36,9 +36,7 @@ const ROUTING_DIR = join(process.cwd(), 'src', 'cli-adapters', 'routing');
  * a red test green — an unmatched prefix means the consumer is reading
  * something nobody sends.
  */
-const KNOWN_BROKEN: ReadonlyMap<string, string> = new Map([
-  ['budget:utilization-', '#4834 — BudgetStage emits `budget:utilization=` (equals, not hyphen)'],
-]);
+const KNOWN_BROKEN: ReadonlyMap<string, string> = new Map([]);
 
 function routingSources(): string[] {
   return globSync('**/*.ts', { cwd: ROUTING_DIR }).filter(

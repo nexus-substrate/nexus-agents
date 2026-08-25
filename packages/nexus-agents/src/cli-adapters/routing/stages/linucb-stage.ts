@@ -52,6 +52,27 @@ const CLI_ARMS: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 // Stage Implementation
 // ============================================================================
 
+/** Neutral budget utilization — the value {@link LinUCBBandit.warmStart} replays. */
+const NEUTRAL_BUDGET_UTILIZATION = 0.5;
+
+/**
+ * Budget utilization for the bandit feature vector, from context metadata.
+ *
+ * Replaces a parser looking for a `budget:utilization-` signal (hyphen) that
+ * no producer emitted — `BudgetFilterStage` writes `budget:utilization=`, and
+ * is not instantiated in production anyway (#4834). Cross-stage signals are
+ * not an input channel (#4866), so this reads the value the caller supplied.
+ *
+ * Out-of-range or absent values fall back to neutral rather than being
+ * clamped: an implausible number is more likely a wiring mistake than a real
+ * measurement, and neutral is what the learned weights were reconstructed
+ * against.
+ */
+function readBudgetUtilization(ctx: RoutingContext): number {
+  const raw = ctx.metadata?.['budgetUtilization'];
+  return typeof raw === 'number' && raw >= 0 && raw <= 1 ? raw : NEUTRAL_BUDGET_UTILIZATION;
+}
+
 /**
  * LinUCB Stage for bandit-based adaptive model selection.
  */
@@ -113,7 +134,7 @@ export class LinUCBStage implements IRouterStage {
       this.name,
       durationMs,
       'score',
-      `Selected: ${selectedCli}, UCB: ${selection.ucbScore.toFixed(3)}`
+      `Selected: ${selectedCli}, UCB: ${selection.ucbScore.toFixed(3)}, budget=${readBudgetUtilization(ctx).toFixed(2)}`
     );
 
     this.logger.debug('LinUCB scoring complete', {
@@ -186,7 +207,7 @@ export class LinUCBStage implements IRouterStage {
       contextLengthNormalized: Math.min(1, ctx.task.length / 10000),
       isCodeTask,
       isReasoningTask,
-      budgetUtilization: this.extractBudgetUtilization(ctx.signals),
+      budgetUtilization: readBudgetUtilization(ctx),
       timePressure: 0.5, // Default medium pressure
     };
   }
@@ -232,18 +253,6 @@ export class LinUCBStage implements IRouterStage {
   private isReasoningRelated(task: string): boolean {
     const reasoningPatterns = /explain|why|how|analyze|compare|evaluate|reason|think|consider/i;
     return reasoningPatterns.test(task);
-  }
-
-  /**
-   * Extract budget utilization from signals.
-   */
-  private extractBudgetUtilization(signals: string[]): number {
-    const budgetSignal = signals.find((s) => s.startsWith('budget:utilization-'));
-    if (budgetSignal !== undefined) {
-      const value = parseFloat(budgetSignal.replace('budget:utilization-', ''));
-      if (!isNaN(value)) return value;
-    }
-    return 0.5; // Default
   }
 
   /**

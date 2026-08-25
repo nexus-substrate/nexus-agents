@@ -534,6 +534,33 @@ describe('runLinUCBStage', () => {
     expect(stages).not.toContain('linucb-selection');
   });
 
+  it('passes the real budget utilization into the bandit context (#4834)', () => {
+    // The seam. The stage tests cover the builder and the pipeline covers the
+    // producer; without this, dropping the argument here leaves both green
+    // and the bandit's budget feature silently constant again.
+    const selectMock = vi.fn(() => ({ armName: 'claude', ucbScore: 0.5 }));
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: { select: selectMock } as never,
+    });
+
+    runLinUCBStage(analyzeTaskProfile(mockTask, []), ranking, [], deps, 0.87);
+
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({ budgetUtilization: 0.87 }));
+  });
+
+  it('falls back to the neutral feature value when no ceiling is configured (#4834)', () => {
+    const selectMock = vi.fn(() => ({ armName: 'claude', ucbScore: 0.5 }));
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: { select: selectMock } as never,
+    });
+
+    runLinUCBStage(analyzeTaskProfile(mockTask, []), ranking, [], deps, undefined);
+
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({ budgetUtilization: 0.5 }));
+  });
+
   it('returns first candidate when bandit undefined', () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);

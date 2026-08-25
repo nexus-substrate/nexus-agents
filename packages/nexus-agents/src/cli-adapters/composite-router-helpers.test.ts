@@ -1059,3 +1059,33 @@ describe('applyBudgetFilter task-class ceiling gating', () => {
     expect(result.eligible).toEqual(candidates);
   });
 });
+
+// ============================================================================
+// The bandit's budget feature is real (#4834)
+// ============================================================================
+
+describe('taskProfileToBanditContext budget feature (#4834)', () => {
+  // It returned 0.5 unconditionally, so the bandit's budget dimension was a
+  // constant. A constant feature carries no information: whatever coefficient
+  // LinUCB learns for it is meaningless, and the routing decision could never
+  // respond to budget pressure.
+
+  it('uses the supplied utilization', () => {
+    expect(taskProfileToBanditContext(makeTaskProfile(), 0.9).budgetUtilization).toBe(0.9);
+  });
+
+  it('falls back to neutral when no utilization is available', () => {
+    // Neutral, not zero: zero asserts "budget untouched", and 0.5 matches the
+    // context `warmStart` replays historical outcomes at.
+    expect(taskProfileToBanditContext(makeTaskProfile()).budgetUtilization).toBe(0.5);
+  });
+
+  it('does not make the feature constant across different budgets', () => {
+    // The property that actually matters — the whole defect was that these
+    // two were equal.
+    const low = taskProfileToBanditContext(makeTaskProfile(), 0.1).budgetUtilization;
+    const high = taskProfileToBanditContext(makeTaskProfile(), 0.95).budgetUtilization;
+
+    expect(low).not.toBe(high);
+  });
+});
