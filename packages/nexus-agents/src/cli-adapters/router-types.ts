@@ -52,8 +52,6 @@ export interface RoutingDecision {
 export interface RouterConfig {
   /** Logger instance */
   readonly logger?: ILogger;
-  /** Minimum capacity threshold (0-1) */
-  readonly minCapacityThreshold?: number;
   /** Whether to prefer cost-efficient adapters */
   readonly preferCostEfficient?: boolean;
   /** Maximum routing decision time in ms */
@@ -64,7 +62,6 @@ export interface RouterConfig {
  * Configuration schema for validation.
  */
 export const RouterConfigSchema = z.object({
-  minCapacityThreshold: z.number().min(0).max(1).default(0.1),
   preferCostEfficient: z.boolean().default(false),
   maxDecisionTimeMs: z.number().min(1).max(1000).default(100),
 });

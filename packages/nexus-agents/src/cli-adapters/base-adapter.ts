@@ -85,7 +85,6 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   protected readonly logger: ILogger;
   protected capacityTracker: CapacityTracker | null = null;
   protected initialized = false;
-  protected lastHealthCheck?: HealthStatus;
   protected cachedVersion?: string;
 
   constructor(logger?: ILogger) {
@@ -269,7 +268,6 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         ...(message !== undefined && { message }),
       };
 
-      this.lastHealthCheck = status;
       return status;
     } catch (error) {
       return {
