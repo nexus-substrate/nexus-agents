@@ -226,6 +226,8 @@ export interface ParsedCliArgs {
     errorPolicy?: ErrorPolicy;
     /** #4135 — how the vote command maps a `no_quorum` decision. Default `fail`. */
     onNoQuorum?: NoQuorumPolicy;
+    /** #4472 / #4941 — repeatable `--option`, the named alternatives to tally. */
+    options?: string[];
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
