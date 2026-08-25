@@ -16,10 +16,7 @@ import {
   hasMemoryRegistry,
   setMemoryRegistry,
 } from 'nexus-memory';
-import {
-  StatsOnlyAdapter,
-  ensureSharedMemoryRegistry,
-} from './tool-memory-registry-adapters.js';
+import { StatsOnlyAdapter, ensureSharedMemoryRegistry } from './tool-memory-registry-adapters.js';
 
 describe('StatsOnlyAdapter', () => {
   beforeEach(() => {
@@ -51,6 +48,26 @@ describe('StatsOnlyAdapter', () => {
     });
     const stats = await adapter.stats();
     expect(stats.count).toBe(13);
+  });
+
+  // #4827: a FAILED Result was collapsed to 0, so `memory_stats` reported
+  // {count: 0, error: null} for a corrupt or locked backend — byte-identical
+  // to a healthy empty store. The catch that populates `error`
+  // (memory-stats.ts:213) was therefore unreachable, and
+  // `RegistryDomainStats.error` documented a state nothing could produce.
+  it('rejects rather than reporting 0 when count() returns a FAILED Result', async () => {
+    const adapter = new StatsOnlyAdapter('belief', {
+      count: () => ({ ok: false, error: new Error('database is locked') }),
+    });
+
+    await expect(adapter.stats()).rejects.toThrow(/locked|count/i);
+  });
+
+  it('still reports 0 for a genuinely empty backend', async () => {
+    // The pair that matters: empty must stay distinguishable from broken.
+    const adapter = new StatsOnlyAdapter('belief', { count: () => ({ ok: true, value: 0 }) });
+
+    await expect(adapter.stats()).resolves.toMatchObject({ count: 0 });
   });
 
   it('returns 0 when count() shape is unrecognized', async () => {

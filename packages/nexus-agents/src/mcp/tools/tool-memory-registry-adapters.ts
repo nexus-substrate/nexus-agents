@@ -137,9 +137,26 @@ export class StatsOnlyAdapter implements IMemoryBackend<string, unknown> {
 function extractCount(value: unknown): number {
   if (typeof value === 'number') return value;
   if (value !== null && typeof value === 'object') {
-    const v = value as { ok?: boolean; value?: unknown };
+    const v = value as { ok?: boolean; value?: unknown; error?: unknown };
     if (v.ok === true && typeof v.value === 'number') return v.value;
+    // #4827: a FAILED Result must NOT collapse to 0. Doing so made a corrupt
+    // or locked backend report `{count: 0, error: null}` — byte-identical to a
+    // healthy empty store — and left `collectRegistryStats`'s catch
+    // (memory-stats.ts:213) unreachable, so `RegistryDomainStats.error`
+    // documented a state nothing could produce. Throwing lets that catch,
+    // which is already written and correct, do its job.
+    if (v.ok === false) {
+      const detail =
+        v.error instanceof Error
+          ? v.error.message
+          : typeof v.error === 'string'
+            ? v.error
+            : 'unknown error';
+      throw new Error(`backend count() failed: ${detail}`);
+    }
   }
+  // An unrecognised shape is genuinely unknown, not a reported failure — 0 is
+  // the long-standing behaviour and callers have no error to surface.
   return 0;
 }
 
