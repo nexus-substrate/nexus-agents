@@ -5865,6 +5865,8 @@ TypeAliasDeclaration OrchestratorType
 TypeAliasDeclaration OutcomeClass
   = 'success' | 'partial' | 'failure' | 'timeout' | 'error'
 InterfaceDeclaration OutcomeDependencies
+  budgetConstraints?: { maxCostUsd?: number | undefined; maxLatencyMs?: number | undefined; maxTokens?: number | undefined; taskClassMaxCostUsd?: Partial<Record<"research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration", number>> | undefined; } | undefined
+  budgetRouter?: BudgetRouter | undefined
   cliNames: RoutingArmId[]
   lastRoutedTask: LastRoutedTaskInfo | undefined
   linucbBandit: LinUCBBandit | undefined

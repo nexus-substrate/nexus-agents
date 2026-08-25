@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 update the LinUCB bandit with the feature vector it selected with
@@ -21,3 +21,6 @@ drifts again.
 Only reachable with a cost ceiling set (`--max-cost-usd`, or the `budget:`
 block that ships commented out) — with no ceiling both paths were already on
 the same default.
+
+Minor rather than patch: `OutcomeDependencies` gains two optional fields, which
+is additive but a public-surface change.
