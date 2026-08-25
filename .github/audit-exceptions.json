@@ -1,0 +1,4 @@
+{
+  "$comment": "Reviewed exceptions to the Security Audit gate (#4794). Every id here MUST also appear in package.json > pnpm.auditConfig, which is what actually mutes the advisory; this file is the attribution and expiry ledger that scripts/audit-exceptions.ts enforces. An exception with no owner, no issue, or a past expiry fails CI. Empty means full enforcement.",
+  "exceptions": []
+}

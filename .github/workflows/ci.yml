@@ -377,6 +377,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
 
+      # Advisory today (#4790). Approved to become required by consensus_vote
+      # 6-1, gated on the exception ledger landing first (#4794): `pnpm audit`
+      # answers to the npm advisory database, so requiring it with no reviewed
+      # escape path means a third-party publication can redden every open PR,
+      # and the recovery becomes admin-bypassing a required check.
+      #
+      # Suppressions go in package.json > pnpm.auditConfig, and EVERY id there
+      # needs a warrant in .github/audit-exceptions.json — owner, tracking
+      # issue, expiry — enforced by scripts/audit-exceptions.test.ts.
       - name: Run security audit
         run: pnpm audit --audit-level=high
         continue-on-error: true
