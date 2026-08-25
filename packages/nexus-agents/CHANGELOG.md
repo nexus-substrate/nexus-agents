@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 4.18.4
+
+### Patch Changes
+
+- [#4961](https://github.com/nexus-substrate/nexus-agents/pull/4961) [`4726e09`](https://github.com/nexus-substrate/nexus-agents/commit/4726e099aa668834b6f83c7024d9c356095fe6ae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop the install-freshness check reporting false drift from a source checkout
+
+  `VERSION` is `'dev'` when `__NEXUS_VERSION__` was not injected — i.e. the CLI is
+  running from source rather than a build. Comparing a real global version
+  against that string reported drift on every developer checkout:
+
+  ```
+  ✗ Global install is 4.18.1, this build is dev — the MCP server runs the global one.
+  ```
+
+  There is no version to compare, so the check now reports `unknown` with that as
+  its reason. A check that cries wolf in the commonest context is one people
+  learn to skip past, which is the failure mode it exists to prevent.
+
+- [#4964](https://github.com/nexus-substrate/nexus-agents/pull/4964) [`0762129`](https://github.com/nexus-substrate/nexus-agents/commit/076212984ac451a712bcd901ac61d844bec58b1b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make `vote --option` actually reach the engine
+
+  The flag parsed, validated and appeared in `parseCliArgs` output, and
+  `handleVoteCommand` then rebuilt `VoteCommandOptions` field by field without
+  naming it — so every multi-option vote from the CLI still recorded
+  `optionTally: null`, exactly as before the flag existed.
+
+  Caught by running it: a vote declaring three alternatives persisted a null
+  tally, and passing a single `--option` did not trip the engine's `min(2)`
+  validation, which proved the field never reached `ConsensusVoteInput`.
+
 ## 4.18.3
 
 ### Patch Changes
