@@ -213,6 +213,88 @@ describe('validateCustomApiBaseUrl', () => {
     });
   });
 
+  describe('reserved ranges beyond RFC1918', () => {
+    // The first pass listed the four ranges everyone remembers — 10/8,
+    // 172.16/12, 192.168/16, 169.254/16 — and stopped. Cloud metadata does
+    // not live only at 169.254.169.254, and "not RFC1918" is not the same
+    // as "public".
+
+    it('rejects the CGNAT range that carries Alibaba Cloud metadata', () => {
+      // 100.64/10 is RFC6598 shared address space: cloud NAT, container
+      // fabrics, and 100.100.100.200, which serves instance credentials.
+      expect(validateCustomApiBaseUrl('http://100.100.100.200/latest/meta-data/').ok).toBe(false);
+    });
+
+    it('rejects CGNAT written as mapped IPv6', () => {
+      // The pair for the fix above: the v6 classifier delegates to the v4
+      // rules, so a gap in that table is reachable by both spellings.
+      expect(validateCustomApiBaseUrl('http://[::ffff:6464:64c8]/').ok).toBe(false);
+    });
+
+    it('rejects 192.0.0.0/24, which carries legacy Oracle Cloud metadata', () => {
+      expect(validateCustomApiBaseUrl('http://192.0.0.192/').ok).toBe(false);
+    });
+
+    it('rejects the 198.18.0.0/15 benchmarking range', () => {
+      // Both halves. A /15 spans two second octets, and asserting only 198.18
+      // passes against a rule narrowed to it — checked by mutation.
+      expect(validateCustomApiBaseUrl('http://198.18.0.1/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://198.19.255.254/').ok).toBe(false);
+    });
+
+    it('rejects multicast and the reserved 240/4 block', () => {
+      expect(validateCustomApiBaseUrl('http://224.0.0.1/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://240.0.0.1/').ok).toBe(false);
+    });
+
+    it('rejects the limited broadcast address', () => {
+      expect(validateCustomApiBaseUrl('http://255.255.255.255/').ok).toBe(false);
+    });
+
+    it('keeps the neighbours of each new range allowed', () => {
+      // Every rule above is an inequality, and an off-by-one turns a /10 into
+      // a /8. These are the addresses immediately outside each block.
+      expect(validateCustomApiBaseUrl('http://100.63.255.255/v1').ok).toBe(true);
+      expect(validateCustomApiBaseUrl('http://100.128.0.1/v1').ok).toBe(true);
+      expect(validateCustomApiBaseUrl('http://192.0.1.1/v1').ok).toBe(true);
+      expect(validateCustomApiBaseUrl('http://198.17.255.255/v1').ok).toBe(true);
+      expect(validateCustomApiBaseUrl('http://198.20.0.1/v1').ok).toBe(true);
+      expect(validateCustomApiBaseUrl('http://223.255.255.255/v1').ok).toBe(true);
+    });
+  });
+
+  describe('IPv6 link-local and site-local cover their whole prefix', () => {
+    it('rejects link-local above fe80:', () => {
+      // The check was `startsWith('fe80:')`, but link-local is fe80::/10 —
+      // fe80 through febf. Only the first 1/64th of the block was covered.
+      expect(validateCustomApiBaseUrl('http://[febf::1]/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://[fe90::1]/').ok).toBe(false);
+    });
+
+    it('rejects deprecated site-local addresses', () => {
+      expect(validateCustomApiBaseUrl('http://[fec0::1]/').ok).toBe(false);
+    });
+
+    it('rejects a 6to4 address carrying a private IPv4', () => {
+      // 2002::/16 embeds the IPv4 in hextets 1-2, not 6-7, so it was the one
+      // IPv4-carrying prefix `embeddedIPv4` did not reach despite the
+      // doc-comment claiming it covered every one.
+      expect(validateCustomApiBaseUrl('http://[2002:a9fe:a9fe::]/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://[2002:7f00:1::]/').ok).toBe(false);
+    });
+
+    it('still allows 6to4 wrapping a public IPv4', () => {
+      // The pair: 2002::/16 must not become a blanket rejection.
+      expect(validateCustomApiBaseUrl('http://[2002:101:101::]/v1').ok).toBe(true);
+    });
+
+    it('still allows public IPv6 that merely starts with fe', () => {
+      // fe00::/9 below fe80 is not link-local; a prefix test widened to `fe`
+      // would swallow it.
+      expect(validateCustomApiBaseUrl('http://[fe00::1]/v1').ok).toBe(true);
+    });
+  });
+
   describe('SSRF guard escape hatch (NEXUS_CUSTOM_API_ALLOW_PRIVATE)', () => {
     it('allows localhost when allowPrivate=true is passed explicitly', () => {
       const result = validateCustomApiBaseUrl('http://localhost:8080/v1', {

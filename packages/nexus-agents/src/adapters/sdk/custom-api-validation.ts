@@ -271,9 +271,17 @@ function firstPrivateAddress(
   return null;
 }
 
-/** IPv4 ranges the SSRF guard rejects, in order of specificity. */
+/**
+ * IPv4 ranges the SSRF guard rejects, in order of specificity.
+ *
+ * "Not RFC1918" is not the same as "public". The blocks below RFC1918 are
+ * here because each is reachable from a host and serves something: 100.64/10
+ * carries Alibaba Cloud's metadata endpoint, 192.0.0/24 carries a legacy
+ * Oracle Cloud one, and multicast/reserved/broadcast reach the local segment
+ * rather than the internet (second pass over #4884).
+ */
 const IPV4_RULES: ReadonlyArray<{
-  readonly match: (a: number, b: number) => boolean;
+  readonly match: (a: number, b: number, c: number) => boolean;
   readonly reason: BaseUrlRejectionReason;
   readonly label: string;
 }> = [
@@ -295,14 +303,35 @@ const IPV4_RULES: ReadonlyArray<{
     label: 'IPv4 link-local (169.254/16 — AWS IMDS)',
   },
   { match: (a) => a === 0, reason: 'reserved', label: 'IPv4 reserved (0/8)' },
+  {
+    match: (a, b) => a === 100 && b >= 64 && b <= 127,
+    reason: 'private_range',
+    label: 'IPv4 shared address space (100.64/10 — CGNAT, Alibaba metadata)',
+  },
+  {
+    match: (a, b, c) => a === 192 && b === 0 && c === 0,
+    reason: 'reserved',
+    label: 'IPv4 IETF protocol assignments (192.0.0/24 — legacy Oracle metadata)',
+  },
+  {
+    match: (a, b) => a === 198 && (b === 18 || b === 19),
+    reason: 'reserved',
+    label: 'IPv4 benchmarking (198.18/15)',
+  },
+  { match: (a) => a >= 224 && a <= 239, reason: 'reserved', label: 'IPv4 multicast (224/4)' },
+  {
+    match: (a) => a >= 240,
+    reason: 'reserved',
+    label: 'IPv4 reserved (240/4, includes 255.255.255.255 broadcast)',
+  },
 ];
 
 function classifyIPv4(ip: string): RejectionDetail | null {
   const parts = ip.split('.').map((p) => Number.parseInt(p, 10));
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
-  const [a, b] = parts as [number, number, number, number];
+  const [a, b, c] = parts as [number, number, number, number];
   for (const rule of IPV4_RULES) {
-    if (rule.match(a, b)) {
+    if (rule.match(a, b, c)) {
       return { reason: rule.reason, message: `${rule.label} (${ip})` };
     }
   }
@@ -346,11 +375,14 @@ function toHextets(ip: string): number[] | null {
  *
  * Covers every prefix that carries a routable IPv4 payload: IPv4-mapped
  * (`::ffff:0:0/96`), IPv4-translated (`::ffff:0:0:0/96`), the NAT64
- * well-known prefix (`64:ff9b::/96`), and the deprecated IPv4-compatible
- * form (`::a.b.c.d`). Each is the same destination under a different
- * spelling, and the IPv4 rules must apply to all of them.
+ * well-known prefix (`64:ff9b::/96`), 6to4 (`2002::/16`), and the deprecated
+ * IPv4-compatible form (`::a.b.c.d`). Each is the same destination under a
+ * different spelling, and the IPv4 rules must apply to all of them.
  */
 function embeddedIPv4(g: readonly number[]): string | null {
+  // 6to4 is the odd one out: the payload sits in hextets 1-2, not 6-7, so it
+  // cannot share the trailing-quad extraction below.
+  if (g[0] === 0x2002) return hextetPairToDotted(g[1] ?? 0, g[2] ?? 0);
   const top = g.slice(0, 6);
   const prefixes: ReadonlyArray<readonly number[]> = [
     [0, 0, 0, 0, 0, 0xffff], // ::ffff:0:0/96    — IPv4-mapped
@@ -364,22 +396,44 @@ function embeddedIPv4(g: readonly number[]): string | null {
   const g7 = g[7] ?? 0;
   // `::` and `::1` are their own addresses, not embedded IPv4.
   if (top.every((v) => v === 0) && g6 === 0 && g7 <= 1) return null;
-  const octets = [(g6 >> 8) & 255, g6 & 255, (g7 >> 8) & 255, g7 & 255];
-  return octets.join('.');
+  return hextetPairToDotted(g6, g7);
+}
+
+/** The dotted IPv4 address carried by two consecutive 16-bit hextets. */
+function hextetPairToDotted(hi: number, lo: number): string {
+  return [(hi >> 8) & 255, hi & 255, (lo >> 8) & 255, lo & 255].join('.');
+}
+
+/**
+ * Classify an IPv6 address by its first hextet, or null if it is not in a
+ * non-global prefix.
+ *
+ * Numeric rather than a string prefix test. The previous `startsWith('fe80:')`
+ * covered 1/64th of fe80::/10 — `febf::1` is equally link-local and was
+ * allowed — and site-local fec0::/10 had no check at all (second pass over #4884).
+ */
+function classifyIPv6Prefix(first: number, ip: string): RejectionDetail | null {
+  if (first >= 0xfc00 && first <= 0xfdff) {
+    return { reason: 'private_range', message: `IPv6 unique-local (${ip}, fc00::/7)` };
+  }
+  if (first >= 0xfe80 && first <= 0xfebf) {
+    return { reason: 'link_local', message: `IPv6 link-local (${ip}, fe80::/10)` };
+  }
+  if (first >= 0xfec0 && first <= 0xfeff) {
+    return { reason: 'private_range', message: `IPv6 site-local (${ip}, fec0::/10)` };
+  }
+  return null;
 }
 
 function classifyIPv6(ip: string): RejectionDetail | null {
   const lower = ip.toLowerCase();
   if (lower === '::1') return { reason: 'loopback', message: `IPv6 loopback (${ip})` };
-  if (lower.startsWith('fe80:'))
-    return { reason: 'link_local', message: `IPv6 link-local (${ip})` };
-  // Unique-local: fc00::/7 → first byte has high bit set and second-high bit set
-  if (/^fc|^fd/.test(lower)) {
-    return { reason: 'private_range', message: `IPv6 unique-local (${ip}, fc00::/7)` };
-  }
 
   const groups = toHextets(lower);
   if (groups === null) return null;
+
+  const prefixDetail = classifyIPv6Prefix(groups[0] ?? 0, ip);
+  if (prefixDetail !== null) return prefixDetail;
 
   if (groups.every((n) => n === 0)) {
     return { reason: 'reserved', message: `IPv6 unspecified (${ip}) — routes to localhost` };
