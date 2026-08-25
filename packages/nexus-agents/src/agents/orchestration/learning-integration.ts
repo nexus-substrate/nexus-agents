@@ -190,8 +190,26 @@ export async function processOrchestrationForLearning(
       return;
     }
 
-    const finalReward = result.metrics.avgReward * result.totalSteps;
-    await tryUpdatePolicy(policyEngine, trajectory, finalReward, result.sessionId, episodeId);
+    // `avgReward` is the mean over SCORED steps (#4766), so multiplying by
+    // `totalSteps` extrapolates it across the very steps that exclusion
+    // removed — handing the policy back the contribution of steps that
+    // reported no usage. Multiplying by `scoredSteps` recovers the actual
+    // reward total (#4916).
+    const { avgReward, scoredSteps } = result.metrics;
+    if (scoredSteps === 0) {
+      logger.debug('No step reported a measurable reward; skipping policy update', {
+        sessionId: result.sessionId,
+        totalSteps: result.totalSteps,
+      });
+      return;
+    }
+    await tryUpdatePolicy(
+      policyEngine,
+      trajectory,
+      avgReward * scoredSteps,
+      result.sessionId,
+      episodeId
+    );
   } catch (error) {
     // Top-level error handler to ensure we never propagate
     const err = error instanceof Error ? error : new Error(String(error));
@@ -254,7 +272,7 @@ export function createLearningHandler(
  * Computes the final reward for an episode from orchestration metrics.
  *
  * Combines multiple reward signals into a single scalar value for learning:
- * - Average step reward (weighted by trajectory length)
+ * - Average step reward (weighted by the number of SCORED steps)
  * - Task completion bonus
  * - Efficiency penalty (lower steps is better)
  *
@@ -274,7 +292,10 @@ export function computeEpisodeReward(
   completionBonus: number = 1.0,
   efficiencyWeight: number = 0.1
 ): number {
-  let reward = result.metrics.avgReward * result.totalSteps;
+  // Over scored steps: `avgReward` is their mean, so this is the reward total.
+  // The efficiency penalty below stays on `totalSteps` — every step was paid
+  // for, whether or not it reported a reward (#4916).
+  let reward = result.metrics.avgReward * result.metrics.scoredSteps;
 
   // Add completion bonus
   if (result.success) {

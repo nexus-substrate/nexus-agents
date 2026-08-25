@@ -117,17 +117,20 @@ function makeResult(overrides: Partial<PuppeteerResult> = {}) {
     totalTokens: 500,
     totalCost: 0.01,
     emergentPatterns: { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 },
-    metrics: {
+    terminationReason: 'task_complete' as const,
+    sessionId: 'session-abc',
+    ...overrides,
+    // A fixture that varies `totalSteps` without saying otherwise means every
+    // step was scored. Leaving `scoredSteps` at its literal made the arithmetic
+    // in these tests inconsistent with itself once reward moved onto it.
+    metrics: overrides.metrics ?? {
       avgReward: 0.8,
-      scoredSteps: 3,
+      scoredSteps: overrides.totalSteps ?? 3,
       taskCompletionRate: 1.0,
       efficiencyScore: 0.5,
       compactionScore: 0.3,
       cyclicalityScore: 0.1,
     },
-    terminationReason: 'task_complete' as const,
-    sessionId: 'session-abc',
-    ...overrides,
   };
 }
 
@@ -197,11 +200,38 @@ describe('processOrchestrationForLearning', () => {
     expect(engine.updatePolicy).not.toHaveBeenCalled();
   });
 
-  it('computes finalReward as avgReward * totalSteps', async () => {
+  it('rewards the sum over scored steps, not an extrapolation across all of them', async () => {
+    // `avgReward` became the mean over SCORED steps in #4766. Multiplying it
+    // by `totalSteps` hands the policy back the contribution of exactly the
+    // steps that exclusion removed: 3 scored steps averaging 0.8 out of 4
+    // total is a reward sum of 2.4, and the old form reported 3.2.
     const result = makeResult({
       totalSteps: 4,
       metrics: {
-        avgReward: 0.5,
+        avgReward: 0.8,
+        scoredSteps: 3,
+        taskCompletionRate: 1.0,
+        efficiencyScore: 0.5,
+        compactionScore: 0.3,
+        cyclicalityScore: 0.1,
+      },
+    });
+    const buffer = makeBuffer();
+    const engine = makeEngine();
+
+    await processOrchestrationForLearning(result, buffer, engine);
+
+    expect(engine.updatePolicy).toHaveBeenCalledWith(steps, 2.4000000000000004);
+  });
+
+  it('skips the policy update when no step reported a reward', async () => {
+    // The empty case. With every step unmeasured there is no reward to learn
+    // from; updating on the 0 that falls out of an empty mean trains the
+    // policy on the absence of data as though it were a measurement.
+    const result = makeResult({
+      totalSteps: 4,
+      metrics: {
+        avgReward: 0,
         scoredSteps: 0,
         taskCompletionRate: 1.0,
         efficiencyScore: 0.5,
@@ -211,8 +241,11 @@ describe('processOrchestrationForLearning', () => {
     });
     const buffer = makeBuffer();
     const engine = makeEngine();
+
     await processOrchestrationForLearning(result, buffer, engine);
-    expect(engine.updatePolicy).toHaveBeenCalledWith(steps, 2.0);
+
+    expect(buffer.addEpisode).toHaveBeenCalled();
+    expect(engine.updatePolicy).not.toHaveBeenCalled();
   });
 
   it('handles policy update returning error result', async () => {
@@ -360,13 +393,37 @@ describe('createLearningHandler', () => {
 });
 
 describe('computeEpisodeReward', () => {
-  it('computes base reward as avgReward * totalSteps', () => {
+  it('computes base reward over scored steps, not total steps', () => {
+    // The old assertion used `totalSteps: 0`, where every multiplier yields 0
+    // — it passed whichever factor the code used. These differ.
     const result = makeResult({
       success: false,
-      totalSteps: 0,
-      metrics: { ...ZERO_METRICS, avgReward: 0.5 },
+      totalSteps: 10,
+      metrics: { ...ZERO_METRICS, avgReward: 0.5, scoredSteps: 2 },
     });
-    expect(computeEpisodeReward(result, 0, 0)).toBe(0);
+
+    expect(computeEpisodeReward(result, 0, 0)).toBe(1.0);
+  });
+
+  it('still charges the efficiency penalty for unscored steps', () => {
+    // The pair: a step that reported no reward was still executed and paid
+    // for, so the penalty is over `totalSteps`. Scoping it to scored steps
+    // would make an unmeasured step free, which is the distortion #4766 set
+    // out to remove.
+    const scoredOnly = makeResult({
+      success: false,
+      totalSteps: 2,
+      metrics: { ...ZERO_METRICS, avgReward: 0, scoredSteps: 2 },
+    });
+    const withUnscored = makeResult({
+      success: false,
+      totalSteps: 10,
+      metrics: { ...ZERO_METRICS, avgReward: 0, scoredSteps: 2 },
+    });
+
+    expect(computeEpisodeReward(withUnscored, 0, 1)).toBeLessThan(
+      computeEpisodeReward(scoredOnly, 0, 1)
+    );
   });
 
   it('adds completion bonus on success', () => {
@@ -405,7 +462,7 @@ describe('computeEpisodeReward', () => {
       totalSteps: 5,
       metrics: {
         avgReward: 0.6,
-        scoredSteps: 0,
+        scoredSteps: 5,
         taskCompletionRate: 1.0,
         efficiencyScore: 0.5,
         compactionScore: 0.3,
@@ -426,7 +483,7 @@ describe('computeEpisodeReward', () => {
     const result = makeResult({
       success: false,
       totalSteps: 2,
-      metrics: { ...ZERO_METRICS, avgReward: -1.0 },
+      metrics: { ...ZERO_METRICS, avgReward: -1.0, scoredSteps: 2 },
     });
     expect(computeEpisodeReward(result, 0, 0)).toBe(-2.0);
   });
