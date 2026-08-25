@@ -48,10 +48,7 @@ import {
   getSharedMobiMem,
   setSharedMobiMemDbPathResolver,
 } from '../../context/mobimem.js';
-import {
-  StatsOnlyAdapter,
-  ensureSharedMemoryRegistry,
-} from './tool-memory-registry-adapters.js';
+import { StatsOnlyAdapter, ensureSharedMemoryRegistry } from './tool-memory-registry-adapters.js';
 import type { MobiMemStats } from '../../context/mobimem-types.js';
 import {
   MemoryPromoter,
@@ -207,8 +204,10 @@ export class ToolMemoryManager {
     const beliefs = this.beliefs;
     attachToRegistry('belief', {
       count: async () => {
+        // #4827: propagate failure rather than collapsing it to 0.
         const stats = await beliefs.getStats();
-        return stats.ok ? stats.value.totalBeliefs : 0;
+        if (!stats.ok) throw new Error(`belief getStats failed: ${String(stats.error)}`);
+        return stats.value.totalBeliefs;
       },
       // Phase 1 of #2792 — text search delegates to recallBySubject.
       search: async (query, limit) => {
@@ -290,8 +289,10 @@ export class ToolMemoryManager {
         this.agentic = backend;
         attachToRegistry('agentic', {
           count: async () => {
-            const res = await backend.count();
-            return res.ok ? res.value : 0;
+            // #4827: hand the Result through unchanged. `extractCount` turns a
+            // failure into a throw so `memory_stats` can report it; collapsing
+            // to 0 here made a broken backend look like an empty one.
+            return backend.count();
           },
           // Phase 1 of #2792 — A-MEM text search returns attribute-rich entries.
           search: async (query, limit) => {
@@ -322,8 +323,10 @@ export class ToolMemoryManager {
         this.adaptive = backend;
         attachToRegistry('adaptive', {
           count: async () => {
-            const res = await backend.count();
-            return res.ok ? res.value : 0;
+            // #4827: hand the Result through unchanged. `extractCount` turns a
+            // failure into a throw so `memory_stats` can report it; collapsing
+            // to 0 here made a broken backend look like an empty one.
+            return backend.count();
           },
           // Phase 1 of #2792 — adaptive memory returns priority-scored entries.
           search: async (query, limit) => {
@@ -356,8 +359,10 @@ export class ToolMemoryManager {
         this.typed = createTypedMemory(backend);
         attachToRegistry('typed', {
           count: async () => {
-            const res = await backend.count();
-            return res.ok ? res.value : 0;
+            // #4827: hand the Result through unchanged. `extractCount` turns a
+            // failure into a throw so `memory_stats` can report it; collapsing
+            // to 0 here made a broken backend look like an empty one.
+            return backend.count();
           },
           // Phase 1 of #2792 — typed search uses the underlying hybrid backend.
           search: async (query, limit) => {
