@@ -59,6 +59,11 @@ packages/nexus-agents/coverage.json
 
 # User-specific configuration
 .mcp.json
+# Browser-tool console logs (15 files / 1.6MB and growing). Untracked and
+# unignored, so a `git add -A` sweeps them into a commit — which has already
+# happened once in this repo with stray scratch files, caught only by the
+# Orphan Detection gate.
+.playwright-mcp/
 nexus-agents.yaml
 opencode.json
 .claude/settings.local.json
