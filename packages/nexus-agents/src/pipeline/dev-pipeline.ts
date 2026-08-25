@@ -143,7 +143,31 @@ export interface DevPipelineResult {
   readonly tasks: readonly PipelineTask[];
   readonly voteIterations: number;
   readonly qaIterations: number;
+  /**
+   * Whether the security gate passed.
+   *
+   * Read together with {@link DevPipelineResult.securityRan} (#4772): `false`
+   * with `securityRan: false` means the gate never executed — a dry run stops
+   * after plan+vote — and is NOT a failed security review.
+   */
   readonly securityPassed: boolean;
+  /**
+   * Whether the security gate actually ran (#4772).
+   *
+   * Absent on results from before the distinction existed. `false` means the
+   * run stopped before security, so `securityPassed: false` reports absence,
+   * not a verdict.
+   */
+  readonly securityRan?: boolean;
+  /**
+   * Why planning produced no usable plan, when it did not (#4772).
+   *
+   * Absent means the plan is a real plan. `'empty'` means the planner returned
+   * nothing — previously the stage substituted the PROMPT for the plan, so a
+   * failed run was indistinguishable from a successful one and downstream
+   * stages voted on the input text.
+   */
+  readonly planStatus?: 'empty';
 }
 
 // ============================================================================
@@ -694,7 +718,11 @@ function buildDryRunResult(planResult: {
     tasks: [],
     voteIterations: planResult.iterations,
     qaIterations: 0,
+    // #4772: a dry run stops before security by design. `false` alone read as
+    // "the security gate rejected this"; `securityRan: false` says it never ran.
     securityPassed: false,
+    securityRan: false,
+    ...(planResult.plan.trim() === '' ? { planStatus: 'empty' as const } : {}),
   };
 }
 
@@ -982,6 +1010,14 @@ async function planVoteLoop(
       { name: `plan (i=${String(i)})`, kind: 'pipeline.stage', attrs: { iteration: i } },
       () => stages.plan(task, research, feedback)
     );
+
+    // #4772: the planner produced nothing. Voting on an empty plan wastes a
+    // panel and yields a verdict about no proposal, so stop and let the caller
+    // see `planStatus: 'empty'` instead of a plausible-looking result.
+    if (plan.trim() === '') {
+      logger.warn('Planner returned no plan — stopping before vote', { iteration: i, sessionId });
+      return { plan: '', iterations: i, conditional: false, conditions: [], caveats: [] };
+    }
 
     const vote = await withStep(
       { name: `vote (i=${String(i)})`, kind: 'consensus.vote', attrs: { iteration: i } },
