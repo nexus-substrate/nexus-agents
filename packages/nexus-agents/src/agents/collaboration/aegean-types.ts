@@ -123,13 +123,17 @@ export interface AegeanResult {
   readonly totalRounds: number;
   readonly totalDurationMs: number;
   readonly tokensUsed: number;
+  /**
+   * How many contributions reported no token usage (#4743).
+   *
+   * `tokensUsed` is a sum of measured values only, so a non-zero count here
+   * makes it a LOWER BOUND rather than a total. Without it a round where every
+   * adapter went silent is indistinguishable from one that spent nothing.
+   */
+  readonly unmeasuredTokenContributions: number;
   readonly rounds: readonly AegeanRound[];
   readonly terminationReason:
-    | 'consensus'
-    | 'max_rounds'
-    | 'timeout'
-    | 'byzantine_failure'
-    | 'error';
+    'consensus' | 'max_rounds' | 'timeout' | 'byzantine_failure' | 'error';
 }
 
 export const AegeanResultSchema = z.object({
@@ -138,6 +142,7 @@ export const AegeanResultSchema = z.object({
   totalRounds: z.number().int().min(0),
   totalDurationMs: z.number(),
   tokensUsed: z.number().int().min(0),
+  unmeasuredTokenContributions: z.number().int().min(0).default(0),
   rounds: z.array(AegeanRoundSchema).readonly(),
   terminationReason: z.enum(['consensus', 'max_rounds', 'timeout', 'byzantine_failure', 'error']),
 });
