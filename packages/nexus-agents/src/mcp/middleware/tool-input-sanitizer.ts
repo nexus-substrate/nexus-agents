@@ -50,8 +50,24 @@ const INJECTION_DETECTORS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
  * Returns the cleaned string and whether it was modified.
  */
 function sanitizeString(value: string): { cleaned: string; modified: boolean } {
-  XML_INJECTION_PATTERN.lastIndex = 0;
-  const cleaned = value.replace(XML_INJECTION_PATTERN, '');
+  // Loop to a fixed point. A single pass RECONSTRUCTS the tag it strips:
+  // `<sys<system>tem>x</sys</system>tem>` has its inner `<system>` removed,
+  // and the outer fragments close up into a live `<system>x</system>`. The
+  // sibling in `input-sanitizer.ts` has done this since #1496; this copy did
+  // not, and it is the one guarding fork-authored PR descriptions.
+  //
+  // Bounded rather than `while`: a pathological input must not spin here, and
+  // five passes clears any nesting depth seen in practice (two suffice for the
+  // payload above). If the cap is ever hit the value is returned as-is and
+  // reported modified, so the caller still sees that something was stripped.
+  const MAX_PASSES = 5;
+  let cleaned = value;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    XML_INJECTION_PATTERN.lastIndex = 0;
+    const next = cleaned.replace(XML_INJECTION_PATTERN, '');
+    if (next === cleaned) break;
+    cleaned = next;
+  }
   return { cleaned, modified: cleaned !== value };
 }
 
