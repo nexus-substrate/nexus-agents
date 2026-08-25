@@ -22,3 +22,11 @@ emitted whole and still overflows — visibly, rather than silently truncated.
 
 The regression test that found these now covers the whole rendered report
 rather than one section.
+
+`centerText` had the identical defect and is fixed alongside: it computed
+`BOX_WIDTH - text.length - 2`, so coloured text drifted left by half the escape
+length.
+
+`visibleWidth` lives in its own module. Measuring display columns is not
+box-specific, and the producer/consumer ratchet is right that a test importing
+a symbol is not a consumer of it.

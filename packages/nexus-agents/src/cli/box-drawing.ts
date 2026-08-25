@@ -8,6 +8,7 @@
  */
 
 import { colors, color } from './ansi-output.js';
+import { visibleWidth } from './ansi-width.js';
 
 // =============================================================================
 // Constants
@@ -26,22 +27,6 @@ export const BOX_WIDTH = 65;
  */
 export function horizontalLine(char = '─'): string {
   return char.repeat(BOX_WIDTH - 2);
-}
-
-/** ANSI SGR escapes — zero display columns, non-zero `String.length`. */
-const ANSI_SGR = /\u001b\[[0-9;]*m/g;
-
-/**
- * Display width of a string, ignoring ANSI colour escapes (#4913).
- *
- * `String.prototype.length` counts escape bytes, which occupy no columns. Every
- * pad computed from it is wrong by however many escapes the caller happened to
- * include — which is why three call sites had grown hand-tuned
- * `BOX_WIDTH + 8` / `+ 11` / `+ 7` constants, each correct only for that line's
- * exact colours and all of them wrong under `NO_COLOR`.
- */
-export function visibleWidth(s: string): number {
-  return s.replace(ANSI_SGR, '').length;
 }
 
 /**
@@ -66,7 +51,7 @@ export function boxLine(content: string, borderColor: string = colors.cyan): str
  * @param borderColor ANSI color code for the border (default: cyan)
  */
 export function centerText(text: string, borderColor = colors.cyan): string {
-  const padding = Math.max(0, BOX_WIDTH - text.length - 2);
+  const padding = Math.max(0, BOX_WIDTH - visibleWidth(text) - 2);
   const left = Math.floor(padding / 2);
   const right = padding - left;
   return (

@@ -14,8 +14,8 @@ import {
   boxTop,
   boxSeparator,
   boxBottom,
-  visibleWidth,
 } from './box-drawing.js';
+import { visibleWidth } from './ansi-width.js';
 
 // ============================================================================
 // BOX_WIDTH
@@ -176,6 +176,17 @@ describe('visibleWidth and ANSI-aware padding (#4913)', () => {
     // grown hand-tuned `BOX_WIDTH + n` constants compensating for exactly this.
     const plain = boxLine('abc');
     const coloured = boxLine(`${BOLD}abc${RESET}`);
+
+    expect(visibleWidth(coloured)).toBe(visibleWidth(plain));
+  });
+
+  it('centers coloured text on its display width too', () => {
+    // `centerText` had the identical defect: `BOX_WIDTH - text.length - 2`
+    // counted escape bytes, so coloured text drifted left by half the escape
+    // length. Same fix, and it needs its own assertion — the boxLine tests
+    // above pass with centerText still broken.
+    const plain = centerText('abc');
+    const coloured = centerText(`${BOLD}abc${RESET}`);
 
     expect(visibleWidth(coloured)).toBe(visibleWidth(plain));
   });
