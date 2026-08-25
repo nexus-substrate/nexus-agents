@@ -24,13 +24,29 @@ jobs:
         run: |
           OUTPUT=$(pnpm check:pricing-drift 2>&1)
           echo "$OUTPUT"
-          # Extract drift count from output
-          DRIFT=$(echo "$OUTPUT" | grep -oP '(\d+) field' | grep -oP '\d+' || echo "0")
-          echo "drift_count=$DRIFT" >> "$GITHUB_OUTPUT"
+          # Read the script's explicit verdict, not the prose. Scraping
+          # "N field" out of the report meant a fetch failure — which prints no
+          # report at all — fell through to `|| echo 0` and rendered as clean
+          # pricing (#4927). The default is now `skipped`, so an absent verdict
+          # is reported as absent.
+          STATUS=$(echo "$OUTPUT" | grep -oP 'PRICING_DRIFT_STATUS=\K\S+' | tail -1 || echo "skipped")
+          COUNT=$(echo "$OUTPUT" | grep -oP 'PRICING_DRIFT_COUNT=\K\d+' | tail -1 || echo "0")
+          echo "drift_status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "drift_count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "$OUTPUT" > drift-report.txt
 
+      - name: Note a loud skip (catalog fetch failure — NOT "no drift")
+        if: steps.drift.outputs.drift_status == 'skipped'
+        run: |
+          echo "::warning::Pricing-drift check SKIPPED — the litellm catalog fetch failed or the script errored. Not treated as 'no drift'; re-run when the catalog is reachable."
+
+      - name: Note drift below the issue threshold
+        if: steps.drift.outputs.drift_status == 'drift' && steps.drift.outputs.drift_count <= 5
+        run: |
+          echo "::warning::Pricing drift in ${{ steps.drift.outputs.drift_count }} field(s) — below the 5-field issue threshold, so no issue was filed. Real drift, reported rather than dropped."
+
       - name: Create issue if significant drift found
-        if: steps.drift.outputs.drift_count > 5
+        if: steps.drift.outputs.drift_status == 'drift' && steps.drift.outputs.drift_count > 5
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
