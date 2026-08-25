@@ -47,8 +47,18 @@ export interface PipelineStateSnapshot {
    * include `trust-classifier`, `input-sanitizer`, `firewall-pipeline`, and
    * `mcp/middleware/request-context`; threading the value into
    * `TaskContract.metadata.trustTier` is owner-scoped follow-up work — see
-   * the corresponding issue. When absent, `trustTierRule` allows (the
-   * existing fail-open default for unknown trust).
+   * the corresponding issue.
+   *
+   * ABSENT MEANS UNTRUSTED, NOT ALLOWED (#4821). An absent or non-numeric
+   * value is coerced to `4` and DENIES — see `trustTierRule` below. This doc
+   * previously claimed the opposite ("fail-open default for unknown trust"),
+   * describing a pre-hardening behaviour the code no longer has.
+   *
+   * That is the correct default and should stay: fail-closed on unknown
+   * provenance is what `.rules/untrusted-input.md` requires. Do not "fix" the
+   * rule to match the old comment. The practical consequence, worth knowing
+   * before planning enforcement work, is that an UNWIRED producer is the DENY
+   * case rather than the safe one.
    */
   readonly trustTier?: string;
 }
