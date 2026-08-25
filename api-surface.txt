@@ -2825,6 +2825,8 @@ InterfaceDeclaration DevPipelineOptions
   readonly auditLogger?: IAuditLogger | undefined
   readonly beliefMemory?: IHindsightBeliefMemory | undefined
   readonly dryRun?: boolean | undefined
+  readonly maxQaIterations?: number | undefined
+  readonly maxVoteIterations?: number | undefined
   readonly mode?: PipelineMode | undefined
   readonly qualityGate?: QualityGateMode | undefined
   readonly researchOverride?: string | undefined

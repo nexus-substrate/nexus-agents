@@ -221,6 +221,55 @@ describe('runDevPipeline', () => {
     expect(result.tasks).toHaveLength(2);
   });
 
+  it('honors a caller-supplied vote-iteration cap (#4939)', async () => {
+    // `maxVoteIterations` was advertised by the MCP tool, bounds-checked and
+    // defaulted to 3, and never read — so setting it changed nothing. The
+    // default above proves 3; this proves the knob reaches the loop.
+    const vote = vi.fn().mockResolvedValue({
+      kind: 'rejected',
+      feedback: 'Still not right',
+      approvalPercentage: 40,
+    });
+    const stages = createMockStages({ vote });
+
+    const result = await runDevPipeline('Build feature X', stages, { maxVoteIterations: 1 });
+
+    expect(result.voteIterations).toBe(1);
+    expect(vote).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors a caller-supplied QA-iteration cap (#4939)', async () => {
+    // The sibling of the vote cap, and pinned separately: forwarding the option
+    // from the tool is not the same as the QA loop reading it, and mutating the
+    // loop back to its constant passed every other test.
+    const qaReview = vi
+      .fn()
+      .mockResolvedValue({ verdict: 'rejected', feedback: 'needs work', issues: ['x'] });
+    const stages = createMockStages({ qaReview });
+
+    const result = await runDevPipeline('Build feature X', stages, { maxQaIterations: 1 });
+
+    expect(result.qaIterations).toBeGreaterThan(0);
+    // Two tasks, one QA round each.
+    expect(qaReview).toHaveBeenCalledTimes(2);
+  });
+
+  it('still uses the default cap when none is supplied (#4939)', async () => {
+    // The pair: a hardcoded 1 would satisfy the test above and silently halve
+    // every unconfigured run.
+    const stages = createMockStages({
+      vote: vi.fn().mockResolvedValue({
+        kind: 'rejected',
+        feedback: 'Still not right',
+        approvalPercentage: 40,
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages, {});
+
+    expect(result.voteIterations).toBe(3);
+  });
+
   it('passes vote feedback back to plan stage', async () => {
     const stages = createMockStages({
       vote: vi
