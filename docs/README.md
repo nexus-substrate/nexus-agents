@@ -278,6 +278,7 @@ For contributors building on the control plane and operators running it.
 | [git-housekeeping.md](./ops/git-housekeeping.md)                   | Git GC cleanup runbook (#3062) | Canonical |
 | [governed-decision-cost.md](./ops/governed-decision-cost.md)       | Governed-decision cost (#3857) | Canonical |
 | [e2e-validation-2026-08-23.md](./ops/e2e-validation-2026-08-23.md) | E2E validation run, 2026-08-23 | Canonical |
+| [e2e-validation-2026-08-25.md](./ops/e2e-validation-2026-08-25.md) | E2E validation run, 2026-08-25 | Canonical |
 | [e2e-validation-2026-08-21.md](./ops/e2e-validation-2026-08-21.md) | E2E validation run, 2026-08-21 | Canonical |
 
 ### CI gates & coverage
