@@ -784,6 +784,56 @@ describe('ClaudeAdapter', () => {
       });
     });
 
+    it('carries the real prompt count on message_start (#4835)', async () => {
+      // The Anthropic protocol puts the input count on `message_start`, not
+      // on `message_delta` — the adapter already received this event and read
+      // only `model`, dropping a number it had in hand.
+      async function* gen() {
+        yield {
+          type: 'message_start',
+          message: { model: 'claude-sonnet-4-6', usage: { input_tokens: 1234, output_tokens: 1 } },
+        };
+        yield { type: 'message_stop' };
+      }
+      mockStream.mockReturnValue(gen());
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of new ClaudeAdapter(validConfig).stream({
+        messages: [{ role: 'user', content: 'Hi!' }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toContainEqual({
+        type: 'message_start',
+        message: { model: 'claude-sonnet-4-6' },
+        usage: { inputTokens: 1234, outputTokens: 1, totalTokens: 1235 },
+      });
+    });
+
+    it('omits usage on message_start when the vendor sent none (#4835)', async () => {
+      // The SDK types `usage` as required, but an Anthropic-compatible proxy
+      // may omit it. Omit rather than zero-fill or throw — crashing a stream
+      // over a telemetry field would be worse than the defect being fixed.
+      async function* gen() {
+        yield { type: 'message_start', message: { model: 'claude-sonnet-4-6' } };
+        yield { type: 'message_stop' };
+      }
+      mockStream.mockReturnValue(gen());
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of new ClaudeAdapter(validConfig).stream({
+        messages: [{ role: 'user', content: 'Hi!' }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toContainEqual({
+        type: 'message_start',
+        message: { model: 'claude-sonnet-4-6' },
+      });
+    });
+
     it('should map message_delta events with usage', async () => {
       async function* mockStreamGenerator() {
         yield {
@@ -805,10 +855,14 @@ describe('ClaudeAdapter', () => {
         chunks.push(chunk);
       }
 
+      // `inputTokens: 0` is retained — the field is required — but flagged
+      // unmeasured, because the prompt count is not on this event. Asserting
+      // the bare zero (as this did) pinned a placeholder as a measurement,
+      // and a consumer billing on it priced the prompt at nothing (#4835).
       expect(chunks).toContainEqual({
         type: 'message_delta',
         delta: { stop_reason: 'end_turn' },
-        usage: { inputTokens: 0, outputTokens: 10, totalTokens: 10 },
+        usage: { inputTokens: 0, inputTokensMeasured: false, outputTokens: 10, totalTokens: 10 },
       });
     });
 

@@ -126,6 +126,20 @@ export interface TokenUsage {
   outputTokens: number;
   totalTokens: number;
   /**
+   * Whether `inputTokens` is a measurement (#4835).
+   *
+   * `false` means the vendor did not report a prompt count on this event, so
+   * `inputTokens` is a placeholder `0` — and `totalTokens` is therefore a
+   * LOWER BOUND, not a total. A stream consumer that bills on these numbers
+   * otherwise prices a large-context call at zero prompt cost, which
+   * under-counts in the dangerous direction.
+   *
+   * Absent means measured, so no existing producer changes meaning. Where
+   * NOTHING is known, prefer omitting `usage` entirely — that is the #4439
+   * policy, and the field is already optional on the chunk.
+   */
+  inputTokensMeasured?: boolean;
+  /**
    * Input tokens READ from an existing prompt cache, when the vendor reports
    * them separately. Billed at roughly a tenth of the uncached input rate, so
    * kept out of `inputTokens` rather than summed into it (#4435).
@@ -187,7 +201,7 @@ export type StreamChunk =
   | { type: 'content_block_start'; index: number; contentBlock: ContentBlock }
   | { type: 'content_block_delta'; index: number; delta: { type: 'text_delta'; text: string } }
   | { type: 'content_block_stop'; index: number }
-  | { type: 'message_start'; message: { model: string } }
+  | { type: 'message_start'; message: { model: string }; usage?: TokenUsage }
   | { type: 'message_delta'; delta: { stop_reason: StopReason }; usage?: TokenUsage }
   | { type: 'message_stop' };
 

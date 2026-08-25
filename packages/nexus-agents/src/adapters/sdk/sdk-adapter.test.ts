@@ -422,6 +422,14 @@ describe('SdkAdapter', () => {
         delta: { type: 'text_delta', text: 'Hello' },
       });
       expect(chunks[7]).toEqual({ type: 'message_stop' });
+      // #4835: this path reports no usage, so it emits none. It used to emit
+      // `{inputTokens: 0, outputTokens: 0, totalTokens: 0}`, which is
+      // byte-identical to a stream that genuinely consumed nothing — a
+      // consumer billing on it priced the whole call at zero.
+      expect(chunks[6]).toEqual({
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+      });
     });
 
     it('skips empty-string deltas (#3317 #8)', async () => {

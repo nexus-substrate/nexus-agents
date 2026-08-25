@@ -356,15 +356,37 @@ export class ClaudeAdapter extends BaseAdapter {
     };
   }
 
+  /** Usage for a `message_start` chunk, omitted when the vendor sent none (#4835). */
+  private static usageFrom(raw: { input_tokens?: number; output_tokens?: number } | undefined): {
+    usage?: TokenUsage;
+  } {
+    const inputTokens = raw?.input_tokens;
+    if (typeof inputTokens !== 'number') return {};
+    const outputTokens = typeof raw?.output_tokens === 'number' ? raw.output_tokens : 0;
+    return {
+      usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+    };
+  }
+
   /**
    * Maps Anthropic stream events to our StreamChunk format.
    */
   private mapStreamEvent(event: MessageStreamEvent): StreamChunk | null {
     switch (event.type) {
       case 'message_start':
+        // #4835: the prompt count arrives HERE, not on message_delta — the
+        // Anthropic protocol puts it on `message.usage`. The delta comment
+        // ("Not available in delta") was correct about the wrong event, and
+        // the value was being dropped rather than being unavailable.
+        //
+        // Read defensively and OMIT when absent rather than zero-fill: the
+        // SDK types it as required, but an Anthropic-compatible proxy may not
+        // send it, and crashing a stream over a telemetry field would be a
+        // worse failure than the one being fixed.
         return {
           type: 'message_start',
           message: { model: event.message.model },
+          ...ClaudeAdapter.usageFrom(event.message.usage),
         };
 
       case 'content_block_start':
@@ -395,7 +417,11 @@ export class ClaudeAdapter extends BaseAdapter {
           type: 'message_delta',
           delta: { stop_reason: mapStopReason(event.delta.stop_reason ?? null) },
           usage: {
-            inputTokens: 0, // Not available in delta
+            // Genuinely absent on this event; the real count was emitted on
+            // message_start above. Flagged so `totalTokens` reads as the
+            // lower bound it is rather than as a total (#4835).
+            inputTokens: 0,
+            inputTokensMeasured: false,
             outputTokens: event.usage.output_tokens,
             totalTokens: event.usage.output_tokens,
           },

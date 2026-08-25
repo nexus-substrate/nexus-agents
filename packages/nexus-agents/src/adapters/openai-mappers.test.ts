@@ -289,6 +289,25 @@ describe('mapStreamChunk', () => {
     expect(result.some((c) => c.type === 'message_start')).toBe(false);
   });
 
+  it('marks the streamed prompt count as unmeasured (#4835)', () => {
+    // OpenAI streaming does not report prompt_tokens on the final chunk, so
+    // `inputTokens: 0` is a placeholder. Unflagged it is byte-identical to an
+    // empty prompt, and a consumer billing on it prices a large-context call
+    // at zero.
+    const chunk = {
+      model: 'gpt-4',
+      choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
+      usage: { completion_tokens: 42, total_tokens: 42 },
+    } as unknown as ChatCompletionChunk;
+
+    const delta = mapStreamChunk(chunk, 0, true).find((c) => c.type === 'message_delta');
+
+    expect(delta).toBeDefined();
+    expect(delta?.type === 'message_delta' ? delta.usage : undefined).toEqual(
+      expect.objectContaining({ inputTokens: 0, inputTokensMeasured: false, outputTokens: 42 })
+    );
+  });
+
   it('handles empty choices', () => {
     const chunk = { model: 'gpt-4', choices: [] } as unknown as ChatCompletionChunk;
     const result = mapStreamChunk(chunk, 0, true);

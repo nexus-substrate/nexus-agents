@@ -8499,7 +8499,7 @@ ClassDeclaration StrategyDistiller
   promote(routingMemory: IRoutingMemory) => number
 ClassDeclaration StreamCancelledError
 TypeAliasDeclaration StreamChunk
-  = | { contentBlock: ContentBlock; index: number; type: 'content_block_start'; } | { delta: { text: string; type: 'text_delta'; }; index: number; type: 'content_block_delta'; } | { index: number; type: 'content_block_stop'; } | { message: { model: string; }; type: 'message_start'; } | { delta: { stop_reason: StopReason; }; type: 'message_delta'; usage?: TokenUsage; } | { type: 'message_stop'; }
+  = | { contentBlock: ContentBlock; index: number; type: 'content_block_start'; } | { delta: { text: string; type: 'text_delta'; }; index: number; type: 'content_block_delta'; } | { index: number; type: 'content_block_stop'; } | { message: { model: string; }; type: 'message_start'; usage?: TokenUsage; } | { delta: { stop_reason: StopReason; }; type: 'message_delta'; usage?: TokenUsage; } | { type: 'message_stop'; }
 ClassDeclaration StreamController
   cancel(reason?: string) => void
   complete() => void
@@ -9050,6 +9050,7 @@ InterfaceDeclaration TokenUsage
   cacheCreationInputTokens?: number | undefined
   cachedInputTokens?: number | undefined
   inputTokens: number
+  inputTokensMeasured?: boolean | undefined
   outputTokens: number
   readonly cacheCreationInputTokens?: number | undefined
   readonly cachedInputTokens?: number | undefined
