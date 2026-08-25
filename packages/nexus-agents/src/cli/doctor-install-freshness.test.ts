@@ -30,6 +30,24 @@ describe('assessInstallFreshness (#4767)', () => {
     });
   });
 
+  it('reports unknown when this build has no version, not a false drift', () => {
+    // `VERSION` is `'dev'` when running from source. Comparing a real global
+    // version against it reported `behind` on every developer checkout —
+    // observed live: "Global install is 4.18.1, this build is dev". A check
+    // that cries wolf in the commonest context is one people learn to skip,
+    // which is the failure #4904 was about.
+    const result = assessInstallFreshness('4.18.1', 'dev');
+
+    expect(result.state).toBe('unknown');
+    if (result.state !== 'unknown') return;
+    expect(result.reason).toMatch(/from source|no version/i);
+  });
+
+  it('still compares two real versions', () => {
+    // The pair: short-circuiting on any expected value would disable the check.
+    expect(assessInstallFreshness('4.18.1', '4.19.0').state).toBe('behind');
+  });
+
   it('reports unknown rather than aligned when there is no global install', () => {
     // The distinction the whole check exists for. "Nobody checked" must not
     // render as "the versions match".
