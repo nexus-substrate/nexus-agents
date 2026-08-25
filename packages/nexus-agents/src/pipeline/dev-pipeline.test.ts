@@ -293,6 +293,10 @@ describe('runDevPipeline', () => {
     expect(stages.implement).not.toHaveBeenCalled();
     expect(stages.qaReview).not.toHaveBeenCalled();
     expect(stages.securityScan).not.toHaveBeenCalled();
+    // #4782: harness mode hands tasks back for someone else to build, so the
+    // scan cannot have run. Without this the envelope is byte-identical to a
+    // real security rejection.
+    expect(result.securityRan).toBe(false);
   });
 });
 
@@ -488,6 +492,9 @@ describe('runDevPipeline — quality gate (#3356)', () => {
     expect(stages.securityScan).not.toHaveBeenCalled();
     expect(result.completed).toBe(false);
     expect(result.securityPassed).toBe(false);
+    // #4782: the gate short-circuited BEFORE the scan, so `securityPassed:
+    // false` here is absence, not a verdict.
+    expect(result.securityRan).toBe(false);
     // Implementations still happened before the gate.
     expect(result.tasks).toHaveLength(2);
   });
@@ -498,6 +505,8 @@ describe('runDevPipeline — quality gate (#3356)', () => {
 
     expect(stages.qualityGate).toHaveBeenCalledTimes(1);
     expect(stages.securityScan).toHaveBeenCalledTimes(1);
+    // #4782: the one path where the scan DID run must say so.
+    expect(result.securityRan).toBe(true);
     expect(result.completed).toBe(true);
   });
 
