@@ -1,5 +1,52 @@
 # nexus-agents
 
+## 4.15.1
+
+### Patch Changes
+
+- [#4918](https://github.com/nexus-substrate/nexus-agents/pull/4918) [`493b181`](https://github.com/nexus-substrate/nexus-agents/commit/493b181abaf8ba39d099e646699507928139ef9e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop the episode reward re-multiplying the steps it excluded
+
+  Excluding unmeasured steps from the reward mean left both consumers of that
+  mean multiplying it by `totalSteps`. That product was the reward sum while the
+  mean covered every step; once it covered only scored steps it became an
+  extrapolation, handing the policy back the contribution of exactly the steps
+  exclusion removed. Three scored steps averaging 0.8 out of four reported a
+  reward of 3.2 where the true sum is 2.4.
+
+  Both now multiply by `scoredSteps`, which was already on the metrics object and
+  unread.
+
+  The empty case is handled rather than defaulted: with no step reporting a
+  reward, the policy update is skipped instead of training on the zero that falls
+  out of an empty mean — and in `computeEpisodeReward` that zero was followed by
+  a completion bonus, so an episode with nothing measured produced a positive
+  reward.
+
+  The efficiency penalty stays on `totalSteps`. An unscored step was still
+  executed and paid for, and scoping the penalty to scored steps would make it
+  free — the same distortion in the other direction. A test pins that.
+
+- [#4914](https://github.com/nexus-substrate/nexus-agents/pull/4914) [`48d2930`](https://github.com/nexus-substrate/nexus-agents/commit/48d293042df427318d14892b2534c63800cec36b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix the routing-audit budget line spilling out of its box, and a drift guard that could not fail
+
+  Two defects from the previous release, both mine.
+
+  The `[simulated — not evaluated against real cost or config]` label was appended
+  to the "Budget Filter" heading, giving an 82-character line inside a
+  63-character content area. `padEnd` silently no-ops past its target, so the
+  right border was pushed off every line of that section. Split across two lines.
+  The test that shipped with it asserted `toContain('simulated')`, which passes on
+  a broken render; it is now joined by one that measures the rendered width.
+
+  The accompanying anti-drift test was vacuous. It called the audit's context
+  builder and the production one and compared the outputs — but the audit side had
+  just become `return taskProfileToBanditContext(profile)`, so it compared a
+  one-line delegation to its own callee: true for every input, forever. The
+  wrapper is now a re-export of the production symbol, and the test asserts
+  function identity, which fails the moment anyone reintroduces a body. Divergence
+  is impossible rather than merely untested.
+
+  Also removes an orphaned doc comment left behind by a deleted constant.
+
 ## 4.15.0
 
 ### Minor Changes
