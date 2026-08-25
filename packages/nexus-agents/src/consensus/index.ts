@@ -89,8 +89,6 @@ export type {
   QuorumValidationConfig,
   QuorumValidationResult,
   QuorumBreakdown,
-  EligibilityResult,
-  AgentRecord,
 } from './quorum-validator.js';
 
 export {
