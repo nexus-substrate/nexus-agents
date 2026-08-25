@@ -28,6 +28,7 @@ import type {
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
+import { describeInstallFreshness } from './doctor-install-freshness.js';
 
 /** Required Node.js major version (for warning message). */
 const REQUIRED_NODE_MAJOR = 22;
@@ -479,7 +480,23 @@ export function printDoctorResults(result: DoctorResult): void {
 
   printHarnessAlignment(result.harnessAlignment);
 
+  printInstallFreshness(result.installFreshness);
+
   printDoctorSummary(result);
+}
+
+/**
+ * Prints whether the global install matches this build (#4767).
+ *
+ * The check computed the verdict and nothing printed it — running `doctor`
+ * showed no line at all, which is the recorded-but-unread shape the check
+ * itself exists to catch (#4959).
+ */
+function printInstallFreshness(check: DoctorResult['installFreshness']): void {
+  writeLine(`${colors.cyan}Checking global install freshness...${colors.reset}`);
+  writeLine('');
+  writeLine(`  ${describeInstallFreshness(check)}`);
+  writeLine('');
 }
 
 /**
