@@ -70,16 +70,45 @@ const logger = createLogger({ component: 'adaptive-protocol-selector' });
  * Selection result with metadata.
  */
 export interface SelectionResult {
-  /** Selected protocol pattern */
+  /**
+   * The pattern that will be used.
+   *
+   * This is always `config.pattern`. `CollaborationPattern` has no `auto`
+   * member, so a caller cannot ask for adaptive selection and adaptation can
+   * never win — see {@link adaptivePattern} for what it would have chosen
+   * (#4833).
+   */
   readonly pattern: CollaborationPattern;
-  /** Classification that led to selection */
+  /**
+   * The pattern adaptation would choose from the task classification (#4833).
+   *
+   * Advisory. Previously computed and discarded, which left the caller unable
+   * to see the one thing this class exists to produce.
+   */
+  readonly adaptivePattern: CollaborationPattern;
+  /** Classification that led to {@link adaptivePattern}. */
   readonly classification: ClassificationResult;
-  /** Whether an explicit override was applied */
+  /**
+   * Whether the caller's pattern differs from {@link adaptivePattern}.
+   *
+   * A comparison, NOT evidence that a selection was applied and then
+   * overridden — nothing is applied. It was logged as though a live decision
+   * had been made and reversed (#4833).
+   */
   readonly wasOverridden: boolean;
 }
 
 /**
- * Adaptive protocol selector that chooses protocols based on task type.
+ * Adaptive protocol selector that classifies tasks and recommends protocols.
+ *
+ * Advisory: `selectProtocol` cannot change the protocol in use, because
+ * `CollaborationPattern` has no `auto` member and so a caller has no way to
+ * defer to adaptation. `getRecommendation` reports what adaptation would
+ * choose; acting on it is the caller's decision.
+ *
+ * Whether to add that sentinel so adaptation can win is #4833. Its named
+ * consumer is `TechLeadCollaboration.executeCollaboration`, which currently
+ * declines the recommendation on purpose.
  */
 export class AdaptiveProtocolSelector {
   private readonly factory: ProtocolFactory;
@@ -100,14 +129,16 @@ export class AdaptiveProtocolSelector {
   }
 
   /**
-   * Select the optimal protocol for a task.
+   * Classify a task and report which protocol adaptation would choose.
    *
-   * @param config - Collaboration config (pattern may be overridden)
-   * @returns Selection result with chosen pattern and reasoning
+   * The returned `pattern` is always `config.pattern`: `CollaborationPattern`
+   * has no `auto` member, so there is no way for a caller to defer to
+   * adaptation. `adaptivePattern` carries the advisory choice (#4833).
+   *
+   * @param config - Collaboration config; its `pattern` is always honoured
+   * @returns The pattern in use, the advisory choice, and the classification
    */
   selectProtocol(config: CollaborationConfig): SelectionResult {
-    // If pattern is explicitly set to something other than 'auto', respect it
-    // Note: 'auto' is not currently in CollaborationPattern, so this is for future extension
     const explicitPattern = config.pattern;
 
     // Classify the task using SharedTaskAnalyzer (canonical path per ADR-0004)
@@ -122,22 +153,27 @@ export class AdaptiveProtocolSelector {
     const selectedPattern =
       mapping[classification.type] ?? DEFAULT_PROTOCOL_MAPPING[classification.type];
 
-    // If explicit pattern matches what we'd select, it's not really an override
     const wasOverridden = explicitPattern !== selectedPattern;
 
     if (this.config.logDecisions) {
-      this.log.info('Protocol selection', {
+      // Named as advisory: this logged 'Protocol selection' with
+      // `wasOverridden`, which read as a live choice that had been reversed.
+      // No choice is made here — `explicitPattern` is always what runs.
+      this.log.info('Protocol classification (advisory)', {
         taskType: classification.type,
         confidence: classification.confidence,
-        selectedPattern,
-        explicitPattern,
-        wasOverridden,
+        adaptivePattern: selectedPattern,
+        patternInUse: explicitPattern,
+        differsFromAdaptive: wasOverridden,
       });
     }
 
-    // Use explicit pattern if provided, otherwise use adaptive selection
     return {
-      pattern: wasOverridden ? explicitPattern : selectedPattern,
+      // Always the caller's pattern — the ternary this replaced returned
+      // `explicitPattern` in both branches, since the false branch is reached
+      // only when the two are equal (#4833).
+      pattern: explicitPattern,
+      adaptivePattern: selectedPattern,
       classification,
       wasOverridden,
     };
@@ -176,9 +212,11 @@ export class AdaptiveProtocolSelector {
   }
 
   /**
-   * Get recommended protocol for a task without executing.
+   * Get the recommended protocol for a task without executing.
    *
-   * Useful for preview/explanation of what protocol would be selected.
+   * Returns the *adaptive* choice. It previously returned `selection.pattern`
+   * — the caller's own input — so the "recommendation" echoed the question
+   * back with reasoning attached that read as an answer (#4833).
    */
   getRecommendation(config: CollaborationConfig): {
     recommendedPattern: CollaborationPattern;
@@ -199,7 +237,7 @@ export class AdaptiveProtocolSelector {
           }`;
 
     return {
-      recommendedPattern: selection.pattern,
+      recommendedPattern: selection.adaptivePattern,
       taskType: type,
       confidence,
       reasoning,

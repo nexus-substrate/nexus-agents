@@ -221,3 +221,49 @@ describe('AdaptiveProtocolSelector', () => {
     });
   });
 });
+
+// ============================================================================
+// The selector must not claim a decision it did not make (#4833)
+// ============================================================================
+
+describe('adaptive selection is advisory and says so (#4833)', () => {
+  // A reasoning task maps to 'parallel'. Passing 'sequential' makes the
+  // caller's pattern differ from what adaptation would choose — the case the
+  // existing tests never covered, because each of them passed the pattern the
+  // mapping already returns, so caller-echo and adaptive-choice were the same
+  // value and neither could be distinguished from the other.
+  const REASONING_TASK = 'Analyze why this fails and debug the problem to solve it';
+
+  it('exposes what adaptation would have chosen, separately from what is used', () => {
+    const selector = new AdaptiveProtocolSelector();
+    const config = createTestConfig(createTestTask(REASONING_TASK), 'sequential');
+
+    const result = selector.selectProtocol(config);
+
+    expect(result.adaptivePattern).toBe('parallel');
+    // Unchanged and now documented: the caller's pattern is always used.
+    expect(result.pattern).toBe('sequential');
+  });
+
+  it('recommends the adaptive choice, not the pattern it was handed', () => {
+    // getRecommendation is documented as a "preview of what protocol would be
+    // selected". It returned `selection.pattern`, which is the caller's own
+    // input — so it previewed the question, not the answer, while attaching
+    // reasoning that read as a recommendation.
+    const selector = new AdaptiveProtocolSelector();
+    const config = createTestConfig(createTestTask(REASONING_TASK), 'sequential');
+
+    const recommendation = selector.getRecommendation(config);
+
+    expect(recommendation.recommendedPattern).toBe('parallel');
+  });
+
+  it('does not report an override when the caller matches the adaptive choice', () => {
+    // The pair for wasOverridden: it is a comparison, not evidence that a
+    // selection was applied and then overridden.
+    const selector = new AdaptiveProtocolSelector();
+    const config = createTestConfig(createTestTask(REASONING_TASK), 'parallel');
+
+    expect(selector.selectProtocol(config).wasOverridden).toBe(false);
+  });
+});

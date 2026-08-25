@@ -154,13 +154,21 @@ export class OrchestratorCollaborationHelper {
   ): Promise<Result<SynthesizedResult, AgentError>> {
     const recommendation = this.protocolSelector.getRecommendation(config);
     this.logger.info('Protocol recommendation', {
-      pattern: recommendation.recommendedPattern,
+      recommendedPattern: recommendation.recommendedPattern,
+      patternInUse: config.pattern,
       taskType: recommendation.taskType,
       confidence: recommendation.confidence,
     });
 
+    // Deliberately NOT `recommendation.recommendedPattern`. Until #4833,
+    // `getRecommendation` returned this call's own `config.pattern`, so
+    // passing it through was a no-op and adaptive selection never affected
+    // what ran. Now that the recommendation is the real adaptive choice,
+    // forwarding it would silently activate that selection in production —
+    // a behaviour change with nothing measuring whether it improves outcomes.
+    // Acting on the recommendation is the decision tracked in #4833.
     const collaborationResult = await this.protocolSelector.execute(
-      { ...config, pattern: recommendation.recommendedPattern },
+      { ...config, pattern: config.pattern },
       agents
     );
 

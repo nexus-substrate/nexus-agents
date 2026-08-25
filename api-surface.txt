@@ -7869,6 +7869,7 @@ TypeAliasDeclaration|InterfaceDeclaration SelectionResult
   alternatives: ExpertMatch[]
   confidence: number
   primary: ExpertMatch
+  readonly adaptivePattern: CollaborationPattern
   readonly classification: ClassificationResult
   readonly pattern: CollaborationPattern
   readonly wasOverridden: boolean
