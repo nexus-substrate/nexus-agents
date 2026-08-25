@@ -116,6 +116,15 @@ scratch*.ts
 # and `index diagram` writes it as a side effect — untracked it would otherwise
 # dirty every working tree that runs the command.
 **/docs/codebase-index.yaml
+
+# Regenerated on demand by `nexus-agents index entrypoints` (#4810, same
+# disposition as codebase-index.yaml above). Two committed manifests of the
+# same fact disagreed by an order of magnitude — entrypoints.json reported 4
+# MCP tools and 9 CLI commands (last generated 2026-01-13), entrypoints.yaml
+# reported 45 and 52, against ~47 real tools — and NOTHING read either. The
+# only in-tree reference was the generator's own output path.
+docs/.generated/entrypoints.json
+docs/.generated/entrypoints.yaml
 # The generator's cwd-relative default. This repo's canonical, docs-linked graph
 # is docs/architecture/dependency-graph.md, produced with an explicit --output
 # (#4799); anything written to the default path here is a stray local run.
