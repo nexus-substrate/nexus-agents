@@ -17,6 +17,7 @@ import {
   formatAsciiOutput,
   formatJsonOutput,
 } from './routing-audit-format.js';
+import { BOX_WIDTH } from './box-drawing.js';
 import type {
   RoutingAuditResult,
   BudgetFilterResult,
@@ -154,6 +155,25 @@ describe('routing-audit-format', () => {
       const output = formatBudgetFilter(mockResult).join('\n');
 
       expect(output).toContain('simulated');
+    });
+
+    it('keeps every rendered line inside the box (#4891 regression)', () => {
+      // `toContain('simulated')` above passes on a broken render, so it could
+      // not catch what the label actually did: at 82 characters it overflowed
+      // the 63-character content area, `padEnd` no-opped, and the right border
+      // was pushed off every line of the budget section.
+      //
+      // Scoped to this stage. Widening it to the whole report fails on five
+      // pre-existing overflows with a different root cause — `boxLine` pads on
+      // `.length`, which counts ANSI escapes — filed separately as #4913
+      // rather than folded into a regression fix.
+      const output = formatBudgetFilter(mockResult);
+      const visible = (line: string): string => line.replace(/\u001b\[[0-9;]*m/g, '');
+      const overflowing = output
+        .filter((line) => visible(line).startsWith('│'))
+        .filter((line) => visible(line).length > BOX_WIDTH);
+
+      expect(overflowing).toEqual([]);
     });
 
     it('does not mark the other stages as simulated', () => {

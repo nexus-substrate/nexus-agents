@@ -43,8 +43,6 @@ const sharedAnalyzer = createSharedTaskAnalyzer();
 
 const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
-/** Normalization ceiling for context length (tokens). */
-
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -63,7 +61,7 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
 }
 
 /**
- * Converts task profile to bandit context, delegating to the production builder.
+ * The production bandit-context builder, re-exported under the audit's name.
  *
  * This was a byte-equivalent copy of `taskProfileToBanditContext`. The two
  * agreed only by coincidence: #4874 gave the production one an optional real
@@ -74,10 +72,13 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
  * No utilization is passed, which yields that neutral default — correct here,
  * because the audit's budget stage is simulated (#4843) and there is no real
  * figure to supply.
+ *
+ * A re-export rather than a delegating wrapper: with a wrapper, the only test
+ * that could guard the drift compared the wrapper's output to its own callee,
+ * which is true by construction and can never fail. Aliasing the symbol makes
+ * divergence impossible instead of merely untested.
  */
-export function taskProfileToBanditContextFromProfile(profile: TaskProfile): BanditContext {
-  return taskProfileToBanditContext(profile);
-}
+export { taskProfileToBanditContext as taskProfileToBanditContextFromProfile };
 
 /**
  * Analyzes a task string and returns its bandit context directly.
@@ -232,7 +233,7 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
 
   // Step 4: LinUCB selection
   const bandit = new LinUCBBandit(eligibleClis);
-  const context = taskProfileToBanditContextFromProfile(taskProfile);
+  const context = taskProfileToBanditContext(taskProfile);
   const linucbDetails = computeLinUCBDetails(bandit, context);
   const selection = bandit.select(context);
 
