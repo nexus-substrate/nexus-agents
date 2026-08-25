@@ -163,6 +163,17 @@ function classifyIpAddress(normalized: string): RejectionDetail | null | 'not_an
   return 'not_an_ip';
 }
 
+/** Verdict for a host that is already an IP literal — no DNS required. */
+function classifyLiteral(hostname: string, normalized: string): Result<void, ConfigError> {
+  const literal = classifyIpAddress(normalized);
+  if (literal === null || literal === 'not_an_ip') return ok(undefined);
+  return err(
+    new ConfigError(
+      `Custom API host '${hostname}' is a ${literal.reason} address: ${literal.message}`
+    )
+  );
+}
+
 /**
  * DNS-resolve-time SSRF guard for the custom-openai gateway.
  *
@@ -202,9 +213,15 @@ export async function assertCustomApiHostResolvesPublic(
 
   const normalized = normalizeHost(hostname);
 
-  // IP literals are already handled by the sync guard at construction; no DNS.
+  // A literal needs no DNS, but it is still classified HERE rather than
+  // assumed handled elsewhere. This used to return ok for any literal on the
+  // grounds that the sync guard had classified it at construction — but
+  // `discoverModels` calls only this guard, never the sync one, so on that
+  // path each deferred to the other and neither ran. `http://169.254.169.254/`
+  // reached IMDS, from a base URL that can come from a file rather than from
+  // operator intent.
   if (isIPv4(normalized) || isIPv6(normalized)) {
-    return ok(undefined);
+    return classifyLiteral(hostname, normalized);
   }
 
   // Only `address` is read; the resolver's `family` is intentionally NOT
@@ -292,6 +309,65 @@ function classifyIPv4(ip: string): RejectionDetail | null {
   return null;
 }
 
+/**
+ * Expand an IPv6 literal to its eight 16-bit groups, or null if unparseable.
+ *
+ * A trailing dotted quad (`::ffff:1.2.3.4`) is folded into two groups first,
+ * so callers see one representation regardless of spelling.
+ */
+function foldTrailingQuad(s: string): string | null {
+  const dotted = /(?:^|:)((?:\d{1,3}\.){3}\d{1,3})$/.exec(s);
+  if (dotted?.[1] === undefined) return s;
+  const q = dotted[1].split('.').map((n) => Number.parseInt(n, 10));
+  if (q.length !== 4 || q.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
+  const hi = (((q[0] ?? 0) << 8) | (q[1] ?? 0)).toString(16);
+  const lo = (((q[2] ?? 0) << 8) | (q[3] ?? 0)).toString(16);
+  return `${s.slice(0, s.length - dotted[1].length)}${hi}:${lo}`;
+}
+
+function toHextets(ip: string): number[] | null {
+  const s = foldTrailingQuad(ip.toLowerCase());
+  if (s === null) return null;
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] === '' || halves[0] === undefined ? [] : halves[0].split(':');
+  const tail = halves[1] === '' || halves[1] === undefined ? [] : halves[1].split(':');
+  const groups =
+    halves.length === 1
+      ? head
+      : [...head, ...Array<string>(8 - head.length - tail.length).fill('0'), ...tail];
+  if (groups.length !== 8) return null;
+  const out = groups.map((g) => Number.parseInt(g === '' ? '0' : g, 16));
+  return out.some((n) => Number.isNaN(n) || n < 0 || n > 0xffff) ? null : out;
+}
+
+/**
+ * The IPv4 address embedded in an IPv6 literal, in dotted form, or null.
+ *
+ * Covers every prefix that carries a routable IPv4 payload: IPv4-mapped
+ * (`::ffff:0:0/96`), IPv4-translated (`::ffff:0:0:0/96`), the NAT64
+ * well-known prefix (`64:ff9b::/96`), and the deprecated IPv4-compatible
+ * form (`::a.b.c.d`). Each is the same destination under a different
+ * spelling, and the IPv4 rules must apply to all of them.
+ */
+function embeddedIPv4(g: readonly number[]): string | null {
+  const top = g.slice(0, 6);
+  const prefixes: ReadonlyArray<readonly number[]> = [
+    [0, 0, 0, 0, 0, 0xffff], // ::ffff:0:0/96    — IPv4-mapped
+    [0, 0, 0, 0, 0xffff, 0], // ::ffff:0:0:0/96  — IPv4-translated
+    [0x64, 0xff9b, 0, 0, 0, 0], // 64:ff9b::/96  — NAT64 well-known
+    [0, 0, 0, 0, 0, 0], // ::a.b.c.d           — deprecated IPv4-compatible
+  ];
+  const matched = prefixes.some((p) => p.every((v, i) => top[i] === v));
+  if (!matched) return null;
+  const g6 = g[6] ?? 0;
+  const g7 = g[7] ?? 0;
+  // `::` and `::1` are their own addresses, not embedded IPv4.
+  if (top.every((v) => v === 0) && g6 === 0 && g7 <= 1) return null;
+  const octets = [(g6 >> 8) & 255, g6 & 255, (g7 >> 8) & 255, g7 & 255];
+  return octets.join('.');
+}
+
 function classifyIPv6(ip: string): RejectionDetail | null {
   const lower = ip.toLowerCase();
   if (lower === '::1') return { reason: 'loopback', message: `IPv6 loopback (${ip})` };
@@ -301,5 +377,23 @@ function classifyIPv6(ip: string): RejectionDetail | null {
   if (/^fc|^fd/.test(lower)) {
     return { reason: 'private_range', message: `IPv6 unique-local (${ip}, fc00::/7)` };
   }
-  return null;
+
+  const groups = toHextets(lower);
+  if (groups === null) return null;
+
+  if (groups.every((n) => n === 0)) {
+    return { reason: 'reserved', message: `IPv6 unspecified (${ip}) — routes to localhost` };
+  }
+
+  // An IPv4 address written in IPv6 form is still that IPv4 address, and
+  // `isIPv6` is true for it so it never reached the IPv4 rules — IMDS,
+  // loopback and RFC1918 were all reachable this way. Note the URL parser
+  // normalises the dotted spelling to hex, so the hex form is the one that
+  // actually arrives.
+  const v4 = embeddedIPv4(groups);
+  if (v4 === null) return null;
+  const detail = classifyIPv4(v4);
+  return detail === null
+    ? null
+    : { reason: detail.reason, message: `${detail.message} via IPv6 (${ip})` };
 }

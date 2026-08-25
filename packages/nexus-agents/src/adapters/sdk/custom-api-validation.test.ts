@@ -160,6 +160,59 @@ describe('validateCustomApiBaseUrl', () => {
     });
   });
 
+  describe('IPv4-mapped IPv6 reaches the IPv4 rules', () => {
+    // `isIPv6('::ffff:169.254.169.254')` is true and `isIPv4` is false, so
+    // these were dispatched to the IPv6 classifier, which only knew `::1`,
+    // `fe80:` and `fc00::/7`. Every IPv4 rule — IMDS, loopback, RFC1918 —
+    // was unreachable in mapped form.
+    //
+    // The URL parser NORMALISES the dotted form to hex
+    // (`::ffff:169.254.169.254` → `::ffff:a9fe:a9fe`), so a fix matching only
+    // the dotted spelling would still miss every real request. Both are
+    // asserted for that reason.
+
+    it('rejects the AWS IMDS address in mapped dotted form', () => {
+      const result = validateCustomApiBaseUrl('http://[::ffff:169.254.169.254]/latest/meta-data/');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/link-local|169\.254/);
+    });
+
+    it('rejects the AWS IMDS address in mapped hex form', () => {
+      expect(validateCustomApiBaseUrl('http://[::ffff:a9fe:a9fe]/').ok).toBe(false);
+    });
+
+    it('rejects mapped loopback and RFC1918', () => {
+      expect(validateCustomApiBaseUrl('http://[::ffff:127.0.0.1]/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://[::ffff:10.0.0.1]/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://[::ffff:192.168.1.1]/').ok).toBe(false);
+      expect(validateCustomApiBaseUrl('http://[::ffff:172.16.0.1]/').ok).toBe(false);
+    });
+
+    it('rejects the NAT64 well-known prefix carrying a private IPv4', () => {
+      // 64:ff9b::/96 is how an IPv6-only network reaches IPv4 — the same
+      // address by another spelling.
+      expect(validateCustomApiBaseUrl('http://[64:ff9b::169.254.169.254]/').ok).toBe(false);
+    });
+
+    it('rejects the unspecified address', () => {
+      // `::` routes to localhost on most stacks, the IPv6 analogue of 0.0.0.0.
+      expect(validateCustomApiBaseUrl('http://[::]/').ok).toBe(false);
+    });
+
+    it('still allows a genuinely public IPv6 address', () => {
+      // The pair. Rejecting all IPv6 would satisfy every test above and break
+      // every legitimate v6 gateway.
+      expect(validateCustomApiBaseUrl('http://[2606:4700:4700::1111]/v1').ok).toBe(true);
+    });
+
+    it('still allows a public IPv4 address in mapped form', () => {
+      // Mapped is a spelling, not a verdict — it must not become a blanket
+      // rejection.
+      expect(validateCustomApiBaseUrl('http://[::ffff:1.1.1.1]/v1').ok).toBe(true);
+    });
+  });
+
   describe('SSRF guard escape hatch (NEXUS_CUSTOM_API_ALLOW_PRIVATE)', () => {
     it('allows localhost when allowPrivate=true is passed explicitly', () => {
       const result = validateCustomApiBaseUrl('http://localhost:8080/v1', {
@@ -256,17 +309,49 @@ describe('assertCustomApiHostResolvesPublic (DNS-resolve-time SSRF guard, #3426)
     });
   });
 
-  describe('IP literals skip DNS (handled by the sync guard at construction)', () => {
-    it('does not call dns.lookup for an IPv4 literal', async () => {
-      const result = await assertCustomApiHostResolvesPublic('93.184.216.34');
-      expect(result.ok).toBe(true);
-      expect(lookupMock).not.toHaveBeenCalled();
+  describe('IP literals need no DNS, but are still classified here', () => {
+    // This used to return ok for ANY literal, on the stated grounds that the
+    // sync guard classified it at construction. `discoverModels` never calls
+    // the sync guard — it calls only this one — so on that path each guard
+    // deferred to the other and neither ran. A base URL of
+    // `http://169.254.169.254/` reached IMDS, and that URL can come from a
+    // FILE (opencode.json), not only from operator intent.
+
+    it('does not call dns.lookup for a public IPv4 literal', () => {
+      const result = assertCustomApiHostResolvesPublic('93.184.216.34');
+      return result.then((r) => {
+        expect(r.ok).toBe(true);
+        expect(lookupMock).not.toHaveBeenCalled();
+      });
     });
 
     it('does not call dns.lookup for a bracket-stripped IPv6 literal', async () => {
       const result = await assertCustomApiHostResolvesPublic('[2606:2800:220:1::1]');
       expect(result.ok).toBe(true);
       expect(lookupMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a private IPv4 literal instead of deferring', async () => {
+      const result = await assertCustomApiHostResolvesPublic('169.254.169.254');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/link-local|169\.254/);
+      expect(lookupMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a loopback literal instead of deferring', async () => {
+      expect((await assertCustomApiHostResolvesPublic('127.0.0.1')).ok).toBe(false);
+    });
+
+    it('rejects an IPv4-mapped IPv6 literal — both halves of the same bypass', async () => {
+      // Needs BOTH fixes: the literal must be classified here at all, and the
+      // classifier must see through the mapped form.
+      expect((await assertCustomApiHostResolvesPublic('[::ffff:a9fe:a9fe]')).ok).toBe(false);
+    });
+
+    it('still honours allowPrivate for a private literal', async () => {
+      const result = await assertCustomApiHostResolvesPublic('127.0.0.1', { allowPrivate: true });
+      expect(result.ok).toBe(true);
     });
   });
 
