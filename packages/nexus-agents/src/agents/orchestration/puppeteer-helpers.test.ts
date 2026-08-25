@@ -50,33 +50,69 @@ describe('DEFAULT_REWARD_CONFIG', () => {
 // computeStepReward
 // ============================================================================
 
+/** Reward for a step that must be scorable — fails loudly if the step was excluded. */
+function scoreOf(
+  output: AgentStepOutput,
+  progressDelta: number,
+  config?: Parameters<typeof computeStepReward>[2]
+): number {
+  const reward = computeStepReward(output, progressDelta, config);
+  if (reward === null) throw new Error('expected a scorable step, got an excluded one');
+  return reward;
+}
+
 describe('computeStepReward', () => {
   it('computes positive reward for progress', () => {
     const output = makeStepOutput({ tokensUsed: 0, durationMs: 0 });
-    const reward = computeStepReward(output, 1.0);
+    const reward = scoreOf(output, 1.0);
     expect(reward).toBeGreaterThan(0);
+  });
+
+  it('refuses to score a step whose token usage was never measured (#4766)', () => {
+    // The cost penalty is `tokensUsed * rate`, so an unmeasured step paid
+    // ZERO and outscored a step that reported honestly — the reward preferred
+    // the step it knew least about. It is now excluded from the trajectory
+    // rather than scored on a number nobody measured.
+    const unmeasured = makeStepOutput({ tokensUsed: 0, tokensMeasured: false, durationMs: 1000 });
+
+    expect(computeStepReward(unmeasured, 1.0)).toBeNull();
+  });
+
+  it('still scores a step that genuinely used zero tokens (#4766)', () => {
+    // The distinction that has to survive: a MEASURED zero is a measurement.
+    // Excluding it as well would drop real data and make the fix look like
+    // it worked while quietly shrinking the trajectory.
+    const measuredZero = makeStepOutput({ tokensUsed: 0, tokensMeasured: true, durationMs: 1000 });
+
+    expect(computeStepReward(measuredZero, 1.0)).not.toBeNull();
+  });
+
+  it('treats an absent measured flag as measured (#4766)', () => {
+    // Absent means the producer predates the field, so no existing step
+    // silently drops out of the trajectory.
+    expect(computeStepReward(makeStepOutput({ tokensUsed: 100 }), 1.0)).not.toBeNull();
   });
 
   it('computes reward proportional to progress', () => {
     const output = makeStepOutput({ tokensUsed: 0, durationMs: 0 });
-    const rewardHigh = computeStepReward(output, 1.0);
-    const rewardLow = computeStepReward(output, 0.5);
+    const rewardHigh = scoreOf(output, 1.0);
+    const rewardLow = scoreOf(output, 0.5);
     expect(rewardHigh).toBeGreaterThan(rewardLow);
   });
 
   it('applies efficiency penalty for high cost', () => {
     const cheapOutput = makeStepOutput({ tokensUsed: 0, durationMs: 0 });
     const expensiveOutput = makeStepOutput({ tokensUsed: 100000, durationMs: 0 });
-    const cheapReward = computeStepReward(cheapOutput, 0.5);
-    const expensiveReward = computeStepReward(expensiveOutput, 0.5);
+    const cheapReward = scoreOf(cheapOutput, 0.5);
+    const expensiveReward = scoreOf(expensiveOutput, 0.5);
     expect(cheapReward).toBeGreaterThan(expensiveReward);
   });
 
   it('applies efficiency penalty for high time', () => {
     const fastOutput = makeStepOutput({ tokensUsed: 0, durationMs: 0 });
     const slowOutput = makeStepOutput({ tokensUsed: 0, durationMs: 300000 });
-    const fastReward = computeStepReward(fastOutput, 0.5);
-    const slowReward = computeStepReward(slowOutput, 0.5);
+    const fastReward = scoreOf(fastOutput, 0.5);
+    const slowReward = scoreOf(slowOutput, 0.5);
     expect(fastReward).toBeGreaterThan(slowReward);
   });
 
@@ -88,7 +124,7 @@ describe('computeStepReward', () => {
   it('uses custom config', () => {
     const output = makeStepOutput({ tokensUsed: 0, durationMs: 0 });
     const config = { ...DEFAULT_REWARD_CONFIG, progressWeight: 1.0 };
-    const reward = computeStepReward(output, 0.5, config);
+    const reward = scoreOf(output, 0.5, config);
     expect(reward).toBe(0.5);
   });
 });

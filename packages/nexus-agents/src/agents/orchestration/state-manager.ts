@@ -302,10 +302,16 @@ export class StateManager implements IStateManager {
     const elapsedMs = getTimeProvider().now() - startTime;
     const costPerToken = 0.00001; // $0.01 per 1K tokens
 
+    // #4766: a step whose usage was never measured contributes nothing, so
+    // these are sums over MEASURED steps. Counted rather than silently
+    // skipped — otherwise the totals read as complete when they are a lower
+    // bound.
+    const measured = output.tokensMeasured !== false;
     return {
       progress: current.progress,
-      totalCost: current.totalCost + output.tokensUsed * costPerToken,
-      totalTokens: current.totalTokens + output.tokensUsed,
+      totalCost: current.totalCost + (measured ? output.tokensUsed * costPerToken : 0),
+      totalTokens: current.totalTokens + (measured ? output.tokensUsed : 0),
+      unmeasuredSteps: (current.unmeasuredSteps ?? 0) + (measured ? 0 : 1),
       elapsedMs,
       startedAt: current.startedAt,
     };

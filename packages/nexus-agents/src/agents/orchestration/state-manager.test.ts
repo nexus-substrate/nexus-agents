@@ -197,6 +197,27 @@ describe('updateState', () => {
     expect(newState.metadata.totalTokens).toBe(50);
   });
 
+  it('does not add an unmeasured step to the totals, and counts it (#4766)', () => {
+    // `tokensUsed: 0` with `tokensMeasured: false` is a placeholder, not a
+    // measurement. Summing it is arithmetically a no-op today, but the count
+    // is what stops the totals reading as complete when they are a lower
+    // bound.
+    const output = { ...createTestOutput(0, 'agent-1'), tokensUsed: 0, tokensMeasured: false };
+
+    const newState = manager.updateState(initialState, output);
+
+    expect(newState.metadata.totalTokens).toBe(0);
+    expect(newState.metadata.unmeasuredSteps).toBe(1);
+  });
+
+  it('does not count a measured step as unmeasured (#4766)', () => {
+    // The pair: counting every step would make the disclosure meaningless.
+    const newState = manager.updateState(initialState, createTestOutput(0, 'agent-1'));
+
+    expect(newState.metadata.totalTokens).toBe(50);
+    expect(newState.metadata.unmeasuredSteps).toBe(0);
+  });
+
   it('updates total cost', () => {
     const output = createTestOutput(0, 'agent-1');
     const newState = manager.updateState(initialState, output);

@@ -112,6 +112,7 @@ function createMockEmergentPatterns(): EmergentPatterns {
 function createMockMetrics(): PuppeteerMetrics {
   return {
     avgReward: 0.8,
+    scoredSteps: 0,
     taskCompletionRate: 0.9,
     efficiencyScore: 0.5,
     compactionScore: 0.6,

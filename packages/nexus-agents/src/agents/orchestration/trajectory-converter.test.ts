@@ -196,16 +196,25 @@ describe('convertSingleStep', () => {
     const step = createMockStepResult(0, 'agent-1', 1.5);
     const trajectoryStep = convertSingleStep(step);
 
-    expect(trajectoryStep.action).toBe('agent-1');
-    expect(trajectoryStep.reward).toBe(1.5);
-    expect(trajectoryStep.state).toBe(step.newState);
+    expect(trajectoryStep).not.toBeNull();
+    expect(trajectoryStep?.action).toBe('agent-1');
+    expect(trajectoryStep?.reward).toBe(1.5);
+    expect(trajectoryStep?.state).toBe(step.newState);
+  });
+
+  it('returns null for a step excluded for unmeasured usage (#4766)', () => {
+    // The caller must decide to drop it rather than receive a fabricated
+    // reward. Mirrors the batch converter, which filters these out.
+    const step = { ...createMockStepResult(0, 'agent-1', 1.5), reward: null };
+
+    expect(convertSingleStep(step)).toBeNull();
   });
 
   it('computes correct log probability', () => {
     const step = createMockStepResult(0, 'agent-1');
     const trajectoryStep = convertSingleStep(step);
 
-    expect(trajectoryStep.logProb).toBeCloseTo(Math.log(0.7), 5);
+    expect(trajectoryStep?.logProb).toBeCloseTo(Math.log(0.7), 5);
   });
 
   it('throws when agent not found', () => {
@@ -348,8 +357,8 @@ describe('log probability edge cases', () => {
     const trajectoryStep = convertSingleStep(step);
 
     // Should not be -Infinity due to MIN_PROBABILITY clamping
-    expect(Number.isFinite(trajectoryStep.logProb)).toBe(true);
-    expect(trajectoryStep.logProb).toBeLessThan(0);
+    expect(Number.isFinite(trajectoryStep?.logProb)).toBe(true);
+    expect(trajectoryStep?.logProb).toBeLessThan(0);
   });
 
   it('handles probability of 1.0', () => {
@@ -364,7 +373,7 @@ describe('log probability edge cases', () => {
     const trajectoryStep = convertSingleStep(step);
 
     // log(1) = 0
-    expect(trajectoryStep.logProb).toBeCloseTo(0, 5);
+    expect(trajectoryStep?.logProb).toBeCloseTo(0, 5);
   });
 });
 
@@ -395,9 +404,9 @@ describe('trajectory step properties', () => {
     expect(trajectoryStep).toHaveProperty('logProb');
 
     // Verify types
-    expect(typeof trajectoryStep.action).toBe('string');
-    expect(typeof trajectoryStep.reward).toBe('number');
-    expect(typeof trajectoryStep.logProb).toBe('number');
-    expect(typeof trajectoryStep.state).toBe('object');
+    expect(typeof trajectoryStep?.action).toBe('string');
+    expect(typeof trajectoryStep?.reward).toBe('number');
+    expect(typeof trajectoryStep?.logProb).toBe('number');
+    expect(typeof trajectoryStep?.state).toBe('object');
   });
 });

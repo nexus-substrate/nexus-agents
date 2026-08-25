@@ -77,16 +77,21 @@ function extractLogProbability(distribution: AgentDistribution, selectedAgent: s
  * ```
  */
 export function convertTrajectory(steps: readonly PuppeteerStepResult[]): PolicyTrajectoryStep[] {
-  return steps.map((step): PolicyTrajectoryStep => {
-    const logProb = extractLogProbability(step.distribution, step.selectedAgent);
+  // #4766: a step whose token usage was never measured carries `reward: null`
+  // and is dropped here rather than fitted at a fabricated value. This is the
+  // exclusion itself — everything else only propagates the flag.
+  return steps
+    .filter((step): step is (typeof steps)[number] & { reward: number } => step.reward !== null)
+    .map((step): PolicyTrajectoryStep => {
+      const logProb = extractLogProbability(step.distribution, step.selectedAgent);
 
-    return {
-      state: step.newState,
-      action: step.selectedAgent,
-      reward: step.reward,
-      logProb,
-    };
-  });
+      return {
+        state: step.newState,
+        action: step.selectedAgent,
+        reward: step.reward,
+        logProb,
+      };
+    });
 }
 
 /**
@@ -105,7 +110,10 @@ export function convertTrajectory(steps: readonly PuppeteerStepResult[]): Policy
  * const trajectoryStep = convertSingleStep(result);
  * ```
  */
-export function convertSingleStep(step: PuppeteerStepResult): PolicyTrajectoryStep {
+export function convertSingleStep(step: PuppeteerStepResult): PolicyTrajectoryStep | null {
+  // Null for an unscored step, mirroring the batch converter: the caller must
+  // decide to drop it rather than receive a fabricated reward (#4766).
+  if (step.reward === null) return null;
   const logProb = extractLogProbability(step.distribution, step.selectedAgent);
 
   return {
