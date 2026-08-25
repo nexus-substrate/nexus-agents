@@ -429,3 +429,38 @@ describe('CLI Command Priority', () => {
     expect(result.command).toBe('version');
   });
 });
+
+// =============================================================================
+// --option reaches the vote command's options (#4941)
+// =============================================================================
+
+describe('parseCliArgs carries --option through to vote options (#4941)', () => {
+  // The middle link. `PARSE_ARGS_CONFIG` collecting the repeats and
+  // `voteCommand` forwarding them were each pinned, and deleting the mapping
+  // between them in `buildVoteOptions` passed both — the same
+  // both-ends-tested-join-untested gap as #4910.
+
+  it('maps repeated flags onto options', () => {
+    const parsed = parseCliArgs([
+      'vote',
+      '-p',
+      'pick one',
+      '--option',
+      'A',
+      '--option',
+      'B',
+    ]) as ParsedCliArgs & { options?: { options?: string[] } };
+
+    expect(parsed.options?.options).toEqual(['A', 'B']);
+  });
+
+  it('leaves options absent for an ordinary vote', () => {
+    // Present-but-empty would tell the engine this is a multi-option vote and
+    // add the leading-option bar to a plain yes/no.
+    const parsed = parseCliArgs(['vote', '-p', 'ship it']) as ParsedCliArgs & {
+      options?: Record<string, unknown>;
+    };
+
+    expect(parsed.options).not.toHaveProperty('options');
+  });
+});

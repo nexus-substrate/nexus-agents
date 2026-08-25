@@ -302,6 +302,7 @@ async function runVote(
 
   const input: ConsensusVoteInput = {
     proposal: options.proposal,
+    ...(options.options !== undefined ? { options: [...options.options] } : {}),
     quickMode: useQuick,
     simulateVotes: options.dryRun === true,
     ...(options.threshold !== undefined && { threshold: options.threshold }),
