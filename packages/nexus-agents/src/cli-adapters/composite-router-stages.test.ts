@@ -1198,25 +1198,50 @@ describe('cross-stage routing signals (#4866)', () => {
   // pre-seeds the answer, so none of them can see that a real stage is given
   // an empty context and skips. These drive the real stage instead.
 
-  it.fails('KNOWN BROKEN (#4866): a real ResourceStrategyStage receives budget data', async () => {
-    // `createRoutingContext` (router-stage.ts:253-261) hard-sets
-    // `signals: []` and the runner passes no metadata, so
-    // `extractResourceLevel` finds neither the `budget:utilization=` signal
-    // nor a `resourceLevel` in metadata. The stage skips with trace reason
-    // "no budget data" on every production call, and no resource tier is
-    // ever selected.
-    //
-    // `it.fails` rather than a pinned assertion of the broken behaviour:
-    // this is executable proof of the defect that turns RED the moment the
-    // plumbing lands, at which point it becomes a plain `it`.
+  it('a real ResourceStrategyStage receives budget data through the runner (#4866)', async () => {
+    // Was `it.fails`: the runner built a fresh empty context and passed no
+    // metadata, so `extractResourceLevel` found neither the
+    // `budget:utilization=` signal nor a `resourceLevel`, and the stage
+    // skipped with trace reason "no budget data" on every production call.
     const deps = makeDeps({
       config: { ...makeDeps().config, enableResourceStrategy: true },
       resourceStrategyStage: new ResourceStrategyStage(),
     });
 
-    const result = await runResourceStrategyStage(mockTask, candidates, [], deps);
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, 0.25);
 
-    expect(result.resourceLevel).toBeDefined();
+    // Utilization is the SPENT ratio; resource level is what remains.
+    expect(result.resourceLevel).toBeCloseTo(0.75);
+  });
+
+  it('leaves the stage skipped when no budget ceiling is configured (#4866)', async () => {
+    // The benign majority. Without `maxCostUsd` there is no utilization to
+    // compute, and an unknown budget must not be rendered as a known one —
+    // defaulting here would activate tier adjustments for every user who
+    // never asked for budget-aware routing.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, undefined);
+
+    expect(result.resourceLevel).toBeUndefined();
+    expect(result.tierMeasured).toBe(false);
+  });
+
+  it('marks the tier as measured even when it comes out balanced (#4866)', async () => {
+    // `buildOptionalFields` omitted `resourceTier` whenever the tier equalled
+    // 'balanced', so a tier that WAS selected and happened to be balanced was
+    // indistinguishable in the recorded decision from a stage that never ran.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, 0.5);
+
+    expect(result.tierMeasured).toBe(true);
   });
 
   it('a real ResourceStrategyStage does reach a tier when given the data directly', async () => {

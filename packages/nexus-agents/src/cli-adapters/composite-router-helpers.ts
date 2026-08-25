@@ -156,6 +156,30 @@ export function cliTaskToTask(cliTask: CliTask): Task {
 export interface BudgetFilterResult {
   eligible: RoutingArmId[];
   withinBudget: boolean;
+  /**
+   * Projected spend as a fraction of the configured cost ceiling (#4866).
+   *
+   * `undefined` when no `maxCostUsd` is configured — there is then no ceiling
+   * to be a fraction of, and an unknown budget must not be rendered as a
+   * known one. `ResourceStrategyStage` consumes this; it previously looked
+   * for a `budget:utilization=` signal that nothing on this path emitted.
+   */
+  budgetUtilization?: number;
+}
+
+/** Narrows the router config's budget constraints to a {@link BudgetConstraint}. */
+function toBudgetConstraint(raw: CompositeRouterConfig['budgetConstraints']): BudgetConstraint {
+  const constraint: BudgetConstraint = {};
+  if (raw?.maxTokens !== undefined) {
+    (constraint as { maxTokens: number }).maxTokens = raw.maxTokens;
+  }
+  if (raw?.maxCostUsd !== undefined) {
+    (constraint as { maxCostUsd: number }).maxCostUsd = raw.maxCostUsd;
+  }
+  if (raw?.maxLatencyMs !== undefined) {
+    (constraint as { maxLatencyMs: number }).maxLatencyMs = raw.maxLatencyMs;
+  }
+  return constraint;
 }
 
 /**
@@ -169,26 +193,27 @@ export function applyBudgetFilter(
 ): BudgetFilterResult {
   if (budgetRouter === undefined) return { eligible: candidates, withinBudget: true };
 
-  const rawConstraints = config.budgetConstraints;
-  const constraint: BudgetConstraint = {};
-  if (rawConstraints?.maxTokens !== undefined) {
-    (constraint as { maxTokens: number }).maxTokens = rawConstraints.maxTokens;
-  }
-  if (rawConstraints?.maxCostUsd !== undefined) {
-    (constraint as { maxCostUsd: number }).maxCostUsd = rawConstraints.maxCostUsd;
-  }
-  if (rawConstraints?.maxLatencyMs !== undefined) {
-    (constraint as { maxLatencyMs: number }).maxLatencyMs = rawConstraints.maxLatencyMs;
-  }
+  const constraint = toBudgetConstraint(config.budgetConstraints);
 
   const result = budgetRouter.checkBudget(task, constraint);
   if (!result.withinBudget) return { eligible: [], withinBudget: false };
-  // #4196: per-task-class cost ceiling — enforced ONLY under api billing.
-  // Plan mode is a no-op here; the decision carries PLAN_MODE_COST_ANNOTATION
-  // instead of silently skipping. A candidate with missing registry pricing
-  // FAILS the ceiling (fail-closed) — see BudgetRouter.filterByTaskClassCeiling.
-  if (config.billingMode !== 'api') return { eligible: candidates, withinBudget: true };
-  return { eligible: budgetRouter.filterByTaskClassCeiling(task, candidates), withinBudget: true };
+
+  // Mirrors BudgetFilterStage's formula (budget-stage.ts:233), over the
+  // selected adapter's projected cost rather than an average across
+  // candidates — this is the spend actually being contemplated.
+  const maxCostUsd = constraint.maxCostUsd;
+  const utilization =
+    maxCostUsd !== undefined && maxCostUsd > 0
+      ? { budgetUtilization: Math.min(1, result.estimatedCostUsd / maxCostUsd) }
+      : {};
+
+  if (config.billingMode !== 'api')
+    return { eligible: candidates, withinBudget: true, ...utilization };
+  return {
+    eligible: budgetRouter.filterByTaskClassCeiling(task, candidates),
+    withinBudget: true,
+    ...utilization,
+  };
 }
 
 /**
