@@ -388,16 +388,33 @@ jobs:
   ci-success:
     name: CI Success
     needs:
-      [commitlint, changeset-check, lint, typecheck, build, test, fitness-audit, consolidation-test]
+      [
+        commitlint,
+        changeset-check,
+        lint,
+        typecheck,
+        build,
+        test,
+        fitness-audit,
+        consolidation-test,
+        producer-consumer-check,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()
     steps:
       - name: Check required jobs
         run: |
-          # commitlint + changeset-check are skipped on push (not a PR) — treat skipped as success
+          # commitlint, changeset-check and producer-consumer-check are skipped on
+          # push (not a PR) — treat skipped as success.
+          #
+          # #4784: producer-consumer-check was absent from this list, so the
+          # #3024 wiring gate and the #4757 API-surface gate could both go red
+          # while the PR stayed mergeable. Branch protection requires only
+          # "CI Success", so a gate not wired in here cannot fail by construction.
           if [[ "${{ needs.commitlint.result }}" != "success" && "${{ needs.commitlint.result }}" != "skipped" ]] || \
              [[ "${{ needs.changeset-check.result }}" != "success" && "${{ needs.changeset-check.result }}" != "skipped" ]] || \
+             [[ "${{ needs.producer-consumer-check.result }}" != "success" && "${{ needs.producer-consumer-check.result }}" != "skipped" ]] || \
              [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
