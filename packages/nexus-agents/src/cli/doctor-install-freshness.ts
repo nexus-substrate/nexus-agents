@@ -30,6 +30,9 @@ export type InstallFreshness =
    */
   | { readonly state: 'unknown'; readonly reason: string };
 
+/** `version.ts` reports this when `__NEXUS_VERSION__` was never injected. */
+const UNVERSIONED_BUILD = 'dev';
+
 /** The remediation an operator has to perform, in full. */
 export const INSTALL_FRESHNESS_REMEDY =
   'npm install -g nexus-agents@latest — then RESTART any running MCP server. ' +
@@ -49,6 +52,17 @@ export function assessInstallFreshness(
   expected: string,
   unavailableReason = 'no global nexus-agents install found'
 ): InstallFreshness {
+  // `VERSION` is `'dev'` when `__NEXUS_VERSION__` was not injected — i.e. the
+  // CLI is running from source rather than a build. There is no version to
+  // compare against, so the honest answer is `unknown`. Reporting `behind`
+  // would fire on every developer checkout and train people to ignore the one
+  // line that matters on a real install (#4959).
+  if (expected === UNVERSIONED_BUILD) {
+    return {
+      state: 'unknown',
+      reason: 'running from source — this build has no version to compare',
+    };
+  }
   if (globalVersion === null || globalVersion === '') {
     return { state: 'unknown', reason: unavailableReason };
   }
