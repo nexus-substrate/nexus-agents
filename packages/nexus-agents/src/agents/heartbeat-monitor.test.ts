@@ -417,5 +417,29 @@ describe('heartbeat-monitor', () => {
 
       expect(monitor.getSessionHealth(sid)?.heartbeatCount).toBe(0);
     });
+
+    it('stays unmeasured when a scope opens but never reports a step (#4758)', async () => {
+      // The regression this pins: #4752 marked a session measured the moment
+      // `runInHeartbeatSession` opened its scope. Nothing under `src/agents/`
+      // emits a step, so every scoped expert task over 120s fell through to the
+      // thresholds and logged a false stall. Opening a scope is an intent to
+      // report progress, not progress.
+      //
+      // This needs the SINGLETON: the regression lived in the module-level
+      // `runInHeartbeatSession`, which reaches the monitor via
+      // `getHeartbeatMonitor()`. A locally-constructed monitor never sees it.
+      const monitor = getHeartbeatMonitor();
+      const sid = monitor.startSession('expert-scoped-silent');
+
+      await runInHeartbeatSession(sid, async () => {
+        // The realistic case: real work runs, emitting nothing on `stepBus`.
+        return Promise.resolve();
+      });
+      vi.advanceTimersByTime(130_000);
+
+      expect(monitor.getSessionHealth(sid)?.health).toBe('unmeasured');
+      expect(monitor.isStalled(sid)).toBe(false);
+      expect(monitor.getHealth().stalledSessions).toBe(0);
+    });
   });
 });
