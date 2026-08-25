@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 stop reporting a perfect confidence for a session that never measured one
@@ -21,6 +21,9 @@ optional `confidenceMeasured`. The session builder reports `0` with
 `confidenceMeasured: false`; the aggregator reports its computed value with
 `confidenceMeasured: true`. The placeholder now fails in the safe direction — a
 consumer thresholding on confidence previously passed unconditionally.
+
+`AggregationMetadata` gaining an optional field is an additive public-API
+change, so this is a minor rather than a patch.
 
 `conflictCount` is now derived from the `conflicts` list so the two cannot
 drift. That path still performs no conflict detection, which is #4854.
