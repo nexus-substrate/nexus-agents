@@ -280,15 +280,26 @@ export interface AggregatedResultInput {
 export function buildAggregatedResult(input: AggregatedResultInput): AggregatedResult {
   const { pattern, results, participants, votes, reviews, endTime } = input;
 
+  // This path performs no conflict detection — see #4854. The
+  // count is derived from the list rather than restated so that wiring
+  // detection in cannot leave the two disagreeing.
+  const conflicts: ResultConflict[] = [];
+
   return {
     output: aggregateOutputs(results),
     strategy: getAggregationStrategy(pattern),
     qualityScore: calculateQualityScore(pattern, participants, votes, reviews),
-    conflicts: [] as ResultConflict[],
+    conflicts,
     metadata: {
       resultCount: results.length,
-      conflictCount: 0,
-      averageConfidence: 1.0,
+      conflictCount: conflicts.length,
+      // Nothing reaching this builder carries a confidence signal: neither
+      // TaskResult, ResultMetadata, VoteMessage nor ExpertParticipation has
+      // the field. This reported 1.0 — a perfect score — for a session whose
+      // confidence was never assessed (#4831). The placeholder now fails in
+      // the safe direction and says it is a placeholder.
+      averageConfidence: 0,
+      confidenceMeasured: false,
       // #4743: shared with result-aggregator so the two cannot drift — they
       // were duplicate expressions computing the same thing.
       ...summarizeTokenUsage(results.map((r) => r.metadata)),

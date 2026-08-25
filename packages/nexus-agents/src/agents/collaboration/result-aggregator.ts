@@ -149,6 +149,9 @@ export class ResultAggregator {
         resultCount: results.length,
         conflictCount: conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
+        // Measured: ExpertResult carries confidence, and `aggregate` rejects
+        // an empty result list before reaching here (#4831).
+        confidenceMeasured: true,
         ...usage,
         aggregatedAt: getTimeProvider().nowIso(),
       },
