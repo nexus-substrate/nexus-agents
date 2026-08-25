@@ -18,6 +18,8 @@ import { scanRecentCommitsForSecrets } from './release-secret-scan.js';
 
 /** A repo with a single commit: `git diff HEAD~10..HEAD` cannot resolve. */
 let shallowRepo: string;
+/** A repo with two commits and no secret-like tokens in the second. */
+let cleanRepo: string;
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'ignore' });
@@ -31,10 +33,22 @@ beforeAll(() => {
   writeFileSync(join(shallowRepo, 'a.ts'), 'export const a = 1;\n');
   git(shallowRepo, 'add', '-A');
   git(shallowRepo, 'commit', '-q', '-m', 'initial');
+
+  cleanRepo = mkdtempSync(join(tmpdir(), 'nexus-secret-scan-clean-'));
+  git(cleanRepo, 'init', '-q');
+  git(cleanRepo, 'config', 'user.email', 'test@example.invalid');
+  git(cleanRepo, 'config', 'user.name', 'Test');
+  writeFileSync(join(cleanRepo, 'a.ts'), 'export const a = 1;\n');
+  git(cleanRepo, 'add', '-A');
+  git(cleanRepo, 'commit', '-q', '-m', 'initial');
+  writeFileSync(join(cleanRepo, 'a.ts'), 'export const a = 2;\n');
+  git(cleanRepo, 'add', '-A');
+  git(cleanRepo, 'commit', '-q', '-m', 'second');
 });
 
 afterAll(() => {
   rmSync(shallowRepo, { recursive: true, force: true });
+  rmSync(cleanRepo, { recursive: true, force: true });
 });
 
 describe('scanRecentCommitsForSecrets (#4839)', () => {
@@ -53,9 +67,17 @@ describe('scanRecentCommitsForSecrets (#4839)', () => {
   it('reports a clean scan as scanned, not as failed', () => {
     // The counterpart. Without it, "always return ok:false" would pass the
     // test above, and every release would carry a spurious warning.
-    const result = scanRecentCommitsForSecrets({ cwd: process.cwd(), range: 'HEAD~1..HEAD' });
+    //
+    // This builds its own two-commit repo rather than scanning the checkout:
+    // CI clones shallow, so `HEAD~1` does not resolve there — which is the
+    // very failure this fix is about, and it made the test fail for the
+    // reason the code now handles correctly.
+    const result = scanRecentCommitsForSecrets({ cwd: cleanRepo, range: 'HEAD~1..HEAD' });
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.matches).toEqual([]);
+    }
   });
 
   it('returns the matching lines when a recent commit contains a secret-like token', () => {
