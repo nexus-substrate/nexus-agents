@@ -20,6 +20,10 @@ import {
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
 import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/index.js';
+import { applyBudgetFilter } from './composite-router-helpers.js';
+import type { BudgetRouter } from './budget-router.js';
+import type { CompositeRouterConfig } from './composite-router-types.js';
+import type { BanditContext } from '../core/index.js';
 
 vi.mock('../config/learning-persistence.js', () => ({
   isPersistenceEnabled: vi.fn(() => false),
@@ -76,12 +80,23 @@ function createBaseDeps(overrides: Partial<OutcomeDependencies> = {}) {
     preferenceRouter: undefined,
     zeroRouter: undefined,
     lastRoutedTask: undefined,
+    budgetRouter: undefined,
+    budgetConstraints: undefined,
     ...overrides,
   };
 }
 
 function createCliTask(content = 'test task'): CliTask {
   return { content, maxTokens: 1000 };
+}
+
+/** A BudgetRouter stub whose `checkBudget` reports a fixed projected spend. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createMockBudgetRouter(estimatedCostUsd: number) {
+  return {
+    checkBudget: vi.fn(() => ({ withinBudget: true, estimatedCostUsd })),
+    filterByTaskClassCeiling: vi.fn((_t: unknown, c: unknown) => c),
+  } as unknown as BudgetRouter;
 }
 
 describe('composite-router-outcome', () => {
@@ -96,6 +111,43 @@ describe('composite-router-outcome', () => {
         cliName: 'claude',
         reward: 0.85,
       });
+    });
+
+    it('updates with the same budgetUtilization the select path scored with', () => {
+      // LinUCB's invariant: the feature vector passed to `update` must be the
+      // one `selectArm` scored. #4874 gave the select path a real
+      // `budgetUtilization` and left this path on the 0.5 default, so with a
+      // cost budget configured the bandit was fit against a constant column
+      // and then scored against a varying one.
+      const bandit = createMockLinUCBBandit();
+      const budgetRouter = createMockBudgetRouter(0.03);
+      const budgetConstraints = { maxCostUsd: 0.05 };
+      const config = { budgetConstraints } as CompositeRouterConfig;
+      const task = createCliTask();
+      const deps = createBaseDeps({ linucbBandit: bandit, budgetRouter, budgetConstraints });
+
+      recordBanditOutcome('claude', task, 0.85, deps);
+
+      // Derived from the select path itself rather than restated: a hardcoded
+      // 0.6 here would keep passing if both sides drifted together.
+      const atSelect = applyBudgetFilter(task, ['claude'], budgetRouter, config);
+      const atUpdate = vi.mocked(bandit.update).mock.calls[0]?.[1] as BanditContext;
+
+      expect(atSelect.budgetUtilization).toBeDefined();
+      expect(atUpdate.budgetUtilization).toBe(atSelect.budgetUtilization);
+    });
+
+    it('falls back to the neutral feature when no cost budget is configured', () => {
+      // The pair. Symmetry is the requirement, not a particular number: with
+      // no budget the select path also yields nothing and both sides sit at
+      // the neutral 0.5.
+      const bandit = createMockLinUCBBandit();
+      const deps = createBaseDeps({ linucbBandit: bandit });
+
+      recordBanditOutcome('claude', createCliTask(), 0.85, deps);
+
+      const ctx = vi.mocked(bandit.update).mock.calls[0]?.[1] as BanditContext;
+      expect(ctx.budgetUtilization).toBe(0.5);
     });
 
     it('should return early when linucbBandit is undefined', () => {

@@ -995,6 +995,8 @@ export class CompositeRouter implements ICompositeRouter {
       preferenceRouter: this.preferenceRouter,
       zeroRouter: this.zeroRouter,
       lastRoutedTask: this.lastRoutedTask,
+      budgetRouter: this.budgetRouter,
+      budgetConstraints: this.config.budgetConstraints,
     };
   }
 

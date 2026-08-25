@@ -30,6 +30,7 @@ import {
   resetModelSelectionShadowFailureCount,
 } from './model-selection-shadow.js';
 import { resetModelSelectionReadinessLogging } from './model-selection-readiness.js';
+import type { LinUCBBandit } from './linucb-bandit.js';
 import { getModelSelectionShadowFile } from '../config/learning-persistence.js';
 import { getDefaultModelForCli } from '../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
@@ -426,6 +427,29 @@ describe('CompositeRouter', () => {
       expect(() => {
         router.recordOutcome('unknown' as CliName, task, 0.5);
       }).not.toThrow();
+    });
+
+    it('hands the bandit the budget feature it selected with (#4910)', () => {
+      // A wiring test, reaching past `private`, because the seam it guards is
+      // exactly the one that survived mutation: deleting the two lines that
+      // forward `budgetRouter`/`budgetConstraints` into the outcome deps left
+      // all 316 router tests green. Both halves of the fix were correct in
+      // isolation and the join between them was untested.
+      const budgeted = new CompositeRouter(adapters, {
+        budgetConstraints: { maxCostUsd: 0.05 },
+      });
+      const bandit = (budgeted as unknown as { linucbBandit?: LinUCBBandit }).linucbBandit;
+      expect(bandit).toBeDefined();
+      if (bandit === undefined) return;
+      const update = vi.spyOn(bandit, 'update');
+
+      budgeted.recordOutcome('claude', { content: 'Test task' }, 0.8);
+
+      const context = update.mock.calls[0]?.[1];
+      expect(context).toBeDefined();
+      // 0.5 is the neutral default the outcome path used before the fix; any
+      // measured value is a different number.
+      expect(context?.budgetUtilization).not.toBe(0.5);
     });
 
     it('should not record when LinUCB disabled', () => {
