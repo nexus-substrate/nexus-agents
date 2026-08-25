@@ -1,5 +1,36 @@
 # nexus-agents
 
+## 4.1.4
+
+### Patch Changes
+
+- [#4804](https://github.com/nexus-substrate/nexus-agents/pull/4804) [`bd52a8d`](https://github.com/nexus-substrate/nexus-agents/commit/bd52a8d80d4226ec3537682f84fb40ea06d86567) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - pin the unreadable-file counter that shipped untested in [#4788](https://github.com/nexus-substrate/nexus-agents/issues/4788)
+
+  Every fixture in [#4788](https://github.com/nexus-substrate/nexus-agents/issues/4788) exercised unparseable LINES; none exercised a file the
+  loader could not open. Deleting `unreadableFiles++` left all twelve tests green,
+  so the counter shipped unverified in a PR that reported mutation verification of
+  the two counters beside it.
+
+  Adds the missing case — a directory named like a log file, so `readFile` throws
+  EISDIR — and confirms it goes red when the counter is removed.
+
+- [#4801](https://github.com/nexus-substrate/nexus-agents/pull/4801) [`6216494`](https://github.com/nexus-substrate/nexus-agents/commit/6216494285ea103b8b9c972c6d15f1febfdbb695) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make `index diagram --output` name the diagram, not the index
+
+  On the `diagram` subcommand, `--output` set where the command READ its index
+  from and the diagram destination was hardcoded, so there was no way to aim the
+  generator at a repo's real docs location. That is why this repo's canonical
+  `docs/architecture/dependency-graph.md` carried a `Generated: 2026-01-12` header
+  no generator had touched in seven months.
+
+  `--output` now names the diagram destination. The default stays cwd-relative, so
+  a run inside another repository still writes into that repository's tree.
+
+  Also fixes the self-heal path: when the index is missing it regenerates one, and
+  it used to forward `--output` to the index generator — writing a multi-megabyte
+  YAML index over the diagram the caller asked for.
+
+  Fixes [#4799](https://github.com/nexus-substrate/nexus-agents/issues/4799).
+
 ## 4.1.3
 
 ### Patch Changes
