@@ -96,6 +96,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       mismatch: false,
       dataDirInsideRepo: false,
     },
+    installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     harnessAlignment: {
       agentsMdExists: true,
       files: [],
