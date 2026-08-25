@@ -5,12 +5,17 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { CapacityFilterStage, CAPACITY_EXHAUSTED } from './routing/stages/index.js';
+import {
+  CapacityFilterStage,
+  CAPACITY_EXHAUSTED,
+  ResourceStrategyStage,
+} from './routing/stages/index.js';
 import type { CapacityStatus, ICliAdapter, RoutingArmId } from './types.js';
 
 import { ok } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import { CompositeRoutingError } from './composite-router-types.js';
+import { createRoutingContext } from './routing/router-stage.js';
 import { CATEGORY_CHAIN_OVERRIDES } from './fallback-chains.js';
 
 import {
@@ -1178,5 +1183,58 @@ describe('runCapacityStage', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual(['claude']);
+  });
+});
+
+// ============================================================================
+// The signal channel does not cross stage boundaries (#4866)
+// ============================================================================
+
+describe('cross-stage routing signals (#4866)', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  // Every other test in this file hands `runResourceStrategyStage` a MOCKED
+  // stage whose result already contains `resource-strategy:tier=…`. That
+  // pre-seeds the answer, so none of them can see that a real stage is given
+  // an empty context and skips. These drive the real stage instead.
+
+  it.fails('KNOWN BROKEN (#4866): a real ResourceStrategyStage receives budget data', async () => {
+    // `createRoutingContext` (router-stage.ts:253-261) hard-sets
+    // `signals: []` and the runner passes no metadata, so
+    // `extractResourceLevel` finds neither the `budget:utilization=` signal
+    // nor a `resourceLevel` in metadata. The stage skips with trace reason
+    // "no budget data" on every production call, and no resource tier is
+    // ever selected.
+    //
+    // `it.fails` rather than a pinned assertion of the broken behaviour:
+    // this is executable proof of the defect that turns RED the moment the
+    // plumbing lands, at which point it becomes a plain `it`.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps);
+
+    expect(result.resourceLevel).toBeDefined();
+  });
+
+  it('a real ResourceStrategyStage does reach a tier when given the data directly', async () => {
+    // The control: the stage itself works. It reads `resourceLevel` from
+    // context metadata (resource-strategy-stage.ts:238-244) — a channel
+    // `createRoutingContext` accepts as its third argument and the runner
+    // never supplies. So the defect is the plumbing, not the stage, and
+    // deleting the stage would be the wrong reading of #4866.
+    const stage = new ResourceStrategyStage();
+
+    const routed = await stage.route(
+      createRoutingContext(mockTask.content, candidates, { resourceLevel: 0.9 })
+    );
+
+    expect(routed.ok).toBe(true);
+    if (!routed.ok) return;
+    expect(routed.value.context.signals.some((s) => s.startsWith('resource-strategy:tier='))).toBe(
+      true
+    );
   });
 });
