@@ -238,28 +238,9 @@ export class AegeanProtocol implements ICollaborationProtocol {
 
     this.announceRoundStart(roundNumber, leaderId, config.sessionId);
 
-    // Phase 1: Leader proposes
-    const proposalResult = await this.generateProposal(leader, leaderId, config.task, roundNumber);
-    if (!proposalResult.ok) return err(proposalResult.error);
-
-    const {
-      proposal,
-      tokensUsed: proposalTokens,
-      unmeasured: proposalUnmeasured,
-    } = proposalResult.value;
-
-    // Phase 2: Collect votes
-    const votesResult = await this.collectVotes({
-      experts: config.experts,
-      agents,
-      proposal,
-      leaderId,
-      roundNumber,
-      sessionId: config.sessionId,
-    });
-    if (!votesResult.ok) return err(votesResult.error);
-
-    const { votes, tokensUsed: voteTokens, unmeasured: voteUnmeasured } = votesResult.value;
+    const gathered = await this.gatherRound(leader, leaderId, config, agents, roundNumber);
+    if (!gathered.ok) return err(gathered.error);
+    const { proposal, votes, tokensUsed, unmeasured } = gathered.value;
 
     // Phase 3: Evaluate quorum
     const quorumStatus = this.evaluateQuorum(
@@ -279,8 +260,44 @@ export class AegeanProtocol implements ICollaborationProtocol {
     });
     this.logger.debug('Round complete', { roundNumber, ...quorumStatus });
 
+    return ok({ roundData, tokensUsed, unmeasured });
+  }
+
+  /** Phases 1 and 2 of a round: the leader's proposal, then the votes on it. */
+  private async gatherRound(
+    leader: IAgent,
+    leaderId: string,
+    config: CollaborationConfig,
+    agents: Map<string, IAgent>,
+    roundNumber: number
+  ): Promise<
+    Result<
+      { proposal: Proposal; votes: AgentVote[]; tokensUsed: number; unmeasured: number },
+      AgentError
+    >
+  > {
+    const proposalResult = await this.generateProposal(leader, leaderId, config.task, roundNumber);
+    if (!proposalResult.ok) return err(proposalResult.error);
+    const {
+      proposal,
+      tokensUsed: proposalTokens,
+      unmeasured: proposalUnmeasured,
+    } = proposalResult.value;
+
+    const votesResult = await this.collectVotes({
+      experts: config.experts,
+      agents,
+      proposal,
+      leaderId,
+      roundNumber,
+      sessionId: config.sessionId,
+    });
+    if (!votesResult.ok) return err(votesResult.error);
+    const { votes, tokensUsed: voteTokens, unmeasured: voteUnmeasured } = votesResult.value;
+
     return ok({
-      roundData,
+      proposal,
+      votes,
       tokensUsed: proposalTokens + voteTokens,
       unmeasured: proposalUnmeasured + voteUnmeasured,
     });
