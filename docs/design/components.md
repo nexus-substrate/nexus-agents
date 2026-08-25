@@ -83,7 +83,7 @@ Multi-agent voting and decision aggregation.
 
 - **Consensus Engine** (`consensus/engine.ts`): `createConsensusEngine()` — tallies votes, applies strategies
 - **Voting Strategies**: SimpleMajority, Supermajority, Unanimous, ProofOfLearning
-- **Higher-Order Voting** (`consensus/strategies/`, Issue #333): Bayesian-optimal aggregation with correlation awareness
+- **Higher-Order Voting** (`consensus/strategies/`, Issue #333): Bayesian-optimal aggregation with correlation awareness — implemented, but NOT on the verdict path; `calculateOutcome` tallies simply and the correlation posterior drives contrarian escalation only (#4701)
 - **Quorum Validator** (`consensus/quorum.ts`, Issue #576): Unified quorum requirements
 - **Correlation Tracker** (`consensus/correlation/`): Tracks agent agreement patterns
 

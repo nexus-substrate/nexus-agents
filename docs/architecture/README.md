@@ -126,7 +126,7 @@ These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI 
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
 - **proof_of_learning**: Weighted by agent performance
-- **higher_order**: Bayesian-optimal aggregation with correlation awareness
+- **higher_order**: simple tally for the verdict; the Bayesian correlation analysis feeds contrarian escalation only (#4701)
 - **opinion_wise**: Opinion-based aggregation
 
 ---
