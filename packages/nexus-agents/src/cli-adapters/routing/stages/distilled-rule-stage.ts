@@ -26,6 +26,7 @@ import type {
 import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.js';
 import type { StrategyDistiller } from '../../../learning/strategy-distiller.js';
 import type { DistilledRule, StrategyAction } from '../../../learning/strategy-distiller-types.js';
+import { TaskCategorySchema } from '../../../config/task-specialization-types.js';
 
 /** Score deltas per action type. */
 const ACTION_DELTAS: Readonly<Record<StrategyAction, number>> = {
@@ -111,10 +112,15 @@ export class DistilledRuleStage implements IRouterStage {
       return ok({ context: updated, continuesPipeline: true });
     }
 
-    // Extract task category from signals
-    const category = this.extractCategory(ctx);
+    const category = readTaskCategory(ctx);
 
     let updated = ctx;
+    if (category === undefined) {
+      // An unscoped application is not the same as a scoped one, and the
+      // recorded `distilled-rule:applied=` cannot tell them apart on its own
+      // (#4832). Say which happened.
+      updated = { ...updated, signals: [...updated.signals, 'distilled-rule:category-unknown'] };
+    }
     let applied = 0;
 
     for (const cli of candidates) {
@@ -165,18 +171,25 @@ export class DistilledRuleStage implements IRouterStage {
           : this.config.avoidDelta;
     return baseDelta * rule.confidence;
   }
+}
 
-  private extractCategory(ctx: RoutingContext): string | undefined {
-    for (const signal of ctx.signals) {
-      if (signal.startsWith('task-category:')) {
-        return signal.slice('task-category:'.length);
-      }
-      if (signal.startsWith('capability:type=')) {
-        return signal.slice('capability:type='.length);
-      }
-    }
-    return undefined;
-  }
+/**
+ * Reads the task category the caller supplied, validated against the
+ * vocabulary a {@link DistilledRule} actually carries (#4832).
+ *
+ * This replaced a signal parser reading `task-category:` (which nothing
+ * emitted) and `capability:type=` (whose producer emits `capability:task-`
+ * over a DIFFERENT vocabulary — `reasoning|code|creative|general` — sharing no
+ * values with `TASK_CATEGORIES`). Renaming that prefix would have matched no
+ * rule ever and taken the whole distillation loop dark while looking like a
+ * fix, so the parser is gone rather than corrected.
+ *
+ * Anything off-vocabulary is `undefined`: unknown, not "a category that
+ * happens to match nothing".
+ */
+function readTaskCategory(ctx: RoutingContext): string | undefined {
+  const parsed = TaskCategorySchema.safeParse(ctx.metadata?.['taskCategory']);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Factory function for creating DistilledRuleStage. */

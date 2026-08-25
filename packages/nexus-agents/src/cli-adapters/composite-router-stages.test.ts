@@ -9,6 +9,7 @@ import {
   CapacityFilterStage,
   CAPACITY_EXHAUSTED,
   ResourceStrategyStage,
+  DistilledRuleStage,
 } from './routing/stages/index.js';
 import type { CapacityStatus, ICliAdapter, RoutingArmId } from './types.js';
 
@@ -1261,5 +1262,98 @@ describe('cross-stage routing signals (#4866)', () => {
     expect(routed.value.context.signals.some((s) => s.startsWith('resource-strategy:tier='))).toBe(
       true
     );
+  });
+});
+
+// ============================================================================
+// The distilled-rule runner supplies a category (#4832)
+// ============================================================================
+
+describe('runDistilledRuleStage supplies the task category (#4832)', () => {
+  const candidates: CliName[] = ['claude'];
+
+  function stageWithRule(): DistilledRuleStage {
+    const rule = {
+      id: 'failure-rate:claude:documentation',
+      patternType: 'failure-rate',
+      cli: 'claude' as CliName,
+      category: 'documentation',
+      action: 'penalize',
+      confidence: 0.8,
+      observationCount: 40,
+      metric: 0.7,
+      status: 'active',
+      createdAt: 0,
+      updatedAt: 0,
+      tainted: false,
+    };
+    const distiller = {
+      getRules: vi.fn(() => [rule]),
+      onOutcome: vi.fn(),
+      distill: vi.fn(),
+      getStats: vi.fn(),
+    };
+    return new DistilledRuleStage(distiller as never);
+  }
+
+  it('scopes rules by the category detected from the task', async () => {
+    // A documentation rule must not apply to a task detected as something
+    // else. Mocked-stage tests cannot see this — they assert on a result the
+    // mock already decided.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: stageWithRule(),
+    });
+
+    const result = await runDistilledRuleStage(
+      { content: 'design the service architecture and system boundaries' },
+      candidates,
+      [],
+      deps,
+      'architecture'
+    );
+
+    expect(result.rulesApplied).toBe(0);
+  });
+
+  it('detects the category from the task through the whole pipeline (#4832)', async () => {
+    // The last seam: runScoringStages calls detectTaskCategory itself, and
+    // neither the stage tests nor the runner tests reach that call.
+    //
+    // It has to be an EXCLUSION to be observable. With no category the rule
+    // applies unscoped — the designed fallback — so a matching task yields 1
+    // either way and proves nothing. A task detected as something OTHER than
+    // the rule's category yields 1 without detection and 0 with it.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: stageWithRule(),
+    });
+    const archTask: CliTask = { content: 'design the system architecture and service boundaries' };
+    const profile = analyzeTaskProfile(archTask, []);
+
+    const result = await runPipeline(archTask, profile, [], ['claude'], deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Omitted entirely when zero, so undefined is the scoped outcome.
+    expect(result.value.distilledRulesApplied).toBeUndefined();
+  });
+
+  it('applies the rule when the detected category matches', async () => {
+    // The pair: scoping to nothing would satisfy the test above.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: stageWithRule(),
+    });
+
+    const result = await runDistilledRuleStage(
+      { content: 'write the README' },
+      candidates,
+      [],
+      deps,
+      'documentation'
+    );
+
+    expect(result.rulesApplied).toBe(1);
   });
 });
