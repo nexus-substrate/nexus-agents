@@ -14,7 +14,6 @@
   ],
   "skill_file": "skills/documentation-management/SKILL.md",
   "canonical_index": "docs/README.md",
-  "machine_index": "docs/INDEX.yaml",
   "generated_outputs": {
     "capabilities": "docs/reference/capabilities.md",
     "repo_index": "artifacts/repo-index.json"

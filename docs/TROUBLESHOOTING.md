@@ -330,7 +330,7 @@ nexus-agents expert list
 ```bash
 # Check context usage
 # Use tiered documentation (load only what's needed)
-# See docs/INDEX.yaml for context budgets
+# See docs/README.md for the documentation map
 
 # Prune context manually
 nexus-agents orchestrate "task" --max-context=50000
@@ -388,8 +388,7 @@ cat workflows/<template>.yaml
 
 ### Resources
 
-- **Documentation Index:** `docs/INDEX.yaml`
-- **Human-readable Index:** `docs/README.md`
+- **Documentation Index:** `docs/README.md`
 - **Architecture:** `ARCHITECTURE.md`
 
 ### Reporting Issues

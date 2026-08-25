@@ -45,7 +45,6 @@ const EXCLUDED_DIRS = [
 // Files excluded from index requirement
 const EXCLUDED_FILES = [
   'README.md', // The index itself
-  'INDEX.yaml', // Machine-readable companion
   'llms.txt', // Generated
   'llms-full.txt', // Generated
 ];

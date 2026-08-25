@@ -20,7 +20,6 @@ This specification defines the **single canonical documentation pipeline** for n
 ┌─────────────────────────────────────────────────────────────────┐
 │                    CANONICAL SOURCES                             │
 │  docs/         Root (README.md, CLAUDE.md, etc.)                │
-│  docs/INDEX.yaml (machine-parseable index)                      │
 │  docs/README.md (human-readable canonical index)                │
 └────────────────────────┬────────────────────────────────────────┘
                          │
@@ -53,10 +52,9 @@ This specification defines the **single canonical documentation pipeline** for n
 
 ### Primary Index
 
-| File              | Purpose                        | Maintenance |
-| ----------------- | ------------------------------ | ----------- |
-| `docs/README.md`  | Human-readable canonical index | Manual      |
-| `docs/INDEX.yaml` | Machine-parseable index        | Manual      |
+| File             | Purpose                        | Maintenance |
+| ---------------- | ------------------------------ | ----------- |
+| `docs/README.md` | Human-readable canonical index | Manual      |
 
 **Rule:** All documentation MUST be indexed in `docs/README.md` to be valid.
 
@@ -204,9 +202,8 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 1. Create file in appropriate `docs/` directory
 2. Add entry to `docs/README.md` (required)
-3. Update `docs/INDEX.yaml` if needed
-4. Run `npx tsx scripts/generate-repo-index.ts` if capabilities changed
-5. Commit and push
+3. Run `npx tsx scripts/generate-repo-index.ts` if capabilities changed
+4. Commit and push
 
 ### "I want to change the doc pipeline"
 
@@ -230,5 +227,4 @@ npx tsx scripts/inject-governance.ts check
 
 - **Documentation Management Skill:** `skills/documentation-management/SKILL.md`
 - **Documentation Index:** `docs/README.md`
-- **Machine Index:** `docs/INDEX.yaml`
 - **Inventory:** `docs/ops/docs-inventory.md`
