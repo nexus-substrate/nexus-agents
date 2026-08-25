@@ -133,7 +133,12 @@ export function runBudgetStage(
   stagesExecuted: string[],
   deps: StageDependencies
 ): Result<
-  { candidates: RoutingArmId[]; withinBudget: boolean | undefined },
+  {
+    candidates: RoutingArmId[];
+    withinBudget: boolean | undefined;
+    /** Projected spend / cost ceiling; undefined when no ceiling is set (#4866). */
+    budgetUtilization?: number;
+  },
   CompositeRoutingError
 > {
   if (!deps.config.enableBudgetFilter || deps.budgetRouter === undefined) {
@@ -144,7 +149,13 @@ export function runBudgetStage(
   if (result.eligible.length === 0) {
     return err(new CompositeRoutingError('No CLIs within budget', 'budget-filter'));
   }
-  return ok({ candidates: result.eligible, withinBudget: result.withinBudget });
+  return ok({
+    candidates: result.eligible,
+    withinBudget: result.withinBudget,
+    ...(result.budgetUtilization === undefined
+      ? {}
+      : { budgetUtilization: result.budgetUtilization }),
+  });
 }
 
 /**
@@ -409,6 +420,14 @@ export interface ResourceStrategyStageResult {
   scores: Map<CliName, number>;
   tier: string;
   resourceLevel: number | undefined;
+  /**
+   * Whether a tier was actually selected (#4866).
+   *
+   * `false` means the stage skipped for want of budget data, so `tier` is the
+   * `'balanced'` default and NOT a decision. Without this, a genuinely
+   * selected balanced tier and a stage that never ran are the same value.
+   */
+  tierMeasured: boolean;
 }
 
 /** Default resource strategy result. */
@@ -416,6 +435,7 @@ const DEFAULT_RESOURCE_RESULT: ResourceStrategyStageResult = {
   scores: new Map(),
   tier: 'balanced',
   resourceLevel: undefined,
+  tierMeasured: false,
 };
 
 /** Runs resource strategy stage. (Issue #998, #1350) */
@@ -423,13 +443,29 @@ export async function runResourceStrategyStage(
   task: CliTask,
   candidates: RoutingArmId[],
   stagesExecuted: string[],
-  deps: StageDependencies
+  deps: StageDependencies,
+  budgetUtilization?: number
 ): Promise<ResourceStrategyStageResult> {
   if (!deps.config.enableResourceStrategy || deps.resourceStrategyStage === undefined) {
     return DEFAULT_RESOURCE_RESULT;
   }
 
-  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
+  // The stage reads its input from context metadata. It used to be given a
+  // fresh context with no metadata and no signals, so it skipped with "no
+  // budget data" on every production call and no tier was ever selected
+  // (#4866). Passed as a typed argument rather than revived as a cross-stage
+  // signal channel — the string-prefix channel is what produced #4832/#4834.
+  //
+  // Undefined stays undefined: with no cost ceiling configured there is no
+  // utilization, and substituting a default would activate tier adjustments
+  // for users who never asked for budget-aware routing.
+  const resourceLevel =
+    budgetUtilization === undefined ? undefined : Math.max(0, Math.min(1, 1 - budgetUtilization));
+  const ctx = createRoutingContext(
+    task.content,
+    armsToSlots(candidates),
+    resourceLevel === undefined ? undefined : { resourceLevel }
+  );
   const result = await deps.resourceStrategyStage.route(ctx);
   stagesExecuted.push('resource-strategy');
 
@@ -440,10 +476,24 @@ export async function runResourceStrategyStage(
 
   const { signals, scores } = result.value.context;
   const tier = extractTierFromSignals(signals);
+  const tierMeasured = signals.some((sig) => sig.startsWith('resource-strategy:tier='));
 
-  deps.logger.debug('Resource strategy completed', { tier, scoreCount: scores.size });
+  deps.logger.debug('Resource strategy completed', {
+    tier,
+    tierMeasured,
+    resourceLevel,
+    scoreCount: scores.size,
+  });
 
-  return { scores: new Map(scores), tier, resourceLevel: undefined };
+  // Only report the level the stage actually ACTED on. Returning the input
+  // regardless would claim a level was applied when the stage had skipped —
+  // the same "reported but not used" shape this change exists to remove.
+  return {
+    scores: new Map(scores),
+    tier,
+    resourceLevel: tierMeasured ? resourceLevel : undefined,
+    tierMeasured,
+  };
 }
 
 /** Distilled rule stage result. (Issue #999) */
@@ -776,7 +826,8 @@ async function runScoringStages(
   task: CliTask,
   candidates: RoutingArmId[],
   stagesExecuted: string[],
-  deps: StageDependencies
+  deps: StageDependencies,
+  budgetUtilization?: number
 ): Promise<{
   cascadeResult: ConfidenceCascadeStageResult;
   memoryResult: RoutingMemoryStageResult;
@@ -797,7 +848,13 @@ async function runScoringStages(
   const distilledResult = await runDistilledRuleStage(task, filtered, stagesExecuted, deps);
   const prefResult = runPreferenceStage(task, filtered, stagesExecuted, deps);
   filtered = prefResult.preferredCandidates;
-  const resourceResult = await runResourceStrategyStage(task, filtered, stagesExecuted, deps);
+  const resourceResult = await runResourceStrategyStage(
+    task,
+    filtered,
+    stagesExecuted,
+    deps,
+    budgetUtilization
+  );
   return {
     cascadeResult,
     memoryResult,
@@ -1005,7 +1062,13 @@ export async function runPipeline(
   if (!capacityResult.ok) return capacityResult;
   candidates = capacityResult.value;
 
-  const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
+  const scoring = await runScoringStages(
+    task,
+    candidates,
+    stagesExecuted,
+    deps,
+    budgetResult.value.budgetUtilization
+  );
   candidates = scoring.candidates;
 
   // Constraint-first: quality constraints filter BEFORE TOPSIS/LinUCB (#1686)
@@ -1106,7 +1169,10 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
       : {}),
     ...(p.capResult.taskType !== 'general' ? { capabilityTaskType: p.capResult.taskType } : {}),
     ...(p.qualityResult.filtered.size > 0 ? { qualityFiltered: p.qualityResult.filtered } : {}),
-    ...(p.resourceResult.tier !== 'balanced' ? { resourceTier: p.resourceResult.tier } : {}),
+    // Keyed on whether a tier was SELECTED, not on whether it differs from
+    // the default — a measured 'balanced' is a decision and must be recorded
+    // as one (#4866).
+    ...(p.resourceResult.tierMeasured ? { resourceTier: p.resourceResult.tier } : {}),
     ...(p.distilledResult.rulesApplied > 0
       ? { distilledRulesApplied: p.distilledResult.rulesApplied }
       : {}),

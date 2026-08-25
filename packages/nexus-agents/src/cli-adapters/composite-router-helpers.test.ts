@@ -349,6 +349,59 @@ describe('applyBudgetFilter', () => {
     expect(result.eligible).toEqual(candidates);
     expect(result.withinBudget).toBe(true);
   });
+
+  it('reports budget utilization against a configured cost ceiling (#4866)', () => {
+    // ResourceStrategyStage's only input. Nothing on this path produced it —
+    // it looked for a `budget:utilization=` signal emitted by BudgetFilterStage,
+    // which has no production instantiation.
+    const mockRouter = {
+      checkBudget: vi.fn(() => ({ withinBudget: true, estimatedCostUsd: 0.25 })),
+    };
+
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      {
+        budgetConstraints: { maxCostUsd: 1 },
+      } as never
+    );
+
+    expect(result.budgetUtilization).toBeCloseTo(0.25);
+  });
+
+  it('reports no utilization when no cost ceiling is configured (#4866)', () => {
+    // The empty case, named: with no ceiling there is nothing to be a
+    // fraction of. Returning 0 would read as "budget untouched" and push
+    // ResourceStrategyStage to its most aggressive tier.
+    const mockRouter = {
+      checkBudget: vi.fn(() => ({ withinBudget: true, estimatedCostUsd: 0.25 })),
+    };
+
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      config as never
+    );
+
+    expect(result.budgetUtilization).toBeUndefined();
+  });
+
+  it('caps utilization at 1 when the estimate exceeds the ceiling (#4866)', () => {
+    const mockRouter = { checkBudget: vi.fn(() => ({ withinBudget: true, estimatedCostUsd: 5 })) };
+
+    const result = applyBudgetFilter(
+      makeCliTask(),
+      candidates,
+      mockRouter as never,
+      {
+        budgetConstraints: { maxCostUsd: 1 },
+      } as never
+    );
+
+    expect(result.budgetUtilization).toBe(1);
+  });
 });
 
 // ============================================================================
