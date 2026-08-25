@@ -274,7 +274,6 @@ nexus-agents learning-metrics --bandit-stats --format=json
 
 # Codebase index
 nexus-agents index generate
-nexus-agents index check
 nexus-agents index diagram
 
 # Claude CLI hooks (called by Claude Code, not user)
