@@ -34,6 +34,10 @@ import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
+import {
+  recordAuthenticVote,
+  type VoteRecordPersistOutcome,
+} from '../mcp/tools/consensus-vote-recording.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
@@ -279,7 +283,7 @@ export function recordVoteToGitHub(
  */
 async function runVote(
   options: VoteCommandOptions
-): Promise<VotingResult & { readonly decision: VoteDecisionStatus }> {
+): Promise<VotingResult & { readonly decision: VoteDecisionStatus; readonly strategy: string }> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -322,6 +326,9 @@ async function runVote(
     totalTimeMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
     decision: result.decision ?? mapOutcomeToDecision(result.result.outcome),
+    // Carried past the narrowing above so the audit record states the strategy
+    // that was applied. `threshold` is the display value and can differ (#4924).
+    strategy: result.strategy,
   };
 }
 
@@ -383,6 +390,48 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
 }
 
 /**
+ * One operator-facing line describing what reached the audit chain.
+ *
+ * A persist failure is stated rather than swallowed: the vote itself must not
+ * fail because its record could not be written, but a decision that left no
+ * record must not look like one that did (#4924).
+ */
+export function auditLineFor(outcome: VoteRecordPersistOutcome): string {
+  if (outcome.persisted) {
+    return `${colors.dim}Audit record #${String(outcome.record.sequence)} written (${outcome.record.id})${colors.reset}\n`;
+  }
+  if (outcome.reason === 'all-simulated') {
+    return `${colors.dim}No audit record — votes were simulated${colors.reset}\n`;
+  }
+  return `${colors.yellow}Vote NOT recorded to the audit chain: ${outcome.detail}${colors.reset}\n`;
+}
+
+/**
+ * Write the vote to the tamper-evident chain, sharing the MCP path's recorder
+ * rather than growing a second one.
+ *
+ * Skipped for a dry run: `recordAuthenticVote` would decline it anyway, and
+ * printing a persistence line for a vote that never happened is its own small
+ * misreport.
+ */
+function persistToAuditChain(
+  options: VoteCommandOptions,
+  result: VotingResult & { readonly strategy: string }
+): void {
+  if (options.dryRun === true) return;
+  writeLine(
+    auditLineFor(
+      recordAuthenticVote({
+        proposal: result.proposal,
+        strategy: result.strategy,
+        result: result.result,
+        votes: result.votes,
+      })
+    )
+  );
+}
+
+/**
  * Run the vote command.
  */
 export async function voteCommand(options: VoteCommandOptions): Promise<number> {
@@ -411,6 +460,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
+    persistToAuditChain(options, result);
     handleRecording(options, result, result.decision);
 
     return exitCodeForDecision(result.decision, onNoQuorum);

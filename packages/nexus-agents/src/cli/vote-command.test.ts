@@ -8,14 +8,23 @@ import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from './voter-agents.js';
 
-const { safeExecSandboxedMock, executeVotingMock } = vi.hoisted(() => ({
+const { safeExecSandboxedMock, executeVotingMock, recordAuthenticVoteMock } = vi.hoisted(() => ({
   safeExecSandboxedMock: vi.fn(),
   executeVotingMock: vi.fn(),
+  // Default impl so every describe that does not care about persistence still
+  // gets a well-formed outcome back.
+  recordAuthenticVoteMock: vi.fn(() => ({
+    persisted: true,
+    record: { id: 'vote-1', sequence: 7 },
+  })),
 }));
 vi.mock('./sandbox-exec.js', () => ({ safeExecSandboxed: safeExecSandboxedMock }));
 // #4135: stub executeVoting so voteCommand exit-code mapping can be driven by a
 // fixed response-layer decision (approved / rejected / no_quorum).
 vi.mock('../mcp/tools/consensus-vote.js', () => ({ executeVoting: executeVotingMock }));
+vi.mock('../mcp/tools/consensus-vote-recording.js', () => ({
+  recordAuthenticVote: recordAuthenticVoteMock,
+}));
 
 import {
   formatVoteComment,
@@ -23,6 +32,7 @@ import {
   explainOutcome,
   recordVoteToGitHub,
   voteCommand,
+  auditLineFor,
 } from './vote-command.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
@@ -390,5 +400,120 @@ describe('voteCommand — exit-code mapping for no_quorum (#4135)', () => {
   it('a rejected decision → exit 1 (unchanged)', async () => {
     executeVotingMock.mockResolvedValue(extendedResult('rejected'));
     expect(await voteCommand({ proposal: 'p', onNoQuorum: 'exit2' })).toBe(1);
+  });
+});
+
+// =============================================================================
+// The CLI writes its own audit record (#4924)
+// =============================================================================
+
+/** A minimal `persisted: true` outcome; only `id` and `sequence` are read. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function persistedOutcome() {
+  return { persisted: true, record: { id: 'vote-1', sequence: 7 } } as unknown as Parameters<
+    typeof auditLineFor
+  >[0];
+}
+
+describe('voteCommand persists to the audit chain (#4924)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function extendedResult(decision: string) {
+    return {
+      proposal: 'p',
+      threshold: 'supermajority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'higher_order',
+      decision,
+    };
+  }
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+  });
+
+  it('records the vote', () => {
+    // `persistVoteRecord` had exactly one caller — the MCP tool — so every
+    // decision made at a terminal was absent from the tamper-evident chain
+    // while `verify_audit_chain` reported it intact.
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+
+    return voteCommand({ proposal: 'p' }).then(() => {
+      expect(recordAuthenticVoteMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('records the strategy that was actually applied, not the CLI display value', async () => {
+    // The CLI narrows `ExtendedVotingResult` to the base view for printing,
+    // which drops `strategy`. Recording the printed `threshold` instead would
+    // put `supermajority` in the chain for a `higher_order` run.
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+
+    await voteCommand({ proposal: 'p' });
+
+    const firstCall = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({ strategy: 'higher_order' });
+  });
+
+  it('records a rejection too', async () => {
+    // A rejected vote is a decision. Recording only approvals would make the
+    // chain a record of what passed rather than of what was decided.
+    executeVotingMock.mockResolvedValue(extendedResult('rejected'));
+
+    await voteCommand({ proposal: 'p' });
+
+    expect(recordAuthenticVoteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not record a dry run', async () => {
+    // Simulated votes must never seed governance (#2319). The recorder skips
+    // them on its own; not calling it at all keeps the CLI from printing a
+    // persistence line for a vote that never happened.
+    executeVotingMock.mockResolvedValue({ ...extendedResult('approved'), simulateVotes: true });
+
+    await voteCommand({ proposal: 'p', dryRun: true });
+
+    expect(recordAuthenticVoteMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('auditLineFor (#4924)', () => {
+  it('names the sequence when the record was written', () => {
+    expect(auditLineFor(persistedOutcome())).toContain('7');
+  });
+
+  it('says a write failure out loud rather than staying silent', () => {
+    const line = auditLineFor({
+      persisted: false,
+      reason: 'write-failed',
+      detail: 'data dir unwritable at /x',
+    });
+
+    expect(line).toMatch(/not recorded/i);
+    expect(line).toContain('/x');
+  });
+
+  it('distinguishes a skipped simulation from a failure', () => {
+    // Both are `persisted: false`. Collapsing them would report a deliberate
+    // skip in the same alarming words as an unwritable data dir — the
+    // `not.toMatch` is what catches that, and a weaker one on /failed/ did
+    // not, since the failure line says "NOT recorded" rather than "failed".
+    const line = auditLineFor({
+      persisted: false,
+      reason: 'all-simulated',
+      detail: 'simulated',
+    });
+
+    expect(line).toMatch(/simulat/i);
+    expect(line).not.toMatch(/NOT recorded/i);
   });
 });
