@@ -727,13 +727,46 @@ describe('registerMcpTools - policy firewall', () => {
       (call: unknown[]) => call[0] === 'Tools registered with per-tool rate limiting'
     );
     expect(regCall).toBeDefined();
+    // No longer `policyFirewallEnabled: true` + `policyMode: 'enforce'`. The
+    // firewall is constructed and then dropped — `buildStandardDeps` does not
+    // forward it and no tool registration passes it, so `createPolicyMiddleware`
+    // is never reached for any tool. Logging it as enabled and enforcing
+    // claimed an enforcement that does not happen, and this assertion pinned
+    // that claim as intended behaviour.
     expect((regCall as unknown[])[1]).toEqual(
-      expect.objectContaining({
-        policyFirewallEnabled: true,
-        policyMode: 'enforce',
-        executionMode: 'read-write',
-      })
+      expect.objectContaining({ executionMode: 'read-write' })
     );
+    expect((regCall as unknown[])[1]).not.toHaveProperty('policyFirewallEnabled');
+    expect((regCall as unknown[])[1]).not.toHaveProperty('policyMode');
+  });
+
+  it('warns that a constructed policy firewall is not wired to any tool', () => {
+    const logger = makeMockLogger();
+    const mockFirewall = {
+      getMode: vi.fn().mockReturnValue('enforce'),
+    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+
+    registerMcpTools(makeDefaultOptions({ logger, policyFirewall: mockFirewall }));
+
+    const warn = logger.warn.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('PolicyFirewall')
+    );
+    expect(warn).toBeDefined();
+    expect(String((warn as unknown[])[0])).toContain('not wired');
+    expect((warn as unknown[])[1]).toEqual(expect.objectContaining({ configuredMode: 'enforce' }));
+  });
+
+  it('does not warn when no policy firewall was constructed', () => {
+    // The pair: an unconditional warning would be noise on every start and
+    // would stop being read, which is how the original claim survived.
+    const logger = makeMockLogger();
+
+    registerMcpTools(makeDefaultOptions({ logger }));
+
+    const warn = logger.warn.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('PolicyFirewall')
+    );
+    expect(warn).toBeUndefined();
   });
 
   it('should log executionMode as read-only when not provided', () => {

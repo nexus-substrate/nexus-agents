@@ -590,10 +590,25 @@ function logToolRegistration(
     builtInTemplateCount: info.builtInTemplates.size,
     realWorkflowExecution: info.modelAdapter !== undefined,
     realTechLead: info.modelAdapter !== undefined,
-    policyFirewallEnabled: info.policyFirewall !== undefined,
-    policyMode: info.policyFirewall?.getMode(),
     executionMode: info.executionMode ?? 'read-only',
   });
+
+  // The firewall is CONSTRUCTED by `logSecurityConfig` and then dropped:
+  // `buildStandardDeps` does not forward it, no tool registration passes it,
+  // and `createPolicyMiddleware` (middleware-chain.ts:327) is therefore never
+  // reached for any tool (#4888). This line used to report
+  // `policyFirewallEnabled: true` + `policyMode: 'enforce'`, which claimed an
+  // enforcement that does not happen — and a test pinned that claim.
+  //
+  // Warning rather than a `false` field: a hardcoded "not enforcing" is just
+  // the same constant with the sign flipped, and an operator who configured a
+  // policy mode needs to be told it is inert, not handed a quieter boolean.
+  if (info.policyFirewall !== undefined) {
+    logger.warn(
+      'PolicyFirewall is configured but not wired to any tool — no policy middleware runs',
+      { configuredMode: info.policyFirewall.getMode() }
+    );
+  }
 }
 
 /** Builds standard deps for a tool that needs only logger + rate limiter (+ optional security). */
