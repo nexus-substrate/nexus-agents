@@ -189,5 +189,4 @@ export {
   setGlobalPolicyFirewall,
   resetGlobalPolicyFirewall,
   stagePolicyFirewallForRollout,
-  POLICY_ENFORCE_ENV,
 } from './policy-registry.js';

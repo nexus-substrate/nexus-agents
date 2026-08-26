@@ -607,9 +607,15 @@ function logToolRegistration(
   // opt-in; this line exists so the registration record names the mode too.
   if (info.policyFirewall !== undefined) {
     const mode = info.policyFirewall.getMode();
-    logger.info('Policy firewall wired to all tools', {
+    // Not "all tools": upstream MCP proxies are registered with a raw handler
+    // (`initUpstreamServers`), so they never reach `createSecureHandler` and the
+    // firewall does not see them. Naming the covered set beats a claim a
+    // spot-check would find false.
+    logger.info('Policy firewall wired to locally registered tools', {
       policyMode: mode,
       denialsApplied: mode === 'enforce',
+      coveredTools: activeTools.length,
+      upstreamProxiesUncovered: true,
     });
   }
 }

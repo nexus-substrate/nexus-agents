@@ -11,9 +11,8 @@ import {
   setGlobalPolicyFirewall,
   resetGlobalPolicyFirewall,
   stagePolicyFirewallForRollout,
-  POLICY_ENFORCE_ENV,
 } from './policy-registry.js';
-import { PolicyFirewall } from './policy.js';
+import { PolicyFirewall, createDefaultPolicyFirewall } from './policy.js';
 import { createSecureHandler } from './secure-handler.js';
 import type { ILogger } from '../../core/index.js';
 import type { PolicyRule } from './policy-types.js';
@@ -37,17 +36,12 @@ const DENY_ALL: PolicyRule = {
 };
 
 describe('global policy firewall registry (#4888)', () => {
-  const originalEnforce = process.env[POLICY_ENFORCE_ENV];
-
   beforeEach(() => {
     resetGlobalPolicyFirewall();
-    delete process.env.NEXUS_MCP_POLICY_ENFORCE;
   });
 
   afterEach(() => {
     resetGlobalPolicyFirewall();
-    if (originalEnforce === undefined) delete process.env.NEXUS_MCP_POLICY_ENFORCE;
-    else process.env[POLICY_ENFORCE_ENV] = originalEnforce;
   });
 
   it('reports no firewall until one is wired', () => {
@@ -81,40 +75,44 @@ describe('global policy firewall registry (#4888)', () => {
       expect(decision.allowed).toBe(true);
     });
 
-    it('says in the log which mode was configured and how to enforce', () => {
+    it('reports the configured mode alongside the one in effect', () => {
       const firewall = new PolicyFirewall({ mode: 'enforce' });
       const { logger, infos } = recordingLogger();
 
       stagePolicyFirewallForRollout(firewall, logger);
 
       expect(infos[0]?.message).toContain('warn mode');
-      expect(infos[0]?.ctx).toMatchObject({
-        configuredMode: 'enforce',
-        enforceWith: `${POLICY_ENFORCE_ENV}=1`,
+      expect(infos[0]?.ctx).toMatchObject({ configuredMode: 'enforce' });
+    });
+
+    it('lets an ordinary read-only tool through under the DEFAULT rule set', () => {
+      // The benign population, which the DENY_ALL cases above cannot speak for.
+      // With the real default rules this passes only because of warn mode — see
+      // the next test for what enforcing would do to it today.
+      const firewall = createDefaultPolicyFirewall({ mode: 'enforce' });
+      const { logger } = recordingLogger();
+
+      stagePolicyFirewallForRollout(firewall, logger);
+
+      const decision = firewall.evaluate({ toolName: 'memory_query', args: {}, mode: 'read-only' });
+      expect(decision.allowed).toBe(true);
+    });
+
+    it('documents why the enforce path stays closed', () => {
+      // Not a wish — the reason there is no opt-in yet. `isMutationTool` treats
+      // an unknown tool as a mutation, `READ_ONLY_TOOLS` names two nexus tools,
+      // and nothing supplies `executionMode`, so the effective mode is always
+      // 'read-only'. Enforcing today denies almost every registered tool.
+      const enforcing = createDefaultPolicyFirewall({ mode: 'enforce' });
+
+      const decision = enforcing.evaluate({
+        toolName: 'memory_query',
+        args: {},
+        mode: 'read-only',
       });
-    });
 
-    it('honors the configured mode once the operator opts in', () => {
-      process.env[POLICY_ENFORCE_ENV] = '1';
-      const firewall = new PolicyFirewall({ mode: 'enforce', rules: [DENY_ALL] });
-      const { logger } = recordingLogger();
-
-      stagePolicyFirewallForRollout(firewall, logger);
-
-      expect(firewall.getMode()).toBe('enforce');
-      const decision = firewall.evaluate({ toolName: 'any_tool', args: {}, mode: 'read-only' });
       expect(decision.allowed).toBe(false);
-    });
-
-    it('does not treat any other value as opting in', () => {
-      // Fail closed on the safe side: only an exact '1' enables denials.
-      process.env[POLICY_ENFORCE_ENV] = 'true';
-      const firewall = new PolicyFirewall({ mode: 'enforce' });
-      const { logger } = recordingLogger();
-
-      stagePolicyFirewallForRollout(firewall, logger);
-
-      expect(firewall.getMode()).toBe('warn');
+      expect(decision.reason).toContain('mutation operation');
     });
   });
 
