@@ -112,17 +112,27 @@ describe('getCommitMessagesForEscapeHatch (#2411)', () => {
     expect(out).toContain('feat: an honest change');
   });
 
-  it('does NOT see [skip-docops] when only the merge-commit message has it (the original bug)', () => {
+  it('sees [skip-docops] in a branch commit that is not HEAD (#2411, the original bug)', () => {
+    // #5034: this test used to create a branch with no bypass token anywhere
+    // and assert the token was absent — which passes for any implementation
+    // that does not invent it, including the `git log -1` version #2411 fixed.
+    // It read as coverage of the merge-ref case and pinned nothing.
+    //
+    // The actual #2411 bug: under a PR merge ref, `git log -1` returns the
+    // generated merge-commit subject, so a token in the developer's own commit
+    // was never seen. That is what this now exercises — the token is in an
+    // EARLIER branch commit, with an unrelated commit on top.
     git(ctx.dir, 'checkout -q -b feature');
-    git(ctx.dir, 'commit --allow-empty -q -m "feat: real change without bypass token"');
+    git(ctx.dir, 'commit --allow-empty -q -m "docs: intentional bypass [skip-docops]"');
+    git(ctx.dir, 'commit --allow-empty -q -m "chore: follow-up with no token"');
 
     git(ctx.dir, 'update-ref refs/remotes/origin/main main');
     process.env['GITHUB_BASE_REF'] = 'main';
 
     const out = getCommitMessagesForEscapeHatch(ctx.dir);
 
-    expect(out).not.toContain('[skip-docops]');
-    expect(out).toContain('feat: real change without bypass token');
+    expect(out).toContain('[skip-docops]');
+    expect(out).toContain('chore: follow-up with no token');
   });
 
   it('falls back to HEAD-only when GITHUB_BASE_REF points at a non-existent ref', () => {
