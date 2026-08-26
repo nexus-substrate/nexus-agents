@@ -105,21 +105,36 @@ export function voteRecordWriteFailedMessage(path: string): string {
 }
 
 /**
- * Map a consensus outcome to the recorded decision vocabulary. Mirrors the MCP
- * response's `buildResponse` so the persisted record and the response never
- * disagree (#4053): an error-policy short-circuit (`errorVoided`) or an
- * all-error / no-quorum void is `no_quorum`, not a genuine `rejected`.
+ * Fallback mapping from a consensus outcome to the recorded decision, for
+ * callers with no resolved decision to hand over.
+ *
+ * The void checks come FIRST. They used to sit below an
+ * `if (result.outcome === 'approved') return 'approved'` short-circuit, which
+ * meant `errorVoided` could only ever rescue a `rejected` — a voided vote whose
+ * engine outcome was `approved` persisted as a genuine approval while the tool
+ * reported `no_quorum` (#4986). #4053 fixed one half of that and the ordering
+ * hid the other.
+ *
+ * This still cannot see a void the caller knows about but the
+ * {@link ConsensusResult} does not express — the `absolute_quorum` path stamps
+ * its reason on the response, never on the result — which is why
+ * `resolvedDecision` exists and why this is only the fallback.
  */
 function outcomeToDecision(
   result: ConsensusResult,
   votes: readonly AgentVoteResult[],
   errorVoided: boolean
 ): VoteRecord['decision'] {
-  if (result.outcome === 'approved') return 'approved';
   const errorCount = votes.filter((v) => v.source === 'error').length;
   const allErrors = errorCount === votes.length && errorCount > 0;
   if (errorVoided || (!result.quorumReached && allErrors)) return 'no_quorum';
-  return 'rejected';
+  if (result.outcome === 'approved') return 'approved';
+  // Only an actual `rejected` is a rejection. `ProposalStatus` also carries
+  // `timeout` / `pending` / `voting` / `closed`, and the previous
+  // everything-else-is-rejected default recorded a panel that never concluded
+  // as one that voted the proposal down (#4986).
+  if (result.outcome === 'rejected') return 'rejected';
+  return 'no_quorum';
 }
 
 /** Build the per-voter summary from the (real) agent votes, skipping errors. */
@@ -133,6 +148,17 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
   return summaries;
 }
 
+/**
+ * The decision to persist: the caller's resolved answer when it has one, else
+ * the {@link outcomeToDecision} fallback.
+ */
+function recordDecisionFor(input: BuildVoteRecordInput): VoteRecord['decision'] {
+  return (
+    input.resolvedDecision ??
+    outcomeToDecision(input.result, input.votes, input.errorVoided ?? false)
+  );
+}
+
 /** Inputs for {@link buildVoteRecord} — the finalized vote data. */
 export interface BuildVoteRecordInput {
   readonly id: string;
@@ -142,6 +168,17 @@ export interface BuildVoteRecordInput {
   readonly votes: readonly AgentVoteResult[];
   /** #4053: vote voided by an error-policy short-circuit → record `no_quorum`. */
   readonly errorVoided?: boolean | undefined;
+  /**
+   * The decision the caller already resolved for this vote, recorded verbatim.
+   *
+   * `resolveVoteDecision` computes the authoritative three-valued answer once,
+   * for the response. Re-deriving it here from `result.outcome` is what let the
+   * two disagree (#4986), so a caller that has it MUST pass it. Required rather
+   * than optional — including its `undefined` case — so the compiler names
+   * every call site instead of letting a new one inherit the fallback in
+   * silence.
+   */
+  readonly resolvedDecision: VoteRecord['decision'] | undefined;
   readonly correlationId?: string | undefined;
   readonly recordedAt?: string | undefined;
   /**
@@ -267,7 +304,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     proposalHash: hashProposal(input.proposal),
     proposal: proposalTruncated,
     strategy: input.strategy,
-    decision: outcomeToDecision(input.result, input.votes, input.errorVoided ?? false),
+    decision: recordDecisionFor(input),
     approvalPercentage: input.result.approvalPercentage,
     voteCounts: {
       approve: input.result.voteCounts.approve,

@@ -78,6 +78,8 @@ const votes: readonly AgentVoteResult[] = [
 describe('buildVoteRecord', () => {
   it('carries the proposal hash, decision, counts, per-voter summary, and a sequence', () => {
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
@@ -98,8 +100,73 @@ describe('buildVoteRecord', () => {
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
+  it('records a resolved no_quorum even when the engine outcome was approved (#4986)', () => {
+    // The absolute_quorum void: `resolveVoteDecision` returns no_quorum while
+    // `result.outcome` stays 'approved' and `result.policyReason` is never set,
+    // so `errorVoided` is false. Deriving from the outcome recorded a genuine
+    // approval for a vote the tool reported as no_quorum.
+    const record = buildVoteRecord({
+      resolvedDecision: 'no_quorum',
+      id: 'vote-void',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult({ outcome: 'approved' }),
+      votes,
+    });
+
+    expect(record.decision).toBe('no_quorum');
+  });
+
+  it('does not call an approved-but-voided vote approved (#4986)', () => {
+    // The fallback's own asymmetry: the `errorVoided` check used to sit BELOW
+    // the approved short-circuit, so it could only ever rescue a `rejected`.
+    const record = buildVoteRecord({
+      resolvedDecision: undefined,
+      id: 'vote-voided-approved',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult({ outcome: 'approved' }),
+      votes,
+      errorVoided: true,
+    });
+
+    expect(record.decision).toBe('no_quorum');
+  });
+
+  it('does not record a timed-out panel as a rejection (#4986)', () => {
+    // `ProposalStatus` carries `timeout`/`pending`/`voting`/`closed`. The old
+    // everything-else-is-rejected default attributed a verdict to voters who
+    // never gave one.
+    const record = buildVoteRecord({
+      resolvedDecision: undefined,
+      id: 'vote-timeout',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult({ outcome: 'timeout', quorumReached: false }),
+      votes,
+    });
+
+    expect(record.decision).toBe('no_quorum');
+  });
+
+  it('still records a genuine rejection as rejected', () => {
+    // The pair that keeps the change above from swallowing real rejections.
+    const record = buildVoteRecord({
+      resolvedDecision: undefined,
+      id: 'vote-rejected',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult({ outcome: 'rejected' }),
+      votes,
+    });
+
+    expect(record.decision).toBe('rejected');
+  });
+
   it('omits optionTally and stays on 1.2 when no voter declared an option (#4452)', () => {
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-noopt',
       proposal: 'p',
       strategy: 'higher_order',
@@ -119,6 +186,8 @@ describe('buildVoteRecord', () => {
       selectedOption: i === 0 ? 'A' : i === 1 ? 'A' : 'C',
     }));
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-opt',
       proposal: 'p',
       strategy: 'higher_order',
@@ -146,6 +215,8 @@ describe('buildVoteRecord', () => {
       { ...agentVote('catfish', 'reject'), selectedOption: 'B' },
     ];
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-mixed',
       proposal: 'p',
       strategy: 'higher_order',
@@ -170,6 +241,8 @@ describe('buildVoteRecord', () => {
       ...(i < 2 ? { selectedOption: 'A' } : {}),
     }));
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-coverage',
       proposal: 'p',
       strategy: 'higher_order',
@@ -191,6 +264,8 @@ describe('buildVoteRecord', () => {
     // not produce different hashes.
     const mk = (opts: readonly string[]): VoteRecord =>
       buildVoteRecord({
+        // #4986: these fixtures exercise the fallback derivation.
+        resolvedDecision: undefined,
         id: 'vote-ord',
         recordedAt: '2026-06-15T00:00:00.000Z',
         proposal: 'p',
@@ -203,6 +278,8 @@ describe('buildVoteRecord', () => {
 
   it('excludes error-source voters from the per-voter summary', () => {
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
       strategy: 'simple_majority',
@@ -214,6 +291,8 @@ describe('buildVoteRecord', () => {
 
   it('persists no_quorum (not rejected) for an error-policy short-circuit, matching the response (#4053)', () => {
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-sc',
       proposal: 'p',
       strategy: 'simple_majority',
@@ -235,6 +314,8 @@ describe('buildVoteRecord', () => {
 
   it('keeps rejected for a genuine quorum-reached rejection (#4053)', () => {
     const record = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-rej',
       proposal: 'p',
       strategy: 'simple_majority',
@@ -260,6 +341,8 @@ describe('persistVoteRecord', () => {
 
   it('persists a self-hashed record that round-trips through read', () => {
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
@@ -277,6 +360,8 @@ describe('persistVoteRecord', () => {
 
   it('assigns an incrementing sequence and an advisory previousHash on append', () => {
     const first = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'first',
       strategy: 'higher_order',
@@ -285,6 +370,8 @@ describe('persistVoteRecord', () => {
       filePath,
     });
     const second = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-2',
       proposal: 'second',
       strategy: 'higher_order',
@@ -306,6 +393,8 @@ describe('persistVoteRecord', () => {
 
   it('detects tampering with a persisted line (decision flip) via set verification', () => {
     persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
       strategy: 'higher_order',
@@ -329,6 +418,8 @@ describe('persistVoteRecord', () => {
   it('survives a simulated two-branch concurrent merge (merge=union) as a benign fork', () => {
     // Branch base: one record at sequence 0.
     persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-base',
       proposal: 'base proposal',
       strategy: 'higher_order',
@@ -341,6 +432,8 @@ describe('persistVoteRecord', () => {
     // Two branches each fork from the same tip and append THEIR OWN sequence-1
     // record (each computed the same max sequence = 0 → next = 1).
     const branchA = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-A',
       proposal: 'branch A proposal',
       strategy: 'higher_order',
@@ -349,6 +442,8 @@ describe('persistVoteRecord', () => {
       sequence: 1,
     });
     const branchB = buildVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-B',
       proposal: 'branch B proposal',
       strategy: 'higher_order',
@@ -376,6 +471,8 @@ describe('persistVoteRecord', () => {
 
   it("skips persistence when every vote is simulated is the caller's job; store itself writes given real votes", () => {
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
       strategy: 'simple_majority',
@@ -416,6 +513,8 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     expect(resolveVoteRecordsPath()).toBe(envFilePath);
 
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-env',
       proposal: 'p',
       strategy: 'higher_order',
@@ -478,6 +577,8 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, envFilePath);
 
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-opts',
       proposal: 'p',
       strategy: 'higher_order',
@@ -503,6 +604,8 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     expect(resolved).toBe(join(dataRoot, 'governance', 'vote-records.jsonl'));
 
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-global',
       proposal: 'p',
       strategy: 'higher_order',
@@ -529,6 +632,8 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     expect(resolved).toBe(join(repoGovDir, 'vote-records.jsonl'));
 
     const written = persistVoteRecord({
+      // #4986: these fixtures exercise the fallback derivation.
+      resolvedDecision: undefined,
       id: 'vote-repo',
       proposal: 'p',
       strategy: 'higher_order',
@@ -551,6 +656,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     let written: ReturnType<typeof persistVoteRecord>;
     expect(() => {
       written = persistVoteRecord({
+        resolvedDecision: undefined,
         id: 'vote-none',
         proposal: 'p',
         strategy: 'higher_order',

@@ -54,6 +54,7 @@ import {
   isHigherOrderStrategy,
   shouldEscalateLowPosterior,
   resolveVoteDecision,
+  toRecordDecision,
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import {
@@ -852,6 +853,12 @@ function recordVoteSideEffects(
     // #4053: an error-policy short-circuit voided the vote → the PERSISTED record
     // must record `no_quorum`, matching the MCP response (not a stale `rejected`).
     errorVoided: result.policyReason !== undefined,
+    // #4986: hand over the decision `resolveVoteDecision` already produced
+    // (stamped on the result by `executeVoting`). `errorVoided` alone cannot
+    // express an absolute_quorum void, whose reason is stamped on the response
+    // and never on the result — so the record used to say `approved` for a vote
+    // this tool reports as `no_quorum`.
+    resolvedDecision: toRecordDecision(result.decision),
     correlationId: decisionId,
     ...(ratifies !== undefined ? { ratifies } : {}),
   });
