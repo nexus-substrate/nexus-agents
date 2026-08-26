@@ -280,9 +280,10 @@ export interface AggregatedResultInput {
 export function buildAggregatedResult(input: AggregatedResultInput): AggregatedResult {
   const { pattern, results, participants, votes, reviews, endTime } = input;
 
-  // This path performs no conflict detection — see #4854. The
-  // count is derived from the list rather than restated so that wiring
-  // detection in cannot leave the two disagreeing.
+  // This path performs no conflict detection — see #4854. The count is
+  // derived from the list rather than restated so that wiring detection in
+  // cannot leave the two disagreeing, and `conflictsDetected` below says the
+  // empty list is unchecked rather than clean.
   const conflicts: ResultConflict[] = [];
 
   return {
@@ -300,6 +301,11 @@ export function buildAggregatedResult(input: AggregatedResultInput): AggregatedR
       // the safe direction and says it is a placeholder.
       averageConfidence: 0,
       confidenceMeasured: false,
+      // Nothing here compares results against each other: `TaskResult` carries
+      // neither the `confidence` nor the `expertId` that the sibling
+      // aggregator's conflict resolution needs. An empty list from a
+      // comparison that never ran must not read as agreement (#4854).
+      conflictsDetected: false,
       // #4743: shared with result-aggregator so the two cannot drift — they
       // were duplicate expressions computing the same thing.
       ...summarizeTokenUsage(results.map((r) => r.metadata)),

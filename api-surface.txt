@@ -403,6 +403,7 @@ InterfaceDeclaration AggregationMetadata
   averageConfidence: number
   confidenceMeasured?: boolean | undefined
   conflictCount: number
+  conflictsDetected?: boolean | undefined
   resultCount: number
   totalTokensUsed: number
   unmeasuredResults?: number | undefined

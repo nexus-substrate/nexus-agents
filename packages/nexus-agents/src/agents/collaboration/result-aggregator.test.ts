@@ -492,6 +492,25 @@ describe('ResultAggregator', () => {
       }
     });
 
+    it('reports an empty conflict list as checked, not merely absent (#4854)', () => {
+      // The pair to the session-helpers case: here `[]` really does mean the
+      // results agreed, and a consumer can only tell the two apart if this
+      // path claims the comparison it performed.
+      const aggregator = createResultAggregator();
+      const result = aggregator.aggregate({
+        pattern: 'parallel',
+        results: [
+          createExpertResult('e1', { value: 'same' }),
+          createExpertResult('e2', { value: 'same' }),
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('aggregate rejected identical results');
+      expect(result.value.conflicts).toEqual([]);
+      expect(result.value.metadata.conflictsDetected).toBe(true);
+    });
+
     it('should use custom conflict resolver', () => {
       const customResolver = vi.fn().mockReturnValue('expert2');
       const aggregator = createResultAggregator({

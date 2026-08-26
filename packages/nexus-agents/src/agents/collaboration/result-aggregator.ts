@@ -152,6 +152,9 @@ export class ResultAggregator {
         // Measured: ExpertResult carries confidence, and `aggregate` rejects
         // an empty result list before reaching here (#4831).
         confidenceMeasured: true,
+        // Detected: `mergeObjects` compares every shared field pairwise
+        // across results before this returns (#4854).
+        conflictsDetected: true,
         ...usage,
         aggregatedAt: getTimeProvider().nowIso(),
       },
