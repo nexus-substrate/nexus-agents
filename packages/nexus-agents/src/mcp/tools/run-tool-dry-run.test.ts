@@ -31,8 +31,9 @@ describe('classifyDispatchError', () => {
         new AuthorityRefusalError({
           code: 'above_declared_tier',
           strategy: 'dev-pipeline',
-          declaredTier: 'T1',
-          attemptedAction: 'write',
+          declaredTier: 'suggest',
+          attemptedAction: 'enforce',
+          message: 'above declared tier',
         })
       )
     ).toBe('business');
@@ -40,9 +41,11 @@ describe('classifyDispatchError', () => {
   });
 
   it('classifies a missing executor as a business outcome', () => {
-    expect(classifyDispatchError(new MetaDispatchError('no_executor', 'nothing wired'))).toBe(
-      'business'
-    );
+    expect(
+      classifyDispatchError(
+        new MetaDispatchError('no_executor', 'single-shot', 'dec-1', 'nothing wired')
+      )
+    ).toBe('business');
   });
 
   it('still calls a genuine fault internal', () => {
@@ -55,6 +58,10 @@ describe('classifyDispatchError', () => {
   it('classifies a non-no_executor dispatch error as internal', () => {
     // `MetaDispatchError` is only a business outcome for one code; the others
     // are wiring faults.
-    expect(classifyDispatchError(new MetaDispatchError('executor_threw', 'boom'))).toBe('internal');
+    expect(
+      classifyDispatchError(
+        new MetaDispatchError('executor_failed', 'dev-pipeline', 'dec-2', 'boom')
+      )
+    ).toBe('internal');
   });
 });
