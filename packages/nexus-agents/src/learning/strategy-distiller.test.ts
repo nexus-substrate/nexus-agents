@@ -383,6 +383,32 @@ describe('StrategyDistiller', () => {
       expect(drafts.length).toBeGreaterThan(0);
     });
 
+    it('creates no rule from a single observation (#5004)', () => {
+      // `minObservationsForDraft: 3` is documented as "minimum observations
+      // before creating a draft rule" and did nothing: `computeStatus`
+      // returned 'draft' from both the guarded branch and the fallthrough, and
+      // no detector enforces a group-size floor. One failing task produced a
+      // persisted `failure-rate` rule at `observationCount: 1`, occupying a
+      // rule slot and penalising a CLI on evidence of one run.
+      populateStore({ store, cli: 'gemini', category: 'documentation', count: 1, success: false });
+      const distiller = new StrategyDistiller(store);
+
+      distiller.distill();
+
+      expect(distiller.getRules()).toHaveLength(0);
+    });
+
+    it('creates the rule once the floor is reached', () => {
+      // The pair: the floor must gate, not block. Three observations is the
+      // documented default, so three must produce the rule.
+      populateStore({ store, cli: 'gemini', category: 'documentation', count: 3, success: false });
+      const distiller = new StrategyDistiller(store);
+
+      distiller.distill();
+
+      expect(distiller.getRules().length).toBeGreaterThan(0);
+    });
+
     it('activates rules with sufficient observations', () => {
       populateStore({
         store,

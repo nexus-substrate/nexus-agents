@@ -302,6 +302,17 @@ export class StrategyDistiller {
     const id = ruleFingerprint(pattern.patternType, pattern.cli, pattern.category);
     const existing = this.rules.get(id);
 
+    // #5004: `minObservationsForDraft` is documented as "minimum observations
+    // before creating a draft rule" and did nothing. `computeStatus` returned
+    // `'draft'` from both the guarded branch and the fallthrough, and no
+    // detector enforces a group-size floor, so ONE failing task created a
+    // persisted `failure-rate` rule at `observationCount: 1` — from a single
+    // data point the config claims needs three. An existing rule is still
+    // updated: the floor gates creation, not maintenance.
+    if (existing === undefined && pattern.observationCount < this.config.minObservationsForDraft) {
+      return;
+    }
+
     const confidence = sigmoidConfidence(pattern.observationCount);
     const status = this.computeStatus(pattern.observationCount, existing?.status);
 
@@ -337,7 +348,6 @@ export class StrategyDistiller {
     // Never downgrade promoted rules
     if (existing === 'promoted') return 'promoted';
     if (observations >= this.config.minObservationsForActive) return 'active';
-    if (observations >= this.config.minObservationsForDraft) return 'draft';
     return 'draft';
   }
 
