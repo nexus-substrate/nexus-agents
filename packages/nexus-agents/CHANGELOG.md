@@ -1,5 +1,174 @@
 # nexus-agents
 
+## 4.24.0
+
+### Minor Changes
+
+- [#5061](https://github.com/nexus-substrate/nexus-agents/pull/5061) [`7c380c7`](https://github.com/nexus-substrate/nexus-agents/commit/7c380c77ad7777ba101575b455d96238facbca8c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(routing): BudgetRouter enforces the latency budget it has always accepted
+
+  `BudgetRouter` declared a three-part budget — tokens, cost, latency — and
+  enforced two. `maxLatencyMs` was Zod-validated on `BudgetConstraint`, given a
+  `60000` default, and copied from routing YAML by the config adapter, and read by
+  nothing: a grep across the router and its error/warning helpers found exactly one
+  hit, the default assignment. `'latency'` was a declared member of both violation
+  unions with no producer, so a consumer reporting "no latency violations" was
+  reporting the absence of a check.
+
+  `selectAdapterWithinBudget` now compares each candidate's profile latency against
+  the budget, `BudgetRoutingResult` carries `estimatedLatencyMs` for the selected
+  adapter, and `determineExceededConstraint` emits the `'latency'` violation.
+
+  Behaviour change, bounded: the fastest cost-model profile is 1000ms and the
+  slowest 2000ms, so the 60000ms default cannot exclude any current candidate. A
+  deployment that explicitly set `maxLatencyMs` below 2000 will start seeing
+  candidates filtered — which is what that setting always said it would do.
+
+  A candidate with no cost-model profile is admitted rather than rejected: a
+  latency budget must not silently exclude every model whose latency is unmeasured.
+  `estimatedLatencyMs` is absent rather than `0` when no adapter was selected.
+
+  Decided by consensus vote (higher_order, 5 approvers, 100% on option A —
+  enforce — over remove and disclose-only). Closes [#4907](https://github.com/nexus-substrate/nexus-agents/issues/4907).
+
+- [#5054](https://github.com/nexus-substrate/nexus-agents/pull/5054) [`58791ed`](https://github.com/nexus-substrate/nexus-agents/commit/58791edcd8a3fec9eccf6b79a646b7547014db66) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(agents): say whether a collaboration's empty conflict list is a finding or a non-check
+
+  `buildAggregatedResult` returns `conflicts: []` and `conflictCount: 0` for every
+  collaboration session, because it compares nothing — `TaskResult` carries neither
+  the `confidence` nor the `expertId` that conflict resolution needs. That output is
+  byte-identical to what a genuinely unanimous session produces, so two experts
+  returning opposite answers read as consensus.
+
+  `AggregationMetadata` gains an optional `conflictsDetected`. The session builder
+  sets it `false`. `ResultAggregator` sets it per branch: only the object-merge
+  path compares fields pairwise, so it alone reports `true` — `select_best`,
+  `consensus`, `sequential_chain`, a lone result, string union and array
+  concatenation all return an empty list without looking. Absent still means the
+  producer predates the distinction. Same shape as `confidenceMeasured` ([#4831](https://github.com/nexus-substrate/nexus-agents/issues/4831))
+  and `tokensMeasured` ([#4734](https://github.com/nexus-substrate/nexus-agents/issues/4734)).
+
+  This discloses the gap rather than closing it — wiring real detection into the
+  session path needs the `TaskResult`/`ExpertResult` reconciliation tracked in
+  [#4854](https://github.com/nexus-substrate/nexus-agents/issues/4854), which stays open for that work.
+
+  Refs [#4854](https://github.com/nexus-substrate/nexus-agents/issues/4854).
+
+- [#5050](https://github.com/nexus-substrate/nexus-agents/pull/5050) [`3550a82`](https://github.com/nexus-substrate/nexus-agents/commit/3550a826d858247394dce7428985310bb3f29d91) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp): `memory_query` says when a backend threw instead of reporting an empty result
+
+  Each per-backend query helper catches its own error, logs at debug, and returns
+  `[]`. The empty array is right — partial results beat none — but it left a
+  corrupted SQLite file indistinguishable from a store that simply matched
+  nothing, and the response reported both as a successful search.
+
+  The helpers now take a `MemoryQueryContext` carrying an optional `onFailure`
+  reporter alongside the logger, fired on an `err` Result as well as on a thrown
+  exception — every real backend catches internally and resolves with `err(...)`,
+  so reporting only from `catch` would have left the disclosure unreachable for
+  the corrupt store it exists for. `ok([])` stays silent: that is a miss, not a
+  failure. From there `queryBySource`/`queryAll` thread a per-source
+  reporter through it, and the new `ToolMemoryManager.queryWithStatus` returns the
+  failing source names next to the results. `memory_query` surfaces them as
+  `errored` — on the single-source path as much as on `'all'`, so the field always
+  means "observed to throw", never "not checked".
+
+  Completes the second half of [#4999](https://github.com/nexus-substrate/nexus-agents/issues/4999); the first half (`searched`/`unavailable`,
+  which backends were installed at all) shipped in [#5044](https://github.com/nexus-substrate/nexus-agents/issues/5044).
+
+### Patch Changes
+
+- [#5049](https://github.com/nexus-substrate/nexus-agents/pull/5049) [`accfc4b`](https://github.com/nexus-substrate/nexus-agents/commit/accfc4b4a74d9a6a4341ee7b6e8a952dbdada2dc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(routing): bound the total distilled-rule adjustment per candidate
+
+  `findMatchingRules` treats an undefined task category as match-all, and each
+  matched rule was applied to the score separately with no bound on the sum. Since
+  `detectTaskCategory` returns null for any content without a specialization
+  keyword, an unscoped task could stack six penalties at confidence 0.88 into
+  **-26.4** against a candidate at 0 — an order of magnitude past `avoidDelta`,
+  the largest documented single-rule bound, driven entirely by rules learned for
+  categories that were not this task's.
+
+  Every documented bound was per-rule (`ACTION_DELTAS`); nothing bounded the
+  aggregate. The matched deltas are now summed and clamped to the single-rule
+  range, and a `distilled-rule:capped=<cli>` signal says when the clamp bit — a
+  bounded score is not the same as one the rules produced, and the trace should
+  not imply otherwise.
+
+  Remedy chosen by a 7-voter panel: Option A, 4 of 6 approvers, audit record [#81](https://github.com/nexus-substrate/nexus-agents/issues/81).
+
+- [#5052](https://github.com/nexus-substrate/nexus-agents/pull/5052) [`7224bdb`](https://github.com/nexus-substrate/nexus-agents/commit/7224bdb080a57443135211f9f8e50d728353bf8a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): round-trip every tool that declares an `outputSchema` through a real client
+
+  A response field the tool's `outputSchema` does not declare is not a cosmetic
+  drift: the SDK validates structured content with `additionalProperties: false`,
+  so every call to that tool fails with `-32602` and the tool becomes unusable.
+  Handler-level tests cannot see it — they never cross the protocol.
+
+  The round-trip list is now derived from the server's own `listTools()` rather
+  than hardcoded, so a newly registered schema-declaring tool fails the suite
+  until it is given arguments, and a tool that drops its `outputSchema` fails too.
+  Six schema-declaring tools that needed only the base deps were added to the test
+  server. Tools whose round-trip returns an error envelope — nothing for the SDK
+  to validate — are named in a pinned list rather than silently counted as passes.
+
+  Closes [#5045](https://github.com/nexus-substrate/nexus-agents/issues/5045).
+
+- [#5057](https://github.com/nexus-substrate/nexus-agents/pull/5057) [`0dab79a`](https://github.com/nexus-substrate/nexus-agents/commit/0dab79ac13ade091c86412a7937477c7972461e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): cover the three schema-declaring tools the round-trip suite could not reach
+
+  `consensus_vote`, `delegate_to_model`, and `list_workflows` declare an
+  `outputSchema` and are registered on the production server, but were absent from
+  the test server the round-trip suite builds. A response-field addition to any of
+  them would have broken every call with `-32602` and left CI green — the exact
+  regression [#5045](https://github.com/nexus-substrate/nexus-agents/issues/5045) exists to prevent, in the three tools it could not see.
+
+  Also widens the failure filter: an earlier version counted a call as violating
+  only if the thrown message contained `output schema` or `-32602`, silently
+  crediting the tool for a timeout or transport fault. Any protocol-level throw
+  now fails the suite.
+
+  Fixes a latent bug in the test's own workflow-engine stub along the way.
+  `IWorkflowEngine.listTemplates` is declared as `Promise<WorkflowTemplate[]>`, but
+  the stub returned `{ ok, value }`; nothing called it until `list_workflows` did,
+  and it crashed on `templates.map`.
+
+  Refs [#5045](https://github.com/nexus-substrate/nexus-agents/issues/5045).
+
+- [#5055](https://github.com/nexus-substrate/nexus-agents/pull/5055) [`1ac8e2d`](https://github.com/nexus-substrate/nexus-agents/commit/1ac8e2df32f30c794fc38b07386382957e32d3a8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(research): say how many improvement opportunities synthesis found, not just the ten it lists
+
+  `buildAlignmentSummary` capped `topOpportunities` at ten with no count beside it,
+  so a caller could not tell a repo with exactly ten improvable techniques from one
+  with fifty. The alignment map holds twelve `partial` techniques carrying a hint,
+  so the cap bites in practice. `AlignmentSummary` now carries `totalOpportunities`,
+  capped and counted in one place so the two cannot drift — the same shape
+  `ClusterSynthesis.totalInsights` took in [#5048](https://github.com/nexus-substrate/nexus-agents/issues/5048).
+
+  Also adds the first tests for `AttributedInsightSchema`. `.rules/research.md`
+  credits it with structurally enforcing that every synthesized insight names a
+  source, but its only call site builds the id list non-empty by construction, so
+  `.min(1)` had never had the opportunity to reject anything and no test imported
+  it. The schema is correct; nothing had checked that it was.
+
+  Refs [#5001](https://github.com/nexus-substrate/nexus-agents/issues/5001).
+
+- [#5056](https://github.com/nexus-substrate/nexus-agents/pull/5056) [`6d61904`](https://github.com/nexus-substrate/nexus-agents/commit/6d6190497c8fb5fda39d7ef0d9f3d46c2bfd1977) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp): every tool result names the build that produced it
+
+  The MCP server a client talks to is routinely a pinned global install rather
+  than the working tree, so a tool result read as evidence about "the current
+  code" could be answering from a months-old build with nothing in the response
+  to say which. `VERSION` reached only `serverInfo` at `initialize`, which a
+  long-lived session sees once and a log reader never sees at all.
+
+  Every tool result now carries `_meta['nexus-agents/build'] = { version }`,
+  stamped in `runWithContexts` — the point both SDK adapters call, on the ordinary
+  and the budget-mismatch path alike. Stamping the adapters instead would have
+  missed `consensus_vote`, `orchestrate` and `run_workflow`, which go through
+  `toSdkCallbackWithBudgetCheck`.
+
+  It rides in `_meta` for the same reason the error envelope does ([#2649](https://github.com/nexus-substrate/nexus-agents/issues/2649)):
+  `structuredContent` is validated against the tool's `outputSchema` with
+  `additionalProperties: false`, so an undeclared field there fails every call
+  with `-32602`. `_meta` is the spec's out-of-band channel and is never
+  schema-validated. The stamp extends `_meta` rather than replacing it, so a
+  structured error envelope survives alongside it.
+
+  Refs [#5008](https://github.com/nexus-substrate/nexus-agents/issues/5008) (build-identity half; the orphaned-process half stays open).
+
 ## 4.23.0
 
 ### Minor Changes
