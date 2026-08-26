@@ -91,7 +91,6 @@ import {
 } from './vote-record-ratification.js';
 
 const EVIDENCE_LEDGER = join(ROOT, 'governance/authority-tier-evidence.yaml');
-const TRANSITION_LOG = join(ROOT, 'governance/authority-tier-transitions.jsonl');
 /**
  * The AUTHENTIC resolution source (#3927 item 1). The promotion gate resolves a
  * transition's `ratificationVoteRef` against this committed, tamper-evident
@@ -470,29 +469,50 @@ function enforceFloorShortfalls(e: PromotionEvidence): string[] {
  * structured errors. Returns true when every declaration is honest. Fails closed.
  */
 /**
- * #3842/#3894/#3927 ratification gate: read the hash-chained tier-transition log
- * (if any) and fail any PROMOTION event whose ratificationVoteRef does not RESOLVE
- * to an approved higher_order record in the AUTHENTIC, tamper-evident committed
- * ledger `governance/vote-records.jsonl` (#3927 item 1 — replaces the former
- * hand-committable `ratification-votes.yaml`). Fails closed on a tampered/malformed
- * ledger and on ambiguous (conflicting-decision) subjects. Returns no findings when
- * the transition log is absent (the no-promotions-yet happy path).
+ * #5028 ratification gate: resolve every promotion evidence entry's
+ * `ratificationVote` against the AUTHENTIC, tamper-evident committed ledger
+ * `governance/vote-records.jsonl`.
+ *
+ * This used to read `governance/authority-tier-transitions.jsonl` instead — a
+ * file that is 0 bytes and has no writer in the tree, because its only
+ * producer, `IAuditLogger.logTierTransition`, is called from nothing but tests
+ * and a no-op stub. Authority tiers are not changed at runtime; they live in
+ * `governance/loop-tiers.yaml` and change by commit, so the runtime event the
+ * design waited for never occurs. The gate therefore returned zero findings
+ * unconditionally, and the only live guard on a promotion was a non-empty
+ * string test — the cosmetic check #3842 says it replaced. A manifest could be
+ * promoted to `enforce` citing a vote that does not exist.
+ *
+ * The evidence ledger DOES exist and DOES carry `ratificationVote`, so the
+ * resolution machinery is now pointed at it. Fails closed on a tampered or
+ * malformed ledger and on ambiguous (conflicting-decision) subjects.
+ * Panel decision: Option C, 5 of 5 approvers, audit record #80.
  */
-function ratificationGateFindings(): TierDriftFinding[] {
-  if (!existsSync(TRANSITION_LOG)) return [];
-  const voteRecordsJsonl = existsSync(VOTE_RECORDS_LEDGER)
-    ? readFileSync(VOTE_RECORDS_LEDGER, 'utf-8')
-    : undefined;
+export function ratificationGateFindings(
+  evidence: ReadonlyMap<string, PromotionEvidence>,
+  voteRecordsJsonl: string | undefined
+): TierDriftFinding[] {
+  if (evidence.size === 0) return [];
   const { resolver, conflictSubjects, findings } =
     buildVoteRecordRatificationResolver(voteRecordsJsonl);
-  const { transitions, findings: logFindings } = recoverTransitions(
-    readFileSync(TRANSITION_LOG, 'utf-8')
-  );
-  return [
-    ...findings,
-    ...logFindings,
-    ...analyzeTierTransitionEvents(transitions, resolver, conflictSubjects),
-  ];
+
+  const out = [...findings];
+  for (const [loopId, e] of evidence) {
+    const finding = ratificationFindingFor(
+      {
+        kind: 'promotion',
+        subject: loopId,
+        fromTier: e.fromTier,
+        toTier: e.toTier,
+        evidenceRef: e.evidenceUri,
+        ratificationVoteRef: e.ratificationVote,
+      },
+      resolver,
+      conflictSubjects
+    );
+    if (finding !== null) out.push(finding);
+  }
+  return out;
 }
 
 export function checkAuthorityTierDeclarations(): boolean {
@@ -511,15 +531,21 @@ export function checkAuthorityTierDeclarations(): boolean {
   const loopYaml = existsSync(LOOP_TIER_REGISTRY_FILE)
     ? readFileSync(LOOP_TIER_REGISTRY_FILE, 'utf-8')
     : undefined;
+  const evidenceMap = buildEnforceEvidenceMap(evidenceYaml);
   findings.push(
     ...analyzeLoopTierDeclarations({
       loopYaml,
       embeddedLoops: LOOP_TIER_REGISTRY.loops,
-      enforceEvidenceById: buildEnforceEvidenceMap(evidenceYaml),
+      enforceEvidenceById: evidenceMap,
     })
   );
 
-  findings.push(...ratificationGateFindings());
+  findings.push(
+    ...ratificationGateFindings(
+      evidenceMap,
+      existsSync(VOTE_RECORDS_LEDGER) ? readFileSync(VOTE_RECORDS_LEDGER, 'utf-8') : undefined
+    )
+  );
 
   if (findings.length === 0) return true;
 
