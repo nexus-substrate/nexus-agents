@@ -5,7 +5,7 @@
  * (Source: Issue #1386 — Research Synthesis Pipeline)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { synthesizeResearch } from './research-helpers-synthesize.js';
+import { synthesizeResearch, AttributedInsightSchema } from './research-helpers-synthesize.js';
 
 // ============================================================================
 // Mocks
@@ -400,5 +400,93 @@ describe('cluster insight truncation is disclosed (#5001)', () => {
     if (!result.ok) return;
     const cluster = result.value.clusters[0];
     expect(cluster?.totalInsights).toBe(cluster?.keyInsights.length);
+  });
+});
+
+describe('alignment summary truncation (#5001)', () => {
+  beforeEach(() => {
+    mockLoadPapersRegistry.mockReset();
+  });
+
+  /**
+   * The map holds twelve `partial` techniques carrying an improvement hint, so
+   * one paper per technique overruns the ten-item cap on `topOpportunities`
+   * using only real keys — no synthetic inflation.
+   */
+  const PARTIAL_WITH_HINT = [
+    'capability-instruction-tuning',
+    'aegean-consensus',
+    'cp-wbft-consensus',
+    'mem0-memory-architecture',
+    'graph-based-memory',
+    'history-encoding',
+    'aflow-mcts-workflows',
+    'temporal-graph-orchestration',
+    'model-based-coordination',
+    'trinity-roles',
+    'sew-self-evolving-workflows',
+    'scaling-coordination-predictor',
+  ];
+
+  it('says how many improvement opportunities it found, not just the ten it lists', async () => {
+    // `topOpportunities` is capped, and a caller seeing ten entries cannot
+    // tell a repo with exactly ten improvable techniques from one with
+    // twelve. Same shape as `totalInsights` (#5001) one level up.
+    const papers: Record<string, Record<string, unknown>> = {};
+    PARTIAL_WITH_HINT.forEach((technique, i) => {
+      papers[`p${String(i)}`] = makePaper(String(i), `Paper ${String(i)}`, ['memory'], ['llm'], {
+        techniques_extracted: [technique],
+      });
+    });
+    mockLoadPapersRegistry.mockResolvedValue({ ok: true, value: makeRegistry(papers) });
+
+    const result = await synthesizeResearch('memory');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(`synthesis failed: ${result.error.message}`);
+    const summary = result.value.alignmentSummary;
+    // The cap still applies — this discloses the truncation, it does not lift it.
+    expect(summary.topOpportunities.length).toBe(10);
+    expect(summary.totalOpportunities).toBe(PARTIAL_WITH_HINT.length);
+  });
+
+  it('reports an untruncated list as complete', async () => {
+    // The pair: with fewer opportunities than the cap the two agree, so a
+    // consumer comparing them learns nothing was dropped.
+    const papers: Record<string, Record<string, unknown>> = {};
+    PARTIAL_WITH_HINT.slice(0, 3).forEach((technique, i) => {
+      papers[`p${String(i)}`] = makePaper(String(i), `Paper ${String(i)}`, ['memory'], ['llm'], {
+        techniques_extracted: [technique],
+      });
+    });
+    mockLoadPapersRegistry.mockResolvedValue({ ok: true, value: makeRegistry(papers) });
+
+    const result = await synthesizeResearch('memory');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(`synthesis failed: ${result.error.message}`);
+    expect(result.value.alignmentSummary.totalOpportunities).toBe(3);
+    expect(result.value.alignmentSummary.topOpportunities.length).toBe(3);
+  });
+});
+
+describe('AttributedInsightSchema (#5001)', () => {
+  /**
+   * `.rules/research.md` credits this schema with structurally enforcing that
+   * every synthesized insight carries a source. At its only call site the
+   * input is built as `[...new Set([paper.id])]` — non-empty by construction —
+   * so `.min(1)` has never had the chance to reject anything, and no test
+   * imported it. The invariant held because of the caller, not the schema.
+   */
+  it('rejects an insight with no source paper ids', () => {
+    expect(() =>
+      AttributedInsightSchema.parse({ insight: 'unattributed claim', sourcePaperIds: [] })
+    ).toThrow();
+  });
+
+  it('accepts an insight that names its source', () => {
+    expect(() =>
+      AttributedInsightSchema.parse({ insight: 'attributed claim', sourcePaperIds: ['p1'] })
+    ).not.toThrow();
   });
 });
