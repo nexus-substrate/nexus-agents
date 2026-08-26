@@ -36,6 +36,7 @@ const mockQueryBySource = vi.fn();
 // reads — the response says which backends answered, so a mock without them
 // would make every coverage assertion vacuous.
 const backendsInstalled = { agentic: true, adaptive: true, typed: true };
+let mockErroredBackends: readonly string[] = [];
 const mockAvailability = {
   isAgenticMemoryAvailable: (): boolean => backendsInstalled.agentic,
   isAdaptiveMemoryAvailable: (): boolean => backendsInstalled.adaptive,
@@ -45,6 +46,17 @@ vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
     queryAll: mockQueryAll,
     queryBySource: mockQueryBySource,
+    // #4999: the search reports which backends threw. A mock without this
+    // makes every coverage assertion below vacuous — the third time this mock
+    // has had to grow with the surface, which is itself a seam worth watching.
+    queryWithStatus: async (
+      source: string,
+      query: string,
+      limit?: number
+    ): Promise<{ results: unknown; errored: readonly string[] }> => ({
+      results: await mockQueryBySource(source, query, limit),
+      errored: mockErroredBackends,
+    }),
     ...mockAvailability,
   }),
 }));
@@ -269,6 +281,37 @@ describe('memory-query', () => {
         expect(body.count).toBe(0);
         expect(body.unavailable).toEqual(['agentic', 'typed']);
         expect(body.searched).toEqual(['session', 'belief', 'adaptive']);
+      });
+
+      it('names a backend that was installed but threw (#4999)', async () => {
+        // Distinct from `unavailable`: the store is here, it just could not
+        // answer. Each helper swallows its failure into an empty result set, so
+        // a corrupted SQLite file read exactly like a store with no matches.
+        mockErroredBackends = ['agentic', 'typed'];
+        mockQueryBySource.mockResolvedValue([]);
+
+        const result = await registeredHandler({ query: 'routing' }, {});
+        const body = JSON.parse(result.content[0]?.text ?? '{}') as {
+          count: number;
+          errored: string[];
+          unavailable: string[];
+        };
+
+        expect(body.count).toBe(0);
+        expect(body.errored).toEqual(['agentic', 'typed']);
+        // The stores are installed — this is not the unavailable case.
+        expect(body.unavailable).toEqual([]);
+      });
+
+      it('reports no errors when every backend answered', async () => {
+        // The pair: a healthy search must not imply failures.
+        mockErroredBackends = [];
+        mockQueryBySource.mockResolvedValue([]);
+
+        const result = await registeredHandler({ query: 'routing' }, {});
+        const body = JSON.parse(result.content[0]?.text ?? '{}') as { errored: string[] };
+
+        expect(body.errored).toEqual([]);
       });
 
       it('reports no gaps on a complete install', async () => {

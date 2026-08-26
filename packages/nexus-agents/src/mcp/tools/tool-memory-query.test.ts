@@ -71,6 +71,7 @@ vi.mock('./memory-decay.js', () => ({
   })),
 }));
 
+import { queryBeliefMemory } from './tool-memory-query.js';
 import { ToolMemoryManager } from './tool-memory.js';
 
 function createMockLogger(): ILogger {
@@ -303,5 +304,85 @@ describe('tool-memory cross-query', () => {
         expect(results[i - 1]!.relevance).toBeGreaterThanOrEqual(results[i]!.relevance);
       }
     });
+  });
+});
+
+describe('query helpers report a swallowed failure (#4999)', () => {
+  it('calls onFailure when the backend throws', async () => {
+    // Each helper catches its backend's error and returns `[]`, so a store
+    // that threw was indistinguishable from one that matched nothing. The
+    // empty array is still returned — partial results beat none — but the
+    // caller now learns the store could not answer.
+    const throwingBeliefs = {
+      recallBySubject: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
+      query: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
+    };
+    const onFailure = vi.fn();
+
+    const results = await queryBeliefMemory(throwingBeliefs as never, 'routing', ['routing'], 5, {
+      log: createMockLogger(),
+      onFailure,
+    });
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onFailure when the backend answers', async () => {
+    // The pair: a healthy empty result must not be reported as a failure.
+    const emptyBeliefs = {
+      recallBySubject: (): Promise<{ ok: true; value: never[] }> =>
+        Promise.resolve({ ok: true, value: [] }),
+      query: (): Promise<{ ok: true; value: never[] }> => Promise.resolve({ ok: true, value: [] }),
+    };
+    const onFailure = vi.fn();
+
+    const results = await queryBeliefMemory(emptyBeliefs as never, 'routing', ['routing'], 5, {
+      log: createMockLogger(),
+      onFailure,
+    });
+
+    expect(results).toEqual([]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+});
+
+describe('queryWithStatus names the backends that threw (#4999)', () => {
+  // The seam: helper `onFailure` -> queryAll's `errored` reporter -> the
+  // caller's list. Mutating either link must fail a test here, so the failing
+  // backend is injected into a real manager rather than stubbed at the top.
+  function managerWithThrowingBeliefs(): ToolMemoryManager {
+    const manager = new ToolMemoryManager(createMockLogger());
+    (manager as unknown as { beliefs: unknown }).beliefs = {
+      recallBySubject: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
+      query: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
+    };
+    return manager;
+  }
+
+  it('reports the failing source instead of an innocuous empty result', async () => {
+    const { results, errored } = await managerWithThrowingBeliefs().queryWithStatus(
+      'all',
+      'routing'
+    );
+
+    expect(results).toEqual([]);
+    expect(errored).toContain('belief');
+  });
+
+  it('reports the failing source on a single-source query too', async () => {
+    // The single-source path used to hardcode `errored: []` — a corrupt store
+    // read as an empty one whenever the caller named it directly.
+    const { errored } = await managerWithThrowingBeliefs().queryWithStatus('belief', 'routing');
+
+    expect(errored).toEqual(['belief']);
+  });
+
+  it('reports nothing when every backend answers', async () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+
+    const { errored } = await manager.queryWithStatus('all', 'routing');
+
+    expect(errored).toEqual([]);
   });
 });

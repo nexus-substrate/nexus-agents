@@ -60,14 +60,27 @@ export function querySessionMemory(
   }));
 }
 
+/**
+ * Logging + failure-reporting context shared by the per-backend query helpers.
+ *
+ * `onFailure` exists because each helper swallows its backend's error and
+ * returns `[]` (#4999): partial results beat none, but the caller must still
+ * be able to tell "this store threw" from "this store matched nothing".
+ */
+export interface MemoryQueryContext {
+  readonly log: ILogger;
+  readonly onFailure?: (() => void) | undefined;
+}
+
 /** Query BeliefMemory. Falls back to keyword search when exact match misses (#1225). */
 export async function queryBeliefMemory(
   beliefs: HindsightBeliefMemory,
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const beliefResult = await beliefs.recallBySubject(query, limit);
@@ -98,7 +111,11 @@ export async function queryBeliefMemory(
       });
     }
   } catch (e: unknown) {
+    // #4999: a swallowed failure used to be indistinguishable from an empty
+    // result set. The caller still gets `[]` — partial results are better than
+    // none — but it now learns the store could not answer.
     log.debug('Belief memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -109,8 +126,9 @@ export async function queryAgenticMemory(
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const agResult = await agentic.searchAgentic(query, limit);
@@ -128,6 +146,7 @@ export async function queryAgenticMemory(
     }
   } catch (e: unknown) {
     log.debug('Agentic memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -138,8 +157,9 @@ export async function queryTypedMemory(
   query: string,
   keywords: readonly string[],
   limitPerType: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const [semanticResult, episodicResult] = await Promise.all([
@@ -161,6 +181,7 @@ export async function queryTypedMemory(
     }
   } catch (e: unknown) {
     log.debug('Typed memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -171,8 +192,9 @@ export async function queryAdaptiveMemory(
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const searchResult = await adaptive.search(query, limit);
@@ -190,6 +212,7 @@ export async function queryAdaptiveMemory(
     }
   } catch (e: unknown) {
     log.debug('Adaptive memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
