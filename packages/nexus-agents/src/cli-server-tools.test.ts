@@ -20,6 +20,8 @@ import {
   getGlobalPolicyFirewall,
   resetGlobalPolicyFirewall,
 } from './mcp/middleware/policy-registry.js';
+import { getPipelineEventBus } from './pipeline/event-bus.js';
+import { getOutcomeStore } from './orchestration/outcomes/outcome-store.js';
 
 // ============================================================================
 // Mock external modules (vi.hoisted so they are available in vi.mock factories)
@@ -845,5 +847,41 @@ describe('registerMcpTools - gateway wiring', () => {
     registerMcpTools(options);
     // registerTools should receive the proxy, not the original server
     expect(mockRegisterTools).toHaveBeenCalledWith(proxyServer, expect.anything());
+  });
+});
+
+describe('stage failures do not become fabricated outcomes (#5003)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockReturnValues();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('records nothing to the OutcomeStore for a stage.failed event', async () => {
+    // The deleted bridge subscribed to `stage.failed` and wrote
+    // `{cli: 'claude', category: 'code_generation'}` — an attribution the event
+    // does not carry, for stages where no CLI ran at all. `agent-executor` is
+    // the single canonical writer now: it knows which CLI ran and skips the
+    // record when it does not. This asserts nothing re-subscribes.
+    registerMcpTools(makeDefaultOptions());
+    const store = getOutcomeStore();
+    const before = store.query().length;
+
+    getPipelineEventBus().emit({
+      type: 'stage.failed',
+      executionId: 'exec-5003',
+      stageId: 'security',
+      error: 'semgrep not installed',
+      model: 'codex-5.3',
+      timestamp: Date.now(),
+    } as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(store.query()).toHaveLength(before);
+    expect(store.query().some((o) => o.id.startsWith('fb-fail-'))).toBe(false);
   });
 });

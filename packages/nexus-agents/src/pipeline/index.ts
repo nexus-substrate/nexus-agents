@@ -109,8 +109,6 @@ export {
   type IPolicyEngine,
 } from './policy-engine.js';
 
-export { createFeedbackSubscriber } from './feedback-subscriber.js';
-
 export {
   createDelegatePipeline,
   delegateInputToTaskContract,

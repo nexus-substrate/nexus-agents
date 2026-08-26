@@ -57,7 +57,6 @@ import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
-import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { shutdownTuneStage } from './pipeline/tune-stage.js';
 import { shutdownImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
 import {
@@ -243,9 +242,6 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
     // Cleanup the cached MCP-config tempdir (closes #2946)
     await shutdownExpertBridge();
 
-    // Release the EventBus → OutcomeStore feedback subscription (closes #2938)
-    shutdownFeedbackSubscriber();
-
     // Release the shadow TuneStage signal subscription (#3147)
     shutdownTuneStage();
 
@@ -387,8 +383,7 @@ async function initializeAndRegisterTools(
   config: import('./config/index.js').AppConfig,
   deps?: {
     feedbackIntegration?:
-      | import('./learning/feedback-integration.js').IFeedbackIntegration
-      | undefined;
+      import('./learning/feedback-integration.js').IFeedbackIntegration | undefined;
     auditLogger?: AuditLogger | null;
   }
 ): Promise<void> {
