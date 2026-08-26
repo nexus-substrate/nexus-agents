@@ -17,6 +17,9 @@ const SANDBOX_VARS = [
   'ECS_CONTAINER_METADATA_URI_V4',
   'SANDBOX',
   'NEXUS_SANDBOX',
+  // #5026: the declared root now shapes the data dir, so it must be cleared
+  // between tests or one case's root leaks into the next one's expectation.
+  'NEXUS_SANDBOX_ROOT',
 ];
 
 function clearAllPortableEnv(): void {
@@ -78,6 +81,33 @@ describe('detectPortableMode (#2471)', () => {
     const result = detectPortableMode(tmp);
     expect(result.portable).toBe(true);
     expect(result.reason).toBe('container-env');
+  });
+
+  it('uses NEXUS_SANDBOX_ROOT as the data-dir base when declared (#5026)', () => {
+    // `NEXUS_SANDBOX` is itself one of SANDBOX_ENV_VARS, so setting it makes
+    // this heuristic fire and stamp `<cwd>/.nexus-agents` — which then
+    // short-circuits `getNexusDataDir`'s own sandbox branch before it can
+    // honour the declared root. The documented purpose of NEXUS_SANDBOX_ROOT
+    // ("default NEXUS_DATA_DIR to the multi-repo root") therefore never
+    // happened, and state fragmented per working directory.
+    process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+    process.env['NEXUS_SANDBOX_ROOT'] = '/work';
+
+    const result = detectPortableMode(tmp);
+
+    expect(result.portable).toBe(true);
+    expect(result.reason).toBe('container-env');
+    expect(result.dataDir).toBe(join('/work', '.nexus-agents'));
+  });
+
+  it('falls back to cwd when the sandbox declares no root', () => {
+    // The pair: a container with no declared root must still get a working
+    // data dir rather than an empty base.
+    process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+
+    const result = detectPortableMode(tmp);
+
+    expect(result.dataDir).toBe(join(tmp, '.nexus-agents'));
   });
 
   it('treats empty container env vars as not-set', () => {
