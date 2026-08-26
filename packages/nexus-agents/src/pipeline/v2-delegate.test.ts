@@ -435,6 +435,48 @@ describe('the entry gate guards a stage that does not execute (#4657)', () => {
     expect(plan.stages.filter((s) => s.type === 'execute')).toEqual([]);
   });
 
+  it('the REAL rule at the REAL gate cannot deny, even at tier 4 in block mode (#4657)', async () => {
+    // The end-to-end version of the two shape checks above, and the durable
+    // fix every voter on the #4657 panel agreed on regardless of which remedy
+    // they preferred.
+    //
+    // The sibling tests inject an always-denying engine, which proves the gate
+    // MECHANISM works. This one runs the actual `trustTierRule` against the
+    // actual `ENTRY_GATE` with the most untrusted input there is, in the
+    // strictest mode, and pins that nothing is denied — because the rule
+    // requires `stageType === 'execute'` and the only gate guards a `route`
+    // stage.
+    //
+    // Pinning a negative is the point. The day someone adds an execute-typed
+    // stage, widens the rule, or moves the gate, this test fails and forces the
+    // #4657 decision to be made deliberately instead of drifting.
+    const { compilePlan } = await import('./plan-compiler.js');
+    const { executeGraph } = await import('../orchestration/graph/graph-executor.js');
+    const { createDefaultPolicyEngine } = await import('./policy-engine.js');
+    const { buildDelegatePlan } = await import('./v2-delegate.js');
+
+    const compiled = compilePlan(buildDelegatePlan(makeTask()), {
+      policyEnforcement: {
+        engine: createDefaultPolicyEngine(),
+        mode: 'block',
+        // Untrusted, and explicitly so: the rule's own fail-closed default is
+        // also 4, so this must not pass merely by omission.
+        pipelineState: { trustTier: '4' },
+      },
+    });
+
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+
+    // No PolicyBlockedError, and the guarded stage ran.
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.nodeResults.find((r) => r.nodeId === 'route-model')?.status).toBe(
+      'success'
+    );
+  });
+
   it('the plan is backed by a skeleton plugin, which is why route is honest', async () => {
     const { MODEL_ROUTER_PLUGIN } = await import('./core-plugins.js');
     const { buildDelegatePlan } = await import('./v2-delegate.js');
