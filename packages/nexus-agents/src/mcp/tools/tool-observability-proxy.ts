@@ -43,6 +43,18 @@ interface ToolConfig {
  * - `tool.invoked` — when a tool handler starts executing
  * - `tool.completed` — when a tool handler finishes (success or error)
  */
+/**
+ * First text block of a tool result, for the `errorMessage` on a returned
+ * error result. The structured envelope itself lives in `_meta` (#2649) and
+ * is not repeated here — this is the human-readable line the throw path
+ * already puts on the event.
+ */
+function firstTextOf(result: unknown): string {
+  const content = (result as { content?: { type?: string; text?: string }[] } | undefined)?.content;
+  const text = content?.find((c) => c.type === 'text')?.text;
+  return text ?? 'Tool returned an error result with no text content';
+}
+
 export function createToolObservabilityProxy(server: McpServer, eventBus: IEventBus): McpServer {
   return new Proxy(server, {
     get(target: McpServer, prop: string | symbol, receiver: unknown): unknown {
@@ -79,13 +91,21 @@ function wrapWithObservability(
       const result = await cb(args, extra);
       const durationMs = getTimeProvider().now() - startTime;
 
+      // A nexus tool signals failure by RETURNING an error result from
+      // `toolStructuredError` — with the error flag set — not by throwing. So
+      // reading only the `catch` below reported a 100% success rate to every
+      // EventBus consumer. Matches `tool-metrics.ts`, which has always
+      // recorded `result.isError !== true`.
+      const failed = (result as { isError?: boolean } | undefined)?.isError === true;
+
       eventBus.emit({
         type: 'tool.completed',
         timestamp: getTimeProvider().now(),
         toolName,
         invocationId,
         durationMs,
-        success: true,
+        success: !failed,
+        ...(failed ? { errorMessage: firstTextOf(result) } : {}),
       });
 
       return result;
