@@ -2835,6 +2835,7 @@ InterfaceDeclaration DevPipelineOptions
   readonly untrustedInputGuard?: (() => void) | undefined
 InterfaceDeclaration DevPipelineResult
   readonly completed: boolean
+  readonly dryRun?: true | undefined
   readonly plan: string
   readonly planStatus?: "empty" | undefined
   readonly qaIterations: number

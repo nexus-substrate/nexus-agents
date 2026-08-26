@@ -173,6 +173,15 @@ export interface DevPipelineResult {
    * stages voted on the input text.
    */
   readonly planStatus?: 'empty';
+  /**
+   * Whether this run stopped after plan+vote because the caller asked it to.
+   *
+   * `completed: false` alone cannot distinguish "the pipeline failed" from "the
+   * pipeline did exactly what was requested and stopped" — and a consumer that
+   * reads `completed` as the verdict reports a successful dry run as an engine
+   * fault. Absent means a normal run.
+   */
+  readonly dryRun?: true;
 }
 
 // ============================================================================
@@ -741,6 +750,8 @@ function buildDryRunResult(planResult: {
 }): DevPipelineResult {
   return {
     completed: false,
+    // Says WHY completion is false: by request, not by fault.
+    dryRun: true,
     plan: planResult.plan,
     tasks: [],
     voteIterations: planResult.iterations,
