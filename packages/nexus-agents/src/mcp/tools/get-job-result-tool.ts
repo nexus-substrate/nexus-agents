@@ -59,12 +59,7 @@ export interface GetJobResultResponse {
 
 export type GetJobResultDeps = BaseMcpToolDeps;
 
-/**
- * Exported for the abandoned-job seam test (#4976): the secure-handler and
- * timeout wrappers around it are SDK plumbing, and asserting through them
- * tests the wrappers rather than this response.
- */
-export function getJobResultHandler(args: unknown): Promise<ToolResult> {
+function getJobResultHandler(args: unknown): Promise<ToolResult> {
   const parsed = GetJobResultInputSchema.safeParse(args);
   if (!parsed.success) {
     return Promise.resolve(

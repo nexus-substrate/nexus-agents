@@ -8,14 +8,33 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getJobResultHandler } from './get-job-result-tool.js';
+import { registerGetJobResultTool } from './get-job-result-tool.js';
 import { writeJobPending, writeJobComplete } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { RateLimiter } from '../middleware/rate-limiter.js';
 
+type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
+
+/**
+ * Drives the callback the tool actually registers, through the secure-handler
+ * and timeout wrappers it really runs behind — not an exported inner function.
+ * A response shape asserted anywhere short of here is not the one a caller
+ * receives.
+ */
 async function envelope(jobId: string): Promise<Record<string, unknown>> {
-  const result = (await getJobResultHandler({ jobId })) as {
-    content: readonly { text: string }[];
+  let registered: SdkCallback | undefined;
+  const server = {
+    registerTool: (_name: string, _config: unknown, callback: SdkCallback): void => {
+      registered = callback;
+    },
   };
+  // A real limiter, generously sized: the point is to exercise the wrappers,
+  // not to be throttled by them.
+  registerGetJobResultTool(server as never, {
+    rateLimiter: new RateLimiter({ capacity: 100, refillRate: 100 }),
+  });
+  if (registered === undefined) throw new Error('get_job_result registered no callback');
+  const result = await registered({ jobId });
   return JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
 }
 
@@ -60,9 +79,9 @@ describe('get_job_result abandoned disclosure (#4976)', () => {
   });
 
   it('tells the poller to stop waiting once the guard has elapsed', async () => {
-    // Seam test. `isAbandonedJob` is unit-tested, and whether the tool actually
-    // surfaces it is a separate question — the join is where six other defects
-    // hid today.
+    // Seam test. `isAbandonedJob` is unit-tested; whether the registered tool
+    // surfaces it is a separate question, and the join is where six other
+    // defects hid today.
     writeJobPending('job-stale', 'orchestrate');
     const stale = new Date(Date.now() - 3_600_000 - 60_000).toISOString();
     const path = join(tmpDir, 'jobs', 'result-job-stale.json');
