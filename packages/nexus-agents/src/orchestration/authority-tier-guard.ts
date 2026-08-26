@@ -135,6 +135,23 @@ export function dispatchActionClass(_mode: DispatchMode): ActionClass {
 export type AuthorityRefusalCode = 'above_declared_tier' | 'tier_undeclared';
 
 /**
+ * Base for fail-closed POLICY refusals — outcomes the caller asked for and can
+ * act on, never engine defects.
+ *
+ * `classifyDispatchError` used to enumerate refusal classes with `instanceof`,
+ * and {@link ExecuteEnvelopeRefusalError} — added later, and deliberately NOT a
+ * subclass of {@link AuthorityRefusalError} because it answers a different
+ * question — fell through to `internal`. So a documented refusal reached the
+ * caller as "the engine has a defect", and on the async path failed the job
+ * with the same framing (#4994).
+ *
+ * A shared base makes the classification structural: a new refusal type is
+ * `business` by construction, and has to opt OUT rather than be silently
+ * misclassified by omission.
+ */
+export abstract class PolicyRefusalError extends Error {}
+
+/**
  * Typed, structured refusal an authority guard produces when a strategy would act
  * above its declared tier. Mirrors {@link MetaDispatchError}'s shape (code +
  * strategy + message) so the dispatch/routing layer reasons about both failures
@@ -142,7 +159,7 @@ export type AuthorityRefusalCode = 'above_declared_tier' | 'tier_undeclared';
  * boundary, but the pure {@link evaluateAuthority} path returns it as data so the
  * router can refuse without exceptions.
  */
-export class AuthorityRefusalError extends Error {
+export class AuthorityRefusalError extends PolicyRefusalError {
   readonly code: AuthorityRefusalCode;
   readonly strategy: ExecutionStrategy;
   /** The tier the strategy's manifest declared (undefined ⇒ none declared). */
@@ -259,7 +276,7 @@ export function guardAuthority(strategy: ExecutionStrategy, actionClass: ActionC
  * above-tier action behind one code, and the operator response differs:
  * declare an envelope vs. seek ratification for a promotion.
  */
-export class ExecuteEnvelopeRefusalError extends Error {
+export class ExecuteEnvelopeRefusalError extends PolicyRefusalError {
   readonly code = 'envelope_undeclared' as const;
   readonly strategy: ExecutionStrategy;
 

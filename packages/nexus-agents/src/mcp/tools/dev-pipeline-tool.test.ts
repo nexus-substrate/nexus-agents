@@ -397,6 +397,32 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['planStatus']).toBe('empty');
   });
 
+  it('surfaces the dryRun marker too', async () => {
+    // #4993 added `dryRun` to DevPipelineResult for the same reason as the two
+    // fields above — `completed: false` was the request, not a fault — and then
+    // did not list it in `buildStructuredOutput` either. A live
+    // `run_dev_pipeline({ dryRun: true })` came back with no way to tell a
+    // successful dry run from a failed pipeline. Same omission, same function,
+    // under the comment describing it.
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      dryRun: true,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 2,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+    } as never);
+    const handler = captureHandler();
+
+    const result = await handler({ task: 'Build feature X', dryRun: true }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output['dryRun']).toBe(true);
+    expect(output['completed']).toBe(false);
+  });
+
   it('omits both fields when the pipeline did not report them', async () => {
     // Absent means the producer predates the distinction — not false, not 'empty'.
     const handler = captureHandler();
@@ -406,6 +432,8 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
 
     expect(output).not.toHaveProperty('securityRan');
     expect(output).not.toHaveProperty('planStatus');
+    // The pair for dryRun: an ordinary run must not claim to have been one.
+    expect(output).not.toHaveProperty('dryRun');
   });
 
   it('stays allowed inside a test runner with no simulated flag (existing suites unaffected)', async () => {
