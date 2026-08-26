@@ -1632,14 +1632,46 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(fullResponse)).not.toThrow();
   });
 
+  // #5066: the schema also covers the async-dispatch envelope, which is a
+  // second response shape with none of the vote fields. These five keys are
+  // the whole of that difference — named here so the drift guard below stays
+  // exact rather than being loosened to "superset".
+  const ASYNC_ENVELOPE_KEYS = ['status', 'jobId', 'pollTool', 'note', 'retryAfterMs'];
+
   it('declares exactly the response keys (no schema/response key drift)', () => {
     // Key-level guard: catches a response field absent from the schema (the
     // panelWarning/costSummary failure mode). It does NOT police value
     // constraints — the `decision` enum is kept aligned structurally instead,
     // by reusing VoteDecisionStatusSchema (see the enum test below).
     expect(Object.keys(CONSENSUS_VOTE_OUTPUT_SCHEMA).sort()).toEqual(
-      Object.keys(fullResponse).sort()
+      [...Object.keys(fullResponse), ...ASYNC_ENVELOPE_KEYS].sort()
     );
+  });
+
+  it('strictly accepts the async-dispatch envelope (#5066)', () => {
+    // The shape that used to fail every `mode: 'async'` call with -32602,
+    // because `runAsJob`'s default envelopes carry no structured content and
+    // the schema had no field they could satisfy.
+    expect(() =>
+      z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse({
+        status: 'pending',
+        jobId: 'job-vote-1',
+        pollTool: 'get_job_result',
+        note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+      })
+    ).not.toThrow();
+  });
+
+  it('still rejects a response field the schema does not declare (#5066)', () => {
+    // The guarantee the widening had to preserve. Requiredness is gone;
+    // `additionalProperties: false` is what actually catches a #5044-shaped
+    // regression, and it still fires.
+    expect(() =>
+      z
+        .object(CONSENSUS_VOTE_OUTPUT_SCHEMA)
+        .strict()
+        .parse({ ...fullResponse, undeclaredField: 1 })
+    ).toThrow();
   });
 
   it.each(['approved', 'rejected', 'pending', 'timeout', 'no_quorum'] as const)(
