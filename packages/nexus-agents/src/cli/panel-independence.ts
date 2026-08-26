@@ -10,6 +10,7 @@
 
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import { assessPanelIndependence } from '../config/model-equivalence.js';
+import type { PanelIndependence } from '../config/model-equivalence.js';
 
 /**
  * When the check runs. Adapter detection is lazy (#811), so at `assignment`
@@ -32,7 +33,7 @@ export function reportPanelIndependence(
   logger: ILogger
 ): void {
   if (roleCount <= 1) return;
-  const verdict = assessPanelIndependence(adapters.map((a) => a.modelId));
+  const verdict: PanelIndependence = assessPanelIndependence(adapters.map((a) => a.modelId));
 
   if (verdict.kind === 'collapsed') {
     logger.warn('Consensus panel ran on ONE model — votes may correlate', {
