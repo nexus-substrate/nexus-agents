@@ -26,9 +26,10 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { type JobResult } from '../jobs/job-result-store.js';
+import { isAbandonedJob, type JobResult } from '../jobs/job-result-store.js';
 import { resolveJobResult } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { getTimeProvider } from '../../core/index.js';
 
 export const GetJobResultInputSchema = z.object({
   jobId: z.string().min(1).max(128).describe('Job ID returned by orchestrate({ mode: "async" })'),
@@ -44,12 +45,26 @@ export interface GetJobResultResponse {
   readonly jobId: string;
   readonly found: boolean;
   readonly record?: JobResult;
+  /**
+   * Set when a `pending` record has outlived the runaway guard that bounds
+   * every job body (#4976), so no live process can still be working on it.
+   *
+   * The record itself is left saying `pending` — it is evidence of what was
+   * observed, and rewriting it on read would destroy that. This field is the
+   * qualifier a poller needs to stop waiting.
+   */
+  readonly abandoned?: boolean;
   readonly errorMessage?: string;
 }
 
 export type GetJobResultDeps = BaseMcpToolDeps;
 
-function getJobResultHandler(args: unknown): Promise<ToolResult> {
+/**
+ * Exported for the abandoned-job seam test (#4976): the secure-handler and
+ * timeout wrappers around it are SDK plumbing, and asserting through them
+ * tests the wrappers rather than this response.
+ */
+export function getJobResultHandler(args: unknown): Promise<ToolResult> {
   const parsed = GetJobResultInputSchema.safeParse(args);
   if (!parsed.success) {
     return Promise.resolve(
@@ -72,10 +87,19 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
     };
     return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
   }
+  const abandoned = isAbandonedJob(record, getTimeProvider().now());
   const response: GetJobResultResponse = {
     jobId: parsed.data.jobId,
     found: true,
     record,
+    ...(abandoned
+      ? {
+          abandoned: true,
+          errorMessage:
+            'This job has been `pending` longer than the maximum a job body can run, ' +
+            'so the process that owned it is gone. Nothing will settle it — dispatch again.',
+        }
+      : {}),
   };
   return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
 }
