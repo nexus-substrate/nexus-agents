@@ -1,5 +1,129 @@
 # nexus-agents
 
+## 4.22.4
+
+### Patch Changes
+
+- [#5024](https://github.com/nexus-substrate/nexus-agents/pull/5024) [`26163eb`](https://github.com/nexus-substrate/nexus-agents/commit/26163eb5798b2be44938690a8a57e5ccc42c388c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): let an open circuit recover while traffic continues
+
+  The reset window was measured from `lastFailureTime`, and `onFailure` updated
+  that field unconditionally — including while the circuit was already open. Since
+  an open circuit does not shed load on the default paths (`base-adapter` and
+  `resilient-adapter` never consult `canExecute`), traffic kept arriving, kept
+  failing occasionally, and each failure pushed the half-open probe another 30s
+  out. Recovery required a 30-second window containing zero failures; under
+  concurrent panel traffic with a 5% residual error rate that window never
+  arrived, and `isCliServingForVoters` kept the CLI out of every voter panel until
+  a manual `reset()`.
+
+  A failure recorded while open is now ignored, and the window is measured from
+  the state transition rather than the last failure. Remedy chosen by a 7-voter
+  panel: Option A, 4 of 5 approvers, audit record [#79](https://github.com/nexus-substrate/nexus-agents/issues/79) — the load-shedding half
+  (gating the default call paths on `canExecute`) was deliberately not taken.
+
+- [#5010](https://github.com/nexus-substrate/nexus-agents/pull/5010) [`f5e8c75`](https://github.com/nexus-substrate/nexus-agents/commit/f5e8c75eeac93213cefbf3787f6e931ab12228d1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(learning): make the distiller's draft floor real
+
+  `minObservationsForDraft` is documented as "minimum observations before creating
+  a draft rule (default: 3)" and changed nothing: `computeStatus` returned
+  `'draft'` from both the guarded branch and the fallthrough, and no detector
+  enforces a group-size floor. One failing task in a category produced a persisted
+  `failure-rate` rule at `observationCount: 1` — occupying one of the 90 rule
+  slots and penalising a CLI at routing time on the evidence of a single run.
+
+  The floor now gates creation. An existing rule still updates below it, since the
+  config governs when a rule comes into being, not whether it stays current.
+
+- [#5029](https://github.com/nexus-substrate/nexus-agents/pull/5029) [`a3ecf8c`](https://github.com/nexus-substrate/nexus-agents/commit/a3ecf8c74a415dfd2651baa7db63dbffd3a98f16) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): stop the DocOps gate inheriting [skip-docops] from the base branch
+
+  The escape-hatch lookup used `git log origin/<base>...HEAD` — a **symmetric**
+  difference, which also returns commits reachable from the base branch but not
+  from HEAD. Six `[skip-docops]` commits are on `main` today, so any PR branch
+  whose merge-base predates one of them inherited the marker and skipped the
+  entire skill-sync gate, regardless of what the PR changed.
+
+  Demonstrated on this repo: with a HEAD whose merge-base predates the markers,
+  the three-dot range finds 7 occurrences and the two-dot range finds 0.
+
+  The commit that introduced the symmetric range is itself one of the six.
+
+- [#5030](https://github.com/nexus-substrate/nexus-agents/pull/5030) [`e82d38f`](https://github.com/nexus-substrate/nexus-agents/commit/e82d38f652cdbdd09e74fe7848dcdf012df2f65d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): stop a knip failure reporting zero orphans
+
+  `runKnip` returned a bare array and yielded `[]` on every failure path — empty
+  stdout, unparseable JSON, a throw with no usable stdout — with stderr set to
+  `'ignore'` so knip's own error was discarded. `[]` is also what a clean scan
+  produces, so a knip broken by a reporter or config change printed
+  `Total orphans (knip): 0 / ✓ No flagged orphans` and the gate exited 0.
+
+  This repo carries 22 allowlisted orphans, so `total === 0` is in fact the
+  signature of a dead run, and nothing asserted that baseline.
+
+  The run outcome now carries `ran`, the check verdict fails when the scan did not
+  happen, and the message says UNMEASURED rather than clean. The stdout
+  classification is extracted as a pure `classifyKnipOutput` so the empty and
+  unparseable cases are testable without shelling out.
+
+- [#5027](https://github.com/nexus-substrate/nexus-agents/pull/5027) [`9a929e7`](https://github.com/nexus-substrate/nexus-agents/commit/9a929e7d5ed1c35e8afa1ad1e999abe6514d3051) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): make the MCP path-containment check able to deny
+
+  `isPathSafe` compared normalized string prefixes, and `normalizePath('./')`
+  returns `'/'`. `allowedPaths` defaults to `['./']` in three places, so the check
+  returned true for every absolute path it could be handed — `/etc/shadow`,
+  `~/.ssh/id_ed25519`, anything. The rule's only live effect was the literal
+  `includes('..')` test beside it.
+
+  The prefix comparison also had no separator boundary, so a configured root of
+  `/work` admitted `/work-secrets`.
+
+  Both sides are now resolved against cwd and compared with an exact match or a
+  path-separator boundary. `'./'` means the working directory, which is what the
+  startup posture line printing `allowedPaths: ['./']` has always implied.
+
+  This matters for the staged policy rollout ([#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)): the warn-mode telemetry
+  being collected as evidence for the enforce decision contained zero path
+  findings by construction, because the rule could not produce one.
+
+- [#5031](https://github.com/nexus-substrate/nexus-agents/pull/5031) [`a2e60bc`](https://github.com/nexus-substrate/nexus-agents/commit/a2e60bc52a42591c88a94f14e70b8ffda312d25b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): fail when a pnpm filter matches no package
+
+  `pnpm --filter <name> …` exits 0 when the filter matches nothing — verified:
+  `pnpm --filter nonexistent exec node -e 1` returns 0, and with
+  `--fail-if-no-match` returns 1. So `set -euo pipefail` in `verify-refresh.sh`
+  could not catch a silently-skipped suite: renaming the package, or moving it
+  outside the workspace globs, would print "verify-refresh: all gates passed"
+  having run zero tests. That is the [#4340](https://github.com/nexus-substrate/nexus-agents/issues/4340) shape the comment above that line says
+  the gate exists to prevent.
+
+  `--fail-if-no-match` added to the eight unguarded `pnpm --filter` invocations
+  across `verify-refresh.sh` and five workflows, so a build or test step that
+  matches nothing is a red job rather than a quiet no-op.
+
+- [#5021](https://github.com/nexus-substrate/nexus-agents/pull/5021) [`7aa51a1`](https://github.com/nexus-substrate/nexus-agents/commit/7aa51a1512aee5000493acc7e224e33ff615c7d5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(learning): stop execute_spec and run_graph_workflow crediting claude
+
+  Both tools appended a `TaskOutcome` with `cli: DEFAULT_CLI` — 'claude' — while
+  recording a synthetic `model` label (`'spec-executor'`, `'graph-workflow'`).
+  Neither knows which CLI served the work, so every run credited or debited claude
+  in the routing learner: the same fabrication [#5003](https://github.com/nexus-substrate/nexus-agents/issues/5003) fixed in the feedback bridge,
+  on two live tool paths.
+
+  `'unknown'` is the value `OutcomeCliSchema` already defines for this case, and
+  the bandit's warm-start partitions it out rather than replaying it ([#4935](https://github.com/nexus-substrate/nexus-agents/issues/4935)), so
+  these runs stop moving any arm's measured success rate.
+
+- [#5032](https://github.com/nexus-substrate/nexus-agents/pull/5032) [`5153ddc`](https://github.com/nexus-substrate/nexus-agents/commit/5153ddc05c74f648c6e45b3ba29edcf53cbd9560) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): stop the script-wiring gate counting a paths: mention as wiring
+
+  `isReachableFromCi` returned true on any textual occurrence of the script's
+  basename in the workflow text — including a `paths:` trigger entry, which never
+  executes anything. Deleting the
+  `run: npx tsx scripts/check-governor-ratification.ts` step from
+  `governor-review.yml` leaves the filename in two `paths:` blocks, so the gate
+  whose job is catching unwired gates would report it reachable.
+
+  The direct branch now requires an actual invocation — a runner (`tsx`, `node`,
+  `ts-node`, `bash`, `sh`) followed by the path on the same line. The npm-script
+  branch below it already did the careful thing; this brings the two into line.
+
+  Verified against the real workflows: 29 scripts reachable before and after, so
+  tightening introduced no false positives — which is the failure mode the
+  function's own doc comment warns about.
+
 ## 4.22.3
 
 ### Patch Changes
