@@ -125,6 +125,17 @@ export interface AlignmentSummary {
   readonly notStarted: number;
   readonly total: number;
   readonly topOpportunities: readonly string[];
+  /**
+   * How many improvement opportunities existed before `topOpportunities` was
+   * capped (#5001).
+   *
+   * The alignment map holds twelve `partial` techniques carrying a hint, so
+   * the cap bites on any repo whose research touches most of them. Ten listed
+   * entries look identical whether ten or fifty were found; a bounded read is
+   * fine, a bounded read reported as complete is not. Mirrors
+   * `ClusterSynthesis.totalInsights`.
+   */
+  readonly totalOpportunities: number;
 }
 
 /** Summary of a single feature gate for synthesis output. */
@@ -378,6 +389,9 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
 /** Insights carried per cluster. The count dropped is disclosed, not silent. */
 const MAX_CLUSTER_INSIGHTS = 10;
 
+/** Cap on the improvement opportunities listed in the alignment summary (#5001). */
+const MAX_TOP_OPPORTUNITIES = 10;
+
 /**
  * The capped insight list plus the count it was capped from (#5001).
  *
@@ -453,15 +467,18 @@ function buildAlignmentSummary(clusters: readonly ClusterSynthesis[]): Alignment
   // Top opportunities: partial implementations with hints (most improvable)
   const opportunities = allAlignments
     .filter((a) => a.status === 'partial' && a.improvementHint !== undefined)
-    .map((a) => `${a.technique}: ${a.improvementHint ?? ''}`)
-    .slice(0, 10);
+    .map((a) => `${a.technique}: ${a.improvementHint ?? ''}`);
 
   return {
     implemented,
     partial,
     notStarted,
     total: allAlignments.length,
-    topOpportunities: opportunities,
+    // Capped and counted together so the two cannot drift — a
+    // `topOpportunities` without its total is the silent truncation this
+    // replaced (#5001).
+    topOpportunities: opportunities.slice(0, MAX_TOP_OPPORTUNITIES),
+    totalOpportunities: opportunities.length,
   };
 }
 
