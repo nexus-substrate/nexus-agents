@@ -16,6 +16,10 @@ import {
   registerMcpTools,
 } from './cli-server-tools.js';
 import type { RegisterMcpToolsOptions } from './cli-server-tools.js';
+import {
+  getGlobalPolicyFirewall,
+  resetGlobalPolicyFirewall,
+} from './mcp/middleware/policy-registry.js';
 
 // ============================================================================
 // Mock external modules (vi.hoisted so they are available in vi.mock factories)
@@ -708,13 +712,35 @@ describe('registerMcpTools - policy firewall', () => {
 
   afterEach(() => {
     delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+    // Module-level state: leaving a firewall wired would leak an enforcing
+    // policy into every later test in the process.
+    resetGlobalPolicyFirewall();
   });
+
+  /**
+   * A firewall stand-in with real mode state: `stagePolicyFirewallForRollout`
+   * calls `setMode`, and a `vi.fn()` returning a fixed string would report the
+   * configured mode forever no matter what the staging did.
+   */
+  function stageableFirewall(
+    mode: 'enforce' | 'warn'
+  ): NonNullable<RegisterMcpToolsOptions['policyFirewall']> {
+    let current = mode;
+    return {
+      getMode: () => current,
+      setMode: (next: 'enforce' | 'warn') => {
+        current = next;
+      },
+      getRules: () => [],
+      evaluate: () => ({ allowed: true, reason: 'test' }),
+      addRule: () => undefined,
+      removeRule: () => false,
+    };
+  }
 
   it('should log policy firewall info when provided', () => {
     const logger = makeMockLogger();
-    const mockFirewall = {
-      getMode: vi.fn().mockReturnValue('enforce'),
-    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+    const mockFirewall = stageableFirewall('enforce');
 
     const options = makeDefaultOptions({
       logger,
@@ -740,20 +766,19 @@ describe('registerMcpTools - policy firewall', () => {
     expect((regCall as unknown[])[1]).not.toHaveProperty('policyMode');
   });
 
-  it('warns that a constructed policy firewall is not wired to any tool', () => {
+  it('stages the wired firewall into warn mode rather than the configured enforce', () => {
+    // #4888 wired the firewall that had only ever reached a log line. Honouring
+    // the configured `enforce` on the release that lands the wiring would turn
+    // rules nothing has ever evaluated into denials for every operator, so the
+    // rollout starts in warn — and this asserts the staging happened, not just
+    // that the firewall was stored.
     const logger = makeMockLogger();
-    const mockFirewall = {
-      getMode: vi.fn().mockReturnValue('enforce'),
-    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+    const mockFirewall = stageableFirewall('enforce');
 
     registerMcpTools(makeDefaultOptions({ logger, policyFirewall: mockFirewall }));
 
-    const warn = logger.warn.mock.calls.find((call: unknown[]) =>
-      String(call[0]).includes('PolicyFirewall')
-    );
-    expect(warn).toBeDefined();
-    expect(String((warn as unknown[])[0])).toContain('not wired');
-    expect((warn as unknown[])[1]).toEqual(expect.objectContaining({ configuredMode: 'enforce' }));
+    expect(getGlobalPolicyFirewall()).toBe(mockFirewall);
+    expect(mockFirewall.getMode()).toBe('warn');
   });
 
   it('does not warn when no policy firewall was constructed', () => {

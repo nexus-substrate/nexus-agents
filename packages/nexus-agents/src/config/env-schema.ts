@@ -131,6 +131,11 @@ const NexusEnvSchema = z.object({
   NEXUS_AUTO_REMEDIATE: z.enum(['off', 'audit', 'enforce']).optional(),
   // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by default.
   NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
+  // Apply MCP PolicyFirewall denials for real (#4888). The firewall reaches
+  // every tool as of the wiring, but starts in warn — it had never evaluated a
+  // live call, so honouring the configured `enforce` default immediately would
+  // deny on rules nothing has exercised. '1' opts in.
+  NEXUS_MCP_POLICY_ENFORCE: z.enum(['0', '1']).optional(),
   // Path to a model-registry overlay manifest (buildDefaultRegistry / #3185 hot-reload).
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
   // Render the unified cross-ranked memory prefix instead of per-backend sections (#3236); off by default.

@@ -114,6 +114,13 @@ import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
 } from './mcp/middleware/index.js';
+// Imported from the module rather than the barrel: the registration tests mock
+// the middleware barrel wholesale, and the staged-rollout assertion has to see
+// the real registry rather than a mock that would report whatever it was told.
+import {
+  setGlobalPolicyFirewall,
+  stagePolicyFirewallForRollout,
+} from './mcp/middleware/policy-registry.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
@@ -593,21 +600,17 @@ function logToolRegistration(
     executionMode: info.executionMode ?? 'read-only',
   });
 
-  // The firewall is CONSTRUCTED by `logSecurityConfig` and then dropped:
-  // `buildStandardDeps` does not forward it, no tool registration passes it,
-  // and `createPolicyMiddleware` (middleware-chain.ts:327) is therefore never
-  // reached for any tool (#4888). This line used to report
-  // `policyFirewallEnabled: true` + `policyMode: 'enforce'`, which claimed an
-  // enforcement that does not happen — and a test pinned that claim.
-  //
-  // Warning rather than a `false` field: a hardcoded "not enforcing" is just
-  // the same constant with the sign flipped, and an operator who configured a
-  // policy mode needs to be told it is inert, not handed a quieter boolean.
+  // #4888: the firewall now reaches every secure handler through the policy
+  // registry, so this reports the mode it will actually apply — read off the
+  // firewall after `stagePolicyFirewallForRollout` has staged it, not a
+  // constant. The staging call logs the configured-vs-effective pair and the
+  // opt-in; this line exists so the registration record names the mode too.
   if (info.policyFirewall !== undefined) {
-    logger.warn(
-      'PolicyFirewall is configured but not wired to any tool — no policy middleware runs',
-      { configuredMode: info.policyFirewall.getMode() }
-    );
+    const mode = info.policyFirewall.getMode();
+    logger.info('Policy firewall wired to all tools', {
+      policyMode: mode,
+      denialsApplied: mode === 'enforce',
+    });
   }
 }
 
@@ -861,6 +864,13 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     logger: toolInfra.logger,
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
+
+  // #4888: the firewall reached only a startup log line before this — no tool's
+  // deps carried it, so no policy rule was ever evaluated. Staged into warn
+  // mode unless the operator opts in; see `stagePolicyFirewallForRollout`.
+  if (policyFirewall !== undefined) {
+    setGlobalPolicyFirewall(stagePolicyFirewallForRollout(policyFirewall, logger));
+  }
 
   initV2PipelineSubsystems(logger, options.auditLogger);
 

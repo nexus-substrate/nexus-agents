@@ -29,6 +29,7 @@ import {
   type SanitizeToolInputResult,
 } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
+import { getGlobalPolicyFirewall } from './policy-registry.js';
 
 export type { ToolResult };
 
@@ -231,6 +232,39 @@ function checkPolicy(opts: PolicyCheckOptions): ToolResult | null {
 }
 
 /**
+ * Evaluates the policy firewall for this call, or returns `null` when none is
+ * configured.
+ *
+ * #4888: the firewall falls back to the process-wide registry. Nothing ever
+ * supplied `config.policyFirewall`, so before that fallback this check was
+ * unreachable for every registered tool.
+ */
+function runPolicyCheck(
+  config: SecureHandlerConfig,
+  sanitizedArgs: unknown,
+  mode: ExecutionMode,
+  logger: ILogger,
+  requestContext: RequestContext
+): ToolResult | null {
+  const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
+  if (!firewall) return null;
+
+  const pResult = checkPolicy({
+    firewall,
+    toolName: config.toolName,
+    args: sanitizedArgs,
+    mode,
+    allowedPaths: config.allowedPaths,
+    logger,
+    requestId: requestContext.requestId,
+  });
+  if (pResult && config.auditLogger) {
+    emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
+  }
+  return pResult;
+}
+
+/**
  * Executes handler and logs result.
  */
 async function executeHandler(
@@ -379,22 +413,8 @@ function runPreChecks(
     }
   }
 
-  if (config.policyFirewall) {
-    const pResult = checkPolicy({
-      firewall: config.policyFirewall,
-      toolName: config.toolName,
-      args: sanitizedArgs,
-      mode,
-      allowedPaths: config.allowedPaths,
-      logger,
-      requestId: requestContext.requestId,
-    });
-    if (pResult) {
-      if (config.auditLogger)
-        emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
-      return { error: pResult, sanitizedArgs };
-    }
-  }
+  const pResult = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
+  if (pResult) return { error: pResult, sanitizedArgs };
 
   return { error: null, sanitizedArgs };
 }
