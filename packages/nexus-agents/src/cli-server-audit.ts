@@ -127,7 +127,12 @@ export function logSecurityConfig(
   const rateLimitVals = getRateLimitValues(config);
 
   logger.info('Security configuration', {
-    policyMode: policyVals.mode,
+    // #4888: named `configuredPolicyMode`, not `policyMode`. This runs at
+    // startup, before `stagePolicyFirewallForRollout` decides the mode that
+    // will actually apply — which is `warn` unless the operator opted in. A
+    // field called `policyMode` reading `enforce` here would claim an
+    // enforcement the staged rollout does not perform.
+    configuredPolicyMode: policyVals.mode,
     defaultExecutionMode: policyVals.defaultExec,
     policyRuleCount: policyFirewall.getRules().length,
     authEnabled: authVals.enabled,

@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initializeAuditLogger } from './cli-server-audit.js';
+import { initializeAuditLogger, logSecurityConfig } from './cli-server-audit.js';
 import type { ILogger } from './core/index.js';
 
 function createMockLogger(): ILogger {
@@ -105,5 +105,25 @@ describe('initializeAuditLogger', () => {
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('logSecurityConfig', () => {
+  it('names the policy mode as configured, not as applied (#4888)', () => {
+    // This runs at startup, before `stagePolicyFirewallForRollout` picks the
+    // mode that actually applies — `warn` unless the operator opted in. A field
+    // called `policyMode` reading `enforce` here would claim an enforcement the
+    // staged rollout does not perform, which is the same false claim the
+    // tool-registration line had to drop.
+    const logger = createMockLogger();
+
+    logSecurityConfig(logger);
+
+    const line = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call: unknown[]) => call[0] === 'Security configuration'
+    );
+    expect(line).toBeDefined();
+    expect((line as unknown[])[1]).toHaveProperty('configuredPolicyMode');
+    expect((line as unknown[])[1]).not.toHaveProperty('policyMode');
   });
 });
