@@ -3,6 +3,31 @@ import { describe, expect, it } from 'vitest';
 import { assessWiring, isReachableFromCi } from './check-script-wiring.js';
 
 describe('isReachableFromCi', () => {
+  it('does not count a paths: trigger entry as wiring (#5028)', () => {
+    // The gate whose job is catching unwired gates used a bare
+    // `workflowText.includes(basename)`. Deleting the
+    // `run: npx tsx scripts/check-governor-ratification.ts` step from
+    // governor-review.yml leaves the filename in two `paths:` blocks, so the
+    // script reported as reachable while nothing executed it.
+    const pathsOnly = [
+      'on:',
+      '  pull_request:',
+      '    paths:',
+      "      - 'scripts/check-governor-ratification.ts'",
+    ].join('\n');
+
+    expect(isReachableFromCi('check-governor-ratification.ts', pathsOnly, {})).toBe(false);
+  });
+
+  it('still counts a real run: step as wiring', () => {
+    // The pair: tightening must not report a genuinely wired script as unwired,
+    // which is how a gate teaches people to ignore it.
+    const withRun =
+      'jobs:\n  x:\n    steps:\n      - run: npx tsx scripts/check-governor-ratification.ts';
+
+    expect(isReachableFromCi('check-governor-ratification.ts', withRun, {})).toBe(true);
+  });
+
   const noNpm = {};
 
   it('counts a direct filename reference in a workflow', () => {

@@ -72,12 +72,31 @@ export interface WiringVerdict {
  * that as unwired would be a false positive, and false positives are what
  * teach people to ignore a gate.
  */
+/** Runners a workflow step uses to execute a script directly. */
+const INVOCATION_RUNNERS = ['tsx', 'node', 'ts-node', 'bash', 'sh'] as const;
+
+/**
+ * True when some line runs `<runner> … <basename>` — an execution, not a
+ * mention. `paths:` entries and comments name the file without running it.
+ */
+function invokesOnSomeLine(workflowText: string, runner: string, basename: string): boolean {
+  const escaped = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\b${runner}\\s+[^\\n]*${escaped}`);
+  return pattern.test(workflowText);
+}
+
 export function isReachableFromCi(
   basename: string,
   workflowText: string,
   npmScripts: Readonly<Record<string, string>>
 ): boolean {
-  if (workflowText.includes(basename)) return true;
+  // #5028: a bare `includes` counted ANY textual occurrence — including a
+  // `paths:` trigger entry, which never executes anything. Deleting the
+  // `run: npx tsx scripts/check-governor-ratification.ts` step from
+  // governor-review.yml left the filename in two `paths:` blocks, so the gate
+  // whose job is catching unwired gates reported it reachable. Require an
+  // actual invocation: a runner followed by the path on the same line.
+  if (INVOCATION_RUNNERS.some((r) => invokesOnSomeLine(workflowText, r, basename))) return true;
 
   for (const [name, body] of Object.entries(npmScripts)) {
     if (!body.includes(basename)) continue;
