@@ -67,7 +67,7 @@ export function querySessionMemory(
  * returns `[]` (#4999): partial results beat none, but the caller must still
  * be able to tell "this store threw" from "this store matched nothing".
  */
-export interface MemoryQueryContext {
+interface MemoryQueryContext {
   readonly log: ILogger;
   readonly onFailure?: (() => void) | undefined;
 }
