@@ -298,6 +298,13 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
     results: z.array(z.unknown()),
     count: z.number(),
     source: z.string(),
+    // #4999: the SDK validates structured content against this schema with
+    // `additionalProperties: false`, so a field added to the response and not
+    // declared here makes EVERY call fail with -32602 rather than merely going
+    // unreported. The integration test caught that; the unit tests could not,
+    // because they call the handler directly and never cross the protocol.
+    searched: z.array(z.string()),
+    unavailable: z.array(z.string()),
   };
 
   server.registerTool(
