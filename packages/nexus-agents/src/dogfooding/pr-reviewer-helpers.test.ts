@@ -368,6 +368,41 @@ describe('Decision Helpers', () => {
       expect(determineDecision([], findings)).toBe('request_changes');
     });
 
+    it('does not approve when every expert failed (#5012)', () => {
+      // The defect: `createFailedReview` returned `approved: true`, so three
+      // failed experts became three synthetic approvals — `findings` empty,
+      // `allApproved` true — and the review resolved to APPROVE at 100%
+      // consensus, then posted to GitHub as a real approval event.
+      const reviews: ExpertReviewResult[] = [
+        createFailedReview('security-expert', 'security', 10, 'adapter unavailable'),
+        createFailedReview('quality-expert', 'code_quality', 10, 'adapter unavailable'),
+        createFailedReview('testing-expert', 'testing', 10, 'adapter unavailable'),
+      ];
+
+      expect(determineDecision(reviews, [])).toBe('comment');
+    });
+
+    it('still approves when a real expert reviewed and found nothing', () => {
+      // The pair: refusing to approve an unreviewed PR must not stop a genuine
+      // clean review from approving.
+      const reviews: ExpertReviewResult[] = [createMockExpertReview({ approved: true })];
+
+      expect(determineDecision(reviews, [])).toBe('approve');
+    });
+
+    it('does not let a failed expert downgrade a HIGH finding (#5012)', () => {
+      // The #4581 guard — `allOf(reviews, …, whenEmpty: false)` — exists so an
+      // unreviewed PR cannot count as unanimous approval and quietly downgrade
+      // `request_changes` to `comment`. A synthetic `approved: true` for a
+      // failed expert defeated it by making the list non-empty.
+      const reviews: ExpertReviewResult[] = [
+        createFailedReview('testing-expert', 'testing', 10, 'timeout'),
+      ];
+      const findings: ReviewFinding[] = [createMockFinding({ severity: 'high' })];
+
+      expect(determineDecision(reviews, findings)).toBe('request_changes');
+    });
+
     it('should comment when medium/low findings exist', () => {
       const findings: ReviewFinding[] = [createMockFinding({ severity: 'medium' })];
       const reviews: ExpertReviewResult[] = [createMockExpertReview({ approved: true })];
@@ -677,12 +712,16 @@ describe('GitHub Comment Formatting', () => {
 
 describe('Failed Review Factory', () => {
   describe('createFailedReview', () => {
-    it('should create failed review with default approved=true', () => {
+    it('marks a failed review as errored, not approved (#5012)', () => {
+      // Was `approved: true` — "don't block on failures" — which made an expert
+      // that never ran indistinguishable from one that read the diff and had no
+      // objection. Three of those resolved to an APPROVE posted to GitHub.
       const review = createFailedReview('security-expert', 'security', 100, 'Timeout');
 
       expect(review.expertId).toBe('security-expert');
       expect(review.expertType).toBe('security');
-      expect(review.approved).toBe(true); // Don't block on failures
+      expect(review.approved).toBe(false);
+      expect(review.errored).toBe(true);
       expect(review.summary).toContain('Timeout');
       expect(review.findings).toEqual([]);
       expect(review.durationMs).toBe(100);
