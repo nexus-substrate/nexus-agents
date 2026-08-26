@@ -277,6 +277,20 @@ export interface AggregationMetadata {
    * measured. Mirrors `ResultMetadata.tokensMeasured` (#4734).
    */
   confidenceMeasured?: boolean;
+  /**
+   * Whether `conflicts` is the outcome of a comparison (#4854).
+   *
+   * `false` means nothing was compared, so an empty `conflicts` list and a
+   * `conflictCount` of 0 are the absence of a check — not the absence of
+   * disagreement. They are byte-identical to what a genuinely unanimous
+   * session produces, which is exactly why the distinction has to be stated
+   * rather than inferred. The collaboration-session builder is in that
+   * position; the `ResultAggregator` path compares fields pairwise.
+   *
+   * Absent means the producer predates the distinction — unknown, not
+   * checked. Mirrors `confidenceMeasured` (#4831).
+   */
+  conflictsDetected?: boolean;
   aggregatedAt: string;
 }
 

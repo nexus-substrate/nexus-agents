@@ -426,4 +426,18 @@ describe('buildAggregatedResult does not report an unmeasured confidence (#4831)
 
     expect(result.metadata.conflictCount).toBe(result.conflicts.length);
   });
+
+  it('says the empty conflict list is unchecked, not clean (#4854)', () => {
+    // `conflicts: []` and `conflictCount: 0` are what a session with genuine
+    // agreement looks like, so this builder — which compares nothing — was
+    // indistinguishable from one that compared everything and found nothing.
+    // Two differing results must not read as consensus.
+    const result = build([
+      makeTaskResult({ output: 'ship it' }),
+      makeTaskResult({ taskId: 'task-2', output: 'do not ship it' }),
+    ]);
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.metadata.conflictsDetected).toBe(false);
+  });
 });

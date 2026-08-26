@@ -53,6 +53,16 @@ export interface AggregatorOptions {
 /**
  * Aggregates results from multiple experts.
  */
+/**
+ * A conflict list together with whether anything was compared to produce it
+ * (#4854). Returned as one value so a branch cannot report the list without
+ * saying whether it looked — the drift that made an empty list ambiguous.
+ */
+interface ConflictOutcome {
+  conflicts: ResultConflict[];
+  conflictsDetected: boolean;
+}
+
 export class ResultAggregator {
   private readonly logger: ILogger;
   private readonly conflictResolver: ConflictResolver;
@@ -80,7 +90,7 @@ export class ResultAggregator {
     });
 
     const strategy = determineStrategy(input.pattern);
-    const { output: aggregatedOutput, conflicts } = this.applyStrategy(strategy, input);
+    const { output: aggregatedOutput, ...outcome } = this.applyStrategy(strategy, input);
     const qualityScore = this.qualityScorer(input.results, aggregatedOutput);
 
     const qualityCheck = this.checkQuality(qualityScore);
@@ -90,32 +100,50 @@ export class ResultAggregator {
       input.results,
       aggregatedOutput,
       strategy,
-      conflicts,
+      outcome,
       qualityScore
     );
 
     this.logger.info('Aggregation complete', {
       strategy,
       qualityScore: result.qualityScore,
-      conflictCount: conflicts.length,
+      conflictCount: outcome.conflicts.length,
     });
 
     return ok(result);
   }
 
+  /**
+   * `conflictsDetected` travels with the conflict list because only one of
+   * these branches compares anything (#4854). `select_best`, `consensus` and
+   * `sequential_chain` pick or concatenate; an empty list from them is the
+   * absence of a check, not the absence of disagreement.
+   */
   private applyStrategy(
     strategy: AggregationStrategy,
     input: AggregatorInput
-  ): { output: unknown; conflicts: ResultConflict[] } {
+  ): { output: unknown } & ConflictOutcome {
     switch (strategy) {
       case 'merge':
         return this.mergeResults(input.results);
       case 'select_best':
-        return { output: selectBest(input.results, input.reviews), conflicts: [] };
+        return {
+          output: selectBest(input.results, input.reviews),
+          conflicts: [],
+          conflictsDetected: false,
+        };
       case 'consensus':
-        return { output: buildConsensus(input.results, input.votes), conflicts: [] };
+        return {
+          output: buildConsensus(input.results, input.votes),
+          conflicts: [],
+          conflictsDetected: false,
+        };
       case 'sequential_chain':
-        return { output: chainSequential(input.results), conflicts: [] };
+        return {
+          output: chainSequential(input.results),
+          conflicts: [],
+          conflictsDetected: false,
+        };
     }
   }
 
@@ -134,7 +162,7 @@ export class ResultAggregator {
     results: ExpertResult[],
     output: unknown,
     strategy: AggregationStrategy,
-    conflicts: ResultConflict[],
+    outcome: ConflictOutcome,
     qualityScore: number
   ): AggregatedResult {
     const usage = summarizeTokenUsage(results.map((r) => r.result.metadata));
@@ -144,14 +172,17 @@ export class ResultAggregator {
       output,
       strategy,
       qualityScore: Math.round(qualityScore * 100) / 100,
-      conflicts,
+      conflicts: outcome.conflicts,
       metadata: {
         resultCount: results.length,
-        conflictCount: conflicts.length,
+        conflictCount: outcome.conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
         // Measured: ExpertResult carries confidence, and `aggregate` rejects
         // an empty result list before reaching here (#4831).
         confidenceMeasured: true,
+        // Only the object-merge branch compares anything; every other
+        // strategy returns an empty list without looking (#4854).
+        conflictsDetected: outcome.conflictsDetected,
         ...usage,
         aggregatedAt: getTimeProvider().nowIso(),
       },
@@ -160,25 +191,30 @@ export class ResultAggregator {
 
   /**
    * Merges multiple results into one.
+   *
+   * Only the object branch performs a comparison — strings are unioned
+   * line-by-line, arrays concatenated, and mixed outputs simply collected
+   * under `sources`. Each branch reports whether it looked (#4854).
    */
-  private mergeResults(results: ExpertResult[]): { output: unknown; conflicts: ResultConflict[] } {
+  private mergeResults(results: ExpertResult[]): { output: unknown } & ConflictOutcome {
     if (results.length === 1) {
-      return { output: results[0]?.result.output, conflicts: [] };
+      // Nothing to compare a lone result against.
+      return { output: results[0]?.result.output, conflicts: [], conflictsDetected: false };
     }
 
     const conflicts: ResultConflict[] = [];
     const outputs = results.map((r) => r.result.output);
 
     if (areAllStrings(outputs)) {
-      return { output: mergeStrings(outputs), conflicts };
+      return { output: mergeStrings(outputs), conflicts, conflictsDetected: false };
     }
 
     if (areAllObjects(outputs)) {
-      return mergeObjects(results, outputs, this.conflictResolver);
+      return { ...mergeObjects(results, outputs, this.conflictResolver), conflictsDetected: true };
     }
 
     if (areAllArrays(outputs)) {
-      return { output: mergeArrays(outputs), conflicts };
+      return { output: mergeArrays(outputs), conflicts, conflictsDetected: false };
     }
 
     const merged = {
@@ -188,7 +224,7 @@ export class ResultAggregator {
       })),
     };
 
-    return { output: merged, conflicts };
+    return { output: merged, conflicts, conflictsDetected: false };
   }
 }
 
