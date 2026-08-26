@@ -123,6 +123,18 @@ export interface ExpertReviewResult {
   readonly durationMs: number;
   /** Confidence in review (0-1) */
   readonly confidence: number;
+  /**
+   * The expert never produced a verdict — its adapter failed or returned
+   * nothing (#5012).
+   *
+   * `approved` cannot express this. A failed expert used to be recorded as
+   * `approved: true` ("don't block on failures"), so a review in which every
+   * expert failed resolved to `approve` at 100% consensus and was posted to
+   * GitHub as a real APPROVE. Absence of a review is not approval — a consumer
+   * must be able to tell them apart, and `confidence: 0` was already present
+   * and already ignored.
+   */
+  readonly errored?: boolean;
 }
 
 /**
