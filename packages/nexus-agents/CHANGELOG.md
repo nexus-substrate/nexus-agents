@@ -1,5 +1,70 @@
 # nexus-agents
 
+## 4.22.3
+
+### Patch Changes
+
+- [#5007](https://github.com/nexus-substrate/nexus-agents/pull/5007) [`5a74d39`](https://github.com/nexus-substrate/nexus-agents/commit/5a74d39e71f4cab3ed3ef1cb6590650d770ac99c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(learning): stop the feedback bridge fabricating CLI attribution
+
+  The EventBus → OutcomeStore bridge hardcoded `cli: 'claude'` and
+  `category: 'code_generation'` on every `stage.failed` event. `StageFailedEvent`
+  carries no `cli`, so the attribution was invented on every pipeline stage
+  failure — including local gates where no CLI ran at all. Ten such events halve
+  claude's measured success rate in the 20-entry window behind
+  `getCachedCliSuccessRate`, cut up to 0.15 off the reward LinUCB trains on, and
+  after five create an `active` distilled rule that penalises claude at routing
+  time.
+
+  `agent-executor.ts` documents that exact bug ([#2823](https://github.com/nexus-substrate/nexus-agents/issues/2823) — "silently corrupted
+  weather-report + LinUCB cold-start warmStart() with false claude credit on every
+  pipeline run") and skips the record rather than lie. The bridge re-introduced,
+  through the event bus, the record the executor suppresses.
+
+  The CLI is now resolved from the event's `model` (carried since [#4194](https://github.com/nexus-substrate/nexus-agents/issues/4194)) via the
+  model registry, and a failure that cannot be attributed writes nothing. The
+  bridge is also no longer wired into the server: every
+  `emitStageEvent(…, 'failed')` in `agent-executor` is already paired with its own
+  `recordOutcome`, so it was double-counting attributable failures on top of
+  fabricating unattributable ones.
+
+  `createFeedbackSubscriber` stays exported and callable — removing it needed a
+  unanimous vote it did not get (record [#78](https://github.com/nexus-substrate/nexus-agents/issues/78)) — but it can no longer write a record
+  it cannot support.
+
+- [#5019](https://github.com/nexus-substrate/nexus-agents/pull/5019) [`ad7ec1a`](https://github.com/nexus-substrate/nexus-agents/commit/ad7ec1aaa6be44ade2675b6224a74295cfeb5782) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): stop an OSV outage reading as a clean dependency scan
+
+  `runOsvCheck` flat-mapped only `vulnerabilities` off each lookup and discarded
+  the `error` field. `queryOsv` returns `{ vulnerabilities: [], error }` on a
+  non-200 or a timeout, so an unreachable OSV API produced an empty array —
+  byte-identical to a clean scan — and `buildScanSummary` appended "none
+  blocking". The OSV half of the gate could not fail when the network was down.
+
+  The summary now says how many lookups failed instead, and states the
+  denominator the OSV verdict covers: the query is capped at 20 dependencies and
+  `devDependencies` are never queried, neither of which was disclosed.
+
+  This is the claim `run_quality_gate`'s own description makes — "a run in which
+  nothing executed reports verdict 'skip', never 'pass': no evidence is not a
+  pass" — applied to the dimension that was not honouring it.
+
+- [#5013](https://github.com/nexus-substrate/nexus-agents/pull/5013) [`0b0afc2`](https://github.com/nexus-substrate/nexus-agents/commit/0b0afc2950456c561670bb5d059a4d4927e13b3f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(review): stop a PR review where every expert failed from approving
+
+  `createFailedReview` returned `approved: true` — "don't block on failures" — so
+  an expert whose adapter never ran was indistinguishable from one that read the
+  diff and had no objection. With the default three experts and an unavailable
+  adapter, `determineDecision` saw no findings and unanimous approval, resolved to
+  `approve` at 100% consensus, and `postReviewToGitHub` submitted a real APPROVE
+  event on a PR nobody read.
+
+  It also defeated the guard added for exactly this class: `allOf(reviews, …,
+whenEmpty: false)` ([#4581](https://github.com/nexus-substrate/nexus-agents/issues/4581)) refuses to call _zero_ reviews unanimous approval,
+  and three synthetic approvals walked around it by making the list non-empty.
+
+  `ExpertReviewResult` now carries `errored`, a failed expert is `approved: false`,
+  and the decision is computed over experts that produced a verdict — refusing to
+  approve when none did. A HIGH finding on an unreviewed PR still reports
+  `request_changes`, not `comment`.
+
 ## 4.22.2
 
 ### Patch Changes
