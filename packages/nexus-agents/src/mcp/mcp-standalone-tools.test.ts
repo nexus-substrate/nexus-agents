@@ -148,6 +148,45 @@ describe('MCP Standalone Tools Integration', () => {
   });
 
   // --------------------------------------------------------------------------
+  // Output-schema round-trip (#5045)
+  // --------------------------------------------------------------------------
+
+  /**
+   * A response field missing from a tool's declared `outputSchema` does not go
+   * unreported — the SDK validates structured content with
+   * `additionalProperties: false`, so EVERY call fails with -32602 and the tool
+   * becomes unusable. #5044 shipped exactly that and was caught only because
+   * `memory_query` happens to be round-tripped here.
+   *
+   * The tool's own tests cannot see it: they call the registered handler
+   * directly and never cross the protocol. So the guard has to be a real client
+   * call, and the assertion is narrow on purpose — a business failure is fine,
+   * an output-schema violation is not.
+   */
+  const SCHEMA_ROUND_TRIP: readonly { name: string; args: Record<string, unknown> }[] = [
+    { name: 'memory_write', args: { key: 'rt-key', content: 'round-trip', backend: 'session' } },
+    { name: 'research_synthesize', args: {} },
+    { name: 'run_workflow', args: { action: 'list' } },
+    { name: 'research_add', args: { title: 'rt', url: 'https://example.invalid/rt' } },
+  ];
+
+  for (const { name, args } of SCHEMA_ROUND_TRIP) {
+    it(`${name} response satisfies its declared outputSchema`, async () => {
+      let failure = '';
+      try {
+        await ctx.client.callTool({ name, arguments: args });
+      } catch (error: unknown) {
+        failure = error instanceof Error ? error.message : JSON.stringify(error);
+      }
+
+      // A tool may legitimately refuse these arguments; what it may not do is
+      // return structured content its own schema rejects.
+      expect(failure).not.toContain('output schema');
+      expect(failure).not.toContain('-32602');
+    });
+  }
+
+  // --------------------------------------------------------------------------
   // registry_import
   // --------------------------------------------------------------------------
 
