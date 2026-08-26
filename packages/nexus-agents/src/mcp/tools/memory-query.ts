@@ -81,6 +81,55 @@ export interface MemoryQueryResponse {
   count: number;
   /** Source filter applied */
   source: string;
+  /**
+   * Which backends the search could actually reach (#4999).
+   *
+   * `count: 0` used to be the same observation whether nothing matched or the
+   * SQLite-backed stores were absent — every unavailable backend contributes
+   * `[]` silently. A caller asking "do we know anything about X?" was told
+   * "no" when the honest answer was "two of the four stores were not there".
+   */
+  searched: readonly string[];
+  /** Backends skipped because they are not configured on this install. */
+  unavailable: readonly string[];
+}
+
+/**
+ * Which memory backends a query could reach, and which were skipped (#4999).
+ *
+ * `session` and `belief` are always present; the three SQLite-backed stores are
+ * optional and contribute an empty result set when absent — indistinguishable,
+ * before this, from "searched and found nothing".
+ *
+ * Exported for the coverage tests: the whole point is that the response says
+ * which stores answered, so asserting it through the tool is the only check
+ * that means anything.
+ */
+export function describeBackendCoverage(
+  memory: {
+    isAgenticMemoryAvailable(): boolean;
+    isAdaptiveMemoryAvailable(): boolean;
+    isTypedMemoryAvailable(): boolean;
+  },
+  source: string
+): { searched: readonly string[]; unavailable: readonly string[] } {
+  const optional: readonly [string, boolean][] = [
+    ['agentic', memory.isAgenticMemoryAvailable()],
+    ['adaptive', memory.isAdaptiveMemoryAvailable()],
+    ['typed', memory.isTypedMemoryAvailable()],
+  ];
+  const inScope = (name: string): boolean => source === 'all' || source === name;
+
+  const searched: string[] = [];
+  const unavailable: string[] = [];
+  for (const name of ['session', 'belief']) {
+    if (inScope(name)) searched.push(name);
+  }
+  for (const [name, available] of optional) {
+    if (!inScope(name)) continue;
+    (available ? searched : unavailable).push(name);
+  }
+  return { searched, unavailable };
 }
 
 // ============================================================================
@@ -167,12 +216,15 @@ async function executeMemoryQuery(
     reflectionDurationMs: reflection?.durationMs,
   });
 
+  const coverage = describeBackendCoverage(toolMemory, input.source);
   return {
     query: input.query,
     ...(expandedQuery !== undefined ? { expandedQuery } : {}),
     results,
     count: results.length,
     source: input.source,
+    searched: coverage.searched,
+    unavailable: coverage.unavailable,
   };
 }
 

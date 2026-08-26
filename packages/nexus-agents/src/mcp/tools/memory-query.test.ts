@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   MemoryQueryInputSchema,
   registerMemoryQueryTool,
+  describeBackendCoverage,
   type MemoryQueryInput,
 } from './memory-query.js';
 
@@ -32,8 +33,20 @@ vi.mock('../../cli-adapters/factory.js', () => ({
 // Mock getToolMemory at module level
 const mockQueryAll = vi.fn();
 const mockQueryBySource = vi.fn();
+// #4999: the availability accessors are part of the surface memory_query now
+// reads — the response says which backends answered, so a mock without them
+// would make every coverage assertion vacuous.
+const mockAvailability = {
+  isAgenticMemoryAvailable: (): boolean => true,
+  isAdaptiveMemoryAvailable: (): boolean => true,
+  isTypedMemoryAvailable: (): boolean => true,
+};
 vi.mock('./tool-memory.js', () => ({
-  getToolMemory: () => ({ queryAll: mockQueryAll, queryBySource: mockQueryBySource }),
+  getToolMemory: () => ({
+    queryAll: mockQueryAll,
+    queryBySource: mockQueryBySource,
+    ...mockAvailability,
+  }),
 }));
 
 // ============================================================================
@@ -229,6 +242,49 @@ describe('memory-query', () => {
       const parsed = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
       expect(parsed['query']).toBe('simple query');
       expect(parsed['expandedQuery']).toBeUndefined();
+    });
+  });
+});
+
+describe('describeBackendCoverage (#4999)', () => {
+  const allAvailable = {
+    isAgenticMemoryAvailable: (): boolean => true,
+    isAdaptiveMemoryAvailable: (): boolean => true,
+    isTypedMemoryAvailable: (): boolean => true,
+  };
+  const noneAvailable = {
+    isAgenticMemoryAvailable: (): boolean => false,
+    isAdaptiveMemoryAvailable: (): boolean => false,
+    isTypedMemoryAvailable: (): boolean => false,
+  };
+
+  it('names the SQLite backends that are not installed', () => {
+    // `count: 0` was the same observation whether nothing matched or three of
+    // the five stores were absent — each unavailable backend contributes `[]`
+    // silently. A caller asking "do we know anything about X?" was told "no".
+    const coverage = describeBackendCoverage(noneAvailable, 'all');
+
+    expect(coverage.searched).toEqual(['session', 'belief']);
+    expect(coverage.unavailable).toEqual(['agentic', 'adaptive', 'typed']);
+  });
+
+  it('reports every backend searched when all are installed', () => {
+    // The pair: a complete install must not report phantom gaps.
+    const coverage = describeBackendCoverage(allAvailable, 'all');
+
+    expect(coverage.searched).toEqual(['session', 'belief', 'agentic', 'adaptive', 'typed']);
+    expect(coverage.unavailable).toEqual([]);
+  });
+
+  it('scopes coverage to a single requested source', () => {
+    // Asking for one backend must not claim the others were searched.
+    expect(describeBackendCoverage(allAvailable, 'belief')).toEqual({
+      searched: ['belief'],
+      unavailable: [],
+    });
+    expect(describeBackendCoverage(noneAvailable, 'agentic')).toEqual({
+      searched: [],
+      unavailable: ['agentic'],
     });
   });
 });
