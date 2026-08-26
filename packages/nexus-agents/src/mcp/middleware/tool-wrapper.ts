@@ -17,6 +17,7 @@ import type { TimeoutConfig, SecurityConfig } from '../../config/schemas.js';
 import type { IPolicyFirewall, ExecutionMode } from './policy.js';
 import type { RateLimiterConfig } from './rate-limiter.js';
 import { RateLimiter } from './rate-limiter.js';
+import { VERSION } from '../../version.js';
 import {
   withMiddleware,
   createMiddlewareFactory,
@@ -294,10 +295,41 @@ function runWithContexts(
 export function toSdkCallback(
   handler: ToolHandler
 ): (args: unknown, extra: unknown) => Promise<SdkToolResult> {
-  return (args: unknown, extra: unknown) => {
+  return async (args: unknown, extra: unknown) => {
     const progressCtx = extractProgressContext(extra);
     const signal = (extra as SdkExtra | undefined)?.signal;
-    return runWithContexts(handler, args, progressCtx, signal);
+    const result = await runWithContexts(handler, args, progressCtx, signal);
+    return stampBuild(result);
+  };
+}
+
+/**
+ * `_meta` key naming the build that produced a tool result (#5008).
+ *
+ * The MCP server a client is talking to is routinely a pinned global install
+ * rather than the working tree, so a result read as evidence about "the
+ * current code" could be answering from a months-old build with nothing in the
+ * response to say so.
+ *
+ * It rides in `_meta` for the same reason the error envelope does (#2649):
+ * `structuredContent` is validated against the tool's `outputSchema` with
+ * `additionalProperties: false`, so an undeclared field there fails every call
+ * with -32602 (#5044/#5045). `_meta` is the spec's out-of-band channel and is
+ * never schema-validated.
+ */
+export const BUILD_META_KEY = 'nexus-agents/build';
+
+/**
+ * Attaches the build stamp, preserving any `_meta` the handler already set.
+ *
+ * Applied here rather than in the result factories because this is the single
+ * point every registered tool passes through — a tool that builds its result
+ * by hand is stamped too.
+ */
+function stampBuild(result: SdkToolResult): SdkToolResult {
+  return {
+    ...result,
+    _meta: { ...result._meta, [BUILD_META_KEY]: { version: VERSION } },
   };
 }
 
