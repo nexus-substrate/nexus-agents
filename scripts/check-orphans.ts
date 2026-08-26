@@ -246,13 +246,18 @@ export function isAllowlisted(
 /** Coerce a parsed knip JSON value into the array shape we expect.
  *  Knip can emit either a top-level array or an object with `issues` array
  *  depending on version + reporter mode. Defensively normalize. */
-function normalizeKnipJson(parsed: unknown): readonly KnipIssue[] {
+function normalizeKnipJson(parsed: unknown): readonly KnipIssue[] | undefined {
   if (Array.isArray(parsed)) return parsed as readonly KnipIssue[];
   if (parsed !== null && typeof parsed === 'object' && 'issues' in parsed) {
     const inner = parsed.issues;
     if (Array.isArray(inner)) return inner as readonly KnipIssue[];
   }
-  return [];
+  // #5034: `undefined`, not `[]`. An unrecognised shape is knip telling us
+  // something we cannot read — the reporter-change case this whole check
+  // exists for — and returning an empty issue list made it indistinguishable
+  // from a clean scan. The doc above says the shape varies by version and
+  // reporter mode, which is exactly why this branch must not report health.
+  return undefined;
 }
 
 /**
@@ -283,7 +288,15 @@ export function classifyKnipOutput(stdout: string): KnipRun {
     return { issues: [], ran: false, reason: 'knip produced no output' };
   }
   try {
-    return { issues: normalizeKnipJson(JSON.parse(stdout)), ran: true };
+    const issues = normalizeKnipJson(JSON.parse(stdout));
+    if (issues === undefined) {
+      return {
+        issues: [],
+        ran: false,
+        reason: 'knip output was JSON but not a recognised reporter shape',
+      };
+    }
+    return { issues, ran: true };
   } catch (error: unknown) {
     return {
       issues: [],
