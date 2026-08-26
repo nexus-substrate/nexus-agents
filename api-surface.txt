@@ -965,6 +965,7 @@ InterfaceDeclaration BudgetRouterOptions
 InterfaceDeclaration BudgetRoutingResult
   readonly adapter: ICliAdapter | null
   readonly estimatedCostUsd: number
+  readonly estimatedLatencyMs?: number | undefined
   readonly estimatedTokens: number
   readonly projectedBudget: SessionBudget
   readonly warnings: readonly BudgetWarning[]

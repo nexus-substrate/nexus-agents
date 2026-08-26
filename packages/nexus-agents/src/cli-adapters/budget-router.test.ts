@@ -196,6 +196,40 @@ describe('BudgetRouter', () => {
       expect(result.withinBudget).toBe(false);
     });
 
+    it('rejects a task whose fastest candidate exceeds maxLatencyMs (#4907)', () => {
+      // `maxLatencyMs` was Zod-validated, defaulted, and copied from routing
+      // YAML — and read by nothing. No input could make it bind, so a consumer
+      // reporting "no latency violations" reported the absence of a check.
+      // The fastest entry in DEFAULT_COST_MODELS is codex at 1000ms.
+      const task: CliTask = { content: 'Test task' };
+
+      const result = router.checkBudget(task, { maxLatencyMs: 500 });
+
+      expect(result.withinBudget).toBe(false);
+      expect(result.adapter).toBeNull();
+    });
+
+    it('admits a task whose candidate meets maxLatencyMs (#4907)', () => {
+      // The pair: 5000ms clears every profile in the table, so the constraint
+      // is being evaluated rather than always failing.
+      const task: CliTask = { content: 'Test task' };
+
+      const result = router.checkBudget(task, { maxLatencyMs: 5000 });
+
+      expect(result.withinBudget).toBe(true);
+      expect(result.adapter).not.toBeNull();
+    });
+
+    it('reports estimatedLatencyMs as unmeasured when no candidate fits', () => {
+      // Naming the empty case: with no adapter selected there is no latency to
+      // report, and 0 would read as instantaneous.
+      const task: CliTask = { content: 'Test task' };
+
+      const result = router.checkBudget(task, { maxLatencyMs: 1 });
+
+      expect(result.estimatedLatencyMs).toBeUndefined();
+    });
+
     it('should project budget after task', () => {
       const task: CliTask = { content: 'Test task' };
 
