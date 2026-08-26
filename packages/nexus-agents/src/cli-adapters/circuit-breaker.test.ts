@@ -154,6 +154,31 @@ describe('CliCircuitBreaker', () => {
       expect(breaker.getState()).toBe('half-open');
     });
 
+    it('does not restamp lastFailureTime for a failure recorded while open (#5034)', () => {
+      // Pins the early return specifically. The two halves of the #5011 fix are
+      // individually sufficient — with `lastFailureTime` frozen the window
+      // reads the same from either field — so the recovery test above passes
+      // with EITHER half reverted. This assertion fails only if the early
+      // return goes, which is what makes the pair separable.
+      const before = breaker.getSnapshot().lastFailureTime;
+
+      vi.advanceTimersByTime(1_000);
+      breaker.recordFailure('unknown');
+
+      expect(breaker.getSnapshot().lastFailureTime).toBe(before);
+    });
+
+    it('does not count a failure recorded while open (#5034)', () => {
+      // `failureCount` drives the closed-state threshold and is reset on the
+      // transition back to closed, so counting failures during the open window
+      // measures nothing — and `getSnapshot()` exposes the field.
+      const before = breaker.getSnapshot().failureCount;
+
+      breaker.recordFailure('unknown');
+
+      expect(breaker.getSnapshot().failureCount).toBe(before);
+    });
+
     it('does not re-probe before the window has elapsed', () => {
       // The pair: fixing the restart must not make the circuit probe early.
       expect(breaker.getState()).toBe('open');
