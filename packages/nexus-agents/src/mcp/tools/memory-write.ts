@@ -113,9 +113,14 @@ async function writeToBelief(
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   const countBefore = toolMemory.getBeliefCount();
-  await toolMemory.recordBelief(key, 'has_knowledge', content, confidence);
-  const countAfter = toolMemory.getBeliefCount();
-  const deduplicated = countAfter === countBefore;
+  const outcome = await toolMemory.recordBelief(key, 'has_knowledge', content, confidence);
+  if (!outcome.persisted) {
+    return { success: false, backend: 'belief', key, error: outcome.reason };
+  }
+  // An unchanged count after a PERSISTED retain means the triple was already
+  // held. Before #4997 the count was the only signal, so a rejected write and a
+  // deduplicated one were the same observation.
+  const deduplicated = toolMemory.getBeliefCount() === countBefore;
   return { success: true, backend: 'belief', key, ...(deduplicated ? { deduplicated: true } : {}) };
 }
 
@@ -137,10 +142,13 @@ async function writeToAgentic(
       error: 'Agentic memory backend unavailable (requires SQLite)',
     };
   }
-  await toolMemory.recordKnowledge(key, content, {
+  const outcome = await toolMemory.recordKnowledge(key, content, {
     importance: confidence,
     tags: metadata !== undefined ? Object.keys(metadata) : [],
   });
+  if (!outcome.persisted) {
+    return { success: false, backend: 'agentic', key, error: outcome.reason };
+  }
   return { success: true, backend: 'agentic', key };
 }
 
@@ -162,7 +170,10 @@ async function writeToAdaptive(
     };
   }
   const importance = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5;
-  await toolMemory.storeAdaptive(key, content, importance);
+  const outcome = await toolMemory.storeAdaptive(key, content, importance);
+  if (!outcome.persisted) {
+    return { success: false, backend: 'adaptive', key, error: outcome.reason };
+  }
   return { success: true, backend: 'adaptive', key };
 }
 
@@ -184,7 +195,10 @@ async function writeToTyped(
     };
   }
   const importance = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
-  await toolMemory.storeTyped(key, content, importance);
+  const outcome = await toolMemory.storeTyped(key, content, importance);
+  if (!outcome.persisted) {
+    return { success: false, backend: 'typed', key, error: outcome.reason };
+  }
   return { success: true, backend: 'typed', key };
 }
 
@@ -201,24 +215,39 @@ const MAX_DEDUP_CACHE = 200;
  * Session-level dedup: prevent writing the same key+content twice.
  * Returns true if this is a duplicate that should be skipped.
  */
-function isDuplicateWrite(key: string, content: string): boolean {
-  const cacheKey = `${key}::${content.slice(0, 100)}`;
-  if (recentWriteKeys.has(cacheKey)) return true;
-  // Prune if cache is too large
+function dedupCacheKey(input: MemoryWriteInput): string {
+  // #4997: the backend is part of the identity. Without it, writing the same
+  // key+content to `session` and then to `belief` reported the second as
+  // `deduplicated: true` while the belief store never received it.
+  return `${input.backend}::${input.key}::${input.content}`;
+}
+
+function isDuplicateWrite(input: MemoryWriteInput): boolean {
+  return recentWriteKeys.has(dedupCacheKey(input));
+}
+
+/**
+ * Remembers a write that actually landed (#4997).
+ *
+ * Recording it before dispatch cached intent rather than persistence: a write
+ * that failed still populated the cache, so the identical retry came back
+ * `success: true, deduplicated: true` — the tool asserting the content was
+ * already stored when nothing had ever stored it.
+ */
+function rememberWrite(input: MemoryWriteInput): void {
   if (recentWriteKeys.size >= MAX_DEDUP_CACHE) {
     const firstKey = recentWriteKeys.keys().next().value;
     if (firstKey !== undefined) recentWriteKeys.delete(firstKey);
   }
-  recentWriteKeys.set(cacheKey, new Date().toISOString());
-  return false;
+  recentWriteKeys.set(dedupCacheKey(input), new Date().toISOString());
 }
 
 async function executeMemoryWrite(
   input: MemoryWriteInput,
   logger: ILogger
 ): Promise<MemoryWriteResponse> {
-  // Session-level dedup: skip if same key+content was written recently
-  if (isDuplicateWrite(input.key, input.content)) {
+  // Session-level dedup: skip if the same key+content reached this backend
+  if (isDuplicateWrite(input)) {
     logger.debug('Skipping duplicate memory write', { key: input.key, backend: input.backend });
     return { success: true, backend: input.backend, key: input.key, deduplicated: true };
   }
@@ -229,6 +258,13 @@ async function executeMemoryWrite(
     contentLength: input.content.length,
   });
 
+  const response = await dispatchWrite(input);
+  // Only a write that landed is worth deduplicating against.
+  if (response.success) rememberWrite(input);
+  return response;
+}
+
+async function dispatchWrite(input: MemoryWriteInput): Promise<MemoryWriteResponse> {
   switch (input.backend) {
     case 'session':
       return writeToSession(input.key, input.content, input.confidence);
