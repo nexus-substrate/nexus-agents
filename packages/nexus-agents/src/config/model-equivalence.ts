@@ -59,3 +59,56 @@ export function countDistinctModels(modelIds: readonly string[]): number {
   }
   return distinct.size;
 }
+
+/**
+ * What a {@link ResilientAdapter} reports as its `modelId` before lazy
+ * detection (#811) resolves a concrete CLI behind it.
+ *
+ * It is a placeholder, not a model. The distinction matters because
+ * {@link countDistinctModels} treats two identical unrecognised strings as one
+ * model — true of two adapters configured alike, false of two adapters that
+ * have merely not looked yet.
+ */
+export const UNRESOLVED_MODEL_ID = 'pending-detection';
+
+/**
+ * Whether a voter panel's roles run on genuinely different models.
+ *
+ * `unmeasured` is a distinct outcome rather than a defaulted `diverse` or
+ * `collapsed`: a panel nobody could measure is not a healthy panel and not a
+ * correlated one, and reporting either would be inventing a measurement
+ * (#4983).
+ */
+export type PanelIndependence =
+  | { readonly kind: 'unmeasured'; readonly unresolved: number; readonly total: number }
+  | { readonly kind: 'collapsed'; readonly model: string }
+  | { readonly kind: 'diverse'; readonly distinct: number };
+
+/**
+ * Classifies a panel from the model ids its role adapters report.
+ *
+ * Any unresolved id makes the whole panel unmeasured. Concluding from the
+ * resolved subset would be guessing: two resolved ids that collide say nothing
+ * about the arm that has not reported yet.
+ */
+export function assessPanelIndependence(
+  modelIds: readonly (string | undefined)[]
+): PanelIndependence {
+  // `undefined` is in the input type because real adapters supply it: the
+  // interface declares `modelId: string`, but an adapter constructed without
+  // one reports undefined at runtime, and this runs AFTER the votes are in —
+  // a diagnostic that throws here would discard a completed panel's results.
+  const resolved = modelIds.filter(
+    (id): id is string => typeof id === 'string' && id !== '' && id !== UNRESOLVED_MODEL_ID
+  );
+  const unresolved = modelIds.length - resolved.length;
+  // An empty panel is unmeasured, not diverse — `countDistinctModels([])` is 0,
+  // which would otherwise slip past the `=== 1` collapse test and report the
+  // absence of any adapter as a healthy spread.
+  if (unresolved > 0 || modelIds.length === 0) {
+    return { kind: 'unmeasured', unresolved, total: modelIds.length };
+  }
+  const distinct = countDistinctModels(resolved);
+  if (distinct === 1) return { kind: 'collapsed', model: resolved[0] ?? '' };
+  return { kind: 'diverse', distinct };
+}
