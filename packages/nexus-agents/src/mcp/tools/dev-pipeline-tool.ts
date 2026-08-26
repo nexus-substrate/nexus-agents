@@ -317,6 +317,12 @@ function buildStructuredOutput(
     // here, so they never reached the MCP surface.
     ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
     ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
+    // #4993 added `dryRun` to DevPipelineResult for exactly the reason above —
+    // it says `completed: false` was the request, not a fault — and then did
+    // not list it here either. Same omission, same function, under the comment
+    // describing it. A live `run_dev_pipeline({ dryRun: true })` came back with
+    // no way to tell a successful dry run from a failed pipeline.
+    ...(result.dryRun !== undefined ? { dryRun: result.dryRun } : {}),
     voteIterations: result.voteIterations,
     qaIterations: result.qaIterations,
     plan: result.plan,
