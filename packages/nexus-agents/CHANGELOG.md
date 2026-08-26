@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 4.19.1
+
+### Patch Changes
+
+- [#4974](https://github.com/nexus-substrate/nexus-agents/pull/4974) [`35cdea6`](https://github.com/nexus-substrate/nexus-agents/commit/35cdea6c37da5224d073eb0cddb945d5ae1fb689) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - make `run_workflow`'s idempotency key reachable, and stop hand-copied tool schemas drifting
+
+  `RunWorkflowInputSchema` declares `idempotencyKey` and the dispatcher reads it,
+  but the schema registered with MCP was a hand-written mirror that omitted it —
+  so the SDK stripped the field, every async dispatch minted a fresh jobId, and
+  the replay and collision envelopes could never fire. Registering the internal
+  shape fixes it and removes the second list.
+
+  This is the second instance in a week: `consensus_vote` omitted `mode` the same
+  way, killing its entire async path. Both mirrors had passing test suites. A new
+  test now scans every tool that calls `runAsJob` and refuses a registration that
+  is not derived from a schema's `.shape`, with the three remaining mirrors on an
+  allowlist that can only shrink — an entry must be removed once its tool is
+  converted, so the list cannot quietly become permission.
+
 ## 4.19.0
 
 ### Minor Changes
