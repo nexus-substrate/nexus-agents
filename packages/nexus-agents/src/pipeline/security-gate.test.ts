@@ -6,6 +6,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { checkSecurityScan } from './security-gate.js';
 
 // Mock the security scan to avoid needing semgrep
+const queryOsvBatchMock = vi.fn();
+vi.mock('../security/osv-lookup.js', () => ({
+  queryOsvBatch: (deps: unknown): unknown => queryOsvBatchMock(deps),
+}));
+
 vi.mock('../mcp/tools/security-scan.js', () => ({
   executeSecurityScan: vi.fn(),
 }));
@@ -163,5 +168,38 @@ describe('checkSecurityScan', () => {
     // because its verdict went missing (fail-safe). Pre-#2933 the count was 1.
     expect(result.verdict).toBe('fail');
     expect(result.details).toContain('2 confirmed blocking');
+  });
+});
+
+describe('OSV lookup failures are not a clean scan (#5018)', () => {
+  const cleanScan = { scanner: 'semgrep', totalFindings: 0, findings: [] };
+
+  it('says OSV was not checked when the lookups errored', async () => {
+    // `queryOsv` returns `{ vulnerabilities: [], error: 'HTTP 503' }` on a
+    // non-200 or a timeout. `runOsvCheck` flat-mapped only `vulnerabilities`,
+    // so an unreachable OSV API was byte-identical to a clean dependency scan
+    // and the summary said "none blocking".
+    mockScan.mockResolvedValue(cleanScan as never);
+    queryOsvBatchMock.mockResolvedValue([
+      { packageName: 'left-pad', vulnerabilities: [], error: 'HTTP 503' },
+    ]);
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: true })();
+
+    expect(result.details).toContain('OSV not checked');
+    expect(result.details).not.toContain('none blocking');
+  });
+
+  it('still says none blocking when OSV genuinely found nothing', async () => {
+    // The pair: a real clean result must not be reported as unchecked.
+    mockScan.mockResolvedValue(cleanScan as never);
+    queryOsvBatchMock.mockResolvedValue([
+      { packageName: 'left-pad', vulnerabilities: [], error: null },
+    ]);
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: true })();
+
+    expect(result.details).toContain('none blocking');
+    expect(result.details).not.toContain('OSV not checked');
   });
 });
