@@ -4,41 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isPathSafe, normalizePath, extractPathFromArgs } from './policy-helpers.js';
-
-// ============================================================================
-// normalizePath
-// ============================================================================
-
-describe('normalizePath', () => {
-  it('removes trailing slashes', () => {
-    expect(normalizePath('/tmp/foo/')).toBe('/tmp/foo');
-  });
-
-  it('removes multiple trailing slashes', () => {
-    expect(normalizePath('/tmp/foo///')).toBe('/tmp/foo');
-  });
-
-  it('handles dot path', () => {
-    expect(normalizePath('.')).toBe('/');
-  });
-
-  it('handles relative path with ./', () => {
-    expect(normalizePath('./src/main.ts')).toBe('/src/main.ts');
-  });
-
-  it('adds leading slash to non-absolute paths', () => {
-    expect(normalizePath('src/main.ts')).toBe('/src/main.ts');
-  });
-
-  it('preserves absolute paths', () => {
-    expect(normalizePath('/home/user/project')).toBe('/home/user/project');
-  });
-
-  it('handles empty string', () => {
-    expect(normalizePath('')).toBe('/');
-  });
-});
+import { isPathSafe, extractPathFromArgs } from './policy-helpers.js';
 
 // ============================================================================
 // isPathSafe

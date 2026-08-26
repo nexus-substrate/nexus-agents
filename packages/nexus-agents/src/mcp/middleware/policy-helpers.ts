@@ -38,32 +38,6 @@ export function isPathSafe(targetPath: string, allowedPaths: readonly string[]):
 }
 
 /**
- * Normalizes a path by removing trailing slashes and handling relative paths.
- *
- * NOT a containment primitive: `normalizePath('./')` is `'/'`, which is why
- * {@link isPathSafe} no longer uses it (#5025). Kept for display/comparison of
- * path-like strings where the root semantics do not matter.
- */
-export function normalizePath(p: string): string {
-  // Remove trailing slashes
-  let normalized = p.replace(/\/{1,100}$/, '');
-
-  // Handle relative paths
-  if (normalized === '.') {
-    normalized = '';
-  } else if (normalized.startsWith('./')) {
-    normalized = normalized.slice(2);
-  }
-
-  // Ensure absolute-like comparison
-  if (!normalized.startsWith('/')) {
-    normalized = '/' + normalized;
-  }
-
-  return normalized;
-}
-
-/**
  * Extracts path from tool arguments if present.
  */
 export function extractPathFromArgs(args: unknown): string | undefined {
