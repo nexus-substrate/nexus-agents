@@ -264,6 +264,8 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         healthy: versionStatus !== 'unsupported' && versionStatus !== 'breaking',
         version,
         versionStatus,
+        // The binary answered `--version`, whatever it said (#5060).
+        reachable: true,
         lastChecked: new Date(getTimeProvider().now()),
         ...(message !== undefined && { message }),
       };
@@ -274,6 +276,8 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         healthy: false,
         version: 'unknown',
         versionStatus: 'unsupported',
+        // `getVersion` could not run the binary — absent, not merely outdated.
+        reachable: false,
         message: error instanceof Error ? error.message : 'Health check failed',
         lastChecked: new Date(getTimeProvider().now()),
       };

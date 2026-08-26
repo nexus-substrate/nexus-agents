@@ -217,6 +217,9 @@ export class ModelToCliAdapter implements ICliAdapter {
       healthy: valid.ok,
       version: 'api',
       versionStatus: 'supported',
+      // In-process API adapter: there is no binary to be missing, so it is
+      // always reachable and only its config can be wrong (#5060).
+      reachable: true,
       lastChecked: new Date(0),
       ...(valid.ok ? {} : { message: valid.error.message }),
     });

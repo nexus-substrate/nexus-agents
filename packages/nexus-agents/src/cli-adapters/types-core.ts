@@ -179,6 +179,20 @@ export interface HealthStatus {
   readonly versionStatus: VersionStatus;
   /** Optional message (e.g., upgrade recommendation) */
   readonly message?: string;
+  /**
+   * Whether the underlying CLI could be reached at all (#5060).
+   *
+   * `healthCheck` catches its own failures and returns rather than throwing, so
+   * a `healthy: false` result covers two very different states: the binary ran
+   * and reported an unsupported version, or the binary could not be run at all
+   * (`spawn ENOENT`). Both arrive as `versionStatus: 'unsupported'`, and a
+   * consumer reading only `healthy` told users to authenticate a CLI they had
+   * not installed.
+   *
+   * Absent means the producer predates the distinction — unknown, not
+   * unreachable. Consumers should treat `reachable !== false` as "present".
+   */
+  readonly reachable?: boolean;
   /** Last successful health check */
   readonly lastChecked: Date;
 }

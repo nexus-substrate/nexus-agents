@@ -58,16 +58,18 @@ async function getCliAvailability(): Promise<readonly CliAvailability[]> {
       continue;
     }
 
-    try {
-      const health = await adapter.healthCheck();
-      results.push({
-        name,
-        available: true,
-        authenticated: health.healthy,
-      });
-    } catch {
-      results.push({ name, available: false, authenticated: false });
-    }
+    // #5060: `available: true` used to be written unconditionally, and
+    // `healthCheck` does not throw — it catches and returns. So a CLI whose
+    // binary is absent showed as installed-but-unauthenticated, and the demo
+    // told the user to run `auth login` for something they did not have.
+    // `reachable` absent means an older producer that cannot say; treat that
+    // as present rather than inventing an absence.
+    const health = await adapter.healthCheck();
+    results.push({
+      name,
+      available: health.reachable !== false,
+      authenticated: health.healthy,
+    });
   }
 
   cliAvailabilityCache = results;

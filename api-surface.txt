@@ -4177,6 +4177,7 @@ InterfaceDeclaration HealthStatus
   readonly healthy: boolean
   readonly lastChecked: Date
   readonly message?: string | undefined
+  readonly reachable?: boolean | undefined
   readonly version: string
   readonly versionStatus: VersionStatus
 InterfaceDeclaration HierarchicalOptions
