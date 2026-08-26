@@ -1,5 +1,63 @@
 # nexus-agents
 
+## 4.21.0
+
+### Minor Changes
+
+- [#4980](https://github.com/nexus-substrate/nexus-agents/pull/4980) [`24e75cc`](https://github.com/nexus-substrate/nexus-agents/commit/24e75ccc165cfab3bfd45dbbd3a3ba363942750b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - tell a poller when a job will never settle
+
+  `runAsJob` writes a durable `pending` record and runs the body as a detached
+  in-process promise. If the process dies mid-body no terminal writer runs, and
+  `writeJobPending` refuses to overwrite an existing file — so the record stays
+  `pending` forever and `get_job_result` tells the caller to keep waiting on work
+  that no longer exists.
+
+  The response now carries `abandoned` when a `pending` record has outlived the
+  `async-job-body` runaway guard. That anchor is objective rather than a chosen
+  timeout: a live job cannot still be pending past the guard, because the guard
+  would already have recorded it `failed`.
+
+  The record itself is left saying `pending`. It is evidence of what was
+  observed, and rewriting it on read would destroy that — the qualifier goes on
+  the response, the same treatment `notVerified` gives an audit chain that
+  verified nothing.
+
+  This is the caller-facing half of the lifecycle gap. A reaper and a retention
+  policy are still needed, and the retention window is a real trade between disk
+  and auditability rather than something to pick silently.
+
+### Patch Changes
+
+- [#4984](https://github.com/nexus-substrate/nexus-agents/pull/4984) [`1e9129e`](https://github.com/nexus-substrate/nexus-agents/commit/1e9129eaefb67d1282ff3d61be3bf30d765618e5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(vote): stop the panel-correlation warning firing on placeholder model ids
+
+  The [#4390](https://github.com/nexus-substrate/nexus-agents/issues/4390) check asked whether every voter was running the same model by
+  comparing the adapters' `modelId` at assignment time. Adapter detection is lazy
+  ([#811](https://github.com/nexus-substrate/nexus-agents/issues/811)), so at that point all of them report the same `pending-detection`
+  placeholder — which reads as one model. The warning fired on every CLI-path
+  vote, and a panel that genuinely had collapsed onto one model produced the
+  identical line. Both directions were wrong, and the second is the one that
+  matters: the safeguard could not distinguish the condition it exists to catch.
+
+  `assessPanelIndependence` now returns `unmeasured` / `collapsed` / `diverse`
+  instead of a boolean, so an unresolved panel is neither accused nor cleared, and
+  the real judgement moved to after the votes are collected — the first moment the
+  adapters have actually resolved. An empty panel is `unmeasured` rather than
+  `diverse`, since no adapters is not a healthy spread.
+
+  The gateway path is unaffected: its adapters are built from a probed model
+  catalog and carry real ids from construction.
+
+- [#4985](https://github.com/nexus-substrate/nexus-agents/pull/4985) [`30b13f5`](https://github.com/nexus-substrate/nexus-agents/commit/30b13f594121f6b967f45ddaf36a5826c504ac04) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(routing): pin the warm-start skip log levels at the seam
+
+  `warmStartSkipLogs` decides which skip bucket is a `warn` and which is a
+  `debug`, and is unit-tested. Whether `warmStart` honours that decision was not:
+  collapsing the mapping to a single `logger.warn` left the entire suite green, so
+  the drowned-signal regression [#4904](https://github.com/nexus-substrate/nexus-agents/issues/4904) fixed could return unnoticed.
+
+  Asserted on the bytes the process actually writes at the default `info` level
+  rather than through a mocked logger — that `debug` is dropped is the behaviour
+  being protected, and a mock would assert the intent instead of the outcome.
+
 ## 4.20.0
 
 ### Minor Changes
