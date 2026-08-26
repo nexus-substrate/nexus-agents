@@ -1,8 +1,8 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
-fix(mcp): `memory_query` says when a backend threw instead of reporting an empty result
+feat(mcp): `memory_query` says when a backend threw instead of reporting an empty result
 
 Each per-backend query helper catches its own error, logs at debug, and returns
 `[]`. The empty array is right — partial results beat none — but it left a
