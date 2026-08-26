@@ -898,7 +898,11 @@ export class ToolMemoryManager {
    * Returns results from SessionMemory, BeliefMemory, AgenticMemory, and TypedMemory
    * with source attribution and relevance scoring.
    */
-  async queryAll(query: string, limit = 10): Promise<readonly UnifiedMemoryResult[]> {
+  async queryAll(
+    query: string,
+    limit = 10,
+    errored?: (source: string) => void
+  ): Promise<readonly UnifiedMemoryResult[]> {
     // Wait for SQLite backends to finish initializing before querying (#794 pattern)
     if (this.initPromise !== null) {
       await this.initPromise;
@@ -912,12 +916,34 @@ export class ToolMemoryManager {
     const perSource = Math.ceil(limit / sourceCount);
     const results = [
       ...this.querySessionMemory(query, keywords, perSource),
-      ...(await this.queryBeliefMemory(query, keywords, perSource)),
-      ...(await this.queryAgenticMemory(query, keywords, perSource)),
-      ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2))),
-      ...(await this.queryAdaptiveMemory(query, keywords, perSource)),
+      ...(await this.queryBeliefMemory(query, keywords, perSource, () => errored?.('belief'))),
+      ...(await this.queryAgenticMemory(query, keywords, perSource, () => errored?.('agentic'))),
+      ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2), () =>
+        errored?.('typed')
+      )),
+      ...(await this.queryAdaptiveMemory(query, keywords, perSource, () => errored?.('adaptive'))),
     ];
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+  }
+
+  /**
+   * `queryBySource`, plus the names of the backends that threw while answering (#4999).
+   *
+   * Each per-backend helper swallows its error and contributes `[]`, so a store
+   * that failed is invisible in the merged result set — indistinguishable from
+   * one that simply matched nothing. Callers that report coverage need the
+   * difference, and only this variant can tell them. Single-source queries get
+   * the same treatment as `'all'` — a corrupt store must not read as an empty
+   * one whichever way it was asked.
+   */
+  async queryWithStatus(
+    source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive' | 'all',
+    query: string,
+    limit = 10
+  ): Promise<{ results: readonly UnifiedMemoryResult[]; errored: readonly string[] }> {
+    const failures = new Set<string>();
+    const results = await this.queryBySource(source, query, limit, (name) => failures.add(name));
+    return { results, errored: [...failures] };
   }
 
   /**
@@ -928,10 +954,11 @@ export class ToolMemoryManager {
   async queryBySource(
     source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive' | 'all',
     query: string,
-    limit = 10
+    limit = 10,
+    errored?: (source: string) => void
   ): Promise<readonly UnifiedMemoryResult[]> {
     if (source === 'all') {
-      return this.queryAll(query, limit);
+      return this.queryAll(query, limit, errored);
     }
     // Wait for SQLite backends to finish initializing
     if (this.initPromise !== null) {
@@ -948,16 +975,18 @@ export class ToolMemoryManager {
         results = this.querySessionMemory(query, keywords, limit);
         break;
       case 'belief':
-        results = await this.queryBeliefMemory(query, keywords, limit);
+        results = await this.queryBeliefMemory(query, keywords, limit, () => errored?.('belief'));
         break;
       case 'agentic':
-        results = await this.queryAgenticMemory(query, keywords, limit);
+        results = await this.queryAgenticMemory(query, keywords, limit, () => errored?.('agentic'));
         break;
       case 'typed':
-        results = await this.queryTypedMemory(query, keywords, limit);
+        results = await this.queryTypedMemory(query, keywords, limit, () => errored?.('typed'));
         break;
       case 'adaptive':
-        results = await this.queryAdaptiveMemory(query, keywords, limit);
+        results = await this.queryAdaptiveMemory(query, keywords, limit, () =>
+          errored?.('adaptive')
+        );
         break;
     }
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
@@ -977,39 +1006,55 @@ export class ToolMemoryManager {
   private async queryBeliefMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
-    return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, this.log);
+    return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryAgenticMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.agentic === null) return [];
 
-    return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, this.log);
+    return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryTypedMemory(
     query: string,
     keywords: readonly string[],
-    limitPerType: number
+    limitPerType: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.typed === null) return [];
 
-    return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, this.log);
+    return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryAdaptiveMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.adaptive === null) return [];
 
-    return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, this.log);
+    return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   // ==========================================================================

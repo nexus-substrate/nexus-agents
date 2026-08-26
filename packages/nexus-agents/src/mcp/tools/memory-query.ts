@@ -92,6 +92,14 @@ export interface MemoryQueryResponse {
   searched: readonly string[];
   /** Backends skipped because they are not configured on this install. */
   unavailable: readonly string[];
+  /**
+   * Backends that were installed and threw while answering (#4999).
+   *
+   * Distinct from `unavailable`: the store is here, it just could not answer.
+   * Each helper swallows its own failure into an empty result set, so without
+   * this a corrupted SQLite file read exactly like a store with no matches.
+   */
+  errored: readonly string[];
 }
 
 /**
@@ -205,7 +213,11 @@ async function executeMemoryQuery(
     logger
   );
 
-  const results = await toolMemory.queryBySource(input.source, effectiveQuery, input.limit);
+  // #4999: the same search, with the failures each backend swallows collected
+  // instead of discarded. `errored` therefore always means "observed to throw",
+  // never "not checked" — on the single-source path as much as on 'all'.
+  const searchResult = await toolMemory.queryWithStatus(input.source, effectiveQuery, input.limit);
+  const results = searchResult.results;
 
   logger.debug('Memory query executed', {
     query: input.query,
@@ -225,6 +237,7 @@ async function executeMemoryQuery(
     source: input.source,
     searched: coverage.searched,
     unavailable: coverage.unavailable,
+    errored: searchResult.errored,
   };
 }
 
@@ -305,6 +318,7 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
     // because they call the handler directly and never cross the protocol.
     searched: z.array(z.string()),
     unavailable: z.array(z.string()),
+    errored: z.array(z.string()),
   };
 
   server.registerTool(

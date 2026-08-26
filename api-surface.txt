@@ -5336,6 +5336,7 @@ VariableDeclaration MemoryQueryInputSchema
   : z.ZodObject<{ limit: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; query: z.ZodString; source: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ adaptive: "adaptive"; agentic: "agentic"; all: "all"; belief: "belief"; session: "session"; typed: "typed"; }>>>; }, z.core.$strip>
 InterfaceDeclaration MemoryQueryResponse
   count: number
+  errored: readonly string[]
   expandedQuery?: string | undefined
   query: string
   results: readonly UnifiedMemoryResult[]

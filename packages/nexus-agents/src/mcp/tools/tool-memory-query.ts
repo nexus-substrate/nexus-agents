@@ -60,33 +60,67 @@ export function querySessionMemory(
   }));
 }
 
+/**
+ * Logging + failure-reporting context shared by the per-backend query helpers.
+ *
+ * `onFailure` exists because each helper swallows its backend's error and
+ * returns `[]` (#4999): partial results beat none, but the caller must still
+ * be able to tell "this store failed" from "this store matched nothing".
+ *
+ * It must fire on an `err` Result as well as on a thrown exception. Every real
+ * backend catches internally and resolves with `err(...)` —
+ * `HybridMemoryBackend.search`, `searchAgentic` and the belief recall path all
+ * do — so a version that reported only from `catch` could not see the corrupt
+ * store it was written for. `ok([])` is a miss and stays silent; `err` is a
+ * failure and is always reported.
+ */
+interface MemoryQueryContext {
+  readonly log: ILogger;
+  readonly onFailure?: (() => void) | undefined;
+}
+
+/**
+ * Keyword fallback for a subject recall that matched nothing (#1225).
+ *
+ * Extracted so `queryBeliefMemory` stays within the complexity bar; it reports
+ * its own `err` Result because a failed scan is a store that could not answer,
+ * not a store with no matches.
+ */
+async function keywordScanBeliefs(
+  beliefs: HindsightBeliefMemory,
+  keywords: readonly string[],
+  onFailure: (() => void) | undefined
+): Promise<readonly Belief[]> {
+  if (keywords.length === 0) return [];
+  const KEYWORD_SCAN_LIMIT = 1000;
+  const allResult = await beliefs.query({ includeSuperseded: false, limit: KEYWORD_SCAN_LIMIT });
+  if (!allResult.ok) {
+    onFailure?.();
+    return [];
+  }
+  return allResult.value.filter((b) => {
+    const text = (b.subject + ' ' + b.predicate + ' ' + b.object).toLowerCase();
+    return keywords.some((k) => text.includes(k));
+  });
+}
+
 /** Query BeliefMemory. Falls back to keyword search when exact match misses (#1225). */
 export async function queryBeliefMemory(
   beliefs: HindsightBeliefMemory,
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const beliefResult = await beliefs.recallBySubject(query, limit);
-    let matched: readonly Belief[] = [];
-    if (beliefResult.ok && beliefResult.value.length > 0) {
-      matched = beliefResult.value;
-    } else if (keywords.length > 0) {
-      const KEYWORD_SCAN_LIMIT = 1000;
-      const allResult = await beliefs.query({
-        includeSuperseded: false,
-        limit: KEYWORD_SCAN_LIMIT,
-      });
-      if (allResult.ok) {
-        matched = allResult.value.filter((b) => {
-          const text = (b.subject + ' ' + b.predicate + ' ' + b.object).toLowerCase();
-          return keywords.some((k) => text.includes(k));
-        });
-      }
-    }
+    if (!beliefResult.ok) onFailure?.();
+    const matched =
+      beliefResult.ok && beliefResult.value.length > 0
+        ? beliefResult.value
+        : await keywordScanBeliefs(beliefs, keywords, onFailure);
     for (const b of matched.filter((x) => !x.superseded)) {
       results.push({
         source: 'belief',
@@ -98,7 +132,11 @@ export async function queryBeliefMemory(
       });
     }
   } catch (e: unknown) {
+    // #4999: a swallowed failure used to be indistinguishable from an empty
+    // result set. The caller still gets `[]` — partial results are better than
+    // none — but it now learns the store could not answer.
     log.debug('Belief memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -109,11 +147,13 @@ export async function queryAgenticMemory(
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const agResult = await agentic.searchAgentic(query, limit);
+    if (!agResult.ok) onFailure?.();
     if (agResult.ok) {
       for (const e of agResult.value) {
         results.push({
@@ -128,6 +168,7 @@ export async function queryAgenticMemory(
     }
   } catch (e: unknown) {
     log.debug('Agentic memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -138,8 +179,9 @@ export async function queryTypedMemory(
   query: string,
   keywords: readonly string[],
   limitPerType: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const [semanticResult, episodicResult] = await Promise.all([
@@ -147,6 +189,7 @@ export async function queryTypedMemory(
       typed.queryByType('episodic', query, limitPerType),
     ]);
     for (const r of [semanticResult, episodicResult]) {
+      if (!r.ok) onFailure?.();
       if (r.ok) {
         for (const e of r.value) {
           results.push({
@@ -161,6 +204,7 @@ export async function queryTypedMemory(
     }
   } catch (e: unknown) {
     log.debug('Typed memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
@@ -171,11 +215,13 @@ export async function queryAdaptiveMemory(
   query: string,
   keywords: readonly string[],
   limit: number,
-  log: ILogger
+  ctx: MemoryQueryContext
 ): Promise<UnifiedMemoryResult[]> {
+  const { log, onFailure } = ctx;
   const results: UnifiedMemoryResult[] = [];
   try {
     const searchResult = await adaptive.search(query, limit);
+    if (!searchResult.ok) onFailure?.();
     if (searchResult.ok) {
       for (const e of searchResult.value) {
         results.push({
@@ -190,6 +236,7 @@ export async function queryAdaptiveMemory(
     }
   } catch (e: unknown) {
     log.debug('Adaptive memory query failed', { error: String(e) });
+    onFailure?.();
   }
   return results;
 }
