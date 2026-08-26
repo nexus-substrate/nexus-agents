@@ -18,15 +18,12 @@
  *
  * @module config/register-model-sources
  */
-import { createLogger } from '../core/index.js';
 
 import { createOpenRouterModelsSource } from './openrouter-models-source.js';
 import { routingArmDisplaySlot } from '../cli-adapters/types.js';
 import type { RoutingArmId } from '../cli-adapters/types.js';
 
 import type { AvailableModelsCache, AvailableModelsSource } from './available-models-cache.js';
-
-const logger = createLogger({ component: 'register-model-sources' });
 
 /** Whether dynamic model discovery is enabled (opt-in; default OFF). */
 export function isDynamicModelsEnabled(): boolean {
@@ -47,23 +44,21 @@ function hasListModels(adapter: unknown): adapter is ListsModels {
 }
 
 /**
- * Wrap an adapter's `listModels()` as a fail-open cache source named for its CLI
- * (so `getCandidateCliNames` filters on it). Probe failures → `[]`.
+ * Wrap an adapter's `listModels()` as a cache source named for its CLI (so
+ * `getCandidateCliNames` filters on it).
+ *
+ * Probe failures propagate (#5059). Catching them here returned `[]`, which
+ * reached `AvailableModelsCache` on the SUCCESS path: the empty list replaced
+ * a good catalog and was stamped fresh for the whole TTL. The cache has always
+ * had the right handling for a rejection — keep the stale value, do not
+ * restamp — it just never ran. One bad source still cannot poison the union;
+ * that isolation lives in the cache, one level up, where it can tell a failed
+ * probe from an empty one.
  */
 function adapterSource(cliName: string, adapter: ListsModels): AvailableModelsSource {
   return {
     name: cliName,
-    listModels: () =>
-      adapter
-        .listModels()
-        .then((models) => models.map((m) => ({ id: m.id })))
-        .catch((error: unknown) => {
-          logger.debug('adapter listModels failed; treating as empty', {
-            cli: cliName,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return [];
-        }),
+    listModels: () => adapter.listModels().then((models) => models.map((m) => ({ id: m.id }))),
   };
 }
 

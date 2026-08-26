@@ -3,7 +3,11 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 
-import { createOpenRouterModelsSource, parseCatalog } from './openrouter-models-source.js';
+import {
+  fetchOpenRouterCatalog,
+  createOpenRouterModelsSource,
+  parseCatalog,
+} from './openrouter-models-source.js';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -32,18 +36,22 @@ describe('createOpenRouterModelsSource (#3404)', () => {
     ]);
   });
 
-  it('fails open (empty) on a non-OK status', async () => {
+  // #5059: these previously asserted `[]`. Swallowing a probe failure into an
+  // empty list reached AvailableModelsCache on the SUCCESS path, overwriting a
+  // good catalog and stamping it fresh for the whole TTL. The source now
+  // rejects; `fetchOpenRouterCatalog` keeps fail-open for the #4121 drift job.
+  it('reports a non-OK status as a probe failure', async () => {
     const fetchImpl = vi.fn(() =>
       Promise.resolve(jsonResponse({}, false, 503))
     ) as unknown as typeof fetch;
     const src = createOpenRouterModelsSource({ fetchImpl });
-    expect(await src.listModels()).toEqual([]);
+    await expect(src.listModels()).rejects.toThrow(/503/);
   });
 
-  it('fails open (empty) on a network/timeout error', async () => {
+  it('reports a network/timeout error as a probe failure', async () => {
     const fetchImpl = vi.fn(() => Promise.reject(new Error('aborted'))) as unknown as typeof fetch;
     const src = createOpenRouterModelsSource({ fetchImpl });
-    expect(await src.listModels()).toEqual([]);
+    await expect(src.listModels()).rejects.toThrow('aborted');
   });
 
   it('fails open (empty) on a schema-invalid payload (untrusted input)', async () => {
@@ -68,7 +76,10 @@ describe('createOpenRouterModelsSource (#3404)', () => {
     expect(await src.listModels()).toEqual([]);
   });
 
-  it('rejects (empty) before buffering when Content-Length exceeds the cap', async () => {
+  it('rejects before buffering when Content-Length exceeds the cap', async () => {
+    // Still refuses to buffer — `text()` rejects if it is ever called. What
+    // changed (#5059) is that the refusal is now reported rather than
+    // flattened into an empty catalog.
     const fetchImpl = vi.fn(() =>
       Promise.resolve({
         ok: true,
@@ -78,7 +89,7 @@ describe('createOpenRouterModelsSource (#3404)', () => {
       } as unknown as Response)
     ) as unknown as typeof fetch;
     const src = createOpenRouterModelsSource({ fetchImpl });
-    expect(await src.listModels()).toEqual([]);
+    await expect(src.listModels()).rejects.toThrow(/byte cap/);
   });
 
   it('caps the number of returned ids', async () => {
@@ -121,5 +132,36 @@ describe('parseCatalog supported_parameters widening (#4121)', () => {
         JSON.stringify({ data: [{ id: 'vendor/model-c', supported_parameters: [1, 2] }] })
       )
     ).toEqual([]);
+  });
+});
+
+describe('probe failure reaches the caller (#5059)', () => {
+  it('rejects when the fetch fails, rather than reporting an empty catalog', async () => {
+    // The source caught network/timeout/parse failures and returned `[]`. That
+    // takes AvailableModelsCache's SUCCESS path, so a good cached catalog was
+    // overwritten with nothing and stamped fresh for the whole TTL — and
+    // `list_available_models` reported the dead transport as `ok: true`.
+    const source = createOpenRouterModelsSource({
+      fetchImpl: () => Promise.reject(new Error('network down')),
+    });
+
+    await expect(source.listModels()).rejects.toThrow('network down');
+  });
+
+  it('rejects on a non-OK response', async () => {
+    const source = createOpenRouterModelsSource({
+      fetchImpl: () => Promise.resolve(new Response('nope', { status: 503 })),
+    });
+
+    await expect(source.listModels()).rejects.toThrow(/503/);
+  });
+
+  it('still resolves empty for the drift job, which documents fail-open', async () => {
+    // `fetchOpenRouterCatalog` has a deliberate fail-open contract (#4121):
+    // the reconciliation job treats `[]` as a LOUD skip. Only the cache-source
+    // path changes.
+    await expect(
+      fetchOpenRouterCatalog({ fetchImpl: () => Promise.reject(new Error('network down')) })
+    ).resolves.toEqual([]);
   });
 });
