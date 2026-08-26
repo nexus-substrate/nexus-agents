@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
 import type { CliName } from './types.js';
 import { estimateTokens, estimateCost } from './budget-utils.js';
+import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
@@ -86,6 +87,18 @@ export function estimateRegistryCostUsd(
  * Budget-constrained task router.
  * Implements budget-aware routing with session tracking and enforcement.
  */
+/**
+ * Profile latency for a routing slot, or `undefined` when the slot has no cost
+ * model (#4907).
+ *
+ * `undefined` means unmeasured, and an unmeasured candidate is admitted rather
+ * than rejected: a latency budget must not silently exclude every model whose
+ * profile happens to be missing.
+ */
+function latencyOf(slot: CliName): number | undefined {
+  return DEFAULT_COST_MODELS[slot]?.avgLatencyMs;
+}
+
 export class BudgetRouter implements IBudgetRouter {
   private readonly adapters: Map<RoutingArmId, ICliAdapter>;
   private readonly options: Required<BudgetRouterOptions>;
@@ -192,9 +205,13 @@ export class BudgetRouter implements IBudgetRouter {
       ? estimateCost(adapter.name, estimatedInputTokens, estimatedOutputTokens)
       : 0;
 
+    const estimatedLatencyMs =
+      adapter === null ? undefined : latencyOf(routingArmDisplaySlot(adapter.name));
+
     // Check budget constraints
     const currentBudget = this.getSessionBudget();
-    const withinBudget = this.checkConstraints(budget, estimatedTokens, estimatedCostUsd);
+    const withinBudget =
+      adapter !== null && this.checkConstraints(budget, estimatedTokens, estimatedCostUsd);
 
     // Generate warnings
     const warnings = generateBudgetWarnings(
@@ -212,6 +229,7 @@ export class BudgetRouter implements IBudgetRouter {
       withinBudget,
       estimatedCostUsd,
       estimatedTokens,
+      ...(estimatedLatencyMs !== undefined ? { estimatedLatencyMs } : {}),
       warnings,
       projectedBudget,
     };
@@ -415,8 +433,16 @@ export class BudgetRouter implements IBudgetRouter {
       const withinCostBudget =
         budget.maxCostUsd === undefined || estimatedCost <= budget.maxCostUsd;
       const withinContextWindow = estimatedTokens <= caps.contextWindow;
+      // #4907: the third declared budget. `maxLatencyMs` was validated,
+      // defaulted and plumbed from routing YAML, but read by nothing, so the
+      // `'latency'` violation kind had no producer and no input could make the
+      // constraint bind.
+      const withinLatencyBudget =
+        budget.maxLatencyMs === undefined ||
+        latencyOf(slot) === undefined ||
+        (latencyOf(slot) as number) <= budget.maxLatencyMs;
 
-      if (withinTokenBudget && withinCostBudget && withinContextWindow) {
+      if (withinTokenBudget && withinCostBudget && withinContextWindow && withinLatencyBudget) {
         return adapter;
       }
     }

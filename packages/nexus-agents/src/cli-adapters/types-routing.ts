@@ -153,6 +153,15 @@ export interface BudgetRoutingResult {
   readonly estimatedCostUsd: number;
   /** Estimated tokens for this task */
   readonly estimatedTokens: number;
+  /**
+   * Expected latency of the selected adapter, in ms (#4907).
+   *
+   * Absent when no adapter was selected — there is then no latency to report,
+   * and `0` would read as instantaneous. Present only when `adapter` is
+   * non-null, so it is the profile latency of the model that would actually
+   * run, not an aggregate over candidates.
+   */
+  readonly estimatedLatencyMs?: number | undefined;
   /** Any budget warnings */
   readonly warnings: readonly BudgetWarning[];
   /** Budget after this task (if executed) */
