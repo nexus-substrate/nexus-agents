@@ -301,6 +301,9 @@ describe('runDevPipeline', () => {
 
     expect(result.planStatus).toBe('empty');
     expect(result.plan).toBe('');
+    // Both markers: stopped by request AND produced nothing. A consumer needs
+    // the pair to tell an honest dry run from one whose planner failed.
+    expect(result.dryRun).toBe(true);
     // Voting on an empty plan wastes a panel and yields a verdict about no
     // proposal — the loop must stop before it.
     expect(stages.vote).not.toHaveBeenCalled();
@@ -318,6 +321,10 @@ describe('runDevPipeline', () => {
     // #4772: `securityPassed: false` here means the gate never ran, not that it
     // rejected. Without this the two are indistinguishable to a caller.
     expect(result.securityRan).toBe(false);
+    // #4806: and says WHY completion is false. Without this marker a consumer
+    // reading `completed` cannot tell "stopped as asked" from "failed", and
+    // `run`'s engine-failure check reported a successful dry run as a fault.
+    expect(result.dryRun).toBe(true);
     // A real plan came back, so no failure marker.
     expect(result.planStatus).toBeUndefined();
     // Should NOT have called decompose, implement, qa, or security
