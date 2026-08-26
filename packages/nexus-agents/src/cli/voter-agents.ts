@@ -29,6 +29,7 @@ import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
+import { reportPanelIndependence } from './panel-independence.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -455,14 +456,12 @@ async function resolveDiverseAdapters(
   // claude CLI, for instance — and a panel spread across them is no more
   // independent than one on a single arm. The gateway path had this check; the
   // CLI path had none.
-  const cliModels = [...cliAdapters.values()].map((a) => a.modelId);
-  if (roles.length > 1 && countDistinctModels(cliModels) === 1) {
-    logger.warn('Consensus panel spans multiple CLIs serving ONE model — votes may correlate', {
-      cliCount: cliAdapters.size,
-      model: cliModels[0],
-      roleCount: roles.length,
-    });
-  }
+  // #4983: detection is lazy, so at assignment time every adapter still
+  // reports the same `pending-detection` placeholder — which an equality check
+  // reads as "one model" and warns on EVERY vote. Say unmeasured here and make
+  // the real judgement in `warnIfPanelCorrelated`, after the votes have run and
+  // each adapter has resolved.
+  reportPanelIndependence([...cliAdapters.values()], roles.length, 'assignment', logger);
 
   return assignRoundRobinAdapters(
     roles,
@@ -595,7 +594,7 @@ export async function collectRealVotes(
   };
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
-  return launchStaggeredVotes({
+  const results = await launchStaggeredVotes({
     roles,
     proposal,
     roleAdapters,
@@ -604,6 +603,12 @@ export async function collectRealVotes(
     voteOptions,
     interDelay,
   });
+
+  // #4983: the only point the question is answerable. Lazy detection means the
+  // adapters carry a placeholder until they have actually run, so a check at
+  // assignment time compares placeholders; by here each has resolved.
+  reportPanelIndependence([...roleAdapters.values()], roles.length, 'post-vote', logger);
+  return results;
 }
 
 /**

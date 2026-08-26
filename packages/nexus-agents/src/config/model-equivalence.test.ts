@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { canonicalModelKey, countDistinctModels } from './model-equivalence.js';
+import {
+  canonicalModelKey,
+  countDistinctModels,
+  assessPanelIndependence,
+  UNRESOLVED_MODEL_ID,
+} from './model-equivalence.js';
 
 describe('canonicalModelKey', () => {
   it('collapses gateway-prefixed forms of one model', () => {
@@ -84,5 +89,62 @@ describe('countDistinctModels', () => {
   it('is order-independent', () => {
     const a = ['claude-sonnet-4-6', 'anthropic/claude-sonnet-4-6', 'gpt-5.5'];
     expect(countDistinctModels(a)).toBe(countDistinctModels([...a].reverse()));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assessPanelIndependence (#4983)
+// ---------------------------------------------------------------------------
+
+describe('assessPanelIndependence', () => {
+  it('reports a genuinely collapsed panel', () => {
+    // The condition #4390 exists to catch: three arms, one set of weights.
+    const result = assessPanelIndependence([
+      'claude-sonnet-4-6',
+      'anthropic/claude-sonnet-4-6',
+      'custom/claude-sonnet-4-6',
+    ]);
+    expect(result).toEqual({ kind: 'collapsed', model: 'claude-sonnet-4-6' });
+  });
+
+  it('reports a diverse panel', () => {
+    const result = assessPanelIndependence(['claude-sonnet-4-6', 'gpt-5.5', 'gemini-3-pro']);
+    expect(result).toEqual({ kind: 'diverse', distinct: 3 });
+  });
+
+  it('refuses to judge a panel whose adapters have not detected their model', () => {
+    // The live defect: lazy detection (#811) means every CLI adapter reports
+    // the same placeholder, which an equality check reads as one model.
+    const result = assessPanelIndependence([
+      UNRESOLVED_MODEL_ID,
+      UNRESOLVED_MODEL_ID,
+      UNRESOLVED_MODEL_ID,
+      UNRESOLVED_MODEL_ID,
+    ]);
+    expect(result).toEqual({ kind: 'unmeasured', unresolved: 4, total: 4 });
+  });
+
+  it('refuses to judge when only some adapters have resolved', () => {
+    // The resolved two collide, but the unresolved one could be anything —
+    // concluding either way would be inventing a measurement.
+    const result = assessPanelIndependence([
+      'claude-sonnet-4-6',
+      'anthropic/claude-sonnet-4-6',
+      UNRESOLVED_MODEL_ID,
+    ]);
+    expect(result).toEqual({ kind: 'unmeasured', unresolved: 1, total: 3 });
+  });
+
+  it('treats an adapter reporting no model id at all as unresolved', () => {
+    // Reachable: an adapter built without a model reports `undefined` despite
+    // the `string` in the interface, and this classifier runs after the votes
+    // are collected — throwing there would throw away the panel's results.
+    const result = assessPanelIndependence(['gpt-5.5', undefined]);
+    expect(result).toEqual({ kind: 'unmeasured', unresolved: 1, total: 2 });
+  });
+
+  it('calls an empty panel unmeasured rather than diverse', () => {
+    // Absence must not render as health: no adapters is not a diverse panel.
+    expect(assessPanelIndependence([])).toEqual({ kind: 'unmeasured', unresolved: 0, total: 0 });
   });
 });

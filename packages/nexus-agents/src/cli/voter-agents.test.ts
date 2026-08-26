@@ -30,6 +30,7 @@ import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger } from '../core/index.js';
 import type { Result } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
 describe('voter-agents', () => {
   describe('VOTER_SYSTEM_PROMPTS', () => {
@@ -621,6 +622,63 @@ That's my vote.`;
       const warnings = await warningsFor(['some-private-model', 'another-private-model']);
 
       expect(warnings.some((w) => w.includes('collapsed to a single gateway model'))).toBe(false);
+    });
+  });
+
+  describe('panel independence is judged after detection (#4983)', () => {
+    // The bug: lazy detection (#811) means every CLI adapter reports
+    // `pending-detection` at assignment time, so an equality check saw "one
+    // model" and warned on EVERY vote — while a genuinely collapsed panel
+    // produced the identical line. Both directions are pinned here.
+    function votingAdapter(modelId: string): IModelAdapter {
+      return {
+        modelId,
+        complete: vi.fn().mockResolvedValue({
+          ok: true,
+          value: {
+            content: [
+              {
+                type: 'text' as const,
+                text: '{"decision":"approve","confidence":0.9,"reasoning":"Test vote."}',
+              },
+            ],
+          },
+        }),
+      } as unknown as IModelAdapter;
+    }
+
+    async function warnsAfterVoting(modelId: string): Promise<string[]> {
+      const warnings: string[] = [];
+      const logger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn((message: string) => warnings.push(message)),
+        error: vi.fn(),
+      } as unknown as ILogger;
+
+      await collectRealVotes({
+        roles: ['architect', 'security', 'devex'] as VoterRole[],
+        proposal: 'Panel independence',
+        adapter: votingAdapter(modelId),
+        interAgentDelayMs: 0,
+        logger,
+      });
+      return warnings;
+    }
+
+    it('warns when every role really did run on one model', async () => {
+      const warnings = await warnsAfterVoting('gpt-5.5');
+
+      expect(warnings.some((w) => w.includes('ran on ONE model'))).toBe(true);
+    });
+
+    it('does not claim correlation from an undetected placeholder', async () => {
+      // `pending-detection` is what four DIFFERENT CLIs report before they have
+      // looked. Reading that as one model is the false positive.
+      const warnings = await warnsAfterVoting(UNRESOLVED_MODEL_ID);
+
+      expect(warnings.some((w) => w.includes('ran on ONE model'))).toBe(false);
+      expect(warnings.some((w) => w.includes('UNMEASURED'))).toBe(true);
     });
   });
 
