@@ -98,7 +98,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm --filter nexus-agents build
+        run: pnpm --filter nexus-agents --fail-if-no-match build
 
       - name: Compute PR diff
         id: diff

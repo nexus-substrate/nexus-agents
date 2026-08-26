@@ -241,7 +241,7 @@ jobs:
       # generate-tool-reference.test.ts transitively imports tool schemas that
       # reach `nexus-memory`; build it first (mirrors docs-check.yml).
       - name: Build nexus-memory (workspace dep)
-        run: pnpm --filter nexus-memory build
+        run: pnpm --filter nexus-memory --fail-if-no-match build
 
       - name: Run script tests
         run: pnpm test:scripts

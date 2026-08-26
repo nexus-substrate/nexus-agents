@@ -61,11 +61,11 @@ jobs:
         run: |
           # nexus-memory must be built first so TypeDoc can resolve its types
           # (#2766 Phase 5+ adds nexus-memory as a workspace dep of nexus-agents).
-          pnpm --filter nexus-memory build
+          pnpm --filter nexus-memory --fail-if-no-match build
           # The markdown output is what the website renders, so that is the one
           # whose generation must be green. A failure here means the published
           # API reference would be missing, not merely stale.
-          pnpm --filter nexus-agents docs:api:md
+          pnpm --filter nexus-agents --fail-if-no-match docs:api:md
 
       # #4504: "some pages exist" is too weak a check — three declared entry
       # points silently emitted nothing for months, so `PipelineRunner` (a
@@ -357,7 +357,7 @@ jobs:
         # The generator now imports the real tool modules to introspect their Zod
         # input schemas (#3688); tool-memory.ts transitively imports `nexus-memory`,
         # so its dist must be built before the generator runs (mirrors the TypeDoc job).
-        run: pnpm --filter nexus-memory build
+        run: pnpm --filter nexus-memory --fail-if-no-match build
 
       - name: Check generated tool reference
         run: |
