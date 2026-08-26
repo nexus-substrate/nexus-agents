@@ -24,6 +24,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
+import type { MemoryStoreOutcome } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -113,7 +114,12 @@ async function writeToBelief(
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   const countBefore = toolMemory.getBeliefCount();
-  const outcome = await toolMemory.recordBelief(key, 'has_knowledge', content, confidence);
+  const outcome: MemoryStoreOutcome = await toolMemory.recordBelief(
+    key,
+    'has_knowledge',
+    content,
+    confidence
+  );
   if (!outcome.persisted) {
     return { success: false, backend: 'belief', key, error: outcome.reason };
   }
@@ -142,7 +148,7 @@ async function writeToAgentic(
       error: 'Agentic memory backend unavailable (requires SQLite)',
     };
   }
-  const outcome = await toolMemory.recordKnowledge(key, content, {
+  const outcome: MemoryStoreOutcome = await toolMemory.recordKnowledge(key, content, {
     importance: confidence,
     tags: metadata !== undefined ? Object.keys(metadata) : [],
   });
@@ -170,7 +176,7 @@ async function writeToAdaptive(
     };
   }
   const importance = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5;
-  const outcome = await toolMemory.storeAdaptive(key, content, importance);
+  const outcome: MemoryStoreOutcome = await toolMemory.storeAdaptive(key, content, importance);
   if (!outcome.persisted) {
     return { success: false, backend: 'adaptive', key, error: outcome.reason };
   }
@@ -195,7 +201,7 @@ async function writeToTyped(
     };
   }
   const importance = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
-  const outcome = await toolMemory.storeTyped(key, content, importance);
+  const outcome: MemoryStoreOutcome = await toolMemory.storeTyped(key, content, importance);
   if (!outcome.persisted) {
     return { success: false, backend: 'typed', key, error: outcome.reason };
   }
