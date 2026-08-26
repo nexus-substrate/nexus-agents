@@ -44,6 +44,7 @@ import {
   registerListWorkflowsTool,
 } from './tools/index.js';
 import type { IWorkflowEngine } from '../core/index.js';
+import { VERSION } from '../version.js';
 
 // #4629: this test reached a real CLI binary through the CLI-detection layer.
 // The memory_query call below runs reflective retrieval, which asks the
@@ -231,6 +232,53 @@ describe('MCP Standalone Tools Integration', () => {
       compareFields: ['license'],
     },
   };
+
+  /**
+   * #5008: a tool result that does not name the build it came from cannot be
+   * used as evidence about a specific version. The MCP server is normally a
+   * pinned global install, so the build answering a call is routinely not the
+   * one in the working tree — and nothing in the response said which.
+   *
+   * The stamp rides in `_meta`, never `structuredContent`: the latter is
+   * validated against `outputSchema` with `additionalProperties: false`, so an
+   * undeclared field there breaks every call (#5044/#5045). `_meta` is the
+   * spec's out-of-band channel and is never schema-validated, which is why the
+   * error envelope already lives there (#2649).
+   */
+  it('every tool result names the build that produced it (#5008)', async () => {
+    const listed = await ctx.client.listTools();
+    const unstamped: string[] = [];
+
+    for (const tool of listed.tools) {
+      const args = ROUND_TRIP_ARGS[tool.name];
+      if (args === undefined) continue;
+      const result = await ctx.client.callTool({ name: tool.name, arguments: args });
+      const build = (result._meta as Record<string, unknown> | undefined)?.['nexus-agents/build'];
+      if ((build as { version?: unknown } | undefined)?.version !== VERSION) {
+        unstamped.push(tool.name);
+      }
+    }
+
+    expect(unstamped).toEqual([]);
+  }, 120_000);
+
+  it('keeps the error envelope alongside the build stamp (#5008)', async () => {
+    // The stamp is merged into `_meta`, which already carries the #2649 error
+    // envelope. Replacing `_meta` instead of extending it would silently strip
+    // every structured error — a regression no other test here would catch,
+    // since the envelope lives on the failure path.
+    const result = await ctx.client.callTool({
+      name: 'research_synthesize',
+      arguments: ROUND_TRIP_ARGS['research_synthesize'] ?? {},
+    });
+
+    const meta = result._meta as Record<string, unknown> | undefined;
+    expect(result.isError).toBe(true);
+    expect(meta?.['nexus-agents/error']).toBeDefined();
+    expect((meta?.['nexus-agents/build'] as { version?: string } | undefined)?.version).toBe(
+      VERSION
+    );
+  });
 
   /**
    * Tools whose round-trip call returns an error envelope rather than
