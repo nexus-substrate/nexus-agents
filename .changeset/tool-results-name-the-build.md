@@ -11,8 +11,10 @@ to say which. `VERSION` reached only `serverInfo` at `initialize`, which a
 long-lived session sees once and a log reader never sees at all.
 
 Every tool result now carries `_meta['nexus-agents/build'] = { version }`,
-stamped in `toSdkCallback` — the single point every registered tool passes
-through, so a tool that builds its result by hand is stamped too.
+stamped in `runWithContexts` — the point both SDK adapters call, on the ordinary
+and the budget-mismatch path alike. Stamping the adapters instead would have
+missed `consensus_vote`, `orchestrate` and `run_workflow`, which go through
+`toSdkCallbackWithBudgetCheck`.
 
 It rides in `_meta` for the same reason the error envelope does (#2649):
 `structuredContent` is validated against the tool's `outputSchema` with

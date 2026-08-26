@@ -262,14 +262,21 @@ type SdkToolResult = {
   _meta?: Record<string, unknown>;
 };
 
-function runWithContexts(
+async function runWithContexts(
   handler: ToolHandler,
   args: unknown,
   progressCtx: ProgressContext | undefined,
   signal: AbortSignal | undefined
 ): Promise<SdkToolResult> {
   const run = (): Promise<SdkToolResult> => handler(args);
+  return stampBuild(await runInContexts(run, progressCtx, signal));
+}
 
+function runInContexts(
+  run: () => Promise<SdkToolResult>,
+  progressCtx: ProgressContext | undefined,
+  signal: AbortSignal | undefined
+): Promise<SdkToolResult> {
   // Nest contexts: abort signal outer, progress inner
   if (signal !== undefined && progressCtx !== undefined) {
     return abortSignalStorage.run(signal, () => progressContextStorage.run(progressCtx, run));
@@ -295,11 +302,10 @@ function runWithContexts(
 export function toSdkCallback(
   handler: ToolHandler
 ): (args: unknown, extra: unknown) => Promise<SdkToolResult> {
-  return async (args: unknown, extra: unknown) => {
+  return (args: unknown, extra: unknown) => {
     const progressCtx = extractProgressContext(extra);
     const signal = (extra as SdkExtra | undefined)?.signal;
-    const result = await runWithContexts(handler, args, progressCtx, signal);
-    return stampBuild(result);
+    return runWithContexts(handler, args, progressCtx, signal);
   };
 }
 
@@ -325,9 +331,13 @@ const BUILD_META_KEY = 'nexus-agents/build';
 /**
  * Attaches the build stamp, preserving any `_meta` the handler already set.
  *
- * Applied here rather than in the result factories because this is the single
- * point every registered tool passes through — a tool that builds its result
- * by hand is stamped too.
+ * Applied inside `runWithContexts` rather than in the result factories or in
+ * either SDK adapter. There are TWO adapters — `toSdkCallback` and
+ * `toSdkCallbackWithBudgetCheck`, the latter used by `consensus_vote`,
+ * `orchestrate` and `run_workflow` — and stamping in one of them left the other
+ * three tools unstamped. `runWithContexts` is what both call, on the ordinary
+ * and the budget-mismatch path alike, so it is the actual chokepoint. A tool
+ * that assembles its result by hand is stamped here too.
  */
 function stampBuild(result: SdkToolResult): SdkToolResult {
   return {
