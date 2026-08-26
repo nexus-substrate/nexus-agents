@@ -91,6 +91,27 @@ describe('getCommitMessagesForEscapeHatch (#2411)', () => {
     expect(out).toContain('chore: lint fix');
   });
 
+  it('does NOT inherit [skip-docops] from a commit already on the base branch (#5028)', () => {
+    // The range was `origin/main...HEAD` — symmetric — so commits on the base
+    // branch but NOT on the PR branch were searched too. Six `[skip-docops]`
+    // commits are on main today, so any branch whose merge-base predates one
+    // of them skipped the whole gate regardless of what it changed.
+    git(ctx.dir, 'checkout -q -b feature');
+    git(ctx.dir, 'commit --allow-empty -q -m "feat: an honest change"');
+
+    // main moves ahead with a bypass commit the feature branch never contains.
+    git(ctx.dir, 'checkout -q main');
+    git(ctx.dir, 'commit --allow-empty -q -m "chore: unrelated [skip-docops]"');
+    git(ctx.dir, 'update-ref refs/remotes/origin/main main');
+    git(ctx.dir, 'checkout -q feature');
+    process.env['GITHUB_BASE_REF'] = 'main';
+
+    const out = getCommitMessagesForEscapeHatch(ctx.dir);
+
+    expect(out).not.toContain('[skip-docops]');
+    expect(out).toContain('feat: an honest change');
+  });
+
   it('does NOT see [skip-docops] when only the merge-commit message has it (the original bug)', () => {
     git(ctx.dir, 'checkout -q -b feature');
     git(ctx.dir, 'commit --allow-empty -q -m "feat: real change without bypass token"');
