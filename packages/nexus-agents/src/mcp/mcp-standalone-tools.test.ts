@@ -280,6 +280,64 @@ describe('MCP Standalone Tools Integration', () => {
     );
   });
 
+  /**
+   * Async dispatch is a SECOND response shape: `runAsJob` returns
+   * `{status:'pending', jobId}` rather than the tool's ordinary payload, and
+   * `ROUND_TRIP_ARGS` only ever exercises the first. #5066 was exactly that
+   * gap — `consensus_vote` declared an `outputSchema` its async envelope could
+   * not satisfy, so every `mode: 'async'` call failed with -32602.
+   *
+   * The set is DERIVED from each tool's advertised input schema rather than
+   * hand-listed: any tool offering `mode: 'async'` must appear here with
+   * arguments, so one gaining async dispatch later cannot quietly go
+   * uncovered. Tools without an `outputSchema` today are covered anyway —
+   * gaining one is precisely how the break would return.
+   */
+  const ASYNC_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
+    consensus_vote: { proposal: 'round trip', quickMode: true },
+    // The spec parser needs a heading; without one the call fails as a
+    // business error and never reaches the async dispatch under test.
+    execute_spec: { spec: '# Round trip\n\nA spec used only to reach async dispatch.' },
+    run_graph_workflow: { workflow: 'round-trip' },
+    // Found by the derivation, not by me: it advertises async mode and was
+    // absent from the hand-written list this replaced.
+    run_workflow: { action: 'execute', template: 'round-trip', inputs: {} },
+  };
+
+  function offersAsyncMode(tool: { inputSchema?: unknown }): boolean {
+    const mode = (
+      tool.inputSchema as { properties?: Record<string, { enum?: unknown[] }> } | undefined
+    )?.properties?.['mode'];
+    return mode?.enum?.includes('async') === true;
+  }
+
+  it('async dispatch satisfies each tool outputSchema (#5066)', async () => {
+    const listed = await ctx.client.listTools();
+    const asyncTools = listed.tools.filter(offersAsyncMode).map((t) => t.name);
+    expect(asyncTools.length).toBeGreaterThan(0);
+    // A tool that advertises async mode and has no arguments here is not
+    // covered, and an uncovered tool is how #5066 shipped.
+    expect(asyncTools.filter((n) => ASYNC_ARGS[n] === undefined)).toEqual([]);
+
+    const violations: string[] = [];
+    for (const name of asyncTools) {
+      let result: unknown;
+      let thrown = '';
+      try {
+        result = await ctx.client.callTool({
+          name,
+          arguments: { ...ASYNC_ARGS[name], mode: 'async' },
+        });
+      } catch (error: unknown) {
+        thrown = error instanceof Error ? error.message : JSON.stringify(error);
+      }
+      const violation = schemaViolationIn(result, thrown);
+      if (violation !== '') violations.push(`${name}: ${violation}`);
+    }
+
+    expect(violations).toEqual([]);
+  }, 120_000);
+
   it('a second response shape also satisfies the outputSchema (#5066)', async () => {
     // The round-trip above calls each tool once with default arguments, so it
     // only ever sees ONE of a tool's response shapes. `consensus_vote` has two:
