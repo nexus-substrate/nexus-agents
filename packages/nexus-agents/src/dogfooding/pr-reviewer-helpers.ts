@@ -255,16 +255,24 @@ export function determineDecision(
   reviews: ExpertReviewResult[],
   findings: ReviewFinding[]
 ): ReviewDecision {
+  // #5012: an expert that errored produced no verdict, so it can neither
+  // approve nor object. `allOf(reviews, …, false)` already refuses to call
+  // ZERO reviews unanimous approval (#4581); feeding it synthetic approvals
+  // for failed experts defeated that guard by making the list non-empty.
+  const verdicts = reviews.filter((r) => r.errored !== true);
   const hasCritical = findings.some((f) => f.severity === 'critical');
   const hasHigh = findings.some((f) => f.severity === 'high');
   // Zero expert reviews is not unanimous approval (#4581): with `true` here the
   // `hasHigh && !allApproved` branch could never fire on an unreviewed PR, so a
   // HIGH finding silently downgraded from request_changes to comment.
-  const allApproved = allOf(reviews, (r) => r.approved, false);
+  const allApproved = allOf(verdicts, (r) => r.approved, false);
 
   if (hasCritical) return 'request_changes';
   if (hasHigh && !allApproved) return 'request_changes';
   if (findings.length > 0) return 'comment';
+  // Nothing read the diff, so there is nothing to approve. `comment` posts the
+  // failure summaries without asserting the change is fine.
+  if (verdicts.length === 0) return 'comment';
   return 'approve';
 }
 
@@ -428,7 +436,12 @@ export function createFailedReview(
   return {
     expertId,
     expertType: category,
-    approved: true, // Don't block on failures
+    // #5012: NOT `approved: true`. "Don't block on failures" made an expert
+    // that never ran indistinguishable from one that read the diff and had no
+    // objection, and `determineDecision` turned three of those into an APPROVE
+    // posted to GitHub.
+    approved: false,
+    errored: true,
     summary: `Review failed: ${error}`,
     findings: [],
     durationMs,
