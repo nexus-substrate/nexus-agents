@@ -382,6 +382,59 @@ describe('LinUCBBandit', () => {
     });
   });
 
+  describe('warm-start skip log levels reach the real logger (#4935)', () => {
+    // `warmStartSkipLogs` decides the level and is unit-tested; whether
+    // `warmStart` honours it was not. Reverting the mapping to a single
+    // `logger.warn` left the whole suite green, so the drowned-signal
+    // regression #4904 fixed could come back unnoticed. Asserted on the bytes
+    // the process actually emits, at the default `info` level, rather than on
+    // a mocked logger — the suppression of `debug` is the behaviour.
+    function captureLogOutput(run: () => void): string {
+      const written: string[] = [];
+      const record = (chunk: unknown): boolean => {
+        written.push(String(chunk));
+        return true;
+      };
+      const originalOut = process.stdout.write;
+      const originalErr = process.stderr.write;
+      process.stdout.write = record;
+      process.stderr.write = record;
+      try {
+        run();
+      } finally {
+        process.stdout.write = originalOut;
+        process.stderr.write = originalErr;
+      }
+      return written.join('');
+    }
+
+    function outcomesFor(cli: string): Parameters<LinUCBBandit['warmStart']>[0] {
+      return [{ cli, model: 'some-model', success: true }] as unknown as Parameters<
+        LinUCBBandit['warmStart']
+      >[0];
+    }
+
+    it('keeps the every-run unattributed skip out of warn', () => {
+      const bandit = new LinUCBBandit(armNames);
+
+      const output = captureLogOutput(() => bandit.warmStart(outcomesFor('unknown')));
+
+      // Emitted at debug, which the default `info` level drops entirely. If the
+      // level mapping is lost this line reappears — 210 of them in a real run —
+      // and buries the warn below.
+      expect(output).not.toContain('no resolvable CLI');
+    });
+
+    it('still warns about an arm the bandit genuinely does not have', () => {
+      const bandit = new LinUCBBandit(armNames);
+
+      const output = captureLogOutput(() => bandit.warmStart(outcomesFor('api:openai')));
+
+      expect(output).toContain('arms this bandit does not have');
+      expect(output).toContain('"level":"warn"');
+    });
+  });
+
   describe('warm-start skip partitioning (#4904)', () => {
     // `skippedByArm` was added by #4400 to surface an arm that SHOULD have
     // warm-started and did not — `api:*` arms were discarding their whole
