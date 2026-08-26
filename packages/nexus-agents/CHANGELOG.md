@@ -1,5 +1,61 @@
 # nexus-agents
 
+## 4.26.0
+
+### Minor Changes
+
+- [#5071](https://github.com/nexus-substrate/nexus-agents/pull/5071) [`33d1be0`](https://github.com/nexus-substrate/nexus-agents/commit/33d1be0eaa1486843bfa0c4ee04898215ae43d98) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(routing): make the capacity stage's documented opt-in actually settable
+
+  `CapacityFilterStage` excludes an exhausted arm only when `enforceHardLimits` is
+  true, and its doc said the flag "remains available for callers who have a real
+  quota signal". No caller could set it: the sole production construction passed a
+  hardcoded `{}`. So `outcome.excluded` was always empty, `excludedCount` could
+  only ever report zero, and the fail-closed _"All routing candidates excluded —
+  capacity_exhausted"_ branch was unreachable.
+
+  The blocker that justified holding it — [#4456](https://github.com/nexus-substrate/nexus-agents/issues/4456)'s "no real quota signal exists
+  yet" — has been overtaken. `CapacityTracker.recordProviderQuotaExhaustion` sets
+  an exhaustion window from a durable provider `retry-after`, fired by
+  `base-adapter` and `model-to-cli-adapter` on `RATE_LIMITED`, and `assessCapacity`
+  maps it to `'exhausted'`. The evidence exists, so the opt-in is now real:
+  `capacityStageConfig` on `CompositeRouterConfig` threads through to the stage.
+
+  **The default is unchanged.** `enforceHardLimits` stays `false` and [#4456](https://github.com/nexus-substrate/nexus-agents/issues/4456)'s
+  signal-only posture holds — it is a choice a caller can override rather than a
+  hardcoding nobody could reach.
+
+  `CompositeRouterStats` gains `capacityStats: { enforced, excludedCount }`.
+  `enforced` is the load-bearing half: a zero `excludedCount` means one thing when
+  enforcement is on and something else entirely when it is off, and the count
+  alone could not say which. The field is absent when the stage is disabled — a
+  third state, distinct from both zeros.
+
+  Closes [#4658](https://github.com/nexus-substrate/nexus-agents/issues/4658).
+
+### Patch Changes
+
+- [#5072](https://github.com/nexus-substrate/nexus-agents/pull/5072) [`fead9b5`](https://github.com/nexus-substrate/nexus-agents/commit/fead9b5a32bb9f551a7e175513ef10f3c499ec6c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(pipeline): pin whether the delegate policy gate can actually deny
+
+  The V2 delegate pipeline's only policy gate cannot deny anything, for any input,
+  in any mode: `trustTierRule` requires `stageType === 'execute'`, `ENTRY_GATE`
+  guards a `route` stage, and no production stage is execute-typed ([#4657](https://github.com/nexus-substrate/nexus-agents/issues/4657)).
+
+  Existing coverage checks the pieces — that the mechanism halts on an injected
+  always-denying engine, that the guarded stage is route-typed, that no stage is
+  execute-typed. None of it runs the _real_ rule at the _real_ gate. This adds
+  that: the actual `trustTierRule`, the actual `ENTRY_GATE`, an explicitly
+  tier-4 task, block mode — and pins that nothing is denied.
+
+  Pinning a negative is the point. Widening the rule to cover `route`, or
+  retyping the route stage to `execute` — the two remedies on the [#4657](https://github.com/nexus-substrate/nexus-agents/issues/4657) ballot —
+  each make this test fail, so whichever the project chooses has to be chosen
+  deliberately rather than drifting in.
+
+  No behaviour change. The [#4657](https://github.com/nexus-substrate/nexus-agents/issues/4657) remedy remains undecided: the consensus panel
+  approved 6 of 7 but split 3/2/1 across the options, so no option cleared the
+  supermajority bar. A test proving deny-capability was the one thing every voter
+  agreed on regardless of which remedy they preferred.
+
 ## 4.25.1
 
 ### Patch Changes
