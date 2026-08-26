@@ -41,6 +41,9 @@ describe('registerDefaultModelSources (#3404)', () => {
   });
 
   it('is fail-open: one adapter throwing does not poison the others', async () => {
+    // The isolation is unchanged — it just lives in the cache now rather than
+    // in the source wrapper (#5059), which is what lets a failed probe be told
+    // apart from an empty one.
     const cache = new AvailableModelsCache({ sources: [] });
     const adapters = new Map<string, unknown>([
       ['opencode', { listModels: () => Promise.reject(new Error('cli down')) }],
@@ -50,6 +53,24 @@ describe('registerDefaultModelSources (#3404)', () => {
 
     const all = await cache.getAll();
     expect(all.map((m) => m.id)).toContain('gemini-3-pro');
+  });
+
+  it('lets an adapter probe failure reach the cache (#5059)', async () => {
+    // The wrapper used to catch and return `[]`, which the cache reads as a
+    // SUCCESSFUL empty probe: a good catalog is overwritten and stamped fresh
+    // for the whole TTL. Asserted at the source, because at the cache boundary
+    // the two are — by construction — indistinguishable.
+    const cache = new AvailableModelsCache({ sources: [] });
+    const adapters = new Map<string, unknown>([
+      ['opencode', { listModels: () => Promise.reject(new Error('cli down')) }],
+    ]);
+    registerDefaultModelSources(cache, adapters, { includeOpenRouter: false });
+
+    const source = buildDefaultModelSources(adapters, { includeOpenRouter: false }).find(
+      (x) => x.name === 'opencode'
+    );
+    expect(source).toBeDefined();
+    await expect(source?.listModels()).rejects.toThrow('cli down');
   });
 
   it('skips adapters without a listModels method', async () => {
