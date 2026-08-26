@@ -1,22 +1,30 @@
 ---
-'nexus-agents': minor
+'nexus-agents': patch
 ---
 
-fix(learning): delete the feedback bridge that fabricated CLI attribution
+fix(learning): stop the feedback bridge fabricating CLI attribution
 
 The EventBus → OutcomeStore bridge hardcoded `cli: 'claude'` and
 `category: 'code_generation'` on every `stage.failed` event. `StageFailedEvent`
 carries no `cli`, so the attribution was invented on every pipeline stage
-failure — including stages where no CLI ran at all.
+failure — including local gates where no CLI ran at all. Ten such events halve
+claude's measured success rate in the 20-entry window behind
+`getCachedCliSuccessRate`, cut up to 0.15 off the reward LinUCB trains on, and
+after five create an `active` distilled rule that penalises claude at routing
+time.
 
 `agent-executor.ts` documents that exact bug (#2823 — "silently corrupted
 weather-report + LinUCB cold-start warmStart() with false claude credit on every
 pipeline run") and skips the record rather than lie. The bridge re-introduced,
-through the event bus, the record the executor suppresses. It was also
-double-counting: every `emitStageEvent(…, 'failed')` there is paired with its
-own `recordOutcome`.
+through the event bus, the record the executor suppresses.
 
-`agent-executor` is now the single canonical outcome writer. Remedy chosen by a
-7-voter panel: Option A, 6 of 6 approvers, audit record #77.
+The CLI is now resolved from the event's `model` (carried since #4194) via the
+model registry, and a failure that cannot be attributed writes nothing. The
+bridge is also no longer wired into the server: every
+`emitStageEvent(…, 'failed')` in `agent-executor` is already paired with its own
+`recordOutcome`, so it was double-counting attributable failures on top of
+fabricating unattributable ones.
 
-BREAKING: `createFeedbackSubscriber` is removed from the public API surface.
+`createFeedbackSubscriber` stays exported and callable — removing it needed a
+unanimous vote it did not get (record #78) — but it can no longer write a record
+it cannot support.

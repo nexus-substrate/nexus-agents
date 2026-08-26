@@ -157,6 +157,7 @@ import {
   PolicyEngine,
   createDefaultPolicyEngine,
   BUILT_IN_RULES,
+  createFeedbackSubscriber,
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
@@ -444,6 +445,10 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(BUILT_IN_RULES).toHaveLength(1);
     const engine = createDefaultPolicyEngine();
     expect(engine.listRules()).toHaveLength(1);
+  });
+
+  it('exports createFeedbackSubscriber', () => {
+    expect(typeof createFeedbackSubscriber).toBe('function');
   });
 
   it('exports createDelegatePipeline', () => {

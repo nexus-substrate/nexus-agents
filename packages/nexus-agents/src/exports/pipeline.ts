@@ -88,6 +88,7 @@ export {
   type PolicyRule,
   type IPolicyEngine,
   // Feedback loop
+  createFeedbackSubscriber,
   // V2 delegate
   createDelegatePipeline,
   delegateInputToTaskContract,
