@@ -1,5 +1,102 @@
 # nexus-agents
 
+## 4.25.0
+
+### Minor Changes
+
+- [#5065](https://github.com/nexus-substrate/nexus-agents/pull/5065) [`c7f5b5f`](https://github.com/nexus-substrate/nexus-agents/commit/c7f5b5f2bbd0f4ae43ef6aaa375c2e75d515bab0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): the demo no longer lists an uninstalled CLI as available
+
+  `getCliAvailability` wrote `available: true` unconditionally and read failure
+  only from a `catch`. `healthCheck` does not throw — `BaseCliAdapter` catches and
+  returns `{ healthy: false, version: 'unknown', versionStatus: 'unsupported' }`,
+  and `ModelToCliAdapter.healthCheck` has no throw path at all. So a CLI whose
+  binary is absent (`spawn ENOENT`) showed as installed-but-unauthenticated, and
+  the demo told the user to run `auth login` for something they do not have.
+
+  `HealthStatus` gains an optional `reachable`. `BaseCliAdapter` sets it `true`
+  when the binary answered `--version` — whatever it said — and `false` when it
+  could not be run; `ModelToCliAdapter` sets `true`, since an in-process API
+  adapter has no binary to be missing. Absent means the producer predates the
+  distinction, and consumers treat `reachable !== false` as present, so adding
+  the field cannot silently reclassify an older adapter as uninstalled.
+
+  This is what separates two states that were previously identical: a binary that
+  is missing and one that is installed on an unsupported version are both
+  `healthy: false` with `versionStatus: 'unsupported'`.
+
+  Closes [#5060](https://github.com/nexus-substrate/nexus-agents/issues/5060).
+
+### Patch Changes
+
+- [#5067](https://github.com/nexus-substrate/nexus-agents/pull/5067) [`33e5a95`](https://github.com/nexus-substrate/nexus-agents/commit/33e5a958a85be13acd14aaa1c901c36e7957df34) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): consensus_vote async mode no longer fails every call
+
+  `consensus_vote` declares an `outputSchema`, so the SDK requires
+  `structuredContent` on every non-error result. Its async branch dispatches
+  through `runAsJob`, whose envelopes are text-only, so **every**
+  `consensus_vote({ mode: 'async' })` call failed with
+  `-32602: has an output schema but no structured content was provided` — the mode
+  the tool's own description recommends for 7-voter higher-order panels.
+
+  The dispatch now supplies structured envelopes via `runAsJob`'s `toEnvelope`
+  hook, and the schema declares the `status` / `jobId` / `pollTool` / `note` /
+  `retryAfterMs` fields they carry. The vote fields become optional, because a
+  tool with two response shapes cannot express a discriminated union through
+  `registerTool`'s `ZodRawShape`. `status` distinguishes them: present means an
+  async-dispatch envelope, absent means a completed vote.
+
+  What that gives up is requiredness. What it keeps is the guarantee that protects
+  the protocol — `additionalProperties: false` still rejects an **undeclared**
+  response field, which is the [#5044](https://github.com/nexus-substrate/nexus-agents/issues/5044) regression the schema exists to catch, and
+  there is now a test pinning that specifically.
+
+  Of the eleven tools using `runAsJob`, only `consensus_vote` declares an
+  `outputSchema`, so the blast radius was exactly one tool.
+
+  Closes [#5066](https://github.com/nexus-substrate/nexus-agents/issues/5066).
+
+- [#5063](https://github.com/nexus-substrate/nexus-agents/pull/5063) [`f2dd9e5`](https://github.com/nexus-substrate/nexus-agents/commit/f2dd9e599102724b81106debd47764413c5cf980) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(config): a failed model probe no longer overwrites a good catalog with an empty one
+
+  `AvailableModelsCache.fetchSource` has always had the right handling for a
+  failed probe — keep the stale value, do not restamp `fetchedAt`. It never ran.
+  Both real sources caught their own failures and returned `[]`, which the cache
+  reads as a **successful empty probe**: the good catalog was discarded and the
+  empty one marked fresh for the whole TTL, with the stale-refresh path
+  re-poisoning it on the next tick. No warning was ever logged.
+
+  The fail-open behaviour moves up one level, to the cache, which is the layer
+  that can tell a failed probe from an empty one:
+
+  - `createOpenRouterModelsSource().listModels()` now rejects on network, timeout,
+    non-OK status, and byte-cap refusal. `fetchOpenRouterCatalog` keeps the
+    documented fail-open contract the [#4121](https://github.com/nexus-substrate/nexus-agents/issues/4121) drift job depends on.
+  - The adapter wrapper in `register-model-sources` lets its probe failure
+    propagate. One bad source still cannot poison the union — that isolation is
+    the cache's, one level up.
+
+  Knock-on: `list_available_models` can now answer `ok: false`. Its handling was
+  already correct and already tested against a rejecting source; nothing could
+  make a real source reject, so `ok` was `true` for a dead transport reporting
+  zero models.
+
+  Closes [#5059](https://github.com/nexus-substrate/nexus-agents/issues/5059). Addresses the `list_available_models` half of [#5060](https://github.com/nexus-substrate/nexus-agents/issues/5060); the `demo`
+  half is separate and stays open.
+
+- [#5058](https://github.com/nexus-substrate/nexus-agents/pull/5058) [`d39764c`](https://github.com/nexus-substrate/nexus-agents/commit/d39764caf04605774d20fa273dbf24213d47e867) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): the tool observability proxy reported every failed call as a success
+
+  `createToolObservabilityProxy` emitted `tool.completed { success: true }` from
+  the `try` path with the value hardcoded, and read failure only from its `catch`.
+  Nexus tools do not throw — `toolStructuredError` returns `{ isError: true }` —
+  so no real tool failure ever reached the `catch`, and every EventBus consumer
+  saw a 100% tool success rate. A tool returning a validation or internal error
+  envelope was indistinguishable from one that worked.
+
+  `success` is now derived from `result.isError`, matching what the sibling
+  middleware `tool-metrics.ts` has always recorded, and a returned envelope
+  carries its text as `errorMessage` the way the throw path already did.
+
+  The existing failure test used a _throwing_ handler, which is why the gap
+  survived: it exercised the one path production never takes.
+
 ## 4.24.0
 
 ### Minor Changes
