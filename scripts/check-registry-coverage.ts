@@ -342,12 +342,39 @@ interface CheckResult {
   readonly success: boolean;
   readonly violations: readonly Violation[];
   readonly bitrot_errors: readonly string[];
+  /**
+   * Set when the manifest declared ZERO registries (#4586).
+   *
+   * The verdict is `violations.length === 0`, which an empty manifest
+   * satisfies: emptying `registries` made the gate green while inspecting
+   * nothing. `validateManifest` cannot catch it either — its bitrot loop has
+   * no entries to check. Absence of evidence is not evidence of coverage, so
+   * this reports `unmeasured` and fails.
+   */
+  readonly unmeasured?: boolean;
+}
+
+/**
+ * Whether a manifest declaring this many registries can support a verdict
+ * (#4586).
+ *
+ * Extracted so the empty case is testable without a repo on disk. Zero
+ * registries means nothing was inspected: `violations.length === 0` is
+ * satisfied trivially, and `validateManifest`'s bitrot loop has no entries to
+ * catch it, so emptying the manifest made the gate green.
+ */
+export function isUnmeasurableManifest(registryCount: number): boolean {
+  return registryCount === 0;
 }
 
 export function performCheck(verbose: boolean): CheckResult {
   const manifest = loadManifest();
   if (manifest === null) {
     return { success: false, violations: [], bitrot_errors: [] };
+  }
+
+  if (isUnmeasurableManifest(manifest.registries.length)) {
+    return { success: false, violations: [], bitrot_errors: [], unmeasured: true };
   }
 
   const bitrotErrors = validateManifest(manifest);
@@ -375,6 +402,14 @@ function checkRegistryCoverage(verbose: boolean): boolean {
   console.log('================================\n');
 
   const result = performCheck(verbose);
+
+  if (result.unmeasured === true) {
+    console.error('✗ Registry-coverage UNMEASURED — the manifest declares zero registries.\n');
+    console.error('  Nothing was inspected, so nothing can be said to be covered. Emptying');
+    console.error('  `registries` used to make this gate green (#4586).');
+    console.error('  Restore docs/ops/registry-coverage-manifest.json.');
+    return false;
+  }
 
   if (result.bitrot_errors.length > 0) {
     console.error('✗ Manifest bitrot detected (paths in manifest do not exist on disk):\n');
