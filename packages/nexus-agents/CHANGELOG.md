@@ -1,5 +1,55 @@
 # nexus-agents
 
+## 4.25.1
+
+### Patch Changes
+
+- [#5070](https://github.com/nexus-substrate/nexus-agents/pull/5070) [`ffaf766`](https://github.com/nexus-substrate/nexus-agents/commit/ffaf76654cd4edc434e5e8fca530bc62bf61e6f6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): round-trip async dispatch, not just each tool's ordinary response
+
+  The output-schema round-trip suite calls each tool once, so it only ever sees
+  one of a tool's response shapes. Async dispatch is a second one — `runAsJob`
+  returns `{status:'pending', jobId}` rather than the tool's payload — and [#5066](https://github.com/nexus-substrate/nexus-agents/issues/5066)
+  was exactly that gap: `consensus_vote` declared an `outputSchema` its async
+  envelope could not satisfy, and every `mode: 'async'` call failed with `-32602`
+  while the suite stayed green.
+
+  The async-capable set is derived from each tool's advertised input schema (a
+  `mode` property accepting `'async'`) rather than hand-listed, so a tool gaining
+  async dispatch later cannot go quietly uncovered. It has to be given arguments
+  or the suite fails.
+
+  The derivation earned that immediately: it found `run_workflow`, which
+  advertises async mode and was absent from the hand-written list it replaced.
+  Four tools are now covered, up from one.
+
+  Tools without an `outputSchema` today are covered anyway — gaining one is
+  precisely how the break would return.
+
+- [#5068](https://github.com/nexus-substrate/nexus-agents/pull/5068) [`a314eef`](https://github.com/nexus-substrate/nexus-agents/commit/a314eefd54efee22b8d917666b0b39765cd70559) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): pr_review stops recording a verified panel when voters were missing
+
+  Under the default `errorPolicy: 'standard'`, `aggregatePrDecisions` dropped
+  errored voters from the denominator and then recorded
+  `{ decision: 'approve', verified: true }`. One approve plus four errors was
+  written into the governance record as a unanimous, verified approval —
+  unanimity measured over a denominator that excluded everyone who could have
+  disagreed. Inducing errors manufactured a verified approve, which is the exact
+  attack `absolute_quorum` was added to prevent.
+
+  Two neighbouring paths made the same claim: an all-errored panel
+  (`valid.length === 0`) returned `verified: true`, asserting a complete panel for
+  a vote in which nobody spoke, and the Tier-4 ambiguous abstain did the same
+  regardless of how many voters were missing.
+
+  The **decision** is unchanged — dropping the errored voter is what `standard`
+  means, and [#4132](https://github.com/nexus-substrate/nexus-agents/issues/4132) kept it deliberately. What changes is the separate claim about
+  the panel: `verified` is now `false` with a `reason` naming the counts whenever
+  fewer voters responded than were asked. A complete, error-free panel still
+  verifies.
+
+  Decided by consensus vote (higher_order, 6 approvers, 5 selecting this option
+  over flipping the default to `absolute_quorum` and over documenting the gap).
+  Closes [#5017](https://github.com/nexus-substrate/nexus-agents/issues/5017).
+
 ## 4.25.0
 
 ### Minor Changes
