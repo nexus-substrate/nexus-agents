@@ -1,5 +1,59 @@
 # nexus-agents
 
+## 4.23.0
+
+### Minor Changes
+
+- [#5044](https://github.com/nexus-substrate/nexus-agents/pull/5044) [`fa69939`](https://github.com/nexus-substrate/nexus-agents/commit/fa6993961ac81f85e3143dccd96b24e8f13df04c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(memory): say which backends memory_query could actually reach
+
+  `count: 0` was the same observation whether nothing matched the query or the
+  SQLite-backed stores were absent — every unavailable backend contributes an
+  empty result set silently, and the response carried no field able to say so. A
+  caller asking "do we know anything about X?" was told "no" when the honest
+  answer was "two of the five stores are not installed here".
+
+  The response now carries `searched` and `unavailable`. `session` and `belief`
+  are always present; `agentic`, `adaptive` and `typed` are optional and are named
+  when missing. Both lists are scoped to the requested `source`, so asking for one
+  backend does not claim the others were searched.
+
+  This is the availability half of [#4999](https://github.com/nexus-substrate/nexus-agents/issues/4999). A backend that is installed but throws
+  mid-query still contributes `[]` silently — each per-backend helper catches and
+  returns an empty array — and that half needs the error status threaded out of
+  `tool-memory-query.ts`.
+
+- [#5048](https://github.com/nexus-substrate/nexus-agents/pull/5048) [`7751fa5`](https://github.com/nexus-substrate/nexus-agents/commit/7751fa508433a2f260caff24a83bebbc6439bfdf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(research): say how many findings a cluster actually had
+
+  `keyInsights` is capped at ten, and the cap bites: against the live registry six
+  of eleven clusters exceed it, `orchestration` with 55 distinct findings. A
+  caller saw `paperCount: 40` beside ten insights and could not tell "these are
+  the cluster's insights" from "these are ten of fifty-five".
+
+  `ClusterSynthesis` now carries `totalInsights`, and the CLI renderer says
+  `Key insights (5 of 55)` instead of `Key insights:` — three nested truncations
+  (55 → 10 → 5), none of which was visible before.
+
+  A bounded read is legitimate; a bounded read reported as complete is not.
+
+### Patch Changes
+
+- [#5047](https://github.com/nexus-substrate/nexus-agents/pull/5047) [`29e3895`](https://github.com/nexus-substrate/nexus-agents/commit/29e3895dcfe6ba42de7869891e40bea97ec7b988) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): round-trip four more tools against their declared output schemas
+
+  A response field missing from a tool's `outputSchema` does not merely go
+  unreported: the SDK validates structured content with
+  `additionalProperties: false`, so every call fails with `-32602` and the tool
+  becomes unusable. That shipped once and was caught only because `memory_query`
+  happens to be round-tripped in the integration suite.
+
+  A tool's own tests cannot see it — they call the registered handler directly and
+  never cross the protocol — so the guard has to be a real client call.
+  `memory_write`, `research_synthesize`, `run_workflow` and `research_add` now
+  make one, asserting narrowly: a business failure is fine, an output-schema
+  violation is not.
+
+  Partial coverage of [#5045](https://github.com/nexus-substrate/nexus-agents/issues/5045), which remains open for the tools this harness does
+  not register.
+
 ## 4.22.6
 
 ### Patch Changes
