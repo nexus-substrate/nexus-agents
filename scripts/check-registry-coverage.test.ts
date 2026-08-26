@@ -19,6 +19,7 @@ import {
   findMissingPeers,
   getChangedFiles,
   extractMarkerEntries,
+  isUnmeasurableManifest,
 } from './check-registry-coverage.js';
 
 // ============================================================================
@@ -275,5 +276,20 @@ describe('getChangedFiles', () => {
 
     const changed = getChangedFiles(ctx.dir);
     expect(changed).toContain('note.txt');
+  });
+});
+
+describe('an empty manifest is unmeasured, not clean (#4586)', () => {
+  it('treats zero declared registries as unmeasurable', () => {
+    // `success: violations.length === 0` is satisfied by an empty manifest, so
+    // emptying `registries` made the gate green while inspecting nothing — and
+    // `validateManifest`'s bitrot loop had no entries to catch it either.
+    expect(isUnmeasurableManifest(0)).toBe(true);
+  });
+
+  it('treats a populated manifest as measurable', () => {
+    // The pair: without it, "always unmeasurable" would satisfy the test above.
+    expect(isUnmeasurableManifest(1)).toBe(false);
+    expect(isUnmeasurableManifest(12)).toBe(false);
   });
 });

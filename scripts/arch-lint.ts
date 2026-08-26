@@ -19,7 +19,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
 
-interface Violation {
+export interface Violation {
   readonly file: string;
   readonly line: number;
   readonly rule: string;
@@ -28,10 +28,20 @@ interface Violation {
   readonly severity: 'error' | 'warning';
 }
 
-interface LintResult {
+export interface LintResult {
   readonly violations: Violation[];
   readonly filesScanned: number;
   readonly passed: boolean;
+  /**
+   * Set when the lint ran over ZERO files (#4586).
+   *
+   * `passed: errors.length === 0` is true over an empty file set, so a glob
+   * that stops matching — a directory rename, a moved package, a broken
+   * `collectLintTargets` — reported the architecture lint clean. `filesScanned`
+   * sat in the same object, unread. Absence of evidence is not evidence of
+   * compliance: this reports `unmeasured` and exits non-zero.
+   */
+  readonly unmeasured?: boolean;
 }
 
 // Note: Layer definitions are documented in wiring-graph.json
@@ -518,11 +528,26 @@ function lint(): LintResult {
   // Filter to only errors for pass/fail
   const errors = violations.filter((v) => v.severity === 'error');
 
-  return {
-    violations,
-    filesScanned: srcFiles.length + scriptFiles.length,
-    passed: errors.length === 0,
-  };
+  return lintVerdict(violations, errors, srcFiles.length + scriptFiles.length);
+}
+
+/**
+ * The pass/fail/unmeasured verdict, separated from the scan so the empty-input
+ * case is testable without a filesystem (#4586).
+ *
+ * Three states, not two. `passed: errors.length === 0` is true over an empty
+ * file set, so a glob that stops matching reported the architecture lint clean
+ * with `filesScanned: 0` sitting unread beside it.
+ */
+export function lintVerdict(
+  violations: Violation[],
+  errors: readonly Violation[],
+  filesScanned: number
+): LintResult {
+  if (filesScanned === 0) {
+    return { violations, filesScanned, passed: false, unmeasured: true };
+  }
+  return { violations, filesScanned, passed: errors.length === 0 };
 }
 
 /**
@@ -572,7 +597,11 @@ function printResults(result: LintResult): void {
     console.log('');
   }
 
-  if (result.passed) {
+  if (result.unmeasured === true) {
+    console.log('✗ Architectural lint UNMEASURED — zero files scanned');
+    console.log('  Nothing was inspected, so nothing can be said to have passed.');
+    console.log('  Check the source globs in collectLintTargets/collectScriptTargets.');
+  } else if (result.passed) {
     console.log('✓ Architectural lint PASSED');
   } else {
     console.log('✗ Architectural lint FAILED');
