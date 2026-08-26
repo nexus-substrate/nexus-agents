@@ -31,7 +31,6 @@ import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -237,7 +236,13 @@ function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: st
     const store = getOutcomeStore();
     store.append({
       id: `triage-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
-      cli: DEFAULT_CLI,
+      // #5034: NOT `DEFAULT_CLI`. This tool does not know which CLI served the
+      // work — `model` below is a synthetic label — and hardcoding 'claude'
+      // credited or debited claude in the routing learner on every run.
+      // `'unknown'` is the schema's own unattributed value, which the bandit's
+      // warm-start partitions out instead of replaying (#4935). #5020 fixed
+      // two of these four writers; this is the remainder.
+      cli: 'unknown',
       category: 'planning',
       model: 'issue-triage',
       success,
