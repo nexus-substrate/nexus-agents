@@ -3916,6 +3916,7 @@ TypeAliasDeclaration GetJobResultInput
 VariableDeclaration GetJobResultInputSchema
   : z.ZodObject<{ jobId: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration GetJobResultResponse
+  readonly abandoned?: boolean | undefined
   readonly errorMessage?: string | undefined
   readonly found: boolean
   readonly jobId: string

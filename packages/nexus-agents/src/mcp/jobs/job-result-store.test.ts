@@ -13,6 +13,8 @@ import {
   writeJobFailed,
   writeJobCancelled,
   readJobResult,
+  isAbandonedJob,
+  type JobResult,
 } from './job-result-store.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 
@@ -157,5 +159,56 @@ describe('job-result-store', () => {
     const path = nexusDataPath('jobs', 'result-job-test-7.json');
     writeFileSync(path, '{not valid json');
     expect(readJobResult('job-test-7')).toBeNull();
+  });
+});
+
+// =============================================================================
+// A pending record that outlived the guard is abandoned (#4976)
+// =============================================================================
+
+describe('isAbandonedJob (#4976)', () => {
+  // `runAsJob` writes the pending record then backgrounds the body. If the
+  // process dies mid-body no terminal writer runs, and `writeJobPending`
+  // refuses to overwrite — so the record stays `pending` forever and a poller
+  // waits on work that no longer exists.
+  const GUARD_MS = 3_600_000;
+
+  function pendingRecord(createdAt: string): JobResult {
+    return { v: 1, jobId: 'j', toolName: 't', status: 'pending', createdAt };
+  }
+
+  it('is false for a pending job still inside the guard window', () => {
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+    const record = pendingRecord(new Date(now - GUARD_MS + 60_000).toISOString());
+
+    expect(isAbandonedJob(record, now)).toBe(false);
+  });
+
+  it('is true once it has outlived the guard', () => {
+    // The anchor is objective: a live job cannot still be pending past the
+    // runaway guard, because the guard would have recorded it `failed`.
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+    const record = pendingRecord(new Date(now - GUARD_MS - 60_000).toISOString());
+
+    expect(isAbandonedJob(record, now)).toBe(true);
+  });
+
+  it('never calls a settled record abandoned, however old', () => {
+    // The pair. A `complete` record from last year is history, not a stuck
+    // job — flagging it would make the field meaningless.
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+    const old = new Date(now - GUARD_MS * 1000).toISOString();
+
+    for (const status of ['complete', 'failed', 'cancelled'] as const) {
+      expect(isAbandonedJob({ ...pendingRecord(old), status }, now)).toBe(false);
+    }
+  });
+
+  it('does not guess when the timestamp is unparseable', () => {
+    // An unreadable `createdAt` is an unknown age; treating it as abandoned
+    // would kill a job that may well be running. Documented rather than
+    // pinned: NaN comparisons are false, so this holds with or without an
+    // explicit guard and no mutation can distinguish the two.
+    expect(isAbandonedJob(pendingRecord('not-a-date'), Date.now())).toBe(false);
   });
 });
