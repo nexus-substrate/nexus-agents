@@ -14,7 +14,7 @@
  * @module mcp/tools/run-tool-dry-run
  */
 import { MetaDispatchError } from '../../orchestration/meta-dispatcher.js';
-import { AuthorityRefusalError } from '../../orchestration/authority-tier-guard.js';
+import { PolicyRefusalError } from '../../orchestration/authority-tier-guard.js';
 
 /** The only strategy whose executor stops before implementing. */
 const DRY_RUN_CAPABLE = 'dev-pipeline';
@@ -27,7 +27,7 @@ const DRY_RUN_CAPABLE = 'dev-pipeline';
  * coherent that this route cannot provide. Refusing is the point — executing a
  * run the caller asked to be dry would be worse than any error.
  */
-export class DryRunUnsupportedError extends Error {
+export class DryRunUnsupportedError extends PolicyRefusalError {
   constructor(readonly strategy: string) {
     super(
       `dryRun is not supported by the '${strategy}' strategy — only '${DRY_RUN_CAPABLE}' stops after plan+vote. ` +
@@ -56,8 +56,10 @@ export function assertDryRunSupported(dryRun: boolean | undefined, strategy: str
  * (#4806) are all fail-closed POLICY results, not defects.
  */
 export function classifyDispatchError(err: unknown): 'business' | 'internal' {
-  const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
-  const refused = err instanceof AuthorityRefusalError;
-  const dryRunUnsupported = err instanceof DryRunUnsupportedError;
-  return noExecutor || refused || dryRunUnsupported ? 'business' : 'internal';
+  // #4994: keyed on the shared base rather than a list of classes. Enumerating
+  // them meant `ExecuteEnvelopeRefusalError` — reachable from a plain
+  // `run({ goal, execute: true })`, which routes to a strategy with no execute
+  // envelope — was reported to the caller as an internal defect.
+  if (err instanceof PolicyRefusalError) return 'business';
+  return err instanceof MetaDispatchError && err.code === 'no_executor' ? 'business' : 'internal';
 }
