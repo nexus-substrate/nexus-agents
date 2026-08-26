@@ -285,7 +285,14 @@ export async function runDevPipelineForGoal(
   // (never infer trust from absence). The `run` entry point passes the caller's
   // real RequestContext.trustTier here — closing the run-path hole where a
   // possibly-untrusted goal ran a real research stage with an absent tier.
-  return runDevPipeline(goal, stages, trustTier !== undefined ? { trustTier } : undefined);
+  return runDevPipeline(goal, stages, {
+    ...(trustTier !== undefined ? { trustTier } : {}),
+    // #4806 said `dryRun` is the one pipeline option `run` forwards. It parsed
+    // the flag into `input` — which only `createStages` reads — and then built
+    // the options from `trustTier` alone, so the short-circuit at
+    // `dev-pipeline.ts:367` never fired and a dry run implemented for real.
+    ...(input.dryRun ? { dryRun: true as const } : {}),
+  });
 }
 
 // ============================================================================

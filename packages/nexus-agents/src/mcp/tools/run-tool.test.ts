@@ -23,6 +23,7 @@ interface FakeDevPipelineResult {
   securityPassed: boolean;
   securityRan?: boolean;
   planStatus?: 'empty';
+  dryRun?: true;
 }
 const runDevPipelineForGoalMock = vi.fn(
   (_goal: string, _trustTier?: string, _dryRun?: boolean): Promise<FakeDevPipelineResult> =>
@@ -608,6 +609,87 @@ describe('run async dispatch (execute:true, #3732)', () => {
           undefined,
           true
         );
+      });
+
+      it('does not call a successful dry run an engine failure', async () => {
+        // `buildDryRunResult` returns `completed: false` BY DESIGN — the run
+        // stopped where it was told to. `detectEngineFailure` treats
+        // `completed === false` as a fault, so wiring dryRun through without
+        // this would hand the caller
+        // "Engine reported failure: the run stopped before the security gate"
+        // for precisely the outcome they asked for, and fail the job on the
+        // async path. The plan would survive only inside `detail`.
+        runDevPipelineForGoalMock.mockResolvedValueOnce({
+          completed: false,
+          dryRun: true,
+          plan: 'the plan',
+          tasks: [],
+          voteIterations: 2,
+          qaIterations: 0,
+          securityPassed: false,
+          securityRan: false,
+        });
+        const handler = captureHandler();
+
+        const result = await handler({
+          goal: 'implement the feature',
+          forceStrategy: 'dev-pipeline',
+          execute: true,
+          dryRun: true,
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(result.content[0]?.text).toContain('the plan');
+      });
+
+      it('still reports a dry run whose planner produced nothing', async () => {
+        // The pair. Stopping early is the request; coming back with no plan is
+        // a failure, and the exemption above must not swallow it.
+        runDevPipelineForGoalMock.mockResolvedValueOnce({
+          completed: false,
+          dryRun: true,
+          plan: '',
+          tasks: [],
+          voteIterations: 1,
+          qaIterations: 0,
+          securityPassed: false,
+          securityRan: false,
+          planStatus: 'empty',
+        });
+        const handler = captureHandler();
+
+        const result = await handler({
+          goal: 'implement the feature',
+          forceStrategy: 'dev-pipeline',
+          execute: true,
+          dryRun: true,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0]?.text).toContain('planner returned no plan');
+      });
+
+      it('still reports an ordinary run that did not complete', async () => {
+        // Guard the guard: the exemption keys on `dryRun`, so a real pipeline
+        // failure must be unaffected by it.
+        runDevPipelineForGoalMock.mockResolvedValueOnce({
+          completed: false,
+          plan: 'the plan',
+          tasks: [],
+          voteIterations: 1,
+          qaIterations: 1,
+          securityPassed: false,
+          securityRan: false,
+        });
+        const handler = captureHandler();
+
+        const result = await handler({
+          goal: 'implement the feature',
+          forceStrategy: 'dev-pipeline',
+          execute: true,
+        });
+
+        expect(result.isError).toBe(true);
       });
 
       it('leaves the pipeline untouched when dryRun is omitted', async () => {

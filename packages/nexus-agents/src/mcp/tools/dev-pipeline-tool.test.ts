@@ -29,19 +29,26 @@ const PIPELINE_RESULT = {
   securityPassed: true,
 };
 const runDevPipelineMock = vi.fn(
-  (_task: string, _stages: unknown, _options?: { trustTier?: string }) =>
+  (_task: string, _stages: unknown, _options?: { trustTier?: string; dryRun?: boolean }) =>
     Promise.resolve(PIPELINE_RESULT)
 );
 vi.mock('../../pipeline/dev-pipeline.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../pipeline/dev-pipeline.js')>();
   return {
     ...actual,
-    runDevPipeline: (task: string, stages: unknown, options?: { trustTier?: string }) =>
-      runDevPipelineMock(task, stages, options),
+    runDevPipeline: (
+      task: string,
+      stages: unknown,
+      options?: { trustTier?: string; dryRun?: boolean }
+    ) => runDevPipelineMock(task, stages, options),
   };
 });
 
-import { DevPipelineInputSchema, registerDevPipelineTool } from './dev-pipeline-tool.js';
+import {
+  DevPipelineInputSchema,
+  registerDevPipelineTool,
+  runDevPipelineForGoal,
+} from './dev-pipeline-tool.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -498,5 +505,40 @@ describe('run_dev_pipeline iteration caps are wired (#4939)', () => {
       { maxVoteIterations?: number; maxQaIterations?: number } | undefined;
     expect(options?.maxVoteIterations).toBe(3);
     expect(options?.maxQaIterations).toBe(3);
+  });
+});
+
+describe('runDevPipelineForGoal — dryRun reaches the pipeline (#4806)', () => {
+  beforeEach(() => runDevPipelineMock.mockClear());
+
+  // The seam. `run-tool.test.ts` asserts that `run` calls
+  // `runDevPipelineForGoal` with `dryRun: true`, and stops there — one link
+  // short of the only place the flag does anything. This function parsed the
+  // flag into `input`, which only `createStages` reads, and then built the
+  // options from `trustTier` alone, so `dev-pipeline.ts`'s dry-run
+  // short-circuit never fired and the "plan and vote only" run implemented,
+  // QA'd and security-scanned for real.
+  it('passes dryRun through to runDevPipeline options', async () => {
+    await runDevPipelineForGoal('add retry logic', undefined, true);
+
+    expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.dryRun).toBe(true);
+  });
+
+  it('leaves dryRun unset on an ordinary run', async () => {
+    // The pair: a fix that hardcoded `dryRun: true` would pass the test above
+    // while turning every `run` into a no-op.
+    await runDevPipelineForGoal('add retry logic', undefined, undefined);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.dryRun).toBeUndefined();
+  });
+
+  it('still threads trustTier alongside it', async () => {
+    await runDevPipelineForGoal('add retry logic', '3', true);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).toMatchObject({
+      trustTier: '3',
+      dryRun: true,
+    });
   });
 });
