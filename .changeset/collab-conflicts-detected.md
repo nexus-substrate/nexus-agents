@@ -11,9 +11,12 @@ byte-identical to what a genuinely unanimous session produces, so two experts
 returning opposite answers read as consensus.
 
 `AggregationMetadata` gains an optional `conflictsDetected`. The session builder
-sets it `false`; `ResultAggregator`, which does compare fields pairwise, sets it
-`true`. Absent still means the producer predates the distinction. Same shape as
-`confidenceMeasured` (#4831) and `tokensMeasured` (#4734).
+sets it `false`. `ResultAggregator` sets it per branch: only the object-merge
+path compares fields pairwise, so it alone reports `true` — `select_best`,
+`consensus`, `sequential_chain`, a lone result, string union and array
+concatenation all return an empty list without looking. Absent still means the
+producer predates the distinction. Same shape as `confidenceMeasured` (#4831)
+and `tokensMeasured` (#4734).
 
 This discloses the gap rather than closing it — wiring real detection into the
 session path needs the `TaskResult`/`ExpertResult` reconciliation tracked in

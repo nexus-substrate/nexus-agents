@@ -511,6 +511,39 @@ describe('ResultAggregator', () => {
       expect(result.value.metadata.conflictsDetected).toBe(true);
     });
 
+    it('does not claim a comparison it did not run on the string path (#4854)', () => {
+      // Only `mergeObjects` compares anything. String outputs are unioned
+      // line-by-line, so two experts saying opposite things produce
+      // `conflicts: []` from a branch that never looked — the exact misreport
+      // the session-side `false` exists to avoid, one path over.
+      const aggregator = createResultAggregator();
+      const result = aggregator.aggregate({
+        pattern: 'parallel',
+        results: [createExpertResult('e1', 'ship it'), createExpertResult('e2', 'do not ship it')],
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('aggregate rejected string results');
+      expect(result.value.conflicts).toEqual([]);
+      expect(result.value.metadata.conflictsDetected).toBe(false);
+    });
+
+    it('does not claim a comparison it did not run on the select_best path (#4854)', () => {
+      // `select_best` returns `conflicts: []` without comparing at all.
+      const aggregator = createResultAggregator();
+      const result = aggregator.aggregate({
+        pattern: 'review',
+        results: [
+          createExpertResult('e1', { value: 'one' }, 0.9),
+          createExpertResult('e2', { value: 'two' }, 0.4),
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('aggregate rejected the review input');
+      expect(result.value.metadata.conflictsDetected).toBe(false);
+    });
+
     it('should use custom conflict resolver', () => {
       const customResolver = vi.fn().mockReturnValue('expert2');
       const aggregator = createResultAggregator({
