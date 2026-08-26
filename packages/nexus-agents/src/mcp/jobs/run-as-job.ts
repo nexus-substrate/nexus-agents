@@ -308,7 +308,10 @@ export function runAsJob<I, R, E = ToolResult>(params: RunAsJobParams<I, R, E>):
 
   const jobId = idempotency.jobId;
   // Step 3: pending record + idempotency index entry.
-  writeJobPending(jobId, params.toolName);
+  // #4972: record whether this tool can even receive a cancel. `run.length`
+  // is the callback's declared arity, so >= 3 means it takes the `signal`
+  // parameter. Structural, not behavioural — see `signalAccepted`'s doc.
+  writeJobPending(jobId, params.toolName, params.run.length >= 3);
   if (params.idempotencyKey !== undefined && params.idempotencyKey !== '') {
     registerIdempotentJob({
       tool: params.toolName,

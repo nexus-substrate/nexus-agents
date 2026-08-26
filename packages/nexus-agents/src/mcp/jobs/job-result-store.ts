@@ -65,6 +65,22 @@ export const JobResultSchema = z.object({
    * `result` — the discriminator is `status`.
    */
   error: z.string().optional(),
+  /**
+   * Whether the tool's `run` callback accepts `runAsJob`'s `AbortSignal`
+   * (#4972).
+   *
+   * `cancel_job` writes a `cancelled` record whether or not the tool can act
+   * on the signal — as `cancel-job-tool.ts` says, "a tool that IGNORES the
+   * signal still runs to completion… but its record stays `cancelled`". A
+   * reader of that record could not tell the two apart, so `cancelled` claimed
+   * more than was known.
+   *
+   * This is a STRUCTURAL fact — the callback's arity — not a behavioural one.
+   * A tool may accept the signal and never await on it, so `true` means
+   * "cancellation can reach this tool", not "the work stopped". Absent means
+   * the writer did not report it, which is not the same as `false`.
+   */
+  signalAccepted: z.boolean().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
 
@@ -95,7 +111,7 @@ function persistJobRecord(path: string, record: JobResult): void {
  * Caller responsibility: generate a fresh `jobId` per call (Stage 1
  * doesn't yet deduplicate via idempotencyKey — that's #3042 follow-up).
  */
-export function writeJobPending(jobId: string, toolName: string): void {
+export function writeJobPending(jobId: string, toolName: string, signalAccepted?: boolean): void {
   const path = jobResultPath(jobId);
   if (existsSync(path)) {
     logger.debug('Job result file already exists — leaving in place', { jobId });
@@ -107,9 +123,10 @@ export function writeJobPending(jobId: string, toolName: string): void {
     toolName,
     status: 'pending',
     createdAt: new Date().toISOString(),
+    ...(signalAccepted !== undefined ? { signalAccepted } : {}),
   };
   persistJobRecord(path, record);
-  logger.debug('Wrote pending job record', { jobId, toolName });
+  logger.debug('Wrote pending job record', { jobId, toolName, signalAccepted });
 }
 
 /**
