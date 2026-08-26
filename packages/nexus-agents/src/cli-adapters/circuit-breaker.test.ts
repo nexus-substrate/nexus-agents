@@ -135,6 +135,34 @@ describe('CliCircuitBreaker', () => {
       expect(fn).not.toHaveBeenCalled();
     });
 
+    it('recovers on schedule even while failures keep arriving (#5011)', () => {
+      // The defect: the reset window was measured from `lastFailureTime`, and
+      // `onFailure` updated it unconditionally — including while already open.
+      // Since an open circuit does not shed load on the default paths, traffic
+      // kept arriving and each failure pushed the half-open probe another
+      // 30s out. A CLI serving 95% of requests correctly stayed evicted from
+      // every voter panel until a manual reset.
+      expect(breaker.getState()).toBe('open');
+
+      // Two-thirds of the way through the window, a straggler fails.
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs * 0.7);
+      breaker.recordFailure('unknown');
+
+      // Past the window measured from the TRANSITION, not from that failure.
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs * 0.4);
+
+      expect(breaker.getState()).toBe('half-open');
+    });
+
+    it('does not re-probe before the window has elapsed', () => {
+      // The pair: fixing the restart must not make the circuit probe early.
+      expect(breaker.getState()).toBe('open');
+
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs - 1);
+
+      expect(breaker.getState()).toBe('open');
+    });
+
     it('should transition to half-open after reset timeout', () => {
       expect(breaker.getState()).toBe('open');
 
