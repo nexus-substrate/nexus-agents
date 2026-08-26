@@ -25,6 +25,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import {
   toolStructuredError,
   toolSuccess,
+  toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -72,7 +73,11 @@ import { getToolAnnotations } from '../tool-annotations.js';
 // #3045 / epic #2631 Stage 4 — async-mode dispatch + concurrency cap.
 // #3045 / epic #2631 Stage 4 — async-mode dispatch via the shared `runAsJob`
 // helper (#3729).
-import { runAsJob } from '../jobs/run-as-job.js';
+import {
+  runAsJob,
+  defaultCollisionEnvelope,
+  type JobEnvelopeBuilders,
+} from '../jobs/run-as-job.js';
 import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
@@ -969,6 +974,9 @@ function dispatchAsyncConsensusVote(
     input: args,
     idempotencyKey: args.idempotencyKey,
     freshJobId: () => `job-vote-${randomUUID()}`,
+    // #5066: structured envelopes — this tool declares an outputSchema, and
+    // the SDK rejects a non-error result that carries no structured content.
+    toEnvelope: ASYNC_ENVELOPES,
     // #4362: `handleConsensusVote`'s `{ ok: false }` used to flow into the job
     // record verbatim, and `runAsJob` records `complete` for anything its `run`
     // callback RESOLVES — so a dead voter panel produced a job a caller polling
@@ -1057,48 +1065,102 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   };
 }
 
-/** Output schema for consensus_vote tool (Issue #1117, #1246). */
+/**
+ * Async-dispatch envelopes carrying `structuredContent` (#5066).
+ *
+ * `runAsJob`'s defaults are text-only. Because this tool declares an
+ * `outputSchema`, the SDK requires structured content on every non-error
+ * result, so every `mode: 'async'` call failed with -32602 — the mode the
+ * tool's own description recommends for 7-voter panels.
+ */
+const ASYNC_ENVELOPES: JobEnvelopeBuilders<ToolResult> = {
+  pending: (jobId) =>
+    toolSuccessStructured({
+      status: 'pending',
+      jobId,
+      pollTool: 'get_job_result',
+      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+    }),
+  busy: (retryAfterMs, toolName) =>
+    toolSuccessStructured({
+      status: 'busy',
+      retryAfterMs,
+      note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use mode: "sync".`,
+    }),
+  replay: (jobId) =>
+    toolSuccessStructured({
+      status: 'replay',
+      jobId,
+      pollTool: 'get_job_result',
+      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+    }),
+  collision: defaultCollisionEnvelope,
+};
+
+/**
+ * Output schema for consensus_vote tool (Issue #1117, #1246).
+ *
+ * Every vote field is optional because this tool has TWO response shapes and
+ * `registerTool` takes a `ZodRawShape`, which cannot express a discriminated
+ * union (#5066). `status` tells them apart: present means an async-dispatch
+ * envelope, absent means a completed vote.
+ *
+ * What that gives up is requiredness. What it keeps is the guarantee that
+ * actually protects the protocol: the SDK validates with
+ * `additionalProperties: false`, so an UNDECLARED response field still fails
+ * every call — the #5044 regression this schema exists to catch.
+ */
 export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
-  proposal: z.string(),
-  strategy: VotingStrategySchema,
+  /** Async-dispatch envelope discriminator — absent on a completed vote. */
+  status: z.enum(['pending', 'busy', 'replay']).optional(),
+  jobId: z.string().max(200).optional(),
+  pollTool: z.literal('get_job_result').optional(),
+  note: z.string().max(500).optional(),
+  retryAfterMs: z.number().optional(),
+  proposal: z.string().optional(),
+  strategy: VotingStrategySchema.optional(),
   // Reuses the canonical VoteDecisionStatusSchema (single source) — a hand-listed
   // subset here (was ['approved','rejected','no_quorum']) omitted the reachable
   // 'timeout'/'pending' outcomes and made strict clients reject those votes (#4032).
-  decision: VoteDecisionStatusSchema,
-  approvalPercentage: z.number(),
-  voteCounts: z.object({
-    approve: z.number(),
-    reject: z.number(),
-    abstain: z.number(),
-    error: z.number(),
-  }),
-  votes: z.array(
-    z.object({
-      role: z.string().max(100),
-      decision: z.enum(['approve', 'reject', 'abstain']),
-      confidence: z.number(),
-      reasoning: z.string().max(4000),
-      simulated: z.boolean(),
-      error: z.boolean(),
-      modelUsed: z.string().max(100).optional(),
-      rejectionCategories: z
-        .array(
-          z.enum([
-            'YAGNI',
-            'DRY_VIOLATION',
-            'OVER_ENGINEERING',
-            'SCOPE_CREEP',
-            'SECURITY_RISK',
-            'MISALIGNED',
-            'INSUFFICIENT_EVIDENCE',
-          ])
-        )
-        .optional(),
+  decision: VoteDecisionStatusSchema.optional(),
+  approvalPercentage: z.number().optional(),
+  voteCounts: z
+    .object({
+      approve: z.number(),
+      reject: z.number(),
+      abstain: z.number(),
+      error: z.number(),
     })
-  ),
+    .optional(),
+  votes: z
+    .array(
+      z.object({
+        role: z.string().max(100),
+        decision: z.enum(['approve', 'reject', 'abstain']),
+        confidence: z.number(),
+        reasoning: z.string().max(4000),
+        simulated: z.boolean(),
+        error: z.boolean(),
+        modelUsed: z.string().max(100).optional(),
+        rejectionCategories: z
+          .array(
+            z.enum([
+              'YAGNI',
+              'DRY_VIOLATION',
+              'OVER_ENGINEERING',
+              'SCOPE_CREEP',
+              'SECURITY_RISK',
+              'MISALIGNED',
+              'INSUFFICIENT_EVIDENCE',
+            ])
+          )
+          .optional(),
+      })
+    )
+    .optional(),
   threshold: VoteThresholdSchema.optional(),
-  durationMs: z.number(),
-  simulateVotes: z.boolean(),
+  durationMs: z.number().optional(),
+  simulateVotes: z.boolean().optional(),
   higherOrderMetadata: z
     .object({
       posteriorApproval: z.number(),
@@ -1119,7 +1181,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // normal case; false means all-simulated (skipped by design) or write-failed
   // (data dir unwritable) — voteRecordNote carries the actionable reason. Makes
   // a previously WARN-only skip visible to MCP callers.
-  voteRecordPersisted: z.boolean(),
+  voteRecordPersisted: z.boolean().optional(),
   voteRecordNote: z.string().max(500).optional(),
   // #3587: set when the panel DEGRADED (some voters errored), so the decision
   // rests on fewer voters than requested. Part of the response since #3587 but

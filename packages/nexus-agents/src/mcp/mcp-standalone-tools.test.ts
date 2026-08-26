@@ -280,6 +280,39 @@ describe('MCP Standalone Tools Integration', () => {
     );
   });
 
+  it('a second response shape also satisfies the outputSchema (#5066)', async () => {
+    // The round-trip above calls each tool once with default arguments, so it
+    // only ever sees ONE of a tool's response shapes. `consensus_vote` has two:
+    // the vote result, and the `{status:'pending', jobId}` envelope from
+    // `runAsJob`. The async envelope carried no structured content at all, so
+    // every `mode: 'async'` call — the mode the tool's own description
+    // recommends for 7-voter panels — failed with -32602.
+    let result: unknown;
+    let thrown = '';
+    try {
+      result = await ctx.client.callTool({
+        name: 'consensus_vote',
+        arguments: { proposal: 'round trip', quickMode: true, mode: 'async' },
+      });
+    } catch (error: unknown) {
+      thrown = error instanceof Error ? error.message : JSON.stringify(error);
+    }
+
+    expect(schemaViolationIn(result, thrown)).toBe('');
+  }, 60_000);
+
+  /**
+   * A schema violation reaches the caller in one of two ways, and the first
+   * draft of this suite only knew about one of them (#5066): the SDK may
+   * throw, or it may hand back `isError: true` with the message in the text
+   * content. A test that only catches throws passes on the second form.
+   */
+  function schemaViolationIn(result: unknown, thrown: string): string {
+    const texts = (result as { content?: { text?: string }[] } | undefined)?.content ?? [];
+    const haystack = [thrown, ...texts.map((c) => c.text ?? '')].join(' ');
+    return /output schema|-32602/.test(haystack) ? haystack : '';
+  }
+
   /**
    * Tools whose round-trip call returns an error envelope rather than
    * structured content, so their `outputSchema` genuinely goes unchecked here:
@@ -335,16 +368,28 @@ describe('MCP Standalone Tools Integration', () => {
         missingArgs.push(tool.name);
         continue;
       }
+      let result: Awaited<ReturnType<typeof ctx.client.callTool>> | undefined;
+      let thrown = '';
       try {
-        const result = await ctx.client.callTool({ name: tool.name, arguments: args });
-        if (result.structuredContent === undefined) notExercised.push(tool.name);
+        result = await ctx.client.callTool({ name: tool.name, arguments: args });
       } catch (error: unknown) {
         // Every thrown error counts, not only the ones naming a schema. An
         // earlier version matched two substrings and silently credited the
         // tool for anything else — a timeout, a transport fault — which is the
         // same shape of hole this suite exists to close.
-        const message = error instanceof Error ? error.message : JSON.stringify(error);
-        callFailed.push(`${tool.name}: ${message}`);
+        thrown = error instanceof Error ? error.message : JSON.stringify(error);
+      }
+      // #5066: the SDK delivers a violation as an `isError` RESULT as often as
+      // it throws. Checked before the unstructured bucket, because a violation
+      // has no structured content either — and for a tool already in
+      // KNOWN_UNSTRUCTURED it would otherwise be credited as expected.
+      const violation = schemaViolationIn(result, thrown);
+      if (violation !== '') {
+        callFailed.push(`${tool.name}: ${violation}`);
+      } else if (thrown !== '') {
+        callFailed.push(`${tool.name}: ${thrown}`);
+      } else if (result?.structuredContent === undefined) {
+        notExercised.push(tool.name);
       }
     }
 
