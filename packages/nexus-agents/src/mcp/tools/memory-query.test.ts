@@ -264,6 +264,9 @@ describe('memory-query', () => {
         backendsInstalled.agentic = true;
         backendsInstalled.adaptive = true;
         backendsInstalled.typed = true;
+        // Reset alongside the install flags: a test that sets this and does
+        // not clear it makes every later assertion order-dependent.
+        mockErroredBackends = [];
       });
 
       it('names the backends that are not installed', async () => {

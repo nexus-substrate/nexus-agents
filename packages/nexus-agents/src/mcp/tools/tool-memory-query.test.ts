@@ -71,7 +71,12 @@ vi.mock('./memory-decay.js', () => ({
   })),
 }));
 
-import { queryBeliefMemory } from './tool-memory-query.js';
+import {
+  queryBeliefMemory,
+  queryAgenticMemory,
+  queryTypedMemory,
+  queryAdaptiveMemory,
+} from './tool-memory-query.js';
 import { ToolMemoryManager } from './tool-memory.js';
 
 function createMockLogger(): ILogger {
@@ -328,6 +333,122 @@ describe('query helpers report a swallowed failure (#4999)', () => {
     expect(onFailure).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onFailure when the backend returns an error Result', async () => {
+    // This, not the throw above, is what production actually does. Every real
+    // backend catches its own exception and returns `err(...)`:
+    // HybridMemoryBackend.search, searchAgentic and the belief recall path all
+    // resolve rather than reject. Reporting only from `catch` made the whole
+    // disclosure unreachable for the corrupt-store case it exists for.
+    const erroringBeliefs = {
+      recallBySubject: (): Promise<{ ok: false; error: Error }> =>
+        Promise.resolve({ ok: false, error: new Error('db is corrupt') }),
+      query: (): Promise<{ ok: false; error: Error }> =>
+        Promise.resolve({ ok: false, error: new Error('db is corrupt') }),
+    };
+    const onFailure = vi.fn();
+
+    const results = await queryBeliefMemory(erroringBeliefs as never, 'routing', ['routing'], 5, {
+      log: createMockLogger(),
+      onFailure,
+    });
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalled();
+  });
+
+  // One case per helper: the belief tests above cover only one of the four
+  // `err` reports, and a solo mutation of any other line survived without
+  // these. Each backend is stubbed to resolve `err` — the shape a corrupt
+  // SQLite file actually produces.
+  const ERR = { ok: false as const, error: new Error('db is corrupt') };
+
+  it('reports an agentic backend that could not answer', async () => {
+    const onFailure = vi.fn();
+
+    const results = await queryAgenticMemory(
+      { searchAgentic: () => Promise.resolve(ERR) } as never,
+      'routing',
+      ['routing'],
+      5,
+      { log: createMockLogger(), onFailure }
+    );
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalled();
+  });
+
+  it('reports a typed backend that could not answer', async () => {
+    const onFailure = vi.fn();
+
+    const results = await queryTypedMemory(
+      { queryByType: () => Promise.resolve(ERR) } as never,
+      'routing',
+      ['routing'],
+      5,
+      { log: createMockLogger(), onFailure }
+    );
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalled();
+  });
+
+  it('reports an adaptive backend that could not answer', async () => {
+    const onFailure = vi.fn();
+
+    const results = await queryAdaptiveMemory(
+      { search: () => Promise.resolve(ERR) } as never,
+      'routing',
+      ['routing'],
+      5,
+      { log: createMockLogger(), onFailure }
+    );
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalled();
+  });
+
+  it('reports a failed subject recall with no keywords to fall back on', async () => {
+    // Pins the FIRST belief report specifically. With keywords present the
+    // fallback also fails and fires the second report, so a solo mutation of
+    // this line survived until the no-keyword case existed.
+    const onFailure = vi.fn();
+
+    const results = await queryBeliefMemory(
+      {
+        recallBySubject: () => Promise.resolve(ERR),
+        query: () => Promise.resolve({ ok: true as const, value: [] }),
+      } as never,
+      'routing',
+      [],
+      5,
+      { log: createMockLogger(), onFailure }
+    );
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a belief keyword scan that could not answer', async () => {
+    // The second belief call: `recallBySubject` succeeds with no match, so the
+    // keyword fallback runs and it is the one that fails. Without this, the
+    // two belief reports mask each other under solo mutation.
+    const onFailure = vi.fn();
+
+    const results = await queryBeliefMemory(
+      {
+        recallBySubject: () => Promise.resolve({ ok: true as const, value: [] }),
+        query: () => Promise.resolve(ERR),
+      } as never,
+      'routing',
+      ['routing'],
+      5,
+      { log: createMockLogger(), onFailure }
+    );
+
+    expect(results).toEqual([]);
+    expect(onFailure).toHaveBeenCalled();
+  });
+
   it('does not call onFailure when the backend answers', async () => {
     // The pair: a healthy empty result must not be reported as a failure.
     const emptyBeliefs = {
@@ -353,9 +474,14 @@ describe('queryWithStatus names the backends that threw (#4999)', () => {
   // backend is injected into a real manager rather than stubbed at the top.
   function managerWithThrowingBeliefs(): ToolMemoryManager {
     const manager = new ToolMemoryManager(createMockLogger());
+    // An error Result, not a rejection: that is the shape every real backend
+    // produces for a corrupt store, and the shape the first draft of this
+    // disclosure could not see.
     (manager as unknown as { beliefs: unknown }).beliefs = {
-      recallBySubject: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
-      query: (): Promise<never> => Promise.reject(new Error('db is corrupt')),
+      recallBySubject: (): Promise<{ ok: false; error: Error }> =>
+        Promise.resolve({ ok: false, error: new Error('db is corrupt') }),
+      query: (): Promise<{ ok: false; error: Error }> =>
+        Promise.resolve({ ok: false, error: new Error('db is corrupt') }),
     };
     return manager;
   }

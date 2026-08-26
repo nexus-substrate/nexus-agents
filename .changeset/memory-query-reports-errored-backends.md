@@ -10,7 +10,11 @@ corrupted SQLite file indistinguishable from a store that simply matched
 nothing, and the response reported both as a successful search.
 
 The helpers now take a `MemoryQueryContext` carrying an optional `onFailure`
-reporter alongside the logger, `queryBySource`/`queryAll` thread a per-source
+reporter alongside the logger, fired on an `err` Result as well as on a thrown
+exception — every real backend catches internally and resolves with `err(...)`,
+so reporting only from `catch` would have left the disclosure unreachable for
+the corrupt store it exists for. `ok([])` stays silent: that is a miss, not a
+failure. From there `queryBySource`/`queryAll` thread a per-source
 reporter through it, and the new `ToolMemoryManager.queryWithStatus` returns the
 failing source names next to the results. `memory_query` surfaces them as
 `errored` — on the single-source path as much as on `'all'`, so the field always
