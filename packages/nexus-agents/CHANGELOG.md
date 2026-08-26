@@ -1,5 +1,42 @@
 # nexus-agents
 
+## 4.22.5
+
+### Patch Changes
+
+- [#5038](https://github.com/nexus-substrate/nexus-agents/pull/5038) [`ed6c3ba`](https://github.com/nexus-substrate/nexus-agents/commit/ed6c3ba5a0c30bda3d011bb224a2bbecbc797f0b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(ci): replace a DocOps escape-hatch test that could not fail
+
+  `does NOT see [skip-docops] when only the merge-commit message has it (the
+original bug)` created a branch with no bypass token anywhere and asserted the
+  token was absent. That passes for any implementation that does not invent the
+  token — including the `git log -1` version [#2411](https://github.com/nexus-substrate/nexus-agents/issues/2411) fixed — so it pinned nothing
+  while reading as coverage of the merge-ref case.
+
+  It now exercises the actual [#2411](https://github.com/nexus-substrate/nexus-agents/issues/2411) bug: the token sits in an earlier branch
+  commit with an unrelated commit on top, which is precisely what `git log -1`
+  missed under a PR merge ref. Narrowing the range to `HEAD~1..HEAD` fails it.
+
+- [#5035](https://github.com/nexus-substrate/nexus-agents/pull/5035) [`047872a`](https://github.com/nexus-substrate/nexus-agents/commit/047872a1dd28d533ce8053778acb4ca211f02d77) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): treat an unrecognised knip shape as unmeasured, and finish the CLI-attribution sweep
+
+  Two corrections to fixes that shipped a few hours ago.
+
+  **[#5030](https://github.com/nexus-substrate/nexus-agents/issues/5030) left half the defect.** `normalizeKnipJson` returns `[]` for any parsed
+  JSON that is neither a top-level array nor an object with an `issues` array, and
+  `classifyKnipOutput` reported that as `ran: true`. So a knip whose reporter shape
+  changed — the exact case the check exists for, and which its own doc comment
+  says varies by version and reporter mode — parsed cleanly and counted as a
+  completed scan of zero issues. The test shipped with that fix asserted
+  `{"files":[]}` was "a genuine empty result"; that fixture is the
+  reporter-change case. An unrecognised shape is now `ran: false`, and the pair
+  test uses the two shapes the normalizer actually understands.
+
+  **[#5020](https://github.com/nexus-substrate/nexus-agents/issues/5020) fixed two of four writers.** `issue-triage-tool.ts` and
+  `research-discover.ts` append the same shape — synthetic `model` label, no
+  knowledge of the serving CLI — and still hardcoded `cli: DEFAULT_CLI`.
+  `research_discover` runs on essentially every non-trivial task, so it was the
+  highest-volume of the four. Both now record `cli: 'unknown'`; the changeset for
+  [#5020](https://github.com/nexus-substrate/nexus-agents/issues/5020) said "two live tool paths" and should have said four.
+
 ## 4.22.4
 
 ### Patch Changes
