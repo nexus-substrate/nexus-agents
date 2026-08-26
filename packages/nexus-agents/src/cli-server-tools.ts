@@ -82,7 +82,6 @@ import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
-import { startFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
 import {
   getSwarmObserver,
@@ -90,7 +89,6 @@ import {
   startFailoverSignals,
 } from './observability/index.js';
 import { startImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
-import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
 import { UpstreamClientManager } from './mcp/gateway/upstream-client.js';
@@ -803,13 +801,14 @@ function initV2PipelineSubsystems(
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
-  // Wire the EventBus → OutcomeStore feedback loop advertised by
-  // `feedback-subscriber.ts`. Pre-#2938 the module existed but nothing
-  // called it, so `stage.failed` events never reached OutcomeStore via this
-  // path. (#3179 dropped the dead `model.called` branch — that event has no
-  // producer.) Cleanup runs in cli-server.ts:createShutdownCleanup via
-  // `shutdownFeedbackSubscriber()`.
-  startFeedbackSubscriber(pipelineEventBus, getOutcomeStore());
+  // #5003: the EventBus → OutcomeStore bridge is GONE. `StageFailedEvent`
+  // carries no `cli`, so it hardcoded `cli: 'claude'` + `category:
+  // 'code_generation'` on every stage failure — the exact fabrication
+  // `agent-executor.ts` documents (#2823) and refuses by skipping the record.
+  // It was also double-counting: every `emitStageEvent(…, 'failed')` there is
+  // paired with its own `recordOutcome`. `agent-executor` is now the single
+  // canonical outcome writer (7-voter panel, Option A, 6/6 approvers,
+  // audit record #77).
   // Close the self-tuning loop's consumer side: the shadow TuneStage subscribes
   // to signal.* events on the same typed bus (#3147; #3289 Option 2). Shadow
   // mode — logs intended actions, mutates nothing. Paired with

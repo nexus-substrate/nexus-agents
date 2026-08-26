@@ -26,7 +26,7 @@ import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
-import { DEFAULT_CLI } from '../config/model-capabilities-types.js';
+import { lookupInTreeCapability } from '../config/model-config-helpers.js';
 
 const logger = createLogger({ component: 'FeedbackSubscriber' });
 
@@ -107,9 +107,28 @@ function recordStageFailed(
   event: PipelineEvent & { type: 'stage.failed' },
   store: OutcomeStore
 ): void {
+  // #5003: `StageFailedEvent` carries no `cli`, and this used to hardcode
+  // `DEFAULT_CLI` — fabricating claude attribution on every stage failure,
+  // including stages where no CLI ran at all. `agent-executor.ts:131-152`
+  // documents that exact bug (#2823 — "silently corrupted weather-report +
+  // LinUCB cold-start warmStart() with false claude credit on every pipeline
+  // run") and SKIPS the record rather than lie. This bridge re-introduced,
+  // through the event bus, the record the executor suppresses.
+  //
+  // The model IS carried when the emitter knows it (#4194), so the CLI is
+  // recoverable for a real CLI stage. When it is not, no record is written:
+  // an unattributable failure teaches the routing learner nothing true.
+  const cli = event.model === undefined ? undefined : lookupInTreeCapability(event.model)?.cliName;
+  if (cli === undefined) {
+    logger.debug('Skipping stage-failure outcome — no attributable CLI', {
+      stageId: event.stageId,
+      model: event.model ?? 'absent',
+    });
+    return;
+  }
   const outcome: TaskOutcome = {
     id: `fb-fail-${event.executionId}-${String(event.timestamp)}`,
-    cli: DEFAULT_CLI, // Stage failures don't carry CLI info; default to canonical fallback
+    cli,
     category: 'code_generation',
     // Real model id when the emitter attributed one (#4194); 'unknown' is
     // reserved for stages that genuinely have no single model — never a guess.

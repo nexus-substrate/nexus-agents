@@ -23,13 +23,20 @@ import type { PipelineEvent } from './event-types.js';
 let bus: EventBus;
 let store: OutcomeStore;
 
-/** A representative stage.failed event — the bridge's only live input. */
+/**
+ * A representative stage.failed event — the bridge's only live input.
+ *
+ * Carries a model by default (#5003): without one the CLI is unattributable
+ * and the bridge writes nothing, so a model-less fixture would make every
+ * recording assertion below vacuous.
+ */
 function stageFailed(executionId: string, error = 'boom'): PipelineEvent {
   return {
     type: 'stage.failed',
     executionId,
     stageId: 'analyze',
     error,
+    model: 'claude-opus-4',
     timestamp: Date.now(),
   };
 }
@@ -54,6 +61,43 @@ describe('createFeedbackSubscriber', () => {
     const outcomes = store.query({});
     expect(outcomes[0]?.success).toBe(false);
     expect(outcomes[0]?.failureCategory).toBeDefined();
+    // #5003: attributed from the event's model, never defaulted. The CLI used
+    // to be hardcoded to `claude` regardless of what actually ran.
+    expect(outcomes[0]?.cli).toBe('claude');
+  });
+
+  it('records nothing when the failure cannot be attributed to a CLI (#5003)', () => {
+    // `StageFailedEvent` carries no `cli`. It used to be defaulted to `claude`,
+    // fabricating attribution for every stage failure — including local gates
+    // where no CLI ran at all. `agent-executor` documents that bug (#2823) and
+    // skips the record; this bridge re-introduced it through the event bus.
+    createFeedbackSubscriber(bus, store);
+
+    bus.emit({
+      type: 'stage.failed',
+      executionId: 'exec-local-gate',
+      stageId: 'security',
+      error: 'semgrep not installed',
+      timestamp: Date.now(),
+    });
+
+    expect(store.size).toBe(0);
+  });
+
+  it('records nothing when the model does not resolve to a known CLI (#5003)', () => {
+    // The pair: an unrecognised model is not an excuse to guess either.
+    createFeedbackSubscriber(bus, store);
+
+    bus.emit({
+      type: 'stage.failed',
+      executionId: 'exec-unknown-model',
+      stageId: 'impl-t1',
+      error: 'boom',
+      model: 'some-private-model',
+      timestamp: Date.now(),
+    });
+
+    expect(store.size).toBe(0);
   });
 
   it('records the real model id when the stage.failed event carries one (#4194)', () => {
@@ -70,14 +114,6 @@ describe('createFeedbackSubscriber', () => {
 
     expect(store.size).toBe(1);
     expect(store.query({})[0]?.model).toBe('claude-opus-4');
-  });
-
-  it("falls back to 'unknown' only when the event genuinely lacks a model (#4194)", () => {
-    createFeedbackSubscriber(bus, store);
-
-    bus.emit(stageFailed('exec-no-model'));
-
-    expect(store.query({})[0]?.model).toBe('unknown');
   });
 
   it('ignores model.called events — that event has no producer (#3179)', () => {
