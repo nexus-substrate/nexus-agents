@@ -125,14 +125,32 @@ export class DistilledRuleStage implements IRouterStage {
 
     for (const cli of candidates) {
       const matchingRules = this.findMatchingRules(activeRules, cli, category);
+      if (matchingRules.length === 0) continue;
+
+      // #5004: sum first, then clamp. Each rule was applied separately with no
+      // bound on the total, so an unscoped task — `detectTaskCategory` returns
+      // null for any content without a specialization keyword, and an undefined
+      // category matches ALL of a CLI's rules — could stack six penalties into
+      // -26.4 against a candidate at 0. Every documented bound is per-rule
+      // (`ACTION_DELTAS`), and nothing bounded the sum. Panel decision:
+      // Option A, 4 of 6 approvers, audit record #81.
+      const raw = matchingRules.reduce((sum, rule) => sum + this.computeDelta(rule), 0);
+      const capped = Math.min(this.config.boostDelta, Math.max(this.config.avoidDelta, raw));
+      updated = updateScore(updated, cli, capped);
       for (const rule of matchingRules) {
-        const delta = this.computeDelta(rule);
-        updated = updateScore(updated, cli, delta);
         updated = {
           ...updated,
           signals: [...updated.signals, `distilled-rule:applied=${rule.id}`],
         };
         applied++;
+      }
+      if (capped !== raw) {
+        // Disclose the clamp: a score that was bounded is not the same as one
+        // the rules produced, and the trace should not imply otherwise.
+        updated = {
+          ...updated,
+          signals: [...updated.signals, `distilled-rule:capped=${cli}`],
+        };
       }
     }
 
