@@ -1,5 +1,43 @@
 # nexus-agents
 
+## 4.22.6
+
+### Patch Changes
+
+- [#5036](https://github.com/nexus-substrate/nexus-agents/pull/5036) [`153d615`](https://github.com/nexus-substrate/nexus-agents/commit/153d615318592f20970d04390a9dd8e1d17d2141) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(adapters): pin the load-bearing half of the circuit-breaker recovery fix
+
+  The [#5011](https://github.com/nexus-substrate/nexus-agents/issues/5011) fix changed two lines and the test pinned only their conjunction:
+  each half is individually sufficient, so reverting either alone left the suite
+  green. The code comment asserted one half was "the operative fix" and the other
+  "redundant" — a ranking no test could falsify.
+
+  Two assertions now pin the early return directly: a failure recorded while the
+  circuit is open must not restamp `lastFailureTime`, and must not increment
+  `failureCount`. Dropping that return alone now fails both.
+
+  Reverting the `lastStateChange` change alone still fails nothing, and that is
+  the honest result rather than a gap: with `lastFailureTime` frozen, the two
+  fields are set microseconds apart at the open transition and never diverge. The
+  comment now says which half is pinned and admits the other cannot be.
+
+- [#5043](https://github.com/nexus-substrate/nexus-agents/pull/5043) [`0589c79`](https://github.com/nexus-substrate/nexus-agents/commit/0589c79924d3ca7011c9fd062ec7d05831cebc7d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(config): honor NEXUS_SANDBOX_ROOT instead of defaulting to cwd
+
+  `NEXUS_SANDBOX` is itself one of `SANDBOX_ENV_VARS`, so setting it made the
+  `container-env` heuristic fire and stamp `NEXUS_DATA_DIR = <cwd>/.nexus-agents`
+  during CLI bootstrap. Every later `getNexusDataDir()` then took the
+  `NEXUS_DATA_DIR` branch and returned before reaching its own sandbox branch —
+  the one that resolves `NEXUS_SANDBOX_ROOT`.
+
+  So the documented purpose of `NEXUS_SANDBOX_ROOT` ("default `NEXUS_DATA_DIR` to
+  the multi-repo root") never happened from any entry point going through
+  `cli.ts`, which is the CLI and `--mode=server`. In a multi-repo mount that
+  silently fragmented audit-chain, vote-record and job state per working
+  directory — the layout `doctor`'s `dataDirInsideRepo` check exists to detect and
+  reports as operator misconfiguration.
+
+  The heuristic now uses the declared root as the data-dir base when one is set,
+  and falls back to cwd when it is not.
+
 ## 4.22.5
 
 ### Patch Changes
