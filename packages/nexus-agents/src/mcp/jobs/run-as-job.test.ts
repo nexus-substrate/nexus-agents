@@ -66,6 +66,36 @@ describe('runAsJob', () => {
     expect(getInFlight('orchestrate')).toBe(1);
   });
 
+  // #4972: `cancel_job` writes `cancelled` whether or not the tool can act on
+  // the signal — `cancel-job-tool.ts` is explicit that an ignoring tool "still
+  // runs to completion… but its record stays `cancelled`". None of the ten
+  // adopters accepts the signal today, so every cancelled record claims more
+  // than is known. The record now says which case it is.
+  it('records signalAccepted:false when the run callback does not take the signal', () => {
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => 'job-sig-none',
+      // Two parameters — the shape every current adopter uses.
+      run: (_jobId, _input) => new Promise(() => {}),
+    });
+
+    expect(readJobResult('job-sig-none')?.signalAccepted).toBe(false);
+  });
+
+  it('records signalAccepted:true when it does', () => {
+    // The pair: hardcoding false would be indistinguishable from today's state
+    // and would stay wrong as tools adopt the signal.
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => 'job-sig-yes',
+      run: (_jobId, _input, _signal) => new Promise(() => {}),
+    });
+
+    expect(readJobResult('job-sig-yes')?.signalAccepted).toBe(true);
+  });
+
   it('returns a busy envelope when the per-tool cap is full', () => {
     const cap = getJobCap('consensus_vote'); // 2 by default
     for (let i = 0; i < cap; i++) {
