@@ -45,7 +45,7 @@ interface ToolConfig {
  */
 /**
  * First text block of a tool result, for the `errorMessage` on a returned
- * error envelope. The structured envelope itself lives in `_meta` (#2649) and
+ * error result. The structured envelope itself lives in `_meta` (#2649) and
  * is not repeated here — this is the human-readable line the throw path
  * already puts on the event.
  */
@@ -91,10 +91,11 @@ function wrapWithObservability(
       const result = await cb(args, extra);
       const durationMs = getTimeProvider().now() - startTime;
 
-      // A nexus tool signals failure by RETURNING `{ isError: true }` from
-      // `toolStructuredError`, not by throwing, so reading only the `catch`
-      // below reported a 100% success rate to every EventBus consumer. Matches
-      // `tool-metrics.ts`, which has always recorded `result.isError !== true`.
+      // A nexus tool signals failure by RETURNING an error result from
+      // `toolStructuredError` — with the error flag set — not by throwing. So
+      // reading only the `catch` below reported a 100% success rate to every
+      // EventBus consumer. Matches `tool-metrics.ts`, which has always
+      // recorded `result.isError !== true`.
       const failed = (result as { isError?: boolean } | undefined)?.isError === true;
 
       eventBus.emit({
