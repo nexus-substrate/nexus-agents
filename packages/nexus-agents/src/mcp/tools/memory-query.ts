@@ -101,11 +101,11 @@ export interface MemoryQueryResponse {
  * optional and contribute an empty result set when absent — indistinguishable,
  * before this, from "searched and found nothing".
  *
- * Exported for the coverage tests: the whole point is that the response says
- * which stores answered, so asserting it through the tool is the only check
- * that means anything.
+ * Not exported: the point of #4999 is what the RESPONSE says, so the tests
+ * drive the registered tool and assert the envelope. A unit test of this
+ * function would pass while the fields never reached a caller.
  */
-export function describeBackendCoverage(
+function describeBackendCoverage(
   memory: {
     isAgenticMemoryAvailable(): boolean;
     isAdaptiveMemoryAvailable(): boolean;

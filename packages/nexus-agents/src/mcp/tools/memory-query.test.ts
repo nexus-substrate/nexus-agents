@@ -11,7 +11,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   MemoryQueryInputSchema,
   registerMemoryQueryTool,
-  describeBackendCoverage,
   type MemoryQueryInput,
 } from './memory-query.js';
 
@@ -36,10 +35,11 @@ const mockQueryBySource = vi.fn();
 // #4999: the availability accessors are part of the surface memory_query now
 // reads — the response says which backends answered, so a mock without them
 // would make every coverage assertion vacuous.
+const backendsInstalled = { agentic: true, adaptive: true, typed: true };
 const mockAvailability = {
-  isAgenticMemoryAvailable: (): boolean => true,
-  isAdaptiveMemoryAvailable: (): boolean => true,
-  isTypedMemoryAvailable: (): boolean => true,
+  isAgenticMemoryAvailable: (): boolean => backendsInstalled.agentic,
+  isAdaptiveMemoryAvailable: (): boolean => backendsInstalled.adaptive,
+  isTypedMemoryAvailable: (): boolean => backendsInstalled.typed,
 };
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
@@ -243,48 +243,43 @@ describe('memory-query', () => {
       expect(parsed['query']).toBe('simple query');
       expect(parsed['expandedQuery']).toBeUndefined();
     });
-  });
-});
 
-describe('describeBackendCoverage (#4999)', () => {
-  const allAvailable = {
-    isAgenticMemoryAvailable: (): boolean => true,
-    isAdaptiveMemoryAvailable: (): boolean => true,
-    isTypedMemoryAvailable: (): boolean => true,
-  };
-  const noneAvailable = {
-    isAgenticMemoryAvailable: (): boolean => false,
-    isAdaptiveMemoryAvailable: (): boolean => false,
-    isTypedMemoryAvailable: (): boolean => false,
-  };
+    describe('memory_query discloses backend coverage (#4999)', () => {
+      // Asserted on the RESPONSE, not on a helper: `count: 0` was the same
+      // observation whether nothing matched or the SQLite-backed stores were
+      // absent, so the only assertion that means anything is what a caller reads.
+      beforeEach(() => {
+        backendsInstalled.agentic = true;
+        backendsInstalled.adaptive = true;
+        backendsInstalled.typed = true;
+      });
 
-  it('names the SQLite backends that are not installed', () => {
-    // `count: 0` was the same observation whether nothing matched or three of
-    // the five stores were absent — each unavailable backend contributes `[]`
-    // silently. A caller asking "do we know anything about X?" was told "no".
-    const coverage = describeBackendCoverage(noneAvailable, 'all');
+      it('names the backends that are not installed', async () => {
+        backendsInstalled.agentic = false;
+        backendsInstalled.typed = false;
+        mockQueryBySource.mockResolvedValue([]);
 
-    expect(coverage.searched).toEqual(['session', 'belief']);
-    expect(coverage.unavailable).toEqual(['agentic', 'adaptive', 'typed']);
-  });
+        const result = await registeredHandler({ query: 'routing' }, {});
+        const body = JSON.parse(result.content[0]?.text ?? '{}') as {
+          count: number;
+          searched: string[];
+          unavailable: string[];
+        };
 
-  it('reports every backend searched when all are installed', () => {
-    // The pair: a complete install must not report phantom gaps.
-    const coverage = describeBackendCoverage(allAvailable, 'all');
+        expect(body.count).toBe(0);
+        expect(body.unavailable).toEqual(['agentic', 'typed']);
+        expect(body.searched).toEqual(['session', 'belief', 'adaptive']);
+      });
 
-    expect(coverage.searched).toEqual(['session', 'belief', 'agentic', 'adaptive', 'typed']);
-    expect(coverage.unavailable).toEqual([]);
-  });
+      it('reports no gaps on a complete install', async () => {
+        // The pair: a full install must not report phantom missing stores.
+        mockQueryBySource.mockResolvedValue([]);
 
-  it('scopes coverage to a single requested source', () => {
-    // Asking for one backend must not claim the others were searched.
-    expect(describeBackendCoverage(allAvailable, 'belief')).toEqual({
-      searched: ['belief'],
-      unavailable: [],
-    });
-    expect(describeBackendCoverage(noneAvailable, 'agentic')).toEqual({
-      searched: [],
-      unavailable: ['agentic'],
+        const result = await registeredHandler({ query: 'routing' }, {});
+        const body = JSON.parse(result.content[0]?.text ?? '{}') as { unavailable: string[] };
+
+        expect(body.unavailable).toEqual([]);
+      });
     });
   });
 });
