@@ -211,12 +211,20 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   private onFailure(category: FailureCategory): void {
     // #5011: a failure recorded while the circuit is already open carries no
     // information — the circuit is open, that is the verdict — and updating
-    // `lastFailureTime` here is what delayed recovery. This is the operative
-    // half of the fix; the `lastStateChange` change in `checkStateTransition`
-    // is redundant with it (nothing else advances `lastFailureTime` while
-    // open) and is kept because measuring recovery from the transition is what
-    // the window actually means. `failureCount` stays put too: it drives the
-    // closed-state threshold and is reset on the transition back to closed.
+    // `lastFailureTime` here is what delayed recovery.
+    //
+    // #5034: this line is the LOAD-BEARING half, and the tests now say so:
+    // dropping it alone fails two assertions. The `lastStateChange` change in
+    // `checkStateTransition` is genuinely redundant given this return —
+    // reverting THAT alone fails nothing, because with `lastFailureTime`
+    // frozen the two fields are set microseconds apart at the open transition
+    // and never diverge. It is kept because measuring recovery from the
+    // transition is what the window means, not because any behaviour
+    // distinguishes it. Saying which half is pinned, and admitting the other
+    // cannot be, beats a mutation table that implies two clean kills.
+    //
+    // `failureCount` stays put too: it drives the closed-state threshold and
+    // is reset on the transition back to closed.
     if (this.state === 'open') return;
 
     this.failureCount++;
