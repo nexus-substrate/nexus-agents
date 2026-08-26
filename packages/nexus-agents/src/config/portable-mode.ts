@@ -47,12 +47,7 @@ interface DetectionResult {
   readonly portable: boolean;
   readonly dataDir: string;
   readonly reason:
-    | 'env-data-dir'
-    | 'env-opt-out'
-    | 'env-opt-in'
-    | 'home-unwritable'
-    | 'container-env'
-    | 'default';
+    'env-data-dir' | 'env-opt-out' | 'env-opt-in' | 'home-unwritable' | 'container-env' | 'default';
 }
 
 function isHomeWritable(): boolean {
@@ -72,6 +67,18 @@ function inSandboxEnv(): boolean {
     if (val !== undefined && val !== '') return true;
   }
   return false;
+}
+
+/**
+ * The operator-declared sandbox root, when set (#5026).
+ *
+ * Read directly rather than through `detectSandbox()` to keep this module free
+ * of imports — it runs as a side effect of `cli-log-bootstrap` before anything
+ * else loads.
+ */
+function sandboxRootFromEnv(): string | undefined {
+  const raw = process.env['NEXUS_SANDBOX_ROOT']?.trim();
+  return raw !== undefined && raw !== '' ? resolve(raw) : undefined;
 }
 
 function checkExplicitEnv(cwd: string): DetectionResult | null {
@@ -94,7 +101,21 @@ function checkHeuristics(cwd: string): DetectionResult | null {
     return { portable: true, dataDir: join(cwd, '.nexus-agents'), reason: 'home-unwritable' };
   }
   if (inSandboxEnv()) {
-    return { portable: true, dataDir: join(cwd, '.nexus-agents'), reason: 'container-env' };
+    // #5026: prefer an explicitly declared sandbox root over cwd. `NEXUS_SANDBOX`
+    // is one of SANDBOX_ENV_VARS, so setting it makes this heuristic fire and
+    // stamp `NEXUS_DATA_DIR = <cwd>/.nexus-agents` — which then short-circuits
+    // `getNexusDataDir`'s own sandbox branch (`nexus-data-dir.ts:124-127`)
+    // before it can honour `NEXUS_SANDBOX_ROOT`. The documented purpose of that
+    // variable ("default NEXUS_DATA_DIR to the multi-repo root") therefore never
+    // happened, and state fragmented per working directory across a multi-repo
+    // mount. `doctor`'s dataDirInsideRepo check exists to detect exactly that
+    // layout and reports it as operator misconfiguration.
+    const declaredRoot = sandboxRootFromEnv();
+    return {
+      portable: true,
+      dataDir: join(declaredRoot ?? cwd, '.nexus-agents'),
+      reason: 'container-env',
+    };
   }
   return null;
 }
