@@ -316,8 +316,11 @@ export function toSdkCallback(
  * `additionalProperties: false`, so an undeclared field there fails every call
  * with -32602 (#5044/#5045). `_meta` is the spec's out-of-band channel and is
  * never schema-validated.
+ *
+ * Kept module-private: the tests assert the literal wire name, which pins what
+ * a client actually sees rather than agreeing with the constant.
  */
-export const BUILD_META_KEY = 'nexus-agents/build';
+const BUILD_META_KEY = 'nexus-agents/build';
 
 /**
  * Attaches the build stamp, preserving any `_meta` the handler already set.
