@@ -231,11 +231,23 @@ describe('classifyKnipOutput (#5028)', () => {
     expect(String(run.reason)).toContain('parseable');
   });
 
-  it('reports a genuine empty result as a completed scan', () => {
-    // The pair: a real clean repo must not be reported as unmeasured.
+  it('reports JSON in an unrecognised shape as not run (#5034)', () => {
+    // `normalizeKnipJson` returned `[]` for any shape it did not understand, so
+    // a reporter change — the case this check exists for — parsed cleanly and
+    // reported a completed scan of zero issues. My own fix shipped with a test
+    // asserting `{"files":[]}` counted as a clean scan; that fixture IS the
+    // reporter-change case.
     const run = classifyKnipOutput('{"files":[]}');
 
-    expect(run.ran).toBe(true);
+    expect(run.ran).toBe(false);
+    expect(String(run.reason)).toContain('recognised reporter shape');
+  });
+
+  it('reports a genuine empty result as a completed scan', () => {
+    // The pair: a real clean repo must not be reported as unmeasured. Both
+    // shapes the normalizer actually understands.
+    expect(classifyKnipOutput('[]').ran).toBe(true);
+    expect(classifyKnipOutput('{"issues":[]}').ran).toBe(true);
   });
 });
 
