@@ -39,6 +39,9 @@ import {
   registerSurveyOssLandscapeTool,
   registerVendorPublishingAuditTool,
   registerCompareDataFeedsTool,
+  registerConsensusVoteTool,
+  registerDelegateToModelTool,
+  registerListWorkflowsTool,
 } from './tools/index.js';
 import type { IWorkflowEngine } from '../core/index.js';
 
@@ -117,11 +120,23 @@ async function setupServer(): Promise<TestContext> {
   registerVendorPublishingAuditTool(server, deps);
   registerCompareDataFeedsTool(server, deps);
 
-  // run_workflow needs a stub workflow engine
+  // run_workflow and list_workflows need a stub workflow engine
+  // `IWorkflowEngine.listTemplates` is declared as `Promise<WorkflowTemplate[]>`
+  // (core/types/workflow.ts:219) — a bare array, not a Result. The previous
+  // `{ ok, value }` stub passed only because nothing in this suite called it;
+  // list_workflows does, and crashed on `templates.map`.
   const stubEngine = {
-    listTemplates: () => Promise.resolve({ ok: true, value: [] }),
+    listTemplates: () => Promise.resolve([]),
   } as unknown as IWorkflowEngine;
   registerRunWorkflowTool(server, { ...deps, workflowEngine: stubEngine });
+  registerListWorkflowsTool(server, { ...deps, workflowEngine: stubEngine });
+  // #5052 follow-up: these three declare an `outputSchema` and are registered
+  // on the production server, so a response-field addition to any of them
+  // would have broken every call with the round-trip suite still green. Their
+  // optional deps (notifier, gateway adapters, feedback integration) are not
+  // needed to exercise the protocol boundary.
+  registerConsensusVoteTool(server, deps);
+  registerDelegateToModelTool(server, deps);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const connectResult = await connectTransport(server, serverTransport, logger);
@@ -206,6 +221,9 @@ describe('MCP Standalone Tools Integration', () => {
     list_experts: { format: 'names' },
     survey_oss_landscape: { query: 'round trip' },
     vendor_publishing_audit: { vendor: 'anthropic' },
+    list_workflows: { format: 'names' },
+    consensus_vote: { proposal: 'round trip', quick: true },
+    delegate_to_model: { task: 'round trip', model: 'claude-haiku' },
     compare_data_feeds: {
       feedAPath: join(feedDir, 'a.json'),
       feedBPath: join(feedDir, 'b.json'),
@@ -220,13 +238,16 @@ describe('MCP Standalone Tools Integration', () => {
    *
    * - `research_synthesize` — the paper registry is empty in the test env, so
    *   it answers "No papers found in registry" as an error envelope.
+   * - `consensus_vote` — the CLI factory is stubbed to find no adapters, so
+   *   all seven voters fail. Running it for real would mean live model calls;
+   *   `simulateVotes` is not an option (#2319) and would prove nothing anyway.
    *
    * Naming them is the point. Counting an unstructured response as a pass
    * would make this a check that cannot fail, which is the same shape of hole
    * #5045 exists to close. Four tools sat here in the first draft; three were
    * my own bad arguments, found only because the list was printed.
    */
-  const KNOWN_UNSTRUCTURED: readonly string[] = ['research_synthesize'];
+  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote', 'research_synthesize'];
 
   /**
    * A response field missing from a tool's declared `outputSchema` does not go
@@ -257,7 +278,7 @@ describe('MCP Standalone Tools Integration', () => {
     expect(Object.keys(ROUND_TRIP_ARGS).filter((n) => !schemaNames.has(n))).toEqual([]);
 
     const missingArgs: string[] = [];
-    const violations: string[] = [];
+    const callFailed: string[] = [];
     const notExercised: string[] = [];
 
     for (const tool of schemaTools) {
@@ -270,14 +291,19 @@ describe('MCP Standalone Tools Integration', () => {
         const result = await ctx.client.callTool({ name: tool.name, arguments: args });
         if (result.structuredContent === undefined) notExercised.push(tool.name);
       } catch (error: unknown) {
+        // Every thrown error counts, not only the ones naming a schema. An
+        // earlier version matched two substrings and silently credited the
+        // tool for anything else — a timeout, a transport fault — which is the
+        // same shape of hole this suite exists to close.
         const message = error instanceof Error ? error.message : JSON.stringify(error);
-        if (message.includes('output schema') || message.includes('-32602')) {
-          violations.push(`${tool.name}: ${message}`);
-        }
+        callFailed.push(`${tool.name}: ${message}`);
       }
     }
 
-    expect(violations).toEqual([]);
+    // A protocol-level throw means the call did not complete: a schema
+    // violation (-32602), a transport fault, a timeout. A tool answering
+    // `isError` in its content is fine and does not land here.
+    expect(callFailed).toEqual([]);
     // A new schema-declaring tool must be given arguments here, or it is not
     // covered — and an uncovered tool is exactly how #5044 shipped.
     expect(missingArgs).toEqual([]);
