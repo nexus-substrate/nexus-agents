@@ -92,15 +92,27 @@ export interface CapacityStageConfig {
  *   pipeline. Each arm is assessed and logged.
  * - The EXCLUSION does not run. `filterArms` only drops an arm when
  *   `enforceHardLimits` is true, and the sole production construction passes a
- *   hardcoded `{}`, leaving the `false` default. So `excludedCount` is
- *   structurally 0 and `outcome.excluded` is always empty.
+ *   hardcoded `{}`, leaving the `false` default. So `excludedCount` was
+ *   structurally 0 and `outcome.excluded` always empty.
  * - `createCapacityStage` — the FACTORY — has no non-test caller. That is a
  *   fact about the factory, not about the stage, and conflating the two is what
  *   produced the previous error.
  *
- * So: a passing capacity check is a real assessment, but it can never exclude.
- * Making the flag settable without a real quota producer would only relocate
- * the hole #4456 deliberately left open.
+ * THIRD CORRECTION (#4658, resolved). The paragraph above was accurate when
+ * written and is now history. The blocker it named — "making the flag settable
+ * without a real quota producer would only relocate the hole #4456 left open" —
+ * has been overtaken: the producer exists.
+ * `CapacityTracker.recordProviderQuotaExhaustion` sets `quotaExhaustedUntil`
+ * from a durable provider `retry-after`, fired by `base-adapter.ts` and
+ * `model-to-cli-adapter.ts` on `RATE_LIMITED`, and `assessCapacity` maps
+ * `quotaExhausted` to `'exhausted'`. So exclusion now has real evidence to act
+ * on, and `capacityStageConfig` on `CompositeRouterConfig` makes the opt-in
+ * reachable.
+ *
+ * The DEFAULT is unchanged: `enforceHardLimits` stays `false`, so #4456's
+ * signal-only posture still holds. It is a choice a caller can override now
+ * rather than a hardcoding nobody could reach — and `getStats().enforced`
+ * reports which, so a zero `excludedCount` is no longer ambiguous.
  *
  * (`BudgetStageConfig.enforceHardLimits` is a different setting on a different
  * router and IS enforced — see `budget-router.ts`. The mirrored name here is
@@ -234,6 +246,10 @@ export class CapacityFilterStage implements IRouterStage {
 
   getStats(): Record<string, unknown> {
     return {
+      // #4658: `excludedCount` can only be zero while enforcement is off, so
+      // reporting it alone presents a default as a measurement. `enforced`
+      // says which of the two a zero is.
+      enforced: this.config.enforceHardLimits,
       excludedCount: this.excludedCount,
       unmeasuredCount: this.unmeasuredCount,
       throttledCount: this.throttledCount,
