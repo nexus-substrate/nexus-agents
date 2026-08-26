@@ -255,8 +255,46 @@ function normalizeKnipJson(parsed: unknown): readonly KnipIssue[] {
   return [];
 }
 
-/** Run knip --reporter json and return the parsed array of issues. */
-export function runKnip(cwd: string = REPO_ROOT): readonly KnipIssue[] {
+/**
+ * Outcome of a knip run, able to say it did not happen (#5028).
+ *
+ * `runKnip` used to return a bare array and yielded `[]` on every failure —
+ * empty stdout, unparseable JSON, a throw with no usable stdout — with stderr
+ * set to `'ignore'` so knip's own error was discarded. `[]` is also what a
+ * clean repo produces, so a knip that never ran reported "no orphans" and the
+ * gate exited 0.
+ */
+export interface KnipRun {
+  readonly issues: readonly KnipIssue[];
+  /** False when knip produced no parseable output — the verdict is unmeasured. */
+  readonly ran: boolean;
+  readonly reason?: string;
+}
+
+/**
+ * Classifies knip's stdout into a run outcome (#5028).
+ *
+ * Pure and exported so the empty-output and unparseable cases are testable
+ * without shelling out — the classification is the whole point of the fix, and
+ * a mutation of it survived until this existed.
+ */
+export function classifyKnipOutput(stdout: string): KnipRun {
+  if (stdout.trim().length === 0) {
+    return { issues: [], ran: false, reason: 'knip produced no output' };
+  }
+  try {
+    return { issues: normalizeKnipJson(JSON.parse(stdout)), ran: true };
+  } catch (error: unknown) {
+    return {
+      issues: [],
+      ran: false,
+      reason: `knip output was not parseable JSON: ${getErrorText(error)}`,
+    };
+  }
+}
+
+/** Run knip --reporter json and return the parsed issues, or say it did not run. */
+export function runKnip(cwd: string = REPO_ROOT): KnipRun {
   try {
     const out = execFileSync('npx', ['knip', '--reporter', 'json'], {
       cwd,
@@ -264,22 +302,29 @@ export function runKnip(cwd: string = REPO_ROOT): readonly KnipIssue[] {
       maxBuffer: 16 * 1024 * 1024, // knip output can be ~400KB+
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    if (out.trim().length === 0) return [];
-    return normalizeKnipJson(JSON.parse(out));
+    return classifyKnipOutput(out);
   } catch (error: unknown) {
     // knip exits non-zero when issues exist; that's fine — we still get JSON on stdout.
     if (error !== null && typeof error === 'object' && 'stdout' in error) {
       const stdout = (error as { stdout?: string }).stdout;
+      // knip exits non-zero when issues exist; the JSON is still on stdout.
       if (typeof stdout === 'string' && stdout.trim().length > 0) {
-        try {
-          return normalizeKnipJson(JSON.parse(stdout));
-        } catch {
-          /* fall through */
-        }
+        const classified = classifyKnipOutput(stdout);
+        if (classified.ran) return classified;
       }
     }
-    return [];
+    return {
+      issues: [],
+      ran: false,
+      reason: `knip failed to produce parseable JSON: ${getErrorText(error)}`,
+    };
   }
+}
+
+/** Best-effort message for a thrown value, for the unmeasured reason string. */
+function getErrorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 // ============================================================================
@@ -314,6 +359,14 @@ interface CheckResult {
   readonly total: number;
   readonly allowlisted: number;
   readonly flagged: readonly string[];
+  /**
+   * Whether knip actually produced a verdict (#5028). `false` means the scan
+   * did not run — NOT that the repo is clean. The two used to be the same
+   * observation, and this repo carries allowlisted orphans, so `total === 0`
+   * is in fact the signature of a dead run.
+   */
+  readonly scanned: boolean;
+  readonly unscannedReason?: string;
 }
 
 export function performCheck(now: Date = new Date()): CheckResult | null {
@@ -330,19 +383,25 @@ export function performCheck(now: Date = new Date()): CheckResult | null {
     return null;
   }
 
-  const issues = runKnip();
-  const all = extractOrphans(issues);
+  const knip = runKnip();
+  const all = extractOrphans(knip.issues);
   const flagged = filterOrphans(all, allowlist, now);
 
   return {
     total: all.length,
     allowlisted: all.length - flagged.length,
     flagged,
+    scanned: knip.ran,
+    ...(knip.reason !== undefined ? { unscannedReason: knip.reason } : {}),
   };
 }
 
-/** The gate's verdict: any flagged orphan fails the check. */
+/**
+ * The gate's verdict: any flagged orphan fails — and so does a scan that never
+ * ran (#5028). No evidence is not a pass.
+ */
 export function isPassing(result: CheckResult): boolean {
+  if (!result.scanned) return false;
   return result.flagged.length === 0;
 }
 
@@ -352,6 +411,12 @@ function checkOrphans(verbose: boolean): boolean {
 
   const result = performCheck();
   if (result === null) return false;
+
+  if (!result.scanned) {
+    console.error(`✗ knip did not run — orphan detection is UNMEASURED, not clean.`);
+    console.error(`  ${result.unscannedReason ?? 'no reason reported'}\n`);
+    return false;
+  }
 
   console.log(`Total orphans (knip): ${String(result.total)}`);
   console.log(`Allowlisted: ${String(result.allowlisted)}`);
