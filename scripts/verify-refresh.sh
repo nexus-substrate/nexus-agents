@@ -42,7 +42,13 @@ echo "::group::full test suite"
 #
 # Cost is ~3 minutes on a weekly cron. That is cheap next to shipping a red
 # main and then bisecting it.
-pnpm --filter nexus-agents exec vitest run
+# #5028: `--fail-if-no-match` is load-bearing. Without it pnpm exits 0 when the
+# filter matches nothing (verified: `pnpm --filter nonexistent exec node -e 1`
+# → exit 0), so `set -euo pipefail` cannot catch a silently-skipped suite. A
+# package rename or a workspace-glob change would make this gate print
+# "all gates passed" having run zero tests — the exact #4340 shape the comment
+# above says it exists to prevent.
+pnpm --filter nexus-agents --fail-if-no-match exec vitest run
 echo "::endgroup::"
 
 echo "::group::catalogue drift (advisory)"
