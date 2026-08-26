@@ -7,6 +7,10 @@
  *
  * @module mcp/mcp-standalone-tools.test
  */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -29,6 +33,12 @@ import {
   registerMemoryStatsTool,
   registerMemoryWriteTool,
   registerRunWorkflowTool,
+  registerListExpertsTool,
+  registerWeatherReportTool,
+  registerResearchAddSourceTool,
+  registerSurveyOssLandscapeTool,
+  registerVendorPublishingAuditTool,
+  registerCompareDataFeedsTool,
 } from './tools/index.js';
 import type { IWorkflowEngine } from '../core/index.js';
 
@@ -97,6 +107,15 @@ async function setupServer(): Promise<TestContext> {
   registerMemoryQueryTool(server, deps);
   registerMemoryStatsTool(server, deps);
   registerMemoryWriteTool(server, deps);
+  // #5045: these six declare an `outputSchema` and need nothing but the base
+  // deps, so leaving them off this server left their protocol boundary
+  // untested for no reason.
+  registerListExpertsTool(server, deps);
+  registerWeatherReportTool(server, deps);
+  registerResearchAddSourceTool(server, deps);
+  registerSurveyOssLandscapeTool(server, deps);
+  registerVendorPublishingAuditTool(server, deps);
+  registerCompareDataFeedsTool(server, deps);
 
   // run_workflow needs a stub workflow engine
   const stubEngine = {
@@ -126,13 +145,21 @@ async function setupServer(): Promise<TestContext> {
 
 describe('MCP Standalone Tools Integration', () => {
   let ctx: TestContext;
+  // #5045: compare_data_feeds needs two real files to get past input
+  // validation. They live in a temp dir, never the repo — an earlier draft let
+  // research_add_source persist into docs/research/registry/ and the suite
+  // then failed on its own second run.
+  const feedDir = mkdtempSync(join(tmpdir(), 'nexus-feed-'));
 
   beforeAll(async () => {
+    writeFileSync(join(feedDir, 'a.json'), JSON.stringify([{ id: 'x', license: 'MIT' }]));
+    writeFileSync(join(feedDir, 'b.json'), JSON.stringify([{ id: 'x', license: 'Apache-2.0' }]));
     ctx = await setupServer();
   });
 
   afterAll(async () => {
     await ctx.cleanup();
+    rmSync(feedDir, { recursive: true, force: true });
   });
 
   // --------------------------------------------------------------------------
@@ -152,39 +179,113 @@ describe('MCP Standalone Tools Integration', () => {
   // --------------------------------------------------------------------------
 
   /**
+   * Minimal arguments per schema-declaring tool. The list of tools is derived
+   * from the server, not written here, so a newly registered tool with an
+   * `outputSchema` fails this suite until someone adds its arguments — the
+   * previous hardcoded list could silently stop covering anything.
+   */
+  const ROUND_TRIP_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
+    memory_query: { query: 'round trip', source: 'session' },
+    memory_stats: {},
+    memory_write: { key: 'rt-key', content: 'round-trip', backend: 'session' },
+    research_add: { arxivId: '2401.12345', dryRun: true },
+    research_add_source: {
+      url: 'https://example.invalid/rt-source',
+      name: 'round trip',
+      type: 'product_docs',
+      // #5045: without this the call persists to docs/research/registry/ and
+      // the second run of the suite fails as a duplicate — a gate must not
+      // depend on the repo state its own previous run left behind.
+      dryRun: true,
+    },
+    research_analyze: { focus: 'coverage' },
+    research_catalog_review: { action: 'list' },
+    research_discover: { topic: 'round trip' },
+    research_query: { action: 'stats' },
+    research_synthesize: {},
+    list_experts: { format: 'names' },
+    survey_oss_landscape: { query: 'round trip' },
+    vendor_publishing_audit: { vendor: 'anthropic' },
+    compare_data_feeds: {
+      feedAPath: join(feedDir, 'a.json'),
+      feedBPath: join(feedDir, 'b.json'),
+      keyPath: 'id',
+      compareFields: ['license'],
+    },
+  };
+
+  /**
+   * Tools whose round-trip call returns an error envelope rather than
+   * structured content, so their `outputSchema` genuinely goes unchecked here:
+   *
+   * - `research_synthesize` — the paper registry is empty in the test env, so
+   *   it answers "No papers found in registry" as an error envelope.
+   *
+   * Naming them is the point. Counting an unstructured response as a pass
+   * would make this a check that cannot fail, which is the same shape of hole
+   * #5045 exists to close. Four tools sat here in the first draft; three were
+   * my own bad arguments, found only because the list was printed.
+   */
+  const KNOWN_UNSTRUCTURED: readonly string[] = ['research_synthesize'];
+
+  /**
    * A response field missing from a tool's declared `outputSchema` does not go
    * unreported — the SDK validates structured content with
    * `additionalProperties: false`, so EVERY call fails with -32602 and the tool
    * becomes unusable. #5044 shipped exactly that and was caught only because
-   * `memory_query` happens to be round-tripped here.
+   * `memory_query` happened to be one of the few tools round-tripped here.
    *
    * The tool's own tests cannot see it: they call the registered handler
    * directly and never cross the protocol. So the guard has to be a real client
-   * call, and the assertion is narrow on purpose — a business failure is fine,
-   * an output-schema violation is not.
+   * call, and the pass condition is narrow on purpose — a business failure is
+   * fine, an output-schema violation is not.
+   *
+   * The third bucket is the point of the disclosure: a call that returns no
+   * structured content at all has nothing to validate, so counting it as a pass
+   * would be a check that cannot fail. Those tools are named in the failure
+   * message instead of being silently credited.
    */
-  const SCHEMA_ROUND_TRIP: readonly { name: string; args: Record<string, unknown> }[] = [
-    { name: 'memory_write', args: { key: 'rt-key', content: 'round-trip', backend: 'session' } },
-    { name: 'research_synthesize', args: {} },
-    { name: 'run_workflow', args: { action: 'list' } },
-    { name: 'research_add', args: { title: 'rt', url: 'https://example.invalid/rt' } },
-  ];
+  it('every tool declaring an outputSchema returns content that satisfies it (#5045)', async () => {
+    const listed = await ctx.client.listTools();
+    const schemaTools = listed.tools.filter((t) => t.outputSchema !== undefined);
+    expect(schemaTools.length).toBeGreaterThan(0);
 
-  for (const { name, args } of SCHEMA_ROUND_TRIP) {
-    it(`${name} response satisfies its declared outputSchema`, async () => {
-      let failure = '';
-      try {
-        await ctx.client.callTool({ name, arguments: args });
-      } catch (error: unknown) {
-        failure = error instanceof Error ? error.message : JSON.stringify(error);
+    // The reverse direction: a tool that *drops* its outputSchema silently
+    // stops being validated by the SDK. Nothing else would notice, so the
+    // argument table doubles as the pinned list of what must still declare one.
+    const schemaNames = new Set(schemaTools.map((t) => t.name));
+    expect(Object.keys(ROUND_TRIP_ARGS).filter((n) => !schemaNames.has(n))).toEqual([]);
+
+    const missingArgs: string[] = [];
+    const violations: string[] = [];
+    const notExercised: string[] = [];
+
+    for (const tool of schemaTools) {
+      const args = ROUND_TRIP_ARGS[tool.name];
+      if (args === undefined) {
+        missingArgs.push(tool.name);
+        continue;
       }
+      try {
+        const result = await ctx.client.callTool({ name: tool.name, arguments: args });
+        if (result.structuredContent === undefined) notExercised.push(tool.name);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : JSON.stringify(error);
+        if (message.includes('output schema') || message.includes('-32602')) {
+          violations.push(`${tool.name}: ${message}`);
+        }
+      }
+    }
 
-      // A tool may legitimately refuse these arguments; what it may not do is
-      // return structured content its own schema rejects.
-      expect(failure).not.toContain('output schema');
-      expect(failure).not.toContain('-32602');
-    });
-  }
+    expect(violations).toEqual([]);
+    // A new schema-declaring tool must be given arguments here, or it is not
+    // covered — and an uncovered tool is exactly how #5044 shipped.
+    expect(missingArgs).toEqual([]);
+    // Pinned rather than warned: a tool that stops returning structured
+    // content stops being covered, and a silent drop is how the gap reopens.
+    // Shrinking this list is always safe; growing it needs a reason in review.
+    expect(notExercised.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
+  }, 120_000);
 
   // --------------------------------------------------------------------------
   // registry_import
