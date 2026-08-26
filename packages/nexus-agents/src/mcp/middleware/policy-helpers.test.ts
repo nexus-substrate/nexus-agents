@@ -65,14 +65,43 @@ describe('isPathSafe', () => {
     expect(isPathSafe('/home/user/file.ts', ['/home/user/'])).toBe(true);
   });
 
-  it('handles relative target paths', () => {
-    expect(isPathSafe('src/file.ts', ['/src'])).toBe(true);
+  it('resolves a relative target against cwd, not against /', () => {
+    // #5025: this asserted `isPathSafe('src/file.ts', ['/src']) === true`,
+    // which only held because the old normalizer turned any non-absolute path
+    // into `/` + path. A relative target belongs under the process's cwd.
+    expect(isPathSafe('src/file.ts', ['/src'])).toBe(false);
+    expect(isPathSafe('src/file.ts', ['.'])).toBe(true);
   });
 
-  it('prevents path traversal via prefix matching', () => {
-    // /home/user-evil starts with /home/user (prefix)
-    // This is a known limitation of prefix-based checking
-    expect(isPathSafe('/home/user-evil/file', ['/home/user'])).toBe(true);
+  it('does not admit a sibling directory sharing the root prefix', () => {
+    // #5025: this test was named "prevents path traversal via prefix matching"
+    // and asserted the opposite — that `/home/user-evil/file` IS allowed under
+    // `/home/user`, with a comment calling it "a known limitation". The name
+    // described the intent; the assertion pinned the defect.
+    expect(isPathSafe('/home/user-evil/file', ['/home/user'])).toBe(false);
+    expect(isPathSafe('/home/user/file', ['/home/user'])).toBe(true);
+  });
+
+  it('does not admit every absolute path under the default allowlist (#5025)', () => {
+    // The live defect. `allowedPaths` defaults to `['./']` in three places, and
+    // `normalizePath('./')` is `'/'` — so `startsWith` was true for anything.
+    // The startup posture line prints `allowedPaths: ['./']`, which reads as
+    // "confined to cwd" and meant "/".
+    expect(isPathSafe('/etc/shadow', ['./'])).toBe(false);
+    expect(isPathSafe('/root/.ssh/id_ed25519', ['./'])).toBe(false);
+  });
+
+  it('admits the allowed root itself, not only paths beneath it', () => {
+    // The separator boundary alone would deny the root directory: `/work`
+    // does not start with `/work/`. Caught by mutation — nothing else in this
+    // file exercised the exact-match arm.
+    expect(isPathSafe('/work', ['/work'])).toBe(true);
+    expect(isPathSafe('/work/', ['/work'])).toBe(true);
+  });
+
+  it('still admits a path genuinely under the default allowlist', () => {
+    // The pair: `'./'` must mean cwd, not nothing.
+    expect(isPathSafe(`${process.cwd()}/src/index.ts`, ['./'])).toBe(true);
   });
 });
 
