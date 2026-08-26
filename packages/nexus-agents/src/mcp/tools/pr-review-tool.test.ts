@@ -234,7 +234,13 @@ describe('pr_review tool', () => {
         }),
         makeReview('architect', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
+      // The DECISION still ignores the error vote's findings (#2233). The
+      // panel-completeness claim now reflects that a voter was missing (#5017).
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'approve',
+        verified: false,
+        reason: 'incomplete panel: 1 of 2 voters responded',
+      });
     });
 
     it('soft-block ignores error votes too', () => {
@@ -246,7 +252,13 @@ describe('pr_review tool', () => {
         makeReview('catfish', 'approve'),
         makeReview('scope_steward', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
+      // Soft-block still needs 3 VALID dissenters, so this stays an abstain
+      // (#2233) — but the panel was not complete, so it is not verified (#5017).
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'abstain',
+        verified: false,
+        reason: 'incomplete panel: 4 of 5 voters responded',
+      });
     });
 
     it('returns abstain when all voters errored', () => {
@@ -254,7 +266,11 @@ describe('pr_review tool', () => {
         makeReview('architect', 'approve', { source: 'error' }),
         makeReview('security', 'approve', { source: 'error' }),
       ];
-      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'abstain',
+        verified: false,
+        reason: 'incomplete panel: 0 of 2 voters responded',
+      });
     });
 
     it('returns abstain on mixed approve/abstain (no clear approval)', () => {
@@ -326,10 +342,65 @@ describe('pr_review tool', () => {
         });
       });
 
-      it('DEFAULT (standard) is unchanged: an errored voter is dropped → verified approve', () => {
+      it('DEFAULT (standard) keeps the approve but stops claiming a verified panel (#5017)', () => {
+        // This test previously pinned `verified: true` on purpose, to hold the
+        // pre-#4132 line that `standard` drops errors. The DECISION still does
+        // — that is what the policy means, and it is unchanged. What changed is
+        // that `verified` is a claim ABOUT THE PANEL, and unanimity measured
+        // over a denominator that excludes everyone who could have disagreed
+        // cannot support it. Decided by consensus vote (5 of 6 approvers).
         const reviews = fullPanel({ scope_steward: { source: 'error' } });
-        // No policy arg → standard: the pre-#4132 behavior (drop the error).
-        expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
+
+        expect(aggregatePrDecisions(reviews)).toEqual({
+          decision: 'approve',
+          verified: false,
+          reason: 'incomplete panel: 4 of 5 voters responded',
+        });
+      });
+
+      it('DEFAULT (standard) still verifies a complete, error-free panel', () => {
+        // The pair. Without it the change above is indistinguishable from
+        // "always report verified:false".
+        expect(aggregatePrDecisions(fullPanel())).toEqual({
+          decision: 'approve',
+          verified: true,
+        });
+      });
+
+      it('an all-errored panel does not record a verified abstain (#5017)', () => {
+        // The empty case: `valid.length === 0` returned `verified: true`,
+        // asserting a complete panel for a vote in which nobody spoke.
+        const reviews = fullPanel({
+          architect: { source: 'error' },
+          security: { source: 'error' },
+          devex: { source: 'error' },
+          catfish: { source: 'error' },
+          scope_steward: { source: 'error' },
+        });
+
+        expect(aggregatePrDecisions(reviews)).toEqual({
+          decision: 'abstain',
+          verified: false,
+          reason: 'incomplete panel: 0 of 5 voters responded',
+        });
+      });
+
+      it('an ambiguous outcome on an incomplete panel is not verified (#5017)', () => {
+        // Tier 4 made the same claim: `abstain, verified: true` regardless of
+        // how many voters were missing.
+        const reviews: PrReviewVote[] = [
+          makeReview('architect', 'approve'),
+          makeReview('security', 'approve'),
+          makeReview('devex', 'approve'),
+          makeReview('catfish', 'request_changes'),
+          makeReview('scope_steward', 'approve', { source: 'error' }),
+        ];
+
+        expect(aggregatePrDecisions(reviews)).toEqual({
+          decision: 'abstain',
+          verified: false,
+          reason: 'incomplete panel: 4 of 5 voters responded',
+        });
       });
     });
   });
