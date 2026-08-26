@@ -101,6 +101,16 @@ export interface ClusterSynthesis {
   readonly papers: readonly SynthesisPaperRef[];
   readonly commonThemes: readonly string[];
   readonly keyInsights: readonly AttributedInsight[];
+  /**
+   * How many attributed findings this cluster actually had (#5001).
+   *
+   * `keyInsights` is capped, and the cap bites: against the live registry six
+   * of eleven clusters exceed it, `orchestration` with 55. A caller seeing
+   * `paperCount: 40` beside ten insights could not tell "these are the
+   * cluster's insights" from "these are ten of fifty-five". A bounded read is
+   * fine; a bounded read reported as complete is not.
+   */
+  readonly totalInsights: number;
   readonly techniques: readonly string[];
   readonly implementationOpportunities: readonly string[];
   readonly gaps: readonly string[];
@@ -352,17 +362,34 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   }
 
   return {
+    ...insightFields(cluster.papers),
     topic: cluster.topic,
     paperCount: cluster.paperCount,
     papers: cluster.papers.map(toPaperRef),
     commonThemes,
-    keyInsights: attributeFindings(cluster.papers).slice(0, 10),
     techniques,
     implementationOpportunities: uniqueOpportunities,
     gaps,
     alignedTechniques,
     qualityDistribution,
   };
+}
+
+/** Insights carried per cluster. The count dropped is disclosed, not silent. */
+const MAX_CLUSTER_INSIGHTS = 10;
+
+/**
+ * The capped insight list plus the count it was capped from (#5001).
+ *
+ * Returned together so the two can never drift: a `keyInsights` without its
+ * `totalInsights` is the silent truncation this replaced.
+ */
+function insightFields(papers: readonly SynthesisPaper[]): {
+  keyInsights: readonly AttributedInsight[];
+  totalInsights: number;
+} {
+  const all = attributeFindings(papers);
+  return { keyInsights: all.slice(0, MAX_CLUSTER_INSIGHTS), totalInsights: all.length };
 }
 
 /** Find themes that span multiple topic clusters. */

@@ -362,3 +362,43 @@ describe('synthesizeResearch', () => {
     expect(first.paperCount).toBe(3);
   });
 });
+
+describe('cluster insight truncation is disclosed (#5001)', () => {
+  function registryWithFindings(count: number): Record<string, unknown> {
+    const papers: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < count; i++) {
+      papers[`p${String(i)}`] = makePaper(String(i), `Paper ${String(i)}`, ['memory'], ['x'], {
+        key_findings: [`distinct finding number ${String(i)}`],
+      });
+    }
+    return makeRegistry(papers);
+  }
+
+  it('reports the full finding count when the cap bites', async () => {
+    // `keyInsights` is capped at 10 and the cap bites in practice: against the
+    // live registry six of eleven clusters exceed it, `orchestration` with 55.
+    // Ten insights beside `paperCount` were indistinguishable from a cluster
+    // that had exactly ten.
+    mockLoadPapersRegistry.mockResolvedValue({ ok: true, value: registryWithFindings(12) });
+
+    const result = await synthesizeResearch('memory');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cluster = result.value.clusters[0];
+    expect(cluster?.keyInsights.length).toBe(10);
+    expect(cluster?.totalInsights).toBe(12);
+  });
+
+  it('reports an honest count when nothing was dropped', async () => {
+    // The pair: a cluster inside the cap must not imply hidden findings.
+    mockLoadPapersRegistry.mockResolvedValue({ ok: true, value: registryWithFindings(3) });
+
+    const result = await synthesizeResearch('memory');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cluster = result.value.clusters[0];
+    expect(cluster?.totalInsights).toBe(cluster?.keyInsights.length);
+  });
+});
