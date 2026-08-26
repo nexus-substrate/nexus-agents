@@ -160,7 +160,13 @@ function getCommitMessagesForEscapeHatch(cwd: string = REPO_ROOT): string {
   const baseRef = safeBaseRef();
   if (baseRef !== undefined) {
     try {
-      return execFileSync('git', ['log', `origin/${baseRef}...HEAD`, '--pretty=%B'], {
+      // #5028: TWO dots. `origin/main...HEAD` is the SYMMETRIC difference, so
+      // it also returns commits reachable from the base branch but not from
+      // HEAD — including every `[skip-docops]` ever merged to main. Any branch
+      // whose merge-base predates one of those inherited the marker and
+      // silently disabled this gate. Six such commits are on main today; the
+      // commit that introduced this range is one of them.
+      return execFileSync('git', ['log', `origin/${baseRef}..HEAD`, '--pretty=%B'], {
         cwd,
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
