@@ -1,5 +1,58 @@
 # nexus-agents
 
+## 4.22.2
+
+### Patch Changes
+
+- [#5005](https://github.com/nexus-substrate/nexus-agents/pull/5005) [`2b3daf0`](https://github.com/nexus-substrate/nexus-agents/commit/2b3daf0bf2d298951fa039e9deef8c64a180e0cf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(pipeline): surface the dryRun marker on the run_dev_pipeline envelope
+
+  `buildStructuredOutput` builds the MCP response from an explicit field list.
+  [#4772](https://github.com/nexus-substrate/nexus-agents/issues/4772) added `securityRan` and `planStatus` to `DevPipelineResult`, omitted them
+  here, and had to be fixed — leaving a comment that says exactly why: "They were
+  added to DevPipelineResult and then not listed here, so they never reached the
+  MCP surface."
+
+  [#4993](https://github.com/nexus-substrate/nexus-agents/issues/4993) then added `dryRun` to the same type, for the same reason (it says
+  `completed: false` was the request, not a fault), and did not list it here
+  either. A live `run_dev_pipeline({ dryRun: true })` came back with no field
+  distinguishing a successful dry run from a failed pipeline.
+
+- [#5002](https://github.com/nexus-substrate/nexus-agents/pull/5002) [`38c84c8`](https://github.com/nexus-substrate/nexus-agents/commit/38c84c825fd471fc709c627e2e30fbed18b3dbbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(run): report an undeclared execute envelope as a refusal, not an engine fault
+
+  `classifyDispatchError` enumerated refusal classes with `instanceof`.
+  `ExecuteEnvelopeRefusalError` — added later, and deliberately not a subclass of
+  `AuthorityRefusalError` because it answers a different question — was not in the
+  list, so it fell through to `errorCategory: 'internal'`. A plain
+  `run({ goal, execute: true })` routes to `single-shot`, which declares no
+  execute envelope, so an ordinary call told the caller the engine had a defect;
+  on the async path the job was recorded failed with the same framing.
+
+  The three refusal types now share a `PolicyRefusalError` base and the classifier
+  keys on that. The classification is structural rather than a list: a new refusal
+  type is a `business` outcome by construction and has to opt out, instead of
+  being misclassified by omission — which is how this one was missed.
+
+- [#4998](https://github.com/nexus-substrate/nexus-agents/pull/4998) [`9c18496`](https://github.com/nexus-substrate/nexus-agents/commit/9c1849685a74a3918756619f6789a951f095e4cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(memory): report what memory_write actually persisted
+
+  `memory_write` returned `{ success: true }` for writes the backend had
+  rejected. `recordKnowledge`, `storeAdaptive` and `storeTyped` returned `void`,
+  checking their `Result` only to emit a `debug` line; `recordBelief` never
+  inspected its `Result` at all. The caller had no value to look at, so the tool
+  reported success unconditionally and the declared `error` field was reachable
+  only for an unconfigured backend — never for a runtime write failure. A
+  read-only SQLite file was indistinguishable from a successful write.
+
+  All four now return a `MemoryStoreOutcome` and the tool reports the reason.
+
+  The dedup cache had two related defects. It recorded the write _before_
+  dispatch, so a failed write poisoned it and the identical retry returned
+  `success: true, deduplicated: true` — asserting content was already stored that
+  nothing had ever stored. And its key omitted the backend, so writing the same
+  key+content to `session` and then `belief` reported the second as a duplicate
+  while the belief store never received it. The key now includes the backend and
+  the full content (the old 100-character prefix collided), and only a write that
+  landed is remembered.
+
 ## 4.22.1
 
 ### Patch Changes
