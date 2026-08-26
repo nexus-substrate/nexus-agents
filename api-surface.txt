@@ -1777,6 +1777,7 @@ VariableDeclaration CompositeRouterConfigSchema
 InterfaceDeclaration CompositeRouterConfigWithPreference
   availableModelsCache?: import("src/config/available-models-cache").AvailableModelsCache | undefined
   capabilityMatchConfig?: Partial<CapabilityMatchConfig> | undefined
+  capacityStageConfig?: Partial<CapacityStageConfig> | undefined
   confidenceCascadeConfig?: Partial<ConfidenceCascadeConfig> | undefined
   distilledRuleStageConfig?: Partial<DistilledRuleStageConfig> | undefined
   latencyTrackerConfig?: Partial<{ decayFactor: number; maxSampleAgeMs: number; percentiles: number[]; windowSize: number; }> | undefined
@@ -1791,6 +1792,7 @@ InterfaceDeclaration CompositeRouterStats
   readonly avgDecisionTimeMs: number
   readonly banditStats: readonly { avgReward: number; name: string; pullCount: number; }[]
   readonly budgetRejectionRate: number
+  readonly capacityStats?: { readonly enforced: boolean; readonly excludedCount: number; } | undefined
   readonly decisionsPerCli: Readonly<Record<"claude" | "gemini" | "codex" | "opencode", number>>
   readonly latencyStats?: LatencyTrackerStats | undefined
   readonly preferenceStats?: { readonly dataPointCount: number; readonly enabled: boolean; readonly hasSufficientData: boolean; readonly strongModelPreferenceRate: number; } | undefined

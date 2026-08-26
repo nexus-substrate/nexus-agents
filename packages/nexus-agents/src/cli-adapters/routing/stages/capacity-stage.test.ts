@@ -469,19 +469,62 @@ describe('capacity stage wiring claims (#4658)', () => {
     expect(DEFAULT_COMPOSITE_CONFIG.enableCapacityBalancing).toBe(true);
   });
 
-  it('assesses but cannot exclude, because enforceHardLimits is not settable in production', async () => {
-    // The production construction passes a hardcoded `{}`, so the default
-    // stands. If a caller ever supplies real config, this test should fail and
-    // be replaced by one that exercises the opt-in.
+  it('still does not exclude by default — the posture is unchanged', async () => {
+    // #4456 chose signal-only deliberately, and that default stands.
     const stage = new CapacityFilterStage(adapters({ claude: capacity({ quotaExhausted: true }) }));
 
     const outcome = await stage.filterArms(['claude'] as RoutingArmId[]);
 
-    // Exhaustion IS observed...
     expect(outcome.eligible).toEqual(['claude']);
-    // ...and deliberately not acted on. `excludedCount` stays 0 while the
-    // exclusion is held pending a real quota signal (#4456).
     expect(outcome.excluded.size).toBe(0);
     expect(stage.getStats().excludedCount).toBe(0);
+  });
+
+  it('a caller CAN now opt in, and the exclusion fires (#4658)', async () => {
+    // This replaces the test that pinned "enforceHardLimits is not settable in
+    // production" — which said in its own comment that it should be replaced by
+    // one exercising the opt-in as soon as a caller could supply real config.
+    // A caller can now, so this is that test.
+    const stage = new CapacityFilterStage(
+      adapters({ claude: capacity({ quotaExhausted: true }) }),
+      { enforceHardLimits: true }
+    );
+
+    const outcome = await stage.filterArms(['claude'] as RoutingArmId[]);
+
+    expect(outcome.eligible).toEqual([]);
+    expect(outcome.excluded.size).toBe(1);
+    expect(stage.getStats().excludedCount).toBe(1);
+  });
+
+  it('threads capacity config from CompositeRouter, so the opt-in is reachable', async () => {
+    // The gap was never the stage — it was that the sole production
+    // construction passed a hardcoded `{}`, so `enforceHardLimits` could not be
+    // set by any caller and `excludedCount` could only ever report zero.
+    const { CompositeRouter } = await import('../../composite-router.js');
+
+    const signalOnly = new CompositeRouter(adapters({ claude: capacity({}) }), {
+      enableCapacityBalancing: true,
+    });
+    const enforcing = new CompositeRouter(adapters({ claude: capacity({}) }), {
+      enableCapacityBalancing: true,
+      capacityStageConfig: { enforceHardLimits: true },
+    });
+
+    // Both report zero exclusions. Only `enforced` says whether that zero is a
+    // measurement or a default — which is the half `excludedCount` alone
+    // could never carry.
+    expect(signalOnly.getStats().capacityStats).toEqual({ enforced: false, excludedCount: 0 });
+    expect(enforcing.getStats().capacityStats).toEqual({ enforced: true, excludedCount: 0 });
+  });
+
+  it('omits capacityStats entirely when the stage is off', async () => {
+    // Absent means "not running" — a third state, distinct from both zeros.
+    const { CompositeRouter } = await import('../../composite-router.js');
+    const router = new CompositeRouter(adapters({ claude: capacity({}) }), {
+      enableCapacityBalancing: false,
+    });
+
+    expect(router.getStats().capacityStats).toBeUndefined();
   });
 });
