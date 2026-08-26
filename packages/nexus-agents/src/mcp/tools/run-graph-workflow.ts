@@ -39,7 +39,6 @@ import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
@@ -464,7 +463,13 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
     const store = getOutcomeStore();
     store.append({
       id: `graph-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
-      cli: DEFAULT_CLI,
+      // #5020: NOT `DEFAULT_CLI`. This tool does not know which CLI served the
+      // work — the model field below is a synthetic label, not a model id — and
+      // hardcoding 'claude' credited or debited claude for every run, poisoning
+      // the same routing learner #5003 fixed in the feedback bridge.
+      // `'unknown'` is the schema's own unattributed value, and the bandit's
+      // warm-start already partitions it out (#4935) instead of replaying it.
+      cli: 'unknown',
       category: workflowToCategory(result.workflow),
       model: 'graph-workflow',
       success: succeeded,
