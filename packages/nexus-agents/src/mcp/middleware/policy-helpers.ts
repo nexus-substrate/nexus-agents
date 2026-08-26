@@ -6,6 +6,8 @@
  * (Source: OWASP ASVS 4.0, Authorization Controls)
  */
 
+import { resolve, sep } from 'node:path';
+
 // =============================================================================
 // Path Utility Functions
 // =============================================================================
@@ -18,40 +20,21 @@
  * @returns True if the path is within an allowed root
  */
 export function isPathSafe(targetPath: string, allowedPaths: readonly string[]): boolean {
-  // Normalize the target path
-  const normalizedTarget = normalizePath(targetPath);
+  // #5025: this used `normalizePath`, which collapses the DEFAULT allowlist
+  // entry `'./'` to `'/'` — so `startsWith` was true for every absolute path
+  // and the rule admitted `/etc/shadow` and `~/.ssh/id_ed25519`. A raw string
+  // prefix also has no separator boundary, so a root of `/work` admitted
+  // `/work-secrets`. Resolve both sides against cwd and require either an
+  // exact match or a path-separator boundary.
+  const resolvedTarget = resolve(targetPath);
 
-  // Check if any allowed path is a prefix of the target
   for (const allowed of allowedPaths) {
-    const normalizedAllowed = normalizePath(allowed);
-    if (normalizedTarget.startsWith(normalizedAllowed)) {
-      return true;
-    }
+    const root = resolve(allowed);
+    if (resolvedTarget === root) return true;
+    if (resolvedTarget.startsWith(root.endsWith(sep) ? root : root + sep)) return true;
   }
 
   return false;
-}
-
-/**
- * Normalizes a path by removing trailing slashes and handling relative paths.
- */
-export function normalizePath(p: string): string {
-  // Remove trailing slashes
-  let normalized = p.replace(/\/{1,100}$/, '');
-
-  // Handle relative paths
-  if (normalized === '.') {
-    normalized = '';
-  } else if (normalized.startsWith('./')) {
-    normalized = normalized.slice(2);
-  }
-
-  // Ensure absolute-like comparison
-  if (!normalized.startsWith('/')) {
-    normalized = '/' + normalized;
-  }
-
-  return normalized;
 }
 
 /**
