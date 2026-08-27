@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 security(clawguard): demote the access-policy middleware to advisory
@@ -32,3 +32,9 @@ rather than what is prevented. The mode names are kept because they are a
 documented env-var contract; renaming them is a breaking change and is resolved
 with the deriver itself in #5108. README and CONFIGURATION.md no longer
 advertise enforcement.
+
+Released as a **minor**, not a patch: `ClawGuardViolationEvent` gains an optional
+`matchedRule` field, and the API-surface gate classifies an additive optional
+field on an exported interface as minor for readers. Three type changes shipped
+mis-versioned before that gate existed (#4736, #4740, #4744); it reports what
+moved and leaves the level to a human, so this is that call.
