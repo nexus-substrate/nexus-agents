@@ -3468,7 +3468,7 @@ InterfaceDeclaration ExpertResultSummary
   role: AgentRole
   success: boolean
 TypeAliasDeclaration ExpertTaskDomain
-  = | 'code' | 'security' | 'architecture' | 'documentation' | 'testing' | 'infrastructure' | 'general'
+  = 'code' | 'security' | 'architecture' | 'documentation' | 'testing' | 'infrastructure' | 'general'
 InterfaceDeclaration ExplorationEvent
   readonly details: Record<string, unknown>
   readonly eventType: ExplorationEventType

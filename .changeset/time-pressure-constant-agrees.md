@@ -22,3 +22,7 @@ pins that they cannot drift apart again.
 
 Two existing tests asserted the `0.3` as intended behaviour; both are updated
 with the reason rather than renumbered silently.
+
+`api-surface.txt` is regenerated for a formatting-only change: prettier collapsed
+the multi-line `ExpertTaskDomain` union onto one line when it reformatted the
+file this touches. Same seven members, different wrapping — no type change.
