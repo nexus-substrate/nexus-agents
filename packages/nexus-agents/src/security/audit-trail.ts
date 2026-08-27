@@ -159,6 +159,21 @@ export interface ClawGuardViolationEvent extends AuditEventBase {
   readonly mode: string;
   /** Request ID of the offending tool call, for correlation. */
   readonly requestId: string;
+  /**
+   * Which rule produced the verdict (#5106) — `unbypassable:tool`,
+   * `unbypassable:path`, `allowedTools`, `allowedTools:confirm_risky`.
+   *
+   * A first-class field rather than prose inside `warning`, because `warning`
+   * is truncated at 500 chars and a long attacker-selectable `path` argument
+   * pushes the rule off the end. A chain reader must be able to tell an
+   * unbypassable denylist hit from an allowlist miss without parsing a string
+   * that may have been cut mid-word.
+   *
+   * Absent for verdicts that carry no rule (an audit-mode allowlist
+   * observation), which is why it is optional rather than defaulted — there is
+   * no rule to name, and inventing one would misreport.
+   */
+  readonly matchedRule?: string;
 }
 
 /** Graph execution lifecycle event (Issue #839). */

@@ -1413,6 +1413,7 @@ ClassDeclaration ClaudeResponseParser
   readonly name: "claude-parser"
   readonly supportedVersionRange: ">=2.0.0 <3.0.0"
 InterfaceDeclaration ClawGuardViolationEvent
+  readonly matchedRule?: string | undefined
   readonly mode: string
   readonly policySource: string
   readonly requestId: string

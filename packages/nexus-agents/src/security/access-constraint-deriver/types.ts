@@ -12,15 +12,23 @@ import { z } from 'zod';
 /**
  * Operating modes for the access-constraint-deriver pipeline.
  *
- * - `off`: bypass entirely; no policy enforcement, no audit logging
- * - `audit` (default in v2.50+): log every violation, block nothing — collects
- *   telemetry to size the violation rate before flipping to enforce
- * - `confirm_risky` (#2279): graduated middle tier. Block violations on tools
- *   classified as risky (write/exec/network); log-and-allow violations on
- *   read-only tools. The intent is "block the calls a human would want to
- *   review; let the safe reads through" — graduation path between audit and
- *   enforce that doesn't break read-heavy workflows
- * - `enforce`: block every violation, regardless of risk classification
+ * ADVISORY SINCE #5106. None of these modes blocks a tool call. A 7-voter panel
+ * decided ClawGuard stops being an enforcement mechanism and PolicyFirewall is
+ * the single authorization boundary (#5022, epic #5105). The modes now select
+ * how much is REPORTED, not what is prevented:
+ *
+ * - `off`: bypass entirely; no policy derivation, no reporting
+ * - `audit` (the default since v2.50): report every violation
+ * - `confirm_risky` (#2279): report violations on tools classified as risky
+ *   (write/exec/network) with a distinct rule, and read-only violations as
+ *   ordinary observations
+ * - `enforce`: report every violation, regardless of risk classification
+ *
+ * The mode names are retained because they are a documented env-var contract
+ * (`NEXUS_ACCESS_POLICY_MODE`) and renaming them is a breaking change; they are
+ * resolved along with the deriver itself in #5108. Until then the names promise
+ * more than they do, which is why this comment says so rather than leaving a
+ * reader to infer it from the code.
  */
 export const AccessPolicyModeSchema = z.enum(['off', 'audit', 'confirm_risky', 'enforce']);
 export type AccessPolicyMode = z.infer<typeof AccessPolicyModeSchema>;
