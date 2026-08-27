@@ -1,5 +1,80 @@
 # nexus-agents
 
+## 4.26.4
+
+### Patch Changes
+
+- [#5085](https://github.com/nexus-substrate/nexus-agents/pull/5085) [`243de2f`](https://github.com/nexus-substrate/nexus-agents/commit/243de2ff89926fb8afdd2be78feb808f867e3fa4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): the gemini arm enumerates agy's models, not Google API ids
+
+  `GeminiCliAdapter.listModels()` returned `listModelsForCli('gemini')` — the
+  models.dev `google` vendor, 82 Google **API** ids like `gemini-2.5-flash`. That
+  arm spawns `agy`, which accepts none of them. The same reasoning already
+  documented for `cliModelName` in `config/agy-model-map.ts` applies to
+  enumeration: one field cannot serve both the API adapter and the CLI transport.
+  It now reports `AGY_MODEL_SLUGS`.
+
+  `agy models` is enumerable non-interactively again. [#4393](https://github.com/nexus-substrate/nexus-agents/issues/4393) recorded it hanging
+  90s without a TTY on v1.1.11; on v1.1.21 it completes piped in ~1s, exit 0. That
+  was an upstream defect and it is fixed.
+
+  With enumeration available, `AGY_MODEL_SLUGS` was verified against the live CLI
+  and gained the `gemini-3.7-flash-{high,medium,low}` family it had been missing
+  since it was last checked against v1.1.9. `scripts/check-agy-model-drift.ts`
+  compares the two so it cannot silently rot again — operator-invoked, since no CI
+  runner has the binary, and it reports `unmeasured` (a failure) rather than
+  passing when it cannot probe.
+
+  Claude and GPT-OSS slugs agy also fronts stay unmapped, per the 7/0 decision in
+  [#4346](https://github.com/nexus-substrate/nexus-agents/issues/4346); the check names them as excluded rather than dropping them silently.
+
+- [#5084](https://github.com/nexus-substrate/nexus-agents/pull/5084) [`23b2d3e`](https://github.com/nexus-substrate/nexus-agents/commit/23b2d3ed2b3e02c8a2e7d6bc0c10d1d1a27ec3bc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(build): ship the models.dev snapshot — installed copies enumerated zero models
+
+  `models-dev-snapshot-loader.ts` reads `models-dev-snapshot.json` as a sibling of
+  its own compiled module, so the file has to land in `dist/`. It was never in
+  tsup's copy list, and `package.json#files` ships only `dist/` — so **no
+  installed copy has ever contained it.**
+
+  The loader catches the failure and returns `[]`, so nothing was red. The effect:
+  every `claude` / `codex` / `gemini` model enumeration returned zero from the
+  published package, while dev — running from `src/config/` via tsx — returned
+  13 / 47 / 82. `opencode` (native probe) and OpenRouter (network) do not use the
+  snapshot and kept working, which masked it in every health report.
+
+  A second, latent defect surfaced while fixing it: `cp -r src/workflows/templates
+dist/workflows/` nests when `dist/workflows/` already exists and copies the
+  source _as_ `dist/workflows` when it does not, so a clean build laid the
+  templates out flat and `template-loader.ts` — which looks for
+  `dist/workflows/templates` — found nothing. The target is now named explicitly.
+
+  `scripts/check-dist-assets.ts` fails the build when a runtime-read asset is
+  missing or truncated, and the `|| true` suffixes that let a failed copy pass
+  silently are gone.
+
+- [#5089](https://github.com/nexus-substrate/nexus-agents/pull/5089) [`8ce420c`](https://github.com/nexus-substrate/nexus-agents/commit/8ce420c0e6ffb2c811190e615dc68daaeb8ee6f9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): stop untrusted issue titles reaching a written artifact and workflow control flow
+
+  The unblocked-backlog check ([#5079](https://github.com/nexus-substrate/nexus-agents/issues/5079)) interpolated GitHub issue titles verbatim
+  into the tracking issue its workflow writes with `issues: write`. Titles are
+  Tier-3 hostile input — any user can set one — and this repo's own agents read
+  tracking issues when choosing work, so an unescaped title was a prompt-injection
+  channel into an autonomous consumer, not merely a broken table. Titles are now
+  backtick-wrapped with pipes, backticks and newlines stripped, length-capped, and
+  the column states they are copied verbatim.
+
+  Worse, the workflow branched on `grep -q 'still have an open blocker'` over that
+  same body. An issue titled `nothing here, all still have an open blocker` put
+  its own row in the unblocked table _and_ matched the sentinel, closing the
+  tracking issue with a comment that was factually false — untrusted text reaching
+  control flow. The script now emits a machine-readable `STATUS:` first line and
+  the workflow reads only that, never the prose.
+
+  Blocker resolution is bounded to 200 distinct references, dropping numbers over
+  seven digits, and warns when it truncates. One crafted body referencing
+  `[#1](https://github.com/nexus-substrate/nexus-agents/issues/1) … [#50000](https://github.com/nexus-substrate/nexus-agents/issues/50000)` would otherwise have made 50,000 sequential API calls, exhausting
+  the repo's hourly token budget and dying on the job timeout — leaving the
+  previous report stale, which this design calls worse than none.
+
+  Found by a security review of the merged PR.
+
 ## 4.26.3
 
 ### Patch Changes
