@@ -142,9 +142,12 @@ export function taskAnalysisResultToBanditContext(
     isReasoningTask:
       analysis.reasoningType === 'reasoning' ? 1 : analysis.complexityScore > 0.5 ? 0.5 : 0,
 
-    // External context (default mid-range if not provided)
+    // External context (default mid-range if not provided).
+    // #4875: `timePressure` defaulted to 0.3 here while every replay path uses
+    // 0.5, so the same dead feature entered the model at two values depending
+    // on which builder ran. No caller supplies the option today.
     budgetUtilization: options.budgetUtilization ?? 0.5,
-    timePressure: options.timePressure ?? 0.3,
+    timePressure: options.timePressure ?? 0.5,
   };
 }
 
@@ -157,13 +160,7 @@ export function taskAnalysisResultToBanditContext(
  * Maps to domain values used by expert definitions.
  */
 export type ExpertTaskDomain =
-  | 'code'
-  | 'security'
-  | 'architecture'
-  | 'documentation'
-  | 'testing'
-  | 'infrastructure'
-  | 'general';
+  'code' | 'security' | 'architecture' | 'documentation' | 'testing' | 'infrastructure' | 'general';
 
 /**
  * Legacy TaskComplexity type for expert-selector compatibility.

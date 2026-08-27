@@ -163,9 +163,13 @@ describe('taskProfileToBanditContext', () => {
   });
 
   it('sets fixed budget and time values', () => {
+    // #4875: this live path emitted 0.3 while `LinUCBStage` — the other live
+    // builder feeding the same bandit — emitted 0.5. Both are constants, so
+    // neither carries information about time pressure; the disagreement was
+    // the defect, because a per-path constant is learnable as a path label.
     const ctx = taskProfileToBanditContext(makeTaskProfile());
     expect(ctx.budgetUtilization).toBe(0.5);
-    expect(ctx.timePressure).toBe(0.3);
+    expect(ctx.timePressure).toBe(0.5);
   });
 });
 
