@@ -18,6 +18,7 @@ import {
   contextForLogging,
   type RequestContext,
   type CallerInfo,
+  getCurrentRequestContext,
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
@@ -271,11 +272,17 @@ async function executeHandler(
   handler: ToolHandler | ContextAwareHandler,
   args: unknown,
   ctx: HandlerContext,
-  logger: ILogger
+  logger: ILogger,
+  logLifecycle: boolean
 ): Promise<ToolResult> {
   const startTime = getTimeProvider().now();
   const result =
     handler.length >= 2 ? await handler(args, ctx) : await (handler as ToolHandler)(args);
+
+  // Suppressed when the middleware chain already brackets this call: its own
+  // audit middleware logs a completion spanning the whole stack, where this
+  // one times only the handler body (#4981).
+  if (!logLifecycle) return result;
 
   const durationMs = getTimeProvider().now() - startTime;
   if (result.isError === true) {
@@ -438,9 +445,29 @@ export function createSecureHandler(
       toolName: config.toolName,
       ...(config.callerInfo && { caller: config.callerInfo }),
     };
-    const requestContext = createRequestContext(ctxOpts);
+    // Adopt the middleware chain's context when this handler is nested inside
+    // it, so one call carries one id and one start/complete pair (#4981).
+    //
+    // Gated on the tool NAME matching: an in-process nested tool call would
+    // otherwise inherit its parent's identity, and two different tools would
+    // share one request id. Gated on presence at all because every direct
+    // caller of createSecureHandler — the tests — has no outer context, and
+    // must keep minting and logging its own.
+    const ambient = getCurrentRequestContext();
+    const inherited = ambient?.toolName === config.toolName ? ambient : undefined;
+    // Join the outer request's IDENTITY, but keep deriving this handler's own
+    // caller and trust tier. The chain mints its context from { toolName }
+    // alone, so adopting that object wholesale would discard a configured
+    // `callerInfo` — downgrading trustTier and the audit actor to "unknown"
+    // on the very path this change is meant to make auditable.
+    const requestContext =
+      inherited === undefined
+        ? createRequestContext(ctxOpts)
+        : createRequestContext({ ...ctxOpts, inheritRequestId: inherited.requestId });
     const requestLogger = logger.child(contextForLogging(requestContext));
-    requestLogger.info('Tool invocation started');
+    if (inherited === undefined) {
+      requestLogger.info('Tool invocation started');
+    }
 
     const { error: preCheckError, sanitizedArgs } = runPreChecks(
       config,
@@ -451,7 +478,11 @@ export function createSecureHandler(
     );
     if (preCheckError) return preCheckError;
 
-    return executeAndAudit(handler, sanitizedArgs, requestContext, requestLogger, config);
+    return executeAndAudit(handler, sanitizedArgs, config, {
+      requestContext,
+      requestLogger,
+      logLifecycle: inherited === undefined,
+    });
   };
 }
 
@@ -460,20 +491,29 @@ export function createSecureHandler(
  * exception paths. Extracted from `createSecureHandler` to keep that
  * function within the 50-line budget.
  */
+/** The per-call state `executeAndAudit` needs, bundled to stay under the param cap. */
+interface Invocation {
+  readonly requestContext: RequestContext;
+  readonly requestLogger: ILogger;
+  /** False when the middleware chain already brackets this call (#4981). */
+  readonly logLifecycle: boolean;
+}
+
 async function executeAndAudit(
   handler: ToolHandler | ContextAwareHandler,
   sanitizedArgs: unknown,
-  requestContext: RequestContext,
-  requestLogger: ILogger,
-  config: SecureHandlerConfig
+  config: SecureHandlerConfig,
+  invocation: Invocation
 ): Promise<ToolResult> {
+  const { requestContext, requestLogger } = invocation;
   const execStartTime = getTimeProvider().now();
   try {
     const result = await executeHandler(
       handler,
       sanitizedArgs,
       { requestContext, logger: requestLogger },
-      requestLogger
+      requestLogger,
+      invocation.logLifecycle
     );
     sanitizeToolResult(result, requestLogger);
     if (config.auditLogger) {

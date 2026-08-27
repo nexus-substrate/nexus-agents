@@ -7,6 +7,7 @@
  * @module mcp/middleware/request-context
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { getTimeProvider } from '../../core/index.js';
 import type { TrustTier } from '../../security/trust-types.js';
@@ -84,6 +85,16 @@ export interface CreateContextOptions {
   traceId?: string;
   /** Optional parent span ID */
   parentSpanId?: string;
+  /**
+   * Reuse this request id instead of minting a new one (#4981).
+   *
+   * Lets a nested layer join an outer layer's request identity while still
+   * deriving its OWN caller, trust tier and timestamp. Adopting the outer
+   * context object wholesale would discard those, which for a handler
+   * configured with `callerInfo` silently downgrades the trust tier and the
+   * audit actor.
+   */
+  inheritRequestId?: string;
 }
 
 /**
@@ -159,7 +170,7 @@ export function deriveTrustTier(caller: CallerInfo): TrustTier {
 export function createRequestContext(options: CreateContextOptions): RequestContext {
   const caller = options.caller ?? {};
   const context: RequestContext = {
-    requestId: generateRequestId(),
+    requestId: options.inheritRequestId ?? generateRequestId(),
     timestamp: formatTimestamp(),
     toolName: options.toolName,
     caller,
@@ -170,6 +181,69 @@ export function createRequestContext(options: CreateContextOptions): RequestCont
 
   // Freeze to ensure immutability
   return Object.freeze(context);
+}
+
+/**
+ * The request context for the call currently in flight (#4981).
+ *
+ * Exists because a tool call passes through two middleware implementations
+ * that each used to mint their own `RequestContext`, producing two unlinked
+ * `req_*` ids and two `Tool invocation started` pairs per call. Argument
+ * threading cannot fix that: `createSecureHandler` returns a 1-arity function,
+ * so the chain's arity dispatch drops `ctx`, and 1-arity intermediaries such
+ * as the `withPrerequisite` wrappers sit between the layers on some tools.
+ * An ambient channel survives both.
+ *
+ * This mirrors the AbortSignal and progress-context storages the chain already
+ * uses, so it is the established idiom here rather than a new mechanism.
+ */
+const requestContextStorage = new AsyncLocalStorage<ContextHolder>();
+
+/**
+ * The ambient context plus its liveness.
+ *
+ * AsyncLocalStorage keeps a store reachable from anything spawned inside the
+ * scope, including work that OUTLIVES the call — a `setTimeout`, or the
+ * detached body `runAsJob` fires from inside the secure handler. Without this
+ * flag such work still reads the context of a request that already completed,
+ * and a nested handler for the same tool would adopt a finished identity, then
+ * log neither a start (suppressed) nor a completion (the chain already closed
+ * its own pair).
+ *
+ * Identity is not liveness, so the adoption gate needs both.
+ */
+interface ContextHolder {
+  readonly context: RequestContext;
+  settled: boolean;
+}
+
+/**
+ * Runs `fn` with `context` as the ambient request context, so any nested layer
+ * can adopt it instead of minting a second one.
+ */
+export function runWithRequestContext<T>(
+  context: RequestContext,
+  fn: () => Promise<T>
+): Promise<T> {
+  const holder: ContextHolder = { context, settled: false };
+  return requestContextStorage.run(holder, () =>
+    fn().finally(() => {
+      holder.settled = true;
+    })
+  );
+}
+
+/**
+ * The ambient request context, or `undefined` when nothing established one.
+ *
+ * `undefined` is a real answer, not a failure: a caller that composes a secure
+ * handler without the middleware chain — every direct test of it does — has no
+ * outer context to inherit, and must mint its own.
+ */
+export function getCurrentRequestContext(): RequestContext | undefined {
+  const holder = requestContextStorage.getStore();
+  if (holder === undefined || holder.settled) return undefined;
+  return holder.context;
 }
 
 /**

@@ -18,6 +18,9 @@ import {
   type HandlerContext,
 } from './secure-handler.js';
 import { type IPolicyFirewall, type PolicyDecision } from './policy-types.js';
+import { withMiddleware } from './middleware-chain.js';
+import { wrapToolWithTimeout } from './tool-wrapper.js';
+import { getCurrentRequestContext, measuredTrustTier } from './request-context.js';
 import { createDefaultPolicyFirewall } from './policy.js';
 import { RateLimiter, type RateLimiterState } from './rate-limiter.js';
 import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
@@ -1444,5 +1447,154 @@ describe('SecureHandler', () => {
         })
       );
     });
+  });
+});
+
+describe('single request context per call (#4981)', () => {
+  function countLines(logger: MockLogger, message: string): number {
+    return logger.info.mock.calls.filter((c: unknown[]) => c[0] === message).length;
+  }
+
+  it('adopts the chain context instead of minting a second one', async () => {
+    let handlerCtxId: string | undefined;
+    const secure = createSecureHandler(
+      (_args: unknown, ctx: HandlerContext) => {
+        handlerCtxId = ctx.requestContext.requestId;
+        return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+      },
+      { toolName: 'probe_tool' }
+    );
+
+    let ambientId: string | undefined;
+    const wrapped = withMiddleware('probe_tool', async (args: unknown) => {
+      ambientId = getCurrentRequestContext()?.requestId;
+      return secure(args);
+    });
+
+    await wrapped({});
+
+    expect(ambientId).toBeDefined();
+    expect(handlerCtxId).toBe(ambientId);
+  });
+
+  it('emits exactly one invocation-started line for a chained call', async () => {
+    const logger = createMockLogger();
+    const secure = createSecureHandler(
+      () => Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] }),
+      { toolName: 'probe_tool', logger }
+    );
+    const wrapped = withMiddleware('probe_tool', (args: unknown) => secure(args), {
+      logger,
+    });
+
+    await wrapped({});
+
+    expect(countLines(logger, 'Tool invocation started')).toBe(1);
+    expect(countLines(logger, 'Tool execution completed')).toBe(1);
+  });
+
+  it('still mints and logs its own context when used WITHOUT the chain', async () => {
+    const logger = createMockLogger();
+    let handlerCtxId: string | undefined;
+    const secure = createSecureHandler(
+      (_args: unknown, ctx: HandlerContext) => {
+        handlerCtxId = ctx.requestContext.requestId;
+        return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+      },
+      { toolName: 'probe_tool', logger }
+    );
+
+    await secure({});
+
+    // Standalone composition has no outer context to inherit. Suppression is
+    // conditional on an ambient context existing, never unconditional.
+    expect(handlerCtxId).toMatch(/^req_/);
+    expect(countLines(logger, 'Tool invocation started')).toBe(1);
+  });
+
+  it('does NOT adopt a parent tool context for a different tool', async () => {
+    let innerCtxId: string | undefined;
+    const inner = createSecureHandler(
+      (_args: unknown, ctx: HandlerContext) => {
+        innerCtxId = ctx.requestContext.requestId;
+        return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+      },
+      { toolName: 'inner_tool' }
+    );
+
+    let outerId: string | undefined;
+    const outer = withMiddleware('outer_tool', async (args: unknown) => {
+      outerId = getCurrentRequestContext()?.requestId;
+      // An in-process nested tool call: it must NOT inherit the parent's id,
+      // or two different tools share one request identity.
+      return inner(args);
+    });
+
+    await outer({});
+
+    expect(outerId).toBeDefined();
+    expect(innerCtxId).toBeDefined();
+    expect(innerCtxId).not.toBe(outerId);
+  });
+
+  it('emits one pair through the REAL composition tools use (#4981 reproducer)', async () => {
+    const logger = createMockLogger();
+    // This is the exact shape of every registered tool: createSecureHandler
+    // wrapped by wrapToolWithTimeout. The test above uses withMiddleware
+    // directly, which is one layer short of what production composes.
+    const secure = createSecureHandler(
+      () => Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] }),
+      { toolName: 'probe_tool', logger }
+    );
+    const wrapped = wrapToolWithTimeout('probe_tool', secure, { logger });
+
+    await wrapped({});
+    await wrapped({});
+    await wrapped({});
+
+    // Before #4981 this was 6 for 3 calls, under 6 distinct ids.
+    expect(countLines(logger, 'Tool invocation started')).toBe(3);
+
+    const ids = new Set(
+      logger.child.mock.calls.map((c: unknown[]) => {
+        const bound = c[0] as { requestId?: string } | undefined;
+        return bound?.requestId;
+      })
+    );
+    ids.delete(undefined);
+    expect(ids.size).toBe(3);
+  });
+});
+
+describe('adoption preserves caller-derived fields (#4981 review)', () => {
+  it('keeps callerInfo, trust tier and audit actor while sharing the chain id', async () => {
+    let seen: HandlerContext['requestContext'] | undefined;
+    const secure = createSecureHandler(
+      (_args: unknown, ctx: HandlerContext) => {
+        seen = ctx.requestContext;
+        return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+      },
+      {
+        toolName: 'probe_tool',
+        callerInfo: { transport: 'stdio', authenticated: true, clientId: 'claude-cli' },
+      }
+    );
+
+    let ambientId: string | undefined;
+    const wrapped = withMiddleware('probe_tool', (args: unknown) => {
+      ambientId = getCurrentRequestContext()?.requestId;
+      return secure(args);
+    });
+
+    await wrapped({});
+
+    // The chain mints its context from { toolName } alone, with no caller.
+    // Adopting that object wholesale silently dropped configured callerInfo,
+    // downgrading trustTier '1' -> '3' and the audit actor from the client to
+    // "unknown". One ID is the goal; discarding caller identity is not.
+    expect(seen?.requestId).toBe(ambientId);
+    expect(seen?.caller.clientId).toBe('claude-cli');
+    expect(seen?.trustTier).toBe('1');
+    expect(measuredTrustTier(seen as NonNullable<typeof seen>)).toBe('1');
   });
 });

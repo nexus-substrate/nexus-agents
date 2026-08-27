@@ -906,8 +906,13 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
  * Uses MCP Tasks primitive (SEP-1686) via registerToolTask for async execution.
  * taskSupport: 'optional' preserves sync fallback for clients without task support.
  *
- * Uses createSecureHandler for standardized security middleware (Issue #531).
- * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ * NOT wrapped by createSecureHandler or wrapToolWithTimeout (#4981). Of the 46
+ * tool modules this is the only one outside the standard middleware stack: it
+ * registers through registerToolTask, so it creates no RequestContext, emits
+ * no `Tool invocation started` pair, and no tool-audit record. An earlier
+ * version of this comment claimed it used createSecureHandler (Issue #531)
+ * and that it carried the #271 timeout protection; neither is true as wired.
+ * Whether the tasks primitive can take those wrappers is part of #4978.
  *
  * @category MCP
  * @param server - MCP server instance
