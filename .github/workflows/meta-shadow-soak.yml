@@ -122,7 +122,7 @@ jobs:
       # a bare `pnpm install`. Mirrors the "Script Tests" CI job.
       - name: Build nexus-memory (workspace dep)
         if: steps.check.outputs.has_key == 'true'
-        run: pnpm --filter nexus-memory build
+        run: pnpm --filter nexus-memory --fail-if-no-match build
 
       # Restore the prior soak so this run APPENDS to it — the shadow-training
       # sink appends-on-write and the selector hydrates-on-construct, so a

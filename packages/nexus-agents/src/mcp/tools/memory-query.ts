@@ -81,6 +81,63 @@ export interface MemoryQueryResponse {
   count: number;
   /** Source filter applied */
   source: string;
+  /**
+   * Which backends the search could actually reach (#4999).
+   *
+   * `count: 0` used to be the same observation whether nothing matched or the
+   * SQLite-backed stores were absent — every unavailable backend contributes
+   * `[]` silently. A caller asking "do we know anything about X?" was told
+   * "no" when the honest answer was "two of the four stores were not there".
+   */
+  searched: readonly string[];
+  /** Backends skipped because they are not configured on this install. */
+  unavailable: readonly string[];
+  /**
+   * Backends that were installed and threw while answering (#4999).
+   *
+   * Distinct from `unavailable`: the store is here, it just could not answer.
+   * Each helper swallows its own failure into an empty result set, so without
+   * this a corrupted SQLite file read exactly like a store with no matches.
+   */
+  errored: readonly string[];
+}
+
+/**
+ * Which memory backends a query could reach, and which were skipped (#4999).
+ *
+ * `session` and `belief` are always present; the three SQLite-backed stores are
+ * optional and contribute an empty result set when absent — indistinguishable,
+ * before this, from "searched and found nothing".
+ *
+ * Not exported: the point of #4999 is what the RESPONSE says, so the tests
+ * drive the registered tool and assert the envelope. A unit test of this
+ * function would pass while the fields never reached a caller.
+ */
+function describeBackendCoverage(
+  memory: {
+    isAgenticMemoryAvailable(): boolean;
+    isAdaptiveMemoryAvailable(): boolean;
+    isTypedMemoryAvailable(): boolean;
+  },
+  source: string
+): { searched: readonly string[]; unavailable: readonly string[] } {
+  const optional: readonly [string, boolean][] = [
+    ['agentic', memory.isAgenticMemoryAvailable()],
+    ['adaptive', memory.isAdaptiveMemoryAvailable()],
+    ['typed', memory.isTypedMemoryAvailable()],
+  ];
+  const inScope = (name: string): boolean => source === 'all' || source === name;
+
+  const searched: string[] = [];
+  const unavailable: string[] = [];
+  for (const name of ['session', 'belief']) {
+    if (inScope(name)) searched.push(name);
+  }
+  for (const [name, available] of optional) {
+    if (!inScope(name)) continue;
+    (available ? searched : unavailable).push(name);
+  }
+  return { searched, unavailable };
 }
 
 // ============================================================================
@@ -156,7 +213,11 @@ async function executeMemoryQuery(
     logger
   );
 
-  const results = await toolMemory.queryBySource(input.source, effectiveQuery, input.limit);
+  // #4999: the same search, with the failures each backend swallows collected
+  // instead of discarded. `errored` therefore always means "observed to throw",
+  // never "not checked" — on the single-source path as much as on 'all'.
+  const searchResult = await toolMemory.queryWithStatus(input.source, effectiveQuery, input.limit);
+  const results = searchResult.results;
 
   logger.debug('Memory query executed', {
     query: input.query,
@@ -167,12 +228,16 @@ async function executeMemoryQuery(
     reflectionDurationMs: reflection?.durationMs,
   });
 
+  const coverage = describeBackendCoverage(toolMemory, input.source);
   return {
     query: input.query,
     ...(expandedQuery !== undefined ? { expandedQuery } : {}),
     results,
     count: results.length,
     source: input.source,
+    searched: coverage.searched,
+    unavailable: coverage.unavailable,
+    errored: searchResult.errored,
   };
 }
 
@@ -246,6 +311,14 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
     results: z.array(z.unknown()),
     count: z.number(),
     source: z.string(),
+    // #4999: the SDK validates structured content against this schema with
+    // `additionalProperties: false`, so a field added to the response and not
+    // declared here makes EVERY call fail with -32602 rather than merely going
+    // unreported. The integration test caught that; the unit tests could not,
+    // because they call the handler directly and never cross the protocol.
+    searched: z.array(z.string()),
+    unavailable: z.array(z.string()),
+    errored: z.array(z.string()),
   };
 
   server.registerTool(

@@ -34,6 +34,8 @@ import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
+import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
+import { auditLineFor } from './vote-audit-line.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
@@ -277,9 +279,13 @@ export function recordVoteToGitHub(
  * CLI-specific concerns (timeout clamping + diagnostic line) remain here
  * because they belong to the operator UX, not the voting flow itself.
  */
-async function runVote(
-  options: VoteCommandOptions
-): Promise<VotingResult & { readonly decision: VoteDecisionStatus }> {
+async function runVote(options: VoteCommandOptions): Promise<
+  VotingResult & {
+    readonly decision: VoteDecisionStatus;
+    readonly strategy: string;
+    readonly policyReason?: string;
+  }
+> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -300,6 +306,7 @@ async function runVote(
 
   const input: ConsensusVoteInput = {
     proposal: options.proposal,
+    ...(options.options !== undefined ? { options: [...options.options] } : {}),
     quickMode: useQuick,
     simulateVotes: options.dryRun === true,
     ...(options.threshold !== undefined && { threshold: options.threshold }),
@@ -322,6 +329,12 @@ async function runVote(
     totalTimeMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
     decision: result.decision ?? mapOutcomeToDecision(result.result.outcome),
+    // Carried past the narrowing above so the audit record states the strategy
+    // that was applied. `threshold` is the display value and can differ (#4924).
+    strategy: result.strategy,
+    // Likewise: an error-policy short-circuit voided the vote, and without it
+    // the record calls a void a `rejected` (#4953).
+    ...(result.policyReason !== undefined ? { policyReason: result.policyReason } : {}),
   };
 }
 
@@ -383,6 +396,34 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
 }
 
 /**
+ * Write the vote to the tamper-evident chain, sharing the MCP path's recorder
+ * rather than growing a second one.
+ *
+ * Skipped for a dry run: `recordAuthenticVote` would decline it anyway, and
+ * printing a persistence line for a vote that never happened is its own small
+ * misreport.
+ */
+function persistToAuditChain(
+  options: VoteCommandOptions,
+  result: VotingResult & { readonly strategy: string; readonly policyReason?: string }
+): void {
+  if (options.dryRun === true) return;
+  writeLine(
+    auditLineFor(
+      recordAuthenticVote({
+        proposal: result.proposal,
+        strategy: result.strategy,
+        result: result.result,
+        votes: result.votes,
+        // A vote an error policy voided is not a rejection. Without this the
+        // chain records `rejected` while the CLI exits `no_quorum` (#4953).
+        errorVoided: result.policyReason !== undefined,
+      })
+    )
+  );
+}
+
+/**
  * Run the vote command.
  */
 export async function voteCommand(options: VoteCommandOptions): Promise<number> {
@@ -411,6 +452,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
+    persistToAuditChain(options, result);
     handleRecording(options, result, result.decision);
 
     return exitCodeForDecision(result.decision, onNoQuorum);

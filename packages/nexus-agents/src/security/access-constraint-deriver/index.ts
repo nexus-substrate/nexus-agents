@@ -21,9 +21,7 @@ export { checkAccess } from './enforcer.js';
 export {
   withAccessPolicy,
   getActivePolicy,
-  guardMcpToolCall,
   denyToToolResult,
-  createAccessPolicyMiddleware,
   withAuditTrail,
   getActiveAuditTrail,
   recordAuditModeViolation,

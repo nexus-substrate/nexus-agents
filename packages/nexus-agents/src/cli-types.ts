@@ -226,6 +226,8 @@ export interface ParsedCliArgs {
     errorPolicy?: ErrorPolicy;
     /** #4135 — how the vote command maps a `no_quorum` decision. Default `fail`. */
     onNoQuorum?: NoQuorumPolicy;
+    /** #4472 / #4941 — repeatable `--option`, the named alternatives to tally. */
+    options?: string[];
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
@@ -407,9 +409,18 @@ export const PARSE_ARGS_CONFIG = {
       type: 'string' as const,
       short: 'p',
     },
+    // Repeatable. No short letter: every free one is taken, and the two
+    // collisions that already existed silently bound the wrong option (#4922).
+    option: {
+      type: 'string' as const,
+      multiple: true as const,
+    },
+    // No `short`. `parseArgs` takes one options object for every command, so
+    // a short letter is global: `-t` was already `task`, which won, and
+    // `vote -t supermajority` silently ran a simple-majority vote. Long form
+    // only — `cli-types.test.ts` pins that no two options share a letter.
     threshold: {
       type: 'string' as const,
-      short: 't',
     },
     quick: {
       type: 'boolean' as const,
@@ -484,9 +495,10 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     // Learning-metrics command options
+    // No `short` — `-p` is `proposal`, which was declared first and won. See
+    // the note on `threshold`.
     period: {
       type: 'string' as const,
-      short: 'p',
     },
     export: {
       type: 'string' as const,

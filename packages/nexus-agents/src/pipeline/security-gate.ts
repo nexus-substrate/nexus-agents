@@ -135,7 +135,8 @@ async function runTriagePipeline(
   recordTriageLifecycle(triageResult.triaged, lifecycleEntries);
 
   // Step 3: OSV dependency check (#1773)
-  const osvVulns = await runOsvCheck(targetDir, config.enableOsv ?? true);
+  const osv = await runOsvCheck(targetDir, config.enableOsv ?? true);
+  const osvVulns = osv.vulnerabilities;
   lastOsvVulnerabilities = osvVulns;
 
   // Assess: only confirmed findings block
@@ -145,7 +146,8 @@ async function runTriagePipeline(
     sarifResult.totalFindings,
     confirmed.length,
     lifecycle.falsePositiveCount,
-    osvVulns.length
+    osvVulns.length,
+    osv
   );
 
   logger.info('Security gate complete', {
@@ -153,6 +155,7 @@ async function runTriagePipeline(
     confirmed: confirmed.length,
     falsePositives: lifecycle.falsePositiveCount,
     osvVulns: osvVulns.length,
+    osvFailedLookups: osv.failedLookups,
   });
 
   const failed = confirmed.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
@@ -186,28 +189,63 @@ function recordTriageLifecycle(
 }
 
 /** Run OSV dependency check if enabled (#1773). */
-async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvVulnerability[]> {
-  if (!enabled) return [];
+/**
+ * Result of the OSV dependency lookup, carrying what it could NOT check.
+ *
+ * #5018: this returned a bare array, so an unreachable OSV API produced `[]`
+ * — byte-identical to a clean scan — and `buildScanSummary` folded it into
+ * "none blocking". `queryOsv` reports `{ vulnerabilities: [], error }` on a
+ * non-200 or a timeout; the error was never read.
+ */
+interface OsvCheckResult {
+  readonly vulnerabilities: OsvVulnerability[];
+  /** Lookups that returned an error rather than a verdict. */
+  readonly failedLookups: number;
+  /** Dependencies queried, and how many the manifest declared. */
+  readonly queried: number;
+  readonly declared: number;
+}
+
+const OSV_EMPTY: OsvCheckResult = {
+  vulnerabilities: [],
+  failedLookups: 0,
+  queried: 0,
+  declared: 0,
+};
+
+/** Dependencies queried per run. The cap is disclosed in the scan summary. */
+const OSV_DEPENDENCY_CAP = 20;
+
+async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvCheckResult> {
+  if (!enabled) return OSV_EMPTY;
   try {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const pkgPath = path.join(targetDir, 'package.json');
-    if (!fs.existsSync(pkgPath)) return [];
+    if (!fs.existsSync(pkgPath)) return OSV_EMPTY;
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
       dependencies?: Record<string, string>;
     };
+    const declared = Object.keys(pkg.dependencies ?? {}).length;
     const deps = Object.entries(pkg.dependencies ?? {})
-      .slice(0, 20)
+      .slice(0, OSV_DEPENDENCY_CAP)
       .map(([name, version]) => ({
         name,
         version: version.replace(/^[\^~>=<]+/, ''),
       }));
-    if (deps.length === 0) return [];
+    if (deps.length === 0) return OSV_EMPTY;
     const results = await queryOsvBatch(deps);
-    return results.flatMap((r) => [...r.vulnerabilities]);
+    return {
+      vulnerabilities: results.flatMap((r) => [...r.vulnerabilities]),
+      // The half that used to be dropped: a 503 or a timeout yields an empty
+      // `vulnerabilities` array with an `error` set, which read as "clean".
+      failedLookups: results.filter((r) => r.error !== null).length,
+      queried: deps.length,
+      declared,
+    };
   } catch (error) {
     logger.debug('OSV check skipped', { error: String(error) });
-    return [];
+    return OSV_EMPTY;
   }
 }
 
@@ -239,12 +277,28 @@ function buildScanSummary(
   total: number,
   confirmed: number,
   falsePositives: number,
-  osvCount: number
+  osvCount: number,
+  osv?: OsvCheckResult
 ): string {
   const parts = [`${String(total)} SAST findings`];
   if (falsePositives > 0) parts.push(`${String(falsePositives)} filtered as false positives`);
   if (confirmed > 0) parts.push(`${String(confirmed)} confirmed blocking`);
   if (osvCount > 0) parts.push(`${String(osvCount)} OSV dependency vulnerabilities`);
-  if (confirmed === 0 && osvCount === 0) parts.push('none blocking');
+  // #5018: an OSV outage used to land here as "none blocking". A lookup that
+  // errored produced no vulnerabilities, which is not the same as finding none.
+  if (osv !== undefined && osv.failedLookups > 0) {
+    parts.push(
+      `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`
+    );
+  } else if (confirmed === 0 && osvCount === 0) {
+    parts.push('none blocking');
+  }
+  // State the denominator the OSV verdict actually covers: the query is capped,
+  // and devDependencies are never queried at all.
+  if (osv !== undefined && osv.declared > osv.queried) {
+    parts.push(
+      `OSV covered ${String(osv.queried)} of ${String(osv.declared)} declared dependencies`
+    );
+  }
   return parts.join(', ');
 }

@@ -101,6 +101,16 @@ export interface ClusterSynthesis {
   readonly papers: readonly SynthesisPaperRef[];
   readonly commonThemes: readonly string[];
   readonly keyInsights: readonly AttributedInsight[];
+  /**
+   * How many attributed findings this cluster actually had (#5001).
+   *
+   * `keyInsights` is capped, and the cap bites: against the live registry six
+   * of eleven clusters exceed it, `orchestration` with 55. A caller seeing
+   * `paperCount: 40` beside ten insights could not tell "these are the
+   * cluster's insights" from "these are ten of fifty-five". A bounded read is
+   * fine; a bounded read reported as complete is not.
+   */
+  readonly totalInsights: number;
   readonly techniques: readonly string[];
   readonly implementationOpportunities: readonly string[];
   readonly gaps: readonly string[];
@@ -115,6 +125,17 @@ export interface AlignmentSummary {
   readonly notStarted: number;
   readonly total: number;
   readonly topOpportunities: readonly string[];
+  /**
+   * How many improvement opportunities existed before `topOpportunities` was
+   * capped (#5001).
+   *
+   * The alignment map holds twelve `partial` techniques carrying a hint, so
+   * the cap bites on any repo whose research touches most of them. Ten listed
+   * entries look identical whether ten or fifty were found; a bounded read is
+   * fine, a bounded read reported as complete is not. Mirrors
+   * `ClusterSynthesis.totalInsights`.
+   */
+  readonly totalOpportunities: number;
 }
 
 /** Summary of a single feature gate for synthesis output. */
@@ -352,17 +373,37 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   }
 
   return {
+    ...insightFields(cluster.papers),
     topic: cluster.topic,
     paperCount: cluster.paperCount,
     papers: cluster.papers.map(toPaperRef),
     commonThemes,
-    keyInsights: attributeFindings(cluster.papers).slice(0, 10),
     techniques,
     implementationOpportunities: uniqueOpportunities,
     gaps,
     alignedTechniques,
     qualityDistribution,
   };
+}
+
+/** Insights carried per cluster. The count dropped is disclosed, not silent. */
+const MAX_CLUSTER_INSIGHTS = 10;
+
+/** Cap on the improvement opportunities listed in the alignment summary (#5001). */
+const MAX_TOP_OPPORTUNITIES = 10;
+
+/**
+ * The capped insight list plus the count it was capped from (#5001).
+ *
+ * Returned together so the two can never drift: a `keyInsights` without its
+ * `totalInsights` is the silent truncation this replaced.
+ */
+function insightFields(papers: readonly SynthesisPaper[]): {
+  keyInsights: readonly AttributedInsight[];
+  totalInsights: number;
+} {
+  const all = attributeFindings(papers);
+  return { keyInsights: all.slice(0, MAX_CLUSTER_INSIGHTS), totalInsights: all.length };
 }
 
 /** Find themes that span multiple topic clusters. */
@@ -426,15 +467,18 @@ function buildAlignmentSummary(clusters: readonly ClusterSynthesis[]): Alignment
   // Top opportunities: partial implementations with hints (most improvable)
   const opportunities = allAlignments
     .filter((a) => a.status === 'partial' && a.improvementHint !== undefined)
-    .map((a) => `${a.technique}: ${a.improvementHint ?? ''}`)
-    .slice(0, 10);
+    .map((a) => `${a.technique}: ${a.improvementHint ?? ''}`);
 
   return {
     implemented,
     partial,
     notStarted,
     total: allAlignments.length,
-    topOpportunities: opportunities,
+    // Capped and counted together so the two cannot drift — a
+    // `topOpportunities` without its total is the silent truncation this
+    // replaced (#5001).
+    topOpportunities: opportunities.slice(0, MAX_TOP_OPPORTUNITIES),
+    totalOpportunities: opportunities.length,
   };
 }
 

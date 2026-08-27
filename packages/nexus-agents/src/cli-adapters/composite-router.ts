@@ -76,6 +76,7 @@ import {
   type ConfidenceCascadeConfig,
   type CapabilityMatchConfig,
   type QualityConstraintConfig,
+  type CapacityStageConfig,
   type ResourceStrategyConfig,
   type DistilledRuleStageConfig,
 } from './routing/stages/index.js';
@@ -265,6 +266,7 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraintConfig,
       resourceStrategyConfig,
       distilledRuleStageConfig,
+      capacityStageConfig,
       metricsCollector,
       orchestrationObserver,
       availableModelsCache,
@@ -274,16 +276,9 @@ export class CompositeRouter implements ICompositeRouter {
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
-    // Only assign metricsCollector if provided (Issue #559)
-    if (metricsCollector !== undefined) {
-      this.metricsCollector = metricsCollector;
-    }
-    // Only assign orchestrationObserver if provided (Issue #587)
-    if (orchestrationObserver !== undefined) {
-      this.orchestrationObserver = orchestrationObserver;
-      this.logger.debug('OrchestrationObserver wired to CompositeRouter');
-    }
-    // (#2540 PR 7) Wire optional availability cache.
+    this.assignOptionalCollaborators(metricsCollector, orchestrationObserver);
+    // (#2540 PR 7) Wire optional availability cache. Stays here: the field is
+    // readonly, so it can only be assigned in the constructor.
     if (availableModelsCache !== undefined) {
       this.availableModelsCache = availableModelsCache;
       this.logger.debug('AvailableModelsCache wired to CompositeRouter');
@@ -300,8 +295,29 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraint: qualityConstraintConfig,
       resourceStrategy: resourceStrategyConfig,
       distilledRule: distilledRuleStageConfig,
+      capacity: capacityStageConfig,
     });
     this.logInitialization(adapters.size);
+  }
+
+  /**
+   * Optional collaborators, assigned only when supplied so an absent one stays
+   * `undefined` rather than being stored as a null-ish value. Extracted from
+   * the constructor to keep it under the function-length bar (#4658).
+   */
+  private assignOptionalCollaborators(
+    metricsCollector: CompositeRouterConfigWithPreference['metricsCollector'],
+    orchestrationObserver: CompositeRouterConfigWithPreference['orchestrationObserver']
+  ): void {
+    // Only assign metricsCollector if provided (Issue #559)
+    if (metricsCollector !== undefined) {
+      this.metricsCollector = metricsCollector;
+    }
+    // Only assign orchestrationObserver if provided (Issue #587)
+    if (orchestrationObserver !== undefined) {
+      this.orchestrationObserver = orchestrationObserver;
+      this.logger.debug('OrchestrationObserver wired to CompositeRouter');
+    }
   }
 
   private initializeCoreRouters(
@@ -345,6 +361,7 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
       resourceStrategy?: Partial<ResourceStrategyConfig> | undefined;
       distilledRule?: Partial<DistilledRuleStageConfig> | undefined;
+      capacity?: Partial<CapacityStageConfig> | undefined;
     }
   ): void {
     if (this.config.enableRoutingMemory) {
@@ -366,6 +383,7 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
       resourceStrategy?: Partial<ResourceStrategyConfig> | undefined;
       distilledRule?: Partial<DistilledRuleStageConfig> | undefined;
+      capacity?: Partial<CapacityStageConfig> | undefined;
     } = {}
   ): void {
     if (this.config.enableConfidenceCascade) {
@@ -381,7 +399,17 @@ export class CompositeRouter implements ICompositeRouter {
       this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs.resourceStrategy);
     }
     if (this.config.enableCapacityBalancing) {
-      this.capacityFilterStage = new CapacityFilterStage(this.adapters, {}, this.logger);
+      // #4658: was a hardcoded `{}`, so `enforceHardLimits` — documented as
+      // "available for callers who have a real quota signal" — could not be set
+      // by any caller. The signal now exists (`recordProviderQuotaExhaustion`
+      // fires from two adapters on a durable RATE_LIMITED), so the opt-in is
+      // threaded. The default stays `false`: #4456's signal-only posture is
+      // unchanged, it is now a choice rather than a hardcoding.
+      this.capacityFilterStage = new CapacityFilterStage(
+        this.adapters,
+        stageConfigs.capacity ?? {},
+        this.logger
+      );
     }
     if (this.config.enableStrategyDistillation) {
       this.strategyDistiller = isPersistenceEnabled()
@@ -1041,6 +1069,7 @@ export class CompositeRouter implements ICompositeRouter {
       banditStats: this.linucbBandit?.getStats() ?? [],
       latencyStats,
       routingMemoryStats,
+      ...capacityStatsOf(this.capacityFilterStage),
     };
 
     if (preferenceStats !== undefined) {
@@ -1074,4 +1103,25 @@ export function createCompositeRouter(
     resolved = { ...config, availableModelsCache: cache };
   }
   return new CompositeRouter(adapters, resolved, logger);
+}
+
+/**
+ * Capacity stats for {@link CompositeRouter.getStats}, absent when the stage is
+ * disabled (#4658).
+ *
+ * Absent means "not running", which is a different thing from "running and
+ * excluded nothing" — and both are different from "running, enforcing, and
+ * excluded nothing". `enforced` separates the last two.
+ */
+function capacityStatsOf(stage: CapacityFilterStage | undefined): {
+  capacityStats?: { enforced: boolean; excludedCount: number };
+} {
+  if (stage === undefined) return {};
+  const stats = stage.getStats();
+  return {
+    capacityStats: {
+      enforced: stats['enforced'] === true,
+      excludedCount: typeof stats['excludedCount'] === 'number' ? stats['excludedCount'] : 0,
+    },
+  };
 }

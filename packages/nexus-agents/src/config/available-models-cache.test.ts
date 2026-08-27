@@ -165,3 +165,66 @@ describe('AvailableModelsCache (#2540)', () => {
     });
   });
 });
+
+describe('a failed probe must not overwrite a good catalog (#5059)', () => {
+  function sourceThatFailsAfterFirstCall(): {
+    source: AvailableModelsSource;
+    fail: () => void;
+  } {
+    let failing = false;
+    return {
+      source: {
+        name: 'flaky',
+        listModels: () =>
+          failing
+            ? Promise.reject(new Error('network down'))
+            : Promise.resolve([{ id: 'model-a' }, { id: 'model-b' }]),
+      },
+      fail: () => {
+        failing = true;
+      },
+    };
+  }
+
+  it('keeps the cached catalog when the next probe fails', async () => {
+    // The cache already has the right handling — it just never ran, because
+    // both real sources caught internally and returned `[]`, which takes the
+    // SUCCESS path: the empty list is stored and stamped fresh, discarding a
+    // good catalog for the whole TTL.
+    let clock = 0;
+    const { source, fail } = sourceThatFailsAfterFirstCall();
+    const cache = new AvailableModelsCache({
+      sources: [source],
+      ttlMs: 100,
+      now: () => clock,
+    });
+
+    expect(await cache.getAll()).toHaveLength(2);
+
+    fail();
+    clock = 1000; // past the TTL, so the next call re-probes
+
+    expect(await cache.getAll()).toHaveLength(2);
+  });
+
+  it('does not mark a failed probe as freshly fetched', async () => {
+    // Stamping `fetchedAt` on failure is what makes the damage last a full
+    // TTL: the bad state looks current, so nothing retries.
+    let clock = 0;
+    const { source, fail } = sourceThatFailsAfterFirstCall();
+    const cache = new AvailableModelsCache({
+      sources: [source],
+      ttlMs: 100,
+      now: () => clock,
+    });
+    await cache.getAll();
+
+    fail();
+    clock = 1000;
+    await cache.getAll();
+
+    // Recovery on the very next probe, not after another full TTL.
+    clock = 1001;
+    expect(await cache.getAll()).toHaveLength(2);
+  });
+});

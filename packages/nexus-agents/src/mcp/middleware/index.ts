@@ -183,3 +183,10 @@ export {
   setGlobalToolRateLimiterFactory,
   resetGlobalToolRateLimiterFactory,
 } from './tool-rate-limiter.js';
+
+export {
+  getGlobalPolicyFirewall,
+  setGlobalPolicyFirewall,
+  resetGlobalPolicyFirewall,
+  stagePolicyFirewallForRollout,
+} from './policy-registry.js';

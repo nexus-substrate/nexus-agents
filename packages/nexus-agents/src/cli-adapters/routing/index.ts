@@ -36,31 +36,8 @@ export {
   selectBestCandidate,
 } from './router-stage.js';
 
-// Pipeline implementation
-export type { RoutingPipelineConfig } from './routing-pipeline.js';
-
-export { RoutingPipeline, createRoutingPipeline } from './routing-pipeline.js';
-
 // Pipeline stages
 export {
-  BudgetFilterStage,
-  createBudgetStage,
-  type BudgetStageConfig,
-  ZeroRouterStage,
-  createZeroStage,
-  type ZeroStageConfig,
-  PreferenceStage,
-  createPreferenceStage,
-  type PreferenceStageConfig,
-  TopsisRouterStage,
-  createTopsisStage,
-  type TopsisStageConfig,
-  LinUCBStage,
-  createLinUCBStage,
-  type LinUCBStageConfig,
-  LatencyStage,
-  createLatencyStage,
-  type LatencyStageConfig,
   ResourceStrategyStage,
   createResourceStrategyStage,
   computeResourceTier,

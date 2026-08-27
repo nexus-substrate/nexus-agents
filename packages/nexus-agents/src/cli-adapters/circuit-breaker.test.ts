@@ -135,6 +135,59 @@ describe('CliCircuitBreaker', () => {
       expect(fn).not.toHaveBeenCalled();
     });
 
+    it('recovers on schedule even while failures keep arriving (#5011)', () => {
+      // The defect: the reset window was measured from `lastFailureTime`, and
+      // `onFailure` updated it unconditionally — including while already open.
+      // Since an open circuit does not shed load on the default paths, traffic
+      // kept arriving and each failure pushed the half-open probe another
+      // 30s out. A CLI serving 95% of requests correctly stayed evicted from
+      // every voter panel until a manual reset.
+      expect(breaker.getState()).toBe('open');
+
+      // Two-thirds of the way through the window, a straggler fails.
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs * 0.7);
+      breaker.recordFailure('unknown');
+
+      // Past the window measured from the TRANSITION, not from that failure.
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs * 0.4);
+
+      expect(breaker.getState()).toBe('half-open');
+    });
+
+    it('does not restamp lastFailureTime for a failure recorded while open (#5034)', () => {
+      // Pins the early return specifically. The two halves of the #5011 fix are
+      // individually sufficient — with `lastFailureTime` frozen the window
+      // reads the same from either field — so the recovery test above passes
+      // with EITHER half reverted. This assertion fails only if the early
+      // return goes, which is what makes the pair separable.
+      const before = breaker.getSnapshot().lastFailureTime;
+
+      vi.advanceTimersByTime(1_000);
+      breaker.recordFailure('unknown');
+
+      expect(breaker.getSnapshot().lastFailureTime).toBe(before);
+    });
+
+    it('does not count a failure recorded while open (#5034)', () => {
+      // `failureCount` drives the closed-state threshold and is reset on the
+      // transition back to closed, so counting failures during the open window
+      // measures nothing — and `getSnapshot()` exposes the field.
+      const before = breaker.getSnapshot().failureCount;
+
+      breaker.recordFailure('unknown');
+
+      expect(breaker.getSnapshot().failureCount).toBe(before);
+    });
+
+    it('does not re-probe before the window has elapsed', () => {
+      // The pair: fixing the restart must not make the circuit probe early.
+      expect(breaker.getState()).toBe('open');
+
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs - 1);
+
+      expect(breaker.getState()).toBe('open');
+    });
+
     it('should transition to half-open after reset timeout', () => {
       expect(breaker.getState()).toBe('open');
 

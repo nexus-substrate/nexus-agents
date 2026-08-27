@@ -11,6 +11,7 @@
 import type { BanditContext, LinUCBConfig } from './budget-router-types.js';
 import { DEFAULT_LINUCB_CONFIG, LinUCBConfigSchema } from './budget-router-types.js';
 import { createLogger } from '../core/index.js';
+import { partitionWarmStartSkips, warmStartSkipLogs } from './warm-start-skips.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import {
   createIdentityMatrix,
@@ -328,12 +329,13 @@ export class LinUCBBandit {
       this.recordWarmStartModelStat(outcome.cli, outcome.model, outcome.success);
       replayed++;
     }
-    if (skippedArms.size > 0) {
-      logger.warn('Warm-start skipped outcomes for arms this bandit does not have', {
-        skippedByArm: Object.fromEntries(skippedArms),
-        replayed,
-        knownArms: this.armNames,
-      });
+    for (const line of warmStartSkipLogs(
+      partitionWarmStartSkips(skippedArms),
+      replayed,
+      this.armNames
+    )) {
+      if (line.level === 'warn') logger.warn(line.message, line.context);
+      else logger.debug(line.message, line.context);
     }
     return replayed;
   }

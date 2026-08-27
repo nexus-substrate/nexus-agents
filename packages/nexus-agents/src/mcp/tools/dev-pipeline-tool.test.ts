@@ -29,19 +29,26 @@ const PIPELINE_RESULT = {
   securityPassed: true,
 };
 const runDevPipelineMock = vi.fn(
-  (_task: string, _stages: unknown, _options?: { trustTier?: string }) =>
+  (_task: string, _stages: unknown, _options?: { trustTier?: string; dryRun?: boolean }) =>
     Promise.resolve(PIPELINE_RESULT)
 );
 vi.mock('../../pipeline/dev-pipeline.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../pipeline/dev-pipeline.js')>();
   return {
     ...actual,
-    runDevPipeline: (task: string, stages: unknown, options?: { trustTier?: string }) =>
-      runDevPipelineMock(task, stages, options),
+    runDevPipeline: (
+      task: string,
+      stages: unknown,
+      options?: { trustTier?: string; dryRun?: boolean }
+    ) => runDevPipelineMock(task, stages, options),
   };
 });
 
-import { DevPipelineInputSchema, registerDevPipelineTool } from './dev-pipeline-tool.js';
+import {
+  DevPipelineInputSchema,
+  registerDevPipelineTool,
+  runDevPipelineForGoal,
+} from './dev-pipeline-tool.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -162,6 +169,49 @@ describe('DevPipelineInputSchema', () => {
       'async'
     );
     expect(() => DevPipelineInputSchema.parse({ task: 'test', dispatch: 'bogus' })).toThrow();
+  });
+});
+
+// #4933: the async hint is remediation text, and remediation that does not
+// apply to the request it answers is worse than none — a caller following it
+// verbatim gets another synchronous run.
+describe('the async hint matches whether async is actually available (#4933)', () => {
+  /** Drives the handler's catch block: no task and no planFile. */
+  async function errorEnvelope(extra: Record<string, unknown>): Promise<string> {
+    const handler = captureHandler();
+    const result = await handler(extra, STDIO_CTX);
+    return result.content[0]!.text;
+  }
+
+  it('omits the async hint for a dry run, which ignores dispatch entirely', async () => {
+    // `input.dispatch === 'async' && !input.dryRun` is false for a dry run, so
+    // `dispatch: 'async'` is silently discarded. Telling the caller to retry
+    // with it sends them back through the same synchronous path.
+    const text = await errorEnvelope({ dryRun: true });
+
+    expect(text).not.toContain("dispatch: 'async'");
+  });
+
+  it('says instead that dry runs are synchronous', async () => {
+    // The pair: deleting the hint entirely would satisfy the assertion above
+    // while leaving the caller with no explanation at all.
+    const text = await errorEnvelope({ dryRun: true });
+
+    expect(text).toMatch(/dry run/i);
+  });
+
+  it('still carries the hint for a real run, where async does apply', async () => {
+    // The other pair, and the regression this must not cause: a non-dryRun
+    // run genuinely can exceed the 900s ceiling, and async is its escape.
+    const text = await errorEnvelope({ dryRun: false });
+
+    expect(text).toContain("dispatch: 'async'");
+  });
+
+  it('reports the underlying error in both cases', async () => {
+    // Whatever the hint says, the actual failure has to survive it.
+    expect(await errorEnvelope({ dryRun: true })).toContain('planFile');
+    expect(await errorEnvelope({ dryRun: false })).toContain('planFile');
   });
 });
 
@@ -347,6 +397,32 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['planStatus']).toBe('empty');
   });
 
+  it('surfaces the dryRun marker too', async () => {
+    // #4993 added `dryRun` to DevPipelineResult for the same reason as the two
+    // fields above — `completed: false` was the request, not a fault — and then
+    // did not list it in `buildStructuredOutput` either. A live
+    // `run_dev_pipeline({ dryRun: true })` came back with no way to tell a
+    // successful dry run from a failed pipeline. Same omission, same function,
+    // under the comment describing it.
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      dryRun: true,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 2,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+    } as never);
+    const handler = captureHandler();
+
+    const result = await handler({ task: 'Build feature X', dryRun: true }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output['dryRun']).toBe(true);
+    expect(output['completed']).toBe(false);
+  });
+
   it('omits both fields when the pipeline did not report them', async () => {
     // Absent means the producer predates the distinction — not false, not 'empty'.
     const handler = captureHandler();
@@ -356,6 +432,8 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
 
     expect(output).not.toHaveProperty('securityRan');
     expect(output).not.toHaveProperty('planStatus');
+    // The pair for dryRun: an ordinary run must not claim to have been one.
+    expect(output).not.toHaveProperty('dryRun');
   });
 
   it('stays allowed inside a test runner with no simulated flag (existing suites unaffected)', async () => {
@@ -418,5 +496,77 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
     const handler = captureHandler();
     await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// The iteration caps reach the pipeline (#4939)
+// ============================================================================
+
+describe('run_dev_pipeline iteration caps are wired (#4939)', () => {
+  // Both were bounds-checked, defaulted and described in the generated tool
+  // reference, and neither was read off `parsed.data` — a documented parameter
+  // a caller could set to no effect. The schema tests above prove parsing; this
+  // proves the value leaves the handler.
+  beforeEach(() => {
+    runDevPipelineMock.mockClear();
+  });
+
+  it('passes both caps through to the pipeline', async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X', maxVoteIterations: 1, maxQaIterations: 2 }, STDIO_CTX);
+
+    const options = runDevPipelineMock.mock.calls[0]?.[2] as
+      { maxVoteIterations?: number; maxQaIterations?: number } | undefined;
+    expect(options?.maxVoteIterations).toBe(1);
+    expect(options?.maxQaIterations).toBe(2);
+  });
+
+  it('passes the schema defaults when the caller sets neither', async () => {
+    // The pair: forwarding `undefined` would satisfy nothing above and let the
+    // pipeline fall back on its own constants, which happen to agree today and
+    // would diverge the moment either changed.
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, STDIO_CTX);
+
+    const options = runDevPipelineMock.mock.calls[0]?.[2] as
+      { maxVoteIterations?: number; maxQaIterations?: number } | undefined;
+    expect(options?.maxVoteIterations).toBe(3);
+    expect(options?.maxQaIterations).toBe(3);
+  });
+});
+
+describe('runDevPipelineForGoal — dryRun reaches the pipeline (#4806)', () => {
+  beforeEach(() => runDevPipelineMock.mockClear());
+
+  // The seam. `run-tool.test.ts` asserts that `run` calls
+  // `runDevPipelineForGoal` with `dryRun: true`, and stops there — one link
+  // short of the only place the flag does anything. This function parsed the
+  // flag into `input`, which only `createStages` reads, and then built the
+  // options from `trustTier` alone, so `dev-pipeline.ts`'s dry-run
+  // short-circuit never fired and the "plan and vote only" run implemented,
+  // QA'd and security-scanned for real.
+  it('passes dryRun through to runDevPipeline options', async () => {
+    await runDevPipelineForGoal('add retry logic', undefined, true);
+
+    expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.dryRun).toBe(true);
+  });
+
+  it('leaves dryRun unset on an ordinary run', async () => {
+    // The pair: a fix that hardcoded `dryRun: true` would pass the test above
+    // while turning every `run` into a no-op.
+    await runDevPipelineForGoal('add retry logic', undefined, undefined);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.dryRun).toBeUndefined();
+  });
+
+  it('still threads trustTier alongside it', async () => {
+    await runDevPipelineForGoal('add retry logic', '3', true);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).toMatchObject({
+      trustTier: '3',
+      dryRun: true,
+    });
   });
 });

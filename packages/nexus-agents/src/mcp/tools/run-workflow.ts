@@ -8,7 +8,6 @@
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
 import {
@@ -266,27 +265,15 @@ async function handleRunWorkflow(
   return successResponse(executeResult.value);
 }
 
-/** Input schema for registerTool */
-const toolInputSchema = {
-  template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
-  inputs: z.record(z.string().max(100), z.unknown()).describe('Workflow inputs as key-value pairs'),
-  dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
-  // #3017
-  timeoutMs: z
-    .number()
-    .int()
-    .min(1000)
-    .max(1_800_000)
-    .optional()
-    .describe('Per-phase execution timeout in ms (overrides workflow.timeout, bound [1s, 30min])'),
-  // #3044 / epic #2631 Stage 3
-  mode: z
-    .enum(['sync', 'async'])
-    .optional()
-    .describe(
-      'Dispatch mode (default: sync). "async" returns { jobId } immediately; poll via get_job_result.'
-    ),
-};
+/**
+ * Input schema for registerTool — the internal schema's shape, not a copy.
+ *
+ * The hand-written mirror this replaces omitted `idempotencyKey`, so the SDK
+ * stripped it, every async dispatch minted a fresh jobId, and the `replay` /
+ * `collision` envelopes below could never fire. Same cause as #4969 one tool
+ * over: a subset drifts, `.shape` cannot (#4972).
+ */
+const toolInputSchema = RunWorkflowInputSchema.shape;
 
 /**
  * Dispatch the workflow on a background promise + return a pending

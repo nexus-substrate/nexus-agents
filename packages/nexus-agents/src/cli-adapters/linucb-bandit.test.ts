@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { LinUCBBandit, createLinUCBBandit } from './linucb-bandit.js';
+import { partitionWarmStartSkips, warmStartSkipLogs } from './warm-start-skips.js';
 import type { BanditContext } from './budget-router-types.js';
 
 describe('LinUCBBandit', () => {
@@ -378,6 +379,134 @@ describe('LinUCBBandit', () => {
     it('should return 0 for empty outcomes', () => {
       const bandit = new LinUCBBandit(armNames);
       expect(bandit.warmStart([])).toBe(0);
+    });
+  });
+
+  describe('warm-start skip log levels reach the real logger (#4935)', () => {
+    // `warmStartSkipLogs` decides the level and is unit-tested; whether
+    // `warmStart` honours it was not. Reverting the mapping to a single
+    // `logger.warn` left the whole suite green, so the drowned-signal
+    // regression #4904 fixed could come back unnoticed. Asserted on the bytes
+    // the process actually emits, at the default `info` level, rather than on
+    // a mocked logger — the suppression of `debug` is the behaviour.
+    function captureLogOutput(run: () => void): string {
+      const written: string[] = [];
+      const record = (chunk: unknown): boolean => {
+        written.push(String(chunk));
+        return true;
+      };
+      const originalOut = process.stdout.write;
+      const originalErr = process.stderr.write;
+      process.stdout.write = record;
+      process.stderr.write = record;
+      try {
+        run();
+      } finally {
+        process.stdout.write = originalOut;
+        process.stderr.write = originalErr;
+      }
+      return written.join('');
+    }
+
+    function outcomesFor(cli: string): Parameters<LinUCBBandit['warmStart']>[0] {
+      return [{ cli, model: 'some-model', success: true }] as unknown as Parameters<
+        LinUCBBandit['warmStart']
+      >[0];
+    }
+
+    it('keeps the every-run unattributed skip out of warn', () => {
+      const bandit = new LinUCBBandit(armNames);
+
+      const output = captureLogOutput(() => bandit.warmStart(outcomesFor('unknown')));
+
+      // Emitted at debug, which the default `info` level drops entirely. If the
+      // level mapping is lost this line reappears — 210 of them in a real run —
+      // and buries the warn below.
+      expect(output).not.toContain('no resolvable CLI');
+    });
+
+    it('still warns about an arm the bandit genuinely does not have', () => {
+      const bandit = new LinUCBBandit(armNames);
+
+      const output = captureLogOutput(() => bandit.warmStart(outcomesFor('api:openai')));
+
+      expect(output).toContain('arms this bandit does not have');
+      expect(output).toContain('"level":"warn"');
+    });
+  });
+
+  describe('warm-start skip partitioning (#4904)', () => {
+    // `skippedByArm` was added by #4400 to surface an arm that SHOULD have
+    // warm-started and did not — `api:*` arms were discarding their whole
+    // history silently. It then also reported `'unknown'`, which can never
+    // warm-start by design and appears on every run, so a real regression
+    // rendered identically to a line printed 210 times in a live run.
+
+    it('keeps an unmatched arm-shaped id in byArm, where the warning reads it', () => {
+      const skips = partitionWarmStartSkips(new Map([['api:anthropic', 12]]));
+
+      expect(skips.byArm).toEqual({ 'api:anthropic': 12 });
+      expect(skips.unattributed).toBe(0);
+    });
+
+    it('moves the unattributed bucket out of byArm', () => {
+      const skips = partitionWarmStartSkips(new Map([['unknown', 210]]));
+
+      expect(skips.byArm).toEqual({});
+      expect(skips.unattributed).toBe(210);
+    });
+
+    it('separates the two when both are present', () => {
+      // The case that matters: a regression arriving alongside the permanent
+      // bucket must still leave byArm non-empty.
+      const skips = partitionWarmStartSkips(
+        new Map([
+          ['unknown', 210],
+          ['api:openai', 3],
+        ])
+      );
+
+      expect(skips.byArm).toEqual({ 'api:openai': 3 });
+      expect(skips.unattributed).toBe(210);
+    });
+
+    it('does not discard the unattributed count', () => {
+      // Filtering `'unknown'` away entirely would also make byArm empty and
+      // pass every assertion above. Its volume is a real signal about how much
+      // execution cannot be attributed to a CLI.
+      expect(partitionWarmStartSkips(new Map([['unknown', 7]])).unattributed).toBe(7);
+    });
+
+    it('warns for an unmatched arm and only debugs the unattributed bucket', () => {
+      // The level is the fix. Both buckets logged at `warn` is what made a
+      // real regression indistinguishable from the line printed every run.
+      const lines = warmStartSkipLogs({ byArm: { 'api:openai': 3 }, unattributed: 210 }, 3488, [
+        'claude',
+      ]);
+
+      expect(lines.map((l) => l.level)).toEqual(['warn', 'debug']);
+    });
+
+    it('still emits the unattributed count somewhere', () => {
+      // Computing it and never logging it would be the same defect one layer
+      // down: recorded, and never read.
+      const lines = warmStartSkipLogs({ byArm: {}, unattributed: 210 }, 3488, ['claude']);
+
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.context['skippedUnattributed']).toBe(210);
+    });
+
+    it('emits nothing at all when nothing was skipped', () => {
+      expect(warmStartSkipLogs({ byArm: {}, unattributed: 0 }, 10, ['claude'])).toEqual([]);
+    });
+
+    it('reports nothing for a clean warm-start', () => {
+      // The empty case, stated: an empty byArm has to mean "every arm with
+      // history warm-started", which is the whole point of the field.
+      const skips = partitionWarmStartSkips(new Map());
+
+      expect(skips.byArm).toEqual({});
+      expect(skips.unattributed).toBe(0);
     });
   });
 

@@ -16,6 +16,12 @@ import {
   registerMcpTools,
 } from './cli-server-tools.js';
 import type { RegisterMcpToolsOptions } from './cli-server-tools.js';
+import {
+  getGlobalPolicyFirewall,
+  resetGlobalPolicyFirewall,
+} from './mcp/middleware/policy-registry.js';
+import { getPipelineEventBus } from './pipeline/event-bus.js';
+import { getOutcomeStore } from './orchestration/outcomes/outcome-store.js';
 
 // ============================================================================
 // Mock external modules (vi.hoisted so they are available in vi.mock factories)
@@ -592,6 +598,37 @@ describe('registerMcpTools - tool allowlisting', () => {
     expect(mockRegisterMemoryQueryTool).toHaveBeenCalled();
   });
 
+  it('threads the audit logger to a standardHandler tool, not just run_dev_pipeline (#4991)', () => {
+    // #4987 made the MCP PolicyFirewall evaluate rules on EVERY tool, and
+    // `secure-handler.ts:261` emits the decision only `if (pResult &&
+    // config.auditLogger)`. `buildStandardDeps` withheld the logger from every
+    // tool except `run_dev_pipeline`, so a policy denial on any of the 38 tools
+    // registered through `standardHandler` could never reach the chain — in
+    // enforce mode or in warn. The warn-mode soak #4988 depends on therefore
+    // produced no durable evidence at all.
+    //
+    // memory_query is a plain standardHandler tool: if IT gets the logger, the
+    // generic path does.
+    const auditLogger = { logPolicyDecision: vi.fn() };
+    registerMcpTools(makeDefaultOptions({ auditLogger }));
+
+    expect(mockRegisterMemoryQueryTool).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ auditLogger })
+    );
+  });
+
+  it('omits the audit logger when the server has none', () => {
+    // The pair: threading must stay conditional. An always-present key would
+    // put `undefined` on the deps object and defeat the `config.auditLogger`
+    // guard's ability to mean "no durable chain configured".
+    registerMcpTools(makeDefaultOptions());
+
+    const deps = mockRegisterMemoryQueryTool.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(deps).toBeDefined();
+    expect(deps).not.toHaveProperty('auditLogger');
+  });
+
   it('should skip categories when allowlist excludes them', () => {
     const options = makeDefaultOptions({
       securityConfig: {
@@ -708,13 +745,35 @@ describe('registerMcpTools - policy firewall', () => {
 
   afterEach(() => {
     delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+    // Module-level state: leaving a firewall wired would leak an enforcing
+    // policy into every later test in the process.
+    resetGlobalPolicyFirewall();
   });
+
+  /**
+   * A firewall stand-in with real mode state: `stagePolicyFirewallForRollout`
+   * calls `setMode`, and a `vi.fn()` returning a fixed string would report the
+   * configured mode forever no matter what the staging did.
+   */
+  function stageableFirewall(
+    mode: 'enforce' | 'warn'
+  ): NonNullable<RegisterMcpToolsOptions['policyFirewall']> {
+    let current = mode;
+    return {
+      getMode: () => current,
+      setMode: (next: 'enforce' | 'warn') => {
+        current = next;
+      },
+      getRules: () => [],
+      evaluate: () => ({ allowed: true, reason: 'test' }),
+      addRule: () => undefined,
+      removeRule: () => false,
+    };
+  }
 
   it('should log policy firewall info when provided', () => {
     const logger = makeMockLogger();
-    const mockFirewall = {
-      getMode: vi.fn().mockReturnValue('enforce'),
-    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+    const mockFirewall = stageableFirewall('enforce');
 
     const options = makeDefaultOptions({
       logger,
@@ -740,20 +799,19 @@ describe('registerMcpTools - policy firewall', () => {
     expect((regCall as unknown[])[1]).not.toHaveProperty('policyMode');
   });
 
-  it('warns that a constructed policy firewall is not wired to any tool', () => {
+  it('stages the wired firewall into warn mode rather than the configured enforce', () => {
+    // #4888 wired the firewall that had only ever reached a log line. Honouring
+    // the configured `enforce` on the release that lands the wiring would turn
+    // rules nothing has ever evaluated into denials for every operator, so the
+    // rollout starts in warn — and this asserts the staging happened, not just
+    // that the firewall was stored.
     const logger = makeMockLogger();
-    const mockFirewall = {
-      getMode: vi.fn().mockReturnValue('enforce'),
-    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+    const mockFirewall = stageableFirewall('enforce');
 
     registerMcpTools(makeDefaultOptions({ logger, policyFirewall: mockFirewall }));
 
-    const warn = logger.warn.mock.calls.find((call: unknown[]) =>
-      String(call[0]).includes('PolicyFirewall')
-    );
-    expect(warn).toBeDefined();
-    expect(String((warn as unknown[])[0])).toContain('not wired');
-    expect((warn as unknown[])[1]).toEqual(expect.objectContaining({ configuredMode: 'enforce' }));
+    expect(getGlobalPolicyFirewall()).toBe(mockFirewall);
+    expect(mockFirewall.getMode()).toBe('warn');
   });
 
   it('does not warn when no policy firewall was constructed', () => {
@@ -820,5 +878,41 @@ describe('registerMcpTools - gateway wiring', () => {
     registerMcpTools(options);
     // registerTools should receive the proxy, not the original server
     expect(mockRegisterTools).toHaveBeenCalledWith(proxyServer, expect.anything());
+  });
+});
+
+describe('stage failures do not become fabricated outcomes (#5003)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockReturnValues();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('records nothing to the OutcomeStore for a stage.failed event', async () => {
+    // The deleted bridge subscribed to `stage.failed` and wrote
+    // `{cli: 'claude', category: 'code_generation'}` — an attribution the event
+    // does not carry, for stages where no CLI ran at all. `agent-executor` is
+    // the single canonical writer now: it knows which CLI ran and skips the
+    // record when it does not. This asserts nothing re-subscribes.
+    registerMcpTools(makeDefaultOptions());
+    const store = getOutcomeStore();
+    const before = store.query().length;
+
+    getPipelineEventBus().emit({
+      type: 'stage.failed',
+      executionId: 'exec-5003',
+      stageId: 'security',
+      error: 'semgrep not installed',
+      model: 'codex-5.3',
+      timestamp: Date.now(),
+    } as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(store.query()).toHaveLength(before);
+    expect(store.query().some((o) => o.id.startsWith('fb-fail-'))).toBe(false);
   });
 });

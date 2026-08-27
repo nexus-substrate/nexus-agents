@@ -25,6 +25,7 @@ import { ModelError, ConfigError } from '../core/errors.js';
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import { getErrorMessage, createLogger } from '../core/index.js';
+import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
 import {
@@ -103,7 +104,7 @@ export class ResilientAdapter implements IResilientAdapter {
   }
 
   get modelId(): string {
-    return this.currentAdapter?.modelId ?? 'pending-detection';
+    return this.currentAdapter?.modelId ?? UNRESOLVED_MODEL_ID;
   }
 
   get capabilities(): readonly ModelCapability[] {

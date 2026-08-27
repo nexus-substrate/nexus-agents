@@ -173,6 +173,15 @@ export interface DevPipelineResult {
    * stages voted on the input text.
    */
   readonly planStatus?: 'empty';
+  /**
+   * Whether this run stopped after plan+vote because the caller asked it to.
+   *
+   * `completed: false` alone cannot distinguish "the pipeline failed" from "the
+   * pipeline did exactly what was requested and stopped" — and a consumer that
+   * reads `completed` as the verdict reports a successful dry run as an engine
+   * fault. Absent means a normal run.
+   */
+  readonly dryRun?: true;
 }
 
 // ============================================================================
@@ -222,6 +231,20 @@ export interface DevPipelineStages {
 const MAX_VOTE_ITERATIONS = 3;
 const MAX_QA_ITERATIONS = 3;
 
+/** Resolved loop bounds for one pipeline run (#4939). */
+interface IterationLimits {
+  readonly vote: number;
+  readonly qa: number;
+}
+
+/** The caps for this run: caller-supplied where given, the constants otherwise. */
+function resolveIterationLimits(options: DevPipelineOptions | undefined): IterationLimits {
+  return {
+    vote: options?.maxVoteIterations ?? MAX_VOTE_ITERATIONS,
+    qa: options?.maxQaIterations ?? MAX_QA_ITERATIONS,
+  };
+}
+
 /** Pipeline execution mode. */
 export type PipelineMode = 'autonomous' | 'harness';
 
@@ -254,6 +277,16 @@ export interface DevPipelineOptions {
    * if the stage is absent the gate is skipped regardless of mode.
    */
   readonly qualityGate?: QualityGateMode | undefined;
+  /**
+   * Cap on plan→vote rounds (#4939). Omitted uses {@link MAX_VOTE_ITERATIONS}.
+   *
+   * The MCP tool has advertised `maxVoteIterations` since it shipped — bounds
+   * checked, defaulted to 3, described in the generated tool reference — and
+   * nothing read it, so setting it changed nothing.
+   */
+  readonly maxVoteIterations?: number | undefined;
+  /** Cap on implement→QA rounds (#4939). Omitted uses {@link MAX_QA_ITERATIONS}. */
+  readonly maxQaIterations?: number | undefined;
   /** Optional BeliefMemory for hindsight updates after plan outcomes (#1720). */
   readonly beliefMemory?: IHindsightBeliefMemory | undefined;
   /**
@@ -368,13 +401,11 @@ async function runDevPipelineInner(
   }
 
   // Phases 4-5: Implement + Quality Gate + Security
-  const result = await runImplSecurityPhase(
-    planResult,
-    tasks,
-    stages,
+  const result = await runImplSecurityPhase(planResult, tasks, stages, {
     sid,
-    options?.qualityGate ?? 'off'
-  );
+    qualityGateMode: options?.qualityGate ?? 'off',
+    limits: resolveIterationLimits(options),
+  });
 
   // Apply hindsight with actual pipeline outcome (#1720)
   applyPipelineHindsight(bm, task, sid, result);
@@ -719,6 +750,8 @@ function buildDryRunResult(planResult: {
 }): DevPipelineResult {
   return {
     completed: false,
+    // Says WHY completion is false: by request, not by fault.
+    dryRun: true,
     plan: planResult.plan,
     tasks: [],
     voteIterations: planResult.iterations,
@@ -795,7 +828,10 @@ async function runPlanningPhase(
   }
 
   const planContext = await assemblePlanContext(research.text, task, sid, bm);
-  const planResult = await runPlanOrResume(prior, task, planContext, stages, sid);
+  const planResult = await runPlanOrResume(prior, task, planContext, stages, {
+    sid,
+    limits: resolveIterationLimits(options),
+  });
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
       type: 'plan',
@@ -843,10 +879,10 @@ async function runImplSecurityPhase(
   planResult: { plan: string; iterations: number },
   tasks: PipelineTask[],
   stages: DevPipelineStages,
-  sid: string | undefined,
-  qualityGateMode: QualityGateMode
+  run: { sid: string | undefined; qualityGateMode: QualityGateMode; limits: IterationLimits }
 ): Promise<DevPipelineResult> {
-  const implResult = await implementQaLoop(tasks, stages);
+  const { sid, qualityGateMode, limits } = run;
+  const implResult = await implementQaLoop(tasks, stages, limits);
   if (sid !== undefined)
     saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
 
@@ -936,7 +972,7 @@ async function runPlanOrResume(
   task: string,
   research: string,
   stages: DevPipelineStages,
-  sessionId: string | undefined
+  run: { sid: string | undefined; limits: IterationLimits }
 ): Promise<{
   plan: string;
   iterations: number;
@@ -944,6 +980,7 @@ async function runPlanOrResume(
   conditions: readonly string[];
   caveats: readonly string[];
 }> {
+  const { sid: sessionId, limits } = run;
   if (prior?.plan !== undefined) {
     logger.info('Resuming from checkpoint', { stage: 'plan', sessionId });
     return {
@@ -954,7 +991,7 @@ async function runPlanOrResume(
       caveats: prior.voteCaveats ?? [],
     };
   }
-  return planVoteLoop(task, research, stages, sessionId);
+  return planVoteLoop(task, research, stages, sessionId, limits);
 }
 
 /** Conditional vote metadata for task annotation. */
@@ -1011,12 +1048,13 @@ async function planVoteLoop(
   task: string,
   research: string,
   stages: DevPipelineStages,
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  limits: IterationLimits
 ): Promise<{ plan: string; iterations: number } & ConditionalMeta> {
   let feedback: string | undefined;
   let plan = '';
 
-  for (let i = 1; i <= MAX_VOTE_ITERATIONS; i++) {
+  for (let i = 1; i <= limits.vote; i++) {
     plan = await withStep(
       { name: `plan (i=${String(i)})`, kind: 'pipeline.stage', attrs: { iteration: i } },
       () => stages.plan(task, research, feedback)
@@ -1065,7 +1103,7 @@ async function planVoteLoop(
   }
 
   logger.warn('Max vote iterations reached, proceeding with last plan', { sessionId });
-  return { plan, iterations: MAX_VOTE_ITERATIONS, conditional: false, conditions: [], caveats: [] };
+  return { plan, iterations: limits.vote, conditional: false, conditions: [], caveats: [] };
 }
 
 /** Result of implementing a single task. */
@@ -1077,7 +1115,8 @@ interface TaskImplResult {
 /** Implement a single task with QA iteration loop via reusable runQaLoop (#1707). */
 async function implementSingleTask(
   task: PipelineTask,
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  limits: IterationLimits
 ): Promise<TaskImplResult> {
   let currentTask: PipelineTask = { ...task, status: 'in_progress' };
   const qaResult = await runQaLoop<string>(
@@ -1100,7 +1139,7 @@ async function implementSingleTask(
       const review = await stages.qaReview(currentTask, impl);
       return { verdict: review.verdict, feedback: review.feedback, issues: review.issues };
     },
-    MAX_QA_ITERATIONS
+    limits.qa
   );
   const finalTask: PipelineTask = {
     id: task.id,
@@ -1128,11 +1167,12 @@ const MAX_IMPL_CONCURRENCY = 4;
 /** Implement tasks with bounded-concurrency parallel dispatch (#1695, #1734). */
 async function implementQaLoop(
   tasks: PipelineTask[],
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  limits: IterationLimits
 ): Promise<ImplLoopResult> {
   if (tasks.length === 0) return { totalIterations: 0, completedTasks: [] };
 
-  const taskFns = tasks.map((task) => () => implementSingleTaskSafe(task, stages));
+  const taskFns = tasks.map((task) => () => implementSingleTaskSafe(task, stages, limits));
   const results = await executeWithConcurrency(taskFns, MAX_IMPL_CONCURRENCY);
   return aggregateImplResults(results);
 }
@@ -1140,10 +1180,11 @@ async function implementQaLoop(
 /** Execute a task with error handling, returning a safe result. */
 async function implementSingleTaskSafe(
   task: PipelineTask,
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  limits: IterationLimits
 ): Promise<TaskImplResult | null> {
   try {
-    return await implementSingleTask(task, stages);
+    return await implementSingleTask(task, stages, limits);
   } catch (error) {
     const reason = error instanceof Error ? error : new Error(String(error));
     logger.error('Task implementation failed', reason, {});

@@ -433,6 +433,10 @@ function detectEngineFailure(
     return { message: `Engine reported failure: ${detail}` };
   }
   if (record['completed'] === false) {
+    // A dry run stops before completion BY REQUEST, so `completed: false` is
+    // the outcome the caller asked for rather than an engine fault. An empty
+    // plan is still a failure — producing one is the whole point of the run.
+    if (record['dryRun'] === true && record['planStatus'] !== 'empty') return null;
     return { message: describeIncompletePipeline(record), detail: record };
   }
   return null;

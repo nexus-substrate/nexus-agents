@@ -16,6 +16,7 @@ import type { CollaborationConfig } from './collaboration-types.js';
 import {
   buildAegeanConfig,
   buildAegeanResult,
+  tokensFromMetadata,
   createRoundData,
   determineIterationAction,
   determinePreRoundAction,
@@ -134,6 +135,7 @@ describe('buildAegeanResult', () => {
       terminationReason: 'consensus',
       startTime: 1000,
       tokensUsed: 500,
+      unmeasuredTokenContributions: 0,
     });
 
     expect(result.consensusReached).toBe(true);
@@ -151,6 +153,7 @@ describe('buildAegeanResult', () => {
       terminationReason: 'max_rounds',
       startTime: 500,
       tokensUsed: 1000,
+      unmeasuredTokenContributions: 0,
     });
 
     expect(result.consensusReached).toBe(false);
@@ -287,14 +290,14 @@ describe('determineIterationAction', () => {
 
 describe('determinePreRoundAction', () => {
   it('returns result when cancelled', () => {
-    const result = determinePreRoundAction(true, [], 1000, 200);
+    const result = determinePreRoundAction(true, [], 1000, 200, 0);
     expect(result).not.toBeNull();
     expect(result?.terminationReason).toBe('error');
     expect(result?.consensusReached).toBe(false);
   });
 
   it('returns null when not cancelled', () => {
-    const result = determinePreRoundAction(false, [makeRound()], 1000, 200);
+    const result = determinePreRoundAction(false, [makeRound()], 1000, 200, 0);
     expect(result).toBeNull();
   });
 });
@@ -306,7 +309,7 @@ describe('determinePreRoundAction', () => {
 describe('createIterationContext', () => {
   it('creates context with provided values', () => {
     const rounds = [makeRound()];
-    const ctx = createIterationContext(rounds, 1000, 500);
+    const ctx = createIterationContext(rounds, 1000, 500, 0);
     expect(ctx.rounds).toBe(rounds);
     expect(ctx.startTime).toBe(1000);
     expect(ctx.tokensUsed).toBe(500);
@@ -319,7 +322,12 @@ describe('createIterationContext', () => {
 
 describe('processIterationAction', () => {
   const emitEvent = vi.fn();
-  const ctx = { rounds: [makeRound()], startTime: 1000, tokensUsed: 300 };
+  const ctx = {
+    rounds: [makeRound()],
+    startTime: 1000,
+    tokensUsed: 300,
+    unmeasuredTokenContributions: 0,
+  };
 
   it('returns result for consensus action', () => {
     const result = processIterationAction({
@@ -386,7 +394,14 @@ describe('processIterationAction', () => {
 describe('buildLoopResult', () => {
   it('delegates to buildAegeanResult', () => {
     const rounds = [makeRound()];
-    const result = buildLoopResult(rounds, 'final', 'consensus', 1000, 400);
+    const result = buildLoopResult({
+      rounds,
+      consensusValue: 'final',
+      terminationReason: 'consensus',
+      startTime: 1000,
+      tokensUsed: 400,
+      unmeasuredTokenContributions: 0,
+    });
     expect(result.consensusReached).toBe(true);
     expect(result.consensusValue).toBe('final');
     expect(result.totalRounds).toBe(1);
@@ -480,6 +495,7 @@ describe('buildSessionTaskResult', () => {
       totalRounds: 3,
       totalDurationMs: 5000,
       tokensUsed: 1200,
+      unmeasuredTokenContributions: 0,
       rounds: [],
       terminationReason: 'consensus',
     };
@@ -496,5 +512,110 @@ describe('buildSessionTaskResult', () => {
     expect(taskResult.metadata.model).toBe('aegean-protocol');
     expect(taskResult.metadata.tokensUsed).toBe(1200);
     expect(taskResult.metadata.durationMs).toBe(1000); // 2000 - 1000
+  });
+});
+
+// ============================================================================
+// tokensFromMetadata (#4743)
+// ============================================================================
+
+describe('tokensFromMetadata (#4743)', () => {
+  it('passes a measured figure through and counts nothing', () => {
+    expect(tokensFromMetadata({ tokensUsed: 1200, tokensMeasured: true })).toEqual({
+      tokens: 1200,
+      unmeasured: 0,
+    });
+  });
+
+  it('treats an absent flag as measured — only an explicit false is a disclosure', () => {
+    // `tokensMeasured` is optional (#4734); absence is the pre-existing shape
+    // and must not be read as "unmeasured", or every legacy adapter would
+    // suddenly count as silent.
+    expect(tokensFromMetadata({ tokensUsed: 900 })).toEqual({ tokens: 900, unmeasured: 0 });
+  });
+
+  it('contributes zero and counts one when the adapter reported no usage', () => {
+    // The placeholder must not enter the sum: adding it under-counts, and
+    // under-counting is the dangerous direction for anything cap-shaped.
+    expect(tokensFromMetadata({ tokensUsed: 0, tokensMeasured: false })).toEqual({
+      tokens: 0,
+      unmeasured: 1,
+    });
+  });
+
+  it('drops a non-zero placeholder rather than summing it', () => {
+    // `tokensUsed` is meaningless when `tokensMeasured` is false, whatever it
+    // holds — a stale or default value must not reach the total.
+    expect(tokensFromMetadata({ tokensUsed: 4321, tokensMeasured: false })).toEqual({
+      tokens: 0,
+      unmeasured: 1,
+    });
+  });
+});
+
+// ============================================================================
+// buildAegeanResult carries the unmeasured count (#4743)
+// ============================================================================
+
+describe('buildAegeanResult unmeasured disclosure (#4743)', () => {
+  const base = {
+    rounds: [],
+    consensusValue: null,
+    terminationReason: 'max_rounds' as const,
+    startTime: 0,
+  };
+
+  it('reports the count so the total reads as a lower bound', () => {
+    const result = buildAegeanResult({ ...base, tokensUsed: 500, unmeasuredTokenContributions: 3 });
+
+    expect(result.unmeasuredTokenContributions).toBe(3);
+  });
+
+  it('does not silently zero a real count', () => {
+    // The pair for the default above: `?? 0` applied to a supplied value would
+    // satisfy the default test while discarding every measurement.
+    expect(
+      buildAegeanResult({ ...base, tokensUsed: 0, unmeasuredTokenContributions: 7 })
+        .unmeasuredTokenContributions
+    ).toBe(7);
+  });
+});
+
+// ============================================================================
+// The count becomes a tokensMeasured disclosure downstream (#4743)
+// ============================================================================
+
+describe('buildSessionTaskResult token disclosure (#4743)', () => {
+  function aegeanResult(tokensUsed: number, unmeasured: number): AegeanResult {
+    return {
+      consensusValue: 'x',
+      consensusReached: true,
+      totalRounds: 1,
+      totalDurationMs: 10,
+      tokensUsed,
+      unmeasuredTokenContributions: unmeasured,
+      rounds: [],
+      terminationReason: 'consensus',
+    };
+  }
+
+  it('marks the total unmeasured when any contributor reported nothing', () => {
+    // This is where the count has to land: `ResultMetadata.tokensMeasured` is
+    // the disclosure the rest of the tree already reads (#4734). Without it the
+    // count would stop at a type nothing downstream consults.
+    const task = buildSessionTaskResult('t1', aegeanResult(500, 2), 0);
+
+    expect(task.metadata.tokensMeasured).toBe(false);
+  });
+
+  it('marks it measured when every contributor reported', () => {
+    // The pair: always-false would make every aegean total look untrustworthy.
+    const task = buildSessionTaskResult('t1', aegeanResult(500, 0), 0);
+
+    expect(task.metadata.tokensMeasured).toBe(true);
+  });
+
+  it('still passes the total through either way', () => {
+    expect(buildSessionTaskResult('t1', aegeanResult(500, 2), 0).metadata.tokensUsed).toBe(500);
   });
 });

@@ -117,6 +117,56 @@ describe('DistilledRuleStage', () => {
       }
     });
 
+    it('caps the aggregate when an unscoped task matches every rule (#5004)', async () => {
+      // `detectTaskCategory` returns null for content with no specialization
+      // keyword, and an undefined category matches ALL of a CLI's rules. Six
+      // penalties at confidence 0.88 stacked to -26.4 against a candidate at 0
+      // — an order of magnitude past `avoidDelta`, the largest documented
+      // single-rule bound, driven by rules learned for six unrelated
+      // categories.
+      const categories = [
+        'code_generation',
+        'code_review',
+        'documentation',
+        'testing',
+        'debugging',
+        'refactoring',
+      ];
+      const rules = categories.map((category) =>
+        makeRule({ id: `failure-rate:claude:${category}`, category, confidence: 1.0 })
+      );
+      const stage = new DistilledRuleStage(createMockDistiller(rules));
+      // No `task-category:` signal → the stage's category-unknown branch.
+      const ctx = createContext('an unscoped task', ['claude', 'gemini']);
+
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const claudeScore = result.value.context.scores.get('claude') ?? 0;
+      expect(claudeScore).toBeGreaterThanOrEqual(-10);
+      expect(result.value.context.signals).toContain('distilled-rule:capped=claude');
+    });
+
+    it('leaves an in-bounds aggregate untouched', async () => {
+      // The pair: the cap must clamp, not flatten. A single penalty is well
+      // inside the bound and must still be applied at its full value.
+      const rules = [makeRule({ action: 'penalize', confidence: 1.0 })];
+      const stage = new DistilledRuleStage(createMockDistiller(rules));
+      const ctx = createContext(
+        'test task',
+        ['claude', 'gemini'],
+        ['task-category:code_generation']
+      );
+
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.context.scores.get('claude')).toBe(-5);
+      expect(result.value.context.signals).not.toContain('distilled-rule:capped=claude');
+    });
+
     it('applies penalize action to matching CLI', async () => {
       const rules = [makeRule({ action: 'penalize', confidence: 1.0 })];
       const stage = new DistilledRuleStage(createMockDistiller(rules));

@@ -7,9 +7,76 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock CLI adapter factory to avoid real subprocess spawns (perf: saves ~7s)
+// Mock CLI adapter factory to avoid real subprocess spawns (perf: saves ~7s).
+// #5060: `gemini` reports an UNREACHABLE binary — `healthCheck` resolves with
+// `reachable: false` rather than throwing, which is what production does when
+// `getVersion` hits `spawn ENOENT`. `claude` reports a reachable binary on an
+// unsupported version. Both are `healthy: false`; only `reachable` separates
+// them, and the demo used to call both "available".
 vi.mock('../cli-adapters/factory.js', () => ({
-  createAllAdapters: vi.fn(() => new Map()),
+  createAllAdapters: vi.fn(
+    () =>
+      new Map([
+        [
+          'gemini',
+          {
+            healthCheck: () =>
+              Promise.resolve({
+                healthy: false,
+                version: 'unknown',
+                versionStatus: 'unsupported',
+                reachable: false,
+                message: 'spawn ENOENT',
+                lastChecked: new Date(0),
+              }),
+          },
+        ],
+        [
+          'claude',
+          {
+            healthCheck: () =>
+              Promise.resolve({
+                healthy: false,
+                version: '0.0.1',
+                versionStatus: 'unsupported',
+                reachable: true,
+                lastChecked: new Date(0),
+              }),
+          },
+        ],
+        // One healthy CLI, so the live path renders the availability list at
+        // all — it is only shown when something is authenticated.
+        [
+          'codex',
+          {
+            healthCheck: () =>
+              Promise.resolve({
+                healthy: true,
+                version: '2.0.0',
+                versionStatus: 'supported',
+                reachable: true,
+                lastChecked: new Date(0),
+              }),
+            execute: () => Promise.resolve({ ok: true, value: { text: 'demo output' } }),
+          },
+        ],
+        // A producer that predates `reachable` and cannot say. Absent must mean
+        // unknown-so-assume-present, never absent — otherwise adding the field
+        // silently reclassifies every older adapter as uninstalled.
+        [
+          'opencode',
+          {
+            healthCheck: () =>
+              Promise.resolve({
+                healthy: false,
+                version: '1.0.0',
+                versionStatus: 'unsupported',
+                lastChecked: new Date(0),
+              }),
+          },
+        ],
+      ])
+  ),
 }));
 
 import {
@@ -78,6 +145,18 @@ describe('demo-command', () => {
       const result = await runRoutingDemo('Explain how closures work', false);
 
       expect(result).toContain('Reasoning:       yes');
+    });
+
+    it('does not list an unreachable CLI as available (#5060)', async () => {
+      // A missing binary was shown as installed-but-unauthenticated, so the
+      // demo told the user to run `auth login` for a CLI they do not have.
+      const result = await runRoutingDemo('Implement a sorting function', true);
+
+      expect(result).toMatch(/gemini\s+- not available/);
+      // The pair: an installed CLI on an unsupported version is still present.
+      expect(result).toMatch(/claude\s+- available \(not authenticated\)/);
+      // And a producer that cannot say is treated as present, not absent.
+      expect(result).toMatch(/opencode\s+- available \(not authenticated\)/);
     });
 
     it('should show mock disclaimer', async () => {

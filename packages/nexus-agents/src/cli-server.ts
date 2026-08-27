@@ -387,8 +387,7 @@ async function initializeAndRegisterTools(
   config: import('./config/index.js').AppConfig,
   deps?: {
     feedbackIntegration?:
-      | import('./learning/feedback-integration.js').IFeedbackIntegration
-      | undefined;
+      import('./learning/feedback-integration.js').IFeedbackIntegration | undefined;
     auditLogger?: AuditLogger | null;
   }
 ): Promise<void> {

@@ -27,9 +27,8 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
-import { toAgyModelSlug } from '../../config/agy-model-map.js';
+import { toAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
-import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import {
   getTimeoutForTask,
   estimateTaskComplexity,
@@ -133,8 +132,18 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */
+  /**
+   * The slugs this arm can actually run (#5085).
+   *
+   * NOT `listModelsForCli('gemini')`, which resolves the models.dev `google`
+   * vendor — 82 Google **API** ids like `gemini-2.5-flash`. This arm spawns
+   * `agy`, which accepts none of them; the same reasoning already documented
+   * for `cliModelName` in `config/agy-model-map.ts` applies to enumeration.
+   * Reporting the API list made every consumer confidently wrong rather than
+   * empty, which is worse.
+   */
   listModels(): Promise<readonly CliModelInfo[]> {
-    return Promise.resolve(listModelsForCli(this.name));
+    return Promise.resolve(AGY_MODEL_SLUGS.map((id) => ({ id, provider: 'antigravity' })));
   }
 
   /**

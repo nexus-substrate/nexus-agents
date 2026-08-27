@@ -6,6 +6,8 @@ import {
   checkTempDirCleanup,
   checkTestHygiene,
   collectLintTargets,
+  lintVerdict,
+  type Violation,
 } from './arch-lint.js';
 import { SRC_ROOT } from './script-paths.js';
 
@@ -192,5 +194,39 @@ describe('checkTestHygiene', () => {
     expect(
       checkTestHygiene(srcFile('agents/experts/expert-prompts/testing-expert.ts'), content)
     ).toEqual([]);
+  });
+});
+
+describe('lintVerdict — zero files scanned is not a pass (#4586)', () => {
+  const noViolations: Violation[] = [];
+
+  it('reports unmeasured, not passed, when nothing was scanned', () => {
+    // `passed: errors.length === 0` is true over an empty file set, so a glob
+    // that stops matching — a directory rename, a moved package, a broken
+    // collectLintTargets — reported the architecture lint clean. Absence of
+    // evidence is not evidence of compliance.
+    const result = lintVerdict(noViolations, noViolations, 0);
+
+    expect(result.unmeasured).toBe(true);
+    expect(result.passed).toBe(false);
+  });
+
+  it('passes normally when files were scanned and none errored', () => {
+    // The pair: without it, "always unmeasured" would satisfy the test above.
+    const result = lintVerdict(noViolations, noViolations, 42);
+
+    expect(result.unmeasured).toBeUndefined();
+    expect(result.passed).toBe(true);
+  });
+
+  it('still fails on real errors over a non-empty scan', () => {
+    const errors: Violation[] = [
+      { file: 'a.ts', line: 1, category: 'test', rule: 'test', message: 'boom', severity: 'error' },
+    ];
+
+    const result = lintVerdict(errors, errors, 42);
+
+    expect(result.unmeasured).toBeUndefined();
+    expect(result.passed).toBe(false);
   });
 });

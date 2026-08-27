@@ -114,6 +114,32 @@ describe('createToolObservabilityProxy', () => {
     expect(completed.errorMessage).toBe('test failure');
   });
 
+  it('reports a returned error envelope as a failure, not a success', async () => {
+    // Nexus tools signal failure by RETURNING `{ isError: true }` from
+    // `toolStructuredError` — they do not throw. The proxy read only the
+    // `catch`, so every EventBus consumer saw a 100% tool success rate and a
+    // validation failure was indistinguishable from a working call. The
+    // sibling middleware already gets this right: tool-metrics.ts records
+    // `success: result.isError !== true`.
+    const mock = createMockServer();
+    const proxy = createToolObservabilityProxy(mock as never, eventBus);
+
+    proxy.registerTool(
+      'erroring_tool',
+      {},
+      mockHandler({
+        content: [{ type: 'text', text: 'Validation error: bad input' }],
+        isError: true,
+      }) as never
+    );
+
+    await mock.registered.get('erroring_tool')!.cb({}, {});
+
+    const completed = events[1] as PipelineEvent & { type: 'tool.completed' };
+    expect(completed.type).toBe('tool.completed');
+    expect(completed.success).toBe(false);
+  });
+
   it('increments invocation IDs across tools (#1186)', async () => {
     const mock = createMockServer();
     const proxy = createToolObservabilityProxy(mock as never, eventBus);

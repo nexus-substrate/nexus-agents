@@ -80,7 +80,14 @@ export function taskProfileToBanditContext(
     isCodeTask: profile.codeGeneration ? 1 : 0,
     isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
     budgetUtilization: budgetUtilization ?? NEUTRAL_FEATURE,
-    timePressure: 0.3,
+    // #4875: still a constant — nothing in the tree computes time pressure, and
+    // inventing a producer is a design question, not a wiring fix. What changed
+    // is WHICH constant: this path used 0.3 while `LinUCBStage` used 0.5 and
+    // `warmStart`/`seedPriors` replay at 0.5. A constant feature carries no
+    // information, but two DIFFERENT constants across live paths let the bandit
+    // use the value as a path indicator — accidental signal rather than none.
+    // Neutral, and equal to what the replay paths use, is the honest default.
+    timePressure: NEUTRAL_FEATURE,
   };
 }
 

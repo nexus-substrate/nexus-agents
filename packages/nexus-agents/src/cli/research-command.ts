@@ -400,8 +400,11 @@ function formatCluster(cluster: SynthesisResult['clusters'][number], lines: stri
   lines.push(`Papers: ${cluster.papers.map((p) => p.title).join(', ')}`);
   if (cluster.commonThemes.length > 0) lines.push(`Themes: ${cluster.commonThemes.join(', ')}`);
   if (cluster.keyInsights.length > 0) {
-    lines.push('Key insights:');
-    // #2663 — each insight carries its source paper ids.
+    // #5001: say what portion this is. The renderer shows 5 of a list already
+    // capped at 10, over a cluster that may have had 55 — three nested
+    // truncations, none of which used to be visible.
+    const shown = Math.min(5, cluster.keyInsights.length);
+    lines.push(`Key insights (${String(shown)} of ${String(cluster.totalInsights)}):`);
     for (const insight of cluster.keyInsights.slice(0, 5)) {
       lines.push(`  - ${insight.insight} [${insight.sourcePaperIds.join(', ')}]`);
     }

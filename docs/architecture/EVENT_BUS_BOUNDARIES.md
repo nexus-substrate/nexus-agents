@@ -104,11 +104,29 @@ The durable `policy_gate` record carries `mode` (`warn`=soak vs `block`=enforce)
 loop needs to distinguish soak evidence from enforced denials. The bus
 `policy.evaluated` event does **not** carry these and is per-run.
 
-**Aggregation rule:** sum durable `policy_gate` records **only**. The two
-records are intentional (back-compat for existing TraceWriter consumers + a
-durable sink that survives process exit) — **never sum `trace.jsonl` together
+**Aggregation rule:** sum durable records **only**, and count by `recordKind`.
+The two sinks are intentional (back-compat for existing TraceWriter consumers +
+a durable sink that survives process exit) — **never sum `trace.jsonl` together
 with the durable log**, or every decision is double-counted. The durable log is
 authoritative; `trace.jsonl` is for single-run observability.
+
+Since #3727 the durable log carries **two record kinds** under the same
+`action: 'security.policy_gate'`, so counting raw records over-counts:
+
+| `recordKind` | Emitted                                  | Count it for                        |
+| ------------ | ---------------------------------------- | ----------------------------------- |
+| `summary`    | once per **evaluation**, including clean | the denominator (evaluations)       |
+| `violation`  | once per **violation** in an evaluation  | per-rule breakdowns, never the rate |
+
+An evaluation with two violations writes **three** durable records. The
+would-block rate is therefore
+`count(recordKind === 'summary' && violationCount > 0) / count(recordKind === 'summary')`
+— which is exactly what `computePolicyWouldBlockRate`
+(`security/audit-trail.ts:427-439`) implements. Read the rate from that helper
+rather than aggregating by hand.
+
+Note the durable record's `action` is `security.policy_gate`; the bare
+`policy_gate` is the in-memory `AuditEvent.type`.
 
 The durable sink is wired only when the MCP server threads its single startup
 `auditLogger` (one `AuditTrail` built per run wrapping it, so all runs share the

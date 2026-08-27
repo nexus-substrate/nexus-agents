@@ -3,11 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { IAgent, Task } from '../../core/index.js';
+import type { IAgent, ResultMetadata, Task } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import { AegeanProtocol, createAegeanProtocol } from './aegean-protocol.js';
 import { calculateQuorumSize, hasAcceptQuorum, isConsensusFailed } from './aegean-types.js';
-import type { CollaborationConfig } from './collaboration-types.js';
+import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
 import type { IEventBus, TypedEvent } from './event-bus-types.js';
 
 /** Creates a mock EventBus for testing event emission. */
@@ -54,6 +54,26 @@ function createMockAgent(id: string, output: unknown): IAgent {
     handleMessage: vi.fn().mockResolvedValue(ok({ messageId: 'msg', status: 'completed' })),
     initialize: vi.fn().mockResolvedValue(ok(undefined)),
     cleanup: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/** A mock agent whose adapter reports it could not measure token usage. */
+function createUnmeasuredAgent(id: string, output: unknown): IAgent {
+  return {
+    ...createMockAgent(id, output),
+    execute: vi.fn().mockResolvedValue(
+      ok({
+        taskId: 'test',
+        output,
+        metadata: {
+          durationMs: 100,
+          tokensUsed: 0,
+          tokensMeasured: false,
+          toolsUsed: [],
+          model: 'test',
+        },
+      })
+    ),
   };
 }
 
@@ -415,5 +435,52 @@ describe('AegeanProtocol EventBus integration', () => {
   it('should use global EventBus when none provided', () => {
     const protocol = createAegeanProtocol();
     expect(protocol.pattern).toBe('aegean');
+  });
+});
+
+// ============================================================================
+// The unmeasured count survives the whole chain (#4743)
+// ============================================================================
+
+describe('AegeanProtocol unmeasured token disclosure (#4743)', () => {
+  // A seam test. `tokensFromMetadata` and `buildSessionTaskResult` are each unit
+  // tested, and deleting the single `+=` that accumulates between them left all
+  // 991 collaboration tests green — the same both-halves-correct-join-untested
+  // shape as #4910. This asserts through the protocol's real output.
+  function submittedMetadata(result: CollaborationResult): ResultMetadata | undefined {
+    return result.expertResults.find((e) => e.result !== undefined)?.result?.metadata;
+  }
+
+  it('marks the session result unmeasured when adapters reported no usage', async () => {
+    const protocol = createAegeanProtocol();
+    const config = createTestConfig(['agent1', 'agent2', 'agent3']);
+    const agents = new Map([
+      ['agent1', createUnmeasuredAgent('agent1', 'I propose this solution')],
+      ['agent2', createUnmeasuredAgent('agent2', 'I ACCEPT this proposal')],
+      ['agent3', createUnmeasuredAgent('agent3', 'Yes, I accept and approve')],
+    ]);
+
+    const result = await protocol.execute(config, agents);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(submittedMetadata(result.value)?.tokensMeasured).toBe(false);
+  });
+
+  it('marks it measured when every adapter reported', async () => {
+    // The pair: always-false would make every aegean total look untrustworthy.
+    const protocol = createAegeanProtocol();
+    const config = createTestConfig(['agent1', 'agent2', 'agent3']);
+    const agents = new Map([
+      ['agent1', createMockAgent('agent1', 'I propose this solution')],
+      ['agent2', createMockAgent('agent2', 'I ACCEPT this proposal')],
+      ['agent3', createMockAgent('agent3', 'Yes, I accept and approve')],
+    ]);
+
+    const result = await protocol.execute(config, agents);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(submittedMetadata(result.value)?.tokensMeasured).toBe(true);
   });
 });

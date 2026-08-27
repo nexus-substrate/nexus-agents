@@ -1,0 +1,124 @@
+name: Unblocked Backlog Check
+
+# Surfaces open issues whose named blockers have all closed (#4617).
+#
+# CLAUDE.md has two halves. The FILING half works: blocked issues genuinely
+# record "blocked by #N" and an unblock trigger. The SURFACING half — "a
+# finished dependency should surface its dependents" — was a rule addressed to
+# whoever closes the blocker, with nothing behind it. #4440 sat ten days after
+# its blocker closed.
+#
+# Measured before building, as #4617 required: of 136 open issues, 12 name a
+# blocker and ALL 12 have every blocker closed. The mechanism had never
+# surfaced anything.
+#
+# ADVISORY. This never fails a run and never blocks a merge — failing CI
+# because somebody finished a dependency would be hostile. The tracking issue
+# is the durable surface, same shape as the deploy staleness check (#4506).
+
+on:
+  schedule:
+    # Daily. The harm is a scheduling delay measured in days, not an outage,
+    # so a daily cadence bounds it well below the ten days that prompted this.
+    - cron: '15 13 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: unblocked-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Unblocked Backlog Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Only to file/update the single tracking issue.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: ./.github/actions/setup-node
+
+      # Two-phase on purpose: the script's decision is pure and unit-tested,
+      # and only the state resolution needs the network. A blocker whose state
+      # cannot be resolved stays absent from the map, and the script refuses to
+      # treat unknown as closed.
+      - name: Resolve blockers and report
+        id: report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUES=$(gh issue list --state open --limit 400 --json number,title,body)
+
+          # Collect every blocker the script would parse, then resolve each once.
+          # Bounded on purpose (#5088): one crafted issue body containing
+          # `blocked by #1 … blocked by #50000` would otherwise mint 50k
+          # sequential `gh issue view` calls, exhausting the repo's 1000/hr
+          # GITHUB_TOKEN budget and dying on the job timeout — leaving the
+          # previous tracking issue stale, the state this design calls worse
+          # than none. Numbers over 7 digits are dropped as non-issues.
+          ALL_BLOCKERS=$(printf '%s' "$ISSUES" \
+            | grep -oiE '(blocked (by|on)|depends on|after|once) #[0-9]{1,7}' \
+            | grep -oE '[0-9]+' | sort -un || true)
+          BLOCKERS=$(printf '%s\n' "$ALL_BLOCKERS" | head -n 200)
+          if [ "$(printf '%s\n' "$ALL_BLOCKERS" | grep -c .)" -gt 200 ]; then
+            echo "::warning::More than 200 distinct blockers referenced; resolving the first 200 only."
+          fi
+
+          STATES='{}'
+          for n in $BLOCKERS; do
+            state=$(gh issue view "$n" --json state --jq .state 2>/dev/null || echo '')
+            if [ -n "$state" ]; then
+              STATES=$(printf '%s' "$STATES" | jq --arg k "$n" --arg v "$state" '.[$k]=$v')
+            fi
+          done
+
+          # Issues go in on STDIN, not an env var: 136 bodies is ~700 KB and
+          # `execve` rejects that with E2BIG. The states map is small enough.
+          printf '%s' "$ISSUES" | BLOCKER_STATES_JSON="$STATES" \
+            npx tsx scripts/check-unblocked.ts > /tmp/unblocked.full 2>&1
+          # First line is a machine-readable STATUS:; the rest is the body.
+          # The workflow must NEVER branch on the prose, which contains
+          # attacker-controlled issue titles (#5088).
+          head -1 /tmp/unblocked.full > /tmp/unblocked.status
+          tail -n +2 /tmp/unblocked.full > /tmp/unblocked.md
+          cat /tmp/unblocked.status
+
+      - name: File or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'ops(backlog): issues whose blockers have all closed'
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+          {
+            cat /tmp/unblocked.md
+            echo
+            echo "_Regenerated daily by \`unblocked-check.yml\`. Advisory — this never blocks a merge._"
+            echo "_See #4617 for why the surfacing half needed a consumer to exist at all._"
+          } > /tmp/body.md
+
+          # Nothing to surface: close the tracking issue rather than leaving a
+          # stale list. An out-of-date backlog report is worse than none, since
+          # a reader cannot tell it from a current one.
+          if grep -qx 'STATUS: none' /tmp/unblocked.status; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "Every blocked issue has an open blocker again. Closing; the daily run reopens this if that changes."
+            fi
+            exit 0
+          fi
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file /tmp/body.md
+          else
+            gh issue create --title "$TITLE" --body-file /tmp/body.md
+          fi

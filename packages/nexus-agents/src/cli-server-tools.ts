@@ -82,7 +82,6 @@ import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
-import { startFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
 import {
   getSwarmObserver,
@@ -90,7 +89,6 @@ import {
   startFailoverSignals,
 } from './observability/index.js';
 import { startImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
-import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
 import { UpstreamClientManager } from './mcp/gateway/upstream-client.js';
@@ -114,6 +112,13 @@ import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
 } from './mcp/middleware/index.js';
+// Imported from the module rather than the barrel: the registration tests mock
+// the middleware barrel wholesale, and the staged-rollout assertion has to see
+// the real registry rather than a mock that would report whatever it was told.
+import {
+  setGlobalPolicyFirewall,
+  stagePolicyFirewallForRollout,
+} from './mcp/middleware/policy-registry.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
@@ -593,21 +598,23 @@ function logToolRegistration(
     executionMode: info.executionMode ?? 'read-only',
   });
 
-  // The firewall is CONSTRUCTED by `logSecurityConfig` and then dropped:
-  // `buildStandardDeps` does not forward it, no tool registration passes it,
-  // and `createPolicyMiddleware` (middleware-chain.ts:327) is therefore never
-  // reached for any tool (#4888). This line used to report
-  // `policyFirewallEnabled: true` + `policyMode: 'enforce'`, which claimed an
-  // enforcement that does not happen — and a test pinned that claim.
-  //
-  // Warning rather than a `false` field: a hardcoded "not enforcing" is just
-  // the same constant with the sign flipped, and an operator who configured a
-  // policy mode needs to be told it is inert, not handed a quieter boolean.
+  // #4888: the firewall now reaches every secure handler through the policy
+  // registry, so this reports the mode it will actually apply — read off the
+  // firewall after `stagePolicyFirewallForRollout` has staged it, not a
+  // constant. The staging call logs the configured-vs-effective pair and the
+  // opt-in; this line exists so the registration record names the mode too.
   if (info.policyFirewall !== undefined) {
-    logger.warn(
-      'PolicyFirewall is configured but not wired to any tool — no policy middleware runs',
-      { configuredMode: info.policyFirewall.getMode() }
-    );
+    const mode = info.policyFirewall.getMode();
+    // Not "all tools": upstream MCP proxies are registered with a raw handler
+    // (`initUpstreamServers`), so they never reach `createSecureHandler` and the
+    // firewall does not see them. Naming the covered set beats a claim a
+    // spot-check would find false.
+    logger.info('Policy firewall wired to locally registered tools', {
+      policyMode: mode,
+      denialsApplied: mode === 'enforce',
+      coveredTools: activeTools.length,
+      upstreamProxiesUncovered: true,
+    });
   }
 }
 
@@ -625,11 +632,16 @@ function buildStandardDeps(
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool(toolName),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-    // #3710: only run_dev_pipeline consumes the durable auditLogger — thread it
-    // so its consensus→execute policy gate persists decisions to the shared chain.
-    ...(toolName === 'run_dev_pipeline' && ctx.auditLogger !== undefined
-      ? { auditLogger: ctx.auditLogger }
-      : {}),
+    // #3710 threaded this for `run_dev_pipeline` alone, because it was then the
+    // only tool consuming a durable auditLogger. #4987 changed that: the MCP
+    // `PolicyFirewall` now evaluates rules on EVERY tool, and
+    // `secure-handler.ts:261` emits the policy decision only `if (pResult &&
+    // config.auditLogger)`. Withholding the logger left that emit unreachable
+    // for the 38 tools registered through `standardHandler` — a policy denial
+    // on any of them could never reach the chain, in enforce mode or warn
+    // (#4991). Threading it does not emit anything on its own; it makes the
+    // existing emit reachable.
+    ...(ctx.auditLogger !== undefined ? { auditLogger: ctx.auditLogger } : {}),
   };
 }
 
@@ -794,13 +806,14 @@ function initV2PipelineSubsystems(
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
-  // Wire the EventBus → OutcomeStore feedback loop advertised by
-  // `feedback-subscriber.ts`. Pre-#2938 the module existed but nothing
-  // called it, so `stage.failed` events never reached OutcomeStore via this
-  // path. (#3179 dropped the dead `model.called` branch — that event has no
-  // producer.) Cleanup runs in cli-server.ts:createShutdownCleanup via
-  // `shutdownFeedbackSubscriber()`.
-  startFeedbackSubscriber(pipelineEventBus, getOutcomeStore());
+  // #5003: the EventBus → OutcomeStore bridge is GONE. `StageFailedEvent`
+  // carries no `cli`, so it hardcoded `cli: 'claude'` + `category:
+  // 'code_generation'` on every stage failure — the exact fabrication
+  // `agent-executor.ts` documents (#2823) and refuses by skipping the record.
+  // It was also double-counting: every `emitStageEvent(…, 'failed')` there is
+  // paired with its own `recordOutcome`. `agent-executor` is now the single
+  // canonical outcome writer (7-voter panel, Option A, 6/6 approvers,
+  // audit record #77).
   // Close the self-tuning loop's consumer side: the shadow TuneStage subscribes
   // to signal.* events on the same typed bus (#3147; #3289 Option 2). Shadow
   // mode — logs intended actions, mutates nothing. Paired with
@@ -861,6 +874,13 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     logger: toolInfra.logger,
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
+
+  // #4888: the firewall reached only a startup log line before this — no tool's
+  // deps carried it, so no policy rule was ever evaluated. Staged into warn
+  // mode unless the operator opts in; see `stagePolicyFirewallForRollout`.
+  if (policyFirewall !== undefined) {
+    setGlobalPolicyFirewall(stagePolicyFirewallForRollout(policyFirewall, logger));
+  }
 
   initV2PipelineSubsystems(logger, options.auditLogger);
 

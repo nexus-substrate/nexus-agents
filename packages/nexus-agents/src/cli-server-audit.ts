@@ -112,6 +112,21 @@ function getAuthValues(config?: AppConfig): { enabled: boolean; method: string }
 }
 
 /**
+ * Warns when no tamper-evident event chain is being written (#4990).
+ *
+ * The same treatment authentication already gets. A boolean on the info line is
+ * easy to scroll past; a security control that is absent deserves to be as
+ * visible as auth being absent.
+ */
+function warnIfAuditDisabled(auditEnabled: boolean, logger: ILogger): void {
+  if (auditEnabled) return;
+  logger.warn(
+    'Audit logging is disabled — no tamper-evident event chain is being written. ' +
+      'Set security.audit.enabled: true to enable it.'
+  );
+}
+
+/**
  * Logs security configuration at startup.
  * Returns the configured policy firewall for use in tool registration.
  * (Source: Issue #185 Phase 1 - Startup security logging)
@@ -125,17 +140,30 @@ export function logSecurityConfig(
   const authVals = getAuthValues(config);
   const policyVals = getPolicyValues(config);
   const rateLimitVals = getRateLimitValues(config);
+  const auditEnabled = config?.security?.audit?.enabled === true;
 
   logger.info('Security configuration', {
-    policyMode: policyVals.mode,
+    // #4888: named `configuredPolicyMode`, not `policyMode`. This runs at
+    // startup, before `stagePolicyFirewallForRollout` forces the firewall to
+    // `warn` — the mode that actually applies. A field called `policyMode`
+    // reading `enforce` here would claim an enforcement that does not happen.
+    configuredPolicyMode: policyVals.mode,
     defaultExecutionMode: policyVals.defaultExec,
     policyRuleCount: policyFirewall.getRules().length,
     authEnabled: authVals.enabled,
     authMethod: authVals.method,
     rateLimitEnabled: rateLimitVals.enabled,
     rateLimitRequestsPerMinute: rateLimitVals.rpm,
+    // #4990: audit was the only security control missing from this line, and
+    // `initializeAuditLogger` announces its absence at `debug` — dropped at the
+    // default level. So the tamper-evident chain the docs lead with could be
+    // off while the startup log confirmed four other controls and said nothing
+    // about this one, which reads as fine rather than absent.
+    auditEnabled,
     allowedPaths: config?.security?.allowedPaths ?? ['./'],
   });
+
+  warnIfAuditDisabled(auditEnabled, logger);
 
   if (!authVals.enabled) {
     logger.warn(

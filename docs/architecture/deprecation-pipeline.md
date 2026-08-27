@@ -262,7 +262,11 @@ Once all routing stages are validated, these routers should be deprecated:
 | TaskRouter       | CapabilityMatchStage   | ✅ Implemented (Issue #755) |
 | QualityRouter    | QualityConstraintStage | ✅ Implemented (Issue #755) |
 
-**Status**: All replacement stages implemented. Integration with CompositeRouter complete (disabled by default via feature flags). Ready for final deprecation of legacy routers once stages are validated in production.
+**Status (corrected 2026-08-27, #4872)**: This said "Integration with CompositeRouter complete (disabled by default via feature flags)". That was never true. `BudgetFilterStage`, `LinUCBStage`, `ZeroRouterStage`, `PreferenceStage`, `TopsisRouterStage`, `LatencyStage` and `RoutingPipeline` were never constructed anywhere outside their own factories and their own test files — there were no feature flags to disable, because there was no integration to gate.
+
+ADR-0005 had listed the migration as "Optional / Phase 3 – Future" from the outset, and it was never taken. `CompositeRouter`'s internal pipeline (`composite-router-stages.ts`) is and remains the canonical routing path. The seven unreachable classes were deleted by a `higher_order` supermajority panel (6 of 6 approvers). The stages that ARE constructed in production — `KnnRoutingStage`, `ConfidenceCascadeStage`, `CapabilityMatchStage`, `QualityConstraintStage`, `ResourceStrategyStage`, `CapacityFilterStage`, `DistilledRuleStage` — are unaffected.
+
+The legacy routers named below are therefore **not** pending deprecation behind a completed integration; they are the live implementation.
 
 ## Metrics
 

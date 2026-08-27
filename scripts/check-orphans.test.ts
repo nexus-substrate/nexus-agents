@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  classifyKnipOutput,
   globToRegExp,
   isAllowlisted,
   extractOrphans,
@@ -214,14 +215,73 @@ describe('isAllowlisted honours expiry (#4583)', () => {
   });
 });
 
+describe('classifyKnipOutput (#5028)', () => {
+  it('reports empty output as not run, not as a clean scan', () => {
+    const run = classifyKnipOutput('   ');
+
+    expect(run.ran).toBe(false);
+    expect(run.issues).toEqual([]);
+  });
+
+  it('reports unparseable output as not run', () => {
+    // A knip bumped past a reporter change emits something that is not JSON.
+    const run = classifyKnipOutput('Error: unknown --reporter');
+
+    expect(run.ran).toBe(false);
+    expect(String(run.reason)).toContain('parseable');
+  });
+
+  it('reports JSON in an unrecognised shape as not run (#5034)', () => {
+    // `normalizeKnipJson` returned `[]` for any shape it did not understand, so
+    // a reporter change — the case this check exists for — parsed cleanly and
+    // reported a completed scan of zero issues. My own fix shipped with a test
+    // asserting `{"files":[]}` counted as a clean scan; that fixture IS the
+    // reporter-change case.
+    const run = classifyKnipOutput('{"files":[]}');
+
+    expect(run.ran).toBe(false);
+    expect(String(run.reason)).toContain('recognised reporter shape');
+  });
+
+  it('reports a genuine empty result as a completed scan', () => {
+    // The pair: a real clean repo must not be reported as unmeasured. Both
+    // shapes the normalizer actually understands.
+    expect(classifyKnipOutput('[]').ran).toBe(true);
+    expect(classifyKnipOutput('{"issues":[]}').ran).toBe(true);
+  });
+});
+
 describe('isPassing (#4583 — the gate blocks instead of always returning true)', () => {
   it('fails when any orphan is flagged', () => {
-    expect(isPassing({ total: 1, allowlisted: 0, flagged: ['packages/foo/src/orphan.ts'] })).toBe(
-      false
-    );
+    expect(
+      isPassing({
+        total: 1,
+        allowlisted: 0,
+        flagged: ['packages/foo/src/orphan.ts'],
+        scanned: true,
+      })
+    ).toBe(false);
   });
 
   it('passes when nothing is flagged', () => {
-    expect(isPassing({ total: 22, allowlisted: 22, flagged: [] })).toBe(true);
+    expect(isPassing({ total: 22, allowlisted: 22, flagged: [], scanned: true })).toBe(true);
+  });
+
+  it('fails when knip never ran, rather than reporting a clean repo (#5028)', () => {
+    // `runKnip` returned `[]` on every failure path — empty stdout,
+    // unparseable JSON, a throw — with stderr suppressed, and `[]` is also
+    // what a clean scan produces. A knip broken by a reporter or config change
+    // printed "Total orphans (knip): 0 / ✓ No flagged orphans" and exited 0.
+    // This repo carries 22 allowlisted orphans, so total===0 is in fact the
+    // signature of a dead run.
+    expect(
+      isPassing({
+        total: 0,
+        allowlisted: 0,
+        flagged: [],
+        scanned: false,
+        unscannedReason: 'knip produced no output',
+      })
+    ).toBe(false);
   });
 });

@@ -179,8 +179,17 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   }
 
   private checkStateTransition(): void {
-    if (this.state === 'open' && this.lastFailureTime !== null) {
-      const elapsed = getTimeProvider().now() - this.lastFailureTime;
+    if (this.state === 'open') {
+      // #5011: measured from the TRANSITION, not from the last failure. Keyed
+      // on `lastFailureTime` the window restarted on every failure recorded
+      // while open — and an open circuit does not shed load on the default
+      // paths (`base-adapter` and `resilient-adapter` never consult
+      // `canExecute`), so traffic kept arriving, kept failing occasionally, and
+      // kept pushing the half-open probe another 30s out. A CLI serving 95% of
+      // requests correctly stayed evicted from every voter panel until a manual
+      // `reset()`. Panel choice: fix the timer, leave load-shedding alone
+      // (7-voter panel, Option A, 4 of 5 approvers, audit record #79).
+      const elapsed = getTimeProvider().now() - this.lastStateChange;
       if (elapsed >= this.config.resetTimeoutMs) {
         this.transitionTo('half-open', 'Reset timeout elapsed');
       }
@@ -200,6 +209,24 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   }
 
   private onFailure(category: FailureCategory): void {
+    // #5011: a failure recorded while the circuit is already open carries no
+    // information — the circuit is open, that is the verdict — and updating
+    // `lastFailureTime` here is what delayed recovery.
+    //
+    // #5034: this line is the LOAD-BEARING half, and the tests now say so:
+    // dropping it alone fails two assertions. The `lastStateChange` change in
+    // `checkStateTransition` is genuinely redundant given this return —
+    // reverting THAT alone fails nothing, because with `lastFailureTime`
+    // frozen the two fields are set microseconds apart at the open transition
+    // and never diverge. It is kept because measuring recovery from the
+    // transition is what the window means, not because any behaviour
+    // distinguishes it. Saying which half is pinned, and admitting the other
+    // cannot be, beats a mutation table that implies two clean kills.
+    //
+    // `failureCount` stays put too: it drives the closed-state threshold and
+    // is reset on the transition back to closed.
+    if (this.state === 'open') return;
+
     this.failureCount++;
     this.lastFailureTime = getTimeProvider().now();
 

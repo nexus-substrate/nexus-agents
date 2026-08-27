@@ -142,6 +142,15 @@ describe('doctor-formatting', () => {
     ...(options.fix !== undefined && { fix: options.fix }),
   });
 
+  /** Default freshness for fixtures that do not care about it. */
+  const ALIGNED_INSTALL = { state: 'aligned' as const, version: '1.0.0' };
+
+  /** Applied outside the fixture arrow, which is already at its complexity cap. */
+  const withInstallFreshness = (
+    base: DoctorResult,
+    freshness: DoctorResult['installFreshness'] | undefined
+  ): DoctorResult => (freshness === undefined ? base : { ...base, installFreshness: freshness });
+
   const createDoctorResult = (
     options: {
       allHealthy?: boolean;
@@ -153,9 +162,10 @@ describe('doctor-formatting', () => {
       mcpClientReady?: boolean;
       voterTransport?: { configured: boolean };
       scratchSpace?: DoctorResult['scratchSpace'];
+      installFreshness?: DoctorResult['installFreshness'];
     } = {}
-  ): DoctorResult =>
-    withScratch(options.scratchSpace, {
+  ): DoctorResult => {
+    const base = withScratch(options.scratchSpace, {
       allHealthy: options.allHealthy ?? true,
       nodeVersion: options.nodeVersion ?? createNodeVersionCheck(true, 'v22.0.0'),
       apiKeys: options.apiKeys ?? [],
@@ -210,6 +220,7 @@ describe('doctor-formatting', () => {
         mismatch: false,
         dataDirInsideRepo: false,
       },
+      installFreshness: ALIGNED_INSTALL,
       harnessAlignment: {
         agentsMdExists: true,
         files: [],
@@ -221,6 +232,8 @@ describe('doctor-formatting', () => {
       scratchSpace: DEFAULT_SCRATCH_SPACE,
       timestamp: new Date('2024-01-01T00:00:00Z'),
     });
+    return withInstallFreshness(base, options.installFreshness);
+  };
 
   describe('printDoctorResults', () => {
     it('should print header and section titles', () => {
@@ -234,6 +247,43 @@ describe('doctor-formatting', () => {
       expect(calls.some((call) => call.includes('Checking MCP configuration'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking capabilities'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking data storage'))).toBe(true);
+    });
+
+    // #4951 computed the freshness verdict, put it on `DoctorResult`, and
+    // nothing printed it — `nexus-agents doctor` showed no line at all. Found
+    // by running the command: every unit test asserted the verdict object and
+    // none asserted the output (#4959).
+    it('prints the global-install drift with both versions', () => {
+      printDoctorResults(
+        createDoctorResult({
+          installFreshness: { state: 'behind', global: '4.3.1', expected: '4.18.0' },
+        })
+      );
+
+      const out = getCalls().join('');
+      expect(out).toContain('4.3.1');
+      expect(out).toContain('4.18.0');
+    });
+
+    it('prints the restart instruction, not just the update', () => {
+      // A remedy stopping at `npm install -g` reports the problem resolved
+      // while an already-spawned MCP server keeps the old code.
+      printDoctorResults(
+        createDoctorResult({
+          installFreshness: { state: 'behind', global: '4.3.1', expected: '4.18.0' },
+        })
+      );
+
+      expect(getCalls().join('')).toContain('RESTART');
+    });
+
+    it('prints something for the unknown case rather than staying silent', () => {
+      // Silence is what the bug was: an unmeasurable check must still say so.
+      printDoctorResults(
+        createDoctorResult({ installFreshness: { state: 'unknown', reason: 'not installed' } })
+      );
+
+      expect(getCalls().join('')).toMatch(/not determined|cannot confirm/i);
     });
 
     it('should print healthy status when all checks pass', () => {

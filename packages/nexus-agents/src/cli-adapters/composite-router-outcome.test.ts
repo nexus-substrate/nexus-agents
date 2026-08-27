@@ -521,3 +521,66 @@ describe('composite-router-outcome', () => {
     });
   });
 });
+
+// =============================================================================
+// The update vector equals the select vector (#4953)
+// =============================================================================
+
+describe('bandit train/score vector parity (#4953)', () => {
+  // #4911 fixed `budgetUtilization` and asserted this invariant in prose, then
+  // tested only that one column. Three others were already mismatched, because
+  // the two paths used different converters: the select path goes through
+  // `TaskProfile` (0-10 scale, +500 token offset), the update path did not.
+  //
+  // This asserts the WHOLE vector, which is the invariant LinUCB actually
+  // needs — a per-column test cannot notice a column nobody thought to add.
+
+  /** The vector the select path builds, reproduced from its own call chain. */
+  async function selectVector(
+    content: string,
+    budgetUtilization?: number
+  ): Promise<Record<string, number>> {
+    const { createSharedTaskAnalyzer, taskAnalysisResultToTaskProfile } =
+      await import('../core/index.js');
+    const { taskProfileToBanditContext } = await import('./composite-router-helpers.js');
+    const analysis = createSharedTaskAnalyzer().analyze({
+      id: 't',
+      description: content,
+      context: {},
+    });
+    return taskProfileToBanditContext(
+      taskAnalysisResultToTaskProfile(analysis),
+      budgetUtilization
+    ) as unknown as Record<string, number>;
+  }
+
+  function updateVector(bandit: LinUCBBandit): Record<string, number> {
+    return vi.mocked(bandit.update).mock.calls[0]?.[1] as unknown as Record<string, number>;
+  }
+
+  it.each([
+    ['Write a function to reverse a string'],
+    ['Design the architecture for a distributed consensus layer'],
+    ['fix typo'],
+  ])('matches the select vector for %s', async (content) => {
+    const bandit = createMockLinUCBBandit();
+    const deps = createBaseDeps({ linucbBandit: bandit });
+
+    recordBanditOutcome('claude', createCliTask(content), 0.85, deps);
+
+    expect(updateVector(bandit)).toEqual(await selectVector(content));
+  });
+
+  it('matches on every column when a budget is configured too', async () => {
+    // The pair for #4911: fixing the budget column must not be undone, and the
+    // other five must agree at the same time.
+    const bandit = createMockLinUCBBandit();
+    const budgetRouter = createMockBudgetRouter(0.03);
+    const budgetConstraints = { maxCostUsd: 0.05 };
+    const deps = createBaseDeps({ linucbBandit: bandit, budgetRouter, budgetConstraints });
+
+    recordBanditOutcome('claude', createCliTask('build a parser'), 0.85, deps);
+
+    expect(updateVector(bandit)).toEqual(await selectVector('build a parser', 0.6));
+  });
+});

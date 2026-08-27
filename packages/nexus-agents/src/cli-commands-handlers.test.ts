@@ -30,6 +30,7 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     // CliExitResult maps the underlying 0|non-0 status to SUCCESS|SERVER_START_FAILED.
     expertListCommand: vi.fn().mockReturnValue(0),
     helloCommand: vi.fn().mockReturnValue(0),
+    voteCommand: vi.fn().mockResolvedValue(0),
   };
 });
 
@@ -38,8 +39,15 @@ import {
   handleExpertCommand,
   handleHelloCommand,
   handleUnimplementedCommand,
+  handleVoteCommand,
 } from './cli-commands-handlers.js';
-import { configCommand, configInitCommand, expertListCommand, helloCommand } from './cli/index.js';
+import {
+  configCommand,
+  configInitCommand,
+  expertListCommand,
+  helloCommand,
+  voteCommand,
+} from './cli/index.js';
 
 /**
  * Creates a ParsedCliArgs object with default values.
@@ -475,5 +483,82 @@ describe('handleUnimplementedCommand (#3207)', () => {
   it('does not suggest when the subcommand is empty', () => {
     handleUnimplementedCommand('expert ');
     expect(stderrOutput()).not.toContain('Did you mean');
+  });
+});
+
+// =============================================================================
+// The vote handler forwards every option it was given (#4963)
+// =============================================================================
+
+describe('handleVoteCommand forwards --option (#4963)', () => {
+  // This handler rebuilds `VoteCommandOptions` field by field, so any field it
+  // does not name is silently dropped. `--option` parsed correctly, reached
+  // `args.options.options`, and died here — with a `parseCliArgs` test on one
+  // side and a `voteCommand` test on the other, both green.
+  //
+  // Verified live before fixing: `nexus-agents vote --option A --option B`
+  // produced a record with `optionTally: null`, and a single `--option` did not
+  // trip the engine's `min(2)` validation, which proved the field never
+  // reached `ConsensusVoteInput`.
+  const voteMock = voteCommand as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    voteMock.mockClear();
+    voteMock.mockResolvedValue(0);
+  });
+
+  it('passes the declared alternatives to voteCommand', async () => {
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'pick one', options: ['A', 'B'] },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).toMatchObject({ options: ['A', 'B'] });
+  });
+
+  it('passes --timeout through as timeoutMs', async () => {
+    // #4965: same handler, same shape. Every vote today printed
+    // "timeout: 300s each" — the default — however the operator set it,
+    // because this field was never named here.
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'p', timeoutMs: 250_000 },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 250_000 });
+  });
+
+  it('omits timeoutMs when the operator did not set one', async () => {
+    // The pair: forwarding a default here would override the engine's own,
+    // which is the value the help now documents.
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'p' },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).not.toHaveProperty('timeoutMs');
+  });
+
+  it('omits the field for an ordinary yes/no vote', async () => {
+    // The pair: a present-but-empty array tells the engine this is a
+    // multi-option vote and adds the leading-option bar to a plain vote.
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'ship it' },
+      positionals: ['vote'],
+    });
+
+    expect(voteMock.mock.calls[0]?.[0]).not.toHaveProperty('options');
   });
 });

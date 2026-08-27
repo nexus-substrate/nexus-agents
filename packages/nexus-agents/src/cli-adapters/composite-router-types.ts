@@ -26,6 +26,7 @@ import type { CapabilityMatchConfig } from './routing/stages/capability-match-st
 import type { QualityConstraintConfig } from './routing/stages/quality-constraint-stage.js';
 import type { ResourceStrategyConfig } from './routing/stages/resource-strategy-stage.js';
 import type { DistilledRuleStageConfig } from './routing/stages/distilled-rule-stage.js';
+import type { CapacityStageConfig } from './routing/stages/capacity-stage.js';
 
 /**
  * Interface for routing metrics collection.
@@ -126,6 +127,18 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   resourceStrategyConfig?: Partial<ResourceStrategyConfig>;
   /** Distilled rule stage configuration (optional) (Issue #999) */
   distilledRuleStageConfig?: Partial<DistilledRuleStageConfig>;
+  /**
+   * Capacity filter stage configuration (optional) (#4658).
+   *
+   * `enforceHardLimits` was documented as "available for callers who have a
+   * real quota signal" while the sole production construction passed a
+   * hardcoded `{}`, so no caller could set it. The signal exists now —
+   * `CapacityTracker.recordProviderQuotaExhaustion` fires from two adapters on
+   * a durable `RATE_LIMITED` — so the opt-in is real. The default stays
+   * `false`: #4456's signal-only posture is unchanged, it is a choice now
+   * rather than a hardcoding.
+   */
+  capacityStageConfig?: Partial<CapacityStageConfig>;
   /** Preference router configuration (optional, uses defaults if not provided) */
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
@@ -242,6 +255,17 @@ export interface CompositeRouterStats {
   readonly avgDecisionTimeMs: number;
   /** Budget filter rejection rate */
   readonly budgetRejectionRate: number;
+  /**
+   * Capacity filter statistics (#4658), present when the stage is enabled.
+   *
+   * `enforced` is load-bearing: `excludedCount` can only be zero while
+   * enforcement is off, so reporting the count alone presents a default as a
+   * measurement. `enforced: false` says which of the two a zero is.
+   */
+  readonly capacityStats?: {
+    readonly enforced: boolean;
+    readonly excludedCount: number;
+  };
   /** Preference routing statistics */
   readonly preferenceStats?: {
     /** Whether preference routing is enabled */

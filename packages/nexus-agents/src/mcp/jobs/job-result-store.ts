@@ -33,6 +33,7 @@ import { z } from 'zod';
 
 import { createLogger } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
+import { OPERATION_CLASSES } from '../../config/timeouts.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -65,8 +66,50 @@ export const JobResultSchema = z.object({
    * `result` — the discriminator is `status`.
    */
   error: z.string().optional(),
+  /**
+   * Whether the tool's `run` callback accepts `runAsJob`'s `AbortSignal`
+   * (#4972).
+   *
+   * `cancel_job` writes a `cancelled` record whether or not the tool can act
+   * on the signal — as `cancel-job-tool.ts` says, "a tool that IGNORES the
+   * signal still runs to completion… but its record stays `cancelled`". A
+   * reader of that record could not tell the two apart, so `cancelled` claimed
+   * more than was known.
+   *
+   * This is a STRUCTURAL fact — the callback's arity — not a behavioural one.
+   * A tool may accept the signal and never await on it, so `true` means
+   * "cancellation can reach this tool", not "the work stopped". Absent means
+   * the writer did not report it, which is not the same as `false`.
+   */
+  signalAccepted: z.boolean().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
+
+/**
+ * Whether a `pending` record describes work no process is still doing (#4976).
+ *
+ * The record is durable; the work is a detached in-process promise. If the
+ * process dies mid-body no terminal writer ever runs, and `writeJobPending`
+ * refuses to overwrite an existing file — so the record stays `pending`
+ * forever and a caller polling `get_job_result` waits on work that no longer
+ * exists.
+ *
+ * The anchor is objective rather than a guess: `async-job-body` (3600s) is the
+ * runaway guard `runAsJob` applies to every body, so a live job CANNOT still be
+ * pending past it — it would have been recorded `failed` by the guard.
+ *
+ * Reported rather than written back. The record is evidence of what was
+ * observed; overwriting it on read would destroy that. This is the same
+ * treatment `notVerified` gives an audit chain that verified nothing.
+ */
+export function isAbandonedJob(record: JobResult, nowMs: number): boolean {
+  if (record.status !== 'pending') return false;
+  // An unparseable `createdAt` yields NaN, and every NaN comparison is false —
+  // so an unknown age reports "not abandoned" without a separate guard. That is
+  // the right default: killing a job whose age cannot be read would be a guess.
+  const startedMs = Date.parse(record.createdAt);
+  return nowMs - startedMs > OPERATION_CLASSES['async-job-body'].guardMs;
+}
 
 /** Resolve the sidecar path for a given jobId. */
 function jobResultPath(jobId: string): string {
@@ -95,7 +138,7 @@ function persistJobRecord(path: string, record: JobResult): void {
  * Caller responsibility: generate a fresh `jobId` per call (Stage 1
  * doesn't yet deduplicate via idempotencyKey — that's #3042 follow-up).
  */
-export function writeJobPending(jobId: string, toolName: string): void {
+export function writeJobPending(jobId: string, toolName: string, signalAccepted?: boolean): void {
   const path = jobResultPath(jobId);
   if (existsSync(path)) {
     logger.debug('Job result file already exists — leaving in place', { jobId });
@@ -107,9 +150,10 @@ export function writeJobPending(jobId: string, toolName: string): void {
     toolName,
     status: 'pending',
     createdAt: new Date().toISOString(),
+    ...(signalAccepted !== undefined ? { signalAccepted } : {}),
   };
   persistJobRecord(path, record);
-  logger.debug('Wrote pending job record', { jobId, toolName });
+  logger.debug('Wrote pending job record', { jobId, toolName, signalAccepted });
 }
 
 /**

@@ -27,6 +27,14 @@ export type NoQuorumPolicy = 'fail' | 'exit2' | 'retry';
  */
 export interface VoteCommandOptions {
   readonly proposal: string;
+  /**
+   * Named alternatives for a multi-option proposal (#4472, #4941).
+   *
+   * Without these, the record of a three-way decision reads `approved` with a
+   * null `optionTally` — it cannot say WHICH option won, which is the point of
+   * asking a panel a multi-way question in the first place.
+   */
+  readonly options?: readonly string[];
   readonly threshold?: VoteThreshold;
   /** Use simulated votes instead of LLM execution (maps from --dry-run CLI flag) */
   readonly dryRun?: boolean;

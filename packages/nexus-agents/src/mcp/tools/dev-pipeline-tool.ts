@@ -43,6 +43,22 @@ const DEV_PIPELINE_ASYNC_HINT =
   "Retry with `dispatch: 'async'` to get a jobId immediately, then poll " +
   'get_job_result({ jobId }) for the result.';
 
+/**
+ * What to tell a caller whose DRY run failed (#4933).
+ *
+ * `dispatch: 'async'` is ignored when `dryRun` is true, so the hint above is
+ * remediation the caller cannot take — following it verbatim produces another
+ * synchronous run. Say what is true instead.
+ */
+const DEV_PIPELINE_DRY_RUN_NOTE =
+  'This was a dry run (plan+vote), which always runs synchronously; async ' +
+  'dispatch is ignored for dry runs, so retrying with it changes nothing.';
+
+/** The failure-time note that matches the dispatch mode actually available. */
+function dispatchNoteFor(dryRun: boolean): string {
+  return dryRun ? DEV_PIPELINE_DRY_RUN_NOTE : DEV_PIPELINE_ASYNC_HINT;
+}
+
 // ============================================================================
 // Input Schema
 // ============================================================================
@@ -269,7 +285,14 @@ export async function runDevPipelineForGoal(
   // (never infer trust from absence). The `run` entry point passes the caller's
   // real RequestContext.trustTier here — closing the run-path hole where a
   // possibly-untrusted goal ran a real research stage with an absent tier.
-  return runDevPipeline(goal, stages, trustTier !== undefined ? { trustTier } : undefined);
+  return runDevPipeline(goal, stages, {
+    ...(trustTier !== undefined ? { trustTier } : {}),
+    // #4806 said `dryRun` is the one pipeline option `run` forwards. It parsed
+    // the flag into `input` — which only `createStages` reads — and then built
+    // the options from `trustTier` alone, so the short-circuit at
+    // `dev-pipeline.ts:367` never fired and a dry run implemented for real.
+    ...(input.dryRun ? { dryRun: true as const } : {}),
+  });
 }
 
 // ============================================================================
@@ -294,6 +317,12 @@ function buildStructuredOutput(
     // here, so they never reached the MCP surface.
     ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
     ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
+    // #4993 added `dryRun` to DevPipelineResult for exactly the reason above —
+    // it says `completed: false` was the request, not a fault — and then did
+    // not list it here either. Same omission, same function, under the comment
+    // describing it. A live `run_dev_pipeline({ dryRun: true })` came back with
+    // no way to tell a successful dry run from a failed pipeline.
+    ...(result.dryRun !== undefined ? { dryRun: result.dryRun } : {}),
     voteIterations: result.voteIterations,
     qaIterations: result.qaIterations,
     plan: result.plan,
@@ -333,6 +362,10 @@ function buildPipelineOptions(
     ...(input.dryRun ? { dryRun: true } : {}),
     ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
     ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
+    // #4939: both were advertised, bounds-checked and defaulted since the tool
+    // shipped, and neither was ever read off `parsed.data`.
+    maxVoteIterations: input.maxVoteIterations,
+    maxQaIterations: input.maxQaIterations,
     ...(trustTier !== undefined ? { trustTier } : {}),
     // #3710: thread the server's durable audit logger so the consensus→execute
     // policy gate persists decisions to the shared hash chain.
@@ -408,7 +441,7 @@ async function runDevPipelineHandler(
     // for runs that exceed the 900s request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `${DEV_PIPELINE_ASYNC_HINT} Pipeline error: ${getErrorMessage(error)}`,
+      message: `${dispatchNoteFor(input.dryRun)} Pipeline error: ${getErrorMessage(error)}`,
     });
   }
 }

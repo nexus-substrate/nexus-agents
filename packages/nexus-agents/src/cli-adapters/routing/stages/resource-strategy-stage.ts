@@ -219,21 +219,16 @@ export class ResourceStrategyStage implements IRouterStage {
   }
 
   /**
-   * Extracts resource level (0-1) from context signals or metadata.
-   * Looks for budget utilization signals added by BudgetStage.
+   * Extracts resource level (0-1) from context metadata.
+   *
+   * The `budget:utilization=` signal branch that used to lead this method is
+   * gone with its only producer (#4872). `BudgetFilterStage` was the sole
+   * emitter, and #4869 had already superseded the channel by passing the same
+   * figure as typed metadata from `composite-router-stages.ts:464`. Reading a
+   * prefix nothing emits is a branch that cannot fire; the signal-contract
+   * ratchet caught it the moment the producer was deleted.
    */
   private extractResourceLevel(ctx: RoutingContext): number | undefined {
-    // Check signals for budget utilization (added by budget-stage)
-    for (const signal of ctx.signals) {
-      if (signal.startsWith('budget:utilization=')) {
-        const value = parseFloat(signal.slice('budget:utilization='.length));
-        if (!isNaN(value)) {
-          // Budget utilization is spent ratio — resource level is inverse
-          return Math.max(0, Math.min(1, 1 - value));
-        }
-      }
-    }
-
     // Check metadata for explicit resource level
     const meta = ctx.metadata;
     if (meta !== undefined) {

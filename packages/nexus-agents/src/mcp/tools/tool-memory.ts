@@ -175,6 +175,17 @@ export async function reinitializeMemoryBackends(): Promise<MemoryBackendStatus>
 // ============================================================================
 
 /**
+ * Whether a best-effort store actually persisted (#4997).
+ *
+ * These helpers used to return `void` and log a failed `Result` at `debug`, so
+ * `memory_write` had nothing to inspect and reported `success: true` for a
+ * write the backend had rejected. A caller that cannot see the failure cannot
+ * report it, and a tool that always says `success` is not reporting anything.
+ */
+export type MemoryStoreOutcome =
+  { readonly persisted: true } | { readonly persisted: false; readonly reason: string };
+
+/**
  * Manages session memory for MCP tool execution.
  * Auto-initializes a session and provides safe recording methods
  * that silently degrade if memory is unavailable.
@@ -512,9 +523,9 @@ export class ToolMemoryManager {
     predicate: string,
     object: string,
     confidence: 'high' | 'medium' | 'low' = 'medium'
-  ): Promise<void> {
+  ): Promise<MemoryStoreOutcome> {
     try {
-      await this.beliefs.retain({
+      const result = await this.beliefs.retain({
         subject,
         predicate,
         object,
@@ -522,8 +533,18 @@ export class ToolMemoryManager {
         sourceType: BeliefSourceType.OBSERVATION,
         sourceRef: 'mcp-tool-execution',
       });
+      // `retain` converts its own throws into `err`, so the catch below is
+      // nearly unreachable and this branch is where a real failure shows up.
+      // It was discarded entirely before #4997.
+      if (!result.ok) {
+        this.log.debug('Failed to record belief', { subject, error: result.error.message });
+        return { persisted: false, reason: result.error.message };
+      }
+      return { persisted: true };
     } catch (error) {
-      this.log.debug('Failed to record belief', { subject, error });
+      const reason = getErrorMessage(error);
+      this.log.debug('Failed to record belief', { subject, error: reason });
+      return { persisted: false, reason };
     }
   }
 
@@ -627,25 +648,34 @@ export class ToolMemoryManager {
     return this.adaptive !== null;
   }
 
-  /** Store knowledge with auto-extracted attributes (AgenticMemory). Best-effort. */
-  async recordKnowledge(key: string, value: unknown, metadata: MemoryMetadata): Promise<void> {
-    if (this.agentic === null) return;
+  /** Store knowledge with auto-extracted attributes (AgenticMemory). */
+  async recordKnowledge(
+    key: string,
+    value: unknown,
+    metadata: MemoryMetadata
+  ): Promise<MemoryStoreOutcome> {
+    if (this.agentic === null) return { persisted: false, reason: 'agentic backend unavailable' };
     try {
       const result = await this.agentic.storeWithAttributes(key, value, metadata);
       if (!result.ok) {
         this.log.debug('Failed to record knowledge', { key, error: result.error.message });
+        return { persisted: false, reason: result.error.message };
       }
+      return { persisted: true };
     } catch (error: unknown) {
-      this.log.debug('Knowledge recording failed', {
-        key,
-        error: getErrorMessage(error),
-      });
+      const reason = getErrorMessage(error);
+      this.log.debug('Knowledge recording failed', { key, error: reason });
+      return { persisted: false, reason };
     }
   }
 
-  /** Store a value in AdaptiveMemory with importance scoring. Best-effort. */
-  async storeAdaptive(key: string, value: unknown, importance: number): Promise<void> {
-    if (this.adaptive === null) return;
+  /** Store a value in AdaptiveMemory with importance scoring. */
+  async storeAdaptive(
+    key: string,
+    value: unknown,
+    importance: number
+  ): Promise<MemoryStoreOutcome> {
+    if (this.adaptive === null) return { persisted: false, reason: 'adaptive backend unavailable' };
     try {
       const level = importance >= 0.8 ? 'high' : importance >= 0.6 ? 'medium' : 'low';
       const result = await this.adaptive.store(key, value, {
@@ -654,18 +684,24 @@ export class ToolMemoryManager {
       });
       if (!result.ok) {
         this.log.debug('Failed to store adaptive memory', { key, error: result.error.message });
+        return { persisted: false, reason: result.error.message };
       }
+      return { persisted: true };
     } catch (error: unknown) {
-      this.log.debug('Adaptive memory store failed', {
-        key,
-        error: getErrorMessage(error),
-      });
+      const reason = getErrorMessage(error);
+      this.log.debug('Adaptive memory store failed', { key, error: reason });
+      return { persisted: false, reason };
     }
   }
 
-  /** Store a value in TypedMemory (via HybridMemoryBackend). Best-effort. */
-  async storeTyped(key: string, value: unknown, importance: MemoryImportance): Promise<void> {
-    if (this.typedBackend === null) return;
+  /** Store a value in TypedMemory (via HybridMemoryBackend). */
+  async storeTyped(
+    key: string,
+    value: unknown,
+    importance: MemoryImportance
+  ): Promise<MemoryStoreOutcome> {
+    if (this.typedBackend === null)
+      return { persisted: false, reason: 'typed backend unavailable' };
     try {
       const result = await this.typedBackend.store(`semantic ${key}`, value, {
         importance,
@@ -673,12 +709,13 @@ export class ToolMemoryManager {
       });
       if (!result.ok) {
         this.log.debug('Failed to store typed memory', { key, error: result.error.message });
+        return { persisted: false, reason: result.error.message };
       }
+      return { persisted: true };
     } catch (error: unknown) {
-      this.log.debug('Typed memory store failed', {
-        key,
-        error: getErrorMessage(error),
-      });
+      const reason = getErrorMessage(error);
+      this.log.debug('Typed memory store failed', { key, error: reason });
+      return { persisted: false, reason };
     }
   }
 
@@ -861,7 +898,11 @@ export class ToolMemoryManager {
    * Returns results from SessionMemory, BeliefMemory, AgenticMemory, and TypedMemory
    * with source attribution and relevance scoring.
    */
-  async queryAll(query: string, limit = 10): Promise<readonly UnifiedMemoryResult[]> {
+  async queryAll(
+    query: string,
+    limit = 10,
+    errored?: (source: string) => void
+  ): Promise<readonly UnifiedMemoryResult[]> {
     // Wait for SQLite backends to finish initializing before querying (#794 pattern)
     if (this.initPromise !== null) {
       await this.initPromise;
@@ -875,12 +916,34 @@ export class ToolMemoryManager {
     const perSource = Math.ceil(limit / sourceCount);
     const results = [
       ...this.querySessionMemory(query, keywords, perSource),
-      ...(await this.queryBeliefMemory(query, keywords, perSource)),
-      ...(await this.queryAgenticMemory(query, keywords, perSource)),
-      ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2))),
-      ...(await this.queryAdaptiveMemory(query, keywords, perSource)),
+      ...(await this.queryBeliefMemory(query, keywords, perSource, () => errored?.('belief'))),
+      ...(await this.queryAgenticMemory(query, keywords, perSource, () => errored?.('agentic'))),
+      ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2), () =>
+        errored?.('typed')
+      )),
+      ...(await this.queryAdaptiveMemory(query, keywords, perSource, () => errored?.('adaptive'))),
     ];
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+  }
+
+  /**
+   * `queryBySource`, plus the names of the backends that threw while answering (#4999).
+   *
+   * Each per-backend helper swallows its error and contributes `[]`, so a store
+   * that failed is invisible in the merged result set — indistinguishable from
+   * one that simply matched nothing. Callers that report coverage need the
+   * difference, and only this variant can tell them. Single-source queries get
+   * the same treatment as `'all'` — a corrupt store must not read as an empty
+   * one whichever way it was asked.
+   */
+  async queryWithStatus(
+    source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive' | 'all',
+    query: string,
+    limit = 10
+  ): Promise<{ results: readonly UnifiedMemoryResult[]; errored: readonly string[] }> {
+    const failures = new Set<string>();
+    const results = await this.queryBySource(source, query, limit, (name) => failures.add(name));
+    return { results, errored: [...failures] };
   }
 
   /**
@@ -891,10 +954,11 @@ export class ToolMemoryManager {
   async queryBySource(
     source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive' | 'all',
     query: string,
-    limit = 10
+    limit = 10,
+    errored?: (source: string) => void
   ): Promise<readonly UnifiedMemoryResult[]> {
     if (source === 'all') {
-      return this.queryAll(query, limit);
+      return this.queryAll(query, limit, errored);
     }
     // Wait for SQLite backends to finish initializing
     if (this.initPromise !== null) {
@@ -911,16 +975,18 @@ export class ToolMemoryManager {
         results = this.querySessionMemory(query, keywords, limit);
         break;
       case 'belief':
-        results = await this.queryBeliefMemory(query, keywords, limit);
+        results = await this.queryBeliefMemory(query, keywords, limit, () => errored?.('belief'));
         break;
       case 'agentic':
-        results = await this.queryAgenticMemory(query, keywords, limit);
+        results = await this.queryAgenticMemory(query, keywords, limit, () => errored?.('agentic'));
         break;
       case 'typed':
-        results = await this.queryTypedMemory(query, keywords, limit);
+        results = await this.queryTypedMemory(query, keywords, limit, () => errored?.('typed'));
         break;
       case 'adaptive':
-        results = await this.queryAdaptiveMemory(query, keywords, limit);
+        results = await this.queryAdaptiveMemory(query, keywords, limit, () =>
+          errored?.('adaptive')
+        );
         break;
     }
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
@@ -940,39 +1006,55 @@ export class ToolMemoryManager {
   private async queryBeliefMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
-    return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, this.log);
+    return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryAgenticMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.agentic === null) return [];
 
-    return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, this.log);
+    return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryTypedMemory(
     query: string,
     keywords: readonly string[],
-    limitPerType: number
+    limitPerType: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.typed === null) return [];
 
-    return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, this.log);
+    return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   private async queryAdaptiveMemory(
     query: string,
     keywords: readonly string[],
-    limit: number
+    limit: number,
+    onFailure?: () => void
   ): Promise<UnifiedMemoryResult[]> {
     if (this.adaptive === null) return [];
 
-    return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, this.log);
+    return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, {
+      log: this.log,
+      onFailure,
+    });
   }
 
   // ==========================================================================

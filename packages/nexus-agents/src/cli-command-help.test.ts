@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 
 import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-command-help.js';
 import { getCommandDescription } from './cli-command-catalog.js';
+import { VOTE_TIMEOUTS } from './config/timeouts.js';
 
 // ============================================================================
 // Help metadata registry
@@ -137,5 +138,22 @@ describe('formatAllCommandsHelp', () => {
     const output = formatAllCommandsHelp();
     expect(output).toContain('Execute a task');
     expect(output).toContain('consensus vote');
+  });
+});
+
+// =============================================================================
+// Documented defaults match the code (#4965)
+// =============================================================================
+
+describe('vote --timeout documents the real default (#4965)', () => {
+  // The help said 90; `VOTE_TIMEOUTS.defaultMs` has been 300 since #1640 raised
+  // it from 180, noting architecture and security voters average 315s. An
+  // operator reading 90 would conclude a 250s vote had hung.
+  it('matches VOTE_TIMEOUTS.defaultMs', () => {
+    const vote = COMMAND_HELP.find((c) => c.command === 'vote');
+    const flag = vote?.flags?.find((f) => f.flag.startsWith('--timeout'));
+
+    expect(flag).toBeDefined();
+    expect(flag?.defaultValue).toBe(String(VOTE_TIMEOUTS.defaultMs / 1000));
   });
 });

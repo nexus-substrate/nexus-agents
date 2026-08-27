@@ -329,7 +329,19 @@ export function aggregatePrDecisions(
   errorPolicy: 'standard' | 'absolute_quorum' = 'standard'
 ): PrReviewAggregate {
   const valid = reviews.filter((r) => r.source !== 'error');
-  if (valid.length === 0) return { decision: 'abstain', verified: true };
+  // #5017: `verified` is a claim about the PANEL, not about the decision, and
+  // it is the field a reader of a governance record trusts. An outcome reached
+  // over a denominator that excludes voters who could have disagreed cannot
+  // support it — including the empty case below, which asserted a complete
+  // panel for a vote in which nobody spoke. Decided by consensus vote.
+  const complete = (): PrReviewAggregate['verified'] => valid.length === reviews.length;
+  const incompleteReason = `incomplete panel: ${String(valid.length)} of ${String(reviews.length)} voters responded`;
+  const panelVerdict = (decision: PrReviewAggregate['decision']): PrReviewAggregate =>
+    complete()
+      ? { decision, verified: true }
+      : { decision, verified: false, reason: incompleteReason };
+
+  if (valid.length === 0) return panelVerdict('abstain');
 
   // Tier 1: verified blocker — ≥1 voter has a verified finding. A genuine
   // request_changes blocker still wins under BOTH policies (runs before the
@@ -355,11 +367,13 @@ export function aggregatePrDecisions(
     if (errorPolicy === 'absolute_quorum') {
       return absoluteQuorumApprove(reviews, valid);
     }
-    return { decision: 'approve', verified: true };
+    // The DECISION still drops the errored voter — that is what `standard`
+    // means and #4132 kept it deliberately. Only the completeness claim moves.
+    return panelVerdict('approve');
   }
 
   // Tier 4: ambiguous — abstain.
-  return { decision: 'abstain', verified: true };
+  return panelVerdict('abstain');
 }
 
 /**

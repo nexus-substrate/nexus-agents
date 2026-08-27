@@ -357,6 +357,39 @@ describe('BaseCliAdapter', () => {
       expect(status.message).toContain('not supported');
     });
 
+    it('marks a reachable binary as reachable (#5060)', async () => {
+      adapter.setCachedVersion('2.1.0');
+      const status = await adapter.healthCheck();
+      expect(status.reachable).toBe(true);
+    });
+
+    it('marks an unrunnable binary as unreachable, not merely unhealthy (#5060)', async () => {
+      // `healthCheck` catches and returns rather than throwing, so a consumer
+      // reading only `healthy` cannot tell "binary absent" from "present but
+      // on an unsupported version" — `demo` told users to run `auth login`
+      // for a CLI they did not have installed.
+      const failing = new TestCliAdapter();
+      vi.spyOn(failing, 'getVersion').mockRejectedValue(new Error('spawn ENOENT'));
+
+      const status = await failing.healthCheck();
+
+      expect(status.healthy).toBe(false);
+      expect(status.reachable).toBe(false);
+      expect(status.message).toContain('ENOENT');
+    });
+
+    it('distinguishes unreachable from an unsupported installed version (#5060)', () => {
+      // The pair that makes `reachable` load-bearing: both are `healthy:
+      // false` with `versionStatus: 'unsupported'`, so only `reachable`
+      // separates them.
+      adapter.setCachedVersion('0.0.1');
+      return adapter.healthCheck().then((status) => {
+        expect(status.healthy).toBe(false);
+        expect(status.versionStatus).toBe('unsupported');
+        expect(status.reachable).toBe(true);
+      });
+    });
+
     it('should handle outdated version in health check', async () => {
       adapter.setCachedVersion('2.0.1');
       const status = await adapter.healthCheck();

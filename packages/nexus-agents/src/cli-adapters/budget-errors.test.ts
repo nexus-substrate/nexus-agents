@@ -50,6 +50,47 @@ function makeConstraint(overrides: Partial<BudgetConstraint> = {}): BudgetConstr
 // ============================================================================
 
 describe('determineExceededConstraint', () => {
+  describe('latency constraint exceeded (maxLatencyMs) — #4907', () => {
+    it('names latency when no candidate met the latency budget', () => {
+      // `'latency'` was a declared member of the constraint union that no
+      // producer emitted, so a consumer switching on it had a dead arm and
+      // "no latency violations" meant "never checked".
+      const budget = makeConstraint({ maxLatencyMs: 500 });
+      const result = makeResult({ adapter: null, estimatedLatencyMs: undefined });
+      const session = makeBudget();
+
+      const exceeded = determineExceededConstraint(budget, result, session);
+
+      expect(exceeded.constraint).toBe('latency');
+      expect(exceeded.limit).toBe(500);
+      // The fastest model in the cost table — the best any candidate offered.
+      expect(exceeded.current).toBe(1000);
+    });
+
+    it('does not blame latency when an adapter was selected', () => {
+      // A selected adapter met the latency budget, so a rejection here is
+      // about the session totals and must not be misattributed.
+      const budget = makeConstraint({ maxLatencyMs: 5000 });
+      const result = makeResult({ estimatedLatencyMs: 1500, estimatedTokens: 500 });
+      const session = makeBudget({ tokensRemaining: 10 });
+
+      const exceeded = determineExceededConstraint(budget, result, session);
+
+      expect(exceeded.constraint).toBe('tokens');
+    });
+
+    it('does not blame latency when no latency budget was set', () => {
+      // Absent constraint means unchecked, not violated.
+      const budget = makeConstraint({});
+      const result = makeResult({ adapter: null, estimatedTokens: 500 });
+      const session = makeBudget({ tokensRemaining: 10 });
+
+      const exceeded = determineExceededConstraint(budget, result, session);
+
+      expect(exceeded.constraint).toBe('tokens');
+    });
+  });
+
   describe('token constraint exceeded (maxTokens)', () => {
     it('detects when estimated tokens exceed maxTokens', () => {
       const budget = makeConstraint({ maxTokens: 1000 });

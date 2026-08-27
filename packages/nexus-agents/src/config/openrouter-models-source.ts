@@ -97,7 +97,19 @@ export function parseCatalog(text: string): readonly OpenRouterCatalogModel[] {
 }
 
 /** Fetch + validate the catalog. Fail-OPEN: any failure returns `[]`. */
-async function fetchCatalog(
+/**
+ * Fetch the catalog, THROWING on any probe failure (#5059).
+ *
+ * The cache source uses this variant. It used to swallow failures into `[]`,
+ * which reached `AvailableModelsCache` on the success path: the empty list
+ * overwrote a good catalog and was stamped fresh for the whole TTL, and
+ * `list_available_models` reported the dead transport as `ok: true`. An empty
+ * result must mean "the catalog is empty", never "the probe did not run".
+ *
+ * {@link fetchOpenRouterCatalog} keeps the fail-open behaviour for the #4121
+ * drift job, which documents `[]` as a loud skip.
+ */
+async function fetchCatalogOrThrow(
   url: string,
   timeoutMs: number,
   doFetch: typeof fetch
@@ -112,32 +124,36 @@ async function fetchCatalog(
       headers: { accept: 'application/json' },
     });
     if (!res.ok) {
-      logger.warn('OpenRouter catalog fetch returned non-OK; treating as empty', {
-        status: res.status,
-      });
-      return [];
+      throw new Error(`OpenRouter catalog fetch returned HTTP ${String(res.status)}`);
     }
     // Pre-check Content-Length so a hostile/huge body is rejected BEFORE it is
     // buffered. The text().length check is a backstop for servers that omit or
     // lie about Content-Length.
     const declaredLen = res.headers.get('content-length');
     if (declaredLen !== null && Number(declaredLen) > MAX_BYTES) {
-      logger.warn('OpenRouter catalog Content-Length exceeds byte cap; ignoring', {
-        bytes: declaredLen,
-      });
-      return [];
+      throw new Error(`OpenRouter catalog Content-Length ${declaredLen} exceeds the byte cap`);
     }
     const ids = parseCatalog(await res.text());
     logger.debug('OpenRouter catalog loaded', { count: ids.length });
     return ids;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Fail-open wrapper: any probe failure yields `[]`. */
+async function fetchCatalog(
+  url: string,
+  timeoutMs: number,
+  doFetch: typeof fetch
+): Promise<readonly OpenRouterCatalogModel[]> {
+  try {
+    return await fetchCatalogOrThrow(url, timeoutMs, doFetch);
   } catch (error: unknown) {
-    // Fail-open: probe failure (network/timeout/parse) → empty list.
     logger.warn('OpenRouter catalog fetch failed; treating as empty', {
       error: error instanceof Error ? error.message : String(error),
     });
     return [];
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -151,7 +167,9 @@ export function createOpenRouterModelsSource(
   return {
     name: 'openrouter',
     providerHint: 'openrouter',
-    listModels: () => fetchCatalog(url, timeoutMs, doFetch),
+    // Throws on probe failure so the cache can tell it apart from an empty
+    // catalog (#5059).
+    listModels: () => fetchCatalogOrThrow(url, timeoutMs, doFetch),
   };
 }
 
