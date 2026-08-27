@@ -58,9 +58,19 @@ jobs:
           ISSUES=$(gh issue list --state open --limit 400 --json number,title,body)
 
           # Collect every blocker the script would parse, then resolve each once.
-          BLOCKERS=$(printf '%s' "$ISSUES" \
-            | grep -oiE '(blocked (by|on)|depends on|after|once) #[0-9]+' \
+          # Bounded on purpose (#5088): one crafted issue body containing
+          # `blocked by #1 … blocked by #50000` would otherwise mint 50k
+          # sequential `gh issue view` calls, exhausting the repo's 1000/hr
+          # GITHUB_TOKEN budget and dying on the job timeout — leaving the
+          # previous tracking issue stale, the state this design calls worse
+          # than none. Numbers over 7 digits are dropped as non-issues.
+          ALL_BLOCKERS=$(printf '%s' "$ISSUES" \
+            | grep -oiE '(blocked (by|on)|depends on|after|once) #[0-9]{1,7}' \
             | grep -oE '[0-9]+' | sort -un || true)
+          BLOCKERS=$(printf '%s\n' "$ALL_BLOCKERS" | head -n 200)
+          if [ "$(printf '%s\n' "$ALL_BLOCKERS" | grep -c .)" -gt 200 ]; then
+            echo "::warning::More than 200 distinct blockers referenced; resolving the first 200 only."
+          fi
 
           STATES='{}'
           for n in $BLOCKERS; do
@@ -73,7 +83,13 @@ jobs:
           # Issues go in on STDIN, not an env var: 136 bodies is ~700 KB and
           # `execve` rejects that with E2BIG. The states map is small enough.
           printf '%s' "$ISSUES" | BLOCKER_STATES_JSON="$STATES" \
-            npx tsx scripts/check-unblocked.ts | tee /tmp/unblocked.md
+            npx tsx scripts/check-unblocked.ts > /tmp/unblocked.full 2>&1
+          # First line is a machine-readable STATUS:; the rest is the body.
+          # The workflow must NEVER branch on the prose, which contains
+          # attacker-controlled issue titles (#5088).
+          head -1 /tmp/unblocked.full > /tmp/unblocked.status
+          tail -n +2 /tmp/unblocked.full > /tmp/unblocked.md
+          cat /tmp/unblocked.status
 
       - name: File or update the tracking issue
         env:
@@ -94,7 +110,7 @@ jobs:
           # Nothing to surface: close the tracking issue rather than leaving a
           # stale list. An out-of-date backlog report is worse than none, since
           # a reader cannot tell it from a current one.
-          if grep -q 'still have an open blocker' /tmp/unblocked.md; then
+          if grep -qx 'STATUS: none' /tmp/unblocked.status; then
             if [ -n "$existing" ]; then
               gh issue close "$existing" --comment "Every blocked issue has an open blocker again. Closing; the daily run reopens this if that changes."
             fi
