@@ -89,9 +89,13 @@ describe('ResourceStrategyStage', () => {
       }
     });
 
-    it('reads budget:utilization signal', async () => {
+    it('reads the resourceLevel metadata the router supplies', async () => {
+      // Was `reads budget:utilization signal`. #4872 deleted BudgetFilterStage,
+      // that channel's only producer; #4869 had already superseded it with
+      // typed metadata from composite-router-stages. The old form tested a
+      // read that can no longer fire.
       // utilization=0.1 → resource level=0.9 → aggressive
-      const ctx = createContext('test', ['claude', 'gemini', 'codex'], ['budget:utilization=0.1']);
+      const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.9 });
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -115,7 +119,7 @@ describe('ResourceStrategyStage', () => {
 
   describe('route — tier-based scoring', () => {
     it('boosts quality CLIs in aggressive tier', async () => {
-      const ctx = createContext('test', ['claude', 'gemini', 'codex'], ['budget:utilization=0.1']); // level=0.9 → aggressive
+      const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.9 }); // level=0.9 → aggressive
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -127,7 +131,7 @@ describe('ResourceStrategyStage', () => {
     });
 
     it('applies no adjustment in balanced tier', async () => {
-      const ctx = createContext('test', ['claude', 'gemini', 'codex'], ['budget:utilization=0.4']); // level=0.6 → balanced
+      const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.6 }); // level=0.6 → balanced
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -140,7 +144,7 @@ describe('ResourceStrategyStage', () => {
     });
 
     it('boosts cost-efficient CLIs in conservative tier', async () => {
-      const ctx = createContext('test', ['claude', 'gemini', 'codex'], ['budget:utilization=0.65']); // level=0.35 → conservative
+      const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.35 }); // level=0.35 → conservative
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -152,7 +156,7 @@ describe('ResourceStrategyStage', () => {
     });
 
     it('strongly boosts cheapest CLI in critical tier', async () => {
-      const ctx = createContext('test', ['claude', 'gemini', 'codex'], ['budget:utilization=0.9']); // level=0.1 → critical
+      const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.1 }); // level=0.1 → critical
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -168,7 +172,7 @@ describe('ResourceStrategyStage', () => {
 
   describe('route — signals and trace', () => {
     it('adds tier and level signals', async () => {
-      const ctx = createContext('test', ['claude', 'gemini'], ['budget:utilization=0.2']);
+      const ctx = createContext('test', ['claude', 'gemini'], [], { resourceLevel: 0.8 });
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -179,7 +183,7 @@ describe('ResourceStrategyStage', () => {
     });
 
     it('adds trace entry with score action', async () => {
-      const ctx = createContext('test', ['claude', 'gemini'], ['budget:utilization=0.5']);
+      const ctx = createContext('test', ['claude', 'gemini'], [], { resourceLevel: 0.5 });
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -194,11 +198,11 @@ describe('ResourceStrategyStage', () => {
   describe('getStats', () => {
     it('tracks tier distribution', async () => {
       // Run aggressive
-      const aggressiveCtx = createContext('t', ['claude', 'gemini'], ['budget:utilization=0.1']);
+      const aggressiveCtx = createContext('t', ['claude', 'gemini'], [], { resourceLevel: 0.9 });
       await stage.route(aggressiveCtx);
 
       // Run critical
-      const criticalCtx = createContext('t', ['claude', 'gemini'], ['budget:utilization=0.9']);
+      const criticalCtx = createContext('t', ['claude', 'gemini'], [], { resourceLevel: 0.1 });
       await stage.route(criticalCtx);
 
       const stats = stage.getStats();

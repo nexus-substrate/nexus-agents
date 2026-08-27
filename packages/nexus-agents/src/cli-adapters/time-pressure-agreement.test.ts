@@ -18,7 +18,7 @@
  * (Source: Issue #4875)
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { taskAnalysisResultToBanditContext } from '../core/task-analysis/task-profile-adapter.js';
@@ -53,7 +53,6 @@ describe('timePressure constant agreement (#4875)', () => {
     // fixture and would miss a sixth site added later.
     const roots = [
       'cli-adapters/composite-router-helpers.ts',
-      'cli-adapters/routing/stages/linucb-stage.ts',
       'core/task-analysis/task-profile-adapter.ts',
       'cli-adapters/linucb-bandit.ts',
       // Re-exports `taskProfileToBanditContext` rather than duplicating it, so
@@ -61,9 +60,17 @@ describe('timePressure constant agreement (#4875)', () => {
       // parallel builder, and a future edit could make that true.
       'cli/routing-audit-logic.ts',
     ];
+    // `linucb-stage.ts` was on this list until #4872 deleted it as unreachable.
+    // A missing file is skipped rather than throwing, but `scanned` below
+    // guards the case where the whole list rots away and the scan silently
+    // asserts nothing.
     const offenders: string[] = [];
+    let scanned = 0;
     for (const rel of roots) {
-      const src = readFileSync(join(__dirname, '..', rel), 'utf-8');
+      const path = join(__dirname, '..', rel);
+      if (!existsSync(path)) continue;
+      scanned += 1;
+      const src = readFileSync(path, 'utf-8');
       for (const line of src.split('\n')) {
         // Skip comments — they discuss the old value deliberately.
         if (line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
@@ -72,5 +79,6 @@ describe('timePressure constant agreement (#4875)', () => {
     }
 
     expect(offenders).toEqual([]);
+    expect(scanned).toBe(roots.length);
   });
 });
