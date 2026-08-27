@@ -16,7 +16,12 @@ import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
 import { MCP_TIMEOUTS } from '../../config/timeouts.js';
-import { createRequestContext, contextForLogging, type RequestContext } from './request-context.js';
+import {
+  createRequestContext,
+  contextForLogging,
+  runWithRequestContext,
+  type RequestContext,
+} from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
 import { createAccessPolicyChainMiddleware } from '../../security/access-constraint-deriver/chain-adapter.js';
@@ -399,7 +404,14 @@ export function createMiddlewareChain(
       const requestContext = createRequestContext({ toolName: config.toolName });
       const requestLogger = logger.child(contextForLogging(requestContext));
       const ctx: MiddlewareContext = { requestContext, logger: requestLogger };
-      return composed(args, ctx, (finalArgs, finalCtx) => handler(finalArgs, finalCtx));
+      // Publish the context ambiently so inner layers adopt it instead of
+      // minting a second one (#4981). Argument threading cannot reach them:
+      // createSecureHandler returns a 1-arity function, so the dispatch in
+      // `withMiddleware` below drops ctx, and some tools put a 1-arity
+      // prerequisite wrapper between the two layers as well.
+      return runWithRequestContext(requestContext, () =>
+        composed(args, ctx, (finalArgs, finalCtx) => handler(finalArgs, finalCtx))
+      );
     };
   };
 }

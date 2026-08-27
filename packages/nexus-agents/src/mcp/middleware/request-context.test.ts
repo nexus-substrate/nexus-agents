@@ -15,7 +15,10 @@ import {
   contextForLogging,
   isRequestContext,
   measuredTrustTier,
+  runWithRequestContext,
+  getCurrentRequestContext,
 } from './request-context.js';
+import type { RequestContext } from './request-context.js';
 
 // ============================================================================
 // generateRequestId
@@ -386,5 +389,43 @@ describe('measuredTrustTier (#4733)', () => {
     const fallback = createRequestContext({ toolName: 'run_pipeline' });
     expect(fallback.trustTier).toBe('3');
     expect(measuredTrustTier(fallback)).toBeUndefined();
+  });
+});
+
+describe('ambient request context (#4981)', () => {
+  it('has no ambient context outside runWithRequestContext', () => {
+    expect(getCurrentRequestContext()).toBeUndefined();
+  });
+
+  it('exposes the context to arbitrarily nested async work', async () => {
+    const ctx = createRequestContext({ toolName: 'outer_tool' });
+
+    const seen = await runWithRequestContext(ctx, async () => {
+      // An intermediary that drops its arguments entirely — the shape that
+      // defeated argument threading (withPrerequisite wrappers are 1-arity).
+      await Promise.resolve();
+      return ((): RequestContext | undefined => getCurrentRequestContext())();
+    });
+
+    expect(seen).toBe(ctx);
+  });
+
+  it('unsets the ambient context once the call resolves', async () => {
+    const ctx = createRequestContext({ toolName: 'outer_tool' });
+    await runWithRequestContext(ctx, () => Promise.resolve());
+
+    expect(getCurrentRequestContext()).toBeUndefined();
+  });
+
+  it('lets an inner run shadow an outer one', async () => {
+    const outer = createRequestContext({ toolName: 'outer_tool' });
+    const inner = createRequestContext({ toolName: 'inner_tool' });
+
+    const seen = await runWithRequestContext(outer, () =>
+      runWithRequestContext(inner, () => Promise.resolve(getCurrentRequestContext()))
+    );
+
+    expect(seen).toBe(inner);
+    expect(seen?.requestId).not.toBe(outer.requestId);
   });
 });

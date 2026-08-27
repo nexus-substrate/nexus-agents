@@ -7,6 +7,7 @@
  * @module mcp/middleware/request-context
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { getTimeProvider } from '../../core/index.js';
 import type { TrustTier } from '../../security/trust-types.js';
@@ -170,6 +171,44 @@ export function createRequestContext(options: CreateContextOptions): RequestCont
 
   // Freeze to ensure immutability
   return Object.freeze(context);
+}
+
+/**
+ * The request context for the call currently in flight (#4981).
+ *
+ * Exists because a tool call passes through two middleware implementations
+ * that each used to mint their own `RequestContext`, producing two unlinked
+ * `req_*` ids and two `Tool invocation started` pairs per call. Argument
+ * threading cannot fix that: `createSecureHandler` returns a 1-arity function,
+ * so the chain's arity dispatch drops `ctx`, and 1-arity intermediaries such
+ * as the `withPrerequisite` wrappers sit between the layers on some tools.
+ * An ambient channel survives both.
+ *
+ * This mirrors the AbortSignal and progress-context storages the chain already
+ * uses, so it is the established idiom here rather than a new mechanism.
+ */
+const requestContextStorage = new AsyncLocalStorage<RequestContext>();
+
+/**
+ * Runs `fn` with `context` as the ambient request context, so any nested layer
+ * can adopt it instead of minting a second one.
+ */
+export function runWithRequestContext<T>(
+  context: RequestContext,
+  fn: () => Promise<T>
+): Promise<T> {
+  return requestContextStorage.run(context, fn);
+}
+
+/**
+ * The ambient request context, or `undefined` when nothing established one.
+ *
+ * `undefined` is a real answer, not a failure: a caller that composes a secure
+ * handler without the middleware chain — every direct test of it does — has no
+ * outer context to inherit, and must mint its own.
+ */
+export function getCurrentRequestContext(): RequestContext | undefined {
+  return requestContextStorage.getStore();
 }
 
 /**

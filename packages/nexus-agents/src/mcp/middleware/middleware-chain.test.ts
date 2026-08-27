@@ -25,6 +25,9 @@ import {
   type ToolHandler,
   type ToolResult,
 } from './middleware-chain.js';
+import { getCurrentRequestContext } from './request-context.js';
+import type { RequestContext } from './request-context.js';
+import type { MiddlewareContext } from './middleware-chain.js';
 import { createDefaultPolicyFirewall, PolicyFirewall } from './policy.js';
 import { RateLimiter } from './rate-limiter.js';
 
@@ -1383,5 +1386,57 @@ describe('integration tests', () => {
 
     expect(requestIds.length).toBe(3);
     expect(new Set(requestIds).size).toBe(3); // All unique
+  });
+});
+
+describe('ambient request context (#4981)', () => {
+  it('exposes the chain context to a nested layer that never receives ctx', async () => {
+    let seen: RequestContext | undefined;
+    let handlerCtxId: string | undefined;
+
+    // A 1-arity handler is exactly what createSecureHandler returns, so the
+    // chain's arity dispatch drops ctx and this is the only channel left.
+    const wrapped = withMiddleware('probe_tool', (args: unknown) => {
+      void args;
+      seen = getCurrentRequestContext();
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const contextAware = withMiddleware('probe_tool', (_args: unknown, ctx: MiddlewareContext) => {
+      handlerCtxId = ctx.requestContext.requestId;
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    await wrapped({});
+    await contextAware({});
+
+    expect(seen).toBeDefined();
+    expect(seen?.toolName).toBe('probe_tool');
+    expect(handlerCtxId).toBeDefined();
+  });
+
+  it('uses the same id the handler sees on its own ctx', async () => {
+    let ambientId: string | undefined;
+    let ctxId: string | undefined;
+
+    const wrapped = withMiddleware('probe_tool', (_args: unknown, ctx: MiddlewareContext) => {
+      ambientId = getCurrentRequestContext()?.requestId;
+      ctxId = ctx.requestContext.requestId;
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    await wrapped({});
+
+    expect(ambientId).toBe(ctxId);
+  });
+
+  it('unsets the ambient context after the call resolves', async () => {
+    const wrapped = withMiddleware('probe_tool', () =>
+      Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] })
+    );
+
+    await wrapped({});
+
+    expect(getCurrentRequestContext()).toBeUndefined();
   });
 });
