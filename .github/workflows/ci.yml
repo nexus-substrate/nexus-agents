@@ -160,6 +160,15 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Runtime data assets are copied by tsup's `onSuccess`, not bundled, so a
+      # missing copy ships a package whose loaders silently fall back to empty.
+      # `models-dev-snapshot.json` was never in the copy list, and every
+      # installed copy enumerated zero models for claude/codex/gemini (#5083).
+      # `pnpm build` already runs this; the explicit step names the failure
+      # instead of burying it in tsup output.
+      - name: Verify runtime assets reached dist
+        run: npx tsx scripts/check-dist-assets.ts
+
       - name: Upload build output
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
