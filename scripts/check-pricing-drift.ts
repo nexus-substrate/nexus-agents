@@ -3,7 +3,17 @@
  * Cross-check our in-tree-data.ts pricing and context windows against
  * litellm's community-maintained catalog.
  *
- * Non-blocking advisory: prints a diff table and exits 0 regardless.
+ * Non-blocking advisory: prints a diff table and exits 0 regardless. Because
+ * the exit code carries no signal, the machine-readable verdict is on stdout:
+ *
+ *   PRICING_DRIFT_STATUS=clean|drift|skipped
+ *   PRICING_DRIFT_COUNT=<n>
+ *
+ * `skipped` is the load-bearing one. A catalog fetch failure previously exited
+ * 0 with no drift table, which the workflow's `grep … || echo "0"` read as
+ * zero drift — so a litellm outage was indistinguishable from clean pricing
+ * (#4927). Mirrors `check-parameter-drift.ts`, which already had this shape.
+ *
  * Run periodically (e.g. after a model provider price change) or as a
  * pre-release sanity check.
  *
@@ -135,7 +145,10 @@ async function main(): Promise<void> {
     catalog = await fetchLitellmCatalog();
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`⚠️  Catalog fetch failed (non-blocking): ${msg}`);
+    console.error(`⚠️  SKIP: litellm catalog fetch failed (non-blocking): ${msg}`);
+    console.error('   A provider outage must not mask real pricing drift. Re-run when reachable.');
+    console.log('PRICING_DRIFT_STATUS=skipped');
+    console.log('PRICING_DRIFT_COUNT=0');
     process.exit(0);
   }
   console.log(`Catalog has ${String(Object.keys(catalog).length)} entries.\n`);
@@ -158,6 +171,8 @@ async function main(): Promise<void> {
 function printReports(allReports: DriftReport[], missing: string[]): void {
   if (allReports.length === 0 && missing.length === 0) {
     console.log('✅ No drift — our pricing matches litellm for all tracked models.');
+    console.log('PRICING_DRIFT_STATUS=clean');
+    console.log('PRICING_DRIFT_COUNT=0');
     return;
   }
 
@@ -180,11 +195,16 @@ function printReports(allReports: DriftReport[], missing: string[]): void {
   console.log(
     'Review and update packages/nexus-agents/src/config/in-tree-data.ts if drift is real.'
   );
-  console.log('Non-blocking: script always exits 0.');
+  console.log('Non-blocking: script always exits 0 — read PRICING_DRIFT_STATUS instead.');
+  console.log(`PRICING_DRIFT_STATUS=${allReports.length === 0 ? 'clean' : 'drift'}`);
+  console.log(`PRICING_DRIFT_COUNT=${String(allReports.length)}`);
 }
 
 main().catch((e: unknown) => {
   const msg = e instanceof Error ? e.message : String(e);
-  console.error(`Script error: ${msg}`);
+  // Even an unexpected error is a LOUD skip, never a silent "clean".
+  console.error(`⚠️  SKIP: pricing-drift check errored (non-blocking): ${msg}`);
+  console.log('PRICING_DRIFT_STATUS=skipped');
+  console.log('PRICING_DRIFT_COUNT=0');
   process.exit(0);
 });
