@@ -278,11 +278,8 @@ Each is an unbundled, per-loop migration governed by this ADR — not new behavi
   per `evaluateEnforceReadiness`.
 - **#3815** — KNN research-maturity weighting (worked example 2). Promotion gated on a
   similarity-controlled, stable, significant success-rate lift; kill-option if none.
-- **#2077** — ClawGuard audit → `enforce`. **Retired, not promoted** (#5022, epic
-  #5105): the panel consolidated tool authorization on PolicyFirewall instead. Kept as
-  a worked example of the ladder's failure mode — the bake would have produced zero
-  judged events because the guard's policy was never in scope, so the criterion could
-  never have been evaluated. Successor: **#4988**, for PolicyFirewall.
+- **#2077** — ClawGuard audit → `enforce` after a bake period. Security-gate loop
+  where the `recall ≥ 0.80` requirement (missed-action cost) is load-bearing.
 - **#3697** — policy-gate escalate → HITL interrupt at the stage boundary. The
   human-ratification machinery the ladder leans on at stage boundaries.
 

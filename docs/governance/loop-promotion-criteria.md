@@ -192,31 +192,25 @@ lift, controlled for the obvious confounder."
 
 ---
 
-## ClawGuard — RETIRED as a promotion path (#5022, epic #5105).
+## ClawGuard — audit → `enforce`. Criterion: recall is load-bearing.
 
-**There is no ClawGuard `audit → enforce` rung.** A 7-voter panel ratified retiring
-ClawGuard as an enforcement mechanism and consolidating tool authorization on
-PolicyFirewall (option E, 4 of 6 approvers, 66.7%, threshold met). #2077 is closed as
-superseded, and #5106 demoted every `NEXUS_ACCESS_POLICY_MODE` mode to reporting-only.
+**Promotion case:** [#2077](https://github.com/nexus-substrate/nexus-agents/issues/2077)
+(absorbed). A **security-gate** loop, so the `recall ≥ 0.80` requirement (missed-action
+cost) is the load-bearing threshold — a missed block is more costly than a false one.
 
-This section previously specified a live ladder — `evalN >= 100`, `recall >= 0.80`,
-`soakDuration >= P30D`, a recorded ratification vote, and an immediate-demotion trigger.
-It is recorded here as retired rather than deleted, because the reason it was
-unreachable is the useful part:
-
-**The denominator was structurally zero.** ClawGuard's policy was never in scope at
-inbound MCP dispatch, so `checkAccess` never ran and **zero `clawguard_violation` events
-were ever written**, in any data dir, across the whole `audit`-default period since
-v2.50. An operator could have completed the full P30D bake, held the ratification vote,
-set `enforce`, and received no blocking at all — believing a security gate had been
-promoted. A promotion criterion whose evidence its own wiring cannot produce is not a
-criterion; it is a gate that cannot fail, one level up.
-
-**The live successor is #4988** — whether MCP policy enforcement should default on after
-a warn-mode soak — for PolicyFirewall, the surviving boundary. It inherits the same
-evidence requirement and the same hazard: its soak needs durable denial records, tracked
-in #5101. Write that criterion against a sink that is verified to produce events before
-setting a threshold on their count.
+- **Promotion metric:** the **block-decision precision AND recall** on a judged set of
+  security events over a **bake period**.
+- **Measured where:** the ClawGuard audit log (the `audit`-tier verdicts accumulated
+  during the bake), judged against the ground-truth label of each event.
+- **Threshold (at the advisory → enforce floor, recall load-bearing):**
+  - `evalN ≥ 100` judged security events,
+  - `recall ≥ 0.80` — **the binding constraint** (missed-action cost dominates),
+  - `precision ≥ 0.90` (a false block has cost too, but recall governs),
+  - `soakDuration ≥ P30D` bake in `audit` with no operator intervention,
+  - a recorded ratification vote.
+- **Demotion triggers:** recall drops below `0.80` (a missed block class appears) →
+  automatic, **immediate** demotion to `audit` (a security gate fails safe by ceasing
+  to block, not by blocking wrongly).
 
 ---
 
