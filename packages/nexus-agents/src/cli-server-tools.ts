@@ -632,11 +632,16 @@ function buildStandardDeps(
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool(toolName),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-    // #3710: only run_dev_pipeline consumes the durable auditLogger — thread it
-    // so its consensus→execute policy gate persists decisions to the shared chain.
-    ...(toolName === 'run_dev_pipeline' && ctx.auditLogger !== undefined
-      ? { auditLogger: ctx.auditLogger }
-      : {}),
+    // #3710 threaded this for `run_dev_pipeline` alone, because it was then the
+    // only tool consuming a durable auditLogger. #4987 changed that: the MCP
+    // `PolicyFirewall` now evaluates rules on EVERY tool, and
+    // `secure-handler.ts:261` emits the policy decision only `if (pResult &&
+    // config.auditLogger)`. Withholding the logger left that emit unreachable
+    // for the 38 tools registered through `standardHandler` — a policy denial
+    // on any of them could never reach the chain, in enforce mode or warn
+    // (#4991). Threading it does not emit anything on its own; it makes the
+    // existing emit reachable.
+    ...(ctx.auditLogger !== undefined ? { auditLogger: ctx.auditLogger } : {}),
   };
 }
 
