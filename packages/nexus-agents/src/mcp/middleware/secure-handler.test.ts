@@ -20,7 +20,7 @@ import {
 import { type IPolicyFirewall, type PolicyDecision } from './policy-types.js';
 import { withMiddleware } from './middleware-chain.js';
 import { wrapToolWithTimeout } from './tool-wrapper.js';
-import { getCurrentRequestContext } from './request-context.js';
+import { getCurrentRequestContext, measuredTrustTier } from './request-context.js';
 import { createDefaultPolicyFirewall } from './policy.js';
 import { RateLimiter, type RateLimiterState } from './rate-limiter.js';
 import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
@@ -1563,5 +1563,38 @@ describe('single request context per call (#4981)', () => {
     );
     ids.delete(undefined);
     expect(ids.size).toBe(3);
+  });
+});
+
+describe('adoption preserves caller-derived fields (#4981 review)', () => {
+  it('keeps callerInfo, trust tier and audit actor while sharing the chain id', async () => {
+    let seen: HandlerContext['requestContext'] | undefined;
+    const secure = createSecureHandler(
+      (_args: unknown, ctx: HandlerContext) => {
+        seen = ctx.requestContext;
+        return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+      },
+      {
+        toolName: 'probe_tool',
+        callerInfo: { transport: 'stdio', authenticated: true, clientId: 'claude-cli' },
+      }
+    );
+
+    let ambientId: string | undefined;
+    const wrapped = withMiddleware('probe_tool', (args: unknown) => {
+      ambientId = getCurrentRequestContext()?.requestId;
+      return secure(args);
+    });
+
+    await wrapped({});
+
+    // The chain mints its context from { toolName } alone, with no caller.
+    // Adopting that object wholesale silently dropped configured callerInfo,
+    // downgrading trustTier '1' -> '3' and the audit actor from the client to
+    // "unknown". One ID is the goal; discarding caller identity is not.
+    expect(seen?.requestId).toBe(ambientId);
+    expect(seen?.caller.clientId).toBe('claude-cli');
+    expect(seen?.trustTier).toBe('1');
+    expect(measuredTrustTier(seen as NonNullable<typeof seen>)).toBe('1');
   });
 });

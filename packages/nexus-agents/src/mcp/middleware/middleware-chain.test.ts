@@ -1410,9 +1410,14 @@ describe('ambient request context (#4981)', () => {
     await wrapped({});
     await contextAware({});
 
+    // `handlerCtxId` alone proves nothing — ctx.requestContext.requestId was
+    // always defined. What is new is that a 1-arity handler, which never
+    // receives ctx at all, can reach the same context.
     expect(seen).toBeDefined();
     expect(seen?.toolName).toBe('probe_tool');
-    expect(handlerCtxId).toBeDefined();
+    expect(seen?.requestId).toMatch(/^req_[a-f0-9]{16}$/);
+    expect(handlerCtxId).toMatch(/^req_[a-f0-9]{16}$/);
+    expect(handlerCtxId).not.toBe(seen?.requestId);
   });
 
   it('uses the same id the handler sees on its own ctx', async () => {

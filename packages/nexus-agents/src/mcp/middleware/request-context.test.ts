@@ -429,3 +429,31 @@ describe('ambient request context (#4981)', () => {
     expect(seen?.requestId).not.toBe(outer.requestId);
   });
 });
+
+describe('ambient context liveness (#4981 review)', () => {
+  it('stops being ambient for work that outlives the call', async () => {
+    const ctx = createRequestContext({ toolName: 'outer_tool' });
+    let deferred: RequestContext | undefined;
+    let duringCall: RequestContext | undefined;
+
+    const seen = new Promise<void>((resolve) => {
+      void runWithRequestContext(ctx, () => {
+        duringCall = getCurrentRequestContext();
+        // Detached work scheduled inside the scope but running after it — the
+        // shape runAsJob uses when it fires a job body from the handler.
+        setTimeout(() => {
+          deferred = getCurrentRequestContext();
+          resolve();
+        }, 5);
+        return Promise.resolve();
+      });
+    });
+
+    await seen;
+
+    // Identity is not liveness: the store is still reachable from the timer,
+    // so this only holds because the holder is marked settled.
+    expect(duringCall).toBe(ctx);
+    expect(deferred).toBeUndefined();
+  });
+});

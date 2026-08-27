@@ -85,6 +85,16 @@ export interface CreateContextOptions {
   traceId?: string;
   /** Optional parent span ID */
   parentSpanId?: string;
+  /**
+   * Reuse this request id instead of minting a new one (#4981).
+   *
+   * Lets a nested layer join an outer layer's request identity while still
+   * deriving its OWN caller, trust tier and timestamp. Adopting the outer
+   * context object wholesale would discard those, which for a handler
+   * configured with `callerInfo` silently downgrades the trust tier and the
+   * audit actor.
+   */
+  inheritRequestId?: string;
 }
 
 /**
@@ -160,7 +170,7 @@ export function deriveTrustTier(caller: CallerInfo): TrustTier {
 export function createRequestContext(options: CreateContextOptions): RequestContext {
   const caller = options.caller ?? {};
   const context: RequestContext = {
-    requestId: generateRequestId(),
+    requestId: options.inheritRequestId ?? generateRequestId(),
     timestamp: formatTimestamp(),
     toolName: options.toolName,
     caller,
@@ -187,7 +197,25 @@ export function createRequestContext(options: CreateContextOptions): RequestCont
  * This mirrors the AbortSignal and progress-context storages the chain already
  * uses, so it is the established idiom here rather than a new mechanism.
  */
-const requestContextStorage = new AsyncLocalStorage<RequestContext>();
+const requestContextStorage = new AsyncLocalStorage<ContextHolder>();
+
+/**
+ * The ambient context plus its liveness.
+ *
+ * AsyncLocalStorage keeps a store reachable from anything spawned inside the
+ * scope, including work that OUTLIVES the call — a `setTimeout`, or the
+ * detached body `runAsJob` fires from inside the secure handler. Without this
+ * flag such work still reads the context of a request that already completed,
+ * and a nested handler for the same tool would adopt a finished identity, then
+ * log neither a start (suppressed) nor a completion (the chain already closed
+ * its own pair).
+ *
+ * Identity is not liveness, so the adoption gate needs both.
+ */
+interface ContextHolder {
+  readonly context: RequestContext;
+  settled: boolean;
+}
 
 /**
  * Runs `fn` with `context` as the ambient request context, so any nested layer
@@ -197,7 +225,12 @@ export function runWithRequestContext<T>(
   context: RequestContext,
   fn: () => Promise<T>
 ): Promise<T> {
-  return requestContextStorage.run(context, fn);
+  const holder: ContextHolder = { context, settled: false };
+  return requestContextStorage.run(holder, () =>
+    fn().finally(() => {
+      holder.settled = true;
+    })
+  );
 }
 
 /**
@@ -208,7 +241,9 @@ export function runWithRequestContext<T>(
  * outer context to inherit, and must mint its own.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
-  return requestContextStorage.getStore();
+  const holder = requestContextStorage.getStore();
+  if (holder === undefined || holder.settled) return undefined;
+  return holder.context;
 }
 
 /**

@@ -455,7 +455,15 @@ export function createSecureHandler(
     // must keep minting and logging its own.
     const ambient = getCurrentRequestContext();
     const inherited = ambient?.toolName === config.toolName ? ambient : undefined;
-    const requestContext = inherited ?? createRequestContext(ctxOpts);
+    // Join the outer request's IDENTITY, but keep deriving this handler's own
+    // caller and trust tier. The chain mints its context from { toolName }
+    // alone, so adopting that object wholesale would discard a configured
+    // `callerInfo` — downgrading trustTier and the audit actor to "unknown"
+    // on the very path this change is meant to make auditable.
+    const requestContext =
+      inherited === undefined
+        ? createRequestContext(ctxOpts)
+        : createRequestContext({ ...ctxOpts, inheritRequestId: inherited.requestId });
     const requestLogger = logger.child(contextForLogging(requestContext));
     if (inherited === undefined) {
       requestLogger.info('Tool invocation started');
