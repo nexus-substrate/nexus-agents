@@ -598,6 +598,37 @@ describe('registerMcpTools - tool allowlisting', () => {
     expect(mockRegisterMemoryQueryTool).toHaveBeenCalled();
   });
 
+  it('threads the audit logger to a standardHandler tool, not just run_dev_pipeline (#4991)', () => {
+    // #4987 made the MCP PolicyFirewall evaluate rules on EVERY tool, and
+    // `secure-handler.ts:261` emits the decision only `if (pResult &&
+    // config.auditLogger)`. `buildStandardDeps` withheld the logger from every
+    // tool except `run_dev_pipeline`, so a policy denial on any of the 38 tools
+    // registered through `standardHandler` could never reach the chain — in
+    // enforce mode or in warn. The warn-mode soak #4988 depends on therefore
+    // produced no durable evidence at all.
+    //
+    // memory_query is a plain standardHandler tool: if IT gets the logger, the
+    // generic path does.
+    const auditLogger = { logPolicyDecision: vi.fn() };
+    registerMcpTools(makeDefaultOptions({ auditLogger }));
+
+    expect(mockRegisterMemoryQueryTool).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ auditLogger })
+    );
+  });
+
+  it('omits the audit logger when the server has none', () => {
+    // The pair: threading must stay conditional. An always-present key would
+    // put `undefined` on the deps object and defeat the `config.auditLogger`
+    // guard's ability to mean "no durable chain configured".
+    registerMcpTools(makeDefaultOptions());
+
+    const deps = mockRegisterMemoryQueryTool.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(deps).toBeDefined();
+    expect(deps).not.toHaveProperty('auditLogger');
+  });
+
   it('should skip categories when allowlist excludes them', () => {
     const options = makeDefaultOptions({
       securityConfig: {
