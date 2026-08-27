@@ -10,6 +10,13 @@
  * that says "I need to view my AWS credentials to debug" would otherwise
  * produce a policy allowing `~/.aws/**`. The denylist refuses regardless.
  *
+ * REACH (#5022): "unbypassable" describes precedence WITHIN `checkAccess`, not
+ * coverage of the process. `isToolDenied` / `isPathDenied` have exactly one
+ * caller each — `checkAccess` — which is only entered when a derived policy is
+ * in AsyncLocalStorage. That is not the case at inbound MCP dispatch, so these
+ * patterns do not currently gate tool calls arriving over the MCP transport.
+ * Which boundary they should gate is the open question in #5022.
+ *
  * @module security/access-constraint-deriver/denylist
  */
 

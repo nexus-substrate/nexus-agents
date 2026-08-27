@@ -51,8 +51,21 @@ export const TaskAccessPolicySchema = z.object({
 });
 export type TaskAccessPolicy = z.infer<typeof TaskAccessPolicySchema>;
 
-/** Result of checking a proposed tool call against a policy. */
+/**
+ * Result of checking a proposed tool call against a policy.
+ *
+ * `unmeasured` is distinct from `allow` and from `log-and-allow` on purpose
+ * (#5022). It means the allowlist arm of the check could not run at all —
+ * not that the call was examined and passed, and not that it violated a
+ * policy. Collapsing it into either of the others is what produced the
+ * original defect: an empty `allowedTools` was read as "nothing is
+ * permitted", so the verdict became a constant that carried no information
+ * about the call. A consumer MUST NOT record an `unmeasured` outcome as a
+ * violation — doing so gives the #2077 enforce-flip denominator a 100%
+ * violation rate that says nothing about precision.
+ */
 export type AccessDecision =
   | { readonly decision: 'allow' }
   | { readonly decision: 'deny'; readonly reason: string; readonly matchedRule: string }
-  | { readonly decision: 'log-and-allow'; readonly warning: string };
+  | { readonly decision: 'log-and-allow'; readonly warning: string }
+  | { readonly decision: 'unmeasured'; readonly reason: string };

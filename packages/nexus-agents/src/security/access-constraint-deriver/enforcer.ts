@@ -24,11 +24,15 @@ import type { AccessDecision, TaskAccessPolicy } from './types.js';
  *    of policy. This is unbypassable even in `off` mode.
  * 2. If a file-path argument is provided and matches an unbypassable path
  *    pattern (e.g. `~/.ssh/**`, `/etc/shadow`) → deny regardless.
- * 3. Otherwise, fall back to the per-task policy (bypass in skeleton).
+ * 3. Otherwise, fall back to the per-task policy. An empty `allowedTools`
+ *    yields `unmeasured` — the allowlist arm did not run — rather than a
+ *    blanket deny (#5022).
  *
  * The denylist check runs before the policy check so a malicious LLM-derived
  * policy cannot grant access to secrets/credentials by listing the tool in
- * `allowedTools`.
+ * `allowedTools`. Both denylist checks are reachable only from here, so they
+ * protect exactly the callers that reach `checkAccess` — see the module note
+ * in `chain-adapter.ts` on which boundary that currently is.
  */
 export function checkAccess(
   toolName: string,
@@ -55,6 +59,29 @@ export function checkAccess(
 
   // 3. Per-task policy check.
   if (policy.allowedTools === '*') return { decision: 'allow' };
+
+  // 3a. An EMPTY allowlist is the absence of a measurement, not a decision to
+  //     deny everything (#5022). No production producer of `allowedTools` ever
+  //     emits a tool name: the LLM deriver is asked for tool_categories /
+  //     file_scope / network_scope and pins `allowedTools: []`
+  //     (llm-deriver.ts), the keyword fallback hardcodes `[]`
+  //     (fallback-regex.ts), and both derivation-failure paths choose between
+  //     `[]` and `'*'`. So `[].includes(name)` is false for every call, and
+  //     without this branch the verdict below is a constant function of
+  //     (mode, isRiskyTool(name)) — independent of the objective, the LLM
+  //     output and the trust tier.
+  //
+  //     Reporting that constant as a deny would be wrong twice over: it would
+  //     block every guarded call the moment the check became reachable, and it
+  //     would record a violation for a check that never actually ran. Say
+  //     `unmeasured` instead, and let the caller allow the call while
+  //     recording that the allowlist arm did not evaluate.
+  if (policy.allowedTools.length === 0) {
+    return {
+      decision: 'unmeasured',
+      reason: `allowlist arm did not run for tool "${toolName}": the derived policy (source "${policy.source}", mode "${policy.mode}") carries an empty allowedTools, and no producer emits tool names (#5022)`,
+    };
+  }
 
   if (policy.allowedTools.includes(toolName)) return { decision: 'allow' };
 

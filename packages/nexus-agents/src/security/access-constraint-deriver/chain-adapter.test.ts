@@ -12,7 +12,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ILogger } from '../../core/index.js';
 import { createAccessPolicyChainMiddleware } from './chain-adapter.js';
-import { withAccessPolicy } from './mcp-guard.js';
+import { withAccessPolicy, withAuditTrail } from './mcp-guard.js';
+import type { AuditEvent, AuditTrail } from '../audit-trail.js';
 import type { TaskAccessPolicy } from './types.js';
 import type { MiddlewareContext } from '../../mcp/middleware/middleware-chain.js';
 import type { RequestContext } from '../../mcp/middleware/request-context.js';
@@ -124,7 +125,7 @@ describe('createAccessPolicyChainMiddleware', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('access denied');
     expect(handler).not.toHaveBeenCalled();
-    expect(ctx.logger.info).toHaveBeenCalledWith(
+    expect(ctx.logger.warn).toHaveBeenCalledWith(
       'access-policy: tool call denied',
       expect.objectContaining({ tool: 'read_file', requestId: 'req-test-1' })
     );
@@ -175,5 +176,120 @@ describe('createAccessPolicyChainMiddleware', () => {
     );
 
     expect(result.content[0]?.text).toBe('handler-ran');
+  });
+
+  it('records an audit-mode violation durably on the log-and-allow branch', async () => {
+    const events: AuditEvent[] = [];
+    const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
+    const mw = createAccessPolicyChainMiddleware('exec_shell');
+
+    await withAccessPolicy(policy({ mode: 'audit', allowedTools: ['read_file'] }), () =>
+      withAuditTrail(trail, () => mw({}, makeCtx(), makeHandler()))
+    );
+
+    expect(events).toHaveLength(1);
+  });
+
+  it('logs a denial at warn, not below the audit-mode observation (#5022)', async () => {
+    const mw = createAccessPolicyChainMiddleware('exec_shell');
+    const ctx = makeCtx();
+
+    await withAccessPolicy(policy({ mode: 'enforce', allowedTools: ['read_file'] }), () =>
+      mw({}, ctx, makeHandler())
+    );
+
+    // A denial previously used logger.info while an audit-mode violation used
+    // logger.warn — the blocking mode logged BELOW the observing one.
+    expect(ctx.logger.warn).toHaveBeenCalledWith(
+      'access-policy: tool call denied',
+      expect.objectContaining({ tool: 'exec_shell' })
+    );
+    expect(ctx.logger.info).not.toHaveBeenCalled();
+  });
+
+  describe('empty allowedTools is unmeasured, not a blanket deny (#5022)', () => {
+    // Every production producer of allowedTools emits `[]` or `'*'`, never a
+    // tool name. Before #5022 that made `[].includes(name)` false for every
+    // call, so the verdict was a constant function of (mode, isRiskyTool) —
+    // and under `enforce` it would have denied EVERY guarded call the moment
+    // the check became reachable.
+    const empty = { allowedTools: [] as readonly string[] };
+
+    it.each(['enforce', 'confirm_risky', 'audit'] as const)(
+      'runs the handler in %s mode rather than denying on an empty allowlist',
+      async (mode) => {
+        const mw = createAccessPolicyChainMiddleware('exec_shell');
+        const handler = makeHandler();
+
+        const result = await withAccessPolicy(policy({ mode, ...empty }), () =>
+          mw({}, makeCtx(), handler)
+        );
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(result.isError).toBeUndefined();
+      }
+    );
+
+    it('does NOT record a violation for a check that never ran', async () => {
+      const events: AuditEvent[] = [];
+      const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+
+      await withAccessPolicy(policy({ mode: 'audit', ...empty }), () =>
+        withAuditTrail(trail, () => mw({}, makeCtx(), makeHandler()))
+      );
+
+      // Recording this as a violation would give the #2077 enforce-flip
+      // denominator a definitionally 100% violation rate carrying no
+      // information about precision. The sibling test above proves the same
+      // harness DOES capture a real violation, so this is not a dead assertion.
+      expect(events).toEqual([]);
+    });
+
+    it('still denies an unbypassable tool when the allowlist is empty', async () => {
+      const mw = createAccessPolicyChainMiddleware('git_push_force');
+      const handler = makeHandler();
+
+      const result = await withAccessPolicy(policy({ mode: 'audit', ...empty }), () =>
+        mw({}, makeCtx(), handler)
+      );
+
+      // `unmeasured` must not swallow the denylist, which runs first.
+      expect(result.isError).toBe(true);
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('#4097 regression: audit mode always ALLOWS', () => {
+    it('returns the handler result when no trail is present', async () => {
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+      const handler = makeHandler();
+
+      const result = await withAccessPolicy(
+        policy({ mode: 'audit', allowedTools: ['read_file'] }),
+        () => mw({}, makeCtx(), handler)
+      );
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(result.content[0]?.text).toBe('handler-ran');
+    });
+
+    it('returns the handler result and does not throw when the sink throws', async () => {
+      const throwingTrail = {
+        append: () => {
+          throw new Error('sink exploded');
+        },
+      } as unknown as AuditTrail;
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+      const handler = makeHandler();
+
+      const result = await withAccessPolicy(
+        policy({ mode: 'audit', allowedTools: ['read_file'] }),
+        () => withAuditTrail(throwingTrail, () => mw({}, makeCtx(), handler))
+      );
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(result.content[0]?.text).toBe('handler-ran');
+    });
   });
 });
