@@ -27,7 +27,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { withMiddleware } from '../../mcp/middleware/middleware-chain.js';
-import { getActivePolicy, withAccessPolicy } from './mcp-guard.js';
+import { getActivePolicy, withAccessPolicy, withAuditTrail } from './mcp-guard.js';
+import type { AuditEvent, AuditTrail } from '../audit-trail.js';
 import type { TaskAccessPolicy } from './types.js';
 
 function policy(overrides: Partial<TaskAccessPolicy> = {}): TaskAccessPolicy {
@@ -85,20 +86,27 @@ describe('ClawGuard reachability at inbound MCP dispatch (#5022)', () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it('DOES gate that same tool once a policy is in scope — so the stack itself is wired', async () => {
+  it('still EVALUATES once a policy is in scope — the mount is live (#5106)', async () => {
     const handler = vi.fn(() => Promise.resolve(okResult()));
     const wrapped = withMiddleware('git_push_force', handler);
+    const events: AuditEvent[] = [];
+    const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
 
-    const result = (await withAccessPolicy(policy(), () => wrapped({}))) as {
-      isError?: boolean;
-    };
+    const result = (await withAccessPolicy(policy(), () =>
+      withAuditTrail(trail, () => wrapped({}))
+    )) as { isError?: boolean };
 
-    // The contrast with the previous test is the point: the middleware is
-    // genuinely mounted and the enforcer genuinely works. Only the scope is
-    // wrong. This also keeps the three tests above from passing for a boring
-    // reason, such as the mount having been removed.
-    expect(result.isError).toBe(true);
-    expect(handler).not.toHaveBeenCalled();
+    // The contrast with the previous test is the point, and it is what keeps
+    // the three above from passing for a boring reason such as the mount
+    // having been removed. Since #5106 the evidence is the RECORD rather than
+    // a blocked call: ClawGuard is advisory, so it forwards and reports.
+    //
+    // This assertion is deliberately still here, and must stay until #5107
+    // deletes the mount — at which point it inverts to pin PolicyFirewall.
+    // Do not delete it to make a refactor green.
+    expect(events).toHaveLength(1);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBeUndefined();
   });
 
   it('an empty allowlist is unmeasured, so a policy in scope does not deny everything', async () => {

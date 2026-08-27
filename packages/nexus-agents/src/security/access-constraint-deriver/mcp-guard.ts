@@ -27,7 +27,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { AccessDecision, TaskAccessPolicy } from './types.js';
+import type { TaskAccessPolicy } from './types.js';
 import { emitClawGuardViolation, type AuditTrail } from '../audit-trail.js';
 
 /** AsyncLocalStorage holding the active task's access policy. */
@@ -120,24 +120,4 @@ export function getActivePolicy(): TaskAccessPolicy | undefined {
  */
 export interface GuardArgs {
   readonly path?: string;
-}
-
-/**
- * Formats a deny decision as an MCP-compliant isError ToolResult shape.
- * The MCP server's middleware chain recognizes `{ isError, content }` and
- * surfaces it as a tool error to the caller.
- */
-export function denyToToolResult(
-  decision: Extract<AccessDecision, { decision: 'deny' }>,
-  requestId: string
-): { isError: true; content: Array<{ type: 'text'; text: string }> } {
-  return {
-    isError: true,
-    content: [
-      {
-        type: 'text',
-        text: `access denied: ${decision.reason} (rule: ${decision.matchedRule}, request: ${requestId})`,
-      },
-    ],
-  };
 }

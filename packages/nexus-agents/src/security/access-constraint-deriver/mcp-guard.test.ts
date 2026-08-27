@@ -3,13 +3,11 @@
  *
  * Covers:
  * - withAccessPolicy ALS propagation across async boundaries
- * - denyToToolResult format shape
  * - End-to-end smoke: derive policy → run tool call under guard → assert
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  denyToToolResult,
   getActivePolicy,
   getActiveAuditTrail,
   recordAuditModeViolation,
@@ -79,20 +77,6 @@ describe('getActivePolicy / withAccessPolicy', () => {
       });
       expect(getActivePolicy()?.source).toBe('llm');
     });
-  });
-});
-
-describe('denyToToolResult', () => {
-  it('returns an MCP-compliant isError shape', () => {
-    const res = denyToToolResult(
-      { decision: 'deny', reason: 'forbidden tool', matchedRule: 'unbypassable:tool' },
-      'req_abc'
-    );
-    expect(res.isError).toBe(true);
-    expect(res.content[0]?.type).toBe('text');
-    expect(res.content[0]?.text).toContain('forbidden tool');
-    expect(res.content[0]?.text).toContain('req_abc');
-    expect(res.content[0]?.text).toContain('unbypassable:tool');
   });
 });
 

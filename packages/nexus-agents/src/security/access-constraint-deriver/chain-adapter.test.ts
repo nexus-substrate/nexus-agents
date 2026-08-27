@@ -111,7 +111,7 @@ describe('createAccessPolicyChainMiddleware', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('denies ~/.ssh/** paths via the hardcoded unbypassable denylist', async () => {
+  it('records an advisory violation for ~/.ssh/** but does not block', async () => {
     const mw = createAccessPolicyChainMiddleware('read_file');
     const ctx = makeCtx();
     const handler = makeHandler();
@@ -122,27 +122,33 @@ describe('createAccessPolicyChainMiddleware', () => {
       () => mw({ path: '~/.ssh/id_rsa' }, ctx, handler)
     );
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('access denied');
-    expect(handler).not.toHaveBeenCalled();
+    // Advisory (#5106): this boundary records what it WOULD have blocked and
+    // forwards anyway. PolicyFirewall owns blocking (#5022 decision, epic #5105).
+    expect(result.content[0]?.text).toBe('handler-ran');
+    expect(handler).toHaveBeenCalledTimes(1);
     expect(ctx.logger.warn).toHaveBeenCalledWith(
-      'access-policy: tool call denied',
+      'access-policy: advisory violation',
       expect.objectContaining({ tool: 'read_file', requestId: 'req-test-1' })
     );
   });
 
-  it('denies destructive tools via the hardcoded unbypassable tool list', async () => {
+  it('records an advisory violation for a destructive tool but does not block', async () => {
     const mw = createAccessPolicyChainMiddleware('git_push_force');
     const ctx = makeCtx();
     const handler = makeHandler();
 
-    // Even with allowedTools='*', git_push_force is in the unbypassable list.
+    // Even with allowedTools='*', git_push_force is in the unbypassable list —
+    // so the denylist still FIRES, it just no longer blocks here (#5106).
     const result = await withAccessPolicy(policy({ mode: 'enforce', allowedTools: '*' }), () =>
       mw({}, ctx, handler)
     );
 
-    expect(result.isError).toBe(true);
-    expect(handler).not.toHaveBeenCalled();
+    expect(result.isError).toBeUndefined();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(ctx.logger.warn).toHaveBeenCalledWith(
+      'access-policy: advisory violation',
+      expect.objectContaining({ tool: 'git_push_force', matchedRule: 'unbypassable:tool' })
+    );
   });
 
   it('forwards on log-and-allow AND emits warning (audit mode)', async () => {
@@ -190,7 +196,7 @@ describe('createAccessPolicyChainMiddleware', () => {
     expect(events).toHaveLength(1);
   });
 
-  it('logs a denial at warn, not below the audit-mode observation (#5022)', async () => {
+  it('logs an advisory violation at warn, not below an audit observation (#5022)', async () => {
     const mw = createAccessPolicyChainMiddleware('exec_shell');
     const ctx = makeCtx();
 
@@ -201,7 +207,7 @@ describe('createAccessPolicyChainMiddleware', () => {
     // A denial previously used logger.info while an audit-mode violation used
     // logger.warn — the blocking mode logged BELOW the observing one.
     expect(ctx.logger.warn).toHaveBeenCalledWith(
-      'access-policy: tool call denied',
+      'access-policy: advisory violation',
       expect.objectContaining({ tool: 'exec_shell' })
     );
     expect(ctx.logger.info).not.toHaveBeenCalled();
@@ -263,7 +269,7 @@ describe('createAccessPolicyChainMiddleware', () => {
       expect(events).toEqual([]);
     });
 
-    it('still denies an unbypassable tool when the allowlist is empty', async () => {
+    it('still FIRES the denylist when the allowlist is empty', async () => {
       const mw = createAccessPolicyChainMiddleware('git_push_force');
       const handler = makeHandler();
 
@@ -271,9 +277,10 @@ describe('createAccessPolicyChainMiddleware', () => {
         mw({}, makeCtx(), handler)
       );
 
-      // `unmeasured` must not swallow the denylist, which runs first.
-      expect(result.isError).toBe(true);
-      expect(handler).not.toHaveBeenCalled();
+      // `unmeasured` must not swallow the denylist, which runs first. Advisory
+      // now, so the evidence is the record rather than the blocked call.
+      expect(result.isError).toBeUndefined();
+      expect(handler).toHaveBeenCalledTimes(1);
     });
   });
 
