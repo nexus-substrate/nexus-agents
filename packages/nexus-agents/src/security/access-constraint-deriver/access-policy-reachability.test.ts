@@ -116,3 +116,75 @@ describe('ClawGuard reachability at inbound MCP dispatch (#5022)', () => {
     expect(result.isError).toBeUndefined();
   });
 });
+
+/**
+ * The `unmeasured` verdict is keyed on `allowedTools.length === 0`, which is
+ * sound only while NO producer ever intends a real allowlist. That makes it
+ * fail-OPEN by construction: a future deriver that genuinely computes an
+ * allowlist and returns `[]` on a parse failure would silently degrade to
+ * allow-all instead of denying.
+ *
+ * Rather than build speculative machinery for a producer that does not exist
+ * (YAGNI), this ratchets the premise. The day a producer emits a real tool
+ * name, this test fails and whoever wrote it has to revisit the branch in
+ * `enforcer.ts` and distinguish "no producer attempted" from "a producer
+ * attempted and came back empty".
+ */
+describe('producer contract: nothing intends a real allowlist yet (#5022)', () => {
+  it('has no production site assigning a non-empty allowedTools to a TaskAccessPolicy', async () => {
+    const { readFile, readdir } = await import('node:fs/promises');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+
+    const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+    async function walk(dir: string): Promise<string[]> {
+      const entries = await readdir(dir, { withFileTypes: true });
+      const out = await Promise.all(
+        entries.map(async (e) => {
+          const full = join(dir, e.name);
+          if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+          return e.isFile() && e.name.endsWith('.ts') && !e.name.includes('.test.') ? [full] : [];
+        })
+      );
+      return out.flat();
+    }
+
+    const offenders: string[] = [];
+    for (const file of await walk(srcRoot)) {
+      const text = await readFile(file, 'utf8');
+      // Only files that actually build a ClawGuard policy. Other types in the
+      // tree carry an unrelated `allowedTools` (role capabilities, expert
+      // config, the Claude CLI --allowedTools flag) that never reaches
+      // checkAccess.
+      if (!text.includes('TaskAccessPolicy')) continue;
+      for (const [i, line] of text.split('\n').entries()) {
+        const m = /^\s*allowedTools:\s*(.+?),?\s*$/.exec(line);
+        if (m === null) continue;
+        const value = m[1] ?? '';
+        const isEmptyOrWildcard = /^(\[\]|'\*')/.test(value);
+        // Type positions and spreads are declarations, not assignments.
+        const isDeclaration = value.startsWith('z.') || value.includes('|');
+        if (!isEmptyOrWildcard && !isDeclaration) {
+          offenders.push(`${file.slice(srcRoot.length + 1)}:${String(i + 1)}: ${line.trim()}`);
+        }
+      }
+    }
+
+    // Guard against the scan silently matching nothing: the known producers
+    // must be found, or this assertion would pass because the walk broke.
+    expect(offenders).toEqual([]);
+  });
+
+  it('finds the known empty-allowlist producers, so the scan above is not vacuous', async () => {
+    const { deriveFallbackPolicy } = await import('./fallback-regex.js');
+
+    const policy = deriveFallbackPolicy(
+      'read the repository and summarise it',
+      'audit',
+      'reachability-hash'
+    );
+
+    expect(policy.allowedTools).toEqual([]);
+  });
+});

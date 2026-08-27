@@ -55,9 +55,13 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
     }
     if (decision.decision === 'unmeasured') {
       // NOT a violation: the allowlist arm never ran, so there is nothing to
-      // record against the #2077 denominator. Logged so the inertness is
-      // visible, and deliberately NOT sent to recordAuditModeViolation (#5022).
-      ctx.logger.debug('access-policy: allowlist unmeasured', {
+      // record against the #2077 denominator, and this is deliberately NOT
+      // sent to recordAuditModeViolation (#5022).
+      //
+      // .info, not .debug: the whole point of an `unmeasured` verdict is that
+      // absence is VISIBLE. At debug level the disclosure exists only in the
+      // source, which is the failure this verdict was introduced to fix.
+      ctx.logger.info('access-policy: allowlist unmeasured', {
         tool: toolName,
         reason: decision.reason,
         policySource: policy.source,
