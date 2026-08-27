@@ -268,9 +268,14 @@ describe('taskAnalysisResultToBanditContext', () => {
   });
 
   it('uses default budget and time pressure when not provided', () => {
+    // #4875: `timePressure` was 0.3 here while every replay path
+    // (`warmStart`/`seedPriors`) and `LinUCBStage` used 0.5. Nothing computes
+    // a time-pressure signal, so the feature is a constant either way — but
+    // two DIFFERENT constants let the bandit use the value as a path
+    // indicator. Neutral, matching the replay paths, is the honest default.
     const ctx = taskAnalysisResultToBanditContext(makeAnalysis());
     expect(ctx.budgetUtilization).toBe(0.5);
-    expect(ctx.timePressure).toBe(0.3);
+    expect(ctx.timePressure).toBe(0.5);
   });
 
   it('uses provided budget and time pressure', () => {
