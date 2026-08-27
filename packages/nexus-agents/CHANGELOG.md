@@ -1,5 +1,79 @@
 # nexus-agents
 
+## 4.26.6
+
+### Patch Changes
+
+- [#5096](https://github.com/nexus-substrate/nexus-agents/pull/5096) [`bee0a95`](https://github.com/nexus-substrate/nexus-agents/commit/bee0a95d98c842b8a0731ead0aaa87f05012fe80) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): the policy audit emit was unreachable for 38 of 44 tools
+
+  `secure-handler.ts:261` records a policy decision only when
+  `config.auditLogger` is present. `buildStandardDeps` gated that logger on
+  `toolName === 'run_dev_pipeline'`, which was correct when [#3710](https://github.com/nexus-substrate/nexus-agents/issues/3710) wrote it — that
+  was then the only tool consuming a durable audit logger.
+
+  [#4987](https://github.com/nexus-substrate/nexus-agents/issues/4987) changed the premise: the MCP `PolicyFirewall` now evaluates rules on
+  **every** tool. The gate was never revisited, so for the 38 tools registered
+  through `standardHandler`, a policy denial could not reach the audit chain — in
+  enforce mode or in warn. Five tools with bespoke registration (`execute_expert`,
+  `consensus_vote`, `pr_review`, `run`, `orchestrate`) already received it.
+
+  The logger is now threaded whenever the server has one. This emits nothing on
+  its own; it makes an existing emit reachable.
+
+  Prerequisite for [#4991](https://github.com/nexus-substrate/nexus-agents/issues/4991) and therefore for [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) — the warn-mode soak that
+  decision rests on could not produce durable evidence while the emit was
+  unreachable for most of the surface.
+
+- [#5098](https://github.com/nexus-substrate/nexus-agents/pull/5098) [`9e092a2`](https://github.com/nexus-substrate/nexus-agents/commit/9e092a2ccf71241c926c326b763d3ace2ca6f206) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(routing): delete seven routing stages that were never constructed
+
+  `BudgetFilterStage`, `LinUCBStage`, `ZeroRouterStage`, `PreferenceStage`,
+  `TopsisRouterStage`, `LatencyStage` and `RoutingPipeline` were instantiated
+  nowhere outside their own factories and their own test files. `CompositeRouter`'s
+  internal pipeline is the canonical routing path and always was: ADR-0005 listed
+  migration to `IRoutingPipeline` as "Optional / Phase 3 – Future" and it was
+  never taken.
+
+  Not a breaking change — none of the seven appears in `api-surface.txt` or is
+  re-exported from `src/index.ts`; they were reachable only through internal
+  barrels. The seven stages that ARE constructed in production are untouched.
+
+  Deleting the producer exposed a consumer that could no longer fire:
+  `ResourceStrategyStage` read a `budget:utilization=` signal whose only emitter
+  was `BudgetFilterStage`. [#4869](https://github.com/nexus-substrate/nexus-agents/issues/4869) had already superseded that channel with typed
+  metadata, so the read is removed and its tests moved to the live channel.
+
+  That leaves the string-prefix signal channel with producers but **no consumers
+  at all**, which `signal-contract.test.ts` now asserts explicitly rather than
+  guarding as impossible — so a future consumer reintroduces itself loudly instead
+  of resurrecting a dead channel by accident.
+
+  `docs/architecture/deprecation-pipeline.md` claimed "Integration with
+  CompositeRouter complete (disabled by default via feature flags)". There were no
+  feature flags, because there was no integration; corrected in place.
+
+  Decided by consensus vote (`higher_order`, supermajority, 6 of 6 approvers).
+  Closes [#4872](https://github.com/nexus-substrate/nexus-agents/issues/4872).
+
+- [#4928](https://github.com/nexus-substrate/nexus-agents/pull/4928) [`773bca6`](https://github.com/nexus-substrate/nexus-agents/commit/773bca6a091d82db60bd663842b63d6339e96979) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop a litellm outage reading as clean pricing
+
+  CI-only. The pricing-drift workflow had no failing path. `check-pricing-drift.ts`
+  exits 0 on every route and says so, so the exit code carried no signal — and
+  the workflow recovered its verdict by scraping `"N field"` out of the report
+  prose with a `|| echo "0"` fallback. A catalog fetch failure prints no report,
+  so it fell through to that fallback and rendered as zero drift. A provider
+  outage and correct pricing produced the same green weekly run.
+
+  The script now prints `PRICING_DRIFT_STATUS=clean|drift|skipped` and
+  `PRICING_DRIFT_COUNT=<n>` on every terminating path, including the top-level
+  error handler, and the workflow defaults the status to `skipped` rather than to
+  a measurement. `check-parameter-drift.ts` already had exactly this shape; this
+  is the same treatment applied to its sibling.
+
+  Two reporting gaps close with it: a skip now emits a loud `::warning::` instead
+  of passing silently, and drift of one to five fields — real drift that sat
+  below the issue threshold and said nothing at all — is now reported without
+  filing an issue.
+
 ## 4.26.5
 
 ### Patch Changes
