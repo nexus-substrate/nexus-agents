@@ -16,7 +16,11 @@
  * version-bearing model-id literals outside this directory, and enforces it in
  * CI and pre-push.
  *
- * Verified against `agy models` on v1.1.9 (2026-08-09).
+ * Verified against `agy models` on v1.1.21 (2026-08-26). `agy models` is once
+ * again enumerable non-interactively — it completed piped in ~1s, exit 0, over
+ * three runs. #4393 recorded it hanging for 90s without a TTY on v1.1.11; that
+ * was an upstream defect and it is fixed. `scripts/check-agy-model-drift.ts`
+ * now compares this list against the live CLI so it cannot silently rot again.
  *
  * @module config/agy-model-map
  */
@@ -39,6 +43,9 @@ import { findCanonicalModel } from './model-config-helpers.js';
  * arms to disambiguate with no consumer asking for them (#4346, 7/0 vote).
  */
 export const AGY_MODEL_SLUGS = [
+  'gemini-3.7-flash-high',
+  'gemini-3.7-flash-medium',
+  'gemini-3.7-flash-low',
   'gemini-3.6-flash-high',
   'gemini-3.6-flash-medium',
   'gemini-3.6-flash-low',

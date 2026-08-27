@@ -47,7 +47,14 @@ export const SELF = 'check-script-wiring.ts';
  * Add an entry only when a script is genuinely meant to be run by hand. An
  * entry without a real reason converts this gate into paperwork.
  */
-export const MANUAL_ONLY: Readonly<Record<string, string>> = {};
+export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  // Requires the `agy` binary, which no CI runner has. Wiring it into a
+  // workflow would make it report `unmeasured` — a failure — on every run, so
+  // it is operator-invoked: `npx tsx scripts/check-agy-model-drift.ts`, and on
+  // each agy upgrade (#5085). Listed rather than silently unwired, because an
+  // unlisted gate nothing runs is what #4553 is about.
+  'check-agy-model-drift.ts': 'needs the agy CLI; not installable on CI runners',
+};
 
 export interface WiringInput {
   /** Basenames of `scripts/check-*.ts`, excluding tests. */
