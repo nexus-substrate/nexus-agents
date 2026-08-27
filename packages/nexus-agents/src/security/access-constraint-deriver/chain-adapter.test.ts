@@ -230,6 +230,23 @@ describe('createAccessPolicyChainMiddleware', () => {
       }
     );
 
+    it('logs the unmeasured verdict — the log IS the disclosure', async () => {
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+      const ctx = makeCtx();
+
+      await withAccessPolicy(policy({ mode: 'enforce', ...empty }), () =>
+        mw({}, ctx, makeHandler())
+      );
+
+      // The verdict ALLOWS the call and records nothing durable, so this line
+      // is the only trace that a check did not run. Without this assertion,
+      // deleting the log leaves the whole suite green.
+      expect(ctx.logger.info).toHaveBeenCalledWith(
+        'access-policy: allowlist unmeasured',
+        expect.objectContaining({ tool: 'exec_shell' })
+      );
+    });
+
     it('does NOT record a violation for a check that never ran', async () => {
       const events: AuditEvent[] = [];
       const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;

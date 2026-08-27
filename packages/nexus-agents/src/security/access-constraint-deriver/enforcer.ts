@@ -19,9 +19,11 @@ import type { AccessDecision, TaskAccessPolicy } from './types.js';
  * Checks a proposed tool call against the unbypassable denylist AND the
  * task's derived access policy.
  *
- * Order of operations (important — the denylist is FIRST and unbypassable):
- * 1. If the tool is on the hardcoded deny-tool list → deny regardless
- *    of policy. This is unbypassable even in `off` mode.
+ * Order of operations (the denylist is FIRST, and wins over the policy):
+ * 1. If the tool is on the hardcoded deny-tool list → deny regardless of what
+ *    the policy says. Note "regardless of the policy", NOT "in every mode":
+ *    the sole production caller returns before `checkAccess` when the mode is
+ *    `off`, so no code path reaches this line in that mode (#5022).
  * 2. If a file-path argument is provided and matches an unbypassable path
  *    pattern (e.g. `~/.ssh/**`, `/etc/shadow`) → deny regardless.
  * 3. Otherwise, fall back to the per-task policy. An empty `allowedTools`

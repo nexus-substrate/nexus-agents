@@ -130,61 +130,110 @@ describe('ClawGuard reachability at inbound MCP dispatch (#5022)', () => {
  * `enforcer.ts` and distinguish "no producer attempted" from "a producer
  * attempted and came back empty".
  */
+/** A site that WRITES `allowedTools`, and whether the value is a bare literal. */
+interface WriteSite {
+  readonly where: string;
+  readonly text: string;
+  readonly literal: boolean;
+}
+
+/**
+ * Classifies one source line. Returns undefined when the line is not a write
+ * to `allowedTools` — a mention inside a message template, a
+ * `matchedRule: 'allowedTools'` string, a read such as
+ * `policy.allowedTools === '*'`, or a Zod/type declaration.
+ */
+function classifyAllowedToolsLine(trimmed: string): { literal: boolean } | undefined {
+  const colon = /^allowedTools:\s*(.+?),?$/.exec(trimmed);
+  const shorthand = /^allowedTools,$/.test(trimmed) || /[{,]\s*allowedTools\s*[,}]/.test(trimmed);
+  const memberAssign = /\.allowedTools\s*=[^=]/.test(trimmed);
+  if (colon === null && !shorthand && !memberAssign) return undefined;
+
+  const value = (colon?.[1] ?? '').trim();
+  // Type positions and Zod schema fields declare the field, not a value.
+  if (colon !== null && /^(z\.|.*\|)/.test(value)) return undefined;
+
+  // A literal `[]` or `'*'` is the only shape meaning "no producer intends an
+  // allowlist". Shorthand (`{ allowedTools, ...rest }`) and post-hoc
+  // assignment (`policy.allowedTools = names`) are deliberately NOT literals:
+  // they are the shapes a real producer would take, and their arrival is
+  // exactly the trigger to revisit the `unmeasured` branch in enforcer.ts.
+  return { literal: colon !== null && /^(\[\]|'\*')$/.test(value) };
+}
+
+async function listSourceFiles(dir: string): Promise<string[]> {
+  const { readdir } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const entries = await readdir(dir, { withFileTypes: true });
+  const out = await Promise.all(
+    entries.map(async (e) => {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) return e.name === 'node_modules' ? [] : listSourceFiles(full);
+      return e.isFile() && e.name.endsWith('.ts') && !e.name.includes('.test.') ? [full] : [];
+    })
+  );
+  return out.flat();
+}
+
+/** Every site that writes `allowedTools`, in files that build a ClawGuard policy. */
+async function scanProducers(): Promise<{ filesScanned: number; sites: WriteSite[] }> {
+  const { readFile } = await import('node:fs/promises');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const sites: WriteSite[] = [];
+  let filesScanned = 0;
+
+  for (const file of await listSourceFiles(srcRoot)) {
+    const text = await readFile(file, 'utf8');
+    // Elsewhere in the tree `allowedTools` belongs to unrelated types — role
+    // capabilities, expert config, the Claude CLI flag — that never reach
+    // checkAccess.
+    if (!text.includes('TaskAccessPolicy')) continue;
+    filesScanned += 1;
+
+    for (const [i, line] of text.split('\n').entries()) {
+      if (!line.includes('allowedTools')) continue;
+      const trimmed = line.trim();
+      const verdict = classifyAllowedToolsLine(trimmed);
+      if (verdict === undefined) continue;
+      sites.push({
+        where: `${file.slice(srcRoot.length + 1)}:${String(i + 1)}`,
+        text: trimmed,
+        literal: verdict.literal,
+      });
+    }
+  }
+  return { filesScanned, sites };
+}
+
 describe('producer contract: nothing intends a real allowlist yet (#5022)', () => {
-  it('has no production site assigning a non-empty allowedTools to a TaskAccessPolicy', async () => {
-    const { readFile, readdir } = await import('node:fs/promises');
-    const { join, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
+  it('finds the known producers, so the scan cannot pass by finding nothing', async () => {
+    const { filesScanned, sites } = await scanProducers();
 
-    const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    // Without these the offender check below is vacuous: rename
+    // TaskAccessPolicy, or let srcRoot resolve one level off, and the filter
+    // matches zero files while the test stays green.
+    expect(filesScanned).toBeGreaterThan(0);
+    expect(sites.length).toBeGreaterThan(0);
 
-    async function walk(dir: string): Promise<string[]> {
-      const entries = await readdir(dir, { withFileTypes: true });
-      const out = await Promise.all(
-        entries.map(async (e) => {
-          const full = join(dir, e.name);
-          if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
-          return e.isFile() && e.name.endsWith('.ts') && !e.name.includes('.test.') ? [full] : [];
-        })
-      );
-      return out.flat();
+    for (const producer of ['deriver.ts', 'llm-deriver.ts', 'fallback-regex.ts']) {
+      expect(sites.some((site) => site.where.includes(producer))).toBe(true);
     }
-
-    const offenders: string[] = [];
-    for (const file of await walk(srcRoot)) {
-      const text = await readFile(file, 'utf8');
-      // Only files that actually build a ClawGuard policy. Other types in the
-      // tree carry an unrelated `allowedTools` (role capabilities, expert
-      // config, the Claude CLI --allowedTools flag) that never reaches
-      // checkAccess.
-      if (!text.includes('TaskAccessPolicy')) continue;
-      for (const [i, line] of text.split('\n').entries()) {
-        const m = /^\s*allowedTools:\s*(.+?),?\s*$/.exec(line);
-        if (m === null) continue;
-        const value = m[1] ?? '';
-        const isEmptyOrWildcard = /^(\[\]|'\*')/.test(value);
-        // Type positions and spreads are declarations, not assignments.
-        const isDeclaration = value.startsWith('z.') || value.includes('|');
-        if (!isEmptyOrWildcard && !isDeclaration) {
-          offenders.push(`${file.slice(srcRoot.length + 1)}:${String(i + 1)}: ${line.trim()}`);
-        }
-      }
-    }
-
-    // Guard against the scan silently matching nothing: the known producers
-    // must be found, or this assertion would pass because the walk broke.
-    expect(offenders).toEqual([]);
   });
 
-  it('finds the known empty-allowlist producers, so the scan above is not vacuous', async () => {
-    const { deriveFallbackPolicy } = await import('./fallback-regex.js');
+  it('has no production site assigning a real allowlist to a TaskAccessPolicy', async () => {
+    const { sites } = await scanProducers();
 
-    const policy = deriveFallbackPolicy(
-      'read the repository and summarise it',
-      'audit',
-      'reachability-hash'
-    );
-
-    expect(policy.allowedTools).toEqual([]);
+    // `unmeasured` is keyed on `allowedTools.length === 0`, which is sound only
+    // while nothing INTENDS a real allowlist — it is fail-open by construction.
+    // Rather than build machinery for a producer that does not exist, this
+    // ratchets the premise: when one lands, this fails and names it, and the
+    // author has to distinguish "no producer attempted" from "a producer
+    // attempted and came back empty".
+    expect(
+      sites.filter((site) => !site.literal).map((site) => `${site.where}: ${site.text}`)
+    ).toEqual([]);
   });
 });
