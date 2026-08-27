@@ -114,6 +114,46 @@ export function selectUnblocked(
   return { unblocked, tracked };
 }
 
+/**
+ * Render one issue title for a table cell (#5088).
+ *
+ * Titles are Tier-3 hostile input — any GitHub user can set one. This is the
+ * only place untrusted text reaches an artifact the workflow writes with
+ * `issues: write`, and this repo's own agents read tracking issues when
+ * choosing work, so an unescaped title is a prompt-injection channel into an
+ * autonomous consumer, not merely a broken table.
+ *
+ * Backtick-wrapped so markdown, links and `@mentions` render inert; internal
+ * backticks and pipes stripped so the cell cannot break out of its column; and
+ * length-capped so one title cannot dominate the report.
+ */
+export function renderTitle(title: string): string {
+  const flattened = title
+    .replace(/[`|\r\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const capped = flattened.length > TITLE_MAX ? `${flattened.slice(0, TITLE_MAX)}…` : flattened;
+  return `\`${capped || '(untitled)'}\``;
+}
+
+/** Longest title rendered into the report. */
+const TITLE_MAX = 120;
+
+/**
+ * Machine-readable first line, so the workflow never has to grep the prose
+ * (#5088).
+ *
+ * The workflow used to branch on `grep -q 'still have an open blocker'` over a
+ * body that also contains attacker-controlled titles — an issue titled
+ * "... all still have an open blocker" put its own row in the unblocked table
+ * AND matched the sentinel, closing the tracking issue with a comment that was
+ * factually false. Untrusted text must not reach control flow.
+ */
+export function statusLine(verdict: UnblockedVerdict): string {
+  if (verdict.unmeasured === true) return 'STATUS: unmeasured';
+  return verdict.unblocked.length > 0 ? 'STATUS: unblocked' : 'STATUS: none';
+}
+
 /** Markdown body for the tracking issue. */
 export function formatReport(verdict: UnblockedVerdict): string {
   if (verdict.unmeasured === true) {
@@ -130,13 +170,13 @@ export function formatReport(verdict: UnblockedVerdict): string {
   const rows = verdict.unblocked
     .map(
       (u) =>
-        `| #${String(u.number)} | ${u.blockers.map((b) => `#${String(b)}`).join(', ')} | ${u.title} |`
+        `| #${String(u.number)} | ${u.blockers.map((b) => `#${String(b)}`).join(', ')} | ${renderTitle(u.title)} |`
     )
     .join('\n');
   return (
     `${String(verdict.unblocked.length)} of ${String(verdict.tracked)} blocked issue(s) ` +
     'now have **every** named blocker closed:\n\n' +
-    '| issue | blockers (all closed) | title |\n| --- | --- | --- |\n' +
+    '| issue | blockers (all closed) | title (copied verbatim from the issue) |\n| --- | --- | --- |\n' +
     `${rows}\n\n` +
     'Each records an unblock trigger in its body — that is the handoff. Pick them up ' +
     'or re-prioritise them explicitly; leaving one here is how #4440 sat ten days ' +
@@ -181,6 +221,7 @@ function readBlockerStates(): (blocker: number) => boolean | undefined {
 
 function main(): void {
   const verdict = selectUnblocked(readIssues(), readBlockerStates());
+  console.log(statusLine(verdict));
   console.log(formatReport(verdict));
   // Advisory by design (#4617): a gate that fails CI because somebody finished
   // a dependency would be hostile. The workflow reads stdout and files the
