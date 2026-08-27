@@ -1,12 +1,18 @@
 /**
  * Access Constraint Deriver — Policy enforcement (#1977, #2279).
  *
- * Pure function that checks a proposed tool call against a derived policy
- * and returns an AccessDecision. Enforcement depends on the policy's mode:
- * - `off` and `audit` never block
- * - `confirm_risky` (#2279) blocks violations on risky tools (write/exec/
- *   network) and log-and-allows violations on read-only tools
- * - `enforce` blocks every violation regardless of risk classification
+ * Pure function that checks a proposed tool call against a derived policy and
+ * returns an AccessDecision.
+ *
+ * ADVISORY SINCE #5106. This function still returns `deny` decisions — it is
+ * the honest verdict for "this call violates the policy" — but its only
+ * production consumer (`chain-adapter.ts`) now reports them and forwards the
+ * call rather than blocking. The mode still selects WHICH violations produce a
+ * deny verdict:
+ * - `off` and `audit` never produce one
+ * - `confirm_risky` (#2279) produces one for risky tools (write/exec/network)
+ *   and a log-and-allow for read-only tools
+ * - `enforce` produces one for every violation regardless of risk
  *
  * @module security/access-constraint-deriver/enforcer
  */

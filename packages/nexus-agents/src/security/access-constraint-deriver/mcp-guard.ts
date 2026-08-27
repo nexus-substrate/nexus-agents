@@ -2,19 +2,17 @@
  * Access Constraint Deriver — MCP tool dispatch guard (#1977 final wiring).
  *
  * Owns the two AsyncLocalStorage channels the guard reads from — the derived
- * `TaskAccessPolicy` and the `AuditTrail` — plus the deny-result formatter.
+ * `TaskAccessPolicy` and the `AuditTrail` — and the durable violation sink.
  * The enforcement middleware itself lives in `chain-adapter.ts`; this module
  * previously carried a second, parallel copy of it (`createAccessPolicyMiddleware`)
  * and a per-call helper (`guardMcpToolCall`), both of which had no production
  * caller and were removed in #5022.
  *
- * Behaviour matrix (as evaluated by `checkAccess`, reached via chain-adapter):
- * - mode=off → no-op pass-through, allows every call
- * - mode=audit (the DEFAULT since v2.50, see config.ts) → checks against the
- *   policy; on violation, logs a warning and still forwards to the handler
- * - mode=confirm_risky → denies violations on risky tools, log-and-allows on
- *   read-only ones
- * - mode=enforce → denies every violation
+ * ADVISORY SINCE #5106 — no mode blocks. The modes select how much is REPORTED:
+ * - mode=off → no-op pass-through, no derivation, no reporting
+ * - mode=audit (the DEFAULT since v2.50, see config.ts) → reports every violation
+ * - mode=confirm_risky → reports risky-tool violations under a distinct rule
+ * - mode=enforce → reports every violation regardless of risk
  *
  * SCOPE (#5022): the denylist in `denylist.ts` runs first WITHIN `checkAccess`,
  * but `checkAccess` is only reached when a policy is in ALS. It is not in scope
@@ -74,6 +72,8 @@ export function recordAuditModeViolation(input: {
   readonly policySource: string;
   readonly mode: string;
   readonly requestId: string;
+  /** Which rule fired, when the verdict names one (#5106). */
+  readonly matchedRule?: string;
 }): void {
   const trail = getActiveAuditTrail();
   if (trail === undefined) return;
@@ -84,6 +84,8 @@ export function recordAuditModeViolation(input: {
       policySource: input.policySource,
       mode: input.mode,
       requestId: input.requestId,
+      // Outside `warning`, so the 500-char cap above cannot eat it.
+      ...(input.matchedRule !== undefined && { matchedRule: input.matchedRule }),
     });
   } catch {
     /* never break log-and-allow (#4097) */

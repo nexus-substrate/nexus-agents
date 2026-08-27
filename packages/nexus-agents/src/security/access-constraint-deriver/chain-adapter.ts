@@ -106,9 +106,16 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
  *  - The durable sink now covers this branch. Previously only log-and-allow
  *    recorded, so the modes that blocked wrote nothing tamper-evident while the
  *    mode that merely observed did (#5101). With no deny branch left, every
- *    verdict that fires is recorded.
- *  - `matchedRule` travels with the record, so a chain reader can tell an
- *    unbypassable denylist hit from an allowlist miss.
+ *    verdict that fires is recorded **when an AuditTrail is established** —
+ *    `recordAuditModeViolation` no-ops without one, and `initializeAuditLogger`
+ *    returns null whenever `security.audit` is omitted from config. On that
+ *    path the warn line fires and the durable record is dropped; that gap is
+ *    #4990, not something this change closes.
+ *  - `matchedRule` is a first-class field on the event, so a chain reader can
+ *    tell an unbypassable denylist hit from an allowlist miss. It used to be
+ *    prose inside `warning`, which is truncated at 500 chars — a long
+ *    attacker-selectable `path` argument pushed the rule off the end. The
+ *    advisory marker now leads the warning for the same reason.
  */
 function reportAdvisoryViolation(
   toolName: string,
@@ -126,9 +133,10 @@ function reportAdvisoryViolation(
   });
   recordAuditModeViolation({
     toolName,
-    warning: `${decision.reason} [advisory: would have denied, rule ${decision.matchedRule}]`,
+    warning: `[advisory: would have denied] ${decision.reason}`,
     policySource: policy.source,
     mode: policy.mode,
     requestId: ctx.requestContext.requestId,
+    matchedRule: decision.matchedRule,
   });
 }

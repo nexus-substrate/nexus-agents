@@ -272,15 +272,66 @@ describe('createAccessPolicyChainMiddleware', () => {
     it('still FIRES the denylist when the allowlist is empty', async () => {
       const mw = createAccessPolicyChainMiddleware('git_push_force');
       const handler = makeHandler();
+      const ctx = makeCtx();
+      const events: AuditEvent[] = [];
+      const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
 
-      const result = await withAccessPolicy(policy({ mode: 'audit', ...empty }), () =>
-        mw({}, makeCtx(), handler)
+      await withAccessPolicy(policy({ mode: 'audit', ...empty }), () =>
+        withAuditTrail(trail, () => mw({}, ctx, handler))
       );
 
       // `unmeasured` must not swallow the denylist, which runs first. Advisory
-      // now, so the evidence is the record rather than the blocked call.
-      expect(result.isError).toBeUndefined();
-      expect(handler).toHaveBeenCalledTimes(1);
+      // now, so the evidence is the RECORD rather than the blocked call — and
+      // it has to be collected, or this asserts only what a pass-through would
+      // also satisfy. `isError === undefined` plus `handler called` is true of
+      // no middleware at all.
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ matchedRule: 'unbypassable:tool' });
+      expect(ctx.logger.warn).toHaveBeenCalledWith(
+        'access-policy: advisory violation',
+        expect.objectContaining({ matchedRule: 'unbypassable:tool' })
+      );
+    });
+  });
+
+  describe('advisory violations are durable (#5106, half of #5101)', () => {
+    // The reachability test also covers this today, but that file inverts to
+    // pin PolicyFirewall when #5107 lands. Without this sibling the durable
+    // write would lose its only guard at exactly that moment.
+    it('writes the would-have-denied verdict to the durable sink', async () => {
+      const events: AuditEvent[] = [];
+      const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
+      const mw = createAccessPolicyChainMiddleware('git_push_force');
+
+      await withAccessPolicy(policy({ mode: 'enforce', allowedTools: '*' }), () =>
+        withAuditTrail(trail, () => mw({}, makeCtx(), makeHandler()))
+      );
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'clawguard_violation',
+        toolName: 'git_push_force',
+        matchedRule: 'unbypassable:tool',
+      });
+    });
+
+    it('keeps matchedRule readable when a long path truncates the warning', async () => {
+      const events: AuditEvent[] = [];
+      const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
+      const mw = createAccessPolicyChainMiddleware('read_file');
+      const longPath = `~/.ssh/${'a'.repeat(600)}`;
+
+      await withAccessPolicy(policy({ mode: 'enforce', allowedTools: ['read_file'] }), () =>
+        withAuditTrail(trail, () => mw({ path: longPath }, makeCtx(), makeHandler()))
+      );
+
+      // `warning` is capped at 500 chars, and the path is attacker-selectable.
+      // Carrying the rule inside that string meant a long enough path pushed it
+      // off the end, leaving a reader unable to tell unbypassable:path from an
+      // ordinary allowlist miss.
+      const event = events[0] as { warning: string; matchedRule?: string };
+      expect(event.warning.length).toBeLessThanOrEqual(500);
+      expect(event.matchedRule).toBe('unbypassable:path');
     });
   });
 
