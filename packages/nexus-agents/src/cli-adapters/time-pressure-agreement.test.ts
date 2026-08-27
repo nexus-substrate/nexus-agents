@@ -56,6 +56,10 @@ describe('timePressure constant agreement (#4875)', () => {
       'cli-adapters/routing/stages/linucb-stage.ts',
       'core/task-analysis/task-profile-adapter.ts',
       'cli-adapters/linucb-bandit.ts',
+      // Re-exports `taskProfileToBanditContext` rather than duplicating it, so
+      // it carries no literal — listed because #4875 describes it as a
+      // parallel builder, and a future edit could make that true.
+      'cli/routing-audit-logic.ts',
     ];
     const offenders: string[] = [];
     for (const rel of roots) {

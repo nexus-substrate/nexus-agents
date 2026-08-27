@@ -144,10 +144,15 @@ describe('routing-audit-logic', () => {
     });
 
     it('should set default time pressure', () => {
+      // #4875: was 0.3. Nothing computes a time-pressure signal, so this stays
+      // a constant — but it must be the SAME constant every builder and replay
+      // path uses, or the bandit can learn the value as a path label. This
+      // module re-exports `taskProfileToBanditContext`, so the offline audit
+      // and the live router are the same function and cannot diverge.
       const profile = analyzeTaskString('Any task');
       const context = taskProfileToBanditContextFromProfile(profile);
 
-      expect(context.timePressure).toBe(0.3);
+      expect(context.timePressure).toBe(0.5);
     });
 
     it('should cap context length at 1.0', () => {
