@@ -75,12 +75,27 @@ describe('routing signal contract (#4836)', () => {
   const consumed = consumedPrefixes(files);
   const produced = producedHeads(files);
 
-  it('finds routing sources, consumers and producers to compare', () => {
+  it('finds routing sources and producers to compare', () => {
     // Guard the guard: an empty side would make the assertion below vacuous,
     // which is the exact defect class this file exists to catch.
     expect(files.length).toBeGreaterThan(5);
-    expect(consumed.size).toBeGreaterThan(0);
     expect(produced.length).toBeGreaterThan(5);
+  });
+
+  it('records that nothing consumes the signal channel any more', () => {
+    // This asserted `consumed.size > 0` until #4872. The last consumer was
+    // `resource-strategy-stage`'s `budget:utilization=` read, whose only
+    // producer was the deleted `BudgetFilterStage` — #4869 had already
+    // superseded that channel with typed metadata.
+    //
+    // So the string-prefix channel now has PRODUCERS BUT NO CONSUMERS: stages
+    // still emit signals onto their own context, and nothing reads them. That
+    // is a coherent end state for #4866 (each stage got a fresh context, so
+    // cross-stage signals never worked), but it means every remaining emit is
+    // exhaust. Asserted explicitly rather than deleted, so a future consumer
+    // reintroduces itself loudly instead of resurrecting a dead channel by
+    // accident. Tracked for removal separately.
+    expect(consumed.size).toBe(0);
   });
 
   it('every consumed signal prefix is emitted by some producer', () => {
