@@ -60,7 +60,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && npx tsx ../../scripts/check-dist-assets.ts",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
