@@ -1,14 +1,23 @@
 /**
  * Access Constraint Deriver — MCP middleware-chain adapter (#1977 activation).
  *
- * Bridges `createAccessPolicyMiddleware` (which returns a generic
- * `Promise<unknown>`-shaped middleware) to the strongly-typed `Middleware`
- * contract used by `mcp/middleware/middleware-chain.ts`.
+ * The only `Middleware`-shaped entry point into the ClawGuard enforcer. It is
+ * mounted into the standard stack (`mcp/middleware/middleware-chain.ts`), so
+ * every tool wrapped via `withMiddleware` passes through it.
  *
- * Mounted into the standard middleware stack so every tool call passes
- * through the ClawGuard enforcer. When no orchestrator has wrapped the
- * call with `withAccessPolicy(...)`, this adapter is a no-op pass-through
- * — runtime behavior is unchanged for callers that don't set up a policy.
+ * KNOWN GAP — the policy is not in scope here (#5022). The enforcer reads its
+ * `TaskAccessPolicy` from `AsyncLocalStorage`, and the only two production
+ * callers of `withAccessPolicy` wrap in-process orchestrator/expert execution
+ * (`mcp/tools/orchestrate.ts`, `mcp/tools/execute-expert.ts`). An inbound MCP
+ * request handled by the SDK transport is a SIBLING async context, never a
+ * descendant of one of those `run()` calls, so `getActivePolicy()` returns
+ * undefined and this adapter is a pass-through for every real dispatch.
+ *
+ * That is a boundary question, not a bug to patch here: either the policy is
+ * established at inbound dispatch, or the enforcer belongs at the agent
+ * tool-call seam where its per-objective policy actually has scope. #5022
+ * holds the decision; `access-policy-reachability.test.ts` pins the current
+ * behaviour so it cannot change without that decision being made.
  *
  * @module security/access-constraint-deriver/chain-adapter
  */
@@ -29,7 +38,8 @@ function toGuardArgs(args: unknown): GuardArgs | undefined {
  * Builds a middleware-chain-compatible access-policy middleware for
  * `toolName`. Reads the active `TaskAccessPolicy` from `AsyncLocalStorage`
  * (populated by `withAccessPolicy`). When no policy is active OR the
- * policy is in `off` mode, the middleware is a no-op pass-through.
+ * policy is in `off` mode, the middleware is a no-op pass-through — see the
+ * module note on why that is every inbound dispatch today.
  */
 export function createAccessPolicyChainMiddleware(toolName: string): Middleware {
   return async (args, ctx, next) => {
@@ -41,6 +51,23 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
     const decision = checkAccess(toolName, policy, toGuardArgs(args));
 
     if (decision.decision === 'allow') {
+      return next(args, ctx);
+    }
+    if (decision.decision === 'unmeasured') {
+      // NOT a violation: the allowlist arm never ran, so there is nothing to
+      // record against the #2077 denominator, and this is deliberately NOT
+      // sent to recordAuditModeViolation (#5022).
+      //
+      // .info, not .debug: the whole point of an `unmeasured` verdict is that
+      // absence is VISIBLE. At debug level the disclosure exists only in the
+      // source, which is the failure this verdict was introduced to fix.
+      ctx.logger.info('access-policy: allowlist unmeasured', {
+        tool: toolName,
+        reason: decision.reason,
+        policySource: policy.source,
+        mode: policy.mode,
+        requestId: ctx.requestContext.requestId,
+      });
       return next(args, ctx);
     }
     if (decision.decision === 'log-and-allow') {
@@ -59,7 +86,9 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
       });
       return next(args, ctx);
     }
-    ctx.logger.info('access-policy: tool call denied', {
+    // .warn, not .info: a denial must not be logged BELOW an audit-mode
+    // observation, which uses .warn above (#5022).
+    ctx.logger.warn('access-policy: tool call denied', {
       tool: toolName,
       reason: decision.reason,
       matchedRule: decision.matchedRule,
