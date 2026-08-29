@@ -90,7 +90,12 @@ function resolveExecutionEngineOrError(
   workflowName: string
 ): Result<IWorkflowEngine, WorkflowError> {
   try {
-    return { ok: true, value: deps.resolveExecutionEngine() };
+    // Falls back to the caller's own engine when unset — correct for an
+    // external caller whose single engine serves both listing and execution
+    // (unanimous panel, PR #5133). The production registration always supplies
+    // it, asserted in cli-server-tools-workflow-seam.test.ts.
+    const resolve = deps.resolveExecutionEngine ?? ((): IWorkflowEngine => deps.workflowEngine);
+    return { ok: true, value: resolve() };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     deps.logger?.error(

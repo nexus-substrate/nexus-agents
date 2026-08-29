@@ -1,13 +1,19 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 fix(mcp): stop run_workflow reporting success for steps that never ran
 
-When no model adapter resolved, the server silently opted the workflow engine
-into mock execution, and `run_workflow` returned `status: 'success'` with
-"Executed step X with action Y" for every step. A fresh install with no API key
-reported every workflow as succeeding.
+When no model adapter resolved, the workflow engine was silently opted into mock
+execution, and `run_workflow` returned `status: 'success'` with "Executed step X
+with action Y" for every step — an unexecuted workflow reported as succeeding.
+
+Scope, corrected after review: `--mode=server` was NOT affected.
+`resolveDefaultModelAdapter` returns a non-optional adapter, so the fallback was
+unreachable there. It bites embedders that call `registerMcpTools` or
+`registerRunWorkflowTool` without a `modelAdapter` — which is exactly what the
+new seam test exercises. An earlier draft of this changeset claimed a fresh
+install with no API key was affected; that was wrong.
 
 Fixed by splitting the engine along its actual capability boundary, per a 6/6
 panel decision (#5116). Enumerating templates needs no model adapter;
@@ -24,3 +30,10 @@ let a future call site silently inherit the listing engine and execute against
 its unreachable mock executor — the exact defect being fixed.
 
 The #507 contract and its five construction-throw tests are unchanged.
+
+Released as a **minor**: `RunWorkflowDeps` gains an optional `resolveExecutionEngine`,
+and the API-surface gate classifies an additive optional field as minor for readers.
+It was briefly required — which is how the compiler enumerated all eight internal call
+sites — but a unanimous panel chose optional-with-default, because keeping it required
+would make a publicly exported type breaking and gate a p1 correctness fix behind a
+major version.

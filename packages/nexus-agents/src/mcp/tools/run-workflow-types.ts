@@ -137,16 +137,26 @@ export interface RunWorkflowDeps extends BaseMcpToolDeps {
   /**
    * Resolves the engine that actually EXECUTES, at call time (#5116).
    *
-   * Required rather than optional, and a thunk rather than a value, for two
-   * reasons. A thunk, because constructing an executing engine throws
+   * A THUNK rather than a value because constructing an executing engine throws
    * `WorkflowExecutionUnavailableError` under the #507 fail-safe when nothing
-   * can execute for real — and doing that eagerly at tool registration killed
-   * the whole server, all 47 tools, over one unconfigured adapter. Required,
-   * because an optional field with a fallback would let a future call site
-   * silently inherit the listing engine and execute against its unreachable
-   * mock executor, which is the exact defect being fixed.
+   * can execute for real — doing that eagerly at tool registration killed the
+   * whole server, all 47 tools, over one unconfigured adapter.
+   *
+   * OPTIONAL rather than required, by unanimous panel decision. It was briefly
+   * required, which is how all eight internal call sites were enumerated by the
+   * compiler — that value is already banked. Keeping it required would make
+   * this a breaking change to a publicly exported type (`exports/mcp.ts`) and
+   * gate a p1 correctness fix behind a major version.
+   *
+   * Defaulting to `workflowEngine` is semantically correct for an external
+   * caller, not merely compile-compatible: their single engine genuinely serves
+   * both listing and execution, so the fallback preserves exactly what they had.
+   * The residual hazard — a future INTERNAL call site omitting this and
+   * executing against a listing engine — is covered two ways: a test asserting
+   * the production registration supplies it, and the listing engine failing
+   * closed rather than returning a fabricated success.
    */
-  resolveExecutionEngine: () => IWorkflowEngine;
+  resolveExecutionEngine?: (() => IWorkflowEngine) | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

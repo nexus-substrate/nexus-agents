@@ -19,6 +19,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { registerMcpTools, type RegisterMcpToolsOptions } from './cli-server-tools.js';
 import type { ILogger } from './core/index.js';
 import type { WorkflowDefinition } from './core/index.js';
+import { deriveWorkflowStatus } from './mcp/tools/run-workflow-helpers.js';
 
 /**
  * A real, resolvable template. An EMPTY template map made the fabricated-success
@@ -120,12 +121,52 @@ describe('registerMcpTools → run_workflow, no model adapter (#5116)', () => {
       content?: Array<{ text?: string }>;
     };
 
-    // The defect: a mock executor returned status:'success' with
-    // "Executed step X with action Y" for every step, so a caller branching on
-    // status could not tell a real run from a no-op. The honest outcomes are an
-    // error, or a result that does not claim success — never a success naming
-    // steps that never ran.
+    // Assert on the OUTCOME, not on a message string. An earlier version of
+    // this test checked that the response did not contain "Executed step" —
+    // and it stopped catching the bug the moment the mock executor's message
+    // changed, even with the defect fully restored. Two fixes in one branch
+    // masked each other's test.
+    //
+    // The durable contract: a server that cannot execute must not return a
+    // non-error result for a run request. Whether it says "no adapter" or
+    // anything else is presentation; claiming a run happened is the defect.
     const text = result.content?.map((c) => c.text ?? '').join(' ') ?? '';
-    expect(text).not.toContain('Executed step');
+    expect(result.isError).toBe(true);
+    expect(text.toLowerCase()).toContain('cannot execute');
+    // Also assert the AGGREGATE, because the step-level fix moved the lie up a
+    // level once: all-skipped steps aggregated to "status": "completed".
+    expect(text).not.toContain('"status": "completed"');
+  });
+
+  it('the production registration supplies resolveExecutionEngine', async () => {
+    // The optional field's JSDoc claims this test exists. It did not, until an
+    // adversarial review pointed out the comment asserted a mitigation that was
+    // never written — a claim in a doc comment is not a guarantee.
+    //
+    // Behavioural rather than structural: if the production registration ever
+    // omits the resolver, run_workflow falls back to the LISTING engine, whose
+    // executor does not run steps — so this returns a non-error result instead
+    // of the honest failure.
+    const { captured } = registerWithoutAdapter();
+    const runWorkflow = captured.find((t) => t.name === 'run_workflow');
+
+    const result = (await runWorkflow?.callback({ template: 'seam-probe', inputs: {} }, {})) as {
+      isError?: boolean;
+    };
+
+    expect(result.isError).toBe(true);
+  });
+
+  it('does not aggregate all-skipped steps into a completed workflow', () => {
+    // The step-level honesty fix ('success' -> 'skipped' for unexecuted steps)
+    // moved the fabricated success up a level: deriveWorkflowStatus returned
+    // 'completed' whenever nothing had FAILED, which is true of an all-skipped
+    // run. Pinned here because the two fixes masked each other once already.
+    expect(deriveWorkflowStatus([{ status: 'skipped' }])).toBe('failed');
+    expect(deriveWorkflowStatus([{ status: 'skipped' }, { status: 'skipped' }])).toBe('failed');
+    expect(deriveWorkflowStatus([{ status: 'success' }])).toBe('completed');
+    expect(deriveWorkflowStatus([{ status: 'success' }, { status: 'failed' }])).toBe('failed');
+    // The empty case, named explicitly per the disciplines rule.
+    expect(deriveWorkflowStatus([])).toBe('failed');
   });
 });
