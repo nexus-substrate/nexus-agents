@@ -53,11 +53,16 @@ let testDir: string;
 beforeEach(() => {
   testDir = fs.mkdtempSync(path.join('/tmp', 'nexus-catalog-test-'));
   mocks.setTestHomedir(testDir);
+  // The homedir mock is not enough on its own: `NEXUS_DATA_DIR` outranks the
+  // homedir branch of the resolver, so with it set every test here shared one
+  // catalog file and entries accumulated across them (#4722).
+  vi.stubEnv('NEXUS_DATA_DIR', path.join(testDir, '.nexus-agents'));
   resetAutoCatalog();
 });
 
 afterEach(() => {
   resetAutoCatalog();
+  vi.unstubAllEnvs();
   if (fs.existsSync(testDir)) {
     fs.rmSync(testDir, { recursive: true });
   }

@@ -17,6 +17,7 @@ describe('initDataDirectories (#1249)', () => {
   let dataDirPath: string;
   let originalRepoPreferred: string | undefined;
   let originalGitignoreAuto: string | undefined;
+  let originalDataDir: string | undefined;
 
   beforeEach(async () => {
     // Import after mock is in place
@@ -32,6 +33,12 @@ describe('initDataDirectories (#1249)', () => {
     originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
     process.env['NEXUS_REPO_PREFERRED'] = '0';
     process.env['NEXUS_GITIGNORE_AUTO'] = '0';
+    // These tests exercise the HOMEDIR branch of the resolver, and reach it by
+    // mocking `homedir()`. `NEXUS_DATA_DIR` outranks that branch, so leaving it
+    // set sends every assertion to a directory the mock does not control —
+    // which is why the suite could not isolate itself without this (#4722).
+    originalDataDir = process.env['NEXUS_DATA_DIR'];
+    delete process.env['NEXUS_DATA_DIR'];
   });
 
   afterEach(() => {
@@ -39,6 +46,8 @@ describe('initDataDirectories (#1249)', () => {
     else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
     if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
     else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
     if (existsSync(dataDirPath)) {
       rmSync(dataDirPath, { recursive: true, force: true });
     }

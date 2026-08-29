@@ -41,10 +41,28 @@ describe('handler-utils', () => {
   });
 
   describe('getNexusDataDir', () => {
-    it('should return nexus-agents data directory', () => {
-      const result = getNexusDataDir();
+    it('falls back to the homedir when NEXUS_DATA_DIR is unset', () => {
+      // Asserted with the override explicitly cleared. Without that the test
+      // states the homedir branch while measuring whatever the environment
+      // happens to hold — it failed the moment the suite set NEXUS_DATA_DIR
+      // to isolate itself (#4722).
+      vi.stubEnv('NEXUS_DATA_DIR', undefined);
+      try {
+        expect(getNexusDataDir()).toBe(join(homedir(), '.nexus-agents'));
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
 
-      expect(result).toBe(join(homedir(), '.nexus-agents'));
+    it('honors NEXUS_DATA_DIR when it is set', () => {
+      // The pair, and a branch that had no test at all: the override is
+      // documented in CLAUDE.md and nothing pinned that it is read here.
+      vi.stubEnv('NEXUS_DATA_DIR', '/tmp/nexus-override-probe');
+      try {
+        expect(getNexusDataDir()).toBe('/tmp/nexus-override-probe');
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 
