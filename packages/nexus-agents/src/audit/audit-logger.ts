@@ -96,6 +96,19 @@ function computeEventHash(event: AuditEvent): string {
  * Discriminated result from `verifyChain()`. Either the chain validates cleanly,
  * or one of three named tampering signals fires at a specific event index.
  */
+/**
+ * How much of a log a {@link ChainVerification} actually covers (#4805).
+ *
+ * `skipped: 0` is a positive statement of full coverage, distinct from an
+ * absent `coverage`, which means nobody said.
+ */
+export interface ChainCoverage {
+  /** Lines the loader saw that never became events. */
+  readonly skipped: number;
+  /** Files the loader could not read at all. */
+  readonly unreadableFiles: number;
+}
+
 export type ChainVerification =
   | {
       ok: true;
@@ -122,6 +135,26 @@ export type ChainVerification =
        * "default reported as a measurement" shape the mission text rules out.
        */
       notVerified?: 'empty' | 'unchained';
+      /**
+       * Set when the verdict covers only PART of the log it was asked about
+       * (#4805, panel Option A 4-1).
+       *
+       * A different axis from {@link notVerified}, which says nothing was
+       * verified. Here real links WERE checked — just not over every line the
+       * loader saw. `skipped` counts the lines that never became events
+       * (unparseable, schema-rejected, or in a file that could not be read).
+       *
+       * The tool reports coverage as sibling fields too, but this type is the
+       * evidence artifact: it is serialized, persisted, and passed around
+       * without its siblings, and the doctrine is that provenance travels WITH
+       * the evidence rather than beside it.
+       *
+       * Absent means coverage is UNKNOWN, not complete — the verifier is given
+       * only the events, so a caller that did not supply coverage cannot be
+       * reported as having full coverage. {@link withCoverage} is how a caller
+       * that knows says so, including saying "nothing was skipped".
+       */
+      coverage?: ChainCoverage;
     }
   | {
       ok: false;
@@ -184,6 +217,21 @@ function verifyEvent(
  * @param events - Sequence of AuditEvent in append order
  * @returns ChainVerification result
  */
+/**
+ * Attach coverage to a passing verdict — the caller that read the log is the
+ * only one who knows what it skipped (#4805).
+ *
+ * A failing verdict is returned unchanged: it already names a specific event
+ * index, and coverage does not qualify a detected break.
+ */
+export function withCoverage(
+  verification: ChainVerification,
+  coverage: ChainCoverage
+): ChainVerification {
+  if (!verification.ok) return verification;
+  return { ...verification, coverage };
+}
+
 export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
   // Both early exits below are honest `ok: true` verdicts — there is nothing to
   // contradict — but neither verified anything, so they say so. #4768: an empty

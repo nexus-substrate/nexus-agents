@@ -187,6 +187,36 @@ describe('verify_audit_chain handler behavior', () => {
       expect(body.verification.ok).toBe(true);
     });
 
+    it('states the partial read on the verdict itself, not only beside it (#4805)', async () => {
+      // The sibling `skippedLines` above is read only by a caller who knows to
+      // look. `ChainVerification` is the artifact that gets serialized and
+      // passed on alone, so the coverage has to travel with it. Panel Option A,
+      // 4-1.
+      const good = chain(3).map((e) => JSON.stringify(e));
+      fs.writeFileSync(
+        path.join(tmpDir, 'audit-2026-04-28-12-00-00.jsonl'),
+        [good[0]!, 'not json at all', good[1]!, '{"id":"x"}', good[2]!].join('\n') + '\n'
+      );
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.verification.ok).toBe(true);
+      if (!body.verification.ok) return;
+      expect(body.verification.coverage).toEqual({ skipped: 2, unreadableFiles: 0 });
+    });
+
+    it('states full coverage positively when nothing was skipped (#4805)', async () => {
+      // The pair. A tool that hardcoded `skipped: 0` would satisfy nothing
+      // above and everything here, so both directions are needed.
+      writeAuditFile('audit-2026-04-28-12-00-00.jsonl', chain(3));
+
+      const body = await callHandler(tmpDir);
+
+      expect(body.verification.ok).toBe(true);
+      if (!body.verification.ok) return;
+      expect(body.verification.coverage).toEqual({ skipped: 0, unreadableFiles: 0 });
+    });
+
     it('omits the count when nothing was skipped, so absence stays meaningful', async () => {
       writeAuditFile('audit-2026-04-28-12-00-00.jsonl', chain(3));
 

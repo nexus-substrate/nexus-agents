@@ -29,7 +29,7 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { verifyChain, type ChainVerification } from '../../audit/audit-logger.js';
+import { verifyChain, withCoverage, type ChainVerification } from '../../audit/audit-logger.js';
 import { AuditEventSchema, type AuditEvent } from '../../audit/audit-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
@@ -157,7 +157,12 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
     resolvedDir,
     ctx.logger
   );
-  const verification = verifyChain(events);
+  // The loader is the only party that knows what was skipped, so it is the one
+  // that can state coverage on the verdict itself (#4805).
+  const verification = withCoverage(verifyChain(events), {
+    skipped: skippedLines,
+    unreadableFiles,
+  });
 
   // Omitted when zero so absence means full coverage rather than "unreported".
   const response: VerifyAuditChainResponse = {
