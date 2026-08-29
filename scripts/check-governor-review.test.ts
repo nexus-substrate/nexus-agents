@@ -225,6 +225,63 @@ describe('analyzeGovernorReview — binding conditions', () => {
     if (outcome.kind === 'fail') expect(outcome.message).toContain('sequence_gap');
   });
 
+  it('(v1) FAILS when the diff-bound record REQUESTED CHANGES', () => {
+    // The gate returned pass on record EXISTENCE and never read the verdict —
+    // it even interpolated `verdict=request_changes` into the pass reason. A
+    // reviewer who explicitly refused a governor-path change satisfied the
+    // gate that exists to require review.
+    const outcome = analyzeGovernorReview(
+      inputs({ records: [record({ verdict: 'request_changes' })] })
+    );
+
+    expect(outcome.kind).toBe('fail');
+    if (outcome.kind === 'fail') expect(outcome.message).toContain('request_changes');
+  });
+
+  it('(v2) WARNS on an abstain record — nothing affirmed, nothing refused', () => {
+    // Abstain carries no signal either way, so it sits with absence under the
+    // warn-first posture rather than blocking ahead of the #4058 flip.
+    const outcome = analyzeGovernorReview(inputs({ records: [record({ verdict: 'abstain' })] }));
+
+    expect(outcome.kind).toBe('warn');
+  });
+
+  it('(v3) still PASSES an approve record', () => {
+    // The pair. Failing every verdict would satisfy v1 and v2 and block all
+    // governor-path work.
+    expect(analyzeGovernorReview(inputs({ records: [record()] })).kind).toBe('pass');
+  });
+
+  it('(v4) a request_changes is not shadowed by an earlier approve on the same diff', () => {
+    // `records.find(...)` returned the FIRST match in an append-only ledger,
+    // so the EARLIEST review for a diff won and every later one was ignored.
+    // Two reviewers on the identical diff — one approves, one then refuses —
+    // and the gate reported pass. Verdicts are now aggregated, refusal wins.
+    const approved = record({ sequence: 0 });
+    const refused = record({ sequence: 1, verdict: 'request_changes' });
+
+    const outcome = analyzeGovernorReview(inputs({ records: [approved, refused] }));
+
+    expect(outcome.kind).toBe('fail');
+  });
+
+  it('(v5) order does not decide the outcome', () => {
+    // The same two records the other way round must give the same verdict, or
+    // the gate is deciding on ledger position rather than on review content.
+    const refused = record({ sequence: 0, verdict: 'request_changes' });
+    const approved = record({ sequence: 1 });
+
+    expect(analyzeGovernorReview(inputs({ records: [refused, approved] })).kind).toBe('fail');
+  });
+
+  it('(v6) an abstain alongside an approve still passes', () => {
+    // Aggregation must not turn a non-signal into a blocker.
+    const approved = record({ sequence: 0 });
+    const abstained = record({ sequence: 1, verdict: 'abstain' });
+
+    expect(analyzeGovernorReview(inputs({ records: [approved, abstained] })).kind).toBe('pass');
+  });
+
   it('(e) PASSES a genesis-exempt PR even with no record', () => {
     const outcome = analyzeGovernorReview(
       inputs({ records: [], genesisExemptPrs: new Set([5000]) })
