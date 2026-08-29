@@ -142,3 +142,35 @@ describe('research_query tool', () => {
     });
   });
 });
+
+describe('outputSchema declares every key ResearchQueryResponse returns (#5141)', () => {
+  /**
+   * The round-trip check in mcp-standalone-tools.test.ts cannot catch a gap
+   * here. It calls `research_query` once, with `action: 'stats'` — an action
+   * that never sets `rejectionNotice`. The field is only populated by
+   * `handleStatus`/`handleOverlap` when the technique carries a recorded
+   * rejection (#4555), so the defect was DATA-dependent and invisible to a
+   * single fixed call.
+   *
+   * This pins the property with no data and no action branch: the declared key
+   * set must equal ResearchQueryResponse's. Same guard shape as
+   * research-synthesize.test.ts (#5134).
+   */
+  const RESPONSE_KEYS = ['action', 'data', 'rejectionNotice', 'success'] as const;
+
+  it('declares exactly the keys ResearchQueryResponse carries', () => {
+    const server = { registerTool: vi.fn() };
+    registerResearchQueryTool(
+      server as unknown as Parameters<typeof registerResearchQueryTool>[0],
+      {} as Parameters<typeof registerResearchQueryTool>[1]
+    );
+
+    const call = server.registerTool.mock.calls[0] as unknown[];
+    const meta = call[1] as { outputSchema?: Record<string, unknown> };
+    const declared = Object.keys(meta.outputSchema ?? {}).sort();
+
+    // Both directions: undeclared-but-returned is the -32602; declared-but-never
+    // -returned is a claim nothing supports.
+    expect(declared).toEqual([...RESPONSE_KEYS]);
+  });
+});
