@@ -125,7 +125,38 @@ export interface DryRunResult {
  * Dependencies required by the run_workflow tool.
  */
 export interface RunWorkflowDeps extends BaseMcpToolDeps {
+  /**
+   * Engine used to ENUMERATE and load templates — `listTemplates`,
+   * `getTemplateByName`, `loadTemplate`. Never used to execute.
+   *
+   * Listing needs no model adapter, so this engine is constructible on a fresh
+   * install with no credentials. That is the capability split #5116 turns on:
+   * enumerating workflows and running them have different prerequisites.
+   */
   workflowEngine: IWorkflowEngine;
+  /**
+   * Resolves the engine that actually EXECUTES, at call time (#5116).
+   *
+   * A THUNK rather than a value because constructing an executing engine throws
+   * `WorkflowExecutionUnavailableError` under the #507 fail-safe when nothing
+   * can execute for real — doing that eagerly at tool registration killed the
+   * whole server, all 47 tools, over one unconfigured adapter.
+   *
+   * OPTIONAL rather than required, by unanimous panel decision. It was briefly
+   * required, which is how all eight internal call sites were enumerated by the
+   * compiler — that value is already banked. Keeping it required would make
+   * this a breaking change to a publicly exported type (`exports/mcp.ts`) and
+   * gate a p1 correctness fix behind a major version.
+   *
+   * Defaulting to `workflowEngine` is semantically correct for an external
+   * caller, not merely compile-compatible: their single engine genuinely serves
+   * both listing and execution, so the fallback preserves exactly what they had.
+   * The residual hazard — a future INTERNAL call site omitting this and
+   * executing against a listing engine — is covered two ways: a test asserting
+   * the production registration supplies it, and the listing engine failing
+   * closed rather than returning a fabricated success.
+   */
+  resolveExecutionEngine?: (() => IWorkflowEngine) | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

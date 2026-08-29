@@ -458,6 +458,8 @@ describe('Path Traversal Prevention - Run Workflow Helpers', () => {
     it('should always include built-in templates directory', () => {
       const deps = {
         workflowEngine: {} as RunWorkflowDeps['workflowEngine'],
+        resolveExecutionEngine: (): RunWorkflowDeps['workflowEngine'] =>
+          ({}) as RunWorkflowDeps['workflowEngine'],
         rateLimiter: {} as RunWorkflowDeps['rateLimiter'],
       };
 
@@ -471,6 +473,8 @@ describe('Path Traversal Prevention - Run Workflow Helpers', () => {
     it('should include security config allowedPaths', () => {
       const deps = {
         workflowEngine: {} as RunWorkflowDeps['workflowEngine'],
+        resolveExecutionEngine: (): RunWorkflowDeps['workflowEngine'] =>
+          ({}) as RunWorkflowDeps['workflowEngine'],
         rateLimiter: {} as RunWorkflowDeps['rateLimiter'],
         security: {
           allowedPaths: ['/custom/workflows', '/another/path'],
@@ -488,6 +492,8 @@ describe('Path Traversal Prevention - Run Workflow Helpers', () => {
     it('should fall back to cwd when no explicit paths configured', () => {
       const deps = {
         workflowEngine: {} as RunWorkflowDeps['workflowEngine'],
+        resolveExecutionEngine: (): RunWorkflowDeps['workflowEngine'] =>
+          ({}) as RunWorkflowDeps['workflowEngine'],
         rateLimiter: {} as RunWorkflowDeps['rateLimiter'],
         security: undefined,
       };

@@ -94,11 +94,15 @@ function createSimpleStepResult(step: CoreWorkflowStep, startTime: number): Step
     output: {
       action: step.action,
       agent: step.agent,
-      message: `Executed step ${step.id} with action ${step.action}`,
-      mock: true, // Indicates this was mock execution, not real
+      message: `Step ${step.id} was NOT executed (mock executor)`,
+      mock: true,
     },
     durationMs: getTimeProvider().now() - startTime,
-    status: 'success',
+    // 'skipped', not 'success' (#5116). A step that did not run did not
+    // succeed, and `status` is the field a caller branches on — the `mock: true`
+    // marker sits a level down in `output`, where nobody checking status looks.
+    // This was the whole shape of the bug: unexecuted work reported as done.
+    status: 'skipped',
   };
 }
 
@@ -346,11 +350,15 @@ function resolveStepExecutor(
 ): (step: CoreWorkflowStep, ctx: ParallelContext) => Promise<StepResult> {
   const { logger, expertFactory, workflowId, useMockExecutor } = options;
 
-  // Explicit mock execution requested - allow it with warning
+  // Mock execution requested. Logged at DEBUG, not WARN (#5116): the listing
+  // engine sets this flag on every correctly-configured server, because it must
+  // be constructible without an adapter and never executes. Warning there made
+  // an operator grepping production logs conclude their workflows were mocked.
+  //
+  // Steps from this executor report `status: 'skipped'`, not 'success' — the
+  // caller-visible signal, which is stronger than a log line either way.
   if (useMockExecutor === true) {
-    logger.warn(
-      'useMockExecutor enabled; workflow steps will return mock results (NOT RECOMMENDED)'
-    );
+    logger.debug('Mock step executor installed; steps will report skipped, not executed');
     return createMockStepExecutor(logger);
   }
 

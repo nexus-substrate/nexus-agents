@@ -77,6 +77,40 @@ export {
 export type { ToolResponse, InputValidationResult } from './run-workflow-helpers.js';
 
 /**
+ * Resolves the EXECUTING engine, converting the #507 fail-safe into a Result (#5116).
+ *
+ * Extracted as its own function because it is a distinct responsibility —
+ * turning a construction-time throw into a caller-facing error — not because
+ * `executeWorkflow` was over a line cap. #5129 records that this repo has 46
+ * helper files imported only by their own parent, created to satisfy that cap
+ * rather than to separate anything.
+ */
+function resolveExecutionEngineOrError(
+  deps: RunWorkflowDeps,
+  workflowName: string
+): Result<IWorkflowEngine, WorkflowError> {
+  try {
+    // Falls back to the caller's own engine when unset — correct for an
+    // external caller whose single engine serves both listing and execution
+    // (unanimous panel, PR #5133). The production registration always supplies
+    // it, asserted in cli-server-tools-workflow-seam.test.ts.
+    const resolve = deps.resolveExecutionEngine ?? ((): IWorkflowEngine => deps.workflowEngine);
+    return { ok: true, value: resolve() };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.logger?.error(
+      'Workflow execution unavailable',
+      error instanceof Error ? error : undefined,
+      { workflowName }
+    );
+    return {
+      ok: false,
+      error: new WorkflowError(`Cannot execute workflow "${workflowName}": ${message}`),
+    };
+  }
+}
+
+/**
  * Execute workflow and convert result.
  *
  * @param deps - Tool dependencies
@@ -90,7 +124,11 @@ async function executeWorkflow(
   inputs: Record<string, unknown>,
   options?: { phaseTimeoutMs?: number }
 ): Promise<Result<WorkflowToolResult, WorkflowError>> {
-  const { workflowEngine, logger } = deps;
+  const { logger } = deps;
+
+  const engineOrError = resolveExecutionEngineOrError(deps, workflow.name);
+  if (!engineOrError.ok) return engineOrError;
+  const executionEngine = engineOrError.value;
 
   logger?.info('Executing workflow', {
     workflowName: workflow.name,
@@ -105,8 +143,8 @@ async function executeWorkflow(
   // `undefined` as a third arg).
   const result =
     options?.phaseTimeoutMs !== undefined
-      ? await workflowEngine.execute(workflow, inputs, { phaseTimeoutMs: options.phaseTimeoutMs })
-      : await workflowEngine.execute(workflow, inputs);
+      ? await executionEngine.execute(workflow, inputs, { phaseTimeoutMs: options.phaseTimeoutMs })
+      : await executionEngine.execute(workflow, inputs);
 
   if (!result.ok) {
     logger?.error('Workflow execution failed', result.error, {

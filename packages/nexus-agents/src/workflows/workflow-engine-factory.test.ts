@@ -459,7 +459,10 @@ steps:
         const firstResult = result.value[0];
         expect(firstResult).toBeDefined();
         if (firstResult) {
-          expect(firstResult.status).toBe('success');
+          // 'skipped', not 'success' (#5116). The mock executor does not run
+          // the step, and this assertion previously certified the opposite —
+          // it is the test that made the fabricated-success bug look intended.
+          expect(firstResult.status).toBe('skipped');
         }
       }
     });

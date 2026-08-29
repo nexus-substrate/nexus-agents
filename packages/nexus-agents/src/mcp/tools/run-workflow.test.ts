@@ -274,7 +274,12 @@ describe('registerRunWorkflowTool', () => {
     mockServer = createMockServer();
     mockEngine = createMockWorkflowEngine();
     mockLogger = createMockLogger();
-    deps = { workflowEngine: mockEngine, logger: mockLogger, rateLimiter: createTestRateLimiter() };
+    deps = {
+      workflowEngine: mockEngine,
+      resolveExecutionEngine: () => mockEngine,
+      logger: mockLogger,
+      rateLimiter: createTestRateLimiter(),
+    };
   });
 
   it('should register the run_workflow tool', () => {
@@ -330,6 +335,7 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine();
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
@@ -389,6 +395,7 @@ describe('run_workflow tool execution', () => {
       });
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
@@ -413,6 +420,7 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine();
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
@@ -478,6 +486,7 @@ describe('run_workflow tool execution', () => {
       });
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
@@ -518,6 +527,7 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine();
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
         // Configure security to allow test paths (Issue #353)
@@ -571,6 +581,7 @@ describe('run_workflow tool execution', () => {
       });
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
         // Configure security to allow test paths (Issue #353)
@@ -611,6 +622,7 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine();
       deps = {
         workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
@@ -641,7 +653,11 @@ describe('run_workflow tool execution', () => {
   describe('without logger', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine, rateLimiter: createTestRateLimiter() };
+      deps = {
+        workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps

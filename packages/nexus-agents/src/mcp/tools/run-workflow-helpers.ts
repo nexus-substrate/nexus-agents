@@ -128,7 +128,18 @@ export function deriveWorkflowStatus(
   steps: readonly Pick<StepResultSummary, 'status'>[]
 ): 'completed' | 'failed' {
   if (steps.length === 0) return 'failed';
-  return steps.some((s) => s.status === 'failed') ? 'failed' : 'completed';
+  if (steps.some((s) => s.status === 'failed')) return 'failed';
+  // "No step failed" is NOT "the workflow completed" (#5116). Before the mock
+  // executor was made honest it reported every unexecuted step as 'success', so
+  // this case could not arise; now that such steps are 'skipped', an all-skipped
+  // run would otherwise aggregate to 'completed' — moving the fabricated success
+  // one level up, from the step to the workflow.
+  //
+  // This is the empty-case rule from .rules/development-disciplines.md: a
+  // verdict over a collection must say what absence means, and `!some(failed)`
+  // renders absence as health.
+  if (!steps.some((s) => s.status === 'success')) return 'failed';
+  return 'completed';
 }
 
 /**

@@ -7609,6 +7609,7 @@ FunctionDeclaration runVerification
   : typeof runVerification
 InterfaceDeclaration RunWorkflowDeps
   notifier?: IMcpNotifier | undefined
+  resolveExecutionEngine?: (() => IWorkflowEngine) | undefined
   workflowEngine: IWorkflowEngine
 TypeAliasDeclaration RunWorkflowInput
   = z.infer<typeof RunWorkflowInputSchema>

@@ -129,7 +129,11 @@ async function setupServer(): Promise<TestContext> {
   const stubEngine = {
     listTemplates: () => Promise.resolve([]),
   } as unknown as IWorkflowEngine;
-  registerRunWorkflowTool(server, { ...deps, workflowEngine: stubEngine });
+  registerRunWorkflowTool(server, {
+    ...deps,
+    workflowEngine: stubEngine,
+    resolveExecutionEngine: (): IWorkflowEngine => stubEngine,
+  });
   registerListWorkflowsTool(server, { ...deps, workflowEngine: stubEngine });
   // #5052 follow-up: these three declare an `outputSchema` and are registered
   // on the production server, so a response-field addition to any of them
