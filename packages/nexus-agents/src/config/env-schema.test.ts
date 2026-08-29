@@ -361,12 +361,17 @@ describe('documented NEXUS_* vars are all in the schema (#4722)', () => {
   // so setting the documented variable made `validateNexusEnv` report it as an
   // UNKNOWN var — with a typo suggestion for a name spelled correctly. Three
   // siblings were missing the same way. Nothing connected the two lists.
-  const CLAUDE_MD = readFileSync(join(REPO_ROOT, 'CLAUDE.md'), 'utf8');
+  // Reads AGENTS.md, not CLAUDE.md (#5151). The env table moved there so every
+  // harness sees it; checking CLAUDE.md would gate the table in the one file
+  // only Claude reads, which is what this guarantee was quietly doing before.
+  // CLAUDE.md still renders the same table — it is injected from this source —
+  // so nothing is lost by checking the origin instead of the copy.
+  const AGENTS_MD = readFileSync(join(REPO_ROOT, 'AGENTS.md'), 'utf8');
 
-  /** Every `NEXUS_*` name appearing in backticks in CLAUDE.md. */
+  /** Every `NEXUS_*` name appearing in backticks in AGENTS.md. */
   function documentedVars(): string[] {
     const found = new Set<string>();
-    for (const m of CLAUDE_MD.matchAll(/`(NEXUS_[A-Z0-9_]+)`/g)) {
+    for (const m of AGENTS_MD.matchAll(/`(NEXUS_[A-Z0-9_]+)`/g)) {
       const name = m[1];
       if (name !== undefined) found.add(name);
     }
@@ -380,11 +385,11 @@ describe('documented NEXUS_* vars are all in the schema (#4722)', () => {
   });
 
   it('recognizes every documented variable', () => {
-    // CLAUDE.md also names variables that were REMOVED (#2977, #4180) and
+    // AGENTS.md also names variables that were REMOVED (#2977, #4180) and
     // documents them as removed; those must stay out of the schema.
     const removed = new Set(
       documentedVars().filter((v) =>
-        new RegExp(`\`${v}\`[^\\n]*(?:removed|were removed)`, 'i').test(CLAUDE_MD)
+        new RegExp(`\`${v}\`[^\\n]*(?:removed|were removed)`, 'i').test(AGENTS_MD)
       )
     );
     const schemaKeys = new Set(getKnownNexusVarNames());
