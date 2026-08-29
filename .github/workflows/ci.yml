@@ -128,6 +128,14 @@ jobs:
       - name: Catalogue drift sweep (#4417)
         run: npx tsx scripts/check-catalogue-drift.ts
 
+      # #5142: docs/ENTRYPOINTS.md is named canonical for CLI entry points and
+      # drifted — 20 commands documented against 52 registered, plus two rows
+      # naming implementation modules as if they were commands. Nothing compared
+      # the two lists. Baseline-aware: existing gaps are recorded debt, a NEW
+      # undocumented command or a phantom row fails.
+      - name: CLI docs drift (#5142)
+        run: npx tsx scripts/check-cli-docs-drift.ts
+
       - name: Tool-description distinctness (#2650)
         run: npx tsx scripts/check-tool-distinctness.ts
 

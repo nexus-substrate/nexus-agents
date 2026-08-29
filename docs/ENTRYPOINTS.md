@@ -74,15 +74,13 @@ Commands are grouped by user persona. **Daily use** is what you'll type during a
 
 ### Debug & observe
 
-| Command                | Subcommand           | Description                                                          | Mode         |
-| ---------------------- | -------------------- | -------------------------------------------------------------------- | ------------ |
-| `routing-audit`        | `<task>`             | Show the routing decision for a task without executing it (dry-run)  | any          |
-| `system-review`        | -                    | Run a 5-phase introspection of the local install                     | any          |
-| `verify`               | -                    | Quick post-install verification                                      | any          |
-| `validation-dashboard` | -                    | A/B testing and validation dashboard                                 | any          |
-| `learning-metrics`     | -                    | Show the learning-metrics dashboard                                  | any          |
-| `research`             | `status` / `overlap` | Inspect technique-implementation status; find overlapping techniques | any          |
-| `review-demo`          | -                    | PR review demo with wizard UX                                        | orchestrator |
+| Command            | Subcommand           | Description                                                          | Mode |
+| ------------------ | -------------------- | -------------------------------------------------------------------- | ---- |
+| `routing-audit`    | `<task>`             | Show the routing decision for a task without executing it (dry-run)  | any  |
+| `system-review`    | -                    | Run a 5-phase introspection of the local install                     | any  |
+| `verify`           | -                    | Quick post-install verification                                      | any  |
+| `learning-metrics` | -                    | Show the learning-metrics dashboard                                  | any  |
+| `research`         | `status` / `overlap` | Inspect technique-implementation status; find overlapping techniques | any  |
 
 ### Server & internal (rarely typed directly)
 
@@ -253,11 +251,11 @@ nexus-agents research autofile --topic=agents --max=3               # File candi
 # Quick verification
 nexus-agents verify
 
-# PR review demo with wizard
-nexus-agents review-demo
+# PR review with setup wizard
+nexus-agents review <pr-url> --setup
 
-# Validation dashboard
-nexus-agents validation-dashboard
+# Learning-validation dashboard
+nexus-agents validation
 
 # SWE-bench evaluation — DEPRECATED, see https://github.com/nexus-substrate/nexus-eval-swebench
 # (the in-tree commands stub out with a migration message; harness lives in its own repo per #2514)
