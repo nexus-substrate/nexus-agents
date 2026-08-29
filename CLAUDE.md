@@ -278,19 +278,37 @@ Full tool reference: [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md).
 
 Do not create parallel implementations — modify existing files at these canonical locations. Never create `enhanced_*`, `new_*`, `v2_*`, or `refactor_*` forks; migrate logic to the canonical location and remove the deprecated file.
 
-| Concern           | Canonical path                                                                                                 |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| Task analysis     | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts`                                        |
-| Task routing      | `CompositeRouter` — `src/cli-adapters/composite-router.ts`                                                     |
-| Consensus voting  | `ConsensusEngine` — `src/consensus/engine.ts`                                                                  |
-| CLI adapters      | `createAllAdapters()` — `src/cli-adapters/factory.ts`                                                          |
-| MCP tools         | `registerTools()` — `src/mcp/tools/index.ts`                                                                   |
-| Model registry    | `ModelRegistry` + `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`) |
-| Adapter registry  | `UnifiedAdapterRegistry` — `src/adapters/unified-registry.ts`                                                  |
-| Memory registry   | `MemoryRegistry` + `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                             |
-| Graph workflows   | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
-| Pipeline runner   | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
-| Security pipeline | `src/exports/security.ts`                                                                                      |
+| Operation — what you are trying to do             | Canonical entry point                                                                                          |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Analyse / classify a task                         | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts`                                        |
+| Select a model for a task                         | `CompositeRouter.route(task)` — `src/cli-adapters/composite-router.ts`                                         |
+| Acquire an adapter                                | `getGlobalRegistry()` — `src/adapters/unified-registry.ts`. NOT `createAllAdapters()` in new code.             |
+| Run a consensus vote                              | `ConsensusEngine` — `src/consensus/engine.ts`                                                                  |
+| Register an MCP tool                              | `registerTools()` — `src/mcp/tools/index.ts`                                                                   |
+| Look up model metadata, pricing or context window | `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`)                   |
+| Read or write memory                              | `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                                                |
+| Build a graph workflow                            | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
+| Run a pipeline                                    | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
+| Run the security pipeline                         | `src/exports/security.ts`                                                                                      |
+| Authorize a tool call                             | `PolicyFirewall` — `src/mcp/middleware/policy.ts`. ClawGuard is advisory only (#5022, epic #5105).             |
+| Compute token → USD                               | **UNRESOLVED — eight paths (#5122).** Prefer `computeCostDetail` (`src/learning/usage-log.ts`) until it lands. |
+| Emit a domain event                               | **UNRESOLVED — two buses (#5125).** Do not add a third, and do not add a bridge.                               |
+| Write an audit record                             | **UNRESOLVED — two sinks (#5125).** Use `AuditLogger` (`src/audit/`) when the record must be durable.          |
+
+This table is keyed on the **operation**, not on the symbol. A row answers "what do I call
+to do X", and there is exactly one answer per row. That shape is deliberate: the previous
+version listed important symbols, which let it bless both `createAllAdapters()` and
+`UnifiedAdapterRegistry` as canonical — two entries for one question — and name one event
+bus canonical while `core/event-bus.ts` re-exported the other as the core surface.
+
+**UNRESOLVED is a real value.** Where two implementations exist and choosing between them
+is a design decision rather than a cleanup, the row says so and names the issue. A table
+that silently blesses both sides is worse than one that admits the fork: an author reading
+it cannot tell they are picking a side. Do not resolve an UNRESOLVED row by editing this
+table — take it to a panel, then update the row with the decision.
+
+Adding an implementation of an operation already listed here is the thing this table exists
+to prevent. See #5121 for the ratchet that enforces it and #5125 for the current inventory.
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`. Do NOT directly instantiate stage routers — use `CompositeRouter.route(task)`.
 
