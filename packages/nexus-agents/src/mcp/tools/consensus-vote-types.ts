@@ -332,6 +332,34 @@ export const VoteDecisionStatusSchema = z.enum([
 export type VoteDecisionStatus = z.infer<typeof VoteDecisionStatusSchema>;
 
 /**
+ * Narrows a response decision to the three-value vocabulary the audit record
+ * uses (#4986).
+ *
+ * The response vocabulary is wider — it carries `timeout` and `pending` too —
+ * so the narrowing has to be stated rather than left to a cast:
+ *
+ * - `timeout` becomes `no_quorum`. A panel that ran out of time reached no
+ *   quorum; it did not reject the proposal, and recording it as `rejected`
+ *   would attribute a verdict to voters who never gave one.
+ * - `pending` returns `undefined`. A vote still in flight has no decision to
+ *   record, and inventing one would be worse than falling back.
+ */
+export function toRecordDecision(
+  status: VoteDecisionStatus | undefined
+): 'approved' | 'rejected' | 'no_quorum' | undefined {
+  switch (status) {
+    case 'approved':
+    case 'rejected':
+    case 'no_quorum':
+      return status;
+    case 'timeout':
+      return 'no_quorum';
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Higher-Order Voting metadata (Issue #514).
  *
  * ADVISORY, not the verdict (#4701). Read `appliedToDecision` before drawing

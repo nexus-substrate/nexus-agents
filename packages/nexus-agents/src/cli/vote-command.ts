@@ -32,6 +32,7 @@ import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js
 import { validateTimeout } from '../config/timeouts.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
+import { toRecordDecision } from '../mcp/tools/consensus-vote-types.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
@@ -405,7 +406,14 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
  */
 function persistToAuditChain(
   options: VoteCommandOptions,
-  result: VotingResult & { readonly strategy: string; readonly policyReason?: string }
+  result: VotingResult & {
+    readonly strategy: string;
+    readonly policyReason?: string;
+    // #4986: the resolved three-valued decision `runVote` carries down from
+    // `resolveVoteDecision`. Typed here so the record gets the same answer the
+    // CLI printed and exited on, rather than a second derivation.
+    readonly decision?: VoteDecisionStatus;
+  }
 ): void {
   if (options.dryRun === true) return;
   writeLine(
@@ -418,6 +426,7 @@ function persistToAuditChain(
         // A vote an error policy voided is not a rejection. Without this the
         // chain records `rejected` while the CLI exits `no_quorum` (#4953).
         errorVoided: result.policyReason !== undefined,
+        resolvedDecision: toRecordDecision(result.decision),
       })
     )
   );

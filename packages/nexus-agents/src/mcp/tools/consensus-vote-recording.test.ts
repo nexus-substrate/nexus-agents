@@ -88,6 +88,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
 
   it('reports all-simulated when every vote is simulated', () => {
     const outcome = recordAuthenticVote({
+      resolvedDecision: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
       result: consensusResult(),
@@ -116,6 +117,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.mocked(nexusDataPath).mockReturnValue(unwritable);
 
     const outcome = recordAuthenticVote({
+      resolvedDecision: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -133,6 +135,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
     const outcome = recordAuthenticVote({
+      resolvedDecision: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -154,6 +157,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
     const outcome = recordAuthenticVote({
+      resolvedDecision: undefined,
       proposal: 'Promote auto-remediation to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -174,6 +178,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
 
     const outcome = recordAuthenticVote({
+      resolvedDecision: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
       result: consensusResult(),
