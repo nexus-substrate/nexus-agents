@@ -20,10 +20,12 @@ function src(name: string, ids: string[] | Error): AvailableModelsSource {
 function parse(text: string): {
   totalTransports: number;
   healthyTransports: number;
+  reachableTransports: number;
   totalModels: number;
   transports: {
     transport: string;
     ok: boolean;
+    servesModels: boolean;
     modelCount: number;
     sampleModelIds: string[];
     modelIds?: string[];
@@ -79,5 +81,74 @@ describe('list_available_models handler (#3406)', () => {
   it('rejects invalid input', async () => {
     const res = await listAvailableModelsHandler({ includeModelIds: 'yes' }, {}, logger);
     expect(res.content[0]?.text).toContain('Validation error');
+  });
+});
+
+describe('reachable is not the same as usable (#5128)', () => {
+  /**
+   * A probe that succeeds and finds nothing used to report `ok: true,
+   * modelCount: 0` and count toward `healthyTransports`. Against a stale
+   * install, three of five transports reported exactly that and the summary
+   * still said every transport was healthy — a diagnostic that could not
+   * distinguish "reachable" from "usable", which is the one distinction it
+   * exists to make.
+   */
+  it('does not count an empty-but-successful probe as healthy', async () => {
+    const res = await listAvailableModelsHandler(
+      {},
+      {
+        sourcesFactory: (): AvailableModelsSource[] => [src('full', ['a', 'b']), src('empty', [])],
+      },
+      logger
+    );
+    const out = parse(res.content[0]?.text ?? '{}');
+
+    expect(out.healthyTransports).toBe(1);
+    expect(out.reachableTransports).toBe(2);
+  });
+
+  it('marks the empty transport as reachable but not serving', async () => {
+    const res = await listAvailableModelsHandler(
+      {},
+      { sourcesFactory: (): AvailableModelsSource[] => [src('empty', [])] },
+      logger
+    );
+    const out = parse(res.content[0]?.text ?? '{}');
+    const t = out.transports[0];
+
+    // Deliberately NOT ok:false. The probe genuinely succeeded, and saying it
+    // failed would trade one misreport for another.
+    expect(t?.ok).toBe(true);
+    expect(t?.servesModels).toBe(false);
+  });
+
+  it('counts a failed probe as neither reachable nor healthy', async () => {
+    const res = await listAvailableModelsHandler(
+      {},
+      {
+        sourcesFactory: (): AvailableModelsSource[] => [src('broken', new Error('probe exploded'))],
+      },
+      logger
+    );
+    const out = parse(res.content[0]?.text ?? '{}');
+
+    expect(out.healthyTransports).toBe(0);
+    expect(out.reachableTransports).toBe(0);
+    expect(out.transports[0]?.servesModels).toBe(false);
+  });
+
+  it('reports all three counts when every transport serves', async () => {
+    // The pair for the first test: without this, a bug making healthyTransports
+    // always 0 would still pass everything above.
+    const res = await listAvailableModelsHandler(
+      {},
+      { sourcesFactory: (): AvailableModelsSource[] => [src('a', ['x']), src('b', ['y'])] },
+      logger
+    );
+    const out = parse(res.content[0]?.text ?? '{}');
+
+    expect(out.healthyTransports).toBe(2);
+    expect(out.reachableTransports).toBe(2);
+    expect(out.totalTransports).toBe(2);
   });
 });

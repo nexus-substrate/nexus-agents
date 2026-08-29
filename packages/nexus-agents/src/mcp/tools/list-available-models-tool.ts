@@ -52,7 +52,21 @@ export type ListAvailableModelsInput = z.infer<typeof ListAvailableModelsInputSc
 
 export interface TransportReport {
   readonly transport: string;
+  /**
+   * The probe completed without throwing. NOT "this transport is usable" —
+   * a probe can succeed and return an empty catalog (#5128). Use
+   * {@link TransportReport.servesModels} for usability.
+   */
   readonly ok: boolean;
+  /**
+   * Whether this transport can actually serve a model — `ok` AND a non-empty
+   * catalog (#5128).
+   *
+   * Added because `ok: true, modelCount: 0` was indistinguishable, in the
+   * summary, from a working transport. Three of five reported that way against
+   * a stale install, and the tool still said every transport was healthy.
+   */
+  readonly servesModels: boolean;
   readonly modelCount: number;
   readonly sampleModelIds: readonly string[];
   readonly modelIds?: readonly string[];
@@ -61,7 +75,17 @@ export interface TransportReport {
 
 export interface ListAvailableModelsResponse {
   readonly transports: readonly TransportReport[];
+  /**
+   * Transports that can serve a model (#5128).
+   *
+   * This previously counted transports whose probe merely did not throw, so a
+   * transport discovering ZERO models was reported as healthy. The field name
+   * now means what it says; {@link ListAvailableModelsResponse.reachableTransports}
+   * carries the old, weaker meaning under an honest name.
+   */
   readonly healthyTransports: number;
+  /** Transports whose probe completed, whether or not they found any model. */
+  readonly reachableTransports: number;
   readonly totalTransports: number;
   readonly totalModels: number;
   readonly note: string;
@@ -88,6 +112,7 @@ async function probeSource(
     return {
       transport: source.name,
       ok: true,
+      servesModels: ids.length > 0,
       modelCount: ids.length,
       sampleModelIds: ids.slice(0, 5),
       ...(includeModelIds ? { modelIds: ids } : {}),
@@ -96,6 +121,7 @@ async function probeSource(
     return {
       transport: source.name,
       ok: false,
+      servesModels: false,
       modelCount: 0,
       sampleModelIds: [],
       error: error instanceof Error ? error.message : String(error),
@@ -136,10 +162,13 @@ export async function listAvailableModelsHandler(
   const transports = await Promise.all(sources.map((s) => probeSource(s, includeModelIds)));
   const response: ListAvailableModelsResponse = {
     transports,
-    healthyTransports: transports.filter((t) => t.ok).length,
+    healthyTransports: transports.filter((t) => t.servesModels).length,
+    reachableTransports: transports.filter((t) => t.ok).length,
     totalTransports: transports.length,
     totalModels: transports.reduce((sum, t) => sum + t.modelCount, 0),
-    note: 'Probe results — existence only; the in-tree registry remains authoritative for pricing/capability.',
+    note:
+      'Probe results — existence only; the in-tree registry remains authoritative for pricing/capability. ' +
+      'healthyTransports counts transports that can serve a model; reachableTransports counts probes that merely succeeded.',
   };
   logger.debug('list_available_models probed transports', {
     healthy: response.healthyTransports,
