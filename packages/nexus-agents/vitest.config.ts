@@ -107,12 +107,32 @@ export default defineConfig({
       // `jq '.total.lines.pct // 0'` fallback turned absence into 0%.
       // (`json` writes coverage-final.json, which is a different shape.)
       reporter: ['text', 'json', 'json-summary', 'html'],
-      // Thresholds
+      // Coverage floors — RATCHETED FROM MEASURED ACTUAL (#5142, panel 6/6).
+      //
+      // These were 60/50/60/60 while `.rules/testing.md` and CODING_STANDARDS.md
+      // documented 80/75. Measuring settled it: actual coverage is
+      // 89.51 statements / 80.52 branches / 93.02 functions / 90.45 lines over
+      // 28,549 tests. The documented bar was right AND already met; the enforced
+      // floor sat 30 points below reality, so it could not fail — the exact
+      // shape this repo keeps filing as a defect.
+      //
+      // Set one point below measured actual, not at it. A floor equal to actual
+      // goes red on any PR that adds a lightly-tested module, which is a gate
+      // failing for a reason unrelated to regression — and that is how a floor
+      // gets lowered in a hurry.
+      //
+      // LOWERING THIS REQUIRES OWNER RATIFICATION. Coverage is a ratio, so
+      // deleting dead, well-tested code lowers the percentage: #5098 removed
+      // 4,131 lines of never-constructed routing stages and would have tripped a
+      // naive ratchet, rewarding keeping the dead code. That case is real and
+      // recurring (#5097 tracks five more vestigial surfaces), so a lowering PR
+      // must name the deletion that caused it rather than silently relax the
+      // number.
       thresholds: {
-        statements: 60,
-        branches: 50,
-        functions: 60,
-        lines: 60,
+        statements: 88,
+        branches: 79,
+        functions: 92,
+        lines: 89,
       },
     },
 

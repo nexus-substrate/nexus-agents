@@ -244,8 +244,7 @@ const InputSchema = z.object({
 
 // Discriminated unions over optional fields
 type Message =
-  | { type: 'text'; content: string }
-  | { type: 'tool_use'; name: string; input: unknown };
+  { type: 'text'; content: string } | { type: 'tool_use'; name: string; input: unknown };
 ```
 
 ### 4.3 Naming Conventions
@@ -689,11 +688,11 @@ interface SandboxAuditLog {
 
 ### 8.1 Coverage Requirements
 
-| Type            | Target | Scope                                |
-| --------------- | ------ | ------------------------------------ |
-| Line coverage   | ≥ 80%  | All packages                         |
-| Branch coverage | ≥ 75%  | All packages                         |
-| Critical paths  | 100%   | Security, validation, error handling |
+| Type            | Target     | Scope                                                            |
+| --------------- | ---------- | ---------------------------------------------------------------- |
+| Line coverage   | see config | `vitest.config.ts` is the single source (#5142)                  |
+| Branch coverage | see config | ratchets from measured actual; lowering needs owner ratification |
+| Critical paths  | 100%       | Security, validation, error handling                             |
 
 ### 8.2 Test Structure
 
@@ -778,7 +777,7 @@ npm view <package> engines
 ### 10.2 Pre-Merge (Must Pass)
 
 - [ ] All pre-commit gates
-- [ ] Coverage ≥ 80%
+- [ ] Coverage meets the floors in `vitest.config.ts` (ratcheted from measured actual, #5142)
 - [ ] Security audit clean
 - [ ] Dependency review clean
 - [ ] Breaking changes documented
