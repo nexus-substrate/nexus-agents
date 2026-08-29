@@ -24,19 +24,22 @@ Failures compound. An unresolved bug at step N makes every change N+1…N+k inco
 
 1. **Reproduce** reliably (or document conditions if intermittent)
 2. **Localize** to a layer: UI / service / data / build / external — verify with a log, not a hunch
-3. **Reduce** to minimal failing case
-4. **Fix** at the root. Upstream fix = usually right; downstream dedupe/catch = usually a symptom patch
-5. **Guard** with regression test that fails without the fix
-6. **Verify** end-to-end
+3. **Trace to the producer, not the guard.** When a check, flag, or reported value looks wrong, find every production writer of the value it reads. A guard that reads correctly proves nothing if nothing upstream can make it fire — grep the writers before concluding the logic is fine
+4. **Reduce** to minimal failing case
+5. **Fix** at the root. Upstream fix = usually right; downstream dedupe/catch = usually a symptom patch
+6. **Guard** with regression test that fails without the fix
+7. **Verify** end-to-end
 
 ## Anti-Rationalization
 
-| Excuse                           | Counter                                                                                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "I know what the bug is"         | Unverified guesses succeed ~70%. Reproduce before fixing — cost of confirming is minutes, cost of a wrong fix is hours + a regression.                   |
-| "The failing test must be wrong" | Sometimes true, but verify against the spec _before_ changing the test. Tests asserting correct-but-inconvenient behavior get "fixed" to assert the bug. |
-| "It works on my machine"         | Diff Node version, env vars, lockfile drift, CI container, clock/timezone, fs case sensitivity. Environment is a variable.                               |
-| "This is flaky, ignore it"       | Flaky = real race / ordering / timing bug being exposed. Fix it or understand why. `.skip` with a TODO is ticking debt.                                  |
+| Excuse                           | Counter                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "I know what the bug is"         | Unverified guesses succeed ~70%. Reproduce before fixing — cost of confirming is minutes, cost of a wrong fix is hours + a regression.                                                                                                                                                                                      |
+| "The failing test must be wrong" | Sometimes true, but verify against the spec _before_ changing the test. Tests asserting correct-but-inconvenient behavior get "fixed" to assert the bug.                                                                                                                                                                    |
+| "It works on my machine"         | Diff Node version, env vars, lockfile drift, CI container, clock/timezone, fs case sensitivity. Environment is a variable.                                                                                                                                                                                                  |
+| "This is flaky, ignore it"       | Flaky = real race / ordering / timing bug being exposed. Fix it or understand why. `.skip` with a TODO is ticking debt.                                                                                                                                                                                                     |
+| "It passed, so it works"         | A pass is evidence only once you know what it measured. Check the subject: right branch (`git rev-parse HEAD` vs the PR head), right run, right input. A test can pass because it never reached the code — a wrong arg name rejected at validation, an empty fixture, a degraded environment returning nothing to validate. |
+| "That failure is pre-existing"   | Pre-existing is not the same as unimportant. Baseline it, then read WHAT is failing. `research_synthesize` had been erroring on every real call; CI was green only because CI's registry was empty, so the tool returned nothing to validate (#5134).                                                                       |
 
 ## Non-Reproducible Bugs
 
