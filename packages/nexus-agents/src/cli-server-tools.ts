@@ -355,10 +355,43 @@ function buildWorkflowEngine(
     ...(wfConfig?.maxParallel !== undefined && { maxConcurrency: wfConfig.maxParallel }),
     ...(wfConfig?.templatesDir !== undefined && { templatePaths: [wfConfig.templatesDir] }),
   };
+  // LISTING engine (#5116). `list_workflows` and run_workflow's template
+  // resolution only call listTemplates/getTemplateByName/loadTemplate — they
+  // never execute. `useMockExecutor` is passed because the #507 fail-safe
+  // throws at CONSTRUCTION when nothing can execute for real, and this engine
+  // must be constructible on a fresh install with no credentials. The mock
+  // executor it installs is unreachable from every caller of this engine; the
+  // executing engine is resolved separately, below.
+  return createRealWorkflowEngine({ ...engineConfig, useMockExecutor: true });
+}
+
+/**
+ * Builds the engine that actually EXECUTES workflow steps (#5116).
+ *
+ * Throws `WorkflowExecutionUnavailableError` when no model adapter resolved.
+ * Callers MUST invoke this lazily — at `run_workflow` call time, not at tool
+ * registration — because throwing during `registerMcpTools` takes down all 47
+ * tools over one unconfigured adapter.
+ *
+ * Before #5116 this case silently became `useMockExecutor: true`, so every step
+ * returned `status: 'success'` with "Executed step X with action Y" for work
+ * that never ran.
+ */
+function buildExecutingWorkflowEngine(
+  ctx: ToolRegistrationContext
+): ReturnType<typeof createRealWorkflowEngine> {
+  const wfConfig = ctx.workflowConfig;
+  const engineConfig = {
+    builtInTemplates: ctx.builtInTemplates,
+    logger: ctx.logger,
+    ...(wfConfig?.timeout !== undefined && { defaultTimeoutMs: wfConfig.timeout }),
+    ...(wfConfig?.maxParallel !== undefined && { maxConcurrency: wfConfig.maxParallel }),
+    ...(wfConfig?.templatesDir !== undefined && { templatePaths: [wfConfig.templatesDir] }),
+  };
   return createRealWorkflowEngine(
     ctx.modelAdapter !== undefined
       ? { ...engineConfig, modelAdapter: ctx.modelAdapter }
-      : { ...engineConfig, useMockExecutor: true }
+      : engineConfig
   );
 }
 
@@ -366,6 +399,8 @@ function buildWorkflowEngine(
 function registerRunWorkflow(ctx: ToolRegistrationContext, shared: SharedResources): void {
   registerRunWorkflowTool(ctx.server, {
     workflowEngine: shared.workflowEngine(),
+    resolveExecutionEngine: (): ReturnType<typeof createRealWorkflowEngine> =>
+      buildExecutingWorkflowEngine(ctx),
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('run_workflow'),
   });

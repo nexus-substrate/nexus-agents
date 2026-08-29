@@ -125,7 +125,28 @@ export interface DryRunResult {
  * Dependencies required by the run_workflow tool.
  */
 export interface RunWorkflowDeps extends BaseMcpToolDeps {
+  /**
+   * Engine used to ENUMERATE and load templates — `listTemplates`,
+   * `getTemplateByName`, `loadTemplate`. Never used to execute.
+   *
+   * Listing needs no model adapter, so this engine is constructible on a fresh
+   * install with no credentials. That is the capability split #5116 turns on:
+   * enumerating workflows and running them have different prerequisites.
+   */
   workflowEngine: IWorkflowEngine;
+  /**
+   * Resolves the engine that actually EXECUTES, at call time (#5116).
+   *
+   * Required rather than optional, and a thunk rather than a value, for two
+   * reasons. A thunk, because constructing an executing engine throws
+   * `WorkflowExecutionUnavailableError` under the #507 fail-safe when nothing
+   * can execute for real — and doing that eagerly at tool registration killed
+   * the whole server, all 47 tools, over one unconfigured adapter. Required,
+   * because an optional field with a fallback would let a future call site
+   * silently inherit the listing engine and execute against its unreachable
+   * mock executor, which is the exact defect being fixed.
+   */
+  resolveExecutionEngine: () => IWorkflowEngine;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

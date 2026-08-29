@@ -72,6 +72,8 @@ beforeAll(async () => {
   registerRunWorkflowTool(server, {
     ...deps,
     workflowEngine: { listTemplates: () => Promise.resolve([]) } as unknown as IWorkflowEngine,
+    resolveExecutionEngine: (): IWorkflowEngine =>
+      ({ listTemplates: () => Promise.resolve([]) }) as unknown as IWorkflowEngine,
   });
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

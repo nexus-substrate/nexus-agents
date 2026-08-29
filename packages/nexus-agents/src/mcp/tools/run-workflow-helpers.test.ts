@@ -189,6 +189,7 @@ describe('getAllowedWorkflowDirs', () => {
   it('should include built-in templates directory', () => {
     const deps: RunWorkflowDeps = {
       workflowEngine: mockWorkflowEngine,
+      resolveExecutionEngine: () => mockWorkflowEngine,
       rateLimiter: mockRateLimiter,
     };
 
@@ -202,6 +203,7 @@ describe('getAllowedWorkflowDirs', () => {
   it('should include security config allowedPaths', () => {
     const deps: RunWorkflowDeps = {
       workflowEngine: mockWorkflowEngine,
+      resolveExecutionEngine: () => mockWorkflowEngine,
       rateLimiter: mockRateLimiter,
       security: {
         allowedPaths: ['/custom/templates', '/project/workflows'],
@@ -219,6 +221,7 @@ describe('getAllowedWorkflowDirs', () => {
   it('should fall back to cwd when no security config', () => {
     const deps: RunWorkflowDeps = {
       workflowEngine: mockWorkflowEngine,
+      resolveExecutionEngine: () => mockWorkflowEngine,
       rateLimiter: mockRateLimiter,
     };
 
