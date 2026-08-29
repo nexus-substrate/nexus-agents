@@ -271,9 +271,14 @@ describe('MCP Standalone Tools Integration', () => {
     // envelope. Replacing `_meta` instead of extending it would silently strip
     // every structured error — a regression no other test here would catch,
     // since the envelope lives on the failure path.
+    // Needs a call that genuinely FAILS. It used to use research_synthesize,
+    // whose schema violation supplied the error for free — so #5134's fix broke
+    // this test, and the fixture was a bug. An invalid-argument call is a real
+    // error source that does not depend on anything being broken: `template` is
+    // required, and omitting it fails validation before the handler runs.
     const result = await ctx.client.callTool({
-      name: 'research_synthesize',
-      arguments: ROUND_TRIP_ARGS['research_synthesize'] ?? {},
+      name: 'run_workflow',
+      arguments: { action: 'execute', template: 'no-such-template-5134', inputs: {} },
     });
 
     const meta = result._meta as Record<string, unknown> | undefined;
@@ -390,7 +395,12 @@ describe('MCP Standalone Tools Integration', () => {
    * #5045 exists to close. Four tools sat here in the first draft; three were
    * my own bad arguments, found only because the list was printed.
    */
-  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote', 'research_synthesize'];
+  // research_synthesize left this list in #5134: its outputSchema declared four
+  // of the six keys SynthesisResult returns, so it emitted structured content
+  // that the SDK rejected. Declaring the full key set made it validatable, and a
+  // tool that now round-trips must not stay baselined as unstructured — that
+  // would re-credit it for a hole that is closed.
+  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote'];
 
   /**
    * A response field missing from a tool's declared `outputSchema` does not go

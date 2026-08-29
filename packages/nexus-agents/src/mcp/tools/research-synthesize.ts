@@ -120,14 +120,25 @@ export function registerResearchSynthesizeTool(
     logger,
   });
 
-  // Permissive shape — handler returns SynthesisResult (clusters, alignment,
-  // cross-cutting themes, etc.); inner shapes vary, model the envelope only
-  // (#2340 batch 3).
+  // Every key SynthesisResult returns, not a subset (#5134).
+  //
+  // "Model the envelope only" was the original intent (#2340 batch 3) and it is
+  // NOT achievable: the MCP SDK applies `additionalProperties: false` to a
+  // declared outputSchema, so declaring a subset is precisely what breaks.
+  // `totalPapers`, `topicCount` and `featureGates` were returned and undeclared,
+  // which an SDK-validating client rejects with -32602.
+  //
+  // Inner shapes stay `unknown` — that part of the intent survives. It is the
+  // KEY SET that has to be complete. Anything added to SynthesisResult must be
+  // added here too; `mcp-standalone-tools.test.ts` is what catches it, and it is
+  // the only test in the repo that validates the way the SDK does.
   const outputSchema = {
     clusters: z.array(z.unknown()).optional(),
-    alignmentSummary: z.unknown().optional(),
+    totalPapers: z.number().optional(),
+    topicCount: z.number().optional(),
     crossCuttingThemes: z.array(z.unknown()).optional(),
-    generatedAt: z.string().optional(),
+    alignmentSummary: z.unknown().optional(),
+    featureGates: z.array(z.unknown()).optional(),
   };
 
   server.registerTool(
