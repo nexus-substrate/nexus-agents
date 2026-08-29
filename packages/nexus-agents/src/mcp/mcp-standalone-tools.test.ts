@@ -395,12 +395,25 @@ describe('MCP Standalone Tools Integration', () => {
    * #5045 exists to close. Four tools sat here in the first draft; three were
    * my own bad arguments, found only because the list was printed.
    */
-  // research_synthesize left this list in #5134: its outputSchema declared four
-  // of the six keys SynthesisResult returns, so it emitted structured content
-  // that the SDK rejected. Declaring the full key set made it validatable, and a
-  // tool that now round-trips must not stay baselined as unstructured — that
-  // would re-credit it for a hole that is closed.
+  // Tools that NEVER emit validatable structured content, in any environment.
   const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote'];
+
+  /**
+   * Tools whose structured-content emission depends on DATA, not on code (#5134).
+   *
+   * `research_synthesize` returns a SynthesisResult against a populated registry
+   * and an error envelope against an empty one — which is CI, always. So it is
+   * validated here on a developer machine and unexercised in CI, and no fixed
+   * list can be correct in both. Asserting either way would make this check
+   * environment-dependent, which is the defect class this suite exists to catch.
+   *
+   * These are excluded from the strict comparison rather than silently tolerated
+   * anywhere, and their schema parity is pinned deterministically in their own
+   * tests — see research-synthesize.test.ts, which compares the declared key set
+   * against SynthesisResult with no data at all. A round-trip is the wrong
+   * instrument for a response whose shape varies (#5141).
+   */
+  const DATA_DEPENDENT_STRUCTURED: readonly string[] = ['research_synthesize'];
 
   /**
    * A response field missing from a tool's declared `outputSchema` does not go
@@ -475,7 +488,10 @@ describe('MCP Standalone Tools Integration', () => {
     // Pinned rather than warned: a tool that stops returning structured
     // content stops being covered, and a silent drop is how the gap reopens.
     // Shrinking this list is always safe; growing it needs a reason in review.
-    expect(notExercised.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
+    // Data-dependent tools may legitimately land in either bucket; everything
+    // else must match the pinned list exactly.
+    const deterministic = notExercised.filter((n) => !DATA_DEPENDENT_STRUCTURED.includes(n));
+    expect(deterministic.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
   }, 120_000);
 
   // --------------------------------------------------------------------------
