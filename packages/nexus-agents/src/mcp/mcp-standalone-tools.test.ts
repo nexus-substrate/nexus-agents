@@ -271,9 +271,14 @@ describe('MCP Standalone Tools Integration', () => {
     // envelope. Replacing `_meta` instead of extending it would silently strip
     // every structured error — a regression no other test here would catch,
     // since the envelope lives on the failure path.
+    // Needs a call that genuinely FAILS. It used to use research_synthesize,
+    // whose schema violation supplied the error for free — so #5134's fix broke
+    // this test, and the fixture was a bug. An invalid-argument call is a real
+    // error source that does not depend on anything being broken: `template` is
+    // required, and omitting it fails validation before the handler runs.
     const result = await ctx.client.callTool({
-      name: 'research_synthesize',
-      arguments: ROUND_TRIP_ARGS['research_synthesize'] ?? {},
+      name: 'run_workflow',
+      arguments: { action: 'execute', template: 'no-such-template-5134', inputs: {} },
     });
 
     const meta = result._meta as Record<string, unknown> | undefined;
@@ -390,7 +395,25 @@ describe('MCP Standalone Tools Integration', () => {
    * #5045 exists to close. Four tools sat here in the first draft; three were
    * my own bad arguments, found only because the list was printed.
    */
-  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote', 'research_synthesize'];
+  // Tools that NEVER emit validatable structured content, in any environment.
+  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote'];
+
+  /**
+   * Tools whose structured-content emission depends on DATA, not on code (#5134).
+   *
+   * `research_synthesize` returns a SynthesisResult against a populated registry
+   * and an error envelope against an empty one — which is CI, always. So it is
+   * validated here on a developer machine and unexercised in CI, and no fixed
+   * list can be correct in both. Asserting either way would make this check
+   * environment-dependent, which is the defect class this suite exists to catch.
+   *
+   * These are excluded from the strict comparison rather than silently tolerated
+   * anywhere, and their schema parity is pinned deterministically in their own
+   * tests — see research-synthesize.test.ts, which compares the declared key set
+   * against SynthesisResult with no data at all. A round-trip is the wrong
+   * instrument for a response whose shape varies (#5141).
+   */
+  const DATA_DEPENDENT_STRUCTURED: readonly string[] = ['research_synthesize'];
 
   /**
    * A response field missing from a tool's declared `outputSchema` does not go
@@ -465,7 +488,10 @@ describe('MCP Standalone Tools Integration', () => {
     // Pinned rather than warned: a tool that stops returning structured
     // content stops being covered, and a silent drop is how the gap reopens.
     // Shrinking this list is always safe; growing it needs a reason in review.
-    expect(notExercised.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
+    // Data-dependent tools may legitimately land in either bucket; everything
+    // else must match the pinned list exactly.
+    const deterministic = notExercised.filter((n) => !DATA_DEPENDENT_STRUCTURED.includes(n));
+    expect(deterministic.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
   }, 120_000);
 
   // --------------------------------------------------------------------------
