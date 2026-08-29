@@ -1,5 +1,61 @@
 # nexus-agents
 
+## 4.29.2
+
+### Patch Changes
+
+- [#5147](https://github.com/nexus-substrate/nexus-agents/pull/5147) [`7969bf9`](https://github.com/nexus-substrate/nexus-agents/commit/7969bf98196b746fefb0d70aec4d09a883ced645) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(ci): gate docs/ENTRYPOINTS.md against the CLI command catalog
+
+  `docs/ENTRYPOINTS.md` is named canonical for CLI entry points in CLAUDE.md and
+  had drifted: 20 commands documented against 52 registered, and two rows —
+  `review-demo` and `validation-dashboard` — naming implementation modules as if
+  they were commands a user could type. They are the internals behind `review` and
+  `validation`; the docs turned file names into command names, and the usage
+  examples told readers to run them.
+
+  `inject-governance.ts` already regenerates ENTRYPOINTS' MCP _tool_ tables from
+  source. The CLI _command_ table had no markers and no gate, so nothing compared
+  the two lists — the [#5142](https://github.com/nexus-substrate/nexus-agents/issues/5142) shape.
+
+  Adds `scripts/check-cli-docs-drift.ts`, a baseline-aware ratchet matching the
+  repo's three existing ones. A documented command absent from the catalog always
+  fails; a newly undocumented command fails; the 34 currently-undocumented
+  commands are recorded as visible debt rather than blocking the gate.
+
+  A check rather than a generator, because the table's subcommand and mode columns
+  are human-authored and no catalog field supplies them. The name set is what
+  drifts, and that is mechanically comparable.
+
+- [#5148](https://github.com/nexus-substrate/nexus-agents/pull/5148) [`20a9735`](https://github.com/nexus-substrate/nexus-agents/commit/20a973516694f03260785f65a0af000a4565505a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: the README listed a transport variant as a fifth CLI adapter
+
+  `codex-mcp` is not a CLI. `createCodexAdapter` (`cli-adapters/factory.ts:90-98`)
+  selects `CodexMcpAdapter` or `CodexCliAdapter` from the `transport` parameter, so
+  it is a transport variant of `codex`. `CLI_NAMES` has four members, and
+  configuration naming `codex-mcp` fails Zod parsing with nothing on the docs side
+  to explain why.
+
+  Corrected to four adapters, with the two codex transports described rather than
+  deleted — the count was wrong, but the information that codex has two transports
+  is real and was only recoverable from that row.
+
+- [#5146](https://github.com/nexus-substrate/nexus-agents/pull/5146) [`f9dc826`](https://github.com/nexus-substrate/nexus-agents/commit/f9dc8266aa34cfe69132ff1d790954a94d12b9cd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): declare research_query's rejectionNotice
+
+  `ResearchQueryResponse` carries a fourth key, `rejectionNotice`, set by
+  `handleStatus` and `handleOverlap` when a technique has a recorded rejection
+  ([#4555](https://github.com/nexus-substrate/nexus-agents/issues/4555)). The `outputSchema` declared only `action`, `success` and `data`, and
+  the MCP SDK applies `additionalProperties: false` — so any `research_query` call
+  with `action: 'status'` or `'overlap'` on a rejection-carrying `techniqueId`
+  failed `-32602` on an SDK-validating client.
+
+  Second instance of the [#5134](https://github.com/nexus-substrate/nexus-agents/issues/5134) class, and it hid the same way: the round-trip
+  check calls `research_query` once with `action: 'stats'`, which never sets the
+  field. A single fixed call cannot cover a response whose shape varies by branch
+  or by data.
+
+  Adds a deterministic key-set parity test, matching the one added for
+  `research_synthesize` — it compares the declared schema against the response
+  type with no data and no action branch, in both directions.
+
 ## 4.29.1
 
 ### Patch Changes
