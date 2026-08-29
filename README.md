@@ -250,15 +250,21 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ## Supported CLIs & Providers
 
-Nexus-agents routes tasks through 5 CLI adapters, each connecting to major AI providers:
+Nexus-agents routes tasks through 4 CLI adapters, each connecting to major AI providers:
 
-| CLI       | Provider             | Best For                       |
-| --------- | -------------------- | ------------------------------ |
-| claude    | Anthropic (Claude)   | Complex reasoning, analysis    |
-| gemini    | Google (Gemini)      | Long context, multimodal       |
-| codex     | OpenAI (Codex CLI)   | Code generation, reasoning     |
-| codex-mcp | OpenAI (Codex MCP)   | MCP-native Codex integration   |
-| opencode  | Custom OpenAI-compat | Custom endpoints, local models |
+| CLI      | Provider             | Best For                       |
+| -------- | -------------------- | ------------------------------ |
+| claude   | Anthropic (Claude)   | Complex reasoning, analysis    |
+| gemini   | Google (Gemini)      | Long context, multimodal       |
+| codex    | OpenAI (Codex)       | Code generation, reasoning     |
+| opencode | Custom OpenAI-compat | Custom endpoints, local models |
+
+`codex` has two transports, selected by configuration rather than by name:
+`CodexMcpAdapter` (the default, MCP-native) and `CodexCliAdapter` (subprocess).
+An earlier version of this table listed `codex-mcp` as a fifth CLI, which no
+`CliNameSchema` will validate — `CLI_NAMES` has four members, so configuration
+naming `codex-mcp` fails Zod parsing with nothing on the docs side to explain
+why.
 
 ---
 
