@@ -216,12 +216,12 @@ claims:
     lastVerified: '2026-06-16'
 
   - id: clawguard-promotion-criterion
-    claim: 'ClawGuard audit-to-enforce promotion criterion makes recall the load-bearing threshold for missed-action cost.'
+    claim: 'ClawGuard has no audit-to-enforce promotion path: retired as an enforcement mechanism (#5022), with tool authorization consolidated on PolicyFirewall.'
     subject: docs/governance/loop-promotion-criteria.md
-    status: aspirational
+    status: verified
     evidenceType: adr
     verification:
       method: file-exists
       path: docs/governance/loop-promotion-criteria.md
-      subjectContains: 'recall is load-bearing'
-    lastVerified: '2026-06-16'
+      subjectContains: 'RETIRED as a promotion path'
+    lastVerified: '2026-08-27'
