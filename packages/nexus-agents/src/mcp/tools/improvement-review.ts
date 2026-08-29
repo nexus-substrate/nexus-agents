@@ -25,6 +25,7 @@ import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withPrerequisite } from '../middleware/tool-prerequisites.js';
+import { isAuditableScore } from '../../governance/fitness-score.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -477,9 +478,8 @@ const MAX_FINDINGS_IN_DIMENSION_BODY = 10;
  * explicit, documented mechanism: add a dimension here (with the reason) rather
  * than letting a perpetually-below-target dimension spam the loop.
  */
-const STRUCTURALLY_UNREACHABLE_DIMENSIONS: ReadonlySet<FitnessDimension> = new Set<FitnessDimension>(
-  []
-);
+const STRUCTURALLY_UNREACHABLE_DIMENSIONS: ReadonlySet<FitnessDimension> =
+  new Set<FitnessDimension>([]);
 
 /** The closed set of known dimensions — validate findings-as-data against this. */
 const KNOWN_DIMENSIONS: ReadonlySet<FitnessDimension> = new Set(
@@ -521,9 +521,12 @@ function buildCriticalFindingSignal(finding: FitnessFinding): ImprovementSignal 
     signalKey: `tech-debt:fitness-critical:${finding.dimension}`,
     severity: 'critical',
     title: `tech-debt: critical fitness finding in ${finding.dimension}`,
-    body: [`Fitness audit returned a CRITICAL finding.`, '', `- Dimension: \`${finding.dimension}\``, ...findingBodyLines(finding)].join(
-      '\n'
-    ),
+    body: [
+      `Fitness audit returned a CRITICAL finding.`,
+      '',
+      `- Dimension: \`${finding.dimension}\``,
+      ...findingBodyLines(finding),
+    ].join('\n'),
     evidence: { observedValue: -finding.pointsDeducted },
   };
 }
@@ -663,8 +666,9 @@ export function detectFitnessSignals(
   const signals: ImprovementSignal[] = [];
   // #3621: a non-auditable result (e.g. run from the global npm install) has a
   // meaningless score of 0 — it is "could not audit", not "fitness is low". Do
-  // not emit a spurious below-floor tech-debt signal for it.
-  if (audit.auditable === false) return signals;
+  // not emit a spurious below-floor tech-debt signal for it. Shared predicate
+  // since #5014, where the sibling emitter carried no copy of this rule.
+  if (!isAuditableScore(audit)) return signals;
   if (audit.score < fitnessFloor) signals.push(buildFloorSignal(audit, fitnessFloor));
   for (const finding of audit.findings) {
     if (finding.severity === 'critical') signals.push(buildCriticalFindingSignal(finding));

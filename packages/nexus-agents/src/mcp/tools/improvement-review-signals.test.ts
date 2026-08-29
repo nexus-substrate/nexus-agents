@@ -156,3 +156,59 @@ describe('end-to-end: declined fitness → signal → shadow TuneStage (#3147)',
     );
   });
 });
+
+describe('emitFitnessDeclinedSignal — non-auditable results (#5014)', () => {
+  function bus(): { emit: ReturnType<typeof vi.fn> } {
+    return { emit: vi.fn() };
+  }
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+  it('emits nothing when the audit could not run', () => {
+    // `auditable: false` is the not-source-repo sentinel: score 0 means "could
+    // not audit", not "fitness is low". `detectFitnessSignals` has refused this
+    // since #3621; this emitter was handed the same audit object and did not,
+    // so `improvement_review` run from the global npm install published
+    // `signal.fitness_declined { score: 0, floor: 90 }` and `tune-stage` turned
+    // it into a "fitness 0 below floor 90" tech-debt flag for a repo nobody
+    // audited. The response payload carries no fitness field, so the fabricated
+    // signal was invisible at the tool boundary.
+    const b = bus();
+
+    emitFitnessDeclinedSignal(
+      {
+        score: 0,
+        auditable: false,
+        findings: [],
+        dimensions: {},
+        timestamp: '',
+        version: '',
+      } as never,
+      90,
+      b as never,
+      logger as never
+    );
+
+    expect(b.emit).not.toHaveBeenCalled();
+  });
+
+  it('still emits for a genuine below-floor audit', () => {
+    // The pair: refusing the sentinel must not silence real low fitness.
+    const b = bus();
+
+    emitFitnessDeclinedSignal(
+      {
+        score: 40,
+        auditable: true,
+        findings: [],
+        dimensions: {},
+        timestamp: '',
+        version: '',
+      } as never,
+      90,
+      b as never,
+      logger as never
+    );
+
+    expect(b.emit).toHaveBeenCalledTimes(1);
+  });
+});

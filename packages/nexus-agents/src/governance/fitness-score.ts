@@ -172,6 +172,21 @@ export interface FitnessAudit {
 }
 
 /**
+ * Whether an audit's score is a real measurement rather than the
+ * "could not audit from here" sentinel (#3621).
+ *
+ * Exported as one predicate because the guard was applied by
+ * `detectFitnessSignals` and missed by `emitFitnessDeclinedSignal`, which was
+ * handed the same audit object and emitted `signal.fitness_declined` with the
+ * sentinel's score of 0 — a tech-debt signal claiming catastrophic fitness for
+ * a repo that was never audited (#5014). Two consumers of one rule should not
+ * each carry their own copy of it.
+ */
+export function isAuditableScore(audit: Pick<FitnessAudit, 'auditable'>): boolean {
+  return audit.auditable !== false;
+}
+
+/**
  * Individual finding from audit.
  */
 export interface FitnessFinding {
@@ -242,9 +257,7 @@ export class FitnessScoreCalculator {
     reg('configSimplicity', 'Config Simplicity', () => this.checkConfigSimplicity());
     reg('layerSeparation', 'Layer Separation', () => this.checkLayerSeparation());
     reg('operatorErgonomics', 'Operator Ergonomics', () => this.checkOperatorErgonomics());
-    reg('governanceIntegration', 'Governance Integration', () =>
-      this.checkGovernanceIntegration()
-    );
+    reg('governanceIntegration', 'Governance Integration', () => this.checkGovernanceIntegration());
   }
 
   /** Run full fitness audit. */

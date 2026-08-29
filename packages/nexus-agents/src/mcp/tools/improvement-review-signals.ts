@@ -14,6 +14,7 @@
 import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
+import { isAuditableScore } from '../../governance/fitness-score.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 
 /** The dimension of the finding that deducted the most points, if any. */
@@ -38,6 +39,11 @@ export function emitFitnessDeclinedSignal(
   bus: IEventBus,
   logger: ILogger
 ): void {
+  // #5014: a non-auditable result carries a meaningless score of 0 — "could
+  // not audit", not "fitness is low". `detectFitnessSignals` has guarded this
+  // since #3621; this emitter was handed the same audit object and did not,
+  // so it published a below-floor tech-debt signal for a repo nobody audited.
+  if (!isAuditableScore(audit)) return;
   if (audit.score >= fitnessFloor) return;
   try {
     const dimension = worstDimension(audit);
