@@ -1,5 +1,178 @@
 # nexus-agents
 
+## 4.29.0
+
+### Minor Changes
+
+- [#4944](https://github.com/nexus-substrate/nexus-agents/pull/4944) [`81b9820`](https://github.com/nexus-substrate/nexus-agents/commit/81b982001245bcccbf888c5d98cff2f605f92c05) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - carry read coverage on the audit-chain verdict itself
+
+  `verify_audit_chain` reported `skippedLines` and `unreadableFiles` as sibling
+  fields of its response, but `ChainVerification` — the object a caller reads to
+  decide whether tamper-evidence holds — was unchanged. A log two lines of which
+  were never parsed still produced a clean, complete-looking verdict.
+
+  `ChainVerification` now carries an optional `coverage: { skipped,
+unreadableFiles }`, attached by the tool, which is the only party that knows
+  what the loader dropped. `withCoverage` is how a caller states it.
+
+  Three deliberate boundaries. Absent coverage means UNKNOWN, not complete —
+  `verifyChain` receives only events and cannot know, so defaulting to zero would
+  manufacture the assurance the field exists to stop manufacturing. `skipped: 0`
+  is therefore a positive claim of full coverage rather than an omission.
+  `notVerified` keeps its meaning of "nothing was verified"; a partial read
+  checked real links and is a different axis, so it is not overloaded. And a
+  failing verdict is returned untouched, since it already names a specific event
+  index that coverage does not qualify.
+
+  Resolves the [#4805](https://github.com/nexus-substrate/nexus-agents/issues/4805) fork by a 7-voter `higher_order` panel: Option A, 4-1 among
+  approvers, `unattributedApprovals: 0`.
+
+### Patch Changes
+
+- [#4989](https://github.com/nexus-substrate/nexus-agents/pull/4989) [`45281af`](https://github.com/nexus-substrate/nexus-agents/commit/45281afd041e8c0729484a88b2f71780ab738a93) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): stop the audit chain recording a voided vote as approved
+
+  `outcomeToDecision` returned on `result.outcome === 'approved'` before it
+  consulted `errorVoided`, so the void logic could only ever convert a `rejected`
+  into a `no_quorum`. An `absolute_quorum` degradation stamps its reason on the
+  response and never on the result, so `errorVoided` was false, and the
+  hash-chained record persisted `approved` for a vote the tool reported as
+  `no_quorum`.
+
+  The record now takes the decision `resolveVoteDecision` already produced, rather
+  than deriving a second one from the outcome — the second derivation is what let
+  the two disagree. `resolvedDecision` is a required field, including its
+  `undefined` case, so the compiler names every call site instead of letting a new
+  one inherit the fallback silently.
+
+  Two adjacent misreports went with it. The fallback's `errorVoided` check moved
+  above the `approved` short-circuit, and a non-terminal outcome is no longer
+  recorded as a rejection: `ProposalStatus` also carries `timeout`, `pending`,
+  `voting` and `closed`, and the old everything-else-is-rejected default
+  attributed a verdict to voters who never gave one.
+
+- [#5126](https://github.com/nexus-substrate/nexus-agents/pull/5126) [`41a83f4`](https://github.com/nexus-substrate/nexus-agents/commit/41a83f4789f6af80beb92a397db5733cee030850) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(governance): key the canonical-paths table on operations, not symbols
+
+  The table listed important symbols, which let it bless both sides of a
+  duplication without anyone noticing. It named `createAllAdapters()` under "CLI
+  adapters" AND `UnifiedAdapterRegistry` under "Adapter registry" — two entries
+  for one question, 7 call sites on one and 8 on the other — while a separate
+  line said adapter access must go through the registry. It named the pipeline
+  event bus canonical while `core/event-bus.ts` re-exports the other bus as the
+  core surface. It named a pricing source but no canonical cost function, which
+  is how eight cost paths accumulated.
+
+  Each row now answers "what do I call to do X", with exactly one answer.
+
+  `UNRESOLVED` is introduced as a real value. Where two implementations exist and
+  choosing between them is a design decision rather than a cleanup, the row says
+  so and names the tracking issue. A table that silently blesses both sides is
+  worse than one that admits the fork: an author reading it cannot tell they are
+  picking a side.
+
+  Ratified by the owner. Part of epic [#5121](https://github.com/nexus-substrate/nexus-agents/issues/5121).
+
+- [#5136](https://github.com/nexus-substrate/nexus-agents/pull/5136) [`f041e6c`](https://github.com/nexus-substrate/nexus-agents/commit/f041e6ccf80ffc9c642a6988d5371c546d5747fe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(rules): trace to the producer, and treat a pass as evidence only once you know what it measured
+
+  Two investigation techniques added to `.rules/debugging.md`, ratified 5/6 by a
+  `higher_order` panel. Overlap with the existing rules was measured first: most of
+  what this session used is already covered by the Triage Sequence and the
+  Anti-Rationalization table, so the addition is deliberately two table rows and
+  one triage step, not a section.
+
+  **Trace to the producer, not the guard.** The word "producer" appeared in no rule
+  file, yet the dominant defect class found this session is one shape: the check
+  reads correctly and nothing upstream can make it fire. ClawGuard deciding on an
+  `allowedTools` no producer populates; `proof_of_learning` reporting weighted
+  approval where `updateAgentPerformance` has zero non-test callers;
+  `falsePositiveRate` published as measured from a constant verdict; three
+  governance gates reading ledgers no producer writes.
+
+  **A pass is evidence only once you know what it measured.** Distinct from the
+  existing "It works on my machine" row, which is about environment diffs. This is
+  the opposite direction from "This is flaky, ignore it": that row says do not
+  ignore a failure, this says do not trust a pass. It is the direction that hid
+  [#5134](https://github.com/nexus-substrate/nexus-agents/issues/5134) — `research_synthesize` erroring on every real call while CI stayed green,
+  because CI's registry is empty and the tool returned nothing to validate.
+
+- [#5015](https://github.com/nexus-substrate/nexus-agents/pull/5015) [`e9f82f8`](https://github.com/nexus-substrate/nexus-agents/commit/e9f82f813ea51dbdfd6de998992be0c4da78e920) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(observability): stop a non-auditable fitness result emitting a below-floor signal
+
+  `emitFitnessDeclinedSignal` gated only on `audit.score >= fitnessFloor`. Its
+  sibling `detectFitnessSignals` has refused `auditable === false` since [#3621](https://github.com/nexus-substrate/nexus-agents/issues/3621) —
+  the not-source-repo sentinel carries a meaningless score of 0, which is "could
+  not audit", not "fitness is low" — and both are handed the same audit object.
+
+  So `improvement_review` run from the global npm install, where the bundled
+  `src/` lacks `cli-adapters/`, emitted `signal.fitness_declined { score: 0,
+floor: 90 }` onto the pipeline bus, and `tune-stage` turned that into a
+  "fitness 0 below floor 90" tech-debt flag for a repo that was never audited. The
+  response payload carries no fitness field, so the fabricated signal was
+  invisible at the tool boundary.
+
+  The rule now lives in one exported predicate, `isAuditableScore`, that both
+  consumers call, so they cannot drift apart again.
+
+- [#4886](https://github.com/nexus-substrate/nexus-agents/pull/4886) [`859bde9`](https://github.com/nexus-substrate/nexus-agents/commit/859bde9ea8e8ee1e06ece5c74a6f60f3fc0944b9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - require an approving verdict at the governor review gate
+
+  `matchedRecordOutcome` returned `pass` whenever a diff-bound `pr_review` record
+  existed for the PR, without ever reading `match.verdict` — and interpolated the
+  verdict into the pass reason, so the gate could emit
+  `pass ... verdict=request_changes`. A reviewer who explicitly refused a
+  governor-path change satisfied the gate that exists to require review.
+
+  - `request_changes` now **fails**, closed regardless of warn-first: warn-first
+    covers a review that has not happened yet, not one that happened and said no.
+  - `abstain` **warns** — nothing affirmed, nothing refused, so it sits with
+    absence pending the enforce flip ([#4058](https://github.com/nexus-substrate/nexus-agents/issues/4058)).
+  - `approve` passes, unchanged.
+
+  Verdicts are also aggregated across every matching record, with
+  `request_changes` winning. The gate took `records.find(...)` — the first match
+  in an append-only ledger — so the _earliest_ review for a diff decided the
+  outcome and an early approve shadowed a later refusal on the identical diff.
+
+  A refusal does not block indefinitely: records are bound to
+  `reviewedDiffHash`, so pushing a fix changes the hash and the gate falls back
+  to warn-on-absence until a new review lands.
+
+- [#5033](https://github.com/nexus-substrate/nexus-agents/pull/5033) [`54073b6`](https://github.com/nexus-substrate/nexus-agents/commit/54073b6aa07637caf20df1bef94c69726d227802) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): make the authority-tier ratification gate able to fire
+
+  The gate read `governance/authority-tier-transitions.jsonl` — a 0-byte file
+  whose only writer, `IAuditLogger.logTierTransition`, is called from nothing but
+  tests and a no-op stub. Empty file → no transitions → zero findings, always. So
+  the [#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842)/[#3894](https://github.com/nexus-substrate/nexus-agents/issues/3894)/[#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) path that resolves a `ratificationVoteRef` against the
+  tamper-evident `vote-records.jsonl` could not emit a finding, and the only live
+  guard on a promotion was a non-empty-string test — the cosmetic check [#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842)
+  states it replaced. A manifest could be promoted to `enforce` citing a vote that
+  does not exist.
+
+  Authority tiers are not changed at runtime: they live in
+  `governance/loop-tiers.yaml` and change by commit, so the runtime event the
+  design waited for never occurs. The resolution machinery is now pointed at the
+  promotion-evidence ledger, which does exist and does carry `ratificationVote`.
+  The dead transitions file is removed.
+
+  Remedy chosen by a 7-voter panel: Option C, 5 of 5 approvers, audit record [#80](https://github.com/nexus-substrate/nexus-agents/issues/80).
+
+- [#4930](https://github.com/nexus-substrate/nexus-agents/pull/4930) [`069a2e9`](https://github.com/nexus-substrate/nexus-agents/commit/069a2e97a194caaf27b74820e6b3a9d4f2382734) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - recognize NEXUS_DATA_DIR, NEXUS_REPO_PREFERRED, NEXUS_ACCESS_POLICY_MODE and NEXUS_SANDBOX in the env schema
+
+  All four are documented in CLAUDE.md's environment table and none were in
+  `env-schema.ts`, so `validateNexusEnv` reported them as **unknown** `NEXUS_*`
+  variables — offering a typo suggestion for a name spelled correctly. Anyone
+  following the documentation to set a runtime data root was told the variable
+  did not exist.
+
+  Found while stopping the test suite writing to `~/.nexus-agents/`, the real
+  cross-repo store holding capability gaps, memory and learning outcomes: test
+  runs were putting synthetic tool names and fabricated gaps into the data the
+  routing and improvement loops read. The suite now runs against a per-run data
+  dir set in `vitest.config.ts`, beside the `TMPDIR` redirect that was already
+  there.
+
+  A test now cross-checks the documented list against the schema, so the two
+  cannot drift apart again, and another asserts the suite's data dir is not the
+  real one — the isolation is a single config line, and nothing else would notice
+  it being dropped.
+
 ## 4.28.0
 
 ### Minor Changes
