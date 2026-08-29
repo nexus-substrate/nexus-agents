@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { stringify as toYaml } from 'yaml';
 import {
+  ratificationGateFindings,
   analyzeTierDeclarations,
   analyzeLoopTierDeclarations,
   analyzeTierTransitionEvents,
@@ -324,6 +325,71 @@ function resolverOf(...records: VoteRecord[]): RatificationResolver {
 
 /** A resolver that resolves nothing (empty/absent ledger). */
 const emptyResolver: RatificationResolver = () => undefined;
+
+describe('ratificationGateFindings — the gate reads the evidence ledger (#5028)', () => {
+  const evidenceEntry = {
+    loopId: 'dev-pipeline',
+    fromTier: 'advisory' as const,
+    toTier: 'enforce' as const,
+    evalN: 120,
+    precision: 0.95,
+    recall: 0.9,
+    primaryMetric: { name: 'accuracy', value: 0.95, ci: [0.92, 0.97] as [number, number] },
+    soakDuration: 'P31D',
+    ratificationVote: '#9999',
+    evidenceUri: 'https://example.invalid/evidence',
+  };
+
+  it('fails a promotion whose ratificationVote resolves to nothing', () => {
+    // The wiring, not the machinery. `analyzeTierTransitionEvents` and
+    // `buildVoteRecordRatificationResolver` were already well tested — and the
+    // gate still could not fire, because it read
+    // `governance/authority-tier-transitions.jsonl`, a 0-byte file whose only
+    // writer is called from tests and a no-op stub. Tiers change by editing
+    // `loop-tiers.yaml`, so the runtime event never occurs.
+    const findings = ratificationGateFindings(
+      new Map([['dev-pipeline', evidenceEntry as never]]),
+      '' // no vote records at all
+    );
+
+    expect(findings.map((f) => f.code)).toContain('promotion-ratification-unresolved');
+  });
+
+  it('fails closed when the vote ledger itself cannot be verified', () => {
+    // The pair for the negative above, and the more important direction: a
+    // ledger that does not verify must reject every promotion rather than let
+    // one through. A hand-written record with a bogus hash is exactly what a
+    // forged ratification would look like.
+    const forged = JSON.stringify({
+      id: 'vote-1',
+      decision: 'approved',
+      strategy: 'higher_order',
+      ratifies: 'dev-pipeline',
+      proposal: 'promote dev-pipeline to enforce',
+      sequence: 1,
+      recordedAt: '2026-08-26T00:00:00.000Z',
+      proposalHash: 'x'.repeat(64),
+      approvalPercentage: 100,
+      voteCounts: { approve: 7, reject: 0, abstain: 0, total: 7 },
+      voters: [],
+      hash: 'y'.repeat(64),
+      version: '1.2',
+    });
+
+    const findings = ratificationGateFindings(
+      new Map([['dev-pipeline', { ...evidenceEntry, ratificationVote: 'vote-1' } as never]]),
+      forged
+    );
+
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it('reports nothing when no promotion has been claimed', () => {
+    // The empty case, named: no evidence entries is "no promotions yet", not a
+    // verdict about any promotion.
+    expect(ratificationGateFindings(new Map(), '')).toEqual([]);
+  });
+});
 
 describe('analyzeTierTransitionEvents — ratification gate (#3842, hardened #3894)', () => {
   it('FAILS a promotion event with NO ratificationVoteRef (breakage fixture)', () => {
