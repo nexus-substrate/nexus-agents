@@ -307,6 +307,14 @@ export function registerResearchQueryTool(server: McpServer, deps: ResearchQuery
     action: z.string(),
     success: z.boolean(),
     data: z.unknown(),
+    // Set by handleStatus/handleOverlap when the technique carries a recorded
+    // rejection (#4555). Undeclared until #5141, which made every such call fail
+    // -32602 on an SDK-validating client — the SDK applies
+    // `additionalProperties: false` to any declared outputSchema.
+    //
+    // This hid because it is DATA-dependent, not action-dependent: the
+    // round-trip check calls `action: 'stats'`, which never sets it.
+    rejectionNotice: z.string().optional(),
   };
 
   server.registerTool(
