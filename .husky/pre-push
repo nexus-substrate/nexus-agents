@@ -43,14 +43,35 @@ echo "[fitness-guard] Fitness score: $SCORE/100 (threshold: $THRESHOLD)"
 
 # Model-string drift check (#2199 Child 4) — blocking
 # Rollback: set NEXUS_DRIFT_ADVISORY=1 in your shell or skip with --no-verify.
+# A non-zero exit is not automatically a finding. The check reports a violation
+# with exit 1; any OTHER non-zero status means it did not get to measure
+# anything — killed (137 = out of memory), crashed, `tsx` missing. Treating
+# those alike made the guard announce "BLOCKED: hardcoded model-version string"
+# for a run that never inspected a single file, sending the developer looking
+# for a string that does not exist.
+#
+# The fitness-guard above already separates "failed to run" from "measured and
+# failed"; this now matches it. An unmeasured check reports itself as
+# unmeasured and does not block — CI runs the same check on a clean runner, so
+# a real violation is still caught, and a local resource problem does not wedge
+# every push on the machine.
 echo "[drift-guard] Running model-string drift check..."
-if NEXUS_DRIFT_ADVISORY=0 npx --quiet tsx scripts/check-model-string-drift.ts; then
+NEXUS_DRIFT_ADVISORY=0 npx --quiet tsx scripts/check-model-string-drift.ts
+DRIFT_STATUS=$?
+
+if [ $DRIFT_STATUS -eq 0 ]; then
   echo "[drift-guard] No new model-version drift detected."
-else
+elif [ $DRIFT_STATUS -eq 1 ]; then
   echo ""
   echo "[drift-guard] BLOCKED: hardcoded model-version string outside config/."
   echo "[drift-guard] Migrate to config/model-capabilities.ts or add an"
   echo "[drift-guard] allowlist entry referencing companion epic #2200."
   echo "[drift-guard] Skip with: git push --no-verify"
   exit 1
+else
+  echo ""
+  echo "[drift-guard] UNMEASURED: the check exited $DRIFT_STATUS without reporting."
+  echo "[drift-guard] This is NOT a drift finding - nothing was inspected."
+  echo "[drift-guard] 137 means the process was killed, usually out of memory."
+  echo "[drift-guard] Not blocking; CI runs this check on a clean runner."
 fi
