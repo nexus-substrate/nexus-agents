@@ -11,6 +11,8 @@ import type {
   SessionTokenTotals,
 } from './orchestration-observer-types.js';
 import {
+  resolveModelCost,
+  registryCostForModel,
   extractStringField,
   extractNumberField,
   extractBooleanField,
@@ -289,5 +291,86 @@ describe('calculateTokenCost', () => {
   it('returns 0 for zero tokens', () => {
     const tokens: SessionTokenTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     expect(calculateTokenCost(tokens, 0.01)).toBe(0);
+  });
+});
+
+describe('cost resolution reads split rates from the registry (#5180)', () => {
+  const t = (input: number, output: number): SessionTokenTotals => ({
+    inputTokens: input,
+    outputTokens: output,
+    totalTokens: input + output,
+  });
+
+  describe('back-compat: a scalar override keeps its historical meaning', () => {
+    // The binding condition from the ratifying panel: a bare number was always a
+    // BLENDED per-1K rate, and must not be quietly reinterpreted as an input
+    // rate — that would move every existing operator's numbers silently.
+    it.each([
+      [10_000, 90_000, 0.015, 1.5],
+      [1000, 1000, 0.015, 0.03],
+      [50_000, 50_000, 0.01, 1],
+      [10_000, 90_000, 0.001, 0.1],
+    ])('%i in / %i out at %f per 1K stays $%f', (i, o, rate, expected) => {
+      expect(resolveModelCost(t(i, o), rate)).toBeCloseTo(expected, 10);
+    });
+
+    it('zero tokens cost zero at any scalar rate', () => {
+      expect(resolveModelCost(t(0, 0), 0.015)).toBe(0);
+    });
+  });
+
+  describe('a split override prices input and output separately', () => {
+    it('charges output at its own rate', () => {
+      // 10k at $0.01/1K + 90k at $0.05/1K = 0.1 + 4.5 = $4.60.
+      expect(resolveModelCost(t(10_000, 90_000), { input: 0.01, output: 0.05 })).toBeCloseTo(
+        4.6,
+        10
+      );
+    });
+
+    it('differs from the blended answer for the same tokens, which is the point', () => {
+      const blended = resolveModelCost(t(10_000, 90_000), 0.015);
+      const split = resolveModelCost(t(10_000, 90_000), { input: 0.01, output: 0.05 });
+      expect(split).not.toBeCloseTo(blended as number, 3);
+    });
+  });
+
+  describe('no override falls back to the registry, never to zero', () => {
+    it('prices claude 10k in / 90k out at the registry split', () => {
+      // The pinned figure from the ratified decision. The old private table
+      // charged $1.50 for this; the registry's 10/50 per 1M gives $4.60.
+      expect(registryCostForModel(t(10_000, 90_000), 'claude')).toBeCloseTo(4.6, 10);
+    });
+
+    it('resolves a CliName to its default model, not the CliName itself', () => {
+      // 'claude' is a CliName; the registry keys on model ids like
+      // 'claude-fable-5'. Looking up the CliName directly returns unpriced, so
+      // without this resolution every model would report $0 — a 100%
+      // understatement replacing a 3x one. Any non-zero result proves the
+      // resolution happened.
+      for (const cli of ['claude', 'gemini', 'codex', 'opencode']) {
+        expect(registryCostForModel(t(1000, 1000), cli), cli).toBeGreaterThan(0);
+      }
+    });
+
+    it('fails SOFT on an unrecognised name rather than throwing', () => {
+      // This runs on the routing hot path. getDefaultModelForCli throws on an
+      // unknown CliName, and taking down a routing call to record a metric
+      // would be worse than the mispricing being fixed.
+      expect(() => registryCostForModel(t(1000, 1000), 'not-a-cli')).not.toThrow();
+      expect(registryCostForModel(t(1000, 1000), 'not-a-cli')).toBe(0);
+    });
+
+    it('names the empty case: zero tokens is zero, not an error', () => {
+      expect(registryCostForModel(t(0, 0), 'claude')).toBe(0);
+    });
+  });
+
+  describe('resolveModelCost signals absence so the caller can fall back', () => {
+    it('returns undefined when there is no override at all', () => {
+      // Returning 0 here would make "no override" indistinguishable from "free"
+      // and the registry fallback would never run.
+      expect(resolveModelCost(t(1000, 1000), undefined)).toBeUndefined();
+    });
   });
 });
