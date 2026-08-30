@@ -11,7 +11,6 @@ import {
   UnanimousStrategy,
   ProofOfLearningStrategy,
   calculateVoteWeight,
-  deriveWeightBasis,
   createStrategyFactory,
 } from './strategies.js';
 
@@ -272,13 +271,17 @@ describe('ProofOfLearningStrategy', () => {
   });
 });
 
-describe('deriveWeightBasis (#5117)', () => {
-  const vote = { decision: 'approve' as const, confidence: 1, reasoning: 'probe', timestamp: 'x' };
+describe('weight-basis provenance at the strategy entry point (#5117)', () => {
+  const strategy = new ProofOfLearningStrategy();
 
-  it('names the empty case: no votes is unweighted, not performance', () => {
-    // A basis asserted over an empty set would be the vacuous-verdict shape —
-    // claiming a measurement of nothing.
-    expect(deriveWeightBasis(new Map(), new Map())).toBe('unweighted');
+  it('reports no basis at all when nothing was cast', () => {
+    // The empty case, checked where a caller can actually reach it. A basis
+    // asserted over an empty tally would be the vacuous-verdict shape, so the
+    // outcome must leave the field absent AND say so in the reason.
+    const outcome = strategy.calculateOutcome(new Map(), new Map());
+    expect(outcome.weightBasis).toBeUndefined();
+    expect(outcome.reason).toContain('No weighted votes cast');
+    expect(outcome.reason).not.toMatch(/\bweighted approval\b/);
   });
 
   it('does not infer the basis from the weight VALUE', () => {
@@ -287,29 +290,34 @@ describe('deriveWeightBasis (#5117)', () => {
     // cannot tell a measured-and-reliable voter from an unmeasured one. Here
     // every recorded weight IS 1.0 and the basis must still be 'performance',
     // because a record exists for each voter.
-    const votes = new Map([
-      ['a', vote],
-      ['b', vote],
-    ]);
-    const weights = new Map([
-      ['a', 1.0],
-      ['b', 1.0],
-    ]);
-    expect(deriveWeightBasis(votes, weights)).toBe('performance');
+    const votes = makeVotes(2, 1, 0);
+    const weights = new Map([...votes.keys()].map((id) => [id, 1.0]));
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightBasis).toBe('performance');
+  });
+
+  it('a stale weight for a non-voter does not make a complete tally look partial', () => {
+    // The other direction, and the one mutation testing caught the rewrite
+    // missing: counting over the WEIGHTS map instead of the voters inflates the
+    // covered count past `votes.size`, so a fully-measured panel reports
+    // 'partial'. Every voter here has a record; a leftover weight for an agent
+    // who never voted must not change that.
+    const votes = makeVotes(2, 1, 0);
+    const weights = new Map([...votes.keys()].map((id) => [id, 0.7]));
+    weights.set('ghost', 0.9);
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightBasis).toBe('performance');
   });
 
   it('ignores weights for agents who did not vote', () => {
     // Coverage is measured over the voters, not over the map. A stale weight
     // for an absent agent must not make a partial tally look complete.
-    const votes = new Map([
-      ['a', vote],
-      ['b', vote],
-    ]);
-    const weights = new Map([
-      ['a', 0.8],
-      ['ghost', 0.9],
-    ]);
-    expect(deriveWeightBasis(votes, weights)).toBe('partial');
+    const votes = makeVotes(2, 1, 0);
+    const firstId = [...votes.keys()][0];
+    const weights = new Map<string, number>([['ghost', 0.9]]);
+    if (firstId !== undefined) weights.set(firstId, 0.8);
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightBasis).toBe('partial');
   });
 });
 

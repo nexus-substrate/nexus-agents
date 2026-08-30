@@ -50,20 +50,16 @@ export interface VotingOutcome {
  * already defaults such a voter to `1.0`, so the arithmetic is unchanged — the
  * absence is what carries the provenance.
  */
-export function deriveWeightBasis(
-  votes: Map<string, Vote>,
-  weights: Map<string, number>
-): WeightBasis {
-  // The empty case, named rather than left to a default: no votes means nothing
-  // was weighted, so reporting 'performance' over an empty set would be the
-  // vacuous-verdict shape — a pass asserted over nothing measured.
-  if (votes.size === 0) return 'unweighted';
-
+function deriveWeightBasis(votes: Map<string, Vote>, weights: Map<string, number>): WeightBasis {
   let withRecord = 0;
   for (const agentId of votes.keys()) {
     if (weights.has(agentId)) withRecord++;
   }
 
+  // The empty case, named rather than left to a default: zero voters carrying a
+  // record — including the zero-voter case — is 'unweighted', never
+  // 'performance'. Answering it with `withRecord === votes.size` would make
+  // 0 === 0 report a full performance basis over nothing measured.
   if (withRecord === 0) return 'unweighted';
   return withRecord === votes.size ? 'performance' : 'partial';
 }

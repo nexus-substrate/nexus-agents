@@ -15,11 +15,14 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { createConsensusEngine, type ConsensusEngine } from './index.js';
+import { createConsensusEngine, type ConsensusEngine, type ConsensusResult } from './index.js';
 
 const VOTERS = ['agent-1', 'agent-2', 'agent-3'] as const;
 
-async function runProposal(engine: ConsensusEngine, weightedVoters: readonly string[] = []) {
+async function runProposal(
+  engine: ConsensusEngine,
+  weightedVoters: readonly string[] = []
+): Promise<ConsensusResult> {
   for (const id of weightedVoters) {
     // The only writer of performance history. Its absence in production is the
     // subject of #5234; here it is called directly to prove the basis FLIPS.
