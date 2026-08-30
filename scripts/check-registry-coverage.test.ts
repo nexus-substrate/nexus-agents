@@ -293,3 +293,55 @@ describe('an empty manifest is unmeasured, not clean (#4586)', () => {
     expect(isUnmeasurableManifest(12)).toBe(false);
   });
 });
+
+// ============================================================================
+// Peer files must be AUTHORED sources, not generated artifacts (#5160)
+// ============================================================================
+
+describe('peer files name the authored source, not a generated artifact (#5160)', () => {
+  const REPO = path.resolve(import.meta.dirname, '..');
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(REPO, 'docs/ops/registry-coverage-manifest.json'), 'utf-8')
+  ) as { registries: { name: string; peer_files: string[] }[] };
+
+  it('CLAUDE.md is a generated artifact for harness-neutral content', () => {
+    // The premise of the rule below. If this ever stops being true the rule
+    // should be revisited rather than silently kept.
+    const claude = fs.readFileSync(path.join(REPO, 'CLAUDE.md'), 'utf-8');
+    expect(claude).toContain('<!-- GENERATED:FROM_AGENTS:START -->');
+    expect(claude).toContain('DO NOT EDIT THIS BLOCK BY HAND');
+  });
+
+  it('no registry names CLAUDE.md as a peer file', () => {
+    // Requiring an edit to CLAUDE.md requires an edit to a file the generator
+    // overwrites. It is satisfied by running `pnpm governance:inject`, which
+    // means the gate is measuring the generator's output rather than anyone's
+    // intent — a touch-to-satisfy ritual, not coverage.
+    //
+    // The correct peer is the authored source: AGENTS.md for harness-neutral
+    // prose, or the generator script itself. REGISTERED_TOOL_NAMES already
+    // does the latter (it names scripts/inject-governance.ts), which is why
+    // NEXUS_ENV_VARS was the only row with this defect.
+    const offenders = manifest.registries
+      .filter((r) => r.peer_files.includes('CLAUDE.md'))
+      .map((r) => r.name);
+    expect(offenders).toEqual([]);
+  });
+
+  it('NEXUS_ENV_VARS points at AGENTS.md and the full configuration doc', () => {
+    const env = manifest.registries.find((r) => r.name === 'NEXUS_ENV_VARS');
+    expect(env).toBeDefined();
+    // Named explicitly rather than asserted as a set difference: the point is
+    // WHICH file carries the table, and a subtractive assertion would pass if
+    // the peer list were emptied altogether.
+    expect(env?.peer_files).toContain('AGENTS.md');
+    expect(env?.peer_files).toContain('docs/getting-started/CONFIGURATION.md');
+  });
+
+  it('the env-var table really does live in AGENTS.md', () => {
+    // Without this the repoint above could point at a file that never
+    // documents the variables, and every assertion here would still pass.
+    const agents = fs.readFileSync(path.join(REPO, 'AGENTS.md'), 'utf-8');
+    expect(agents).toContain('NEXUS_BILLING_MODE');
+  });
+});
