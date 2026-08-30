@@ -273,7 +273,7 @@ describe('ProofOfLearningStrategy', () => {
 });
 
 describe('deriveWeightBasis (#5117)', () => {
-  const vote = { decision: 'approve' as const, confidence: 1, timestamp: 'x' };
+  const vote = { decision: 'approve' as const, confidence: 1, reasoning: 'probe', timestamp: 'x' };
 
   it('names the empty case: no votes is unweighted, not performance', () => {
     // A basis asserted over an empty set would be the vacuous-verdict shape —
