@@ -8,18 +8,28 @@
 
 import type { CliName } from './types.js';
 import type { TopsisModelProfile, TopsisConfig, TopsisScore } from './topsis-types.js';
+import { computeTokenCost } from '../learning/token-cost-core.js';
 
 /**
  * Estimates cost for a request based on token counts.
+ *
+ * Rates come from the routing PROFILE rather than the registry, which is why
+ * this path exists separately at all — and why the shared core takes injected
+ * rates (#5122). No unpriced policy is needed here: a profile always carries
+ * rates, so there is no absent-rate case to fail open or closed on.
  */
 export function estimateCost(
   profile: TopsisModelProfile,
   inputTokens: number,
   outputTokens: number
 ): number {
-  const inputCost = (inputTokens / 1_000_000) * profile.costPerMillionInput;
-  const outputCost = (outputTokens / 1_000_000) * profile.costPerMillionOutput;
-  return inputCost + outputCost;
+  return computeTokenCost(
+    { input: inputTokens, output: outputTokens },
+    {
+      inputPer1M: profile.costPerMillionInput,
+      outputPer1M: profile.costPerMillionOutput,
+    }
+  ).costUsd;
 }
 
 /**
