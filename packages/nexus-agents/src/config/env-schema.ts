@@ -288,7 +288,7 @@ const DYNAMIC_FAMILIES: readonly {
 ];
 
 /** True when `name` is a valid member of a runtime-constructed family. */
-export function isDynamicFamilyMember(name: string): boolean {
+function isDynamicFamilyMember(name: string): boolean {
   return DYNAMIC_FAMILIES.some((family) => {
     if (!name.startsWith(family.prefix)) return false;
     const suffix = name.slice(family.prefix.length);

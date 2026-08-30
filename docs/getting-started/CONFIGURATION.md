@@ -349,6 +349,33 @@ Resolution: `clamp(envClassOverride ?? base, 1000, 7200000) * multiplier`, re-cl
 | `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                                                                                                                                                                | `false`   |
 | `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                                                                                                                                                                | `false`   |
 
+### Runtime internals, record paths and nesting guards (#5142)
+
+These are read by production code and are registered in `config/env-schema.ts`.
+They were previously unregistered, so setting one produced an "unknown variable"
+warning at startup with a typo suggestion, even though the value was honoured.
+
+| Variable                         | Description                                                                                                                                  | Default                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `NEXUS_MCP_DEPTH`                | Nesting depth stamped on a child Codex MCP process; the adapter refuses to recurse past its limit. Set by the parent, not normally by a user | `0` (top level)         |
+| `NEXUS_SUBPROCESS_DEPTH`         | Same idea for spawned CLI subprocesses (`subprocess-env.ts`), guarding runaway self-invocation                                               | `0` (top level)         |
+| `NEXUS_JOB_MAX_CONCURRENT_TOTAL` | Global cap on in-flight async MCP jobs across all tools. **`0` is meaningful** — it disables async dispatch entirely                         | built-in cap            |
+| `NEXUS_CI_HEALTH_MAX_BYTES`      | Byte cap on the log slice `ci_health_check` reads before truncating                                                                          | built-in cap            |
+| `NEXUS_VOTE_RECORDS_PATH`        | Overrides where consensus vote records are written. Relative paths resolve against the repo data dir and must not escape it                  | `<dataDir>/governance/` |
+| `NEXUS_MODEL_REGISTRY_OVERLAY`   | Path to a model-registry overlay manifest layered over the in-tree model data                                                                | unset                   |
+
+**Dynamic families.** Two variable names are constructed at runtime, so they are
+matched by prefix rather than listed individually:
+
+| Pattern                           | Description                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXUS_VOTER_MODEL_<ROLE>`        | Pins the model for one voter role, e.g. `NEXUS_VOTER_MODEL_ARCHITECT=claude-opus`. `<ROLE>` is a `VOTER_ROLES` key, upper-cased |
+| `NEXUS_JOB_MAX_CONCURRENT_<TOOL>` | Per-tool async job cap, e.g. `NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE=2`. `<TOOL>` is an MCP tool name, upper-cased                |
+
+A `<ROLE>` that is not a real voter role is still reported as an unknown
+variable — the prefix match is checked against the canonical role list, not
+accepted blindly.
+
 ### Code-PR adapter activation (#3670) — ARMED but DORMANT
 
 The autonomous code-PR adapter (#3670) is **built and owner-approved (2026-06-19)
