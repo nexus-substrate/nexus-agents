@@ -148,3 +148,38 @@ describe('roundToMicroUsd', () => {
     expect(costUsd).not.toBe(roundToMicroUsd(costUsd));
   });
 });
+
+describe('operation order is a recorded decision, not an accident (#5122)', () => {
+  it('multiplies before dividing, which differs in the last ulp from divide-first', () => {
+    // The eleven paths this core replaces were written as `(tokens / 1e6) * rate`.
+    // The core defers the division — `(tokens * rate) / 1e6` — which rounds once
+    // instead of twice. For 1 token at $5/1M the deferred form gives exactly
+    // 0.000005 where divide-first gives 0.0000049999999999999996.
+    //
+    // Pinned because it is the ONLY observable difference the consolidation
+    // introduces, and it must stay a deliberate choice: a future edit that
+    // "simplifies" the expression back would silently shift every cost in the
+    // tree at the 16th significant digit.
+    const deferred = computeTokenCost(
+      { input: 1, output: 0 },
+      { inputPer1M: 5, outputPer1M: 0 }
+    ).costUsd;
+    const divideFirst = (1 / 1_000_000) * 5;
+
+    expect(deferred).toBe(0.000005);
+    expect(divideFirst).not.toBe(0.000005);
+    // Same real number; they differ only in floating-point representation.
+    expect(deferred).toBeCloseTo(divideFirst, 15);
+  });
+
+  it('the difference is bounded well below any monetary significance', () => {
+    // Not uniformly "more accurate" — it differs in both directions. What
+    // matters is the bound: relative error under 1e-12 on a realistic call.
+    const a = computeTokenCost(
+      { input: 123_456, output: 7890 },
+      { inputPer1M: 15, outputPer1M: 75 }
+    ).costUsd;
+    const b = (123_456 / 1_000_000) * 15 + (7890 / 1_000_000) * 75;
+    expect(Math.abs(a - b) / b).toBeLessThan(1e-12);
+  });
+});
