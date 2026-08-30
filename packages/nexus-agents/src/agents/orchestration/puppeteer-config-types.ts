@@ -34,6 +34,31 @@ export interface PuppeteerConfig {
   readonly maxCostBudget?: number;
 }
 
+/**
+ * Default cost rate, in USD per 1,000 tokens. Kept next to the config field it
+ * backs so the two cannot drift apart — they silently agreed for months while
+ * three call sites hardcoded the per-token form (#5171).
+ */
+export const DEFAULT_COST_PER_1K_TOKENS = 0.01;
+
+/**
+ * Tokens → USD at a per-1K rate.
+ *
+ * Extracted because three sites had `tokensUsed * 0.00001` inline
+ * (`state-manager.ts`, and twice in `puppeteer-helpers.ts`), which is the
+ * per-token form of the 0.01-per-1K default. Being numerically identical to the
+ * default is exactly why `costPer1KTokens` could be declared, defaulted and
+ * Zod-validated while never being read — nothing looked wrong.
+ *
+ * This is a subsystem-local rate applied to a caller-supplied number, NOT a
+ * registry lookup: it deliberately does not become a twelfth entry in the
+ * token→USD inventory under #5122. When that consolidation lands, this is the
+ * one place this subsystem needs to change.
+ */
+export function tokensToCostUsd(tokens: number, costPer1KTokens: number): number {
+  return (tokens * costPer1KTokens) / 1000;
+}
+
 /** Default configuration values. */
 export const DEFAULT_PUPPETEER_CONFIG: Required<PuppeteerConfig> = {
   maxSteps: 10,
@@ -42,7 +67,7 @@ export const DEFAULT_PUPPETEER_CONFIG: Required<PuppeteerConfig> = {
   discountFactor: 0.99,
   explorationRate: 0.1,
   trackEmergentPatterns: true,
-  costPer1KTokens: 0.01,
+  costPer1KTokens: DEFAULT_COST_PER_1K_TOKENS,
   maxCostBudget: 1.0,
 };
 

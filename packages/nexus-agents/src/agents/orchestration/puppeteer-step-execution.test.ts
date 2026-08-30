@@ -37,12 +37,10 @@ vi.mock('./puppeteer-helpers.js', () => ({
       model: result.metadata.model,
     })
   ),
-  buildAgentTask: vi.fn(
-    (originalTask: Task, _state: PuppeteerState, _context: string): Task => ({
-      ...originalTask,
-      id: `${originalTask.id}-step-0`,
-    })
-  ),
+  buildAgentTask: vi.fn((originalTask: Task, _state: PuppeteerState, _context: string): Task => ({
+    ...originalTask,
+    id: `${originalTask.id}-step-0`,
+  })),
   buildStepResult: vi.fn(
     (options: Record<string, unknown>): PuppeteerStepResult =>
       ({

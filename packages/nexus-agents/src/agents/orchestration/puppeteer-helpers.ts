@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_COST_PER_1K_TOKENS, tokensToCostUsd } from './puppeteer-config-types.js';
 import type { Task, TaskResult } from '../../core/index.js';
 import { getTimeProvider } from '../../core/index.js';
 import type {
@@ -49,6 +50,8 @@ export interface RewardConfig {
   readonly maxCost: number;
   /** Maximum time in ms for normalization */
   readonly maxTime: number;
+  /** Cost rate in USD per 1,000 tokens for the efficiency penalty (#5171). */
+  readonly costPer1KTokens: number;
 }
 
 /** Default reward configuration. */
@@ -57,6 +60,7 @@ export const DEFAULT_REWARD_CONFIG: RewardConfig = {
   progressWeight: 0.5,
   maxCost: 1.0,
   maxTime: 300000,
+  costPer1KTokens: DEFAULT_COST_PER_1K_TOKENS,
 };
 
 /**
@@ -81,7 +85,7 @@ export function computeStepReward(
   const progressReward = progressDelta * config.progressWeight;
 
   // Efficiency penalty (higher cost/time = lower reward)
-  const costPenalty = (output.tokensUsed * 0.00001) / config.maxCost;
+  const costPenalty = tokensToCostUsd(output.tokensUsed, config.costPer1KTokens) / config.maxCost;
   const timePenalty = output.durationMs / config.maxTime;
   const efficiencyPenalty = (costPenalty + timePenalty) * config.efficiencyWeight;
 
@@ -236,6 +240,14 @@ export function computeMetrics(
 // Result Building
 // =============================================================================
 
+/** Trailing scalars for {@link buildPuppeteerResult}, grouped to keep the arity sane. */
+export interface BuildResultOptions {
+  readonly sessionId: string;
+  readonly startTime: number;
+  /** USD per 1,000 tokens; defaults to {@link DEFAULT_COST_PER_1K_TOKENS} (#5171). */
+  readonly costPer1KTokens?: number;
+}
+
 /**
  * Build the final Puppeteer result.
  */
@@ -243,9 +255,9 @@ export function buildPuppeteerResult(
   trajectory: readonly PuppeteerStepResult[],
   emergentPatterns: EmergentPatterns,
   terminationReason: PuppeteerTerminationReason,
-  sessionId: string,
-  startTime: number
+  options: BuildResultOptions
 ): PuppeteerResult {
+  const { sessionId, startTime, costPer1KTokens = DEFAULT_COST_PER_1K_TOKENS } = options;
   const success = terminationReason === 'task_complete';
   const totalDurationMs = getTimeProvider().now() - startTime;
 
@@ -255,7 +267,7 @@ export function buildPuppeteerResult(
 
   // Compute totals
   const totalTokens = trajectory.reduce((sum, s) => sum + s.agentOutput.tokensUsed, 0);
-  const totalCost = totalTokens * 0.00001; // $0.01 per 1K tokens
+  const totalCost = tokensToCostUsd(totalTokens, costPer1KTokens);
 
   // Compute metrics
   const metrics = computeMetrics(trajectory, emergentPatterns, success);

@@ -515,3 +515,44 @@ describe('relevance computation', () => {
     expect(context).toContain('Previous Steps');
   });
 });
+
+describe('costPer1KTokens is honoured, not hardcoded (#5171)', () => {
+  // The knob was declared, defaulted and Zod-validated but never read, while
+  // the cost-budget termination gate compared a CONFIGURABLE budget against a
+  // hardcoded rate. The default (0.01/1K) and the constant (0.00001/token) are
+  // numerically identical, which is why nothing looked wrong.
+  const OUTPUT_TOKENS = 50;
+
+  function costFor(rate?: number): number {
+    const manager =
+      rate === undefined ? createStateManager() : createStateManager({ costPer1KTokens: rate });
+    const state = manager.createInitialState(createTestTask(), 'session-1');
+    return manager.updateState(state, createTestOutput(0, 'agent-1')).metadata.totalCost;
+  }
+
+  it('uses the configured rate rather than a fixed constant', () => {
+    // 50 tokens at $0.05/1K = $0.0025, five times the default's $0.0005.
+    expect(costFor(0.05)).toBeCloseTo((OUTPUT_TOKENS * 0.05) / 1000, 10);
+  });
+
+  it('defaults to 0.01 per 1K, preserving the previous behaviour', () => {
+    expect(costFor()).toBeCloseTo((OUTPUT_TOKENS * 0.01) / 1000, 10);
+  });
+
+  it('a higher rate yields a strictly higher cost for identical usage', () => {
+    // The old assertion was `toBeGreaterThan(0)`, which passes for ANY rate and
+    // so could not detect the knob being ignored.
+    expect(costFor(0.05)).toBeGreaterThan(costFor(0.01));
+  });
+
+  it('still contributes nothing for an unmeasured step (#4766 preserved)', () => {
+    const manager = createStateManager({ costPer1KTokens: 0.05 });
+    const state = manager.createInitialState(createTestTask(), 'session-1');
+    const next = manager.updateState(state, {
+      ...createTestOutput(0, 'agent-1'),
+      tokensMeasured: false,
+    });
+    expect(next.metadata.totalCost).toBe(0);
+    expect(next.metadata.unmeasuredSteps).toBe(1);
+  });
+});
