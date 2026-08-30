@@ -353,7 +353,10 @@ export type AuditQueryCriteria = z.infer<typeof AuditQueryCriteriaSchema>;
  * audit record, or throwing inside the authorization path. A major version bump
  * is a note in a changelog; a property signature is a compile error.
  *
- * All seven members are converted, not just the one whose union widened. An
+ * EVERY member is converted, not just the one whose union widened. (Stated
+ * without a count on purpose: a literal here drifts the moment a member is
+ * added, which is the same doc-accuracy defect this file is fixing elsewhere.
+ * `audit-types-variance.test.ts` asserts the property, whatever the count.) An
  * earlier revision converted only `logPolicyDecision`, on the reasoning that
  * touching the others "would break implementors for no reason". That reasoning
  * was wrong, and a panel caught it: an ES6 class using ordinary method syntax
