@@ -1,5 +1,55 @@
 # nexus-agents
 
+## 4.29.5
+
+### Patch Changes
+
+- [#5152](https://github.com/nexus-substrate/nexus-agents/pull/5152) [`de992b1`](https://github.com/nexus-substrate/nexus-agents/commit/de992b14cac8176d8c4c5d564369e537f22261e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(governance): move eight harness-agnostic sections from CLAUDE.md into AGENTS.md
+
+  Codex, Gemini CLI and OpenCode read AGENTS.md. The CLI quick reference, the
+  `NEXUS_*` environment table, Operating Rules, the Discovered-Issues protocol,
+  Workflows, Governance quality, File References and the MCP tool list lived only
+  in CLAUDE.md, so three of four harnesses never saw them. Verified by grep:
+  `NEXUS_BILLING_MODE` and `nexus-agents doctor` appeared zero times in AGENTS.md.
+
+  They now live in AGENTS.md's `AGNOSTIC:BODY` and are injected into CLAUDE.md's
+  generated block, so every harness sees the same content and it is drift-checked.
+  CLAUDE.md's hand-maintained tail shrinks to the two genuinely Claude-specific
+  sections. Content outside the generated block is ungated by construction — that
+  is why the TypeScript pin drifted — so shrinking the tail removes the defect
+  class rather than patching instances.
+
+  The [#4722](https://github.com/nexus-substrate/nexus-agents/issues/4722) environment-variable guarantee now reads AGENTS.md rather than
+  CLAUDE.md. It was gating the table in the one file only Claude reads.
+
+  Panel: option A, 6/6 approvers, supermajority met.
+
+- [#5169](https://github.com/nexus-substrate/nexus-agents/pull/5169) [`eb91f1b`](https://github.com/nexus-substrate/nexus-agents/commit/eb91f1b1c00e27104eca58da9fd04328e18e578d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): stop reporting the reverted tool-fitness writer's residue as current tool health ([#5162](https://github.com/nexus-substrate/nexus-agents/issues/5162))
+
+  The tool-fitness ledger's only production writer landed as [#4723](https://github.com/nexus-substrate/nexus-agents/issues/4723) and was
+  reverted the same day by [#4731](https://github.com/nexus-substrate/nexus-agents/issues/4731) (unbounded per-call rewrite cost at the 50k cap;
+  no workspace identifier, which made the [#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902) per-workspace suppression
+  unreachable). The revert removed the code but not the ~470 records already
+  written, and `improvement_review` went on turning that residue into confident
+  deprecation verdicts for five days — 24 of 30 live signals named test fixtures
+  (`throw_tool`, `null_args_tool`) that the dead writer had recorded while a test
+  suite ran, and every signal reported `Workspaces observed: (unattributed)`,
+  the revert's own defect 2 still on display.
+
+  With no producer, any ledger content is residue by definition, so the family now
+  returns an explicit `unmeasured` signal naming [#4656](https://github.com/nexus-substrate/nexus-agents/issues/4656) instead of computing
+  percentages. Ledger names are also screened against the tool manifest at the I/O
+  boundary, so a verdict about a tool the server does not register can never reach
+  the remediation or issue-filing chain. Live output goes from 30 signals to 1.
+
+  A staleness guard was considered and rejected on measurement: the residue is 5
+  days old against a 14-day default lookback, so a "newest record older than the
+  window" check would not have fired on the incident that motivated it. That guard
+  belongs on a producer that can actually go quiet, and is recorded in [#4656](https://github.com/nexus-substrate/nexus-agents/issues/4656).
+
+  `TOOL_FITNESS_PRODUCER_WIRED` is the single flip [#4656](https://github.com/nexus-substrate/nexus-agents/issues/4656) must make, together with
+  a test proving live data flows again.
+
 ## 4.29.4
 
 ### Patch Changes
