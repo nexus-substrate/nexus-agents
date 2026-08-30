@@ -107,3 +107,25 @@ describe('trace-pricing', () => {
     });
   });
 });
+
+describe('calculateCost stays fail-CLOSED on the shared core (#5122)', () => {
+  it('returns undefined for an unpriced model, never 0', () => {
+    // The distinction the whole consolidation turns on. `undefined` means "no
+    // rate known"; a 0 would pass every cost ceiling. This function feeds
+    // ceilings that are documented fail-closed, so the guard must survive the
+    // move onto the shared arithmetic core.
+    expect(calculateCost('definitely-not-a-real-model-xyz', 1_000_000, 1_000_000)).toBeUndefined();
+  });
+
+  it('still prices a known model through the core', () => {
+    // The other direction: the guard must not swallow priced models, or it
+    // becomes a check that always fails closed.
+    expect(calculateCost('claude-sonnet', 1_000_000, 1_000_000)).toBeCloseTo(18, 10);
+  });
+
+  it('zero tokens on a priced model is 0, not undefined', () => {
+    // Name the empty case: no usage is a real $0 and must be distinguishable
+    // from an unknown rate.
+    expect(calculateCost('claude-sonnet', 0, 0)).toBe(0);
+  });
+});

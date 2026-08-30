@@ -11,6 +11,7 @@
  */
 
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
+import { computeTokenCost } from '../learning/token-cost-core.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import type { PriceBasis } from './price-basis.js';
 
@@ -135,12 +136,17 @@ export function calculateCost(
 ): number | undefined {
   const pricing = lookupCanonicalPricing(model);
 
+  // FAIL-CLOSED policy stays here, named, rather than moving into the shared
+  // core (#5122). `undefined` means "no rate known", which is NOT $0: cost
+  // ceilings are documented fail-closed for unpriced candidates, and a $0 would
+  // pass every ceiling. The core computes arithmetic only; it must never be
+  // reached without a rate.
   if (pricing === undefined) {
     return undefined;
   }
 
-  const inputCost = (inputTokens / 1_000_000) * pricing.inputPer1M;
-  const outputCost = (outputTokens / 1_000_000) * pricing.outputPer1M;
-
-  return inputCost + outputCost;
+  return computeTokenCost(
+    { input: inputTokens, output: outputTokens },
+    { inputPer1M: pricing.inputPer1M, outputPer1M: pricing.outputPer1M }
+  ).costUsd;
 }

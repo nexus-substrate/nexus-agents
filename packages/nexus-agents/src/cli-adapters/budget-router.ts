@@ -10,6 +10,7 @@
  */
 
 import type { Result } from '../core/index.js';
+import { computeTokenCost } from '../learning/token-cost-core.js';
 import { getTimeProvider } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 import type {
@@ -76,11 +77,15 @@ export function estimateRegistryCostUsd(
   outputTokens: number
 ): number | undefined {
   const pricing = getModelPricing(getDefaultModelForCli(slot));
+  // Fail-CLOSED, and deliberately different from `resolveCliCostPer1M`'s
+  // conservative fallback (#4168 vs #4196). Both policies are named at their
+  // own call site precisely so neither can be swapped for the other by
+  // accident; only the arithmetic is shared (#5122).
   if (pricing === undefined) return undefined;
-  return (
-    (inputTokens / 1_000_000) * pricing.inputPer1M +
-    (outputTokens / 1_000_000) * pricing.outputPer1M
-  );
+  return computeTokenCost(
+    { input: inputTokens, output: outputTokens },
+    { inputPer1M: pricing.inputPer1M, outputPer1M: pricing.outputPer1M }
+  ).costUsd;
 }
 
 /**
