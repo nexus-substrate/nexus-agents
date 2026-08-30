@@ -11,6 +11,7 @@ import {
   UnanimousStrategy,
   ProofOfLearningStrategy,
   calculateVoteWeight,
+  deriveWeightBasis,
   createStrategyFactory,
 } from './strategies.js';
 
@@ -237,8 +238,78 @@ describe('ProofOfLearningStrategy', () => {
     expect(strategy.calculateOutcome(makeVotes(3, 1, 0), new Map()).approved).toBe(true);
   });
 
-  it('includes reason message', () => {
-    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).reason).toContain('weighted approval');
+  it('does NOT claim weighted approval when nothing was weighted', () => {
+    // This test previously asserted the reason CONTAINED 'weighted approval'
+    // for this exact call, which supplies no weights — it pinned the #5117
+    // misreport as intended behaviour. Anyone fixing the defect without reading
+    // this first would have seen the failure and taken it for their own
+    // regression.
+    const outcome = strategy.calculateOutcome(makeVotes(3, 1, 0));
+    expect(outcome.weightBasis).toBe('unweighted');
+    expect(outcome.reason).toContain('UNWEIGHTED');
+    expect(outcome.reason).not.toMatch(/\bweighted approval\b/);
+  });
+
+  it('reports performance basis when every voter has a recorded weight', () => {
+    // The seam that matters: the field must FLIP. A discriminator that only
+    // ever returns 'unweighted' is indistinguishable from a hardcoded string.
+    const votes = makeVotes(3, 1, 0);
+    const weights = new Map([...votes.keys()].map((id) => [id, 0.9]));
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightBasis).toBe('performance');
+    expect(outcome.reason).toContain('weighted approval');
+  });
+
+  it('reports partial basis when only some voters have a recorded weight', () => {
+    // Partial coverage is its own state. Reporting it as fully
+    // performance-weighted would launder an unmeasured majority.
+    const votes = makeVotes(3, 1, 0);
+    const firstId = [...votes.keys()][0];
+    const weights = new Map(firstId !== undefined ? [[firstId, 0.9]] : []);
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightBasis).toBe('partial');
+    expect(outcome.reason).toContain('partly weighted');
+  });
+});
+
+describe('deriveWeightBasis (#5117)', () => {
+  const vote = { decision: 'approve' as const, confidence: 1, timestamp: 'x' };
+
+  it('names the empty case: no votes is unweighted, not performance', () => {
+    // A basis asserted over an empty set would be the vacuous-verdict shape —
+    // claiming a measurement of nothing.
+    expect(deriveWeightBasis(new Map(), new Map())).toBe('unweighted');
+  });
+
+  it('does not infer the basis from the weight VALUE', () => {
+    // The condition the design panel attached. A voter with a perfect record
+    // legitimately weighs exactly 1.0, so "does any weight differ from 1.0"
+    // cannot tell a measured-and-reliable voter from an unmeasured one. Here
+    // every recorded weight IS 1.0 and the basis must still be 'performance',
+    // because a record exists for each voter.
+    const votes = new Map([
+      ['a', vote],
+      ['b', vote],
+    ]);
+    const weights = new Map([
+      ['a', 1.0],
+      ['b', 1.0],
+    ]);
+    expect(deriveWeightBasis(votes, weights)).toBe('performance');
+  });
+
+  it('ignores weights for agents who did not vote', () => {
+    // Coverage is measured over the voters, not over the map. A stale weight
+    // for an absent agent must not make a partial tally look complete.
+    const votes = new Map([
+      ['a', vote],
+      ['b', vote],
+    ]);
+    const weights = new Map([
+      ['a', 0.8],
+      ['ghost', 0.9],
+    ]);
+    expect(deriveWeightBasis(votes, weights)).toBe('partial');
   });
 });
 

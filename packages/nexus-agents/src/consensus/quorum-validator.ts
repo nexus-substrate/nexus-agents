@@ -163,13 +163,20 @@ export class QuorumValidator implements IQuorumValidator {
     // Calculate weights if applicable
     const { totalWeight, weightedCounts } = this.calculateWeights(votes, agentWeights, config);
 
+    // Whether any voter actually had a weight SUPPLIED (#5117). Derived from
+    // provenance — presence in `agentWeights` — not from whether a weight
+    // differs from 1.0: an agent legitimately weighted 1.0 is not the same as
+    // one nobody ever weighted, and numeric equality cannot tell them apart.
+    const anyWeightSupplied = [...votes.keys()].some((id) => agentWeights?.has(id) === true);
+
     // Calculate quorum based on algorithm
     const { threshold, actualQuorum, quorumReached, reasoning } = this.calculateQuorumStatus(
       voteCounts,
       weightedCounts,
       totalWeight,
       config,
-      requiredParticipants ?? votes.size
+      requiredParticipants ?? votes.size,
+      anyWeightSupplied
     );
 
     return {
@@ -261,13 +268,14 @@ export class QuorumValidator implements IQuorumValidator {
     weightedCounts: WeightedVoteCounts | undefined,
     totalWeight: number | undefined,
     config: QuorumValidationConfig,
-    requiredParticipants: number
+    requiredParticipants: number,
+    anyWeightSupplied: boolean
   ): { threshold: number; actualQuorum: number; quorumReached: boolean; reasoning: string } {
     const threshold = config.threshold;
 
     // For weighted algorithms, use weighted counts
     if (weightedCounts !== undefined && totalWeight !== undefined && totalWeight > 0) {
-      return this.calculateWeightedQuorum(weightedCounts, totalWeight, threshold);
+      return this.calculateWeightedQuorum(weightedCounts, totalWeight, threshold, anyWeightSupplied);
     }
 
     // For simple algorithms, use vote counts
@@ -277,7 +285,8 @@ export class QuorumValidator implements IQuorumValidator {
   private calculateWeightedQuorum(
     weightedCounts: WeightedVoteCounts,
     totalWeight: number,
-    threshold: number
+    threshold: number,
+    anyWeightSupplied: boolean
   ): { threshold: number; actualQuorum: number; quorumReached: boolean; reasoning: string } {
     const quorumReached = totalWeight >= threshold;
     const approveRatio = weightedCounts.approve / totalWeight;
@@ -288,29 +297,41 @@ export class QuorumValidator implements IQuorumValidator {
       totalWeight,
       threshold,
       approveRatio,
-      rejectRatio
+      rejectRatio,
+      anyWeightSupplied
     );
 
     return { threshold, actualQuorum: totalWeight, quorumReached, reasoning };
   }
 
+  /**
+   * Reasoning text for the weighted-quorum branch.
+   *
+   * `weighted` is qualified rather than asserted (#5117). `agentWeights` has no
+   * non-test producer, so every real call reaches `getVoteWeight`'s `?? 1.0`
+   * fallback and this branch describes a plain headcount as a weighted ratio.
+   * The word is kept where weights genuinely varied and replaced where they
+   * did not, so the reader can tell the two apart.
+   */
   private buildWeightedReasoning(
     quorumReached: boolean,
     totalWeight: number,
     threshold: number,
     approveRatio: number,
-    rejectRatio: number
+    rejectRatio: number,
+    weighted: boolean
   ): string {
+    const kind = weighted ? 'weighted' : 'unweighted (no agent weights supplied)';
     if (!quorumReached) {
-      return `Weighted quorum not reached: ${totalWeight.toFixed(2)} < ${String(threshold)}`;
+      return `Quorum not reached: ${totalWeight.toFixed(2)} < ${String(threshold)} (${kind})`;
     }
     if (approveRatio > rejectRatio) {
-      return `Approval wins with weighted ratio ${formatPercentage(approveRatio, 1)}`;
+      return `Approval wins with ${kind} ratio ${formatPercentage(approveRatio, 1)}`;
     }
     if (rejectRatio > approveRatio) {
-      return `Rejection wins with weighted ratio ${formatPercentage(rejectRatio, 1)}`;
+      return `Rejection wins with ${kind} ratio ${formatPercentage(rejectRatio, 1)}`;
     }
-    return `No clear winner: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)}`;
+    return `No clear winner: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)} (${kind})`;
   }
 
   private calculateSimpleQuorum(

@@ -35,7 +35,10 @@ export const MAX_PROPOSAL_LENGTH = 4000;
  * - `simple_majority`: Standard majority voting (>50%)
  * - `supermajority`: Requires >=67% approval
  * - `unanimous`: Requires 100% approval
- * - `proof_of_learning`: Weighted by agent performance (Issue #103)
+ * - `proof_of_learning`: Weighted by agent performance (Issue #103). NOTE: weights come from
+ *   recorded voter history, and nothing writes that history today (#5234), so in practice this
+ *   currently behaves as simple_majority. The outcome reports `weightBasis: 'unweighted'` when
+ *   that is the case (#5117) rather than claiming a weighting that did not happen.
  * - `higher_order`: Bayesian-optimal with correlation awareness (Issue #514)
  * - `opinion_wise`: Alias for higher_order (Issue #333)
  */

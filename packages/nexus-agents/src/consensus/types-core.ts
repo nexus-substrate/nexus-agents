@@ -145,6 +145,27 @@ export interface VoteCounts {
 /**
  * Weighted vote counts for proof-of-learning.
  */
+/**
+ * What a weighted tally's weights were actually derived from (#5117).
+ *
+ * `proof_of_learning` reported `"X% weighted approval"` and a populated
+ * `weightedCounts` for tallies in which every weight was structurally `1.0` —
+ * because the performance map feeding them has never had a writer
+ * (`updateAgentPerformance` has no non-test caller). A reader was invited to
+ * believe voter track record influenced the outcome. It did not, and could not.
+ *
+ * Deliberately NOT derived by checking whether any weight differs from `1.0`.
+ * A voter with a perfect record legitimately weighs `1.0`, so numeric equality
+ * cannot tell "measured, and they were reliable" from "never measured" — that
+ * test would be its own can't-distinguish defect. The basis is derived from
+ * PROVENANCE: whether a performance record existed for each voter.
+ *
+ * `partial` is a real state, not a rounding of the other two. Some voters
+ * having history while others do not must not be reported as fully
+ * performance-weighted.
+ */
+export type WeightBasis = 'performance' | 'partial' | 'unweighted';
+
 export interface WeightedVoteCounts {
   approve: number;
   reject: number;
@@ -162,6 +183,15 @@ export interface ConsensusResult {
   votes: Map<string, Vote>;
   voteCounts: VoteCounts;
   weightedCounts?: WeightedVoteCounts | undefined;
+  /**
+   * What the weights in `weightedCounts` were derived from (#5117).
+   *
+   * Carried on the RESULT, not just computed inside the strategy, because the
+   * result is what a reviewer reads. A tally reported as weighted when every
+   * weight was structurally 1.0 invites the reader to believe voter track
+   * record moved the number. Absent for strategies that do not weight at all.
+   */
+  weightBasis?: WeightBasis | undefined;
   approvalPercentage: number;
   quorumReached: boolean;
   startedAt: string;
