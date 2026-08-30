@@ -18,7 +18,6 @@ import {
   locallyFailingWorkspaces,
   assertNeverAutonomousRemoval,
   loadToolFitnessSignals,
-  TOOL_FITNESS_PRODUCER_WIRED,
   FITNESS_MIN_SAMPLE,
   LOW_USAGE_MAX_INVOCATIONS,
   POOR_SUCCESS_RATE_MAX,
@@ -644,8 +643,12 @@ describe('no producer → unmeasured, not a computed default (#5162)', () => {
     return l;
   }
 
-  it('ships with the producer unwired, matching the reverted #4723 writer', () => {
-    expect(TOOL_FITNESS_PRODUCER_WIRED).toBe(false);
+  it('defaults to unwired, matching the reverted #4723 writer', () => {
+    // Asserted through BEHAVIOUR, not by exporting the constant: calling with no
+    // producer argument must take the unmeasured arm. Flipping the default to
+    // true fails here, so the ship-dark guarantee is still pinned.
+    const signals = loadToolFitnessSignals(WINDOW, ledgerWith('weather_report'));
+    expect(signals.map((s) => s.signalKey)).toEqual(['tool-fitness:unmeasured:no-producer']);
   });
 
   it('reports unmeasured even when the ledger still holds records', () => {

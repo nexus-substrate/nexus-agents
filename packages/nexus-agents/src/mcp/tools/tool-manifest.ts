@@ -865,7 +865,7 @@ export type RegisteredToolName = (typeof TOOL_MANIFEST)[number]['name'];
  * life, and the reader then reported them as deprecation candidates for days.
  * A fitness verdict about a tool that does not exist is not a measurement.
  */
-export const REGISTERED_TOOL_NAME_SET: ReadonlySet<string> = new Set(
+const REGISTERED_TOOL_NAME_SET: ReadonlySet<string> = new Set(
   (TOOL_MANIFEST as readonly ToolManifestEntry[]).map((t) => t.name)
 );
 

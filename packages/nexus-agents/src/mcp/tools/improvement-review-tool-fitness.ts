@@ -287,7 +287,7 @@ export function detectToolFitnessSignals(
  * Leaving it false under-reports (unmeasured despite data); flipping it early
  * misreports. Fail closed.
  */
-export const TOOL_FITNESS_PRODUCER_WIRED = false;
+const TOOL_FITNESS_PRODUCER_WIRED = false;
 
 /** The explicit no-producer envelope. Carries the tracking issue, not a number. */
 function unmeasuredSignal(windowLabel: string): ImprovementSignal {
