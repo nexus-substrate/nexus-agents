@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
+import { VOTER_ROLES } from '../cli/vote-types.js';
 
 // ============================================================================
 // Helper Zod types for string-encoded values
@@ -26,6 +27,18 @@ const boolStr = z.enum(['true', 'false']);
 
 /** String that parses to a non-negative float. */
 const floatStr = z.string().regex(/^\d+(\.\d+)?$/, 'Must be a non-negative number string');
+
+/**
+ * The exact accept-set of `parseBoolEnv` (config/defaults-env.ts): `true`, `1`,
+ * `false`, `0`, case-insensitively. Deliberately narrower than a general
+ * boolean: `yes`/`no`/`on`/`off` are silently discarded by that helper, so
+ * accepting them here would report a working setting for one that does nothing.
+ */
+const boolLooseStr = z
+  .string()
+  .refine((v) => ['true', '1', 'false', '0'].includes(v.toLowerCase()), {
+    message: 'Must be one of: true, false, 1, 0',
+  });
 
 // ============================================================================
 // Known NEXUS_* environment variables schema
@@ -175,6 +188,59 @@ const NexusEnvSchema = z.object({
   NEXUS_SESSIONS_DB: z.string().optional(),
   NEXUS_DISABLE_SESSIONS: boolStr.optional(),
   NEXUS_DISABLE_METRICS: boolStr.optional(),
+
+  // --- Read by production code but previously unregistered (#5142) ---
+  // Each type below was verified against the consuming call site, not inferred
+  // from the name. Registering with a wrong type would replace "unknown
+  // variable" with "invalid value" on a value that actually works — trading one
+  // misreport for a worse one. Variables whose accepted set needed a judgement
+  // call are tracked in docs/ops/env-schema-coverage-baseline.json instead.
+
+  // Paths, URLs, tokens and term lists: any non-empty string is legal, so
+  // z.string() is the accurate type rather than a permissive stand-in.
+  NEXUS_CODEPR_TOKEN: z.string().optional(),
+  NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
+  NEXUS_CUSTOM_API_KEY: z.string().optional(),
+  NEXUS_CUSTOM_MODEL: z.string().optional(),
+  NEXUS_MODEL_REGISTRY_OVERLAY: z.string().optional(),
+  NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
+  NEXUS_OPENAI_COMPAT_URL: z.string().optional(),
+  NEXUS_OPENCODE_CONFIG: z.string().optional(),
+  NEXUS_PR_REVIEW_RECORDS_PATH: z.string().optional(),
+  NEXUS_SENSITIVE_REFS: z.string().optional(),
+  NEXUS_SUBPROCESS_EXTRA_ENV: z.string().optional(),
+  NEXUS_VOTE_RECORDS_PATH: z.string().optional(),
+
+  // parseIntEnv / parseInt consumers: a non-integer is discarded in favour of
+  // the default, so reporting it as invalid tells the user their setting was
+  // ignored rather than letting it fail silently.
+  NEXUS_CI_HEALTH_MAX_BYTES: positiveIntStr.optional(),
+  NEXUS_IMPROVEMENT_REVIEW_INTERVAL_MS: positiveIntStr.optional(),
+  NEXUS_MCP_DEPTH: positiveIntStr.optional(),
+  NEXUS_SUBPROCESS_DEPTH: positiveIntStr.optional(),
+  // `0` is meaningful here — it disables async job dispatch entirely — so this
+  // is non-negative, not positive (job-concurrency.ts:106 accepts `>= 0`).
+  NEXUS_JOB_MAX_CONCURRENT_TOTAL: z
+    .string()
+    .regex(/^\d+$/, 'Must be a non-negative integer string')
+    .optional(),
+
+  // parseBoolEnv consumers (config/defaults-env.ts:50). The helper accepts
+  // exactly true|1|false|0, case-insensitively — NOT yes/no/on/off, which fall
+  // through to the default. Accepting a wider set here would tell the user
+  // `yes` works when the code silently ignores it.
+  NEXUS_IMPROVEMENT_REVIEW_FILE_ISSUES: boolLooseStr.optional(),
+  NEXUS_NO_SCAFFOLD: boolLooseStr.optional(),
+  NEXUS_TUNE_ENFORCE: boolLooseStr.optional(),
+  NEXUS_VERSION_CHECK: boolLooseStr.optional(),
+
+  // Lowercased before parsing, so mixed case is genuinely accepted.
+  NEXUS_REPUTATION_GATING: z
+    .string()
+    .refine((v) => ['off', 'audit', 'enforce'].includes(v.toLowerCase()), {
+      message: 'Must be one of: off, audit, enforce',
+    })
+    .optional(),
 });
 
 // ============================================================================
@@ -182,6 +248,55 @@ const NexusEnvSchema = z.object({
 // ============================================================================
 
 const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
+
+// ============================================================================
+// Dynamic variable families (#5142)
+// ============================================================================
+
+/**
+ * Variables whose NAME is built at runtime by string concatenation, so they can
+ * never appear as fixed schema keys.
+ *
+ * Verified live before this existed: `NEXUS_VOTER_MODEL_ARCHITECT=claude-opus`
+ * — a documented, working per-role routing override — was reported as an
+ * unknown variable, i.e. the typo detector accused the user of a typo they did
+ * not make.
+ *
+ * The voter-model suffixes are derived from `VOTER_ROLES`, the canonical role
+ * list, rather than re-listed here: a second hand-maintained copy would
+ * reintroduce exactly the schema-vs-code drift this is fixing, one level up.
+ */
+const DYNAMIC_FAMILIES: readonly {
+  readonly prefix: string;
+  readonly suffixes: readonly string[] | 'any-identifier';
+}[] = [
+  {
+    // cli/voter-model-overrides.ts:24 — `NEXUS_VOTER_MODEL_${role.toUpperCase()}`
+    prefix: 'NEXUS_VOTER_MODEL_',
+    suffixes: Object.keys(VOTER_ROLES).map((r) => r.toUpperCase()),
+  },
+  {
+    // mcp/jobs/job-concurrency.ts:85 — `NEXUS_JOB_MAX_CONCURRENT_${tool.toUpperCase()}`
+    // The suffix is an arbitrary MCP tool name. Importing the tool registry here
+    // would couple config to MCP and risk an import cycle, so the suffix is
+    // matched structurally. The cost is honest and bounded: a misspelt TOOL name
+    // in this one family is not flagged. The alternative — leaving the whole
+    // family unregistered — misreports every CORRECT use, which is worse.
+    prefix: 'NEXUS_JOB_MAX_CONCURRENT_',
+    suffixes: 'any-identifier',
+  },
+];
+
+/** True when `name` is a valid member of a runtime-constructed family. */
+function isDynamicFamilyMember(name: string): boolean {
+  return DYNAMIC_FAMILIES.some((family) => {
+    if (!name.startsWith(family.prefix)) return false;
+    const suffix = name.slice(family.prefix.length);
+    if (suffix === '') return false;
+    if (family.suffixes === 'any-identifier') return /^[A-Z][A-Z0-9_]*$/.test(suffix);
+    return family.suffixes.includes(suffix);
+  });
+}
 
 // ============================================================================
 // Levenshtein distance
@@ -239,6 +354,12 @@ function classifyEnvKeys(
   const unknownVars: UnknownVar[] = [];
 
   for (const key of nexusKeys) {
+    if (isDynamicFamilyMember(key)) {
+      // Name is valid but has no fixed schema entry, so there is nothing to
+      // value-check against; recording it as known is what stops the false
+      // unknown-variable report.
+      continue;
+    }
     if (KNOWN_NAMES.includes(key)) {
       const value = env[key];
       if (value !== undefined) {
