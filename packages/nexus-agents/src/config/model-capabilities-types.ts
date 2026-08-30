@@ -147,6 +147,14 @@ export type QualityScores = z.infer<typeof QualityScoresSchema>;
 export const PricingSchema = z.object({
   inputPer1M: z.number().nonnegative(),
   outputPer1M: z.number().nonnegative(),
+  /**
+   * Cache rates, USD per 1M tokens (#5170). OPTIONAL and absent by default:
+   * roughly half the catalogue publishes neither, and absent must stay
+   * distinguishable from zero — a 0 would price a cache-heavy call as free,
+   * where absent makes `computeTokenCost` report the component unpriced.
+   */
+  cacheReadPer1M: z.number().nonnegative().optional(),
+  cacheWritePer1M: z.number().nonnegative().optional(),
 });
 
 export type Pricing = z.infer<typeof PricingSchema>;

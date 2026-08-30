@@ -5475,7 +5475,7 @@ InterfaceDeclaration ModelEntry
   readonly notes?: string | undefined
   readonly outputModalities?: readonly ("code" | "text" | "image_png" | "image_jpeg" | "audio_pcm" | "audio_wav" | "audio_mp3" | "video_mp4" | "svg" | "structured_json")[] | undefined
   readonly parallelToolCalls: boolean
-  readonly pricing?: { inputPer1M: number; outputPer1M: number; } | undefined
+  readonly pricing?: { cacheReadPer1M?: number | undefined; cacheWritePer1M?: number | undefined; inputPer1M: number; outputPer1M: number; } | undefined
   readonly profileId: string
   readonly promptCaching: PromptCachingMode
   readonly qualityScores?: { codeGeneration: number; cost: number; reasoning: number; speed: number; } | undefined
