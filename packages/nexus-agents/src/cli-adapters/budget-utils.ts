@@ -12,6 +12,7 @@
 
 import type { CliName } from './types.js';
 import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
+import { computeTokenCost } from '../learning/token-cost-core.js';
 
 /**
  * Estimate tokens from task content.
@@ -27,10 +28,17 @@ export function estimateTokens(content: string): number {
  * unpriced — never $0). Rates are per-1M tokens.
  */
 export function estimateCost(model: CliName, inputTokens: number, outputTokens: number): number {
+  // The arithmetic moved to the shared core (#5122); the CONSERVATIVE FALLBACK
+  // POLICY deliberately stays here, in `resolveCliCostPer1M`. That separation is
+  // the whole point: an unpriced candidate must never reach this gate as $0,
+  // because a $0 always passes a budget filter and looks cheapest to TOPSIS
+  // (#4165/#4196). Swapping this for a zero-on-unpriced cost function would
+  // silently disable budget enforcement.
   const costs = resolveCliCostPer1M(model);
-  const inputCost = (inputTokens / 1_000_000) * costs.input;
-  const outputCost = (outputTokens / 1_000_000) * costs.output;
-  return inputCost + outputCost;
+  return computeTokenCost(
+    { input: inputTokens, output: outputTokens },
+    { inputPer1M: costs.input, outputPer1M: costs.output }
+  ).costUsd;
 }
 
 /**
