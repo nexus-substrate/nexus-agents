@@ -18,6 +18,7 @@ import {
   locallyFailingWorkspaces,
   assertNeverAutonomousRemoval,
   loadToolFitnessSignals,
+  TOOL_FITNESS_PRODUCER_WIRED,
   FITNESS_MIN_SAMPLE,
   LOW_USAGE_MAX_INVOCATIONS,
   POOR_SUCCESS_RATE_MAX,
@@ -438,10 +439,12 @@ describe('loadToolFitnessSignals — live ledger integration (in-memory, no fs)'
   it('surfaces a low-fitness tool from a real ledger as a suggest candidate', () => {
     // Construct an isolated ledger and inject it (no homedir touch).
     const ledger = new ToolFitnessLedger({ filePath: `/tmp/nx-tf-${String(Date.now())}.jsonl` });
-    ledger.record({ tool: 'never_used_much', success: true, workspace: 'repo-a' });
+    // Must be a REGISTERED tool: since #5162 the reader screens ledger names
+    // against the manifest, so a synthetic name would be filtered out here.
+    ledger.record({ tool: 'weather_report', success: true, workspace: 'repo-a' });
 
-    const signals = loadToolFitnessSignals(WINDOW, ledger);
-    expect(signals.some((s) => s.signalKey.includes('never_used_much'))).toBe(true);
+    const signals = loadToolFitnessSignals(WINDOW, ledger, true);
+    expect(signals.some((s) => s.signalKey.includes('weather_report'))).toBe(true);
     expect(signals.every((s) => s.severity !== 'critical')).toBe(true);
   });
 
@@ -454,7 +457,7 @@ describe('loadToolFitnessSignals — live ledger integration (in-memory, no fs)'
         return undefined;
       },
     };
-    expect(loadToolFitnessSignals(WINDOW, broken)).toEqual([]);
+    expect(loadToolFitnessSignals(WINDOW, broken, true)).toEqual([]);
   });
 });
 
@@ -583,5 +586,85 @@ describe('declarative orthogonalityGroup metadata (#3930)', () => {
       const c = consolidationConfidence(stat({ tool: x }), stat({ tool: y }));
       expect(['none', 'low']).toContain(c);
     }
+  });
+});
+
+describe('unregistered tool names are not fitness subjects (#5162)', () => {
+  // The ledger's only producer (#4723) was reverted the same day (#4731), but
+  // the ~470 records it wrote were left behind. Five days later this reader was
+  // still turning them into confident deprecation verdicts — 24 of 30 live
+  // signals named test fixtures like `throw_tool`, which is not a tool.
+  //
+  // Screened at the ledger boundary, so the detectors stay pure functions that
+  // synthetic-name fixtures can still exercise.
+  function ledgerOf(events: readonly { tool: string; success: boolean }[]): ToolFitnessLedger {
+    const l = new ToolFitnessLedger({
+      filePath: `/tmp/nx-tf-5162-${String(Date.now())}-${String(Math.random()).slice(2)}.jsonl`,
+    });
+    for (const e of events) l.record({ ...e, workspace: 'repo-a' });
+    return l;
+  }
+
+  it('emits nothing for fixture names the reverted producer left in the ledger', () => {
+    for (const tool of ['throw_tool', 'null_args_tool', 'no_schema_tool', 'validated_tool']) {
+      const ledger = ledgerOf([
+        { tool, success: false },
+        { tool, success: true },
+      ]);
+      expect(loadToolFitnessSignals(WINDOW, ledger, true), `${tool} must be screened out`).toEqual(
+        []
+      );
+    }
+  });
+
+  it('still emits for a REGISTERED tool, so the screen is not a blanket mute', () => {
+    // Without this the filter could return false for everything and every test
+    // above would still pass — a guard that cannot fail in the other direction.
+    const ledger = ledgerOf([{ tool: 'weather_report', success: true }]);
+    expect(loadToolFitnessSignals(WINDOW, ledger, true).length).toBeGreaterThan(0);
+  });
+
+  it('screens a mixed ledger down to only the registered tool', () => {
+    const ledger = ledgerOf([
+      { tool: 'throw_tool', success: false },
+      { tool: 'weather_report', success: true },
+    ]);
+    const signals = loadToolFitnessSignals(WINDOW, ledger, true);
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals.every((s) => !s.signalKey.includes('throw_tool'))).toBe(true);
+  });
+});
+
+describe('no producer → unmeasured, not a computed default (#5162)', () => {
+  function ledgerWith(tool: string): ToolFitnessLedger {
+    const l = new ToolFitnessLedger({
+      filePath: `/tmp/nx-tf-unm-${String(Date.now())}-${String(Math.random()).slice(2)}.jsonl`,
+    });
+    l.record({ tool, success: false, workspace: 'repo-a' });
+    return l;
+  }
+
+  it('ships with the producer unwired, matching the reverted #4723 writer', () => {
+    expect(TOOL_FITNESS_PRODUCER_WIRED).toBe(false);
+  });
+
+  it('reports unmeasured even when the ledger still holds records', () => {
+    // NAME THE EMPTY CASE, inverted: the ledger is NOT empty. Residue must not
+    // become a measurement just because bytes exist on disk.
+    const signals = loadToolFitnessSignals(WINDOW, ledgerWith('weather_report'), false);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.signalKey).toBe('tool-fitness:unmeasured:no-producer');
+    expect(signals[0]?.evidence?.samples).toBe(0);
+  });
+
+  it('emits no deprecation verdict and no percentage while unmeasured', () => {
+    const signals = loadToolFitnessSignals(WINDOW, ledgerWith('weather_report'), false);
+    expect(signals.every((s) => !s.signalKey.includes('deprecation-candidate'))).toBe(true);
+    expect(signals[0]?.body).not.toMatch(/\d+%/);
+  });
+
+  it('points at the tracking issue so the dark family is discoverable', () => {
+    const signals = loadToolFitnessSignals(WINDOW, ledgerWith('weather_report'), false);
+    expect(signals[0]?.body).toContain('#4656');
   });
 });
