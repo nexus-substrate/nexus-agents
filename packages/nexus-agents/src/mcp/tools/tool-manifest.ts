@@ -855,6 +855,26 @@ export type RegisteredToolName = (typeof TOOL_MANIFEST)[number]['name'];
 // ============================================================================
 
 /**
+ * Every tool name the server actually registers, derived from
+ * {@link TOOL_MANIFEST} so the manifest stays the single source of truth.
+ *
+ * Consumed by the tool-fitness reader (#5162). The ledger is an append-only log
+ * of whatever a producer wrote, so a name in it is not evidence that a tool
+ * exists — the reverted producer (#4723/#4731) recorded the test suite's fixture
+ * tools (`throw_tool`, `null_args_tool`) into the real ledger during its brief
+ * life, and the reader then reported them as deprecation candidates for days.
+ * A fitness verdict about a tool that does not exist is not a measurement.
+ */
+const REGISTERED_TOOL_NAME_SET: ReadonlySet<string> = new Set(
+  (TOOL_MANIFEST as readonly ToolManifestEntry[]).map((t) => t.name)
+);
+
+/** True when `name` is a tool this server registers. See {@link REGISTERED_TOOL_NAME_SET}. */
+export function isRegisteredToolName(name: string): boolean {
+  return REGISTERED_TOOL_NAME_SET.has(name);
+}
+
+/**
  * Set of tool names that DECLARE `neverDeprecate: true` — break-glass / safety /
  * integrity tools that are low-usage BY DESIGN. Derived from {@link TOOL_MANIFEST}
  * so the manifest stays the single source of truth (#3930). Consumed by the

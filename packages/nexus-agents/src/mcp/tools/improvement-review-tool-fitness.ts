@@ -56,6 +56,7 @@ import {
   POOR_SUCCESS_RATE_MAX,
   type NeverDeprecateConfig,
 } from './improvement-review-tool-fitness-heuristics.js';
+import { isRegisteredToolName } from './tool-manifest.js';
 import {
   getToolFitnessLedger,
   ToolFitnessLedger,
@@ -260,16 +261,88 @@ export function detectToolFitnessSignals(
 }
 
 /**
+ * Whether a PRODUCTION writer feeds the tool-fitness ledger (#5162).
+ *
+ * The ledger's only producer landed as #4723 and was reverted the same day by
+ * #4731 (unbounded per-call rewrite cost at the 50k cap; no workspace
+ * identifier, which made the #3902 per-workspace suppression unreachable). The
+ * revert removed the code but NOT the ~470 records already written, and this
+ * reader went on turning that residue into confident deprecation verdicts for
+ * days — 24 of 30 live signals naming test fixtures the dead writer had
+ * recorded while a test suite ran.
+ *
+ * With no producer, ANY ledger content is residue by definition, so the honest
+ * output is "unmeasured", not a percentage. This repo's rule is explicit:
+ * prefer a gate that reports `unmeasured` over one that reports a default as a
+ * measurement.
+ *
+ * A staleness guard was considered and rejected: the residue is 5 days old and
+ * the default lookback is 14 days, so a "newest record older than the window"
+ * check does not fire on the very incident it was proposed for. Recency also
+ * says nothing about COVERAGE — one day of records inside a 14-day window still
+ * yields percentages presented as a 14-day measurement. That guard belongs in
+ * #4656's acceptance criteria, on a producer that can actually go quiet.
+ *
+ * FLIP THIS in #4656, together with a test proving live data flows again.
+ * Leaving it false under-reports (unmeasured despite data); flipping it early
+ * misreports. Fail closed.
+ */
+const TOOL_FITNESS_PRODUCER_WIRED = false;
+
+/** The explicit no-producer envelope. Carries the tracking issue, not a number. */
+function unmeasuredSignal(windowLabel: string): ImprovementSignal {
+  return {
+    category: 'tool-fitness',
+    signalKey: 'tool-fitness:unmeasured:no-producer',
+    severity: 'info',
+    title: 'tool-fitness: unmeasured — no production writer feeds the ledger',
+    body: [
+      'No tool-fitness data was collected for this window.',
+      '',
+      "The ledger's only producer (#4723) was reverted by #4731 on 2026-08-24, so",
+      'nothing records tool invocations today. Any records still on disk are that',
+      "writer's residue and are NOT evidence of current tool health — reporting a",
+      'success rate from them would state a default as a measurement.',
+      '',
+      `- Window: ${windowLabel}`,
+      '- Producer: NONE (tracked in #4656)',
+      '',
+      'This family stays dark until #4656 lands a writer with workspace',
+      'attribution and a bounded append cost.',
+    ].join('\n'),
+    evidence: { samples: 0, window: windowLabel },
+  };
+}
+
+/**
  * Read the live tool-fitness ledger and produce suggest-tier signals. Fail-soft:
  * any ledger error yields NO signals (the review must never break on a
  * telemetry read). The ledger is injectable for tests.
  */
 export function loadToolFitnessSignals(
   windowLabel: string,
-  ledger: Pick<ToolFitnessLedger, 'report' | 'statForInWorkspace'> = getToolFitnessLedger()
+  ledger: Pick<ToolFitnessLedger, 'report' | 'statForInWorkspace'> = getToolFitnessLedger(),
+  /**
+   * Injected so both arms stay reachable. Hardcoding the constant would leave
+   * the registered-name screen below unexecutable behind a `false` — a guard
+   * that cannot fire is the defect this change exists to remove.
+   */
+  producerWired: boolean = TOOL_FITNESS_PRODUCER_WIRED
 ): readonly ImprovementSignal[] {
+  if (!producerWired) return [unmeasuredSignal(windowLabel)];
   try {
-    const report = ledger.report();
+    // #5162: filter at the I/O boundary, not inside the detectors. The ledger is
+    // an append-only log of whatever a producer wrote, so a name in it is not
+    // evidence a tool exists — the reverted producer (#4723/#4731) wrote the
+    // test suite's fixture tools (`throw_tool`, `null_args_tool`) into the real
+    // ledger during its brief life, and this reader reported them as
+    // deprecation candidates for days afterwards. A verdict about a tool the
+    // server does not register is not a measurement, and must never reach the
+    // remediation or issue-filing chain.
+    //
+    // The detectors stay pure functions over stats so they remain testable with
+    // synthetic names; only real ledger data is screened.
+    const report = ledger.report().filter((stat) => isRegisteredToolName(stat.tool));
     return detectToolFitnessSignals(
       report,
       (tool, ws) => ledger.statForInWorkspace(tool, ws),
