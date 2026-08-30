@@ -185,11 +185,36 @@ describe('summarizeLifecycle', () => {
     expect(summary.meanTimeToTriageMs).toBe(5000);
   });
 
-  it('handles empty entries', () => {
+  it('reports an unmeasured false-positive rate when nothing was triaged', () => {
+    // This asserted `falsePositiveRate` was `0` for an empty summary, which
+    // pinned the defect: a rate of zero false positives over zero findings is
+    // an absent measurement wearing a perfect score, and a reader cannot tell
+    // it from a genuinely clean triage pass (#5119 item 1).
     const summary = summarizeLifecycle([]);
 
     expect(summary.totalDetected).toBe(0);
-    expect(summary.falsePositiveRate).toBe(0);
+    expect(summary.falsePositiveRate).toBeNull();
     expect(summary.meanTimeToTriageMs).toBeNull();
+  });
+
+  it('still reports a real rate of zero when findings WERE triaged and none was a false positive', () => {
+    // The pair that keeps the null from swallowing a genuine result: a
+    // measured 0 must stay 0 and must not become null.
+    const triagedEntry: FindingLifecycleEntry = {
+      findingId: 'f1',
+      rule: 'r1',
+      file: 'a.ts:1',
+      severity: 'high',
+      stage: 'triaged',
+      timestamp: new Date().toISOString(),
+      confirmed: true,
+      fixGenerated: false,
+      metadata: {},
+    };
+
+    const summary = summarizeLifecycle([triagedEntry]);
+
+    expect(summary.totalTriaged).toBe(1);
+    expect(summary.falsePositiveRate).toBe(0);
   });
 });

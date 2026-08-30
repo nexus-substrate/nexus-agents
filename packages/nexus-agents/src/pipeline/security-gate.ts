@@ -1,8 +1,22 @@
-// Security gate — cohesive single module with triage pipeline
 /**
- * Security Gate — Intelligent security pipeline for the quality-gated flow (#1681, #1684)
+ * Security Gate — security pipeline for the quality-gated flow (#1681, #1684)
  *
- * Pipeline: scan → triage (filter FPs) → OSV enrich → severity consensus → report
+ * Pipeline: scan → OSV enrich → report.
+ *
+ * There was a triage stage between scan and OSV. It is gone (#5119 item 1),
+ * and the reason is recorded here so a future producer finds the prior art
+ * instead of rebuilding blind. `SecurityGateConfig.triageFn` was a delegate
+ * seam with **zero production producers** — both callers
+ * (`pipeline/agent-executor.ts`, `mcp/tools/quality-gate-tool.ts`) passed no
+ * config — so a `defaultTriageDelegate` fabricated
+ * `{confirmed: true, confidence: 0.5, suggestedSeverity: 'high'}` for every
+ * finding. That made `falsePositiveCount` structurally 0, which made the
+ * summary's "N filtered as false positives" branch unreachable and the word
+ * "confirmed" in "N confirmed blocking" a verdict claim backed by no verdict.
+ *
+ * The re-entry contract, should triage be wanted: it returns through TDD with
+ * a named producer AND a named consumer arriving together. A delegate seam
+ * kept ahead of its producer is what produced the fabricated default.
  *
  * @module pipeline/security-gate
  */
@@ -10,14 +24,6 @@
 import type { GateCheckResult } from '../security/quality-gate-types.js';
 import type { GateCheckFn } from '../security/quality-gate.js';
 import { executeSecurityScan } from '../mcp/tools/security-scan.js';
-import {
-  recordScanResults,
-  recordTriaged,
-  summarizeLifecycle,
-} from '../security/finding-lifecycle.js';
-import type { FindingLifecycleEntry } from '../security/finding-lifecycle.js';
-import { triageFindings } from '../security/finding-triage.js';
-import type { TriagedFinding } from '../security/finding-triage.js';
 import { queryOsvBatch } from '../security/osv-lookup.js';
 import type { OsvVulnerability } from '../security/osv-lookup.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
@@ -25,52 +31,21 @@ import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'security-gate' });
 
-/** In-memory lifecycle entries for the current scan. */
-let lastScanLifecycle: readonly FindingLifecycleEntry[] = [];
 /** Last OSV vulnerabilities found. */
 let lastOsvVulnerabilities: readonly OsvVulnerability[] = [];
-/** Last triage verdicts (paired with their finding IDs — see #2933). */
-let lastTriageVerdicts: readonly TriagedFinding[] = [];
-
-/** Get lifecycle entries from the most recent security gate scan. */
-export function getLastScanLifecycle(): readonly FindingLifecycleEntry[] {
-  return lastScanLifecycle;
-}
 
 /** Get OSV vulnerabilities from the most recent scan. */
 export function getLastOsvVulnerabilities(): readonly OsvVulnerability[] {
   return lastOsvVulnerabilities;
 }
 
-/** Get triage verdicts from the most recent scan (each paired with its finding id, #2933). */
-export function getLastTriageVerdicts(): readonly TriagedFinding[] {
-  return lastTriageVerdicts;
-}
-
 /** Severity levels that block the pipeline. */
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 
-/** Default delegate function that returns a conservative assessment (no LLM available). */
-function defaultTriageDelegate(_prompt: string): Promise<string> {
-  // Without a real LLM, assume findings are real (fail-safe)
-  return Promise.resolve(
-    JSON.stringify({
-      confirmed: true,
-      confidence: 0.5,
-      reasoning: 'No triage model available — assuming confirmed (fail-safe)',
-      suggestedSeverity: 'high',
-    })
-  );
-}
-
-/** Configuration for the enhanced security gate. */
+/** Configuration for the security gate. */
 export interface SecurityGateConfig {
-  /** Function to delegate triage assessment to an LLM (optional). */
-  readonly triageFn?: ((prompt: string) => Promise<string>) | undefined;
   /** Whether to run OSV dependency checks (default: true). */
   readonly enableOsv?: boolean | undefined;
-  /** Max findings to triage (default: 10). */
-  readonly maxTriageFindings?: number | undefined;
 }
 
 /**
@@ -105,60 +80,43 @@ export function checkSecurityScan(
       };
     }
 
-    return runTriagePipeline(result, targetDir, config, start);
+    return runSecurityPipeline(result, targetDir, config, start);
   };
 }
 
 // ============================================================================
-// Triage Pipeline (#1770, #1773, #1775)
+// Security Pipeline (#1773)
 // ============================================================================
 
-/** Run the full triage pipeline: record → triage → OSV → assess → report. */
-async function runTriagePipeline(
+/** Run the pipeline: OSV → assess → report. */
+async function runSecurityPipeline(
   sarifResult: { totalFindings: number; findings: readonly SecurityFinding[] },
   targetDir: string,
   config: SecurityGateConfig,
   start: number
 ): Promise<GateCheckResult> {
-  // Step 1: Record all findings as 'detected' (#1775)
-  const lifecycleEntries: FindingLifecycleEntry[] = [];
-  lastScanLifecycle = recordScanResults(sarifResult.findings, (e) => lifecycleEntries.push(e));
-
-  // Step 2: Triage to filter false positives (#1770)
-  const triageFn = config.triageFn ?? defaultTriageDelegate;
-  const triageResult = await triageFindings([...sarifResult.findings], triageFn, {
-    maxFindings: config.maxTriageFindings ?? 10,
-    contextLines: 5,
-    minConfidence: 0.5,
-  });
-  lastTriageVerdicts = triageResult.triaged;
-  recordTriageLifecycle(triageResult.triaged, lifecycleEntries);
-
-  // Step 3: OSV dependency check (#1773)
+  // OSV dependency check (#1773)
   const osv = await runOsvCheck(targetDir, config.enableOsv ?? true);
   const osvVulns = osv.vulnerabilities;
   lastOsvVulnerabilities = osvVulns;
 
-  // Assess: only confirmed findings block
-  const confirmed = getConfirmedBlockingFindings(sarifResult.findings, triageResult.triaged);
-  const lifecycle = summarizeLifecycle(lifecycleEntries);
+  // Assess: a finding blocks because its severity blocks. Nothing filters.
+  const blocking = getBlockingFindings(sarifResult.findings);
   const details = buildScanSummary(
     sarifResult.totalFindings,
-    confirmed.length,
-    lifecycle.falsePositiveCount,
+    blocking.length,
     osvVulns.length,
     osv
   );
 
   logger.info('Security gate complete', {
     total: sarifResult.totalFindings,
-    confirmed: confirmed.length,
-    falsePositives: lifecycle.falsePositiveCount,
+    blocking: blocking.length,
     osvVulns: osvVulns.length,
     osvFailedLookups: osv.failedLookups,
   });
 
-  const failed = confirmed.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
+  const failed = blocking.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
   return {
     name: 'security_scan',
     verdict: failed ? 'fail' : 'pass',
@@ -170,23 +128,6 @@ async function runTriagePipeline(
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Record triage verdicts in lifecycle tracker (#1775).
- *
- * Pre-#2933 this paired `findings[i]` with `verdicts[i]` positionally — wrong,
- * because `triageFindings` sorts by severity and may skip parse-failed verdicts,
- * so position-i in each array refers to different findings. Each TriagedFinding
- * now carries its own finding object, so the pairing is intrinsic.
- */
-function recordTriageLifecycle(
-  verdicts: readonly TriagedFinding[],
-  entries: FindingLifecycleEntry[]
-): void {
-  for (const triaged of verdicts) {
-    recordTriaged(triaged.finding, triaged.verdict, (entry) => entries.push(entry));
-  }
-}
 
 /** Run OSV dependency check if enabled (#1773). */
 /**
@@ -250,39 +191,37 @@ async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvChec
 }
 
 /**
- * Filter to confirmed blocking findings (triage-aware) (#1770).
+ * Filter to the findings whose severity blocks the pipeline.
  *
- * Verdicts are matched to findings by **id**, not array position — see #2933.
- * Pre-#2933 the filter used `verdicts[i]` where `i` indexed `blocking` in
- * original order, but `verdicts` was in severity-sorted-then-truncated order,
- * so a high-severity finding could get matched against a verdict for a
- * different (often lower-severity) finding and be silently dropped.
+ * This used to be `getConfirmedBlockingFindings`, which then dropped any
+ * finding a triage verdict marked unconfirmed. #2933 fixed a bug in that
+ * filter — it matched `verdicts[i]` positionally against a severity-sorted,
+ * truncated verdict list, so a high-severity finding could be dropped on
+ * another finding's verdict. With the triage seam gone (#5119 item 1) there is
+ * no filter and therefore no drop; the fail-safe the old code reached for by
+ * treating a missing verdict as confirmed is now the only behaviour there is.
  */
-function getConfirmedBlockingFindings(
-  findings: readonly SecurityFinding[],
-  verdicts: readonly TriagedFinding[]
-): SecurityFinding[] {
-  const blocking = findings.filter((f) => BLOCKING_SEVERITIES.has(f.severity));
-  if (verdicts.length === 0) return [...blocking]; // No triage — all block (fail-safe)
-
-  const verdictById = new Map(verdicts.map((t) => [t.finding.id, t.verdict]));
-  return blocking.filter((f) => {
-    const verdict = verdictById.get(f.id);
-    return verdict === undefined || verdict.confirmed; // Unknown = confirmed (fail-safe)
-  });
+function getBlockingFindings(findings: readonly SecurityFinding[]): SecurityFinding[] {
+  return findings.filter((f) => BLOCKING_SEVERITIES.has(f.severity));
 }
 
-/** Build human-readable scan summary. */
+/**
+ * Build human-readable scan summary.
+ *
+ * Two phrases used to live here and no longer do. "N filtered as false
+ * positives" was guarded by a count that was structurally 0, so it could never
+ * render. "N **confirmed** blocking" claimed a triage confirmation that the
+ * fabricated default verdict had not performed. A finding is reported as
+ * blocking because its severity blocks — which is all this gate knows.
+ */
 function buildScanSummary(
   total: number,
-  confirmed: number,
-  falsePositives: number,
+  blocking: number,
   osvCount: number,
   osv?: OsvCheckResult
 ): string {
   const parts = [`${String(total)} SAST findings`];
-  if (falsePositives > 0) parts.push(`${String(falsePositives)} filtered as false positives`);
-  if (confirmed > 0) parts.push(`${String(confirmed)} confirmed blocking`);
+  if (blocking > 0) parts.push(`${String(blocking)} blocking`);
   if (osvCount > 0) parts.push(`${String(osvCount)} OSV dependency vulnerabilities`);
   // #5018: an OSV outage used to land here as "none blocking". A lookup that
   // errored produced no vulnerabilities, which is not the same as finding none.
@@ -290,7 +229,7 @@ function buildScanSummary(
     parts.push(
       `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`
     );
-  } else if (confirmed === 0 && osvCount === 0) {
+  } else if (blocking === 0 && osvCount === 0) {
     parts.push('none blocking');
   }
   // State the denominator the OSV verdict actually covers: the query is capped,

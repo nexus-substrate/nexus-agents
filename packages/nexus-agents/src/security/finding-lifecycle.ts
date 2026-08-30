@@ -48,7 +48,17 @@ export interface FindingLifecycleSummary {
   readonly fixesApplied: number;
   readonly verified: number;
   readonly dismissed: number;
-  readonly falsePositiveRate: number;
+  /**
+   * False positives as a share of triaged findings, or `null` when nothing was
+   * triaged (#5119 item 1).
+   *
+   * This was `number`, and the no-triage case returned `0` — a rate of zero
+   * false positives, which reads as a good score and is indistinguishable from
+   * a real one. It is the same shape its sibling `meanTimeToTriageMs` already
+   * declined to take: an average over an empty set is `null` here, and a rate
+   * over an empty set is too.
+   */
+  readonly falsePositiveRate: number | null;
   readonly meanTimeToTriageMs: number | null;
 }
 
@@ -159,7 +169,10 @@ export function summarizeLifecycle(
   const dismissed = entries.filter((e) => e.stage === 'dismissed');
 
   const totalTriaged = triaged.length;
-  const falsePositiveRate = totalTriaged > 0 ? falsePositives.length / totalTriaged : 0;
+  // The empty case, named: no triaged findings means the rate is UNMEASURED,
+  // not zero. `0` would report an absent measurement as a perfect score.
+  const falsePositiveRate =
+    totalTriaged > 0 ? Math.round((falsePositives.length / totalTriaged) * 100) / 100 : null;
 
   // Mean time to triage: average gap between detected and triaged timestamps
   let meanTimeToTriageMs: number | null = null;
@@ -187,7 +200,7 @@ export function summarizeLifecycle(
     fixesApplied: fixesApplied.length,
     verified: verified.length,
     dismissed: dismissed.length,
-    falsePositiveRate: Math.round(falsePositiveRate * 100) / 100,
+    falsePositiveRate,
     meanTimeToTriageMs,
   };
 }
