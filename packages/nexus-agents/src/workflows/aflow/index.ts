@@ -79,7 +79,11 @@ export {
 } from './evaluation.js';
 
 // Evaluation utilities (for direct access)
-export { VALID_AGENT_ROLES, CAPABILITY_ACTION_MAPPING, COST_MODEL } from './evaluation-types.js';
+export {
+  VALID_AGENT_ROLES,
+  CAPABILITY_ACTION_MAPPING,
+  EXECUTION_WEIGHTS,
+} from './evaluation-types.js';
 
 export {
   evaluateStructure,
@@ -98,7 +102,7 @@ export {
   calculateTimeoutScore,
   calculateStepCountScore,
   calculateRedundancyPenalty,
-  estimateCost,
+  estimateExecutionWeight,
 } from './evaluation-efficiency.js';
 
 export {

@@ -647,13 +647,13 @@ describe('WorkflowEvaluator', () => {
     });
   });
 
-  describe('estimateCost', () => {
+  describe('estimateExecutionWeight', () => {
     it('should increase with more steps', () => {
       const small = createTestWorkflow([{ id: 'step1' }]);
       const large = createTestWorkflow([{ id: 'step1' }, { id: 'step2' }, { id: 'step3' }]);
 
-      const smallCost = evaluator.estimateCost(small);
-      const largeCost = evaluator.estimateCost(large);
+      const smallCost = evaluator.estimateExecutionWeight(small);
+      const largeCost = evaluator.estimateExecutionWeight(large);
 
       expect(largeCost).toBeGreaterThan(smallCost);
     });

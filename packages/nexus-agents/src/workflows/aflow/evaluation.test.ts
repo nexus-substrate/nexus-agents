@@ -72,7 +72,7 @@ describe('WorkflowEvaluator - evaluate', () => {
     expect(result.completenessScore).toBeDefined();
     expect(result.redundancyPenalty).toBeDefined();
     expect(result.feedback).toBeDefined();
-    expect(result.estimatedCost).toBeDefined();
+    expect(result.executionWeight).toBeDefined();
   });
 
   it('returns score between 0 and 1', () => {
@@ -104,7 +104,7 @@ describe('WorkflowEvaluator - evaluate', () => {
 
   it('calculates estimated cost', () => {
     const result = evaluator.evaluate(makeWorkflow(), makeTask());
-    expect(result.estimatedCost).toBeGreaterThan(0);
+    expect(result.executionWeight).toBeGreaterThan(0);
   });
 });
 
@@ -142,8 +142,8 @@ describe('WorkflowEvaluator - individual methods', () => {
     expect(feedback.length).toBeGreaterThan(0);
   });
 
-  it('estimateCost returns positive number', () => {
-    expect(evaluator.estimateCost(makeWorkflow())).toBeGreaterThan(0);
+  it('estimateExecutionWeight returns positive number', () => {
+    expect(evaluator.estimateExecutionWeight(makeWorkflow())).toBeGreaterThan(0);
   });
 
   it('isViable returns true for workflow with enough steps', () => {

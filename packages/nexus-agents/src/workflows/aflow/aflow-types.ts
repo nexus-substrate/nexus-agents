@@ -110,7 +110,8 @@ export interface EvaluationResult {
   /** Detailed feedback */
   readonly feedback: readonly string[];
   /** Estimated execution cost */
-  readonly estimatedCost: number;
+  /** Dimensionless relative execution weight, NOT money (#5198). */
+  readonly executionWeight: number;
 }
 
 /**
