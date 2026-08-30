@@ -136,16 +136,41 @@ function selectReviewClis(
   return selected;
 }
 
-/** Confidence bonus per CLI for code review (from specialization matrix). */
-const CLI_REVIEW_BONUS: Readonly<Record<CliName, number>> = {
+/**
+ * Per-CLI review priority, from the specialization matrix.
+ *
+ * This is a CONSTANT keyed on the CLI's name, not a measurement of anything the
+ * model produced (#5119). It is a prior — "when two CLIs report the same issue
+ * and we must keep one, prefer the one we expect to be better at review" — and
+ * every finding from a given CLI carries the identical value.
+ */
+const CLI_REVIEW_PRIORITY: Readonly<Record<CliName, number>> = {
   codex: 0.15,
   claude: 0.1,
   gemini: 0.05,
   opencode: 0.08,
 };
 
-function getCliBonus(cli: CliName): number {
-  return CLI_REVIEW_BONUS[cli];
+function getCliPriority(cli: CliName): number {
+  return CLI_REVIEW_PRIORITY[cli];
+}
+
+/**
+ * The reporting CLI's priority, or 0 for a finding from an unrecognized source.
+ *
+ * Falls back rather than throwing: `expertId` is a plain string on
+ * {@link ReviewFinding}, so a finding reaching dedup from a non-CLI producer is
+ * representable. 0 sorts it below every configured CLI, which is the
+ * conservative choice — an unknown source never displaces a known one.
+ */
+function findingPriority(finding: ReviewFinding): number {
+  // Indexed as a plain string rather than through an `as CliName` cast. The
+  // cast would ASSERT that every expertId is a configured CLI, which is exactly
+  // the thing not known here — and it made the `?? 0` look unreachable to
+  // eslint, since `Record<CliName, number>` can never miss. Widening the index
+  // type instead keeps the fallback honest and reachable.
+  const lookup: Readonly<Record<string, number | undefined>> = CLI_REVIEW_PRIORITY;
+  return lookup[finding.expertId] ?? 0;
 }
 
 /** Builds the review prompt for a given CLI perspective. */
@@ -267,7 +292,11 @@ function parseFindings(text: string, cli: CliName): ReviewFinding[] {
         ...(typeof item.line === 'number' ? { line: item.line } : {}),
         ...(typeof item.suggestion === 'string' ? { suggestion: item.suggestion } : {}),
         expertId: cli,
-        confidence: 0.7 + getCliBonus(cli),
+        // NOT a measurement (#5119): a per-CLI constant, identical for every
+        // finding this CLI reports, never informed by the model's output. It is
+        // a source prior. Dedup ordering deliberately does not read this field
+        // — see `pickBestFinding`.
+        confidence: 0.7 + getCliPriority(cli),
       }));
   } catch (e: unknown) {
     moduleLogger.warn('Failed to parse CLI review findings as JSON; discarding', {
@@ -378,9 +407,28 @@ function isSimilar(a: ReviewFinding, b: ReviewFinding, lineProximity: number): b
   return Math.abs(a.line - b.line) <= lineProximity;
 }
 
+/**
+ * Chooses which of two duplicate findings survives dedup — a deterministic
+ * tiebreak on the reporting CLI's configured priority (#5119).
+ *
+ * It reads {@link CLI_REVIEW_PRIORITY} directly rather than comparing
+ * `confidence`, which is what it used to do. Those were the same comparison,
+ * because a triangulated finding's `confidence` is `0.7 + priority(cli)` — a
+ * per-CLI constant that never consults the model's output. So the old line read
+ * as if it weighed evidence while in fact it only compared CLI names: a better
+ * finding from a lower-priority CLI lost to a worse one, deterministically and
+ * invisibly.
+ *
+ * Behaviour is unchanged today. What changes is that the tiebreak no longer
+ * DEPENDS on the confidence field, so if `confidence` later becomes a real
+ * per-finding measurement, dedup ordering will not silently change meaning
+ * along with it. Two mechanisms that happen to agree are not one mechanism.
+ *
+ * Ties keep `existing`, making the result independent of the order findings
+ * arrive in.
+ */
 function pickBestFinding(existing: ReviewFinding, candidate: ReviewFinding): ReviewFinding {
-  // Pick the one with higher confidence
-  return candidate.confidence > existing.confidence ? candidate : existing;
+  return findingPriority(candidate) > findingPriority(existing) ? candidate : existing;
 }
 
 // ============================================================================
