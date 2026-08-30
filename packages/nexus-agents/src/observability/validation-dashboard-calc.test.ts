@@ -483,8 +483,12 @@ describe('calculateConvergenceScore', () => {
     expect(calculateConvergenceScore({})).toBeNull();
   });
 
-  it('returns 0 when all features have < 5 weights', () => {
-    expect(calculateConvergenceScore({ feat1: [1, 2, 3] })).toBe(0);
+  it('returns null when no feature has enough weights to measure variance', () => {
+    // Was `toBe(0)`, pinning the residual #5264 missed: a NON-empty feature map
+    // where every feature has < 5 weights skips the loop entirely, leaving
+    // `variances` empty. That is the state of a learning loop during its first
+    // four decisions, and `0` reads as worst-possible convergence.
+    expect(calculateConvergenceScore({ feat1: [1, 2, 3] })).toBeNull();
   });
 
   it('returns 1 for perfectly stable weights', () => {
@@ -525,8 +529,11 @@ describe('calculateConvergenceScore', () => {
     expect(calculateConvergenceScore(weights)).toBeCloseTo(1.0, 5);
   });
 
-  it('returns 0 when only feature has fewer than 5 values', () => {
-    expect(calculateConvergenceScore({ feat: [1, 2, 3, 4] })).toBe(0);
+  it('returns null when the only feature has fewer than 5 values', () => {
+    // A second test pinning the same residual (#5264 follow-up). Four weights
+    // is one short of the threshold — the last decision before the metric
+    // becomes measurable — and `0` there reads as worst-possible convergence.
+    expect(calculateConvergenceScore({ feat: [1, 2, 3, 4] })).toBeNull();
   });
 
   it('handles exactly 5 weights', () => {
