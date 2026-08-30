@@ -305,6 +305,10 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
 
   // Use subprocess for Codex in puppeteer mode (MCP 'execute' tool not available)
   const codexTransport = options.engine === 'puppeteer' ? 'subprocess' : 'mcp';
+  // ROUTER CONSTRUCTION — see `pipeline/expert-bridge.ts` for the full reasoning
+  // (#5191). This site additionally needs the transport argument above, which
+  // selects a different class (`CodexCliAdapter` vs `CodexMcpAdapter`) and which
+  // `UnifiedRegistryConfig` cannot express (#5211).
   const adapters = createAllAdapters(logger, codexTransport);
   if (adapters.size === 0) {
     console.error('Failed to create CLI adapters.');

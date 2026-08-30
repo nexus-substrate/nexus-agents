@@ -162,6 +162,24 @@ export default defineConfig([
     },
   },
 
+  // ROUTER CONSTRUCTION is a second, legitimate operation (#5191, ratified 5/6)
+  // — not drift. `createCompositeRouter` takes `Map<RoutingArmId, ICliAdapter>`;
+  // the registry offers `IResilientAdapter` (which extends `IModelAdapter`) one
+  // CLI at a time, so the canonical path structurally cannot serve these two.
+  //
+  // It also should not: the router IS the selection/failover layer, so
+  // resilient-wrapped arms would nest two failover mechanisms, and shared
+  // breaker state would make an arm report unavailable without the router ever
+  // testing it — the same defect the doctor-probe exemption documents (#5209).
+  {
+    name: 'nexus-agents/router-construction-operation-5191',
+    files: [
+      'packages/nexus-agents/src/pipeline/expert-bridge.ts',
+      'packages/nexus-agents/src/cli/orchestrate-command.ts',
+    ],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+
   // The four existing call sites, visible at `warn` rather than silenced.
   // Same shape as the vacuous-verdict exemption above: an explicit named block
   // that keeps the debt in every lint run until #5191 migrates them, instead of
@@ -176,7 +194,6 @@ export default defineConfig([
       'packages/nexus-agents/src/cli/doctor.ts',
       'packages/nexus-agents/src/cli/doctor-live.ts',
       'packages/nexus-agents/src/cli/demo-command.ts',
-      'packages/nexus-agents/src/cli/orchestrate-command.ts',
     ],
     rules: { 'no-restricted-imports': 'warn' },
   },

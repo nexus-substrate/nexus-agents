@@ -270,6 +270,20 @@ let routerInitPromise: Promise<RouterLike | null> | null = null;
 async function getRouter(): Promise<RouterLike | null> {
   if (cachedRouter !== null) return cachedRouter;
   routerInitPromise ??= (async (): Promise<RouterLike | null> => {
+    // ROUTER CONSTRUCTION, a distinct operation from adapter acquisition
+    // (#5191, ratified 5/6). `createCompositeRouter` needs
+    // `Map<RoutingArmId, ICliAdapter>`; `getGlobalRegistry()` returns
+    // `IResilientAdapter` (extends `IModelAdapter`) one CLI at a time, so the
+    // canonical path cannot type-check here.
+    //
+    // It also should not be used: the router IS the selection/failover layer,
+    // so resilient-wrapped arms would nest two failover mechanisms, and the
+    // shared circuit breaker would make an arm report unavailable without the
+    // router ever testing it. That is the doctor-probe defect (#5209) applied
+    // to routing — and this map is the LinUCB arm space, so a coupled arm
+    // availability would distort exploration signals.
+    //
+    // Pinned by `router-operation.test.ts`.
     const { createAllAdapters } = await import('../cli-adapters/factory.js');
     const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
     const adapters = createAllAdapters();
