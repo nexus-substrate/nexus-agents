@@ -25,6 +25,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { computeTokenCost, roundToMicroUsd } from './token-cost-core.js';
 import { dirname, join } from 'node:path';
 
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
@@ -118,13 +119,16 @@ export function computeCostDetail(
   if (entry.pricing === undefined) {
     return { costUsd: 0, priced: false, resolvedId, ...provenance };
   }
-  // Multiply token counts by per-million rate then divide. Use Math.round
-  // at micro-USD precision so JSONL files don't drift to floating-point
-  // noise on small calls.
-  const microUsd = Math.round(
-    inputTokens * entry.pricing.inputPer1M + outputTokens * entry.pricing.outputPer1M
+  // The arithmetic lives in the shared core (#5122); this function is the
+  // REGISTRY-BACKED, LEDGER-ROUNDED wrapper over it. Rounding to micro-USD
+  // stays here rather than in the core: it exists so this log's JSONL does not
+  // drift into floating-point noise across many small calls, which is a ledger
+  // requirement, not a property of cost.
+  const { costUsd } = computeTokenCost(
+    { input: inputTokens, output: outputTokens },
+    { inputPer1M: entry.pricing.inputPer1M, outputPer1M: entry.pricing.outputPer1M }
   );
-  return { costUsd: microUsd / 1_000_000, priced: true, resolvedId, ...provenance };
+  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId, ...provenance };
 }
 
 /**

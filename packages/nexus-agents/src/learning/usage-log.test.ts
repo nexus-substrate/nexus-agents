@@ -394,3 +394,60 @@ models:
     expect(Object.keys(detail)).not.toContain('priceBasis');
   });
 });
+
+describe('computeCostDetail characterization — pinned before the #5122 refactor', () => {
+  // Captured from the CURRENT implementation before it became a wrapper over
+  // the shared core. The panel made shadow-comparison a binding condition:
+  // swapping live pricing paths without asserting agreement first "risks
+  // unpredictable budget enforcement failures upon merge". Every value here is
+  // observed output, not a hand-computed expectation.
+  const PINNED: readonly {
+    model: string;
+    input: number;
+    output: number;
+    costUsd: number;
+    priced: boolean;
+  }[] = [
+    { model: 'claude-sonnet', input: 1_000_000, output: 1_000_000, costUsd: 18, priced: true },
+    // The micro-USD round-up. 1 token at $3/1M is exactly 0.000003 here.
+    { model: 'claude-sonnet', input: 1, output: 0, costUsd: 0.000003, priced: true },
+    { model: 'claude-opus', input: 1000, output: 500, costUsd: 0.0175, priced: true },
+    { model: 'claude-sonnet', input: 0, output: 0, costUsd: 0, priced: true },
+    // Unpriced: 0 with priced:false is an UNKNOWN, never a real $0 (#3855).
+    {
+      model: 'definitely-not-a-real-model-xyz',
+      input: 1000,
+      output: 500,
+      costUsd: 0,
+      priced: false,
+    },
+    { model: 'gpt-5.5', input: 12345, output: 6789, costUsd: 0.265395, priced: true },
+    // FRACTIONAL RATES — the cases where rounding actually changes the answer.
+    // Without these the round-to-micro-USD step could be deleted and every test
+    // still passed: at $3/1M a single token is exactly 3 micro-USD, so rounding
+    // is a no-op there. Found by mutation testing.
+    // codex-5.2 at $1.75/1M: exact 0.00000175 → 0.000002.
+    { model: 'codex-5.2', input: 1, output: 0, costUsd: 0.000002, priced: true },
+    // gemini-3-flash at $0.5/1M: exact 0.0000015 → 0.000002 (half rounds up).
+    { model: 'gemini-3-flash', input: 3, output: 0, costUsd: 0.000002, priced: true },
+    // gemini-flash at $0.3/1M: exact 3e-7 rounds DOWN TO ZERO. A real cost
+    // recorded as $0 — distinguishable from unpriced only by `priced: true`.
+    { model: 'gemini-flash', input: 1, output: 0, costUsd: 0, priced: true },
+  ];
+
+  it.each(PINNED)(
+    'computeCostDetail($model, $input, $output) stays $costUsd (priced=$priced)',
+    ({ model, input, output, costUsd, priced }) => {
+      const detail = computeCostDetail(model, input, output);
+      expect(detail.costUsd).toBe(costUsd);
+      expect(detail.priced).toBe(priced);
+    }
+  );
+
+  it('keeps rounding to micro-USD, which the shared core deliberately does not do', () => {
+    // Uses a FRACTIONAL rate so the assertion can actually fail if rounding is
+    // removed. codex-5.2 is $1.75/1M, so one token is 0.00000175 exactly and
+    // 0.000002 rounded. Asserting against claude-sonnet here proved nothing.
+    expect(computeCostDetail('codex-5.2', 1, 0).costUsd).toBe(0.000002);
+  });
+});
