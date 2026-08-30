@@ -144,6 +144,15 @@ jobs:
       - name: Env-schema coverage (#5142)
         run: npx tsx scripts/check-env-schema-coverage.ts
 
+      # #5123 (epic #5121): one canonical implementation per OPERATION. The old
+      # canonical table listed SYMBOLS, which is how it blessed both sides of
+      # adapter acquisition — two entries for one question. Cleaning up eleven
+      # cost paths is worth little if a twelfth lands next week; this gate found
+      # exactly that (#5186) on its first run. Alternates are tracked by
+      # PRESENCE, never counts, so two unrelated PRs cannot conflict over them.
+      - name: Concern registry (#5123)
+        run: npx tsx scripts/check-concern-registry.ts
+
       - name: Tool-description distinctness (#2650)
         run: npx tsx scripts/check-tool-distinctness.ts
 

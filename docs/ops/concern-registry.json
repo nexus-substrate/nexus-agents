@@ -1,0 +1,33 @@
+{
+  "$comment": "One canonical implementation per OPERATION (#5123, epic #5121). The unit is the operation, not the symbol \u2014 CLAUDE.md's old table listed symbols, which is how it blessed both sides of adapter acquisition. Alternates record PRESENCE only, never call-site counts: counts make two unrelated PRs touching the same alternate conflict, and a gate that punishes uninvolved developers gets disabled. Reseed with: npx tsx scripts/check-concern-registry.ts baseline",
+  "concerns": [
+    {
+      "concern": "compute-token-cost-in-usd",
+      "question": "What do I call to turn token counts into a USD figure?",
+      "canonical": "packages/nexus-agents/src/learning/token-cost-core.ts",
+      "canonicalSymbol": "computeTokenCost",
+      "detect": {
+        "roots": ["packages/nexus-agents/src"],
+        "pattern": "([Tt]okens\\w*\\s*\\)?\\s*/\\s*1_?000\\s*\\)\\s*\\*|[Tt]okens\\w*\\s*\\*\\s*(costPer|rate|perMillion|profile\\.)|[Tt]okens\\w*\\s*\\*\\s*0\\.0000|\\(\\s*tokens\\s*\\*\\s*perMillion\\s*\\))",
+        "note": "Matches the ARITHMETIC - a token identifier combined with a rate - not a declaration, a pass-through, or a comment describing it. Earlier drafts flagged five files that merely declare or forward `costPer1KTokens`, two that round to micro-USD (`Math.round(usd * 1_000_000) / 1_000_000`), one converting nanoseconds to milliseconds, and one doc comment. Comments are stripped before matching."
+      },
+      "alternates": [
+        {
+          "path": "packages/nexus-agents/src/cli-adapters/routing/stages/quality-constraint-stage.ts",
+          "why": "Prices every token at the INPUT rate (costPerMillionInput / 1000) against a cost ceiling, so the ceiling fails open. Found by this ratchet, not by the #5122 audit.",
+          "trackedBy": "#5186"
+        },
+        {
+          "path": "packages/nexus-agents/src/agents/observability/orchestration-observer-helpers.ts",
+          "why": "Blended per-1K rate on totalTokens from a table the observer maintains itself, discarding a split its caller holds.",
+          "trackedBy": "#5180"
+        },
+        {
+          "path": "packages/nexus-agents/src/agents/orchestration/puppeteer-config-types.ts",
+          "why": "Subsystem-local per-1K helper (tokensToCostUsd). Collapsed from three inline constants in #5171; absorbs into the core when the observer decision lands.",
+          "trackedBy": "#5122"
+        }
+      ]
+    }
+  ]
+}
