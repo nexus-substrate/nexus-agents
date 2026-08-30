@@ -13,11 +13,6 @@
       },
       "alternates": [
         {
-          "path": "packages/nexus-agents/src/agents/observability/orchestration-observer-helpers.ts",
-          "why": "Blended per-1K rate on totalTokens from a table the observer maintains itself, discarding a split its caller holds.",
-          "trackedBy": "#5180"
-        },
-        {
           "path": "packages/nexus-agents/src/agents/orchestration/puppeteer-config-types.ts",
           "why": "Subsystem-local per-1K helper (tokensToCostUsd). Collapsed from three inline constants in #5171; absorbs into the core when the observer decision lands.",
           "trackedBy": "#5122"

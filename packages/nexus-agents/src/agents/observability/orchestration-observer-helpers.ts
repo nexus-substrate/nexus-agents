@@ -8,6 +8,10 @@
  */
 
 import type { CliName } from '../../cli-adapters/types.js';
+import { computeTokenCost } from '../../learning/token-cost-core.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
+import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 import type { DomainEvent } from '../collaboration/event-bus-types.js';
 import { getTimeProvider } from '../../core/index.js';
 import type {
@@ -275,5 +279,81 @@ export function identifySessionsToRemove(
  * @returns The calculated cost in USD
  */
 export function calculateTokenCost(tokens: SessionTokenTotals, ratePerThousand: number): number {
-  return (tokens.totalTokens / 1000) * ratePerThousand;
+  return computeTokenCost(
+    { input: 0, output: 0, blended: tokens.totalTokens },
+    { inputPer1M: 0, outputPer1M: 0, blendedPer1M: ratePerThousand * 1000 }
+  ).costUsd;
+}
+
+/**
+ * Cost for one model's token usage (#5180).
+ *
+ * Resolution order, and each rung is a different fidelity:
+ *
+ *  1. A `{ input, output }` override — SPLIT, priced exactly.
+ *  2. A bare-number override — BLENDED, the historical shape. Kept meaning what
+ *     it always meant so an existing config produces byte-identical figures;
+ *     reinterpreting it as an input rate would silently move every operator's
+ *     numbers, which is the misreport this change exists to remove.
+ *  3. No override — registry split rates via the canonical pricing chain.
+ *
+ * Rung 3 is the behaviour change. The old default was a private per-model table
+ * (`claude: 0.015` blended) that understated an output-heavy run ~3x, because
+ * output bills at several times input and this function was handed a split it
+ * threw away.
+ *
+ * Returns `undefined` when no override exists AND the registry has no pricing —
+ * unpriced is not $0, and the caller must be able to tell them apart.
+ */
+export function resolveModelCost(
+  tokens: SessionTokenTotals,
+  override: number | { readonly input: number; readonly output: number } | undefined
+): number | undefined {
+  if (typeof override === 'object') {
+    return computeTokenCost(
+      { input: tokens.inputTokens, output: tokens.outputTokens },
+      { inputPer1M: override.input * 1000, outputPer1M: override.output * 1000 }
+    ).costUsd;
+  }
+  if (typeof override === 'number') return calculateTokenCost(tokens, override);
+  return undefined;
+}
+
+/**
+ * Registry-priced cost for a model, used when no operator override exists.
+ *
+ * Reads the canonical pricing chain (`getDefaultRegistry`) so the observer stops
+ * being a fourth pricing authority (#5121, #5180), and prices the input/output
+ * split the caller already holds.
+ *
+ * NAMES THE EMPTY CASE: a model the registry cannot price contributes **0** to
+ * the running total, and that is a floor, not a measurement. It is deliberately
+ * not a substituted guess — inventing a rate here would be the misreport this
+ * whole change removes. Callers that need to distinguish unpriced from free
+ * should read `computeCostDetail`'s `priced` flag on the ledger path instead;
+ * this counter is a session-local sum, not a billing record.
+ */
+export function registryCostForModel(tokens: SessionTokenTotals, model: string): number {
+  // The observer keys on a CliName ('claude'), NOT a model id
+  // ('claude-fable-5'), so the registry must be asked about the CLI's default
+  // model. Looking the CliName up directly returns unpriced for every CLI, and
+  // this function would then report $0 for everything — turning a ~3x
+  // understatement into a 100% one. Caught by measuring rather than assuming;
+  // it is the same CliName-vs-ModelId gap the #5122 audit flagged for the
+  // budget paths.
+  // Fail SOFT. This is a telemetry counter on the routing hot path: an
+  // unrecognised name must contribute 0, never throw. `getDefaultModelForCli`
+  // throws on an unknown CliName, and taking down a routing call to record a
+  // metric would be far worse than the mispricing this function fixes.
+  let pricing;
+  try {
+    pricing = getDefaultRegistry().getEntry(getDefaultModelForCli(model as CliNameLiteral)).pricing;
+  } catch {
+    return 0;
+  }
+  if (pricing === undefined) return 0;
+  return computeTokenCost(
+    { input: tokens.inputTokens, output: tokens.outputTokens },
+    { inputPer1M: pricing.inputPer1M, outputPer1M: pricing.outputPer1M }
+  ).costUsd;
 }
