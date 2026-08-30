@@ -55,21 +55,35 @@ export interface TaskTypePerformance {
  * Learning progress metrics.
  */
 export interface LearningProgress {
-  /** LinUCB exploration rate over time */
-  readonly explorationRate: number;
+  /**
+   * LinUCB exploration rate, or `null` when nothing was recorded (#5255).
+   *
+   * `0` was the empty-case value and rendered as "0.0%" — indistinguishable
+   * from a real fully-greedy policy, which is a legitimate 0.0%. `null` means
+   * UNMEASURED; `0` means measured-and-zero.
+   */
+  readonly explorationRate: number | null;
   readonly explorationRateTrend: number; // positive = increasing exploration
-  /** Cumulative regret */
-  readonly cumulativeRegret: number;
-  readonly avgRegret: number;
-  /** Optimal decision rate */
-  readonly optimalRate: number;
+  /** Cumulative regret, or `null` when no decision was comparable. */
+  readonly cumulativeRegret: number | null;
+  /** Average regret per decision, or `null` when unmeasured. */
+  readonly avgRegret: number | null;
+  /** Optimal decision rate, or `null` when unmeasured. */
+  readonly optimalRate: number | null;
   /** Feature importance ranking */
   readonly featureImportance: readonly {
     readonly feature: string;
     readonly importance: number;
   }[];
   /** Learning convergence metric (0-1, 1 = converged) */
-  readonly convergenceScore: number;
+  /**
+   * Convergence score, or `null` when no feature weights were recorded (#5255).
+   *
+   * The empty case returned `0`, which reads as WORST-possible convergence —
+   * `Math.exp(-variance)` only approaches 0 and never reaches it, so a literal
+   * 0% could not have been a real reading.
+   */
+  readonly convergenceScore: number | null;
 }
 
 /**
@@ -105,10 +119,27 @@ export interface DashboardSummary {
 export interface DashboardHealthIndicators {
   /** Whether we have enough data for statistical inference */
   readonly hasMinimumData: boolean;
-  /** Whether learning is progressing (regret decreasing) */
-  readonly isLearning: boolean;
-  /** Whether exploration rate is in healthy range (10-20%) */
-  readonly healthyExploration: boolean;
+  /**
+   * Whether learning is progressing, or `null` when unmeasured (#5255).
+   *
+   * This was `boolean` and computed from `avgRegret`/`optimalRate`, whose empty
+   * case returned `0`/`1` — so it answered "yes" on the strength of no data.
+   * #4714 spotted that and guarded only the aggregate `healthScore`; the guard
+   * keys on total outcomes, which is a DIFFERENT collection from the one these
+   * metrics read, so on a live system it passed and the fabricated verdict
+   * flowed through anyway.
+   */
+  readonly isLearning: boolean | null;
+  /**
+   * Whether exploration is in the healthy 10-20% range, or `null` when nothing
+   * was recorded (#5255).
+   *
+   * Previously rendered `✗ Healthy Exploration` over ZERO samples — asserting a
+   * health *failure* from absence — while the warning that would have explained
+   * it was gated behind `explorationHistory.length > 10`, so the one disclosing
+   * line was exactly the suppressed one.
+   */
+  readonly healthyExploration: boolean | null;
   /** Whether any model is significantly underperforming */
   readonly noUnderperformers: boolean;
   /** Overall health score (0-1) */

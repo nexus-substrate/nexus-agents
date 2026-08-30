@@ -2573,8 +2573,8 @@ TypeAliasDeclaration DashboardFormat
 InterfaceDeclaration DashboardHealthIndicators
   readonly hasMinimumData: boolean
   readonly healthScore: number | null
-  readonly healthyExploration: boolean
-  readonly isLearning: boolean
+  readonly healthyExploration: boolean | null
+  readonly isLearning: boolean | null
   readonly noUnderperformers: boolean
   readonly warnings: readonly string[]
 InterfaceDeclaration DashboardOutcome
@@ -5105,13 +5105,13 @@ InterfaceDeclaration LearningInsight
   readonly sampleCount: number
   readonly trend: "improving" | "declining" | "stable"
 InterfaceDeclaration LearningProgress
-  readonly avgRegret: number
-  readonly convergenceScore: number
-  readonly cumulativeRegret: number
-  readonly explorationRate: number
+  readonly avgRegret: number | null
+  readonly convergenceScore: number | null
+  readonly cumulativeRegret: number | null
+  readonly explorationRate: number | null
   readonly explorationRateTrend: number
   readonly featureImportance: readonly { readonly feature: string; readonly importance: number; }[]
-  readonly optimalRate: number
+  readonly optimalRate: number | null
 InterfaceDeclaration LibraryStatistics
   readonly overallSuccessRate: number
   readonly skillsByCategory: Record<string, number>
@@ -6972,9 +6972,9 @@ InterfaceDeclaration RegistryStats
   byRole: Record<string, number>
   total: number
 InterfaceDeclaration RegretAnalysis
-  readonly avgRegret: number
-  readonly cumulativeRegret: number
-  readonly optimalRate: number
+  readonly avgRegret: number | null
+  readonly cumulativeRegret: number | null
+  readonly optimalRate: number | null
   readonly regretPerModel: Record<string, number>
   readonly suboptimalDecisions: number
   readonly totalDecisions: number

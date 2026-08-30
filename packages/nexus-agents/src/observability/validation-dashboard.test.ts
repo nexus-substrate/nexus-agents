@@ -363,7 +363,8 @@ describe('validation-dashboard', () => {
 
       const summary = dashboard.getSummary();
       expect(summary.totalDecisions).toBe(0);
-      expect(summary.learningProgress.explorationRate).toBe(0);
+      // Was `toBe(0)` (#5255).
+      expect(summary.learningProgress.explorationRate).toBeNull();
       expect(summary.learningProgress.featureImportance.length).toBe(0);
     });
   });
