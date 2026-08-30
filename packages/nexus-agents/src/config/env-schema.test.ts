@@ -399,3 +399,93 @@ describe('documented NEXUS_* vars are all in the schema (#4722)', () => {
     expect(missing).toEqual([]);
   });
 });
+
+// =============================================================================
+// CONFIGURATION.md is the authoritative list, and it was unguarded (#5159)
+// =============================================================================
+
+describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#5159)', () => {
+  // The #4722 guarantee reads AGENTS.md, which carries only the MOST-USED
+  // table and explicitly defers to CONFIGURATION.md for the full list. So the
+  // authoritative document was the one nothing checked: measured on
+  // 2026-08-29, 16 of the 22 variables registered by #5142 were already
+  // documented here while unregistered, and the test built to catch exactly
+  // that could not see any of them.
+  const CONFIG_MD = readFileSync(join(REPO_ROOT, 'docs/getting-started/CONFIGURATION.md'), 'utf8');
+
+  const BASELINE = JSON.parse(
+    readFileSync(join(REPO_ROOT, 'docs/ops/env-schema-coverage-baseline.json'), 'utf8')
+  ) as { intentional: Record<string, unknown>; debt: string[] };
+
+  /** Every `NEXUS_*` name appearing in backticks in CONFIGURATION.md. */
+  function documentedVars(): string[] {
+    const found = new Set<string>();
+    for (const m of CONFIG_MD.matchAll(/`(NEXUS_[A-Z0-9_]+)`/g)) {
+      const name = m[1];
+      if (name !== undefined) found.add(name);
+    }
+    return [...found].sort();
+  }
+
+  it('finds the documented list it is checking against', () => {
+    // Guard the guard, same as the AGENTS.md check: a regex that matched
+    // nothing would make the assertion below pass over an empty set, which is
+    // the exact failure this file exists to prevent.
+    expect(documentedVars().length).toBeGreaterThan(50);
+  });
+
+  it('recognizes every documented variable', () => {
+    // Three documented populations are legitimately absent from the schema:
+    //
+    //  1. REMOVED vars (#2977, #4180). CONFIGURATION.md documents them AS
+    //     removed so a user who still has one set can find out why it stopped
+    //     working. Registering them would resurrect names with no reader.
+    //  2. Accepted debt already tracked in the coverage baseline (#5142) —
+    //     registering those needs a per-variable judgment on the accepted
+    //     value set, which is #5156, not this test.
+    //  3. Script-scoped vars, marked as such in their doc row: they are read
+    //     under scripts/, never by the server, so the runtime schema that
+    //     validates the server's own process env is the wrong home for them.
+    //
+    // Anything else documented-but-unregistered is the #4722 defect: the user
+    // sets a documented name and gets an unknown-variable warning, often
+    // suggesting a DIFFERENT spelling that does work.
+    // Removed vars are listed as prose under `### Removed …` headings, not as
+    // table rows, so this collects every name inside such a section rather
+    // than pattern-matching a row. Each section runs to the next heading.
+    const removed = new Set<string>();
+    for (const m of CONFIG_MD.matchAll(/^#{2,3} Removed[^\n]*$/gim)) {
+      const start = m.index ?? 0;
+      const rest = CONFIG_MD.slice(start + m[0].length);
+      const nextHeading = rest.search(/^#{2,3} /m);
+      const section = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+      for (const n of section.matchAll(/`(NEXUS_[A-Z0-9_]+)`/g)) {
+        const name = n[1];
+        if (name !== undefined) removed.add(name);
+      }
+    }
+    const scriptScoped = new Set(
+      documentedVars().filter((v) =>
+        new RegExp(`\`${v}\`[^\\n]*script-scoped`, 'i').test(CONFIG_MD)
+      )
+    );
+    const baselined = new Set([...BASELINE.debt, ...Object.keys(BASELINE.intentional)]);
+    const schemaKeys = new Set(getKnownNexusVarNames());
+
+    const missing = documentedVars().filter(
+      (v) => !schemaKeys.has(v) && !removed.has(v) && !baselined.has(v) && !scriptScoped.has(v)
+    );
+
+    expect(missing).toEqual([]);
+  });
+
+  it('does not document a name that no code reads under a real one it shadows', () => {
+    // NEXUS_RATE_LIMIT was documented as "Requests per minute, default 60"
+    // with no reader anywhere, while the variable that actually does that —
+    // NEXUS_RATE_LIMIT_RPM, same description, same default (defaults.ts:153) —
+    // was documented nowhere. A user following the doc set a name that did
+    // nothing and got a warning naming a spelling they had never seen.
+    expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
+    expect(CONFIG_MD).toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+  });
+});
