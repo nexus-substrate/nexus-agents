@@ -20,7 +20,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 
-import { wireStdioShutdown } from './server.js';
+import { wireStdioShutdown } from './stdio-lifetime.js';
 
 /** Minimal stand-in for `process.stdin` — an EventEmitter is all we listen to. */
 function fakeStdin(): EventEmitter & { pause?: () => void } {
