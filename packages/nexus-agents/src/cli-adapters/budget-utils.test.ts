@@ -5,6 +5,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { resolveModelCostPer1M } from '../config/model-config-helpers.js';
+import type { ModelId } from '../config/model-capabilities-types.js';
+import type { CliName } from './types.js';
+import { STATIC_CLI_COST_PER_1M } from '../config/in-tree-data.js';
 import { estimateTokens, estimateCost, formatTokens } from './budget-utils.js';
 import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
 
@@ -145,5 +149,70 @@ describe('budget-utils', () => {
       expect(formatTokens(1256)).toBe('1.3K');
       expect(formatTokens(1_234_567)).toBe('1.2M');
     });
+  });
+});
+
+describe('budget-gate invariant: an unpriced candidate is never free (#5122 increment 2)', () => {
+  // Pinned BEFORE estimateCost moved onto the shared token-cost core. The panel
+  // that ratified the consolidation named this the trap: `computeCostDetail`
+  // returns `costUsd: 0, priced: false` for an unpriced model, so a naive swap
+  // would make unpriced candidates look FREE to the live budget gate at
+  // `composite-router-helpers.ts:218` — and a $0 always passes a budget filter
+  // and looks cheapest to TOPSIS. That is #4165/#4196 re-shipped.
+  //
+  // These are observed outputs, not hand-computed expectations.
+  const PINNED: readonly { cli: CliName; est: number }[] = [
+    { cli: 'claude', est: 60 },
+    { cli: 'gemini', est: 14 },
+    { cli: 'codex', est: 35 },
+    { cli: 'opencode', est: 18 },
+  ];
+
+  it.each(PINNED)('estimateCost($cli, 1M, 1M) stays $est', ({ cli, est }) => {
+    expect(estimateCost(cli, 1_000_000, 1_000_000)).toBeCloseTo(est, 10);
+  });
+
+  it('never returns 0 for non-zero tokens, for ANY cli', () => {
+    for (const cli of Object.keys(STATIC_CLI_COST_PER_1M) as CliName[]) {
+      expect(estimateCost(cli, 1000, 1000), `${cli} must not estimate free`).toBeGreaterThan(0);
+    }
+  });
+
+  it('resolves an UNPRICED model to the conservative fallback, not to zero', () => {
+    // The test above cannot detect the trap on its own, and I nearly shipped it
+    // believing it could. Every DEFAULT_MODEL_PER_CLI entry is priced today
+    // (`in-tree-data.ts:475` says so explicitly), so the fallback branch never
+    // runs through `resolveCliCostPer1M` and the assertion passes because the
+    // REGISTRY has rates — not because the safety net works. Mutating the
+    // fallback to `{0, 0}` left every test green.
+    //
+    // The net is dormant by design, which is exactly why it needs a direct
+    // test: a guard nothing exercises is indistinguishable from a broken one.
+    const fallback = { input: 7, output: 11 };
+    const resolved = resolveModelCostPer1M('definitely-not-a-real-model-xyz' as ModelId, fallback);
+    expect(resolved).toEqual(fallback);
+    expect(resolved.input).toBeGreaterThan(0);
+    expect(resolved.output).toBeGreaterThan(0);
+  });
+
+  it('an EXPLICIT $0 registry price is honoured rather than overridden by the fallback', () => {
+    // The pair to the above: a deliberately-free model is a measurement, and
+    // must not be "corrected" upward. Only a MISSING price triggers the net
+    // (#4165 semantics).
+    const zeroPriced = { input: 0, output: 0 };
+    expect(resolveModelCostPer1M('claude-sonnet', zeroPriced)).not.toEqual(zeroPriced);
+  });
+
+  it('zero tokens legitimately cost zero', () => {
+    // Name the empty case: no usage is a real $0, distinct from an unpriced
+    // model reading as $0. The invariant above is about the latter.
+    expect(estimateCost('claude', 0, 0)).toBe(0);
+  });
+
+  it('prices input and output at their separate rates', () => {
+    const inputOnly = estimateCost('claude', 1_000_000, 0);
+    const outputOnly = estimateCost('claude', 0, 1_000_000);
+    expect(outputOnly).toBeGreaterThan(inputOnly);
+    expect(inputOnly + outputOnly).toBeCloseTo(estimateCost('claude', 1_000_000, 1_000_000), 10);
   });
 });

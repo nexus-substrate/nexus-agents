@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { STATIC_CLI_COST_PER_1M } from '../../config/in-tree-data.js';
+import { estimateCost as budgetEstimateCost } from '../../cli-adapters/budget-utils.js';
+import type { CliName } from '../../cli-adapters/types.js';
 import {
   groupBy,
   mean,
@@ -303,5 +306,32 @@ describe('computeAggregatedMetrics', () => {
     ];
     const metrics = computeAggregatedMetrics(results);
     expect(metrics.routingAccuracy).toBe(1);
+  });
+});
+
+describe('test-metrics estimateCost agrees with the budget path (#5122)', () => {
+  // These two were byte-for-byte duplicates over the same resolver. Duplicates
+  // do not stay identical by good intentions — this asserts they cannot drift,
+  // which is the property their being one function now provides.
+  it.each([
+    [1_000_000, 1_000_000],
+    [1000, 500],
+    [1, 0],
+    [0, 0],
+    [123_456, 7890],
+  ])('matches budget-utils for %i input / %i output tokens', (inputTokens, outputTokens) => {
+    for (const cli of Object.keys(STATIC_CLI_COST_PER_1M) as CliName[]) {
+      expect(estimateCost(cli, { inputTokens, outputTokens })).toBe(
+        budgetEstimateCost(cli, inputTokens, outputTokens)
+      );
+    }
+  });
+
+  it('never estimates an unpriced candidate as free', () => {
+    // The same budget-gate invariant, asserted on this side of the seam too:
+    // this function feeds test cost reporting, and a $0 there hides real spend.
+    for (const cli of Object.keys(STATIC_CLI_COST_PER_1M) as CliName[]) {
+      expect(estimateCost(cli, { inputTokens: 1000, outputTokens: 1000 })).toBeGreaterThan(0);
+    }
   });
 });

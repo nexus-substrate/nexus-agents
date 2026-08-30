@@ -8,7 +8,7 @@
 
 import type { CliName } from '../../cli-adapters/types.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
-import { resolveCliCostPer1M } from '../../config/model-config-helpers.js';
+import { estimateCost as estimateCliCost } from '../../cli-adapters/budget-utils.js';
 import type {
   TaskTestResult,
   AggregatedMetrics,
@@ -230,11 +230,11 @@ export function estimateCost(
   cli: CliName,
   usage: { inputTokens: number; outputTokens: number }
 ): number {
-  const rate = resolveCliCostPer1M(cli);
-  const inputCost = (usage.inputTokens / 1_000_000) * rate.input;
-  const outputCost = (usage.outputTokens / 1_000_000) * rate.output;
-
-  return inputCost + outputCost;
+  // Was a byte-for-byte copy of `cli-adapters/budget-utils.estimateCost` over
+  // the same resolver (#5122 paths 3 and 6). Delegating rather than re-deriving
+  // means the conservative-fallback policy has exactly one definition; two
+  // copies is how they drift apart in the first place.
+  return estimateCliCost(cli, usage.inputTokens, usage.outputTokens);
 }
 
 /** Core metrics computed from test results. */
