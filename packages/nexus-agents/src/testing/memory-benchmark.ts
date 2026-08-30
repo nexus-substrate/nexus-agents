@@ -60,8 +60,22 @@ export interface MemoryBenchmarkResult {
   readonly orphanedRefCount: number;
   /** Growth rate: bytes per operation during load test (Phase 2) */
   readonly growthRateBytesPerOp: number;
-  /** Decay consistency: ratio of items correctly decayed (Phase 2, 0-1) */
-  readonly decayConsistencyScore: number;
+  /**
+   * Decay consistency: ratio of items correctly decayed (Phase 2, 0-1), or
+   * `null` when the measurement could not be taken (#5260).
+   *
+   * `null` covers a failed backend search and an empty store. It is not zero.
+   */
+  readonly decayConsistencyScore: number | null;
+  /**
+   * How many items the decay check actually examined.
+   *
+   * This existed inside `DecayMeasurement` and was discarded at this boundary,
+   * so the one number distinguishing "measured, perfect" from "could not
+   * measure" never reached a reader. The denominator now travels with the
+   * score.
+   */
+  readonly decayItemsChecked: number;
   /** Promotion effectiveness: retention rate of promoted memories (Phase 3, 0-1) */
   readonly promotionRetentionRate: number;
   /** Decay appropriateness: regret score for premature decay (Phase 3, 0-1 lower is better) */
@@ -438,7 +452,11 @@ async function measureGrowthRate(
 
 /** Decay consistency measurement result. */
 interface DecayMeasurement {
-  readonly consistencyScore: number;
+  /**
+   * `null` means UNMEASURED (#5260) — either the backend search failed or the
+   * store was empty. It never means "no consistency"; that would be `0`.
+   */
+  readonly consistencyScore: number | null;
   readonly itemsChecked: number;
 }
 
@@ -450,13 +468,17 @@ async function measureDecayConsistency(
   // For now, check that prune operation doesn't corrupt existing entries
   const beforePrune = await backend.search('', 10000);
   if (!beforePrune.ok) {
+    // Was `consistencyScore: 1.0` — a perfect score returned on the line
+    // directly below a log saying the measurement could not be taken (#5260).
     logger?.debug('Cannot measure decay consistency - search failed');
-    return { consistencyScore: 1.0, itemsChecked: 0 };
+    return { consistencyScore: null, itemsChecked: 0 };
   }
 
   const beforeCount = beforePrune.value.length;
   if (beforeCount === 0) {
-    return { consistencyScore: 1.0, itemsChecked: 0 };
+    // An empty store is a different fact from a failed search, and neither is
+    // a perfect consistency score.
+    return { consistencyScore: null, itemsChecked: 0 };
   }
 
   // Sample some entries to verify they remain retrievable
@@ -511,6 +533,7 @@ function buildBenchmarkResult(m: BenchmarkMeasurements): MemoryBenchmarkResult {
     orphanedRefCount: m.coherence.orphanedRefs,
     growthRateBytesPerOp: m.growth.bytesPerOperation,
     decayConsistencyScore: m.decay.consistencyScore,
+    decayItemsChecked: m.decay.itemsChecked,
     promotionRetentionRate: m.promotion.retentionRate,
     decayRegretScore: m.appropriateness.regretScore,
   };
