@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 fix(routing): QualityConstraintStage cost ceiling no longer fails open (#5186)
@@ -25,5 +25,10 @@ enabled it.
 One existing test encoded the defect — it asserted "only gemini ($0.003) passes",
 a figure computed from the input-only rate. Updated to the conservative bound,
 with the fail-open case pinned as its own regression test.
+
+Minor rather than patch: gains two additive optional
+fields (`expectedInputTokens`, `expectedOutputTokens`). The api-surface gate
+flagged them and its own guidance classes additive optional fields as minor —
+worth following even though the substance is a bug fix.
 
 Concern-registry alternates: 3 → 2.

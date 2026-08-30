@@ -6617,6 +6617,8 @@ TypeAliasDeclaration QualityAttribute
   = 'performance' | 'scalability' | 'maintainability' | 'security' | 'reliability' | 'testability'
 InterfaceDeclaration QualityConstraintConfig
   readonly allowFallback: boolean
+  readonly expectedInputTokens?: number | undefined
+  readonly expectedOutputTokens?: number | undefined
   readonly expectedTokens: number
   readonly maxCostUsd: number
   readonly maxLatencyMs: number
