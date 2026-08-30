@@ -1,5 +1,51 @@
 # nexus-agents
 
+## 4.29.4
+
+### Patch Changes
+
+- [#5157](https://github.com/nexus-substrate/nexus-agents/pull/5157) [`e1fe906`](https://github.com/nexus-substrate/nexus-agents/commit/e1fe906a9a773944cb5fb98cdafa94a0993a3a94) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(config): register the NEXUS_* variables production code actually reads ([#5142](https://github.com/nexus-substrate/nexus-agents/issues/5142))
+
+  `validateNexusEnv` reports an unrecognized `NEXUS_*` name as unknown with a typo
+  suggestion. 33 variables that production code reads were never registered, so a
+  correctly spelled variable was reported as the user's mistake — verified live for
+  `NEXUS_VOTER_MODEL_ARCHITECT` (a documented per-role routing override),
+  `NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE` and `NEXUS_MCP_DEPTH`.
+
+  Registers 22 of them with types verified against each consuming call site, and
+  adds support for the two families whose names are built at runtime by string
+  concatenation (`NEXUS_VOTER_MODEL_<ROLE>`, `NEXUS_JOB_MAX_CONCURRENT_<TOOL>`) and
+  therefore can never be fixed schema keys. Role suffixes derive from `VOTER_ROLES`
+  so the family cannot drift from the canonical role list.
+
+  Two consequences worth noting. A previously-ignored bad value is now reported as
+  invalid rather than silently discarded (`NEXUS_MCP_DEPTH=abc`,
+  `NEXUS_VERSION_CHECK=yes` — `parseBoolEnv` accepts only `true|1|false|0`).
+  Validation remains warn-only and never blocks startup.
+
+  Adds `scripts/check-env-schema-coverage.ts`, a baseline-aware CI gate for the
+  reverse direction the [#4722](https://github.com/nexus-substrate/nexus-agents/issues/4722) test never covered: every `NEXUS_*` literal read in
+  `src/` must be registered. It keys on string literals because only 38 of 115 are
+  reachable by a `process.env.X` scan — the rest go through named constants or
+  injected env objects. The 11 variables whose accepted value set needs a judgement
+  call are baselined as visible debt and tracked in [#5156](https://github.com/nexus-substrate/nexus-agents/issues/5156).
+
+- [#5154](https://github.com/nexus-substrate/nexus-agents/pull/5154) [`853df10`](https://github.com/nexus-substrate/nexus-agents/commit/853df1087bc2237d925b477be7a2cd24c6d692cf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): list_available_models called three dead transports healthy
+
+  `healthyTransports` counted transports whose probe merely did not throw, so a
+  transport that succeeded and discovered **zero** models was reported as healthy.
+  Against a stale install this returned `healthyTransports: 5` while claude, gemini
+  and codex each reported `ok: true, modelCount: 0` — a diagnostic that could not
+  distinguish "reachable" from "usable", which is the one distinction it exists to
+  make.
+
+  `healthyTransports` now counts transports that can actually serve a model, and
+  `reachableTransports` carries the old, weaker meaning under an honest name. Each
+  report gains `servesModels`.
+
+  An empty probe deliberately stays `ok: true`. The probe genuinely succeeded, and
+  reporting it as failed would trade one misreport for another.
+
 ## 4.29.3
 
 ### Patch Changes
