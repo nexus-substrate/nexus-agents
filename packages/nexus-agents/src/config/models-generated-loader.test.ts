@@ -146,3 +146,64 @@ describe('models-generated-loader $0/$0 pricing guard (#4176)', () => {
     expect(result.entries[0]?.pricing).toBeUndefined();
   });
 });
+
+describe('cache rates flow from the snapshot to the registry (#5170)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-cache-rate-test-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function loadWithPricing(pricing: Record<string, unknown>): Record<string, unknown> | undefined {
+    writeFileSync(
+      nexusDataPath('model-registry.generated.json'),
+      JSON.stringify({
+        version: 1,
+        entries: [{ id: 'litellm/cache-probe', contextWindow: 1000, pricing }],
+      })
+    );
+    const entry = loadGeneratedRegistryEntries().entries.find(
+      (e) => e.id === 'litellm/cache-probe'
+    );
+    return entry?.pricing;
+  }
+
+  it('carries cacheReadPer1M through to the registry entry', () => {
+    expect(loadWithPricing({ inputPer1M: 1, outputPer1M: 2, cacheReadPer1M: 0.1 })).toMatchObject({
+      inputPer1M: 1,
+      outputPer1M: 2,
+      cacheReadPer1M: 0.1,
+    });
+  });
+
+  it('carries cacheWritePer1M independently of cacheReadPer1M', () => {
+    const p = loadWithPricing({ inputPer1M: 1, outputPer1M: 2, cacheWritePer1M: 1.25 });
+    expect(p).toMatchObject({ cacheWritePer1M: 1.25 });
+    expect(p).not.toHaveProperty('cacheReadPer1M');
+  });
+
+  it('leaves an absent cache rate ABSENT, not zero', () => {
+    // The load-bearing case, and the common one: roughly half the catalogue
+    // publishes no cache rate. A 0 would price a cache-heavy call as FREE;
+    // absent makes computeTokenCost report the component unpriced instead.
+    const p = loadWithPricing({ inputPer1M: 1, outputPer1M: 2 });
+    expect(p).toMatchObject({ inputPer1M: 1, outputPer1M: 2 });
+    expect(p).not.toHaveProperty('cacheReadPer1M');
+    expect(p).not.toHaveProperty('cacheWritePer1M');
+  });
+
+  it('ignores a non-numeric cache rate rather than passing it through', () => {
+    const p = loadWithPricing({ inputPer1M: 1, outputPer1M: 2, cacheReadPer1M: 'free' });
+    expect(p).not.toHaveProperty('cacheReadPer1M');
+  });
+});

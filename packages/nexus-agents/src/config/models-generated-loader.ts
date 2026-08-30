@@ -33,7 +33,12 @@ interface GeneratedRecord {
   readonly displayName?: unknown;
   readonly contextWindow?: unknown;
   readonly maxOutputTokens?: unknown;
-  readonly pricing?: { readonly inputPer1M?: unknown; readonly outputPer1M?: unknown };
+  readonly pricing?: {
+    readonly inputPer1M?: unknown;
+    readonly outputPer1M?: unknown;
+    readonly cacheReadPer1M?: unknown;
+    readonly cacheWritePer1M?: unknown;
+  };
 }
 
 interface GeneratedShape {
@@ -67,6 +72,26 @@ function defaultGeneratedPath(): string {
 }
 
 /**
+ * Cache rates from a record, carried only when numeric (#5170).
+ *
+ * Spread-if-defined, deliberately: an absent rate must stay ABSENT rather than
+ * become 0. A zero would price a cache-heavy call as free, where absent makes
+ * `computeTokenCost` report the component unpriced. Roughly half the catalogue
+ * publishes no cache rate, so the absent path is the common one.
+ */
+function cacheRates(rec: GeneratedRecord): {
+  cacheReadPer1M?: number;
+  cacheWritePer1M?: number;
+} {
+  const read = rec.pricing?.cacheReadPer1M;
+  const write = rec.pricing?.cacheWritePer1M;
+  return {
+    ...(typeof read === 'number' && { cacheReadPer1M: read }),
+    ...(typeof write === 'number' && { cacheWritePer1M: write }),
+  };
+}
+
+/**
  * Extract usable pricing from a raw catalog record.
  *
  * #4176: litellm carries placeholder $0/$0 rows for models it has no pricing
@@ -85,12 +110,19 @@ function defaultGeneratedPath(): string {
 function extractPricing(
   rec: GeneratedRecord,
   id: string
-): { inputPer1M: number; outputPer1M: number } | undefined {
+):
+  | {
+      inputPer1M: number;
+      outputPer1M: number;
+      cacheReadPer1M?: number;
+      cacheWritePer1M?: number;
+    }
+  | undefined {
   const inputPer1M = rec.pricing?.inputPer1M;
   const outputPer1M = rec.pricing?.outputPer1M;
   if (typeof inputPer1M !== 'number' || typeof outputPer1M !== 'number') return undefined;
   if (inputPer1M === 0 && outputPer1M === 0 && !id.endsWith(':free')) return undefined;
-  return { inputPer1M, outputPer1M };
+  return { inputPer1M, outputPer1M, ...cacheRates(rec) };
 }
 
 /** Convert one raw catalog record into a `ModelEntry` (derived base + overlay). */
