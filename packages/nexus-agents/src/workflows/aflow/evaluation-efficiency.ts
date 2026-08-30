@@ -10,7 +10,7 @@
 
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { TaskSpecification } from './aflow-types.js';
-import { COST_MODEL } from './evaluation-types.js';
+import { EXECUTION_WEIGHTS } from './evaluation-types.js';
 
 /**
  * Evaluate workflow efficiency.
@@ -66,7 +66,7 @@ export function calculateTimeoutScore(
 ): number {
   const maxTotal = task.constraints?.maxTotalTimeout ?? 300000;
   const totalTimeout = workflow.steps.reduce(
-    (sum, s) => sum + (s.timeout ?? COST_MODEL.defaultTimeoutMs),
+    (sum, s) => sum + (s.timeout ?? EXECUTION_WEIGHTS.defaultTimeoutMs),
     0
   );
 
@@ -137,15 +137,30 @@ export function calculateRedundancyPenalty(workflow: WorkflowDefinition): number
 }
 
 /**
- * Estimate execution cost based on step configuration.
+ * Relative execution weight of a workflow — a DIMENSIONLESS score, not money.
+ *
+ * Was called `estimateCost` and fed a result field called `estimatedCost`
+ * (#5198). It sums a step count, a retry count and a duration in milliseconds
+ * against arbitrary weights, so the result has no unit at all: 100 per step, 50
+ * per retry, and milliseconds scaled by 0.001. Nothing here is a rate and no
+ * token is involved.
+ *
+ * The old name made it indistinguishable at a call site from the token→USD
+ * paths consolidated under #5122. Comparing it against a budget or a
+ * `maxCostUsd` would be meaningless, and the type system could not object —
+ * both are `number`. That is the same shape as #5186, where a ceiling was
+ * compared against a figure computed at the wrong rate; here the figure has no
+ * rate at all.
+ *
+ * Use it only to rank workflows against each other.
  */
-export function estimateCost(workflow: WorkflowDefinition): number {
-  let totalCost = 0;
+export function estimateExecutionWeight(workflow: WorkflowDefinition): number {
+  let weight = 0;
   for (const step of workflow.steps) {
-    totalCost += COST_MODEL.baseCostPerStep;
-    totalCost += (step.retries ?? 0) * COST_MODEL.costPerRetry;
-    totalCost += (step.timeout ?? COST_MODEL.defaultTimeoutMs) * COST_MODEL.costPerTimeoutMs;
+    weight += EXECUTION_WEIGHTS.perStep;
+    weight += (step.retries ?? 0) * EXECUTION_WEIGHTS.perRetry;
+    weight += (step.timeout ?? EXECUTION_WEIGHTS.defaultTimeoutMs) * EXECUTION_WEIGHTS.perTimeoutMs;
   }
 
-  return Math.round(totalCost);
+  return Math.round(weight);
 }

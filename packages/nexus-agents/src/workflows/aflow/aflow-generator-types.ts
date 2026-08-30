@@ -11,11 +11,7 @@
  * Error codes for AFlow generation.
  */
 export type AFlowErrorCode =
-  | 'INVALID_CONFIG'
-  | 'NO_VALID_ACTIONS'
-  | 'SEARCH_FAILED'
-  | 'TIMEOUT'
-  | 'MIN_STEPS_NOT_MET';
+  'INVALID_CONFIG' | 'NO_VALID_ACTIONS' | 'SEARCH_FAILED' | 'TIMEOUT' | 'MIN_STEPS_NOT_MET';
 
 /**
  * Error class for AFlow generation failures.

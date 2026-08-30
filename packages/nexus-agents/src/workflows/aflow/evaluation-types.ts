@@ -59,10 +59,16 @@ export const CAPABILITY_ACTION_MAPPING: Record<string, string[]> = {
 /**
  * Cost model constants for workflow estimation.
  */
-export const COST_MODEL = {
-  baseCostPerStep: 100,
-  costPerRetry: 50,
-  costPerTimeoutMs: 0.001,
+/**
+ * Arbitrary weights for {@link estimateExecutionWeight}'s relative score
+ * (#5198). NOT prices — these are unitless tuning constants, renamed from
+ * `COST_MODEL` because the old name implied money and the value it produces is
+ * dimensionless.
+ */
+export const EXECUTION_WEIGHTS = {
+  perStep: 100,
+  perRetry: 50,
+  perTimeoutMs: 0.001,
   // Assumed default LLM-step runaway-guard used for cost/score estimation when a
   // step declares no explicit timeout (#3736): was a punitive 60s literal;
   // centralized to the single-llm class guard (300s).
