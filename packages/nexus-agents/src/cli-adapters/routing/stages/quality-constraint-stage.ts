@@ -21,6 +21,7 @@ import type {
 } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
 import { buildTopsisProfiles } from '../../../config/model-config-helpers.js';
+import { computeTokenCost } from '../../../learning/token-cost-core.js';
 
 // ============================================================================
 // Configuration
@@ -31,7 +32,14 @@ import { buildTopsisProfiles } from '../../../config/model-config-helpers.js';
  */
 interface QualityProfile {
   readonly qualityScore: number; // 0-1 overall quality
-  readonly costPer1kTokens: number; // USD
+  /** USD per 1M INPUT tokens. */
+  readonly costPerMillionInput: number;
+  /**
+   * USD per 1M OUTPUT tokens. Carried because output bills at several times
+   * input; collapsing the two into one rate is what made this stage's ceiling
+   * fail open (#5186).
+   */
+  readonly costPerMillionOutput: number;
   readonly avgLatencyMs: number; // Milliseconds
 }
 
@@ -49,11 +57,50 @@ function deriveQualityProfiles(): Record<CliName, QualityProfile> {
   for (const p of profiles) {
     result[p.cliName] = {
       qualityScore: p.qualityScore / MAX_QUALITY,
-      costPer1kTokens: p.costPerMillionInput / 1000,
+      costPerMillionInput: p.costPerMillionInput,
+      costPerMillionOutput: p.costPerMillionOutput,
       avgLatencyMs: p.averageLatencyMs,
     };
   }
   return result;
+}
+
+/**
+ * Cost to compare against the ceiling.
+ *
+ * A ceiling must FAIL CLOSED. The previous implementation priced every token at
+ * the INPUT rate and compared the result to `maxCostUsd`, so the estimate ran
+ * 5-6x under the worst case across all four CLIs — and because the check is
+ * `estimate > max → reject`, understating means the ceiling ADMITS candidates it
+ * was configured to reject (#5186).
+ *
+ * When the caller supplies a split, price it exactly. When it supplies only a
+ * total, there is no honest single rate — so use the OUTPUT rate, the expensive
+ * one. Over-rejecting a cheap candidate costs a routing option; under-rejecting
+ * an expensive one costs money, which is the asymmetry #4196 already encodes
+ * elsewhere in this tree.
+ */
+function estimateCeilingCost(
+  config: Pick<
+    QualityConstraintConfig,
+    'expectedTokens' | 'expectedInputTokens' | 'expectedOutputTokens'
+  >,
+  profile: QualityProfile
+): number {
+  const rates = {
+    inputPer1M: profile.costPerMillionInput,
+    outputPer1M: profile.costPerMillionOutput,
+  };
+
+  if (config.expectedInputTokens !== undefined && config.expectedOutputTokens !== undefined) {
+    return computeTokenCost(
+      { input: config.expectedInputTokens, output: config.expectedOutputTokens },
+      rates
+    ).costUsd;
+  }
+
+  // Split unknown: charge the whole total at the output rate.
+  return computeTokenCost({ input: 0, output: config.expectedTokens }, rates).costUsd;
 }
 
 /** Lazy-initialized profiles derived from model registry. */
@@ -76,6 +123,15 @@ export interface QualityConstraintConfig {
   readonly maxLatencyMs: number;
   /** Expected tokens for cost estimation */
   readonly expectedTokens: number;
+  /**
+   * Expected INPUT tokens, when the caller knows the split. Supplying both this
+   * and {@link expectedOutputTokens} prices the ceiling exactly; leaving them
+   * unset prices {@link expectedTokens} at the OUTPUT rate, which is the
+   * conservative bound (#5186).
+   */
+  readonly expectedInputTokens?: number | undefined;
+  /** Expected OUTPUT tokens, when the caller knows the split. */
+  readonly expectedOutputTokens?: number | undefined;
   /** Allow fallback to highest quality if all filtered */
   readonly allowFallback: boolean;
 }
@@ -220,7 +276,7 @@ export class QualityConstraintStage implements IRouterStage {
     }
 
     // Check cost
-    const estimatedCost = (this.config.expectedTokens / 1000) * profile.costPer1kTokens;
+    const estimatedCost = estimateCeilingCost(this.config, profile);
     if (estimatedCost > this.config.maxCostUsd) {
       return {
         meets: false,
