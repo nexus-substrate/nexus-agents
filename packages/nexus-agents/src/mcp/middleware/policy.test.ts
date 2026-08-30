@@ -157,6 +157,41 @@ describe('PolicyFirewall', () => {
       expect(firewall.getMode()).toBe('warn');
     });
 
+    // #4991: the seam between the evaluator and the audit path. The
+    // secure-handler tests use mock firewalls that set this flag themselves, so
+    // without this test the evaluator could stop setting it and every one of
+    // them would still pass — verified by mutation: deleting the assignment in
+    // handleDenial left all 68 of those tests green.
+    it('marks a warn-mode override explicitly, not by leaving a field unset', () => {
+      const firewall = new PolicyFirewall({ mode: 'warn', rules: [createDenyRule('blocked')] });
+
+      const decision = firewall.evaluate(createPolicyContext('test_tool', {}));
+
+      expect(decision.allowed).toBe(true);
+      expect(decision.overriddenByWarnMode).toBe(true);
+      expect(decision.ruleName).toBe('blocked');
+    });
+
+    it('leaves overriddenByWarnMode unset for an ordinary allow', () => {
+      // The other half: absence must mean "no rule denied", so a consumer can
+      // trust the flag rather than re-deriving the verdict.
+      const firewall = new PolicyFirewall({ mode: 'warn', rules: [createAllowRule('permitted')] });
+
+      const decision = firewall.evaluate(createPolicyContext('test_tool', {}));
+
+      expect(decision.allowed).toBe(true);
+      expect(decision.overriddenByWarnMode).toBeUndefined();
+    });
+
+    it('does not mark a real denial as a warn-mode override', () => {
+      const firewall = new PolicyFirewall({ mode: 'enforce', rules: [createDenyRule('blocked')] });
+
+      const decision = firewall.evaluate(createPolicyContext('test_tool', {}));
+
+      expect(decision.allowed).toBe(false);
+      expect(decision.overriddenByWarnMode).toBeUndefined();
+    });
+
     it('should create firewall with initial rules', () => {
       const rules = [createAllowRule('rule1'), createAllowRule('rule2')];
       const firewall = new PolicyFirewall({ rules });

@@ -244,12 +244,14 @@ function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
     return { result: policyDeniedError(decision.reason, opts.requestId), verdict: 'deny' };
   }
 
-  // Warn mode: `handleDenial` (policy.ts:140) allows the call but sets
-  // `ruleName`. `allowWithReason` (policy.ts:118) never does, so the presence
-  // of a rule name on an allowed decision is an exact structural signal that a
-  // rule fired and was overridden. Deliberately NOT matched on the '[WARN
-  // MODE]' reason prefix, which is display copy and would break on a reword.
-  if (decision.ruleName !== undefined) {
+  // Warn mode: the evaluator sets `overriddenByWarnMode` when a rule denied and
+  // the mode allowed anyway. Read that flag and nothing else — not the '[WARN
+  // MODE]' reason prefix (display copy, breaks on a reword), and not the
+  // presence of `ruleName` on an allowed decision. The latter was the first
+  // implementation and a panel rejected it: naming the rule that PERMITTED an
+  // action is ordinary practice, so that inference would start reporting
+  // authorized calls as near-misses the day an allow rule sets `ruleName`.
+  if (decision.overriddenByWarnMode === true) {
     opts.logger.debug('Policy would have denied (warn mode)', {
       reason: decision.reason,
       ruleName: decision.ruleName,

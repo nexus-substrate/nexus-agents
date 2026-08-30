@@ -24,6 +24,7 @@ function warnModeFirewall(): IPolicyFirewall {
     allowed: true,
     reason: '[WARN MODE] Would be denied: path outside allowlist',
     ruleName: 'sandbox-paths',
+    overriddenByWarnMode: true,
   };
   return {
     evaluate: vi.fn((): PolicyDecision => decision),
@@ -38,6 +39,26 @@ function warnModeFirewall(): IPolicyFirewall {
 /** An ordinary allow: no rule fired, so `ruleName` is absent. */
 function allowFirewall(): IPolicyFirewall {
   const decision: PolicyDecision = { allowed: true, reason: 'All policy rules passed' };
+  return {
+    evaluate: vi.fn((): PolicyDecision => decision),
+    addRule: vi.fn(),
+    removeRule: vi.fn((): boolean => true),
+    getRules: vi.fn((): readonly [] => []),
+    setMode: vi.fn(),
+    getMode: vi.fn((): 'enforce' => 'enforce'),
+  };
+}
+
+/**
+ * An ordinary ALLOW that names the rule which permitted it — e.g. an
+ * `admin-override`. Legal today and ordinary access-control practice.
+ */
+function namedAllowFirewall(): IPolicyFirewall {
+  const decision: PolicyDecision = {
+    allowed: true,
+    reason: 'Permitted by admin override',
+    ruleName: 'admin-override',
+  };
   return {
     evaluate: vi.fn((): PolicyDecision => decision),
     addRule: vi.fn(),
@@ -136,6 +157,31 @@ describe('warn-mode policy near-misses reach the chain (#4991)', () => {
     const handler = createSecureHandler(okHandler, {
       toolName: 'reader',
       policyFirewall: allowFirewall(),
+      auditLogger,
+    });
+
+    await handler({});
+
+    expect(auditLogger.logPolicyDecision).not.toHaveBeenCalled();
+  });
+
+  it('does not mistake an allow that NAMES its rule for a near-miss', async () => {
+    // The regression the unanimous panel rejected the first implementation
+    // over. Detection originally read `allowed === true && ruleName !==
+    // undefined`, which is true of today's code only because
+    // `allowWithReason` happens not to set `ruleName`. Naming the rule that
+    // PERMITTED an action (`admin-override` vs `default-allow`) is ordinary
+    // access-control practice — the day an allow rule does it, every
+    // authorized call it covers would have been recorded as `would_deny`, and
+    // #4988 would read those near-misses as evidence for enforcing.
+    //
+    // Detection now reads the evaluator's explicit `overriddenByWarnMode`, so
+    // this decision — allowed, with a ruleName, no override flag — emits
+    // nothing.
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'admin_tool',
+      policyFirewall: namedAllowFirewall(),
       auditLogger,
     });
 

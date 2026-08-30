@@ -35,6 +35,15 @@ switch with a `never` check, so the next verdict is a compile error rather than
 a silent mis-mapping. `would_deny` maps to `warning` + `success`: `outcome`
 describes what happened to the operation, and the call did run.
 
-Detection is structural — `allowed === true && ruleName !== undefined`, since
-`allowWithReason` never sets `ruleName` — not a match on the `[WARN MODE]`
-reason prefix, which is display copy.
+Detection reads a new explicit `PolicyDecision.overriddenByWarnMode` flag, set
+by the evaluator, which is the only place that knows the mode overrode a
+denial. An earlier revision inferred it from `allowed === true && ruleName !==
+undefined` and a consensus panel rejected that at the unanimous bar: naming the
+rule that _permitted_ an action (`admin-override` vs `default-allow`) is
+ordinary access-control practice, so the day an allow rule sets `ruleName`,
+every authorized call it covered would have been recorded as a near-miss — and
+#4988 would read those as evidence for enforcing. A verdict derived from the
+absence of an unrelated field is a coincidence, not a signal.
+
+`PolicyDecision` gains one optional field, which is additive; the major bump is
+driven solely by the audit decision union.

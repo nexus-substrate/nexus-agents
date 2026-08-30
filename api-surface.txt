@@ -6279,6 +6279,7 @@ InterfaceDeclaration PolicyContext
 TypeAliasDeclaration|InterfaceDeclaration PolicyDecision
   = | { readonly allow: true; } | { readonly allow: false; readonly escalateTo?: string; readonly reason: string; }
   readonly allowed: boolean
+  readonly overriddenByWarnMode?: boolean | undefined
   readonly reason: string
   readonly requiredArtifact?: string | undefined
   readonly ruleName?: string | undefined
