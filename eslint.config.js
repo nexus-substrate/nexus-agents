@@ -106,6 +106,81 @@ export default defineConfig([
     rules: { 'nexus/no-vacuous-verdict': 'warn' },
   },
 
+  // #5191: adapter acquisition goes through `getGlobalRegistry()`. The
+  // deprecated `createAllAdapters()` returns RAW adapters with no shared
+  // circuit-breaker registry, so each caller's breaker state is isolated —
+  // "one adapter keeps routing to a CLI another has already seen fail", the
+  // exact failure #4330 added the shared registry to prevent
+  // (`adapters/unified-registry.ts:150`).
+  //
+  // Buy the detection, build only the wrapper (epic #5121 constraint 1): this
+  // is the stock rule, not a bespoke gate.
+  {
+    name: 'nexus-agents/canonical-adapter-acquisition-5191',
+    files: ['packages/nexus-agents/src/**/*.ts'],
+    ignores: [
+      // The definition itself.
+      'packages/nexus-agents/src/cli-adapters/factory.ts',
+      // The PUBLIC export surface re-exports this symbol
+      // (`exports/cli-adapters.ts:52`). That is an export, not a use — banning
+      // it here would drop `createAllAdapters` from the package's public API,
+      // which is a semver decision for #5191, not a side effect of a lint rule.
+      // The rule found this surface; enumerating it by hand had missed it.
+      'packages/nexus-agents/src/exports/cli-adapters.ts',
+      '**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          // `patterns` with a glob, not `paths` with a literal: the specifier is
+          // RELATIVE, so its depth varies by importer ('../cli-adapters/...'
+          // vs '../../cli-adapters/...'). A literal entry silently misses every
+          // importer at a different depth.
+          //
+          // Both the module AND the barrel are listed, because the symbol is
+          // re-exported at `cli-adapters/index.ts:87` and one call site reaches
+          // it that way. `importNames` keeps the ban to this one symbol, so the
+          // rest of the barrel is unaffected.
+          //
+          // KNOWN GAP, stated rather than papered over: this does NOT catch
+          // `const { createAllAdapters } = await import(...)`. Two call sites
+          // use that form (`pipeline/expert-bridge.ts:273`,
+          // `mcp/tools/list-available-models-tool.ts:137`) and are invisible to
+          // it. They are enumerated in #5191; a dynamic-import ban would need a
+          // bespoke rule, which epic #5121's constraint 1 says not to build.
+          patterns: [
+            {
+              group: ['**/cli-adapters/factory.js', '**/cli-adapters/index.js'],
+              importNames: ['createAllAdapters'],
+              message:
+                'Use getGlobalRegistry() (adapters/unified-registry.ts) — createAllAdapters returns raw adapters with no shared circuit-breaker registry (#5191, #4330).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // The four existing call sites, visible at `warn` rather than silenced.
+  // Same shape as the vacuous-verdict exemption above: an explicit named block
+  // that keeps the debt in every lint run until #5191 migrates them, instead of
+  // an `off` or a directory-wide skip that would hide it.
+  //
+  // Each needs a judgement, not a blanket replace — `doctor` probes liveness and
+  // may legitimately want an unwrapped adapter. Delete this block as the list
+  // empties.
+  {
+    name: 'nexus-agents/adapter-acquisition-baseline-pending-5191',
+    files: [
+      'packages/nexus-agents/src/cli/doctor.ts',
+      'packages/nexus-agents/src/cli/doctor-live.ts',
+      'packages/nexus-agents/src/cli/demo-command.ts',
+      'packages/nexus-agents/src/cli/orchestrate-command.ts',
+    ],
+    rules: { 'no-restricted-imports': 'warn' },
+  },
+
   // Test files - relaxed rules
   {
     name: 'nexus-agents/tests',
