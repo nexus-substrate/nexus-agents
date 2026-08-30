@@ -7578,6 +7578,7 @@ InterfaceDeclaration RunGraphWithConsensusOptions
   readonly verdictKey?: string | undefined
   readonly voter: ConsensusVoter
 InterfaceDeclaration RunGraphWorkflowDeps
+  readonly auditLogger?: IAuditLogger | undefined
   readonly notifier?: IMcpNotifier | undefined
 TypeAliasDeclaration RunGraphWorkflowInput
   = z.infer<typeof RunGraphWorkflowInputSchema>

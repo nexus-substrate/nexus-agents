@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 fix(mcp): send run_graph_workflow audit events to the durable chain
