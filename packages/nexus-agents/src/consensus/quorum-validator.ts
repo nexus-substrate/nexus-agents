@@ -124,6 +124,28 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   weighted_byzantine: SUPERMAJORITY_THRESHOLD,
 };
 
+/** Inputs to the quorum-status calculation, grouped to stay within max-params. */
+interface QuorumStatusInput {
+  readonly voteCounts: VoteCounts;
+  readonly weightedCounts: WeightedVoteCounts | undefined;
+  readonly totalWeight: number | undefined;
+  readonly config: QuorumValidationConfig;
+  readonly requiredParticipants: number;
+  /** Whether any voter had a weight SUPPLIED — provenance, not value (#5117). */
+  readonly anyWeightSupplied: boolean;
+}
+
+/** Inputs to the weighted-quorum reasoning string. */
+interface WeightedReasoningInput {
+  readonly quorumReached: boolean;
+  readonly totalWeight: number;
+  readonly threshold: number;
+  readonly approveRatio: number;
+  readonly rejectRatio: number;
+  /** False when no agent weights were supplied — the tally is a headcount. */
+  readonly weighted: boolean;
+}
+
 /**
  * Unified quorum validator implementation.
  */
@@ -163,14 +185,21 @@ export class QuorumValidator implements IQuorumValidator {
     // Calculate weights if applicable
     const { totalWeight, weightedCounts } = this.calculateWeights(votes, agentWeights, config);
 
+    // Whether any voter actually had a weight SUPPLIED (#5117). Derived from
+    // provenance — presence in `agentWeights` — not from whether a weight
+    // differs from 1.0: an agent legitimately weighted 1.0 is not the same as
+    // one nobody ever weighted, and numeric equality cannot tell them apart.
+    const anyWeightSupplied = [...votes.keys()].some((id) => agentWeights?.has(id) === true);
+
     // Calculate quorum based on algorithm
-    const { threshold, actualQuorum, quorumReached, reasoning } = this.calculateQuorumStatus(
+    const { threshold, actualQuorum, quorumReached, reasoning } = this.calculateQuorumStatus({
       voteCounts,
       weightedCounts,
       totalWeight,
       config,
-      requiredParticipants ?? votes.size
-    );
+      requiredParticipants: requiredParticipants ?? votes.size,
+      anyWeightSupplied,
+    });
 
     return {
       totalVotes: votes.size,
@@ -257,17 +286,15 @@ export class QuorumValidator implements IQuorumValidator {
   }
 
   private calculateQuorumStatus(
-    voteCounts: VoteCounts,
-    weightedCounts: WeightedVoteCounts | undefined,
-    totalWeight: number | undefined,
-    config: QuorumValidationConfig,
-    requiredParticipants: number
+    opts: QuorumStatusInput
   ): { threshold: number; actualQuorum: number; quorumReached: boolean; reasoning: string } {
+    const { voteCounts, weightedCounts, totalWeight, config, requiredParticipants, anyWeightSupplied } =
+      opts;
     const threshold = config.threshold;
 
     // For weighted algorithms, use weighted counts
     if (weightedCounts !== undefined && totalWeight !== undefined && totalWeight > 0) {
-      return this.calculateWeightedQuorum(weightedCounts, totalWeight, threshold);
+      return this.calculateWeightedQuorum(weightedCounts, totalWeight, threshold, anyWeightSupplied);
     }
 
     // For simple algorithms, use vote counts
@@ -277,40 +304,47 @@ export class QuorumValidator implements IQuorumValidator {
   private calculateWeightedQuorum(
     weightedCounts: WeightedVoteCounts,
     totalWeight: number,
-    threshold: number
+    threshold: number,
+    anyWeightSupplied: boolean
   ): { threshold: number; actualQuorum: number; quorumReached: boolean; reasoning: string } {
     const quorumReached = totalWeight >= threshold;
     const approveRatio = weightedCounts.approve / totalWeight;
     const rejectRatio = weightedCounts.reject / totalWeight;
 
-    const reasoning = this.buildWeightedReasoning(
+    const reasoning = this.buildWeightedReasoning({
       quorumReached,
       totalWeight,
       threshold,
       approveRatio,
-      rejectRatio
-    );
+      rejectRatio,
+      weighted: anyWeightSupplied,
+    });
 
     return { threshold, actualQuorum: totalWeight, quorumReached, reasoning };
   }
 
-  private buildWeightedReasoning(
-    quorumReached: boolean,
-    totalWeight: number,
-    threshold: number,
-    approveRatio: number,
-    rejectRatio: number
-  ): string {
+  /**
+   * Reasoning text for the weighted-quorum branch.
+   *
+   * `weighted` is qualified rather than asserted (#5117). `agentWeights` has no
+   * non-test producer, so every real call reaches `getVoteWeight`'s `?? 1.0`
+   * fallback and this branch describes a plain headcount as a weighted ratio.
+   * The word is kept where weights genuinely varied and replaced where they
+   * did not, so the reader can tell the two apart.
+   */
+  private buildWeightedReasoning(opts: WeightedReasoningInput): string {
+    const { quorumReached, totalWeight, threshold, approveRatio, rejectRatio, weighted } = opts;
+    const kind = weighted ? 'weighted' : 'unweighted (no agent weights supplied)';
     if (!quorumReached) {
-      return `Weighted quorum not reached: ${totalWeight.toFixed(2)} < ${String(threshold)}`;
+      return `Quorum not reached: ${totalWeight.toFixed(2)} < ${String(threshold)} (${kind})`;
     }
     if (approveRatio > rejectRatio) {
-      return `Approval wins with weighted ratio ${formatPercentage(approveRatio, 1)}`;
+      return `Approval wins with ${kind} ratio ${formatPercentage(approveRatio, 1)}`;
     }
     if (rejectRatio > approveRatio) {
-      return `Rejection wins with weighted ratio ${formatPercentage(rejectRatio, 1)}`;
+      return `Rejection wins with ${kind} ratio ${formatPercentage(rejectRatio, 1)}`;
     }
-    return `No clear winner: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)}`;
+    return `No clear winner: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)} (${kind})`;
   }
 
   private calculateSimpleQuorum(
