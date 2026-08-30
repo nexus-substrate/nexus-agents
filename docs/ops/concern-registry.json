@@ -13,11 +13,6 @@
       },
       "alternates": [
         {
-          "path": "packages/nexus-agents/src/cli-adapters/routing/stages/quality-constraint-stage.ts",
-          "why": "Prices every token at the INPUT rate (costPerMillionInput / 1000) against a cost ceiling, so the ceiling fails open. Found by this ratchet, not by the #5122 audit.",
-          "trackedBy": "#5186"
-        },
-        {
           "path": "packages/nexus-agents/src/agents/observability/orchestration-observer-helpers.ts",
           "why": "Blended per-1K rate on totalTokens from a table the observer maintains itself, discarding a split its caller holds.",
           "trackedBy": "#5180"
