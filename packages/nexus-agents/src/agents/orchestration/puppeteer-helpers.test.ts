@@ -5,8 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 import type { Task, TaskResult } from '../../core/index.js';
-import type { AgentStepOutput, PuppeteerState } from './puppeteer-types.js';
+import type { AgentStepOutput, PuppeteerState, PuppeteerStepResult } from './puppeteer-types.js';
 import {
+  buildPuppeteerResult,
   DEFAULT_REWARD_CONFIG,
   computeStepReward,
   computeFinalReward,
@@ -16,6 +17,7 @@ import {
   buildAgentStepOutput,
   buildAgentTask,
 } from './puppeteer-helpers.js';
+import { DEFAULT_COST_PER_1K_TOKENS, tokensToCostUsd } from './puppeteer-config-types.js';
 
 // ============================================================================
 // Test Helpers
@@ -347,5 +349,83 @@ describe('buildAgentTask', () => {
 
     const result = buildAgentTask(task, state, '');
     expect(result.constraints).toEqual({ maxTokens: 1000 });
+  });
+});
+
+describe('cost rate is configurable, not hardcoded (#5171)', () => {
+  it('computeStepReward penalises cost at the configured rate', () => {
+    const output: AgentStepOutput = {
+      step: 0,
+      agentId: 'a',
+      output: 'x',
+      durationMs: 100,
+      tokensUsed: 100_000,
+      model: 'test-model',
+    };
+    const cheap = computeStepReward(output, 0.5, {
+      ...DEFAULT_REWARD_CONFIG,
+      costPer1KTokens: 0.01,
+    });
+    const dear = computeStepReward(output, 0.5, { ...DEFAULT_REWARD_CONFIG, costPer1KTokens: 0.5 });
+    // A dearer rate means a bigger efficiency penalty, so a LOWER reward.
+    expect(dear).toBeLessThan(cheap as number);
+  });
+
+  it('tokensToCostUsd converts at the per-1K rate', () => {
+    expect(tokensToCostUsd(1000, 0.01)).toBeCloseTo(0.01, 10);
+    expect(tokensToCostUsd(50, 0.05)).toBeCloseTo(0.0025, 10);
+  });
+
+  it('tokensToCostUsd is zero for zero tokens, whatever the rate', () => {
+    // Name the empty case: no usage must cost nothing rather than inherit a floor.
+    expect(tokensToCostUsd(0, 999)).toBe(0);
+  });
+
+  it('the default rate matches the documented 0.01 per 1K', () => {
+    expect(DEFAULT_COST_PER_1K_TOKENS).toBe(0.01);
+  });
+});
+
+const EMPTY_PATTERNS = {
+  hubAgents: [],
+  cycles: [],
+  graphDensity: 0,
+  cyclicalityScore: 0,
+};
+
+describe('buildPuppeteerResult totals use the configured rate (#5171)', () => {
+  function step(tokensUsed: number): PuppeteerStepResult {
+    return {
+      selectedAgent: 'a',
+      distribution: { a: 1 } as unknown as PuppeteerStepResult['distribution'],
+      agentOutput: {
+        step: 0,
+        agentId: 'a',
+        output: 'x',
+        durationMs: 10,
+        tokensUsed,
+        model: 'm',
+      },
+      newState: {} as unknown as PuppeteerStepResult['newState'],
+      reward: 0,
+    } as unknown as PuppeteerStepResult;
+  }
+
+  it('prices the trajectory at the supplied rate', () => {
+    const result = buildPuppeteerResult([step(1000), step(1000)], EMPTY_PATTERNS, 'task_complete', {
+      sessionId: 'session-1',
+      startTime: 0,
+      costPer1KTokens: 0.05,
+    });
+    // 2000 tokens at $0.05/1K = $0.10 (at the old hardcoded rate it was $0.02).
+    expect(result.totalCost).toBeCloseTo(0.1, 10);
+  });
+
+  it('falls back to the documented default when no rate is supplied', () => {
+    const result = buildPuppeteerResult([step(1000)], EMPTY_PATTERNS, 'task_complete', {
+      sessionId: 'session-1',
+      startTime: 0,
+    });
+    expect(result.totalCost).toBeCloseTo(0.01, 10);
   });
 });

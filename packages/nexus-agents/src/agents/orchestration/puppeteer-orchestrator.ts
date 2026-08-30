@@ -106,7 +106,8 @@ export class PuppeteerOrchestrator {
     this.config = { ...DEFAULT_PUPPETEER_CONFIG, ...options.config };
     // Use explicitly provided policy engine, or create one based on policyMode (#385)
     this.policyEngine = options.policyEngine ?? createPolicyForMode(this.config.policyMode);
-    this.stateManager = options.stateManager ?? createStateManager();
+    this.stateManager =
+      options.stateManager ?? createStateManager({ costPer1KTokens: this.config.costPer1KTokens });
     this.patternTracker = options.patternTracker ?? createPatternTracker();
     this.eventBus = options.eventBus ?? undefined;
     this.agents = new Map();
@@ -323,7 +324,11 @@ export class PuppeteerOrchestrator {
       ? this.patternTracker.analyze(trajectory)
       : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
 
-    const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, sessionId, startTime);
+    const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, {
+      sessionId,
+      startTime,
+      costPer1KTokens: this.config.costPer1KTokens,
+    });
 
     // Trigger learning integration (Issue #154)
     if (this.experienceBuffer !== null && supportsLearning(this.policyEngine)) {
@@ -359,7 +364,11 @@ export class PuppeteerOrchestrator {
       ? this.patternTracker.analyze(trajectory)
       : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
 
-    const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, sessionId, startTime);
+    const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, {
+      sessionId,
+      startTime,
+      costPer1KTokens: this.config.costPer1KTokens,
+    });
 
     // Clean up abort signal listener (Issue #401)
     this.cleanupAbortSignal();

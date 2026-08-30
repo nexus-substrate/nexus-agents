@@ -9,6 +9,7 @@
  */
 
 import type { Task } from '../../core/index.js';
+import { DEFAULT_COST_PER_1K_TOKENS, tokensToCostUsd } from './puppeteer-config-types.js';
 import { getTimeProvider, getTokenEstimator } from '../../core/index.js';
 import { clamp01 } from '../../utils/math-utils.js';
 import type { PuppeteerState, PuppeteerStateMetadata, AgentStepOutput } from './puppeteer-types.js';
@@ -25,12 +26,20 @@ export interface StateManagerConfig {
   readonly maxContextTokens?: number;
   /** Compression threshold (percentage of max before compressing) */
   readonly compressionThreshold?: number;
+  /**
+   * Cost rate in USD per 1,000 tokens, used for `metadata.totalCost` (#5171).
+   * Threaded from `PuppeteerConfig.costPer1KTokens`, which was declared and
+   * defaulted but never reached this computation — the cost-budget termination
+   * gate compared a configurable budget against a hardcoded rate.
+   */
+  readonly costPer1KTokens?: number;
 }
 
 /** Default state manager configuration. */
 export const DEFAULT_STATE_MANAGER_CONFIG: Required<StateManagerConfig> = {
   maxContextTokens: 8000,
   compressionThreshold: 0.8,
+  costPer1KTokens: DEFAULT_COST_PER_1K_TOKENS,
 };
 
 /**
@@ -300,8 +309,6 @@ export class StateManager implements IStateManager {
   ): PuppeteerStateMetadata {
     const startTime = new Date(current.startedAt).getTime();
     const elapsedMs = getTimeProvider().now() - startTime;
-    const costPerToken = 0.00001; // $0.01 per 1K tokens
-
     // #4766: a step whose usage was never measured contributes nothing, so
     // these are sums over MEASURED steps. Counted rather than silently
     // skipped — otherwise the totals read as complete when they are a lower
@@ -309,7 +316,9 @@ export class StateManager implements IStateManager {
     const measured = output.tokensMeasured !== false;
     return {
       progress: current.progress,
-      totalCost: current.totalCost + (measured ? output.tokensUsed * costPerToken : 0),
+      totalCost:
+        current.totalCost +
+        (measured ? tokensToCostUsd(output.tokensUsed, this.config.costPer1KTokens) : 0),
       totalTokens: current.totalTokens + (measured ? output.tokensUsed : 0),
       unmeasuredSteps: (current.unmeasuredSteps ?? 0) + (measured ? 0 : 1),
       elapsedMs,

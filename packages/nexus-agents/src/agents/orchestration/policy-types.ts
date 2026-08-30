@@ -18,11 +18,7 @@ import type { PuppeteerState, AgentDistribution } from './puppeteer-types.js';
 
 /** Error codes for policy operations. */
 export type PolicyErrorCode =
-  | 'INVALID_STATE'
-  | 'NO_AGENTS'
-  | 'COMPUTATION_FAILED'
-  | 'UPDATE_FAILED'
-  | 'PARAMETERS_INVALID';
+  'INVALID_STATE' | 'NO_AGENTS' | 'COMPUTATION_FAILED' | 'UPDATE_FAILED' | 'PARAMETERS_INVALID';
 
 /**
  * Error class for policy operations.

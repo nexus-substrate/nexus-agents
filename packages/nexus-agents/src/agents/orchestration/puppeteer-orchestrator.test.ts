@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createStateManager } from './state-manager.js';
+import type { IStateManager } from './state-manager.js';
 import {
   PuppeteerOrchestrator,
   createPuppeteerOrchestrator,
@@ -572,5 +574,49 @@ describe('PuppeteerError', () => {
     const error = new PuppeteerError('Test', 'CODE', { extra: 'info' });
 
     expect(error.context).toEqual({ extra: 'info' });
+  });
+});
+
+describe('costPer1KTokens reaches the state manager (#5171)', () => {
+  // THE SEAM. Both halves can be individually correct while nothing connects
+  // them: the orchestrator held the config and called createStateManager() with
+  // no arguments, so a configured rate never reached the computation the
+  // cost-budget termination gate reads.
+  it('constructs its state manager with the configured rate', () => {
+    const orchestrator = new PuppeteerOrchestrator({ config: { costPer1KTokens: 0.05 } });
+    const stateManager = (orchestrator as unknown as { stateManager: IStateManager }).stateManager;
+
+    const state = stateManager.createInitialState(
+      {
+        id: 't1',
+        description: 'task',
+        context: {},
+      },
+      'session-1'
+    );
+    const next = stateManager.updateState(state, {
+      step: 0,
+      agentId: 'a',
+      output: 'x',
+      durationMs: 10,
+      tokensUsed: 1000,
+      model: 'm',
+    });
+
+    // 1000 tokens at $0.05/1K = $0.05. At the old hardcoded rate it was $0.01.
+    expect(next.metadata.totalCost).toBeCloseTo(0.05, 10);
+  });
+
+  it('an injected state manager still wins over the config', () => {
+    // The rate is only a default for the manager the orchestrator builds; an
+    // explicitly injected one must not be silently reconfigured.
+    const injected = createStateManager({ costPer1KTokens: 0.5 });
+    const orchestrator = new PuppeteerOrchestrator({
+      config: { costPer1KTokens: 0.05 },
+      stateManager: injected,
+    });
+    expect((orchestrator as unknown as { stateManager: IStateManager }).stateManager).toBe(
+      injected
+    );
   });
 });
