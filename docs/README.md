@@ -265,6 +265,7 @@ For contributors building on the control plane and operators running it.
 | [CLI_DELEGATION_GUIDE.md](./development/CLI_DELEGATION_GUIDE.md)               | CLI adapter patterns            | Canonical |
 | [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | PR workflow, git conventions    | Canonical |
 | [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
+| [PACKAGED_VS_REPO_ONLY.md](./development/PACKAGED_VS_REPO_ONLY.md)             | What ships to npm vs repo-only  | Canonical |
 | [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
 
 ### Operations & runbooks
