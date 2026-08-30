@@ -14,70 +14,13 @@ related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 
 ---
 
-## Quick Reference
-
-```bash
-# Development
-pnpm install              # Install dependencies
-pnpm dev                  # Start dev server
-pnpm build                # Build all packages
-pnpm test                 # Run tests
-pnpm lint                 # Lint code
-pnpm typecheck            # Type check
-
-# GitHub CLI
-gh issue create           # Create issue
-gh pr create              # Create PR
-gh pr merge               # Merge PR
-
-# Nexus-Agents CLI
-nexus-agents doctor       # Check CLI health
-nexus-agents orchestrate  # Standalone task execution
-nexus-agents vote         # Consensus voting (7 agents; --quick uses 3)
-nexus-agents fitness-audit # CLI fitness score audit
-nexus-agents --help       # Full command list
-```
-
-**Full CLI/MCP reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)
-
----
-
-## Prerequisites & Environment
-
-**Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x). **Optional:** Docker (sandbox mode), Claude CLI (MCP mode).
-
-Most-used env vars:
-
-| Variable                                                                                                                                                                                                                                     | Purpose                                                                                                                                                                                                            |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY`                                                                                                                                                          | Per-vendor adapter auth.                                                                                                                                                                                           |
-| `NEXUS_BILLING_MODE`                                                                                                                                                                                                                         | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing.                                                                                                                                           |
-| `NEXUS_DATA_DIR`                                                                                                                                                                                                                             | Explicit runtime data root; overrides the per-repo/cross-repo split.                                                                                                                                               |
-| `NEXUS_REPO_PREFERRED`                                                                                                                                                                                                                       | `0` opts out of the per-repo data dir (epic #2872; default ON).                                                                                                                                                    |
-| `NEXUS_TMPDIR`                                                                                                                                                                                                                               | Scratch root for short-lived working files (worktrees, prompt files, MCP configs); defaults to `<dataDir>/tmp` inside the gitignored `.nexus-agents/` tree (#4412).                                                |
-| `NEXUS_ACCESS_POLICY_MODE`                                                                                                                                                                                                                   | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.                                                                                                                                                |
-| `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                                                                                                                                                                                       | Sandbox mode (epic #2500).                                                                                                                                                                                         |
-| `NEXUS_AUTO_REMEDIATE`                                                                                                                                                                                                                       | Autonomous remediation: `audit` (default, #3769) / `off` / `enforce` (#3653).                                                                                                                                      |
-| `NEXUS_POLICY_GATE_MODE`                                                                                                                                                                                                                     | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).                                                                                                                                            |
-| `NEXUS_JOB_RESULT_SOURCE`                                                                                                                                                                                                                    | Async job-result reader: `sidecar` (default) / `task_state` (#3090/#3693).                                                                                                                                         |
-| `NEXUS_CONTEXT_RANKED`                                                                                                                                                                                                                       | `1` renders the unified cross-ranked memory prefix; default off (#3236).                                                                                                                                           |
-| `NEXUS_REPO_MAP`                                                                                                                                                                                                                             | `1` attaches a ranked, budgeted repo-map (module import graph, PageRank) for structural tasks; pull-shaped/rank-gated, default off (#4254).                                                                        |
-| `NEXUS_LLM_CLASSIFICATION`                                                                                                                                                                                                                   | `1` permits an LLM call to classify a pipeline task when keyword scoring finds no evidence; default off. The gate was unreachable until #4677, and enabling it costs one model call on ~60% of goals.              |
-| `NEXUS_META_SHADOW_TRAIN`                                                                                                                                                                                                                    | `1` trains+persists the MetaOrchestrator shadow selector; default off (#3593).                                                                                                                                     |
-| `NEXUS_ROUTE_MODEL_SELECTION`                                                                                                                                                                                                                | `true` resolves a concrete model from the difficulty tier at route time; default off (#3394).                                                                                                                      |
-| `NEXUS_ROUTE_MODEL_SHADOW`                                                                                                                                                                                                                   | `1` records would-be tier model selections for the offline flip eval; shadow-only, default off (#4197).                                                                                                            |
-| `NEXUS_TIMEOUT_MULTIPLIER`                                                                                                                                                                                                                   | Float scaling every operation-class runaway-guard; clamp `[0.25, 10]` (#3734).                                                                                                                                     |
-| `NEXUS_TIMEOUT_CLASS_INTERACTIVE_MS` / `NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS` / `NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS` / `NEXUS_TIMEOUT_CLASS_PIPELINE_MS` / `NEXUS_TIMEOUT_CLASS_NETWORK_FETCH_MS` / `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` | Per-class timeout-guard overrides (ms); runaway-guards, not SLAs (#3734).                                                                                                                                          |
-| `NEXUS_ALLOW_SIMULATE`                                                                                                                                                                                                                       | `1` permits `simulateVotes`/`simulate` outside test runners (demos only; default = fail closed, #4170).                                                                                                            |
-| `NEXUS_VOTER_MODEL_<ROLE>`                                                                                                                                                                                                                   | Pins one voter's model, e.g. `NEXUS_VOTER_MODEL_ARCHITECT=claude-opus`. Name is built at runtime from the `VOTER_ROLES` key, so the schema matches it by prefix (#5142); an unreal role is still reported unknown. |
-
-Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
-
-Every `NEXUS_*` variable is validated at startup against `config/env-schema.ts`; an unrecognized name is reported as unknown with a typo suggestion. A variable named in this table but missing from that schema is therefore reported as a typo despite being spelled correctly (#4722), so the two lists are cross-checked by a test.
-
-Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars).
-
----
+> **Where the rest lives.** Everything harness-agnostic — the CLI quick
+> reference, the `NEXUS_*` environment table, Operating Rules, the
+> Discovered-Issues protocol, Workflows, Governance quality, File References and
+> the MCP tool list — now lives in `AGENTS.md` and is injected into the
+> generated block above (#5151). It used to sit in this file only, so Codex,
+> Gemini CLI and OpenCode never saw it. Content outside the generated block is
+> ungated by construction, which is how the TypeScript pin drifted.
 
 <!-- GENERATED:FROM_AGENTS:START -->
 
@@ -403,7 +346,68 @@ Overlapping triggers use the strictest threshold (`unanimous > supermajority > m
 - Harness wiring snippets: [docs/guides/HARNESS_COMPATIBILITY.md](./docs/guides/HARNESS_COMPATIBILITY.md)
 - Contributing: [docs/development/CONTRIBUTION_GUIDE.md](./docs/development/CONTRIBUTION_GUIDE.md)
 
-<!-- GENERATED:FROM_AGENTS:END -->
+## Quick Reference
+
+```bash
+# Development
+pnpm install              # Install dependencies
+pnpm dev                  # Start dev server
+pnpm build                # Build all packages
+pnpm test                 # Run tests
+pnpm lint                 # Lint code
+pnpm typecheck            # Type check
+
+# GitHub CLI
+gh issue create           # Create issue
+gh pr create              # Create PR
+gh pr merge               # Merge PR
+
+# Nexus-Agents CLI
+nexus-agents doctor       # Check CLI health
+nexus-agents orchestrate  # Standalone task execution
+nexus-agents vote         # Consensus voting (7 agents; --quick uses 3)
+nexus-agents fitness-audit # CLI fitness score audit
+nexus-agents --help       # Full command list
+```
+
+**Full CLI/MCP reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)
+
+---
+
+## Prerequisites & Environment
+
+**Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x). **Optional:** Docker (sandbox mode), Claude CLI (MCP mode).
+
+Most-used env vars:
+
+| Variable                                                                                                                                                                                                                                     | Purpose                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY`                                                                                                                                                          | Per-vendor adapter auth.                                                                                                                                                                                           |
+| `NEXUS_BILLING_MODE`                                                                                                                                                                                                                         | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing.                                                                                                                                           |
+| `NEXUS_DATA_DIR`                                                                                                                                                                                                                             | Explicit runtime data root; overrides the per-repo/cross-repo split.                                                                                                                                               |
+| `NEXUS_REPO_PREFERRED`                                                                                                                                                                                                                       | `0` opts out of the per-repo data dir (epic #2872; default ON).                                                                                                                                                    |
+| `NEXUS_TMPDIR`                                                                                                                                                                                                                               | Scratch root for short-lived working files (worktrees, prompt files, MCP configs); defaults to `<dataDir>/tmp` inside the gitignored `.nexus-agents/` tree (#4412).                                                |
+| `NEXUS_ACCESS_POLICY_MODE`                                                                                                                                                                                                                   | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.                                                                                                                                                |
+| `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                                                                                                                                                                                       | Sandbox mode (epic #2500).                                                                                                                                                                                         |
+| `NEXUS_AUTO_REMEDIATE`                                                                                                                                                                                                                       | Autonomous remediation: `audit` (default, #3769) / `off` / `enforce` (#3653).                                                                                                                                      |
+| `NEXUS_POLICY_GATE_MODE`                                                                                                                                                                                                                     | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).                                                                                                                                            |
+| `NEXUS_JOB_RESULT_SOURCE`                                                                                                                                                                                                                    | Async job-result reader: `sidecar` (default) / `task_state` (#3090/#3693).                                                                                                                                         |
+| `NEXUS_CONTEXT_RANKED`                                                                                                                                                                                                                       | `1` renders the unified cross-ranked memory prefix; default off (#3236).                                                                                                                                           |
+| `NEXUS_REPO_MAP`                                                                                                                                                                                                                             | `1` attaches a ranked, budgeted repo-map (module import graph, PageRank) for structural tasks; pull-shaped/rank-gated, default off (#4254).                                                                        |
+| `NEXUS_LLM_CLASSIFICATION`                                                                                                                                                                                                                   | `1` permits an LLM call to classify a pipeline task when keyword scoring finds no evidence; default off. The gate was unreachable until #4677, and enabling it costs one model call on ~60% of goals.              |
+| `NEXUS_META_SHADOW_TRAIN`                                                                                                                                                                                                                    | `1` trains+persists the MetaOrchestrator shadow selector; default off (#3593).                                                                                                                                     |
+| `NEXUS_ROUTE_MODEL_SELECTION`                                                                                                                                                                                                                | `true` resolves a concrete model from the difficulty tier at route time; default off (#3394).                                                                                                                      |
+| `NEXUS_ROUTE_MODEL_SHADOW`                                                                                                                                                                                                                   | `1` records would-be tier model selections for the offline flip eval; shadow-only, default off (#4197).                                                                                                            |
+| `NEXUS_TIMEOUT_MULTIPLIER`                                                                                                                                                                                                                   | Float scaling every operation-class runaway-guard; clamp `[0.25, 10]` (#3734).                                                                                                                                     |
+| `NEXUS_TIMEOUT_CLASS_INTERACTIVE_MS` / `NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS` / `NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS` / `NEXUS_TIMEOUT_CLASS_PIPELINE_MS` / `NEXUS_TIMEOUT_CLASS_NETWORK_FETCH_MS` / `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` | Per-class timeout-guard overrides (ms); runaway-guards, not SLAs (#3734).                                                                                                                                          |
+| `NEXUS_ALLOW_SIMULATE`                                                                                                                                                                                                                       | `1` permits `simulateVotes`/`simulate` outside test runners (demos only; default = fail closed, #4170).                                                                                                            |
+| `NEXUS_VOTER_MODEL_<ROLE>`                                                                                                                                                                                                                   | Pins one voter's model, e.g. `NEXUS_VOTER_MODEL_ARCHITECT=claude-opus`. Name is built at runtime from the `VOTER_ROLES` key, so the schema matches it by prefix (#5142); an unreal role is still reported unknown. |
+
+Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
+
+Every `NEXUS_*` variable is validated at startup against `config/env-schema.ts`; an unrecognized name is reported as unknown with a typo suggestion. A variable named in this table but missing from that schema is therefore reported as a typo despite being spelled correctly (#4722), so the two lists are cross-checked by a test.
+
+Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars).
 
 ---
 
@@ -415,48 +419,6 @@ Overlapping triggers use the strictest threshold (`unanimous > supermajority > m
 - **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
 - **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
 - **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).
-
----
-
-## Claude-Specific Canonical Paths
-
-The harness-neutral canonical-paths table (the routing chain, the core registries) is generated above from AGENTS.md. The entries below are Claude-Code-specific or model-registry details not carried in the agnostic body.
-
-| Concern                | Canonical Path                                                                                        | Location                                                     |
-| ---------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| **Voter Roles**        | `VoterRole` + `VOTER_ROLES`                                                                           | `packages/nexus-agents/src/cli/vote-types.ts`                |
-| **Adapter Lifecycle**  | `ResilientAdapter`                                                                                    | `packages/nexus-agents/src/adapters/resilient-adapter.ts`    |
-| **Workflow Router**    | `createWorkflowRouter`                                                                                | `packages/nexus-agents/src/orchestration/workflow-router.ts` |
-| **Pipeline internals** | `PipelineRunner`, `PluginRegistry`, `PolicyEngine`, `EventBus`, `ArtifactStore`, `TaskContractSchema` | `packages/nexus-agents/src/pipeline/`                        |
-
-**Adapter access:** go through `UnifiedAdapterRegistry` (singleton via `getGlobalRegistry()`); do NOT call `createAutoAdapter()`/`createResilientAdapter()` in new code. **Model registry** (`config/model-registry.ts` + `config/in-tree-data.ts`) is the single source of truth for pricing, quality, context windows, CLI aliases, defaults — read via `getDefaultRegistry()`, never hardcode.
-
-<!-- GOVERNANCE:MODEL_LIST:START -->Supported models: claude-fable-5, claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3.5-flash, gemini-3-flash, gemini-flash, gpt-5.5, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default, opencode-custom-opus, opencode-custom-sonnet, openrouter-nemotron-super, openrouter-qwen-coder.<!-- GOVERNANCE:MODEL_LIST:END -->
-
-**Voter panel:** 7 roles default (`architect, security, devex, ai_ml, pm, catfish, scope_steward`); `--quick` runs 3 (`architect, security, scope_steward`). Supermajority is 5/7. Full voting thresholds in `.rules/governance.md`.
-
----
-
-## Agent Delegation
-
-Pass these values to the `Agent` tool's `subagent_type` parameter:
-
-| `subagent_type`     | Use When                                                       | Tool Access      |
-| ------------------- | -------------------------------------------------------------- | ---------------- |
-| `Explore`           | Quick codebase searches, read-only analysis (>3 queries)       | Read, Glob, Grep |
-| `Plan`              | Designing implementation plans for non-trivial work            | Read-only        |
-| `general-purpose`   | Complex multi-step tasks; specialized roles via prompt framing | All tools        |
-| `claude-code-guide` | Questions about Claude Code, the Agent SDK, or the Claude API  | Read, Web        |
-
-For role-specialized work (researcher / coder / reviewer / tester), use `general-purpose` and frame the role in the prompt. Spawn subagents for tasks >5 tool calls; use `Explore` for codebase navigation; use `Plan` before non-trivial implementation; parallelize independent tasks. Cross-CLI routing (Claude/Codex/Gemini): see [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md) or the `codex-delegator` / `gemini-delegator` skills.
-
-### Subagent Context Management
-
-Subagents share the same ~100k token context limit. Full coordination rules (handoff status markers, scope bounding, output budgets, wave execution, model selection, discovery reporting) are in `.rules/subagent-coordination.md` — auto-loaded. Quick rules: every response ends with `## Status: complete | blocked — <reason> | partial — cutoff at X of Y`; launch agents in waves of 3-4; prompts under 500 words with a bounded scope and explicit output budget; prefer `sonnet`/`opus` over `haiku`.
-
-### Orchestrator Fallback Strategy
-
-Adapter detection is lazy with circuit-breaker failover (#811). If `orchestrate` / `create_expert` / `execute_expert` fail (typically "No model adapter configured"), fall back to manual analysis immediately — do not retry more than once. Never use `consensus_vote { simulateVotes: true }` as a fallback (random output; tests only — #2319). If no live adapter is available, surface that as the blocker.
 
 ---
 
@@ -541,3 +503,49 @@ _Governance Version: 2026-08-10_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.9+_
+
+<!-- GENERATED:FROM_AGENTS:END -->
+
+---
+
+## Claude-Specific Canonical Paths
+
+The harness-neutral canonical-paths table (the routing chain, the core registries) is generated above from AGENTS.md. The entries below are Claude-Code-specific or model-registry details not carried in the agnostic body.
+
+| Concern                | Canonical Path                                                                                        | Location                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Voter Roles**        | `VoterRole` + `VOTER_ROLES`                                                                           | `packages/nexus-agents/src/cli/vote-types.ts`                |
+| **Adapter Lifecycle**  | `ResilientAdapter`                                                                                    | `packages/nexus-agents/src/adapters/resilient-adapter.ts`    |
+| **Workflow Router**    | `createWorkflowRouter`                                                                                | `packages/nexus-agents/src/orchestration/workflow-router.ts` |
+| **Pipeline internals** | `PipelineRunner`, `PluginRegistry`, `PolicyEngine`, `EventBus`, `ArtifactStore`, `TaskContractSchema` | `packages/nexus-agents/src/pipeline/`                        |
+
+**Adapter access:** go through `UnifiedAdapterRegistry` (singleton via `getGlobalRegistry()`); do NOT call `createAutoAdapter()`/`createResilientAdapter()` in new code. **Model registry** (`config/model-registry.ts` + `config/in-tree-data.ts`) is the single source of truth for pricing, quality, context windows, CLI aliases, defaults — read via `getDefaultRegistry()`, never hardcode.
+
+<!-- GOVERNANCE:MODEL_LIST:START -->Supported models: claude-fable-5, claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3.5-flash, gemini-3-flash, gemini-flash, gpt-5.5, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default, opencode-custom-opus, opencode-custom-sonnet, openrouter-nemotron-super, openrouter-qwen-coder.<!-- GOVERNANCE:MODEL_LIST:END -->
+
+**Voter panel:** 7 roles default (`architect, security, devex, ai_ml, pm, catfish, scope_steward`); `--quick` runs 3 (`architect, security, scope_steward`). Supermajority is 5/7. Full voting thresholds in `.rules/governance.md`.
+
+---
+
+## Agent Delegation
+
+Pass these values to the `Agent` tool's `subagent_type` parameter:
+
+| `subagent_type`     | Use When                                                       | Tool Access      |
+| ------------------- | -------------------------------------------------------------- | ---------------- |
+| `Explore`           | Quick codebase searches, read-only analysis (>3 queries)       | Read, Glob, Grep |
+| `Plan`              | Designing implementation plans for non-trivial work            | Read-only        |
+| `general-purpose`   | Complex multi-step tasks; specialized roles via prompt framing | All tools        |
+| `claude-code-guide` | Questions about Claude Code, the Agent SDK, or the Claude API  | Read, Web        |
+
+For role-specialized work (researcher / coder / reviewer / tester), use `general-purpose` and frame the role in the prompt. Spawn subagents for tasks >5 tool calls; use `Explore` for codebase navigation; use `Plan` before non-trivial implementation; parallelize independent tasks. Cross-CLI routing (Claude/Codex/Gemini): see [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md) or the `codex-delegator` / `gemini-delegator` skills.
+
+### Subagent Context Management
+
+Subagents share the same ~100k token context limit. Full coordination rules (handoff status markers, scope bounding, output budgets, wave execution, model selection, discovery reporting) are in `.rules/subagent-coordination.md` — auto-loaded. Quick rules: every response ends with `## Status: complete | blocked — <reason> | partial — cutoff at X of Y`; launch agents in waves of 3-4; prompts under 500 words with a bounded scope and explicit output budget; prefer `sonnet`/`opus` over `haiku`.
+
+### Orchestrator Fallback Strategy
+
+Adapter detection is lazy with circuit-breaker failover (#811). If `orchestrate` / `create_expert` / `execute_expert` fail (typically "No model adapter configured"), fall back to manual analysis immediately — do not retry more than once. Never use `consensus_vote { simulateVotes: true }` as a fallback (random output; tests only — #2319). If no live adapter is available, surface that as the blocker.
+
+---

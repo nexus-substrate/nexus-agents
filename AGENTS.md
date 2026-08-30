@@ -328,4 +328,162 @@ Overlapping triggers use the strictest threshold (`unanimous > supermajority > m
 - Harness wiring snippets: [docs/guides/HARNESS_COMPATIBILITY.md](./docs/guides/HARNESS_COMPATIBILITY.md)
 - Contributing: [docs/development/CONTRIBUTION_GUIDE.md](./docs/development/CONTRIBUTION_GUIDE.md)
 
+## Quick Reference
+
+```bash
+# Development
+pnpm install              # Install dependencies
+pnpm dev                  # Start dev server
+pnpm build                # Build all packages
+pnpm test                 # Run tests
+pnpm lint                 # Lint code
+pnpm typecheck            # Type check
+
+# GitHub CLI
+gh issue create           # Create issue
+gh pr create              # Create PR
+gh pr merge               # Merge PR
+
+# Nexus-Agents CLI
+nexus-agents doctor       # Check CLI health
+nexus-agents orchestrate  # Standalone task execution
+nexus-agents vote         # Consensus voting (7 agents; --quick uses 3)
+nexus-agents fitness-audit # CLI fitness score audit
+nexus-agents --help       # Full command list
+```
+
+**Full CLI/MCP reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)
+
+---
+
+## Prerequisites & Environment
+
+**Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x). **Optional:** Docker (sandbox mode), Claude CLI (MCP mode).
+
+Most-used env vars:
+
+| Variable                                                                                                                                                                                                                                     | Purpose                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY`                                                                                                                                                          | Per-vendor adapter auth.                                                                                                                                                                                           |
+| `NEXUS_BILLING_MODE`                                                                                                                                                                                                                         | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing.                                                                                                                                           |
+| `NEXUS_DATA_DIR`                                                                                                                                                                                                                             | Explicit runtime data root; overrides the per-repo/cross-repo split.                                                                                                                                               |
+| `NEXUS_REPO_PREFERRED`                                                                                                                                                                                                                       | `0` opts out of the per-repo data dir (epic #2872; default ON).                                                                                                                                                    |
+| `NEXUS_TMPDIR`                                                                                                                                                                                                                               | Scratch root for short-lived working files (worktrees, prompt files, MCP configs); defaults to `<dataDir>/tmp` inside the gitignored `.nexus-agents/` tree (#4412).                                                |
+| `NEXUS_ACCESS_POLICY_MODE`                                                                                                                                                                                                                   | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.                                                                                                                                                |
+| `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                                                                                                                                                                                       | Sandbox mode (epic #2500).                                                                                                                                                                                         |
+| `NEXUS_AUTO_REMEDIATE`                                                                                                                                                                                                                       | Autonomous remediation: `audit` (default, #3769) / `off` / `enforce` (#3653).                                                                                                                                      |
+| `NEXUS_POLICY_GATE_MODE`                                                                                                                                                                                                                     | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).                                                                                                                                            |
+| `NEXUS_JOB_RESULT_SOURCE`                                                                                                                                                                                                                    | Async job-result reader: `sidecar` (default) / `task_state` (#3090/#3693).                                                                                                                                         |
+| `NEXUS_CONTEXT_RANKED`                                                                                                                                                                                                                       | `1` renders the unified cross-ranked memory prefix; default off (#3236).                                                                                                                                           |
+| `NEXUS_REPO_MAP`                                                                                                                                                                                                                             | `1` attaches a ranked, budgeted repo-map (module import graph, PageRank) for structural tasks; pull-shaped/rank-gated, default off (#4254).                                                                        |
+| `NEXUS_LLM_CLASSIFICATION`                                                                                                                                                                                                                   | `1` permits an LLM call to classify a pipeline task when keyword scoring finds no evidence; default off. The gate was unreachable until #4677, and enabling it costs one model call on ~60% of goals.              |
+| `NEXUS_META_SHADOW_TRAIN`                                                                                                                                                                                                                    | `1` trains+persists the MetaOrchestrator shadow selector; default off (#3593).                                                                                                                                     |
+| `NEXUS_ROUTE_MODEL_SELECTION`                                                                                                                                                                                                                | `true` resolves a concrete model from the difficulty tier at route time; default off (#3394).                                                                                                                      |
+| `NEXUS_ROUTE_MODEL_SHADOW`                                                                                                                                                                                                                   | `1` records would-be tier model selections for the offline flip eval; shadow-only, default off (#4197).                                                                                                            |
+| `NEXUS_TIMEOUT_MULTIPLIER`                                                                                                                                                                                                                   | Float scaling every operation-class runaway-guard; clamp `[0.25, 10]` (#3734).                                                                                                                                     |
+| `NEXUS_TIMEOUT_CLASS_INTERACTIVE_MS` / `NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS` / `NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS` / `NEXUS_TIMEOUT_CLASS_PIPELINE_MS` / `NEXUS_TIMEOUT_CLASS_NETWORK_FETCH_MS` / `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` | Per-class timeout-guard overrides (ms); runaway-guards, not SLAs (#3734).                                                                                                                                          |
+| `NEXUS_ALLOW_SIMULATE`                                                                                                                                                                                                                       | `1` permits `simulateVotes`/`simulate` outside test runners (demos only; default = fail closed, #4170).                                                                                                            |
+| `NEXUS_VOTER_MODEL_<ROLE>`                                                                                                                                                                                                                   | Pins one voter's model, e.g. `NEXUS_VOTER_MODEL_ARCHITECT=claude-opus`. Name is built at runtime from the `VOTER_ROLES` key, so the schema matches it by prefix (#5142); an unreal role is still reported unknown. |
+
+Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
+
+Every `NEXUS_*` variable is validated at startup against `config/env-schema.ts`; an unrecognized name is reported as unknown with a typo suggestion. A variable named in this table but missing from that schema is therefore reported as a typo despite being spelled correctly (#4722), so the two lists are cross-checked by a test.
+
+Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars).
+
+---
+
+## Operating Rules
+
+- **Documentation style** — technically precise, direct, honest. State capabilities precisely; admit limitations; provide working examples. No marketing language.
+- **Anti-sprawl** — ONE canonical implementation per concern. Modify existing files, extend existing modules. Never create `enhanced_*`, `new_*`, `v2_*`, `refactor_*` files.
+- **Harness-extraction** — benchmark harnesses live in `nexus-eval-*` repos, NOT in this tree (epic #2514). Scaffold from [`nexus-eval-template`](https://github.com/nexus-substrate/nexus-eval-template); implement the `BenchmarkAdapter` contract. CI gate at `.github/workflows/benchmark-extraction-gate.yml` (#2517).
+- **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
+- **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
+- **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).
+
+---
+
+## Discovered Issues — "See Something, Say Something"
+
+When you encounter a bug **outside the scope of your current task**, file it as a GitHub issue (or, for security, append to `.security-discoveries.jsonl`). Don't fix it inline. Full protocol — including the bar for what to file, subagent discovery rules, and security-finding handling — in `.rules/discovered-issues.md` (auto-loaded).
+
+**Mandatory 4-point gate before filing** (#2225 audit found 100% false-positive rate in unvetted second-pass findings):
+
+1. Re-read the cited line + at least 5 lines before and after.
+2. Trace the call path — is it reachable? Does upstream validation already filter this?
+3. Name the observable failure — what assertion would fail? If you can't, drop it.
+4. Rule out language non-issues — JS is single-threaded; Maps are safe to mutate during iteration; "race condition" requires an `await` between read and write.
+
+If any check raises "wait, actually..." — drop the finding. Max 5 auto-filed issues per hour; `gh issue list --search` for duplicates first. Security findings go to `.security-discoveries.jsonl` (gitignored), never public issues.
+
+---
+
+<!-- GOVERNANCE:WORKFLOW_INDEX:START -->
+
+## Workflows (via Skills)
+
+**33 skills registered.** Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
+
+`api-and-interface-design`, `browser-testing-with-devtools`, `bug-fix`, `code-simplification`, `codex-delegator`, `context-engineering`, `deprecation-and-migration`, `dev-pipeline`, `docs-chart`, `docs-image`, `docs-mermaid`, `docs-review`, `docs-rewrite`, `documentation-management`, `dogfooding-issues`, `e2e-validation`, `gemini-delegator`, `hotfix`, `implement-feature`, `infrastructure-management`, `performance-optimization`, `pre-push-parity`, `release`, `requirements-gathering`, `research-and-vote`, `reviewing-code`, `security-advisory-response`, `security-scanning`, `self-critique`, `system-review`, `test-driven-development`, `ui-ux-design`, `version-check`
+
+_Auto-generated from `skills/index.yaml`. 33 skills._
+
+<!-- GOVERNANCE:WORKFLOW_INDEX:END -->
+
+---
+
+## Governance & Documentation Quality
+
+Voting thresholds, refactor gates, fitness audit, documentation governance in `.rules/governance.md` (auto-loaded). **Key numbers:** Fitness target ≥ 90/100; supermajority for architecture/security; unanimous for breaking API changes.
+
+100-point rubric for technical docs (RFCs, ADRs, architecture docs, blog posts) in `.rules/docs-rubric.md` — five categories, each dimension tagged `[M]`echanical or `[J]`udgment. Defers to user-level skills (`blog-pre-publish`, `blog-argument-shape`, `blog-llm-tells`, `blog-factcheck`, `blog-overlap`) for prose dimensions.
+
+---
+
+## File References
+
+| Need To...               | Go To                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| Find any documentation   | [docs/README.md](./docs/README.md)                                                                 |
+| CLI/MCP API reference    | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                                                       |
+| Architecture docs        | [docs/architecture/README.md](./docs/architecture/README.md)                                       |
+| Development/contributing | [docs/development/README.md](./docs/development/README.md)                                         |
+| Coding standards         | [CODING_STANDARDS.md](./CODING_STANDARDS.md)                                                       |
+| Research tracking        | [docs/research/RESEARCH_INDEX.md](./docs/research/RESEARCH_INDEX.md)                               |
+| Context load balancing   | [docs/architecture/CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md)       |
+| Consensus protocols      | [docs/architecture/CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)             |
+| Alignment roadmap        | [docs/ALIGNMENT_ROADMAP.md](./docs/ALIGNMENT_ROADMAP.md)                                           |
+| Input hardening          | [docs/architecture/UNTRUSTED_INPUT_HARDENING.md](./docs/architecture/UNTRUSTED_INPUT_HARDENING.md) |
+
+### Source Code
+
+- `packages/nexus-agents/src/core/types/index.ts` — Core type definitions
+- `packages/nexus-agents/src/mcp/` — MCP server and tool implementations
+- `packages/nexus-agents/src/agents/` — Agent framework
+- `packages/nexus-agents/src/config/in-tree-data.ts` — In-tree model data (pricing, quality, context windows); registry source
+- `packages/nexus-agents/src/config/model-config-helpers.ts` — Derived helpers for model metadata consumers
+
+<!-- GOVERNANCE:TOOL_INDEX:START -->
+
+## MCP Tools Reference
+
+**47 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
+
+`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `search_usages`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`, `run_quality_gate`, `suggest_research_tasks`, `list_available_models`, `run`
+
+_Auto-generated from source. 47 tools registered._
+
+<!-- GOVERNANCE:TOOL_INDEX:END -->
+
+<!-- GOVERNANCE:VERSION:START -->
+
+_Governance Version: 2026-08-10_
+
+<!-- GOVERNANCE:VERSION:END -->
+
+_MCP Protocol: 2025-11-25_
+_Node.js: 22.x LTS_
+_TypeScript: 5.9+_
+
 <!-- AGNOSTIC:BODY:END -->
