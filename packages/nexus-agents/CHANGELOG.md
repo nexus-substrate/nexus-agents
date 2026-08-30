@@ -1,5 +1,41 @@
 # nexus-agents
 
+## 4.33.2
+
+### Patch Changes
+
+- [#5229](https://github.com/nexus-substrate/nexus-agents/pull/5229) [`c8d2742`](https://github.com/nexus-substrate/nexus-agents/commit/c8d27423eb28ca7fd0378b7ce685df55f59cf3e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(review): stop ordering triangulated dedup by a value that is not confidence ([#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119))
+
+  `pickBestFinding` decided which of two duplicate findings survived cross-CLI
+  dedup with `candidate.confidence > existing.confidence`. For a triangulated
+  finding, `confidence` is `0.7 + priority(cli)` — a constant keyed on the CLI's
+  name that never consults the model's output. So the comparison read as if it
+  weighed evidence while it only compared CLI names: a better finding from a
+  lower-priority CLI lost to a worse one, deterministically, with nothing in the
+  output saying so.
+
+  The tiebreak now reads the per-CLI priority directly. Behaviour is unchanged
+  today — the two were the same comparison — but they can no longer drift into
+  each other: if `confidence` ever becomes a real per-finding measurement, dedup
+  ordering will not silently change meaning along with it.
+
+  `CLI_REVIEW_BONUS` is renamed `CLI_REVIEW_PRIORITY` and documented as a source
+  prior rather than a "confidence bonus", and the assignment site says the value
+  is not a measurement. An unrecognized `expertId` now scores 0 explicitly, so a
+  finding from a non-CLI producer can never displace one from a configured CLI.
+
+  Mutation testing while writing the tests surfaced a second, undocumented
+  coupling: `REVIEW_CLI_ORDER` (codex, claude, gemini) happens to be in
+  descending priority order, and ties keep the incumbent — so the first CLI
+  dispatched is always the highest-priority one and the tiebreak never actually
+  decides anything today. Reordering that list, e.g. to dispatch a faster CLI
+  first, would silently change which findings users see. A test now pins the two
+  constants in agreement so a divergence has to be deliberate.
+
+  This is the labelling half of [#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119) item 3. The remaining items — the
+  security-gate triage verdict (item 1) and `actualCostUsd` (item 2) — are
+  verified still open and stay on that issue.
+
 ## 4.33.1
 
 ### Patch Changes
