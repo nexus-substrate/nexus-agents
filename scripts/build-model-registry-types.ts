@@ -157,6 +157,14 @@ export type GeneratedProvenance = z.infer<typeof GeneratedProvenanceSchema>;
  *   by the generator — they are routing configuration, not model metadata.
  *   Users can add them via the T3 YAML overlay (child issue #2178).
  */
+/** Pricing block on a generated entry. Cache rates optional — see #5170. */
+export interface GeneratedPricing {
+  readonly inputPer1M: number;
+  readonly outputPer1M: number;
+  readonly cacheReadPer1M?: number;
+  readonly cacheWritePer1M?: number;
+}
+
 export const GeneratedModelEntrySchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -166,6 +174,13 @@ export const GeneratedModelEntrySchema = z.object({
     .object({
       inputPer1M: z.number().nonnegative().max(MAX_COST_PER_1M_USD),
       outputPer1M: z.number().nonnegative().max(MAX_COST_PER_1M_USD),
+      // #5170: both upstreams publish cache rates and both were dropped at the
+      // mapping, so a cache-heavy call could not be priced at all. Optional
+      // because most catalogue entries carry neither — absent must stay
+      // distinguishable from zero, or an unpriced cache component would read
+      // as free.
+      cacheReadPer1M: z.number().nonnegative().max(MAX_COST_PER_1M_USD).optional(),
+      cacheWritePer1M: z.number().nonnegative().max(MAX_COST_PER_1M_USD).optional(),
     })
     .optional(),
   maxOutputTokens: z.number().int().positive().optional(),

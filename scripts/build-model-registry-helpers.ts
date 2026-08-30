@@ -22,6 +22,7 @@ import {
   LiteLlmEntrySchema,
   ModelsDevEntrySchema,
 } from './build-model-registry-types.js';
+import type { GeneratedPricing } from './build-model-registry-types.js';
 
 // ---------------------------------------------------------------------------
 // Provider allow-list
@@ -100,6 +101,16 @@ function liteLlmEntryHasUsableData(entry: LiteLlmEntry): boolean {
   return hasPricing || hasContext;
 }
 
+/** models.dev cost block → generated pricing, cache rates included (#5170). */
+function modelsDevPricing(entry: ModelsDevEntry): GeneratedPricing | undefined {
+  return toPricing(
+    entry.cost?.input,
+    entry.cost?.output,
+    entry.cost?.cache_read,
+    entry.cost?.cache_write
+  );
+}
+
 /** Whether a LiteLLM entry should be included (filters sample_spec + image-gen). */
 export function shouldIncludeLiteLlmEntry(id: string, entry: LiteLlmEntry): boolean {
   if (id === 'sample_spec') return false;
@@ -128,7 +139,7 @@ export function mapModelsDevEntry(
 ): GeneratedModelEntry | undefined {
   const context = positiveOrUndefined(entry.limit?.context);
   if (context === undefined) return undefined;
-  const pricing = toPricing(entry.cost?.input, entry.cost?.output);
+  const pricing = modelsDevPricing(entry);
   const maxOutput = positiveOrUndefined(entry.limit?.output);
   const candidate = {
     id: `${providerId}/${entry.id}`,
@@ -164,7 +175,12 @@ export function mapLiteLlmEntry(
   const contextWindow = positiveOrUndefined(entry.max_input_tokens ?? entry.max_tokens);
   if (contextWindow === undefined) return undefined;
 
-  const pricing = toPricingFromPerToken(entry.input_cost_per_token, entry.output_cost_per_token);
+  const pricing = toPricingFromPerToken(
+    entry.input_cost_per_token,
+    entry.output_cost_per_token,
+    entry.cache_read_input_token_cost,
+    entry.cache_creation_input_token_cost
+  );
   const maxOutput = positiveOrUndefined(entry.max_output_tokens);
   const candidate = {
     id: `${canonicalProvider}/${id}`,
@@ -189,22 +205,38 @@ export function mapLiteLlmEntry(
 // Pricing helpers
 // ---------------------------------------------------------------------------
 
+/** models.dev publishes per-MILLION rates, so no scaling. */
 function toPricing(
   input: number | undefined,
-  output: number | undefined
-): { inputPer1M: number; outputPer1M: number } | undefined {
+  output: number | undefined,
+  cacheRead?: number,
+  cacheWrite?: number
+): GeneratedPricing | undefined {
   if (input === undefined || output === undefined) return undefined;
-  return { inputPer1M: round4(input), outputPer1M: round4(output) };
+  return {
+    inputPer1M: round4(input),
+    outputPer1M: round4(output),
+    // Spread-if-defined: an absent cache rate must stay ABSENT, not become 0.
+    // A zero would price a cache-heavy call as free instead of reporting the
+    // component unpriced (#5170).
+    ...(cacheRead !== undefined && { cacheReadPer1M: round4(cacheRead) }),
+    ...(cacheWrite !== undefined && { cacheWritePer1M: round4(cacheWrite) }),
+  };
 }
 
+/** LiteLLM publishes per-TOKEN rates, so every component scales by 1e6. */
 function toPricingFromPerToken(
   input: number | undefined,
-  output: number | undefined
-): { inputPer1M: number; outputPer1M: number } | undefined {
+  output: number | undefined,
+  cacheRead?: number,
+  cacheWrite?: number
+): GeneratedPricing | undefined {
   if (input === undefined || output === undefined) return undefined;
   return {
     inputPer1M: round4(input * 1_000_000),
     outputPer1M: round4(output * 1_000_000),
+    ...(cacheRead !== undefined && { cacheReadPer1M: round4(cacheRead * 1_000_000) }),
+    ...(cacheWrite !== undefined && { cacheWritePer1M: round4(cacheWrite * 1_000_000) }),
   };
 }
 
