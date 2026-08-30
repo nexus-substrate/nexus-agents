@@ -76,25 +76,69 @@ describe('QualityConstraintStage', () => {
       }
     });
 
-    it('filters high cost candidates', async () => {
-      // Derived from registry pricing (inputPer1M, #4176 defaults):
-      // claude-fable-5=$10/M → $0.01/1k, gemini-3-pro=$2/M → $0.002/1k, gpt-5.5=$5/M → $0.005/1k
-      // At 1500 tokens: claude=$0.015, gemini=$0.003, codex=$0.0075
+    it('filters high cost candidates using the conservative bound (#5186)', async () => {
+      // This assertion previously read "only gemini ($0.003) passes", computed
+      // from the INPUT rate applied to every token. That was the bug: the
+      // estimate ran 5-6x under the worst case, so the ceiling ADMITTED
+      // candidates it was configured to reject. The test encoded the defect.
+      //
+      // With no split supplied, the whole total is now priced at the OUTPUT
+      // rate (outputPer1M: claude=50, gemini=12, codex=30):
+      //   at 1500 tokens — claude=$0.075, gemini=$0.018, codex=$0.045
       const lowBudgetStage = new QualityConstraintStage({
         maxCostUsd: 0.004,
         expectedTokens: 1500,
+        // Fallback off: with every candidate now over the ceiling, the
+        // highest-quality one would be restored and the cost filter's effect
+        // would be invisible. This test is about the filter, not the fallback.
+        allowFallback: false,
       });
       const ctx = createContext('test task');
       const result = await lowBudgetStage.route(ctx);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        // Only gemini ($0.003) passes
+        // All three now exceed the $0.004 ceiling, which is the honest answer.
         const filtered = result.value.context.filtered;
         expect(filtered.has('claude')).toBe(true);
         expect(filtered.has('codex')).toBe(true);
-        expect(filtered.has('gemini')).toBe(false);
+        expect(filtered.has('gemini')).toBe(true);
       }
+    });
+
+    it('does NOT admit a candidate whose real cost exceeds the ceiling (#5186)', async () => {
+      // The regression that matters. gemini's input-rate estimate at 1500
+      // tokens is $0.003; its output-rate bound is $0.018. A ceiling set
+      // between them must reject — under the old arithmetic it admitted.
+      const stage = new QualityConstraintStage({
+        maxCostUsd: 0.01,
+        expectedTokens: 1500,
+        minQuality: 0,
+        maxLatencyMs: 100_000,
+      });
+      const result = await stage.route(createContext('test task'));
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.context.filtered.has('gemini')).toBe(true);
+    });
+
+    it('prices exactly when the caller supplies the input/output split (#5186)', async () => {
+      // The conservative bound is a fallback for an unknown split, not a
+      // penalty. A caller that knows the mix gets the real figure — here
+      // gemini at 1400 in / 100 out is (1400*2 + 100*12)/1e6 = $0.004, under a
+      // $0.01 ceiling, so it survives where the worst-case bound rejected it.
+      const stage = new QualityConstraintStage({
+        maxCostUsd: 0.01,
+        expectedTokens: 1500,
+        expectedInputTokens: 1400,
+        expectedOutputTokens: 100,
+        minQuality: 0,
+        maxLatencyMs: 100_000,
+      });
+      const result = await stage.route(createContext('test task'));
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.context.filtered.has('gemini')).toBe(false);
     });
 
     it('filters high latency candidates', async () => {
