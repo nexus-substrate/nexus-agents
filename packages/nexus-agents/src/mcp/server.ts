@@ -22,7 +22,6 @@ import {
 } from '../core/index.js';
 import { VERSION } from '../version.js';
 import { getTaskStore } from './task-store.js';
-import { wireStdioShutdown } from './stdio-lifetime.js';
 import { initDataDirectories } from '../cli/setup-data-dir.js';
 
 /**
@@ -205,15 +204,6 @@ export async function startStdioServer(
     if (!connectResult.ok) {
       return connectResult;
     }
-
-    // Do not outlive the client (#5231). Without this the process stays
-    // resident forever once the pipe closes; see wireStdioShutdown above.
-    wireStdioShutdown(process.stdin, (reason) => {
-      logger.info('Client disconnected; shutting down stdio server', { reason });
-      void closeServer(server, logger).finally(() => {
-        process.exit(0);
-      });
-    });
 
     logger.info('MCP server running with stdio transport');
     return ok({ server, logger });
