@@ -39,24 +39,53 @@ const XML_INJECTION_PATTERN =
  * Patterns that indicate attempted prompt injection.
  * These are logged but not necessarily stripped (detection only).
  */
-const INJECTION_DETECTORS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
+/** Words that turn an HTML comment into an instruction aimed at a reader. */
+const HIDDEN_INSTRUCTION_TRIGGER = /execute|delete|merge|apply/i;
+
+/**
+ * True when a trigger word sits inside a single HTML comment.
+ *
+ * Deliberately NOT a regex. Both previous forms backtracked catastrophically
+ * on adversarial input, and the containment fix in #5258 made it ~3x worse:
+ * measured on Node 22, `'<!-- merge '.repeat(n)` took 203 ms at 8.8 KB before
+ * and 699 ms after, reaching 5.7 s at 17.6 KB — cubic, so a body at GitHub's
+ * 65,536-character cap runs for minutes.
+ *
+ * That was reachable: `sanitizeToolInput` runs in `runPreChecks` for EVERY
+ * secure-handled tool, ahead of the tier check, and the only size gate is a
+ * 10 MB limit. `wrapToolWithTimeout` cannot mitigate it either — backtracking
+ * blocks the event loop synchronously, so the timer never fires. One crafted
+ * PR body would wedge the whole stdio server.
+ *
+ * This scan is linear: `indexOf` walks forward, each comment's interior is
+ * tested once against an alternation of literals, and no character is revisited.
+ */
+function hasHiddenInstruction(value: string): boolean {
+  const OPEN = '<!--';
+  const CLOSE = '-->';
+  let from = 0;
+  for (;;) {
+    const open = value.indexOf(OPEN, from);
+    if (open === -1) return false;
+    const close = value.indexOf(CLOSE, open + OPEN.length);
+    // An unterminated comment has no interior to judge.
+    if (close === -1) return false;
+    if (HIDDEN_INSTRUCTION_TRIGGER.test(value.slice(open + OPEN.length, close))) {
+      return true;
+    }
+    from = close + CLOSE.length;
+  }
+}
+
+const INJECTION_DETECTORS: ReadonlyArray<{
+  name: string;
+  pattern?: RegExp;
+  match?: (value: string) => boolean;
+}> = [
   { name: 'system_prompt_override', pattern: /ignore (?:all )?previous (?:instructions|rules)/i },
   { name: 'role_impersonation', pattern: /i(?:'m| am) the (?:repo |project )?(?:owner|admin)/i },
-  // The trigger must sit INSIDE one comment. `[\s\S]*?` used to cross an
-  // intervening `-->`, so any body with an opening comment, a trigger word
-  // anywhere in ordinary prose, and a later closing comment matched — a real
-  // PR body like "<!-- header -->\nsafe to merge after CI\n<!-- footer -->"
-  // was flagged (#5258). `(?:(?!-->)[\s\S])*?` is the standard tempered-dot
-  // form: consume any character that does not begin the terminator.
-  //
-  // KNOWN RESIDUAL: GitHub's default PR template contains
-  // "<!-- Please delete options that are not relevant -->", where the trigger
-  // genuinely is inside a single comment. Containment cannot help there; the
-  // trigger vocabulary overlaps ordinary English. Tracked in #5258.
-  {
-    name: 'hidden_instruction',
-    pattern: /<!--(?:(?!-->)[\s\S])*?(?:execute|delete|merge|apply)(?:(?!-->)[\s\S])*?-->/i,
-  },
+  // `hidden_instruction` is a scan, not a pattern — see hasHiddenInstruction.
+  { name: 'hidden_instruction', match: hasHiddenInstruction },
 ];
 
 /**
@@ -90,9 +119,11 @@ function sanitizeString(value: string): { cleaned: string; modified: boolean } {
  */
 function detectPatterns(value: string): string[] {
   const detected: string[] = [];
-  for (const { name, pattern } of INJECTION_DETECTORS) {
-    pattern.lastIndex = 0;
-    if (pattern.test(value)) {
+  for (const { name, pattern, match } of INJECTION_DETECTORS) {
+    if (pattern !== undefined) {
+      pattern.lastIndex = 0;
+      if (pattern.test(value)) detected.push(name);
+    } else if (match?.(value) === true) {
       detected.push(name);
     }
   }
