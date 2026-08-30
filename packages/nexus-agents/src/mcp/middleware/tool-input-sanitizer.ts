@@ -42,7 +42,21 @@ const XML_INJECTION_PATTERN =
 const INJECTION_DETECTORS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   { name: 'system_prompt_override', pattern: /ignore (?:all )?previous (?:instructions|rules)/i },
   { name: 'role_impersonation', pattern: /i(?:'m| am) the (?:repo |project )?(?:owner|admin)/i },
-  { name: 'hidden_instruction', pattern: /<!--[\s\S]*?(?:execute|delete|merge|apply)[\s\S]*?-->/i },
+  // The trigger must sit INSIDE one comment. `[\s\S]*?` used to cross an
+  // intervening `-->`, so any body with an opening comment, a trigger word
+  // anywhere in ordinary prose, and a later closing comment matched — a real
+  // PR body like "<!-- header -->\nsafe to merge after CI\n<!-- footer -->"
+  // was flagged (#5258). `(?:(?!-->)[\s\S])*?` is the standard tempered-dot
+  // form: consume any character that does not begin the terminator.
+  //
+  // KNOWN RESIDUAL: GitHub's default PR template contains
+  // "<!-- Please delete options that are not relevant -->", where the trigger
+  // genuinely is inside a single comment. Containment cannot help there; the
+  // trigger vocabulary overlaps ordinary English. Tracked in #5258.
+  {
+    name: 'hidden_instruction',
+    pattern: /<!--(?:(?!-->)[\s\S])*?(?:execute|delete|merge|apply)(?:(?!-->)[\s\S])*?-->/i,
+  },
 ];
 
 /**
