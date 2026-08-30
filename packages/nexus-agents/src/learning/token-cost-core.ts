@@ -83,10 +83,10 @@ export interface TokenCounts {
  * (`scripts/build-model-registry-helpers.ts:192-198`), so
  * `model-registry.generated.json` carries neither.
  *
- * An earlier version of this comment cited `config/models-dev-client.ts` as the
- * fetch path. That module has zero non-test importers (#5200) and does not run;
- * citing it led to a wrong cost estimate on #5170. The generator above is the
- * live path.
+ * An earlier version of this comment cited a `config/models-dev-client.ts` as
+ * the fetch path. That module had zero non-test importers, never ran, and was
+ * deleted in #5200 — citing it led to a wrong cost estimate on #5170. The
+ * generator above is the live path.
  *
  * The signature takes cache rates from day one on the panel's binding condition
  * — consolidating onto an input/output-only shape would guarantee a second
