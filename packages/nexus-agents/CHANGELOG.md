@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 4.29.10
+
+### Patch Changes
+
+- [#5181](https://github.com/nexus-substrate/nexus-agents/pull/5181) [`727dc43`](https://github.com/nexus-substrate/nexus-agents/commit/727dc4338db3b7291f4590715af93f5308424e9a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cost): move the TOPSIS cost estimate onto the shared core ([#5122](https://github.com/nexus-substrate/nexus-agents/issues/5122))
+
+  Increment 4a. `cli-adapters/topsis-helpers.estimateCost` now computes through
+  `token-cost-core` via rate injection — the capability the core was given
+  specifically for paths that price against something other than the registry.
+  Rates still come from the routing profile, which is why this path exists
+  separately at all.
+
+  Same last-ulp difference as increment 3 (the core defers the division), in one
+  of twenty shadow-compared cases, and there the core's value is the exact one:
+  `0.326508` rather than `0.32650799999999996`.
+
+  Path 7 (`orchestration-observer-helpers.calculateTokenCost`) was expected to land
+  here too and does not. It applies a single blended per-1K rate to `totalTokens`
+  from a per-model table the observer maintains itself, discarding the
+  input/output split its caller already holds. That is a design decision rather
+  than a conversion, and is now tracked in [#5180](https://github.com/nexus-substrate/nexus-agents/issues/5180).
+
+  Remaining forks: 6.
+
 ## 4.29.9
 
 ### Patch Changes
