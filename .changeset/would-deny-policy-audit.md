@@ -9,11 +9,19 @@ to the new exported `PolicyAuditDecision` = `'allow' | 'deny' | 'would_deny'`.
 Additive for callers; **breaking for implementors of `IAuditLogger`**, who can
 now receive a third value.
 
-Implementors will NOT get a compile error. TypeScript's method-parameter
-bivariance means an implementation typed against the old union still
-type-checks, then receives `would_deny` at runtime and falls through whatever
-its `decision === 'deny'` branch does. The major bump is the only signal. If you
-implement `IAuditLogger`, handle `would_deny` explicitly.
+Implementors DO get a compile error, and closing that hole is part of this
+change. `IAuditLogger.logPolicyDecision` is now declared as a function
+**property** rather than a method. TypeScript exempts method-shorthand
+parameters from `strictFunctionTypes` and checks them bivariantly, so as a
+method the widened union would have let a stale implementor keep compiling and
+then receive `would_deny` at runtime — silently dropping the audit record or
+throwing inside the authorization path. Function-property syntax restores
+contravariant parameter checking, so a handler accepting only
+`'allow' | 'deny'` now fails to type-check. If you implement `IAuditLogger`,
+widen the parameter to `PolicyAuditDecision` and handle `would_deny`.
+
+A silent runtime break in an audit path is not something to ship behind a
+changelog note when the same major bump can make it a compile error.
 
 **Why.** In warn mode `PolicyFirewall.handleDenial` allows the call but a rule
 fired. `checkPolicy` returned a result only on a real denial and the chain emit

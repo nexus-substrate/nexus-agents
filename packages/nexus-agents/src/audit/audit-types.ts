@@ -348,8 +348,28 @@ export interface IAuditLogger {
   /** Log a tool invocation */
   logToolInvocation(opts: ToolInvocationAuditOpts): void;
 
-  /** Log a policy decision */
-  logPolicyDecision(opts: PolicyDecisionAuditOpts): void;
+  /**
+   * Log a policy decision.
+   *
+   * Declared as a function PROPERTY, not a method, and deliberately so (#4991).
+   * TypeScript exempts method-shorthand parameters from `strictFunctionTypes`
+   * and checks them bivariantly, so when {@link PolicyAuditDecision} gained
+   * `would_deny`, an out-of-tree implementor still typed against the old
+   * two-value union would have kept COMPILING and then received a value it
+   * cannot handle at runtime — silently dropping the audit record, or throwing
+   * inside the authorization path. A major version bump is a note in a
+   * changelog; this is a compile error.
+   *
+   * Function-property syntax restores contravariant parameter checking, so an
+   * implementor whose handler accepts only `'allow' | 'deny'` now fails to
+   * type-check against this interface. Verified by the `@ts-expect-error`
+   * probe in `audit-types-variance.test.ts`, which fails if this line is ever
+   * reverted to method shorthand.
+   *
+   * The other members stay as methods: their parameter types did not widen, so
+   * converting them would break implementors for no reason.
+   */
+  logPolicyDecision: (opts: PolicyDecisionAuditOpts) => void;
 
   /** Log a security event */
   logSecurityEvent(opts: SecurityEventAuditOpts): void;

@@ -4276,7 +4276,7 @@ InterfaceDeclaration IAuditLogger
   close() => Promise<void>
   flush() => Promise<void>
   log(input: AuditEventInput) => void
-  logPolicyDecision(opts: PolicyDecisionAuditOpts) => void
+  logPolicyDecision: (opts: PolicyDecisionAuditOpts) => void
   logRateLimitViolation(opts: RateLimitAuditOpts) => void
   logSecurityEvent(opts: SecurityEventAuditOpts) => void
   logTierTransition(opts: TierTransitionAuditOpts) => void
