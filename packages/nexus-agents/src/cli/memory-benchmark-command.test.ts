@@ -85,6 +85,7 @@ function createMockBenchmarkResult() {
     orphanedRefCount: 0,
     growthRateBytesPerOp: 1500,
     decayConsistencyScore: 0.97,
+      decayItemsChecked: 10,
     promotionRetentionRate: 0.92,
     decayRegretScore: 0.2,
   };
