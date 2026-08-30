@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../../core/logger.js';
+import { computeTokenCost } from '../../learning/token-cost-core.js';
 import { getTimeProvider } from '../../core/index.js';
 import { clampScore } from '../../utils/math-utils.js';
 import type {
@@ -18,6 +19,15 @@ import type {
   EvaluationFeedback,
 } from './types.js';
 import { WORKFLOW_QUALITY_THRESHOLDS } from './types.js';
+
+/**
+ * Nominal blended rate for harness cost estimates, USD per 1M tokens.
+ *
+ * Was an inline `0.003` per 1K. Not a vendor rate for any particular model —
+ * this evaluator has no model in scope — so it is a rough order-of-magnitude
+ * figure for comparing runs, NOT money. Named so a reader can see that.
+ */
+const NOMINAL_BLENDED_RATE_PER_1M = 3;
 
 /**
  * Quality evaluator interface for judging workflow outputs.
@@ -245,7 +255,15 @@ export class AccuracyEval implements IAccuracyEval {
     const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const passed = avgScore >= config.qualityThreshold;
     const durationMs = getTimeProvider().now() - startTime;
-    const estimatedCostUsd = (totalTokens / 1000) * 0.003;
+    // NOMINAL, not a billed figure: this harness has no model in scope, so
+    // there is no registry rate to resolve and no input/output split to price
+    // (#5122 path 11). The blended component says exactly that — folding the
+    // total into `input` would have been arithmetically identical and
+    // semantically false.
+    const estimatedCostUsd = computeTokenCost(
+      { input: 0, output: 0, blended: totalTokens },
+      { inputPer1M: 0, outputPer1M: 0, blendedPer1M: NOMINAL_BLENDED_RATE_PER_1M }
+    ).costUsd;
 
     this.log.info('Accuracy evaluation completed', {
       name: config.name,

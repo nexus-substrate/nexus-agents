@@ -183,3 +183,47 @@ describe('operation order is a recorded decision, not an accident (#5122)', () =
     expect(Math.abs(a - b) / b).toBeLessThan(1e-12);
   });
 });
+
+describe('computeTokenCost — the blended component (#5122 path 11)', () => {
+  it('prices tokens whose split is unknown at the blended rate', () => {
+    const r = computeTokenCost(
+      { input: 0, output: 0, blended: 1_000_000 },
+      { inputPer1M: 0, outputPer1M: 0, blendedPer1M: 3 }
+    );
+    expect(r.costUsd).toBeCloseTo(3, 10);
+    expect(r.complete).toBe(true);
+  });
+
+  it('reports blended as UNPRICED when no blended rate is supplied', () => {
+    const r = computeTokenCost({ input: 0, output: 0, blended: 5000 }, SONNET);
+    expect(r.unpricedComponents).toEqual(['blended']);
+    expect(r.complete).toBe(false);
+    expect(r.costUsd).toBe(0);
+  });
+
+  it('does not flag zero or absent blended tokens', () => {
+    expect(computeTokenCost({ input: 1, output: 1, blended: 0 }, SONNET).complete).toBe(true);
+    expect(computeTokenCost({ input: 1, output: 1 }, SONNET).complete).toBe(true);
+  });
+
+  it('is additive with the split fields rather than replacing them', () => {
+    // A caller with a partial split can price what it knows and blend the rest.
+    const r = computeTokenCost(
+      { input: 1_000_000, output: 0, blended: 1_000_000 },
+      { inputPer1M: 3, outputPer1M: 15, blendedPer1M: 10 }
+    );
+    expect(r.costUsd).toBeCloseTo(13, 10);
+  });
+
+  it('does NOT equal the split result for the same token count, which is the point', () => {
+    // Blended is lower fidelity by construction. If it happened to agree with a
+    // split calculation the field would be pointless — this pins the difference
+    // so nobody "simplifies" blended into input.
+    const split = computeTokenCost({ input: 500_000, output: 500_000 }, SONNET).costUsd;
+    const blended = computeTokenCost(
+      { input: 0, output: 0, blended: 1_000_000 },
+      { ...SONNET, blendedPer1M: 3 }
+    ).costUsd;
+    expect(blended).not.toBeCloseTo(split, 6);
+  });
+});

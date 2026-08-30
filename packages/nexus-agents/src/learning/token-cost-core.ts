@@ -52,6 +52,23 @@ export interface TokenCounts {
   readonly cacheRead?: number | undefined;
   /** Tokens written to cache, billed at a premium when a rate is known. */
   readonly cacheWrite?: number | undefined;
+  /**
+   * Tokens whose input/output split is UNKNOWN, priced at a single blended
+   * rate. Lower fidelity than the split fields by construction — output
+   * typically bills at several times input, so a blended figure is only as good
+   * as the assumed mix.
+   *
+   * Exists because two in-tree paths genuinely have no split to offer: an
+   * e2e harness that only sums totals, and a per-model rate table that stores
+   * one number. Naming the shape is better than folding those totals into
+   * `input`, which would be arithmetically exact and semantically false —
+   * a reader could no longer tell a real input-only call from a blended guess.
+   *
+   * Prefer the split fields whenever the caller HAS the split. A caller that
+   * holds `inputTokens` and `outputTokens` and passes `blended` anyway is
+   * discarding fidelity it already paid for (see #5180).
+   */
+  readonly blended?: number | undefined;
 }
 
 /**
@@ -69,6 +86,8 @@ export interface TokenRates {
   readonly outputPer1M: number;
   readonly cacheReadPer1M?: number | undefined;
   readonly cacheWritePer1M?: number | undefined;
+  /** Single rate for tokens with no known split. See {@link TokenCounts.blended}. */
+  readonly blendedPer1M?: number | undefined;
 }
 
 /**
@@ -126,6 +145,10 @@ export function computeTokenCost(tokens: TokenCounts, rates: TokenRates): TokenC
   if (tokens.cacheWrite !== undefined && tokens.cacheWrite > 0) {
     if (rates.cacheWritePer1M === undefined) unpriced.push('cacheWrite');
     else costUsd += componentCost(tokens.cacheWrite, rates.cacheWritePer1M);
+  }
+  if (tokens.blended !== undefined && tokens.blended > 0) {
+    if (rates.blendedPer1M === undefined) unpriced.push('blended');
+    else costUsd += componentCost(tokens.blended, rates.blendedPer1M);
   }
 
   return { costUsd, unpricedComponents: unpriced, complete: unpriced.length === 0 };

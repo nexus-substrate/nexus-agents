@@ -301,3 +301,35 @@ describe('DefaultQualityEvaluator', () => {
     });
   });
 });
+
+describe('cost estimate is nominal and rate-linked (#5122 path 11)', () => {
+  const config: AccuracyEvalConfig = {
+    name: 'cost-test',
+    workflow: 'code-review',
+    input: { code: 'const x = 1;' },
+    expectedOutput: 'ok',
+    qualityThreshold: 7.0,
+    numRuns: 2,
+  };
+
+  it('derives totalCostUsd from totalTokens at the nominal rate', () => {
+    // Was an inline `(totalTokens / 1000) * 0.003` with no test at all, so the
+    // rate could be changed to anything and every test stayed green. Found by
+    // mutation testing after the conversion.
+    return new AccuracyEval().evaluate(config).then((result) => {
+      const NOMINAL_PER_1M = 3;
+      expect(result.totalCostUsd).toBeCloseTo(
+        (result.totalTokens * NOMINAL_PER_1M) / 1_000_000,
+        12
+      );
+    });
+  });
+
+  it('reports zero cost only when zero tokens were used', async () => {
+    // Name the empty case, and keep a real $0 distinguishable from a broken
+    // rate: any non-zero token count must produce a non-zero estimate.
+    const result = await new AccuracyEval().evaluate(config);
+    if (result.totalTokens > 0) expect(result.totalCostUsd).toBeGreaterThan(0);
+    else expect(result.totalCostUsd).toBe(0);
+  });
+});
