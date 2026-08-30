@@ -8,6 +8,7 @@
  */
 
 import type { IAgent, Task, AgentRole } from '../../core/index.js';
+import { computeTokenCost } from '../../learning/token-cost-core.js';
 
 /** Policy mode for agent selection. */
 export type PolicyMode = 'rule_based' | 'learned' | 'hybrid';
@@ -56,7 +57,18 @@ export const DEFAULT_COST_PER_1K_TOKENS = 0.01;
  * one place this subsystem needs to change.
  */
 export function tokensToCostUsd(tokens: number, costPer1KTokens: number): number {
-  return (tokens * costPer1KTokens) / 1000;
+  // Absorbed into the canonical core (#5122). The name and the per-1K
+  // convention stay — three call sites in this subsystem read better for it —
+  // but the arithmetic is no longer a second implementation.
+  //
+  // `blended` is the honest component here: this subsystem tracks a single
+  // token count with no input/output split, which is exactly what that field
+  // was added for. Folding it into `input` would be arithmetically identical
+  // and semantically false.
+  return computeTokenCost(
+    { input: 0, output: 0, blended: tokens },
+    { inputPer1M: 0, outputPer1M: 0, blendedPer1M: costPer1KTokens * 1000 }
+  ).costUsd;
 }
 
 /** Default configuration values. */
