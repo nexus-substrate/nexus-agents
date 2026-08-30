@@ -180,6 +180,26 @@ export default defineConfig([
     rules: { 'no-restricted-imports': 'off' },
   },
 
+  // Audit-sink interfaces must declare members as function PROPERTIES, never
+  // method shorthand (#4991). TypeScript exempts method-shorthand parameters
+  // from `strictFunctionTypes` and checks them bivariantly, so widening a
+  // parameter union on a method lets a stale out-of-tree implementor keep
+  // compiling and then mishandle the new value at runtime — on the audit path,
+  // that means silently dropped records.
+  //
+  // Scoped to the audit types rather than applied repo-wide: this is a real
+  // constraint for an interface that external code implements and whose
+  // parameter unions grow, not a general style preference, and a repo-wide flip
+  // would be a large unrelated diff. `audit-types-variance.test.ts` asserts the
+  // same invariant on the source, so the guarantee does not rest on lint alone.
+  {
+    name: 'nexus-agents/audit-sink-contravariance-4991',
+    files: ['packages/nexus-agents/src/audit/audit-types.ts'],
+    rules: {
+      '@typescript-eslint/method-signature-style': ['error', 'property'],
+    },
+  },
+
   // The four existing call sites, visible at `warn` rather than silenced.
   // Same shape as the vacuous-verdict exemption above: an explicit named block
   // that keeps the debt in every lint run until #5191 migrates them, instead of

@@ -10,8 +10,8 @@ Additive for callers; **breaking for implementors of `IAuditLogger`**, who can
 now receive a third value.
 
 Implementors DO get a compile error, and closing that hole is part of this
-change. `IAuditLogger.logPolicyDecision` is now declared as a function
-**property** rather than a method. TypeScript exempts method-shorthand
+change. **Every member of `IAuditLogger` and `IAuditStorage`** is now declared
+as a function **property** rather than a method. TypeScript exempts method-shorthand
 parameters from `strictFunctionTypes` and checks them bivariantly, so as a
 method the widened union would have let a stale implementor keep compiling and
 then receive `would_deny` at runtime — silently dropping the audit record or
@@ -22,6 +22,24 @@ widen the parameter to `PolicyAuditDecision` and handle `would_deny`.
 
 A silent runtime break in an audit path is not something to ship behind a
 changelog note when the same major bump can make it a compile error.
+
+**This does not break class-based implementors.** An ES6 class using ordinary
+method syntax satisfies a property signature, as does an object literal with
+method shorthand — the only implementor a property signature rejects is one
+whose parameter is _narrower_ than declared, i.e. exactly the unsound case. All
+members are converted rather than only the one whose union widened: mixed
+syntax is the dangerous state, because the next parameter widening on any
+remaining method would silently reopen the same hole. `IAuditStorage` was
+already mixed (`flush`/`close` properties, `write`/`query` methods) and is now
+consistent. A scoped `@typescript-eslint/method-signature-style` rule enforces
+it.
+
+**Limit, stated because it is real:** contravariant checking requires
+`strictFunctionTypes` (implied by `strict`) in the CONSUMER's tsconfig. A
+project compiling without it falls back to bivariance and can still compile a
+stale implementor. That flag is outside this package's control, so the
+guarantee is "strict consumers get a compile error", not "no consumer can get
+this wrong".
 
 **Why.** In warn mode `PolicyFirewall.handleDenial` allows the call but a rule
 fired. `checkPolicy` returned a result only on a real denial and the chain emit

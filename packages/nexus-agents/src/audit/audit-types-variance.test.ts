@@ -18,6 +18,9 @@
  * directive". That is what makes this a check that can fail.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { IAuditLogger, PolicyDecisionAuditOpts } from './audit-types.js';
 
@@ -49,5 +52,42 @@ describe('IAuditLogger.logPolicyDecision variance (#4991)', () => {
     const current = {} as CurrentLogger;
     const asLogger: IAuditLogger = current;
     expect(asLogger).toBeDefined();
+  });
+});
+
+describe('every IAuditLogger member is a function property (#4991)', () => {
+  // The @ts-expect-error probe above covers `logPolicyDecision` alone, because
+  // it is the only member whose union has widened so far. This covers the other
+  // six, whose risk is prospective: each is a parameter that COULD widen, and
+  // as method shorthand it would widen bivariantly and silently.
+  //
+  // A panel corrected me here. I had converted only `logPolicyDecision`,
+  // arguing the rest would "break implementors for no reason" — wrong: an ES6
+  // class with ordinary method syntax satisfies a property signature, and so
+  // does an object literal with method shorthand. The only implementor a
+  // property signature rejects is one with a NARROWER parameter, i.e. exactly
+  // the unsound case. Mixed syntax was the genuinely dangerous state.
+  const SOURCE = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'audit-types.ts'),
+    'utf8'
+  );
+
+  const body = /export interface IAuditLogger \{([\s\S]*?)\n\}/.exec(SOURCE)?.[1] ?? '';
+
+  it('finds the interface it is checking', () => {
+    // Guard the guard: an empty body would make the assertion below pass over
+    // nothing, which is the failure mode this whole file exists to prevent.
+    expect(body).not.toBe('');
+    expect(body.split('\n').filter((l) => /^\s*\w+[?]?:/.test(l)).length).toBeGreaterThan(5);
+  });
+
+  it('declares no member with method shorthand', () => {
+    // Method shorthand looks like `name(args): Ret;`. A property looks like
+    // `name: (args) => Ret;`.
+    const shorthand = body
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => /^\w+\s*\(/.test(l));
+    expect(shorthand).toEqual([]);
   });
 });

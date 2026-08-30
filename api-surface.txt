@@ -4273,19 +4273,19 @@ InterfaceDeclaration IArtifactStore
   query(filter: ArtifactFilter) => readonly ArtifactRef[]
   readonly size: number
 InterfaceDeclaration IAuditLogger
-  close() => Promise<void>
-  flush() => Promise<void>
-  log(input: AuditEventInput) => void
+  close: () => Promise<void>
+  flush: () => Promise<void>
+  log: (input: AuditEventInput) => void
   logPolicyDecision: (opts: PolicyDecisionAuditOpts) => void
-  logRateLimitViolation(opts: RateLimitAuditOpts) => void
-  logSecurityEvent(opts: SecurityEventAuditOpts) => void
-  logTierTransition(opts: TierTransitionAuditOpts) => void
-  logToolInvocation(opts: ToolInvocationAuditOpts) => void
+  logRateLimitViolation: (opts: RateLimitAuditOpts) => void
+  logSecurityEvent: (opts: SecurityEventAuditOpts) => void
+  logTierTransition: (opts: TierTransitionAuditOpts) => void
+  logToolInvocation: (opts: ToolInvocationAuditOpts) => void
 InterfaceDeclaration IAuditStorage
-  close() => Promise<void>
-  flush() => Promise<void>
-  query(criteria: AuditQueryCriteria) => Promise<AuditEvent[]>
-  write(event: AuditEvent) => Promise<void>
+  close: () => Promise<void>
+  flush: () => Promise<void>
+  query: (criteria: AuditQueryCriteria) => Promise<AuditEvent[]>
+  write: (event: AuditEvent) => Promise<void>
 InterfaceDeclaration ICheckpointStore
   clear() => void
   delete(id: string) => boolean

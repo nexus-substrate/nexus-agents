@@ -306,16 +306,16 @@ export type AuditLogConfig = z.infer<typeof AuditLogConfigSchema>;
 
 export interface IAuditStorage {
   /** Write an audit event to storage */
-  write(event: AuditEvent): Promise<void>;
+  write: (event: AuditEvent) => Promise<void>;
 
   /** Flush pending writes */
-  flush(): Promise<void>;
+  flush: () => Promise<void>;
 
   /** Close the storage */
-  close(): Promise<void>;
+  close: () => Promise<void>;
 
   /** Query events by criteria */
-  query(criteria: AuditQueryCriteria): Promise<AuditEvent[]>;
+  query: (criteria: AuditQueryCriteria) => Promise<AuditEvent[]>;
 }
 
 // ============================================================================
@@ -341,50 +341,63 @@ export type AuditQueryCriteria = z.infer<typeof AuditQueryCriteriaSchema>;
 // Audit Logger Interface
 // ============================================================================
 
+/**
+ * Sink for audit records.
+ *
+ * **Every member is declared as a function PROPERTY, not a method, and that is
+ * load-bearing (#4991.)** TypeScript exempts method-shorthand parameters from
+ * `strictFunctionTypes` and checks them bivariantly. When
+ * {@link PolicyAuditDecision} gained `would_deny`, an out-of-tree implementor
+ * still typed against the old two-value union would have kept COMPILING and
+ * then received a value it cannot handle at runtime — silently dropping the
+ * audit record, or throwing inside the authorization path. A major version bump
+ * is a note in a changelog; a property signature is a compile error.
+ *
+ * All seven members are converted, not just the one whose union widened. An
+ * earlier revision converted only `logPolicyDecision`, on the reasoning that
+ * touching the others "would break implementors for no reason". That reasoning
+ * was wrong, and a panel caught it: an ES6 class using ordinary method syntax
+ * satisfies a property signature perfectly well, as does an object literal with
+ * method shorthand — the ONLY implementor a property signature rejects is one
+ * whose parameter is *narrower* than declared, which is exactly the unsound
+ * case. Converting one member and leaving six is the dangerous state: it looks
+ * consistent enough to imitate, and the next person to widen a parameter on any
+ * of the other six silently reopens the same hole.
+ *
+ * **Limit, stated because it is real:** contravariant checking requires
+ * `strictFunctionTypes` (implied by `strict`) in the CONSUMER's tsconfig. A
+ * downstream project compiling without it falls back to bivariance, compiles a
+ * stale implementor, and drops `would_deny` records at runtime. That flag is
+ * outside this package's control, so the guarantee here is "strict consumers
+ * get a compile error", not "no consumer can get this wrong".
+ *
+ * Pinned by `audit-types-variance.test.ts`, whose `@ts-expect-error` probe
+ * fails with TS2578 if any of these reverts to method shorthand.
+ */
 export interface IAuditLogger {
   /** Log an audit event */
-  log(input: AuditEventInput): void;
+  log: (input: AuditEventInput) => void;
 
   /** Log a tool invocation */
-  logToolInvocation(opts: ToolInvocationAuditOpts): void;
+  logToolInvocation: (opts: ToolInvocationAuditOpts) => void;
 
-  /**
-   * Log a policy decision.
-   *
-   * Declared as a function PROPERTY, not a method, and deliberately so (#4991).
-   * TypeScript exempts method-shorthand parameters from `strictFunctionTypes`
-   * and checks them bivariantly, so when {@link PolicyAuditDecision} gained
-   * `would_deny`, an out-of-tree implementor still typed against the old
-   * two-value union would have kept COMPILING and then received a value it
-   * cannot handle at runtime — silently dropping the audit record, or throwing
-   * inside the authorization path. A major version bump is a note in a
-   * changelog; this is a compile error.
-   *
-   * Function-property syntax restores contravariant parameter checking, so an
-   * implementor whose handler accepts only `'allow' | 'deny'` now fails to
-   * type-check against this interface. Verified by the `@ts-expect-error`
-   * probe in `audit-types-variance.test.ts`, which fails if this line is ever
-   * reverted to method shorthand.
-   *
-   * The other members stay as methods: their parameter types did not widen, so
-   * converting them would break implementors for no reason.
-   */
+  /** Log a policy decision. See the interface note on parameter variance. */
   logPolicyDecision: (opts: PolicyDecisionAuditOpts) => void;
 
   /** Log a security event */
-  logSecurityEvent(opts: SecurityEventAuditOpts): void;
+  logSecurityEvent: (opts: SecurityEventAuditOpts) => void;
 
   /** Log a rate limit violation */
-  logRateLimitViolation(opts: RateLimitAuditOpts): void;
+  logRateLimitViolation: (opts: RateLimitAuditOpts) => void;
 
   /** Log an authority-tier transition (promotion/demotion) — Epic D, #3842. */
-  logTierTransition(opts: TierTransitionAuditOpts): void;
+  logTierTransition: (opts: TierTransitionAuditOpts) => void;
 
   /** Flush pending events */
-  flush(): Promise<void>;
+  flush: () => Promise<void>;
 
   /** Close the logger */
-  close(): Promise<void>;
+  close: () => Promise<void>;
 }
 
 // ============================================================================
