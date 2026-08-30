@@ -1,5 +1,60 @@
 # nexus-agents
 
+## 4.36.0
+
+### Minor Changes
+
+- [#5248](https://github.com/nexus-substrate/nexus-agents/pull/5248) [`2a379c0`](https://github.com/nexus-substrate/nexus-agents/commit/2a379c0e5363af1c0835763ca413bde6bc3b7b4f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): the stdio server no longer outlives its client ([#5231](https://github.com/nexus-substrate/nexus-agents/issues/5231))
+
+  A `--mode=server` process exists to answer one client over one pipe, and nothing
+  was telling it when that pipe closed. The SDK's `StdioServerTransport` registers
+  only `stdin.on('data')` and `stdin.on('error')` — never `'end'` or `'close'` —
+  and reaches its own `close()` only from the `_ondata` parse-error path.
+  `startStdioServer` registered nothing either. So a disconnected client left a
+  fully-resident server running indefinitely.
+
+  Measured on one machine before the fix: **140 resident servers holding 28.9 GB**,
+  the oldest **3.9 days** old, under 23 abandoned parent processes. System memory
+  available was 1.4 GB of 64 GB, which was OOM-killing local `tsc` and `eslint` and
+  crashing interactive sessions.
+
+  `startStdioServer` now closes the server and exits when stdin ends or closes.
+  Both events are watched, because a pipe torn down abruptly emits `'close'` with
+  no preceding `'end'` — exactly the abandoned-parent case. `'data'` and `'error'`
+  are deliberately not shutdown signals: a transient read error is not a departed
+  client.
+
+  `wireStdioShutdown` is exported separately so the behaviour is testable against a
+  fake stream; verifying it through `startStdioServer` would require a test to
+  observe its own `process.exit`.
+
+  **Behaviour change worth noting:** a stdio server that previously stayed resident
+  after its client disconnected now exits with code 0. This is the intended fix,
+  but it is a change in when the process terminates.
+
+### Patch Changes
+
+- [#5250](https://github.com/nexus-substrate/nexus-agents/pull/5250) [`dae502c`](https://github.com/nexus-substrate/nexus-agents/commit/dae502cbc4608450b6e7c74fc8340e357d48d75a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore(security): delete the unwired finding-lifecycle tracker ([#5239](https://github.com/nexus-substrate/nexus-agents/issues/5239))
+
+  `security/finding-lifecycle.ts` described itself as a bridge from security
+  findings to the outcome store. **Nothing ever reached the outcome store.** Its
+  `PersistFn` was the module's only route there, and its sole production caller
+  passed `(e) => lifecycleEntries.push(e)` — a scan-local array discarded on
+  return. The header had never described real behaviour.
+
+  [#5242](https://github.com/nexus-substrate/nexus-agents/issues/5242) removed that last caller, leaving zero production consumers. Not on the
+  public API surface, so this is internal cleanup: no surface diff, and the
+  deletion loses no data and no behaviour because there was never any.
+
+  A seven-voter panel chose deletion over wiring it (6/6 of approvers; the lone
+  dissenter also argued for removal). Wiring `PersistFn` to the outcome store
+  would have produced writes with no reader — a producer feeding a sink no loop
+  evaluates — which fails capability-bias's requirement of a named consumer.
+
+  The capability is tracked at [#5249](https://github.com/nexus-substrate/nexus-agents/issues/5249) with its unblock trigger recorded, along
+  with the two conditions the panel attached: build the sink before the producer,
+  and extend `OutcomeStore` rather than forking it.
+
 ## 4.35.1
 
 ### Patch Changes
