@@ -47,6 +47,9 @@ export async function runLiveReadiness(
     readonly isInstalled?: (cli: CliName) => boolean;
   } = {}
 ): Promise<readonly CliReadiness[]> {
+  // DELIBERATE raw-adapter probe — same reasoning as `doctor.ts:checkCli`
+  // (#5191). Readiness must reflect the CLI's actual state, not shared
+  // circuit-breaker state another caller populated.
   const adapters =
     deps.adapters ?? (createAllAdapters() as unknown as Map<CliName, ServesProbeTarget>);
   const authStates = deps.authStates ?? (await readAuthStates());

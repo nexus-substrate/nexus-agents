@@ -430,6 +430,17 @@ function createHealthyResult(
  * needed (version-OK alone misled doctor into reporting unauthed CLIs as ✓).
  */
 async function checkCli(name: CliName): Promise<CliCheckResult> {
+  // DELIBERATE raw-adapter probe, not drift (#5191, ratified 4/6).
+  //
+  // `getGlobalRegistry()` is canonical for adapter ACQUISITION, and its adapters
+  // share a circuit-breaker registry (#4330). That is right for execution and
+  // wrong here: an open breaker would make this report a CLI unavailable
+  // WITHOUT testing it, so doctor would be reading its own cached memory rather
+  // than measuring the CLI. A probe that cannot observe a healthy CLI because
+  // something else saw it fail is not a probe.
+  //
+  // Pinned by `doctor-probe-exemption.test.ts` so a future "canonical path"
+  // cleanup cannot silently flip it.
   const adapters = createAllAdapters();
   const adapter = adapters.get(name);
 

@@ -24,7 +24,7 @@ import {
   calculateTimeoutScore,
   calculateStepCountScore,
   calculateRedundancyPenalty,
-  estimateCost,
+  estimateExecutionWeight,
 } from './evaluation-efficiency.js';
 import {
   evaluateCompleteness,
@@ -345,15 +345,15 @@ describe('calculateRedundancyPenalty', () => {
 });
 
 // ============================================================================
-// estimateCost
+// estimateExecutionWeight
 // ============================================================================
 
-describe('estimateCost', () => {
+describe('estimateExecutionWeight', () => {
   it('calculates base cost per step', () => {
     const wf = makeWorkflow({
       steps: [{ id: 's1', agent: 'code_expert', action: 'Do', inputs: {} }],
     });
-    const cost = estimateCost(wf);
+    const cost = estimateExecutionWeight(wf);
     expect(cost).toBeGreaterThan(0);
   });
 
@@ -364,7 +364,9 @@ describe('estimateCost', () => {
     const withRetries = makeWorkflow({
       steps: [{ id: 's1', agent: 'code_expert', action: 'Do', inputs: {}, retries: 3 }],
     });
-    expect(estimateCost(withRetries)).toBeGreaterThan(estimateCost(noRetries));
+    expect(estimateExecutionWeight(withRetries)).toBeGreaterThan(
+      estimateExecutionWeight(noRetries)
+    );
   });
 
   it('increases with more steps', () => {
@@ -372,7 +374,7 @@ describe('estimateCost', () => {
       steps: [{ id: 's1', agent: 'code_expert', action: 'Do', inputs: {} }],
     });
     const twoSteps = makeWorkflow();
-    expect(estimateCost(twoSteps)).toBeGreaterThan(estimateCost(oneStep));
+    expect(estimateExecutionWeight(twoSteps)).toBeGreaterThan(estimateExecutionWeight(oneStep));
   });
 });
 
@@ -394,7 +396,7 @@ describe('evaluateCompleteness', () => {
 
 describe('calculateTimeoutScore', () => {
   it('returns 1 for reasonable timeout', () => {
-    // Steps carry explicit modest per-step timeouts; the COST_MODEL fallback
+    // Steps carry explicit modest per-step timeouts; the EXECUTION_WEIGHTS fallback
     // default was centralized up to the single-llm class guard (300s, #3736),
     // so a timeout-less 2-step workflow now exceeds the 300s default budget.
     const wf = makeWorkflow({

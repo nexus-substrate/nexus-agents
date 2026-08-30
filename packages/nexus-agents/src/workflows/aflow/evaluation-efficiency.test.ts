@@ -3,7 +3,7 @@
  *
  * Covers evaluateEfficiency, calculateParallelismScore,
  * calculateDependencyEfficiency, calculateTimeoutScore,
- * calculateStepCountScore, calculateRedundancyPenalty, estimateCost.
+ * calculateStepCountScore, calculateRedundancyPenalty, estimateExecutionWeight.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -14,7 +14,7 @@ import {
   calculateTimeoutScore,
   calculateStepCountScore,
   calculateRedundancyPenalty,
-  estimateCost,
+  estimateExecutionWeight,
 } from './evaluation-efficiency.js';
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { TaskSpecification } from './aflow-types.js';
@@ -277,15 +277,15 @@ describe('calculateRedundancyPenalty', () => {
 });
 
 // ============================================================================
-// estimateCost
+// estimateExecutionWeight
 // ============================================================================
 
-describe('estimateCost', () => {
+describe('estimateExecutionWeight', () => {
   it('calculates base cost per step', () => {
     const wf = makeWorkflow({
       steps: [{ id: 's1', agent: 'code_expert', action: 'do', inputs: {} }],
     });
-    const cost = estimateCost(wf);
+    const cost = estimateExecutionWeight(wf);
     expect(cost).toBeGreaterThan(0);
   });
 
@@ -296,7 +296,9 @@ describe('estimateCost', () => {
     const withRetries = makeWorkflow({
       steps: [{ id: 's1', agent: 'code_expert', action: 'do', inputs: {}, retries: 3 }],
     });
-    expect(estimateCost(withRetries)).toBeGreaterThan(estimateCost(noRetries));
+    expect(estimateExecutionWeight(withRetries)).toBeGreaterThan(
+      estimateExecutionWeight(noRetries)
+    );
   });
 
   it('adds timeout costs', () => {
@@ -306,11 +308,13 @@ describe('estimateCost', () => {
     const longTimeout = makeWorkflow({
       steps: [{ id: 's1', agent: 'code_expert', action: 'do', inputs: {}, timeout: 120000 }],
     });
-    expect(estimateCost(longTimeout)).toBeGreaterThan(estimateCost(shortTimeout));
+    expect(estimateExecutionWeight(longTimeout)).toBeGreaterThan(
+      estimateExecutionWeight(shortTimeout)
+    );
   });
 
   it('returns integer', () => {
-    const cost = estimateCost(makeWorkflow());
+    const cost = estimateExecutionWeight(makeWorkflow());
     expect(cost).toBe(Math.round(cost));
   });
 });

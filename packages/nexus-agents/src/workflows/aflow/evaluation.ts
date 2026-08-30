@@ -22,7 +22,7 @@ import { evaluateStructure, isViableWorkflow, hasNoCycles } from './evaluation-s
 import {
   evaluateEfficiency,
   calculateRedundancyPenalty,
-  estimateCost,
+  estimateExecutionWeight,
 } from './evaluation-efficiency.js';
 import { evaluateCompleteness, generateFeedback } from './evaluation-completeness.js';
 
@@ -45,7 +45,7 @@ export class WorkflowEvaluator {
     const completenessScore = this.evaluateCompleteness(workflow, task);
     const redundancyPenalty = this.calculateRedundancyPenalty(workflow);
     const feedback = this.generateFeedback(workflow, task);
-    const estimatedCost = this.estimateCost(workflow);
+    const executionWeight = this.estimateExecutionWeight(workflow);
 
     const score = this.calculateOverallScore(
       structureScore,
@@ -61,7 +61,7 @@ export class WorkflowEvaluator {
       completenessScore,
       redundancyPenalty,
       feedback,
-      estimatedCost,
+      executionWeight,
     };
   }
 
@@ -122,8 +122,8 @@ export class WorkflowEvaluator {
   /**
    * Estimate execution cost based on step configuration.
    */
-  estimateCost(workflow: WorkflowDefinition): number {
-    return estimateCost(workflow);
+  estimateExecutionWeight(workflow: WorkflowDefinition): number {
+    return estimateExecutionWeight(workflow);
   }
 
   /**
