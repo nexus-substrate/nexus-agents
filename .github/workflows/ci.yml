@@ -136,6 +136,14 @@ jobs:
       - name: CLI docs drift (#5142)
         run: npx tsx scripts/check-cli-docs-drift.ts
 
+      # #5142: config/env-schema.ts reports an unrecognized NEXUS_* var as a
+      # typo. 33 vars that production code READS were never registered, so a
+      # correctly-spelled variable (verified: NEXUS_VOTER_MODEL_ARCHITECT,
+      # NEXUS_MCP_DEPTH) was reported as the user's mistake. The #4722 test
+      # guards only documented->registered; this guards read-in-code->registered.
+      - name: Env-schema coverage (#5142)
+        run: npx tsx scripts/check-env-schema-coverage.ts
+
       - name: Tool-description distinctness (#2650)
         run: npx tsx scripts/check-tool-distinctness.ts
 

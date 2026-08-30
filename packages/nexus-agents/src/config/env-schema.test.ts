@@ -7,6 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
 import { readFileSync } from 'node:fs';
+
+import { VOTER_ROLES } from '../cli/vote-types.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -232,6 +234,89 @@ describe('env-schema', () => {
       const entry = result.unknownVars.find((u) => u.name === 'NEXUS_V2_DELEATE');
       expect(entry).toBeDefined();
       expect(entry?.suggestion).toBe('NEXUS_V2_DELEGATE');
+    });
+  });
+
+  describe('code-read variables are registered (#5142)', () => {
+    // Verified live before the fix: each of these produced an unknownVars entry
+    // while production code read the value, so the typo detector accused the
+    // user of a typo they had not made.
+
+    it('recognizes NEXUS_MCP_DEPTH, read by the codex MCP nesting guard', () => {
+      vi.stubEnv('NEXUS_MCP_DEPTH', '1');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('reports a non-integer NEXUS_MCP_DEPTH as invalid rather than ignoring it', () => {
+      vi.stubEnv('NEXUS_MCP_DEPTH', 'abc');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_MCP_DEPTH');
+    });
+
+    it('accepts 0 for NEXUS_JOB_MAX_CONCURRENT_TOTAL, which disables async dispatch', () => {
+      vi.stubEnv('NEXUS_JOB_MAX_CONCURRENT_TOTAL', '0');
+      const result = validateNexusEnv();
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('recognizes the path and token variables', () => {
+      vi.stubEnv('NEXUS_VOTE_RECORDS_PATH', '/tmp/votes.jsonl');
+      vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://example.test/v1');
+      vi.stubEnv('NEXUS_SENSITIVE_REFS', 'alpha,beta');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('accepts the full parseBoolEnv set for NEXUS_VERSION_CHECK', () => {
+      for (const value of ['true', 'false', '1', '0', 'TRUE']) {
+        vi.stubEnv('NEXUS_VERSION_CHECK', value);
+        expect(validateNexusEnv().invalidVars).toHaveLength(0);
+      }
+    });
+
+    it('rejects "yes" for a parseBoolEnv variable, which the helper silently discards', () => {
+      // parseBoolEnv accepts only true|1|false|0; `yes` falls through to the
+      // default, so reporting it is what stops a silent no-op (#5155).
+      vi.stubEnv('NEXUS_VERSION_CHECK', 'yes');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_VERSION_CHECK');
+    });
+
+    it('accepts NEXUS_REPUTATION_GATING in mixed case, as the consumer lowercases it', () => {
+      vi.stubEnv('NEXUS_REPUTATION_GATING', 'Enforce');
+      expect(validateNexusEnv().invalidVars).toHaveLength(0);
+    });
+  });
+
+  describe('dynamic variable families (#5142)', () => {
+    it('recognizes every NEXUS_VOTER_MODEL_<ROLE> built from VOTER_ROLES', () => {
+      for (const role of Object.keys(VOTER_ROLES)) {
+        vi.stubEnv(`NEXUS_VOTER_MODEL_${role.toUpperCase()}`, 'claude-opus');
+      }
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+    });
+
+    it('still flags a NEXUS_VOTER_MODEL_ suffix that is not a real role', () => {
+      // Without this the family check would accept anything and could not fail.
+      vi.stubEnv('NEXUS_VOTER_MODEL_NOTAROLE', 'claude-opus');
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((u) => u.name)).toContain('NEXUS_VOTER_MODEL_NOTAROLE');
+    });
+
+    it('recognizes a per-tool NEXUS_JOB_MAX_CONCURRENT_<TOOL> override', () => {
+      vi.stubEnv('NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE', '2');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+    });
+
+    it('does not treat a bare family prefix with no suffix as known', () => {
+      vi.stubEnv('NEXUS_VOTER_MODEL_', 'x');
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((u) => u.name)).toContain('NEXUS_VOTER_MODEL_');
     });
   });
 
