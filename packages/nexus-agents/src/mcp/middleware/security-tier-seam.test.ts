@@ -32,6 +32,7 @@ import { createSecureHandler, type SecurityTier } from './secure-handler.js';
 import { registerIssueTriageTool } from '../tools/issue-triage-tool.js';
 import { registerResearchAddSourceTool } from '../tools/research-add-source.js';
 import { registerOrchestrateTool } from '../tools/orchestrate.js';
+import { registerPrReviewTool } from '../tools/pr-review-tool.js';
 
 /**
  * A real injection payload, taken from the `INJECTION_DETECTORS` table in
@@ -175,6 +176,26 @@ describe('untrusted-input tools declare a non-standard tier (#5120 item 4)', () 
     } as never);
 
     const result = await getHandler()({ task: INJECTION_PAYLOAD });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
+  });
+
+  it('pr_review rejects an injection payload before reaching its handler', async () => {
+    // pr_review had NO securityTier, so it took the permissive default while
+    // interpolating caller-supplied text straight into the voter prompt:
+    // `buildPrompt` pushes `input.prDescription` unfenced, three lines above
+    // the instruction "Decide: should it be merged as-is? APPROVE if ...".
+    // Attacker-controlled PR body text therefore sat next to the verdict
+    // instruction on a merge-decision path, in front of five model voters.
+    // `.rules/untrusted-input.md` names PR bodies Tier 2/3 explicitly.
+    const { server, getHandler } = captureRegisteredHandler();
+    registerPrReviewTool(server as never, makeDeps() as never);
+
+    const result = await getHandler()({
+      prDiff: 'diff --git a/a.ts b/a.ts',
+      prDescription: INJECTION_PAYLOAD,
+    });
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);

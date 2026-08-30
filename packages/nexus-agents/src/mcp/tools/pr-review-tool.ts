@@ -630,6 +630,14 @@ export function registerPrReviewTool(server: McpServer, deps: PrReviewDeps): voi
 
   const secureHandler = createSecureHandler(makePrReviewHandler(deps.gatewayAdapters), {
     toolName: 'pr_review',
+    // Everything this tool reviews is attacker-controlled. `buildPrompt`
+    // interpolates `prDescription` and `prDiff` into the voter prompt a few
+    // lines above "Decide: should it be merged as-is? APPROVE if ...", so an
+    // injection payload in a PR body would sit beside the verdict instruction
+    // in front of five model voters. `.rules/untrusted-input.md` classifies PR
+    // bodies as Tier 2/3; without this the handler took the permissive
+    // 'standard' default and `checkSecurityTier` never ran.
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });
