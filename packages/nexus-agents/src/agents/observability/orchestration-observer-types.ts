@@ -194,12 +194,37 @@ export const OrchestrationObserverConfigSchema = z.object({
   metricsUpdateIntervalMs: z.number().positive().optional().default(5000),
   /** Enable detailed event logging */
   verboseLogging: z.boolean().optional().default(false),
-  /** Token cost rates per model (USD per 1K tokens) */
-  tokenCostRates: z.record(z.string(), z.number().nonnegative()).optional().default({
-    claude: 0.015,
-    gemini: 0.001,
-    codex: 0.01,
-  }),
+  /**
+   * Per-model cost rate override, USD per 1,000 tokens (#5180).
+   *
+   * Two accepted shapes, and the distinction is deliberate:
+   *
+   *  - `{ input, output }` — a SPLIT rate. Output bills at several times input,
+   *    so this is the accurate form.
+   *  - a bare number — a BLENDED rate, the historical shape. It keeps its
+   *    original meaning exactly: one rate applied to total tokens. It is NOT
+   *    silently reinterpreted as an input rate, which would quietly change every
+   *    existing operator's numbers.
+   *
+   * OMITTED means read split rates from the model registry — never zero. Before
+   * #5180 the default was a private per-model table (`claude: 0.015` blended)
+   * that disagreed with the registry by ~3x on output-heavy runs, which is the
+   * defect this replaces. An operator who wants the old figures can keep their
+   * existing scalar config and get byte-identical results.
+   */
+  tokenCostRates: z
+    .record(
+      z.string(),
+      z.union([
+        z.number().nonnegative(),
+        z.object({
+          input: z.number().nonnegative(),
+          output: z.number().nonnegative(),
+        }),
+      ])
+    )
+    .optional()
+    .default({}),
 });
 export type OrchestrationObserverConfig = z.infer<typeof OrchestrationObserverConfigSchema>;
 

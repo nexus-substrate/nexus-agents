@@ -37,7 +37,8 @@ import {
   countActiveSessions,
   findActiveSession,
   identifySessionsToRemove,
-  calculateTokenCost,
+  resolveModelCost,
+  registryCostForModel,
 } from './orchestration-observer-helpers.js';
 
 /**
@@ -407,8 +408,12 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     metrics.tokenUsage.outputTokens += tokens.outputTokens;
     metrics.tokenUsage.totalTokens += tokens.totalTokens;
 
-    const rate = this.config.tokenCostRates[model] ?? 0.01;
-    const cost = calculateTokenCost(tokens, rate);
+    // #5180: an override wins; otherwise the canonical registry supplies SPLIT
+    // rates. The previous `?? 0.01` blended fallback understated output-heavy
+    // runs ~3x while this method held the split two lines above.
+    const cost =
+      resolveModelCost(tokens, this.config.tokenCostRates[model]) ??
+      registryCostForModel(tokens, model);
     metrics.costMetrics.totalCostUsd += cost;
 
     const currentModelCost = metrics.costMetrics.costPerModel.get(model) ?? 0;
