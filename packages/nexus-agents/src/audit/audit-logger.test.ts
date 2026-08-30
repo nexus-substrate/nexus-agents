@@ -276,6 +276,46 @@ describe('AuditLogger', () => {
       expect(e.outcome).toBe('denied');
       expect(e.description).toBe('Forbidden');
     });
+
+    // #4991: warn mode allows the call but a rule DID fire. The chain must be
+    // able to say so. Recording it as `deny` would claim an enforcement that
+    // never happened; recording it as `allow` erases the signal the warn-mode
+    // soak exists to collect, which is the measurement #4988 rests on.
+    it('logs would_deny as warning severity, not info', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logPolicyDecision({
+        policyName: 'sb',
+        decision: 'would_deny',
+        reason: 'Would be denied: path outside allowlist',
+        toolName: 'x',
+        actor: A,
+      });
+      await l.flush();
+      const e = callArg(s.write, 0);
+      // The old ternary was `decision === 'deny' ? 'warning' : 'info'`, so a
+      // third value fell silently to info — understating the exact signal.
+      expect(e.severity).toBe('warning');
+    });
+
+    it('logs would_deny with outcome success, because the call actually ran', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logPolicyDecision({
+        policyName: 'sb',
+        decision: 'would_deny',
+        reason: 'Would be denied: path outside allowlist',
+        toolName: 'x',
+        actor: A,
+      });
+      await l.flush();
+      const e = callArg(s.write, 0);
+      // The sharper half of the defect, and one the panel did not flag: the old
+      // mapping was `decision === 'allow' ? 'success' : 'denied'`, so would_deny
+      // would have been recorded as outcome 'denied' — the chain asserting the
+      // call was blocked when it ran to completion. `outcome` describes what
+      // happened to the OPERATION; `policyDecision` carries the policy verdict.
+      expect(e.outcome).toBe('success');
+      expect(e.policyDecision).toBe('would_deny');
+    });
   });
 
   describe('logSecurityEvent', () => {

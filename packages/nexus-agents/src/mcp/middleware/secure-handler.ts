@@ -22,7 +22,7 @@ import {
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
-import type { IAuditLogger } from '../../audit/audit-types.js';
+import type { IAuditLogger, PolicyAuditDecision } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import {
   sanitizeToolInput,
@@ -212,9 +212,24 @@ interface PolicyCheckOptions {
 }
 
 /**
+ * What the policy evaluation produced: the denial result to return (if any),
+ * and the verdict to record on the chain.
+ *
+ * The verdict is returned separately because it is NOT derivable from the
+ * result (#4991). In warn mode a rule fires and the firewall allows anyway, so
+ * `result` is null exactly as it is for an ordinary allow — the two are
+ * indistinguishable downstream unless the decision travels with it.
+ */
+interface PolicyCheckOutcome {
+  readonly result: ToolResult | null;
+  /** `null` when no rule fired — an ordinary allow, which is not recorded. */
+  readonly verdict: PolicyAuditDecision | null;
+}
+
+/**
  * Evaluates policy firewall and returns error if denied.
  */
-function checkPolicy(opts: PolicyCheckOptions): ToolResult | null {
+function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
   const ctxOpts = {
     mode: opts.mode,
     ...(opts.allowedPaths && { allowedPaths: opts.allowedPaths }),
@@ -226,10 +241,24 @@ function checkPolicy(opts: PolicyCheckOptions): ToolResult | null {
       reason: decision.reason,
       ruleName: decision.ruleName,
     });
-    return policyDeniedError(decision.reason, opts.requestId);
+    return { result: policyDeniedError(decision.reason, opts.requestId), verdict: 'deny' };
   }
+
+  // Warn mode: `handleDenial` (policy.ts:140) allows the call but sets
+  // `ruleName`. `allowWithReason` (policy.ts:118) never does, so the presence
+  // of a rule name on an allowed decision is an exact structural signal that a
+  // rule fired and was overridden. Deliberately NOT matched on the '[WARN
+  // MODE]' reason prefix, which is display copy and would break on a reword.
+  if (decision.ruleName !== undefined) {
+    opts.logger.debug('Policy would have denied (warn mode)', {
+      reason: decision.reason,
+      ruleName: decision.ruleName,
+    });
+    return { result: null, verdict: 'would_deny' };
+  }
+
   opts.logger.debug('Policy check passed', { reason: decision.reason });
-  return null;
+  return { result: null, verdict: null };
 }
 
 /**
@@ -250,7 +279,7 @@ function runPolicyCheck(
   const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
   if (!firewall) return null;
 
-  const pResult = checkPolicy({
+  const { result, verdict } = checkPolicy({
     firewall,
     toolName: config.toolName,
     args: sanitizedArgs,
@@ -259,10 +288,20 @@ function runPolicyCheck(
     logger,
     requestId: requestContext.requestId,
   });
-  if (pResult && config.auditLogger) {
-    emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
+
+  // Emitted for a real denial AND for a warn-mode near-miss (#4991). An
+  // ordinary allow (verdict null) is not recorded: emitting every permitted
+  // call would bury the soak signal it exists to surface.
+  if (verdict !== null && config.auditLogger) {
+    emitPolicyAudit(
+      config.auditLogger,
+      config.toolName,
+      requestContext,
+      verdict,
+      verdict === 'deny' ? 'policy denied' : 'policy would have denied (warn mode)'
+    );
   }
-  return pResult;
+  return result;
 }
 
 /**
@@ -338,12 +377,13 @@ function emitPolicyAudit(
   auditLogger: IAuditLogger,
   toolName: string,
   ctx: RequestContext,
+  decision: PolicyAuditDecision,
   reason: string
 ): void {
   const actor = actorFromContext(ctx);
   auditLogger.logPolicyDecision({
     policyName: 'default',
-    decision: 'deny',
+    decision,
     reason,
     toolName,
     actor,

@@ -381,9 +381,28 @@ export interface ToolInvocationAuditOpts {
   metadata?: Record<string, unknown> | undefined;
 }
 
+/**
+ * The verdict a policy evaluation reached.
+ *
+ * `would_deny` (#4991) is warn mode: a rule fired, but the firewall allowed the
+ * call anyway. It is deliberately NOT `deny` — recording it as a denial would
+ * assert an enforcement that never happened — and NOT `allow`, which would
+ * erase the only signal the warn-mode soak produces. `#4988`'s enforce decision
+ * is read from these records, so the instrument has to be able to say
+ * "a rule would have stopped this" without lying in either direction.
+ *
+ * BREAKING for implementors of {@link IAuditLogger} (ratified 5/6, #4991):
+ * TypeScript's method-parameter bivariance means an out-of-tree implementor
+ * typed against the old two-value union still COMPILES and then receives
+ * `would_deny` at runtime, falling through whatever its `=== 'deny'` branch
+ * does. The major version bump is the only thing that makes those implementors
+ * look.
+ */
+export type PolicyAuditDecision = 'allow' | 'deny' | 'would_deny';
+
 export interface PolicyDecisionAuditOpts {
   policyName: string;
-  decision: 'allow' | 'deny';
+  decision: PolicyAuditDecision;
   reason: string;
   toolName: string;
   actor: AuditActor;

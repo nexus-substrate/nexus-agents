@@ -31,6 +31,9 @@ import type {
   AuditActor,
   ToolInvocationAuditOpts,
   PolicyDecisionAuditOpts,
+  PolicyAuditDecision,
+  AuditSeverity,
+  AuditOutcome,
   SecurityEventAuditOpts,
   RateLimitAuditOpts,
   TierTransitionAuditOpts,
@@ -303,6 +306,39 @@ const SYSTEM_ACTOR: AuditActor = {
   name: 'Nexus Agents System',
 };
 
+/**
+ * Maps a policy verdict to the severity and outcome recorded on the chain
+ * (#4991).
+ *
+ * Written as an exhaustive switch rather than the two ternaries it replaces.
+ * Those were `decision === 'deny' ? 'warning' : 'info'` and
+ * `decision === 'allow' ? 'success' : 'denied'`, so adding a third verdict
+ * silently produced `info` + `denied` — understating the severity AND asserting
+ * the call was blocked when it ran. The `never` check makes the NEXT verdict a
+ * compile error instead of a quiet mis-mapping.
+ *
+ * `outcome` describes what happened to the OPERATION, so `would_deny` is a
+ * `success`: the call ran to completion. The policy verdict travels separately
+ * in `policyDecision`, which is what a soak query filters on.
+ */
+function policyDecisionFields(decision: PolicyAuditDecision): {
+  severity: AuditSeverity;
+  outcome: AuditOutcome;
+} {
+  switch (decision) {
+    case 'allow':
+      return { severity: 'info', outcome: 'success' };
+    case 'deny':
+      return { severity: 'warning', outcome: 'denied' };
+    case 'would_deny':
+      return { severity: 'warning', outcome: 'success' };
+    default: {
+      const unreachable: never = decision;
+      throw new Error(`Unhandled policy decision: ${String(unreachable)}`);
+    }
+  }
+}
+
 // ============================================================================
 // Audit Logger Implementation
 // ============================================================================
@@ -523,8 +559,7 @@ export class AuditLogger implements IAuditLogger {
   logPolicyDecision(opts: PolicyDecisionAuditOpts): void {
     this.log({
       category: 'authorization',
-      severity: opts.decision === 'deny' ? 'warning' : 'info',
-      outcome: opts.decision === 'allow' ? 'success' : 'denied',
+      ...policyDecisionFields(opts.decision),
       action: 'policy.evaluate',
       description: opts.reason,
       actor: opts.actor,
