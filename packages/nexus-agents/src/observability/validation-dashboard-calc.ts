@@ -131,17 +131,23 @@ export function calculateLearningProgress(
   featureWeights: Record<string, number[]>
 ): LearningProgress {
   const recentExploration = explorationHistory.slice(-10);
+  // The empty case, named (#5255). `0` is a legitimate exploration rate — a
+  // fully greedy policy — so returning it for "nothing recorded" made absence
+  // indistinguishable from a real reading.
   const explorationRate =
     recentExploration.length > 0
       ? recentExploration.reduce((sum, e) => sum + e.rate, 0) / recentExploration.length
-      : 0;
+      : null;
 
   const olderExploration = explorationHistory.slice(-20, -10);
   const olderAvg =
     olderExploration.length > 0
       ? olderExploration.reduce((sum, e) => sum + e.rate, 0) / olderExploration.length
       : explorationRate;
-  const explorationRateTrend = explorationRate - olderAvg;
+  // A trend between two unmeasured points is not a trend. Reported as 0 only
+  // when there is a real current rate to compare against (#5255).
+  const explorationRateTrend =
+    explorationRate === null || olderAvg === null ? 0 : explorationRate - olderAvg;
 
   const comparableOutcomes = outcomes
     .filter((o) => o.allModelRewards !== undefined)
@@ -174,9 +180,12 @@ export function calculateLearningProgress(
 }
 
 /** Calculate convergence score from feature weight stability. */
-export function calculateConvergenceScore(featureWeights: Record<string, number[]>): number {
+export function calculateConvergenceScore(featureWeights: Record<string, number[]>): number | null {
+  // The empty case, named (#5255). `0` here read as worst-possible
+  // convergence; `Math.exp(-variance)` only approaches 0, so a literal 0 could
+  // never have been a measurement.
   if (Object.keys(featureWeights).length === 0) {
-    return 0;
+    return null;
   }
 
   const variances: number[] = [];
@@ -217,11 +226,17 @@ export function calculateAvgReward(outcomes: readonly DashboardOutcome[]): numbe
  */
 export function computeHealthScore(
   hasMinimumData: boolean,
-  isLearning: boolean,
-  healthyExploration: boolean,
+  isLearning: boolean | null,
+  healthyExploration: boolean | null,
   noUnderperformers: boolean
 ): number | null {
   if (!hasMinimumData) return null;
+  // #5255: the original guard keyed only on `hasMinimumData`, which counts ALL
+  // outcomes — a different collection from the ones `isLearning` and
+  // `healthyExploration` read. On a live system it passed while those two were
+  // computed from empty sets, so the fabricated verdicts still reached the
+  // score. Score only what was actually measured.
+  if (isLearning === null || healthyExploration === null) return null;
 
   const scores = [
     1, // hasMinimumData, established above

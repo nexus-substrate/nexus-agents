@@ -218,13 +218,18 @@ export function calculateRegret(
     readonly rewards: Record<string, number>;
   }[]
 ): RegretAnalysis {
+  // The empty case, named (#5255). These were `cumulativeRegret: 0`,
+  // `avgRegret: 0` and `optimalRate: 1` — a perfect routing record asserted
+  // over nothing, which the dashboard rendered as "100.0%" with a full bar.
+  // `totalDecisions` and `suboptimalDecisions` stay numeric because 0 is the
+  // true count; it is the RATIOS over that count that are unmeasured.
   if (decisions.length === 0) {
     return {
-      cumulativeRegret: 0,
-      avgRegret: 0,
+      cumulativeRegret: null,
+      avgRegret: null,
       totalDecisions: 0,
       suboptimalDecisions: 0,
-      optimalRate: 1,
+      optimalRate: null,
       regretPerModel: {},
     };
   }

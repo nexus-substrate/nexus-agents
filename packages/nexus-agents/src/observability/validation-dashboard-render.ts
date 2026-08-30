@@ -113,13 +113,26 @@ export function renderLearningProgress(
   const lines = ['Learning Progress:'];
   lines.push('-'.repeat(60));
 
-  const explorationBar = renderProgressBar(progress.explorationRate, 0.3);
-  const optimalBar = renderProgressBar(progress.optimalRate, 1.0);
+  // #5255: absence renders as absence, following the #4714 precedent below.
+  // A bar plus a percentage over an empty input read as a live measurement —
+  // "Optimal Decision Rate: [████] 100.0%" was the worst of them.
+  const pct = (label: string, value: number | null, barMax: number): string =>
+    value === null
+      ? `${label}: unmeasured (nothing recorded)`
+      : `${label}: ${renderProgressBar(value, barMax)} ${(value * 100).toFixed(1)}%`;
 
-  lines.push(`Exploration Rate: ${explorationBar} ${(progress.explorationRate * 100).toFixed(1)}%`);
-  lines.push(`Optimal Decision Rate: ${optimalBar} ${(progress.optimalRate * 100).toFixed(1)}%`);
-  lines.push(`Cumulative Regret: ${progress.cumulativeRegret.toFixed(2)}`);
-  lines.push(`Convergence Score: ${(progress.convergenceScore * 100).toFixed(0)}%`);
+  lines.push(pct('Exploration Rate', progress.explorationRate, 0.3));
+  lines.push(pct('Optimal Decision Rate', progress.optimalRate, 1.0));
+  lines.push(
+    progress.cumulativeRegret === null
+      ? 'Cumulative Regret: unmeasured (no comparable decision)'
+      : `Cumulative Regret: ${progress.cumulativeRegret.toFixed(2)}`
+  );
+  lines.push(
+    progress.convergenceScore === null
+      ? 'Convergence Score: unmeasured (no feature weights recorded)'
+      : `Convergence Score: ${(progress.convergenceScore * 100).toFixed(0)}%`
+  );
 
   if (options.showFeatureImportance === true && progress.featureImportance.length > 0) {
     lines.push('');
@@ -140,11 +153,13 @@ export function renderHealthIndicators(health: DashboardHealthIndicators): strin
   const lines = ['Health Indicators:'];
   lines.push('-'.repeat(60));
 
-  const check = (ok: boolean): string => (ok ? '✓' : '✗');
+  // Tri-state (#5255): '?' is not a failure. Rendering '✗' for an unmeasured
+  // indicator asserted a health failure from absence.
+  const check = (ok: boolean | null): string => (ok === null ? '?' : ok ? '✓' : '✗');
 
   lines.push(`${check(health.hasMinimumData)} Minimum Data`);
-  lines.push(`${check(health.isLearning)} Learning Progress`);
-  lines.push(`${check(health.healthyExploration)} Healthy Exploration`);
+  lines.push(`${check(health.isLearning)} Learning Progress${health.isLearning === null ? ' (unmeasured)' : ''}`);
+  lines.push(`${check(health.healthyExploration)} Healthy Exploration${health.healthyExploration === null ? ' (unmeasured)' : ''}`);
   lines.push(`${check(health.noUnderperformers)} No Underperformers`);
   lines.push('');
   // #4714: absence renders as absence. A percentage here computed from
