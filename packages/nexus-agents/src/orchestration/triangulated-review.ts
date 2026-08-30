@@ -163,7 +163,7 @@ function getCliPriority(cli: CliName): number {
  * representable. 0 sorts it below every configured CLI, which is the
  * conservative choice — an unknown source never displaces a known one.
  */
-export function findingPriority(finding: ReviewFinding): number {
+function findingPriority(finding: ReviewFinding): number {
   // Indexed as a plain string rather than through an `as CliName` cast. The
   // cast would ASSERT that every expertId is a configured CLI, which is exactly
   // the thing not known here — and it made the `?? 0` look unreachable to
@@ -427,7 +427,7 @@ function isSimilar(a: ReviewFinding, b: ReviewFinding, lineProximity: number): b
  * Ties keep `existing`, making the result independent of the order findings
  * arrive in.
  */
-export function pickBestFinding(existing: ReviewFinding, candidate: ReviewFinding): ReviewFinding {
+function pickBestFinding(existing: ReviewFinding, candidate: ReviewFinding): ReviewFinding {
   return findingPriority(candidate) > findingPriority(existing) ? candidate : existing;
 }
 

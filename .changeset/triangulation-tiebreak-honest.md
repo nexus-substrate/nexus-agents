@@ -22,6 +22,14 @@ prior rather than a "confidence bonus", and the assignment site says the value
 is not a measurement. An unrecognized `expertId` now scores 0 explicitly, so a
 finding from a non-CLI producer can never displace one from a configured CLI.
 
+Mutation testing while writing the tests surfaced a second, undocumented
+coupling: `REVIEW_CLI_ORDER` (codex, claude, gemini) happens to be in
+descending priority order, and ties keep the incumbent — so the first CLI
+dispatched is always the highest-priority one and the tiebreak never actually
+decides anything today. Reordering that list, e.g. to dispatch a faster CLI
+first, would silently change which findings users see. A test now pins the two
+constants in agreement so a divergence has to be deliberate.
+
 This is the labelling half of #5119 item 3. The remaining items — the
 security-gate triage verdict (item 1) and `actualCostUsd` (item 2) — are
 verified still open and stay on that issue.
