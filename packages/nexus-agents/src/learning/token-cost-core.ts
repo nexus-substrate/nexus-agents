@@ -75,11 +75,22 @@ export interface TokenCounts {
  * Per-million-token rates in USD.
  *
  * Cache rates are optional because the registry cannot yet supply them: the
- * internal `PricingSchema` carries only `inputPer1M`/`outputPer1M`, even though
- * `models-dev-client.ts` already fetches `cache_read` from upstream and drops it
- * (#5170). The signature takes them from day one on the panel's binding
- * condition — consolidating onto an input/output-only shape would guarantee a
- * second sweeping refactor the moment those rates land.
+ * internal `PricingSchema` carries only `inputPer1M`/`outputPer1M` (#5170).
+ *
+ * Upstream DOES publish both. The generator validates `cache_read` and
+ * `cache_write` at `scripts/build-model-registry-types.ts:49-50`, then drops
+ * them one step later where `toPricing` maps only input and output
+ * (`scripts/build-model-registry-helpers.ts:192-198`), so
+ * `model-registry.generated.json` carries neither.
+ *
+ * An earlier version of this comment cited `config/models-dev-client.ts` as the
+ * fetch path. That module has zero non-test importers (#5200) and does not run;
+ * citing it led to a wrong cost estimate on #5170. The generator above is the
+ * live path.
+ *
+ * The signature takes cache rates from day one on the panel's binding condition
+ * — consolidating onto an input/output-only shape would guarantee a second
+ * sweeping refactor the moment those rates land.
  */
 export interface TokenRates {
   readonly inputPer1M: number;
