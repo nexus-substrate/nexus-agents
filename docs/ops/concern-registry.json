@@ -11,13 +11,7 @@
         "pattern": "([Tt]okens\\w*\\s*\\)?\\s*/\\s*1_?000\\s*\\)\\s*\\*|[Tt]okens\\w*\\s*\\*\\s*(costPer|rate|perMillion|profile\\.)|[Tt]okens\\w*\\s*\\*\\s*0\\.0000|\\(\\s*tokens\\s*\\*\\s*perMillion\\s*\\))",
         "note": "Matches the ARITHMETIC - a token identifier combined with a rate - not a declaration, a pass-through, or a comment describing it. Earlier drafts flagged five files that merely declare or forward `costPer1KTokens`, two that round to micro-USD (`Math.round(usd * 1_000_000) / 1_000_000`), one converting nanoseconds to milliseconds, and one doc comment. Comments are stripped before matching."
       },
-      "alternates": [
-        {
-          "path": "packages/nexus-agents/src/agents/orchestration/puppeteer-config-types.ts",
-          "why": "Subsystem-local per-1K helper (tokensToCostUsd). Collapsed from three inline constants in #5171; absorbs into the core when the observer decision lands.",
-          "trackedBy": "#5122"
-        }
-      ]
+      "alternates": []
     }
   ]
 }
