@@ -226,3 +226,44 @@ describe('generateReasoning', () => {
     expect(result).not.toContain('better than');
   });
 });
+
+describe('estimateCost on the shared core (#5122 increment 4)', () => {
+  const profile = {
+    costPerMillionInput: 3,
+    costPerMillionOutput: 15,
+  } as unknown as Parameters<typeof estimateCost>[0];
+
+  it('reproduces the audit golden value for 1M in + 1M out', () => {
+    expect(estimateCost(profile, 1_000_000, 1_000_000)).toBeCloseTo(18, 10);
+  });
+
+  it('uses the PROFILE rates, not the registry', () => {
+    // This path exists because TOPSIS prices against a routing profile. If it
+    // ever started reading the registry it would stop scoring the candidate it
+    // was handed, so a deliberately unusual rate must show through.
+    const odd = {
+      costPerMillionInput: 999,
+      costPerMillionOutput: 0,
+    } as unknown as Parameters<typeof estimateCost>[0];
+    expect(estimateCost(odd, 1_000_000, 1_000_000)).toBeCloseTo(999, 10);
+  });
+
+  it('prices input and output at their separate profile rates', () => {
+    expect(estimateCost(profile, 1_000_000, 0)).toBeCloseTo(3, 10);
+    expect(estimateCost(profile, 0, 1_000_000)).toBeCloseTo(15, 10);
+  });
+
+  it('a zero-rate profile costs zero — a real $0, not an unknown', () => {
+    // No unpriced policy applies here: a profile always carries rates, so
+    // there is no absent-rate case. Naming the empty case anyway.
+    const free = {
+      costPerMillionInput: 0,
+      costPerMillionOutput: 0,
+    } as unknown as Parameters<typeof estimateCost>[0];
+    expect(estimateCost(free, 1_000_000, 1_000_000)).toBe(0);
+  });
+
+  it('zero tokens cost zero at any rate', () => {
+    expect(estimateCost(profile, 0, 0)).toBe(0);
+  });
+});
