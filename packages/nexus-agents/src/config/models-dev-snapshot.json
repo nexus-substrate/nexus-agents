@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-08-24",
+  "fetchedAt": "2026-08-31",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1247,6 +1247,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "qwen3.8-flash",
+      "vendor": "qwen",
+      "family": "qwen",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Qwen3.8 Flash",
+      "verifiedAt": "2026-08-26",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.47
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "qwen3.8-max",
       "vendor": "qwen",
       "family": "qwen",
@@ -1918,54 +1942,6 @@
       "pricing": {
         "inputPer1M": 0,
         "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "deepseek-chat",
-      "vendor": "deepseek",
-      "family": "deepseek",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-deepseek",
-      "source": "models-dev",
-      "displayName": "DeepSeek Chat",
-      "verifiedAt": "2026-02-28",
-      "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.14,
-        "outputPer1M": 0.28
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "deepseek-reasoner",
-      "vendor": "deepseek",
-      "family": "deepseek-thinking",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-deepseek",
-      "source": "models-dev",
-      "displayName": "DeepSeek Reasoner",
-      "verifiedAt": "2026-02-28",
-      "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.14,
-        "outputPer1M": 0.28
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -4816,6 +4792,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "zai-glm-5-2",
+      "vendor": "mistral",
+      "family": "glm",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-mistral",
+      "source": "models-dev",
+      "displayName": "GLM-5.2",
+      "verifiedAt": "2026-06-13",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.4,
+        "outputPer1M": 4.4
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "abacusai/dracarys-llama-3.1-70b-instruct",
       "vendor": "nvidia",
       "family": "abacusai/dracarys-llama-3.1-70b-instruct",
@@ -5047,6 +5047,30 @@
       "pricing": {
         "inputPer1M": 0.435,
         "outputPer1M": 0.87
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "deepseek-ai/deepseek-v4-pro-0813",
+      "vendor": "nvidia",
+      "family": "deepseek-thinking",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "DeepSeek V4 Pro 0813",
+      "verifiedAt": "2026-08-22",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -7929,8 +7953,8 @@
       "inputModalities": ["text", "image", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 5,
-        "outputPer1M": 30
+        "inputPer1M": 4,
+        "outputPer1M": 20
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -7977,8 +8001,8 @@
       "inputModalities": ["text", "image", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 5,
-        "outputPer1M": 30
+        "inputPer1M": 4,
+        "outputPer1M": 20
       },
       "toolCapabilities": ["function-calling"]
     },
