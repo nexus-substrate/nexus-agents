@@ -38,14 +38,25 @@ const SRC = join(ROOT, 'packages/nexus-agents/src');
  * enumerates to nothing — which is the failure this check exists to catch,
  * one step further along.
  */
-export const REQUIRED_DIST_ASSETS: ReadonlyArray<{
-  readonly file: string;
-  readonly minBytes: number;
-}> = [
-  { file: 'models-dev-snapshot.json', minBytes: 50_000 },
-  { file: 'model-registry.generated.json', minBytes: 1_000 },
-  { file: 'workflows/templates', minBytes: 1 },
-  { file: 'security/ast-rules', minBytes: 1 },
+/**
+ * A shipped asset, tagged by kind.
+ *
+ * The kind used to be implicit: every entry carried `minBytes`, and the check
+ * did `if (stat.isDirectory()) continue;`. That made `minBytes: 1` dead data on
+ * the two directory entries and left an empty shipped directory
+ * indistinguishable from a populated one. Tagging the kind makes the intended
+ * floor explicit for each — a byte size for files, an entry count for
+ * directories — and lets a kind mismatch be reported rather than skipped.
+ */
+export type RequiredDistAsset =
+  | { readonly file: string; readonly kind: 'file'; readonly minBytes: number }
+  | { readonly file: string; readonly kind: 'dir'; readonly minEntries: number };
+
+export const REQUIRED_DIST_ASSETS: readonly RequiredDistAsset[] = [
+  { file: 'models-dev-snapshot.json', kind: 'file', minBytes: 50_000 },
+  { file: 'model-registry.generated.json', kind: 'file', minBytes: 1_000 },
+  { file: 'workflows/templates', kind: 'dir', minEntries: 1 },
+  { file: 'security/ast-rules', kind: 'dir', minEntries: 1 },
 ];
 
 /**
@@ -54,16 +65,37 @@ export const REQUIRED_DIST_ASSETS: ReadonlyArray<{
  */
 export function missingDistAssets(distDir: string): string[] {
   const problems: string[] = [];
-  for (const { file, minBytes } of REQUIRED_DIST_ASSETS) {
-    const path = join(distDir, file);
+  for (const asset of REQUIRED_DIST_ASSETS) {
+    const path = join(distDir, asset.file);
     if (!existsSync(path)) {
-      problems.push(`${file}: MISSING from dist/`);
+      problems.push(`${asset.file}: MISSING from dist/`);
       continue;
     }
     const stat = statSync(path);
-    if (stat.isDirectory()) continue;
-    if (stat.size < minBytes) {
-      problems.push(`${file}: ${String(stat.size)} bytes, below the ${String(minBytes)} floor`);
+
+    if (asset.kind === 'dir') {
+      if (!stat.isDirectory()) {
+        problems.push(`${asset.file}: expected a directory, found a file`);
+        continue;
+      }
+      const entries = readdirSync(path).length;
+      if (entries < asset.minEntries) {
+        problems.push(
+          `${asset.file}: ${String(entries)} entr(ies), below the ` +
+            `${String(asset.minEntries)} floor — the directory shipped empty`
+        );
+      }
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      problems.push(`${asset.file}: expected a file, found a directory`);
+      continue;
+    }
+    if (stat.size < asset.minBytes) {
+      problems.push(
+        `${asset.file}: ${String(stat.size)} bytes, below the ${String(asset.minBytes)} floor`
+      );
     }
   }
   return problems;

@@ -14,6 +14,7 @@ import {
   isViolatingLiteral,
   shouldScanFile,
   collectViolations,
+  scannedFileCount,
   STABLE_ALIASES,
 } from './check-model-string-drift.js';
 import { isAllowed, type AllowlistEntry } from './model-string-drift-allowlist.js';
@@ -177,5 +178,47 @@ describe('collectViolations (integration)', () => {
       `,
     });
     expect(collectViolations(project)).toHaveLength(0);
+  });
+});
+
+describe('scannedFileCount (#5261-class)', () => {
+  /**
+   * `main` reported success on `violations.length === 0` over whatever
+   * `addSourceFilesAtPaths` happened to match. ts-morph returns an empty set
+   * for a glob that matches nothing — it does not throw — so a package rename
+   * or an `src/` move would have printed
+   *
+   *   ✓ No new model-version drift detected. Source root: <path>
+   *     18 grandfathered site(s) in allowlist ...
+   *
+   * and exited 0 having parsed no files at all, from a required CI job.
+   *
+   * The allowlist line makes it worse rather than better: `allowedCount` is
+   * `ALLOWLIST.length`, a static constant, so the operator is shown a number
+   * that reads as coverage but is entirely independent of what was scanned.
+   */
+  it('returns zero for a project with no source files', () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    expect(scannedFileCount(project)).toBe(0);
+  });
+
+  it('counts the files the scan would actually inspect', () => {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile('/src/a.ts', 'export const a = 1;');
+    project.createSourceFile('/src/b.ts', 'export const b = 2;');
+    expect(scannedFileCount(project)).toBe(2);
+  });
+
+  it('excludes files the scan skips, so the count never overstates coverage', () => {
+    // Shares `shouldScanFile` with `collectViolations` rather than
+    // re-implementing the filter: a count derived from a different rule than
+    // the scan would certify coverage the scan does not have.
+    const project = new Project({ useInMemoryFileSystem: true });
+    const scanned = project.createSourceFile('/src/real.ts', 'export const a = 1;');
+    const skipped = project.createSourceFile('/src/real.test.ts', 'export const b = 2;');
+
+    expect(shouldScanFile(scanned.getFilePath())).toBe(true);
+    expect(shouldScanFile(skipped.getFilePath())).toBe(false);
+    expect(scannedFileCount(project)).toBe(1);
   });
 });

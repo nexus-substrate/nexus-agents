@@ -106,6 +106,23 @@ export function collectViolations(project: Project): readonly Violation[] {
   return violations;
 }
 
+/**
+ * Number of source files the drift scan actually inspects.
+ *
+ * Shares `shouldScanFile` with `collectViolations` deliberately: a count
+ * derived from a different rule would certify coverage the scan does not have.
+ * `addSourceFilesAtPaths` returns an empty set for a glob that matches nothing
+ * rather than throwing, so without this the gate reported a clean run over
+ * zero files.
+ */
+export function scannedFileCount(project: Project): number {
+  let count = 0;
+  for (const sourceFile of project.getSourceFiles()) {
+    if (shouldScanFile(sourceFile.getFilePath())) count++;
+  }
+  return count;
+}
+
 function formatViolation(v: Violation): string {
   return `${v.file}:${String(v.line)}:${String(v.column)}  found "${v.literal}"`;
 }
@@ -122,13 +139,28 @@ function main(): void {
   });
   project.addSourceFilesAtPaths(SCAN_GLOBS.map((g) => `${ROOT}/${g}`));
 
+  const scanned = scannedFileCount(project);
+
+  // A glob matching nothing is a broken gate, not a clean codebase. This ran
+  // ahead of the violation check because `violations.length === 0` cannot
+  // distinguish the two, and the allowlist line printed below reports a static
+  // constant that reads as coverage regardless of what was scanned.
+  if (scanned === 0) {
+    process.stderr.write(
+      `Model-string drift: scanned 0 files under ${SRC_ROOT}\n` +
+        `  Globs: ${SCAN_GLOBS.join(', ')}\n` +
+        '  The check inspected nothing. Fix the scan globs rather than trusting this run.\n'
+    );
+    process.exit(1);
+  }
+
   const violations = collectViolations(project);
 
   if (violations.length === 0) {
     const allowedCount = ALLOWLIST.length;
     process.stdout.write(
       `✓ No new model-version drift detected. Source root: ${SRC_ROOT}\n` +
-        `  ${String(allowedCount)} grandfathered site(s) in allowlist (documented architectural decisions).\n`
+        `  ${String(scanned)} file(s) scanned; ${String(allowedCount)} grandfathered site(s) in allowlist.\n`
     );
     process.exit(0);
   }
