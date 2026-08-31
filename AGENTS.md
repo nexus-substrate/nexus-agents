@@ -204,28 +204,39 @@ Full tool reference: [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md).
 
 Do not create parallel implementations — modify existing files at these canonical locations. Never create `enhanced_*`, `new_*`, `v2_*`, or `refactor_*` forks; migrate logic to the canonical location and remove the deprecated file.
 
-| Operation — what you are trying to do             | Canonical entry point                                                                                          |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Analyse / classify a task                         | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts`                                        |
-| Select a model for a task                         | `CompositeRouter.route(task)` — `src/cli-adapters/composite-router.ts`                                         |
-| Acquire an adapter                                | `getGlobalRegistry()` — `src/adapters/unified-registry.ts`. NOT `createAllAdapters()` in new code.             |
-| Run a consensus vote                              | `ConsensusEngine` — `src/consensus/engine.ts`                                                                  |
-| Register an MCP tool                              | `registerTools()` — `src/mcp/tools/index.ts`                                                                   |
-| Look up model metadata, pricing or context window | `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`)                   |
-| Read or write memory                              | `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                                                |
-| Build a graph workflow                            | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
-| Run a pipeline                                    | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
-| Run the security pipeline                         | `src/exports/security.ts`                                                                                      |
-| Authorize a tool call                             | `PolicyFirewall` — `src/mcp/middleware/policy.ts`. ClawGuard is advisory only (#5022, epic #5105).             |
-| Compute token → USD                               | **UNRESOLVED — eight paths (#5122).** Prefer `computeCostDetail` (`src/learning/usage-log.ts`) until it lands. |
-| Emit a domain event                               | **UNRESOLVED — two buses (#5125).** Do not add a third, and do not add a bridge.                               |
-| Write an audit record                             | **UNRESOLVED — two sinks (#5125).** Use `AuditLogger` (`src/audit/`) when the record must be durable.          |
+| Operation — what you are trying to do             | Canonical entry point                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Analyse / classify a task                         | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts`                                                                                                                                                                                                                     |
+| Select a model for a task                         | `CompositeRouter.route(task)` — `src/cli-adapters/composite-router.ts`                                                                                                                                                                                                                      |
+| Acquire an adapter for a model or task            | `getGlobalRegistry()` — `src/adapters/unified-registry.ts`. Returns one resilient adapter with shared circuit-breaker state (#4330).                                                                                                                                                        |
+| Build the CLI routing arm set                     | `createAllAdapters()` — `src/cli-adapters/factory.ts`. A DIFFERENT operation, ratified #5191: the router is the failover layer, so its arms must not be resilient-wrapped. Registry cannot serve it (returns `IResilientAdapter`, not `ICliAdapter`, and cannot express transport — #5211). |
+| Run a consensus vote                              | `ConsensusEngine` — `src/consensus/engine.ts`                                                                                                                                                                                                                                               |
+| Register an MCP tool                              | `registerTools()` — `src/mcp/tools/index.ts`                                                                                                                                                                                                                                                |
+| Look up model metadata, pricing or context window | `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`)                                                                                                                                                                                                |
+| Read or write memory                              | `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                                                                                                                                                                                                                             |
+| Build a graph workflow                            | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                                                                                                                                                                                                 |
+| Run a pipeline                                    | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                                                                                                                                                                                                        |
+| Run the security pipeline                         | `src/exports/security.ts`                                                                                                                                                                                                                                                                   |
+| Authorize a tool call                             | `PolicyFirewall` — `src/mcp/middleware/policy.ts`. ClawGuard is advisory only (#5022, epic #5105).                                                                                                                                                                                          |
+| Compute token → USD                               | A POLICY wrapper, never the bare core: `resolveCliCostPer1M` (budget filtering), `calculateCost` / `estimateRegistryCostUsd` (fail-closed ceilings), `computeCostDetail` (ledger). All three call `computeTokenCost` — `src/learning/token-cost-core.ts` (#5122).                           |
+| Emit a domain event                               | **UNRESOLVED — two buses (#5125).** Do not add a third, and do not add a bridge.                                                                                                                                                                                                            |
+| Write an audit record                             | **UNRESOLVED — two sinks (#5125).** Use `AuditLogger` (`src/audit/`) when the record must be durable.                                                                                                                                                                                       |
 
 This table is keyed on the **operation**, not on the symbol. A row answers "what do I call
 to do X", and there is exactly one answer per row. That shape is deliberate: the previous
-version listed important symbols, which let it bless both `createAllAdapters()` and
-`UnifiedAdapterRegistry` as canonical — two entries for one question — and name one event
-bus canonical while `core/event-bus.ts` re-exported the other as the core surface.
+version listed important symbols, which let it name one event bus canonical while
+`core/event-bus.ts` re-exported the other as the core surface — two entries for one
+question.
+
+The adapter rows show the other half of the discipline. A symbol-keyed table listed
+`getGlobalRegistry()` and told readers `createAllAdapters()` was deprecated, and a
+call-site count seemed to confirm drift: 7 uses of the "wrong" one against 1 of the
+"right" one. Keying on the operation showed the opposite (#5191) — they answer different
+questions, the registry structurally cannot serve router construction, and it should not
+(the router is the failover layer, so its arms must not be resilient-wrapped). The fix was
+to **split the row**, not to migrate the call sites. When a row's call sites keep
+disobeying it, check that the row is asking one question before assuming the authors are
+wrong.
 
 **UNRESOLVED is a real value.** Where two implementations exist and choosing between them
 is a design decision rather than a cleanup, the row says so and names the issue. A table

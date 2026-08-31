@@ -64,11 +64,6 @@ vi.mock('./base-agent-memory-init.js', async (importOriginal) => {
     getLearningsByType: vi.fn((state: AgentMemoryState, taskType: string) =>
       state.taskLearnings.filter((l: TaskLearning) => l.taskType === taskType)
     ),
-    getTopPatterns: vi.fn((state: AgentMemoryState, limit: number) =>
-      [...state.executionPatterns]
-        .sort((a: ExecutionPattern, b: ExecutionPattern) => b.successRate - a.successRate)
-        .slice(0, limit)
-    ),
   };
 });
 
@@ -79,14 +74,12 @@ import {
   recordResolutionToState,
   findResolutionFromState,
   getLearningsFromState,
-  getTopPatternsFromState,
   copyMemoryState,
   doRecordLearning,
   doRecordPattern,
   doRecordResolution,
   doFindResolution,
   doGetLearnings,
-  doGetTopPatterns,
 } from './base-agent-memory-ops.js';
 import { persistMemoryState } from './base-agent-memory-init.js';
 
@@ -360,25 +353,6 @@ describe('getLearningsFromState', () => {
 // getTopPatternsFromState
 // ============================================================================
 
-describe('getTopPatternsFromState', () => {
-  it('returns empty array when disabled', () => {
-    expect(getTopPatternsFromState({ memoryEnabled: false, memoryState: null, limit: 5 })).toEqual(
-      []
-    );
-  });
-
-  it('returns patterns sorted and limited', () => {
-    const patterns: ExecutionPattern[] = [
-      { id: '1', pattern: 'a', successRate: 0.5, occurrences: 1, lastSeen: new Date() },
-      { id: '2', pattern: 'b', successRate: 0.9, occurrences: 1, lastSeen: new Date() },
-      { id: '3', pattern: 'c', successRate: 0.7, occurrences: 1, lastSeen: new Date() },
-    ];
-    const state = makeState({ executionPatterns: patterns });
-    const result = getTopPatternsFromState({ memoryEnabled: true, memoryState: state, limit: 2 });
-    expect(result).toHaveLength(2);
-    expect(result[0]!.pattern).toBe('b');
-  });
-});
 
 // ============================================================================
 // copyMemoryState
@@ -468,16 +442,3 @@ describe('doGetLearnings', () => {
   });
 });
 
-describe('doGetTopPatterns', () => {
-  it('returns empty when disabled', () => {
-    expect(doGetTopPatterns({ memoryEnabled: false, memoryState: null }, 5)).toEqual([]);
-  });
-
-  it('returns patterns when enabled', () => {
-    const patterns: ExecutionPattern[] = [
-      { id: '1', pattern: 'p', successRate: 0.8, occurrences: 2, lastSeen: new Date() },
-    ];
-    const state = makeState({ executionPatterns: patterns });
-    expect(doGetTopPatterns({ memoryEnabled: true, memoryState: state }, 5)).toHaveLength(1);
-  });
-});

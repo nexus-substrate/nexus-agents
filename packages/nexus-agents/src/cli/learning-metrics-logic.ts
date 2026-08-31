@@ -307,9 +307,17 @@ function computeSummary(
       : 0;
   const avgReward = feedbackLoop.avgReward;
 
-  // Determine learning status based on exploration ratio
-  let learningStatus: 'exploring' | 'exploiting' | 'balanced';
-  if (banditProgress.explorationRatio > 0.6) {
+  // Determine learning status based on exploration ratio.
+  //
+  // The empty case first, keyed on the input the verdict depends on (#5267).
+  // With no bandit supplied the fallback gives `explorationRatio: 0`, which is
+  // `< 0.3` and used to fall through to 'exploiting' — a green ✓ asserting
+  // convergence over a bandit that was never consulted. A bandit that exists
+  // but has pulled nothing is the same fact, so `totalPulls` covers both.
+  let learningStatus: 'exploring' | 'exploiting' | 'balanced' | 'unmeasured';
+  if (banditProgress.totalPulls === 0) {
+    learningStatus = 'unmeasured';
+  } else if (banditProgress.explorationRatio > 0.6) {
     learningStatus = 'exploring';
   } else if (banditProgress.explorationRatio < 0.3) {
     learningStatus = 'exploiting';

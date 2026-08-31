@@ -15,6 +15,21 @@ import type { MemoryBenchmarkResult } from './memory-benchmark.js';
 // ============================================================================
 
 /** Format benchmark results as a human-readable string. */
+/**
+ * The decay line, extracted so its phrasing lives in one place (#5260).
+ *
+ * `unmeasured` is not 0% and not 100%: the score is `null` when the backend
+ * search failed or the store was empty. The item count travels with the number
+ * so a reader can see the denominator the score was computed over.
+ */
+function formatDecayConsistency(result: MemoryBenchmarkResult): string {
+  if (result.decayConsistencyScore === null) {
+    return '  Decay consistency: unmeasured (no items checked)';
+  }
+  const pct = (result.decayConsistencyScore * 100).toFixed(1);
+  return `  Decay consistency: ${pct}% (${String(result.decayItemsChecked)} items)`;
+}
+
 export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
   const lines: string[] = [
     '╔════════════════════════════════════════╗',
@@ -52,7 +67,7 @@ export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
   lines.push('');
   lines.push('▸ Phase 2: Growth & Decay');
   lines.push(`  Growth rate: ${result.growthRateBytesPerOp.toFixed(0)} bytes/op`);
-  lines.push(`  Decay consistency: ${(result.decayConsistencyScore * 100).toFixed(1)}%`);
+  lines.push(formatDecayConsistency(result));
   lines.push('');
   lines.push('▸ Phase 3: Promotion & Appropriateness');
   lines.push(`  Promotion retention: ${(result.promotionRetentionRate * 100).toFixed(1)}%`);
@@ -109,13 +124,21 @@ type ThresholdCheck = { readonly applied: false } | AppliedThresholdCheck;
 
 /** Helper to check a single threshold condition. */
 function checkThreshold(
-  value: number,
+  value: number | null,
   threshold: number | undefined,
   comparison: 'min' | 'max',
   label: string,
   format: (v: number) => string
 ): ThresholdCheck {
   if (threshold === undefined) return { applied: false };
+  // An unmeasured value must not clear a threshold (#5260). Before this,
+  // `decayConsistencyScore` was 1.0 when the backend search FAILED, so a
+  // configured `minDecayConsistencyScore` passed on a broken backend — a gate
+  // that cannot fail for the reason it exists. Same rule as the #4585 fix
+  // below: report the failure and name it, rather than certifying nothing.
+  if (value === null) {
+    return { applied: true, failure: `${label} unmeasured - could not be checked` };
+  }
   const failed = comparison === 'min' ? value < threshold : value > threshold;
   if (!failed) return { applied: true, failure: null };
   return {

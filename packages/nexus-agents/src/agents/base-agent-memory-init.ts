@@ -62,7 +62,6 @@ export {
   recordErrorResolution,
   findErrorResolution,
   getLearningsByType,
-  getTopPatterns,
 } from './memory-state-operations.js';
 
 // ============================================================================

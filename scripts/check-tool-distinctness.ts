@@ -246,17 +246,44 @@ export function runDistinctnessCheck(
   };
 }
 
+/**
+ * Threshold used when the committed baseline is absent or omits one.
+ *
+ * This was `1.1`, and flagging is `similarity >= threshold` over **cosine
+ * similarity, which is bounded at 1.0** — so the fallback was unreachable by
+ * construction. `flagged` was always empty, `ok` was always true, and the gate
+ * printed "0 pair(s) at/above threshold 1.1" and exited 0 from the required
+ * `lint` job. A reviewer read that green mark as "tool descriptions were
+ * compared"; nothing had been.
+ *
+ * `0.5` is the value the committed baseline has carried since #2676, so a
+ * missing or key-less baseline now behaves like the checked-in one rather than
+ * like a disabled gate. A test pins that this stays reachable.
+ */
+export const DEFAULT_THRESHOLD = 0.5;
+
+/** Drift tolerance applied when the baseline omits one. */
+export const DEFAULT_TOLERANCE = 0.03;
+
+/**
+ * Apply defaults to a parsed (or absent) baseline.
+ *
+ * Split out from `loadBaseline` so both fallback paths — no file at all, and a
+ * file missing keys — are exercised by the same tested function. They carried
+ * the unreachable `1.1` separately, so fixing one would have left the other.
+ */
+export function normalizeBaseline(parsed: Partial<Baseline> | undefined): Baseline {
+  return {
+    threshold: parsed?.threshold ?? DEFAULT_THRESHOLD,
+    tolerance: parsed?.tolerance ?? DEFAULT_TOLERANCE,
+    pairs: parsed?.pairs ?? [],
+  };
+}
+
 /** Load the committed baseline, or a permissive empty one if absent. */
 export function loadBaseline(): Baseline {
-  if (!existsSync(BASELINE_PATH)) {
-    return { threshold: 1.1, tolerance: 0.03, pairs: [] };
-  }
-  const parsed = JSON.parse(readFileSync(BASELINE_PATH, 'utf-8')) as Partial<Baseline>;
-  return {
-    threshold: parsed.threshold ?? 1.1,
-    tolerance: parsed.tolerance ?? 0.03,
-    pairs: parsed.pairs ?? [],
-  };
+  if (!existsSync(BASELINE_PATH)) return normalizeBaseline(undefined);
+  return normalizeBaseline(JSON.parse(readFileSync(BASELINE_PATH, 'utf-8')) as Partial<Baseline>);
 }
 
 // ============================================================================

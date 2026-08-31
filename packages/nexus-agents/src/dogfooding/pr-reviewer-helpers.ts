@@ -448,3 +448,38 @@ export function createFailedReview(
     confidence: 0,
   };
 }
+
+/** The policy gate's verdict on posting a review, as the caller needs it. */
+interface ReviewPostingVerdict {
+  readonly allowed: boolean;
+  readonly hasRuleOfTwoViolation: boolean;
+  readonly violations: readonly { rule: string }[];
+}
+
+/**
+ * Decide whether review posting is blocked, and how to describe it.
+ *
+ * Consumes the gate's own `allowed` rather than re-deriving a narrower
+ * condition. The caller previously blocked on `hasRuleOfTwoViolation` alone
+ * while `evaluatePolicy` had already computed `allowed`.
+ *
+ * For the action `auditReviewAction` builds, the two are currently EQUIVALENT:
+ * tiers 1-2 yield no violations, tiers 3-4 yield INSUFFICIENT_TRUST +
+ * UNTRUSTED_INFLUENCE + RULE_OF_TWO together. So this changes no behaviour
+ * today. It makes the equivalence guaranteed rather than accidental — it holds
+ * only because that context hardcodes `hasWriteAccess` and `hasSecretAccess`
+ * to true, which is what makes `checkRuleOfTwo` fire at tier 3+. Make either
+ * conditional and RULE_OF_TWO stops firing while the other two blocking rules
+ * still do, and a review would post against `allowed: false`.
+ *
+ * Returns `undefined` when posting may proceed. Rule of Two keeps its own
+ * label: it is the distinctive condition (untrusted input + write access +
+ * secrets at once) and reads very differently from a trust-tier block.
+ */
+export function reviewPostingBlock(
+  verdict: ReviewPostingVerdict
+): { label: string; reason: string } | undefined {
+  if (verdict.allowed) return undefined;
+  const label = verdict.hasRuleOfTwoViolation ? 'Rule of Two' : 'Policy gate';
+  return { label, reason: `${label}: ${verdict.violations.map((v) => v.rule).join(', ')}` };
+}

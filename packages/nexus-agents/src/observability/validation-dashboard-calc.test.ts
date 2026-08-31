@@ -54,6 +54,17 @@ function makeOutcomes(count: number, overrides?: Partial<DashboardOutcome>): Das
 // getPeriodBounds
 // ============================================================================
 
+
+/**
+ * Convergence score on the MEASURED path. Throws rather than coercing, so a
+ * comparison test cannot silently pass by comparing two `null`s (#5255).
+ */
+function measuredConvergence(weights: Record<string, number[]>): number {
+  const score = calculateConvergenceScore(weights);
+  if (score === null) throw new Error('expected a measured convergence score, got null');
+  return score;
+}
+
 describe('getPeriodBounds', () => {
   it('returns 1h bounds', () => {
     const { start, end } = getPeriodBounds('1h');
@@ -348,7 +359,10 @@ describe('calculateTaskTypePerformance', () => {
 describe('calculateLearningProgress', () => {
   it('returns zero exploration rate for empty history', () => {
     const result = calculateLearningProgress([], [], {});
-    expect(result.explorationRate).toBe(0);
+    // Was `toBe(0)`. 0.0% is a legitimate exploration rate (a fully greedy
+    // policy), so returning it for "nothing recorded" made absence
+    // indistinguishable from a real reading (#5255).
+    expect(result.explorationRate).toBeNull();
     expect(result.explorationRateTrend).toBe(0);
   });
 
@@ -434,7 +448,9 @@ describe('calculateLearningProgress', () => {
 
   it('optimal rate is 1 when no comparable outcomes', () => {
     const result = calculateLearningProgress([], [], {});
-    expect(result.optimalRate).toBe(1);
+    // Was `toBe(1)` — the single clearest instance of #5255, and the value
+    // the dashboard rendered as "Optimal Decision Rate: 100.0%".
+    expect(result.optimalRate).toBeNull();
   });
 
   it('calculates convergence score from feature weights', () => {
@@ -449,8 +465,9 @@ describe('calculateLearningProgress', () => {
     const outcomes = [makeOutcome({ model: 'claude', reward: 0.8 })];
     const result = calculateLearningProgress(outcomes, [], {});
     // No comparable outcomes => regret defaults
-    expect(result.cumulativeRegret).toBe(0);
-    expect(result.optimalRate).toBe(1);
+    // Was `toBe(0)` / `toBe(1)` (#5255).
+    expect(result.cumulativeRegret).toBeNull();
+    expect(result.optimalRate).toBeNull();
   });
 });
 
@@ -460,11 +477,18 @@ describe('calculateLearningProgress', () => {
 
 describe('calculateConvergenceScore', () => {
   it('returns 0 for empty weights', () => {
-    expect(calculateConvergenceScore({})).toBe(0);
+    // Was `toBe(0)`, which read as WORST-possible convergence —
+    // Math.exp(-variance) only approaches 0, so a literal 0 could never have
+    // been a real reading (#5255).
+    expect(calculateConvergenceScore({})).toBeNull();
   });
 
-  it('returns 0 when all features have < 5 weights', () => {
-    expect(calculateConvergenceScore({ feat1: [1, 2, 3] })).toBe(0);
+  it('returns null when no feature has enough weights to measure variance', () => {
+    // Was `toBe(0)`, pinning the residual #5264 missed: a NON-empty feature map
+    // where every feature has < 5 weights skips the loop entirely, leaving
+    // `variances` empty. That is the state of a learning loop during its first
+    // four decisions, and `0` reads as worst-possible convergence.
+    expect(calculateConvergenceScore({ feat1: [1, 2, 3] })).toBeNull();
   });
 
   it('returns 1 for perfectly stable weights', () => {
@@ -475,7 +499,7 @@ describe('calculateConvergenceScore', () => {
   it('returns lower score for high-variance weights', () => {
     const stable = { feat1: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5] };
     const unstable = { feat1: [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0] };
-    expect(calculateConvergenceScore(stable)).toBeGreaterThan(calculateConvergenceScore(unstable));
+    expect(measuredConvergence(stable)).toBeGreaterThan(measuredConvergence(unstable));
   });
 
   it('uses last 10 values only', () => {
@@ -505,8 +529,11 @@ describe('calculateConvergenceScore', () => {
     expect(calculateConvergenceScore(weights)).toBeCloseTo(1.0, 5);
   });
 
-  it('returns 0 when only feature has fewer than 5 values', () => {
-    expect(calculateConvergenceScore({ feat: [1, 2, 3, 4] })).toBe(0);
+  it('returns null when the only feature has fewer than 5 values', () => {
+    // A second test pinning the same residual (#5264 follow-up). Four weights
+    // is one short of the threshold — the last decision before the metric
+    // becomes measurable — and `0` there reads as worst-possible convergence.
+    expect(calculateConvergenceScore({ feat: [1, 2, 3, 4] })).toBeNull();
   });
 
   it('handles exactly 5 weights', () => {
@@ -525,8 +552,8 @@ describe('calculateConvergenceScore', () => {
     const low = { feat1: [1.0, 1.0, 1.0, 1.0, 1.01] };
     const mid = { feat1: [1.0, 1.0, 1.0, 1.0, 2.0] };
     const high = { feat1: [1.0, 1.0, 1.0, 1.0, 100.0] };
-    expect(calculateConvergenceScore(low)).toBeGreaterThan(calculateConvergenceScore(mid));
-    expect(calculateConvergenceScore(mid)).toBeGreaterThan(calculateConvergenceScore(high));
+    expect(measuredConvergence(low)).toBeGreaterThan(measuredConvergence(mid));
+    expect(measuredConvergence(mid)).toBeGreaterThan(measuredConvergence(high));
   });
 });
 

@@ -593,6 +593,21 @@ export class ToolMemoryManager {
   }
 
   /**
+   * Live session counts for `memory_stats` (#5269).
+   *
+   * These were reported as a hardcoded `0` beside `session: true`, so a caller
+   * read "session memory is healthy and holds 0 tasks, 0 errors" — the backend
+   * assertion corroborating the fabricated zeros. The episode has held both all
+   * along; nothing exposed them before `endSession`.
+   */
+  getSessionCounts(): { tasksCount: number; errorsCount: number } {
+    return {
+      tasksCount: this.memory.getCurrentSessionTasks().length,
+      errorsCount: this.memory.getCurrentSessionErrors().length,
+    };
+  }
+
+  /**
    * Retrieve past learnings relevant to a task description.
    * Searches by keywords, falls back to highest-confidence learnings.
    * Returns formatted string or undefined if none found.

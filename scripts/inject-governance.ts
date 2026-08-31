@@ -30,7 +30,7 @@ import { ROOT } from './script-paths.js';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
 import { loadBaseline, runDistinctnessCheck } from './check-tool-distinctness.js';
-import { scanToolFiles } from './check-tool-output-consistency.js';
+import { scanToolFilesWithCoverage } from './check-tool-output-consistency.js';
 import {
   newOffenders as newMemoryContractOffenders,
   readBaseline as readMemoryContractBaseline,
@@ -1302,7 +1302,18 @@ function checkToolPrerequisites(): boolean {
  * source instead. Full logic in `check-tool-output-consistency.ts`.
  */
 function checkToolOutputConsistency(): boolean {
-  const violations = scanToolFiles();
+  const { violations, scanned, dirMissing } = scanToolFilesWithCoverage();
+  // #5298: `scanToolFiles()` returns [] when the tools directory does not
+  // resolve, so a moved or renamed path produced a clean governance verdict
+  // from a run that inspected zero files — with no count, path, or log to
+  // distinguish it from a genuine pass.
+  if (dirMissing || scanned === 0) {
+    console.error(
+      'Tool-output consistency: scanned 0 tool files — the check proved nothing. ' +
+        'Fix the tools path rather than trusting this run.'
+    );
+    return false;
+  }
   if (violations.length === 0) return true;
   console.error(
     'Tool-output consistency: timestamp-named field(s) typed as a bare number (#2653):'

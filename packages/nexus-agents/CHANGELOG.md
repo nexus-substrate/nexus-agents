@@ -1,5 +1,964 @@
 # nexus-agents
 
+## 6.1.3
+
+### Patch Changes
+
+- [#5311](https://github.com/nexus-substrate/nexus-agents/pull/5311) [`f20f0ec`](https://github.com/nexus-substrate/nexus-agents/commit/f20f0ec92121ad7a694b3984d1cc24438f3da1ab) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(dogfooding): gate review posting on the policy verdict, not a re-derived one
+
+  `postReviewToGitHub` blocked on `hasRuleOfTwoViolation` alone while
+  `evaluatePolicy` had already computed `allowed` and `requiresApproval`, both of
+  which `auditReviewAction` discarded.
+
+  Measured before changing anything, by driving `evaluatePolicy` with the exact
+  action `auditReviewAction` builds: tiers 1-2 produce no violations, and tiers
+  3-4 produce `INSUFFICIENT_TRUST` + `UNTRUSTED_INFLUENCE` + `RULE_OF_TWO`
+  together. The narrow gate and the full verdict are therefore **equivalent
+  today**, and no review is published against a blocking verdict. This changes no
+  behaviour.
+
+  What it changes is that the equivalence becomes guaranteed rather than
+  accidental: it holds only because `auditReviewAction` hardcodes
+  `hasWriteAccess: true` and `hasSecretAccess: true`, which is what makes
+  `checkRuleOfTwo` fire at tier 3+. Make either conditional — a read-only token
+  path — and `RULE_OF_TWO` stops firing while the other two blocking rules still
+  do, and a review would post against `allowed: false`.
+
+  The decision moves into `reviewPostingBlock` in `pr-reviewer-helpers.ts` so the
+  divergent case is directly testable. `requiresApproval` deliberately does not
+  gate: it is true exactly when `allowed` is true, so blocking on it would refuse
+  every review that passed.
+
+## 6.1.2
+
+### Patch Changes
+
+- [#5197](https://github.com/nexus-substrate/nexus-agents/pull/5197) [`d460fe7`](https://github.com/nexus-substrate/nexus-agents/commit/d460fe75e4a6a8d8776b09e2810a28e004b23efb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(governance): the token→USD canonical row is no longer UNRESOLVED ([#5122](https://github.com/nexus-substrate/nexus-agents/issues/5122))
+
+  The canonical-paths table said **UNRESOLVED — eight paths**, and told readers to
+  prefer `computeCostDetail` until the pilot landed. It has landed.
+
+  The audit found eleven implementations, not eight; the [#5123](https://github.com/nexus-substrate/nexus-agents/issues/5123) ratchet then found a
+  twelfth ([#5186](https://github.com/nexus-substrate/nexus-agents/issues/5186)) the audit had missed. All of them now route through
+  `learning/token-cost-core`, and the ratchet reports **0 outstanding alternates**
+  with CI failing on a new one.
+
+  The row names `computeTokenCost` — the arithmetic — and states the shape the
+  ratifying panel chose: unpriced POLICY stays in named wrappers rather than
+  becoming a flag on one function, because a policy enum makes picking the wrong
+  one a one-character mistake that typechecks and ships green. The three policies
+  remain `resolveCliCostPer1M` (conservative, for budget filtering),
+  `calculateCost`/`estimateRegistryCostUsd` (fail-closed `undefined`, for
+  ceilings), and `computeCostDetail` (`priced: false`, for the ledger).
+
+  Governance-path change: requires owner ratification, not self-merge.
+
+- [#5307](https://github.com/nexus-substrate/nexus-agents/pull/5307) [`e817026`](https://github.com/nexus-substrate/nexus-agents/commit/e8170265413831d55148f2d15325f60ed0ff19c9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): two governor-path gates passed when they scanned nothing
+
+  Both decided a verdict from an empty collection that was empty because nothing
+  was inspected, not because nothing was wrong.
+
+  - `governance/claims-coverage.ts` skipped any declared doc that did not exist
+    (`if (!fs.exists(path)) continue`) and returned
+    `passed: uncovered.length === 0`. `CoverageReport` carried no scanned count,
+    and `claims-check.ts` printed only `registry.claims.length` — the FORWARD
+    number, independent of the reverse scan. So renaming `README.md` made the
+    anti-gaming arm certify green having read nothing, which is an easier gaming
+    path than the two silent-removal and mask-by-addition vectors it exists to
+    catch. A gate defeated by `git mv` is not a gate. The report now carries
+    `docsScanned` and `docsMissing`, a missing declared doc fails, and the
+    success line states how many docs were scanned.
+  - `inject-governance.ts`'s `checkToolOutputConsistency` returned `true` on
+    `violations.length === 0` over `scanToolFiles()`, which yields `[]` when the
+    MCP tools directory does not resolve. It now uses the coverage-aware scan
+    added in [#5297](https://github.com/nexus-substrate/nexus-agents/issues/5297) and fails when zero files were inspected.
+
+## 6.1.1
+
+### Patch Changes
+
+- [#5305](https://github.com/nexus-substrate/nexus-agents/pull/5305) [`ffed9b4`](https://github.com/nexus-substrate/nexus-agents/commit/ffed9b4b63f88084f15faf9205e0be149643e88e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): tell the contrarian when it is seeing part of the proposal
+
+  `runContrarianCheck` cut the proposal to 2000 characters with no marker. A
+  `pr_review` proposal carries up to `MAX_DIFF_LENGTH = 50_000` bytes of diff, so
+  the contrarian could be deciding whether to escalate having seen ~4% of it —
+  the header region, where a diff is least informative — and returned the same
+  `{ shouldEscalate: false }` it returns after reading the whole thing. In
+  `quickMode` the 3-voter result then stands unescalated on that basis.
+
+  The budget is unchanged, so escalation behaviour on ordinary proposals is
+  identical. What changed is that exceeding it is disclosed: the prompt carries a
+  visible partial-view note, and the truncation is logged.
+
+  Adds `utils/bounded-artifact.ts`, the character-oriented sibling of
+  `pr-review-diff-budget.ts` ([#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)) — within budget the output is
+  byte-identical; over budget a note rides on the prompt and a machine-readable
+  bound rides on the result.
+
+## 6.1.0
+
+### Minor Changes
+
+- [#5300](https://github.com/nexus-substrate/nexus-agents/pull/5300) [`054da19`](https://github.com/nexus-substrate/nexus-agents/commit/054da19b1a35d4a83d3cdbb6260162e8870be384) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(pipeline): disclose a bounded QA review instead of recording it as complete
+
+  CLAUDE.md requires that a review consume the artifact, and that a bounded read
+  state which portion was reviewed — "a partial review recorded as complete is
+  the failure." Two sites in `agent-executor` broke that:
+
+  - `qaReview` sent `implementation.slice(0, 3000)` with no marker in the prompt
+    and no coverage on the result. `QaReviewResult` was
+    `{ verdict, feedback, issues }` — byte-identical for a 500-char and a
+    500,000-char implementation — and `dev-pipeline` then set `status: 'done'`
+    and persisted the full text on a pass the expert reached from the first 3000
+    characters. A defect introduced at character 3001 shipped with a recorded QA
+    pass.
+  - `buildVoteProposal` capped the plan at ~2900 characters. The appended
+    research block is explicitly labelled "may be incomplete"; the plan was not,
+    so voters were shown a silently-truncated plan as though whole while the vote
+    record named the full plan.
+
+  Both now disclose. The shape mirrors `packDiffForReview` ([#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)), which already
+  solved this for `pr_review`: within budget the output is byte-identical and
+  carries no coverage, and over budget a visible NOTE rides on the prompt with a
+  machine-readable `QaReviewCoverage` on the result.
+
+  This lands the honest-labelling half only. Whether a partial QA review should
+  additionally be barred from marking a task done — as [#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)'s
+  `applyPartialCoverageGate` does for `verified: true` — is a behaviour change
+  tracked separately.
+
+### Patch Changes
+
+- [#5304](https://github.com/nexus-substrate/nexus-agents/pull/5304) [`91629c4`](https://github.com/nexus-substrate/nexus-agents/commit/91629c46f8e689daf97e3fc03aac7513059c66b3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): let the stall watchdog report that it is not measuring ([#5282](https://github.com/nexus-substrate/nexus-agents/issues/5282))
+
+  `HeartbeatMonitor.isStalled` returned a bare boolean, collapsing the
+  `'unmeasured'` state its own `classifyHealth` already computes into `false`.
+  Both consumers — `execute-expert.ts` and `orchestrate.ts` — therefore read a
+  green "not stalled" from a session no instrumentation had ever reported on.
+
+  For expert sessions that is every session. `withStep` is the only emitter on
+  `stepBus`, it fires exactly twice per step (open and close) with no
+  intermediate progress, and no `withStep` call site lies inside the expert
+  execution path — so `heartbeatCount` stays 0 and the warning at
+  `execute-expert.ts:642` was unreachable.
+
+  Resolved by a 7-voter `higher_order` panel (6 approve / 1 reject; the
+  `unmeasured` option leading at 66.7%). The panel explicitly rejected emitting a
+  synthetic heartbeat: because `withStep` reports no intermediate progress, any
+  such fix yields one heartbeat at session start and then silence, flipping the
+  check from inert to firing a FALSE stall on every model call over the 120s
+  threshold. `classifyHealth` already records that same finding in a comment.
+
+  `isStalled` is replaced by `classifyStallTick`, a pure classifier over the
+  existing `SessionHealth` vocabulary returning `'stalled' | 'unmeasured' |
+'quiet'`. Removing the boolean rather than widening it is deliberate: a string
+  union is always truthy, so `if (monitor.isStalled(id))` would have silently
+  become always-true. `getHealth()` also now reports `unmeasuredSessions`, so an
+  all-uninstrumented fleet is no longer summarised by `stalledSessions: 0` alone.
+
+  Not a public API change — neither `HeartbeatMonitor` nor `isStalled` appears in
+  `api-surface.txt`.
+
+## 6.0.6
+
+### Patch Changes
+
+- [#5297](https://github.com/nexus-substrate/nexus-agents/pull/5297) [`1ac2cb9`](https://github.com/nexus-substrate/nexus-agents/commit/1ac2cb9d693b6caadeb8fca213397225c0abb6d8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): three CI gates reported a pass over an empty input set
+
+  All three decided success with `length === 0` over a collection that could be
+  empty because nothing was found to inspect, not because nothing was wrong.
+
+  - `check-tool-output-consistency.ts` opened with
+    `if (!existsSync(TOOLS_DIR)) return []` and printed
+    "Tool output consistency OK — no timestamp-as-number fields." with no path,
+    count, or file list. A zero-file run was indistinguishable from a clean sweep
+    of every tool. It now reports coverage ("141 tool file(s) scanned") and fails
+    when the directory is missing or nothing was scanned.
+  - `check-model-string-drift.ts` scanned via ts-morph
+    `addSourceFilesAtPaths`, which returns an empty set for a glob matching
+    nothing rather than throwing. Its success line printed `ALLOWLIST.length`, a
+    static constant that reads as coverage but is independent of what was
+    scanned. It now prints the real scanned count and fails at zero.
+  - `check-dist-assets.ts` did `if (stat.isDirectory()) continue`, so a declared
+    directory passed on existence alone — making `minBytes: 1` dead data on
+    `workflows/templates` and `security/ast-rules`, and an empty shipped
+    directory indistinguishable from a populated one. Assets are now kind-tagged
+    (`file` with `minBytes`, `dir` with `minEntries`), empty directories fail,
+    and a kind mismatch is reported instead of skipped.
+
+  All three run in required CI jobs. `scanToolFiles` keeps its array shape as a
+  view over the new coverage-aware scan so `scripts/inject-governance.ts` is
+  unaffected.
+
+## 6.0.5
+
+### Patch Changes
+
+- [#5295](https://github.com/nexus-substrate/nexus-agents/pull/5295) [`dfc321e`](https://github.com/nexus-substrate/nexus-agents/commit/dfc321ecc6cd3a553ec6fa7f9f6db0d3d669c485) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): make the tool-distinctness fallback threshold reachable
+
+  `loadBaseline()` in `scripts/check-tool-distinctness.ts` fell back to
+  `threshold: 1.1` when the baseline file was absent, and used the same value
+  when a present baseline omitted the key. Flagging is `similarity >= threshold`
+  over cosine similarity, which is bounded at 1.0 — so the fallback could not
+  fire for any corpus. `flagged` was always empty, `ok` was always true, and the
+  gate printed "Tool distinctness OK — 0 pair(s) at/above threshold 1.1" and
+  exited 0 from the required `lint` job.
+
+  The committed baseline carries `0.5`, so the gate does work today; deleting the
+  file or dropping the key would have silently disabled it while still rendering
+  a green check a reviewer reads as "tool descriptions were compared".
+
+  Both fallback sites now use an exported `DEFAULT_THRESHOLD = 0.5` (the value
+  the baseline has carried since [#2676](https://github.com/nexus-substrate/nexus-agents/issues/2676)), and the defaulting logic is extracted
+  into `normalizeBaseline()` so both paths are covered by one tested function.
+  With the baseline removed, the gate now actually compares and flags
+  `research_add` ↔ `research_add_source` at 0.531 instead of reporting a pass.
+
+## 6.0.4
+
+### Patch Changes
+
+- [#5292](https://github.com/nexus-substrate/nexus-agents/pull/5292) [`423faf4`](https://github.com/nexus-substrate/nexus-agents/commit/423faf41f33df6b98f9d7afe27a24200a337c2f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): the pre-tool gate fails closed on an unusable block pattern
+
+  `testCustomPattern` caught an invalid `RegExp` from `config.customBlockPatterns`
+  — an **operator-authored denylist** — and returned `false`, meaning "did not
+  match". `validateBashCommand` then returned `null` and `handlePreTool` fell
+  through to `allowTool()`.
+
+  So a single malformed regex silently disabled that rule and the command was
+  **allowed**, with a `HookResult` indistinguishable from _"evaluated against every
+  pattern and clean"_. The `logger.warn` went to the hook's own logger, not into
+  the result the caller acts on, so neither the client nor the audit trail of the
+  tool call recorded that a rule had been skipped. A bad regex is the single most
+  likely thing an operator gets wrong in this config.
+
+  `.rules/untrusted-input.md` invariant 5 is _"Fail closed. On ambiguity or
+  conflicting signals, refuse and escalate. Never guess."_ — and the same repo
+  already does this correctly at `codepr-guards.ts:735`, where a throwing guard
+  returns `deny('guard_error', … '(fail-closed)')`.
+
+  `testCustomPattern` now returns `'match' | 'no-match' | 'invalid'`. Collapsing
+  the last two is what made an unusable rule read as a clean one. An invalid
+  pattern denies, and the reason **names the pattern and says it did not compile**
+  — an operator seeing "Blocked by custom pattern" would conclude their rule fired
+  rather than that it is broken, which is a different diagnosis and a different
+  fix.
+
+  An existing test named `should handle invalid regex patterns gracefully`
+  asserted `allow`, pinning the fail-open as intended behaviour.
+
+## 6.0.3
+
+### Patch Changes
+
+- [#5291](https://github.com/nexus-substrate/nexus-agents/pull/5291) [`843f82d`](https://github.com/nexus-substrate/nexus-agents/commit/843f82d4d33332368f161b7895b2721a16bb0787) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): label routing-audit's LinUCB box as a cold bandit ([#5267](https://github.com/nexus-substrate/nexus-agents/issues/5267))
+
+  `routing-audit-logic.ts` constructs `new LinUCBBandit(eligibleClis)` and does
+  **not** warm-start it. The production router does — `composite-router.ts:341-342`
+  calls `warmStartBandit()`, replaying persisted outcomes through a 30-day
+  lookback.
+
+  So the box rendered `pulls: 0` per arm plus `← explore`/`← exploit` verdicts and
+  UCB scores that are initialization constants, presented as the router's state.
+  `routing-audit` exists to show what the router would do, and showed something
+  the router would not do.
+
+  Same remedy, and the same two-line shape, as the budget filter's `[simulated]`
+  label one function up ([#4843](https://github.com/nexus-substrate/nexus-agents/issues/4843)) — whose comment noted that `boxLine` pads to
+  `BOX_WIDTH - 2` and `padEnd` silently no-ops past it, so a long single line
+  pushes the right border off every row. The [#4891](https://github.com/nexus-substrate/nexus-agents/issues/4891) overflow regression test covers
+  the whole report, so the new label is checked for fit automatically.
+
+  This completes [#5267](https://github.com/nexus-substrate/nexus-agents/issues/5267)'s ratified disclosure half (option C, 6/6). Making either
+  surface reflect the router's _real_ bandit state is [#5275](https://github.com/nexus-substrate/nexus-agents/issues/5275), which records why
+  "extract the warm-start" may be the wrong shape for it.
+
+## 6.0.2
+
+### Patch Changes
+
+- [#5290](https://github.com/nexus-substrate/nexus-agents/pull/5290) [`72b39c4`](https://github.com/nexus-substrate/nexus-agents/commit/72b39c47423d307d504e6536d5927b70cb32dc6e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): stop research_add flaking the standalone-tools schema check ([#5288](https://github.com/nexus-substrate/nexus-agents/issues/5288))
+
+  `mcp-standalone-tools.test.ts` calls `research_add` with a real arXiv id, and
+  `addResearchPaper` fetches arxiv.org — `dryRun` suppresses the registry _write_,
+  not the fetch. So the tool emits structured content when arxiv.org answers and a
+  `toolStructuredError` envelope with **none** when it does not, landing it in the
+  suite's `notExercised` bucket and failing the strict comparison. CI hits the
+  second case often enough to fail on PRs touching nothing near it.
+
+  This is not a new defect class — the file already carves out `research_synthesize`
+  for the same reason with registry state in place of the network, and says so:
+
+  > Data-dependent tools may legitimately land in either bucket; everything else
+  > must match the pinned list exactly.
+
+  `research_add` joins `DATA_DEPENDENT_STRUCTURED`, with a comment naming the
+  network as the varying input.
+
+  **The exemption removes coverage, so it is replaced, not simply dropped.**
+  `research-add.test.ts` gains a deterministic schema-parity test with no network
+  at all — the declared `outputSchema` key set must equal the one
+  `handleResearchAdd` returns — following the same instrument
+  `research-synthesize.test.ts` uses. Mutation-verified in both directions:
+  declaring a key the handler never returns fails, and dropping one it does return
+  fails.
+
+## 6.0.1
+
+### Patch Changes
+
+- [#5286](https://github.com/nexus-substrate/nexus-agents/pull/5286) [`d1c1672`](https://github.com/nexus-substrate/nexus-agents/commit/d1c167286e12493149feebfab13b5de3f61456b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(orchestration): persisted bandit records use the shared neutral, not zero ([#5284](https://github.com/nexus-substrate/nexus-agents/issues/5284))
+
+  `toBanditContext` wrote `budgetUtilization: 0` and `timePressure: 0` into
+  records that `hydrateShadowSelector` replays into a LinUCB bandit **in a later
+  process** — under a comment reading _"left neutral"_.
+
+  By this repo's own definition, neutral for these features is `0.5`, documented
+  in `composite-router-helpers.ts` for two reasons:
+
+  > Neutral rather than zero: **zero would read as "budget untouched" and is a
+  > claim**; 0.5 is the same value `warmStart` replays historical outcomes at.
+
+  and, sharper:
+
+  > two DIFFERENT constants across live paths let the bandit **use the value as a
+  > path indicator — accidental signal rather than none**.
+
+  A previous fix already unified divergent constants for exactly that reason. The
+  persisted path was a third constant it missed, so records written at `0` let the
+  bandit distinguish shadow-selector origin from live-router origin through the
+  budget feature alone — and they do not match the context `warmStart`
+  reconstructed the weights against.
+
+  `NEUTRAL_BANDIT_FEATURE` now lives beside `BanditContext` in
+  `budget-router-types.ts`, where every producer of that type can reach it. It was
+  previously module-private to the live path, which is how the persisted path came
+  to disagree with its own comment.
+
+  No public API change; the writer is gated behind `NEXUS_META_SHADOW_TRAIN=1`, so
+  this affects shadow training data rather than live routing.
+
+## 6.0.0
+
+### Major Changes
+
+- [#5285](https://github.com/nexus-substrate/nexus-agents/pull/5285) [`ab13b46`](https://github.com/nexus-substrate/nexus-agents/commit/ab13b46c26fcc775e62f72bb74143521825ff7d2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(agents)!: remove `ExecutionPattern.successRate` and the dead ranking chain ([#5261](https://github.com/nexus-substrate/nexus-agents/issues/5261))
+
+  **BREAKING.** `successRate` is removed from the published `ExecutionPattern`
+  interface, reachable via the published, persisted `AgentMemoryState`.
+
+  ## Read this before assuming data was lost
+
+  **The field never carried information.** Both production writers hardcoded
+  `1.0` — `base-agent-execution-helpers.ts` and `base-agent-memory-helpers.ts` —
+  and the failure path recorded an _error resolution_ rather than an execution
+  pattern, so nothing could ever lower the running mean. Every persisted record
+  ever written has `successRate: 1`, for every task type, regardless of outcome.
+
+  A reader of persisted agent memory was told every task type had a 100% success
+  rate. Removing the field converts a silent misreport into a loud type error,
+  which is the correct failure mode for a record that is read back across
+  sessions.
+
+  Also removed: the ranking chain that sorted by it — `getTopPatterns`,
+  `getTopExecutionPatterns` (×2), `getTopPatternsFromState` and `doGetTopPatterns`
+  — five wrappers with no terminal consumer. `getTopExecutionPatterns` was
+  documented as returning "top patterns by success" and, sorting by a constant,
+  returned insertion order.
+
+  ## Migration
+
+  Nothing to migrate. **Existing persisted records load unchanged** —
+  `loadMemoryState` reconstructs structurally with per-field defaults and no schema
+  validation, so the extra property on older records is ignored. That behaviour is
+  now pinned by a test, because a later move to a strict schema would otherwise
+  start rejecting every pre-existing record silently.
+
+  If you consumed `successRate`, you were reading a constant. `occurrences` on the
+  same interface is the count that was always real.
+
+  A genuine per-task-type reliability signal belongs in `OutcomeStore` feeding
+  `StrategyDistiller` — the route [#2792](https://github.com/nexus-substrate/nexus-agents/issues/2792) Phase 6 already designates for MemoryState
+  signals — not in a second estimator inside per-instance memory.
+
+  Ratified unanimously (6/6) on [#5261](https://github.com/nexus-substrate/nexus-agents/issues/5261) after a first round split 4/2.
+
+## 5.0.6
+
+### Patch Changes
+
+- [#5279](https://github.com/nexus-substrate/nexus-agents/pull/5279) [`4451449`](https://github.com/nexus-substrate/nexus-agents/commit/44514498cf966ff53e791facb56a5ac3bef4a74a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(hooks): a mapped-but-unwired hook event no longer succeeds silently
+
+  `routeHook` returned a bare `exitSuccess()` for two different facts:
+
+  - **unmapped** (`Notification`, `Setup`) — correct; we never claimed to handle
+    those.
+  - **mapped, but no handler registered** — a gap in our own wiring, reporting
+    success.
+
+  `EVENT_TO_HANDLER` maps 7 events while `createAllHandlers` supplies 5, so
+  `SubagentStop` and `UserPromptSubmit` land in the second case.
+
+  The unwired case now writes a line to stderr naming the event. **The exit code
+  stays 0 deliberately**: a non-zero exit from a hook can block the user's
+  operation, and a gap in _our_ configuration must not do that. What changes is
+  that the silence becomes visible.
+
+  Scope, stated precisely: this is narrower than "2 of 7 events silently no-op".
+  Our setup registers only the same 5 (`setup-mcp.ts:360`), `createCommandHandlers`
+  accepts only those 5 subcommands, and an unknown subcommand already exits loudly.
+  The reachable path is `nexus-agents hooks` with **no subcommand**, which routes
+  stdin by `hook_event_name` through `createAllHandlers` — a hand-configured
+  `SubagentStop` hook lands there.
+
+  Implementing the two missing handlers would be YAGNI; making the gap
+  distinguishable is the actual defect, and it is two lines.
+
+## 5.0.5
+
+### Patch Changes
+
+- [#5277](https://github.com/nexus-substrate/nexus-agents/pull/5277) [`992ad87`](https://github.com/nexus-substrate/nexus-agents/commit/992ad87b7a8fbfd1357989e5d0cbc5426d59f74f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): learning-metrics no longer reports a green ✓ "exploiting" over zero data ([#5267](https://github.com/nexus-substrate/nexus-agents/issues/5267))
+
+  `cli-commands-handlers.ts` calls `learningMetricsCommand(options)` with **no
+  second `context` argument**, and no production caller supplies one. So
+  `gatherLearningMetrics` always took its fallback —
+  `?? { totalPulls: 0, explorationRatio: 0, … }` — and `explorationRatio: 0` is
+  `< 0.3`, which produced `learningStatus: 'exploiting'`, rendered with a **green
+  ✓**.
+
+  The CLI reported that the bandit had converged past exploration into
+  exploitation — the strongest positive signal on the screen — when the bandit was
+  never consulted.
+
+  `learningStatus` gains `'unmeasured'`, guarded on `totalPulls === 0`. That keys
+  the verdict on the input it actually depends on, and covers both cases: no
+  bandit supplied, and a real bandit that has pulled nothing. The renderer shows
+  `? Learning Status: unmeasured (no routing decisions recorded)` — never the green
+  check.
+
+  **Two tests pinned the defect.** One was named `summary shows exploring status
+for high exploration ratio`, asserted `'exploiting'`, and carried a comment
+  explaining the mechanism: _"When all sources undefined, exploration ratio is 0 →
+  exploiting"_. The other whitelisted `['exploring', 'exploiting', 'balanced']`, so
+  it would have failed on the honest value while passing on the fabricated one.
+
+  Internal only — `learningStatus` is not on the published API surface, so widening
+  the union is not breaking.
+
+  Making these two surfaces reflect the router's _real_ bandit state is tracked
+  separately in [#5275](https://github.com/nexus-substrate/nexus-agents/issues/5275), which also records why "extract the warm-start" may be the
+  wrong shape for it.
+
+## 5.0.4
+
+### Patch Changes
+
+- [#5274](https://github.com/nexus-substrate/nexus-agents/pull/5274) [`26574c6`](https://github.com/nexus-substrate/nexus-agents/commit/26574c681c17687ee9613e787208258268587f6f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): memory_stats reports real session task and error counts ([#5269](https://github.com/nexus-substrate/nexus-agents/issues/5269))
+
+  `memory_stats` initialised `{ learningsCount: 0, tasksCount: 0, errorsCount: 0 }`
+  and only ever assigned `learningsCount`. The other two were returned as `0` on
+  **every** call, forever.
+
+  The sibling field in the same response makes it worse rather than better:
+
+  ```ts
+  session: true, // Always available
+  ```
+
+  So a caller read _"session memory is healthy, and it holds 0 tasks and 0 errors."_
+  The positive backend assertion **corroborated** the fabricated zeros instead of
+  qualifying them — the same shape as [#5252](https://github.com/nexus-substrate/nexus-agents/issues/5252), where `Total Decisions: 412` sat
+  beside a rate computed over zero.
+
+  The counts were never absent. The session episode has held `tasksCompleted` and
+  `errorsResolved` all along — visible in `tool-memory.ts`'s own `endSession` log —
+  they were simply not readable mid-session. `SessionMemory` gains
+  `getCurrentSessionTasks()` and `getCurrentSessionErrors()`, siblings of the
+  existing `getCurrentSessionLearnings()`, and `ToolMemory.getSessionCounts()`
+  passes them through.
+
+  No `?.` guard on the new call, deliberately: a defensive read would silently
+  restore the fabricated zeros if the wiring ever broke, which is the defect this
+  fixes.
+
+## 5.0.3
+
+### Patch Changes
+
+- [#5272](https://github.com/nexus-substrate/nexus-agents/pull/5272) [`caef3c0`](https://github.com/nexus-substrate/nexus-agents/commit/caef3c0c7068c0001c73e3b6491574dba5d4e408) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(observability): the convergence score's second empty case ([#5255](https://github.com/nexus-substrate/nexus-agents/issues/5255) follow-up)
+
+  [#5264](https://github.com/nexus-substrate/nexus-agents/issues/5264) made `calculateConvergenceScore` return `null` for an empty feature map and
+  left a second empty case three lines below it:
+
+  ```ts
+  for (const weights of Object.values(featureWeights)) {
+    if (weights.length < 5) continue;      // <- every feature can be skipped
+    ...
+  }
+  if (variances.length === 0) return 0;     // <- still fabricating
+  ```
+
+  A **non-empty** feature map whose features all have fewer than 5 recorded weights
+  skips every iteration, leaving `variances` empty. That is the state of a learning
+  loop during its first four decisions — so the case is not exotic, it is the one
+  the metric passes through on the way to being measurable.
+
+  `0` there reads as _worst-possible_ convergence, and `Math.exp(-avgVariance)`
+  only ever approaches 0, so a literal 0 could not have been a real reading. Now
+  `null`, matching the case above it.
+
+  **Three tests pinned this**, including two named `returns 0 when all features have
+< 5 weights` and `returns 0 when only feature has fewer than 5 values`.
+
+  One of them was mine: [#5264](https://github.com/nexus-substrate/nexus-agents/issues/5264)'s control asserted `calculateConvergenceScore({ f: [1,
+1, 1] })` was `not.toBeNull()` — three weights, under the threshold, so it passed
+  on the fabricated `0` rather than on a measurement and could not have
+  distinguished a working measured path from `return 0`. It now uses five weights
+  and asserts the exact value.
+
+## 5.0.2
+
+### Patch Changes
+
+- [#5270](https://github.com/nexus-substrate/nexus-agents/pull/5270) [`2e09bb6`](https://github.com/nexus-substrate/nexus-agents/commit/2e09bb6f99bbf0db73b9e9c35c9ddbd046909286) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): replace the backtracking hidden_instruction detector with a linear scan
+
+  The `hidden_instruction` detector backtracked catastrophically on adversarial
+  input, and the containment fix in [#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) made it roughly **3x worse**. Measured on
+  Node 22 with a repeated-prefix body:
+
+  | input   | before [#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) | after [#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) |
+  | ------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+  | 8.8 KB  | 203 ms                                                                      | 699 ms                                                                     |
+  | 17.6 KB | —                                                                           | 5,743 ms                                                                   |
+
+  Growth is cubic, so a body at GitHub's 65,536-character PR-body cap runs for
+  minutes.
+
+  This was reachable. `sanitizeToolInput` runs in `secure-handler`'s
+  `runPreChecks` for **every** secure-handled tool, ahead of the tier check, behind
+  only a 10 MB size gate. `wrapToolWithTimeout` cannot mitigate it — backtracking
+  blocks the event loop synchronously, so the timer never fires. A single crafted
+  PR body to `pr_review` would wedge the entire stdio MCP server, every unrelated
+  tool call included.
+
+  Detection is now a linear `indexOf` scan over comment spans: walk to `<!--`, find
+  the matching `-->`, test the interior once against an alternation of literals, and
+  never revisit a character. Behaviour is unchanged — all 37 existing correctness
+  tests pass untouched, including the [#5258](https://github.com/nexus-substrate/nexus-agents/issues/5258) containment cases.
+
+  Three cost regression tests now pin the property that was missing. Reintroducing
+  the regex does not merely fail them; it **hangs the test runner past two
+  minutes**.
+
+  Both the pre-[#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) and post-[#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) regexes were exploitable. [#5262](https://github.com/nexus-substrate/nexus-agents/issues/5262) worsened an
+  existing hazard rather than creating one, but it put it on an attacker-reachable
+  path by giving `pr_review` a tier that made the detector load-bearing.
+
+## 5.0.1
+
+### Patch Changes
+
+- [#5266](https://github.com/nexus-substrate/nexus-agents/pull/5266) [`4acdf58`](https://github.com/nexus-substrate/nexus-agents/commit/4acdf58e00746dd8cf24da830c312e2bed3326f0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(testing): memory-benchmark no longer reports 100% decay consistency for a failed measurement ([#5260](https://github.com/nexus-substrate/nexus-agents/issues/5260))
+
+  `measureDecayConsistency` returned `{ consistencyScore: 1.0, itemsChecked: 0 }`
+  when the backend search **failed** — on the line directly below a log reading
+  `'Cannot measure decay consistency - search failed'`. `itemsChecked: 0` was the
+  honest disclosure and was discarded at the result boundary, so
+  `Decay consistency: 100.0%` reached the CLI and the CSV.
+
+  A benchmark reporting 100% on backend failure is worse than one that crashes: a
+  broken memory backend produced output identical to a perfectly consistent one,
+  and the rows were indistinguishable in a time series.
+
+  Two changes, and the second is the sharper one:
+
+  - `decayConsistencyScore` is now `number | null`, `null` meaning UNMEASURED —
+    a failed search or an empty store, never zero. `decayItemsChecked` is carried
+    onto the result so the denominator travels with the score, and the renderer
+    prints `unmeasured (no items checked)`.
+  - **An unmeasured value no longer clears a threshold.** `checkThreshold` fed
+    that fabricated `1.0` into `minDecayConsistencyScore`, so a configured
+    minimum _passed on a broken backend_ — a gate that could not fail for the
+    reason it exists. It now reports the failure and names it, matching the [#4585](https://github.com/nexus-substrate/nexus-agents/issues/4585)
+    fix in the same function.
+
+  Internal only: `MemoryBenchmarkResult` is not on the published API surface.
+
+## 5.0.0
+
+### Major Changes
+
+- [#5264](https://github.com/nexus-substrate/nexus-agents/pull/5264) [`3ac2d95`](https://github.com/nexus-substrate/nexus-agents/commit/3ac2d9537a30a3b7319e6e9652da71d30d874274) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability)!: dashboard metrics report `unmeasured` instead of fabricating a perfect score ([#5255](https://github.com/nexus-substrate/nexus-agents/issues/5255))
+
+  **BREAKING.** Nine published fields widen from `number`/`boolean` to
+  `number | null` / `boolean | null`. External readers get a compile error at
+  upgrade rather than a silently wrong value.
+
+  ## Why
+
+  Nothing writes the dashboard's three ingest fields — `recordOutcome`,
+  `recordExplorationRate` and `recordFeatureWeights` have **zero production
+  callers**, and `validation-dashboard-command.ts` constructs an empty instance and
+  renders it. So every metric was computed over an empty collection and returned
+  its empty-case default as though it were a measurement:
+
+  ```
+  Total Decisions: 412
+  Optimal Decision Rate: [████████████] 100.0%
+  Cumulative Regret: 0.00
+  ✓ Minimum Data
+  ```
+
+  A perfect routing record over zero comparable decisions, on the observability
+  surface for the loop that has been enforce-by-default since v2.96.
+
+  [#4714](https://github.com/nexus-substrate/nexus-agents/issues/4714) diagnosed this correctly in a comment and fixed only the aggregate
+  `healthScore`. Its guard keys on `outcomes.length >= 100` — a **different**
+  collection from the one the broken metrics read — so on a live system the guard
+  passed and the fabricated values flowed through anyway.
+
+  ## The null semantics, per metric
+
+  `null` means UNMEASURED — the input collection was empty. It never means zero.
+
+  | field                | `null` when                 | previously returned                                       |
+  | -------------------- | --------------------------- | --------------------------------------------------------- |
+  | `optimalRate`        | no comparable decision      | `1` → "100.0%"                                            |
+  | `cumulativeRegret`   | no comparable decision      | `0` → "0.00"                                              |
+  | `avgRegret`          | no comparable decision      | `0`                                                       |
+  | `explorationRate`    | no exploration recorded     | `0` → "0.0%", indistinguishable from a real greedy policy |
+  | `convergenceScore`   | no feature weights recorded | `0` → "0%", which read as _worst-possible_ convergence    |
+  | `isLearning`         | its inputs are unmeasured   | `true`, on the strength of no data                        |
+  | `healthyExploration` | no exploration recorded     | `false` — a health _failure_ asserted from absence        |
+
+  `totalDecisions` and `suboptimalDecisions` stay numeric: `0` is the true count.
+  It is the ratios over that count that are unmeasured.
+
+  `computeHealthScore` now also returns `null` when any component indicator is
+  unmeasured, closing the [#4714](https://github.com/nexus-substrate/nexus-agents/issues/4714) gap.
+
+  ## Migration
+
+  A reader of these fields must handle `null`. The renderer's own treatment is the
+  reference: print `unmeasured (nothing recorded)` rather than formatting the
+  value. Do **not** coerce with `?? 0` — that reintroduces the exact defect.
+
+  ## Scope
+
+  This stops the fabrication. It does **not** make the dashboard work: the
+  recorders still have no producer, so in practice every metric now reports
+  `unmeasured`. Wiring is tracked separately in [#5259](https://github.com/nexus-substrate/nexus-agents/issues/5259) with its unblock trigger.
+  Ratified unanimously (6/6) on [#5255](https://github.com/nexus-substrate/nexus-agents/issues/5255).
+
+## 4.37.2
+
+### Patch Changes
+
+- [#5262](https://github.com/nexus-substrate/nexus-agents/pull/5262) [`45c470e`](https://github.com/nexus-substrate/nexus-agents/commit/45c470e68cdfc577d8d6b6dcf37f8d11d3734318) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): keep the hidden_instruction detector inside a single HTML comment
+
+  The pattern was `<!--[\s\S]*?(?:execute|delete|merge|apply)[\s\S]*?-->`. The lazy
+  `[\s\S]*?` crosses an intervening `-->`, so **any** text containing an opening
+  comment, a trigger word anywhere in ordinary prose, and a later closing comment
+  matched. A real PR body like:
+
+  ```
+  <!-- header -->
+  safe to merge after CI
+  <!-- footer -->
+  ```
+
+  was flagged as an injection attempt.
+
+  That became load-bearing when [#5251](https://github.com/nexus-substrate/nexus-agents/issues/5251) gave `pr_review` `securityTier: 'external'`,
+  which converts a detection into a hard `permission` refusal with **no fallback**
+  — so a false positive means the tool declines to review the PR at all.
+
+  Now uses the tempered-dot form `(?:(?!-->)[\s\S])*?`, so the trigger must sit
+  inside one comment. Hostile detection is unchanged, verified in both directions:
+  reverting the regex fails the benign tests, and disabling the detector fails the
+  hostile controls.
+
+  **Partial fix, stated plainly.** GitHub's default PR template contains
+  `<!-- Please delete options that are not relevant -->`, where the trigger word
+  genuinely is inside a single comment — containment cannot help, because the
+  trigger vocabulary overlaps ordinary English. That case, and the fact that the
+  CI PR-review path bypasses the tier entirely, remain open in [#5258](https://github.com/nexus-substrate/nexus-agents/issues/5258).
+
+## 4.37.1
+
+### Patch Changes
+
+- [#5257](https://github.com/nexus-substrate/nexus-agents/pull/5257) [`49fbed7`](https://github.com/nexus-substrate/nexus-agents/commit/49fbed72e16bda27fb03cc386b93056d2dceb7d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): remove the duplicate stdio shutdown guard and correct its changelog
+
+  The previous entry — _"fix(mcp): the stdio server no longer outlives its client"_ —
+  **was wrong on the load-bearing point, and this note is the correction.**
+
+  `startStdioServer` has **zero production callers**. `--mode=server` routes
+  `cli.ts → cli-server.ts:startServer → connectToStdioTransport`, and
+  `cli-server.ts:605-610` has wired `StdinLifecycleMonitor` to `process.exit(0)`
+  since [#810](https://github.com/nexus-substrate/nexus-agents/issues/810)/[#2905](https://github.com/nexus-substrate/nexus-agents/issues/2905). That monitor already watches **all three** signals — stdin
+  `'end'`, stdin `'close'`, and a ppid poll — which is strictly more than the guard
+  that was added. The shipped bundle confirms it: `dist/cli.js` contains two
+  references to `StdinLifecycleMonitor` and **zero** to `startStdioServer`.
+
+  So the added guard could not fire in the binary that leaked, and
+  `mcp/stdio-lifetime.ts` was a second implementation of
+  `adapters/stdin-lifecycle.ts` — the anti-sprawl rule this repo enforces
+  elsewhere.
+
+  **The root cause was also misdiagnosed.** The 140 resident servers had **living**
+  parents — 23 simultaneous `codex mcp-server` processes. So stdin never closed and
+  ppid never changed, and the monitor correctly stayed silent. The servers behaved
+  as designed. What actually leaked is that those parent sessions never exited and
+  each spawned many servers; [#5231](https://github.com/nexus-substrate/nexus-agents/issues/5231) carries the corrected analysis.
+
+  The memory measurements in the reverted entry were accurate — 140 processes,
+  28,940 MB, oldest 3.9 days — and clearing them did free 25 GB. Only the
+  attribution was wrong.
+
+## 4.37.0
+
+### Minor Changes
+
+- [#5251](https://github.com/nexus-substrate/nexus-agents/pull/5251) [`8def11c`](https://github.com/nexus-substrate/nexus-agents/commit/8def11c11d6411e7ba5fb54f939218937e1d48cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): declare the external trust tier on pr_review
+
+  `pr_review` registered through `createSecureHandler` with **no `securityTier`**,
+  so `secure-handler.ts` gave it the permissive `'standard'` default and
+  `checkSecurityTier` never rejected detected injection patterns.
+
+  Everything this tool reviews is attacker-controlled. `buildPrompt` interpolates
+  `prDescription` — unfenced — and `prDiff` into the voter prompt a few lines
+  above `"Decide: should it be merged as-is? APPROVE if ..."`. An injection payload
+  in a PR body therefore sat beside the verdict instruction in front of five model
+  voters, on a merge-decision path. `.rules/untrusted-input.md` already classifies
+  PR bodies as Tier 2/3, so this brings the code into line with a rule the repo had
+  already ratified rather than introducing a new policy.
+
+  Found by a coverage audit following [#5245](https://github.com/nexus-substrate/nexus-agents/issues/5245), which pinned the `securityTier`
+  producer→consumer seam but did not ask which tools were missing a tier entirely.
+  The seam test now covers `pr_review` too, and removing the declaration again
+  fails it.
+
+## 4.36.0
+
+### Minor Changes
+
+- [#5248](https://github.com/nexus-substrate/nexus-agents/pull/5248) [`2a379c0`](https://github.com/nexus-substrate/nexus-agents/commit/2a379c0e5363af1c0835763ca413bde6bc3b7b4f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): the stdio server no longer outlives its client ([#5231](https://github.com/nexus-substrate/nexus-agents/issues/5231))
+
+  A `--mode=server` process exists to answer one client over one pipe, and nothing
+  was telling it when that pipe closed. The SDK's `StdioServerTransport` registers
+  only `stdin.on('data')` and `stdin.on('error')` — never `'end'` or `'close'` —
+  and reaches its own `close()` only from the `_ondata` parse-error path.
+  `startStdioServer` registered nothing either. So a disconnected client left a
+  fully-resident server running indefinitely.
+
+  Measured on one machine before the fix: **140 resident servers holding 28.9 GB**,
+  the oldest **3.9 days** old, under 23 abandoned parent processes. System memory
+  available was 1.4 GB of 64 GB, which was OOM-killing local `tsc` and `eslint` and
+  crashing interactive sessions.
+
+  `startStdioServer` now closes the server and exits when stdin ends or closes.
+  Both events are watched, because a pipe torn down abruptly emits `'close'` with
+  no preceding `'end'` — exactly the abandoned-parent case. `'data'` and `'error'`
+  are deliberately not shutdown signals: a transient read error is not a departed
+  client.
+
+  `wireStdioShutdown` is exported separately so the behaviour is testable against a
+  fake stream; verifying it through `startStdioServer` would require a test to
+  observe its own `process.exit`.
+
+  **Behaviour change worth noting:** a stdio server that previously stayed resident
+  after its client disconnected now exits with code 0. This is the intended fix,
+  but it is a change in when the process terminates.
+
+### Patch Changes
+
+- [#5250](https://github.com/nexus-substrate/nexus-agents/pull/5250) [`dae502c`](https://github.com/nexus-substrate/nexus-agents/commit/dae502cbc4608450b6e7c74fc8340e357d48d75a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore(security): delete the unwired finding-lifecycle tracker ([#5239](https://github.com/nexus-substrate/nexus-agents/issues/5239))
+
+  `security/finding-lifecycle.ts` described itself as a bridge from security
+  findings to the outcome store. **Nothing ever reached the outcome store.** Its
+  `PersistFn` was the module's only route there, and its sole production caller
+  passed `(e) => lifecycleEntries.push(e)` — a scan-local array discarded on
+  return. The header had never described real behaviour.
+
+  [#5242](https://github.com/nexus-substrate/nexus-agents/issues/5242) removed that last caller, leaving zero production consumers. Not on the
+  public API surface, so this is internal cleanup: no surface diff, and the
+  deletion loses no data and no behaviour because there was never any.
+
+  A seven-voter panel chose deletion over wiring it (6/6 of approvers; the lone
+  dissenter also argued for removal). Wiring `PersistFn` to the outcome store
+  would have produced writes with no reader — a producer feeding a sink no loop
+  evaluates — which fails capability-bias's requirement of a named consumer.
+
+  The capability is tracked at [#5249](https://github.com/nexus-substrate/nexus-agents/issues/5249) with its unblock trigger recorded, along
+  with the two conditions the panel attached: build the sink before the producer,
+  and extend `OutcomeStore` rather than forking it.
+
+## 4.35.1
+
+### Patch Changes
+
+- [#5245](https://github.com/nexus-substrate/nexus-agents/pull/5245) [`88d7fa6`](https://github.com/nexus-substrate/nexus-agents/commit/88d7fa6b8e88dd32227111dae2b9aed58a752f5b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(security): pin the securityTier producer→consumer seam ([#5120](https://github.com/nexus-substrate/nexus-agents/issues/5120) item 4)
+
+  No behaviour change. `securityTier` had three production declaration sites and
+  **zero test files referencing it anywhere in the repo**, so deleting any one of
+  them silently downgraded that tool to the permissive `'standard'` default —
+  prompt-injection payloads stop being rejected, with no failure and no log, on
+  exactly the surface `.rules/untrusted-input.md` exists to protect.
+
+  Verified by mutation: deleting `securityTier` from `issue-triage-tool.ts`,
+  `research-add-source.ts`, or `orchestrate.ts`, forcing `checkSecurityTier` to
+  always pass, or flipping the `?? 'standard'` default each now fail a test. Every
+  one of those passed before.
+
+## 4.35.0
+
+### Minor Changes
+
+- [#5242](https://github.com/nexus-substrate/nexus-agents/pull/5242) [`1725577`](https://github.com/nexus-substrate/nexus-agents/commit/1725577f96bb04a91b6d3f367a802ad3db3a613a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): delete the security-gate triage seam that fabricated every verdict ([#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119) item 1)
+
+  `SecurityGateConfig.triageFn` had **zero production producers**. Both callers —
+  `pipeline/agent-executor.ts` and `mcp/tools/quality-gate-tool.ts` — passed no
+  config, and the only assignment anywhere was in a test. So `defaultTriageDelegate`
+  ran on every scan and returned a fixed
+  `{confirmed: true, confidence: 0.5, suggestedSeverity: 'high'}` for every finding.
+
+  Three things followed from a verdict that could not vary:
+
+  - `falsePositiveCount` was structurally 0, which made the summary's
+    `"N filtered as false positives"` branch unreachable. The phrase has never
+    rendered in production.
+  - The summary reported `"N confirmed blocking"`. Nothing confirmed anything; a
+    fabricated default did. A finding blocks because its severity blocks, and that
+    is now all the summary claims.
+  - `getLastTriageVerdicts()` exported those constant verdicts as triage evidence,
+    with no consumer anywhere in the repo. So did `getLastScanLifecycle()`.
+
+  A seven-voter panel chose deletion over making the instrument report `unmeasured`
+  (7-0 in a runoff, after a 3-3 split in the first round reversed on a corrected
+  premise: the D camp's case rested on preserving a user-visible false-positive
+  line, which had in fact never rendered). The reasoning was that CLAUDE.md's
+  prefer-`unmeasured`-over-a-default rule presumes an instrument that can in
+  principle measure — one with no producer at all, reporting `unmeasured` forever,
+  is a placeholder, not a check, and capability-bias explicitly refuses
+  "no consumer at all".
+
+  Removed: `triageFn` and `maxTriageFindings` from `SecurityGateConfig`,
+  `defaultTriageDelegate`, the `triageFindings` call, `recordTriageLifecycle`,
+  `lastTriageVerdicts`/`getLastTriageVerdicts`, `lastScanLifecycle`/
+  `getLastScanLifecycle`, and the dead false-positive branch in the summary.
+  `getConfirmedBlockingFindings` becomes `getBlockingFindings`. The
+  `security/finding-triage.ts` module itself stays — `security/fix-generator.ts`
+  is a real consumer of it.
+
+  **The re-entry contract is recorded in the module header**, per the panel's
+  condition: triage returns through TDD with a named producer AND a named consumer
+  arriving together. A delegate seam kept ahead of its producer is what produced
+  the fabricated default in the first place.
+
+  Also fixed, in the same class: `FindingLifecycleSummary.falsePositiveRate` was
+  `number` and returned `0` when nothing had been triaged — an absent measurement
+  wearing a perfect score. It is now `number | null`, matching the idiom its
+  sibling `meanTimeToTriageMs` already used. The test that asserted
+  `falsePositiveRate === 0` on an empty summary had pinned the defect as intended
+  behaviour.
+
+## 4.34.0
+
+### Minor Changes
+
+- [#5236](https://github.com/nexus-substrate/nexus-agents/pull/5236) [`d43eb31`](https://github.com/nexus-substrate/nexus-agents/commit/d43eb317f05610988e1e6addf9e1fd3ed306b291) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): stop reporting unweighted tallies as performance-weighted ([#5117](https://github.com/nexus-substrate/nexus-agents/issues/5117))
+
+  `proof_of_learning` returned `"Approved with X% weighted approval"` and a
+  populated `weightedCounts` for tallies in which **every weight was structurally
+  1.0**. The performance map feeding those weights has never had a writer —
+  `updateAgentPerformance` has no non-test caller — so at the default threshold
+  the strategy was arithmetically identical to `simple_majority` while inviting
+  every reader of the record to believe voter track record moved the number.
+
+  `VotingOutcome` and `ConsensusResult` now carry `weightBasis`:
+  `'performance' | 'partial' | 'unweighted'`, and the reason text names which one.
+  `partial` is a real state, not a rounding — some voters having history while
+  others do not must not be reported as fully performance-weighted.
+
+  **The basis is derived from provenance, not from the weight value.** A voter
+  with a perfect record legitimately weighs exactly `1.0`, so "does any weight
+  differ from 1.0" cannot distinguish _measured and reliable_ from _never
+  measured_ — that test would be its own can't-distinguish defect. `recordVote`
+  now writes a weight only when a performance record exists, so absence in the map
+  carries the provenance. The arithmetic is unchanged: `countWeightedVotes`
+  already defaults a missing entry to `1.0`.
+
+  `QuorumValidator` gets the same treatment: its `agentWeights` input likewise has
+  no non-test producer, so its reasoning text now says
+  `unweighted (no agent weights supplied)` instead of describing a plain headcount
+  as a weighted ratio.
+
+  Also corrected: `calculateVoteWeight`'s JSDoc claimed weights range from
+  "0.5 (no history)" while the code returns `1.0` for no history, and the MCP
+  strategy description advertised performance weighting without stating that
+  nothing records the history it needs ([#5234](https://github.com/nexus-substrate/nexus-agents/issues/5234)).
+
+## 4.33.2
+
+### Patch Changes
+
+- [#5229](https://github.com/nexus-substrate/nexus-agents/pull/5229) [`c8d2742`](https://github.com/nexus-substrate/nexus-agents/commit/c8d27423eb28ca7fd0378b7ce685df55f59cf3e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(review): stop ordering triangulated dedup by a value that is not confidence ([#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119))
+
+  `pickBestFinding` decided which of two duplicate findings survived cross-CLI
+  dedup with `candidate.confidence > existing.confidence`. For a triangulated
+  finding, `confidence` is `0.7 + priority(cli)` — a constant keyed on the CLI's
+  name that never consults the model's output. So the comparison read as if it
+  weighed evidence while it only compared CLI names: a better finding from a
+  lower-priority CLI lost to a worse one, deterministically, with nothing in the
+  output saying so.
+
+  The tiebreak now reads the per-CLI priority directly. Behaviour is unchanged
+  today — the two were the same comparison — but they can no longer drift into
+  each other: if `confidence` ever becomes a real per-finding measurement, dedup
+  ordering will not silently change meaning along with it.
+
+  `CLI_REVIEW_BONUS` is renamed `CLI_REVIEW_PRIORITY` and documented as a source
+  prior rather than a "confidence bonus", and the assignment site says the value
+  is not a measurement. An unrecognized `expertId` now scores 0 explicitly, so a
+  finding from a non-CLI producer can never displace one from a configured CLI.
+
+  Mutation testing while writing the tests surfaced a second, undocumented
+  coupling: `REVIEW_CLI_ORDER` (codex, claude, gemini) happens to be in
+  descending priority order, and ties keep the incumbent — so the first CLI
+  dispatched is always the highest-priority one and the tiebreak never actually
+  decides anything today. Reordering that list, e.g. to dispatch a faster CLI
+  first, would silently change which findings users see. A test now pins the two
+  constants in agreement so a divergence has to be deliberate.
+
+  This is the labelling half of [#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119) item 3. The remaining items — the
+  security-gate triage verdict (item 1) and `actualCostUsd` (item 2) — are
+  verified still open and stay on that issue.
+
+## 4.33.1
+
+### Patch Changes
+
+- [#5226](https://github.com/nexus-substrate/nexus-agents/pull/5226) [`3910f0a`](https://github.com/nexus-substrate/nexus-agents/commit/3910f0ab081281a19c9e7df6ab7d33217d15199e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(docs): correct the phantom NEXUS_RATE_LIMIT row and guard CONFIGURATION.md ([#5159](https://github.com/nexus-substrate/nexus-agents/issues/5159))
+
+  `docs/getting-started/CONFIGURATION.md` documented `NEXUS_RATE_LIMIT`
+  ("Requests per minute", default `60`). No code reads that name anywhere. The
+  variable that does exactly that is `NEXUS_RATE_LIMIT_RPM` — same description,
+  same default — and it was documented nowhere. Anyone following the doc set a
+  name that did nothing and got an unknown-variable warning naming a spelling
+  they had never seen.
+
+  The [#4722](https://github.com/nexus-substrate/nexus-agents/issues/4722) regression test that exists to catch this reads AGENTS.md, which
+  carries only the most-used table and defers to CONFIGURATION.md for the full
+  list — so the authoritative document was the one nothing checked. It now is,
+  with the deliberately-removed vars ([#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977), [#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180)), the accepted coverage
+  baseline ([#5142](https://github.com/nexus-substrate/nexus-agents/issues/5142), being resolved in [#5156](https://github.com/nexus-substrate/nexus-agents/issues/5156)), and script-scoped vars excluded.
+
+  `NEXUS_DRIFT_ADVISORY` is now documented as script-scoped: it is read by
+  `scripts/check-model-string-drift.ts`, never by the server, so it is
+  deliberately absent from the runtime env-schema.
+
 ## 4.33.0
 
 ### Minor Changes
