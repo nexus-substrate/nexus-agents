@@ -21,6 +21,11 @@ import type { HigherOrderVotingResult } from '../../consensus/higher-order-types
 import type { OptionGateVerdict } from './consensus-vote-option-gate.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
+import {
+  SUPERMAJORITY_THRESHOLD,
+  VOTING_THRESHOLDS,
+  type ConsensusAlgorithm,
+} from '../../consensus/types-core.js';
 
 /** Maximum proposal length (memory bounds per Issue #435). */
 export const MAX_PROPOSAL_LENGTH = 4000;
@@ -746,6 +751,22 @@ function applyAbsoluteQuorumTelemetry(
  * outcome; when omitted (direct unit calls) `voteRecordPersisted` defaults to
  * `false` with no note. The live handler always supplies it.
  */
+/**
+ * Name the bar a strategy actually enforces.
+ *
+ * Derived from {@link VOTING_THRESHOLDS} rather than a second hand-written
+ * mapping, so it cannot drift from the value the engine compares against.
+ * Strategies that are aliases (`higher_order`, `opinion_wise`) resolve to their
+ * own 0.5 entry and therefore report `majority`, which is the point.
+ */
+function appliedThresholdFor(strategy: VotingStrategy | undefined): VoteThreshold {
+  const algorithm: ConsensusAlgorithm = strategy ?? 'simple_majority';
+  const bar = VOTING_THRESHOLDS[algorithm];
+  if (bar >= 1) return 'unanimous';
+  if (bar >= SUPERMAJORITY_THRESHOLD) return 'supermajority';
+  return 'majority';
+}
+
 export function buildResponse(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
@@ -826,9 +847,18 @@ function applyOptionalResponseFields(
   errorCount: number,
   costSummary?: DecisionCostSummary
 ): void {
-  if (input.threshold !== undefined) {
-    response.threshold = input.threshold;
-  }
+  // #5315: this echoed `input.threshold` verbatim. But `resolveStrategy`
+  // ignores `threshold` entirely when `strategy` is also supplied, and
+  // `higher_order` carries a 0.5 bar — so a caller passing
+  // `strategy: 'higher_order'` + `threshold: 'supermajority'` (the pairing the
+  // governance table itself prescribes) got a record naming a bar the vote
+  // never had to clear. Observed live at 4-approve/3-reject, 57.1%, reported as
+  // `threshold: 'supermajority'`.
+  //
+  // The field now names the bar the ENGINE enforced, taken from the strategy it
+  // actually ran. The record is ratification evidence; it must state what it
+  // measured, not what was asked for.
+  response.threshold = appliedThresholdFor(result.strategy);
   if (result.policyReason !== undefined) {
     response.policyReason = result.policyReason;
   }
