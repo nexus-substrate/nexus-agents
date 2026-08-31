@@ -157,6 +157,21 @@ describe('routing-audit-format', () => {
       expect(output).toContain('simulated');
     });
 
+    it('marks the LinUCB bandit as cold (#5267)', () => {
+      // `routing-audit-logic.ts` constructs `new LinUCBBandit(eligibleClis)` and
+      // does NOT warm-start it, while the production router does —
+      // `composite-router.ts` calls `warmStartBandit()`, replaying persisted
+      // outcomes. So this box renders initialization constants: `pulls: 0` per
+      // arm, and UCB scores that reflect no history.
+      //
+      // The command exists to show what the router would do, and showed
+      // something the router would not do. Same remedy as the budget filter one
+      // function over (#4843): say it where the reader is.
+      const output = formatLinUCBSelection(mockResult).join('\n');
+
+      expect(output).toContain('cold bandit');
+    });
+
     it('keeps every rendered line inside the box (#4891 regression)', () => {
       // `toContain('simulated')` above passes on a broken render, so it could
       // not catch what the label actually did: at 82 characters it overflowed
