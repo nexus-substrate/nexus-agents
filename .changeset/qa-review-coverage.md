@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 fix(pipeline): disclose a bounded QA review instead of recording it as complete
