@@ -89,6 +89,18 @@ export interface UncoveredClaim {
 export interface CoverageReport {
   uncovered: UncoveredClaim[];
   passed: boolean;
+  /**
+   * Declared docs actually opened and read. Zero means the scan proved
+   * nothing, which `uncovered.length === 0` cannot express (#5253).
+   */
+  docsScanned: number;
+  /**
+   * Declared docs that did not exist. Non-empty is a FAILURE, not a skip:
+   * this module is the anti-gaming inverse of `claims-verify`, and skipping a
+   * missing doc made it defeatable by renaming one — an easier gaming path
+   * than the two it was built to catch.
+   */
+  docsMissing: readonly string[];
 }
 
 /**
@@ -141,9 +153,16 @@ export function checkCoverage(
   docs: readonly string[] = SCANNED_DOCS
 ): CoverageReport {
   const uncovered: UncoveredClaim[] = [];
+  const docsMissing: string[] = [];
+  let docsScanned = 0;
+
   for (const doc of docs) {
     const path = resolve(doc);
-    if (!fs.exists(path)) continue;
+    if (!fs.exists(path)) {
+      docsMissing.push(doc);
+      continue;
+    }
+    docsScanned++;
     const content = fs.read(path);
     for (const { pattern, text } of findClaimMatches(content)) {
       if (!isCovered(text, doc, registry)) {
@@ -151,5 +170,10 @@ export function checkCoverage(
       }
     }
   }
-  return { uncovered, passed: uncovered.length === 0 };
+
+  // A declared doc that is absent, or a scan that opened nothing, is a
+  // failure. `uncovered.length === 0` is equally true of a clean sweep and of
+  // a sweep that read no files, and only one of those is evidence.
+  const passed = uncovered.length === 0 && docsMissing.length === 0 && docsScanned > 0;
+  return { uncovered, passed, docsScanned, docsMissing };
 }

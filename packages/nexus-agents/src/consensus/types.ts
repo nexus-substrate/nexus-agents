@@ -23,6 +23,7 @@ export {
   type ProposalId,
   type VoteCounts,
   type WeightedVoteCounts,
+  type WeightBasis,
   type ConsensusResult,
   ConsensusResultSchema,
   type AgentPerformance,

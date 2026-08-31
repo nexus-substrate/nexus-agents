@@ -34,7 +34,7 @@
       "name": "NEXUS_ENV_VARS",
       "source": "packages/nexus-agents/src/config/env-schema.ts",
       "marker": "NEXUS_",
-      "peer_files": ["CLAUDE.md", "docs/getting-started/CONFIGURATION.md"],
+      "peer_files": ["AGENTS.md", "docs/getting-started/CONFIGURATION.md"],
       "rationale": "Receipts: #2315 \u2014 env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407)."
     }
   ]

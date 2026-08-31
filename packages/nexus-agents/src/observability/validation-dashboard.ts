@@ -249,7 +249,14 @@ export class ValidationDashboard {
     progress: LearningProgress,
     outcomeCount: number,
     warnings: string[]
-  ): boolean {
+  ): boolean | null {
+    // Unmeasured is not "learning" and not "not learning" (#5255). Both inputs
+    // come from the comparable-decision set, which is empty until #5259 wires a
+    // producer; answering either way from that is a verdict over nothing.
+    if (progress.avgRegret === null || progress.optimalRate === null) {
+      warnings.push('Learning progress unmeasured: no comparable routing decisions recorded');
+      return null;
+    }
     const isLearning =
       progress.avgRegret < MAX_ACCEPTABLE_REGRET || progress.optimalRate > MIN_OPTIMAL_RATE;
     if (!isLearning && outcomeCount >= MIN_OUTCOMES_FOR_HEALTH) {
@@ -258,7 +265,17 @@ export class ValidationDashboard {
     return isLearning;
   }
 
-  private checkExplorationHealth(progress: LearningProgress, warnings: string[]): boolean {
+  private checkExplorationHealth(
+    progress: LearningProgress,
+    warnings: string[]
+  ): boolean | null {
+    // The warning below is gated on >10 samples, so with none recorded the old
+    // code returned `false` — rendering "✗ Healthy Exploration" — and stayed
+    // silent about why. The disclosure is now unconditional (#5255).
+    if (progress.explorationRate === null) {
+      warnings.push('Exploration health unmeasured: no exploration rate recorded');
+      return null;
+    }
     const healthyExploration = progress.explorationRate >= 0.1 && progress.explorationRate <= 0.2;
     if (!healthyExploration && this.explorationHistory.length > 10) {
       const pct = (progress.explorationRate * 100).toFixed(1);

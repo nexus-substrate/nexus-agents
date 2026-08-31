@@ -59,8 +59,6 @@ export interface ExecutionPattern {
   id: string;
   /** Pattern description */
   pattern: string;
-  /** Success rate when this pattern is applied */
-  successRate: number;
   /** Number of times observed */
   occurrences: number;
   /** Last observed timestamp */

@@ -278,13 +278,18 @@ describe('hook-router', () => {
       expect(result.exitCode).toBe(0);
     });
 
-    it('should return exitSuccess when no handler registered', async () => {
+    it('succeeds but discloses when no handler is registered', async () => {
+      // Was named "should return exitSuccess when no handler registered" and
+      // asserted only the exit code — pinning the silence. A mapped event with
+      // nothing wired to it is a gap in our own configuration, and it must not
+      // look identical to an event we deliberately do not handle (#5120).
       const handlers: HookHandlers = {};
       const input = createMockInput('SessionStart', { source: 'startup' }) as SessionStartInput;
 
       const result = await routeHook(input, handlers);
 
       expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('SessionStart');
     });
   });
 

@@ -11,7 +11,7 @@ import type { Task } from '../core/types/agent.js';
 import { getTimeProvider, type TaskProfile } from '../core/index.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
-import type { BanditContext } from './budget-router-types.js';
+import { NEUTRAL_BANDIT_FEATURE, type BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
 import {
   DEFAULT_MODEL_PROFILES,
@@ -50,9 +50,6 @@ export function adjustProfileForTask(
   return profile;
 }
 
-/** Neutral feature value — what {@link LinUCBBandit.warmStart} replays. */
-const NEUTRAL_FEATURE = 0.5;
-
 /**
  * Converts a task profile to LinUCB bandit context.
  *
@@ -79,7 +76,7 @@ export function taskProfileToBanditContext(
     contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
     isCodeTask: profile.codeGeneration ? 1 : 0,
     isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
-    budgetUtilization: budgetUtilization ?? NEUTRAL_FEATURE,
+    budgetUtilization: budgetUtilization ?? NEUTRAL_BANDIT_FEATURE,
     // #4875: still a constant — nothing in the tree computes time pressure, and
     // inventing a producer is a design question, not a wiring fix. What changed
     // is WHICH constant: this path used 0.3 while `LinUCBStage` used 0.5 and
@@ -87,7 +84,7 @@ export function taskProfileToBanditContext(
     // information, but two DIFFERENT constants across live paths let the bandit
     // use the value as a path indicator — accidental signal rather than none.
     // Neutral, and equal to what the replay paths use, is the honest default.
-    timePressure: NEUTRAL_FEATURE,
+    timePressure: NEUTRAL_BANDIT_FEATURE,
   };
 }
 

@@ -134,3 +134,40 @@ describe('research_add tool', () => {
     });
   });
 });
+
+describe('outputSchema declares exactly the keys the response carries (#5288)', () => {
+  /**
+   * The round-trip check in `mcp-standalone-tools.test.ts` cannot guard this
+   * tool. Its output shape is NETWORK-dependent: `addResearchPaper` fetches
+   * arXiv metadata — and `dryRun` suppresses the registry write, not the fetch
+   * — so it emits structured content when arxiv.org answers and a
+   * `toolStructuredError` envelope with none when it does not. CI is the second
+   * case often enough to fail intermittently, on PRs touching nothing near it.
+   *
+   * So `research_add` now sits in that suite's `DATA_DEPENDENT_STRUCTURED`
+   * list, exempt from the strict comparison. That exemption removes coverage,
+   * and this restores it deterministically with no network at all: the declared
+   * key set must equal the one `handleResearchAdd` returns.
+   *
+   * Same instrument and same reasoning as `research-synthesize.test.ts`, which
+   * covers the registry-state version of this problem.
+   */
+  const RESPONSE_KEYS = ['dryRun', 'message', 'paperId', 'success', 'title'] as const;
+
+  it('declares exactly the keys the handler returns', () => {
+    const server = { registerTool: vi.fn() };
+    registerResearchAddTool(
+      server as unknown as Parameters<typeof registerResearchAddTool>[0],
+      { rateLimiter: createTestRateLimiter() }
+    );
+
+    const call = server.registerTool.mock.calls[0] as unknown[];
+    const meta = call[1] as { outputSchema?: Record<string, unknown> };
+    const declared = Object.keys(meta.outputSchema ?? {}).sort();
+
+    // Both directions. The SDK applies `additionalProperties: false`, so a
+    // returned-but-undeclared key is a hard -32602 for any validating client;
+    // and a declared-but-never-returned key is a claim nothing supports.
+    expect(declared).toEqual([...RESPONSE_KEYS]);
+  });
+});

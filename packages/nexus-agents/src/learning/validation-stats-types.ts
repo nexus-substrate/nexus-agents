@@ -72,16 +72,28 @@ export interface DistributionStats {
  * Regret analysis result comparing actual vs optimal decisions.
  */
 export interface RegretAnalysis {
-  /** Total cumulative regret */
-  readonly cumulativeRegret: number;
-  /** Average regret per decision */
-  readonly avgRegret: number;
-  /** Number of decisions analyzed */
+  /**
+   * Total cumulative regret, or `null` when no decision was comparable (#5255).
+   *
+   * These three were plain `number` and returned `0`/`0`/`1` for an empty
+   * decision set — which the dashboard rendered as "Cumulative Regret: 0.00"
+   * and "Optimal Decision Rate: 100.0%" with a full progress bar. A perfect
+   * routing record asserted over nothing is an absent measurement wearing a
+   * good score, and the primary consumer of these numbers is the learning loop
+   * itself, which has no way to consult a sibling flag.
+   *
+   * `null` means UNMEASURED — no comparable decision existed. It does not mean
+   * zero regret; that is `0`, and the two are now distinguishable.
+   */
+  readonly cumulativeRegret: number | null;
+  /** Average regret per decision, or `null` when unmeasured — see above. */
+  readonly avgRegret: number | null;
+  /** Number of decisions analyzed. Stays numeric: 0 is the true count. */
   readonly totalDecisions: number;
-  /** Number of suboptimal decisions */
+  /** Number of suboptimal decisions. Stays numeric: 0 is the true count. */
   readonly suboptimalDecisions: number;
-  /** Percentage of optimal decisions */
-  readonly optimalRate: number;
+  /** Share of optimal decisions, or `null` when unmeasured — see above. */
+  readonly optimalRate: number | null;
   /** Regret per model (how much worse each model performed vs best) */
   readonly regretPerModel: Record<string, number>;
 }

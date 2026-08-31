@@ -49,9 +49,6 @@ export function recordExecutionPattern(
     // Update existing pattern
     const updated: ExecutionPattern = {
       ...existing,
-      successRate:
-        (existing.successRate * existing.occurrences + pattern.successRate) /
-        (existing.occurrences + 1),
       occurrences: existing.occurrences + 1,
       lastSeen: new Date(getTimeProvider().now()),
     };
@@ -68,7 +65,6 @@ export function recordExecutionPattern(
   const newPattern: ExecutionPattern = {
     id: `pattern_${String(time.now())}_${random.random().toString(36).slice(2, 8)}`,
     pattern: pattern.pattern,
-    successRate: pattern.successRate,
     occurrences: pattern.occurrences ?? 1,
     lastSeen: new Date(getTimeProvider().now()),
   };
@@ -136,12 +132,3 @@ export function getLearningsByType(
     .sort((a, b) => b.confidence - a.confidence);
 }
 
-/**
- * Gets the most successful execution patterns.
- */
-export function getTopPatterns(
-  state: AgentMemoryState,
-  limit: number = 10
-): readonly ExecutionPattern[] {
-  return [...state.executionPatterns].sort((a, b) => b.successRate - a.successRate).slice(0, limit);
-}
