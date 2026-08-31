@@ -75,9 +75,10 @@ export async function deriveWithTelemetry(
   const started = Date.now();
   const mode = opts.mode ?? resolveAccessPolicyMode();
   const hash = hashObjective(userObjective);
+  const cacheKey = policyCacheKey(hash, mode, opts.trustTier);
   const cache = getPolicyCache();
 
-  const cached = cache.get(hash);
+  const cached = cache.get(cacheKey);
   if (cached !== undefined) {
     return {
       policy: cached,
@@ -88,10 +89,10 @@ export async function deriveWithTelemetry(
       },
     };
   }
-  if (mode === 'off') return cacheAndReturnBypass(cache, mode, hash, started);
+  if (mode === 'off') return cacheAndReturnBypass(cache, mode, hash, cacheKey, started);
 
   const gate = gateTrust(opts.trustTier);
-  const ctx: PathCtx = { userObjective, mode, hash, started, cache };
+  const ctx: PathCtx = { userObjective, mode, hash, cacheKey, started, cache };
   if (gate.allow === 'llm' && opts.adapter !== undefined) {
     return runLlmPath(ctx, opts);
   }
@@ -102,6 +103,8 @@ interface PathCtx {
   readonly userObjective: string;
   readonly mode: AccessPolicyMode;
   readonly hash: string;
+  /** Cache key — objective hash PLUS the trust boundary. See {@link policyCacheKey}. */
+  readonly cacheKey: string;
   readonly started: number;
   readonly cache: ReturnType<typeof getPolicyCache>;
 }
@@ -111,10 +114,11 @@ function cacheAndReturnBypass(
   cache: ReturnType<typeof getPolicyCache>,
   mode: AccessPolicyMode,
   hash: string,
+  cacheKey: string,
   started: number
 ): { readonly policy: TaskAccessPolicy; readonly telemetry: DerivationTelemetry } {
   const policy = buildBypassPolicy(mode, hash);
-  cache.set(hash, policy);
+  cache.set(cacheKey, policy);
   return {
     policy,
     telemetry: {
@@ -139,14 +143,14 @@ async function runLlmPath(
     opts.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS
   );
   if (llmResult.ok) {
-    ctx.cache.set(ctx.hash, llmResult.policy);
+    ctx.cache.set(ctx.cacheKey, llmResult.policy);
     return {
       policy: llmResult.policy,
       telemetry: { latencyMs: Date.now() - ctx.started, source: 'llm', trustDecision: 'llm' },
     };
   }
   const policy = deriveFallbackPolicy(ctx.userObjective, ctx.mode, ctx.hash);
-  ctx.cache.set(ctx.hash, policy);
+  ctx.cache.set(ctx.cacheKey, policy);
   return {
     policy,
     telemetry: {
@@ -164,7 +168,7 @@ function runFallbackPath(
   gate: ReturnType<typeof gateTrust>
 ): { readonly policy: TaskAccessPolicy; readonly telemetry: DerivationTelemetry } {
   const policy = deriveFallbackPolicy(ctx.userObjective, ctx.mode, ctx.hash);
-  ctx.cache.set(ctx.hash, policy);
+  ctx.cache.set(ctx.cacheKey, policy);
   return {
     policy,
     telemetry: {
@@ -187,6 +191,33 @@ function buildBypassPolicy(mode: AccessPolicyMode, hash: string): TaskAccessPoli
     source: 'bypass',
     mode,
   };
+}
+
+/**
+ * Cache key for a derived policy.
+ *
+ * The objective hash ALONE was the key, and `getPolicyCache()` is a
+ * process-wide singleton — so one long-lived MCP server shared derived policies
+ * across trust boundaries. Both production callers pass `trustTier` threaded
+ * from the request context (`execute-expert.ts`, `orchestrate.ts`), so an
+ * untrusted caller could hit a policy derived for a trusted one and the early
+ * return at the top of `deriveWithTelemetry` would skip every trust and mode
+ * branch.
+ *
+ * `mode` is in the key for the same reason: `buildBypassPolicy` stores
+ * `allowedTools: '*'` in `off` mode, and the enforcer short-circuits that to
+ * allow-everything.
+ *
+ * Deliberately NOT folded into `objectiveHash`, which is audit provenance —
+ * it answers "which objective produced this policy", and must keep meaning that
+ * for any stored record compared against it.
+ */
+function policyCacheKey(
+  objectiveHash: string,
+  mode: AccessPolicyMode,
+  trustTier: TrustTier | undefined
+): string {
+  return `${objectiveHash}:${mode}:${trustTier ?? 'unset'}`;
 }
 
 /** Stable SHA-256 hash of a user objective for audit + policy caching. */
