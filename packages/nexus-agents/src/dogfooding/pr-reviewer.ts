@@ -48,6 +48,7 @@ import {
   createFailedReview,
   gatePRAuthor,
   fetchAccountAgeDays,
+  reviewPostingBlock,
 } from './pr-reviewer-helpers.js';
 
 // Re-export for convenience
@@ -371,9 +372,25 @@ Provide a structured review with:
 
   /**
    * Posts review to GitHub after policy gate validation.
-   * The policy gate audits the action but only blocks on Rule of Two
-   * violations — the review itself is our internal analysis, not content
-   * from the untrusted PR author.
+   *
+   * Blocks on the gate's own `allowed` verdict rather than re-deriving a
+   * narrower condition. It previously blocked on `hasRuleOfTwoViolation` alone
+   * while `evaluatePolicy` had already computed `allowed`, on the rationale
+   * that "the review itself is our internal analysis, not content from the
+   * untrusted PR author".
+   *
+   * Measured: for the action `auditReviewAction` builds, the two are currently
+   * EQUIVALENT — tiers 1-2 produce no violations, and tiers 3-4 produce
+   * INSUFFICIENT_TRUST + UNTRUSTED_INFLUENCE + RULE_OF_TWO together. So this
+   * changes no behaviour today. It makes the equivalence guaranteed rather
+   * than accidental: it holds only because the context below hardcodes
+   * `hasWriteAccess` and `hasSecretAccess` to true, which is what makes
+   * `checkRuleOfTwo` fire at tier 3+. Make either conditional and RULE_OF_TWO
+   * stops firing while the other two blocking rules still do.
+   *
+   * `requiresApproval` deliberately does NOT gate: it is true exactly when
+   * `allowed` is true (DraftReply is always approval-required), so blocking on
+   * it would refuse every review that passed.
    * (Source: Issue #828 — Wire policy gate into production pipeline)
    */
   private async postReviewToGitHub(
@@ -383,15 +400,13 @@ Provide a structured review with:
     gateDecision: ReputationGateDecision
   ): Promise<ReviewPostOutcome> {
     const policyResult = this.auditReviewAction(gateDecision.enforcedTier);
-    if (policyResult.hasRuleOfTwoViolation) {
-      logger.warn('Rule of Two: review posting blocked', {
+    const blocked = reviewPostingBlock(policyResult);
+    if (blocked !== undefined) {
+      logger.warn(`${blocked.label}: review posting blocked`, {
         prNumber: pr.prNumber,
         violations: policyResult.violations,
       });
-      return {
-        status: 'skipped',
-        reason: `Rule of Two: ${policyResult.violations.map((v) => v.rule).join(', ')}`,
-      };
+      return { status: 'skipped', reason: blocked.reason };
     }
     if (policyResult.violations.length > 0) {
       logger.info('Policy gate warnings for review posting', {
@@ -419,6 +434,7 @@ Provide a structured review with:
    * reconciled `enforcedTier` (#3123) rather than the raw classifier tier.
    */
   private auditReviewAction(enforcedTier: ClassifyResult['trustTier']): {
+    allowed: boolean;
     hasRuleOfTwoViolation: boolean;
     violations: readonly { rule: string; message: string }[];
   } {
@@ -442,6 +458,7 @@ Provide a structured review with:
       context
     );
     return {
+      allowed: decision.allowed,
       hasRuleOfTwoViolation: decision.violations.some((v) => v.rule === 'RULE_OF_TWO'),
       violations: decision.violations,
     };
