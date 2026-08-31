@@ -1,5 +1,49 @@
 # nexus-agents
 
+## 6.1.2
+
+### Patch Changes
+
+- [#5197](https://github.com/nexus-substrate/nexus-agents/pull/5197) [`d460fe7`](https://github.com/nexus-substrate/nexus-agents/commit/d460fe75e4a6a8d8776b09e2810a28e004b23efb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(governance): the token→USD canonical row is no longer UNRESOLVED ([#5122](https://github.com/nexus-substrate/nexus-agents/issues/5122))
+
+  The canonical-paths table said **UNRESOLVED — eight paths**, and told readers to
+  prefer `computeCostDetail` until the pilot landed. It has landed.
+
+  The audit found eleven implementations, not eight; the [#5123](https://github.com/nexus-substrate/nexus-agents/issues/5123) ratchet then found a
+  twelfth ([#5186](https://github.com/nexus-substrate/nexus-agents/issues/5186)) the audit had missed. All of them now route through
+  `learning/token-cost-core`, and the ratchet reports **0 outstanding alternates**
+  with CI failing on a new one.
+
+  The row names `computeTokenCost` — the arithmetic — and states the shape the
+  ratifying panel chose: unpriced POLICY stays in named wrappers rather than
+  becoming a flag on one function, because a policy enum makes picking the wrong
+  one a one-character mistake that typechecks and ships green. The three policies
+  remain `resolveCliCostPer1M` (conservative, for budget filtering),
+  `calculateCost`/`estimateRegistryCostUsd` (fail-closed `undefined`, for
+  ceilings), and `computeCostDetail` (`priced: false`, for the ledger).
+
+  Governance-path change: requires owner ratification, not self-merge.
+
+- [#5307](https://github.com/nexus-substrate/nexus-agents/pull/5307) [`e817026`](https://github.com/nexus-substrate/nexus-agents/commit/e8170265413831d55148f2d15325f60ed0ff19c9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): two governor-path gates passed when they scanned nothing
+
+  Both decided a verdict from an empty collection that was empty because nothing
+  was inspected, not because nothing was wrong.
+
+  - `governance/claims-coverage.ts` skipped any declared doc that did not exist
+    (`if (!fs.exists(path)) continue`) and returned
+    `passed: uncovered.length === 0`. `CoverageReport` carried no scanned count,
+    and `claims-check.ts` printed only `registry.claims.length` — the FORWARD
+    number, independent of the reverse scan. So renaming `README.md` made the
+    anti-gaming arm certify green having read nothing, which is an easier gaming
+    path than the two silent-removal and mask-by-addition vectors it exists to
+    catch. A gate defeated by `git mv` is not a gate. The report now carries
+    `docsScanned` and `docsMissing`, a missing declared doc fails, and the
+    success line states how many docs were scanned.
+  - `inject-governance.ts`'s `checkToolOutputConsistency` returned `true` on
+    `violations.length === 0` over `scanToolFiles()`, which yields `[]` when the
+    MCP tools directory does not resolve. It now uses the coverage-aware scan
+    added in [#5297](https://github.com/nexus-substrate/nexus-agents/issues/5297) and fails when zero files were inspected.
+
 ## 6.1.1
 
 ### Patch Changes
