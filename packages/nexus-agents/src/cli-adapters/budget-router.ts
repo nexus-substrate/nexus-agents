@@ -29,6 +29,7 @@ import type {
 } from './types.js';
 import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
 import type { CliName } from './types.js';
+import type { BudgetCoverage } from './types-routing.js';
 import { estimateTokens, estimateCost } from './budget-utils.js';
 import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
@@ -115,7 +116,7 @@ export class BudgetRouter implements IBudgetRouter {
    * and `actualTokens` / `actualCostUsd` asserted a measurement they may not
    * have held.
    */
-  private coverage = {
+  private coverage: { -readonly [K in keyof BudgetCoverage]: BudgetCoverage[K] } = {
     measuredTokenDebits: 0,
     estimatedTokenDebits: 0,
     measuredCostDebits: 0,
