@@ -59,9 +59,17 @@ they have to be copied into `dist/` and listed:
 Copying happens in `tsup.config.ts` `onSuccess`; `scripts/check-dist-assets.ts`
 runs as part of `build` and fails if any is missing or truncated.
 
-**Why the size floor exists:** `cp` of a half-written file leaves a path
-`existsSync` accepts, and an empty JSON array parses fine and enumerates to
-nothing. That is one step further along the same failure.
+**Why a floor exists rather than `existsSync`:** `cp` of a half-written file
+leaves a path `existsSync` accepts, and an empty JSON array parses fine and
+enumerates to nothing. That is one step further along the same failure.
+
+Each asset is tagged by kind, because the floor that means something differs
+(#5297). A `file` asset carries `minBytes`. A `dir` asset carries `minEntries`,
+since a byte size is meaningless for a directory — and an empty one is exactly
+what `cp -r src/workflows/templates/. dist/workflows/templates/` produces when
+the source is empty, which `cp` reports as success. The check previously did
+`if (stat.isDirectory()) continue`, so a declared directory passed on existence
+alone and both directory assets' floors were dead data.
 
 ## The failure this guards against
 
@@ -76,8 +84,9 @@ It shipped, and it was found by running the tool, not by CI.
 
 Two checks now stand between that and a repeat:
 
-1. **`check-dist-assets.ts`** — every listed asset is present in `dist/` and
-   above its size floor.
+1. **`check-dist-assets.ts`** — every listed asset is present in `dist/`, is of
+   the declared kind, and clears its floor: `minBytes` for a file, `minEntries`
+   for a directory.
 2. **The completeness check in the same script** (#5143) — every runtime file
    resolving a path from `import.meta.url` or `__dirname` must be _declared_,
    either naming the shipped asset it needs or explicitly `null` with a reason.
