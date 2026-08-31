@@ -11,6 +11,7 @@ import type {
   VoteCounts,
   WeightedVoteCounts,
   AgentPerformance,
+  WeightBasis,
 } from './types.js';
 import { VOTING_THRESHOLDS } from './types.js';
 import { HigherOrderVotingStrategy } from './higher-order-voting.js';
@@ -31,7 +32,36 @@ export interface VotingOutcome {
   approvalPercentage: number;
   voteCounts: VoteCounts;
   weightedCounts?: WeightedVoteCounts;
+  /**
+   * Present on weighted strategies only. Absent means the strategy does not
+   * weight at all (simple majority, supermajority, unanimous) — which is
+   * different from `'unweighted'`, meaning a weighted strategy ran with nothing
+   * to weight by.
+   */
+  weightBasis?: WeightBasis;
   reason: string;
+}
+
+/**
+ * Classifies a weighted tally by how many of its voters had a real weight
+ * supplied (#5117).
+ *
+ * A voter absent from `weights` had no performance record; `countWeightedVotes`
+ * already defaults such a voter to `1.0`, so the arithmetic is unchanged — the
+ * absence is what carries the provenance.
+ */
+function deriveWeightBasis(votes: Map<string, Vote>, weights: Map<string, number>): WeightBasis {
+  let withRecord = 0;
+  for (const agentId of votes.keys()) {
+    if (weights.has(agentId)) withRecord++;
+  }
+
+  // The empty case, named rather than left to a default: zero voters carrying a
+  // record — including the zero-voter case — is 'unweighted', never
+  // 'performance'. Answering it with `withRecord === votes.size` would make
+  // 0 === 0 report a full performance basis over nothing measured.
+  if (withRecord === 0) return 'unweighted';
+  return withRecord === votes.size ? 'performance' : 'partial';
 }
 
 /**
@@ -279,21 +309,51 @@ export class ProofOfLearningStrategy extends BaseVotingStrategy {
       false
     );
 
+    const weightBasis = deriveWeightBasis(votes, effectiveWeights);
+    const verdict = approved ? 'Approved' : 'Rejected';
+
     return {
       approved,
       approvalPercentage,
       voteCounts: counts,
       weightedCounts,
-      reason: approved
-        ? `Approved with ${approvalPercentage.toFixed(1)}% weighted approval`
-        : `Rejected with ${approvalPercentage.toFixed(1)}% weighted approval`,
+      weightBasis,
+      reason: `${verdict} with ${approvalPercentage.toFixed(1)}% ${describeBasis(weightBasis)}`,
     };
   }
 }
 
 /**
+ * The tail of the reason string, naming what the percentage was computed over.
+ *
+ * Calling an unweighted tally "weighted approval" is the misreport #5117 fixes:
+ * the phrase invites a reader to believe voter track record moved the number
+ * when nothing had ever recorded one.
+ */
+function describeBasis(basis: WeightBasis): string {
+  switch (basis) {
+    case 'performance':
+      return 'weighted approval (weights from voter performance history)';
+    case 'partial':
+      return 'partly weighted approval (some voters have no performance history; those count as 1.0)';
+    case 'unweighted':
+      return 'approval (UNWEIGHTED — no voter performance history recorded)';
+    default: {
+      const unreachable: never = basis;
+      throw new Error(`Unhandled weight basis: ${String(unreachable)}`);
+    }
+  }
+}
+
+/**
  * Calculate vote weight for an agent based on their performance history.
- * Weight ranges from 0.5 (no history) to 1.0 (perfect track record).
+ *
+ * Weight ranges from 0.5 (never correct) to 1.0 (perfect track record). An
+ * agent with NO history returns 1.0, not 0.5 — the doc used to say "0.5 (no
+ * history)", which the code has never done (#5117). The distinction matters:
+ * a 1.0 default is indistinguishable from a perfect record by value alone,
+ * which is why callers must not infer "was this measured?" from the number.
+ * `deriveWeightBasis` answers that from provenance instead.
  */
 export function calculateVoteWeight(performance: AgentPerformance | undefined): number {
   if (performance === undefined || performance.totalVotes === 0) {

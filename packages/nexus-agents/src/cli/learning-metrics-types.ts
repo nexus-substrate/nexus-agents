@@ -98,6 +98,16 @@ export interface LearningMetricsResult {
     readonly totalRoutings: number;
     readonly overallSuccessRate: number;
     readonly avgReward: number;
-    readonly learningStatus: 'exploring' | 'exploiting' | 'balanced';
+    /**
+     * Bandit learning phase, or `'unmeasured'` when nothing was recorded
+     * (#5267).
+     *
+     * This was a three-value union, and the empty case fell into
+     * `'exploiting'` because the fallback `explorationRatio` of `0` is `< 0.3`
+     * — so the CLI rendered a green ✓ asserting convergence over a bandit that
+     * had never been consulted. `'unmeasured'` is not a phase; it means no
+     * phase could be determined.
+     */
+    readonly learningStatus: 'exploring' | 'exploiting' | 'balanced' | 'unmeasured';
   };
 }

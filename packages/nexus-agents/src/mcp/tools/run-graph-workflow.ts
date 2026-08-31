@@ -28,7 +28,9 @@ import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
 import { getGraphRegistry, getGraphWorkflowList } from './run-graph-workflow-templates.js';
-import { createAuditTrail, createGraphAuditBridge } from '../../security/audit-trail.js';
+import { createGraphAuditBridge } from '../../security/audit-trail.js';
+import { createDurableAuditTrail } from '../../security/audit-bridge.js';
+import type { IAuditLogger } from '../../audit/audit-types.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -85,6 +87,15 @@ export type RunGraphWorkflowInput = z.infer<typeof RunGraphWorkflowInputSchema>;
 export interface RunGraphWorkflowDeps extends BaseMcpToolDeps {
   /** MCP notifier for client-visible logging (Issue #974) */
   readonly notifier?: IMcpNotifier | undefined;
+  /**
+   * Durable audit logger (#5219). Without it, `enableAuditTrail` produced a
+   * trail that was never persisted: `graph_execution` records sat in an
+   * in-memory array capped at 10,000, evicted oldest-first, and gone on exit —
+   * never reaching the hash chain `verify_audit_chain` reads.
+   *
+   * Threaded the same way `execute_expert` and `orchestrate` receive theirs.
+   */
+  readonly auditLogger?: IAuditLogger | undefined;
 }
 
 export interface RunGraphWorkflowResponse {
@@ -147,9 +158,23 @@ function resolveGraph(
 /** Creates the event listener that collects summaries and optionally bridges to audit trail. */
 function createEventCollector(
   events: GraphEventSummary[],
-  enableAuditTrail: boolean
+  enableAuditTrail: boolean,
+  logger: ILogger,
+  auditLogger?: IAuditLogger
 ): (event: GraphEvent) => void {
-  const auditBridge = enableAuditTrail ? createGraphAuditBridge(createAuditTrail()) : undefined;
+  // `createDurableAuditTrail` returns undefined without a logger, deliberately:
+  // a caller cannot silently receive a non-durable trail (#5219). This site
+  // previously called bare `createAuditTrail()` and bypassed that guard.
+  const trail = enableAuditTrail ? createDurableAuditTrail(auditLogger) : undefined;
+  if (enableAuditTrail && trail === undefined) {
+    // Warn rather than fail: the run itself is unaffected, but the caller asked
+    // for an audit trail and is not getting one, which must not be silent.
+    logger.warn(
+      'enableAuditTrail requested but no durable audit logger is configured; ' +
+        'graph_execution events will NOT be recorded (#5219)'
+    );
+  }
+  const auditBridge = trail !== undefined ? createGraphAuditBridge(trail) : undefined;
   return (event: GraphEvent): void => {
     events.push(toEventSummary(event));
     auditBridge?.(event);
@@ -159,7 +184,8 @@ function createEventCollector(
 /** Executes a named graph workflow with full integration. */
 async function handleRunGraphWorkflow(
   input: RunGraphWorkflowInput,
-  logger: ILogger
+  logger: ILogger,
+  auditLogger?: IAuditLogger
 ): Promise<RunGraphWorkflowResponse> {
   const startTime = getTimeProvider().now();
   const resolved = resolveGraph(input.workflow, startTime);
@@ -167,7 +193,7 @@ async function handleRunGraphWorkflow(
 
   const events: GraphEventSummary[] = [];
   const checkpointStore = input.enableCheckpointing ? createCheckpointStore() : undefined;
-  const onEvent = createEventCollector(events, input.enableAuditTrail);
+  const onEvent = createEventCollector(events, input.enableAuditTrail, logger, auditLogger);
   const executionId = `graph-${input.workflow}-${String(Date.now())}`;
 
   logger.info('Executing graph workflow', {
@@ -253,9 +279,10 @@ const GRAPH_WORKFLOW_SCHEMA = {
 async function executeGraphWorkflowBody(
   input: RunGraphWorkflowInput,
   logger: ILogger,
-  notifier: IMcpNotifier
+  notifier: IMcpNotifier,
+  auditLogger?: IAuditLogger
 ): Promise<ToolResult> {
-  const result = await handleRunGraphWorkflow(input, logger);
+  const result = await handleRunGraphWorkflow(input, logger, auditLogger);
   const succeeded = result.status === 'completed';
   notifier.info('run_graph_workflow', {
     event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
@@ -276,7 +303,8 @@ async function executeGraphWorkflowBody(
 /** Creates the handler for run_graph_workflow tool. */
 function createGraphWorkflowHandler(
   logger: ILogger,
-  notifier: IMcpNotifier
+  notifier: IMcpNotifier,
+  auditLogger?: IAuditLogger
 ): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
   return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = RunGraphWorkflowInputSchema.safeParse(args);
@@ -304,12 +332,12 @@ function createGraphWorkflowHandler(
         toolName: 'run_graph_workflow',
         input,
         freshJobId: () => `gw-${randomUUID()}`,
-        run: () => executeGraphWorkflowBody(input, logger, notifier),
+        run: () => executeGraphWorkflowBody(input, logger, notifier, auditLogger),
         logger,
       });
     }
 
-    return executeGraphWorkflowBody(input, logger, notifier);
+    return executeGraphWorkflowBody(input, logger, notifier, auditLogger);
   };
 }
 
@@ -317,7 +345,7 @@ function createGraphWorkflowHandler(
 export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWorkflowDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_graph_workflow' });
   const notifier = deps.notifier ?? createMcpNotifier(server);
-  const handler = createGraphWorkflowHandler(logger, notifier);
+  const handler = createGraphWorkflowHandler(logger, notifier, deps.auditLogger);
 
   const secureHandler = createSecureHandler(handler, {
     toolName: 'run_graph_workflow',

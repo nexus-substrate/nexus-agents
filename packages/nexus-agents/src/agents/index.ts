@@ -163,7 +163,6 @@ export {
   recordErrorResolution,
   findErrorResolution,
   getLearningsByType,
-  getTopPatterns,
   getAgentStateKey,
   getTaskLearningKey,
   getPatternKey,

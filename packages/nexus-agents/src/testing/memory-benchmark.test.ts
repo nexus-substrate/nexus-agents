@@ -278,6 +278,7 @@ describe('memory-benchmark', () => {
         orphanedRefCount: 0,
         growthRateBytesPerOp: 256,
         decayConsistencyScore: 1.0,
+      decayItemsChecked: 10,
         promotionRetentionRate: 0.95,
         decayRegretScore: 0.1,
       };
@@ -312,6 +313,7 @@ describe('memory-benchmark', () => {
       orphanedRefCount: 0,
       growthRateBytesPerOp: 256,
       decayConsistencyScore: 1.0,
+      decayItemsChecked: 10,
       promotionRetentionRate: 0.95,
       decayRegretScore: 0.1,
     };

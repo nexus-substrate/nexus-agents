@@ -148,8 +148,18 @@ export async function routeHook(input: HookInput, handlers: HookHandlers): Promi
 
   const handler = handlers[handlerKey];
   if (handler === undefined) {
-    // No handler registered for this event
-    return exitSuccess();
+    // Mapped, but nothing is wired to it — a gap in OUR configuration, which
+    // is a different fact from the unmapped case above and must not look the
+    // same (#5120). `EVENT_TO_HANDLER` lists 7 events; `createAllHandlers`
+    // supplies 5, so `SubagentStop` and `UserPromptSubmit` land here.
+    //
+    // The exit code stays 0 on purpose: a non-zero exit from a hook can block
+    // the user's operation, and a gap in our wiring must not do that. What
+    // changes is that the silence becomes visible.
+    return {
+      ...exitSuccess(),
+      stderr: `nexus-agents: no handler wired for hook event ${input.hook_event_name}; nothing was done\n`,
+    };
   }
 
   // TypeScript needs help here due to discriminated union

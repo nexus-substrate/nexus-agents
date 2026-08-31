@@ -378,8 +378,19 @@ export class ConsensusEngine implements IConsensusEngine {
       timestamp: getTimeProvider().nowIso(),
     });
     if (state.proposal.algorithm === 'proof_of_learning') {
+      // Only record a weight when a performance record actually EXISTS (#5117).
+      // This used to call `calculateVoteWeight(undefined)`, which returns the
+      // 1.0 new-agent default, so the map was fully populated whether or not
+      // anything had ever been measured — and by the time the strategy saw it,
+      // "weighted at 1.0 because they are reliable" and "weighted at 1.0
+      // because we know nothing" were indistinguishable.
+      //
+      // Absence now carries that provenance. The arithmetic is unchanged:
+      // `countWeightedVotes` already defaults a missing entry to 1.0.
       const performance = this.agentPerformance.get(agentId);
-      state.voteWeights.set(agentId, calculateVoteWeight(performance));
+      if (performance !== undefined) {
+        state.voteWeights.set(agentId, calculateVoteWeight(performance));
+      }
     }
     this.logger.debug('Vote recorded', {
       proposalId: state.proposal.id,

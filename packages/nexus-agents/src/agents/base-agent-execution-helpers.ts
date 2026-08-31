@@ -77,13 +77,11 @@ export async function persistMemoryAfterTask(
   }
 
   const durationMs = getTimeProvider().now() - startTime;
-  const successRate = 1.0;
   const taskType = categorizeTaskType(task.description);
 
   // Record execution pattern
   const updatedState = recordExecutionPattern(memoryState, {
     pattern: taskType,
-    successRate,
   });
 
   // Persist to backend if available

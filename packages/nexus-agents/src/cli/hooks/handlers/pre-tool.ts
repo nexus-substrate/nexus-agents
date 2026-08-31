@@ -142,7 +142,18 @@ function validateBashCommand(command: string, customPatterns?: readonly string[]
   // Check custom patterns if provided
   if (customPatterns !== undefined) {
     for (const patternStr of customPatterns) {
-      if (testCustomPattern(patternStr, command)) {
+      const verdict = testCustomPattern(patternStr, command);
+      // Fail closed on an unusable rule. This returned `false` — "did not
+      // match" — so a single malformed regex in an operator's denylist made
+      // the command ALLOWED, with a result indistinguishable from "evaluated
+      // against every pattern and clean". `.rules/untrusted-input.md`
+      // invariant 5 is fail-closed, and `codepr-guards.ts:735` already does
+      // this correctly for a throwing guard.
+      if (verdict === 'invalid') {
+        logger.warn('Invalid custom block pattern — failing closed', { pattern: patternStr });
+        return `Blocked: custom block pattern is not a valid regex: ${patternStr}`;
+      }
+      if (verdict === 'match') {
         return `Blocked by custom pattern: ${patternStr}`;
       }
     }
@@ -151,14 +162,20 @@ function validateBashCommand(command: string, customPatterns?: readonly string[]
   return null;
 }
 
-/** Tests a custom regex pattern safely. */
-function testCustomPattern(patternStr: string, command: string): boolean {
+/**
+ * Tests one custom block pattern.
+ *
+ * Tri-state on purpose: `'invalid'` is not `'no-match'`. Collapsing them is
+ * what made an unusable rule read as a clean one — see the fail-closed branch
+ * in {@link validateBashCommand}.
+ */
+type PatternVerdict = 'match' | 'no-match' | 'invalid';
+
+function testCustomPattern(patternStr: string, command: string): PatternVerdict {
   try {
-    const pattern = new RegExp(patternStr);
-    return pattern.test(command);
+    return new RegExp(patternStr).test(command) ? 'match' : 'no-match';
   } catch {
-    logger.warn('Invalid custom pattern', { pattern: patternStr });
-    return false;
+    return 'invalid';
   }
 }
 

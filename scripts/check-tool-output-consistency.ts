@@ -112,22 +112,72 @@ export function findTimestampNumberFields(src: string, fileName: string): Timest
   return violations;
 }
 
-/** Scan every MCP tool file for timestamp-as-number violations. */
-export function scanToolFiles(): TimestampViolation[] {
-  if (!existsSync(TOOLS_DIR)) return [];
+/** What a scan found, and what it actually covered. */
+export interface ToolScanResult {
+  readonly violations: TimestampViolation[];
+  /** Tool source files actually read. Zero means the scan proved nothing. */
+  readonly scanned: number;
+  /** The tools directory itself was not found. */
+  readonly dirMissing: boolean;
+}
+
+/**
+ * Scan every MCP tool file for timestamp-as-number violations.
+ *
+ * Reports coverage alongside the findings. The previous signature returned a
+ * bare array and opened with `if (!existsSync(TOOLS_DIR)) return [];`, so a
+ * moved directory produced the same value as a clean sweep and `main` printed
+ * a pass. The directory is injectable so the empty and absent cases are
+ * testable without moving the real tree.
+ */
+export function scanToolFilesWithCoverage(dir: string = TOOLS_DIR): ToolScanResult {
+  if (!existsSync(dir)) return { violations: [], scanned: 0, dirMissing: true };
   const out: TimestampViolation[] = [];
-  for (const entry of readdirSync(TOOLS_DIR)) {
+  let scanned = 0;
+  for (const entry of readdirSync(dir)) {
     if (!entry.endsWith('.ts') || entry.endsWith('.test.ts')) continue;
-    const src = readFileSync(join(TOOLS_DIR, entry), 'utf-8');
+    scanned++;
+    const src = readFileSync(join(dir, entry), 'utf-8');
     out.push(...findTimestampNumberFields(src, entry));
   }
-  return out;
+  return { violations: out, scanned, dirMissing: false };
+}
+
+/**
+ * Violations only, without coverage.
+ *
+ * A thin view over {@link scanToolFilesWithCoverage} — one implementation, two
+ * shapes — kept for `scripts/inject-governance.ts`, whose own
+ * `checkToolOutputConsistency` still returns `true` on `length === 0` and so
+ * carries the same blind spot this file just closed. That script is an
+ * owner-ratified governance path, so the fix is tracked separately rather than
+ * folded in here.
+ */
+export function scanToolFiles(dir: string = TOOLS_DIR): TimestampViolation[] {
+  return scanToolFilesWithCoverage(dir).violations;
 }
 
 function main(): number {
-  const violations = scanToolFiles();
+  const { violations, scanned, dirMissing } = scanToolFilesWithCoverage();
+
+  // An empty input set is a broken gate, not a passing one. Both branches
+  // below used to reach the success line.
+  if (dirMissing) {
+    console.error(`Tool-output consistency: tools directory not found: ${TOOLS_DIR}`);
+    console.error('  The lint scanned nothing. Fix the path rather than trusting this run.');
+    return 1;
+  }
+  if (scanned === 0) {
+    console.error(`Tool-output consistency: scanned 0 tool files under ${TOOLS_DIR}`);
+    console.error('  The lint scanned nothing. Fix the path rather than trusting this run.');
+    return 1;
+  }
+
   if (violations.length === 0) {
-    console.log('Tool output consistency OK — no timestamp-as-number fields.');
+    console.log(
+      `Tool output consistency OK — ${String(scanned)} tool file(s) scanned, ` +
+        'no timestamp-as-number fields.'
+    );
     return 0;
   }
   console.error(

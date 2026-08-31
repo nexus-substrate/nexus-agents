@@ -73,7 +73,6 @@ import {
   recordResolutionToMemory,
   findResolution,
   getTaskLearningsByType,
-  getTopPatterns,
 } from './base-agent-memory-accessors.js';
 import { persistMemoryOnCleanup } from './base-agent-execution-helpers.js';
 import { validateMessage, dispatchMessage } from './base-agent-dispatch.js';
@@ -396,8 +395,5 @@ export abstract class BaseAgent implements IAgent {
   }
   protected getTaskLearnings(taskType: string): readonly TaskLearning[] {
     return getTaskLearningsByType(this.memOpCtx, taskType);
-  }
-  protected getTopExecutionPatterns(limit: number = 10): readonly ExecutionPattern[] {
-    return getTopPatterns(this.memOpCtx, limit);
   }
 }

@@ -15,12 +15,10 @@ import {
   recordErrorResolution,
   findErrorResolution,
   getLearningsByType,
-  getTopPatterns,
   categorizeTaskByKeywords,
   type AgentMemoryState,
   type AgentMemoryError,
   type TaskLearning,
-  type ExecutionPattern,
   type ErrorResolution,
 } from './base-agent-memory-init.js';
 
@@ -63,7 +61,6 @@ export async function persistMemoryAfterTaskCompletion(
   const taskType = categorizeTaskByKeywords(task.description.toLowerCase());
   const updatedState = recordExecutionPattern(memoryState, {
     pattern: taskType,
-    successRate: 1.0, // Task completed without error
   });
 
   // Persist to backend
@@ -126,11 +123,3 @@ export function getTaskLearningsByType(
   return getLearningsByType(state, taskType);
 }
 
-/** Gets top execution patterns from memory state. */
-export function getTopExecutionPatterns(
-  state: AgentMemoryState | null,
-  limit: number = 10
-): readonly ExecutionPattern[] {
-  if (state === null) return [];
-  return getTopPatterns(state, limit);
-}

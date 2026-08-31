@@ -22,7 +22,6 @@ import {
   recordErrorResolution,
   findErrorResolution,
   getLearningsByType,
-  getTopPatterns,
   persistMemoryState,
 } from './base-agent-memory-init.js';
 import type { IMemoryBackend } from '../context/memory-backend-types.js';
@@ -182,19 +181,6 @@ export interface GetTopPatternsParams {
   limit: number;
 }
 
-/**
- * Gets the top execution patterns by success rate.
- * Returns empty array if memory is disabled.
- */
-export function getTopPatternsFromState(params: GetTopPatternsParams): readonly ExecutionPattern[] {
-  const { memoryEnabled, memoryState, limit } = params;
-
-  if (!memoryEnabled || memoryState === null) {
-    return [];
-  }
-
-  return getTopPatterns(memoryState, limit);
-}
 
 /**
  * Creates a readonly copy of agent memory state for observability.
@@ -262,12 +248,3 @@ export function doGetLearnings(
   return getLearningsFromState({ ...ctx, taskType });
 }
 
-/**
- * Gets top execution patterns.
- */
-export function doGetTopPatterns(
-  ctx: MemoryOperationContext,
-  limit: number
-): readonly ExecutionPattern[] {
-  return getTopPatternsFromState({ ...ctx, limit });
-}

@@ -95,10 +95,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TITLE: 'ops(backlog): issues whose blockers have all closed'
+          # Identity is carried by a LABEL, not by the title (#5238).
+          #
+          # The lookup used `gh issue list --search "in:title $TITLE"`, which
+          # goes through GitHub's full-text search index. Run with a user token
+          # that returns the tracker; run inside this job it returned empty on
+          # every one of the first four runs, silently taking the `create`
+          # branch each time. Four duplicate trackers resulted (#5115, #5127,
+          # #5144, #5237), all with `updatedAt == createdAt` — the `edit` and
+          # `close` arms below had never executed even once.
+          #
+          # `--label` resolves through the REST issues endpoint instead, which
+          # is strongly consistent and matches exactly. It is also more robust
+          # than the title match in two ways that one was not: it survives a
+          # title edit, and an unrelated issue that happens to share the
+          # title's words cannot be mistaken for the tracker.
+          TRACKER_LABEL: 'ops:unblocked-tracker'
         run: |
           set -euo pipefail
-          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
-            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+          # Ensure the label exists rather than depending on out-of-band setup.
+          # `gh issue list --label` on a missing label exits 0 with no output
+          # (verified), so the LOOKUP degrades safely — but `gh issue create
+          # --label` fails outright, which under `set -e` would kill the step.
+          # A workflow whose correctness rests on someone having created a
+          # label by hand has the same shape as the bug this fixes.
+          gh label create "$TRACKER_LABEL" \
+            --color 'ededed' \
+            --description 'The single ops(backlog) unblocked-issues tracker (#5238)' \
+            --force
+
+          existing=$(gh issue list --state open --label "$TRACKER_LABEL" --limit 1 \
+            --json number --jq '.[0].number // empty')
 
           {
             cat /tmp/unblocked.md
@@ -112,13 +140,21 @@ jobs:
           # a reader cannot tell it from a current one.
           if grep -qx 'STATUS: none' /tmp/unblocked.status; then
             if [ -n "$existing" ]; then
+              echo "[tracker] closing #$existing — nothing left to surface"
               gh issue close "$existing" --comment "Every blocked issue has an open blocker again. Closing; the daily run reopens this if that changes."
+            else
+              echo "[tracker] nothing to surface and no open tracker — no action"
             fi
             exit 0
           fi
 
+          # Say which branch ran. The bug above was invisible for four days
+          # because the dedup path produced no output when it did not fire, so
+          # a silent `create` looked exactly like a successful `edit`.
           if [ -n "$existing" ]; then
+            echo "[tracker] reusing #$existing"
             gh issue edit "$existing" --body-file /tmp/body.md
           else
-            gh issue create --title "$TITLE" --body-file /tmp/body.md
+            echo "[tracker] no open tracker found — creating a new one"
+            gh issue create --title "$TITLE" --label "$TRACKER_LABEL" --body-file /tmp/body.md
           fi

@@ -241,9 +241,12 @@ describe('validation-stats', () => {
     it('should handle empty decisions', () => {
       const result = calculateRegret([]);
 
-      expect(result.cumulativeRegret).toBe(0);
+      // Was `toBe(0)` / `toBe(1)`, which pinned #5255: a perfect routing
+      // record asserted over zero decisions. The COUNT is genuinely 0; the
+      // RATIOS over that count are unmeasured.
+      expect(result.cumulativeRegret).toBeNull();
       expect(result.totalDecisions).toBe(0);
-      expect(result.optimalRate).toBe(1);
+      expect(result.optimalRate).toBeNull();
     });
   });
 

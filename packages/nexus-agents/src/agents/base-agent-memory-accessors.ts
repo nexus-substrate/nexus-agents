@@ -25,7 +25,6 @@ import {
   doRecordResolution,
   doFindResolution,
   doGetLearnings,
-  doGetTopPatterns,
   type MemoryOperationContext,
 } from './base-agent-memory-ops.js';
 
@@ -131,12 +130,3 @@ export function getTaskLearningsByType(
   return doGetLearnings(ctx, taskType);
 }
 
-/**
- * Gets top execution patterns by success rate.
- */
-export function getTopPatterns(
-  ctx: MemoryOperationContext,
-  limit: number
-): readonly ExecutionPattern[] {
-  return doGetTopPatterns(ctx, limit);
-}

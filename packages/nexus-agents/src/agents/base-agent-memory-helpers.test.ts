@@ -6,7 +6,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type {
   AgentMemoryState,
-  ExecutionPattern,
   ErrorResolution,
   TaskLearning,
 } from './memory-state-types.js';
@@ -14,7 +13,6 @@ import {
   recordTaskFailureInMemory,
   getErrorResolution,
   getTaskLearningsByType,
-  getTopExecutionPatterns,
 } from './base-agent-memory-helpers.js';
 
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -50,11 +48,6 @@ vi.mock('./base-agent-memory-init.js', async (importOriginal) => {
       state.taskLearnings
         .filter((l: TaskLearning) => l.taskType === taskType)
         .sort((a: TaskLearning, b: TaskLearning) => b.confidence - a.confidence)
-    ),
-    getTopPatterns: vi.fn((state: AgentMemoryState, limit: number) =>
-      [...state.executionPatterns]
-        .sort((a: ExecutionPattern, b: ExecutionPattern) => b.successRate - a.successRate)
-        .slice(0, limit)
     ),
     categorizeTaskByKeywords: vi.fn(() => 'general'),
   };
@@ -165,38 +158,3 @@ describe('getTaskLearningsByType', () => {
 // getTopExecutionPatterns
 // ============================================================================
 
-describe('getTopExecutionPatterns', () => {
-  it('returns empty array for null state', () => {
-    expect(getTopExecutionPatterns(null)).toEqual([]);
-  });
-
-  it('returns patterns sorted by success rate', () => {
-    const patterns: ExecutionPattern[] = [
-      { id: '1', pattern: 'low', successRate: 0.3, occurrences: 5, lastSeen: new Date() },
-      { id: '2', pattern: 'high', successRate: 0.9, occurrences: 3, lastSeen: new Date() },
-    ];
-    const state = makeMemoryState({ executionPatterns: patterns });
-    const result = getTopExecutionPatterns(state);
-    expect(result[0]!.pattern).toBe('high');
-  });
-
-  it('respects limit parameter', () => {
-    const patterns: ExecutionPattern[] = [
-      { id: '1', pattern: 'a', successRate: 0.9, occurrences: 1, lastSeen: new Date() },
-      { id: '2', pattern: 'b', successRate: 0.8, occurrences: 1, lastSeen: new Date() },
-      { id: '3', pattern: 'c', successRate: 0.7, occurrences: 1, lastSeen: new Date() },
-    ];
-    const state = makeMemoryState({ executionPatterns: patterns });
-    const result = getTopExecutionPatterns(state, 2);
-    expect(result).toHaveLength(2);
-  });
-
-  it('returns all patterns when limit exceeds count', () => {
-    const patterns: ExecutionPattern[] = [
-      { id: '1', pattern: 'a', successRate: 0.9, occurrences: 1, lastSeen: new Date() },
-    ];
-    const state = makeMemoryState({ executionPatterns: patterns });
-    const result = getTopExecutionPatterns(state, 10);
-    expect(result).toHaveLength(1);
-  });
-});
