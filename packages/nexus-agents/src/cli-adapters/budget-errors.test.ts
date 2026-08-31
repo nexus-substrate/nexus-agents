@@ -19,6 +19,14 @@ function makeBudget(overrides: Partial<SessionBudget> = {}): SessionBudget {
     costBudgetUsd: 1.0,
     tokensUsed: 0,
     costSpentUsd: 0,
+    // #5240: a fixture budget has measured nothing, and says so rather than
+    // omitting the field — an absent coverage would read as "fully measured".
+    coverage: {
+      measuredTokenDebits: 0,
+      estimatedTokenDebits: 0,
+      measuredCostDebits: 0,
+      estimatedCostDebits: 0,
+    },
     tokensRemaining: 10000,
     costRemainingUsd: 1.0,
     utilizationPercent: 0,

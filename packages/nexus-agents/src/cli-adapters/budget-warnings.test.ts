@@ -35,6 +35,13 @@ function makeBudget(overrides: Partial<SessionBudget> = {}) {
     tokensRemaining: 10000,
     costRemainingUsd: 1.0,
     utilizationPercent: 0,
+    // #5240: nothing debited yet, stated rather than omitted.
+    coverage: {
+      measuredTokenDebits: 0,
+      estimatedTokenDebits: 0,
+      measuredCostDebits: 0,
+      estimatedCostDebits: 0,
+    },
     startedAt: new Date(),
     ...overrides,
   } satisfies SessionBudget;
