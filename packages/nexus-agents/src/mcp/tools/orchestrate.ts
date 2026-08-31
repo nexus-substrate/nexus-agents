@@ -9,7 +9,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
 import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS, getMcpSafeDeadlineMs } from '../../config/timeouts.js';
-import { getHeartbeatMonitor, runInHeartbeatSession } from '../../agents/heartbeat-monitor.js';
+import {
+  classifyStallTick,
+  getHeartbeatMonitor,
+  runInHeartbeatSession,
+} from '../../agents/heartbeat-monitor.js';
 import { raceAgainstDeadline } from '../../core/race/race-against-deadline.js';
 import {
   createOrchestrationStateSnapshot,
@@ -530,9 +534,23 @@ function startHeartbeatTracking(
   // #4665: the timer OBSERVES. It used to pet the session on the line above
   // this check, so `isStalled` compared `now` against a value it had just set
   // to `now` and could never be true.
+  // #5282: same instrument as the expert path, read the same way. `isStalled`
+  // was one boolean two call sites interpreted alike only by accident; letting
+  // each fork its own reading is how one path loses a check the other keeps.
+  let reportedUnmeasured = false;
   const timer = setInterval(() => {
-    if (monitor.isStalled(sessionId)) {
-      logger.warn('Orchestration session stalled', { label, sessionId });
+    switch (classifyStallTick(monitor.getSessionHealth(sessionId)?.health)) {
+      case 'stalled':
+        logger.warn('Orchestration session stalled', { label, sessionId });
+        break;
+      case 'unmeasured':
+        if (!reportedUnmeasured) {
+          reportedUnmeasured = true;
+          logger.debug('Orchestration session stall detection unmeasured', { label, sessionId });
+        }
+        break;
+      case 'quiet':
+        break;
     }
   }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
   return {

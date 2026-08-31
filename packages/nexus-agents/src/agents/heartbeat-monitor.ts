@@ -41,6 +41,13 @@ export interface ExpertSessionSnapshot {
 export interface AgentHealthReport {
   readonly activeSessions: number;
   readonly stalledSessions: number;
+  /**
+   * Sessions whose stall state could not be measured — no scope ever
+   * reported progress (#5282). Counted separately so an all-uninstrumented
+   * fleet is not summarised by `stalledSessions: 0` alone, which reads as
+   * health when it is really an absence of measurement.
+   */
+  readonly unmeasuredSessions: number;
   readonly sessions: readonly ExpertSessionSnapshot[];
 }
 
@@ -102,7 +109,6 @@ export interface HealthTransition {
  * - `heartbeat()` resets the liveness timer for a session
  * - `endSession()` stops tracking
  * - `getHealth()` returns aggregate health report
- * - `isStalled()` checks if a specific session is stalled
  */
 export class HeartbeatMonitor {
   private readonly config: HeartbeatConfig;
@@ -144,16 +150,6 @@ export class HeartbeatMonitor {
   }
 
   /** Check if a session has exceeded the stalled threshold. */
-  isStalled(sessionId: string): boolean {
-    const entry = this.sessions.get(sessionId);
-    if (entry === undefined) return false;
-    // #4665: silence from an uninstrumented session means nothing — no scope
-    // ever claimed to report its progress. Silence from an instrumented one is
-    // the signal.
-    if (entry.heartbeatCount === 0) return false;
-    const elapsed = getTimeProvider().now() - entry.lastHeartbeat;
-    return elapsed >= this.config.stalledThresholdMs;
-  }
 
   /** Check if a session has exceeded the absolute max lifetime. */
   isExpired(sessionId: string): boolean {
@@ -167,11 +163,15 @@ export class HeartbeatMonitor {
     const now = getTimeProvider().now();
     const sessions: ExpertSessionSnapshot[] = [];
     let stalledCount = 0;
+    let unmeasuredCount = 0;
 
     for (const [sessionId, entry] of this.sessions) {
       const timeSince = now - entry.lastHeartbeat;
       const health = this.classifyHealth(timeSince, entry.heartbeatCount);
       if (health === 'stalled') stalledCount++;
+      // #5282: counted separately so an all-uninstrumented fleet is not
+      // summarised as `stalledSessions: 0` alone, which reads as health.
+      if (health === 'unmeasured') unmeasuredCount++;
 
       sessions.push({
         sessionId,
@@ -188,6 +188,7 @@ export class HeartbeatMonitor {
     return {
       activeSessions: this.sessions.size,
       stalledSessions: stalledCount,
+      unmeasuredSessions: unmeasuredCount,
       sessions,
     };
   }
@@ -246,6 +247,34 @@ export class HeartbeatMonitor {
 // ============================================================================
 
 let globalMonitor: HeartbeatMonitor | undefined;
+
+/**
+ * What a periodic watchdog should report for one tick.
+ *
+ * `unmeasured` is a REPORTABLE state, not silence. The removed `isStalled`
+ * returned a bare boolean and collapsed `unmeasured` into `false`, so both
+ * consumers read "checked, and fine" from a session no instrumentation had
+ * ever reported on — and for expert sessions that is every session, since
+ * nothing inside the expert execution path emits on `stepBus` (#5282).
+ */
+export type StallTick = 'stalled' | 'unmeasured' | 'quiet';
+
+/**
+ * Classify a session for a watchdog tick.
+ *
+ * Pure, and shared by both consumers deliberately: `isStalled` was a single
+ * instrument two call sites read differently, and letting each fork its own
+ * interpretation is how one path silently loses a check the other keeps.
+ *
+ * `undefined` (session ended between the tick and the lookup, or never
+ * existed) is `quiet`, NOT `unmeasured` — there is nothing to report on, as
+ * opposed to something we failed to measure.
+ */
+export function classifyStallTick(health: SessionHealth | undefined): StallTick {
+  if (health === 'stalled') return 'stalled';
+  if (health === 'unmeasured') return 'unmeasured';
+  return 'quiet';
+}
 
 /** Get or create the global heartbeat monitor singleton. */
 export function getHeartbeatMonitor(): HeartbeatMonitor {
