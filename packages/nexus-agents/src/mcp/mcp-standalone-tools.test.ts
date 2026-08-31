@@ -413,7 +413,20 @@ describe('MCP Standalone Tools Integration', () => {
    * against SynthesisResult with no data at all. A round-trip is the wrong
    * instrument for a response whose shape varies (#5141).
    */
-  const DATA_DEPENDENT_STRUCTURED: readonly string[] = ['research_synthesize'];
+  /**
+   * `research_add` fetches arXiv metadata (`addResearchPaper`), and `dryRun`
+   * suppresses the registry WRITE, not the fetch. So it emits structured
+   * content when arxiv.org answers and a `toolStructuredError` envelope — with
+   * no structured content at all — when it does not. CI is the second case
+   * often enough to fail intermittently (#5288), on PRs touching nothing near
+   * it.
+   *
+   * Same category as `research_synthesize` above, with the network standing in
+   * for registry state: the bucket depends on an input this suite does not
+   * control, so no fixed list can be correct in both environments. Its schema
+   * parity is pinned deterministically in `research-add.test.ts`.
+   */
+  const DATA_DEPENDENT_STRUCTURED: readonly string[] = ['research_synthesize', 'research_add'];
 
   /**
    * A response field missing from a tool's declared `outputSchema` does not go
