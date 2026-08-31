@@ -234,7 +234,12 @@ describe('runLearningMetrics', () => {
     expect(result.summary).toHaveProperty('overallSuccessRate');
     expect(result.summary).toHaveProperty('avgReward');
     expect(result.summary).toHaveProperty('learningStatus');
-    expect(['exploring', 'exploiting', 'balanced']).toContain(result.summary.learningStatus);
+    // 'unmeasured' joined the union in #5267. This list omitted it, so the
+    // assertion would have failed on the honest value while passing on the
+    // fabricated 'exploiting' — a whitelist that excluded the truth.
+    expect(['exploring', 'exploiting', 'balanced', 'unmeasured']).toContain(
+      result.summary.learningStatus
+    );
   });
 
   it('should compute bandit progress with default features', () => {
