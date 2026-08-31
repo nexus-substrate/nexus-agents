@@ -25,7 +25,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
-import type { BanditContext } from '../cli-adapters/budget-router-types.js';
+import { NEUTRAL_BANDIT_FEATURE, type BanditContext } from '../cli-adapters/budget-router-types.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 import { ensureLearningDir, getMetaOutcomesFile } from '../config/learning-persistence.js';
 import type { ExecutionStrategy, MetaDecision } from './meta-orchestrator.js';
@@ -160,9 +160,14 @@ export function toBanditContext(decision: MetaDecision): BanditContext {
     contextLengthNormalized: clamp01(a.estimatedTokens / CONTEXT_TOKEN_NORMALIZER),
     isCodeTask: isCode ? 1 : 0,
     isReasoningTask: a.reasoningType === 'reasoning' ? clamp01(a.reasoningConfidence) : 0,
-    // No budget/urgency signal is available at selection time; left neutral.
-    budgetUtilization: 0,
-    timePressure: 0,
+    // No budget/urgency signal is available at selection time, so both take
+    // the shared neutral (#5284). These were `0`, under this same "left
+    // neutral" comment — but neutral for these features is 0.5, because zero
+    // reads as a claim and because `warmStart` replays at 0.5. Records written
+    // at 0 also let the bandit tell shadow-selector origin from live-router
+    // origin through the feature value alone: accidental signal, not none.
+    budgetUtilization: NEUTRAL_BANDIT_FEATURE,
+    timePressure: NEUTRAL_BANDIT_FEATURE,
   };
 }
 
