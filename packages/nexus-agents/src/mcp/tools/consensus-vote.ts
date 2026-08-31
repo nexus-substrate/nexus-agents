@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
+import { boundArtifactForReview, type BoundedArtifact } from '../../utils/bounded-artifact.js';
 import {
   createLogger,
   getErrorMessage,
@@ -434,6 +435,46 @@ async function processVotesWithCascade(
 const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
 
 /**
+ * Characters of the proposal the contrarian is shown.
+ *
+ * Unchanged from the value that was inline, so escalation behaviour on
+ * ordinary proposals is identical; what changed is that exceeding it is now
+ * disclosed to the contrarian rather than silently applied (#5301).
+ */
+const CONTRARIAN_PROPOSAL_BUDGET = 2000;
+
+/** Build the contrarian prompt, carrying the partial-view note when present. */
+function buildContrarianPrompt(bounded: BoundedArtifact): string {
+  return [
+    'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
+    'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
+    '',
+    ...(bounded.note === '' ? [] : [bounded.note, '']),
+    `Proposal: ${bounded.text}`,
+    '',
+    'If you find a strong reason to reject, respond with JSON:',
+    '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
+    'If the proposal is sound, respond with:',
+    '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
+  ].join('\n');
+}
+
+/**
+ * Record that the contrarian saw only part of the proposal.
+ *
+ * Logged rather than left silent because `shouldEscalate: false` is the same
+ * value whether the contrarian read everything or 4% of it, so the envelope
+ * alone cannot distinguish them.
+ */
+function logPartialProposal(bounded: BoundedArtifact, log: ILogger): void {
+  if (bounded.bound === undefined) return;
+  log.info('Contrarian sees a partial proposal', {
+    reviewedChars: bounded.bound.reviewedChars,
+    totalChars: bounded.bound.totalChars,
+  });
+}
+
+/**
  * Run a single contrarian agent to check for YAGNI/MISALIGNED/SECURITY_RISK
  * (#1799). `errored` (#4132) is true when the contrarian voice could NOT be
  * obtained (import/executeExpert failure, or the expert reported failure) — the
@@ -446,19 +487,14 @@ async function runContrarianCheck(
 ): Promise<{ shouldEscalate: boolean; reason: string; confidence: number; errored: boolean }> {
   try {
     const { executeExpert } = await import('../../pipeline/expert-bridge.js');
-    const prompt = [
-      'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
-      'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
-      '',
-      `Proposal: ${proposal.slice(0, 2000)}`,
-      '',
-      'If you find a strong reason to reject, respond with JSON:',
-      '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
-      'If the proposal is sound, respond with:',
-      '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
-    ].join('\n');
-
-    const result = await executeExpert('architecture', prompt);
+    // #5301: the proposal was cut to 2000 chars with no marker. A `pr_review`
+    // proposal carries up to MAX_DIFF_LENGTH = 50_000 bytes of diff, so the
+    // contrarian could be deciding whether to escalate having seen ~4% of it —
+    // the header region, where a diff is least informative — and returned the
+    // same `shouldEscalate: false` it returns after reading the whole thing.
+    const bounded = boundArtifactForReview(proposal, CONTRARIAN_PROPOSAL_BUDGET, 'proposal');
+    logPartialProposal(bounded, log);
+    const result = await executeExpert('architecture', buildContrarianPrompt(bounded));
     // Expert-bridge reported failure — the contrarian voice was NOT obtained.
     if (!result.success) return { shouldEscalate: false, reason: '', confidence: 0, errored: true };
 
