@@ -24,11 +24,13 @@
  * — its schema is for routing/learning signals, not billing.
  */
 
+import { z } from 'zod';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { computeTokenCost, roundToMicroUsd } from './token-cost-core.js';
 import { dirname, join } from 'node:path';
 
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
+import { createLogger } from '../core/logger.js';
 // NOTE: only the FUNCTION is imported here — `getDefaultRegistry()` must never
 // be CALLED at module scope (#3185 bootstrap hazard: first construction reads
 // the manifest overlay/snapshot from disk). All calls happen at invocation
@@ -227,6 +229,71 @@ interface LoadFilter {
   readonly category: string | undefined;
 }
 
+const logger = createLogger({ component: 'usage-log' });
+
+/**
+ * Validate a ledger line before it is trusted (#5328).
+ *
+ * The read path did `JSON.parse(line) as UsageEvent` — a cast. `eventMatches`
+ * only inspects `timestamp` / `modelId` / `category`, so a corrupt `usdCost`
+ * reached `rollupByModel`'s `reduce((s, e) => s + e.usdCost, 0)`: a string
+ * concatenates, a missing value yields `NaN`, and neither throws. Every sibling
+ * JSONL reader here validates; this one did not, and it is the cost ledger.
+ *
+ * Optional fields stay optional ON PURPOSE. `category`, `errorCode`, `priced`
+ * and `priceSource` all postdate the original format — `priced` is documented
+ * as "Absent on lines written before this field existed" — so requiring them
+ * would silently discard real spend history, which is worse than the corruption
+ * being fixed.
+ *
+ * Not `.strict()`, for the same forward-compatibility reason: a line carrying a
+ * field a newer version writes must still load in an older one.
+ *
+ * `z.number()` already rejects `NaN` and infinities in zod v4, which is the
+ * property that matters here: a cost that is not a real number cannot be summed,
+ * and JSON renders `NaN` as `null`, which this also rejects.
+ */
+const UsageEventSchema = z.object({
+  timestamp: z.string(),
+  modelId: z.string(),
+  providerId: z.string(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  usdCost: z.number(),
+  latencyMs: z.number(),
+  success: z.boolean(),
+  category: z.string().optional(),
+  errorCode: z.string().optional(),
+  priced: z.boolean().optional(),
+  priceSource: z.string().optional(),
+});
+
+/**
+ * Narrow a validated line to {@link UsageEvent}.
+ *
+ * Zod's `.optional()` yields `T | undefined`, which `exactOptionalPropertyTypes`
+ * will not assign to a `?: T` property — an absent key and a present-but-
+ * undefined key are different things under that flag, and the distinction is
+ * the right one for a ledger: a line that omits `priced` is legacy, whereas one
+ * that sets it to `undefined` is malformed.
+ */
+function toUsageEvent(v: z.infer<typeof UsageEventSchema>): UsageEvent {
+  return {
+    timestamp: v.timestamp,
+    modelId: v.modelId,
+    providerId: v.providerId,
+    inputTokens: v.inputTokens,
+    outputTokens: v.outputTokens,
+    usdCost: v.usdCost,
+    latencyMs: v.latencyMs,
+    success: v.success,
+    ...(v.category !== undefined && { category: v.category }),
+    ...(v.errorCode !== undefined && { errorCode: v.errorCode }),
+    ...(v.priced !== undefined && { priced: v.priced }),
+    ...(v.priceSource !== undefined && { priceSource: v.priceSource }),
+  };
+}
+
 function eventMatches(parsed: UsageEvent, f: LoadFilter): boolean {
   const ts = Date.parse(parsed.timestamp);
   if (ts < f.sinceMs || ts >= f.untilMs) return false;
@@ -243,15 +310,29 @@ function parseFileLines(filePath: string, filter: LoadFilter): readonly UsageEve
     return [];
   }
   const out: UsageEvent[] = [];
+  let rejected = 0;
   for (const line of content.split('\n')) {
     if (line.trim() === '') continue;
+    let raw: unknown;
     try {
-      const parsed = JSON.parse(line) as UsageEvent;
-      if (eventMatches(parsed, filter)) out.push(parsed);
+      raw = JSON.parse(line);
     } catch {
       // Skip malformed line; keep reading.
+      rejected++;
       continue;
     }
+    const parsed = UsageEventSchema.safeParse(raw);
+    if (!parsed.success) {
+      rejected++;
+      continue;
+    }
+    const event = toUsageEvent(parsed.data);
+    if (eventMatches(event, filter)) out.push(event);
+  }
+  // Say so rather than quietly returning a shorter list: a ledger that drops
+  // lines silently under-reports spend, and the operator has no way to tell.
+  if (rejected > 0) {
+    logger.warn('Usage ledger lines rejected as unreadable', { filePath, rejected });
   }
   return out;
 }
