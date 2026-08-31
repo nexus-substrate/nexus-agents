@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
+  classifyStallTick,
   HeartbeatMonitor,
   getHeartbeatMonitor,
   resetHeartbeatMonitor,
@@ -85,7 +86,7 @@ describe('heartbeat-monitor', () => {
 
       vi.advanceTimersByTime(25_000);
 
-      expect(monitor.isStalled(sid)).toBe(true);
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('stalled');
       const health = monitor.getHealth();
       expect(health.stalledSessions).toBe(1);
     });
@@ -98,7 +99,7 @@ describe('heartbeat-monitor', () => {
       monitor.heartbeat(sid);
       vi.advanceTimersByTime(10_000);
 
-      expect(monitor.isStalled(sid)).toBe(false);
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('quiet');
     });
 
     it('should detect expired sessions', () => {
@@ -126,9 +127,9 @@ describe('heartbeat-monitor', () => {
       }).not.toThrow();
     });
 
-    it('should return false for isStalled on unknown session', () => {
+    it('should stay quiet for an unknown session', () => {
       const monitor = new HeartbeatMonitor();
-      expect(monitor.isStalled('nonexistent')).toBe(false);
+      expect(classifyStallTick(monitor.getSessionHealth('nonexistent')?.health)).toBe('quiet');
     });
 
     it('should return false for isExpired on unknown session', () => {
@@ -180,7 +181,7 @@ describe('heartbeat-monitor', () => {
         monitor.heartbeat(sid);
       }
 
-      expect(monitor.isStalled(sid)).toBe(false);
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('quiet');
       const health = monitor.getHealth();
       const session = health.sessions.find((s) => s.sessionId === sid);
       expect(session?.health).toBe('alive');
@@ -203,7 +204,7 @@ describe('heartbeat-monitor', () => {
       // Then stop heartbeating
       vi.advanceTimersByTime(65_000);
 
-      expect(monitor.isStalled(sid)).toBe(true);
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('stalled');
     });
 
     it('should transition through health states', () => {
@@ -362,7 +363,7 @@ describe('heartbeat-monitor', () => {
       monitor.heartbeat(sid); // real progress happened at least once
       vi.advanceTimersByTime(130_000); // past the 120s stalled threshold
 
-      expect(monitor.isStalled(sid)).toBe(true);
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('stalled');
       expect(monitor.getHealth().stalledSessions).toBe(1);
       expect(monitor.getSessionHealth(sid)?.health).toBe('stalled');
     });
@@ -376,7 +377,10 @@ describe('heartbeat-monitor', () => {
       vi.advanceTimersByTime(130_000);
 
       expect(monitor.getSessionHealth(sid)?.health).toBe('unmeasured');
-      expect(monitor.isStalled(sid)).toBe(false);
+      // #5282: this asserted `isStalled(sid) === false` — pinning the collapse
+      // of 'unmeasured' into a green "not stalled" as intended behaviour. The
+      // watchdog now reports the absence of measurement instead.
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('unmeasured');
       expect(monitor.getHealth().stalledSessions).toBe(0);
     });
 
@@ -438,7 +442,10 @@ describe('heartbeat-monitor', () => {
       vi.advanceTimersByTime(130_000);
 
       expect(monitor.getSessionHealth(sid)?.health).toBe('unmeasured');
-      expect(monitor.isStalled(sid)).toBe(false);
+      // #5282: this asserted `isStalled(sid) === false` — pinning the collapse
+      // of 'unmeasured' into a green "not stalled" as intended behaviour. The
+      // watchdog now reports the absence of measurement instead.
+      expect(classifyStallTick(monitor.getSessionHealth(sid)?.health)).toBe('unmeasured');
       expect(monitor.getHealth().stalledSessions).toBe(0);
     });
   });

@@ -70,7 +70,11 @@ import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
-import { getHeartbeatMonitor, runInHeartbeatSession } from '../../agents/heartbeat-monitor.js';
+import {
+  classifyStallTick,
+  getHeartbeatMonitor,
+  runInHeartbeatSession,
+} from '../../agents/heartbeat-monitor.js';
 import {
   getContextForTask,
   inferTaskCategory,
@@ -635,12 +639,31 @@ async function runExpertUnderHeartbeat<T>(
 ): Promise<T> {
   const monitor = getHeartbeatMonitor();
   const sessionId = monitor.startSession(expertId);
+  // #5282: reported once per session, not once per 15s tick — every expert
+  // session is currently unmeasured, so a per-tick line would be pure noise.
+  let reportedUnmeasured = false;
   const heartbeatTimer = setInterval(() => {
     if (monitor.isExpired(sessionId)) {
       logger?.warn('Expert session expired', { expertId, sessionId });
     }
-    if (monitor.isStalled(sessionId)) {
-      logger?.warn('Expert session stalled — no step activity', { expertId, sessionId });
+    switch (classifyStallTick(monitor.getSessionHealth(sessionId)?.health)) {
+      case 'stalled':
+        logger?.warn('Expert session stalled — no step activity', { expertId, sessionId });
+        break;
+      case 'unmeasured':
+        // The state `isStalled` used to render as `false`. Nothing inside the
+        // expert path emits on `stepBus`, so stall detection is inert here;
+        // saying so beats reporting a green "not stalled" it never measured.
+        if (!reportedUnmeasured) {
+          reportedUnmeasured = true;
+          logger?.debug('Expert session stall detection unmeasured — no step events in scope', {
+            expertId,
+            sessionId,
+          });
+        }
+        break;
+      case 'quiet':
+        break;
     }
   }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
 
