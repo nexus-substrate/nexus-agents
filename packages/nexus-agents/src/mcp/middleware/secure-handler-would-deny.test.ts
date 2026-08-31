@@ -150,9 +150,12 @@ describe('warn-mode policy near-misses reach the chain (#4991)', () => {
     // than "a rule fired", ordinary traffic would be logged as near-misses and
     // #4988 would read a wildly inflated number.
     //
-    // Detection is structural — `allowed === true && ruleName !== undefined` —
-    // because `allowWithReason` (policy.ts:118) never sets `ruleName`. Matching
-    // the '[WARN MODE]' reason prefix would couple the chain to display copy.
+    // Detection reads the evaluator's explicit `overriddenByWarnMode` flag, so
+    // an ordinary allow — no rule denied, no override — emits nothing. This
+    // comment previously described the REJECTED structural form
+    // (`allowed === true && ruleName !== undefined`) as current, contradicting
+    // the adjacent test below; a stale comment in a change about record
+    // fidelity is the same defect one level up.
     const auditLogger = mockAuditLogger();
     const handler = createSecureHandler(okHandler, {
       toolName: 'reader',
