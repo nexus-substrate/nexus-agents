@@ -11,7 +11,6 @@ import {
   createMemoryOpContext,
   findResolution,
   getTaskLearningsByType,
-  getTopPatterns,
 } from './base-agent-memory-accessors.js';
 import type { MemoryAccessorContext } from './base-agent-memory-accessors.js';
 import type { AgentMemoryState } from './base-agent-memory-init.js';
@@ -39,7 +38,6 @@ function makeMemoryState(): AgentMemoryState {
       {
         id: 'p1',
         pattern: 'unit-test',
-        successRate: 0.95,
         occurrences: 10,
         lastSeen: new Date(),
       },
@@ -187,18 +185,3 @@ describe('getTaskLearningsByType', () => {
 // getTopPatterns
 // ============================================================================
 
-describe('getTopPatterns', () => {
-  it('returns empty when disabled', () => {
-    const opCtx = { memoryEnabled: false, memoryState: null };
-    expect(getTopPatterns(opCtx, 5)).toEqual([]);
-  });
-
-  it('returns patterns up to limit', () => {
-    const state = makeMemoryState();
-    const opCtx = { memoryEnabled: true, memoryState: state };
-    const patterns = getTopPatterns(opCtx, 5);
-
-    expect(patterns.length).toBe(1);
-    expect(patterns[0]!.pattern).toBe('unit-test');
-  });
-});

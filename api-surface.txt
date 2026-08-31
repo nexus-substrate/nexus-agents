@@ -3208,7 +3208,6 @@ InterfaceDeclaration ExecutionPattern
   lastSeen: Date
   occurrences: number
   pattern: string
-  successRate: number
 InterfaceDeclaration ExecutionPhase
   phaseIndex: number
   steps: WorkflowStep[]
