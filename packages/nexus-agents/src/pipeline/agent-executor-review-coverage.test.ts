@@ -29,7 +29,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildQaPrompt, buildVoteProposal, QA_IMPLEMENTATION_BUDGET } from './agent-executor.js';
+import { buildVoteProposal } from './agent-executor.js';
+import { buildQaPrompt, QA_IMPLEMENTATION_BUDGET } from './qa-review-budget.js';
 
 describe('buildQaPrompt discloses a bounded read (#4140 shape)', () => {
   it('is byte-identical to a whole-artifact review when within budget', () => {
