@@ -450,7 +450,7 @@ export function createFailedReview(
 }
 
 /** The policy gate's verdict on posting a review, as the caller needs it. */
-export interface ReviewPostingVerdict {
+interface ReviewPostingVerdict {
   readonly allowed: boolean;
   readonly hasRuleOfTwoViolation: boolean;
   readonly violations: readonly { rule: string }[];
