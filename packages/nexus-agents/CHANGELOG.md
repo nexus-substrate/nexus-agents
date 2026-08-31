@@ -1,5 +1,56 @@
 # nexus-agents
 
+## 6.3.3
+
+### Patch Changes
+
+- [#5333](https://github.com/nexus-substrate/nexus-agents/pull/5333) [`e0c4e7e`](https://github.com/nexus-substrate/nexus-agents/commit/e0c4e7ea7503e8ca5757be80ef77a1172c1671fc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): key the access-policy cache by trust boundary, not objective alone
+
+  `deriveWithTelemetry` cached derived policies under
+  `hashObjective(userObjective)` only — neither `trustTier` nor `mode` was part of
+  the key — and `getPolicyCache()` is a process-wide singleton, so one
+  long-lived MCP server shared derived policies across every tool call.
+
+  Both production callers pass `trustTier` explicitly, threaded from the request
+  context (`execute-expert.ts`, `orchestrate.ts`), so the tier genuinely varies
+  between calls in one process. Two calls with the same objective text and
+  different tiers therefore shared a policy, and the cache hit returns before any
+  trust or mode branch — while telemetry recorded `trustDecision: 'cache-hit'`,
+  making the skipped derivation look as though it had run.
+
+  `mode` is keyed for the same reason: `buildBypassPolicy` stores
+  `allowedTools: '*'` in `off` mode, and the enforcer short-circuits that to
+  allow-everything.
+
+  `objectiveHash` on the policy is deliberately unchanged — it is audit
+  provenance, answering "which objective produced this policy", and folding the
+  trust boundary into it would break that meaning and any stored record compared
+  against it.
+
+- [#5334](https://github.com/nexus-substrate/nexus-agents/pull/5334) [`a3a9573`](https://github.com/nexus-substrate/nexus-agents/commit/a3a95734234b84d4c58bd0b7e3064fad765bf48d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(learning): validate usage-ledger lines instead of casting them
+
+  `parseFileLines` did `JSON.parse(line) as UsageEvent` — a cast, not a
+  validation — and no `UsageEventSchema` existed. Every sibling JSONL reader in
+  the repo validates (`AuditEventSchema`, `TaskOutcomeSchema`,
+  `PersistedMetaOutcomeSchema`, `ci-health-log`); this was the one that did not,
+  and it is the cost ledger.
+
+  `eventMatches` inspects only `timestamp` / `modelId` / `category`, so a corrupt
+  `usdCost` reached `rollupByModel`'s `reduce((s, e) => s + e.usdCost, 0)`. A
+  string concatenated, a missing value produced `NaN`, and neither threw — so
+  `nexus-agents usage` reported `NaN` or `"0" + "1.5"` spend, `costPerSuccessUsd`
+  divided garbage, and the cost-descending sort silently reordered because `NaN`
+  comparisons are false.
+
+  Optional fields stay optional deliberately: `category`, `errorCode`, `priced`
+  and `priceSource` all postdate the original format — `priced` is documented as
+  "Absent on lines written before this field existed" — so requiring them would
+  have discarded real spend history, which is worse than the corruption being
+  fixed. The schema is not `.strict()` for the same forward-compatibility reason.
+
+  Rejected lines are now counted and logged at `warn`. A ledger that silently
+  drops lines under-reports spend with no way for the operator to tell.
+
 ## 6.3.2
 
 ### Patch Changes
