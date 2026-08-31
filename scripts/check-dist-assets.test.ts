@@ -17,6 +17,24 @@ function box(): string {
   return mkdtempSync(join(tmpdir(), 'dist-assets-'));
 }
 
+/**
+ * Build a dist tree satisfying every declared asset. With `emptyDirs`, the
+ * directory assets are created but left empty — the state the gate used to
+ * accept.
+ */
+function populate(dir: string, { emptyDirs }: { emptyDirs: boolean }): void {
+  for (const asset of REQUIRED_DIST_ASSETS) {
+    const path = join(dir, asset.file);
+    if (asset.kind === 'dir') {
+      mkdirSync(path, { recursive: true });
+      if (!emptyDirs) writeFileSync(join(path, 'entry.yml'), 'name: fixture\n');
+    } else {
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, 'x'.repeat(asset.minBytes + 1));
+    }
+  }
+}
+
 describe('missingDistAssets (#5083)', () => {
   it('reports an asset absent from dist', () => {
     // The real defect: `models-dev-snapshot.json` was never copied, so every
@@ -51,13 +69,14 @@ describe('missingDistAssets (#5083)', () => {
 
   it('passes when every asset is present and full-size', () => {
     // The pair. Without it, "always report missing" satisfies both tests above.
+    //
+    // This fixture used to write a plain FILE at every asset path, including
+    // the two that ship as directories, and assert a clean pass — the fixture
+    // itself modelled a broken build. `populate` now builds each asset in the
+    // shape it is actually shipped in.
     const dir = box();
     try {
-      for (const { file, minBytes } of REQUIRED_DIST_ASSETS) {
-        const path = join(dir, file);
-        mkdirSync(join(path, '..'), { recursive: true });
-        writeFileSync(path, 'x'.repeat(minBytes + 1));
-      }
+      populate(dir, { emptyDirs: false });
 
       expect(missingDistAssets(dir)).toEqual([]);
     } finally {
@@ -65,22 +84,55 @@ describe('missingDistAssets (#5083)', () => {
     }
   });
 
-  it('accepts a directory asset regardless of size', () => {
-    // `workflows/templates` and `security/ast-rules` are directories; a size
-    // floor is meaningless for them and must not fail them.
+  it('rejects a declared directory asset that is present but EMPTY', () => {
+    // The gate did `if (stat.isDirectory()) continue;` — a directory passed on
+    // existence alone, with no `readdirSync` and no entry count. `tsup.config`
+    // runs `cp -r src/workflows/templates/. dist/workflows/templates/`, which
+    // succeeds copying nothing when the source is empty, so an empty shipped
+    // directory reached npm behind a green "dist assets OK".
+    //
+    // This test previously asserted the opposite ('accepts a directory asset
+    // regardless of size'), building the dirs empty and expecting `[]`. The
+    // comment's premise was half right: a *byte* floor is meaningless for a
+    // directory, but an *entry* floor is exactly what was missing, so the
+    // check was dropped rather than adapted.
     const dir = box();
     try {
-      for (const { file, minBytes } of REQUIRED_DIST_ASSETS) {
-        const path = join(dir, file);
-        if (minBytes > 1) {
-          mkdirSync(join(path, '..'), { recursive: true });
-          writeFileSync(path, 'x'.repeat(minBytes + 1));
-        } else {
-          mkdirSync(path, { recursive: true });
-        }
-      }
+      populate(dir, { emptyDirs: true });
+      const problems = missingDistAssets(dir);
+      expect(problems).not.toEqual([]);
+      expect(problems.join('\n')).toMatch(/workflows\/templates/);
+      expect(problems.join('\n')).toMatch(/security\/ast-rules/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
+  it('accepts a directory asset that actually has contents', () => {
+    // The control. A gate that rejected every directory would satisfy the test
+    // above and fail every real build.
+    const dir = box();
+    try {
+      populate(dir, { emptyDirs: false });
       expect(missingDistAssets(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a directory asset that was shipped as a plain file', () => {
+    // Kind confusion is the other way this silently degrades: a build step
+    // that writes a file where a directory belongs used to pass the byte
+    // floor and be indistinguishable from a correct build.
+    const dir = box();
+    try {
+      populate(dir, { emptyDirs: false });
+      const target = REQUIRED_DIST_ASSETS.find((a) => a.kind === 'dir');
+      expect(target).toBeDefined();
+      rmSync(join(dir, target!.file), { recursive: true, force: true });
+      writeFileSync(join(dir, target!.file), 'not a directory');
+
+      expect(missingDistAssets(dir).join('\n')).toMatch(/expected a directory/i);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
