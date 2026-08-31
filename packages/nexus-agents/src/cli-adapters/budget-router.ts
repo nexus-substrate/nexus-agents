@@ -116,7 +116,7 @@ export class BudgetRouter implements IBudgetRouter {
    * and `actualTokens` / `actualCostUsd` asserted a measurement they may not
    * have held.
    */
-  private coverage: { -readonly [K in keyof BudgetCoverage]: BudgetCoverage[K] } = {
+  private coverage = {
     measuredTokenDebits: 0,
     estimatedTokenDebits: 0,
     measuredCostDebits: 0,
@@ -140,6 +140,17 @@ export class BudgetRouter implements IBudgetRouter {
   /**
    * Get current session budget status.
    */
+  /**
+   * A read-only snapshot of the debit basis counts (#5240).
+   *
+   * Copied rather than shared so a caller holding an old budget cannot see it
+   * change under them, and typed as {@link BudgetCoverage} so the public shape
+   * stays readonly while the internal accumulator remains mutable.
+   */
+  private snapshotCoverage(): BudgetCoverage {
+    return { ...this.coverage };
+  }
+
   getSessionBudget(): SessionBudget {
     const sessionBudget = this.options.sessionBudget;
     const tokenBudget = sessionBudget.tokenBudget ?? 1000000;
@@ -164,7 +175,7 @@ export class BudgetRouter implements IBudgetRouter {
       tokensRemaining,
       costRemainingUsd,
       utilizationPercent,
-      coverage: { ...this.coverage },
+      coverage: this.snapshotCoverage(),
       startedAt: this.sessionStartedAt,
     };
 
