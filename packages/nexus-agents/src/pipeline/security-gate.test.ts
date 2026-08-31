@@ -93,7 +93,6 @@ describe('checkSecurityScan', () => {
     const result = await check();
     expect(result.verdict).toBe('skip');
   });
-
 });
 
 describe('the gate makes no triage claim it cannot back (#5119 item 1)', () => {
@@ -239,6 +238,40 @@ describe('OSV lookup failures are not a clean scan (#5018)', () => {
 
     expect(result.details).toContain('OSV not checked');
     expect(result.details).not.toContain('none blocking');
+  });
+
+  it('says the OSV check did not run when the whole check throws', async () => {
+    // The counterpart to the test above, and the hole it left. #5018 made a
+    // PARTIAL failure visible by counting `failedLookups` — but the outer
+    // `catch` around the entire check returned `OSV_EMPTY`, whose
+    // `failedLookups` is 0. So a manifest read error or a throwing
+    // `queryOsvBatch` reset the very counter that disclosure depends on, and
+    // `buildScanSummary` fell through to "none blocking" — precisely the string
+    // #5018's own comment says the counter exists to prevent.
+    //
+    // A boundary-validation sweep independently dropped `osv-lookup.ts` as
+    // "already fixed" BECAUSE of that counter, which is how the two halves hid
+    // each other.
+    mockScan.mockResolvedValue(cleanScan as never);
+    queryOsvBatchMock.mockRejectedValue(new Error('ENOTFOUND api.osv.dev'));
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: true })();
+
+    expect(result.details).toContain('OSV check did not run');
+    expect(result.details).not.toContain('none blocking');
+  });
+
+  it('still says none blocking when OSV is deliberately disabled', async () => {
+    // The case that must NOT be labelled a failure. `enableOsv: false` and a
+    // manifest with no dependencies are honest empties; only the catch is not.
+    // Collapsing all three into one "unchecked" message would make the new
+    // phrase meaningless by printing it on every opted-out run.
+    mockScan.mockResolvedValue(cleanScan as never);
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: false })();
+
+    expect(result.details).not.toContain('OSV check did not run');
+    expect(result.details).toContain('none blocking');
   });
 
   it('still says none blocking when OSV genuinely found nothing', async () => {
