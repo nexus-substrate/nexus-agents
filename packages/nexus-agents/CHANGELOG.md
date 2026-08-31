@@ -1,5 +1,69 @@
 # nexus-agents
 
+## 6.1.0
+
+### Minor Changes
+
+- [#5300](https://github.com/nexus-substrate/nexus-agents/pull/5300) [`054da19`](https://github.com/nexus-substrate/nexus-agents/commit/054da19b1a35d4a83d3cdbb6260162e8870be384) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(pipeline): disclose a bounded QA review instead of recording it as complete
+
+  CLAUDE.md requires that a review consume the artifact, and that a bounded read
+  state which portion was reviewed — "a partial review recorded as complete is
+  the failure." Two sites in `agent-executor` broke that:
+
+  - `qaReview` sent `implementation.slice(0, 3000)` with no marker in the prompt
+    and no coverage on the result. `QaReviewResult` was
+    `{ verdict, feedback, issues }` — byte-identical for a 500-char and a
+    500,000-char implementation — and `dev-pipeline` then set `status: 'done'`
+    and persisted the full text on a pass the expert reached from the first 3000
+    characters. A defect introduced at character 3001 shipped with a recorded QA
+    pass.
+  - `buildVoteProposal` capped the plan at ~2900 characters. The appended
+    research block is explicitly labelled "may be incomplete"; the plan was not,
+    so voters were shown a silently-truncated plan as though whole while the vote
+    record named the full plan.
+
+  Both now disclose. The shape mirrors `packDiffForReview` ([#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)), which already
+  solved this for `pr_review`: within budget the output is byte-identical and
+  carries no coverage, and over budget a visible NOTE rides on the prompt with a
+  machine-readable `QaReviewCoverage` on the result.
+
+  This lands the honest-labelling half only. Whether a partial QA review should
+  additionally be barred from marking a task done — as [#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)'s
+  `applyPartialCoverageGate` does for `verified: true` — is a behaviour change
+  tracked separately.
+
+### Patch Changes
+
+- [#5304](https://github.com/nexus-substrate/nexus-agents/pull/5304) [`91629c4`](https://github.com/nexus-substrate/nexus-agents/commit/91629c46f8e689daf97e3fc03aac7513059c66b3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(agents): let the stall watchdog report that it is not measuring ([#5282](https://github.com/nexus-substrate/nexus-agents/issues/5282))
+
+  `HeartbeatMonitor.isStalled` returned a bare boolean, collapsing the
+  `'unmeasured'` state its own `classifyHealth` already computes into `false`.
+  Both consumers — `execute-expert.ts` and `orchestrate.ts` — therefore read a
+  green "not stalled" from a session no instrumentation had ever reported on.
+
+  For expert sessions that is every session. `withStep` is the only emitter on
+  `stepBus`, it fires exactly twice per step (open and close) with no
+  intermediate progress, and no `withStep` call site lies inside the expert
+  execution path — so `heartbeatCount` stays 0 and the warning at
+  `execute-expert.ts:642` was unreachable.
+
+  Resolved by a 7-voter `higher_order` panel (6 approve / 1 reject; the
+  `unmeasured` option leading at 66.7%). The panel explicitly rejected emitting a
+  synthetic heartbeat: because `withStep` reports no intermediate progress, any
+  such fix yields one heartbeat at session start and then silence, flipping the
+  check from inert to firing a FALSE stall on every model call over the 120s
+  threshold. `classifyHealth` already records that same finding in a comment.
+
+  `isStalled` is replaced by `classifyStallTick`, a pure classifier over the
+  existing `SessionHealth` vocabulary returning `'stalled' | 'unmeasured' |
+'quiet'`. Removing the boolean rather than widening it is deliberate: a string
+  union is always truthy, so `if (monitor.isStalled(id))` would have silently
+  become always-true. `getHealth()` also now reports `unmeasuredSessions`, so an
+  all-uninstrumented fleet is no longer summarised by `stalledSessions: 0` alone.
+
+  Not a public API change — neither `HeartbeatMonitor` nor `isStalled` appears in
+  `api-surface.txt`.
+
 ## 6.0.6
 
 ### Patch Changes
