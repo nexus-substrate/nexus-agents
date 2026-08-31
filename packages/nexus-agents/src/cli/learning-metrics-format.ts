@@ -53,14 +53,22 @@ function formatSummary(result: LearningMetricsResult): string[] {
   const lines: string[] = [];
   lines.push(boxLine(color(' Summary:', ANSI.bold)));
 
+  // '?' for unmeasured, never the green ✓ (#5267). The ternary chain used to
+  // fall through to '◎' for anything not exploring/exploiting, so a new state
+  // would have been rendered as a normal phase; unmeasured is not a phase.
   const statusEmoji =
-    result.summary.learningStatus === 'exploring'
-      ? color('⚡', ANSI.yellow)
-      : result.summary.learningStatus === 'exploiting'
-        ? color('✓', ANSI.green)
-        : color('◎', ANSI.blue);
-  const status = `${statusEmoji} Learning Status: ${result.summary.learningStatus}`;
-  lines.push(boxLine(`   ${status}`));
+    result.summary.learningStatus === 'unmeasured'
+      ? color('?', ANSI.dim)
+      : result.summary.learningStatus === 'exploring'
+        ? color('⚡', ANSI.yellow)
+        : result.summary.learningStatus === 'exploiting'
+          ? color('✓', ANSI.green)
+          : color('◎', ANSI.blue);
+  const statusText =
+    result.summary.learningStatus === 'unmeasured'
+      ? 'unmeasured (no routing decisions recorded)'
+      : result.summary.learningStatus;
+  lines.push(boxLine(`   ${statusEmoji} Learning Status: ${statusText}`));
 
   const routings = result.summary.totalRoutings.toLocaleString();
   lines.push(boxLine(`   Total Routings: ${routings}`));

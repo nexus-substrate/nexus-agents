@@ -53,15 +53,19 @@ describe('gatherLearningMetrics', () => {
     expect(result.rewardTrend.direction).toBe('stable');
   });
 
-  it('summary shows exploring status for high exploration ratio', () => {
-    // When all sources undefined, exploration ratio is 0 → exploiting
+  it('summary reports unmeasured when no bandit is supplied', () => {
+    // Was named "shows exploring status for high exploration ratio" and
+    // asserted 'exploiting', with a comment explaining the mechanism:
+    // "When all sources undefined, exploration ratio is 0 → exploiting".
+    // That documented the #5267 defect and pinned it as intended behaviour —
+    // a green ✓ asserting convergence over a bandit never consulted.
     const result = gatherLearningMetrics(undefined, undefined, undefined, {
       period: 24,
       format: 'ascii',
       banditStats: false,
       showTrends: true,
     });
-    expect(result.summary.learningStatus).toBe('exploiting');
+    expect(result.summary.learningStatus).toBe('unmeasured');
   });
 
   it('sets default feature importance when no bandit stats', () => {
