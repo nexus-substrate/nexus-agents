@@ -11,9 +11,8 @@ import {
   recordErrorResolution,
   findErrorResolution,
   getLearningsByType,
-  getTopPatterns,
 } from './memory-state-operations.js';
-import type { AgentMemoryState, ExecutionPattern } from './memory-state-types.js';
+import type { AgentMemoryState } from './memory-state-types.js';
 import { createInitialMemoryState } from './memory-state-types.js';
 
 // ============================================================================
@@ -105,12 +104,10 @@ describe('recordExecutionPattern', () => {
     const state = makeState();
     const updated = recordExecutionPattern(state, {
       pattern: 'decompose-then-synthesize',
-      successRate: 0.85,
     });
 
     expect(updated.executionPatterns).toHaveLength(1);
     expect(updated.executionPatterns[0]?.pattern).toBe('decompose-then-synthesize');
-    expect(updated.executionPatterns[0]?.successRate).toBe(0.85);
     expect(updated.executionPatterns[0]?.occurrences).toBe(1);
   });
 
@@ -118,26 +115,25 @@ describe('recordExecutionPattern', () => {
     const state = makeState();
     const first = recordExecutionPattern(state, {
       pattern: 'test-pattern',
-      successRate: 0.8,
     });
 
     // Occurrence 1: rate=0.8
     // Adding occurrence 2: rate=(0.8*1 + 0.6) / 2 = 0.7
     const second = recordExecutionPattern(first, {
       pattern: 'test-pattern',
-      successRate: 0.6,
     });
 
     expect(second.executionPatterns).toHaveLength(1);
+    // Was also asserting `successRate` blended to 0.7. The field is gone
+    // (#5261): both writers hardcoded 1.0, so the blend could never move.
+    // `occurrences` is the count that was always real.
     expect(second.executionPatterns[0]?.occurrences).toBe(2);
-    expect(second.executionPatterns[0]?.successRate).toBeCloseTo(0.7, 5);
   });
 
   it('generates unique ID for new patterns', () => {
     const state = makeState();
     const updated = recordExecutionPattern(state, {
       pattern: 'new-pattern',
-      successRate: 0.5,
     });
 
     expect(updated.executionPatterns[0]?.id).toMatch(/^pattern_/);
@@ -147,7 +143,6 @@ describe('recordExecutionPattern', () => {
     const state = makeState();
     const updated = recordExecutionPattern(state, {
       pattern: 'pre-existing',
-      successRate: 0.9,
       occurrences: 5,
     });
 
@@ -158,7 +153,6 @@ describe('recordExecutionPattern', () => {
     const state = makeState();
     recordExecutionPattern(state, {
       pattern: 'test',
-      successRate: 0.5,
     });
 
     expect(state.executionPatterns).toHaveLength(0);
@@ -346,60 +340,3 @@ describe('getLearningsByType', () => {
 // getTopPatterns
 // ============================================================================
 
-describe('getTopPatterns', () => {
-  it('returns patterns sorted by success rate', () => {
-    let state = makeState();
-    state = recordExecutionPattern(state, {
-      pattern: 'low-success',
-      successRate: 0.3,
-    });
-    state = recordExecutionPattern(state, {
-      pattern: 'high-success',
-      successRate: 0.9,
-    });
-    state = recordExecutionPattern(state, {
-      pattern: 'mid-success',
-      successRate: 0.6,
-    });
-
-    const top = getTopPatterns(state);
-    expect(top[0]?.successRate).toBe(0.9);
-    expect(top[1]?.successRate).toBe(0.6);
-    expect(top[2]?.successRate).toBe(0.3);
-  });
-
-  it('respects limit parameter', () => {
-    let state = makeState();
-    for (let i = 0; i < 5; i++) {
-      state = recordExecutionPattern(state, {
-        pattern: `pattern-${String(i)}`,
-        successRate: i * 0.2,
-      });
-    }
-
-    const top = getTopPatterns(state, 2);
-    expect(top).toHaveLength(2);
-  });
-
-  it('returns empty for no patterns', () => {
-    const state = makeState();
-    expect(getTopPatterns(state)).toEqual([]);
-  });
-
-  it('does not mutate original state', () => {
-    let state = makeState();
-    state = recordExecutionPattern(state, {
-      pattern: 'b',
-      successRate: 0.9,
-    });
-    state = recordExecutionPattern(state, {
-      pattern: 'a',
-      successRate: 0.3,
-    });
-
-    const originalOrder = state.executionPatterns.map((p: ExecutionPattern) => p.pattern);
-    getTopPatterns(state);
-    const afterOrder = state.executionPatterns.map((p: ExecutionPattern) => p.pattern);
-    expect(originalOrder).toEqual(afterOrder);
-  });
-});
