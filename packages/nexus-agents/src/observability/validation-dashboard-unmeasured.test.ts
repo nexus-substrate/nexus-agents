@@ -73,7 +73,18 @@ describe('each metric reports unmeasured over its own empty input (#5255)', () =
   });
 
   it('still reports a real convergenceScore when weights WERE recorded', () => {
-    // Control for the same reason as above.
-    expect(calculateConvergenceScore({ f: [1, 1, 1] })).not.toBeNull();
+    // Control for the same reason as above — and it needs >= 5 weights.
+    //
+    // This used `{ f: [1, 1, 1] }`, which was VACUOUS: three weights is under
+    // the `weights.length < 5` threshold, so it skipped the variance loop and
+    // passed on a fabricated `0` rather than on a measurement. It could not
+    // have distinguished a working measured path from `return 0`, which is the
+    // very residual #5264 left behind.
+    expect(calculateConvergenceScore({ f: [1, 1, 1, 1, 1] })).toBe(1);
+  });
+
+  it('reports unmeasured when features exist but none has enough weights', () => {
+    // The residual itself: non-empty map, every feature under the threshold.
+    expect(calculateConvergenceScore({ f: [1, 2, 3] })).toBeNull();
   });
 });

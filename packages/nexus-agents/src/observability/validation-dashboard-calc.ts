@@ -197,7 +197,13 @@ export function calculateConvergenceScore(featureWeights: Record<string, number[
     variances.push(variance);
   }
 
-  if (variances.length === 0) return 0;
+  // The second empty case, which #5264 missed by fixing only the one above.
+  // A NON-empty feature map whose features all have fewer than 5 weights skips
+  // every iteration of the loop, leaving `variances` empty — the state of a
+  // learning loop during its first four decisions. `0` there reads as
+  // worst-possible convergence, and `Math.exp(-avgVariance)` below only ever
+  // APPROACHES 0, so a literal 0 could not have been a real reading.
+  if (variances.length === 0) return null;
 
   const avgVariance = variances.reduce((s, v) => s + v, 0) / variances.length;
   return Math.exp(-avgVariance);
