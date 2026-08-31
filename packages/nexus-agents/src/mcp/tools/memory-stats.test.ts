@@ -24,10 +24,12 @@ const mockIsAdaptiveMemoryAvailable = vi.fn();
 const mockIsMobiMemAvailable = vi.fn();
 const mockIsDecayManagerAvailable = vi.fn();
 const mockGetBeliefCount = vi.fn();
+const mockGetSessionCounts = vi.fn(() => ({ tasksCount: 0, errorsCount: 0 }));
 
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
     getRelevantLearnings: mockGetRelevantLearnings,
+    getSessionCounts: mockGetSessionCounts,
     getTypedMemoryStats: mockGetTypedMemoryStats,
     getMobiMemStats: mockGetMobiMemStats,
     getDecayStats: mockGetDecayStats,
@@ -212,6 +214,22 @@ describe('memory-stats', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0]!.text).toContain('Validation error');
+    });
+
+    it('reports the session task and error counts, not hardcoded zeros (#5269)', async () => {
+      // The discriminator. These two were initialised to 0 and never assigned,
+      // so every prior test passed against a literal. Non-zero, and different
+      // from each other, so neither a hardcoded 0 nor a copy of the other
+      // survives.
+      mockGetSessionCounts.mockReturnValue({ tasksCount: 7, errorsCount: 3 });
+
+      const result = await registeredHandler({}, {});
+      const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
+        session: { tasksCount: number; errorsCount: number };
+      };
+
+      expect(parsed.session.tasksCount).toBe(7);
+      expect(parsed.session.errorsCount).toBe(3);
     });
 
     it('counts learnings from session memory', async () => {

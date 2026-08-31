@@ -127,24 +127,40 @@ export interface MemoryStatsResponse {
 /**
  * Collects statistics from all memory backends.
  */
+/**
+ * Read the live session counts.
+ *
+ * `tasksCount` and `errorsCount` were previously initialised to 0 and never
+ * assigned — returned as 0 on every call, while the sibling
+ * `backends.session: true` asserted the backend was up. A caller read "session
+ * memory is healthy and holds 0 tasks, 0 errors", with the positive assertion
+ * corroborating the fabricated zeros rather than qualifying them (#5269).
+ *
+ * The counts were never absent: the session episode has held `tasksCompleted`
+ * and `errorsResolved` all along, they were simply not exposed mid-session.
+ */
+function collectSessionStats(toolMemory: ReturnType<typeof getToolMemory>): SessionStats {
+  const counts = toolMemory.getSessionCounts();
+  const stats: SessionStats = {
+    learningsCount: 0,
+    tasksCount: counts.tasksCount,
+    errorsCount: counts.errorsCount,
+  };
+
+  const learnings = toolMemory.getRelevantLearnings('', 1000);
+  if (learnings !== undefined) {
+    stats.learningsCount = learnings.split('\n').filter((l) => l.trim() !== '').length;
+  }
+  return stats;
+}
+
 async function collectMemoryStats(
   input: MemoryStatsInput,
   logger: ILogger
 ): Promise<MemoryStatsResponse> {
   const toolMemory = getToolMemory();
 
-  // Collect session stats
-  const sessionStats: SessionStats = {
-    learningsCount: 0,
-    tasksCount: 0,
-    errorsCount: 0,
-  };
-
-  // Get learnings count from session
-  const learnings = toolMemory.getRelevantLearnings('', 1000);
-  if (learnings !== undefined) {
-    sessionStats.learningsCount = learnings.split('\n').filter((l) => l.trim() !== '').length;
-  }
+  const sessionStats = collectSessionStats(toolMemory);
 
   // Collect belief stats — read actual count from belief backend
   const beliefStats: BeliefStats = {
