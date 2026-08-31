@@ -65,10 +65,22 @@ export function checkClaims(): boolean {
   for (const u of coverage.uncovered) {
     console.error(`  UNCOVERED ${u.doc}: "${u.text}" (${u.pattern}) has no claims-registry entry`);
   }
+  for (const doc of coverage.docsMissing) {
+    console.error(
+      `  MISSING ${doc}: declared in SCANNED_DOCS but not found — the reverse-coverage ` +
+        `arm read nothing for it. Restore the doc or update SCANNED_DOCS (#5253).`
+    );
+  }
 
   const passed = report.passed && coverage.passed;
   if (passed) {
-    console.log(`Claims check passed: ${String(registry.claims.length)} claims verified.`);
+    // The scanned count is the coverage half. `registry.claims.length` is the
+    // FORWARD number and says nothing about how many docs the reverse scan
+    // opened, so on its own it read as coverage the scan never had.
+    console.log(
+      `Claims check passed: ${String(registry.claims.length)} claims verified, ` +
+        `${String(coverage.docsScanned)} doc(s) scanned for uncovered claims.`
+    );
   } else if (!report.passed) {
     const failed = report.results.filter((r) => !r.ok).length;
     console.error(
@@ -76,7 +88,9 @@ export function checkClaims(): boolean {
     );
   } else {
     console.error(
-      `Claims check FAILED: ${String(coverage.uncovered.length)} doc claim(s) have no registry entry (#3880).`
+      `Claims check FAILED: ${String(coverage.uncovered.length)} doc claim(s) have no registry ` +
+        `entry (#3880); ${String(coverage.docsMissing.length)} declared doc(s) missing; ` +
+        `${String(coverage.docsScanned)} doc(s) scanned.`
     );
   }
   return passed;
