@@ -257,7 +257,7 @@ let globalMonitor: HeartbeatMonitor | undefined;
  * ever reported on — and for expert sessions that is every session, since
  * nothing inside the expert execution path emits on `stepBus` (#5282).
  */
-export type StallTick = 'stalled' | 'unmeasured' | 'quiet';
+type StallTick = 'stalled' | 'unmeasured' | 'quiet';
 
 /**
  * Classify a session for a watchdog tick.
