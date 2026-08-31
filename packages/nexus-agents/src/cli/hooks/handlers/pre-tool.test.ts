@@ -264,7 +264,21 @@ describe('pre-tool handler', () => {
         expect(output.hookSpecificOutput.permissionDecisionReason).toContain('custom pattern');
       });
 
-      it('should handle invalid regex patterns gracefully', async () => {
+      it('denies when a custom block pattern is not a valid regex', async () => {
+        // Was named "should handle invalid regex patterns gracefully" and
+        // asserted `allow` — pinning a FAIL-OPEN on a security gate as intended
+        // behaviour.
+        //
+        // `customBlockPatterns` is an operator-authored denylist, and a bad
+        // regex is the single most likely thing an operator gets wrong there.
+        // Returning `allow` made the result indistinguishable from "evaluated
+        // against every pattern and clean", so neither the caller nor the audit
+        // trail recorded that a rule had been skipped.
+        //
+        // `.rules/untrusted-input.md` invariant 5 is "Fail closed. On ambiguity
+        // or conflicting signals, refuse and escalate. Never guess." The same
+        // repo already does this correctly at `codepr-guards.ts:735`, where a
+        // throwing guard returns `deny('guard_error', ... '(fail-closed)')`.
         const input = createInput({ tool_input: { command: 'ls -la' } });
         const config: PreToolHandlerConfig = {
           validateBash: true,
@@ -274,6 +288,31 @@ describe('pre-tool handler', () => {
         const result = await handlePreTool(input, config);
 
         expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout ?? '{}');
+        expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+        // The reason must name the unusable pattern AND say it is unusable.
+        // Mutation testing caught the weaker form: asserting only that the
+        // reason contains the pattern string passed when the message was the
+        // generic "Blocked by custom pattern: …", which tells an operator their
+        // rule FIRED when in fact it never compiled — a different diagnosis and
+        // a different fix.
+        const reason = output.hookSpecificOutput.permissionDecisionReason as string;
+        expect(reason).toContain('[invalid(regex');
+        expect(reason).toContain('not a valid regex');
+        expect(reason).not.toContain('Blocked by custom pattern');
+      });
+
+      it('still allows a clean command when every custom pattern is valid', async () => {
+        // The control. Without it, denying unconditionally would satisfy the
+        // test above and block every command the operator runs.
+        const input = createInput({ tool_input: { command: 'ls -la' } });
+        const config: PreToolHandlerConfig = {
+          validateBash: true,
+          customBlockPatterns: ['sudo\\s+rm', 'curl\\s+.*\\|\\s*sh'],
+        };
+
+        const result = await handlePreTool(input, config);
+
         const output = JSON.parse(result.stdout ?? '{}');
         expect(output.hookSpecificOutput.permissionDecision).toBe('allow');
       });
