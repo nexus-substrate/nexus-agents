@@ -911,7 +911,7 @@ function aggregateStageScores(
 
 /**
  * Env flag (#3147): when enabled, the self-tuning loop's bounded routing
- * demotions are applied as a scoring penalty here. Default off → no-op.
+ * demotions are applied as a scoring penalty here. Default ON (#3323).
  */
 const TUNE_ENFORCE_ENV = 'NEXUS_TUNE_ENFORCE';
 

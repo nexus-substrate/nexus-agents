@@ -73,16 +73,6 @@ export interface ExpertBridgeResult {
   readonly tokensOut?: number;
 }
 
-/**
- * Execute an expert task with the full nexus-agents expert pipeline.
- *
- * Creates a built-in expert, executes via CompositeRouter (for intelligent
- * CLI routing), and records outcomes. Falls back gracefully on failure.
- *
- * @param expertType - Built-in expert type (code, architecture, security, qa, etc.)
- * @param prompt - Task prompt for the expert
- * @returns Expert result with text output
- */
 /** Minimal router interface for the bridge. */
 interface RouterLike {
   executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
@@ -375,6 +365,16 @@ async function dispatchWithRateLimitRetry(
   };
 }
 
+/**
+ * Execute an expert task with the full nexus-agents expert pipeline.
+ *
+ * Creates a built-in expert, executes via CompositeRouter (for intelligent
+ * CLI routing), and records outcomes. Falls back gracefully on failure.
+ *
+ * @param expertType - Built-in expert type (code, architecture, security, qa, etc.)
+ * @param prompt - Task prompt for the expert
+ * @returns Expert result with text output
+ */
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string

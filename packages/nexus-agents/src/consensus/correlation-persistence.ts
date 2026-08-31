@@ -307,7 +307,11 @@ function consolidate(
  * Loads and validates correlation data from disk. Combines the JSONL store
  * with the legacy `correlations.json` (if present). Always returns an Ok
  * result when the directory exists; an empty proposals array means "no
- * persisted history" (formerly the "not found" error case).
+ * persisted history".
+ *
+ * Returns an `err` when NEITHER the jsonl nor the legacy file exists — the
+ * first-run case. An earlier revision of this comment said that error had been
+ * removed; it had not, and a caller that skipped the branch hit it on first run.
  */
 export function loadCorrelationData(
   config: HigherOrderVotingConfig = DEFAULT_HIGHER_ORDER_CONFIG
