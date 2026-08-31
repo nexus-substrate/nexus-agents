@@ -45,6 +45,35 @@ export interface ClaudeCliResponse {
   >;
 }
 
+/** A cost figure usable as a measurement: finite and not negative. */
+function isUsableCost(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Sum the per-model `costUSD` entries, or `null` if none carried one.
+ *
+ * `null` rather than `0` is the point: "the vendor reported nothing" is not
+ * "the vendor reported free", and returning 0 would tell the budget router the
+ * call cost nothing.
+ */
+function sumModelUsageCost(raw: unknown): number | null {
+  const modelUsage = asRecord(raw);
+  if (modelUsage === null) return null;
+
+  let sum = 0;
+  let sawCost = false;
+  for (const entry of Object.values(modelUsage)) {
+    const perModel = asRecord(entry);
+    if (perModel === null) continue;
+    const cost = perModel.costUSD;
+    if (typeof cost !== 'number' || !isUsableCost(cost)) continue;
+    sum += cost;
+    sawCost = true;
+  }
+  return sawCost ? sum : null;
+}
+
 /**
  * Parser for Claude CLI JSON output.
  * Implements defensive parsing - only requires essential fields.
@@ -137,6 +166,32 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
         ...(cachedInputTokens !== null && { cachedInputTokens }),
         ...(cacheCreationInputTokens !== null && { cacheCreationInputTokens }),
       };
+    } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
+      return null;
+    }
+  }
+
+  /**
+   * Extracts the cost the Claude CLI reported for this call.
+   *
+   * Prefers `total_cost_usd` — the vendor's own total — over summing
+   * `modelUsage[*].costUSD`, because a per-model breakdown can omit a component
+   * the total includes. Both are declared on {@link ClaudeCliResponse} and
+   * neither reached `CliResponse` before #5241.
+   *
+   * Rejects a negative or non-finite figure: a cost is a measurement, and
+   * letting a corrupt one through would debit the budget router with garbage.
+   */
+  extractCostUsd(raw: string): number | null {
+    try {
+      const record = asRecord(JSON.parse(raw));
+      if (record === null) return null;
+
+      const total = record.total_cost_usd;
+      if (typeof total === 'number') return isUsableCost(total) ? total : null;
+
+      return sumModelUsageCost(record.modelUsage);
     } catch {
       logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;

@@ -254,6 +254,24 @@ export interface ICliResponseParser<T = unknown> {
   extractResponse(raw: string): string | null;
 
   /**
+   * Extracts a cost the CLI itself reported, in USD.
+   *
+   * OPTIONAL, and the optionality carries meaning (#5241). An ABSENT method
+   * says "this vendor does not report cost" — true of codex, gemini, opencode
+   * and agy. A PRESENT method returning `null` says "this vendor reports cost,
+   * and this response carried none". Collapsing those two into a missing number
+   * is what left `CliResponse.costUsd` with no producer while a consumer
+   * (`budget-router`) fell back to an estimate under a field named `actual`.
+   *
+   * The value is a MEASUREMENT from the vendor, not a rate-derived figure, so
+   * it does not pass through the token→USD pricing chain.
+   *
+   * @param raw - Raw CLI output
+   * @returns Vendor-reported cost in USD, or null if this response carried none
+   */
+  extractCostUsd?(raw: string): number | null;
+
+  /**
    * Extracts an error-only message from a failure stream — when the CLI
    * surfaced an error event but no usable assistant content (so
    * {@link extractResponse} returns `null`). Optional: parsers that don't
