@@ -31,14 +31,6 @@ import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'security-gate' });
 
-/** Last OSV vulnerabilities found. */
-let lastOsvVulnerabilities: readonly OsvVulnerability[] = [];
-
-/** Get OSV vulnerabilities from the most recent scan. */
-export function getLastOsvVulnerabilities(): readonly OsvVulnerability[] {
-  return lastOsvVulnerabilities;
-}
-
 /** Severity levels that block the pipeline. */
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 
@@ -98,7 +90,6 @@ async function runSecurityPipeline(
   // OSV dependency check (#1773)
   const osv = await runOsvCheck(targetDir, config.enableOsv ?? true);
   const osvVulns = osv.vulnerabilities;
-  lastOsvVulnerabilities = osvVulns;
 
   // Assess: a finding blocks because its severity blocks. Nothing filters.
   const blocking = getBlockingFindings(sarifResult.findings);
