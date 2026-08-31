@@ -1444,7 +1444,10 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
 
   function makeVotingResult(
     votes: readonly AgentVoteResult[],
-    overrides?: { simulateVotes?: boolean }
+    // #5315: `strategy` is the one the ENGINE ran. A fixture whose input names a
+    // stricter bar must say which strategy `resolveStrategy` produced from it,
+    // or it models a state the engine cannot reach.
+    overrides?: { simulateVotes?: boolean; strategy?: ExtendedVotingResult['strategy'] }
   ): ExtendedVotingResult {
     return {
       proposal: 'Test proposal',
@@ -1464,7 +1467,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
       votes,
       totalTimeMs: 200,
       simulateVotes: overrides?.simulateVotes ?? false,
-      strategy: 'simple_majority',
+      strategy: overrides?.strategy ?? 'simple_majority',
     };
   }
 
@@ -1533,7 +1536,13 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
       quickMode: false,
       threshold: 'supermajority' as const,
     };
-    const response = buildResponse(input, makeVotingResult(votes));
+    // The engine resolves `threshold: 'supermajority'` with no `strategy` to the
+    // supermajority strategy, so the fixture says so. It previously left the
+    // strategy at simple_majority while the input asked for supermajority — a
+    // pairing `resolveStrategy` cannot produce — and the assertion passed only
+    // because the response echoed the input rather than reporting the bar that
+    // ran (#5315).
+    const response = buildResponse(input, makeVotingResult(votes, { strategy: 'supermajority' }));
 
     const parsed = outputValidator.safeParse(response);
     expect(parsed.success).toBe(true);
@@ -2118,5 +2127,121 @@ describe('#4529: an option-split veto is a rejection, not a void', () => {
 
     expect(result.result.outcome).toBe('approved');
     expect(resolveVoteDecision(input, result, 0).decision).toBe('approved');
+  });
+});
+
+describe('the response reports the threshold that was APPLIED (#5315)', () => {
+  /**
+   * `applyOptionalResponseFields` echoed the raw input:
+   *
+   *   if (input.threshold !== undefined) {
+   *     response.threshold = input.threshold;
+   *   }
+   *
+   * But `resolveStrategy` ignores `threshold` entirely when `strategy` is also
+   * supplied (`if (input.strategy !== undefined) return input.strategy;`), and
+   * `VOTING_THRESHOLDS.higher_order` is 0.5 — a simple-majority bar.
+   *
+   * So a caller passing `strategy: 'higher_order'` + `threshold: 'supermajority'`
+   * got a record naming supermajority beside an approval percentage that never
+   * had to clear it. Observed live on a governance ratification vote: 4 approve
+   * / 3 reject returned `decision: 'approved'`, `approvalPercentage: 57.1`,
+   * `threshold: 'supermajority'`. Supermajority is 5/7.
+   *
+   * That pairing is the DOCUMENTED usage — CLAUDE.md's governance table lists a
+   * threshold and a strategy per trigger ("Architecture changes | supermajority
+   * | higher_order") — so the combination that silently drops the bar is the one
+   * the rules tell you to use.
+   *
+   * The vote record is the ratification evidence a human spot-check reads, so a
+   * misreported bar is the p1 governor-path class: an instrument must state what
+   * it actually measured.
+   */
+  /**
+   * `strategy` is what the ENGINE ran, which is what the response must report.
+   * `resolveStrategy` derives it from the input; the fixture takes it directly
+   * so each case states the applied strategy explicitly.
+   */
+  function baseResult(strategy: ExtendedVotingResult['strategy']): ExtendedVotingResult {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+    ];
+    return {
+      proposal: 'Test',
+      threshold: 'higher_order',
+      result: createPolicyFailedResult('Test', 'higher_order', 'n/a', votes),
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy,
+    };
+  }
+
+  it('reports the strategy bar, not the ignored threshold, when both are given', () => {
+    const response = buildResponse(
+      {
+        proposal: 'Test',
+        simulateVotes: false,
+        quickMode: false,
+        strategy: 'higher_order',
+        threshold: 'supermajority',
+      },
+      baseResult('higher_order')
+    );
+    expect(response.threshold).toBe('majority');
+  });
+
+  it('reports the threshold when it is the only bar supplied', () => {
+    // The pair. `resolveStrategy` DOES honour `threshold` when `strategy` is
+    // absent, so echoing it there is correct and must keep working.
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false, threshold: 'supermajority' },
+      baseResult('supermajority')
+    );
+    expect(response.threshold).toBe('supermajority');
+  });
+
+  it('reports a bar even when no threshold was supplied', () => {
+    // Previously the field was simply absent, which at least did not lie. It is
+    // more useful present: the reader learns the applied bar without having to
+    // know the strategy-to-bar mapping.
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false, strategy: 'unanimous' },
+      baseResult('unanimous')
+    );
+    expect(response.threshold).toBe('unanimous');
+  });
+
+  it('never reports a bar stricter than the one applied', () => {
+    // The specific misreport that prompted this, as its own assertion so a
+    // regression names it. Every one of these strategies carries a 0.5 bar.
+    for (const strategy of ['higher_order', 'opinion_wise', 'simple_majority'] as const) {
+      const response = buildResponse(
+        {
+          proposal: 'Test',
+          simulateVotes: false,
+          quickMode: false,
+          strategy,
+          threshold: 'unanimous',
+        },
+        baseResult(strategy)
+      );
+      expect(response.threshold).toBe('majority');
+    }
+  });
+
+  it('reports supermajority for the supermajority strategy', () => {
+    // The control that stops "always report majority" from satisfying the rows
+    // above, which would be the same misreport pointing the other way.
+    const response = buildResponse(
+      { proposal: 'Test', simulateVotes: false, quickMode: false, strategy: 'supermajority' },
+      baseResult('supermajority')
+    );
+    expect(response.threshold).toBe('supermajority');
   });
 });
