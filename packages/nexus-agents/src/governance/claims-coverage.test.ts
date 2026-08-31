@@ -124,11 +124,67 @@ describe('checkCoverage', () => {
     expect(report.passed).toBe(false);
   });
 
-  it('skips docs that do not exist', () => {
+  it('FAILS when a declared doc does not exist — the rename vector (#5253)', () => {
+    // This asserted `passed === true` under the title "skips docs that do not
+    // exist", pinning the defect as intended behaviour.
+    //
+    // The module exists as the ANTI-GAMING inverse of claims-verify: it is meant
+    // to catch silent removal and mask-by-addition of registry entries. Skipping
+    // a missing doc handed it a third, EASIER gaming path its own header does not
+    // list — rename README.md and the reverse-coverage arm certifies green having
+    // read nothing. A gate defeated by `git mv` is not a gate.
     const { resolve, fs } = fakeReader({});
-    expect(
-      checkCoverage(registryCovering('46 MCP tools'), resolve, fs, ['MISSING.md']).passed
-    ).toBe(true);
+    const report = checkCoverage(registryCovering('46 MCP tools'), resolve, fs, ['MISSING.md']);
+
+    expect(report.passed).toBe(false);
+    expect(report.docsMissing).toEqual(['MISSING.md']);
+    expect(report.docsScanned).toBe(0);
+  });
+
+  it('FAILS when ONE declared doc is missing but another was scanned', () => {
+    // The realistic rename: README.md moves, ARCHITECTURE.md stays. Coverage is
+    // partial, not absent, so `docsScanned > 0` is satisfied and only the
+    // missing-doc clause can catch it.
+    //
+    // Added because mutation testing found the clause unpinned: dropping
+    // `docsMissing.length === 0` from the verdict left all other tests green,
+    // since every existing missing-doc case also scanned zero docs.
+    const { resolve, fs } = fakeReader({ 'ARCHITECTURE.md': 'nothing quantified' });
+    const report = checkCoverage(registryCovering('46 MCP tools'), resolve, fs, [
+      'README.md',
+      'ARCHITECTURE.md',
+    ]);
+
+    expect(report.docsScanned).toBe(1);
+    expect(report.docsMissing).toEqual(['README.md']);
+    expect(report.passed).toBe(false);
+  });
+
+  it('FAILS when the declared doc list is empty', () => {
+    // The other way to scan nothing. `uncovered.length === 0` is true of a scan
+    // that examined no documents at all.
+    const { resolve, fs } = fakeReader({ 'README.md': 'no claims here' });
+    const report = checkCoverage(registryCovering('46 MCP tools'), resolve, fs, []);
+
+    expect(report.passed).toBe(false);
+    expect(report.docsScanned).toBe(0);
+  });
+
+  it('reports how many docs it actually scanned', () => {
+    // The pair that stops "always fail" from satisfying the two tests above,
+    // and the number that makes a zero-doc run distinguishable from a clean one.
+    const { resolve, fs } = fakeReader({
+      'README.md': 'nothing quantified',
+      'ARCHITECTURE.md': 'also nothing',
+    });
+    const report = checkCoverage(registryCovering('46 MCP tools'), resolve, fs, [
+      'README.md',
+      'ARCHITECTURE.md',
+    ]);
+
+    expect(report.passed).toBe(true);
+    expect(report.docsScanned).toBe(2);
+    expect(report.docsMissing).toEqual([]);
   });
 });
 
