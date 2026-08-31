@@ -89,6 +89,29 @@ export interface BudgetConstraint {
 /**
  * Session-level budget tracking.
  */
+/**
+ * How many debits against a session budget rested on a measurement rather than
+ * an estimate, counted per dimension (#5240).
+ *
+ * Per-dimension rather than a single flag because the two genuinely diverge: a
+ * non-Claude adapter reports token usage and no cost, so one debit is measured
+ * on tokens and estimated on cost. Collapsing them would either discard a real
+ * token measurement or assert a cost nobody reported.
+ *
+ * All four are zero on a fresh or reset budget — nothing measured is not the
+ * same as fully measured.
+ */
+export interface BudgetCoverage {
+  /** Debits whose token count came from the adapter's reported usage. */
+  readonly measuredTokenDebits: number;
+  /** Debits whose token count was the router's estimate. */
+  readonly estimatedTokenDebits: number;
+  /** Debits whose cost came from a vendor-reported figure. */
+  readonly measuredCostDebits: number;
+  /** Debits whose cost was the router's estimate. */
+  readonly estimatedCostDebits: number;
+}
+
 export interface SessionBudget {
   /** Total token budget for the session */
   readonly tokenBudget: number;
@@ -104,6 +127,16 @@ export interface SessionBudget {
   readonly costRemainingUsd: number;
   /** Budget utilization percentage (0-100) */
   readonly utilizationPercent: number;
+  /**
+   * Whether what this budget accumulated was measured or estimated (#5240).
+   *
+   * `executeWithBudget` debits `usage?.totalTokens ?? estimatedTokens` and
+   * `costUsd ?? estimatedCostUsd`, so each figure holds EITHER a measurement or
+   * the router's own estimate. Without these counts a reader of
+   * `utilizationPercent` cannot tell which, and the two dimensions differ in
+   * practice: every vendor except Claude reports tokens but no cost.
+   */
+  readonly coverage: BudgetCoverage;
   /** Session start time */
   readonly startedAt: Date;
   /** Time until budget resets (if applicable) */

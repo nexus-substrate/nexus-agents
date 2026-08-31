@@ -29,6 +29,7 @@ import type {
 } from './types.js';
 import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
 import type { CliName } from './types.js';
+import type { BudgetCoverage } from './types-routing.js';
 import { estimateTokens, estimateCost } from './budget-utils.js';
 import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
@@ -109,6 +110,18 @@ export class BudgetRouter implements IBudgetRouter {
   private readonly options: Required<BudgetRouterOptions>;
   private tokensUsed = 0;
   private costSpentUsd = 0;
+  /**
+   * Per-dimension debit counts (#5240). A budget accumulates a MIXTURE of
+   * measured and estimated usage; without these a reader cannot tell which,
+   * and `actualTokens` / `actualCostUsd` asserted a measurement they may not
+   * have held.
+   */
+  private coverage = {
+    measuredTokenDebits: 0,
+    estimatedTokenDebits: 0,
+    measuredCostDebits: 0,
+    estimatedCostDebits: 0,
+  };
   private sessionStartedAt: Date;
   private resetTimer?: ReturnType<typeof setTimeout>;
 
@@ -127,6 +140,17 @@ export class BudgetRouter implements IBudgetRouter {
   /**
    * Get current session budget status.
    */
+  /**
+   * A read-only snapshot of the debit basis counts (#5240).
+   *
+   * Copied rather than shared so a caller holding an old budget cannot see it
+   * change under them, and typed as {@link BudgetCoverage} so the public shape
+   * stays readonly while the internal accumulator remains mutable.
+   */
+  private snapshotCoverage(): BudgetCoverage {
+    return { ...this.coverage };
+  }
+
   getSessionBudget(): SessionBudget {
     const sessionBudget = this.options.sessionBudget;
     const tokenBudget = sessionBudget.tokenBudget ?? 1000000;
@@ -151,6 +175,7 @@ export class BudgetRouter implements IBudgetRouter {
       tokensRemaining,
       costRemainingUsd,
       utilizationPercent,
+      coverage: this.snapshotCoverage(),
       startedAt: this.sessionStartedAt,
     };
 
@@ -183,6 +208,14 @@ export class BudgetRouter implements IBudgetRouter {
   resetBudget(): void {
     this.tokensUsed = 0;
     this.costSpentUsd = 0;
+    // A reset window has measured nothing; stale counts would let it claim
+    // coverage it never had.
+    this.coverage = {
+      measuredTokenDebits: 0,
+      estimatedTokenDebits: 0,
+      measuredCostDebits: 0,
+      estimatedCostDebits: 0,
+    };
     this.sessionStartedAt = new Date(getTimeProvider().now());
     logger.info('Budget reset');
 
@@ -374,18 +407,31 @@ export class BudgetRouter implements IBudgetRouter {
       return result;
     }
 
-    const actualTokens = result.value.usage?.totalTokens ?? estimatedTokens;
-    const actualCostUsd = result.value.costUsd ?? estimatedCostUsd;
+    // #5240: each figure is EITHER a measurement or this router's estimate, and
+    // the two dimensions diverge — every vendor except Claude reports tokens and
+    // no cost. `debited*` rather than `actual*` because neither name is right
+    // for a field holding both; the basis travels in `coverage` instead.
+    const measuredTokens = result.value.usage?.totalTokens;
+    const measuredCostUsd = result.value.costUsd;
+    const debitedTokens = measuredTokens ?? estimatedTokens;
+    const debitedCostUsd = measuredCostUsd ?? estimatedCostUsd;
 
-    this.updateBudget({ tokens: actualTokens, costUsd: actualCostUsd });
+    if (measuredTokens === undefined) this.coverage.estimatedTokenDebits++;
+    else this.coverage.measuredTokenDebits++;
+    if (measuredCostUsd === undefined) this.coverage.estimatedCostDebits++;
+    else this.coverage.measuredCostDebits++;
+
+    this.updateBudget({ tokens: debitedTokens, costUsd: debitedCostUsd });
 
     const budgetAfter = this.getSessionBudget();
     const durationMs = getTimeProvider().now() - startTime;
 
     logger.info('Task executed with budget tracking', {
       adapter: adapter.name,
-      actualTokens,
-      actualCostUsd,
+      debitedTokens,
+      debitedCostUsd,
+      tokensMeasured: measuredTokens !== undefined,
+      costMeasured: measuredCostUsd !== undefined,
       durationMs,
       budgetUtilization: Math.round(budgetAfter.utilizationPercent),
     });
