@@ -142,6 +142,22 @@ export class SessionMemory {
     return this.currentSession?.learnings ?? [];
   }
 
+  /**
+   * Get tasks completed in the current (unpersisted) session.
+   *
+   * Sibling of {@link getCurrentSessionLearnings}. Its absence is why
+   * `memory_stats` reported a hardcoded `tasksCount: 0` — the data was in the
+   * episode all along, just not readable before `endSession` (#5269).
+   */
+  getCurrentSessionTasks(): readonly CompletedTask[] {
+    return this.currentSession?.tasksCompleted ?? [];
+  }
+
+  /** Get errors resolved in the current (unpersisted) session. See above. */
+  getCurrentSessionErrors(): readonly ResolvedError[] {
+    return this.currentSession?.errorsResolved ?? [];
+  }
+
   /** Record a learning during the current session. */
   recordLearning(learning: SessionLearning): Result<void, SessionMemoryError> {
     if (this.currentSession === null) {
