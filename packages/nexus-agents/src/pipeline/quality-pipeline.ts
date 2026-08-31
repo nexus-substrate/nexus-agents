@@ -42,17 +42,12 @@ export interface PipelineRunResult {
 }
 
 /**
- * Execute a quality-gated pipeline.
+ * Execute a single stage, re-running it while its quality gate fails.
  *
- * Runs each stage in order. If a stage's quality gate fails,
- * the onFeedback callback is invoked (allowing the caller to
- * fix issues), then the stage is re-run up to maxIterations.
- *
- * @param stages - Ordered pipeline stages with their checks
- * @param onFeedback - Called when a stage fails, with feedback text
- * @returns Pipeline run result
+ * @param config - The stage, its gate, and its iteration cap
+ * @param onFeedback - Called on each failed iteration, with feedback text
+ * @returns Whether the stage passed, its final gate result, and iterations used
  */
-/** Execute a single stage with retries. */
 async function executeStage(
   config: StageConfig,
   onFeedback?: (stage: PipelineStage, feedback: string, iteration: number) => Promise<void>
@@ -81,6 +76,14 @@ async function executeStage(
 
 /**
  * Execute a quality-gated pipeline.
+ *
+ * Runs each stage in order. When a stage's quality gate fails, `onFeedback` is
+ * invoked so the caller can fix the issue, then the stage is re-run up to its
+ * iteration cap.
+ *
+ * @param stages - Ordered pipeline stages with their checks
+ * @param onFeedback - Called when a stage fails, with feedback text
+ * @returns Pipeline run result
  */
 export async function runQualityPipeline(
   stages: readonly StageConfig[],

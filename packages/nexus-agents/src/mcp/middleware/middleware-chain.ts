@@ -2,7 +2,9 @@
  * nexus-agents/mcp - Centralized Middleware Chain
  *
  * Provides a composable middleware chain for MCP tools with guaranteed
- * execution order: auth → validation → policy → rate-limit → timeout → audit
+ * execution order: audit → rate-limit → validation → policy → access-policy →
+ * timeout → handler. There is NO auth stage in this chain: authentication
+ * lives in `auth-handler.ts` and is wired separately.
  *
  * @module mcp/middleware/middleware-chain
  * (Source: Issue #189 - Centralized MCP middleware chain)

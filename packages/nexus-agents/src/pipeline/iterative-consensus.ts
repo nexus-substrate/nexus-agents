@@ -25,7 +25,7 @@ export interface IterativeConsensusConfig {
   readonly maxIterations?: number | undefined;
   /** Use simulated votes (for testing). */
   readonly simulateVotes?: boolean | undefined;
-  /** Use quick mode (3 agents instead of 6). */
+  /** Use quick mode (3 agents instead of the full 7-role panel). */
   readonly quickMode?: boolean | undefined;
   /** Voting strategy (default: 'higher_order'). */
   readonly strategy?: VotingStrategy | undefined;
