@@ -1406,6 +1406,7 @@ InterfaceDeclaration ClaudeCliResponse
   readonly type: "result"
   readonly usage?: { readonly cache_creation_input_tokens?: number; readonly cache_read_input_tokens?: number; readonly input_tokens: number; readonly output_tokens: number; } | undefined
 ClassDeclaration ClaudeResponseParser
+  extractCostUsd(raw: string) => number | null
   extractResponse(raw: string) => string | null
   extractSessionId(raw: string) => string | null
   extractUsage(raw: string) => TokenUsage | null
@@ -4330,6 +4331,7 @@ InterfaceDeclaration ICliDetectionCache
   isStale(cli: CliName) => boolean
   set(cli: CliName, result: CliHealthResult) => void
 InterfaceDeclaration ICliResponseParser
+  extractCostUsd((raw: string) => number | null) | undefined
   extractErrorMessage((raw: string) => string | null) | undefined
   extractResponse(raw: string) => string | null
   extractSessionId(raw: string) => string | null
