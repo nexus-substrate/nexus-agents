@@ -129,11 +129,34 @@ export function getVoteFeedback(result: VoteResult): string {
   return '';
 }
 
+/**
+ * What portion of the implementation a QA review actually consumed.
+ *
+ * Lives here rather than in `agent-executor` so the dependency stays one-way
+ * (agent-executor imports this module, never the reverse).
+ */
+export interface QaReviewCoverage {
+  /** Characters of the implementation the reviewer was shown. */
+  readonly reviewedChars: number;
+  /** Characters in the full implementation. */
+  readonly totalChars: number;
+  /** True when the reviewer saw less than the whole artifact. */
+  readonly partial: boolean;
+}
+
 /** QA review result. */
 export interface QaReviewResult {
   readonly verdict: 'pass' | 'needs_work' | 'reject';
   readonly feedback: string;
   readonly issues: readonly string[];
+  /**
+   * Portion of the implementation the reviewer actually consumed. ABSENT when
+   * the whole artifact was reviewed; present with `partial: true` when the
+   * implementation exceeded the prompt budget. Without this the verdict was
+   * byte-identical for a 500-char and a 500,000-char implementation (#4140
+   * shape, applied to QA).
+   */
+  readonly coverage?: QaReviewCoverage;
 }
 
 /** Overall pipeline result. */
