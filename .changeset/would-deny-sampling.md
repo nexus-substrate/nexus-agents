@@ -70,3 +70,16 @@ record emitted regardless — and no executed near-miss is ever falsely clean.
 Only `would_deny` reaches an invocation record: a real `deny` returns before the
 handler runs, so it produces none. `ToolInvocationAuditOpts.policyDecision` is
 additive optional — minor, not a further break.
+
+**Both exits, not one.** The first version of that fix annotated only the
+success path. `emitToolAuditException` was a separate function differing from
+`emitToolAudit` in nothing but `outcome`, and it was left unwired — so a
+warn-mode near-miss whose handler THREW produced an `outcome: 'error'` record
+with no policy annotation, indistinguishable from a clean call that errored.
+That is the more review-worthy case, not the less: the action ran and did not
+complete cleanly.
+
+The two emitters are merged into one that takes `outcome` from its caller, which
+makes the annotation structural rather than something each exit has to
+remember. Two exits sharing one obligation is exactly the seam a duplicated
+emitter lets you wire half of.

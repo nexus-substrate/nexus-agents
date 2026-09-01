@@ -22,7 +22,7 @@ import {
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
-import type { IAuditLogger, PolicyAuditDecision } from '../../audit/audit-types.js';
+import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import {
   sanitizeToolInput,
@@ -348,23 +348,36 @@ interface ToolAuditEmission {
   readonly auditLogger: IAuditLogger;
   readonly toolName: string;
   readonly ctx: RequestContext;
-  readonly result: ToolResult;
+  readonly outcome: AuditOutcome;
   readonly durationMs: number;
   /** A warn-mode rule fired for this call (#5228 review). */
   readonly nearMiss: boolean;
 }
 
-/** Emits an audit event for a completed tool invocation. */
+/**
+ * Emits an audit event for a tool invocation, however it ended.
+ *
+ * ONE emitter for both exits, deliberately. The success path and the throw path
+ * previously had separate functions differing only in `outcome`, and the
+ * near-miss annotation was added to the success one alone — so a warn-mode
+ * near-miss whose handler THREW produced an `outcome: 'error'` record with no
+ * policy annotation, indistinguishable from a clean call that errored. That is
+ * the inference this change exists to break, on the path where an action ran
+ * and did not complete cleanly, which is the more review-worthy case.
+ *
+ * Two exits with one shared obligation is exactly the seam a duplicated emitter
+ * lets you wire half of. Merging them makes the annotation structural rather
+ * than something each caller has to remember.
+ */
 function emitToolAudit({
   auditLogger,
   toolName,
   ctx,
-  result,
+  outcome,
   durationMs,
   nearMiss,
 }: ToolAuditEmission): void {
   const actor = actorFromContext(ctx);
-  const outcome = resultToOutcome(result.isError, false);
   auditLogger.logToolInvocation({
     toolName,
     outcome,
@@ -375,27 +388,6 @@ function emitToolAudit({
     // would have denied it. The policy record carries the detail and may be
     // sampled; this says the action itself was not clean, on every occurrence.
     ...(nearMiss ? { policyDecision: 'would_deny' as const } : {}),
-  });
-}
-
-/**
- * Emits an audit event when a tool handler throws (or returns a rejected
- * Promise) — closes the audit-trail gap where unexpected exceptions left
- * no auditor record (security-review fallout from #2191).
- */
-function emitToolAuditException(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  durationMs: number
-): void {
-  const actor = actorFromContext(ctx);
-  auditLogger.logToolInvocation({
-    toolName,
-    outcome: 'error',
-    actor,
-    requestId: ctx.requestId,
-    durationMs,
   });
 }
 
@@ -577,7 +569,7 @@ async function executeAndAudit(
         auditLogger: config.auditLogger,
         toolName: config.toolName,
         ctx: requestContext,
-        result,
+        outcome: resultToOutcome(result.isError, false),
         durationMs: getTimeProvider().now() - execStartTime,
         nearMiss: invocation.nearMiss,
       });
@@ -587,12 +579,14 @@ async function executeAndAudit(
     const rawMessage = error instanceof Error ? error.message : 'Unknown error';
     requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);
     if (config.auditLogger) {
-      emitToolAuditException(
-        config.auditLogger,
-        config.toolName,
-        requestContext,
-        getTimeProvider().now() - execStartTime
-      );
+      emitToolAudit({
+        auditLogger: config.auditLogger,
+        toolName: config.toolName,
+        ctx: requestContext,
+        outcome: 'error',
+        durationMs: getTimeProvider().now() - execStartTime,
+        nearMiss: invocation.nearMiss,
+      });
     }
     // Closes a secret-leak path: adapter SDKs commonly echo offending
     // credentials in their error messages (e.g. Anthropic's

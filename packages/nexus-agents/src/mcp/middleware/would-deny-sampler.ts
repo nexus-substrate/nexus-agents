@@ -36,10 +36,14 @@
  *
  * A dedup that grows without bound would move the problem rather than solve it.
  * The reset is deliberately crude — clear and start over — because the ordinals
- * it produces are a floor ("at least N"), not an exact tally, so restarting
- * understates rather than fabricating. A cap this size is far above any real
- * rule set; reaching it means something is generating synthetic tool names,
- * which is itself worth seeing in the log.
+ * it produces are a floor, not an exact tally, so restarting understates rather
+ * than fabricating.
+ *
+ * Read the floor as the MAXIMUM ordinal recorded for a pair, not the last one:
+ * after a reset a pair that had reached 8192 emits `1` again, and the earlier
+ * record is what still establishes how far it got. A cap this size is far above
+ * any real rule set; reaching it means something is generating synthetic tool
+ * names, which is itself worth seeing in the log.
  */
 export const MAX_TRACKED_PAIRS = 500;
 
@@ -84,9 +88,12 @@ export function sampleWouldDeny(toolName: string, ruleName: string | undefined):
 /**
  * Phrase the ordinal for the audit record's `reason`.
  *
- * Deliberately written into `reason` rather than added as a schema field: the
- * count is prose a reader needs, and widening the audit record again would be a
- * second breaking change for something an existing field already carries.
+ * This is the HUMAN-readable form. The machine-readable one is the typed
+ * `policyOccurrence` field on the audit record — an earlier revision carried
+ * the ordinal in prose ALONE, and review rejected that correctly: a consumer
+ * counting records would read 14 records as 14 near-misses when 10,000
+ * occurred, so the record did not structurally represent its own partial
+ * coverage. Both now travel together; neither replaces the other.
  *
  * The first occurrence says nothing extra — there is no suppression to disclose
  * yet, and annotating it would make the common case noisier for no information.

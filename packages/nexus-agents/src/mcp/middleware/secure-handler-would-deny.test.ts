@@ -325,6 +325,32 @@ describe('a looping near-miss does not grow the chain without bound (#5228)', ()
     expect(vi.mocked(auditLogger.logPolicyDecision)).toHaveBeenCalledTimes(5);
   });
 
+  it('marks the near-miss even when the handler throws', async () => {
+    // The seam has TWO exits and the first fix wired only one. A warn-mode
+    // near-miss whose handler throws executes with partial side effects — a
+    // write that fails halfway, an adapter call that errors after the request
+    // went out — and its `outcome: 'error'` record was indistinguishable from a
+    // clean call that errored. That is the more review-worthy case, not the
+    // less.
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const throwingHandler = (): Promise<never> => Promise.reject(new Error('boom'));
+    const handler = createSecureHandler(throwingHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+
+    await handler({}).catch(() => undefined);
+
+    const rec = vi.mocked(auditLogger.logToolInvocation).mock.calls[0]?.[0] as {
+      outcome?: string;
+      policyDecision?: string;
+    };
+    expect(rec.outcome).toBe('error');
+    expect(rec.policyDecision).toBe('would_deny');
+  });
+
   it('leaves an ordinary allow unmarked', async () => {
     resetWouldDenySampler();
     const auditLogger = mockAuditLogger();
