@@ -226,7 +226,22 @@ jobs:
         if: always()
         run: |
           set -u
-          leaks=$(git status --porcelain --untracked-files=all 2>/dev/null \
+          # #5302: this used to be one pipeline ending in `|| true`, with
+          # `git status` under `2>/dev/null`. The pipeline's status is grep's,
+          # not git's, and `|| true` erased even that — so a git failure
+          # (dubious ownership, permissions) produced an empty `leaks` and the
+          # step reported "working tree clean" having measured nothing.
+          # Capture git separately so its failure is a failure.
+          if ! status=$(git status --porcelain --untracked-files=all); then
+            echo "::error::git status failed; the working tree was never inspected."
+            echo "This step cannot report a clean tree without reading one."
+            exit 1
+          fi
+
+          # grep exits 1 on no-match, which is the healthy case here, so `|| true`
+          # is correct on THIS pipeline — the exit code being discarded is grep's
+          # "found nothing", not git's "could not look".
+          leaks=$(printf '%s\n' "$status" \
             | awk '{print $2}' \
             | grep -E '^(runs/|logs/|\.nexus-pipeline/|\.nexus-agents/|governance/|predictions\.jsonl$|coverage\.json$|\.test-)' \
             || true)

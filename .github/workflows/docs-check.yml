@@ -143,18 +143,23 @@ jobs:
           AUTHOR="${{ github.event.pull_request.user.login }}"
           echo "::warning::Escape hatch [skip-docs] used by $AUTHOR"
 
-          # Check rate limit (2 per author per 7 days)
-          if [ -f "docs/.audit/escape-hatch.log" ]; then
-            RECENT=$(grep "| $AUTHOR |" docs/.audit/escape-hatch.log 2>/dev/null | \
-                     tail -14 | wc -l || echo 0)
-            if [ "$RECENT" -ge 2 ]; then
-              echo "::error::Rate limit exceeded. $AUTHOR has used [skip-docs] $RECENT times recently (limit: 2 per 7 days)"
-              exit 1
-            fi
-          fi
-
-          # Log usage
-          echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') | [skip-docs] | $AUTHOR | ${{ github.event.pull_request.head.sha }}" >> docs/.audit/escape-hatch.log
+          # #5302: a rate limit used to be claimed here — "2 per author per 7
+          # days" — and it could never fire. It read
+          # docs/.audit/escape-hatch.log, but that directory holds only
+          # .gitkeep and `*.log` is gitignored, so the file is absent from
+          # every checkout: the `if [ -f ]` was a provable no-op. The append
+          # below it wrote to the runner's workspace, which is discarded when
+          # the job ends, so no run could ever observe another's usage. The
+          # count was wrong too — `tail -14 | wc -l` counts lines, not days.
+          #
+          # The claim is removed rather than left standing, because a limit
+          # that is advertised and unenforced is worse than none: it invites
+          # reliance on a control that does not exist. Real enforcement needs
+          # cross-run state (a GitHub API search over past PRs by this author),
+          # tracked separately.
+          #
+          # What remains is genuine: the ::warning:: above records every use in
+          # the Actions log and the PR checks UI, attributed to the author.
 
       - name: Skip if escape hatch used
         if: |
@@ -667,9 +672,22 @@ jobs:
           check "site-data.ts MCP_TOOL_COUNT" "$site_count"
           check "server.json tools[]" "$server_count"
           check "server.json description prose" "$server_desc_count"
-          while IFS= read -r n; do
-            [ -n "$n" ] && check "README.md prose '$n MCP tools'" "$n"
-          done <<< "$readme_counts"
+          # #5302: a `while read` over an empty string runs its body once with an
+          # empty $n, the guard is false, and NO check happens — while the step
+          # still prints "✅ MCP_TOOL_COUNT agrees everywhere". Rewording the
+          # README from "47 MCP tools" to "47 tools" would silently retire this
+          # leg. The README is expected to state the count, so finding none is
+          # itself drift.
+          if [ -z "$readme_counts" ]; then
+            echo "::error::README.md states no 'N MCP tools' count."
+            echo "This check cannot verify a count that is not there. Either restore"
+            echo "the phrase or update this workflow to match the new wording."
+            any_drift=1
+          else
+            while IFS= read -r n; do
+              [ -n "$n" ] && check "README.md prose '$n MCP tools'" "$n"
+            done <<< "$readme_counts"
+          fi
           # Each match line is "<file>:<lineno>:<…N MCP tools…>" — extract N
           # per line and check it; if the same file mentions multiple counts
           # they each get their own error line so the file:line is reported.
@@ -810,12 +828,26 @@ jobs:
 
       - name: Check spelling in documentation
         run: |
-          pnpm spell 2>&1 | tee spell-results.txt
+          # #5302: `pnpm spell | tee` takes tee's exit status, not cspell's, and
+          # this shell has no `-o pipefail`. So a cspell CRASH produced a file
+          # with no "Unknown word" in it and the step printed
+          # "✅ No spelling issues found" — a clean result for a check that
+          # never ran. The job is advisory (continue-on-error), so this was
+          # never a merge-gate bypass; it was a false statement in the log.
+          set -o pipefail
+          spell_status=0
+          pnpm spell 2>&1 | tee spell-results.txt || spell_status=$?
+
           ERRORS=$(grep -c "Unknown word" spell-results.txt || true)
           if [ "$ERRORS" -gt 0 ]; then
             echo "::warning::Found $ERRORS potential spelling issues"
             echo "Run 'pnpm spell' locally to see details"
             echo "Add valid terms to cspell.json words array"
+          elif [ "$spell_status" -ne 0 ]; then
+            # Non-zero with no findings means the tool itself failed. Reporting
+            # this as a clean spell-check is the one outcome that must not happen.
+            echo "::warning::cspell exited $spell_status without reporting findings —"
+            echo "spelling was NOT checked. This is not a clean result."
           else
             echo "✅ No spelling issues found"
           fi
