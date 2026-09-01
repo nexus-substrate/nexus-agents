@@ -1,5 +1,196 @@
 # nexus-agents
 
+## 6.3.7
+
+### Patch Changes
+
+- [#5350](https://github.com/nexus-substrate/nexus-agents/pull/5350) [`dd1fd24`](https://github.com/nexus-substrate/nexus-agents/commit/dd1fd24dafcdee72f5fa50f448a648729f7708f7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(ci): four workflow gates reported a pass without measuring ([#5302](https://github.com/nexus-substrate/nexus-agents/issues/5302))
+
+  Each was verified by executing the shell construct, not by reading it. None of
+  these workflows sets `defaults.shell` or `-o pipefail`, so every `run:` block
+  executes under GitHub's default `bash -e {0}` with no pipefail.
+
+  **`ci.yml` — working-tree clean check.** `git status ... 2>/dev/null | awk |
+grep || true`. The pipeline's status is grep's, and `|| true` erased even that,
+  so a `git status` failure (dubious ownership, permissions) produced an empty
+  `leaks` and the step printed "✓ Working tree clean after tests". Confirmed by
+  running the old form outside a git repo: exit 0, clean message, nothing
+  inspected. This job is on the required path via `ci-success.needs`. `git` is now
+  captured separately so its failure is a failure; the `|| true` stays on the grep
+  pipeline, where the discarded status is grep's "found nothing" rather than
+  git's "could not look".
+
+  **`docs-check.yml` — MCP tool-count drift, README leg.** `while read` over an
+  empty `$readme_counts` runs its body once with an empty `$n`, the `[ -n "$n" ]`
+  guard is false, and no check runs — while the step still prints "✅
+  MCP_TOOL_COUNT agrees everywhere". Verified: the old form ran **0** checks over
+  empty input and continued. Rewording the README from "47 MCP tools" to "47
+  tools" would have silently retired the leg. Absence of the count is now
+  reported as drift.
+
+  **`docs-check.yml` — spell check.** `pnpm spell | tee` takes tee's status, so a
+  cspell crash yielded a file with no "Unknown word" and the step printed "✅ No
+  spelling issues found" for a check that never ran. The job is advisory, so this
+  was a false log line rather than a merge bypass; it now distinguishes "no
+  findings" from "the tool failed".
+
+  **`docs-check.yml` — `[skip-docs]` rate limit, removed.** It claimed "2 per
+  author per 7 days" and could never fire: it read `docs/.audit/escape-hatch.log`,
+  but that directory holds only `.gitkeep` and `*.log` is gitignored, so the file
+  is absent from every checkout. The append below it wrote to the runner
+  workspace, discarded at job end, so no run could observe another's usage — and
+  `tail -14 | wc -l` counted lines, not days. Removed rather than left standing: a
+  limit that is advertised and unenforced invites reliance on a control that does
+  not exist. The `::warning::` recording each use, attributed to its author,
+  remains.
+
+  The fifth item in [#5302](https://github.com/nexus-substrate/nexus-agents/issues/5302) — the semgrep SARIF upload — is **not** a defect. It is
+  a plain redirect, so a crashed scanner does redden the step, and upload-only to
+  code scanning is the documented advisory pattern under [#4802](https://github.com/nexus-substrate/nexus-agents/issues/4802).
+
+- [#5347](https://github.com/nexus-substrate/nexus-agents/pull/5347) [`35a3e0b`](https://github.com/nexus-substrate/nexus-agents/commit/35a3e0b4848f887cb1261be706ec8b0cde177e4e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(replay): validate trace lines against the schema instead of casting them
+
+  `parseTraceJsonl` did `JSON.parse(line) as ExecutionTraceEntry` while
+  `ExecutionTraceEntrySchema` sat unused in the very module the file imports its
+  type from. `trace.jsonl` is written in-tree by `pipeline/trace-writer.ts`, but it
+  is plain on-disk JSONL read back by a path supplied at read time.
+
+  The cast matters because `modelId` flows into `TracedDecision.selectedModel`,
+  which `compareDecisions` compares with `===`. A non-string `modelId` therefore
+  made two _structurally identical_ decisions compare unequal, and the replay
+  audit certified a divergence reading
+  `Model changed: [object Object] → [object Object]` — a verdict on a comparison
+  that was never made. Confirmed by test before the fix: an unchanged model over
+  an object `modelId` reported `divergences: 1`.
+
+  Lines are now validated per line, so one bad line is skipped while its siblings
+  survive. Rejected lines are counted and logged at `warn` rather than `debug`
+  (the [#5018](https://github.com/nexus-substrate/nexus-agents/issues/5018) pattern): at `debug` a replay over a mostly-rejected trace reported a
+  small clean comparison set with no signal anything was dropped, and a silent
+  skip is indistinguishable from a genuinely short trace.
+
+  One existing test changed rather than being added to. `skips malformed lines`
+  used `{"valid":true}` and `{"also":true}` as the two lines that _survive_.
+  Neither carries a timestamp, runId or eventType, so neither is a trace entry —
+  the cast was the only thing making them look like one, and the test had pinned
+  that as intended behaviour.
+
+- [#5347](https://github.com/nexus-substrate/nexus-agents/pull/5347) [`35a3e0b`](https://github.com/nexus-substrate/nexus-agents/commit/35a3e0b4848f887cb1261be706ec8b0cde177e4e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(routing): validate a serialized store before clearing the live one
+
+  `RoutingContextStore.fromJSON` did `JSON.parse(json) as SerializedStoreData` and
+  then called `this.clear()` **before inspecting any field**. A payload that was
+  JSON but not a store therefore destroyed the existing store and returned a clean
+  `INVALID_DATA` — an error a caller reads as "nothing happened". Confirmed by
+  test: a store holding one preference was left holding none.
+
+  The envelope is now validated first, so a bad payload leaves the store
+  untouched. Two consequences of the old order are fixed together:
+
+  - `cacheHits`/`cacheMisses` were assigned straight onto the instance, so a
+    string survived and turned the next `this.cacheHits++` into concatenation.
+    They are now required to be numbers.
+  - When the envelope is well-formed but an element is not, the store _has_
+    already been cleared by the time loading throws. The error message now says
+    so rather than implying the previous contents survived.
+
+  The schema validates the envelope only — the eight top-level containers and the
+  two counters — and the loaders still own element shapes. Duplicating the six
+  nested record types would be a second definition of shapes that already have
+  one. The split is deliberate: the envelope is what decides whether it is safe to
+  clear, so that is what must be checked first.
+
+  Note this path has no in-tree caller outside its tests; `fromJSON` is public API
+  reached only by an external embedder. The defect is real but latent.
+
+- [#5353](https://github.com/nexus-substrate/nexus-agents/pull/5353) [`2c99b62`](https://github.com/nexus-substrate/nexus-agents/commit/2c99b622024c4e26de7da24dfe49a0db067c5e7c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(orchestration): disclose when triangulated review saw only part of the diff
+
+  `buildReviewPrompt` did `diff.slice(0, 6000)` beneath a prompt that asserts
+  completeness ("You are reviewing code changes", "Diff to review"), and
+  `TriangulatedReviewResult` carried no coverage field. A 6001-byte diff produced
+  output indistinguishable from a whole-diff review — including the corroboration
+  count, which is the number a reader trusts most because agreement across CLIs
+  reads as independent confirmation.
+
+  CLAUDE.md: "A partial review honestly labeled is fine; a partial review recorded
+  as complete is the failure."
+
+  Three changes:
+
+  - **`packDiffForReview` ([#4140](https://github.com/nexus-substrate/nexus-agents/issues/4140)) instead of a character slice.** This is a diff,
+    so packing whole files matters: no reviewer receives a corrupted mid-hunk
+    fragment that reads as complete, and the security-first ordering means the
+    highest-risk files are the ones that survive a tight budget. The 6000-byte
+    budget is unchanged, so behaviour on ordinary diffs is identical.
+  - **Packed once, outside the per-CLI map.** Every reviewer sees the same subset.
+    Corroboration would mean considerably less if the CLIs had been shown
+    different files, and the previous code applied the cap independently per CLI.
+  - **Coverage on the result and in the summary.** `coverage` is optional and
+    absent when the whole diff fit, rather than defaulting to `partial: false` —
+    a record written before this field existed must not read as a positive claim
+    of full coverage.
+
+  `executeTriangulatedReview` has no in-repo caller; it is re-exported from
+  `orchestration/index.ts` as public API, so external consumers are the affected
+  population.
+
+  This closes the remaining half of [#5301](https://github.com/nexus-substrate/nexus-agents/issues/5301). The other site it named — the
+  contrarian escalation prompt in `mcp/tools/consensus-vote.ts` — was already
+  fixed by [#5305](https://github.com/nexus-substrate/nexus-agents/issues/5305), which introduced the shared `utils/bounded-artifact.ts` helper.
+
+- [#5349](https://github.com/nexus-substrate/nexus-agents/pull/5349) [`a414f9b`](https://github.com/nexus-substrate/nexus-agents/commit/a414f9b449710f76eff1862d2f2fbf02f81082bd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore: remove two vestigial units ([#5325](https://github.com/nexus-substrate/nexus-agents/issues/5325))
+
+  Two of the four items [#5325](https://github.com/nexus-substrate/nexus-agents/issues/5325) listed. The other two — `getSicaAgentFromOrchestrator`
+  and the write-only OSV module state — were already removed by [#5327](https://github.com/nexus-substrate/nexus-agents/issues/5327) and need no
+  further action.
+
+  **`agents/base-agent-memory-helpers.ts`** (and its test). No importer outside its
+  own test, which imports the file under test rather than injecting it, so it is
+  not a DI seam. Absent from `agents/index.ts`, from every `src/exports/*.ts`, and
+  from `api-surface.txt`. The live chain runs through
+  `base-agent-memory-accessors.ts`, which takes `MemoryOperationContext` from
+  `base-agent-memory-ops.ts` — never from this file.
+
+  **`config/product-matrix/index.ts` and `product-matrix.yaml`.** Nothing imports
+  either. `types.ts` in the same directory **is** load-bearing — three
+  `core/task-analysis/*` files import `ProductType` from it directly, and
+  `ProductType` is published API — so it stays, and no import needed rewriting.
+  Corroborating evidence that the loader was never live: the yaml is not in
+  `package.json#files`, so `loadProductMatrix`'s default path could not resolve in
+  a published package.
+
+  Neither removal changes `api-surface.txt`, so neither is breaking.
+
+  `docs/architecture/redundancy-analysis.md` counted the memory-helpers file as
+  one of five overlapping persistence systems. It now lists four, and records that
+  one arm of the overlap it identified had never been reachable.
+
+- [#5348](https://github.com/nexus-substrate/nexus-agents/pull/5348) [`9c5caf6`](https://github.com/nexus-substrate/nexus-agents/commit/9c5caf60f688af885ea5c6f073cc4f4a7c0b7639) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): show voter reasoning under `nexus-agents vote --verbose` ([#5339](https://github.com/nexus-substrate/nexus-agents/issues/5339))
+
+  A vote that blocks a decision recorded **that** it blocked, not **why**. The CLI
+  printed the tally and a per-role verification hash; `grep -c reasoning` over the
+  complete output of a 7-voter run returned 0.
+
+  The reasoning was there the whole time. `generateVoteHash` hashes
+  `vote.reasoning` to bind the record to the argument — the CLI held the argument
+  in memory and never displayed it. So the grounds of a blocking dissent were
+  unrecoverable from any artifact without re-running the entire panel through a
+  different entry point and hoping for the same objection.
+
+  `--verbose` now renders each voter's grounds beneath its row, dimmed and
+  indented, clipped at 600 characters. It stays verbose-only because the default
+  panel is a scannable tally and seven multi-paragraph rationales inline would
+  bury it.
+
+  An errored voter renders as before. The error arm returns before the reasoning
+  is reached, so the placeholder reasoning on an errored voter's vote stub is
+  never displayed as though the voter had reasoned — a voter that produced no
+  judgment must not appear to have produced one.
+
+  This is the display half of [#5339](https://github.com/nexus-substrate/nexus-agents/issues/5339). The persisted record at
+  `governance/vote-records.jsonl` still stores `{role, decision, confidence}` per
+  voter; changing that schema is a `src/audit/` change and needs owner
+  ratification, so it stays open.
+
 ## 6.3.6
 
 ### Patch Changes
