@@ -9,6 +9,8 @@
  */
 
 import { z } from 'zod';
+
+import type { PrReviewCoverage } from '../mcp/tools/pr-review-diff-budget.js';
 import type { CliName } from '../cli-adapters/types-core.js';
 import { PER_CLI_TASK_TIMEOUTS } from '../config/timeouts.js';
 import type {
@@ -69,6 +71,14 @@ export interface TriangulatedReviewResult {
   readonly summary: string;
   /** Finding counts by severity. */
   readonly countBySeverity: Readonly<Record<ReviewSeverity, number>>;
+  /**
+   * Which portion of the diff was actually reviewed; `undefined` when the
+   * whole diff fit within budget (#5301).
+   *
+   * Absent-means-whole rather than a `partial: false` default, so a record that
+   * predates this field cannot be read as a positive claim of full coverage.
+   */
+  readonly coverage?: PrReviewCoverage;
 }
 
 // ============================================================================
