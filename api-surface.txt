@@ -9964,7 +9964,7 @@ InterfaceDeclaration ZodType
   _input: Internals["input"]
   _output: Internals["output"]
   and<T extends core.SomeType>(incoming: T) => ZodIntersection<this, T>
-  apply<T>(fn: (schema: this) => T) => T
+  apply<T, TArgs extends unknown[] = []>(fn: (schema: this, ...args: TArgs) => T, ...args: TArgs) => T
   array() => ZodArray<this>
   brand<T extends PropertyKey = PropertyKey, Dir extends "in" | "out" | "inout" = "out">(value?: T) => PropertyKey extends T ? this : core.$ZodBranded<this, T, Dir>
   catch{ (def: (ctx: core.$ZodCatchCtx) => core.output<this>): ZodCatch<this>;; (def: core.output<this>): ZodCatch<this>; }
