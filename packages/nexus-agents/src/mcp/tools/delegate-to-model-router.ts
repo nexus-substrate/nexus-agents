@@ -18,6 +18,10 @@ import {
 } from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 import { routingArmDisplaySlot } from '../../cli-adapters/types.js';
+import type { RoutingArmId } from '../../cli-adapters/types.js';
+// #5269: the same pure capability comparison the non-router path uses, so both
+// paths describe an alternative the same way.
+import { getTradeoff } from './delegate-to-model-helpers.js';
 
 /**
  * Maps CLI name to default model ID for output.
@@ -57,11 +61,47 @@ export function mapCompositeDecisionToOutput(
     reasoning: decision.reason,
     capabilities: caps,
     estimated_tokens: estimatedTokens,
-    alternatives: decision.alternatives.slice(0, 3).map((alt) => ({
-      model: cliNameToModel(routingArmDisplaySlot(alt)),
-      score: decision.topsisScore ?? 0.7,
-      tradeoff: 'alternative option',
-    })),
+    alternatives: decision.alternatives
+      .slice(0, 3)
+      .map((alt) => describeAlternative(alt, decision, caps)),
+  };
+}
+
+/**
+ * Describe one alternative honestly (#5269).
+ *
+ * This used to be `score: decision.topsisScore ?? 0.7, tradeoff: 'alternative
+ * option'` — the WINNER's score on every alternative, and a placeholder string.
+ * A caller reading three alternatives that all scored alike concluded they were
+ * equivalent to each other and to the selection, which the router had not said.
+ *
+ * The sibling non-router path (`delegate-to-model-helpers.ts`) always filled
+ * these correctly, so identical output shapes carried different epistemic
+ * status and the caller could not tell which had produced them. That is the
+ * asymmetry this closes.
+ */
+function describeAlternative(
+  alt: RoutingArmId,
+  decision: CompositeRoutingDecision,
+  bestCaps: CapabilityProfile
+): { model: string; score: number; tradeoff: string } {
+  const model = cliNameToModel(routingArmDisplaySlot(alt));
+  const altCaps = MODEL_CAPABILITIES[model] ?? DEFAULT_CAPABILITIES;
+  const ranked = decision.alternativeScores?.get(alt);
+
+  if (ranked !== undefined) {
+    return { model, score: ranked, tradeoff: getTradeoff(bestCaps, altCaps) };
+  }
+
+  // No ranking ran, so there is no per-alternative score to report. The output
+  // schema requires a number, so the winner's score is still what goes in the
+  // field — but the tradeoff now SAYS that, rather than letting the number pass
+  // as this alternative's own. Absence is disclosed where it can be, since it
+  // cannot be represented in a `z.number()`.
+  return {
+    model,
+    score: decision.topsisScore ?? 0.7,
+    tradeoff: `not ranked — score shown is the selected model's, not this alternative's; ${getTradeoff(bestCaps, altCaps)}`,
   };
 }
 

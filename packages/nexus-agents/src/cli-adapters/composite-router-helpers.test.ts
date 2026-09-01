@@ -436,6 +436,37 @@ describe('applyTopsisRanking', () => {
     expect(result.topScore).toBe(0.9);
   });
 
+  // #5269: these scores are computed here and were then discarded — only
+  // `topScore` survived, so `delegate_to_model` had no per-alternative score
+  // and filled every alternative with the winner's. Nothing tested the
+  // producer end, so removing the map again would go unnoticed.
+  it('reports the closeness score of every candidate, not just the top one', () => {
+    const mockRouter = {
+      selectModel: vi.fn(() => ({
+        scores: [
+          { cliName: 'gemini', closenessScore: 0.9 },
+          { cliName: 'claude', closenessScore: 0.7 },
+          { cliName: 'codex', closenessScore: 0.8 },
+        ],
+      })),
+    };
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+
+    expect(result.scoresByArm).toBeDefined();
+    expect(result.scoresByArm?.get('gemini')).toBe(0.9);
+    expect(result.scoresByArm?.get('codex')).toBe(0.8);
+    expect(result.scoresByArm?.get('claude')).toBe(0.7);
+    // Distinct per arm — the defect was one value standing for all of them.
+    expect(new Set(result.scoresByArm?.values()).size).toBe(3);
+  });
+
+  it('omits scores entirely when no TOPSIS router ran', () => {
+    // Absent, not a map of zeros: a reader must not take "no ranking" for
+    // "everything ranked zero".
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, undefined);
+    expect(result.scoresByArm).toBeUndefined();
+  });
+
   it('computes tolerance band size for close scores', () => {
     const mockRouter = {
       selectModel: vi.fn(() => ({

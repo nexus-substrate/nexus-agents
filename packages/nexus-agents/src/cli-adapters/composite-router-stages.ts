@@ -660,7 +660,12 @@ export function runTopsisStage(
     stageScores?: ReadonlyMap<CliName, number>;
     performanceData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
   }
-): { ranking: RoutingArmId[]; score: number | undefined } {
+): {
+  ranking: RoutingArmId[];
+  score: number | undefined;
+  /** #5269: per-arm closeness, absent when no ranking ran. */
+  scoresByArm?: ReadonlyMap<RoutingArmId, number>;
+} {
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
   }
@@ -672,7 +677,11 @@ export function runTopsisStage(
     topsisOptions.performanceData = options.performanceData;
   const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, topsisOptions);
   stagesExecuted.push('topsis-ranking');
-  return { ranking: result.ranking, score: result.topScore };
+  return {
+    ranking: result.ranking,
+    score: result.topScore,
+    ...(result.scoresByArm === undefined ? {} : { scoresByArm: result.scoresByArm }),
+  };
 }
 
 /** Runs LinUCB bandit selection stage. */
@@ -1194,7 +1203,11 @@ interface PipelineResultParams {
   qualityResult: QualityConstraintStageResult;
   zeroResult: ZeroRouterStageResult;
   prefResult: PreferenceStageResult;
-  topsisResult: { ranking: RoutingArmId[]; score: number | undefined };
+  topsisResult: {
+    ranking: RoutingArmId[];
+    score: number | undefined;
+    scoresByArm?: ReadonlyMap<RoutingArmId, number>;
+  };
   linucbResult: { ucbScore: number | undefined };
   latencyResult: LatencyStageResult;
   memoryResult: RoutingMemoryStageResult;
@@ -1221,6 +1234,7 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
     preferenceTier: p.prefResult.preferenceTier,
     topsisRanking: p.topsisResult.ranking,
     topsisScore: p.topsisResult.score,
+    topsisScoresByArm: p.topsisResult.scoresByArm,
     selectedCli: p.selectedCli,
     ucbScore: p.linucbResult.ucbScore,
     latencyScore: p.latencyResult.latencyScore,
