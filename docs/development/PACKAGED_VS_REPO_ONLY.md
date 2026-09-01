@@ -10,24 +10,34 @@ research task for a question with a fixed answer.
 
 ## What ships
 
-`packages/nexus-agents/package.json#files`:
+The authoritative list is `packages/nexus-agents/package.json#files` — read it
+there, and do not expect to find it restated here. A prose copy of a list that
+changes is a second source of truth that no gate compares, so this document
+records the **invariant** over that list instead:
 
-```json
-["dist", "scripts/postinstall.js", "src/workflows/templates", "src/security/ast-rules", "README.md"]
-```
+> The package ships `dist` plus a small number of explicitly-enumerated runtime
+> asset directories. Governance and development documents are not among them,
+> and nothing reads them at runtime.
 
-An installed package therefore contains `dist`, `LICENSE`, `node_modules`,
-`package.json`, `README.md`, `scripts` and `src` — where `src` holds only the two
-asset directories above.
+That invariant is what the rest of this document depends on, and it is the part
+that would be a bug if it changed. Which specific asset directories are
+enumerated is a build detail; `scripts/check-dist-assets.ts` enforces that list
+against `dist/`, so it is checked rather than described.
+
+To see what an installed copy actually contains, `npm pack --dry-run` in
+`packages/nexus-agents` prints the file list without publishing.
 
 ## What does not ship, deliberately
 
-`.rules/`, `skills/`, `agents/`, `governance/`, `CLAUDE.md`, `AGENTS.md`,
-`CODEOWNERS`, `docs/`, `api-surface.txt`.
+Governance and development artifacts stay in the repo: the rules, skills, agent
+and governance directories, the harness instruction files, `CODEOWNERS`, `docs/`
+and `api-surface.txt`.
 
 **Nothing reads them at runtime.** They are source-of-truth documents for
 development and governance; where the runtime needs their content, it reads a
-typed mirror instead.
+typed mirror instead. That is the claim worth stating, because it is not
+derivable from `files` — an absent path and an unread path look identical from
+the manifest.
 
 ## The mirror pattern
 
@@ -57,7 +67,9 @@ they have to be copied into `dist/` and listed:
 | `security/ast-rules`            | `security/ast-rule-runner.ts`          |
 
 Copying happens in `tsup.config.ts` `onSuccess`; `scripts/check-dist-assets.ts`
-runs as part of `build` and fails if any is missing or truncated.
+runs as part of `build` and fails if any is missing or truncated. `REQUIRED_DIST_ASSETS`
+in that script is the authoritative list — the table above is a reading aid for
+the asset-to-loader relationship, which the script does not record.
 
 **Why a floor exists rather than `existsSync`:** `cp` of a half-written file
 leaves a path `existsSync` accepts, and an empty JSON array parses fine and
