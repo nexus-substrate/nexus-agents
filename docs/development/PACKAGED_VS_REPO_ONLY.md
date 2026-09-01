@@ -24,6 +24,20 @@ that would be a bug if it changed. Which specific asset directories are
 enumerated is a build detail; `scripts/check-dist-assets.ts` enforces that list
 against `dist/`, so it is checked rather than described.
 
+**The invariant is enforced, not merely asserted.** The half of it that a
+document could otherwise only claim — _unread at runtime_ — is gated by the
+completeness check in the same script: `assetListCompleteness` requires every
+file under `src/` that resolves a path from `import.meta.url` or `__dirname` to
+be declared in `MODULE_RELATIVE_RESOLVERS`, either naming the shipped asset it
+needs or explicitly `null` with a reason. A new runtime file read **fails the
+build** until it is declared, which forces the author to answer "does this need
+to ship?" exactly once. It runs in `build` and at `ci.yml`'s
+`npx tsx scripts/check-dist-assets.ts` step.
+
+That is the difference between this section and a comment. An invariant written
+down and ungated is a false sense of security — the reader trusts a property
+nothing maintains. Name the gate or do not make the claim.
+
 To see what an installed copy actually contains, `npm pack --dry-run` in
 `packages/nexus-agents` prints the file list without publishing.
 
@@ -67,9 +81,18 @@ they have to be copied into `dist/` and listed:
 | `security/ast-rules`            | `security/ast-rule-runner.ts`          |
 
 Copying happens in `tsup.config.ts` `onSuccess`; `scripts/check-dist-assets.ts`
-runs as part of `build` and fails if any is missing or truncated. `REQUIRED_DIST_ASSETS`
-in that script is the authoritative list — the table above is a reading aid for
-the asset-to-loader relationship, which the script does not record.
+runs as part of `build` and fails if any is missing or truncated.
+`REQUIRED_DIST_ASSETS` in that script is the authoritative list — the table above
+is a reading aid for the asset-to-loader relationship, which the script does not
+record.
+
+**This table can drift, and nothing compares it.** That is a real cost, raised in
+review, and it is accepted rather than hidden: the four rows are load-bearing
+only as orientation, and both halves of each row are independently gated —
+`MODULE_RELATIVE_RESOLVERS` pins the loader, `REQUIRED_DIST_ASSETS` pins the
+asset. A drifted row here misleads a reader; it cannot make a broken build pass.
+If the mapping ever becomes something a tool needs, derive it from those two
+lists instead of maintaining a third.
 
 **Why a floor exists rather than `existsSync`:** `cp` of a half-written file
 leaves a path `existsSync` accepts, and an empty JSON array parses fine and
