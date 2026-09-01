@@ -130,15 +130,40 @@ describe('mapCompositeDecisionToOutput', () => {
     expect(output.alternatives[1]!.model).toBe('gpt-5.5');
   });
 
-  it('uses topsisScore for alternative scores', () => {
-    const decision = makeDecision({ topsisScore: 0.92 });
+  // #5269: these three tests pinned the defect. Every alternative was given the
+  // WINNER's topsisScore (or a 0.7 literal), and the tradeoff was a placeholder,
+  // so a caller read the alternatives as equivalent to each other and to the
+  // selection. The router had the per-arm closeness scores all along and
+  // discarded them.
+  it('gives each alternative its own ranked score', () => {
+    const decision = makeDecision({
+      alternatives: ['gemini', 'codex'],
+      topsisScore: 0.92,
+      alternativeScores: new Map([
+        ['gemini', 0.81],
+        ['codex', 0.64],
+      ]),
+    });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.alternatives[0]!.score).toBe(0.92);
+    expect(output.alternatives[0]!.score).toBe(0.81);
+    expect(output.alternatives[1]!.score).toBe(0.64);
+    // The winner's score must not appear on an alternative.
+    expect(output.alternatives.map((a) => a.score)).not.toContain(0.92);
+  });
+
+  it('does not present the winner score as an alternative measurement when unranked', () => {
+    const decision = makeDecision({ topsisScore: 0.92, alternativeScores: undefined });
+    const output = mapCompositeDecisionToOutput(decision, 100);
+
+    // The output schema requires a number, so the field still carries one —
+    // but it must say whose it is rather than passing as this alternative's.
+    expect(output.alternatives[0]!.tradeoff).toContain('not ranked');
+    expect(output.alternatives[0]!.tradeoff).toContain("selected model's");
   });
 
   it('falls back to 0.7 when topsisScore is undefined', () => {
-    const decision = makeDecision({ topsisScore: undefined });
+    const decision = makeDecision({ topsisScore: undefined, alternativeScores: undefined });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
     expect(output.alternatives[0]!.score).toBe(0.7);
@@ -151,11 +176,18 @@ describe('mapCompositeDecisionToOutput', () => {
     expect(output.alternatives).toEqual([]);
   });
 
-  it('sets tradeoff to alternative option', () => {
-    const decision = makeDecision({ alternatives: ['codex'] });
+  it('describes a real tradeoff when the alternative was ranked', () => {
+    const decision = makeDecision({
+      alternatives: ['codex'],
+      alternativeScores: new Map([['codex', 0.64]]),
+    });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.alternatives[0]!.tradeoff).toBe('alternative option');
+    // A capability comparison, the same one the non-router path produces —
+    // never the old 'alternative option' placeholder, which said nothing.
+    expect(output.alternatives[0]!.tradeoff).not.toBe('alternative option');
+    expect(output.alternatives[0]!.tradeoff.length).toBeGreaterThan(0);
+    expect(output.alternatives[0]!.tradeoff).not.toContain('not ranked');
   });
 
   it('handles zero estimated tokens', () => {

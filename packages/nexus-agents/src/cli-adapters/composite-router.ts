@@ -904,7 +904,7 @@ export class CompositeRouter implements ICompositeRouter {
     this.updateStats(params.selectedCli, decisionTimeMs);
     // #4196 BINDING: plan mode must annotate the decision explicitly
     // ('cost weighting disabled: plan mode') — never a silent no-op.
-    const { confidence, reason, alternatives } = buildDecisionFields({
+    const { confidence, reason, alternatives, alternativeScores } = buildDecisionFields({
       ...params,
       decisionTimeMs,
       billingMode: this.config.billingMode,
@@ -937,6 +937,7 @@ export class CompositeRouter implements ICompositeRouter {
       ucbScore: params.ucbScore,
       latencyScore: params.latencyScore,
       alternatives,
+      ...(alternativeScores === undefined ? {} : { alternativeScores }),
       taskProfile: params.taskProfile,
     });
   }
