@@ -9,6 +9,8 @@
  * (Source: Issue #1681, #1682 — Proactive Defensive Security)
  */
 
+import { z } from 'zod';
+
 import type { SecurityFinding, FindingSeverity, SarifParseResult } from './sarif-types.js';
 import { SARIF_LEVEL_MAP, SEVERITY_ORDER } from './sarif-types.js';
 
@@ -16,51 +18,112 @@ import { SARIF_LEVEL_MAP, SEVERITY_ORDER } from './sarif-types.js';
 // SARIF JSON Shape (minimal subset for parsing)
 // ============================================================================
 
-interface SarifLocation {
-  readonly physicalLocation?: {
-    readonly artifactLocation?: { readonly uri?: string };
-    readonly region?: {
-      readonly startLine?: number;
-      readonly endLine?: number;
-      readonly snippet?: { readonly text?: string };
-    };
-  };
-}
+/**
+ * SARIF arrives as stdout from an external subprocess (semgrep, via
+ * `runSemgrep` in `mcp/tools/security-scan.ts`), so it is untrusted input at a
+ * trust boundary. It used to be `JSON.parse(json) as SarifLog` (#5328): the
+ * cast made every field below a *claim* rather than a fact, and the claims
+ * reached the ship gate. A string `startLine` produced a `SecurityFinding` that
+ * violated `SecurityFindingSchema` while typechecking fine, because a cast
+ * satisfies the compiler and nothing else checked.
+ *
+ * These schemas cover the subset of SARIF 2.1.0 the parser reads. Unknown keys
+ * pass through — SARIF logs carry far more than this and rejecting extra fields
+ * would fail on every real scanner. What they pin is the *type* of each field
+ * that is actually consumed.
+ *
+ * Note that `SecurityFindingSchema` is deliberately NOT re-applied to the
+ * constructed finding. Once the input is validated the output is correct by
+ * construction, so a runtime output check could not fail — it would be exactly
+ * the vacuous gate this change exists to remove. The schema is used as the
+ * oracle in `sarif-parser-trust.test.ts` instead, where it can fail.
+ */
+const SarifLocationSchema = z.object({
+  physicalLocation: z
+    .object({
+      artifactLocation: z.object({ uri: z.string().min(1).optional() }).optional(),
+      region: z
+        .object({
+          startLine: z.number().int().min(1).optional(),
+          endLine: z.number().int().min(1).optional(),
+          snippet: z.object({ text: z.string().optional() }).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
 
-interface SarifResult {
-  readonly ruleId?: string | null;
-  readonly level?: string | null;
-  readonly message?: { readonly text?: string } | null;
-  readonly locations?: readonly SarifLocation[] | null;
-}
+const SarifResultSchema = z.object({
+  ruleId: z.string().nullish(),
+  level: z.string().nullish(),
+  message: z.object({ text: z.string().optional() }).nullish(),
+  locations: z.array(SarifLocationSchema).nullish(),
+});
 
-interface SarifRule {
-  readonly id: string;
-  readonly shortDescription?: { readonly text?: string };
-  readonly defaultConfiguration?: { readonly level?: string };
-  readonly properties?: {
-    readonly precision?: string;
-    readonly tags?: readonly string[];
-    readonly 'security-severity'?: string;
-  };
-  readonly helpUri?: string;
-  readonly help?: { readonly markdown?: string };
-}
+const SarifRuleSchema = z.object({
+  id: z.string(),
+  shortDescription: z.object({ text: z.string().optional() }).optional(),
+  defaultConfiguration: z.object({ level: z.string().optional() }).optional(),
+  properties: z
+    .object({
+      precision: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      'security-severity': z.string().optional(),
+    })
+    .optional(),
+  helpUri: z.string().optional(),
+  help: z.object({ markdown: z.string().optional() }).optional(),
+});
 
-interface SarifRun {
-  readonly tool?: {
-    readonly driver?: {
-      readonly name?: string;
-      readonly rules?: readonly SarifRule[];
-    };
-  };
-  readonly results?: readonly SarifResult[];
-}
+/**
+ * Runs and results are arrays of `unknown` here on purpose. Validating each
+ * element inside the envelope schema would make ONE malformed result discard
+ * the entire scan, which is the opposite of what a security gate wants. Each
+ * element is validated individually at its point of use, so a bad result is
+ * skipped and disclosed while its siblings are still reported.
+ */
+const SarifRunSchema = z.object({
+  tool: z
+    .object({
+      driver: z
+        .object({
+          name: z.string().optional(),
+          rules: z.array(z.unknown()).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  results: z.array(z.unknown()).nullish(),
+});
 
-interface SarifLog {
-  readonly version?: string;
-  readonly runs?: readonly SarifRun[];
-}
+const SarifLogSchema = z.object({
+  version: z.string().optional(),
+  runs: z.array(z.unknown()).optional(),
+});
+
+type SarifLocation = z.infer<typeof SarifLocationSchema>;
+type SarifResult = z.infer<typeof SarifResultSchema>;
+type SarifRule = z.infer<typeof SarifRuleSchema>;
+type SarifRun = z.infer<typeof SarifRunSchema>;
+type SarifLog = z.infer<typeof SarifLogSchema>;
+
+/**
+ * The severity assigned when a SARIF level is present but outside the spec.
+ *
+ * SARIF 2.1.0 defines exactly four levels (none/note/warning/error) and
+ * `SARIF_LEVEL_MAP` covers all four, so this fires only for a level we do not
+ * understand. It used to be `'medium'`, which is below `BLOCKING_SEVERITIES`
+ * in `pipeline/security-gate.ts` — so "we could not read this severity"
+ * silently became "this does not block the ship gate", and `agent-executor`
+ * recorded security as passed for a finding the scanner had reported.
+ *
+ * Fail closed instead: an unreadable severity blocks, and the unmapped level is
+ * named in `SarifParseResult.errors` so the record says why.
+ */
+const UNMAPPED_LEVEL_SEVERITY: FindingSeverity = 'high';
+
+/** Longest message `SecurityFindingSchema` accepts. */
+const MAX_MESSAGE_LENGTH = 2000;
 
 // ============================================================================
 // Public API
@@ -73,13 +136,38 @@ interface SarifLog {
  * @param maxFindings - Maximum findings to return (default: 100)
  * @returns Parsed findings sorted by severity
  */
-/** Try parsing JSON, returning null on failure. */
-function tryParseJson(json: string): SarifLog | null {
+/**
+ * Parse and validate the SARIF envelope.
+ *
+ * Returns a discriminated result rather than `null` so the caller can tell
+ * "this is not JSON" from "this is JSON that is not a SARIF log" — previously
+ * both collapsed to `'Invalid JSON'`, and a top-level array reached
+ * `log.runs`, read `undefined`, and reported the honest-sounding
+ * `'No runs in SARIF'`.
+ */
+function parseEnvelope(json: string): { ok: true; log: SarifLog } | { ok: false; error: string } {
+  let raw: unknown;
   try {
-    return JSON.parse(json) as SarifLog;
+    raw = JSON.parse(json);
   } catch {
-    return null;
+    return { ok: false, error: 'Invalid JSON' };
   }
+  const parsed = SarifLogSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: `Malformed SARIF log: ${describeZodError(parsed.error)}` };
+  }
+  return { ok: true, log: parsed.data };
+}
+
+/** Condense a Zod error to a single line naming the offending paths. */
+function describeZodError(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 3)
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+      return `${path}: ${issue.message}`;
+    })
+    .join('; ');
 }
 
 /**
@@ -91,24 +179,36 @@ function tryParseJson(json: string): SarifLog | null {
  */
 export function parseSarif(sarifJson: string, maxFindings = 100): SarifParseResult {
   const errors: string[] = [];
-  const log = tryParseJson(sarifJson);
-  if (log === null) {
-    return { scanner: 'unknown', totalFindings: 0, findings: [], errors: ['Invalid JSON'] };
+  const envelope = parseEnvelope(sarifJson);
+  if (!envelope.ok) {
+    return { scanner: 'unknown', totalFindings: 0, findings: [], errors: [envelope.error] };
   }
-  return parseLog(log, maxFindings, errors);
+  return parseLog(envelope.log, maxFindings, errors);
 }
 
 /** Extract findings from a parsed SARIF log. */
+/** Pull the scanner name and its rule list out of a run's tool driver. */
+function describeDriver(run: SarifRun): { scanner: string; rules: readonly unknown[] } {
+  const driver = run.tool?.driver;
+  return { scanner: driver?.name ?? 'unknown', rules: driver?.rules ?? [] };
+}
+
+/** An empty result carrying one reason, for the several ways a log yields nothing. */
+function emptyResult(error: string): SarifParseResult {
+  return { scanner: 'unknown', totalFindings: 0, findings: [], errors: [error] };
+}
+
 function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifParseResult {
   const runs = log.runs;
-  if (runs === undefined || runs.length === 0) {
-    return { scanner: 'unknown', totalFindings: 0, findings: [], errors: ['No runs in SARIF'] };
+  if (runs === undefined || runs.length === 0) return emptyResult('No runs in SARIF');
+
+  const parsedRun = SarifRunSchema.safeParse(runs[0]);
+  if (!parsedRun.success) {
+    return emptyResult(`Malformed SARIF run: ${describeZodError(parsedRun.error)}`);
   }
-  const run = runs[0] as SarifRun; // Length checked above
-  const scanner = run.tool?.driver?.name ?? 'unknown';
-  const ruleMap = buildRuleMap(run.tool?.driver?.rules ?? []);
-  const results = run.results ?? [];
-  const findings = collectFindings(results, scanner, ruleMap, errors);
+  const { scanner, rules } = describeDriver(parsedRun.data);
+  const ruleMap = buildRuleMap(rules, errors);
+  const findings = collectFindings(parsedRun.data.results ?? [], scanner, ruleMap, errors);
   return {
     scanner,
     totalFindings: findings.length,
@@ -119,14 +219,22 @@ function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifPa
 
 /** Collect and sort findings from SARIF results. */
 function collectFindings(
-  results: readonly SarifResult[],
+  results: readonly unknown[],
   scanner: string,
   ruleMap: ReadonlyMap<string, SarifRule>,
   errors: string[]
 ): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
-  for (const result of results) {
-    const finding = parseResult(result, scanner, ruleMap, errors);
+  for (const [index, raw] of results.entries()) {
+    // Per-result validation, not per-log: one unreadable result is skipped and
+    // disclosed, while the rest of the scan is still reported. Discarding the
+    // whole scan on one bad result would turn a partial read into a clean pass.
+    const parsed = SarifResultSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push(`Skipped result ${String(index)}: ${describeZodError(parsed.error)}`);
+      continue;
+    }
+    const finding = parseResult(parsed.data, scanner, ruleMap, errors);
     if (finding !== null) findings.push(finding);
   }
   findings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -138,10 +246,15 @@ function collectFindings(
 // ============================================================================
 
 /** Build rule ID → rule metadata lookup. */
-function buildRuleMap(rules: readonly SarifRule[]): ReadonlyMap<string, SarifRule> {
+function buildRuleMap(rules: readonly unknown[], errors: string[]): ReadonlyMap<string, SarifRule> {
   const map = new Map<string, SarifRule>();
-  for (const rule of rules) {
-    map.set(rule.id, rule);
+  for (const [index, raw] of rules.entries()) {
+    const parsed = SarifRuleSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push(`Skipped rule ${String(index)}: ${describeZodError(parsed.error)}`);
+      continue;
+    }
+    map.set(parsed.data.id, parsed.data);
   }
   return map;
 }
@@ -160,7 +273,8 @@ function getFirstPhysicalLocation(
 ): NonNullable<SarifLocation['physicalLocation']> | null {
   const locations = result.locations;
   if (locations === undefined || locations === null || locations.length === 0) return null;
-  const first = locations[0] as SarifLocation;
+  const first = locations[0];
+  if (first === undefined) return null;
   return first.physicalLocation ?? null;
 }
 
@@ -188,6 +302,29 @@ function extractLocation(result: SarifResult): ParsedLocation | null {
   return buildLocation(file, startLine, phys);
 }
 
+/**
+ * Resolve severity, recording in `errors` when it was assigned rather than read.
+ *
+ * The disclosure lives with the resolution because a severity the parser
+ * guessed and a severity the scanner stated must not look alike to the gate
+ * that consumes them.
+ */
+function severityWithDisclosure(
+  result: SarifResult,
+  rule: SarifRule | undefined,
+  ruleId: string,
+  errors: string[]
+): FindingSeverity {
+  const { severity, unmappedLevel } = resolveSeverity(result.level ?? undefined, rule);
+  if (unmappedLevel !== undefined) {
+    errors.push(
+      `Finding ${ruleId}: SARIF level '${unmappedLevel}' is not defined by the spec; ` +
+        `severity recorded as '${severity}' (fail-closed), not measured`
+    );
+  }
+  return severity;
+}
+
 /** Parse a single SARIF result into a SecurityFinding. */
 function parseResult(
   result: SarifResult,
@@ -204,12 +341,15 @@ function parseResult(
     return null;
   }
 
-  const message = result.message?.text ?? rule?.shortDescription?.text ?? ruleId;
+  const rawMessage = result.message?.text ?? rule?.shortDescription?.text ?? ruleId;
+  const message = rawMessage.slice(0, MAX_MESSAGE_LENGTH);
+  const severity = severityWithDisclosure(result, rule, ruleId, errors);
+
   return {
     id: `${scanner}:${ruleId}:${loc.file}:${String(loc.startLine)}`,
     scanner,
     rule: ruleId,
-    severity: resolveSeverity(result.level ?? undefined, rule),
+    severity,
     message,
     file: loc.file,
     startLine: loc.startLine,
@@ -229,14 +369,32 @@ function scoreToSeverity(score: number): FindingSeverity {
   return 'low';
 }
 
-/** Resolve severity from result level, rule properties, or defaults. */
-function resolveSeverity(level: string | undefined, rule: SarifRule | undefined): FindingSeverity {
+/**
+ * Resolve severity from result level, rule properties, or defaults.
+ *
+ * `unmappedLevel` is set when a level was present but outside the SARIF spec,
+ * so the caller can disclose it. Returning it alongside the severity — rather
+ * than logging inside — keeps the disclosure on the same path as the value it
+ * describes; a severity that was guessed and a severity that was read must not
+ * be indistinguishable to the gate that consumes them.
+ */
+function resolveSeverity(
+  level: string | undefined,
+  rule: SarifRule | undefined
+): { severity: FindingSeverity; unmappedLevel?: string } {
   const fromScore = resolveSeverityFromScore(rule);
-  if (fromScore !== null) return fromScore;
-  if (level !== undefined) return SARIF_LEVEL_MAP[level] ?? 'medium';
+  if (fromScore !== null) return { severity: fromScore };
+  if (level !== undefined) return mapLevel(level);
   const ruleLevel = rule?.defaultConfiguration?.level;
-  if (ruleLevel !== undefined) return SARIF_LEVEL_MAP[ruleLevel] ?? 'medium';
-  return 'medium';
+  if (ruleLevel !== undefined) return mapLevel(ruleLevel);
+  return { severity: 'medium' };
+}
+
+/** Map one SARIF level, reporting it when the spec does not define it. */
+function mapLevel(level: string): { severity: FindingSeverity; unmappedLevel?: string } {
+  const mapped = SARIF_LEVEL_MAP[level];
+  if (mapped !== undefined) return { severity: mapped };
+  return { severity: UNMAPPED_LEVEL_SEVERITY, unmappedLevel: level };
 }
 
 /** Try to resolve severity from security-severity property. */
