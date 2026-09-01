@@ -197,6 +197,54 @@ function stripAnsi(s: string): string {
   return s.replace(/\[[0-9;]*m/g, '');
 }
 
+describe('formatVoteRow reasoning (#5339)', () => {
+  const dissent = makeVoteRow({
+    role: 'catfish',
+    vote: {
+      decision: 'reject',
+      reasoning: 'Failing closed to high will bury teams in false blocking findings.',
+      confidence: 0.85,
+    },
+  });
+
+  it('omits reasoning by default, keeping the default panel scannable', () => {
+    const row = stripAnsi(formatVoteRow(dissent));
+    expect(row).not.toContain('Failing closed');
+    expect(row).toContain('REJECT');
+  });
+
+  it('includes the reasoning when verbose', () => {
+    const row = stripAnsi(formatVoteRow(dissent, { verbose: true }));
+    // The grounds of a blocking dissent are the one thing a reviewer needs and
+    // the CLI already held in memory — generateVoteHash hashes `vote.reasoning`
+    // while nothing ever displayed it.
+    expect(row).toContain('Failing closed to high will bury teams');
+  });
+
+  it('shows reasoning for approvals too, not just dissents', () => {
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          vote: { decision: 'approve', reasoning: 'Sound fail-closed default.', confidence: 0.9 },
+        }),
+        { verbose: true }
+      )
+    );
+    expect(row).toContain('Sound fail-closed default.');
+  });
+
+  it('does not invent reasoning for an errored voter', () => {
+    const row = stripAnsi(
+      formatVoteRow(makeVoteRow({ source: 'error', error: 'quota exceeded' }), { verbose: true })
+    );
+    expect(row).toContain('ERROR');
+    expect(row).toContain('quota exceeded');
+    // An errored voter produced no judgment; rendering the placeholder
+    // reasoning from the vote stub would fabricate one.
+    expect(row).not.toContain('ok');
+  });
+});
+
 describe('formatVoteRow (#2441)', () => {
   it('renders an LLM vote with no badge', () => {
     const row = stripAnsi(formatVoteRow(makeVoteRow({ source: 'llm' })));

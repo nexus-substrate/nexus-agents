@@ -7,6 +7,8 @@
  * @module core/routing/routing-context-store-impl
  */
 
+import { z } from 'zod';
+
 import { ok, err, type Result } from '../result.js';
 import { getTimeProvider } from '../time-provider.js';
 import type { CliName } from '../../cli-adapters/types.js';
@@ -62,6 +64,58 @@ const DEFAULT_CONFIG: Required<RoutingContextStoreConfig> = {
 /**
  * In-memory implementation of the routing context store.
  */
+/**
+ * Structural schema for a serialized store.
+ *
+ * Deliberately validates the ENVELOPE only — that the eight top-level fields
+ * are present with the right container type, and that the two counters are
+ * numbers. It does NOT validate the shape of the elements inside those
+ * containers; the loaders below still own that, and a malformed element is
+ * still caught by the try/catch in `fromJSON`.
+ *
+ * That split is the point. The envelope is what decides whether it is safe to
+ * `clear()` the existing store, so it must be checked first. Duplicating the
+ * six nested record types here would be a second definition of shapes that
+ * already have one, and it would drift.
+ *
+ * `cacheHits`/`cacheMisses` are called out because they are assigned straight
+ * onto the instance and then incremented: a string value survives the
+ * assignment and turns the next `this.cacheHits++` into concatenation.
+ */
+const SerializedStoreSchema = z.object({
+  preferences: z.array(z.unknown()),
+  performanceByTaskType: z.array(z.unknown()),
+  experienceByWorkflow: z.array(z.unknown()),
+  actionCache: z.array(z.unknown()),
+  cacheHits: z.number(),
+  cacheMisses: z.number(),
+  routingDecisions: z.array(z.unknown()),
+  taskOutcomes: z.array(z.unknown()),
+});
+
+/** Parse and structurally validate a serialized store, without mutating anything. */
+function parseSerializedStore(json: string): Result<SerializedStoreData, RoutingContextError> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch (error) {
+    return err({
+      type: 'INVALID_DATA',
+      message: `Failed to parse JSON: ${getErrorMessage(error)}`,
+    });
+  }
+
+  const parsed = SerializedStoreSchema.safeParse(raw);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .slice(0, 3)
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+    return err({ type: 'INVALID_DATA', message: `Not a serialized store: ${detail}` });
+  }
+  return ok(parsed.data as unknown as SerializedStoreData);
+}
+
 export class RoutingContextStore implements IRoutingContextStore {
   private readonly config: Required<RoutingContextStoreConfig>;
   private readonly preferences = new Map<string, PreferenceDataPoint>();
@@ -402,9 +456,16 @@ export class RoutingContextStore implements IRoutingContextStore {
   }
 
   fromJSON(json: string): Result<void, RoutingContextError> {
+    // Validate BEFORE mutating (#5328). This used to `clear()` immediately
+    // after the cast, so a payload that failed partway through left the store
+    // wiped and half-restored while the caller received a clean INVALID_DATA —
+    // an error a reader takes to mean nothing happened.
+    const parsed = parseSerializedStore(json);
+    if (!parsed.ok) return parsed;
+    const data = parsed.value;
+
+    this.clear();
     try {
-      const data = JSON.parse(json) as SerializedStoreData;
-      this.clear();
       this.loadPreferences(data.preferences);
       this.loadPerformance(data.performanceByTaskType);
       this.loadExperience(data.experienceByWorkflow);
@@ -415,9 +476,12 @@ export class RoutingContextStore implements IRoutingContextStore {
       this.taskOutcomes.push(...data.taskOutcomes);
       return ok(undefined);
     } catch (error) {
+      // The envelope was well-formed but an element was not. The store has
+      // already been cleared by this point, so say so rather than implying the
+      // previous contents survived.
       return err({
         type: 'INVALID_DATA',
-        message: `Failed to parse JSON: ${getErrorMessage(error)}`,
+        message: `Failed to load store contents; the store has been reset: ${getErrorMessage(error)}`,
       });
     }
   }

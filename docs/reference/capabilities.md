@@ -1,7 +1,7 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-08-31T03:15:54.823Z
-**Package Version:** 6.1.3
+**Generated:** 2026-09-01T05:35:47.413Z
+**Package Version:** 6.3.10
 **Generator:** `scripts/generate-repo-index.ts`
 
 > This file is auto-generated. Do not edit manually.

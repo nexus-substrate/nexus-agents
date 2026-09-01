@@ -107,18 +107,3 @@ function createSicaOrchestratorAdapter(sicaAgent: SicaAgent, _logger: ILogger): 
     },
   };
 }
-
-/**
- * Gets the SICA agent from an orchestrator if it was wrapped.
- * Returns undefined if the agent is a plain orchestrator.
- *
- * This is useful for accessing SICA-specific functionality like
- * version management and improvement history.
- */
-
-export function getSicaAgentFromOrchestrator(_orchestrator: ITechLead): SicaAgent | undefined {
-  // This function exists for future extensibility when we need
-  // to access SICA internals from the wrapped agent.
-  // Currently returns undefined as we don't store the reference.
-  return undefined;
-}

@@ -74,12 +74,35 @@ describe('CodebaseIndex', () => {
       }
     });
 
-    it('gives exported symbols a bonus', () => {
-      const results = index.search('DEFAULT_MODEL');
-      const exported = results.filter((r) => r.symbol.exported);
-      const firstExported = exported[0];
-      if (firstExported !== undefined) {
-        expect(firstExported.score).toBeGreaterThan(0);
+    // #5320: this used to search the real tree, filter to exported results and
+    // assert `score > 0`. Every match scores at least SCORE_SUBSTRING (2), so
+    // that held with the bonus deleted, zeroed or negated — it never compared
+    // an exported symbol against a non-exported one, which is the whole claim.
+    // A purpose-built fixture puts two identically-named symbols in two files,
+    // so both take the same base score and only the bonus can separate them.
+    it('scores an exported symbol above an identical non-exported one', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'export-bonus-'));
+      try {
+        await writeFile(join(root, 'exported.ts'), 'export const wibbleTarget = 1;\n');
+        await writeFile(join(root, 'internal.ts'), 'const wibbleTarget = 2;\n');
+
+        const bonusIndex = new CodebaseIndex(root);
+        await bonusIndex.index(1);
+        const results = bonusIndex.search('wibbleTarget');
+
+        const exported = results.find((r) => r.symbol.exported);
+        const internal = results.find((r) => !r.symbol.exported);
+        expect(exported, 'fixture produced no exported symbol').toBeDefined();
+        expect(internal, 'fixture produced no non-exported symbol').toBeDefined();
+        if (exported === undefined || internal === undefined) return;
+
+        // Same name, same query, so the base score is identical and the whole
+        // difference is the bonus. Asserting the exact gap means a changed
+        // bonus fails here rather than silently altering ranking.
+        expect(exported.score - internal.score).toBe(3);
+        expect(results[0]?.symbol.exported).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
       }
     });
   });

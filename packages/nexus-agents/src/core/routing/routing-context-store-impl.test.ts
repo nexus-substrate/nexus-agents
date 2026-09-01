@@ -567,6 +567,41 @@ describe('RoutingContextStore serialization', () => {
     }
   });
 
+  // #5328: `fromJSON` used to `clear()` before inspecting any field, so a
+  // payload that failed partway through wiped the store while returning a
+  // clean INVALID_DATA — an error that reads as "nothing happened".
+  it('leaves the store intact when the payload is not valid JSON', () => {
+    const store = new RoutingContextStore();
+    store.storePreference(makePreference('keep-me'));
+
+    const result = store.fromJSON('not valid json');
+
+    expect(result.ok).toBe(false);
+    const all = store.getAllPreferences();
+    expect(all).toHaveLength(1);
+    expect(all[0]?.id).toBe('keep-me');
+  });
+
+  it('leaves the store intact when the payload is JSON but not a store', () => {
+    const store = new RoutingContextStore();
+    store.storePreference(makePreference('keep-me'));
+
+    const result = store.fromJSON(JSON.stringify({ preferences: 'not-an-array' }));
+
+    expect(result.ok).toBe(false);
+    expect(store.getAllPreferences()).toHaveLength(1);
+  });
+
+  it('rejects a non-numeric cacheHits rather than storing it', () => {
+    const store = new RoutingContextStore();
+    const valid = JSON.parse(new RoutingContextStore().toJSON()) as Record<string, unknown>;
+    const result = store.fromJSON(JSON.stringify({ ...valid, cacheHits: '5' }));
+
+    expect(result.ok).toBe(false);
+    // A string here later reaches `this.cacheHits++`, which concatenates.
+    expect(typeof store.getStats().cacheHits).toBe('number');
+  });
+
   it('clears existing data before loading from JSON', () => {
     const store = new RoutingContextStore();
     store.storePreference(makePreference('dp-1'));

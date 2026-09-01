@@ -93,7 +93,6 @@ describe('checkSecurityScan', () => {
     const result = await check();
     expect(result.verdict).toBe('skip');
   });
-
 });
 
 describe('the gate makes no triage claim it cannot back (#5119 item 1)', () => {
@@ -223,14 +222,17 @@ describe('the gate makes no triage claim it cannot back (#5119 item 1)', () => {
 });
 
 describe('OSV lookup failures are not a clean scan (#5018)', () => {
-  const cleanScan = { scanner: 'semgrep', totalFindings: 0, findings: [] };
+  // `errors: []` is not optional padding — it is the claim "the parser read
+  // every line". It was missing here, and the `as never` casts below hid that
+  // from the compiler, so these fixtures described a scan that cannot occur.
+  const cleanScan = { scanner: 'semgrep', totalFindings: 0, findings: [], errors: [] };
 
   it('says OSV was not checked when the lookups errored', async () => {
     // `queryOsv` returns `{ vulnerabilities: [], error: 'HTTP 503' }` on a
     // non-200 or a timeout. `runOsvCheck` flat-mapped only `vulnerabilities`,
     // so an unreachable OSV API was byte-identical to a clean dependency scan
     // and the summary said "none blocking".
-    mockScan.mockResolvedValue(cleanScan as never);
+    mockScan.mockResolvedValue(cleanScan);
     queryOsvBatchMock.mockResolvedValue([
       { packageName: 'left-pad', vulnerabilities: [], error: 'HTTP 503' },
     ]);
@@ -241,9 +243,43 @@ describe('OSV lookup failures are not a clean scan (#5018)', () => {
     expect(result.details).not.toContain('none blocking');
   });
 
+  it('says the OSV check did not run when the whole check throws', async () => {
+    // The counterpart to the test above, and the hole it left. #5018 made a
+    // PARTIAL failure visible by counting `failedLookups` — but the outer
+    // `catch` around the entire check returned `OSV_EMPTY`, whose
+    // `failedLookups` is 0. So a manifest read error or a throwing
+    // `queryOsvBatch` reset the very counter that disclosure depends on, and
+    // `buildScanSummary` fell through to "none blocking" — precisely the string
+    // #5018's own comment says the counter exists to prevent.
+    //
+    // A boundary-validation sweep independently dropped `osv-lookup.ts` as
+    // "already fixed" BECAUSE of that counter, which is how the two halves hid
+    // each other.
+    mockScan.mockResolvedValue(cleanScan);
+    queryOsvBatchMock.mockRejectedValue(new Error('ENOTFOUND api.osv.dev'));
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: true })();
+
+    expect(result.details).toContain('OSV check did not run');
+    expect(result.details).not.toContain('none blocking');
+  });
+
+  it('still says none blocking when OSV is deliberately disabled', async () => {
+    // The case that must NOT be labelled a failure. `enableOsv: false` and a
+    // manifest with no dependencies are honest empties; only the catch is not.
+    // Collapsing all three into one "unchecked" message would make the new
+    // phrase meaningless by printing it on every opted-out run.
+    mockScan.mockResolvedValue(cleanScan);
+
+    const result = await checkSecurityScan(process.cwd(), ['p/default'], { enableOsv: false })();
+
+    expect(result.details).not.toContain('OSV check did not run');
+    expect(result.details).toContain('none blocking');
+  });
+
   it('still says none blocking when OSV genuinely found nothing', async () => {
     // The pair: a real clean result must not be reported as unchecked.
-    mockScan.mockResolvedValue(cleanScan as never);
+    mockScan.mockResolvedValue(cleanScan);
     queryOsvBatchMock.mockResolvedValue([
       { packageName: 'left-pad', vulnerabilities: [], error: null },
     ]);
@@ -252,5 +288,53 @@ describe('OSV lookup failures are not a clean scan (#5018)', () => {
 
     expect(result.details).toContain('none blocking');
     expect(result.details).not.toContain('OSV not checked');
+  });
+});
+
+describe('unreadable scanner output is not a clean scan (#5343 follow-up)', () => {
+  it('states in the summary that SAST coverage is partial', async () => {
+    mockScan.mockResolvedValue({
+      scanner: 'semgrep',
+      totalFindings: 1,
+      findings: [
+        {
+          id: '1',
+          scanner: 'semgrep',
+          rule: 'r1',
+          severity: 'low',
+          message: 'test',
+          file: 'a.ts',
+          startLine: 1,
+          cweIds: [],
+          confidence: 0.5,
+        },
+      ],
+      // The parser skipped two results it could not read. Before this, `errors`
+      // was absent from `runSecurityPipeline`'s parameter type, so every
+      // "Skipped result N" was structurally unreachable from the one consumer
+      // whose verdict depends on it.
+      errors: ['Skipped result 0: ...', 'Skipped result 3: ...'],
+    });
+
+    const check = checkSecurityScan('/tmp/test');
+    const result = await check();
+
+    expect(result.details).toContain('2 scanner output line(s) unreadable');
+    expect(result.details).toContain('SAST coverage is partial');
+  });
+
+  it('says nothing about coverage when every line parsed', async () => {
+    mockScan.mockResolvedValue({
+      scanner: 'semgrep',
+      totalFindings: 0,
+      findings: [],
+      errors: [],
+    });
+
+    const check = checkSecurityScan('/tmp/test');
+    const result = await check();
+
+    expect(result.details).not.toContain('unreadable');
+    expect(result.details).not.toContain('partial');
   });
 });

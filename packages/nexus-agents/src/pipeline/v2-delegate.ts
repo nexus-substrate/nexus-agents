@@ -200,7 +200,10 @@ export async function executeDelegatePipeline(task: TaskContract): Promise<Pipel
 /**
  * Evaluates pipeline policy before execution.
  * Builds PolicyContext from TaskContract metadata and stage type.
- * Uses the default PolicyEngine with 5 built-in rules.
+ * Uses the default PolicyEngine, whose `BUILT_IN_RULES` is the single
+ * `trustTierRule`. The four siblings that once sat beside it were removed as
+ * unwired (`policy-engine.ts`), so no cost, security or high-risk gate runs
+ * on this path.
  */
 export function checkPipelinePolicy(task: TaskContract, stageType: string): PolicyEvalResult {
   const mode = getPolicyMode();

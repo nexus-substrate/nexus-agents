@@ -106,9 +106,16 @@ export default defineConfig([
     rules: { 'nexus/no-vacuous-verdict': 'warn' },
   },
 
-  // #5191: adapter acquisition goes through `getGlobalRegistry()`. The
-  // deprecated `createAllAdapters()` returns RAW adapters with no shared
-  // circuit-breaker registry, so each caller's breaker state is isolated —
+  // #5191: adapter ACQUISITION goes through `getGlobalRegistry()`.
+  //
+  // `createAllAdapters()` is NOT deprecated — #5191 ratified it as canonical for
+  // a different operation (building the router's arm set), and CLAUDE.md's
+  // canonical-paths table lists both. Calling it deprecated here contradicted
+  // the `router-construction-operation-5191` block below and would have
+  // misdirected anyone reading the rule's message while doing legitimate router
+  // construction (#5313). What this rule bans is using it FOR ACQUISITION: it
+  // returns RAW adapters with no shared circuit-breaker registry, so each
+  // caller's breaker state is isolated —
   // "one adapter keeps routing to a CLI another has already seen fail", the
   // exact failure #4330 added the shared registry to prevent
   // (`adapters/unified-registry.ts:150`).
@@ -154,9 +161,30 @@ export default defineConfig([
               group: ['**/cli-adapters/factory.js', '**/cli-adapters/index.js'],
               importNames: ['createAllAdapters'],
               message:
-                'Use getGlobalRegistry() (adapters/unified-registry.ts) — createAllAdapters returns raw adapters with no shared circuit-breaker registry (#5191, #4330).',
+                'Adapter ACQUISITION goes through getGlobalRegistry() (adapters/unified-registry.ts) — createAllAdapters returns raw adapters with no shared circuit-breaker registry (#5191, #4330). Building the ROUTER arm set is a different, legitimate operation: add the file to router-construction-operation-5191 instead of migrating.',
             },
           ],
+        },
+      ],
+      // #5313: the dynamic form, which `no-restricted-imports` cannot see.
+      // The gap was documented above as needing "a bespoke rule, which epic
+      // #5121's constraint 1 says not to build" — that turned out to be wrong.
+      // `no-restricted-syntax` is stock, and `ImportExpression` is a standard
+      // ESTree node, so the selector below buys the detection exactly as
+      // constraint 1 requires. Nothing bespoke is built.
+      //
+      // The selector matches the MODULE, not the symbol: a dynamic import has
+      // no `importNames` equivalent, because the destructuring happens after
+      // the import expression resolves. That is coarser than the static rule —
+      // it also catches a dynamic import of the barrel for some other symbol —
+      // which is why it lives in the same scope, with the same exemptions.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "ImportExpression[source.value=/cli-adapters\\u002F(factory|index)\\.js$/]",
+          message:
+            'Dynamic import of cli-adapters/factory or /index is restricted for the same reason as the static form (#5191, #5313). Router construction is exempt — add the file to router-construction-operation-5191.',
         },
       ],
     },
@@ -177,7 +205,11 @@ export default defineConfig([
       'packages/nexus-agents/src/pipeline/expert-bridge.ts',
       'packages/nexus-agents/src/cli/orchestrate-command.ts',
     ],
-    rules: { 'no-restricted-imports': 'off' },
+    // Both rules: `expert-bridge.ts` reaches `createAllAdapters` through a
+    // DYNAMIC import, so it is caught by `no-restricted-syntax` rather than
+    // `no-restricted-imports`. Exempting only the latter would have left a
+    // ratified-legitimate call site failing lint (#5313).
+    rules: { 'no-restricted-imports': 'off', 'no-restricted-syntax': 'off' },
   },
 
   // Audit-sink interfaces must declare members as function PROPERTIES, never
@@ -214,8 +246,24 @@ export default defineConfig([
       'packages/nexus-agents/src/cli/doctor.ts',
       'packages/nexus-agents/src/cli/doctor-live.ts',
       'packages/nexus-agents/src/cli/demo-command.ts',
+      // #5313: surfaced by the new dynamic-import rule, which the static rule
+      // could not see. This one is NOT a probe exemption despite resembling
+      // doctor. A 7-voter panel (audit #138) put the two side by side, and all
+      // five approvers landed on migrating it: doctor's consumer is a human
+      // asking "is this CLI alive right now", so bypassing the breaker is the
+      // point; `list_available_models` is a DISCOVERY surface consumed by
+      // agents choosing where to route, and for that consumer an open breaker
+      // is signal rather than staleness — advertising a transport the router
+      // will refuse to use makes the agent rediscover a failure the substrate
+      // already knew about.
+      //
+      // `warn`, not `off`: the migration changes what the tool measures (raw
+      // transport reachability → router-usable availability) and needs its own
+      // change with tests and a description update. Kept visible in every lint
+      // run until then rather than silenced.
+      'packages/nexus-agents/src/mcp/tools/list-available-models-tool.ts',
     ],
-    rules: { 'no-restricted-imports': 'warn' },
+    rules: { 'no-restricted-imports': 'warn', 'no-restricted-syntax': 'warn' },
   },
 
   // Test files - relaxed rules

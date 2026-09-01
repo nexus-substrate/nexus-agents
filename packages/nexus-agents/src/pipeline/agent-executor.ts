@@ -209,7 +209,7 @@ export interface AgentExecutorConfig {
     | 'proof_of_learning'
     | 'opinion_wise'
     | undefined;
-  /** Use 3 agents instead of 6 for faster voting (default: false). */
+  /** Use 3 agents instead of the full 7-role panel for faster voting (default: false). */
   readonly quickMode?: boolean | undefined;
   readonly tracker?: ITaskTracker | undefined;
   readonly issueNumber?: number | undefined;

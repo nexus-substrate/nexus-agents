@@ -671,7 +671,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   /**
    * Handles successful subprocess output.
    */
-  private handleSubprocessOutput(
+  protected handleSubprocessOutput(
     stdout: string,
     stderr: string,
     startTime: number
@@ -692,12 +692,20 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     const usage = this.parser.extractUsage(stdout);
     const sessionId = this.parser.extractSessionId(stdout);
+    // #5241: a vendor-reported cost is a MEASUREMENT and was being dropped, so
+    // `CliResponse.costUsd` had no producer at all — leaving budget-router's
+    // `result.value.costUsd ?? estimatedCostUsd` unable to take its left branch
+    // and debiting an estimate under a field named `actual`. Parsers whose CLI
+    // reports no cost do not implement the method, so absence here means "this
+    // vendor does not report cost", not "cost unknown this call".
+    const costUsd = this.parser.extractCostUsd?.(stdout) ?? null;
 
     return ok(
       this.normalizeResponse(text, usage ?? undefined, {
         durationMs: getTimeProvider().now() - startTime,
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
+        ...(costUsd !== null && { costUsd }),
       })
     );
   }

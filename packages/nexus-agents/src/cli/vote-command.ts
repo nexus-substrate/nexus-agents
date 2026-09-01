@@ -44,10 +44,36 @@ function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   return { role, hash, timestamp: getTimeProvider().nowIso() };
 }
 
-function printVoteDetails(votes: readonly AgentVoteResult[]): void {
+function printVoteDetails(votes: readonly AgentVoteResult[], verbose: boolean): void {
   writeLine(`${colors.cyan}Votes${colors.reset}\n`);
-  for (const v of votes) writeLine(formatVoteRow(v));
+  for (const v of votes) writeLine(formatVoteRow(v, { verbose }));
   writeLine('');
+}
+
+/** How much of a voter's reasoning the verbose row carries. */
+const MAX_REASONING_CHARS = 600;
+
+/**
+ * Render a voter's grounds beneath its row (#5339).
+ *
+ * The CLI already held this: `generateVoteHash` hashes `vote.reasoning` to bind
+ * the record to the argument, while nothing ever displayed the argument. So a
+ * blocking dissent recorded *that* it blocked and not *why*, and the grounds
+ * were unrecoverable from any artifact without re-running the whole panel.
+ *
+ * Reasoning is verbose-only: the default panel is a scannable tally, and seven
+ * multi-paragraph rationales inline would bury it.
+ */
+function formatReasoning(reasoning: string): string {
+  const trimmed = reasoning.trim();
+  if (trimmed === '') return '';
+  const clipped =
+    trimmed.length > MAX_REASONING_CHARS ? `${trimmed.slice(0, MAX_REASONING_CHARS)}…` : trimmed;
+  const indented = clipped
+    .split('\n')
+    .map((line) => `      ${colors.dim}${line}${colors.reset}`)
+    .join('\n');
+  return `\n${indented}`;
 }
 
 /**
@@ -55,7 +81,7 @@ function printVoteDetails(votes: readonly AgentVoteResult[]): void {
  * simulations so operators don't mistake an auth failure for a successful
  * (if questionable) vote (#2441). @internal — exported for tests only.
  */
-export function formatVoteRow(v: AgentVoteResult): string {
+export function formatVoteRow(v: AgentVoteResult, opts?: { verbose?: boolean }): string {
   const label = VOTER_ROLES[v.role].split(' - ')[0] ?? v.role;
   if (v.source === 'error') {
     const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
@@ -68,7 +94,11 @@ export function formatVoteRow(v: AgentVoteResult): string {
         ? colors.red + symbols.cross
         : colors.yellow + '?';
   const tag = v.source === 'simulation' ? ` ${colors.red}[SIMULATED]${colors.reset}` : '';
-  return `  ${icon}${colors.reset} ${label}: ${v.vote.decision.toUpperCase()} (${formatPercentage(v.vote.confidence)})${tag}`;
+  // Only a voter that actually returned a judgment has grounds. The error arm
+  // above returns before this point, so an errored voter's placeholder vote
+  // stub is never rendered as though it had reasoned.
+  const grounds = opts?.verbose === true ? formatReasoning(v.vote.reasoning) : '';
+  return `  ${icon}${colors.reset} ${label}: ${v.vote.decision.toUpperCase()} (${formatPercentage(v.vote.confidence)})${tag}${grounds}`;
 }
 
 interface SummaryContext {
@@ -456,7 +486,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       );
       result = await runVote(options);
     }
-    printVoteDetails(result.votes);
+    printVoteDetails(result.votes, options.verbose === true);
     printSummary({ result: result.result, votes: result.votes, threshold: result.threshold });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);

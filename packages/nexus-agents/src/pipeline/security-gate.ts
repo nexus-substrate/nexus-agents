@@ -31,14 +31,6 @@ import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'security-gate' });
 
-/** Last OSV vulnerabilities found. */
-let lastOsvVulnerabilities: readonly OsvVulnerability[] = [];
-
-/** Get OSV vulnerabilities from the most recent scan. */
-export function getLastOsvVulnerabilities(): readonly OsvVulnerability[] {
-  return lastOsvVulnerabilities;
-}
-
 /** Severity levels that block the pipeline. */
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 
@@ -90,7 +82,15 @@ export function checkSecurityScan(
 
 /** Run the pipeline: OSV → assess → report. */
 async function runSecurityPipeline(
-  sarifResult: { totalFindings: number; findings: readonly SecurityFinding[] },
+  sarifResult: {
+    totalFindings: number;
+    findings: readonly SecurityFinding[];
+    // #5343 follow-up: `errors` was absent from this type, so every
+    // "Skipped result N" the parser produced was structurally unreachable from
+    // the only consumer whose verdict depends on it. A finding the parser could
+    // not read is not the same as a clean scan, and the gate could not tell.
+    errors: readonly string[];
+  },
   targetDir: string,
   config: SecurityGateConfig,
   start: number
@@ -98,7 +98,6 @@ async function runSecurityPipeline(
   // OSV dependency check (#1773)
   const osv = await runOsvCheck(targetDir, config.enableOsv ?? true);
   const osvVulns = osv.vulnerabilities;
-  lastOsvVulnerabilities = osvVulns;
 
   // Assess: a finding blocks because its severity blocks. Nothing filters.
   const blocking = getBlockingFindings(sarifResult.findings);
@@ -106,7 +105,8 @@ async function runSecurityPipeline(
     sarifResult.totalFindings,
     blocking.length,
     osvVulns.length,
-    osv
+    osv,
+    sarifResult.errors.length
   );
 
   logger.info('Security gate complete', {
@@ -114,6 +114,7 @@ async function runSecurityPipeline(
     blocking: blocking.length,
     osvVulns: osvVulns.length,
     osvFailedLookups: osv.failedLookups,
+    sarifParseErrors: sarifResult.errors.length,
   });
 
   const failed = blocking.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
@@ -145,6 +146,21 @@ interface OsvCheckResult {
   /** Dependencies queried, and how many the manifest declared. */
   readonly queried: number;
   readonly declared: number;
+  /**
+   * The check did not run to completion — a manifest read error, or
+   * `queryOsvBatch` throwing.
+   *
+   * Distinct from `failedLookups`, which counts dependencies whose INDIVIDUAL
+   * lookup errored. The outer catch used to return `OSV_EMPTY`, resetting
+   * `failedLookups` to 0 and so defeating the disclosure #5018 added: the
+   * summary fell through to "none blocking", the exact phrase that counter
+   * exists to prevent.
+   *
+   * Also distinct from the two HONEST empties — OSV disabled, and a manifest
+   * with no dependencies — which keep `checkFailed: false` so the new message
+   * does not print on every opted-out run.
+   */
+  readonly checkFailed: boolean;
 }
 
 const OSV_EMPTY: OsvCheckResult = {
@@ -152,7 +168,11 @@ const OSV_EMPTY: OsvCheckResult = {
   failedLookups: 0,
   queried: 0,
   declared: 0,
+  checkFailed: false,
 };
+
+/** The empty result for a check that ERRORED, as opposed to finding nothing. */
+const OSV_CHECK_FAILED: OsvCheckResult = { ...OSV_EMPTY, checkFailed: true };
 
 /** Dependencies queried per run. The cap is disclosed in the scan summary. */
 const OSV_DEPENDENCY_CAP = 20;
@@ -183,10 +203,15 @@ async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvChec
       failedLookups: results.filter((r) => r.error !== null).length,
       queried: deps.length,
       declared,
+      // The check ran. Individual lookups may still have errored — that is
+      // `failedLookups`, a different and finer-grained fact.
+      checkFailed: false,
     };
   } catch (error) {
-    logger.debug('OSV check skipped', { error: String(error) });
-    return OSV_EMPTY;
+    // `warn`, not `debug`: debug is invisible at normal log levels, so an
+    // operator saw a clean security summary with no signal the check failed.
+    logger.warn('OSV check did not run', { error: String(error) });
+    return OSV_CHECK_FAILED;
   }
 }
 
@@ -214,24 +239,44 @@ function getBlockingFindings(findings: readonly SecurityFinding[]): SecurityFind
  * fabricated default verdict had not performed. A finding is reported as
  * blocking because its severity blocks — which is all this gate knows.
  */
+/**
+ * The one line that says what the OSV verdict actually covers.
+ *
+ * Ordered deliberately, strictest claim last. #5018: an OSV outage used to land
+ * in "none blocking" — a lookup that errored produced no vulnerabilities, which
+ * is not the same as finding none. The `checkFailed` arm comes FIRST because a
+ * check that never ran reports zero failed lookups, so without it a whole-check
+ * error fell through to the clean-scan phrase.
+ */
+function osvCoverageNote(blocking: number, osvCount: number, osv?: OsvCheckResult): string {
+  if (osv?.checkFailed === true) {
+    return 'OSV check did not run (error) — dependency vulnerabilities unknown';
+  }
+  if (osv !== undefined && osv.failedLookups > 0) {
+    return `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`;
+  }
+  if (blocking === 0 && osvCount === 0) return 'none blocking';
+  return '';
+}
+
 function buildScanSummary(
   total: number,
   blocking: number,
   osvCount: number,
-  osv?: OsvCheckResult
+  osv?: OsvCheckResult,
+  sarifParseErrors = 0
 ): string {
   const parts = [`${String(total)} SAST findings`];
+  // A result the parser could not read is not a result it did not find.
+  // Without this the two are indistinguishable in the gate's own summary.
+  if (sarifParseErrors > 0) {
+    parts.push(
+      `${String(sarifParseErrors)} scanner output line(s) unreadable — SAST coverage is partial`
+    );
+  }
   if (blocking > 0) parts.push(`${String(blocking)} blocking`);
   if (osvCount > 0) parts.push(`${String(osvCount)} OSV dependency vulnerabilities`);
-  // #5018: an OSV outage used to land here as "none blocking". A lookup that
-  // errored produced no vulnerabilities, which is not the same as finding none.
-  if (osv !== undefined && osv.failedLookups > 0) {
-    parts.push(
-      `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`
-    );
-  } else if (blocking === 0 && osvCount === 0) {
-    parts.push('none blocking');
-  }
+  parts.push(osvCoverageNote(blocking, osvCount, osv));
   // State the denominator the OSV verdict actually covers: the query is capped,
   // and devDependencies are never queried at all.
   if (osv !== undefined && osv.declared > osv.queried) {
@@ -239,5 +284,5 @@ function buildScanSummary(
       `OSV covered ${String(osv.queried)} of ${String(osv.declared)} declared dependencies`
     );
   }
-  return parts.join(', ');
+  return parts.filter((p) => p !== '').join(', ');
 }
