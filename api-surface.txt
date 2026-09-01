@@ -9132,6 +9132,7 @@ InterfaceDeclaration ToolInvocationAuditOpts
   errorMessage?: string | undefined
   metadata?: Record<string, unknown> | undefined
   outcome: "success" | "failure" | "error" | "denied"
+  policyDecision?: PolicyAuditDecision | undefined
   requestId?: string | undefined
   toolName: string
 InterfaceDeclaration ToolInvokedEvent

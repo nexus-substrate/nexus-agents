@@ -50,3 +50,23 @@ change, not a second break, so nothing was being saved by omitting it.
 
 `policy-audit-emit.ts` is split out of `secure-handler.ts`, which the added code
 pushed past its line cap; the two functions are one concern.
+
+**An executed near-miss is marked on its invocation record, always.** The review
+raised the sharpest version of the sampling objection: a `would_deny` lets the
+call _execute_, so sampling the policy record would leave the actions that
+actually ran indistinguishable from calls no rule touched — restoring the
+silent-allow inference this change exists to break.
+
+Verified before acting: the action itself is never lost — `emitToolAudit` fires
+unconditionally for every completed invocation. What was missing is that the
+invocation record carried no policy annotation.
+
+The two facts are now separated. The **policy** record carries the detail and is
+sampled, because that is what grows. The **invocation** record carries
+`policyDecision: 'would_deny'` on every single occurrence, because that is the
+fact that must never be suppressed. Growth stays bounded — the flag rides on a
+record emitted regardless — and no executed near-miss is ever falsely clean.
+
+Only `would_deny` reaches an invocation record: a real `deny` returns before the
+handler runs, so it produces none. `ToolInvocationAuditOpts.policyDecision` is
+additive optional — minor, not a further break.
