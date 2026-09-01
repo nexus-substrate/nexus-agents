@@ -53,7 +53,7 @@ import {
   type ZeroRouterStageResult,
   type PerformanceFloorEntry,
 } from './composite-router-helpers.js';
-import { getWeatherBonusScores } from './weather-bonus-stage.js';
+import { getWeatherBonusScores, type WeatherBonusRead } from './weather-bonus-stage.js';
 import { CATEGORY_CHAIN_OVERRIDES, isCategoryFailClosed } from './fallback-chains.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
@@ -597,12 +597,30 @@ export function runZeroRouterStage(
   return result;
 }
 
+/**
+ * A performance-floor read, and whether it actually happened (#5329).
+ *
+ * `measured: false` means the outcome-store read FAILED — distinct from a
+ * successful read over a category with no history, which also yields an empty
+ * map. The distinction is load-bearing: an empty map disables the floor penalty
+ * entirely (`composite-router-helpers.ts` gates on `performanceData.size > 0`)
+ * and makes `applyLinUCBFloorOverride` a no-op, so a chronically failing CLI
+ * keeps its full quality score and keeps winning — on the strength of a
+ * measurement that never occurred.
+ */
+interface PerformanceFloorRead {
+  readonly data: Map<CliName, PerformanceFloorEntry>;
+  readonly measured: boolean;
+}
+
 /** Builds per-CLI performance data for the given task category from the outcome store.
- * Returns empty map if category is unknown or store is empty. (#1401) */
-function getPerformanceDataForCategory(taskContent: string): Map<CliName, PerformanceFloorEntry> {
+ * Returns an empty map if the category is unknown or the store is empty. (#1401) */
+function getPerformanceDataForCategory(taskContent: string): PerformanceFloorRead {
   try {
     const match = detectTaskCategory(taskContent);
-    if (match === null) return new Map();
+    // An unknown category is a genuine "no applicable history", not a failure —
+    // the read happened and found nothing to compare against.
+    if (match === null) return { data: new Map(), measured: true };
     const summary = getOutcomeStore().summarize({ category: match.category });
     const result = new Map<CliName, PerformanceFloorEntry>();
     for (const [cli, stats] of summary.byCli) {
@@ -611,17 +629,22 @@ function getPerformanceDataForCategory(taskContent: string): Map<CliName, Perfor
         sampleCount: stats.count,
       });
     }
-    return result;
+    return { data: result, measured: true };
   } catch (error: unknown) {
     // Closes #2952 (low): pre-fix the bare `catch {}` silently disabled
     // the performance-floor penalty on OutcomeStore read failures (DB
     // lock, schema mismatch). Log at debug — the empty Map fallback is
     // the right behavior (no data → no penalty) but operators benefit
     // from a trail when something stops working.
-    logger.debug('Performance-floor outcome-store read failed; skipping penalty', {
+    // #2952 replaced a bare `catch {}` with this log. #5329 is the next step:
+    // logging is not recording. `warn` rather than `debug` because a scoring
+    // input being unavailable is operator-visible, and the caller now writes it
+    // into `stagesExecuted` so the routing decision itself says the floor was
+    // not applied for want of data.
+    logger.warn('Performance-floor outcome-store read failed; floor not applied', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return new Map();
+    return { data: new Map(), measured: false };
   }
 }
 
@@ -895,18 +918,19 @@ function aggregateStageScores(
   scoring: Awaited<ReturnType<typeof runScoringStages>>,
   taskContent: string,
   candidates: readonly RoutingArmId[]
-): Map<CliName, number> {
-  const weatherScores = getWeatherBonusForTask(taskContent);
+): { scores: Map<CliName, number>; weatherMeasured: boolean } {
+  const weather = getWeatherBonusForTask(taskContent);
   // Tune adjustments are slot-keyed; collapse arms to display slots (#3422).
-  return mergeScoreMaps(
+  const scores = mergeScoreMaps(
     scoring.cascadeResult.scores,
     scoring.capResult.scores,
     scoring.knnResult.scores,
     scoring.distilledResult.scores,
     scoring.resourceResult.scores,
-    weatherScores,
+    weather.scores,
     getTuneAdjustmentScores(armsToSlots([...candidates]))
   );
+  return { scores, weatherMeasured: weather.measured };
 }
 
 /**
@@ -937,20 +961,21 @@ export function getTuneAdjustmentScores(candidates: readonly CliName[]): Map<Cli
 }
 
 /** Best-effort weather bonus lookup for a task. */
-function getWeatherBonusForTask(taskContent: string): Map<CliName, number> {
+function getWeatherBonusForTask(taskContent: string): WeatherBonusRead {
   try {
     const match = detectTaskCategory(taskContent);
-    if (match === null) return new Map();
+    // An unknown category means there is no bonus to look up, not that a
+    // lookup failed.
+    if (match === null) return { scores: new Map(), measured: true };
     return getWeatherBonusScores(match.category);
   } catch (error: unknown) {
-    // Closes #2952 (low): pre-fix the bare `catch {}` silently disabled
-    // the weather bonus on outcome-store read failures. Log at debug —
-    // empty Map is the correct fallback (no data → no bonus), but a log
-    // trail helps operators see when this silently stops working.
-    logger.debug('Weather bonus outcome-store read failed; skipping bonus', {
+    // This catch only ever saw `detectTaskCategory` throwing: the real
+    // outcome-store read is inside `getWeatherBonusScores`, which swallowed its
+    // own failure one level down (#5329). Both now report `measured`.
+    logger.warn('Weather bonus category detection failed; bonus not applied', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return new Map();
+    return { scores: new Map(), measured: false };
   }
 }
 
@@ -1105,10 +1130,20 @@ export async function runPipeline(
   candidates = overrideResult.value;
 
   const stageScores = aggregateStageScores(scoring, task.content, candidates);
+  const perfRead = getPerformanceDataForCategory(task.content);
+
+  // #5329: the decision record is the disclosure channel. Without these
+  // markers `stagesExecuted` is byte-identical whether a scoring input was
+  // empty or unreadable, so a routing decision made without the performance
+  // floor is indistinguishable from one where the floor found nothing to
+  // penalize. `decisionPath` carries this onto the RoutingDecision.
+  if (!perfRead.measured) stagesExecuted.push('perf-floor-unmeasured');
+  if (!stageScores.weatherMeasured) stagesExecuted.push('weather-unmeasured');
+
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
-    performanceData: getPerformanceDataForCategory(task.content),
+    performanceData: perfRead.data,
   };
-  if (stageScores.size > 0) topsisOpts.stageScores = stageScores;
+  if (stageScores.scores.size > 0) topsisOpts.stageScores = stageScores.scores;
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps, topsisOpts);
 
   const linucbResult = runLinUCBStage(
