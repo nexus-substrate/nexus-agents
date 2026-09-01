@@ -258,3 +258,145 @@ describe('malformed SARIF envelope', () => {
     expect(result.errors.join(' ')).toContain('Malformed SARIF log');
   });
 });
+
+// ============================================================================
+// Follow-up to #5343: the validation added there introduced fail-OPEN paths.
+// An adversarial review of the merged commit reproduced each of these.
+// ============================================================================
+
+describe('a malformed cosmetic field must not delete a blocking finding', () => {
+  function blockingResult(region: Record<string, unknown>): string {
+    return sarifWith({
+      ruleId: 'r1',
+      level: 'error', // maps to 'high' — a BLOCKING severity
+      message: { text: 'sql injection' },
+      locations: [{ physicalLocation: { artifactLocation: { uri: 'src/db.ts' }, region } }],
+    });
+  }
+
+  it('keeps the finding when endLine is out of range', () => {
+    // endLine is decorative. Discarding the whole result for it deletes a
+    // finding that would have failed the ship gate — strictly worse than the
+    // laundering #5343 set out to fix.
+    const result = parseSarif(blockingResult({ startLine: 5, endLine: 0 }));
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.severity).toBe('high');
+    expect(result.findings[0]?.startLine).toBe(5);
+    expect(result.findings[0]?.endLine).toBeUndefined();
+  });
+
+  it('keeps the finding when the snippet is the wrong type', () => {
+    const result = parseSarif(
+      blockingResult({ startLine: 5, snippet: { text: { nested: true } } })
+    );
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.severity).toBe('high');
+  });
+
+  it('keeps the finding when startLine is out of range, and says so', () => {
+    const result = parseSarif(blockingResult({ startLine: 0 }));
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.severity).toBe('high');
+    // The line is unusable, so it must not be presented as measured.
+    expect(result.errors.join(' ')).toMatch(/line/i);
+  });
+});
+
+describe('empty strings are not valid finding fields', () => {
+  it('does not emit a finding whose rule is an empty string', () => {
+    const result = parseSarif(
+      sarifWith({
+        ruleId: '',
+        level: 'error',
+        message: { text: 'm' },
+        locations: [
+          { physicalLocation: { artifactLocation: { uri: 'a.ts' }, region: { startLine: 1 } } },
+        ],
+      })
+    );
+    for (const finding of result.findings) {
+      expect(SecurityFindingSchema.safeParse(finding).success).toBe(true);
+    }
+  });
+
+  it('does not emit a finding whose message is an empty string', () => {
+    const result = parseSarif(
+      sarifWith({
+        ruleId: 'r1',
+        level: 'error',
+        message: { text: '' },
+        locations: [
+          { physicalLocation: { artifactLocation: { uri: 'a.ts' }, region: { startLine: 1 } } },
+        ],
+      })
+    );
+    for (const finding of result.findings) {
+      expect(SecurityFindingSchema.safeParse(finding).success).toBe(true);
+    }
+  });
+
+  it('treats an empty artifact uri as a missing location, not a dropped result', () => {
+    const result = parseSarif(
+      sarifWith({
+        ruleId: 'r1',
+        level: 'error',
+        message: { text: 'm' },
+        locations: [
+          { physicalLocation: { artifactLocation: { uri: '' }, region: { startLine: 1 } } },
+        ],
+      })
+    );
+    expect(result.errors.join(' ')).toContain('missing location');
+  });
+});
+
+describe('a rule with one bad field must not silently downgrade its findings', () => {
+  it('reads a numeric security-severity rather than discarding the rule', () => {
+    // `security-severity` is scanner-defined, not spec-typed, so a number is
+    // plausible. Dropping the whole rule cost the finding its CWEs, its help
+    // URL, and — because the score outranks `level` — its severity: a 9.8
+    // became 'medium' under `level: warning`, crossing the blocking boundary
+    // in the fail-OPEN direction.
+    const result = parseSarif(
+      JSON.stringify({
+        version: '2.1.0',
+        runs: [
+          {
+            tool: {
+              driver: {
+                name: 'semgrep',
+                rules: [
+                  {
+                    id: 'r1',
+                    properties: { 'security-severity': 9.8, tags: ['CWE-89'] },
+                    helpUri: 'https://example.test/r1',
+                  },
+                ],
+              },
+            },
+            results: [
+              {
+                ruleId: 'r1',
+                level: 'warning',
+                message: { text: 'm' },
+                locations: [
+                  {
+                    physicalLocation: {
+                      artifactLocation: { uri: 'a.ts' },
+                      region: { startLine: 1 },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.severity).toBe('critical');
+    expect(result.findings[0]?.cweIds).toContain('CWE-89');
+    expect(result.findings[0]?.helpUrl).toBe('https://example.test/r1');
+  });
+});
