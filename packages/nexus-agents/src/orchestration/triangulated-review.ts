@@ -33,6 +33,25 @@ import type {
   ReviewSeverity,
 } from './triangulated-review-types.js';
 import { createDefaultReviewConfig } from './triangulated-review-types.js';
+import {
+  packDiffForReview,
+  type DiffReviewPacking,
+  type PrReviewCoverage,
+} from '../mcp/tools/pr-review-diff-budget.js';
+
+/**
+ * Bytes of the diff the reviewers are shown.
+ *
+ * Unchanged from the value that was inline as `diff.slice(0, 6000)`, so
+ * behaviour on ordinary diffs is identical. What changed is that exceeding it
+ * is disclosed — to the reviewers in the prompt, and on the result — instead of
+ * being applied silently beneath a prompt that says "Diff to review" (#5301).
+ *
+ * `packDiffForReview` rather than a character slice because this is a diff:
+ * it packs WHOLE files, so no reviewer receives a corrupted mid-hunk fragment
+ * that reads as complete.
+ */
+const TRIANGULATED_DIFF_BUDGET = 6000;
 
 // ============================================================================
 // Public API
@@ -77,7 +96,11 @@ export async function executeTriangulatedReview(
     async (ctx) => {
       const startTime = getTimeProvider().now();
 
-      const partitions = await dispatchReviews(diff, selectedClis, config, logger);
+      // Packed ONCE, outside the per-CLI map. Every reviewer must see the same
+      // subset: corroboration across CLIs is the signal a reader trusts most,
+      // and it would mean much less if the CLIs had been shown different files.
+      const packing = packDiffForReview(diff, TRIANGULATED_DIFF_BUDGET);
+      const partitions = await dispatchReviews(packing, selectedClis, config, logger);
 
       const totalDurationMs = getTimeProvider().now() - startTime;
       const clisUsed = partitions.filter((p) => p.success).map((p) => p.cli);
@@ -87,7 +110,7 @@ export async function executeTriangulatedReview(
       const deduplicated = deduplicateFindings(allFindings, partitions, config.lineProximity);
 
       const countBySeverity = countFindings(deduplicated);
-      const summary = buildSummary(deduplicated, clisUsed);
+      const summary = buildSummary(deduplicated, clisUsed, packing.coverage);
 
       // Record outcomes (best-effort)
       recordReviewOutcomes(partitions);
@@ -99,6 +122,7 @@ export async function executeTriangulatedReview(
         totalDurationMs,
         summary,
         countBySeverity,
+        ...(packing.coverage === undefined ? {} : { coverage: packing.coverage }),
       };
 
       ctx.setSummary(
@@ -174,7 +198,7 @@ function findingPriority(finding: ReviewFinding): number {
 }
 
 /** Builds the review prompt for a given CLI perspective. */
-function buildReviewPrompt(diff: string, cli: CliName): string {
+function buildReviewPrompt(packedDiff: string, note: string, cli: CliName): string {
   const perspectives: Record<CliName, string> = {
     codex: 'Focus on: code logic bugs, performance issues, test coverage gaps.',
     claude: 'Focus on: security vulnerabilities, architectural concerns, edge cases.',
@@ -194,9 +218,10 @@ function buildReviewPrompt(diff: string, cli: CliName): string {
     '  "file": "path/to/file" (if known), "line": 42 (if known),',
     '  "suggestion": "how to fix" (optional) }',
     '',
+    ...(note === '' ? [] : [note]),
     'Diff to review:',
     '```',
-    diff.slice(0, 6000),
+    packedDiff,
     '```',
     '',
     'Return ONLY a JSON array of findings. No markdown fences.',
@@ -205,14 +230,14 @@ function buildReviewPrompt(diff: string, cli: CliName): string {
 
 /** Dispatches reviews to all selected CLIs in parallel. */
 async function dispatchReviews(
-  diff: string,
+  packing: DiffReviewPacking,
   selectedClis: readonly SelectedCli[],
   config: TriangulatedReviewConfig,
   logger: ILogger
 ): Promise<readonly CliReviewPartition[]> {
   const promises = selectedClis.map(async ({ cli, adapter }): Promise<CliReviewPartition> => {
     const startTime = getTimeProvider().now();
-    const prompt = buildReviewPrompt(diff, cli);
+    const prompt = buildReviewPrompt(packing.packedDiff, packing.note, cli);
     // #3026 finding 2: cancel the adapter call when the race timeout
     // wins so the subprocess doesn't keep running past its decision.
     const controller = new AbortController();
@@ -453,7 +478,8 @@ function countFindings(
 
 function buildSummary(
   deduplicated: readonly DeduplicatedFinding[],
-  clisUsed: readonly CliName[]
+  clisUsed: readonly CliName[],
+  coverage?: PrReviewCoverage
 ): string {
   if (clisUsed.length === 0) {
     return 'All review CLIs failed. No findings to report.';
@@ -472,6 +498,17 @@ function buildSummary(
 
   if (critical > 0 || high > 0) {
     lines.push(`**Attention:** ${String(critical)} critical, ${String(high)} high severity`);
+  }
+
+  // A partial review presented like a whole-diff one is the failure this
+  // guards against — the corroboration count above is exactly the number a
+  // reader treats as independent confirmation.
+  if (coverage?.partial === true) {
+    lines.push(
+      '',
+      `**Partial review:** ${String(coverage.reviewedFiles)} of ${String(coverage.totalFiles)} ` +
+        `files reviewed (security-prioritized). Findings cover only the reviewed files.`
+    );
   }
 
   lines.push('', `CLIs: ${clisUsed.join(', ')}`);
