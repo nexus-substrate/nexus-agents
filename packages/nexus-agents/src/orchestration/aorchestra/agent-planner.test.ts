@@ -677,9 +677,12 @@ describe('AgentPlanner', () => {
       // testing depends on ['code'] per EXPERT_DEPENDENCIES.
       const plan = planFor('code_implementation', 'complex');
       const testingEntry = plan.entries.find((e) => e.role === 'testing');
-      if (testingEntry !== undefined) {
-        expect(testingEntry.dependsOn).toEqual(['code']);
-      }
+      // #5320: without this the sole assertion sits inside the guard, so a
+      // planner that stopped selecting `testing` would exit the test green —
+      // reporting that dependsOn is emitted, having checked nothing.
+      expect(testingEntry).toBeDefined();
+      if (testingEntry === undefined) return;
+      expect(testingEntry.dependsOn).toEqual(['code']);
     });
 
     it('omits dependsOn when the declared deps are not present in the plan', () => {
@@ -697,6 +700,10 @@ describe('AgentPlanner', () => {
 
     it('never emits empty dependsOn arrays', () => {
       const plan = planFor('code_implementation', 'complex');
+      // #5320: the loop below is blind to a planner that stops emitting
+      // dependsOn entirely — every iteration would skip its guard and the test
+      // would pass over nothing. Establish that there is something to check.
+      expect(plan.entries.some((e) => e.dependsOn !== undefined)).toBe(true);
       for (const entry of plan.entries) {
         if (entry.dependsOn !== undefined) {
           expect(entry.dependsOn.length).toBeGreaterThan(0);
