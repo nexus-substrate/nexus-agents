@@ -45,29 +45,47 @@ export function recordPolicyVerdict(
   if (!auditLogger) return;
 
   if (verdict !== 'would_deny') {
-    emitPolicyAudit(auditLogger, config.toolName, requestContext, verdict, 'policy denied');
+    emitPolicyAudit({
+      auditLogger,
+      toolName: config.toolName,
+      ctx: requestContext,
+      decision: verdict,
+      reason: 'policy denied',
+    });
     return;
   }
 
   const sample = sampleWouldDeny(config.toolName, ruleName);
   if (!sample.emit) return;
 
-  emitPolicyAudit(
+  emitPolicyAudit({
     auditLogger,
-    config.toolName,
-    requestContext,
-    verdict,
-    `policy would have denied (warn mode)${describeOccurrence(sample.occurrence)}`
-  );
+    toolName: config.toolName,
+    ctx: requestContext,
+    decision: verdict,
+    reason: `policy would have denied (warn mode)${describeOccurrence(sample.occurrence)}`,
+    occurrence: sample.occurrence,
+  });
 }
 
-function emitPolicyAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  decision: PolicyAuditDecision,
-  reason: string
-): void {
+interface PolicyAuditEmission {
+  readonly auditLogger: IAuditLogger;
+  readonly toolName: string;
+  readonly ctx: RequestContext;
+  readonly decision: PolicyAuditDecision;
+  readonly reason: string;
+  /** Set only for a sampled `would_deny`; absent means nothing was sampled. */
+  readonly occurrence?: number;
+}
+
+function emitPolicyAudit({
+  auditLogger,
+  toolName,
+  ctx,
+  decision,
+  reason,
+  occurrence,
+}: PolicyAuditEmission): void {
   const actor = actorFromContext(ctx);
   auditLogger.logPolicyDecision({
     policyName: 'default',
@@ -76,5 +94,9 @@ function emitPolicyAudit(
     toolName,
     actor,
     requestId: ctx.requestId,
+    // Typed and queryable, not only prose in `reason` (#5228 review): a
+    // consumer counting records must be able to see that 14 records stand for
+    // 10,000 occurrences without parsing a sentence.
+    ...(occurrence === undefined ? {} : { occurrence }),
   });
 }

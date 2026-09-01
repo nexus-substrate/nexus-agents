@@ -37,9 +37,16 @@ different rule's first occurrence on the same tool. The counter map is bounded
 at 500 pairs and clears wholesale on overflow — the ordinals are a floor
 ("at least N"), so a reset understates rather than fabricating.
 
-The ordinal rides in the existing `reason` string rather than a new field:
-widening the audit record again would be a second breaking change for something
-prose already carries.
+The ordinal is carried as a **typed, queryable field** (`policyOccurrence`) on
+the audit record, alongside a human-readable note in `reason`.
+
+The first version put it in `reason` alone, to avoid "a second schema widening".
+Two reviewers rejected that and were right on both counts. A machine consumer
+counting records would read 14 records as 14 near-misses when 10,000 occurred —
+so the record did not structurally represent its own partial coverage, which is
+the exact defect this PR exists to fix, reintroduced one field over. And the
+stated justification did not hold: an **additive optional** field is a minor
+change, not a second break, so nothing was being saved by omitting it.
 
 `policy-audit-emit.ts` is split out of `secure-handler.ts`, which the added code
 pushed past its line cap; the two functions are one concern.

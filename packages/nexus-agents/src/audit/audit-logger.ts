@@ -567,6 +567,7 @@ export class AuditLogger implements IAuditLogger {
       requestId: opts.requestId,
       policyName: opts.policyName,
       policyDecision: opts.decision,
+      ...(opts.occurrence === undefined ? {} : { policyOccurrence: opts.occurrence }),
       metadata: opts.metadata,
     });
   }

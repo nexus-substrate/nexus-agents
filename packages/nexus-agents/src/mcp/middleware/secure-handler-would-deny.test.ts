@@ -255,6 +255,46 @@ describe('a looping near-miss does not grow the chain without bound (#5228)', ()
     expect(reasons[0]).not.toContain('occurrence');
   });
 
+  it('carries the ordinal as a typed field, not only as prose', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+
+    for (let i = 0; i < 64; i++) await handler({});
+
+    const calls = vi
+      .mocked(auditLogger.logPolicyDecision)
+      .mock.calls.map((c) => c[0] as { occurrence?: number });
+
+    // Two reviewers rejected the prose-only form: a consumer counting records
+    // would read 14 records as 14 near-misses when 10,000 occurred. The record
+    // has to represent its own partial coverage structurally, which is the same
+    // requirement this PR exists to satisfy one field over.
+    expect(calls.map((c) => c.occurrence)).toEqual([1, 2, 4, 8, 16, 32, 64]);
+  });
+
+  it('omits the ordinal on a real denial, where nothing was sampled', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: denyFirewall(),
+      auditLogger,
+    });
+
+    await handler({});
+
+    const first = vi.mocked(auditLogger.logPolicyDecision).mock.calls[0]?.[0] as {
+      occurrence?: number;
+    };
+    // Absent means "every occurrence was recorded" — distinct from `1`.
+    expect(first.occurrence).toBeUndefined();
+  });
+
   it('does not let one rule suppress another rule on the same tool', async () => {
     resetWouldDenySampler();
     const auditLogger = mockAuditLogger();

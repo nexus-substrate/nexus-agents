@@ -215,6 +215,23 @@ export const AuditEventSchema = z.object({
   // Policy and security
   policyName: z.string().optional(),
   policyDecision: z.string().optional(),
+  /**
+   * Which occurrence of this `{tool, rule}` near-miss the record represents
+   * (#5228 review). Present only on a sampled `would_deny`.
+   *
+   * TYPED and queryable rather than prose in `description`. The first version
+   * of the sampler wrote the ordinal into the reason string to "avoid a second
+   * schema widening" — two reviewers rejected that, correctly: a machine
+   * consumer counting records would read 14 records as 14 near-misses when
+   * 10,000 occurred, so the record did not structurally represent its own
+   * partial coverage. That is the defect this PR exists to fix, reintroduced
+   * one field over. An additive OPTIONAL field is a minor change, not a second
+   * break, so the stated reason for avoiding it did not hold.
+   *
+   * Absent means "not sampled" — every occurrence was recorded — which is
+   * distinct from `1`.
+   */
+  policyOccurrence: z.number().int().min(1).optional(),
   violationType: z.string().optional(),
 
   // Integrity (for tamper-evidence)
@@ -263,6 +280,8 @@ export const AuditEventInputSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   policyName: z.string().optional(),
   policyDecision: z.string().optional(),
+  /** @see AuditEventSchema.policyOccurrence (#5228 review). */
+  policyOccurrence: z.number().int().min(1).optional(),
   violationType: z.string().optional(),
 });
 export type AuditEventInput = z.infer<typeof AuditEventInputSchema>;
@@ -444,6 +463,12 @@ export interface PolicyDecisionAuditOpts {
   actor: AuditActor;
   requestId?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
+  /**
+   * Which occurrence of this `{tool, rule}` near-miss this record represents
+   * (#5228 review). Set only for a sampled `would_deny`; absent means every
+   * occurrence was recorded.
+   */
+  occurrence?: number | undefined;
 }
 
 export interface SecurityEventAuditOpts {
