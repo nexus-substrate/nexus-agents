@@ -21,16 +21,6 @@ import type {
   FeatureImportance,
 } from './learning-metrics-types.js';
 
-/** Feature names used by LinUCB bandit */
-const FEATURE_NAMES = [
-  'taskComplexity',
-  'contextLength',
-  'isCodeTask',
-  'isReasoningTask',
-  'budgetUtilization',
-  'timePressure',
-];
-
 /**
  * Gathers and aggregates learning metrics from all data sources.
  */
@@ -173,24 +163,24 @@ function aggregateFeatureImportance(
   }
 
   const topFeatures = Array.from(featureMap.entries())
-    .map(
-      ([feature, { sum, count }]): FeatureImportance => ({
-        feature,
-        importance: sum / count,
-        direction: sum >= 0 ? 'positive' : 'negative',
-      })
-    )
+    .map(([feature, { sum, count }]): FeatureImportance => ({
+      feature,
+      importance: sum / count,
+      direction: sum >= 0 ? 'positive' : 'negative',
+    }))
     .sort((a, b) => Math.abs(b.importance) - Math.abs(a.importance))
     .slice(0, 5);
 
-  // Fill with defaults if no data
-  if (topFeatures.length === 0) {
-    return FEATURE_NAMES.slice(0, 5).map((feature) => ({
-      feature,
-      importance: 0,
-      direction: 'positive',
-    }));
-  }
+  // #5267: this used to fill an empty result with five FEATURE_NAMES entries at
+  // `importance: 0, direction: 'positive'`, so `--bandit-stats` rendered five
+  // green ↑ arrows over a bandit that had recorded nothing. A direction is an
+  // affirmative claim about which way a feature pushes; there is no such claim
+  // to make over zero observations.
+  //
+  // It also made `formatFeatureImportance`'s `features.length === 0` branch
+  // unreachable — a display path guarding a case its own producer had already
+  // fabricated away. Returning the empty list restores that branch, which
+  // prints "No feature data available".
   return topFeatures;
 }
 
