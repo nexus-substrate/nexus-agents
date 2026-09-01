@@ -1,5 +1,163 @@
 # nexus-agents
 
+## 6.3.14
+
+### Patch Changes
+
+- [#5369](https://github.com/nexus-substrate/nexus-agents/pull/5369) [`e735b67`](https://github.com/nexus-substrate/nexus-agents/commit/e735b6781f4d3aa4b0cc3a8522bc68c3aff41ca9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): report no bandit features rather than five fabricated zeros ([#5267](https://github.com/nexus-substrate/nexus-agents/issues/5267))
+
+  `computeTopFeatures` filled an empty result with five entries from
+  `FEATURE_NAMES` at `importance: 0, direction: 'positive'`, so `--bandit-stats`
+  rendered **five green ↑ arrows over a bandit that had recorded nothing**. A
+  direction is an affirmative claim about which way a feature pushes; there is no
+  such claim to make over zero observations.
+
+  It also made `formatFeatureImportance`'s `features.length === 0` branch —
+  printing `No feature data available` — **unreachable**: a display path guarding
+  a case its own producer had already fabricated away. Returning the empty list
+  restores that branch, so the honest message can actually appear.
+
+  `FEATURE_NAMES` had no remaining use and is removed.
+
+  Three tests pinned the defect and are corrected. Two of them named it outright —
+  `sets default feature importance when no bandit stats` asserted
+  `topFeatures.length === 0 → 5` and `topFeatures[0].importance === 0`, i.e. the
+  fabrication was the specification.
+
+  The two surfaces [#5267](https://github.com/nexus-substrate/nexus-agents/issues/5267) originally reported — the green `✓ exploiting` verdict
+  and the cold-bandit routing audit — were already fixed by [#5277](https://github.com/nexus-substrate/nexus-agents/issues/5277) and [#5291](https://github.com/nexus-substrate/nexus-agents/issues/5291). This
+  is the residual on the same screen. [#5275](https://github.com/nexus-substrate/nexus-agents/issues/5275) remains open for the harder half:
+  making `routing-audit` reflect the router's live warm bandit rather than a
+  freshly constructed cold one.
+
+## 6.3.13
+
+### Patch Changes
+
+- [#5367](https://github.com/nexus-substrate/nexus-agents/pull/5367) [`195107c`](https://github.com/nexus-substrate/nexus-agents/commit/195107c1e810b1d747985cab857fea5cbc5558b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): give each delegate_to_model alternative its own score ([#5269](https://github.com/nexus-substrate/nexus-agents/issues/5269))
+
+  `mapCompositeDecisionToOutput` filled every alternative with
+  `decision.topsisScore ?? 0.7` — the **winner's** score — and a hardcoded
+  `tradeoff: 'alternative option'`. A caller reading three alternatives that all
+  scored alike concluded they were equivalent to each other and to the selection,
+  which the router had never said.
+
+  The scores existed the whole time. `applyTopsisRanking` computes a closeness
+  score per candidate to produce the ranking, then discarded all but `topScore`.
+  That map is now carried through the stage, the decision builder and the
+  decision, and the tool reports each alternative's own value.
+
+  What made this sharper than an ordinary placeholder: the **non-router path**
+  (`delegate-to-model-helpers.ts`) always filled these fields correctly, so two
+  code paths emitted the identical output shape with genuinely different
+  epistemic status, and the caller could not tell which had produced it. Both
+  paths now use the same pure `getTradeoff` capability comparison.
+
+  Where no ranking ran there is no per-alternative score to report. The output
+  schema requires a `number`, so the field still carries the selected model's
+  score — but the `tradeoff` string now says exactly that, rather than letting
+  the number pass as the alternative's own. Absence is disclosed where it can be,
+  since `z.number()` cannot represent it. Making the field optional would be a
+  breaking change to an MCP output contract for a case that only arises when
+  TOPSIS ranking is disabled.
+
+  `alternativeScores` and `topsisScoresByArm` are both **additive optional**
+  fields, so `api-surface.txt` moves by two lines at the minor level; nothing is
+  removed or widened.
+
+  Three existing tests pinned the defect — two asserting the winner's score on an
+  alternative, one asserting the placeholder string — and are corrected. Mutation
+  testing found the producer end untested: removing the score map from
+  `applyTopsisRanking` left every test green while the consumer silently fell back
+  to the unranked path. That test exists now.
+
+  The other half of [#5269](https://github.com/nexus-substrate/nexus-agents/issues/5269) — `memory_stats` hardcoded task/error counts — was
+  already fixed by [#5274](https://github.com/nexus-substrate/nexus-agents/issues/5274) and needed no change.
+
+## 6.3.12
+
+### Patch Changes
+
+- [#5363](https://github.com/nexus-substrate/nexus-agents/pull/5363) [`dee2659`](https://github.com/nexus-substrate/nexus-agents/commit/dee265911b5ab57aa18d2c4bafdba2cc4620f67c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): say when an option veto caused a rejection, not the approval percentage
+
+  `explainOutcome` distinguished three rejection paths and had no arm for the
+  fourth — a rejection driven by the option gate. That case fell through to the
+  threshold arm and printed the approve/reject percentage as its cause, which
+  in the live instance was a number that _clears_ the bar it claimed was missed:
+
+  ```
+  Approval: 83.3%   Threshold: supermajority
+  Result: REJECTED — supermajority threshold not met (got 83.3%)
+  ```
+
+  Supermajority is 67%. The engine's own cascade had logged
+  `Approval locked: 5/7 > 0.67`.
+
+  The real cause was in the persisted record all along:
+  `optionCoverage: {approverCount: 5, selectedCount: 1, unattributedApprovals: 4}`.
+  Five voters approved and one emitted a parseable `selectedOption`, so the
+  leading option tallied 1 and failed the bar over the option tally. `rejected`
+  was correct; the explanation was not.
+
+  The information existed end to end — `evaluateOptionGate` produces a `reason`
+  ([#4529](https://github.com/nexus-substrate/nexus-agents/issues/4529)) and `executeVoting` attaches it to `result.optionGate` — and the CLI
+  dropped it at the last mile, because its own narrower return type omitted the
+  field. The type is widened and the reason is now printed, together with the
+  coverage counts: the reason says which bar failed, the counts say how much of
+  the panel the tally was measured over. Both are needed, because `4 pick X + 3
+unparseable` and a real 4/3 split read the same on the share alone.
+
+  Ordered before the threshold arm and after both quorum arms, for the reason
+  `osvCoverageNote` is ordered that way ([#5018](https://github.com/nexus-substrate/nexus-agents/issues/5018)): the specific cause has to be
+  checked first or it falls through to the generic one. Mutation testing found the
+  bare-quorum ordering was untested — moving the option check above it went
+  unnoticed — so that test exists now too.
+
+  Addresses [#5362](https://github.com/nexus-substrate/nexus-agents/issues/5362). The root cause of unattributed selections is [#4495](https://github.com/nexus-substrate/nexus-agents/issues/4495).
+
+## 6.3.11
+
+### Patch Changes
+
+- [#5361](https://github.com/nexus-substrate/nexus-agents/pull/5361) [`b6ddf55`](https://github.com/nexus-substrate/nexus-agents/commit/b6ddf55daa0ef51b1a97a388e68b111ad0ce0060) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(lint): close the dynamic-import gap in the createAllAdapters restriction ([#5313](https://github.com/nexus-substrate/nexus-agents/issues/5313))
+
+  [#5313](https://github.com/nexus-substrate/nexus-agents/issues/5313) said "nothing enforces that createAllAdapters is only used for router
+  construction". That is mostly false — `eslint.config.js` has banned it
+  repo-wide since [#5191](https://github.com/nexus-substrate/nexus-agents/issues/5191), with a router-construction exemption. What was true is
+  narrower and was documented in the config itself: `no-restricted-imports` cannot
+  see `const { createAllAdapters } = await import(...)`, and the config said
+  closing that "would need a bespoke rule, which epic [#5121](https://github.com/nexus-substrate/nexus-agents/issues/5121)'s constraint 1 says
+  not to build."
+
+  **That reasoning was wrong.** `no-restricted-syntax` is a stock ESLint rule and
+  `ImportExpression` is a standard ESTree node, so an esquery selector closes the
+  gap while honoring constraint 1 exactly — nothing bespoke is built. Verified: a
+  new dynamic import of the factory or the barrel now errors, as the static form
+  already did.
+
+  Two consequences fixed alongside it:
+
+  - **The router-construction exemption only turned off `no-restricted-imports`.**
+    `pipeline/expert-bridge.ts` reaches `createAllAdapters` through a dynamic
+    import, so exempting one rule would have left a ratified-legitimate call site
+    failing lint.
+  - **The block called `createAllAdapters` "deprecated", contradicting the block
+    50 lines below it** — [#5191](https://github.com/nexus-substrate/nexus-agents/issues/5191) ratified it as canonical for a different
+    operation, and CLAUDE.md's canonical-paths table lists both. The rule's
+    message also sent every reader to `getGlobalRegistry()`, which would misdirect
+    someone doing legitimate router construction. Both now say that acquisition
+    and router construction are different operations.
+
+  `mcp/tools/list-available-models-tool.ts:137` is the one genuine non-router call
+  site the new rule surfaces. It is warn-listed rather than exempted: a 7-voter
+  panel (audit record [#138](https://github.com/nexus-substrate/nexus-agents/issues/138)) compared it against the ratified doctor-probe
+  exemption and all five approvers landed on migrating it — doctor's consumer is a
+  human asking "is this CLI alive right now", while `list_available_models` is a
+  discovery surface consumed by agents choosing where to route, and for that
+  consumer an open breaker is signal rather than staleness. The migration changes
+  what the tool measures, so it needs its own change with tests and a description
+  update; the warning keeps it visible until then.
+
 ## 6.3.10
 
 ### Patch Changes

@@ -226,6 +226,17 @@ export interface CompositeRoutingDecision {
   readonly latencyScore?: number | undefined;
   /** Alternative adapters in ranked order */
   readonly alternatives: readonly RoutingArmId[];
+  /**
+   * Score per entry in {@link alternatives} (#5269).
+   *
+   * ABSENT when no ranking produced per-arm scores — which is not the same as
+   * every alternative scoring zero. `delegate_to_model` previously had no
+   * per-alternative score available and filled the field with the WINNER's
+   * `topsisScore`, so a caller saw three alternatives scoring alike and read
+   * them as equivalent to each other and to the selection. A reader must treat
+   * absence as "not ranked", never as a measurement.
+   */
+  readonly alternativeScores?: ReadonlyMap<RoutingArmId, number> | undefined;
   /** Task analysis used for routing */
   readonly taskProfile: TaskProfile;
 }
@@ -296,6 +307,8 @@ export interface PipelineResult {
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
   topsisRanking: RoutingArmId[];
+  /** #5269: per-arm closeness, absent when no ranking produced scores. */
+  topsisScoresByArm?: ReadonlyMap<RoutingArmId, number> | undefined;
   topsisScore: number | undefined;
   selectedCli: RoutingArmId;
   ucbScore: number | undefined;

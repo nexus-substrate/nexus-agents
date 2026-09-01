@@ -242,9 +242,11 @@ describe('runLearningMetrics', () => {
     );
   });
 
-  it('should compute bandit progress with default features', () => {
+  // #5267: this asserted `topFeatures.length > 0` with no bandit supplied,
+  // which pinned the fabricated five-entry default as intended behaviour.
+  it('reports no bandit features when nothing was observed', () => {
     const result = runLearningMetrics();
-    expect(result.banditProgress.topFeatures.length).toBeGreaterThan(0);
+    expect(result.banditProgress.topFeatures).toEqual([]);
   });
 });
 

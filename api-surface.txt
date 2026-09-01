@@ -1807,6 +1807,7 @@ InterfaceDeclaration CompositeRouterStats
   readonly totalDecisions: number
 InterfaceDeclaration CompositeRoutingDecision
   readonly adapter: ICliAdapter
+  readonly alternativeScores?: ReadonlyMap<RoutingArmId, number> | undefined
   readonly alternatives: readonly RoutingArmId[]
   readonly cliName: RoutingArmId
   readonly confidence: number
@@ -6196,6 +6197,7 @@ InterfaceDeclaration PipelineResult
   stageScores?: ReadonlyMap<"claude" | "gemini" | "codex" | "opencode", number> | undefined
   topsisRanking: RoutingArmId[]
   topsisScore: number | undefined
+  topsisScoresByArm?: ReadonlyMap<RoutingArmId, number> | undefined
   ucbScore: number | undefined
   withinBudget: boolean | undefined
 TypeAliasDeclaration PipelineRole

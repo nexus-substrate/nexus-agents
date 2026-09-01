@@ -232,6 +232,20 @@ export interface TopsisRankingResult {
   topScore: number;
   /** Number of candidates within the tolerance band of the top score. */
   toleranceBandSize?: number;
+  /**
+   * Closeness score per ranked arm (#5269).
+   *
+   * These are computed here and were then discarded — only `topScore`
+   * survived. Downstream, `delegate_to_model` needed a per-alternative score,
+   * found none, and filled every alternative with the WINNER's score, so a
+   * caller saw three alternatives all scoring alike and read them as
+   * equivalent. Carrying the map costs nothing: it is the same object the
+   * ranking sort already builds.
+   *
+   * Absent when no TOPSIS router ran, which is distinct from "all scores are
+   * zero" — the caller must not read absence as a measurement.
+   */
+  scoresByArm?: ReadonlyMap<RoutingArmId, number>;
 }
 
 /**
@@ -424,12 +438,15 @@ export function applyTopsisRanking(
   const ranking = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
   const topArm = ranking[0];
   const topScore = topArm !== undefined ? scoreOf(topArm) : 1.0;
+  // Keyed by ARM, not by display slot: `scoreOf` already resolves an api:* arm
+  // to its slot, so this records the score each arm actually ranked on.
+  const scoresByArm = new Map(candidates.map((arm) => [arm, scoreOf(arm)]));
 
   // Tolerance band: count how many candidates are within TOLERANCE_BAND_PERCENT of top
   const threshold = topScore * (1 - TOPSIS_TOLERANCE_BAND_PERCENT);
   const toleranceBandSize = ranking.filter((c) => scoreOf(c) >= threshold).length;
 
-  return { ranking, topScore, toleranceBandSize };
+  return { ranking, topScore, toleranceBandSize, scoresByArm };
 }
 
 /**
@@ -552,6 +569,8 @@ export interface BuildDecisionContext {
   selectedCli: RoutingArmId;
   candidates: RoutingArmId[];
   topsisRanking: RoutingArmId[];
+  /** #5269: per-arm closeness from the ranking, when one ran. */
+  topsisScoresByArm?: ReadonlyMap<RoutingArmId, number> | undefined;
   stagesExecuted: string[];
   decisionTimeMs: number;
   withinBudget: boolean | undefined;
@@ -573,6 +592,8 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
   confidence: number;
   reason: string;
   alternatives: RoutingArmId[];
+  /** #5269: score per alternative, absent when no ranking produced one. */
+  alternativeScores?: ReadonlyMap<RoutingArmId, number>;
 } {
   const confidence = calculateConfidence(ctx.topsisScore, ctx.ucbScore, ctx.candidates.length);
   const reason = buildReason({
@@ -588,7 +609,14 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
       : {}),
   });
   const alternatives = ctx.topsisRanking.filter((c) => c !== ctx.selectedCli);
-  return { confidence, reason, alternatives };
+  if (ctx.topsisScoresByArm === undefined) return { confidence, reason, alternatives };
+  // Narrowed to the alternatives themselves: the winner's score already rides
+  // on `topsisScore`, and a map that also carried it invites the very
+  // substitution this fixes.
+  const alternativeScores = new Map(
+    alternatives.map((arm) => [arm, ctx.topsisScoresByArm?.get(arm) ?? 0])
+  );
+  return { confidence, reason, alternatives, alternativeScores };
 }
 
 /**

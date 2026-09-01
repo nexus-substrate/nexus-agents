@@ -305,6 +305,85 @@ describe('explainOutcome (#2441 + #2442)', () => {
     };
   }
 
+  // #5362: a vote rejected because the option tally could not be attributed fell
+  // through to the threshold arm and printed the APPROVE percentage as the
+  // cause — a number that clears the bar it claimed was missed.
+  it('names option attribution as the cause, not the approval percentage', () => {
+    const explained = stripAnsi(
+      explainOutcome(
+        ctx({
+          quorumReached: true,
+          approvalPercentage: 83.3,
+          optionGate: {
+            reason:
+              'Leading option "migrate to registry" took 1 of 5 approvals (20%), below the supermajority bar',
+            unattributedApprovals: 4,
+            approverCount: 5,
+            selectedCount: 1,
+          },
+        })
+      )
+    );
+
+    expect(explained).toContain('migrate to registry');
+    expect(explained).toContain('4');
+    // The approval percentage is the one number that does NOT explain this
+    // outcome: 83.3% clears the 67% supermajority bar.
+    expect(explained).not.toContain('83.3');
+  });
+
+  it('still cites the threshold when the rejection really was the approval bar', () => {
+    const explained = stripAnsi(
+      explainOutcome(ctx({ quorumReached: true, approvalPercentage: 40 }))
+    );
+    expect(explained).toContain('threshold not met');
+    expect(explained).toContain('40.0');
+  });
+
+  it('prefers the quorum explanation over the option one', () => {
+    // Ordering matters for the same reason osvCoverageNote's does (#5018): the
+    // more specific cause must be checked first or it falls through.
+    const explained = stripAnsi(
+      explainOutcome(
+        ctx({
+          quorumReached: false,
+          errored: 3,
+          votes: [baseVotes[0]] as readonly AgentVoteResult[],
+          optionGate: {
+            reason: 'should not win',
+            unattributedApprovals: 1,
+            approverCount: 1,
+            selectedCount: 0,
+          },
+        })
+      )
+    );
+    expect(explained).toContain('quorum not reached');
+    expect(explained).not.toContain('should not win');
+  });
+
+  it('prefers a bare quorum failure over the option one', () => {
+    // The sibling above covers quorum-failed-WITH-errors, which exits at the
+    // first arm. This covers the second arm — mutation testing showed nothing
+    // exercised it, so moving the option check above it went unnoticed.
+    const explained = stripAnsi(
+      explainOutcome(
+        ctx({
+          quorumReached: false,
+          errored: 0,
+          optionGate: {
+            reason: 'should not win',
+            unattributedApprovals: 1,
+            approverCount: 1,
+            selectedCount: 0,
+          },
+        })
+      )
+    );
+    expect(explained).toContain('quorum not reached');
+    expect(explained).not.toContain('should not win');
+  });
+
   it('returns empty string when outcome is approved', () => {
     expect(explainOutcome(ctx({ outcome: 'approved', quorumReached: true }))).toBe('');
   });

@@ -178,6 +178,17 @@ export const BuiltInExpertTypeSchema = z.enum([
 /**
  * Built-in expert configurations.
  * These provide sensible defaults for common expert types.
+ *
+ * MIRROR of `agents/<name>-expert.md`, which is repo-only and NOT shipped —
+ * `package.json#files` lists `dist`, two `src/` asset dirs and the README, so an
+ * installed package has no `agents/` directory. The runtime reads this constant,
+ * never those files, which is why the omission is correct rather than a bug
+ * (#5143).
+ *
+ * GATED BY `scripts/generate-agents-index.ts --check`, which fails when an
+ * expert exists in one place and not the other. Without that gate this constant
+ * and its source documents would drift silently, and the drift would only be
+ * visible to someone reading both.
  */
 export const BUILT_IN_EXPERTS: Readonly<Record<BuiltInExpertType, ExpertConfig>> = {
   code: {
