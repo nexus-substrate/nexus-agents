@@ -82,7 +82,15 @@ export function checkSecurityScan(
 
 /** Run the pipeline: OSV → assess → report. */
 async function runSecurityPipeline(
-  sarifResult: { totalFindings: number; findings: readonly SecurityFinding[] },
+  sarifResult: {
+    totalFindings: number;
+    findings: readonly SecurityFinding[];
+    // #5343 follow-up: `errors` was absent from this type, so every
+    // "Skipped result N" the parser produced was structurally unreachable from
+    // the only consumer whose verdict depends on it. A finding the parser could
+    // not read is not the same as a clean scan, and the gate could not tell.
+    errors: readonly string[];
+  },
   targetDir: string,
   config: SecurityGateConfig,
   start: number
@@ -97,7 +105,8 @@ async function runSecurityPipeline(
     sarifResult.totalFindings,
     blocking.length,
     osvVulns.length,
-    osv
+    osv,
+    sarifResult.errors.length
   );
 
   logger.info('Security gate complete', {
@@ -105,6 +114,7 @@ async function runSecurityPipeline(
     blocking: blocking.length,
     osvVulns: osvVulns.length,
     osvFailedLookups: osv.failedLookups,
+    sarifParseErrors: sarifResult.errors.length,
   });
 
   const failed = blocking.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
@@ -253,9 +263,17 @@ function buildScanSummary(
   total: number,
   blocking: number,
   osvCount: number,
-  osv?: OsvCheckResult
+  osv?: OsvCheckResult,
+  sarifParseErrors = 0
 ): string {
   const parts = [`${String(total)} SAST findings`];
+  // A result the parser could not read is not a result it did not find.
+  // Without this the two are indistinguishable in the gate's own summary.
+  if (sarifParseErrors > 0) {
+    parts.push(
+      `${String(sarifParseErrors)} scanner output line(s) unreadable — SAST coverage is partial`
+    );
+  }
   if (blocking > 0) parts.push(`${String(blocking)} blocking`);
   if (osvCount > 0) parts.push(`${String(osvCount)} OSV dependency vulnerabilities`);
   parts.push(osvCoverageNote(blocking, osvCount, osv));

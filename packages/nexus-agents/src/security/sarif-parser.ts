@@ -38,15 +38,36 @@ import { SARIF_LEVEL_MAP, SEVERITY_ORDER } from './sarif-types.js';
  * the vacuous gate this change exists to remove. The schema is used as the
  * oracle in `sarif-parser-trust.test.ts` instead, where it can fail.
  */
+/**
+ * `.catch(undefined)` on every decorative field, deliberately.
+ *
+ * The first version of this schema (#5343) rejected the whole RESULT when any
+ * field failed — including `endLine`, `snippet`, and an out-of-range
+ * `startLine`. An adversarial review of that commit showed the consequence: a
+ * result with `level: 'error'` (a BLOCKING severity) and `endLine: 0` produced
+ * zero findings. A malformed decorative field deleted a finding that would have
+ * failed the ship gate, which is strictly worse than the severity laundering
+ * #5343 set out to fix — it converted a validation into a fail-OPEN.
+ *
+ * So the rule here is: a field that cannot change the verdict must never be
+ * able to suppress the finding. `.catch(undefined)` drops the bad value and
+ * keeps the result. `uri` is `.optional()` rather than `.min(1)` for the same
+ * reason — `extractLocation` already treats an empty path as a missing
+ * location, which skips the finding WITH the long-standing disclosure instead
+ * of silently discarding the result.
+ */
 const SarifLocationSchema = z.object({
   physicalLocation: z
     .object({
-      artifactLocation: z.object({ uri: z.string().min(1).optional() }).optional(),
+      artifactLocation: z.object({ uri: z.string().optional().catch(undefined) }).optional(),
       region: z
         .object({
-          startLine: z.number().int().min(1).optional(),
-          endLine: z.number().int().min(1).optional(),
-          snippet: z.object({ text: z.string().optional() }).optional(),
+          startLine: z.number().optional().catch(undefined),
+          endLine: z.number().int().min(1).optional().catch(undefined),
+          snippet: z
+            .object({ text: z.string().optional().catch(undefined) })
+            .optional()
+            .catch(undefined),
         })
         .optional(),
     })
@@ -60,19 +81,37 @@ const SarifResultSchema = z.object({
   locations: z.array(SarifLocationSchema).nullish(),
 });
 
+/**
+ * Same discipline as the location schema, and for a sharper reason.
+ *
+ * Dropping a rule does not drop its findings — it strips them of their CWEs,
+ * help URL, and, because `security-severity` outranks `level`, their SEVERITY.
+ * A rule carrying `security-severity: 9.8` as a NUMBER (the field is
+ * scanner-defined, not spec-typed, so a number is entirely plausible) was
+ * discarded whole; its finding then resolved from `level: 'warning'` to
+ * `'medium'`, below `BLOCKING_SEVERITIES`. A 9.8 crossed the blocking boundary
+ * in the fail-OPEN direction, and `Skipped rule 0` never named the finding it
+ * had just downgraded.
+ *
+ * `id` stays required: it is the map key, and a rule without one cannot be
+ * looked up by any finding, so skipping it costs nothing.
+ */
 const SarifRuleSchema = z.object({
   id: z.string(),
-  shortDescription: z.object({ text: z.string().optional() }).optional(),
-  defaultConfiguration: z.object({ level: z.string().optional() }).optional(),
+  shortDescription: z.object({ text: z.string().optional().catch(undefined) }).optional(),
+  defaultConfiguration: z.object({ level: z.string().optional().catch(undefined) }).optional(),
   properties: z
     .object({
-      precision: z.string().optional(),
-      tags: z.array(z.string()).optional(),
-      'security-severity': z.string().optional(),
+      precision: z.string().optional().catch(undefined),
+      tags: z.array(z.string()).optional().catch(undefined),
+      // Accept the number form and normalize; `resolveSeverityFromScore`
+      // parses it either way.
+      'security-severity': z.union([z.string(), z.number()]).optional().catch(undefined),
     })
-    .optional(),
-  helpUri: z.string().optional(),
-  help: z.object({ markdown: z.string().optional() }).optional(),
+    .optional()
+    .catch(undefined),
+  helpUri: z.string().optional().catch(undefined),
+  help: z.object({ markdown: z.string().optional().catch(undefined) }).optional(),
 });
 
 /**
@@ -292,14 +331,51 @@ function buildLocation(
   return loc;
 }
 
-/** Extract file and line from SARIF location. */
-function extractLocation(result: SarifResult): ParsedLocation | null {
+/**
+ * Extract file and line from SARIF location.
+ *
+ * An unusable `startLine` (0, negative, fractional) does NOT discard the
+ * finding. The line number is metadata; the severity, rule and file are the
+ * verdict-bearing facts, and a security finding with a bad line number is still
+ * a security finding. It is normalized to 1 and the substitution is disclosed
+ * in `errors`, so the record does not present a fabricated line as measured.
+ */
+function extractLocation(
+  result: SarifResult,
+  ruleId: string,
+  errors: string[]
+): ParsedLocation | null {
   const phys = getFirstPhysicalLocation(result);
   if (phys === null) return null;
   const file = phys.artifactLocation?.uri;
-  const startLine = phys.region?.startLine;
-  if (file === undefined || file === '' || startLine === undefined) return null;
+  const rawStartLine = phys.region?.startLine;
+  if (file === undefined || file === '' || rawStartLine === undefined) return null;
+
+  const startLine = usableStartLine(rawStartLine);
+  if (startLine !== rawStartLine) {
+    errors.push(
+      `Finding ${ruleId}: startLine ${String(rawStartLine)} is not a valid 1-based line; ` +
+        `recorded as ${String(startLine)} — the location is unknown, not measured`
+    );
+  }
   return buildLocation(file, startLine, phys);
+}
+
+/**
+ * The value if it carries content, else `undefined`.
+ *
+ * Written out rather than using `||` so the empty case is named: these feed
+ * `SecurityFindingSchema` fields declared `min(1)`, where `''` and absent must
+ * reach the same fallback.
+ */
+function firstNonEmpty(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return value.length > 0 ? value : undefined;
+}
+
+/** SARIF lines are 1-based integers; anything else is unusable. */
+function usableStartLine(line: number): number {
+  return Number.isInteger(line) && line >= 1 ? line : 1;
 }
 
 /**
@@ -332,16 +408,21 @@ function parseResult(
   ruleMap: ReadonlyMap<string, SarifRule>,
   errors: string[]
 ): SecurityFinding | null {
-  const ruleId = result.ruleId ?? 'unknown';
+  // An EMPTY ruleId is not a rule id. `??` let `''` through and produced
+  // `rule: ''`, violating SecurityFindingSchema's `min(1)` — the exact defect
+  // #5343 claimed to close, reached by an input its hostile table omitted.
+  const ruleId = firstNonEmpty(result.ruleId) ?? 'unknown';
   const rule = ruleMap.get(ruleId);
-  const loc = extractLocation(result);
+  const loc = extractLocation(result, ruleId, errors);
 
   if (loc === null) {
     errors.push(`Skipped finding ${ruleId}: missing location`);
     return null;
   }
 
-  const rawMessage = result.message?.text ?? rule?.shortDescription?.text ?? ruleId;
+  // Same reason as ruleId: an empty message is not a message.
+  const rawMessage =
+    firstNonEmpty(result.message?.text) ?? firstNonEmpty(rule?.shortDescription?.text) ?? ruleId;
   const message = rawMessage.slice(0, MAX_MESSAGE_LENGTH);
   const severity = severityWithDisclosure(result, rule, ruleId, errors);
 
@@ -404,7 +485,9 @@ function resolveSeverityFromScore(rule: SarifRule | undefined): FindingSeverity 
   if (props === undefined) return null;
   const secSeverity = props['security-severity'];
   if (secSeverity === undefined) return null;
-  const score = parseFloat(secSeverity);
+  // Scanners emit this as a string ("9.8") or a number (9.8) — the property is
+  // scanner-defined, not fixed by the SARIF spec.
+  const score = typeof secSeverity === 'number' ? secSeverity : parseFloat(secSeverity);
   if (isNaN(score)) return null;
   return scoreToSeverity(score);
 }
