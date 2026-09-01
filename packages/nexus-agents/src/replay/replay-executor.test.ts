@@ -16,10 +16,23 @@ describe('parseTraceJsonl', () => {
     expect(entries).toHaveLength(2);
   });
 
+  // #5328: this used to use `{"valid":true}` and `{"also":true}` as the two
+  // lines that SURVIVE. Neither has a timestamp, runId or eventType, so neither
+  // is a trace entry — the `as ExecutionTraceEntry` cast was the only thing
+  // making them look like one, and this test pinned that as intended behaviour.
+  // The lines that survive are now actual trace entries.
   it('skips malformed lines', () => {
-    const content = '{"valid":true}\nnot json\n{"also":true}';
+    const content = [
+      '{"timestamp":1,"runId":"r1","eventType":"tick"}',
+      'not json',
+      '{"timestamp":2,"runId":"r1","eventType":"tick"}',
+    ].join('\n');
     const entries = parseTraceJsonl(content);
     expect(entries).toHaveLength(2);
+  });
+
+  it('skips lines that are JSON but not trace entries', () => {
+    expect(parseTraceJsonl('{"valid":true}\n{"also":true}')).toHaveLength(0);
   });
 
   it('handles empty input', () => {

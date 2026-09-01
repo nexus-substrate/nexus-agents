@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '../core/index.js';
+import { ExecutionTraceEntrySchema } from '../pipeline/trace-schema.js';
 import type { ExecutionTraceEntry } from '../pipeline/trace-schema.js';
 
 const logger = createLogger({ component: 'ReplayExecutor' });
@@ -66,16 +67,54 @@ export function extractDecisions(entries: readonly ExecutionTraceEntry[]): Trace
  */
 export function parseTraceJsonl(content: string): ExecutionTraceEntry[] {
   const entries: ExecutionTraceEntry[] = [];
+  let rejected = 0;
+
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (trimmed === '') continue;
-    try {
-      entries.push(JSON.parse(trimmed) as ExecutionTraceEntry);
-    } catch {
-      logger.debug('Skipping malformed trace line');
+
+    const entry = parseTraceLine(trimmed);
+    if (entry === null) {
+      rejected++;
+      continue;
     }
+    entries.push(entry);
+  }
+
+  // `warn`, not `debug` (#5018 pattern): at debug this is invisible at normal
+  // log levels, so a replay run over a trace whose lines were mostly rejected
+  // reported a small, clean comparison set with no signal that anything was
+  // dropped. A silent skip and a genuinely short trace look identical.
+  if (rejected > 0) {
+    logger.warn('Skipped trace lines that are not valid trace entries', {
+      rejected,
+      accepted: entries.length,
+    });
   }
   return entries;
+}
+
+/**
+ * Parse one JSONL line into a trace entry, or `null` if it is not one.
+ *
+ * This used to be `JSON.parse(line) as ExecutionTraceEntry` (#5328), while
+ * `ExecutionTraceEntrySchema` sat unused in the very module this file imports
+ * its type from. The cast mattered because `modelId` flows into
+ * `TracedDecision.selectedModel`, which `compareDecisions` compares with
+ * `===`: a non-string `modelId` made two structurally identical decisions
+ * compare unequal, and the replay audit certified a divergence reading
+ * `Model changed: [object Object] → [object Object]` — a verdict on a
+ * comparison that was never actually made.
+ */
+function parseTraceLine(line: string): ExecutionTraceEntry | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const parsed = ExecutionTraceEntrySchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
