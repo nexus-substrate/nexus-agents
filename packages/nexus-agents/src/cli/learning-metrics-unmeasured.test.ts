@@ -69,3 +69,53 @@ describe('learning status over an unconsulted bandit (#5267)', () => {
     expect(result.summary.learningStatus).toBe('balanced');
   });
 });
+
+/**
+ * The same defect one section down the same screen (#5267 residual).
+ *
+ * `computeTopFeatures` filled an empty result with five entries from
+ * `FEATURE_NAMES` at `importance: 0, direction: 'positive'`, so
+ * `--bandit-stats` rendered five green `↑` arrows over a bandit that had
+ * recorded nothing. It also made `formatFeatureImportance`'s
+ * `features.length === 0` branch — "No feature data available" — unreachable:
+ * a display path that could never run, guarding a case the producer had
+ * already fabricated away.
+ */
+describe('feature importances over an unconsulted bandit (#5267)', () => {
+  it('reports no features rather than five zero-importance placeholders', () => {
+    const result = gatherLearningMetrics(undefined, undefined, undefined, OPTIONS);
+    expect(result.banditProgress.topFeatures).toEqual([]);
+  });
+
+  it('does not invent a positive direction for an unobserved feature', () => {
+    const result = gatherLearningMetrics(undefined, undefined, undefined, OPTIONS);
+    // A green ↑ is an affirmative claim about which way a feature pushes.
+    // Over zero observations there is no such claim to make.
+    for (const f of result.banditProgress.topFeatures) {
+      expect(f.importance).not.toBe(0);
+    }
+  });
+
+  it('still reports real features when the bandit has stats', () => {
+    const bandit = {
+      getDetailedStats: () => [
+        {
+          armName: 'claude',
+          pulls: 10,
+          featureImportance: [
+            { feature: 'taskComplexity', importance: 0.8, direction: 'positive' as const },
+            { feature: 'contextSize', importance: -0.4, direction: 'negative' as const },
+          ],
+        },
+      ],
+      getExplorationStats: () => ({ totalPulls: 10, explorationRatio: 0.2, armDistribution: [] }),
+    } as unknown as LinUCBBandit;
+
+    const result = gatherLearningMetrics(bandit, undefined, undefined, OPTIONS);
+
+    // The empty case must not be reached by hard-coding it: with real theta
+    // values the list is populated and ordered by absolute importance.
+    expect(result.banditProgress.topFeatures.length).toBeGreaterThan(0);
+    expect(result.banditProgress.topFeatures[0]?.importance).not.toBe(0);
+  });
+});

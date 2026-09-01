@@ -68,15 +68,17 @@ describe('gatherLearningMetrics', () => {
     expect(result.summary.learningStatus).toBe('unmeasured');
   });
 
-  it('sets default feature importance when no bandit stats', () => {
+  // #5267: this asserted exactly the fabrication — five entries, the first at
+  // importance 0 — as the specified behaviour for "no bandit stats". Five green
+  // ↑ arrows over an unconsulted bandit is what it was protecting.
+  it('reports no feature importance when there are no bandit stats', () => {
     const result = gatherLearningMetrics(undefined, undefined, undefined, {
       period: 24,
       format: 'ascii',
       banditStats: false,
       showTrends: true,
     });
-    expect(result.banditProgress.topFeatures.length).toBe(5);
-    expect(result.banditProgress.topFeatures[0]?.importance).toBe(0);
+    expect(result.banditProgress.topFeatures).toEqual([]);
   });
 
   it('computes correlation rate as 0 when no decisions', () => {
