@@ -105,6 +105,8 @@ interface SummaryContext {
   readonly result: ConsensusResult;
   readonly votes: readonly AgentVoteResult[];
   readonly threshold: ConsensusAlgorithm;
+  /** #5362: present when the option gate drove the rejection. */
+  readonly optionGate?: OptionGateExplain;
 }
 
 function printSummary(ctx: SummaryContext): void {
@@ -130,6 +132,7 @@ function printSummary(ctx: SummaryContext): void {
     votes,
     approvalPercentage,
     threshold,
+    ...(ctx.optionGate === undefined ? {} : { optionGate: ctx.optionGate }),
   });
   writeLine(
     `\n${colors.bold}Result: ${outcomeColor}${outcome.toUpperCase()}${colors.reset}${cause}\n`
@@ -144,6 +147,22 @@ function printSummary(ctx: SummaryContext): void {
   }
 }
 
+/**
+ * The option gate's own account of why it vetoed (#4529), as far as the summary
+ * line needs it.
+ *
+ * Structural rather than importing `OptionGateVerdict`: the CLI only reads the
+ * prose and the coverage counts, and a narrower type keeps the display from
+ * depending on the gate's full shape.
+ */
+export interface OptionGateExplain {
+  /** Present only when the gate vetoed an otherwise-approved vote. */
+  readonly reason?: string;
+  readonly unattributedApprovals: number;
+  readonly approverCount: number;
+  readonly selectedCount: number;
+}
+
 export interface OutcomeExplainCtx {
   readonly outcome: string;
   readonly quorumReached: boolean;
@@ -151,6 +170,8 @@ export interface OutcomeExplainCtx {
   readonly votes: readonly AgentVoteResult[];
   readonly approvalPercentage: number;
   readonly threshold: ConsensusAlgorithm;
+  /** #5362: the option gate's veto, when one drove the rejection. */
+  readonly optionGate?: OptionGateExplain;
 }
 
 /**
@@ -176,8 +197,36 @@ export function explainOutcome(ctx: OutcomeExplainCtx): string {
   if (!ctx.quorumReached) {
     return ` ${colors.dim}— quorum not reached${colors.reset}`;
   }
-  // Quorum reached but rejected ⇒ approval threshold wasn't met.
+  // #5362: BEFORE the threshold arm. A vote vetoed by the option gate is
+  // rejected while its APPROVAL percentage may comfortably clear the bar — the
+  // live case printed "supermajority threshold not met (got 83.3%)" against a
+  // 67% bar, blaming the one number that did not explain the outcome. Ordering
+  // matters for the same reason `osvCoverageNote`'s does (#5018): the specific
+  // cause has to be checked first or it falls through to the generic one.
+  const gateReason = ctx.optionGate?.reason;
+  if (gateReason !== undefined && gateReason !== '') {
+    return ` ${colors.dim}— ${gateReason}${unattributedNote(ctx.optionGate)}${colors.reset}`;
+  }
+
+  // Quorum reached, no option veto ⇒ the approval threshold genuinely wasn't met.
   return ` ${colors.dim}— ${ctx.threshold} threshold not met (got ${ctx.approvalPercentage.toFixed(1)}%)${colors.reset}`;
+}
+
+/**
+ * Names the approvals the tally could not attribute.
+ *
+ * Separate from the gate's own reason because they answer different questions:
+ * the reason says which bar failed, this says how much of the panel the tally
+ * was measured over. `4 pick X + 3 unparseable` and a real 4/3 split both read
+ * 57% on the share alone — which is why `unattributedApprovals` exists on the
+ * record, and why the summary should not omit it.
+ */
+function unattributedNote(gate: OptionGateExplain | undefined): string {
+  if (gate === undefined || gate.unattributedApprovals <= 0) return '';
+  return (
+    ` (${String(gate.selectedCount)} of ${String(gate.approverCount)} approvals carried a` +
+    ` usable selection; ${String(gate.unattributedApprovals)} unattributed)`
+  );
 }
 
 function printHashes(votes: readonly AgentVoteResult[]): void {
@@ -315,6 +364,12 @@ async function runVote(options: VoteCommandOptions): Promise<
     readonly decision: VoteDecisionStatus;
     readonly strategy: string;
     readonly policyReason?: string;
+    /**
+     * #5362: `executeVoting` has always returned this; the CLI's narrower
+     * return type dropped it, so the summary line could not say that an option
+     * veto — not the approval bar — caused a rejection.
+     */
+    readonly optionGate?: OptionGateExplain;
   }
 > {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
@@ -487,7 +542,12 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       result = await runVote(options);
     }
     printVoteDetails(result.votes, options.verbose === true);
-    printSummary({ result: result.result, votes: result.votes, threshold: result.threshold });
+    printSummary({
+      result: result.result,
+      votes: result.votes,
+      threshold: result.threshold,
+      ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
+    });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
