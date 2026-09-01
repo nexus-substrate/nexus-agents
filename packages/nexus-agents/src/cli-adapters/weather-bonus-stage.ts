@@ -20,6 +20,22 @@ const logger = createLogger({ component: 'weather-bonus-stage' });
 const MIN_SAMPLE_COUNT = 5;
 
 /**
+ * A weather-bonus read, and whether it actually happened (#5329).
+ *
+ * `measured: false` means the read FAILED — distinct from a successful read
+ * that found no qualifying bonuses, which also yields an empty map. Collapsing
+ * the two let the router rank on "no adjustment" when the truth was "no
+ * reading", with nothing in the decision record able to tell them apart.
+ *
+ * Mirrors the vocabulary `routing/stages/capacity-stage.ts` already uses:
+ * "absence of a reading is not a reading."
+ */
+export interface WeatherBonusRead {
+  readonly scores: Map<CliName, number>;
+  readonly measured: boolean;
+}
+
+/**
  * Convert weather report adaptive bonuses for a task category
  * into a routing stage score map.
  *
@@ -29,13 +45,22 @@ const MIN_SAMPLE_COUNT = 5;
  * @param taskCategory - The detected task category
  * @returns Score map with adaptive bonus per CLI
  */
-export function getWeatherBonusScores(taskCategory: TaskCategory): Map<CliName, number> {
+export function getWeatherBonusScores(taskCategory: TaskCategory): WeatherBonusRead {
   try {
     const report = generateWeatherReport({ includeAdaptive: true });
-    return convertBonusesToScoreMap(report.adaptiveBonuses, taskCategory);
-  } catch {
-    logger.debug('Weather bonus stage skipped (best-effort)');
-    return new Map();
+    return {
+      scores: convertBonusesToScoreMap(report.adaptiveBonuses, taskCategory),
+      measured: true,
+    };
+  } catch (error: unknown) {
+    // `warn`, not the previous bare `catch` at `debug` (#5329): an empty score
+    // map is also what a healthy report with no qualifying bonuses returns, so
+    // at debug the two were indistinguishable to an operator AND to the router.
+    logger.warn('Weather bonus read failed; routing proceeds without it', {
+      category: taskCategory,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { scores: new Map(), measured: false };
   }
 }
 
