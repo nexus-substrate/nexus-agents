@@ -17,6 +17,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createSecureHandler } from './secure-handler.js';
 import type { IPolicyFirewall, PolicyDecision } from './policy.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
+import { resetWouldDenySampler } from './would-deny-sampler.js';
 
 /** A firewall whose rule fires but is overridden by warn mode. */
 function warnModeFirewall(): IPolicyFirewall {
@@ -193,3 +194,105 @@ describe('warn-mode policy near-misses reach the chain (#4991)', () => {
     expect(auditLogger.logPolicyDecision).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The dissent on #5228 named the cost of #4991: a warn-mode near-miss lets the
+ * call proceed, so an agent looping against the same rule writes one chain
+ * record per iteration. These pin the sampling that answers it, at the seam —
+ * the sampler's own unit tests prove the arithmetic, but only this proves the
+ * arithmetic is actually wired to the audit logger.
+ */
+describe('a looping near-miss does not grow the chain without bound (#5228)', () => {
+  it('writes the first occurrence, then samples', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+
+    for (let i = 0; i < 100; i++) await handler({});
+
+    // 1, 2, 4, 8, 16, 32, 64 — not 100.
+    expect(vi.mocked(auditLogger.logPolicyDecision)).toHaveBeenCalledTimes(7);
+  });
+
+  it('never samples a real denial', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: denyFirewall(),
+      auditLogger,
+    });
+
+    for (let i = 0; i < 20; i++) await handler({});
+
+    // A deny halts the call, so it is already self-limiting — and dropping one
+    // would lose the record of an action that was actually blocked.
+    expect(vi.mocked(auditLogger.logPolicyDecision)).toHaveBeenCalledTimes(20);
+  });
+
+  it('states the ordinal on a sampled record, so the chain reads as a floor', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+
+    for (let i = 0; i < 64; i++) await handler({});
+
+    const reasons = vi
+      .mocked(auditLogger.logPolicyDecision)
+      .mock.calls.map((c) => (c[0] as { reason: string }).reason);
+
+    // Without the ordinal the chain would say "this fired 7 times".
+    expect(reasons[reasons.length - 1]).toContain('64');
+    // The first carries no ordinal — nothing has been suppressed yet.
+    expect(reasons[0]).not.toContain('occurrence');
+  });
+
+  it('does not let one rule suppress another rule on the same tool', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const noisy = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+    for (let i = 0; i < 50; i++) await noisy({});
+
+    const before = vi.mocked(auditLogger.logPolicyDecision).mock.calls.length;
+
+    const other = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: otherRuleWarnFirewall(),
+      auditLogger,
+    });
+    await other({});
+
+    // A different rule's FIRST occurrence must always be recorded.
+    expect(vi.mocked(auditLogger.logPolicyDecision).mock.calls.length).toBe(before + 1);
+  });
+});
+
+/** A second warn-mode rule on the same tool, for the cross-suppression test. */
+function otherRuleWarnFirewall(): IPolicyFirewall {
+  const decision: PolicyDecision = {
+    allowed: true,
+    reason: '[WARN MODE] Would be denied: secret in payload',
+    ruleName: 'secret-scan',
+    overriddenByWarnMode: true,
+  };
+  return {
+    evaluate: vi.fn((): PolicyDecision => decision),
+    addRule: vi.fn(),
+    removeRule: vi.fn((): boolean => true),
+    getRules: vi.fn((): readonly [] => []),
+    setMode: vi.fn(),
+    getMode: vi.fn((): 'warn' => 'warn'),
+  };
+}

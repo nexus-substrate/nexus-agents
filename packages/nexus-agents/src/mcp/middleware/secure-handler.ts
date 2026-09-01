@@ -31,6 +31,7 @@ import {
 } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalPolicyFirewall } from './policy-registry.js';
+import { recordPolicyVerdict } from './policy-audit-emit.js';
 
 export type { ToolResult };
 
@@ -224,6 +225,12 @@ interface PolicyCheckOutcome {
   readonly result: ToolResult | null;
   /** `null` when no rule fired — an ordinary allow, which is not recorded. */
   readonly verdict: PolicyAuditDecision | null;
+  /**
+   * The rule that fired, when one did. Carried out so the near-miss sampler can
+   * key on `{tool, rule}` — sampling on the tool alone would let one noisy rule
+   * suppress a different rule's first occurrence on the same tool.
+   */
+  readonly ruleName?: string | undefined;
 }
 
 /**
@@ -241,7 +248,11 @@ function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
       reason: decision.reason,
       ruleName: decision.ruleName,
     });
-    return { result: policyDeniedError(decision.reason, opts.requestId), verdict: 'deny' };
+    return {
+      result: policyDeniedError(decision.reason, opts.requestId),
+      verdict: 'deny',
+      ruleName: decision.ruleName,
+    };
   }
 
   // Warn mode: the evaluator sets `overriddenByWarnMode` when a rule denied and
@@ -256,7 +267,7 @@ function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
       reason: decision.reason,
       ruleName: decision.ruleName,
     });
-    return { result: null, verdict: 'would_deny' };
+    return { result: null, verdict: 'would_deny', ruleName: decision.ruleName };
   }
 
   opts.logger.debug('Policy check passed', { reason: decision.reason });
@@ -281,7 +292,7 @@ function runPolicyCheck(
   const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
   if (!firewall) return null;
 
-  const { result, verdict } = checkPolicy({
+  const { result, verdict, ruleName } = checkPolicy({
     firewall,
     toolName: config.toolName,
     args: sanitizedArgs,
@@ -295,13 +306,7 @@ function runPolicyCheck(
   // ordinary allow (verdict null) is not recorded: emitting every permitted
   // call would bury the soak signal it exists to surface.
   if (verdict !== null && config.auditLogger) {
-    emitPolicyAudit(
-      config.auditLogger,
-      config.toolName,
-      requestContext,
-      verdict,
-      verdict === 'deny' ? 'policy denied' : 'policy would have denied (warn mode)'
-    );
+    recordPolicyVerdict(config, requestContext, verdict, ruleName);
   }
   return result;
 }
@@ -375,24 +380,6 @@ function emitToolAuditException(
 }
 
 /** Emits an audit event for a policy denial. */
-function emitPolicyAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  decision: PolicyAuditDecision,
-  reason: string
-): void {
-  const actor = actorFromContext(ctx);
-  auditLogger.logPolicyDecision({
-    policyName: 'default',
-    decision,
-    reason,
-    toolName,
-    actor,
-    requestId: ctx.requestId,
-  });
-}
-
 /** Emits an audit event for a rate limit violation. */
 function emitRateLimitAudit(
   auditLogger: IAuditLogger,
