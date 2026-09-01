@@ -458,10 +458,15 @@ describe('registerMcpTools', () => {
 
   it('should gracefully degrade when no adapter and mock not enabled', () => {
     const options = makeDefaultOptions();
-    // Should NOT throw — orchestrate tool is skipped, other tools still register
     expect(() => {
       registerMcpTools(options);
     }).not.toThrow();
+
+    // #5320: both halves of "gracefully degrade", which not.toThrow() cannot
+    // see — registering nothing at all also does not throw. The positive case
+    // asserts mockRegisterOrchestrateTool WAS called; this is its complement.
+    expect(mockRegisterOrchestrateTool).not.toHaveBeenCalled();
+    expect(mockRegisterTools).toHaveBeenCalled();
   });
 
   it('should succeed with useMockTechLead: true and no adapter', () => {
@@ -482,10 +487,12 @@ describe('registerMcpTools', () => {
   it('should gracefully degrade when env var is not "true"', () => {
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'false';
     const options = makeDefaultOptions();
-    // Should NOT throw — orchestrate tool is skipped, other tools still register
     expect(() => {
       registerMcpTools(options);
     }).not.toThrow();
+
+    expect(mockRegisterOrchestrateTool).not.toHaveBeenCalled();
+    expect(mockRegisterTools).toHaveBeenCalled();
   });
 
   it('should succeed with a model adapter provided', () => {

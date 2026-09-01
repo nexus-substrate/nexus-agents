@@ -207,6 +207,7 @@ describe('ConsensusEngine incremental quorum', () => {
       algorithm: 'simple_majority',
       requiredVoters: ['a1', 'a2', 'a3'],
     });
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const pid = result.value;
 
@@ -249,6 +250,7 @@ describe('ConsensusEngine incremental quorum', () => {
       algorithm: 'simple_majority',
       requiredVoters: ['a1', 'a2', 'a3'],
     });
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const pid = result.value;
 
@@ -288,6 +290,7 @@ describe('ConsensusEngine incremental quorum', () => {
       algorithm: 'simple_majority',
       requiredVoters: ['a1', 'a2', 'a3'],
     });
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const pid = result.value;
 
@@ -329,6 +332,7 @@ describe('ConsensusEngine incremental quorum', () => {
       algorithm: 'simple_majority',
       requiredVoters: ['a1', 'a2', 'a3'],
     });
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const pid = result.value;
 
@@ -350,6 +354,7 @@ describe('ConsensusEngine incremental quorum', () => {
       algorithm: 'simple_majority',
       requiredVoters: ['a1', 'a2', 'a3'],
     });
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const pid = result.value;
 
