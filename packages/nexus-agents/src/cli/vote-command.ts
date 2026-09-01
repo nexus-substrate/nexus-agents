@@ -154,8 +154,14 @@ function printSummary(ctx: SummaryContext): void {
  * Structural rather than importing `OptionGateVerdict`: the CLI only reads the
  * prose and the coverage counts, and a narrower type keeps the display from
  * depending on the gate's full shape.
+ *
+ * NOT exported. It appears only as a field type on the exported
+ * `OutcomeExplainCtx`, which is structural — a caller builds the object literal
+ * and never names this type. Exporting it would add a symbol whose only
+ * non-test consumer is this file, which the producer/consumer gate (#3024)
+ * correctly rejects.
  */
-export interface OptionGateExplain {
+interface OptionGateExplain {
   /** Present only when the gate vetoed an otherwise-approved vote. */
   readonly reason?: string;
   readonly unattributedApprovals: number;
