@@ -434,6 +434,16 @@ export interface ToolInvocationAuditOpts {
   durationMs?: number | undefined;
   errorMessage?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
+  /**
+   * The policy verdict for this invocation, when a rule fired (#5228 review).
+   *
+   * Only `would_deny` reaches here: a real `deny` returns before the handler
+   * runs, so it produces no invocation record at all. Set on EVERY near-miss
+   * invocation, including those whose separate policy record was sampled out —
+   * otherwise an executed near-miss would be indistinguishable from a call no
+   * rule touched, which is the inference this change exists to break.
+   */
+  policyDecision?: PolicyAuditDecision | undefined;
 }
 
 /**

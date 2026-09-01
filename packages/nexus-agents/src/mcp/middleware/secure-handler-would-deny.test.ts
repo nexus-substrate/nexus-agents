@@ -295,6 +295,54 @@ describe('a looping near-miss does not grow the chain without bound (#5228)', ()
     expect(first.occurrence).toBeUndefined();
   });
 
+  it('marks every executed near-miss on its invocation record, sampled or not', async () => {
+    // The review's sharpest objection: a `would_deny` lets the call EXECUTE, so
+    // sampling the policy record would leave the actions that actually ran
+    // indistinguishable from calls no rule touched — restoring the silent-allow
+    // inference the whole change exists to break.
+    //
+    // The two facts are therefore separated. The POLICY record carries the
+    // detail and is sampled; the INVOCATION record says "this call was not
+    // clean" on every single occurrence.
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: warnModeFirewall(),
+      auditLogger,
+    });
+
+    for (let i = 0; i < 20; i++) await handler({});
+
+    const invocations = vi
+      .mocked(auditLogger.logToolInvocation)
+      .mock.calls.map((c) => c[0] as { policyDecision?: string });
+
+    expect(invocations).toHaveLength(20);
+    expect(invocations.every((i) => i.policyDecision === 'would_deny')).toBe(true);
+
+    // Meanwhile the policy records ARE sampled — that is the bounded half.
+    expect(vi.mocked(auditLogger.logPolicyDecision)).toHaveBeenCalledTimes(5);
+  });
+
+  it('leaves an ordinary allow unmarked', async () => {
+    resetWouldDenySampler();
+    const auditLogger = mockAuditLogger();
+    const handler = createSecureHandler(okHandler, {
+      toolName: 'writer',
+      policyFirewall: allowFirewall(),
+      auditLogger,
+    });
+
+    await handler({});
+
+    const first = vi.mocked(auditLogger.logToolInvocation).mock.calls[0]?.[0] as {
+      policyDecision?: string;
+    };
+    // No rule fired, so the record must claim nothing.
+    expect(first.policyDecision).toBeUndefined();
+  });
+
   it('does not let one rule suppress another rule on the same tool', async () => {
     resetWouldDenySampler();
     const auditLogger = mockAuditLogger();

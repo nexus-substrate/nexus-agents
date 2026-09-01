@@ -288,9 +288,9 @@ function runPolicyCheck(
   mode: ExecutionMode,
   logger: ILogger,
   requestContext: RequestContext
-): ToolResult | null {
+): { error: ToolResult | null; nearMiss: boolean } {
   const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
-  if (!firewall) return null;
+  if (!firewall) return { error: null, nearMiss: false };
 
   const { result, verdict, ruleName } = checkPolicy({
     firewall,
@@ -308,7 +308,12 @@ function runPolicyCheck(
   if (verdict !== null && config.auditLogger) {
     recordPolicyVerdict(config, requestContext, verdict, ruleName);
   }
-  return result;
+  // #5228 review: the near-miss travels on regardless of whether the policy
+  // record above was sampled out. A `would_deny` lets the call EXECUTE, so its
+  // invocation record must not be indistinguishable from one where no rule
+  // fired — otherwise sampling, which exists to bound growth, would restore the
+  // silent-allow inference this change is meant to break.
+  return { error: result, nearMiss: verdict === 'would_deny' };
 }
 
 /**
@@ -339,14 +344,25 @@ async function executeHandler(
   return result;
 }
 
+interface ToolAuditEmission {
+  readonly auditLogger: IAuditLogger;
+  readonly toolName: string;
+  readonly ctx: RequestContext;
+  readonly result: ToolResult;
+  readonly durationMs: number;
+  /** A warn-mode rule fired for this call (#5228 review). */
+  readonly nearMiss: boolean;
+}
+
 /** Emits an audit event for a completed tool invocation. */
-function emitToolAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  result: ToolResult,
-  durationMs: number
-): void {
+function emitToolAudit({
+  auditLogger,
+  toolName,
+  ctx,
+  result,
+  durationMs,
+  nearMiss,
+}: ToolAuditEmission): void {
   const actor = actorFromContext(ctx);
   const outcome = resultToOutcome(result.isError, false);
   auditLogger.logToolInvocation({
@@ -355,6 +371,10 @@ function emitToolAudit(
     actor,
     requestId: ctx.requestId,
     durationMs,
+    // The fact the sampler must never suppress: this call EXECUTED and a rule
+    // would have denied it. The policy record carries the detail and may be
+    // sampled; this says the action itself was not clean, on every occurrence.
+    ...(nearMiss ? { policyDecision: 'would_deny' as const } : {}),
   });
 }
 
@@ -427,9 +447,9 @@ function runPreChecks(
   mode: ExecutionMode,
   requestContext: RequestContext,
   logger: ILogger
-): { error: ToolResult | null; sanitizedArgs: unknown } {
+): { error: ToolResult | null; sanitizedArgs: unknown; nearMiss: boolean } {
   const sizeResult = checkInputSize(args, logger, requestContext.requestId);
-  if (sizeResult) return { error: sizeResult, sanitizedArgs: args };
+  if (sizeResult) return { error: sizeResult, sanitizedArgs: args, nearMiss: false };
 
   // Sanitize tool input: strip XML injection tags, detect injection patterns (Issue #828)
   const sanitizeResult = sanitizeToolInput(args);
@@ -438,21 +458,21 @@ function runPreChecks(
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)
   const tierError = checkSecurityTier(config, sanitizeResult, logger);
-  if (tierError !== null) return { error: tierError, sanitizedArgs };
+  if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false };
 
   if (config.rateLimiter) {
     const rlResult = checkRateLimit(config.rateLimiter, logger);
     if (rlResult) {
       if (config.auditLogger)
         emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
-      return { error: rlResult, sanitizedArgs };
+      return { error: rlResult, sanitizedArgs, nearMiss: false };
     }
   }
 
-  const pResult = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
-  if (pResult) return { error: pResult, sanitizedArgs };
+  const policy = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
+  if (policy.error) return { error: policy.error, sanitizedArgs, nearMiss: policy.nearMiss };
 
-  return { error: null, sanitizedArgs };
+  return { error: null, sanitizedArgs, nearMiss: policy.nearMiss };
 }
 
 /**
@@ -498,18 +518,17 @@ export function createSecureHandler(
       requestLogger.info('Tool invocation started');
     }
 
-    const { error: preCheckError, sanitizedArgs } = runPreChecks(
-      config,
-      args,
-      mode,
-      requestContext,
-      requestLogger
-    );
+    const {
+      error: preCheckError,
+      sanitizedArgs,
+      nearMiss,
+    } = runPreChecks(config, args, mode, requestContext, requestLogger);
     if (preCheckError) return preCheckError;
 
     return executeAndAudit(handler, sanitizedArgs, config, {
       requestContext,
       requestLogger,
+      nearMiss,
       logLifecycle: inherited === undefined,
     });
   };
@@ -526,6 +545,14 @@ interface Invocation {
   readonly requestLogger: ILogger;
   /** False when the middleware chain already brackets this call (#4981). */
   readonly logLifecycle: boolean;
+  /**
+   * A warn-mode policy rule fired for this call (#5228 review).
+   *
+   * Carried onto the invocation record whether or not the policy record itself
+   * was sampled, so an executed near-miss is never indistinguishable from a
+   * call no rule touched.
+   */
+  readonly nearMiss: boolean;
 }
 
 async function executeAndAudit(
@@ -546,13 +573,14 @@ async function executeAndAudit(
     );
     sanitizeToolResult(result, requestLogger);
     if (config.auditLogger) {
-      emitToolAudit(
-        config.auditLogger,
-        config.toolName,
-        requestContext,
+      emitToolAudit({
+        auditLogger: config.auditLogger,
+        toolName: config.toolName,
+        ctx: requestContext,
         result,
-        getTimeProvider().now() - execStartTime
-      );
+        durationMs: getTimeProvider().now() - execStartTime,
+        nearMiss: invocation.nearMiss,
+      });
     }
     return result;
   } catch (error) {

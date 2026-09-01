@@ -552,6 +552,7 @@ export class AuditLogger implements IAuditLogger {
       requestId: opts.requestId,
       toolName: opts.toolName,
       durationMs: opts.durationMs,
+      ...(opts.policyDecision === undefined ? {} : { policyDecision: opts.policyDecision }),
       metadata: opts.metadata,
     });
   }
