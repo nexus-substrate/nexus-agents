@@ -47,6 +47,21 @@ export interface PolicyDecision {
   readonly reason: string;
   readonly requiredArtifact?: string;
   readonly ruleName?: string;
+  /**
+   * A rule denied this call and warn mode overrode the denial, so `allowed` is
+   * `true` but the operation WOULD have been blocked in enforce mode (#4991).
+   *
+   * Set explicitly by the evaluator rather than inferred downstream. The first
+   * implementation deduced it from `allowed === true && ruleName !== undefined`
+   * — true of today's code, because `allowWithReason` never sets `ruleName` —
+   * and a consensus panel rejected that: naming which rule *permitted* an
+   * action (`admin-override` vs `default-allow`) is ordinary access-control
+   * practice, so the day an allow rule sets `ruleName`, every authorized call
+   * it covers would be silently recorded as a near-miss. Deriving a verdict
+   * from the absence of an unrelated field is not a signal, it is a
+   * coincidence.
+   */
+  readonly overriddenByWarnMode?: boolean;
 }
 
 /**

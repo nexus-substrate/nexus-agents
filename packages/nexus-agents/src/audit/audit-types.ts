@@ -215,6 +215,23 @@ export const AuditEventSchema = z.object({
   // Policy and security
   policyName: z.string().optional(),
   policyDecision: z.string().optional(),
+  /**
+   * Which occurrence of this `{tool, rule}` near-miss the record represents
+   * (#5228 review). Present only on a sampled `would_deny`.
+   *
+   * TYPED and queryable rather than prose in `description`. The first version
+   * of the sampler wrote the ordinal into the reason string to "avoid a second
+   * schema widening" — two reviewers rejected that, correctly: a machine
+   * consumer counting records would read 14 records as 14 near-misses when
+   * 10,000 occurred, so the record did not structurally represent its own
+   * partial coverage. That is the defect this PR exists to fix, reintroduced
+   * one field over. An additive OPTIONAL field is a minor change, not a second
+   * break, so the stated reason for avoiding it did not hold.
+   *
+   * Absent means "not sampled" — every occurrence was recorded — which is
+   * distinct from `1`.
+   */
+  policyOccurrence: z.number().int().min(1).optional(),
   violationType: z.string().optional(),
 
   // Integrity (for tamper-evidence)
@@ -263,6 +280,8 @@ export const AuditEventInputSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   policyName: z.string().optional(),
   policyDecision: z.string().optional(),
+  /** @see AuditEventSchema.policyOccurrence (#5228 review). */
+  policyOccurrence: z.number().int().min(1).optional(),
   violationType: z.string().optional(),
 });
 export type AuditEventInput = z.infer<typeof AuditEventInputSchema>;
@@ -306,16 +325,16 @@ export type AuditLogConfig = z.infer<typeof AuditLogConfigSchema>;
 
 export interface IAuditStorage {
   /** Write an audit event to storage */
-  write(event: AuditEvent): Promise<void>;
+  write: (event: AuditEvent) => Promise<void>;
 
   /** Flush pending writes */
-  flush(): Promise<void>;
+  flush: () => Promise<void>;
 
   /** Close the storage */
-  close(): Promise<void>;
+  close: () => Promise<void>;
 
   /** Query events by criteria */
-  query(criteria: AuditQueryCriteria): Promise<AuditEvent[]>;
+  query: (criteria: AuditQueryCriteria) => Promise<AuditEvent[]>;
 }
 
 // ============================================================================
@@ -341,30 +360,66 @@ export type AuditQueryCriteria = z.infer<typeof AuditQueryCriteriaSchema>;
 // Audit Logger Interface
 // ============================================================================
 
+/**
+ * Sink for audit records.
+ *
+ * **Every member is declared as a function PROPERTY, not a method, and that is
+ * load-bearing (#4991.)** TypeScript exempts method-shorthand parameters from
+ * `strictFunctionTypes` and checks them bivariantly. When
+ * {@link PolicyAuditDecision} gained `would_deny`, an out-of-tree implementor
+ * still typed against the old two-value union would have kept COMPILING and
+ * then received a value it cannot handle at runtime — silently dropping the
+ * audit record, or throwing inside the authorization path. A major version bump
+ * is a note in a changelog; a property signature is a compile error.
+ *
+ * EVERY member is converted, not just the one whose union widened. (Stated
+ * without a count on purpose: a literal here drifts the moment a member is
+ * added, which is the same doc-accuracy defect this file is fixing elsewhere.
+ * `audit-types-variance.test.ts` asserts the property, whatever the count.) An
+ * earlier revision converted only `logPolicyDecision`, on the reasoning that
+ * touching the others "would break implementors for no reason". That reasoning
+ * was wrong, and a panel caught it: an ES6 class using ordinary method syntax
+ * satisfies a property signature perfectly well, as does an object literal with
+ * method shorthand — the ONLY implementor a property signature rejects is one
+ * whose parameter is *narrower* than declared, which is exactly the unsound
+ * case. Converting one member and leaving six is the dangerous state: it looks
+ * consistent enough to imitate, and the next person to widen a parameter on any
+ * of the other six silently reopens the same hole.
+ *
+ * **Limit, stated because it is real:** contravariant checking requires
+ * `strictFunctionTypes` (implied by `strict`) in the CONSUMER's tsconfig. A
+ * downstream project compiling without it falls back to bivariance, compiles a
+ * stale implementor, and drops `would_deny` records at runtime. That flag is
+ * outside this package's control, so the guarantee here is "strict consumers
+ * get a compile error", not "no consumer can get this wrong".
+ *
+ * Pinned by `audit-types-variance.test.ts`, whose `@ts-expect-error` probe
+ * fails with TS2578 if any of these reverts to method shorthand.
+ */
 export interface IAuditLogger {
   /** Log an audit event */
-  log(input: AuditEventInput): void;
+  log: (input: AuditEventInput) => void;
 
   /** Log a tool invocation */
-  logToolInvocation(opts: ToolInvocationAuditOpts): void;
+  logToolInvocation: (opts: ToolInvocationAuditOpts) => void;
 
-  /** Log a policy decision */
-  logPolicyDecision(opts: PolicyDecisionAuditOpts): void;
+  /** Log a policy decision. See the interface note on parameter variance. */
+  logPolicyDecision: (opts: PolicyDecisionAuditOpts) => void;
 
   /** Log a security event */
-  logSecurityEvent(opts: SecurityEventAuditOpts): void;
+  logSecurityEvent: (opts: SecurityEventAuditOpts) => void;
 
   /** Log a rate limit violation */
-  logRateLimitViolation(opts: RateLimitAuditOpts): void;
+  logRateLimitViolation: (opts: RateLimitAuditOpts) => void;
 
   /** Log an authority-tier transition (promotion/demotion) — Epic D, #3842. */
-  logTierTransition(opts: TierTransitionAuditOpts): void;
+  logTierTransition: (opts: TierTransitionAuditOpts) => void;
 
   /** Flush pending events */
-  flush(): Promise<void>;
+  flush: () => Promise<void>;
 
   /** Close the logger */
-  close(): Promise<void>;
+  close: () => Promise<void>;
 }
 
 // ============================================================================
@@ -379,16 +434,51 @@ export interface ToolInvocationAuditOpts {
   durationMs?: number | undefined;
   errorMessage?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
+  /**
+   * The policy verdict for this invocation, when a rule fired (#5228 review).
+   *
+   * Only `would_deny` reaches here: a real `deny` returns before the handler
+   * runs, so it produces no invocation record at all. Set on EVERY near-miss
+   * invocation, including those whose separate policy record was sampled out —
+   * otherwise an executed near-miss would be indistinguishable from a call no
+   * rule touched, which is the inference this change exists to break.
+   */
+  policyDecision?: PolicyAuditDecision | undefined;
 }
+
+/**
+ * The verdict a policy evaluation reached.
+ *
+ * `would_deny` (#4991) is warn mode: a rule fired, but the firewall allowed the
+ * call anyway. It is deliberately NOT `deny` — recording it as a denial would
+ * assert an enforcement that never happened — and NOT `allow`, which would
+ * erase the only signal the warn-mode soak produces. `#4988`'s enforce decision
+ * is read from these records, so the instrument has to be able to say
+ * "a rule would have stopped this" without lying in either direction.
+ *
+ * BREAKING for implementors of {@link IAuditLogger} (ratified 5/6, #4991):
+ * TypeScript's method-parameter bivariance means an out-of-tree implementor
+ * typed against the old two-value union still COMPILES and then receives
+ * `would_deny` at runtime, falling through whatever its `=== 'deny'` branch
+ * does. The major version bump is the only thing that makes those implementors
+ * look.
+ */
+export type PolicyAuditDecision = 'allow' | 'deny' | 'would_deny';
 
 export interface PolicyDecisionAuditOpts {
   policyName: string;
-  decision: 'allow' | 'deny';
+  decision: PolicyAuditDecision;
   reason: string;
   toolName: string;
   actor: AuditActor;
   requestId?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
+  /**
+   * Which occurrence of this `{tool, rule}` near-miss this record represents
+   * (#5228 review). Set only for a sampled `would_deny`; absent means every
+   * occurrence was recorded.
+   */
+  occurrence?: number | undefined;
 }
 
 export interface SecurityEventAuditOpts {

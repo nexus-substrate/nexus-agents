@@ -22,7 +22,7 @@ import {
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
-import type { IAuditLogger } from '../../audit/audit-types.js';
+import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import {
   sanitizeToolInput,
@@ -31,6 +31,7 @@ import {
 } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalPolicyFirewall } from './policy-registry.js';
+import { recordPolicyVerdict } from './policy-audit-emit.js';
 
 export type { ToolResult };
 
@@ -212,9 +213,30 @@ interface PolicyCheckOptions {
 }
 
 /**
+ * What the policy evaluation produced: the denial result to return (if any),
+ * and the verdict to record on the chain.
+ *
+ * The verdict is returned separately because it is NOT derivable from the
+ * result (#4991). In warn mode a rule fires and the firewall allows anyway, so
+ * `result` is null exactly as it is for an ordinary allow — the two are
+ * indistinguishable downstream unless the decision travels with it.
+ */
+interface PolicyCheckOutcome {
+  readonly result: ToolResult | null;
+  /** `null` when no rule fired — an ordinary allow, which is not recorded. */
+  readonly verdict: PolicyAuditDecision | null;
+  /**
+   * The rule that fired, when one did. Carried out so the near-miss sampler can
+   * key on `{tool, rule}` — sampling on the tool alone would let one noisy rule
+   * suppress a different rule's first occurrence on the same tool.
+   */
+  readonly ruleName?: string | undefined;
+}
+
+/**
  * Evaluates policy firewall and returns error if denied.
  */
-function checkPolicy(opts: PolicyCheckOptions): ToolResult | null {
+function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
   const ctxOpts = {
     mode: opts.mode,
     ...(opts.allowedPaths && { allowedPaths: opts.allowedPaths }),
@@ -226,10 +248,30 @@ function checkPolicy(opts: PolicyCheckOptions): ToolResult | null {
       reason: decision.reason,
       ruleName: decision.ruleName,
     });
-    return policyDeniedError(decision.reason, opts.requestId);
+    return {
+      result: policyDeniedError(decision.reason, opts.requestId),
+      verdict: 'deny',
+      ruleName: decision.ruleName,
+    };
   }
+
+  // Warn mode: the evaluator sets `overriddenByWarnMode` when a rule denied and
+  // the mode allowed anyway. Read that flag and nothing else — not the '[WARN
+  // MODE]' reason prefix (display copy, breaks on a reword), and not the
+  // presence of `ruleName` on an allowed decision. The latter was the first
+  // implementation and a panel rejected it: naming the rule that PERMITTED an
+  // action is ordinary practice, so that inference would start reporting
+  // authorized calls as near-misses the day an allow rule sets `ruleName`.
+  if (decision.overriddenByWarnMode === true) {
+    opts.logger.debug('Policy would have denied (warn mode)', {
+      reason: decision.reason,
+      ruleName: decision.ruleName,
+    });
+    return { result: null, verdict: 'would_deny', ruleName: decision.ruleName };
+  }
+
   opts.logger.debug('Policy check passed', { reason: decision.reason });
-  return null;
+  return { result: null, verdict: null };
 }
 
 /**
@@ -246,11 +288,11 @@ function runPolicyCheck(
   mode: ExecutionMode,
   logger: ILogger,
   requestContext: RequestContext
-): ToolResult | null {
+): { error: ToolResult | null; nearMiss: boolean } {
   const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
-  if (!firewall) return null;
+  if (!firewall) return { error: null, nearMiss: false };
 
-  const pResult = checkPolicy({
+  const { result, verdict, ruleName } = checkPolicy({
     firewall,
     toolName: config.toolName,
     args: sanitizedArgs,
@@ -259,10 +301,19 @@ function runPolicyCheck(
     logger,
     requestId: requestContext.requestId,
   });
-  if (pResult && config.auditLogger) {
-    emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
+
+  // Emitted for a real denial AND for a warn-mode near-miss (#4991). An
+  // ordinary allow (verdict null) is not recorded: emitting every permitted
+  // call would bury the soak signal it exists to surface.
+  if (verdict !== null && config.auditLogger) {
+    recordPolicyVerdict(config, requestContext, verdict, ruleName);
   }
-  return pResult;
+  // #5228 review: the near-miss travels on regardless of whether the policy
+  // record above was sampled out. A `would_deny` lets the call EXECUTE, so its
+  // invocation record must not be indistinguishable from one where no rule
+  // fired — otherwise sampling, which exists to bound growth, would restore the
+  // silent-allow inference this change is meant to break.
+  return { error: result, nearMiss: verdict === 'would_deny' };
 }
 
 /**
@@ -293,64 +344,54 @@ async function executeHandler(
   return result;
 }
 
-/** Emits an audit event for a completed tool invocation. */
-function emitToolAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  result: ToolResult,
-  durationMs: number
-): void {
+interface ToolAuditEmission {
+  readonly auditLogger: IAuditLogger;
+  readonly toolName: string;
+  readonly ctx: RequestContext;
+  readonly outcome: AuditOutcome;
+  readonly durationMs: number;
+  /** A warn-mode rule fired for this call (#5228 review). */
+  readonly nearMiss: boolean;
+}
+
+/**
+ * Emits an audit event for a tool invocation, however it ended.
+ *
+ * ONE emitter for both exits, deliberately. The success path and the throw path
+ * previously had separate functions differing only in `outcome`, and the
+ * near-miss annotation was added to the success one alone — so a warn-mode
+ * near-miss whose handler THREW produced an `outcome: 'error'` record with no
+ * policy annotation, indistinguishable from a clean call that errored. That is
+ * the inference this change exists to break, on the path where an action ran
+ * and did not complete cleanly, which is the more review-worthy case.
+ *
+ * Two exits with one shared obligation is exactly the seam a duplicated emitter
+ * lets you wire half of. Merging them makes the annotation structural rather
+ * than something each caller has to remember.
+ */
+function emitToolAudit({
+  auditLogger,
+  toolName,
+  ctx,
+  outcome,
+  durationMs,
+  nearMiss,
+}: ToolAuditEmission): void {
   const actor = actorFromContext(ctx);
-  const outcome = resultToOutcome(result.isError, false);
   auditLogger.logToolInvocation({
     toolName,
     outcome,
     actor,
     requestId: ctx.requestId,
     durationMs,
-  });
-}
-
-/**
- * Emits an audit event when a tool handler throws (or returns a rejected
- * Promise) — closes the audit-trail gap where unexpected exceptions left
- * no auditor record (security-review fallout from #2191).
- */
-function emitToolAuditException(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  durationMs: number
-): void {
-  const actor = actorFromContext(ctx);
-  auditLogger.logToolInvocation({
-    toolName,
-    outcome: 'error',
-    actor,
-    requestId: ctx.requestId,
-    durationMs,
+    // The fact the sampler must never suppress: this call EXECUTED and a rule
+    // would have denied it. The policy record carries the detail and may be
+    // sampled; this says the action itself was not clean, on every occurrence.
+    ...(nearMiss ? { policyDecision: 'would_deny' as const } : {}),
   });
 }
 
 /** Emits an audit event for a policy denial. */
-function emitPolicyAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext,
-  reason: string
-): void {
-  const actor = actorFromContext(ctx);
-  auditLogger.logPolicyDecision({
-    policyName: 'default',
-    decision: 'deny',
-    reason,
-    toolName,
-    actor,
-    requestId: ctx.requestId,
-  });
-}
-
 /** Emits an audit event for a rate limit violation. */
 function emitRateLimitAudit(
   auditLogger: IAuditLogger,
@@ -398,9 +439,9 @@ function runPreChecks(
   mode: ExecutionMode,
   requestContext: RequestContext,
   logger: ILogger
-): { error: ToolResult | null; sanitizedArgs: unknown } {
+): { error: ToolResult | null; sanitizedArgs: unknown; nearMiss: boolean } {
   const sizeResult = checkInputSize(args, logger, requestContext.requestId);
-  if (sizeResult) return { error: sizeResult, sanitizedArgs: args };
+  if (sizeResult) return { error: sizeResult, sanitizedArgs: args, nearMiss: false };
 
   // Sanitize tool input: strip XML injection tags, detect injection patterns (Issue #828)
   const sanitizeResult = sanitizeToolInput(args);
@@ -409,21 +450,21 @@ function runPreChecks(
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)
   const tierError = checkSecurityTier(config, sanitizeResult, logger);
-  if (tierError !== null) return { error: tierError, sanitizedArgs };
+  if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false };
 
   if (config.rateLimiter) {
     const rlResult = checkRateLimit(config.rateLimiter, logger);
     if (rlResult) {
       if (config.auditLogger)
         emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
-      return { error: rlResult, sanitizedArgs };
+      return { error: rlResult, sanitizedArgs, nearMiss: false };
     }
   }
 
-  const pResult = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
-  if (pResult) return { error: pResult, sanitizedArgs };
+  const policy = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
+  if (policy.error) return { error: policy.error, sanitizedArgs, nearMiss: policy.nearMiss };
 
-  return { error: null, sanitizedArgs };
+  return { error: null, sanitizedArgs, nearMiss: policy.nearMiss };
 }
 
 /**
@@ -469,18 +510,17 @@ export function createSecureHandler(
       requestLogger.info('Tool invocation started');
     }
 
-    const { error: preCheckError, sanitizedArgs } = runPreChecks(
-      config,
-      args,
-      mode,
-      requestContext,
-      requestLogger
-    );
+    const {
+      error: preCheckError,
+      sanitizedArgs,
+      nearMiss,
+    } = runPreChecks(config, args, mode, requestContext, requestLogger);
     if (preCheckError) return preCheckError;
 
     return executeAndAudit(handler, sanitizedArgs, config, {
       requestContext,
       requestLogger,
+      nearMiss,
       logLifecycle: inherited === undefined,
     });
   };
@@ -497,6 +537,14 @@ interface Invocation {
   readonly requestLogger: ILogger;
   /** False when the middleware chain already brackets this call (#4981). */
   readonly logLifecycle: boolean;
+  /**
+   * A warn-mode policy rule fired for this call (#5228 review).
+   *
+   * Carried onto the invocation record whether or not the policy record itself
+   * was sampled, so an executed near-miss is never indistinguishable from a
+   * call no rule touched.
+   */
+  readonly nearMiss: boolean;
 }
 
 async function executeAndAudit(
@@ -517,25 +565,28 @@ async function executeAndAudit(
     );
     sanitizeToolResult(result, requestLogger);
     if (config.auditLogger) {
-      emitToolAudit(
-        config.auditLogger,
-        config.toolName,
-        requestContext,
-        result,
-        getTimeProvider().now() - execStartTime
-      );
+      emitToolAudit({
+        auditLogger: config.auditLogger,
+        toolName: config.toolName,
+        ctx: requestContext,
+        outcome: resultToOutcome(result.isError, false),
+        durationMs: getTimeProvider().now() - execStartTime,
+        nearMiss: invocation.nearMiss,
+      });
     }
     return result;
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : 'Unknown error';
     requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);
     if (config.auditLogger) {
-      emitToolAuditException(
-        config.auditLogger,
-        config.toolName,
-        requestContext,
-        getTimeProvider().now() - execStartTime
-      );
+      emitToolAudit({
+        auditLogger: config.auditLogger,
+        toolName: config.toolName,
+        ctx: requestContext,
+        outcome: 'error',
+        durationMs: getTimeProvider().now() - execStartTime,
+        nearMiss: invocation.nearMiss,
+      });
     }
     // Closes a secret-leak path: adapter SDKs commonly echo offending
     // credentials in their error messages (e.g. Anthropic's

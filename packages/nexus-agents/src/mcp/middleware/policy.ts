@@ -147,6 +147,10 @@ export class PolicyFirewall implements IPolicyFirewall {
         allowed: true,
         reason: `[WARN MODE] Would be denied: ${decision.reason}`,
         ruleName: rule.name,
+        // The evaluator is the only place that KNOWS this was a denial the mode
+        // overrode; saying so explicitly is what lets the audit path record it
+        // without inferring the fact from other fields (#4991).
+        overriddenByWarnMode: true,
       };
     }
 
