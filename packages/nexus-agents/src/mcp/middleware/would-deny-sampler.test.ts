@@ -4,13 +4,16 @@
  * @module mcp/middleware/would-deny-sampler.test
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from '../../core/index.js';
 
 import {
   sampleWouldDeny,
   describeOccurrence,
   resetWouldDenySampler,
   MAX_TRACKED_PAIRS,
+  IDLE_RESET_MS,
 } from './would-deny-sampler.js';
 
 beforeEach(() => {
@@ -110,5 +113,78 @@ describe('the emitted record says which occurrence it is', () => {
       if (s.emit) last = s.occurrence;
     }
     expect(describeOccurrence(last)).toContain('64');
+  });
+});
+
+/**
+ * Idle reset (#5228 round-4 dissent).
+ *
+ * Without it the counter is process-lifetime state, so an occurrence on day 1
+ * and another on day 30 belong to one continuous sequence and the later one is
+ * sampled out. #4988 reads a soak window measured in days, so chronologically
+ * distinct incidents were collapsing into a single exponential backoff.
+ *
+ * Driven with a fake clock rather than real sleeps — the behaviour under test
+ * is a threshold comparison, and a test that waits ten minutes proves nothing a
+ * controlled clock does not.
+ */
+describe('a pair that goes quiet starts a new burst', () => {
+  let clock: FixedTimeProvider;
+
+  beforeEach(() => {
+    resetWouldDenySampler();
+    clock = new FixedTimeProvider(1_000_000);
+    setTimeProvider(clock);
+  });
+
+  afterEach(() => {
+    resetTimeProvider();
+  });
+
+  it('emits again after the idle threshold, rather than staying sampled out', () => {
+    // Burn the low ordinals: after 20 occurrences the next emit is at 32.
+    for (let i = 0; i < 20; i++) sampleWouldDeny('read_file', 'path-traversal');
+    expect(sampleWouldDeny('read_file', 'path-traversal').emit).toBe(false);
+
+    clock.advance(IDLE_RESET_MS + 1);
+
+    // A separate incident, not a continuation of the earlier loop.
+    expect(sampleWouldDeny('read_file', 'path-traversal')).toEqual({
+      emit: true,
+      occurrence: 1,
+    });
+  });
+
+  it('does not reset while the pair is still active', () => {
+    sampleWouldDeny('read_file', 'path-traversal');
+    // Just under the threshold, repeatedly — an ongoing loop must stay one
+    // sequence, or the sampling would not bound anything.
+    for (let i = 0; i < 5; i++) {
+      clock.advance(IDLE_RESET_MS - 1);
+      sampleWouldDeny('read_file', 'path-traversal');
+    }
+    expect(sampleWouldDeny('read_file', 'path-traversal').occurrence).toBe(7);
+  });
+
+  it('keeps a tight loop bounded across a long window', () => {
+    // The property the idle reset must not break: continuous activity is still
+    // logarithmic, not one record per occurrence.
+    let emitted = 0;
+    for (let i = 0; i < 1000; i++) {
+      clock.advance(1000);
+      if (sampleWouldDeny('read_file', 'path-traversal').emit) emitted++;
+    }
+    expect(emitted).toBe(10);
+  });
+
+  it('resets each pair on its own idleness', () => {
+    sampleWouldDeny('read_file', 'path-traversal');
+    sampleWouldDeny('read_file', 'path-traversal');
+    clock.advance(IDLE_RESET_MS + 1);
+    sampleWouldDeny('write_file', 'secret-scan');
+
+    // `read_file` went quiet and resets; `write_file` has only just started.
+    expect(sampleWouldDeny('read_file', 'path-traversal').occurrence).toBe(1);
+    expect(sampleWouldDeny('write_file', 'secret-scan').occurrence).toBe(2);
   });
 });

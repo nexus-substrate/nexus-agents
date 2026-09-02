@@ -83,3 +83,31 @@ The two emitters are merged into one that takes `outcome` from its caller, which
 makes the annotation structural rather than something each exit has to
 remember. Two exits sharing one obligation is exactly the seam a duplicated
 emitter lets you wire half of.
+
+**Sampling resets on idleness, so a burst is the unit rather than the process
+lifetime.** The counter was process-lifetime state, so a long-lived server
+treated an occurrence on day 1 and another on day 30 as one continuous sequence
+— by then it is so sparse the lifetime total must double to earn another record.
+#4988 reads a soak window measured in DAYS, so chronologically distinct
+incidents were collapsing into a single exponential backoff and the later ones
+were sampled out.
+
+A pair quiet for longer than `IDLE_RESET_MS` (10 minutes) starts over, so its
+next occurrence is ordinal 1 and is emitted.
+
+This is **not** the fixed-window scheme rejected earlier, and the earlier
+reasoning conflated the two. A fixed window suppresses occurrences intending to
+report the suppressed count when the window rolls, and loses that count if the
+pair goes quiet first. Nothing is pending here: every record is emitted when it
+happens and is self-contained, so an idle reset costs no information.
+
+Two consequences, both stated in the code: ordinals are never summed across
+records — a reader takes the maximum within a burst — and a tight loop stays
+logarithmic, which a test pins by running 1000 occurrences at 1-second spacing
+and asserting 10 records.
+
+Not adopted: keying the sampler on arguments or resource. It is the more
+thorough answer to "distinct events conflate", but it hands an attacker a
+log-flooding vector by varying inputs — trading a detail-hiding problem for a
+denial-of-service one — and the resource detail already rides in the `reason` of
+every emitted record.

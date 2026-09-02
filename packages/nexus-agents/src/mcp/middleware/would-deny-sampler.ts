@@ -31,6 +31,8 @@
  * @module mcp/middleware/would-deny-sampler
  */
 
+import { getTimeProvider } from '../../core/index.js';
+
 /**
  * Distinct `{tool, rule}` pairs tracked before the counter map is cleared.
  *
@@ -39,16 +41,43 @@
  * it produces are a floor, not an exact tally, so restarting understates rather
  * than fabricating.
  *
- * Read the floor as the MAXIMUM ordinal recorded for a pair, not the last one:
- * after a reset a pair that had reached 8192 emits `1` again, and the earlier
- * record is what still establishes how far it got. A cap this size is far above
- * any real rule set; reaching it means something is generating synthetic tool
- * names, which is itself worth seeing in the log.
+ * Read the floor as the MAXIMUM ordinal recorded for a pair WITHIN A BURST, not
+ * the last one and not a lifetime sum: after either reset — this cap, or
+ * {@link IDLE_RESET_MS} — a pair that had reached 8192 emits `1` again, and the
+ * earlier record is what still establishes how far that burst got. Ordinals are
+ * therefore never summed across records. A cap this size is far above any real
+ * rule set; reaching it means something is generating synthetic tool names,
+ * which is itself worth seeing in the log.
  */
 export const MAX_TRACKED_PAIRS = 500;
 
-/** Per-pair occurrence counts. Module state, reset by {@link resetWouldDenySampler}. */
-const occurrences = new Map<string, number>();
+/**
+ * Idle time after which a pair's sequence starts over.
+ *
+ * Without this the counter is process-lifetime state, so a long-lived server
+ * treats an occurrence on day 1 and another on day 30 as one continuous "loop"
+ * — by then the sequence is so sparse that the total must double to earn
+ * another record. #4988 reads a soak window measured in DAYS, so chronologically
+ * distinct incidents were collapsing into a single exponential sequence and the
+ * later ones were sampled out.
+ *
+ * This resets on IDLENESS, which is not the fixed-window scheme rejected
+ * earlier. A fixed window suppresses occurrences intending to report the
+ * suppressed count when the window rolls, and loses that count if the pair goes
+ * quiet first. Nothing is pending here: every record is emitted when it happens
+ * and is self-contained, so an idle reset costs no information. The unit of
+ * sampling becomes the BURST, which is what "a loop" actually means.
+ */
+export const IDLE_RESET_MS = 10 * 60 * 1000;
+
+/** Per-pair occurrence count and when it was last seen. */
+interface PairState {
+  count: number;
+  lastSeenMs: number;
+}
+
+/** Module state, reset by {@link resetWouldDenySampler}. */
+const occurrences = new Map<string, PairState>();
 
 /** The key a near-miss is deduped on. */
 function pairKey(toolName: string, ruleName: string | undefined): string {
@@ -78,9 +107,14 @@ export interface WouldDenySample {
 export function sampleWouldDeny(toolName: string, ruleName: string | undefined): WouldDenySample {
   if (occurrences.size >= MAX_TRACKED_PAIRS) occurrences.clear();
 
+  const now = getTimeProvider().now();
   const key = pairKey(toolName, ruleName);
-  const occurrence = (occurrences.get(key) ?? 0) + 1;
-  occurrences.set(key, occurrence);
+  const prior = occurrences.get(key);
+  // A pair that has been quiet longer than the idle threshold starts a new
+  // burst, so its next occurrence is ordinal 1 and is emitted.
+  const stale = prior !== undefined && now - prior.lastSeenMs > IDLE_RESET_MS;
+  const occurrence = prior === undefined || stale ? 1 : prior.count + 1;
+  occurrences.set(key, { count: occurrence, lastSeenMs: now });
 
   return { emit: isPowerOfTwo(occurrence), occurrence };
 }
