@@ -9,6 +9,9 @@ import {
   isRateLimitLikeError,
   isRateLimitText,
   RATE_LIMIT_PATTERNS,
+  TRANSIENT_RATE_LIMIT_PATTERNS,
+  DURABLE_CAPACITY_PATTERNS,
+  isDurableCapacityText,
   parseRetryAfterMs,
   parseRetryAfterHeader,
   extractRetryAfterMs,
@@ -364,5 +367,56 @@ describe('toRateLimitError header capture (#4606)', () => {
       headers: new Headers({ 'retry-after': '600' }),
     });
     expect(toRateLimitError(error, 'openai').retryAfterMs).toBe(600_000);
+  });
+});
+
+/**
+ * Durable capacity caps vs transient throttles (#5359).
+ *
+ * The two sat in one list, so an exhausted credential was classified retryable
+ * and retried three times against a condition that cannot clear in seconds.
+ * Observed across four consecutive live 7-voter panels.
+ */
+describe('durable capacity caps are distinguished from transient throttles', () => {
+  it('classifies a spend ceiling as durable', () => {
+    // The exact message that burned three retries per vote, four runs running.
+    const msg = 'Key limit exceeded (total limit). Manage it using https://…';
+    expect(isDurableCapacityText(msg)).toBe(true);
+    // Still a rate limit for every existing call site — the union is unchanged.
+    expect(isRateLimitText(msg)).toBe(true);
+  });
+
+  it.each(['quota exceeded', 'usage limit reached'])('classifies %s as durable', (msg) => {
+    expect(isDurableCapacityText(msg)).toBe(true);
+  });
+
+  it.each([
+    'rate limit exceeded',
+    'HTTP 429 Too Many Requests',
+    'request throttled, retry shortly',
+    'requests per minute exceeded',
+    'tokens per minute exceeded',
+  ])('does not classify the transient %s as durable', (msg) => {
+    // These clear on their own. Treating one as durable would fail a voter fast
+    // for a condition that resolves within the minute — the mirror-image defect.
+    expect(isDurableCapacityText(msg)).toBe(false);
+    expect(isRateLimitText(msg)).toBe(true);
+  });
+
+  it('leaves an unrelated error in neither class', () => {
+    expect(isDurableCapacityText('connection reset by peer')).toBe(false);
+    expect(isRateLimitText('connection reset by peer')).toBe(false);
+  });
+
+  it('keeps the union equal to both halves', () => {
+    // The union is what every existing consumer reads, so it must not shrink.
+    expect([...RATE_LIMIT_PATTERNS].sort()).toEqual(
+      [...TRANSIENT_RATE_LIMIT_PATTERNS, ...DURABLE_CAPACITY_PATTERNS].sort()
+    );
+    // And the two halves must not overlap, or a pattern's class is ambiguous.
+    const overlap = TRANSIENT_RATE_LIMIT_PATTERNS.filter((p) =>
+      (DURABLE_CAPACITY_PATTERNS as readonly string[]).includes(p)
+    );
+    expect(overlap).toEqual([]);
   });
 });

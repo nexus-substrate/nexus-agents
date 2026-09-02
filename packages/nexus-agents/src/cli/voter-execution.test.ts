@@ -620,6 +620,56 @@ describe('voter-execution', () => {
       expect(mockAdapter.complete).toHaveBeenCalledTimes(1);
     });
 
+    // #5359: a durable capacity cap does not clear in seconds, so the remaining
+    // attempts are guaranteed-futile — and the waste is not local. The overall
+    // consensus deadline is a SHARED budget, so burning it here starved a
+    // healthy voter on a different adapter in four consecutive live runs.
+    it('abandons retries immediately on a durable capacity cap', async () => {
+      const capResponse: MockCompletionResult = {
+        ok: false,
+        error: new ModelError(
+          'Key limit exceeded (total limit). Manage it using https://example.test/keys/abc'
+        ),
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(capResponse);
+
+      const result = await executeWithRetries({
+        role: 'ai_ml',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 2,
+      });
+
+      expect(result.ok).toBe(false);
+      // One attempt, not three. The budget it would have burned goes to the
+      // #3587 fallback, which is what actually recovers the voice.
+      expect(mockAdapter.complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('still retries a transient throttle the full number of times', async () => {
+      const throttled: MockCompletionResult = {
+        ok: false,
+        error: new ModelError('rate limit exceeded, retry shortly'),
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(throttled);
+
+      const result = await executeWithRetries({
+        role: 'ai_ml',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 2,
+      });
+
+      expect(result.ok).toBe(false);
+      // The mirror-image defect would be failing fast on a condition that
+      // clears within the minute. Retrying is correct here.
+      expect(mockAdapter.complete).toHaveBeenCalledTimes(3);
+    });
+
     it('should retry on failure', async () => {
       const failResponse: MockCompletionResult = {
         ok: false,

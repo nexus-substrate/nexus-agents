@@ -38,6 +38,9 @@ vi.mock('../agents/collaboration/event-bus.js', () => ({
 vi.mock('./rate-limit-detector.js', () => ({
   isRateLimitText: vi.fn((text: string) => text.toLowerCase().includes('rate limit')),
   isRateLimitLikeError: vi.fn().mockReturnValue(false),
+  // #5359: a DURABLE cap is counted against the breaker, unlike a transient
+  // throttle. Default false so the existing cases keep their meaning.
+  isDurableCapacityError: vi.fn().mockReturnValue(false),
   toRateLimitError: vi.fn().mockReturnValue({ message: 'rate limit', retryAfterMs: undefined }),
   recordRateLimitEvent: vi.fn(),
 }));
@@ -46,6 +49,7 @@ import { createAutoAdapter } from './auto-adapter.js';
 import { ResilientAdapter } from './resilient-adapter.js';
 import {
   isRateLimitLikeError,
+  isDurableCapacityError,
   toRateLimitError,
   recordRateLimitEvent,
 } from './rate-limit-detector.js';
@@ -86,6 +90,10 @@ function setupDefaultMocks(): void {
   );
   mockCountTokens.mockReturnValue(Promise.resolve(42));
   mockValidateConfig.mockReturnValue(ok(undefined));
+  // #5359: reset per test — `vi.clearAllMocks()` clears call records but keeps
+  // implementations, so a case that sets this true would otherwise leak into
+  // every sibling and start counting rate limits against the breaker.
+  vi.mocked(isDurableCapacityError).mockReturnValue(false);
   vi.mocked(createAutoAdapter).mockReturnValue(Promise.resolve(makeSelection()));
 }
 
@@ -614,6 +622,38 @@ describe('ResilientAdapter', () => {
       for (const call of allLogCalls) {
         expect(JSON.stringify(call)).not.toContain('sk-SECRET');
       }
+    });
+
+    // #5359: the counterpart, and the more consequential half. Excluding a
+    // TRANSIENT throttle from the breaker is right — an ordinary 7-voter panel
+    // trips a per-minute limit while plenty of quota remains, and opening on
+    // that would empty the candidate pool for a condition clearing within the
+    // minute. Excluding a DURABLE cap is wrong: it never clears, so a breaker
+    // that never opens means every subsequent call pays the same futile
+    // retries against the same dead credential.
+    it('counts a durable capacity cap against the breaker', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const recordFailureSpy = vi.spyOn(breaker, 'recordFailure');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const capError = new ModelError('Key limit exceeded (total limit)', {
+        code: ErrorCode.MODEL_RATE_LIMITED,
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(capError)));
+      // Matches BOTH predicates, which is the point: it is a rate limit, and
+      // it is durable. The durable arm must win.
+      vi.mocked(isRateLimitLikeError).mockReturnValue(true);
+      vi.mocked(isDurableCapacityError).mockReturnValue(true);
+      vi.mocked(toRateLimitError).mockReturnValue({
+        message: 'Key limit exceeded (total limit)',
+        retryAfterMs: undefined,
+      } as unknown as ReturnType<typeof toRateLimitError>);
+
+      await failingAdapter.complete({ messages: [] });
+
+      expect(recordFailureSpy).toHaveBeenCalled();
     });
 
     it('does not double-count rate-limit failures against the breaker', async () => {
