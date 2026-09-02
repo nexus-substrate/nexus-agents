@@ -1897,6 +1897,24 @@ function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
   const { toolCount: t, skillCount: s, agentCount: a } = c;
   return [
     {
+      // #5218: the governance stamp had TWO writers. `generateVersionSection`
+      // computes it into CLAUDE.md's own markers, while AGENTS.md carried a
+      // hand-held copy INSIDE the `AGNOSTIC:BODY` slice that
+      // `injectClaudeAgnosticBlock` copies verbatim into CLAUDE.md. Editing any
+      // of the five governance sources moved the computed date, CLAUDE.md got
+      // the new one, AGENTS.md kept the old one — and the #3446 staleness check
+      // then failed on an unrelated PR, telling the author to "edit the
+      // agnostic prose in AGENTS.md" when nothing about the prose was wrong.
+      //
+      // Writing both from the SAME computed value removes the disagreement at
+      // its source rather than reconciling it afterwards. Safe from feedback:
+      // AGENTS.md is not one of the five sources `getGovernanceSourceDate()`
+      // reads, so stamping it cannot move the stamp.
+      path: AGENTS_MD_PATH,
+      pattern: /_Governance Version: \d{4}-\d{2}-\d{2}_/,
+      replacement: `_Governance Version: ${getGovernanceSourceDate()}_`,
+    },
+    {
       path: AGENTS_MD_PATH,
       pattern: /for all \d+ skills\./,
       replacement: `for all ${String(s)} skills.`,
