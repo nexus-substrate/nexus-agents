@@ -1,5 +1,193 @@
 # nexus-agents
 
+## 7.0.0
+
+### Major Changes
+
+- [#5228](https://github.com/nexus-substrate/nexus-agents/pull/5228) [`9fb2d2b`](https://github.com/nexus-substrate/nexus-agents/commit/9fb2d2b3e2176ea4a8afb0634edb80942120398e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(audit)!: record warn-mode policy near-misses as `would_deny` ([#4991](https://github.com/nexus-substrate/nexus-agents/issues/4991))
+
+  **BREAKING:** `PolicyDecisionAuditOpts.decision` widens from `'allow' | 'deny'`
+  to the new exported `PolicyAuditDecision` = `'allow' | 'deny' | 'would_deny'`.
+  Additive for callers; **breaking for implementors of `IAuditLogger`**, who can
+  now receive a third value.
+
+  Implementors DO get a compile error, and closing that hole is part of this
+  change. **Every member of `IAuditLogger` and `IAuditStorage`** is now declared
+  as a function **property** rather than a method. TypeScript exempts method-shorthand
+  parameters from `strictFunctionTypes` and checks them bivariantly, so as a
+  method the widened union would have let a stale implementor keep compiling and
+  then receive `would_deny` at runtime — silently dropping the audit record or
+  throwing inside the authorization path. Function-property syntax restores
+  contravariant parameter checking, so a handler accepting only
+  `'allow' | 'deny'` now fails to type-check. If you implement `IAuditLogger`,
+  widen the parameter to `PolicyAuditDecision` and handle `would_deny`.
+
+  A silent runtime break in an audit path is not something to ship behind a
+  changelog note when the same major bump can make it a compile error.
+
+  **This does not break class-based implementors.** An ES6 class using ordinary
+  method syntax satisfies a property signature, as does an object literal with
+  method shorthand — the only implementor a property signature rejects is one
+  whose parameter is _narrower_ than declared, i.e. exactly the unsound case. All
+  members are converted rather than only the one whose union widened: mixed
+  syntax is the dangerous state, because the next parameter widening on any
+  remaining method would silently reopen the same hole. `IAuditStorage` was
+  already mixed (`flush`/`close` properties, `write`/`query` methods) and is now
+  consistent. A scoped `@typescript-eslint/method-signature-style` rule enforces
+  it.
+
+  **Limit, stated because it is real:** contravariant checking requires
+  `strictFunctionTypes` (implied by `strict`) in the CONSUMER's tsconfig. A
+  project compiling without it falls back to bivariance and can still compile a
+  stale implementor. That flag is outside this package's control, so the
+  guarantee is "strict consumers get a compile error", not "no consumer can get
+  this wrong".
+
+  **Why.** In warn mode `PolicyFirewall.handleDenial` allows the call but a rule
+  fired. `checkPolicy` returned a result only on a real denial and the chain emit
+  was gated on that result, so a would-be denial produced one ephemeral
+  `logger.warn` and nothing durable. A reviewer running `verify_audit_chain` over
+  the warn-mode soak saw a clean chain and would conclude no rules fired — and
+  [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)'s enforce decision is read from exactly that window. The instrument could
+  not represent what it measured.
+
+  Recording it as `deny` was not an option either: that asserts an enforcement
+  that never happened. `would_deny` is a distinct value so a downstream consumer
+  alerting on `deny` does not fire on a near-miss.
+
+  Also fixed, and not previously noted on the issue: `logPolicyDecision` derived
+  **two** fields from `decision` by ternary. A third value fell through to
+  `severity: 'info'` (understating the signal) _and_ `outcome: 'denied'` — the
+  chain asserting a call was blocked when it ran. Both are now an exhaustive
+  switch with a `never` check, so the next verdict is a compile error rather than
+  a silent mis-mapping. `would_deny` maps to `warning` + `success`: `outcome`
+  describes what happened to the operation, and the call did run.
+
+  Detection reads a new explicit `PolicyDecision.overriddenByWarnMode` flag, set
+  by the evaluator, which is the only place that knows the mode overrode a
+  denial. An earlier revision inferred it from `allowed === true && ruleName !==
+undefined` and a consensus panel rejected that at the unanimous bar: naming the
+  rule that _permitted_ an action (`admin-override` vs `default-allow`) is
+  ordinary access-control practice, so the day an allow rule sets `ruleName`,
+  every authorized call it covered would have been recorded as a near-miss — and
+  [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) would read those as evidence for enforcing. A verdict derived from the
+  absence of an unrelated field is a coincidence, not a signal.
+
+  `PolicyDecision` gains one optional field, which is additive; the major bump is
+  driven solely by the audit decision union.
+
+### Patch Changes
+
+- [#5228](https://github.com/nexus-substrate/nexus-agents/pull/5228) [`9fb2d2b`](https://github.com/nexus-substrate/nexus-agents/commit/9fb2d2b3e2176ea4a8afb0634edb80942120398e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): sample repeated warn-mode near-misses so the chain cannot grow unbounded
+
+  Answers the review dissent on the `would_deny` change. [#4991](https://github.com/nexus-substrate/nexus-agents/issues/4991) makes a warn-mode
+  near-miss durable, which is what [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)'s enforce decision needs to read — but in
+  warn mode the call _proceeds_, so an agent looping against the same rule wrote
+  one chain record per iteration. A real `deny` halts the call and is
+  self-limiting; a near-miss is not.
+
+  Both obvious remedies fail, and the shape here is chosen because they do:
+
+  - **Suppressing silently** reproduces the very defect [#4991](https://github.com/nexus-substrate/nexus-agents/issues/4991) fixed — the chain
+    would again under-report what happened.
+  - **Time-windowing** loses the trailing count. A loop that fires ten thousand
+    times and then stops leaves its final window unreported, because the emit that
+    would have carried the count never arrives.
+
+  So near-misses are sampled on **occurrence**, not time: the 1st, 2nd, 4th, 8th …
+  of each `{tool, rule}` pair, with every written record naming its own ordinal.
+  Three properties follow:
+
+  1. **The first is always recorded** — a near-miss is never invisible, which is
+     the property [#4991](https://github.com/nexus-substrate/nexus-agents/issues/4991) exists to provide.
+  2. **Growth is logarithmic** — ten thousand occurrences produce fourteen
+     records.
+  3. **No trailing loss** — the last record written establishes "fired at least N
+     times" with no later flush needed, which is what ruled out time-windowing.
+
+  `deny` is never sampled. Dropping one would lose the record of an action that
+  was actually blocked, and it is already self-limiting.
+
+  The key is `{tool, rule}`, not tool alone, so a noisy rule cannot suppress a
+  different rule's first occurrence on the same tool. The counter map is bounded
+  at 500 pairs and clears wholesale on overflow — the ordinals are a floor
+  ("at least N"), so a reset understates rather than fabricating.
+
+  The ordinal is carried as a **typed, queryable field** (`policyOccurrence`) on
+  the audit record, alongside a human-readable note in `reason`.
+
+  The first version put it in `reason` alone, to avoid "a second schema widening".
+  Two reviewers rejected that and were right on both counts. A machine consumer
+  counting records would read 14 records as 14 near-misses when 10,000 occurred —
+  so the record did not structurally represent its own partial coverage, which is
+  the exact defect this PR exists to fix, reintroduced one field over. And the
+  stated justification did not hold: an **additive optional** field is a minor
+  change, not a second break, so nothing was being saved by omitting it.
+
+  `policy-audit-emit.ts` is split out of `secure-handler.ts`, which the added code
+  pushed past its line cap; the two functions are one concern.
+
+  **An executed near-miss is marked on its invocation record, always.** The review
+  raised the sharpest version of the sampling objection: a `would_deny` lets the
+  call _execute_, so sampling the policy record would leave the actions that
+  actually ran indistinguishable from calls no rule touched — restoring the
+  silent-allow inference this change exists to break.
+
+  Verified before acting: the action itself is never lost — `emitToolAudit` fires
+  unconditionally for every completed invocation. What was missing is that the
+  invocation record carried no policy annotation.
+
+  The two facts are now separated. The **policy** record carries the detail and is
+  sampled, because that is what grows. The **invocation** record carries
+  `policyDecision: 'would_deny'` on every single occurrence, because that is the
+  fact that must never be suppressed. Growth stays bounded — the flag rides on a
+  record emitted regardless — and no executed near-miss is ever falsely clean.
+
+  Only `would_deny` reaches an invocation record: a real `deny` returns before the
+  handler runs, so it produces none. `ToolInvocationAuditOpts.policyDecision` is
+  additive optional — minor, not a further break.
+
+  **Both exits, not one.** The first version of that fix annotated only the
+  success path. `emitToolAuditException` was a separate function differing from
+  `emitToolAudit` in nothing but `outcome`, and it was left unwired — so a
+  warn-mode near-miss whose handler THREW produced an `outcome: 'error'` record
+  with no policy annotation, indistinguishable from a clean call that errored.
+  That is the more review-worthy case, not the less: the action ran and did not
+  complete cleanly.
+
+  The two emitters are merged into one that takes `outcome` from its caller, which
+  makes the annotation structural rather than something each exit has to
+  remember. Two exits sharing one obligation is exactly the seam a duplicated
+  emitter lets you wire half of.
+
+  **Sampling resets on idleness, so a burst is the unit rather than the process
+  lifetime.** The counter was process-lifetime state, so a long-lived server
+  treated an occurrence on day 1 and another on day 30 as one continuous sequence
+  — by then it is so sparse the lifetime total must double to earn another record.
+  [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) reads a soak window measured in DAYS, so chronologically distinct
+  incidents were collapsing into a single exponential backoff and the later ones
+  were sampled out.
+
+  A pair quiet for longer than `IDLE_RESET_MS` (10 minutes) starts over, so its
+  next occurrence is ordinal 1 and is emitted.
+
+  This is **not** the fixed-window scheme rejected earlier, and the earlier
+  reasoning conflated the two. A fixed window suppresses occurrences intending to
+  report the suppressed count when the window rolls, and loses that count if the
+  pair goes quiet first. Nothing is pending here: every record is emitted when it
+  happens and is self-contained, so an idle reset costs no information.
+
+  Two consequences, both stated in the code: ordinals are never summed across
+  records — a reader takes the maximum within a burst — and a tight loop stays
+  logarithmic, which a test pins by running 1000 occurrences at 1-second spacing
+  and asserting 10 records.
+
+  Not adopted: keying the sampler on arguments or resource. It is the more
+  thorough answer to "distinct events conflate", but it hands an attacker a
+  log-flooding vector by varying inputs — trading a detail-hiding problem for a
+  denial-of-service one — and the resource detail already rides in the `reason` of
+  every emitted record.
+
 ## 6.3.17
 
 ### Patch Changes
