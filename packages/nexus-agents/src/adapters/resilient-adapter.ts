@@ -30,6 +30,7 @@ import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
 import {
   isRateLimitLikeError,
+  isDurableCapacityError,
   toRateLimitError,
   recordRateLimitEvent,
 } from './rate-limit-detector.js';
@@ -325,6 +326,24 @@ export class ResilientAdapter implements IResilientAdapter {
     // `categorizeError` does not), so a code-less MODEL_ERROR could otherwise
     // fire the telemetry branch yet fall through to a counted failure here,
     // double-counting against the threshold (#3423 review).
+    // #5359: a DURABLE capacity cap is excluded from this exemption. The
+    // exemption is right for a transient throttle — an ordinary panel trips a
+    // per-minute limit while plenty of quota remains, and opening a breaker on
+    // that would empty the candidate pool for a condition clearing within the
+    // minute. It is wrong for an exhausted credential, which does not clear:
+    // never counting it means the breaker never opens, so every subsequent call
+    // pays the same futile retries against the same dead key.
+    if (isDurableCapacityError(error)) {
+      this.circuitBreakerRegistry
+        .getBreaker(this.currentSelection.name as CliName)
+        .recordFailure(category);
+      this.logger.warn('Durable capacity cap recorded to circuit breaker', {
+        provider: adapter.providerId,
+        category,
+      });
+      return;
+    }
+
     if (category === 'rate_limit' || isRateLimitLikeError(error)) {
       return;
     }

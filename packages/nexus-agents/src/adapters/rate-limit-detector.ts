@@ -15,20 +15,56 @@ import { RateLimitError, getErrorMessage, getTimeProvider } from '../core/index.
 // ============================================================================
 
 /**
- * Canonical rate-limit detection patterns.
- * Shared by API adapters and CLI subprocess adapters. (Issue #1596)
+ * Patterns for a TRANSIENT throttle — one that clears on its own, in seconds.
+ *
+ * Retrying these is correct, and they must not open a circuit breaker: an
+ * ordinary 7-voter panel trips a per-minute limit while plenty of quota
+ * remains.
  */
-export const RATE_LIMIT_PATTERNS = [
+const TRANSIENT_RATE_LIMIT_PATTERNS = [
   'rate limit',
   'rate_limit',
   'too many requests',
   '429',
-  'quota exceeded',
-  'key limit',
   'throttl',
-  'usage limit',
   'requests per minute',
   'tokens per minute',
+] as const;
+
+/**
+ * Patterns for a DURABLE capacity cap — a spend or usage ceiling on the
+ * credential itself, which does not clear until a human raises it (#5359).
+ *
+ * These sat in one list with the transient patterns, so an exhausted key was
+ * classified retryable and retried three times against a condition that cannot
+ * change. Observed live across four consecutive 7-voter panels: an upstream
+ * gateway key over its total limit burned three ~9s retries per vote, and
+ * because `computeOverallConsensusDeadlineMs` budgets
+ * `timeoutMs * (maxRetries + 1)` as a SHARED wall-clock deadline, that waste
+ * starved a healthy voter on a different adapter. One dead credential cost two
+ * voices, on a panel where supermajority is 5 of 7.
+ *
+ * `usage limit` is the least certain of the three — some providers use it for
+ * a rolling window that does clear. It is grouped here because the observed
+ * failures were spend caps; revisit against real per-provider message text
+ * rather than wording alone if a false durable classification shows up.
+ */
+const DURABLE_CAPACITY_PATTERNS = ['quota exceeded', 'key limit', 'usage limit'] as const;
+
+/**
+ * Canonical rate-limit detection patterns — the union.
+ *
+ * The two halves are NOT exported: their only non-test consumer is this file,
+ * which the producer/consumer gate (#3024) rejects, and callers should ask the
+ * predicates rather than re-implement matching over a raw list.
+ *
+ * Kept as the union so every existing call site keeps its current meaning; the
+ * two consumers that need the distinction ask for it specifically (#5359).
+ * Shared by API adapters and CLI subprocess adapters. (Issue #1596)
+ */
+export const RATE_LIMIT_PATTERNS = [
+  ...TRANSIENT_RATE_LIMIT_PATTERNS,
+  ...DURABLE_CAPACITY_PATTERNS,
 ] as const;
 
 /**
@@ -38,6 +74,26 @@ export const RATE_LIMIT_PATTERNS = [
 export function isRateLimitText(text: string): boolean {
   const lower = text.toLowerCase();
   return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * True when the text names a DURABLE capacity cap rather than a transient
+ * throttle (#5359).
+ *
+ * Callers use this to decide two things a shared list cannot express:
+ * whether retrying is worth anything, and whether the failure should count
+ * toward a circuit breaker. Retrying a spend ceiling is guaranteed-futile work,
+ * and excluding it from the breaker keeps a dead credential being re-attempted
+ * on every subsequent call.
+ */
+export function isDurableCapacityText(text: string): boolean {
+  const lower = text.toLowerCase();
+  return DURABLE_CAPACITY_PATTERNS.some((p) => lower.includes(p));
+}
+
+/** {@link isDurableCapacityText} over an unknown error value. */
+export function isDurableCapacityError(error: unknown): boolean {
+  return isDurableCapacityText(getErrorMessage(error));
 }
 
 /**

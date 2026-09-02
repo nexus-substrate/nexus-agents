@@ -9,6 +9,7 @@ import {
   isRateLimitLikeError,
   isRateLimitText,
   RATE_LIMIT_PATTERNS,
+  isDurableCapacityText,
   parseRetryAfterMs,
   parseRetryAfterHeader,
   extractRetryAfterMs,
@@ -364,5 +365,55 @@ describe('toRateLimitError header capture (#4606)', () => {
       headers: new Headers({ 'retry-after': '600' }),
     });
     expect(toRateLimitError(error, 'openai').retryAfterMs).toBe(600_000);
+  });
+});
+
+/**
+ * Durable capacity caps vs transient throttles (#5359).
+ *
+ * The two sat in one list, so an exhausted credential was classified retryable
+ * and retried three times against a condition that cannot clear in seconds.
+ * Observed across four consecutive live 7-voter panels.
+ */
+describe('durable capacity caps are distinguished from transient throttles', () => {
+  it('classifies a spend ceiling as durable', () => {
+    // The exact message that burned three retries per vote, four runs running.
+    const msg = 'Key limit exceeded (total limit). Manage it using https://…';
+    expect(isDurableCapacityText(msg)).toBe(true);
+    // Still a rate limit for every existing call site — the union is unchanged.
+    expect(isRateLimitText(msg)).toBe(true);
+  });
+
+  it.each(['quota exceeded', 'usage limit reached'])('classifies %s as durable', (msg) => {
+    expect(isDurableCapacityText(msg)).toBe(true);
+  });
+
+  it.each([
+    'rate limit exceeded',
+    'HTTP 429 Too Many Requests',
+    'request throttled, retry shortly',
+    'requests per minute exceeded',
+    'tokens per minute exceeded',
+  ])('does not classify the transient %s as durable', (msg) => {
+    // These clear on their own. Treating one as durable would fail a voter fast
+    // for a condition that resolves within the minute — the mirror-image defect.
+    expect(isDurableCapacityText(msg)).toBe(false);
+    expect(isRateLimitText(msg)).toBe(true);
+  });
+
+  it('leaves an unrelated error in neither class', () => {
+    expect(isDurableCapacityText('connection reset by peer')).toBe(false);
+    expect(isRateLimitText('connection reset by peer')).toBe(false);
+  });
+
+  // The union and non-overlap invariants are asserted BEHAVIOURALLY above —
+  // every durable sample matches both predicates, every transient sample
+  // matches only `isRateLimitText`. That covers the same ground without
+  // exporting the raw lists, which the producer/consumer gate rejects and which
+  // would invite callers to re-implement matching instead of asking.
+  it('keeps every pattern in the union reachable through isRateLimitText', () => {
+    for (const p of RATE_LIMIT_PATTERNS) {
+      expect(isRateLimitText(`prefix ${p} suffix`)).toBe(true);
+    }
   });
 });

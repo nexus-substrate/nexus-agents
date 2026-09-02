@@ -57,7 +57,7 @@ export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
  * Detects whether an error message indicates a rate-limit condition.
  * Delegates to canonical rate-limit-detector (DRY consolidation Issue #1596).
  */
-import { isRateLimitLikeError } from '../adapters/rate-limit-detector.js';
+import { isRateLimitLikeError, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 
 /** @see isRateLimitLikeError — re-exported for backward compatibility */
 export function isRateLimitError(message: string): boolean {
@@ -410,6 +410,30 @@ export interface RetryOptions {
  * Executes vote attempts with retry logic.
  * Returns the error message from last failed attempt, or undefined if successful.
  */
+/**
+ * Record that a voter gave up its remaining attempts (#5359).
+ *
+ * A DURABLE capacity cap — a spend or usage ceiling on the credential — does
+ * not clear in seconds, so the remaining attempts are guaranteed-futile. The
+ * waste is not local either: `computeOverallConsensusDeadlineMs` budgets
+ * `timeoutMs * (maxRetries + 1)` as a SHARED wall-clock deadline across the
+ * panel, so burning it here starved a healthy voter on a different adapter in
+ * four consecutive live runs. Failing fast hands the remaining budget to the
+ * #3587 fallback, which is what actually recovers the voice.
+ */
+function logAbandonedRetries(
+  logger: ILogger,
+  role: VoterRole,
+  attempt: number,
+  maxRetries: number
+): void {
+  logger.warn('Durable capacity cap — abandoning retries for this voter', {
+    role,
+    attempt: attempt + 1,
+    remainingAttemptsSkipped: maxRetries - attempt,
+  });
+}
+
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<{ vote: Vote; usage: VoteUsage; ok: true } | { error: string; ok: false }> {
@@ -443,6 +467,7 @@ export async function executeWithRetries(
 
     lastError = result.error;
     const rateLimited = isRateLimitError(lastError);
+    const durableCap = isDurableCapacityText(lastError);
     logger.info('Vote attempt timing', {
       role,
       attempt: attempt + 1,
@@ -456,7 +481,13 @@ export async function executeWithRetries(
       maxRetries: maxRetries + 1,
       error: lastError,
       ...(rateLimited ? { rateLimited: true } : {}),
+      ...(durableCap ? { durableCap: true } : {}),
     });
+
+    if (durableCap) {
+      logAbandonedRetries(logger, role, attempt, maxRetries);
+      break;
+    }
   }
 
   return { error: lastError !== '' ? lastError : 'Unknown error after all retries', ok: false };
