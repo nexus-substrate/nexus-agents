@@ -50,8 +50,25 @@ function printVoteDetails(votes: readonly AgentVoteResult[], verbose: boolean): 
   writeLine('');
 }
 
-/** How much of a voter's reasoning the verbose row carries. */
-const MAX_REASONING_CHARS = 600;
+/**
+ * Runaway guard on a single voter's reasoning — NOT an editorial limit.
+ *
+ * The first version of this clipped at 600 characters, on the theory that seven
+ * multi-paragraph rationales would bury the tally. Measured against a real
+ * 7-voter panel, every single voter exceeded it and the shortest rationale was
+ * 1567 characters, so 600 removed roughly 80% of the median argument rather
+ * than trimming verbosity. A blocking dissent was cut mid-sentence and its
+ * grounds were unrecoverable, because reasoning never reaches the persisted
+ * record (#5339's open half) — which cost a full review round.
+ *
+ * The concern the clip was for is already handled one level up: reasoning
+ * renders only under `--verbose`, and the default panel shows the tally alone.
+ * It was a second control on something the flag already controlled. So this
+ * bound exists solely to stop a pathological model response from flooding a
+ * terminal, is set far above any real rationale, and DISCLOSES itself when it
+ * fires rather than trailing off into an ellipsis.
+ */
+const REASONING_RUNAWAY_GUARD_CHARS = 20_000;
 
 /**
  * Render a voter's grounds beneath its row (#5339).
@@ -61,15 +78,16 @@ const MAX_REASONING_CHARS = 600;
  * blocking dissent recorded *that* it blocked and not *why*, and the grounds
  * were unrecoverable from any artifact without re-running the whole panel.
  *
- * Reasoning is verbose-only: the default panel is a scannable tally, and seven
- * multi-paragraph rationales inline would bury it.
+ * Reasoning is verbose-only: the default panel is a scannable tally.
  */
 function formatReasoning(reasoning: string): string {
   const trimmed = reasoning.trim();
   if (trimmed === '') return '';
-  const clipped =
-    trimmed.length > MAX_REASONING_CHARS ? `${trimmed.slice(0, MAX_REASONING_CHARS)}…` : trimmed;
-  const indented = clipped
+  const shown =
+    trimmed.length > REASONING_RUNAWAY_GUARD_CHARS
+      ? `${trimmed.slice(0, REASONING_RUNAWAY_GUARD_CHARS)}\n[reasoning truncated at ${String(REASONING_RUNAWAY_GUARD_CHARS)} characters]`
+      : trimmed;
+  const indented = shown
     .split('\n')
     .map((line) => `      ${colors.dim}${line}${colors.reset}`)
     .join('\n');

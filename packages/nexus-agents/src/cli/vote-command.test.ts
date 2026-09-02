@@ -221,6 +221,37 @@ describe('formatVoteRow reasoning (#5339)', () => {
     expect(row).toContain('Failing closed to high will bury teams');
   });
 
+  it('does not clip a real-length rationale', () => {
+    // Measured against a live 7-voter panel: every voter exceeded 600 chars and
+    // the SHORTEST rationale was 1567, so the original clip removed ~80% of the
+    // median argument. A blocking dissent was cut mid-sentence and, because
+    // reasoning never reaches the persisted record, was unrecoverable — which
+    // cost a full review round.
+    const realLength = 'x'.repeat(3400);
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({ vote: { decision: 'reject', reasoning: realLength, confidence: 0.9 } }),
+        { verbose: true }
+      )
+    );
+    expect(row).toContain(realLength);
+    expect(row).not.toContain('…');
+  });
+
+  it('discloses a runaway rationale rather than trailing off', () => {
+    const runaway = 'y'.repeat(25_000);
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({ vote: { decision: 'approve', reasoning: runaway, confidence: 0.9 } }),
+        { verbose: true }
+      )
+    );
+    // A guard that fires must say so. An ellipsis leaves a reader unable to tell
+    // a finished argument from an amputated one.
+    expect(row).toContain('reasoning truncated at 20000 characters');
+    expect(row.length).toBeLessThan(25_000);
+  });
+
   it('shows reasoning for approvals too, not just dissents', () => {
     const row = stripAnsi(
       formatVoteRow(

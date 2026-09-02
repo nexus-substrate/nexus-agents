@@ -255,6 +255,48 @@ describe('inject-governance inject', () => {
     });
   });
 
+  // #5218: the stamp had two writers — `generateVersionSection` computed it into
+  // CLAUDE.md, while AGENTS.md carried a hand-held copy inside the AGNOSTIC:BODY
+  // slice that gets copied verbatim into CLAUDE.md. Editing any of the five
+  // governance sources moved the computed date, CLAUDE.md took the new one,
+  // AGENTS.md kept the old, and the #3446 staleness check then failed on an
+  // unrelated PR. It broke main on 2026-09-02 exactly this way, after #5216
+  // touched `expert-config.ts`.
+  it('writes the same governance stamp into AGENTS.md and CLAUDE.md', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const stampOf = (file: string): string | undefined =>
+        /_Governance Version: (\d{4}-\d{2}-\d{2})_/.exec(readFileSync(box(file), 'utf-8'))?.[1];
+
+      const agents = stampOf('AGENTS.md');
+      const claude = stampOf('CLAUDE.md');
+
+      expect(agents).toBeDefined();
+      expect(claude).toBeDefined();
+      // Two files, one computed value. If these can drift, the staleness check
+      // fires on whichever PR happens to touch a governance source next.
+      expect(agents).toBe(claude);
+    });
+  });
+
+  it('leaves the staleness check passing after a governance source moves the stamp', async () => {
+    await withInjectSnapshot(async () => {
+      // Simulate what broke main: AGENTS.md holding an older stamp than the
+      // computed date. Before the fix, inject updated only CLAUDE.md and the
+      // check then reported the block stale.
+      const agentsPath = box('AGENTS.md');
+      const stale = readFileSync(agentsPath, 'utf-8').replace(
+        /_Governance Version: \d{4}-\d{2}-\d{2}_/,
+        '_Governance Version: 2000-01-01_'
+      );
+      writeFileSync(agentsPath, stale);
+
+      await runInject();
+      const { ok } = runCheck();
+      expect(ok).toBe(true);
+    });
+  });
+
   it('preserves governance markers', async () => {
     await withInjectSnapshot(async () => {
       await runInject();

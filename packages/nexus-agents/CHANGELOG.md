@@ -1,5 +1,68 @@
 # nexus-agents
 
+## 6.3.16
+
+### Patch Changes
+
+- [#5374](https://github.com/nexus-substrate/nexus-agents/pull/5374) [`0f15a6a`](https://github.com/nexus-substrate/nexus-agents/commit/0f15a6a624acadcb29a3bb6488c6d06d38f135a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): give the version stamp one writer ([#5218](https://github.com/nexus-substrate/nexus-agents/issues/5218))
+
+  **This was breaking `main`.** `Script Tests`, `Governance Drift Check` and
+  `Docs Success` were red on `8b080482`, and both open PRs inherited the failure.
+
+  The stamp had two independent writers. `generateVersionSection` computes it
+  from `getGovernanceSourceDate()` into CLAUDE.md's own markers, while AGENTS.md
+  carried a hand-held copy **inside** the `AGNOSTIC:BODY` slice that
+  `injectClaudeAgnosticBlock` copies verbatim into CLAUDE.md. Same line, two
+  writers, no reconciliation.
+
+  Editing any of the five governance sources moves the computed date. CLAUDE.md
+  took the new one, AGENTS.md kept the old, and the [#3446](https://github.com/nexus-substrate/nexus-agents/issues/3446) staleness check then
+  reported the generated block stale — telling the author to "edit the agnostic
+  prose in AGENTS.md" when nothing about the prose was wrong.
+
+  Concretely: [#5216](https://github.com/nexus-substrate/nexus-agents/issues/5216) annotated `BUILT_IN_EXPERTS`, which moved
+  `expert-config.ts`'s commit date to 2026-09-01. CLAUDE.md advanced; AGENTS.md
+  stayed at 2026-08-30; `main` went red on the next run.
+
+  The injector now writes AGENTS.md's stamp from the **same computed value**, so
+  the two cannot disagree. That removes the drift at its source rather than
+  reconciling it afterwards. No feedback loop: AGENTS.md is not among the five
+  sources `getGovernanceSourceDate()` reads, so stamping it cannot move the stamp.
+
+  Two regression tests, both mutation-verified: one asserts the stamps in the two
+  files are equal after inject; the other plants an older stamp in AGENTS.md —
+  reproducing the exact state that broke main — and asserts the check passes
+  afterwards. Removing the new writer fails both.
+
+  Injection remains idempotent, verified by running it three times and comparing
+  diffs.
+
+## 6.3.15
+
+### Patch Changes
+
+- [#5216](https://github.com/nexus-substrate/nexus-agents/pull/5216) [`0d621b3`](https://github.com/nexus-substrate/nexus-agents/commit/0d621b36fb5150581ebed44ba42d6cdfd299393e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: declare which assets ship and which are repo-only ([#5143](https://github.com/nexus-substrate/nexus-agents/issues/5143))
+
+  Nothing stated the split. Answering "are the governance documents packaged?"
+  meant reading `package.json#files`, listing an installed package, grepping for
+  runtime reads and checking two mirrors — a research task for a question with a
+  fixed answer.
+
+  `docs/development/PACKAGED_VS_REPO_ONLY.md` records it: what ships, what is
+  deliberately repo-only, the mirror pattern that lets the runtime use a
+  repo-only document's content without reading the file, and the two CLI paths
+  that legitimately need repo files and already detect their absence.
+
+  Also annotates `BUILT_IN_EXPERTS` with its source document and its gate. The
+  loop-tier mirror already had that; the expert mirror did not, so a reader had to
+  infer that `agents/*-expert.md` and the constant are kept in step by
+  `generate-agents-index.ts --check`.
+
+  The document leads with the failure it exists to prevent — [#5084](https://github.com/nexus-substrate/nexus-agents/issues/5084), where a
+  runtime asset was never copied to `dist/`, every installed copy enumerated zero
+  models for three CLIs, and nothing was red because the loaders fall back to `[]`.
+  Ends with a decision procedure for anyone adding a runtime file read.
+
 ## 6.3.14
 
 ### Patch Changes
