@@ -21,7 +21,7 @@ import { RateLimitError, getErrorMessage, getTimeProvider } from '../core/index.
  * ordinary 7-voter panel trips a per-minute limit while plenty of quota
  * remains.
  */
-export const TRANSIENT_RATE_LIMIT_PATTERNS = [
+const TRANSIENT_RATE_LIMIT_PATTERNS = [
   'rate limit',
   'rate_limit',
   'too many requests',
@@ -49,10 +49,14 @@ export const TRANSIENT_RATE_LIMIT_PATTERNS = [
  * failures were spend caps; revisit against real per-provider message text
  * rather than wording alone if a false durable classification shows up.
  */
-export const DURABLE_CAPACITY_PATTERNS = ['quota exceeded', 'key limit', 'usage limit'] as const;
+const DURABLE_CAPACITY_PATTERNS = ['quota exceeded', 'key limit', 'usage limit'] as const;
 
 /**
  * Canonical rate-limit detection patterns — the union.
+ *
+ * The two halves are NOT exported: their only non-test consumer is this file,
+ * which the producer/consumer gate (#3024) rejects, and callers should ask the
+ * predicates rather than re-implement matching over a raw list.
  *
  * Kept as the union so every existing call site keeps its current meaning; the
  * two consumers that need the distinction ask for it specifically (#5359).

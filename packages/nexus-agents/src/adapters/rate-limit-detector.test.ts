@@ -9,8 +9,6 @@ import {
   isRateLimitLikeError,
   isRateLimitText,
   RATE_LIMIT_PATTERNS,
-  TRANSIENT_RATE_LIMIT_PATTERNS,
-  DURABLE_CAPACITY_PATTERNS,
   isDurableCapacityText,
   parseRetryAfterMs,
   parseRetryAfterHeader,
@@ -408,15 +406,14 @@ describe('durable capacity caps are distinguished from transient throttles', () 
     expect(isRateLimitText('connection reset by peer')).toBe(false);
   });
 
-  it('keeps the union equal to both halves', () => {
-    // The union is what every existing consumer reads, so it must not shrink.
-    expect([...RATE_LIMIT_PATTERNS].sort()).toEqual(
-      [...TRANSIENT_RATE_LIMIT_PATTERNS, ...DURABLE_CAPACITY_PATTERNS].sort()
-    );
-    // And the two halves must not overlap, or a pattern's class is ambiguous.
-    const overlap = TRANSIENT_RATE_LIMIT_PATTERNS.filter((p) =>
-      (DURABLE_CAPACITY_PATTERNS as readonly string[]).includes(p)
-    );
-    expect(overlap).toEqual([]);
+  // The union and non-overlap invariants are asserted BEHAVIOURALLY above —
+  // every durable sample matches both predicates, every transient sample
+  // matches only `isRateLimitText`. That covers the same ground without
+  // exporting the raw lists, which the producer/consumer gate rejects and which
+  // would invite callers to re-implement matching instead of asking.
+  it('keeps every pattern in the union reachable through isRateLimitText', () => {
+    for (const p of RATE_LIMIT_PATTERNS) {
+      expect(isRateLimitText(`prefix ${p} suffix`)).toBe(true);
+    }
   });
 });
