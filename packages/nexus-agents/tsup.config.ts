@@ -15,11 +15,14 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'node22',
+  // #5388: tsup v8 strips `node:` prefixes by default. Harmless for legacy
+  // builtins (bare `fs` resolves), FATAL for `node:sqlite`, which Node exposes
+  // ONLY under the prefixed specifier — the stripped form builds cleanly and
+  // dies at import with `Cannot find package 'sqlite'`.
+  removeNodeProtocol: false,
   outDir: 'dist',
   // ts-morph uses CommonJS internally and must be external.
-  // better-sqlite3 is a native C++ addon and cannot be bundled.
   // ts-morph/typescript use CommonJS internally (require("fs")) and must be external.
-  // better-sqlite3 is a native C++ addon and cannot be bundled.
   // @ast-grep/lang-{python,go} (#4249 child C) resolve their `.so` grammar via a
   // `__dirname`-relative lookup (see @ast-grep/setup-lang's `resolvePrebuild`).
   // Bundling would rewrite `__dirname` to point at our `dist/` output instead of
@@ -28,7 +31,6 @@ export default defineConfig({
   external: [
     'ts-morph',
     '@ts-morph/common',
-    'better-sqlite3',
     'typescript',
     '@ast-grep/lang-python',
     '@ast-grep/lang-go',

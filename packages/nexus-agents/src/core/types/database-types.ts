@@ -12,8 +12,8 @@
 // ============================================================================
 
 /**
- * Minimal interface for better-sqlite3 Statement.
- * Compatible with the better-sqlite3 package API.
+ * Minimal interface for a prepared SQLite statement.
+ * Satisfied by `node:sqlite`'s StatementSync (#5388).
  */
 export interface ISQLiteStatement<T = unknown> {
   /**
@@ -49,8 +49,10 @@ export interface ISQLiteRunResult {
 // ============================================================================
 
 /**
- * Minimal interface for better-sqlite3 Database.
- * Compatible with the better-sqlite3 package API.
+ * Minimal interface for a SQLite database handle.
+ * Satisfied by `node:sqlite`'s DatabaseSync via `openSqliteDatabase` (#5388).
+ * ~30 helper signatures and ~12 test doubles are written against this, which is
+ * why swapping the engine underneath did not ripple outward.
  */
 export interface ISQLiteDatabase {
   /**

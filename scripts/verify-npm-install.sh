@@ -100,5 +100,27 @@ if [[ "$TOOL_COUNT" -lt 25 ]]; then
   fail "MCP tool count below sanity floor of 25 (got $TOOL_COUNT)" 6
 fi
 
+step "Phase 7: SQLite is actually usable (#5388)"
+# THE phase this file was missing. Install above already passes
+# `--ignore-scripts`, which is exactly the condition that broke end users: with
+# better-sqlite3 the native binding was never built, `npm install` still exited
+# 0, and the CLI died at runtime with "Could not locate the bindings file".
+#
+# Phases 1-6 all passed in that state, because not one of them touches a
+# SQLite-backed path — and Phase 5 explicitly tolerates a failing `doctor`. A
+# gate that cannot observe the breakage it is meant to catch is not a gate.
+#
+# `doctor` reports SQLite availability explicitly, so assert the POSITIVE
+# verdict rather than merely that doctor ran.
+SQLITE_OUT=$(nexus-agents doctor 2>&1 || true)
+if printf '%s' "$SQLITE_OUT" | grep -qiE 'SQLite[^\n]*Not available'; then
+  printf '%s\n' "$SQLITE_OUT" | grep -iE 'SQLite' >&2
+  fail "SQLite reported unavailable after an --ignore-scripts install (#5388)" 7
+fi
+if ! printf '%s' "$SQLITE_OUT" | grep -qiE 'SQLite'; then
+  fail "doctor no longer reports SQLite availability — Phase 7 cannot fail, so it is not a check" 7
+fi
+ok "SQLite available without any install script"
+
 step "All smoke tests passed"
 printf '✅ nexus-agents@%s installs and runs cleanly\n' "$ACTUAL_VERSION"

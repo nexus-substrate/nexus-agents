@@ -43,6 +43,7 @@ import {
   MODEL_STATS_SQL,
   wrapStorageError,
 } from './outcome-storage-helpers.js';
+import { openSqliteDatabase } from '../context/open-database.js';
 
 /** Maximum length for persisted error messages. Truncates to prevent data leakage. */
 const MAX_ERROR_MESSAGE_LENGTH = 200;
@@ -112,22 +113,13 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
     });
     return this.initPromise;
   }
-
+  // Stays async: this is a published Promise-returning API and its callers
+  // await it. The only await was the dynamic `better-sqlite3` import, which
+  // #5388 removed because `node:sqlite` is a synchronous builtin.
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async doInitialize(): Promise<Result<void, OutcomeStorageError>> {
     try {
-      const betterSqlite3Module = await import('better-sqlite3').catch((error: unknown) => {
-        this.logger.debug('Failed to import better-sqlite3', { error: String(error) });
-        return null;
-      });
-      if (betterSqlite3Module === null) {
-        return wrapStorageError(
-          new Error('better-sqlite3 not installed'),
-          'better-sqlite3 not installed. Install: npm install better-sqlite3',
-          { dbPath: this.dbPath }
-        );
-      }
-      const Database = betterSqlite3Module.default;
-      this.db = new Database(this.dbPath);
+      this.db = openSqliteDatabase(this.dbPath);
       this.createTables();
       this.initialized = true;
       this.logger.info('SQLiteOutcomeStorage initialized', { dbPath: this.dbPath });

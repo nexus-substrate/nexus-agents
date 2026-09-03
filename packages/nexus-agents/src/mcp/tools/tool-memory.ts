@@ -163,7 +163,7 @@ export function shutdownToolMemory(): void {
 
 /**
  * Reinitialize SQLite-based memory backends that failed during startup.
- * Useful after installing better-sqlite3 to enable full memory functionality.
+ * Useful after upgrading Node to enable full memory functionality.
  * @returns Status of each backend after reinitialization
  */
 export async function reinitializeMemoryBackends(): Promise<MemoryBackendStatus> {
@@ -446,7 +446,7 @@ export class ToolMemoryManager {
 
   /**
    * Re-initialize SQLite backends that failed during startup.
-   * Skips already-initialized backends. Useful after installing better-sqlite3.
+   * Skips already-initialized backends. Useful after upgrading Node.
    * @returns Status of each backend after reinitialization attempt
    */
   async reinitializeSqliteBackends(): Promise<MemoryBackendStatus> {

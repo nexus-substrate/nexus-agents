@@ -13,6 +13,14 @@
 // before any module loads core/logger.ts. See #2443.
 import './cli/cli-log-bootstrap.js';
 
+// #5388: node:sqlite is experimental on Node 22 and warns on first use. Memory
+// backends open a DB during ordinary startup, so filter that ONE warning before
+// anything can trigger it. CLI-only — a library consumer keeps their own
+// warning behaviour.
+import { suppressSqliteExperimentalWarning } from './cli/suppress-sqlite-warning.js';
+
+suppressSqliteExperimentalWarning();
+
 import { parseArgs } from 'node:util';
 import { createLogger } from './core/index.js';
 import { detectMode, isValidServerMode } from './cli/index.js';

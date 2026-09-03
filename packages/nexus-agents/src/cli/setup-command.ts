@@ -41,7 +41,7 @@ import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 import { generatePermissionsSnippet, buildPermissionsBanner } from './setup-permissions.js';
 // #2137: post-setup health gate. Surfaces install-time issues that are easy
-// to miss (better-sqlite3 native build, missing API keys, unwritable data
+// to miss (Node version for node:sqlite, missing API keys, unwritable data
 // dirs) inline at the end of setup, with copy-pasteable remediation.
 import { runVerify } from './verify-command.js';
 import { colors, symbols } from './ansi-output.js';
@@ -950,7 +950,7 @@ export interface SetupCommandOptions extends Partial<SetupOptions> {
  *
  * Also runs the post-setup health gate (#2137): after the configuration
  * steps complete, calls into `runVerify()` to surface install-time issues
- * that are easy to miss but break things at runtime (better-sqlite3 native
+ * that are easy to miss but break things at runtime (node:sqlite runtime
  * build, data dir writability, missing API keys). Health-gate warnings do
  * NOT fail setup — only `severity: 'hard'` failures do.
  *

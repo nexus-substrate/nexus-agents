@@ -164,7 +164,7 @@ export interface RegistryAdvisory {
 }
 
 /**
- * SQLite (better-sqlite3) availability check (#1249).
+ * SQLite (node:sqlite) availability check (#1249, #5388).
  */
 export interface SqliteCheck {
   readonly available: boolean;
@@ -260,7 +260,7 @@ export interface DoctorResult {
   readonly registryAdvisory: RegistryAdvisory;
   /** Learning persistence health check (#1017). */
   readonly learningPersistence: LearningPersistenceCheck;
-  /** SQLite (better-sqlite3) availability (#1249). */
+  /** SQLite (node:sqlite) availability (#1249, #5388). */
   readonly sqliteCheck: SqliteCheck;
   /** Data directory health (#1249). */
   readonly dataDirectory: DataDirectoryCheck;
@@ -672,15 +672,22 @@ function checkLearningPersistence(): LearningPersistenceCheck {
 }
 
 /**
- * Checks if better-sqlite3 is available (#1249).
+ * Checks if SQLite is available (#1249, #5388).
  * Memory backends (agentic, adaptive, typed, mobimem, decay) require it.
+ *
+ * Since #5388 this probes `node:sqlite`, a BUILTIN, so on a supported runtime
+ * it cannot be missing. The check is kept rather than deleted because it can
+ * still fail for a real reason: `node:sqlite` did not exist before Node 22.5.0,
+ * so an older runtime reports unavailable here instead of crashing later inside
+ * a memory backend. A check that can no longer fail would be worth removing;
+ * this one still can.
  *
  * Exported so `verify` (#2136) can reuse it without running the full doctor
  * pipeline.
  */
 export async function checkSqlite(): Promise<SqliteCheck> {
   try {
-    await import('better-sqlite3');
+    await import('node:sqlite');
     return { available: true, error: null };
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
@@ -688,8 +695,8 @@ export async function checkSqlite(): Promise<SqliteCheck> {
     return {
       available: false,
       error: isNotFound
-        ? 'better-sqlite3 not installed — 5 memory backends unavailable'
-        : `better-sqlite3 load error: ${msg}`,
+        ? `node:sqlite unavailable on ${process.version} — requires Node >= 22.5.0; 5 memory backends unavailable`
+        : `node:sqlite load error: ${msg}`,
     };
   }
 }
@@ -972,11 +979,11 @@ async function runDoctorFix(result: DoctorResult): Promise<void> {
     }
   }
 
-  // Display-only: better-sqlite3
+  // Display-only: SQLite availability
   if (!result.sqliteCheck.available) {
     writeLine('');
-    writeLine('⚠ better-sqlite3 not installed (manual step required):');
-    writeLine('  npm install -g better-sqlite3');
+    writeLine('⚠ SQLite unavailable (node:sqlite needs Node >= 22.5.0):');
+    writeLine(`  Upgrade Node (currently ${process.version})`);
   }
 
   if (fixCount > 0) {

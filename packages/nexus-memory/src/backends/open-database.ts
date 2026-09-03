@@ -1,10 +1,10 @@
 /**
- * Shared helper for opening a `better-sqlite3` connection on disk.
+ * Shared helper for opening a SQLite connection on disk.
  *
  * Centralizes the two pre-#3995 concerns that were duplicated at every
  * `new Database(dbPath)` site in this package:
  *
- * 1. **Auto-create the parent directory.** `better-sqlite3` throws
+ * 1. **Auto-create the parent directory.** SQLite throws
  *    `SQLITE_CANTOPEN` when the parent directory of `dbPath` does not exist
  *    (the classic fresh-install regression — the resolver hands back a path
  *    under `~/.nexus-agents/memory/` that nobody has created yet). We
@@ -23,24 +23,67 @@
  * @module nexus-memory/backends/open-database
  */
 
-import Database, { type Database as DatabaseType } from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
+
+/**
+ * Result of running a prepared statement. Mirrors what both `node:sqlite` and
+ * better-sqlite3 return, so consumers did not have to change (#5388).
+ */
+export interface SqliteRunResult {
+  readonly changes: number | bigint;
+  readonly lastInsertRowid: number | bigint;
+}
+
+/** Minimal prepared-statement surface this package actually uses. */
+export interface SqliteStatement {
+  run(...params: unknown[]): SqliteRunResult;
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+}
+
+/**
+ * Minimal database surface this package actually uses.
+ *
+ * Declared locally rather than imported: nexus-memory stays free of
+ * inter-package imports so `nexus-eval-*` repos can reuse it, and since #5388
+ * there is no dependency to import a type FROM — `node:sqlite` is a builtin.
+ */
+export interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /**
- * Open a `better-sqlite3` database at `dbPath`, creating the parent directory
+ * Open a SQLite database at `dbPath`, creating the parent directory
  * first (for on-disk paths) and enabling WAL journal mode.
  *
  * @param dbPath Absolute SQLite file path, or `':memory:'` / `''` for an
  *   in-memory database (no directory is created in that case).
  */
-export function openSqliteDatabase(dbPath: string): DatabaseType {
+export function openSqliteDatabase(dbPath: string): SqliteDatabase {
   if (dbPath !== ':memory:' && dbPath !== '') {
-    // Fresh-install robustness (#3995): better-sqlite3 throws SQLITE_CANTOPEN
+    // Fresh-install robustness (#3995): opening under a missing parent throws SQLITE_CANTOPEN
     // when the parent dir is missing. Create it up front, idempotently.
     mkdirSync(dirname(dbPath), { recursive: true });
   }
-  const db = new Database(dbPath);
-  (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
-  return db;
+  const db = new DatabaseSync(dbPath);
+  // `node:sqlite` has no `.pragma()` helper, so WAL goes through `exec`.
+  db.exec('PRAGMA journal_mode = WAL');
+
+  const narrowed = db as unknown as SqliteDatabase;
+  return {
+    exec: (sql: string) => {
+      db.exec(sql);
+    },
+    prepare: narrowed.prepare.bind(narrowed),
+    // better-sqlite3's `close()` is idempotent; `DatabaseSync`'s throws
+    // `database is not open` on a second call, and shutdown paths here are
+    // reentrant. Preserve the contract callers were written against (#5388).
+    close: () => {
+      if (db.isOpen) db.close();
+    },
+  };
 }

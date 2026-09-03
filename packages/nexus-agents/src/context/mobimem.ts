@@ -13,11 +13,9 @@
  * (Source: Issue #149, arXiv:2512.15784)
  */
 
-import Database from 'better-sqlite3';
-import { dirname } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { openSqliteDatabase } from './open-database.js';
 
-type DatabaseType = InstanceType<typeof Database>;
+type DatabaseType = ISQLiteDatabase;
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { createLogger } from '../core/logger.js';
 import type { IMobiMem, MobiMemConfig, MobiMemStats } from './mobimem-types.js';
@@ -38,6 +36,7 @@ export type {
   ActionStep,
   ExecutionOutcome,
 } from './mobimem-types.js';
+import type { ISQLiteDatabase } from '../core/types/database-types.js';
 export { DEFAULT_MOBIMEM_CONFIG } from './mobimem-types.js';
 
 const logger = createLogger({ component: 'MobiMem' });
@@ -65,13 +64,9 @@ export class MobiMem implements IMobiMem {
     if (validated.dbPath === ':memory:' || validated.dbPath === '') {
       this.db = null;
     } else {
-      mkdirSync(dirname(validated.dbPath), { recursive: true });
-      const db = new Database(validated.dbPath);
-      // WAL mode for concurrent MCP-server + CLI readers. The narrowed
-      // `ISQLiteDatabase` interface used elsewhere in nexus-agents doesn't
-      // expose `pragma`, but the better-sqlite3 default export does.
-      (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
-      this.db = db;
+      // mkdir + WAL now live in the canonical opener (#5388), which is also
+      // the only place the engine is named.
+      this.db = openSqliteDatabase(validated.dbPath);
     }
     this.profile = new ProfileMemoryImpl(this.config, this.db);
     this.experience = new ExperienceMemoryImpl(this.config, this.db);

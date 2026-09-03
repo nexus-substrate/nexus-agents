@@ -8,8 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type Database from 'better-sqlite3';
-type DatabaseType = InstanceType<typeof Database>;
+import type { ISQLiteDatabase } from '../core/types/database-types.js';
+type DatabaseType = ISQLiteDatabase;
 import { getTimeProvider } from '../core/index.js';
 import type {
   IProfileMemory,

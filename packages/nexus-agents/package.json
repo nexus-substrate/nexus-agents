@@ -18,7 +18,6 @@
   },
   "files": [
     "dist",
-    "scripts/postinstall.js",
     "src/workflows/templates",
     "src/security/ast-rules",
     "README.md"
@@ -57,7 +56,7 @@
   ],
   "author": "William Zujkowski",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "build": "tsup && npx tsx ../../scripts/check-dist-assets.ts",
@@ -71,7 +70,6 @@
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
     "docs:api:md": "typedoc --options typedoc.markdown.json",
-    "postinstall": "node scripts/postinstall.js || true",
     "prepublishOnly": "pnpm run build"
   },
   "optionalDependencies": {
@@ -84,7 +82,6 @@
     "@ast-grep/napi": "0.45.2",
     "@google/genai": "^2.19.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "better-sqlite3": "^12.11.1",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
     "openai": "^6.49.0",
@@ -99,7 +96,6 @@
     "@ai-sdk/anthropic": "^3.0.114",
     "@ai-sdk/google": "^3.0.118",
     "@ai-sdk/openai": "^3.0.104",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "4.1.11",
     "ai": "^6.0.271",

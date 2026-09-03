@@ -28,7 +28,7 @@ export interface VerifyOptions {
  *
  * - `hard`: functionality is broken (e.g. Node version too low, core exports
  *   missing). Exit code 1.
- * - `warn`: functionality is degraded but usable (e.g. better-sqlite3 missing
+ * - `warn`: functionality is degraded but usable (e.g. node:sqlite unavailable
  *   → only some memory backends unavailable; no CLI adapters detected →
  *   orchestrator still works via API keys). Exit code 0.
  *
@@ -201,7 +201,7 @@ function checkExpertSystem(): VerifyCheck {
 }
 
 /**
- * Checks that better-sqlite3 loads. Memory backends (agentic, adaptive, typed,
+ * Checks that node:sqlite loads. Memory backends (agentic, adaptive, typed,
  * mobimem, decay) are unavailable if it's missing — functional degradation,
  * not a hard failure. Rebuilding the native module or reinstalling usually
  * fixes it.
@@ -212,15 +212,15 @@ async function checkSqliteAvailability(): Promise<VerifyCheck> {
     return {
       name: 'SQLite Storage',
       passed: true,
-      message: 'better-sqlite3 loaded (memory backends available)',
+      message: 'node:sqlite available (memory backends available)',
     };
   }
   return {
     name: 'SQLite Storage',
     passed: false,
     severity: 'warn',
-    message: result.error ?? 'better-sqlite3 not available',
-    fix: 'Run "pnpm rebuild better-sqlite3" or reinstall nexus-agents',
+    message: result.error ?? 'node:sqlite not available',
+    fix: 'Upgrade to Node >= 22.5.0 (node:sqlite is a builtin; nothing to install)',
   };
 }
 

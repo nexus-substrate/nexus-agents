@@ -52,6 +52,7 @@ export type {
   DecayConfig,
   PriorityScoreComponents,
 } from './adaptive-memory-types.js';
+import { openSqliteDatabase } from './open-database.js';
 export { DEFAULT_SCORING_CONFIG } from './adaptive-memory-types.js';
 
 const logger = createLogger({ component: 'AdaptiveMemoryBackend' });
@@ -95,16 +96,7 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
     if (!baseInit.ok) return baseInit;
 
     try {
-      const mod = await import('better-sqlite3').catch((cause: unknown) => {
-        this.log.debug('better-sqlite3 import failed', { error: String(cause) });
-        return null;
-      });
-      if (mod === null)
-        return err(
-          new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3')
-        );
-      const Database = mod.default;
-      this.db = new Database(this.config.dbPath);
+      this.db = openSqliteDatabase(this.config.dbPath);
       this.initialized = true;
       this.log.info('AdaptiveMemoryBackend initialized');
       return ok(undefined);

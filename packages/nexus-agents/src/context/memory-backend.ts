@@ -52,6 +52,7 @@ export {
   MemoryImportanceSchema,
   MemoryMetadataSchema,
 } from './memory-backend-types.js';
+import { openSqliteDatabase } from './open-database.js';
 
 /**
  * Hybrid memory backend using SQLite for storage and Markdown for export.
@@ -97,23 +98,13 @@ export class HybridMemoryBackend implements IMemoryBackend {
     });
     return this.initPromise;
   }
-
+  // Stays async: this is a published Promise-returning API and its callers
+  // await it. The only await was the dynamic `better-sqlite3` import, which
+  // #5388 removed because `node:sqlite` is a synchronous builtin.
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async doInitialize(): Promise<Result<void, MemoryError>> {
     try {
-      const betterSqlite3Module = await import('better-sqlite3').catch((cause: unknown) => {
-        this.logger.debug('better-sqlite3 import failed', { error: String(cause) });
-        return null;
-      });
-      if (betterSqlite3Module === null) {
-        return err(
-          new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3', {
-            context: { dbPath: this.dbPath },
-          })
-        );
-      }
-
-      const Database = betterSqlite3Module.default;
-      this.db = new Database(this.dbPath);
+      this.db = openSqliteDatabase(this.dbPath);
       this.createTables();
       this.markdown.ensureDir();
       this.initialized = true;

@@ -1,5 +1,5 @@
 /**
- * SQLite backend — async wrapper over `better-sqlite3` (which is sync).
+ * SQLite backend — async wrapper over `node:sqlite` (which is sync).
  *
  * One table per domain (Phase 2 vote shape C, hot-table side). The schema
  * is intentionally minimal: `key`, `value` (JSON-serialized), `cli`,
@@ -13,7 +13,10 @@
  * @module nexus-memory/backends/sqlite
  */
 
-import { type Database as DatabaseType, type Statement } from 'better-sqlite3';
+import type {
+  SqliteDatabase as DatabaseType,
+  SqliteStatement as Statement,
+} from './open-database.js';
 import type { z } from 'zod';
 import { recordMemoryEvent } from '../telemetry.js';
 import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
