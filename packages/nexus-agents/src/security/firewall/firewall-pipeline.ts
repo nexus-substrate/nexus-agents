@@ -14,6 +14,7 @@
 
 import type { Result } from '../../core/result.js';
 import { err, ok } from '../../core/result.js';
+import { resolveFirewallPolicyMode, type FirewallPolicyMode } from './firewall-policy-mode.js';
 import {
   AuditTrail,
   createAuditTrail,
@@ -72,6 +73,26 @@ export interface FirewallResult {
    * hard-block. `undefined` when the stage is disabled or the rule holds.
    */
   readonly ruleOfTwoViolation?: Violation;
+  /**
+   * The rollout mode this run was evaluated under (#5382). Recorded on the
+   * result rather than left implicit so a consumer reading a verdict can tell
+   * WHICH policy produced it — a result that does not say which rules were in
+   * force cannot be audited later.
+   */
+  readonly policyMode: FirewallPolicyMode;
+  /**
+   * Whether `enforce` would have refused this input.
+   *
+   * This is what makes `audit` mode measurable, and it is the field that makes
+   * the mode a real gate rather than a switch with two indistinguishable
+   * settings: under `audit` the answer is computed and reported while the input
+   * is still allowed through, so an operator can size the impact of flipping to
+   * `enforce` before flipping it.
+   *
+   * Always `false` under `enforce`, because an input that would be refused IS
+   * refused — it comes back as a `POLICY_REFUSED` error, not a result.
+   */
+  readonly wouldRefuse: boolean;
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
   readonly durationMs: number;
 }
@@ -92,6 +113,8 @@ export class HostileInputFirewall {
   private readonly reputationCache: ReputationCache;
   private readonly auditTrail: AuditTrail;
   private readonly context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean };
+  /** #5382 rollout gate; resolved once at construction, not per call. */
+  private readonly policyMode: FirewallPolicyMode;
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -111,6 +134,10 @@ export class HostileInputFirewall {
       config.auditLogger !== undefined ? createDurableAuditSink(config.auditLogger) : undefined
     );
     this.context = validated.context;
+    // Explicit config wins; otherwise the environment; otherwise `off`. Resolved
+    // once here rather than per `process()` call so a mid-run env change cannot
+    // make two inputs in the same batch answer to different policies.
+    this.policyMode = config.policyMode ?? resolveFirewallPolicyMode(config.env ?? process.env);
   }
 
   /**
@@ -161,6 +188,11 @@ export class HostileInputFirewall {
       });
     }
 
+    // #5382: decide the RESPONSE to a blocking violation.
+    const blocking = ruleOfTwoViolation?.severity === 'block';
+    const refusal = this.refuseIfEnforcing(ruleOfTwoViolation, meta, effectiveTrustTier);
+    if (refusal !== undefined) return err(refusal);
+
     // Collect audit events
     const auditEvents = this.auditTrail.query().map((e) => ({ id: e.id, type: e.type }));
 
@@ -171,9 +203,46 @@ export class HostileInputFirewall {
       effectiveTrustTier,
       atl,
       ...(ruleOfTwoViolation !== undefined ? { ruleOfTwoViolation } : {}),
+      policyMode: this.policyMode,
+      // Reached only when we did NOT refuse, so this is "audit mode saw
+      // something enforce would have stopped". Under `off` it stays false: the
+      // signal is already on `ruleOfTwoViolation`, and reporting a would-be
+      // refusal for a mode that has not opted in would overstate the gate.
+      wouldRefuse: blocking && this.policyMode === 'audit',
       auditEvents,
       durationMs: Date.now() - start,
     });
+  }
+
+  /**
+   * The fail-closed half of the #5382 gate: under `enforce`, a blocking policy
+   * violation refuses the input instead of riding along as a signal on an
+   * `ok()` result that a caller checking only `result.ok` walks straight past.
+   *
+   * This gates the RESPONSE to a violation, never its detection. It cannot
+   * manufacture a refusal where the `policyEnforcement` stage never ran, and it
+   * cannot refuse a non-blocking (`warn`) violation — so `enforce` is not a
+   * kill switch, and an allowlisted maintainer stays served.
+   *
+   * @returns the refusal, or `undefined` when the input passes or the mode has
+   *          not opted in.
+   */
+  private refuseIfEnforcing(
+    violation: Violation | undefined,
+    meta: SourceMetadata,
+    effectiveTrustTier: TrustTier
+  ): FirewallError | undefined {
+    if (violation?.severity !== 'block' || this.policyMode !== 'enforce') return undefined;
+    logger.warn('Firewall REFUSED input under enforce mode', {
+      user: meta.username,
+      effectiveTrustTier,
+      rule: violation.rule,
+    });
+    return {
+      code: 'POLICY_REFUSED',
+      message: `Refused by firewall policy: ${violation.rule} — ${violation.message}`,
+      stage: 'policy',
+    };
   }
 
   /** Returns the internal audit trail for inspection. */

@@ -169,6 +169,16 @@ export type {
 // Hostile input firewall (Issue #826)
 export { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+// #5382: the rollout gate for firewall behaviour changes. Exported because
+// `FirewallResult.policyMode` is part of the published surface — a consumer
+// cannot read the field it is handed without the type that names its values.
+export {
+  DEFAULT_FIREWALL_POLICY_MODE,
+  FIREWALL_POLICY_ENV_VAR,
+  FirewallPolicyModeSchema,
+  resolveFirewallPolicyMode,
+} from '../security/firewall/firewall-policy-mode.js';
+export type { FirewallPolicyMode } from '../security/firewall/firewall-policy-mode.js';
 export { generateATL, parseATL } from '../security/firewall/agent-trust-labels.js';
 export { createGitHubAdapter } from '../security/firewall/github-adapter.js';
 export type { GitHubInput } from '../security/firewall/github-adapter.js';
