@@ -170,10 +170,13 @@ describe('untrusted-input tools declare a non-standard tier (#5120 item 4)', () 
     // A notifier is supplied so registration does not call
     // `createMcpNotifier` against the capturing stub server.
     const { server, getHandler } = captureRegisteredHandler();
-    registerOrchestrateTool(server as never, {
-      ...(makeDeps() as Record<string, unknown>),
-      notifier: { sendProgress: vi.fn(), sendLog: vi.fn() },
-    } as never);
+    registerOrchestrateTool(
+      server as never,
+      {
+        ...(makeDeps() as Record<string, unknown>),
+        notifier: { sendProgress: vi.fn(), sendLog: vi.fn() },
+      } as never
+    );
 
     const result = await getHandler()({ task: INJECTION_PAYLOAD });
 
@@ -208,6 +211,73 @@ describe('untrusted-input tools declare a non-standard tier (#5120 item 4)', () 
     const result = await getHandler()({
       url: 'https://example.com/paper',
       title: INJECTION_PAYLOAD,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
+  });
+});
+
+// ============================================================================
+// The other half of the seam: a benign body must NOT be refused (#5258)
+// ============================================================================
+
+describe('the external tier does not refuse benign PR bodies (#5258)', () => {
+  /**
+   * The tests above prove the tier REJECTS hostile input. That is only half a
+   * seam. #5251 added `securityTier: 'external'` to `pr_review` alongside a
+   * `hidden_instruction` detector matching `/execute|delete|merge|apply/i`
+   * inside `<!-- ... -->`, and because a tier detection is a hard `permission`
+   * refusal with no override, `pr_review` began refusing any PR whose body
+   * still carried GitHub's default template — which says "Please delete
+   * options that are not relevant".
+   *
+   * Nothing caught it, because every test asserted that hostile input is
+   * refused and none asserted that benign input is served. A detector that
+   * refuses everything would have passed the entire suite above.
+   *
+   * Panel audit #144 resolved this by stripping comments instead of judging
+   * them. These tests pin the resulting availability guarantee.
+   */
+
+  it('reviews a PR body carrying GitHub’s default template', async () => {
+    const { server, getHandler } = captureRegisteredHandler();
+    registerPrReviewTool(server as never, makeDeps() as never);
+
+    const result = await getHandler()({
+      prDiff: 'diff --git a/a.ts b/a.ts',
+      prDescription:
+        '## Description\n<!-- Please delete options that are not relevant -->\n- [x] Bug fix',
+    });
+
+    // The assertion is specifically that it is NOT a tier refusal. The call may
+    // still fail downstream for want of a live adapter — that is a different
+    // failure, and conflating the two is what would let the regression back in.
+    expect(result.content[0]?.text ?? '').not.toContain('Input validation failed');
+    expect(result.content[0]?.text ?? '').not.toContain('hidden_instruction');
+  });
+
+  it("reviews a PR body carrying this repo's own generated-block markers", async () => {
+    const { server, getHandler } = captureRegisteredHandler();
+    registerPrReviewTool(server as never, makeDeps() as never);
+
+    const result = await getHandler()({
+      prDiff: 'diff --git a/AGENTS.md b/AGENTS.md',
+      prDescription:
+        '<!-- GENERATED:FROM_AGENTS:START -->\nRegenerate governance\n<!-- GENERATED:FROM_AGENTS:END -->',
+    });
+
+    expect(result.content[0]?.text ?? '').not.toContain('Input validation failed');
+  });
+
+  it('still refuses a genuine injection payload (the control)', async () => {
+    // Without this, deleting the tier entirely would pass both tests above.
+    const { server, getHandler } = captureRegisteredHandler();
+    registerPrReviewTool(server as never, makeDeps() as never);
+
+    const result = await getHandler()({
+      prDiff: 'diff --git a/a.ts b/a.ts',
+      prDescription: INJECTION_PAYLOAD,
     });
 
     expect(result.isError).toBe(true);
