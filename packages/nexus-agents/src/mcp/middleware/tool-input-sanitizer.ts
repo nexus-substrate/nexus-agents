@@ -26,6 +26,15 @@ export interface SanitizeToolInputResult {
   readonly modifiedCount: number;
   /** Injection patterns detected (for logging) */
   readonly detectedPatterns: readonly string[];
+  /**
+   * Number of HTML comments removed (#5258).
+   *
+   * Reported rather than discarded so a reader can tell that content was taken
+   * out. A stripped body is shorter than what the author wrote, and without
+   * this count that difference is invisible — the reviewer would read a
+   * truncated PR description with no indication anything was removed.
+   */
+  readonly commentsRemoved: number;
 }
 
 /**
@@ -37,62 +46,86 @@ const XML_INJECTION_PATTERN =
 
 /**
  * Patterns that indicate attempted prompt injection.
- * These are logged but not necessarily stripped (detection only).
+ *
+ * A detection here is not merely logged: at an elevated `securityTier`,
+ * `checkSecurityTier` (secure-handler.ts) turns any entry in
+ * `detectedPatterns` into a hard `permission` refusal with no fallback. So a
+ * detector that false-positives takes the tool offline for that input. Add one
+ * only when the pattern cannot appear in benign text.
+ *
+ * There is deliberately NO `hidden_instruction` detector. Classifying the
+ * interior of an HTML comment was attempted twice (#5258, #5262, #5270) and
+ * failed on both axes: the trigger list `/execute|delete|merge|apply/i`
+ * refused GitHub's own default PR template (`<!-- Please delete options that
+ * are not relevant -->`), and every regex form of the containment check
+ * backtracked catastrophically. `stripHtmlComments` replaces it — removing the
+ * comment is strictly stronger than judging its contents, and produces no
+ * detection, so it cannot false-positive into a refusal.
  */
-/** Words that turn an HTML comment into an instruction aimed at a reader. */
-const HIDDEN_INSTRUCTION_TRIGGER = /execute|delete|merge|apply/i;
-
-/**
- * True when a trigger word sits inside a single HTML comment.
- *
- * Deliberately NOT a regex. Both previous forms backtracked catastrophically
- * on adversarial input, and the containment fix in #5258 made it ~3x worse:
- * measured on Node 22, `'<!-- merge '.repeat(n)` took 203 ms at 8.8 KB before
- * and 699 ms after, reaching 5.7 s at 17.6 KB — cubic, so a body at GitHub's
- * 65,536-character cap runs for minutes.
- *
- * That was reachable: `sanitizeToolInput` runs in `runPreChecks` for EVERY
- * secure-handled tool, ahead of the tier check, and the only size gate is a
- * 10 MB limit. `wrapToolWithTimeout` cannot mitigate it either — backtracking
- * blocks the event loop synchronously, so the timer never fires. One crafted
- * PR body would wedge the whole stdio server.
- *
- * This scan is linear: `indexOf` walks forward, each comment's interior is
- * tested once against an alternation of literals, and no character is revisited.
- */
-function hasHiddenInstruction(value: string): boolean {
-  const OPEN = '<!--';
-  const CLOSE = '-->';
-  let from = 0;
-  for (;;) {
-    const open = value.indexOf(OPEN, from);
-    if (open === -1) return false;
-    const close = value.indexOf(CLOSE, open + OPEN.length);
-    // An unterminated comment has no interior to judge.
-    if (close === -1) return false;
-    if (HIDDEN_INSTRUCTION_TRIGGER.test(value.slice(open + OPEN.length, close))) {
-      return true;
-    }
-    from = close + CLOSE.length;
-  }
-}
-
-const INJECTION_DETECTORS: ReadonlyArray<{
-  name: string;
-  pattern?: RegExp;
-  match?: (value: string) => boolean;
-}> = [
+const INJECTION_DETECTORS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   { name: 'system_prompt_override', pattern: /ignore (?:all )?previous (?:instructions|rules)/i },
   { name: 'role_impersonation', pattern: /i(?:'m| am) the (?:repo |project )?(?:owner|admin)/i },
-  // `hidden_instruction` is a scan, not a pattern — see hasHiddenInstruction.
-  { name: 'hidden_instruction', match: hasHiddenInstruction },
 ];
 
 /**
- * Sanitizes a single string value by stripping XML injection tags.
- * Returns the cleaned string and whether it was modified.
+ * Remove HTML comments from untrusted input (#5258, panel option "strip",
+ * 5 of 5 approvers, audit #144).
+ *
+ * The vector is an ASYMMETRY, not the words: a comment is invisible in rendered
+ * markdown, so a human reviewer never sees it while a model reading the raw
+ * body does. Removing the comment removes the asymmetry outright — a hostile
+ * instruction cannot influence a model that never receives it — which is
+ * strictly stronger than classifying comment interiors and does not invite the
+ * bypass arms race that narrowing a trigger list does.
+ *
+ * It also fixes the reason this changed: GitHub's own default PR template
+ * contains `<!-- Please delete options that are not relevant -->`, whose
+ * `delete` matched the trigger list, so a contributor using the template GitHub
+ * offers had their review hard-refused with no override.
+ *
+ * **Applied at EVERY tier**, which the security reviewer and the dissenting
+ * reviewer independently agreed on: there is no legitimate reason for an agent
+ * to act on instructions hidden in a comment, from any source.
+ *
+ * **No exemption for fenced code blocks**, and that is a deliberate cost. The
+ * dissent is right that a frontend or markdown PR can legitimately show
+ * `<!-- … -->` as example code, and that example is lost from the model's view.
+ * Exempting fences would hand an attacker a one-line bypass — wrap the payload
+ * in a fence — so the collateral damage is accepted rather than traded for a
+ * hole. The removal is counted and reported, so a reader can see that something
+ * was taken out rather than silently reading a shortened body.
+ *
+ * Unterminated comments are left alone: `<!--` with no `-->` has no interior,
+ * and treating the rest of the document as comment would delete the body.
  */
-function sanitizeString(value: string): { cleaned: string; modified: boolean } {
+function stripHtmlComments(value: string): { cleaned: string; removed: number } {
+  const OPEN = '<!--';
+  const CLOSE = '-->';
+  let out = '';
+  let from = 0;
+  let removed = 0;
+  for (;;) {
+    const open = value.indexOf(OPEN, from);
+    if (open === -1) break;
+    const close = value.indexOf(CLOSE, open + OPEN.length);
+    if (close === -1) break;
+    out += value.slice(from, open);
+    from = close + CLOSE.length;
+    removed++;
+  }
+  return { cleaned: removed === 0 ? value : out + value.slice(from), removed };
+}
+
+/**
+ * Sanitizes a single string value by stripping XML injection tags and HTML
+ * comments. Returns the cleaned string, whether it changed, and how many
+ * comments were removed.
+ */
+function sanitizeString(value: string): {
+  cleaned: string;
+  modified: boolean;
+  commentsRemoved: number;
+} {
   // Loop to a fixed point. A single pass RECONSTRUCTS the tag it strips:
   // `<sys<system>tem>x</sys</system>tem>` has its inner `<system>` removed,
   // and the outer fragments close up into a live `<system>x</system>`. The
@@ -111,7 +144,14 @@ function sanitizeString(value: string): { cleaned: string; modified: boolean } {
     if (next === cleaned) break;
     cleaned = next;
   }
-  return { cleaned, modified: cleaned !== value };
+  // After tag stripping, so a comment reconstructed by tag removal is still
+  // caught on the way out.
+  const { cleaned: withoutComments, removed } = stripHtmlComments(cleaned);
+  return {
+    cleaned: withoutComments,
+    modified: withoutComments !== value,
+    commentsRemoved: removed,
+  };
 }
 
 /**
@@ -119,13 +159,9 @@ function sanitizeString(value: string): { cleaned: string; modified: boolean } {
  */
 function detectPatterns(value: string): string[] {
   const detected: string[] = [];
-  for (const { name, pattern, match } of INJECTION_DETECTORS) {
-    if (pattern !== undefined) {
-      pattern.lastIndex = 0;
-      if (pattern.test(value)) detected.push(name);
-    } else if (match?.(value) === true) {
-      detected.push(name);
-    }
+  for (const { name, pattern } of INJECTION_DETECTORS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(value)) detected.push(name);
   }
   return detected;
 }
@@ -134,14 +170,18 @@ function detectPatterns(value: string): string[] {
  * Recursively sanitizes all string values in an object/array.
  * Returns a deep copy with XML injection tags stripped from strings.
  */
-function sanitizeValue(value: unknown, stats: { count: number; patterns: string[] }): unknown {
+function sanitizeValue(
+  value: unknown,
+  stats: { count: number; patterns: string[]; commentsRemoved: number }
+): unknown {
   if (typeof value === 'string') {
     const patterns = detectPatterns(value);
     if (patterns.length > 0) {
       stats.patterns.push(...patterns);
     }
-    const { cleaned, modified } = sanitizeString(value);
+    const { cleaned, modified, commentsRemoved } = sanitizeString(value);
     if (modified) stats.count++;
+    stats.commentsRemoved += commentsRemoved;
     return cleaned;
   }
 
@@ -169,10 +209,16 @@ function sanitizeValue(value: unknown, stats: { count: number; patterns: string[
  */
 export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
   if (args === undefined || args === null) {
-    return { sanitized: args, wasModified: false, modifiedCount: 0, detectedPatterns: [] };
+    return {
+      sanitized: args,
+      wasModified: false,
+      modifiedCount: 0,
+      detectedPatterns: [],
+      commentsRemoved: 0,
+    };
   }
 
-  const stats = { count: 0, patterns: [] as string[] };
+  const stats = { count: 0, patterns: [] as string[], commentsRemoved: 0 };
   const sanitized = sanitizeValue(args, stats);
   const uniquePatterns = [...new Set(stats.patterns)];
 
@@ -181,6 +227,7 @@ export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
     wasModified: stats.count > 0,
     modifiedCount: stats.count,
     detectedPatterns: uniquePatterns,
+    commentsRemoved: stats.commentsRemoved,
   };
 }
 
@@ -196,6 +243,16 @@ export function logSanitizationResult(
     logger.warn('Tool input sanitized — XML injection tags stripped', {
       tool: toolName,
       modifiedFields: result.modifiedCount,
+    });
+  }
+  if (result.commentsRemoved > 0) {
+    // Separate from the line above because it means something different to a
+    // reader: content the author wrote is absent from what the model saw. It
+    // is not necessarily an attack — GitHub's default PR template trips it —
+    // so this records the removal without characterizing intent (#5258).
+    logger.warn('Tool input sanitized — HTML comments removed', {
+      tool: toolName,
+      commentsRemoved: result.commentsRemoved,
     });
   }
   if (result.detectedPatterns.length > 0) {

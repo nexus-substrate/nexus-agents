@@ -27,6 +27,7 @@ import {
 } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { sanitizeToolInput } from '../middleware/tool-input-sanitizer.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -413,28 +414,75 @@ function absoluteQuorumApprove(
 /** Builds the proposal text passed to voters. The voters are designed for
  * yes/no proposals — by framing the diff as "should this PR be merged?" we
  * get usable output without needing new system prompts (Child 3 will add
- * those). */
+ * those).
+ *
+ * **Sanitization lives HERE, not at the tool boundary (#5258 item B).** The
+ * `securityTier: 'external'` declared on the registered tool only protects the
+ * MCP path, because the middleware is constructed inside `registerPrReviewTool`.
+ * Three other callers reach the voters without it — `.github/workflows/
+ * pr-review.yml`, `scripts/pr-review-local.ts` (the documented default path)
+ * and `scripts/pr-review-eval-run.ts` — each importing this builder directly
+ * from `dist/index.js`. On those paths a hostile PR body reached five voters
+ * unfenced, next to the words "should it be merged as-is?".
+ *
+ * This function is the one chokepoint all four callers pass through, so the
+ * protection is attached to the data rather than to one entry point. The MCP
+ * tier check still runs earlier and still refuses; this is the floor beneath
+ * it, and it strips rather than refuses so the script paths degrade instead of
+ * failing shut. Double-sanitizing on the MCP path is idempotent and harmless.
+ */
 export function buildPrReviewProposal(
   input: Pick<
     PrReviewInput,
     'prTitle' | 'prDescription' | 'prDiff' | 'repoContext' | 'baseRef' | 'headRef'
   >
 ): string {
+  // Every field below is attacker-controlled on the CI path: title, body and
+  // diff all come straight from `github.event.pull_request.*`.
+  const sanitizeResult = sanitizeToolInput({
+    prTitle: input.prTitle,
+    prDescription: input.prDescription,
+    prDiff: input.prDiff,
+    repoContext: input.repoContext,
+  });
+  const safe = sanitizeResult.sanitized as Pick<
+    PrReviewInput,
+    'prTitle' | 'prDescription' | 'prDiff' | 'repoContext'
+  >;
+
   const parts: string[] = [];
   parts.push(`# Pull Request Review\n`);
-  parts.push(`**Title:** ${input.prTitle}\n`);
 
+  // The proposal a voter reads is not always the PR as written. Say so IN the
+  // proposal rather than only in a log, because the proposal is what the panel
+  // sees and what the governance record preserves — a voter told "approve if
+  // the diff is correct and complete" would otherwise judge a silently
+  // shortened body as if it were whole. On the CI and script paths there is no
+  // secure-handler log at all, so without this the removal leaves no trace.
+  if (sanitizeResult.commentsRemoved > 0) {
+    parts.push(
+      `> **Note:** ${String(sanitizeResult.commentsRemoved)} HTML comment(s) were removed ` +
+        `from the untrusted fields below before you saw them (#5258). Comments are invisible ` +
+        `in rendered markdown, so they are stripped rather than trusted. This is routine — ` +
+        `GitHub's default PR template contains one — and is not by itself evidence of an attack.\n`
+    );
+  }
+
+  parts.push(`**Title:** ${safe.prTitle}\n`);
+
+  // baseRef/headRef are git ref names, not free text, and are validated
+  // upstream; they are interpolated as-is deliberately.
   if (input.baseRef !== undefined && input.headRef !== undefined) {
     parts.push(`**Branches:** ${input.headRef} → ${input.baseRef}\n`);
   }
-  if (input.repoContext !== undefined && input.repoContext !== '') {
-    parts.push(`\n**Repo context:**\n${input.repoContext}\n`);
+  if (safe.repoContext !== undefined && safe.repoContext !== '') {
+    parts.push(`\n**Repo context:**\n${safe.repoContext}\n`);
   }
-  if (input.prDescription !== undefined && input.prDescription !== '') {
-    parts.push(`\n**Description:**\n${input.prDescription}\n`);
+  if (safe.prDescription !== undefined && safe.prDescription !== '') {
+    parts.push(`\n**Description:**\n${safe.prDescription}\n`);
   }
 
-  parts.push(`\n## Diff\n\n\`\`\`diff\n${input.prDiff}\n\`\`\`\n`);
+  parts.push(`\n## Diff\n\n\`\`\`diff\n${safe.prDiff}\n\`\`\`\n`);
   parts.push(`\n## Your task\n`);
   parts.push(`Review this PR from your role's perspective. Decide: should it be merged as-is?\n`);
   parts.push(`- **APPROVE** if the diff is correct, complete, and aligned with your role.\n`);
