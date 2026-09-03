@@ -1,39 +1,14 @@
 {
   "entries": [
     {
-      "file": "packages/nexus-agents/src/cli/session-storage.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.dbPath);"
-    },
-    {
       "file": "packages/nexus-agents/src/config/learning-persistence.ts",
       "probeId": "outcomes-jsonl-path",
       "note": "return join(getLearningDir(), 'outcomes.jsonl');"
     },
     {
-      "file": "packages/nexus-agents/src/context/adaptive-memory.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.config.dbPath);"
-    },
-    {
-      "file": "packages/nexus-agents/src/context/agentic-memory.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.config.dbPath);"
-    },
-    {
-      "file": "packages/nexus-agents/src/context/graph-memory.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.config.dbPath);"
-    },
-    {
-      "file": "packages/nexus-agents/src/context/memory-backend.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.dbPath);"
-    },
-    {
-      "file": "packages/nexus-agents/src/context/mobimem.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "const db = new Database(validated.dbPath);"
+      "file": "packages/nexus-agents/src/config/learning-persistence.ts",
+      "probeId": "outcomes-jsonl-path",
+      "note": "return join(getLearningDir(), 'meta-outcomes.jsonl');"
     },
     {
       "file": "packages/nexus-agents/src/context/mobimem.ts",
@@ -44,11 +19,6 @@
       "file": "packages/nexus-agents/src/context/mobimem.ts",
       "probeId": "mobimem-direct-construct",
       "note": "sharedInstance ??= new MobiMem({ dbPath: resolveSharedDbPath() });"
-    },
-    {
-      "file": "packages/nexus-agents/src/learning/outcome-storage.ts",
-      "probeId": "better-sqlite3-direct",
-      "note": "this.db = new Database(this.dbPath);"
     }
   ]
 }

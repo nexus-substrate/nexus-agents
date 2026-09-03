@@ -160,7 +160,7 @@ export const HybridMemoryConfigSchema = z.object({
 });
 
 // ============================================================================
-// SQLite Types (for better-sqlite3)
+// SQLite Types (satisfied by node:sqlite via openSqliteDatabase, #5388)
 // ============================================================================
 
 /**

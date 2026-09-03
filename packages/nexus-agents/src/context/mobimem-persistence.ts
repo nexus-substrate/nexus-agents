@@ -9,7 +9,7 @@
  * process exit.
  *
  * This helper provides a tiny synchronous persistence side-channel: when
- * the impl class is constructed with a `better-sqlite3` Database, the
+ * the impl class is constructed with a SQLite Database, the
  * helper auto-creates a domain-specific table and exposes
  * `load`/`upsert`/`delete`/`clear`. Without a DB (default test mode),
  * every method is a no-op — the impl falls back to in-memory Maps.
@@ -28,10 +28,10 @@
  * @module context/mobimem-persistence
  */
 
-import type Database from 'better-sqlite3';
-type DatabaseType = InstanceType<typeof Database>;
-// Statement type is namespace-scoped in better-sqlite3 7.x; reach it via the
-// instance's `prepare` return type to keep the surface narrow.
+import type { ISQLiteDatabase } from '../core/types/database-types.js';
+type DatabaseType = ISQLiteDatabase;
+// Reached via the instance's `prepare` return type to keep the surface narrow,
+// and so this stays engine-agnostic after the node:sqlite move (#5388).
 type Statement = ReturnType<DatabaseType['prepare']>;
 
 export interface MobiMemPersistenceOptions {

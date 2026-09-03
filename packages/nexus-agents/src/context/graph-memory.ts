@@ -53,6 +53,7 @@ export type {
   RelationType,
   AddRelationshipOptions,
 } from './graph-memory-types.js';
+import { openSqliteDatabase } from './open-database.js';
 export { RelationType as RelationTypes } from './graph-memory-types.js';
 
 const logger = createLogger({ component: 'GraphMemoryBackend' });
@@ -94,16 +95,7 @@ export class GraphMemoryBackend implements IGraphMemory {
     if (!baseInit.ok) return baseInit;
 
     try {
-      const mod = await import('better-sqlite3').catch((cause: unknown) => {
-        logger.debug('better-sqlite3 import failed', { error: String(cause) });
-        return null;
-      });
-      if (mod === null)
-        return err(
-          new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3')
-        );
-      const Database = mod.default;
-      this.db = new Database(this.config.dbPath);
+      this.db = openSqliteDatabase(this.config.dbPath);
       this.createGraphTables();
       this.initialized = true;
       this.log.info('GraphMemoryBackend initialized');

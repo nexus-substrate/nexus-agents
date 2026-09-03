@@ -34,7 +34,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "build": "tsup",
@@ -43,11 +43,10 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "better-sqlite3": "^12.11.1",
     "zod": "^4.5.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.5",
     "tsup": "^8.5.0",
     "typescript": "^6.0.3",
     "vitest": "4.1.11"

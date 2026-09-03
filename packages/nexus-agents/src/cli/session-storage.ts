@@ -55,6 +55,7 @@ import {
   SQL_UPDATE_TASK,
   SQL_COUNT_TASKS,
 } from './session-storage-helpers.js';
+import { openSqliteDatabase } from '../context/open-database.js';
 
 /**
  * SQLite-based session storage implementation.
@@ -91,27 +92,15 @@ export class SQLiteSessionStorage implements ISessionStorage {
   }
 
   /** Initialize the storage backend. */
+  // Stays async: this is a published Promise-returning API and its callers
+  // await it. The only await was the dynamic `better-sqlite3` import, which
+  // #5388 removed because `node:sqlite` is a synchronous builtin.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async initialize(): Promise<Result<void, SessionStorageError>> {
     if (this.initialized) return ok(undefined);
 
     try {
-      const betterSqlite3Module = await import('better-sqlite3').catch((error: unknown) => {
-        this.logger.debug('Failed to import better-sqlite3', { error: String(error) });
-        return null;
-      });
-      if (betterSqlite3Module === null) {
-        return err(
-          new SessionStorageError(
-            'better-sqlite3 not installed. Install: npm install better-sqlite3',
-            {
-              context: { dbPath: this.dbPath },
-            }
-          )
-        );
-      }
-
-      const Database = betterSqlite3Module.default;
-      this.db = new Database(this.dbPath);
+      this.db = openSqliteDatabase(this.dbPath);
       this.createTables();
       this.initialized = true;
       this.logger.info('SQLiteSessionStorage initialized', { dbPath: this.dbPath });

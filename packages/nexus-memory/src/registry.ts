@@ -11,7 +11,7 @@
  * @module nexus-memory/registry
  */
 
-import { type Database as DatabaseType } from 'better-sqlite3';
+import type { SqliteDatabase as DatabaseType } from './backends/open-database.js';
 import type { z } from 'zod';
 import { InMemoryBackend } from './backends/memory.js';
 import { openSqliteDatabase } from './backends/open-database.js';

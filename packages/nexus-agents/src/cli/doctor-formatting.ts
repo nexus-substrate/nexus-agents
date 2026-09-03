@@ -268,21 +268,21 @@ function printLearningPersistence(check: LearningPersistenceCheck): void {
 }
 
 /**
- * Prints SQLite (better-sqlite3) availability check (#1249).
+ * Prints SQLite (node:sqlite) availability check (#1249).
  */
 function printSqliteCheck(check: SqliteCheck): void {
   if (check.available) {
     writeLine(
-      `${formatStatus(true)} SQLite (better-sqlite3): ${colors.green}Available${colors.reset}`
+      `${formatStatus(true)} SQLite (node:sqlite): ${colors.green}Available${colors.reset}`
     );
   } else {
     writeLine(
-      `${formatStatus(false, true)} SQLite (better-sqlite3): ${colors.yellow}Not available${colors.reset}`
+      `${formatStatus(false, true)} SQLite (node:sqlite): ${colors.yellow}Not available${colors.reset}`
     );
     writeLine(
       `  ${colors.dim}Memory backends (agentic, adaptive, typed) require it${colors.reset}`
     );
-    writeLine(`  ${colors.dim}Fix: npm install -g better-sqlite3${colors.reset}`);
+    writeLine(`  ${colors.dim}Fix: upgrade to Node >= 22.5.0${colors.reset}`);
   }
 }
 

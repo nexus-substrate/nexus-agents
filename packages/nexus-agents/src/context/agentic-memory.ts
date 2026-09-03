@@ -83,6 +83,7 @@ export {
   DEFAULT_LINKING_CONFIG,
   DEFAULT_AGENTIC_MEMORY_CONFIG,
 } from './agentic-memory-types.js';
+import { openSqliteDatabase } from './open-database.js';
 
 const logger = createLogger({ component: 'AgenticMemoryBackend' });
 
@@ -143,16 +144,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     if (!graphInit.ok) return graphInit;
 
     try {
-      const mod = await import('better-sqlite3').catch((cause: unknown) => {
-        this.log.debug('better-sqlite3 import failed', { error: String(cause) });
-        return null;
-      });
-      if (mod === null)
-        return err(
-          new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3')
-        );
-      const Database = mod.default;
-      this.db = new Database(this.config.dbPath);
+      this.db = openSqliteDatabase(this.config.dbPath);
       this.initialized = true;
       this.log.info('AgenticMemoryBackend initialized');
       return ok(undefined);
