@@ -126,31 +126,44 @@ function sanitizeString(value: string): {
   modified: boolean;
   commentsRemoved: number;
 } {
-  // Loop to a fixed point. A single pass RECONSTRUCTS the tag it strips:
-  // `<sys<system>tem>x</sys</system>tem>` has its inner `<system>` removed,
-  // and the outer fragments close up into a live `<system>x</system>`. The
-  // sibling in `input-sanitizer.ts` has done this since #1496; this copy did
-  // not, and it is the one guarding fork-authored PR descriptions.
+  // Loop to a fixed point over BOTH strips together. Each one can reconstruct
+  // what the other removes, in both directions, so neither is safe alone:
+  //
+  //   tag → tag:      `<sys<system>tem>x</sys</system>tem>`
+  //                   removing the inner `<system>` closes the outer fragments
+  //                   into a live `<system>x</system>` (#1496).
+  //   comment → comment: `<!-<!-- -->- payload -->`
+  //                   removing the inner comment splices `<!-` onto `- payload
+  //                   -->`, yielding a live `<!-- payload -->`.
+  //   comment → tag:  `<sys<!-- -->tem>x</sys<!-- -->tem>`
+  //                   removing the comments reconstructs `<system>x</system>`.
+  //
+  // The third case is why the comment strip cannot simply run once after the
+  // tag loop: doing so closed the first direction and opened the other. Both
+  // run in every pass, and the pass repeats until the string stops changing.
   //
   // Bounded rather than `while`: a pathological input must not spin here, and
   // five passes clears any nesting depth seen in practice (two suffice for the
-  // payload above). If the cap is ever hit the value is returned as-is and
-  // reported modified, so the caller still sees that something was stripped.
+  // payloads above). If the cap is ever hit the value is returned as it stands
+  // and reported modified, so the caller still sees that something was stripped.
   const MAX_PASSES = 5;
   let cleaned = value;
+  let commentsRemoved = 0;
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     XML_INJECTION_PATTERN.lastIndex = 0;
-    const next = cleaned.replace(XML_INJECTION_PATTERN, '');
-    if (next === cleaned) break;
-    cleaned = next;
+    const afterTags = cleaned.replace(XML_INJECTION_PATTERN, '');
+    const { cleaned: afterComments, removed } = stripHtmlComments(afterTags);
+    // Counted per pass and accumulated: a comment removed on pass 2 was really
+    // removed, and under-reporting it would hide content from the reader for
+    // exactly the reason this count exists.
+    commentsRemoved += removed;
+    if (afterComments === cleaned) break;
+    cleaned = afterComments;
   }
-  // After tag stripping, so a comment reconstructed by tag removal is still
-  // caught on the way out.
-  const { cleaned: withoutComments, removed } = stripHtmlComments(cleaned);
   return {
-    cleaned: withoutComments,
-    modified: withoutComments !== value,
-    commentsRemoved: removed,
+    cleaned,
+    modified: cleaned !== value,
+    commentsRemoved,
   };
 }
 
