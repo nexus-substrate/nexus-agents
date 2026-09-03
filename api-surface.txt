@@ -2631,9 +2631,9 @@ InterfaceDeclaration DashboardUpdateOptions
   readonly includeGraph?: boolean | undefined
   readonly includeHealth?: boolean | undefined
 TypeAliasDeclaration DatabaseType
-  = InstanceType<typeof Database>
-  = InstanceType<typeof Database>
-  = InstanceType<typeof Database>
+  = ISQLiteDatabase
+  = ISQLiteDatabase
+  = ISQLiteDatabase
 VariableDeclaration DECEPTION_CATEGORY
   : SafetyCategory
 TypeAliasDeclaration DecisionBillingMode
@@ -5434,7 +5434,7 @@ ClassDeclaration MobiMemPersistence
   readonly active: boolean
   upsert(key: string, value: TValue) => void
 InterfaceDeclaration MobiMemPersistenceOptions
-  readonly db: Database | null
+  readonly db: ISQLiteDatabase | null
   readonly domain: string
 InterfaceDeclaration MobiMemStats
   readonly action: { readonly hitRate: number; readonly timeSavedMs: number; readonly totalEntries: number; readonly totalHits: number; }
