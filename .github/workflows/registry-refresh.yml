@@ -57,12 +57,12 @@ jobs:
         id: diff
         run: |
           set -euo pipefail
-          npx tsx scripts/check-registry-diff.ts \
+          pnpm exec tsx scripts/check-registry-diff.ts \
             /tmp/old-registry.json \
             packages/nexus-agents/src/config/model-registry.generated.json \
             --json > /tmp/diff-report.json
           # Parse the verdict from the FILE, not a stdin pipe. The prior
-          # `echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data", ...)'` parsed only
+          # `echo "$OUTPUT" | pnpm exec tsx -e 'process.stdin.on("data", ...)'` parsed only
           # the FIRST stdin chunk; the report JSON for a ~1k-entry registry spans
           # multiple chunks, so JSON.parse got a truncated prefix -> "Unexpected end
           # of JSON input" and this step failed on every scheduled run. Reading the
@@ -77,7 +77,7 @@ jobs:
               `total_removed=${r.summary.removed.length}\n` +
               `total_changed=${r.summary.changed.length}\n`);
           '
-          npx tsx scripts/check-registry-diff.ts \
+          pnpm exec tsx scripts/check-registry-diff.ts \
             /tmp/old-registry.json \
             packages/nexus-agents/src/config/model-registry.generated.json \
             > /tmp/diff-report.md

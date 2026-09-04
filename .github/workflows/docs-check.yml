@@ -73,7 +73,7 @@ jobs:
       # against DECLARED entry points, with an enumerated allowlist for the
       # three known gaps. A fourth regression still fails.
       - name: Confirm every declared entry point produced a page
-        run: npx tsx scripts/check-typedoc-coverage.ts
+        run: pnpm exec tsx scripts/check-typedoc-coverage.ts
 
       # #4523: a page existing is not the same as a page existing at the URL
       # it has always had. Three barrels emit to docs/api/exports/ because
@@ -83,7 +83,7 @@ jobs:
       # the next tidy-up. This runs against the tree the step above just
       # generated; it does not detect a stale one.
       - name: Confirm the generated page layout has not moved
-        run: npx tsx scripts/check-typedoc-layout.ts
+        run: pnpm exec tsx scripts/check-typedoc-layout.ts
 
   # Job 2: Link Validation
   # Link validation happens in a dedicated workflow (.github/workflows/link-check.yml)
@@ -118,7 +118,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Check schema fan-out
-        run: npx tsx scripts/check-schema-fanout.ts ${{ github.event.pull_request.base.sha }} --verbose
+        run: pnpm exec tsx scripts/check-schema-fanout.ts ${{ github.event.pull_request.base.sha }} --verbose
 
   docs-coverage:
     name: Documentation Coverage
@@ -336,11 +336,11 @@ jobs:
 
       - name: Check repository index
         run: |
-          if npx tsx scripts/generate-repo-index.ts --check; then
+          if pnpm exec tsx scripts/generate-repo-index.ts --check; then
             echo "✅ Repository capability index is up to date"
           else
             echo "::error::Repository capability index is out of date"
-            echo "Run 'npx tsx scripts/generate-repo-index.ts' and commit the changes"
+            echo "Run 'pnpm exec tsx scripts/generate-repo-index.ts' and commit the changes"
             exit 1
           fi
 
@@ -366,7 +366,7 @@ jobs:
 
       - name: Check generated tool reference
         run: |
-          if npx tsx scripts/generate-tool-reference.ts --check; then
+          if pnpm exec tsx scripts/generate-tool-reference.ts --check; then
             echo "✅ Generated tool reference is up to date"
           else
             echo "::error::Generated tool reference is out of date"
@@ -391,7 +391,7 @@ jobs:
 
       - name: Check generated strategy reference
         run: |
-          if npx tsx scripts/generate-strategy-reference.ts --check; then
+          if pnpm exec tsx scripts/generate-strategy-reference.ts --check; then
             echo "✅ Generated strategy reference is up to date"
           else
             echo "::error::Generated strategy reference is out of date"
@@ -416,7 +416,7 @@ jobs:
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
-          if npx tsx scripts/check-docops-skill.ts --verbose; then
+          if pnpm exec tsx scripts/check-docops-skill.ts --verbose; then
             echo "✅ DocOps skill sync check passed"
           else
             echo "::error::DocOps pipeline changed without skill update"
@@ -440,7 +440,7 @@ jobs:
       - name: Check registry-coverage manifest
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: npx tsx scripts/check-registry-coverage.ts --verbose
+        run: pnpm exec tsx scripts/check-registry-coverage.ts --verbose
 
   # Job 8c2: MCP description-drift gate (#3528) — runtime registerTool description
   # must agree with the TOOL_DESCRIPTIONS doc-table source.
@@ -457,7 +457,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Check MCP tool description drift
-        run: npx tsx scripts/check-mcp-description-drift.ts --verbose
+        run: pnpm exec tsx scripts/check-mcp-description-drift.ts --verbose
 
   # Job 8d: Orphan Detection (#2410) — blocking since #4583
   orphan-detection:
@@ -473,7 +473,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Run orphan detection
-        run: npx tsx scripts/check-orphans.ts --verbose
+        run: pnpm exec tsx scripts/check-orphans.ts --verbose
 
   # Job 9: Canonical Index Validation
   canonical-index:
@@ -487,12 +487,12 @@ jobs:
 
       - name: Check all docs are indexed
         run: |
-          if npx tsx scripts/check-docs-indexed.ts; then
+          if pnpm exec tsx scripts/check-docs-indexed.ts; then
             echo "✅ All documentation properly indexed in docs/README.md"
           else
             echo "::error::Unindexed documentation files found"
             echo "Add missing docs to docs/README.md (canonical index)"
-            npx tsx scripts/check-docs-indexed.ts --fix
+            pnpm exec tsx scripts/check-docs-indexed.ts --fix
             exit 1
           fi
 
@@ -516,7 +516,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Check harness configs redirect to AGENTS.md
-        run: npx tsx scripts/check-harness-alignment.ts
+        run: pnpm exec tsx scripts/check-harness-alignment.ts
 
   # Job 10: Markdown Linting
   markdown-lint:
@@ -550,11 +550,11 @@ jobs:
 
       - name: Check documentation content drift
         run: |
-          if npx tsx scripts/generate-docs-content.ts --check; then
+          if pnpm exec tsx scripts/generate-docs-content.ts --check; then
             echo "✅ Documentation content matches source of truth"
           else
             echo "::error::Documentation content has drifted from source"
-            echo "Run 'npx tsx scripts/generate-docs-content.ts' to see details"
+            echo "Run 'pnpm exec tsx scripts/generate-docs-content.ts' to see details"
             exit 1
           fi
 
@@ -732,9 +732,9 @@ jobs:
 
       - name: Check skills/index.yaml freshness
         run: |
-          if ! npx tsx scripts/generate-skills-index.ts --check; then
+          if ! pnpm exec tsx scripts/generate-skills-index.ts --check; then
             echo "::error::skills/index.yaml is stale"
-            echo "Run: npx tsx scripts/generate-skills-index.ts"
+            echo "Run: pnpm exec tsx scripts/generate-skills-index.ts"
             exit 1
           fi
 
@@ -756,9 +756,9 @@ jobs:
 
       - name: Check agents/index.yaml freshness + coverage
         run: |
-          if ! npx tsx scripts/generate-agents-index.ts --check; then
+          if ! pnpm exec tsx scripts/generate-agents-index.ts --check; then
             echo "::error::agents/index.yaml is stale or an expert is missing its agent file"
-            echo "Run: npx tsx scripts/generate-agents-index.ts"
+            echo "Run: pnpm exec tsx scripts/generate-agents-index.ts"
             exit 1
           fi
 
@@ -779,22 +779,22 @@ jobs:
 
       - name: Check governance registries
         run: |
-          if npx tsx scripts/inject-governance.ts check; then
+          if pnpm exec tsx scripts/inject-governance.ts check; then
             echo "✅ Governance registries are in sync"
           else
             echo "::error::Governance registries have drifted from source code"
-            echo "Run 'npx tsx scripts/inject-governance.ts inject' and commit the changes"
+            echo "Run 'pnpm exec tsx scripts/inject-governance.ts inject' and commit the changes"
             exit 1
           fi
 
       - name: Verify injection idempotency
         run: |
-          npx tsx scripts/inject-governance.ts inject
+          pnpm exec tsx scripts/inject-governance.ts inject
           if git diff --exit-code CLAUDE.md; then
             echo "✅ CLAUDE.md governance sections are up to date"
           else
             echo "::error::CLAUDE.md governance sections are stale"
-            echo "Run 'npx tsx scripts/inject-governance.ts inject' and commit the changes"
+            echo "Run 'pnpm exec tsx scripts/inject-governance.ts inject' and commit the changes"
             git diff CLAUDE.md
             exit 1
           fi

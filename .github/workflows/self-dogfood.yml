@@ -216,7 +216,7 @@ jobs:
       # runtime data — this is the separate runtime-outcome report.)
       - name: Stratified outcome report
         if: always()
-        run: npx tsx scripts/stratify-outcomes.ts --json > fitness-stratified.json || echo '{}' > fitness-stratified.json
+        run: pnpm exec tsx scripts/stratify-outcomes.ts --json > fitness-stratified.json || echo '{}' > fitness-stratified.json
 
       - name: Upload stratified outcome report
         if: always()

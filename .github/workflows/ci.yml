@@ -55,7 +55,7 @@ jobs:
       # debt is the root cause of the release-race incidents (see
       # docs/ops/release-changeset-race.md).
       - name: Check changeset presence
-        run: npx tsx scripts/check-changeset.ts ${{ github.event.pull_request.base.sha }}
+        run: pnpm exec tsx scripts/check-changeset.ts ${{ github.event.pull_request.base.sha }}
 
   producer-consumer-check:
     name: Producer/Consumer Check
@@ -80,13 +80,13 @@ jobs:
       # the 2026-05-24 YAGNI audit sweep (~5,250 LOC deleted across 7
       # issues). Opt-out: `// @export-no-consumer-yet — see #<issue>`.
       - name: Check producer-without-consumer (#3024)
-        run: npx tsx scripts/check-new-unused-exports.ts ${{ github.event.pull_request.base.sha }}
+        run: pnpm exec tsx scripts/check-new-unused-exports.ts ${{ github.event.pull_request.base.sha }}
 
       - name: Public API surface
         # #4749: a name grep cannot answer a reachability question. Three type
         # changes shipped mis-versioned before this existed (#4736, #4740,
         # #4744). The gate reports what moved; a human decides the semver level.
-        run: npx tsx scripts/check-api-surface.ts
+        run: pnpm exec tsx scripts/check-api-surface.ts
 
   lint:
     name: Lint
@@ -113,6 +113,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
+
+      # #5411: `npx tsx` resolves from the registry on every cold runner —
+      # `setup-node` caches the pnpm store, never `~/.npm/_npx`, and tsx was
+      # declared nowhere. That made `arch-lint` take 6m51s on CI for 3.95s of
+      # work and killed this job at its cap twice, reporting 0 lint errors.
+      # tsx is now a pinned devDependency, so it comes from the cached store.
+      # Cheap and first, so a regression fails in seconds rather than after
+      # the whole-repo eslint.
+      #
+      # governor-review.yml is excluded: governor-owned path per CODEOWNERS,
+      # not changed without owner ratification (same carve-out as #5400).
+      - name: No undeclared tsx invocations (#5411)
+        run: |
+          matches=$(grep -rn 'npx tsx' .github/workflows package.json packages/nexus-agents/package.json 2>/dev/null \
+            | grep -v 'governor-review.yml' || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Found 'npx tsx'. tsx is a declared devDependency — use 'pnpm exec tsx' (#5411)."
+            echo "$matches"
+            exit 1
+          fi
+          echo "No 'npx tsx' in workflows or package manifests"
 
       - name: Run lint
         run: pnpm lint
@@ -147,22 +168,22 @@ jobs:
       # calls it "the CI half of the authority-ladder enforcement layer".
       # This gate asserts its own reachability first.
       - name: Check every gate script is reachable from CI
-        run: npx tsx scripts/check-script-wiring.ts
+        run: pnpm exec tsx scripts/check-script-wiring.ts
 
       # The six gates that audit found unwired (#4562). All pass today —
       # verified before wiring, because an unrun gate rots (lint:arch had
       # drifted red with nine false positives by the time #4490 found it).
       - name: Authority-tier declaration gate (#3841)
-        run: npx tsx scripts/check-authority-tier-drift.ts
+        run: pnpm exec tsx scripts/check-authority-tier-drift.ts
 
       - name: Strategy-manifest drift gate (#3837)
-        run: npx tsx scripts/check-strategy-manifest-drift.ts
+        run: pnpm exec tsx scripts/check-strategy-manifest-drift.ts
 
       - name: Memory-contract drift gate (#2766)
-        run: npx tsx scripts/check-memory-contract.ts
+        run: pnpm exec tsx scripts/check-memory-contract.ts
 
       - name: Catalogue drift sweep (#4417)
-        run: npx tsx scripts/check-catalogue-drift.ts
+        run: pnpm exec tsx scripts/check-catalogue-drift.ts
 
       # #5142: docs/ENTRYPOINTS.md is named canonical for CLI entry points and
       # drifted — 20 commands documented against 52 registered, plus two rows
@@ -170,7 +191,7 @@ jobs:
       # the two lists. Baseline-aware: existing gaps are recorded debt, a NEW
       # undocumented command or a phantom row fails.
       - name: CLI docs drift (#5142)
-        run: npx tsx scripts/check-cli-docs-drift.ts
+        run: pnpm exec tsx scripts/check-cli-docs-drift.ts
 
       # #5142: config/env-schema.ts reports an unrecognized NEXUS_* var as a
       # typo. 33 vars that production code READS were never registered, so a
@@ -178,7 +199,7 @@ jobs:
       # NEXUS_MCP_DEPTH) was reported as the user's mistake. The #4722 test
       # guards only documented->registered; this guards read-in-code->registered.
       - name: Env-schema coverage (#5142)
-        run: npx tsx scripts/check-env-schema-coverage.ts
+        run: pnpm exec tsx scripts/check-env-schema-coverage.ts
 
       # #5123 (epic #5121): one canonical implementation per OPERATION. The old
       # canonical table listed SYMBOLS, which is how it blessed both sides of
@@ -187,13 +208,13 @@ jobs:
       # exactly that (#5186) on its first run. Alternates are tracked by
       # PRESENCE, never counts, so two unrelated PRs cannot conflict over them.
       - name: Concern registry (#5123)
-        run: npx tsx scripts/check-concern-registry.ts
+        run: pnpm exec tsx scripts/check-concern-registry.ts
 
       - name: Tool-description distinctness (#2650)
-        run: npx tsx scripts/check-tool-distinctness.ts
+        run: pnpm exec tsx scripts/check-tool-distinctness.ts
 
       - name: Tool-output consistency (#2653)
-        run: npx tsx scripts/check-tool-output-consistency.ts
+        run: pnpm exec tsx scripts/check-tool-output-consistency.ts
 
   typecheck:
     name: Type Check
@@ -228,7 +249,7 @@ jobs:
       # `pnpm build` already runs this; the explicit step names the failure
       # instead of burying it in tsup output.
       - name: Verify runtime assets reached dist
-        run: npx tsx scripts/check-dist-assets.ts
+        run: pnpm exec tsx scripts/check-dist-assets.ts
 
       - name: Upload build output
         if: matrix.os == 'ubuntu-latest'

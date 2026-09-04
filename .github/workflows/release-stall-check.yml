@@ -58,7 +58,7 @@ jobs:
         continue-on-error: true
         env:
           HAS_OPEN_VERSION_PR: ${{ steps.version-pr.outputs.has_open }}
-        run: npx tsx scripts/check-release-stuck.ts
+        run: pnpm exec tsx scripts/check-release-stuck.ts
 
       - name: File or update the tracking issue
         if: steps.assess.outcome == 'failure'
@@ -103,4 +103,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: npx tsx scripts/check-missing-push-runs.ts
+        run: pnpm exec tsx scripts/check-missing-push-runs.ts
