@@ -25,27 +25,24 @@ Security-first design with 7 defense layers:
 4. **Memory Bounds** - Context pruning, history caps
 5. **Path Safety** - Normalized paths, directory jails
 6. **Timeout Protection** - TimeoutGuard for async operations
-7. **Byzantine Detection** - Weighted voting with pattern detection
+7. **Byzantine Detection** - `WeightedVoting` pattern detection (exported, not on the `consensus_vote` path — see Threat Model)
 
 ---
 
 ## Authentication & Access Control
 
-Nexus-agents uses a **secure-by-default** approach appropriate for its primary use case as a local CLI/MCP tool:
+The MCP server ships one transport, `StdioServerTransport` (`src/cli-server.ts`, `src/mcp/server.ts`). It communicates with the parent process only — no network listener, so no other process can reach it. Process isolation is the access control; no authentication runs on this path.
 
-- **MCP mode (default):** Communicates over stdio with the parent process only — no network listener, no external access possible. Authentication is not required because only the local process can communicate with the server.
-- **REST API mode (opt-in):** When enabled via the YAML config `api.enabled: true`, an API key is auto-generated and stored at `~/.nexus-agents/auth/rest-api-key` with restrictive file permissions (0600). All REST endpoints require this key via the `Authorization` header.
+There is no REST API mode. Earlier versions of this section described an `api.enabled: true` config key and an auto-generated `~/.nexus-agents/auth/rest-api-key`; neither is implemented. `AppConfigSchema` (`src/config/schemas.ts`) has no `api` key, no source file references `rest-api-key`, and nothing under `src/` opens an HTTP listener. An `api:` block in `nexus-agents.yaml` is not read by any code.
 
-| Environment           | Auth Needed? | Notes                                        |
-| --------------------- | ------------ | -------------------------------------------- |
-| Local MCP (stdio)     | No           | Only the parent process can reach the server |
-| Local REST API        | Auto         | API key auto-generated on first start        |
-| Network-exposed       | Yes          | Set `NEXUS_AUTH_ENABLED=true`                |
-| Production deployment | Yes          | Enable auth and use HTTPS                    |
+| Environment       | Auth enforced? | Notes                                                                                   |
+| ----------------- | -------------- | --------------------------------------------------------------------------------------- |
+| Local MCP (stdio) | No             | Only the parent process can reach the server                                            |
+| Network-exposed   | Not supported  | No HTTP transport ships; a token can be generated (below) but no code path validates it |
 
 ### Token-Based Authentication (Issue #739)
 
-For network-exposed deployments, nexus-agents provides token-based authentication via the `AuthHandler` middleware (`src/mcp/middleware/auth-handler.ts`).
+The `AuthHandler` middleware (`src/mcp/middleware/auth-handler.ts`) and its token CLI are implemented; enforcement is not. No server code path calls `AuthHandler.authenticate()`, and no HTTP endpoint exists to present a token to (see MCP Middleware Security below).
 
 **Token management CLI commands:**
 
@@ -83,29 +80,25 @@ export NEXUS_AUTH_ENABLED=true
 nexus-agents --mode=server
 ```
 
-**Client usage:**
-
-```bash
-# Include token in Authorization header
-curl -H "Authorization: Bearer $(cat ~/.nexus-agents/auth/server-token)" \
-  http://localhost:3000/api/orchestrate
-```
+**Client usage:** none today. Setting `NEXUS_AUTH_ENABLED=true` generates and logs the token file path at startup, but there is no listener that accepts an `Authorization` header, so no client can use the token.
 
 ---
 
 ## Threat Model
 
-| Threat             | Vector               | Mitigation                               | Status |
-| ------------------ | -------------------- | ---------------------------------------- | ------ |
-| Prompt Injection   | Malicious prompts    | Input/output tagging, structured output  | ✅     |
-| SSRF               | Outbound HTTP calls  | URL allowlist, private IP blocking       | ✅     |
-| Path Traversal     | Malicious file paths | Path normalization, directory jail       | ✅     |
-| ReDoS              | Malicious regex      | Static patterns only, no user RegExp     | ✅     |
-| MCP SDK ReDoS      | CVE-2026-0621        | TimeoutGuard, URI validation             | ✅     |
-| Secrets Exposure   | Logs, errors         | Secrets vault, sanitization              | ✅     |
-| Token Exhaustion   | Unbounded context    | Memory caps, pruning                     | ✅     |
-| Injection          | Malformed prompts    | Input validation, Zod schemas            | ✅     |
-| Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection | ✅     |
+| Threat             | Vector               | Mitigation                               | Status       |
+| ------------------ | -------------------- | ---------------------------------------- | ------------ |
+| Prompt Injection   | Malicious prompts    | Input/output tagging, structured output  | ✅           |
+| SSRF               | Outbound HTTP calls  | URL allowlist, private IP blocking       | ✅           |
+| Path Traversal     | Malicious file paths | Path normalization, directory jail       | ✅           |
+| ReDoS              | Malicious regex      | Static patterns only, no user RegExp     | ✅           |
+| MCP SDK ReDoS      | CVE-2026-0621        | TimeoutGuard, URI validation             | ✅           |
+| Secrets Exposure   | Logs, errors         | Secrets vault, sanitization              | ✅           |
+| Token Exhaustion   | Unbounded context    | Memory caps, pruning                     | ✅           |
+| Injection          | Malformed prompts    | Input validation, Zod schemas            | ✅           |
+| Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection | ⚠️ not wired |
+
+**Byzantine Failures is not on the live vote path.** `WeightedVoting` (`src/consensus/weighted-voting.ts`) is exported from `consensus/index.ts` along with its factory `createWeightedVoting`, but neither has a non-test caller, and `ConsensusEngine` (`src/consensus/engine.ts`) — what `consensus_vote` runs — does not reference it. The class implements two of the four documented patterns (contrarian, collusion) and returns `false` without evaluating when fewer than 3 votes are present. See [CONSENSUS_PROTOCOLS.md](./CONSENSUS_PROTOCOLS.md#byzantine-detection-patterns).
 
 **Reference:** OWASP LLM Top 10 (LLM01: Prompt Injection)
 
@@ -113,33 +106,41 @@ curl -H "Authorization: Bearer $(cat ~/.nexus-agents/auth/server-token)" \
 
 ## MCP Middleware Security
 
-Every MCP tool invocation passes through a hardened middleware pipeline:
+Locally registered MCP tools are wrapped in a middleware pipeline by `createSecureHandler` (`src/mcp/middleware/secure-handler.ts`). Coverage is **per-tool opt-in**, not a transport chokepoint: each tool's registration calls `createSecureHandler` itself, and a registration that does not is not covered. Upstream MCP proxy tools — registered by `initUpstreamServers` (`src/cli-server-tools.ts`) with a raw passthrough handler when the gateway lists upstream servers — receive none of the layers below; the server logs this at startup as `upstreamProxiesUncovered: true`. The `registerTool()` interception proxies (`mcp/gateway/gateway-server-proxy.ts`, `mcp/tools/annotation-proxy.ts`, `mcp/tools/tool-observability-proxy.ts`) add annotations, gateway dispatch and metrics; they do not add security layers.
 
-| Layer               | Protection                                         |
-| ------------------- | -------------------------------------------------- |
-| Authentication      | Bearer token validation with timing-safe compare   |
-| CORS                | Strict origin checking for HTTP transports         |
-| Security Headers    | X-Content-Type-Options, X-Frame-Options, CSP       |
-| Body Size Limits    | Configurable max request size (default 1 MB)       |
-| Input Validation    | Size limits on tool arguments, Zod validation      |
-| Policy Firewall     | Allowlist/denylist rules per tool with enforcement |
-| Rate Limiting       | Token bucket per tool (configurable requests/min)  |
-| Output Sanitization | Secret pattern redaction (keys, tokens, passwords) |
-| Audit Logging       | SIEM-compatible JSON-L events for tool invocations |
+| Layer               | Protection                                                                              | Default                                            |
+| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Input Validation    | Argument size cap (`MAX_INPUT_SIZE_BYTES`), conversation-tag stripping, Zod per handler | On for covered tools                               |
+| Policy Firewall     | Allowlist/denylist rules per tool; evaluated and logged, denials not applied            | Always `warn` — configured `enforce` is overridden |
+| Rate Limiting       | Token bucket per tool (configurable requests/min)                                       | On (60/min)                                        |
+| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)                                      | On for covered tools                               |
+| Audit Logging       | SIEM-compatible JSON-L events for tool invocations                                      | **Off** until `security.audit.enabled: true`       |
+| Authentication      | Bearer-token `AuthHandler` with timing-safe compare                                     | **Not enforced** — no `authenticate()` call site   |
+
+Three rows need qualification:
+
+- **Policy Firewall.** `defaultConfig.security.policy.policyMode` is `enforce`, but `stagePolicyFirewallForRollout` (`src/mcp/middleware/policy-registry.ts`), called from `cli-server-tools.ts` at startup, unconditionally sets the firewall to `warn`: every rule is evaluated and every would-be denial is logged, none is applied. The startup record names the config value `configuredPolicyMode` (`cli-server-audit.ts`) because it is not the effective mode. There is no operator switch to `enforce` today (#4888).
+
+- **Authentication.** `AuthHandler` is constructed at startup (`cli-server-auth.ts`) and can generate a token, but no server code path calls `AuthHandler.authenticate()` (`grep -rn "\.authenticate(" src --exclude=*.test.ts` returns nothing). On the stdio transport, process isolation is the access control (see Authentication & Access Control above); the token is never checked.
+- **Audit logging** is opt-in. `initializeAuditLogger` (`cli-server-audit.ts`) returns `null` unless `security.audit.enabled === true`, and `defaultConfig.security` (`config/schemas.ts`) has no `audit` key, so a default install writes no audit log. Startup reports the absence (#4996).
+
+CORS, security headers and request body-size limits are not implemented: the only transport is `StdioServerTransport`, and `src/mcp/middleware/` contains no HTTP middleware. Earlier versions of this table listed them.
 
 ### Configuration
+
+Values marked `default` are what ships; the `audit` block is absent by default and must be added to enable audit logging.
 
 ```yaml
 security:
   policy:
-    policyMode: enforce # enforce | warn
-    defaultMode: read-only # read-only | read-write
+    policyMode: enforce # default, but overridden to warn at startup (see above); enforce | warn
+    defaultMode: read-only # default; read-only | read-write
 
   rateLimit:
-    enabled: true
-    requestsPerMinute: 60
+    enabled: true # default
+    requestsPerMinute: 60 # default
 
-  audit:
+  audit: # not present by default — add this block to turn audit logging on
     enabled: true
     logDir: .nexus-agents/audit # per-repo (epic #2872); cross-repo override: ~/.nexus-agents/audit
     minSeverity: info # info | warning | critical

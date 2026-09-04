@@ -195,9 +195,11 @@ type ToolContentBlock =
 
 ## Tool Annotation Taxonomy (MCP 2025-11-25)
 
-Every registered MCP tool declares all four annotation hints from the 2025-11-25 spec. Annotations live in a single source of truth — `packages/nexus-agents/src/mcp/tool-annotations.ts` — and each `server.registerTool()` call reads its annotations via `getToolAnnotations(name)`. CI gate `check:tool-annotations` enforces parity between the central map and the registered tools.
+Every MCP tool in the manifest declares all four annotation hints from the 2025-11-25 spec. Annotations live in a single source of truth — the `TOOL_MANIFEST` array in `packages/nexus-agents/src/mcp/tools/tool-manifest.ts`, one `{ name, annotations, sideEffects }` entry per tool; `packages/nexus-agents/src/mcp/tool-annotations.ts` is an accessor that re-exports from it — and each manifest-driven `server.registerTool()` call reads its annotations via `getToolAnnotations(name)`.
 
-Per the MCP spec these are **hints**, not enforcement primitives — clients should never make safety decisions based on annotations received from untrusted servers. nexus-agents uses them for: programmatic prerequisite gates ([#2652](https://github.com/nexus-substrate/nexus-agents/issues/2652)), retry-policy decisions in pipeline runners (only retry tools where `idempotentHint === true`), and permission-prompt UX consistency across harnesses.
+The `checkToolAnnotations` gate in `scripts/inject-governance.ts` (run by `pnpm governance:check`, CI-wired) checks **manifest self-consistency**: it parses the manifest's tool names and confirms each pairs with an `annotations: {` block, and has a second branch for annotated names absent from the manifest that cannot fire, since both sets are parsed from the same file. It does not read `server.registerTool()` call sites, so a tool registered outside the manifest is invisible to it — upstream MCP proxy tools registered by `initUpstreamServers` (`cli-server-tools.ts`) carry no annotations at all — and it does not check that all four hints are present. Nothing does: `ToolAnnotations` (`tool-manifest.ts`) declares all four hints optional, so the fact that every manifest entry currently carries all four is convention, not an enforced invariant.
+
+Per the MCP spec these are **hints**, not enforcement primitives — clients should never make safety decisions based on annotations received from untrusted servers. Inside nexus-agents the only reader of the hints is a build-time gate: `checkToolPrerequisites` in `scripts/inject-governance.ts` parses `readOnlyHint` from the manifest and requires every non-read-only tool to appear in `TOOL_PREREQUISITES` or `NO_PREREQUISITE` ([#2652](https://github.com/nexus-substrate/nexus-agents/issues/2652)). The runtime prerequisite gates in `mcp/middleware/tool-prerequisites.ts` do not read annotations, and no pipeline runner consults `idempotentHint` for retries (`PipelineRunner.retryFailed` gates on a per-node `isRetryable` flag). Otherwise the hints pass through to MCP clients unchanged, for permission-prompt UX across harnesses.
 
 | Tool                          | readOnly | destructive | idempotent | openWorld | Why                                                      |
 | ----------------------------- | :------: | :---------: | :--------: | :-------: | -------------------------------------------------------- |
@@ -247,10 +249,10 @@ A `destructiveHint: true` tool can delete or overwrite data without the caller's
 ### Adding a new tool
 
 1. Implement the tool in `packages/nexus-agents/src/mcp/tools/<tool>.ts`.
-2. Add it to `REGISTERED_TOOL_NAMES` in `packages/nexus-agents/src/mcp/tools/index.ts`.
-3. Add its annotations to `TOOL_ANNOTATIONS` in `packages/nexus-agents/src/mcp/tool-annotations.ts`.
+2. Add a `{ name, annotations, sideEffects }` entry to `TOOL_MANIFEST` in `packages/nexus-agents/src/mcp/tools/tool-manifest.ts` (`REGISTERED_TOOL_NAMES` is derived from it).
+3. Map the entry to its handler in `HANDLER_TABLE` in `packages/nexus-agents/src/cli-server-tools.ts` (`assertHandlerManifestParity` fails if the two disagree).
 4. Pass `annotations: getToolAnnotations('your_tool_name')` to the `server.registerTool()` config object.
-5. Run `npx tsx scripts/inject-governance.ts check` — `check:tool-annotations` confirms parity.
+5. Run `pnpm governance:check` — `checkToolAnnotations` confirms the manifest entry carries an `annotations` block.
 
 ---
 

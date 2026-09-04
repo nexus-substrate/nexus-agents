@@ -356,7 +356,7 @@ for (const [agentId, score] of contributions) {
 
 ## Byzantine Detection
 
-The weighted voting system emits events when Byzantine patterns are detected.
+`WeightedVoting` (`src/consensus/weighted-voting.ts`) emits these events when it detects a Byzantine pattern. The class is exported but not on the live `consensus_vote` path — `ConsensusEngine` does not use it — so these events fire only if your own code constructs it (`createWeightedVoting`). `pattern_detected` and `collusion_suspected` come from `weightedConsensus()`; `weight_updated` fires from `updatePerformance()`, `flagByzantine()` and `recalibrateWeights()`, and `agent_flagged` from `flagByzantine()`. A default `consensus_vote` never emits any of them.
 
 ### Subscribing to Byzantine Events
 
