@@ -236,7 +236,9 @@ jobs:
         #     just-merged release PR are gone, but new ones haven't appeared)
         #
         # The third condition prevents publishing partial state when changesets
-        # are still pending; in that case the next merge will close the loop.
+        # are still pending. "The next merge will close the loop" is only true
+        # once: after two package.json versions npm never received the loop is
+        # stalled and the step FAILS instead of standing down again (#5077).
         #
         # CRITICAL (#2696, 2026-05-14; corrected #4487, 2026-08-23): in PR-update
         # mode the changesets/action bumps package.json and consumes .changeset/*.md
@@ -300,7 +302,28 @@ jobs:
           # merge that was never going to happen. Both green, release stalled.
           pending_changesets=$(pnpm exec tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
           if [ "$pending_changesets" -gt 0 ]; then
-            echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets non-empty changeset(s) are still pending, so changesets/action will open a version PR. That merge closes the loop. Not force-publishing."
+            # Standing down is right once — force-publishing over pending
+            # changesets is what caused #4487. But the premise "that merge closes
+            # the loop" fails under sustained merge activity: each version-PR
+            # merge bumps package.json, this run finds a changeset a feature PR
+            # landed meanwhile, stands down, and a fresh version PR opens. On
+            # 2026-08-26 four versions went unpublished across six green runs
+            # (#5077). So measure how many package.json versions npm has never
+            # received — a walk of immutable commit objects, one bump per
+            # stand-down — and FAIL once there are two. One is the ordinary race;
+            # two is a stalled loop. "Cannot measure" is its own failure, never 0.
+            pending_names=$(pnpm exec tsx scripts/count-pending-changesets.ts --names "$GITHUB_SHA" | sed 's#^#.changeset/#; s#$#.md#' | paste -sd ',' -)
+            if ! unpublished_list=$(pnpm exec tsx scripts/count-unpublished-bumps.ts "$GITHUB_SHA" "$published_version"); then
+              echo "::error::Cannot measure the publish gap: package.json is at $local_version, npm at $published_version, but $published_version is not on main's first-parent line (see count-unpublished-bumps.ts output above). Not force-publishing; this needs a human. docs/ops/release-changeset-race.md (#5077)"
+              exit 1
+            fi
+            unpublished=$(printf '%s\n' "$unpublished_list" | grep -c . || true)
+            unpublished_csv=$(printf '%s\n' "$unpublished_list" | paste -sd ',' -)
+            if [ "$unpublished" -ge 2 ]; then
+              echo "::error::Stalled release loop: npm is at $published_version and main carries $unpublished version(s) npm never received ($unpublished_csv), while $pending_changesets changeset(s) are still pending ($pending_names) — each version-PR merge is racing a new changeset. Recovery: wait for changesets/action to regenerate the version PR so it consumes every changeset on main, then merge it ALONE. docs/ops/release-changeset-race.md (#5077)"
+              exit 1
+            fi
+            echo "::warning::package.json is at $local_version but npm has $published_version ($unpublished unpublished: $unpublished_csv), AND $pending_changesets non-empty changeset(s) are still pending ($pending_names), so changesets/action will open a version PR. Merge it alone once it has been regenerated; a second unpublished bump fails this step (#5077). Not force-publishing."
             exit 0
           fi
 
