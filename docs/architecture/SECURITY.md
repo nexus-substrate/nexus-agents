@@ -25,7 +25,7 @@ Security-first design with 7 defense layers:
 4. **Memory Bounds** - Context pruning, history caps
 5. **Path Safety** - Normalized paths, directory jails
 6. **Timeout Protection** - TimeoutGuard for async operations
-7. **Byzantine Detection** - `WeightedByzantineVoting` pattern detection (exported, not on the `consensus_vote` path — see Threat Model)
+7. **Byzantine Detection** - `WeightedVoting` pattern detection (exported, not on the `consensus_vote` path — see Threat Model)
 
 ---
 
@@ -98,7 +98,7 @@ nexus-agents --mode=server
 | Injection          | Malformed prompts    | Input validation, Zod schemas            | ✅           |
 | Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection | ⚠️ not wired |
 
-**Byzantine Failures is not on the live vote path.** `WeightedByzantineVoting` (`src/consensus/weighted-voting.ts`) is exported from `consensus/index.ts` but has no non-test construction site, and `ConsensusEngine` (`src/consensus/engine.ts`) — what `consensus_vote` runs — does not reference it. The class implements two of the four documented patterns (contrarian, collusion) and returns `false` without evaluating when fewer than 3 votes are present. See [CONSENSUS_PROTOCOLS.md](./CONSENSUS_PROTOCOLS.md#byzantine-detection-patterns).
+**Byzantine Failures is not on the live vote path.** `WeightedVoting` (`src/consensus/weighted-voting.ts`) is exported from `consensus/index.ts` along with its factory `createWeightedVoting`, but neither has a non-test caller, and `ConsensusEngine` (`src/consensus/engine.ts`) — what `consensus_vote` runs — does not reference it. The class implements two of the four documented patterns (contrarian, collusion) and returns `false` without evaluating when fewer than 3 votes are present. See [CONSENSUS_PROTOCOLS.md](./CONSENSUS_PROTOCOLS.md#byzantine-detection-patterns).
 
 **Reference:** OWASP LLM Top 10 (LLM01: Prompt Injection)
 
@@ -108,16 +108,18 @@ nexus-agents --mode=server
 
 Locally registered MCP tools are wrapped in a middleware pipeline by `createSecureHandler` (`src/mcp/middleware/secure-handler.ts`). Coverage is **per-tool opt-in**, not a transport chokepoint: each tool's registration calls `createSecureHandler` itself, and a registration that does not is not covered. Upstream MCP proxy tools — registered by `initUpstreamServers` (`src/cli-server-tools.ts`) with a raw passthrough handler when the gateway lists upstream servers — receive none of the layers below; the server logs this at startup as `upstreamProxiesUncovered: true`. The `registerTool()` interception proxies (`mcp/gateway/gateway-server-proxy.ts`, `mcp/tools/annotation-proxy.ts`, `mcp/tools/tool-observability-proxy.ts`) add annotations, gateway dispatch and metrics; they do not add security layers.
 
-| Layer               | Protection                                                                              | Default                                          |
-| ------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Input Validation    | Argument size cap (`MAX_INPUT_SIZE_BYTES`), conversation-tag stripping, Zod per handler | On for covered tools                             |
-| Policy Firewall     | Allowlist/denylist rules per tool with enforcement                                      | On (`policy.policyMode: enforce`)                |
-| Rate Limiting       | Token bucket per tool (configurable requests/min)                                       | On (60/min)                                      |
-| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)                                      | On for covered tools                             |
-| Audit Logging       | SIEM-compatible JSON-L events for tool invocations                                      | **Off** until `security.audit.enabled: true`     |
-| Authentication      | Bearer-token `AuthHandler` with timing-safe compare                                     | **Not enforced** — no `authenticate()` call site |
+| Layer               | Protection                                                                              | Default                                            |
+| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Input Validation    | Argument size cap (`MAX_INPUT_SIZE_BYTES`), conversation-tag stripping, Zod per handler | On for covered tools                               |
+| Policy Firewall     | Allowlist/denylist rules per tool; evaluated and logged, denials not applied            | Always `warn` — configured `enforce` is overridden |
+| Rate Limiting       | Token bucket per tool (configurable requests/min)                                       | On (60/min)                                        |
+| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)                                      | On for covered tools                               |
+| Audit Logging       | SIEM-compatible JSON-L events for tool invocations                                      | **Off** until `security.audit.enabled: true`       |
+| Authentication      | Bearer-token `AuthHandler` with timing-safe compare                                     | **Not enforced** — no `authenticate()` call site   |
 
-Two rows need qualification:
+Three rows need qualification:
+
+- **Policy Firewall.** `defaultConfig.security.policy.policyMode` is `enforce`, but `stagePolicyFirewallForRollout` (`src/mcp/middleware/policy-registry.ts`), called from `cli-server-tools.ts` at startup, unconditionally sets the firewall to `warn`: every rule is evaluated and every would-be denial is logged, none is applied. The startup record names the config value `configuredPolicyMode` (`cli-server-audit.ts`) because it is not the effective mode. There is no operator switch to `enforce` today (#4888).
 
 - **Authentication.** `AuthHandler` is constructed at startup (`cli-server-auth.ts`) and can generate a token, but no server code path calls `AuthHandler.authenticate()` (`grep -rn "\.authenticate(" src --exclude=*.test.ts` returns nothing). On the stdio transport, process isolation is the access control (see Authentication & Access Control above); the token is never checked.
 - **Audit logging** is opt-in. `initializeAuditLogger` (`cli-server-audit.ts`) returns `null` unless `security.audit.enabled === true`, and `defaultConfig.security` (`config/schemas.ts`) has no `audit` key, so a default install writes no audit log. Startup reports the absence (#4996).
@@ -131,7 +133,7 @@ Values marked `default` are what ships; the `audit` block is absent by default a
 ```yaml
 security:
   policy:
-    policyMode: enforce # default; enforce | warn
+    policyMode: enforce # default, but overridden to warn at startup (see above); enforce | warn
     defaultMode: read-only # default; read-only | read-write
 
   rateLimit:
