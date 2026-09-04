@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { governorPathsFromCodeowners } from './check-governor-review.js';
 import {
@@ -15,6 +15,7 @@ import {
   evaluateRatification,
   governorOwnersFromCodeowners,
   RATIFICATION_LABEL,
+  runRatificationGate,
 } from './check-governor-ratification.js';
 
 const OWNERS = ['williamzujkowski'];
@@ -245,5 +246,51 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
   it('the applier check is case-insensitive, like the approver check', () => {
     const v = evaluateRatification({ ...base, labelAppliedBy: 'WilliamZujkowski' });
     expect(v.kind).toBe('ratified');
+  });
+});
+
+describe('runRatificationGate with no inputs (#5444)', () => {
+  const capture = (): { lines: string[]; restore: () => void } => {
+    const lines: string[] = [];
+    const push = (...a: unknown[]): void => void lines.push(a.map(String).join(' '));
+    const log = vi.spyOn(console, 'log').mockImplementation(push);
+    const err = vi.spyOn(console, 'error').mockImplementation(push);
+    return {
+      lines,
+      restore: (): void => {
+        log.mockRestore();
+        err.mockRestore();
+      },
+    };
+  };
+
+  it('does not claim "not required" when CHANGED_FILES was never supplied', () => {
+    // The local invocation. Absent input is not an empty diff; it is an
+    // unmeasured state, and the sentence must not read as a verdict. A
+    // developer running this before pushing governor files was told, twice in
+    // one day, that no ratification was needed.
+    const c = capture();
+    try {
+      const code = runRatificationGate({});
+      const out = c.lines.join('\n');
+      expect(code).toBe(0);
+      expect(out).not.toContain('not required');
+      expect(out).toContain('nothing was measured');
+    } finally {
+      c.restore();
+    }
+  });
+
+  it('still reports not-applicable when CHANGED_FILES is present but empty', () => {
+    // CI semantics unchanged: a PR that touched nothing governor-owned is
+    // genuinely not applicable, and the workflow always sets the variable.
+    const c = capture();
+    try {
+      const code = runRatificationGate({ CHANGED_FILES: '' });
+      expect(code).toBe(0);
+      expect(c.lines.join('\n')).toContain('not required');
+    } finally {
+      c.restore();
+    }
   });
 });
