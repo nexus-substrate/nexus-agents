@@ -434,9 +434,9 @@ jobs:
         run: pnpm test
 
       - name: Fitness audit gate
+        # No `threshold` override (#5142 item 7): inherits the action default so
+        # the PR gate and this one cannot disagree.
         uses: ./.github/actions/fitness-gate
-        with:
-          threshold: '90'
 
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == true }}
