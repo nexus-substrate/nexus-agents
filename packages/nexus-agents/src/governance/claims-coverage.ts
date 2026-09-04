@@ -45,6 +45,7 @@
 // legitimately lives in the script; this file is exercised by it + its tests.
 
 import type { ClaimsRegistry } from './claims-registry.js';
+import { verdictOver } from '../utils/verdict-aggregation.js';
 
 /**
  * A sentinel quantified-capability claim pattern. `label` names the capability
@@ -72,8 +73,26 @@ export const CLAIM_PATTERNS: readonly ClaimPattern[] = [
   { label: 'consensus-strategy count', regex: /\b\d+\s+strategies\b/g },
 ];
 
-/** The docs the coverage scan polices, repo-root-relative. */
-export const SCANNED_DOCS: readonly string[] = ['README.md', 'ARCHITECTURE.md'];
+/**
+ * The docs the coverage scan polices, repo-root-relative.
+ *
+ * DECLARED, not discovered — and the known limitation is that a quantified
+ * claim in a doc outside this list is invisible here (#5309 item 2). That is
+ * not hypothetical: `ECOSYSTEM.md` was found carrying a stale "46 MCP tools"
+ * while the manifest and 25 other docs said 47, and `packages/nexus-agents/
+ * README.md` had drifted to "42" before it (see `npm-readme-tool-count` in the
+ * registry). Both escaped because nothing scanned them.
+ *
+ * Adding a doc here requires a registry entry with a matching `subject`, since
+ * `isCovered` keys on it — which is the deliberate cost: policing a doc means
+ * committing to verify its claims, not just noticing them.
+ *
+ * Discovery over all markdown is the obvious next step and is NOT done here,
+ * because it needs an exclusion list first: `CHANGELOG.md` and `docs/archive/`
+ * legitimately carry historical counts that were true when written, and failing
+ * the build on those would make the gate wrong rather than thorough.
+ */
+export const SCANNED_DOCS: readonly string[] = ['README.md', 'ARCHITECTURE.md', 'ECOSYSTEM.md'];
 
 /** One quantified claim found in a doc with no covering registry entry. */
 export interface UncoveredClaim {
@@ -154,7 +173,10 @@ export function checkCoverage(
 ): CoverageReport {
   const uncovered: UncoveredClaim[] = [];
   const docsMissing: string[] = [];
-  let docsScanned = 0;
+  // Collected rather than counted (#5309) so the verdict below can be expressed
+  // as an aggregation OVER the docs actually read. The report still exposes a
+  // count, so this is not a shape change.
+  const docsRead: string[] = [];
 
   for (const doc of docs) {
     const path = resolve(doc);
@@ -162,7 +184,7 @@ export function checkCoverage(
       docsMissing.push(doc);
       continue;
     }
-    docsScanned++;
+    docsRead.push(doc);
     const content = fs.read(path);
     for (const { pattern, text } of findClaimMatches(content)) {
       if (!isCovered(text, doc, registry)) {
@@ -171,9 +193,20 @@ export function checkCoverage(
     }
   }
 
-  // A declared doc that is absent, or a scan that opened nothing, is a
-  // failure. `uncovered.length === 0` is equally true of a clean sweep and of
-  // a sweep that read no files, and only one of those is evidence.
-  const passed = uncovered.length === 0 && docsMissing.length === 0 && docsScanned > 0;
-  return { uncovered, passed, docsScanned, docsMissing };
+  // A declared doc that is absent, or a scan that opened nothing, is a failure.
+  // `uncovered.length === 0` is equally true of a clean sweep and of a sweep
+  // that read no files, and only one of those is evidence.
+  //
+  // Migrated from a hand-rolled conjunction to the canonical surface (#5309).
+  // The point is not brevity — it is that `whenEmpty` is a REQUIRED parameter,
+  // so "what does zero docs mean?" cannot be left to a language default the way
+  // a bare `uncovered.length === 0` would. The aggregate ignores its items
+  // because the per-doc work already accumulated into `uncovered`; what is
+  // being aggregated over is the set of docs that were actually read.
+  const passed = verdictOver(
+    docsRead,
+    () => uncovered.length === 0 && docsMissing.length === 0,
+    false
+  );
+  return { uncovered, passed, docsScanned: docsRead.length, docsMissing };
 }
