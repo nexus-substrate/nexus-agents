@@ -142,6 +142,14 @@ export type {
   GitHubUserMetadata,
   SuspiciousSignal,
 } from '../security/reputation-model.js';
+// #5381: `FirewallResult.reputationGate` is part of the published surface, so a
+// consumer needs the type that names its fields — same reason as
+// `FirewallPolicyMode` and `ActionValidation` below. `ReputationGatingMode` comes
+// with it because `reputationGate.mode` is one of its values, and
+// `resolveReputationGatingMode` because an embedder configuring the firewall
+// per-instance needs to read the same env var the default path reads.
+export type { ReputationGateDecision, ReputationGatingMode } from '../security/reputation-model.js';
+export { resolveReputationGatingMode } from '../security/reputation-model.js';
 
 // Security audit trail (Issue #832)
 export {

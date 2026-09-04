@@ -302,7 +302,16 @@ describe('HostileInputFirewall', () => {
   });
 
   describe('reputation reconciliation into effectiveTrustTier (#3106)', () => {
-    it('surfaces effectiveTrustTier and demotes on a hostile signal; ATL reflects the enforced tier', () => {
+    it('surfaces effectiveTrustTier and labels the ATL with it, on an injection body', () => {
+      // #5405: this test used to be named "demotes on a hostile signal" and read
+      // as proof that REPUTATION caused the demotion. It does not. The trust
+      // CLASSIFIER already assigns tier 4 for an injection body, so the
+      // assertion below holds with reconciliation deleted entirely — verified by
+      // mutation. What it actually pins is that effectiveTrustTier is surfaced
+      // at all and that the ATL carries it rather than the raw classifier tier.
+      // Reputation genuinely driving a demotion is covered in
+      // firewall-reputation-gating.test.ts, which injects an assessment stricter
+      // than the classifier because the real assessor cannot currently produce one.
       const fw = createFirewall({ stages: { reputationAssessment: true } });
       const result = fw.process(
         issueInput({
