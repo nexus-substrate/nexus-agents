@@ -467,17 +467,35 @@ export class ToolMemoryManager {
    */
   async reinitializeSqliteBackends(): Promise<MemoryBackendStatus> {
     this.log.info('Reinitializing SQLite backends');
-    // Wait for any in-flight initialization to complete first (#794)
-    if (this.initPromise !== null) {
-      await this.initPromise;
-      this.initPromise = null;
-    }
+    await this.awaitBackendInitialization();
     if (this.agentic === null) await this.initAgenticMemory();
     if (this.adaptive === null) await this.initAdaptiveMemory();
     if (this.typed === null) await this.initTypedMemory();
     if (this.mobimem === null) this.initMobiMem();
     if (this.decayManager === null) this.initDecayManager();
     return this.getBackendStatus();
+  }
+
+  /**
+   * Wait for the non-blocking startup initialization to finish (#794, #5438).
+   *
+   * `initSqliteBackends()` is fired and not awaited at session start, so for a
+   * short window after startup every `is*Available()` returns `false` for a
+   * backend that is merely still opening. A reader cannot tell that apart from
+   * a backend that failed or one that is genuinely absent — reproduced live as
+   * two identical `memory_stats` calls 55 seconds apart returning five `false`
+   * and then five `true`, with the agentic backend holding 519 entries all
+   * along.
+   *
+   * `reinitializeSqliteBackends` has awaited this since #794. Any path that
+   * READS backend availability has to as well, or the boolean reports a state
+   * it has not yet measured.
+   */
+  async awaitBackendInitialization(): Promise<void> {
+    if (this.initPromise !== null) {
+      await this.initPromise;
+      this.initPromise = null;
+    }
   }
 
   /** Get current backend availability status. */

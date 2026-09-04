@@ -42,6 +42,11 @@ const mockAvailability = {
   isAdaptiveMemoryAvailable: (): boolean => backendsInstalled.adaptive,
   isTypedMemoryAvailable: (): boolean => backendsInstalled.typed,
 };
+// #5438: the backends start non-blocking, so the query path awaits them before
+// reading availability. Absent from this mock, that await throws a TypeError
+// that the production catch swallows — the fix would then be untested here
+// while every assertion still passed.
+const mockAwaitBackendInitialization = vi.fn((): Promise<void> => Promise.resolve());
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
     queryAll: mockQueryAll,
@@ -58,6 +63,7 @@ vi.mock('./tool-memory.js', () => ({
       errored: mockErroredBackends,
     }),
     ...mockAvailability,
+    awaitBackendInitialization: mockAwaitBackendInitialization,
   }),
 }));
 
@@ -190,6 +196,43 @@ describe('memory-query', () => {
       expect(parsed.query).toBe('test search');
       expect(parsed.count).toBe(2);
       expect(parsed.source).toBe('all');
+    });
+
+    it('waits for in-flight initialization before reporting coverage (#5438)', async () => {
+      // #4999 added `searched` / `unavailable` precisely to distinguish
+      // "searched and found nothing" from "not searched". The backends start
+      // non-blocking, so without awaiting them a query early in the session
+      // reports agentic/adaptive/typed as unavailable when they are merely
+      // still opening — reinstating the ambiguity #4999 removed.
+      backendsInstalled.agentic = false;
+      backendsInstalled.adaptive = false;
+      backendsInstalled.typed = false;
+      mockAwaitBackendInitialization.mockImplementation((): Promise<void> => {
+        backendsInstalled.agentic = true;
+        backendsInstalled.adaptive = true;
+        backendsInstalled.typed = true;
+        return Promise.resolve();
+      });
+      mockQueryBySource.mockResolvedValue([]);
+
+      try {
+        const result = await registeredHandler({ query: 'test' }, {});
+        const body = JSON.parse(result.content[0]?.text ?? '{}') as {
+          searched: string[];
+          unavailable: string[];
+        };
+
+        expect(mockAwaitBackendInitialization).toHaveBeenCalled();
+        expect(body.unavailable).toEqual([]);
+        expect(body.searched).toEqual(['session', 'belief', 'agentic', 'adaptive', 'typed']);
+      } finally {
+        // Restored in `finally` so a failure here cannot leak the flipped
+        // flags into the sibling coverage tests, which read the same object.
+        backendsInstalled.agentic = true;
+        backendsInstalled.adaptive = true;
+        backendsInstalled.typed = true;
+        mockAwaitBackendInitialization.mockImplementation((): Promise<void> => Promise.resolve());
+      }
     });
 
     it('dispatches to specific backend when source is set', async () => {
