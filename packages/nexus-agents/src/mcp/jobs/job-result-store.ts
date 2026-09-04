@@ -34,6 +34,7 @@ import { z } from 'zod';
 import { createLogger } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
 import { OPERATION_CLASSES } from '../../config/timeouts.js';
+import { VERSION } from '../../version.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -82,8 +83,49 @@ export const JobResultSchema = z.object({
    * the writer did not report it, which is not the same as `false`.
    */
   signalAccepted: z.boolean().optional(),
+  /**
+   * `VERSION` of the nexus-agents process that WROTE this record (#5008) —
+   * i.e. the build that ran the job, not the build that reads it back.
+   *
+   * `get_job_result` is itself a wrapped tool, so its `_meta['nexus-agents/build']`
+   * stamp (#5056) names the READER's build. After a mid-session global install
+   * the reader and the producer differ, and only the record can say which
+   * build produced the payload. Each writer re-stamps on its own transition,
+   * so a terminal record names the process that settled it.
+   *
+   * Optional so v1 records written before this field existed still parse:
+   * on a SIDECAR record, absence means "produced before this field existed",
+   * not a version of `undefined`. A record adapted from the task-state log
+   * (`jobResultFromTaskState`, selected by `NEXUS_JOB_RESULT_SOURCE=task_state`)
+   * NEVER carries it — that log records no producer version — so a reader
+   * must consult the source (`get_job_result`'s `producerVersionSource`)
+   * before reading absence as age. The value is recorded verbatim, including
+   * `'dev'` — readers MUST run it through {@link isMeasuredBuildVersion}
+   * before treating two stamps as comparable.
+   */
+  producerVersion: z.string().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
+
+/**
+ * The value `VERSION` takes when the build-time define is absent (a source
+ * checkout run through tsx, or an unbundled test). Two local builds at
+ * different commits both read this way.
+ */
+const UNMEASURED_BUILD_VERSION = 'dev';
+
+/**
+ * Whether a recorded build version actually identifies a build (#5008).
+ *
+ * `false` for an absent or empty value and for `'dev'`. `'dev'` is what
+ * `VERSION` reads without the build-time define, so two `'dev'` stamps say
+ * nothing about whether the same code wrote them — treating that as a match
+ * would be exactly the misreport the field exists to prevent. A reader that
+ * compares producer to reader must gate the comparison on this.
+ */
+export function isMeasuredBuildVersion(version: string | undefined): boolean {
+  return version !== undefined && version !== '' && version !== UNMEASURED_BUILD_VERSION;
+}
 
 /**
  * Whether a `pending` record describes work no process is still doing (#4976).
@@ -131,6 +173,13 @@ function persistJobRecord(path: string, record: JobResult): void {
 }
 
 /**
+ * Every writer below takes a trailing `producerVersion` defaulting to the
+ * running server's `VERSION` (#5008). The parameter is the DI seam: a test
+ * can write a version that differs from `VERSION` and prove the stamp
+ * round-trips from the injected value rather than from an ambient constant.
+ */
+
+/**
  * Write the initial `pending` record for a new job. Idempotent: if a
  * record for `jobId` already exists (e.g. operator restart re-runs the
  * same idempotencyKey — Stage 1 follow-up), this is a no-op.
@@ -138,7 +187,12 @@ function persistJobRecord(path: string, record: JobResult): void {
  * Caller responsibility: generate a fresh `jobId` per call (Stage 1
  * doesn't yet deduplicate via idempotencyKey — that's #3042 follow-up).
  */
-export function writeJobPending(jobId: string, toolName: string, signalAccepted?: boolean): void {
+export function writeJobPending(
+  jobId: string,
+  toolName: string,
+  signalAccepted?: boolean,
+  producerVersion: string = VERSION
+): void {
   const path = jobResultPath(jobId);
   if (existsSync(path)) {
     logger.debug('Job result file already exists — leaving in place', { jobId });
@@ -151,6 +205,7 @@ export function writeJobPending(jobId: string, toolName: string, signalAccepted?
     status: 'pending',
     createdAt: new Date().toISOString(),
     ...(signalAccepted !== undefined ? { signalAccepted } : {}),
+    producerVersion,
   };
   persistJobRecord(path, record);
   logger.debug('Wrote pending job record', { jobId, toolName, signalAccepted });
@@ -167,7 +222,12 @@ export function writeJobPending(jobId: string, toolName: string, signalAccepted?
  * silently rewritten back to `complete`. Symmetric with the caller-side
  * cancel-after-complete guard documented on {@link writeJobCancelled}.
  */
-export function writeJobComplete(jobId: string, toolName: string, result: unknown): void {
+export function writeJobComplete(
+  jobId: string,
+  toolName: string,
+  result: unknown,
+  producerVersion: string = VERSION
+): void {
   const existing = readJobResult(jobId);
   if (existing?.status === 'cancelled') {
     logger.debug('Skipping complete write — job already cancelled (preserving cancellation)', {
@@ -184,6 +244,7 @@ export function writeJobComplete(jobId: string, toolName: string, result: unknow
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     result,
+    producerVersion,
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote complete job record', { jobId, toolName });
@@ -194,7 +255,12 @@ export function writeJobComplete(jobId: string, toolName: string, result: unknow
  * Like {@link writeJobComplete}, a NO-OP when the job is already `cancelled`
  * (#4017) so a post-cancel failure cannot rewrite the cancellation.
  */
-export function writeJobFailed(jobId: string, toolName: string, error: string): void {
+export function writeJobFailed(
+  jobId: string,
+  toolName: string,
+  error: string,
+  producerVersion: string = VERSION
+): void {
   const existing = readJobResult(jobId);
   if (existing?.status === 'cancelled') {
     logger.debug('Skipping failed write — job already cancelled (preserving cancellation)', {
@@ -211,6 +277,7 @@ export function writeJobFailed(jobId: string, toolName: string, error: string): 
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     error,
+    producerVersion,
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote failed job record', { jobId, toolName, error });
@@ -230,7 +297,12 @@ export function writeJobFailed(jobId: string, toolName: string, error: string): 
  * here too would duplicate the guard but is cheap insurance — current
  * design: caller-side guard only.
  */
-export function writeJobCancelled(jobId: string, toolName: string, reason?: string): void {
+export function writeJobCancelled(
+  jobId: string,
+  toolName: string,
+  reason?: string,
+  producerVersion: string = VERSION
+): void {
   const record: JobResult = {
     v: 1,
     jobId,
@@ -239,6 +311,7 @@ export function writeJobCancelled(jobId: string, toolName: string, reason?: stri
     createdAt: readJobResult(jobId)?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     ...(reason !== undefined ? { error: reason } : {}),
+    producerVersion,
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote cancelled job record', { jobId, toolName, reason });

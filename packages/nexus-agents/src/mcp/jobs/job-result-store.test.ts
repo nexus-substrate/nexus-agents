@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,8 +14,10 @@ import {
   writeJobCancelled,
   readJobResult,
   isAbandonedJob,
+  isMeasuredBuildVersion,
   type JobResult,
 } from './job-result-store.js';
+import { VERSION } from '../../version.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 
 describe('job-result-store', () => {
@@ -210,5 +212,103 @@ describe('isAbandonedJob (#4976)', () => {
     // pinned: NaN comparisons are false, so this holds with or without an
     // explicit guard and no mutation can distinguish the two.
     expect(isAbandonedJob(pendingRecord('not-a-date'), Date.now())).toBe(false);
+  });
+});
+
+describe('producerVersion (#5008)', () => {
+  // `get_job_result` is a wrapped tool, so its `_meta` build stamp names the
+  // READER's build. After a mid-session global install the reader and the
+  // process that ran the job differ — the record itself has to say who wrote it.
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  // Deliberately NOT `VERSION`: writing and reading the same literal would let
+  // an identity bug (stamp from the wrong source, or not at all) pass.
+  const FIXTURE_VERSION = '9.9.9-fixture';
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-jobs-version-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('every writer stamps the version it was given, and it round-trips', () => {
+    writeJobPending('pv-pending', 'orchestrate', undefined, FIXTURE_VERSION);
+    writeJobComplete('pv-complete', 'orchestrate', { ok: true }, FIXTURE_VERSION);
+    writeJobFailed('pv-failed', 'orchestrate', 'boom', FIXTURE_VERSION);
+    writeJobCancelled('pv-cancelled', 'orchestrate', 'stop', FIXTURE_VERSION);
+
+    for (const jobId of ['pv-pending', 'pv-complete', 'pv-failed', 'pv-cancelled']) {
+      expect(readJobResult(jobId)?.producerVersion, jobId).toBe(FIXTURE_VERSION);
+    }
+    expect(FIXTURE_VERSION).not.toBe(VERSION);
+  });
+
+  it('defaults to the running server VERSION when no version is supplied', () => {
+    writeJobPending('pv-default-pending', 'orchestrate');
+    writeJobComplete('pv-default-complete', 'orchestrate', { ok: true });
+    writeJobFailed('pv-default-failed', 'orchestrate', 'boom');
+    writeJobCancelled('pv-default-cancelled', 'orchestrate');
+
+    for (const jobId of [
+      'pv-default-pending',
+      'pv-default-complete',
+      'pv-default-failed',
+      'pv-default-cancelled',
+    ]) {
+      expect(readJobResult(jobId)?.producerVersion, jobId).toBe(VERSION);
+    }
+  });
+
+  it('a terminal write re-stamps with the terminal writer, not the pending writer', () => {
+    // Same process in practice, but the record must describe the write that
+    // produced it, not inherit a stale stamp through `existing`.
+    writeJobPending('pv-restamp', 'orchestrate', undefined, '1.0.0-old');
+    writeJobComplete('pv-restamp', 'orchestrate', { ok: true }, FIXTURE_VERSION);
+    expect(readJobResult('pv-restamp')?.producerVersion).toBe(FIXTURE_VERSION);
+  });
+
+  it('a legacy v1 record without the field still parses (absence = pre-field producer)', () => {
+    const legacy = {
+      v: 1,
+      jobId: 'pv-legacy',
+      toolName: 'orchestrate',
+      status: 'complete',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      completedAt: '2026-08-01T00:01:00.000Z',
+      result: { ok: true },
+    };
+    mkdirSync(join(tmpDir, 'jobs'), { recursive: true });
+    writeFileSync(join(tmpDir, 'jobs', 'result-pv-legacy.json'), JSON.stringify(legacy));
+
+    const record = readJobResult('pv-legacy');
+    expect(record).not.toBeNull();
+    expect(record?.status).toBe('complete');
+    expect(record?.producerVersion).toBeUndefined();
+    expect(isMeasuredBuildVersion(record?.producerVersion)).toBe(false);
+  });
+});
+
+describe('isMeasuredBuildVersion (#5008)', () => {
+  it("treats 'dev' as UNMEASURED — it is what VERSION reads without the build-time define", () => {
+    // Two local builds at different commits both report 'dev'; calling that a
+    // match would be exactly the misreport the record exists to prevent.
+    expect(isMeasuredBuildVersion('dev')).toBe(false);
+  });
+
+  it('treats an absent or empty value as unmeasured', () => {
+    expect(isMeasuredBuildVersion(undefined)).toBe(false);
+    expect(isMeasuredBuildVersion('')).toBe(false);
+  });
+
+  it('treats a real version string as measured', () => {
+    expect(isMeasuredBuildVersion('4.3.1')).toBe(true);
+    expect(isMeasuredBuildVersion('9.9.9-fixture')).toBe(true);
   });
 });

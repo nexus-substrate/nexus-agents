@@ -15,6 +15,7 @@ import {
   readJobResultFromTaskState,
   isTaskStateJobSource,
   resolveJobResult,
+  resolveJobResultWithSource,
   listJobsFromTaskState,
   resolveJobList,
 } from './task-state-source.js';
@@ -232,6 +233,38 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     writeJobComplete('orch-resolve-2', 'orchestrate', { fromSidecar: true });
     const r = resolveJobResult('orch-resolve-2');
     expect(r?.result).toEqual({ fromTaskState: true });
+  });
+
+  // #5008 follow-up: a task-state-sourced record is SYNTHESIZED and never
+  // carries `producerVersion`, so absence alone would mean three things
+  // (pre-field sidecar, dev build, task-state adapter). The resolver names
+  // the source so the reader can say which.
+  it('resolveJobResultWithSource: names task_state when the task-state log answered', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    writeCompletedTaskLog('orch-src-1', { fromTaskState: true });
+    const r = resolveJobResultWithSource('orch-src-1');
+    expect(r?.source).toBe('task_state');
+    expect(r?.record.result).toEqual({ fromTaskState: true });
+    expect(r?.record.producerVersion).toBeUndefined();
+  });
+
+  it('resolveJobResultWithSource: names sidecar on the flag-ON fallback', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    writeJobComplete('orch-src-2', 'orchestrate', { fromSidecar: true }, '9.9.9-fixture');
+    const r = resolveJobResultWithSource('orch-src-2');
+    expect(r?.source).toBe('sidecar');
+    expect(r?.record.producerVersion).toBe('9.9.9-fixture');
+  });
+
+  it('resolveJobResultWithSource: names sidecar when the flag is OFF', () => {
+    writeCompletedTaskLog('orch-src-3', { fromTaskState: true });
+    writeJobComplete('orch-src-3', 'orchestrate', { fromSidecar: true });
+    expect(resolveJobResultWithSource('orch-src-3')?.source).toBe('sidecar');
+  });
+
+  it('resolveJobResultWithSource: null when neither source has the job', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    expect(resolveJobResultWithSource('orch-src-missing')).toBeNull();
   });
 
   it('resolveJobResult: flag ON falls back to sidecar when no task-state log', () => {

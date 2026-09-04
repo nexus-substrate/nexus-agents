@@ -147,23 +147,50 @@ export function isTaskStateJobSource(): boolean {
 }
 
 /**
- * Resolve an async job's result with dual-read semantics:
+ * Which store answered a job-result read. The values are the
+ * `NEXUS_JOB_RESULT_SOURCE` value set (`config/env-schema.ts`) so a caller
+ * can relate the answer to the toggle that selected it.
+ */
+export type JobResultSource = 'sidecar' | 'task_state';
+
+/** A resolved record tagged with the source that produced it (#5008). */
+interface ResolvedJobResult {
+  readonly record: JobResult;
+  readonly source: JobResultSource;
+}
+
+/**
+ * Resolve an async job's result with dual-read semantics, naming the source:
  * - source toggle ON  → try the task-state log first, fall back to sidecar.
  * - source toggle OFF → sidecar only (current behavior, unchanged).
+ *
+ * The source matters to a reader of `producerVersion` (#5008): a task-state
+ * record is SYNTHESIZED by {@link jobResultFromTaskState} and never carries
+ * one, so without the tag an absent version on a job a versioned build ran
+ * would read as "record predates the field".
  *
  * Returns `null` only when neither source has the job. `customDir` steers
  * ONLY the task-state read (for test isolation); the sidecar `readJobResult`
  * resolves against `NEXUS_DATA_DIR` and has no per-call dir override.
  */
-export function resolveJobResult(jobId: string, customDir?: string): JobResult | null {
+export function resolveJobResultWithSource(
+  jobId: string,
+  customDir?: string
+): ResolvedJobResult | null {
   if (isTaskStateJobSource()) {
     const fromState = readJobResultFromTaskState(jobId, customDir);
     if (fromState !== null) {
       logger.debug('Resolved job result from task-state', { jobId, status: fromState.status });
-      return fromState;
+      return { record: fromState, source: 'task_state' };
     }
   }
-  return readJobResult(jobId);
+  const fromSidecar = readJobResult(jobId);
+  return fromSidecar === null ? null : { record: fromSidecar, source: 'sidecar' };
+}
+
+/** {@link resolveJobResultWithSource} without the source tag. */
+export function resolveJobResult(jobId: string, customDir?: string): JobResult | null {
+  return resolveJobResultWithSource(jobId, customDir)?.record ?? null;
 }
 
 /**

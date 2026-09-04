@@ -208,6 +208,14 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
    * a silent kwarg.
    */
   readonly allowFailureShapedResult?: string | undefined;
+  /**
+   * Version stamped on every record this dispatch writes (#5008). Defaults to
+   * the running server's `VERSION` — the build that runs the job, which is
+   * what a later `get_job_result` from a different build needs to see. A
+   * test injects a value that differs from `VERSION` to prove the stamp is
+   * taken from this seam and not from the reader.
+   */
+  readonly producerVersion?: string | undefined;
 }
 
 /** A root envelope key whose value marks the payload as a failure (#4363). */
@@ -311,7 +319,7 @@ export function runAsJob<I, R, E = ToolResult>(params: RunAsJobParams<I, R, E>):
   // #4972: record whether this tool can even receive a cancel. `run.length`
   // is the callback's declared arity, so >= 3 means it takes the `signal`
   // parameter. Structural, not behavioural — see `signalAccepted`'s doc.
-  writeJobPending(jobId, params.toolName, params.run.length >= 3);
+  writeJobPending(jobId, params.toolName, params.run.length >= 3, params.producerVersion);
   if (params.idempotencyKey !== undefined && params.idempotencyKey !== '') {
     registerIdempotentJob({
       tool: params.toolName,
@@ -359,7 +367,7 @@ export async function runJobInBackground<I, R, E>(
     // normalize" would just become "caller forgot to pass the predicate".
     const failure = detectFailureShapedResult(result);
     if (failure !== null && params.allowFailureShapedResult === undefined) {
-      writeJobFailed(jobId, params.toolName, describeFailureShape(failure));
+      writeJobFailed(jobId, params.toolName, describeFailureShape(failure), params.producerVersion);
     } else {
       if (failure !== null) {
         params.logger?.warn(
@@ -367,12 +375,12 @@ export async function runJobInBackground<I, R, E>(
           { jobId, key: failure.key, reason: params.allowFailureShapedResult }
         );
       }
-      writeJobComplete(jobId, params.toolName, result);
+      writeJobComplete(jobId, params.toolName, result, params.producerVersion);
     }
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });
-    writeJobFailed(jobId, params.toolName, errObj.message);
+    writeJobFailed(jobId, params.toolName, errObj.message, params.producerVersion);
   } finally {
     guard.clear();
     unregisterJobAbort(jobId);
