@@ -3688,9 +3688,11 @@ VariableDeclaration FirewallPolicyModeSchema
 InterfaceDeclaration FirewallProcessOptions
   readonly allowlistedMaintainers?: readonly string[] | undefined
   readonly context?: { readonly hasSecretAccess: boolean; readonly hasWriteAccess: boolean; } | undefined
+  readonly reputation?: { readonly assessment: ReputationAssessment | undefined; } | undefined
 InterfaceDeclaration FirewallResult
   readonly atl: string
   readonly auditEvents: readonly { readonly id: string; readonly type: string; }[]
+  readonly auditSink: "none" | "durable"
   readonly durationMs: number
   readonly effectiveTrustTier: "1" | "2" | "3" | "4"
   readonly isAllowlisted?: boolean | undefined

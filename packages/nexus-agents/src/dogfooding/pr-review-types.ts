@@ -161,6 +161,13 @@ export interface PRTrustAssessment {
    * as `false` without being measured.
    */
   readonly isAllowlisted?: boolean;
+  /**
+   * Where the trust classification's audit event went (#4992 review):
+   * `durable` — mirrored to the process's hash-chained audit log; `none` — the
+   * process has no audit logger (audit disabled, or the CLI path), so no
+   * durable emission is claimed.
+   */
+  readonly auditSink: 'durable' | 'none';
   /** Reputation score (0-100) when reputation is enabled. */
   readonly reputationScore?: number | undefined;
   /** Suspicious signals detected (e.g. `new_account`, `injection_patterns_detected`). */

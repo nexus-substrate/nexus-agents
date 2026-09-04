@@ -14,8 +14,11 @@
  *   Rule of Two against the caller's access posture, and records the trust
  *   event. Under the default `NEXUS_FIREWALL_POLICY=off` it is signal-only.
  * - The callers keep their own `evaluatePolicy` (Rule of Two per action) and
- *   their own reputation gating, which has richer metadata (account age,
- *   comment history) than the firewall can see.
+ *   measure reputation themselves with metadata the firewall cannot see
+ *   (account age, comment history). They pass that measurement per call, and
+ *   the firewall runs the ONE reputation gate both sides act on — so its
+ *   Rule-of-Two check, `wouldRefuse` count and trust audit event use the same
+ *   enforced tier the caller's policy gate uses.
  * - Facts that vary per call — the caller's access posture and, when a source
  *   for one exists, the repository's maintainer allowlist — are passed per
  *   call via `FirewallProcessOptions`, never held on the shared instance. No
@@ -27,6 +30,7 @@
 
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
+import type { IAuditLogger } from '../audit/audit-types.js';
 import { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
@@ -36,6 +40,27 @@ import type { GitHubInput } from '../security/firewall/github-adapter.js';
 const logger = createLogger({ component: 'UntrustedInputFirewall' });
 
 let singleton: HostileInputFirewall | undefined;
+/** The process's durable audit logger, when the bootstrap has one (#4992 review). */
+let configuredAuditLogger: IAuditLogger | undefined;
+
+/**
+ * Supplies the process-wide durable audit logger to the shared firewall.
+ *
+ * The MCP server creates exactly one `AuditLogger` at startup
+ * (`initializeAuditLogger`, gated on `security.audit.enabled`) and threads it
+ * by DI; there is no global accessor. `initV2PipelineSubsystems` calls this
+ * with that logger so trust events on the live paths reach the hash-chained
+ * log instead of an in-memory buffer the next call clears. Without it — the
+ * CLI review path, or audit disabled — the firewall reports `auditSink: 'none'`
+ * and claims no emission.
+ *
+ * Replaces the cached instance so the sink cannot be missed by an instance
+ * built before bootstrap reached this point.
+ */
+export function configureUntrustedInputFirewall(deps: { auditLogger?: IAuditLogger }): void {
+  configuredAuditLogger = deps.auditLogger;
+  singleton = undefined;
+}
 
 /**
  * The process-wide firewall, constructed on first use.
@@ -56,6 +81,7 @@ export function getUntrustedInputFirewall(): HostileInputFirewall {
   singleton ??= new HostileInputFirewall({
     adapter: createGitHubAdapter(),
     contentDowngrade: false,
+    ...(configuredAuditLogger !== undefined ? { auditLogger: configuredAuditLogger } : {}),
   });
   return singleton;
 }

@@ -107,6 +107,10 @@ describe('IssueTriage', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    // #4992: the shared firewall reads NEXUS_REPUTATION_GATING /
+    // NEXUS_FIREWALL_POLICY once at construction, so a test that stubs either
+    // must see a fresh instance.
+    _setUntrustedInputFirewallForTests(undefined);
   });
 
   describe('constructor', () => {
@@ -368,6 +372,9 @@ describe('IssueTriage', () => {
       );
 
       vi.stubEnv('NEXUS_REPUTATION_GATING', 'audit');
+      // #4992: the gate now lives in the shared firewall, which reads the mode
+      // once at construction — a mid-test mode change needs a fresh instance.
+      _setUntrustedInputFirewallForTests(undefined);
       const audited = await triage();
 
       expect(approvedCount(enforced)).toBeLessThan(approvedCount(audited));
@@ -863,5 +870,46 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       ([input]) => (input as { action?: string }).action === 'security.trust_classification'
     );
     expect(trustEvents).toHaveLength(2);
+  });
+
+  it('records auditSink: none when no durable logger is configured for the process', async () => {
+    const v = await triage();
+    expect(v.trustAssessment.auditSink).toBe('none');
+  });
+
+  it('records auditSink: durable when the shared instance carries the process audit logger', async () => {
+    const { logger } = stubAuditLogger();
+    _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
+    const v = await triage();
+    expect(v.trustAssessment.auditSink).toBe('durable');
+  });
+
+  it('under audit: a CONTRIBUTOR demoted by reputation is counted as wouldRefuse (one gate, one tier)', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'ghp_test_token_for_firewall_audit');
+    vi.stubEnv('NEXUS_REPUTATION_GATING', 'enforce');
+    mockGetIssueDetail.mockResolvedValue(
+      ok(
+        createMockIssueDetail({
+          author: 'sneaky',
+          authorAssociation: 'CONTRIBUTOR',
+          body: HOSTILE_BODY,
+        })
+      )
+    );
+    const fw = firewallWith({ policyMode: 'audit', reputationGatingMode: 'enforce' });
+    const processSpy = vi.spyOn(fw, 'process');
+    _setUntrustedInputFirewallForTests(fw);
+
+    const v = await triage({ dryRun: false, enableReputation: true });
+
+    // The caller acted on the demoted tier…
+    expect(v.trustAssessment.trustTier).toBe('2');
+    expect(v.trustAssessment.enforcedTrustTier).toBe('4');
+    // …and the firewall's audit-mode count saw the same tier.
+    const returned = processSpy.mock.results[0]?.value;
+    expect(returned?.ok).toBe(true);
+    if (returned?.ok !== true) return;
+    expect(returned.value.effectiveTrustTier).toBe('4');
+    expect(returned.value.wouldRefuse).toBe(true);
   });
 });

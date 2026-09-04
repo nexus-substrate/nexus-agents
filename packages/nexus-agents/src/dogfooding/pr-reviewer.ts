@@ -16,7 +16,7 @@ import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { ReputationCache } from '../security/reputation-model.js';
-import type { ReputationGateDecision } from '../security/reputation-model.js';
+import type { ReputationAssessment, ReputationGateDecision } from '../security/reputation-model.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -48,6 +48,7 @@ import {
   generateSummary,
   createFailedReview,
   gatePRAuthor,
+  assessPRReputation,
   fetchAccountAgeDays,
   reviewPostingBlock,
 } from './pr-reviewer-helpers.js';
@@ -102,11 +103,20 @@ export class PRReviewer {
 
     const { metadata: prMetadata, provider, accountAgeDays } = fetchResult.value;
 
+    // #3123: reputation is measured here, with the author's real account age,
+    // and handed to the firewall per call so ONE gate decides the enforced tier.
+    const reputation = assessPRReputation(
+      prMetadata,
+      this.reputationCache,
+      this.config.enableReputation,
+      accountAgeDays
+    );
+
     // #4992: classify through the shared HostileInputFirewall so the trust
     // decision reaches the security audit trail (originally Issue #828 —
     // defense-in-depth). Signal-only under the default NEXUS_FIREWALL_POLICY=off;
     // `auditReviewAction` stays the Rule-of-Two enforcement point.
-    const firewall = this.classifyPRAuthor(prMetadata);
+    const firewall = this.classifyPRAuthor(prMetadata, reputation);
     if (!firewall.ok) return firewall;
     const trustResult = firewall.value.trust;
     logger.info('PR author trust classified', {
@@ -120,16 +130,12 @@ export class PRReviewer {
         : {}),
     });
 
-    // #3123: assess reputation and apply the gating rollout mode (off/audit/
-    // enforce), mirroring issue_triage — closes the PR-path equivalent of the
-    // #828/#3106 dead-end (reputation was classified but never gated here).
-    const { gateDecision, trustAssessment } = gatePRAuthor(
-      prMetadata,
-      firewall.value,
-      accountAgeDays,
-      this.reputationCache,
-      this.config.enableReputation
-    );
+    // #3123: apply the gating rollout mode (off/audit/enforce), mirroring
+    // issue_triage — closes the PR-path equivalent of the #828/#3106 dead-end
+    // (reputation was classified but never gated here).
+    const gated = gatePRAuthor(prMetadata, firewall.value, reputation);
+    if (!gated.ok) return gated;
+    const { gateDecision, trustAssessment } = gated.value;
 
     const expertReviews = await this.runExpertReviews(prMetadata, traceId);
     const result = this.aggregateReviews(prMetadata, expertReviews, startTime, trustAssessment);
@@ -247,7 +253,10 @@ export class PRReviewer {
    * config field, no env var), so none is consulted and `isAllowlisted` stays
    * absent on the result rather than being recorded as `false`.
    */
-  private classifyPRAuthor(pr: PRMetadata): Result<FirewallResult, Error> {
+  private classifyPRAuthor(
+    pr: PRMetadata,
+    reputation: ReputationAssessment | undefined
+  ): Result<FirewallResult, Error> {
     return runUntrustedInputFirewall(
       {
         type: 'pull_request',
@@ -256,7 +265,7 @@ export class PRReviewer {
         title: pr.title,
         body: pr.body,
       },
-      { context: REVIEW_ACCESS_CONTEXT }
+      { context: REVIEW_ACCESS_CONTEXT, reputation: { assessment: reputation } }
     );
   }
 

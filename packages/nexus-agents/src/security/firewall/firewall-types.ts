@@ -191,6 +191,22 @@ export interface FirewallProcessOptions {
     readonly hasWriteAccess: boolean;
     readonly hasSecretAccess: boolean;
   };
+  /**
+   * The caller's own reputation measurement for THIS call. When present, the
+   * reputation gate runs on it under `NEXUS_REPUTATION_GATING`, whether or not
+   * the instance's `reputationAssessment` stage is on: `effectiveTrustTier` is
+   * the enforced tier, `reputationGate` is returned, and the Rule-of-Two check,
+   * `wouldRefuse` and the trust audit event all use that tier. This is what
+   * lets a caller with richer signals than the firewall can see (account age,
+   * comment history) act on ONE gate rather than two that can disagree.
+   *
+   * `assessment: undefined` means the caller measured nothing (reputation
+   * disabled) but still wants the gate decision recorded on the classifier
+   * tier; omitting the option entirely leaves the stage to the instance config.
+   */
+  readonly reputation?: {
+    readonly assessment: ReputationAssessment | undefined;
+  };
 }
 
 // ============================================================================

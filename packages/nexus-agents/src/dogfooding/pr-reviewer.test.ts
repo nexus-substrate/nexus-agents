@@ -128,6 +128,10 @@ describe('PRReviewer', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    // #4992: the shared firewall reads NEXUS_REPUTATION_GATING /
+    // NEXUS_FIREWALL_POLICY once at construction, so a test that stubs either
+    // must see a fresh instance.
+    _setUntrustedInputFirewallForTests(undefined);
   });
 
   describe('reputation gating (#3123, epic #3118 Phase 5)', () => {
@@ -674,5 +678,31 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       ([input]) => (input as { action?: string }).action === 'security.trust_classification'
     );
     expect(trustEvents).toHaveLength(2);
+  });
+
+  it('records auditSink: none when no durable logger is configured for the process', async () => {
+    const v = await review();
+    expect(v.trustAssessment.auditSink).toBe('none');
+  });
+
+  it('under audit: a CONTRIBUTOR demoted by reputation is counted as wouldRefuse (one gate, one tier)', async () => {
+    vi.stubEnv('NEXUS_REPUTATION_GATING', 'enforce');
+    prBy('sneaky', 'CONTRIBUTOR', HOSTILE_BODY);
+    const fw = firewallWith({ policyMode: 'audit', reputationGatingMode: 'enforce' });
+    const processSpy = vi.spyOn(fw, 'process');
+    _setUntrustedInputFirewallForTests(fw);
+    const { PRReviewer } = await import('./pr-reviewer.js');
+
+    const r = await new PRReviewer({ dryRun: true, enableReputation: true }).reviewPR(URL);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    expect(r.value.trustAssessment.trustTier).toBe('2');
+    expect(r.value.trustAssessment.enforcedTrustTier).toBe('4');
+    const returned = processSpy.mock.results[0]?.value;
+    expect(returned?.ok).toBe(true);
+    if (returned?.ok !== true) return;
+    expect(returned.value.effectiveTrustTier).toBe('4');
+    expect(returned.value.wouldRefuse).toBe(true);
   });
 });

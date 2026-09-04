@@ -41,6 +41,10 @@ import type { ClassifyResult } from '../trust-classifier.js';
 import { classifyTrust, mapAuthorAssociation } from '../trust-classifier.js';
 import type { SanitizedInput, TrustTier } from '../trust-types.js';
 import { generateATL } from './agent-trust-labels.js';
+import {
+  createPassthroughClassification,
+  createPassthroughSanitized,
+} from './firewall-passthrough.js';
 import type {
   ATLData,
   FirewallConfig,
@@ -126,6 +130,14 @@ export interface FirewallResult {
    */
   readonly wouldRefuse: boolean;
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
+  /**
+   * Where this run's audit events went (#4992 review). `durable` means every
+   * event was mirrored to the hash-chained `auditLogger` the instance was
+   * constructed with; `none` means they exist only in the in-memory trail,
+   * which the next `process()` call clears. A consumer that reports "recorded
+   * to the audit trail" must read this rather than assume it.
+   */
+  readonly auditSink: 'durable' | 'none';
   readonly durationMs: number;
 }
 
@@ -187,6 +199,8 @@ export class HostileInputFirewall {
   private readonly assessReputationFn: (metadata: GitHubUserMetadata) => ReputationAssessment;
   /** #4992: whether the sanitizer's content tier downgrades the classifier tier. */
   private readonly contentDowngrade: boolean;
+  /** #4992 review: whether a durable sink backs the audit trail. */
+  private readonly auditSink: 'durable' | 'none';
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -206,6 +220,7 @@ export class HostileInputFirewall {
     this.auditTrail = createAuditTrail(
       config.auditLogger !== undefined ? createDurableAuditSink(config.auditLogger) : undefined
     );
+    this.auditSink = config.auditLogger !== undefined ? 'durable' : 'none';
     this.context = validated.context;
     // Explicit config wins; otherwise the environment; otherwise `off`. Resolved
     // once here rather than per `process()` call so a mid-run env change cannot
@@ -247,13 +262,17 @@ export class HostileInputFirewall {
     // Stage 3: Classify trust
     const trust = this.runClassification(meta, sanitized, allowlist);
 
-    // Stage 4: Assess reputation (optional)
-    const reputation = this.runReputation(meta, sanitized);
+    // Stage 4: Assess reputation — the caller's when supplied, else the stage.
+    const reputation = this.runReputation(meta, sanitized, options?.reputation);
 
     const { tier: effectiveTrustTier, gate: reputationGate } = this.runReputationGate(
       trust.trustTier,
-      reputation
+      reputation,
+      options?.reputation !== undefined
     );
+
+    // Trust event on the tier the consumer acts on, not the pre-reputation one.
+    this.recordTrustDecision(meta, trust, effectiveTrustTier, reputationGate, allowlist);
 
     // Stage 5: Generate ATL (labelled with the enforced tier)
     const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
@@ -341,6 +360,7 @@ export class HostileInputFirewall {
       // refusal for a mode that has not opted in would overstate the gate.
       wouldRefuse: blocking && this.policyMode === 'audit',
       auditEvents: this.auditTrail.query().map((e) => ({ id: e.id, type: e.type })),
+      auditSink: this.auditSink,
       durationMs: Date.now() - parts.start,
     };
   }
@@ -497,7 +517,7 @@ export class HostileInputFirewall {
       return createPassthroughClassification(meta);
     }
 
-    const result = classifyTrust({
+    return classifyTrust({
       username: meta.username,
       authorAssociation: meta.authorAssociation,
       // #4992: `contentDowngrade: false` withholds the sanitizer's content tier
@@ -507,20 +527,34 @@ export class HostileInputFirewall {
         allowlistedMaintainers: [...(allowlist ?? [])],
       },
     });
+  }
 
-    if (this.stages.audit) {
-      emitTrustEvent(this.auditTrail, {
-        username: meta.username,
-        assignedTier: result.trustTier,
-        userRole: result.userRole,
-        // Recorded only when an allowlist was consulted (#4992).
-        ...(allowlist !== undefined ? { isAllowlisted: result.isAllowlisted } : {}),
-        wasDowngraded: result.wasDowngraded,
-        reason: result.reason,
-      });
-    }
-
-    return result;
+  /**
+   * Emits the trust audit event for the tier the consumer acts on — after the
+   * reputation gate, so the record cannot describe a tier nobody enforced
+   * (#4992 review). A demotion is named in `reason`.
+   */
+  private recordTrustDecision(
+    meta: SourceMetadata,
+    trust: ClassifyResult,
+    effectiveTrustTier: TrustTier,
+    gate: ReputationGateDecision | undefined,
+    allowlist: readonly string[] | undefined
+  ): void {
+    if (!this.stages.audit) return;
+    const demoted = effectiveTrustTier !== trust.trustTier;
+    emitTrustEvent(this.auditTrail, {
+      username: meta.username,
+      assignedTier: effectiveTrustTier,
+      userRole: trust.userRole,
+      // Recorded only when an allowlist was consulted (#4992).
+      ...(allowlist !== undefined ? { isAllowlisted: trust.isAllowlisted } : {}),
+      wasDowngraded: trust.wasDowngraded || demoted,
+      reason:
+        demoted && gate !== undefined
+          ? `${trust.reason}; demoted to Tier ${effectiveTrustTier} by reputation gating (${gate.mode})`
+          : trust.reason,
+    });
   }
 
   /**
@@ -540,17 +574,35 @@ export class HostileInputFirewall {
    */
   private runReputationGate(
     classifierTier: TrustTier,
-    reputation: ReputationAssessment | undefined
+    reputation: ReputationAssessment | undefined,
+    callerSupplied: boolean
   ): { readonly tier: TrustTier; readonly gate?: ReputationGateDecision } {
-    if (!this.stages.reputationAssessment) return { tier: classifierTier };
+    // A caller-supplied measurement runs the gate even when the instance's own
+    // reputation stage is off (#4992 review): the caller measured, so record it.
+    if (!this.stages.reputationAssessment && !callerSupplied) return { tier: classifierTier };
     const gate = gateWithReputation(classifierTier, reputation, this.reputationGatingMode);
     return { tier: gate.enforcedTier, gate };
   }
 
   private runReputation(
     meta: SourceMetadata,
-    sanitized: SanitizedInput
+    sanitized: SanitizedInput,
+    supplied: { readonly assessment: ReputationAssessment | undefined } | undefined
   ): ReputationAssessment | undefined {
+    if (supplied !== undefined) {
+      // The caller's measurement replaces the instance's stage for this call;
+      // `undefined` means the caller measured nothing, so nothing is emitted.
+      if (supplied.assessment !== undefined && this.stages.audit) {
+        emitReputationEvent(this.auditTrail, {
+          username: meta.username,
+          reputationScore: supplied.assessment.reputationScore,
+          isSuspicious: supplied.assessment.isSuspicious,
+          effectiveTier: supplied.assessment.effectiveTrustTier,
+          signalCount: supplied.assessment.suspiciousSignals.length,
+        });
+      }
+      return supplied.assessment;
+    }
     if (!this.stages.reputationAssessment) return undefined;
 
     // #3106: only supply what the firewall actually knows from the event —
@@ -596,31 +648,4 @@ export class HostileInputFirewall {
     };
     return generateATL(data);
   }
-}
-
-// ============================================================================
-// Passthrough Defaults (for disabled stages)
-// ============================================================================
-
-function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput {
-  return {
-    content: meta.content,
-    originalLength: meta.content.length,
-    trustTier: '3',
-    userRole: mapAuthorAssociation(meta.authorAssociation),
-    injectionFlags: [],
-    strippedElements: [],
-    wasModified: false,
-    sanitizedAt: new Date().toISOString(),
-  };
-}
-
-function createPassthroughClassification(meta: SourceMetadata): ClassifyResult {
-  return {
-    trustTier: '3',
-    userRole: mapAuthorAssociation(meta.authorAssociation),
-    isAllowlisted: false,
-    wasDowngraded: false,
-    reason: 'Trust classification disabled — default Tier 3',
-  };
 }

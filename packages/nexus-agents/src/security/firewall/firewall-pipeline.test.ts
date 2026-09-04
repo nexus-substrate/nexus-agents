@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { IAuditLogger } from '../../audit/audit-types.js';
+import { assessReputation, ReputationCache } from '../reputation-model.js';
+import type { ReputationAssessment } from '../reputation-model.js';
 
 import { createGitHubAdapter } from './github-adapter.js';
 import { HostileInputFirewall } from './firewall-pipeline.js';
@@ -637,5 +641,130 @@ describe('per-call options at the process() boundary (#4992)', () => {
     expect(result.value.policyMode).toBe('off');
     const events = fw.getAuditTrail().query({ type: 'trust_classification' });
     expect(events).toHaveLength(1);
+  });
+});
+
+describe('durable sink and caller-supplied reputation (#4992 review)', () => {
+  function stubAuditLogger(): { logger: IAuditLogger; log: ReturnType<typeof vi.fn> } {
+    const log = vi.fn();
+    const logger: IAuditLogger = {
+      log,
+      logToolInvocation: vi.fn(),
+      logPolicyDecision: vi.fn(),
+      logSecurityEvent: vi.fn(),
+      logRateLimitViolation: vi.fn(),
+      logTierTransition: vi.fn(),
+      flush: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    return { logger, log };
+  }
+
+  /** A genuine demoting assessment: hostile injection flags on a CONTRIBUTOR. */
+  function demotingAssessment(username: string): ReputationAssessment {
+    return assessReputation(
+      {
+        username,
+        authorAssociation: 'CONTRIBUTOR',
+        injectionFlags: ['system_prompt_manipulation'],
+      },
+      new ReputationCache()
+    );
+  }
+
+  it('reports auditSink: none when no durable logger was configured', () => {
+    const result = createFirewall().process(issueInput());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.auditSink).toBe('none');
+  });
+
+  it('with a durable logger, one trust record lands per item and the next item does not erase it', () => {
+    const { logger, log } = stubAuditLogger();
+    const fw = createFirewall({ auditLogger: logger });
+
+    const first = fw.process(issueInput({ username: 'first-user' }));
+    const second = fw.process(issueInput({ username: 'second-user' }));
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.value.auditSink).toBe('durable');
+
+    const trustRecords = log.mock.calls
+      .map(([input]) => input as { action?: string; actor?: { id?: string } })
+      .filter((input) => input.action === 'security.trust_classification');
+    expect(trustRecords).toHaveLength(2);
+    expect(trustRecords.map((r) => r.actor?.id)).toEqual(['first-user', 'second-user']);
+  });
+
+  it('a caller-supplied demoting assessment drives effectiveTrustTier, Rule of Two and wouldRefuse', () => {
+    const fw = createFirewall({
+      contentDowngrade: false,
+      policyMode: 'audit',
+      reputationGatingMode: 'enforce',
+    });
+    const result = fw.process(
+      issueInput({ username: 'sneaky', authorAssociation: 'CONTRIBUTOR' }),
+      {
+        context: { hasWriteAccess: true, hasSecretAccess: true },
+        reputation: { assessment: demotingAssessment('sneaky') },
+      }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.trust.trustTier).toBe('2');
+    expect(result.value.effectiveTrustTier).toBe('4');
+    expect(result.value.reputationGate?.enforcedTier).toBe('4');
+    expect(result.value.reputationGate?.mode).toBe('enforce');
+    expect(result.value.ruleOfTwoViolation?.rule).toBe('RULE_OF_TWO');
+    expect(result.value.wouldRefuse).toBe(true);
+  });
+
+  it('the trust audit event records the enforced tier, not the pre-reputation tier', () => {
+    const fw = createFirewall({ contentDowngrade: false, reputationGatingMode: 'enforce' });
+    fw.process(issueInput({ username: 'sneaky', authorAssociation: 'CONTRIBUTOR' }), {
+      reputation: { assessment: demotingAssessment('sneaky') },
+    });
+    const [event] = fw.getAuditTrail().query({ type: 'trust_classification' });
+    expect(event?.type).toBe('trust_classification');
+    if (event?.type !== 'trust_classification') return;
+    expect(event.assignedTier).toBe('4');
+    expect(event.wasDowngraded).toBe(true);
+    expect(event.reason).toContain('reputation');
+  });
+
+  it('under reputation gating audit, the caller-supplied demotion is suppressed and reported', () => {
+    const fw = createFirewall({ contentDowngrade: false, reputationGatingMode: 'audit' });
+    const result = fw.process(
+      issueInput({ username: 'sneaky', authorAssociation: 'CONTRIBUTOR' }),
+      { reputation: { assessment: demotingAssessment('sneaky') } }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.effectiveTrustTier).toBe('2');
+    expect(result.value.reputationGate?.reconciledTier).toBe('4');
+    expect(result.value.reputationGate?.demotionSuppressed).toBe(true);
+  });
+
+  it('a caller that measured nothing still gets the gate decision on the classifier tier', () => {
+    const fw = createFirewall({ contentDowngrade: false, reputationGatingMode: 'enforce' });
+    const result = fw.process(issueInput({ authorAssociation: 'CONTRIBUTOR' }), {
+      reputation: { assessment: undefined },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.reputationGate).toEqual({
+      enforcedTier: '2',
+      reconciledTier: '2',
+      demotionSuppressed: false,
+      mode: 'enforce',
+    });
+    expect(result.value.reputation).toBeUndefined();
+  });
+
+  it('without the option the reputation stage stays off and no gate is reported', () => {
+    const result = createFirewall().process(issueInput());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.reputationGate).toBeUndefined();
   });
 });

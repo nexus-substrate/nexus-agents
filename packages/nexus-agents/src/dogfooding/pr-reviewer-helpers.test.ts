@@ -822,6 +822,7 @@ function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRRe
       trustTier: '3',
       userRole: 'unknown',
       isAllowlisted: false,
+      auditSink: 'none',
       suspiciousSignals: [],
       isSuspicious: false,
     },
@@ -845,15 +846,23 @@ describe('buildPRTrustAssessment — isAllowlisted measured or absent (#4992)', 
   } as const;
 
   it('omits isAllowlisted when the firewall consulted no allowlist', () => {
-    const assessment = buildPRTrustAssessment({ trust }, undefined, gate);
+    const assessment = buildPRTrustAssessment({ trust, auditSink: 'none' }, undefined, gate);
     expect('isAllowlisted' in assessment).toBe(false);
     expect(assessment.trustTier).toBe('3');
   });
 
   it('carries the measured value when the firewall consulted one', () => {
-    const measuredFalse = buildPRTrustAssessment({ trust, isAllowlisted: false }, undefined, gate);
+    const measuredFalse = buildPRTrustAssessment(
+      { trust, isAllowlisted: false, auditSink: 'none' },
+      undefined,
+      gate
+    );
     expect(measuredFalse.isAllowlisted).toBe(false);
-    const measuredTrue = buildPRTrustAssessment({ trust, isAllowlisted: true }, undefined, gate);
+    const measuredTrue = buildPRTrustAssessment(
+      { trust, isAllowlisted: true, auditSink: 'none' },
+      undefined,
+      gate
+    );
     expect(measuredTrue.isAllowlisted).toBe(true);
   });
 });

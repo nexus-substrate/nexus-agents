@@ -28,12 +28,7 @@ import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { validateCorroboration } from '../security/corroboration-validator.js';
 import type { CorroborationResult } from '../security/corroboration-validator.js';
-import {
-  assessReputation,
-  ReputationCache,
-  gateWithReputation,
-  resolveReputationGatingMode,
-} from '../security/reputation-model.js';
+import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type {
   ReputationAssessment,
   GitHubUserMetadata,
@@ -195,24 +190,26 @@ export class IssueTriage {
     const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
     const safeBody = this.sanitizeContent(issueResult.body, issueResult.author);
 
+    // Reputation is measured here, with data the firewall cannot see (account
+    // age, comment history), and handed to the firewall per call.
+    const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
+
     // #4992: classify through the shared HostileInputFirewall so the trust
     // decision reaches the security audit trail. Signal-only under the default
     // NEXUS_FIREWALL_POLICY=off; `validateActions` below stays the Rule-of-Two
-    // enforcement point and reputation gating stays here.
-    const firewall = this.classifyAuthor(issueResult);
+    // enforcement point. The firewall runs the ONE reputation gate (#3122:
+    // off/audit/enforce; audit reports a would-be demotion without enforcing
+    // it; the allowlist Tier 1 remains the escape hatch), so its Rule-of-Two
+    // signal and this path's policy gate act on the same enforced tier.
+    const firewall = this.classifyAuthor(issueResult, reputation);
     if (!firewall.ok) return firewall;
     const trustResult = firewall.value.trust;
-    const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
-
-    // #3122: apply the reputation-gating rollout mode (off/audit/enforce). The
-    // decision is computed once and used both to gate actions and to surface
-    // observability in the result. Audit mode reports a would-be demotion
-    // without enforcing it; the allowlist (Tier 1) remains the escape hatch.
-    const gateDecision = gateWithReputation(
-      trustResult.trustTier,
-      reputation,
-      resolveReputationGatingMode()
-    );
+    const gateDecision = firewall.value.reputationGate;
+    if (gateDecision === undefined) {
+      // Structurally unreachable — the option is always passed — but a missing
+      // gate must not be papered over with the classifier tier.
+      return err(new Error('Untrusted-input firewall returned no reputation gate decision'));
+    }
     if (gateDecision.demotionSuppressed) {
       logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
         issueNumber,
@@ -239,6 +236,7 @@ export class IssueTriage {
       actions: validatedActions,
       trustResult,
       isAllowlisted: firewall.value.isAllowlisted,
+      auditSink: firewall.value.auditSink,
       reputation,
       gateDecision,
       safeContent: { title: safeTitle, body: safeBody },
@@ -282,7 +280,10 @@ export class IssueTriage {
    * so none is consulted and `isAllowlisted` stays absent on the result rather
    * than being recorded as `false`.
    */
-  private classifyAuthor(issue: IssueMetadata): Result<FirewallResult, Error> {
+  private classifyAuthor(
+    issue: IssueMetadata,
+    reputation: ReputationAssessment | undefined
+  ): Result<FirewallResult, Error> {
     return runUntrustedInputFirewall(
       {
         type: 'issue',
@@ -291,7 +292,7 @@ export class IssueTriage {
         title: issue.title,
         body: issue.body,
       },
-      { context: this.accessContext() }
+      { context: this.accessContext(), reputation: { assessment: reputation } }
     );
   }
 
@@ -447,6 +448,7 @@ export class IssueTriage {
     trustResult: ClassifyResult;
     /** Present only when the firewall consulted an allowlist (#4992). */
     isAllowlisted: boolean | undefined;
+    auditSink: FirewallResult['auditSink'];
     reputation: ReputationAssessment | undefined;
     gateDecision: ReputationGateDecision;
     safeContent: { title: string; body: string };
@@ -457,6 +459,7 @@ export class IssueTriage {
       actions,
       trustResult,
       isAllowlisted,
+      auditSink,
       reputation,
       gateDecision,
       safeContent,
@@ -473,6 +476,7 @@ export class IssueTriage {
       userRole: trustResult.userRole,
       // Measured or absent (#4992): never the classifier's default `false`.
       ...(isAllowlisted !== undefined ? { isAllowlisted } : {}),
+      auditSink,
       reputationScore: reputation?.reputationScore,
       suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
       isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),

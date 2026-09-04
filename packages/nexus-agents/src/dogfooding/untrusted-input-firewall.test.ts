@@ -9,7 +9,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 import { createGitHubAdapter } from '../security/firewall/github-adapter.js';
 import { classifyTrust } from '../security/trust-classifier.js';
+import { assessReputation, ReputationCache } from '../security/reputation-model.js';
+import type { IAuditLogger } from '../audit/audit-types.js';
 import {
+  configureUntrustedInputFirewall,
   getUntrustedInputFirewall,
   runUntrustedInputFirewall,
   _setUntrustedInputFirewallForTests,
@@ -173,5 +176,81 @@ describe('runUntrustedInputFirewall', () => {
       .getAuditTrail()
       .query({ type: 'trust_classification' });
     expect(events).toHaveLength(1);
+  });
+});
+
+describe('configureUntrustedInputFirewall — the durable sink (#4992 review)', () => {
+  function stubAuditLogger(): { logger: IAuditLogger; log: ReturnType<typeof vi.fn> } {
+    const log = vi.fn();
+    const logger: IAuditLogger = {
+      log,
+      logToolInvocation: vi.fn(),
+      logPolicyDecision: vi.fn(),
+      logSecurityEvent: vi.fn(),
+      logRateLimitViolation: vi.fn(),
+      logTierTransition: vi.fn(),
+      flush: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    return { logger, log };
+  }
+
+  afterEach(() => {
+    configureUntrustedInputFirewall({});
+    _setUntrustedInputFirewallForTests(undefined);
+  });
+
+  it('without a configured logger the result says auditSink: none — no emission is claimed', () => {
+    _setUntrustedInputFirewallForTests(undefined);
+    const result = runUntrustedInputFirewall(issue(), { context: READ_ONLY });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.auditSink).toBe('none');
+  });
+
+  it('a configured logger receives one trust record per item, and the instance is rebuilt to carry it', () => {
+    const before = getUntrustedInputFirewall();
+    const { logger, log } = stubAuditLogger();
+    configureUntrustedInputFirewall({ auditLogger: logger });
+    expect(getUntrustedInputFirewall()).not.toBe(before);
+
+    const first = runUntrustedInputFirewall(issue({ username: 'first-user' }), {
+      context: READ_ONLY,
+    });
+    runUntrustedInputFirewall(issue({ username: 'second-user' }), { context: READ_ONLY });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.auditSink).toBe('durable');
+    const trustRecords = log.mock.calls
+      .map(([input]) => input as { action?: string; actor?: { id?: string } })
+      .filter((input) => input.action === 'security.trust_classification');
+    expect(trustRecords.map((r) => r.actor?.id)).toEqual(['first-user', 'second-user']);
+  });
+
+  it('a caller-supplied reputation gates the enforced tier through the shared instance', () => {
+    _setUntrustedInputFirewallForTests(
+      new HostileInputFirewall({
+        adapter: createGitHubAdapter(),
+        contentDowngrade: false,
+        policyMode: 'audit',
+        reputationGatingMode: 'enforce',
+      })
+    );
+    const assessment = assessReputation(
+      {
+        username: 'sneaky',
+        authorAssociation: 'CONTRIBUTOR',
+        injectionFlags: ['fake_conversation'],
+      },
+      new ReputationCache()
+    );
+    const result = runUntrustedInputFirewall(
+      issue({ username: 'sneaky', authorAssociation: 'CONTRIBUTOR' }),
+      { context: WRITE_AND_SECRETS, reputation: { assessment } }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.effectiveTrustTier).toBe('4');
+    expect(result.value.wouldRefuse).toBe(true);
   });
 });

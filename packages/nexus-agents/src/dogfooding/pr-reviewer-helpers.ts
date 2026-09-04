@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Result } from '../core/index.js';
-import { getTimeProvider, createLogger } from '../core/index.js';
+import { getTimeProvider, createLogger, ok, err } from '../core/index.js';
 import type { ScmUserMetadata } from '../scm/types.js';
 import type {
   PRMetadata,
@@ -29,11 +29,7 @@ import {
 } from './pr-review-types.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
 import { allOf } from '../utils/verdict-aggregation.js';
-import {
-  assessReputation,
-  gateWithReputation,
-  resolveReputationGatingMode,
-} from '../security/reputation-model.js';
+import { assessReputation } from '../security/reputation-model.js';
 import type {
   ReputationCache,
   ReputationGateDecision,
@@ -99,7 +95,7 @@ export function assessPRReputation(
 
 /** Builds the observability assessment surfaced on the review result (#3123). */
 export function buildPRTrustAssessment(
-  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted'>,
+  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted' | 'auditSink'>,
   reputation: ReputationAssessment | undefined,
   gateDecision: ReputationGateDecision
 ): PRTrustAssessment {
@@ -111,6 +107,7 @@ export function buildPRTrustAssessment(
     userRole: trustResult.userRole,
     // Measured or absent (#4992): never the classifier's default `false`.
     ...(firewall.isAllowlisted !== undefined ? { isAllowlisted: firewall.isAllowlisted } : {}),
+    auditSink: firewall.auditSink,
     reputationScore: reputation?.reputationScore,
     suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
     isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
@@ -121,24 +118,23 @@ export function buildPRTrustAssessment(
 }
 
 /**
- * Assesses the PR author's reputation and applies the gating rollout mode
- * (#3123). Returns the gate decision (for the policy gate) and the assessment
- * surfaced on the result. A suppressed demotion (audit/off) is logged.
+ * Reads the reputation gate decision the firewall computed for this PR (#3123
+ * gating; #4992 review: ONE gate, shared with the firewall's Rule-of-Two
+ * signal) and builds the assessment surfaced on the result. A suppressed
+ * demotion (audit/off) is logged. Fails closed when the firewall returned no
+ * gate — structurally unreachable, since the caller always supplies the
+ * reputation option, but the classifier tier must never stand in for it.
  */
 export function gatePRAuthor(
   pr: PRMetadata,
-  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted'>,
-  accountAgeDays: number | undefined,
-  cache: ReputationCache,
-  enableReputation: boolean
-): { gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment } {
+  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted' | 'auditSink' | 'reputationGate'>,
+  reputation: ReputationAssessment | undefined
+): Result<{ gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment }, Error> {
   const trustResult = firewall.trust;
-  const reputation = assessPRReputation(pr, cache, enableReputation, accountAgeDays);
-  const gateDecision = gateWithReputation(
-    trustResult.trustTier,
-    reputation,
-    resolveReputationGatingMode()
-  );
+  const gateDecision = firewall.reputationGate;
+  if (gateDecision === undefined) {
+    return err(new Error('Untrusted-input firewall returned no reputation gate decision'));
+  }
   if (gateDecision.demotionSuppressed) {
     repLogger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
       prNumber: pr.number,
@@ -148,10 +144,10 @@ export function gatePRAuthor(
       reconciledTier: gateDecision.reconciledTier,
     });
   }
-  return {
+  return ok({
     gateDecision,
     trustAssessment: buildPRTrustAssessment(firewall, reputation, gateDecision),
-  };
+  });
 }
 
 // =============================================================================

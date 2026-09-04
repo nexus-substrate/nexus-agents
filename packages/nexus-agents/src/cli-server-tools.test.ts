@@ -22,6 +22,12 @@ import {
 } from './mcp/middleware/policy-registry.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { getOutcomeStore } from './orchestration/outcomes/outcome-store.js';
+import type { IAuditLogger } from './audit/audit-types.js';
+import {
+  configureUntrustedInputFirewall,
+  runUntrustedInputFirewall,
+  _setUntrustedInputFirewallForTests,
+} from './dogfooding/untrusted-input-firewall.js';
 
 // ============================================================================
 // Mock external modules (vi.hoisted so they are available in vi.mock factories)
@@ -921,5 +927,61 @@ describe('stage failures do not become fabricated outcomes (#5003)', () => {
 
     expect(store.query()).toHaveLength(before);
     expect(store.query().some((o) => o.id.startsWith('fb-fail-'))).toBe(false);
+  });
+});
+
+// ============================================================================
+// registerMcpTools - untrusted-input firewall durable sink (#4992 review)
+// ============================================================================
+
+describe('registerMcpTools wires the untrusted-input firewall to the durable audit log (#4992)', () => {
+  const PAYLOAD = {
+    type: 'issue',
+    username: 'drive-by',
+    authorAssociation: 'NONE',
+    title: 't',
+    body: 'b',
+  } as const;
+  const READ_ONLY = { hasWriteAccess: false, hasSecretAccess: false } as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockReturnValues();
+  });
+
+  afterEach(() => {
+    configureUntrustedInputFirewall({});
+    _setUntrustedInputFirewallForTests(undefined);
+  });
+
+  it('with an auditLogger, trust classifications on the live path reach it', () => {
+    const log = vi.fn();
+    const auditLogger: IAuditLogger = {
+      log,
+      logToolInvocation: vi.fn(),
+      logPolicyDecision: vi.fn(),
+      logSecurityEvent: vi.fn(),
+      logRateLimitViolation: vi.fn(),
+      logTierTransition: vi.fn(),
+      flush: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    };
+    registerMcpTools(makeDefaultOptions({ auditLogger }));
+
+    const result = runUntrustedInputFirewall(PAYLOAD, { context: READ_ONLY });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.auditSink).toBe('durable');
+    const actions = log.mock.calls.map(([input]) => (input as { action?: string }).action);
+    expect(actions).toContain('security.trust_classification');
+  });
+
+  it('without one (audit disabled), the firewall claims no durable emission', () => {
+    registerMcpTools(makeDefaultOptions());
+
+    const result = runUntrustedInputFirewall(PAYLOAD, { context: READ_ONLY });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.auditSink).toBe('none');
   });
 });

@@ -123,6 +123,7 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
       trustTier: '3',
       userRole: 'unknown',
       isAllowlisted: false,
+      auditSink: 'none',
       suspiciousSignals: [],
       isSuspicious: false,
     },
