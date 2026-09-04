@@ -354,6 +354,109 @@ describe('inject-governance inject', () => {
 // Section injection (marker replacement logic)
 // ============================================================================
 
+describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
+  const PKG_REL = 'packages/nexus-agents/package.json';
+  const footer = (
+    file: string,
+    key: 'TypeScript' | 'Node.js' | 'MCP Protocol'
+  ): string | undefined =>
+    new RegExp(`_${key.replace('.', '\\.')}: ([^_\\n]+)_`).exec(
+      readFileSync(box(file), 'utf-8')
+    )?.[1];
+
+  it('generates the footer from package.json and the installed SDK, into both files', async () => {
+    // Before this, the footer said `TypeScript: 5.9+` while package.json said
+    // `^6.0.3`, and nothing read it. The AGENTS→CLAUDE copy guaranteed the two
+    // COPIES agreed while checking neither against anything.
+    await withInjectSnapshot(async () => {
+      const pkgPath = box(PKG_REL);
+      const originalPkg = readFileSync(pkgPath, 'utf-8');
+      try {
+        const pkg = JSON.parse(originalPkg) as {
+          dependencies: Record<string, string>;
+          engines: Record<string, string>;
+        };
+        pkg.dependencies['typescript'] = '^7.0.0';
+        pkg.engines['node'] = '>=24.0.0';
+        writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+
+        await runInject();
+
+        for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+          expect(footer(file, 'TypeScript')).toBe('7.x');
+          expect(footer(file, 'Node.js')).toBe('>=24.0.0');
+          // The SDK constant, not a date typed into a comment.
+          expect(footer(file, 'MCP Protocol')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        }
+        expect(footer('AGENTS.md', 'MCP Protocol')).toBe(footer('CLAUDE.md', 'MCP Protocol'));
+        expect(runCheck().ok).toBe(true);
+      } finally {
+        writeFileSync(pkgPath, originalPkg);
+      }
+    });
+  });
+
+  it('check fails when the TypeScript footer disagrees with package.json', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const agentsPath = box('AGENTS.md');
+      writeFileSync(
+        agentsPath,
+        readFileSync(agentsPath, 'utf-8').replace(/_TypeScript: [^_\n]+_/, '_TypeScript: 5.9+_')
+      );
+
+      const { ok, output } = runCheck();
+
+      expect(ok).toBe(false);
+      expect(output).toContain('AGENTS.md TypeScript footer');
+      expect(output).toContain('found 5.9+');
+    });
+  });
+
+  it('check fails when the MCP Protocol footer disagrees with the installed SDK', async () => {
+    // The only occurrences of the protocol date in src/ are comments; the SDK
+    // export is the fact. A footer that drifts from it must be reportable.
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const agentsPath = box('AGENTS.md');
+      writeFileSync(
+        agentsPath,
+        readFileSync(agentsPath, 'utf-8').replace(
+          /_MCP Protocol: [^_\n]+_/,
+          '_MCP Protocol: 2000-01-01_'
+        )
+      );
+
+      const { ok, output } = runCheck();
+
+      expect(ok).toBe(false);
+      expect(output).toContain('AGENTS.md MCP Protocol footer');
+      expect(output).toContain('found 2000-01-01');
+    });
+  });
+
+  it('a single inject converges CLAUDE.md after an AGENTS.md footer change', async () => {
+    // The ordering hazard the footer surfaced: `applyAllSectionInjections`
+    // copies AGENTS.md's body into CLAUDE.md, and every AGENTS.md writer used
+    // to run AFTER it — so one pass left CLAUDE.md a step behind, and check
+    // reported the FROM_AGENTS block stale. Masked while the only inline
+    // values were counts that rarely move.
+    await withInjectSnapshot(async () => {
+      const agentsPath = box('AGENTS.md');
+      writeFileSync(
+        agentsPath,
+        readFileSync(agentsPath, 'utf-8').replace(/_TypeScript: [^_\n]+_/, '_TypeScript: 5.9+_')
+      );
+
+      await runInject();
+
+      expect(footer('AGENTS.md', 'TypeScript')).toBe(footer('CLAUDE.md', 'TypeScript'));
+      expect(footer('CLAUDE.md', 'TypeScript')).not.toBe('5.9+');
+      expect(runCheck().ok).toBe(true);
+    });
+  });
+});
+
 describe('section injection behavior', () => {
   it('replaces content between markers without affecting surrounding text', async () => {
     await withInjectSnapshot(async () => {
