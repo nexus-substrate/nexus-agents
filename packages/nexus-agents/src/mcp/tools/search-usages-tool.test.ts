@@ -36,6 +36,8 @@ function makeCtx(): Parameters<typeof searchUsagesHandler>[1] {
       startTimeMs: 0,
     } as unknown as Parameters<typeof searchUsagesHandler>[1]['requestContext'],
     logger: createLogger({ component: 'test' }),
+    // #5385: the middleware always discloses what it removed; nothing here.
+    sanitization: { wasModified: false, commentsRemoved: 0 },
   };
 }
 

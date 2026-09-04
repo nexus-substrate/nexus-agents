@@ -43,6 +43,7 @@ import { persistReviewRecord } from './pr-review-record-producer.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import type { HandlerContext } from '../middleware/secure-handler.js';
 import { createLogger } from '../../core/index.js';
 import {
   PR_REVIEW_RECORDS_PATH_ENV,
@@ -699,9 +700,11 @@ describe('pr_review tool', () => {
 // request timeout, so `dispatch: 'async'` returns a jobId immediately and runs
 // the panel in the background (poll get_job_result). pr_review has no sessionId,
 // so a fresh `pr-<uuid>` jobId is always minted (no idempotency surface).
-interface HandlerCtx {
-  logger: ReturnType<typeof createLogger>;
-}
+// Derived from the real HandlerContext rather than re-declared. A hand-written
+// stand-in silently drifts: this one carried only `logger`, so when the
+// middleware began passing `sanitization` (#5385) the compiler had nothing to
+// object to and the handler failed at RUNTIME on an undefined field instead.
+type HandlerCtx = Pick<HandlerContext, 'logger' | 'sanitization'>;
 type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
 
 interface CapturedToolResult {
@@ -709,7 +712,10 @@ interface CapturedToolResult {
   content: Array<{ type: string; text: string }>;
 }
 
-const TEST_CTX: HandlerCtx = { logger: createLogger({ tool: 'pr_review.test' }) };
+const TEST_CTX: HandlerCtx = {
+  logger: createLogger({ tool: 'pr_review.test' }),
+  sanitization: { wasModified: false, commentsRemoved: 0 },
+};
 
 /** Registers the tool against a mock server and returns the captured callback. */
 function captureHandler(): CtxHandler {
@@ -1223,6 +1229,46 @@ describe('pr_review repoPath input (#4278)', () => {
       } finally {
         rmSync(notARepo, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('proposal disclosure survives the MCP path (#5385)', () => {
+    const withComment = {
+      prTitle: 'T',
+      prDescription: 'body <!-- hidden --> more',
+      prDiff: 'diff --git a/x b/x\n+line\n',
+      repoContext: undefined,
+      baseRef: undefined,
+      headRef: undefined,
+    };
+
+    it('annotates when THIS call strips the comment (CI and script paths)', () => {
+      const out = buildPrReviewProposal(withComment);
+      expect(out).toContain('HTML comment(s) were removed');
+    });
+
+    it('annotates when the MIDDLEWARE already stripped it and this call counts 0', () => {
+      // The defect: on the MCP path the middleware sanitizes before dispatch, so
+      // the builder re-sanitizes clean text, counts 0, and the note never fires —
+      // on the ONE path that persists a governance record. The count now comes
+      // from the middleware via HandlerContext.
+      const alreadyClean = { ...withComment, prDescription: 'body  more' };
+      const out = buildPrReviewProposal(alreadyClean, 1);
+      expect(out).toContain('HTML comment(s) were removed');
+      expect(out).toContain('1 HTML comment(s)');
+    });
+
+    it('sums removals from both stages rather than reporting only one', () => {
+      const out = buildPrReviewProposal(withComment, 2);
+      expect(out).toContain('3 HTML comment(s)');
+    });
+
+    it('does not annotate when nothing was removed at either stage', () => {
+      const clean = { ...withComment, prDescription: 'nothing to strip' };
+      expect(buildPrReviewProposal(clean, 0)).not.toContain('HTML comment(s) were removed');
+      // Omitting the argument must behave exactly as passing 0 — the CI and
+      // script callers rely on it.
+      expect(buildPrReviewProposal(clean)).not.toContain('HTML comment(s) were removed');
     });
   });
 });

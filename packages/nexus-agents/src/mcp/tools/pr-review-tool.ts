@@ -27,7 +27,6 @@ import {
 } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { sanitizeToolInput } from '../middleware/tool-input-sanitizer.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -42,7 +41,7 @@ import { recordDecisionCost } from './decision-cost-recording.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
-import { FINDINGS_FORMAT_INSTRUCTIONS, type Finding } from './pr-review-findings.js';
+import type { Finding } from './pr-review-findings.js';
 import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
 // prettier-ignore
 import {
@@ -411,89 +410,8 @@ function absoluteQuorumApprove(
 // Proposal Construction
 // ============================================================================
 
-/** Builds the proposal text passed to voters. The voters are designed for
- * yes/no proposals — by framing the diff as "should this PR be merged?" we
- * get usable output without needing new system prompts (Child 3 will add
- * those).
- *
- * **Sanitization lives HERE, not at the tool boundary (#5258 item B).** The
- * `securityTier: 'external'` declared on the registered tool only protects the
- * MCP path, because the middleware is constructed inside `registerPrReviewTool`.
- * Three other callers reach the voters without it — `.github/workflows/
- * pr-review.yml`, `scripts/pr-review-local.ts` (the documented default path)
- * and `scripts/pr-review-eval-run.ts` — each importing this builder directly
- * from `dist/index.js`. On those paths a hostile PR body reached five voters
- * unfenced, next to the words "should it be merged as-is?".
- *
- * This function is the one chokepoint all four callers pass through, so the
- * protection is attached to the data rather than to one entry point. The MCP
- * tier check still runs earlier and still refuses; this is the floor beneath
- * it, and it strips rather than refuses so the script paths degrade instead of
- * failing shut. Double-sanitizing on the MCP path is idempotent and harmless.
- */
-export function buildPrReviewProposal(
-  input: Pick<
-    PrReviewInput,
-    'prTitle' | 'prDescription' | 'prDiff' | 'repoContext' | 'baseRef' | 'headRef'
-  >
-): string {
-  // Every field below is attacker-controlled on the CI path: title, body and
-  // diff all come straight from `github.event.pull_request.*`.
-  const sanitizeResult = sanitizeToolInput({
-    prTitle: input.prTitle,
-    prDescription: input.prDescription,
-    prDiff: input.prDiff,
-    repoContext: input.repoContext,
-  });
-  const safe = sanitizeResult.sanitized as Pick<
-    PrReviewInput,
-    'prTitle' | 'prDescription' | 'prDiff' | 'repoContext'
-  >;
-
-  const parts: string[] = [];
-  parts.push(`# Pull Request Review\n`);
-
-  // The proposal a voter reads is not always the PR as written. Say so IN the
-  // proposal rather than only in a log, because the proposal is what the panel
-  // sees and what the governance record preserves — a voter told "approve if
-  // the diff is correct and complete" would otherwise judge a silently
-  // shortened body as if it were whole. On the CI and script paths there is no
-  // secure-handler log at all, so without this the removal leaves no trace.
-  if (sanitizeResult.commentsRemoved > 0) {
-    parts.push(
-      `> **Note:** ${String(sanitizeResult.commentsRemoved)} HTML comment(s) were removed ` +
-        `from the untrusted fields below before you saw them (#5258). Comments are invisible ` +
-        `in rendered markdown, so they are stripped rather than trusted. This is routine — ` +
-        `GitHub's default PR template contains one — and is not by itself evidence of an attack.\n`
-    );
-  }
-
-  parts.push(`**Title:** ${safe.prTitle}\n`);
-
-  // baseRef/headRef are git ref names, not free text, and are validated
-  // upstream; they are interpolated as-is deliberately.
-  if (input.baseRef !== undefined && input.headRef !== undefined) {
-    parts.push(`**Branches:** ${input.headRef} → ${input.baseRef}\n`);
-  }
-  if (safe.repoContext !== undefined && safe.repoContext !== '') {
-    parts.push(`\n**Repo context:**\n${safe.repoContext}\n`);
-  }
-  if (safe.prDescription !== undefined && safe.prDescription !== '') {
-    parts.push(`\n**Description:**\n${safe.prDescription}\n`);
-  }
-
-  parts.push(`\n## Diff\n\n\`\`\`diff\n${safe.prDiff}\n\`\`\`\n`);
-  parts.push(`\n## Your task\n`);
-  parts.push(`Review this PR from your role's perspective. Decide: should it be merged as-is?\n`);
-  parts.push(`- **APPROVE** if the diff is correct, complete, and aligned with your role.\n`);
-  parts.push(
-    `- **REJECT** (= "request changes") if there is at least one concrete defect, missing requirement, or violation that justifies blocking the merge.\n`
-  );
-  parts.push(`- **ABSTAIN** if the diff is outside your role's concerns.\n`);
-  parts.push(`\n${FINDINGS_FORMAT_INSTRUCTIONS}\n`);
-
-  return parts.join('');
-}
+export { buildPrReviewProposal } from './pr-review-proposal.js';
+import { buildPrReviewProposal } from './pr-review-proposal.js';
 
 // ============================================================================
 // Handler
@@ -537,7 +455,8 @@ function resolveAggregate(
  */
 function preparePanelProposal(
   input: PrReviewInput,
-  logger: ILogger
+  logger: ILogger,
+  removedBeforeThisCall = 0
 ): { proposal: string; coverage: PrReviewCoverage | undefined } {
   const { coverage, packedDiff, note } = packDiffForReview(input.prDiff, MAX_DIFF_LENGTH);
   const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
@@ -546,34 +465,23 @@ function preparePanelProposal(
       `pr_review diff over budget — reviewed ${String(coverage.reviewedFiles)} of ${String(coverage.totalFiles)} files, dropped ${String(coverage.droppedFiles.length)}`
     );
   }
-  return { proposal: note + buildPrReviewProposal(body), coverage };
+  return { proposal: note + buildPrReviewProposal(body, removedBeforeThisCall), coverage };
 }
 
-async function executePrReviewBody(
-  input: PrReviewInput,
-  logger: ILogger,
-  gatewayAdapters?: readonly IModelAdapter[]
-): Promise<ToolResult> {
-  const start = Date.now();
-  const { proposal, coverage } = preparePanelProposal(input, logger);
-  const voteResults = await collectRealVotes({
-    roles: PR_REVIEW_ROLES,
-    proposal,
-    simulate: input.simulate,
-    logger,
-    ...(gatewayAdapters !== undefined && { gatewayAdapters }),
-  });
-
-  const reviews = voteResults.map(toPrReviewVote);
-  const counts = summarizeReviews(reviews);
-  const aggregate = resolveAggregate(reviews, input, counts.errorCount, coverage, logger);
-
-  // #3855: roll up + persist this review's per-voter cost and ride it on the
-  // existing response (no new MCP tool). Best-effort — a rollup failure must
-  // not fail the review.
-  let costSummary: DecisionCostSummary | undefined;
+/**
+ * #3855: roll up this review's per-voter cost onto the existing response (no new
+ * MCP tool). Best-effort by design — a rollup failure must not fail the review
+ * it is only observing, so it returns `undefined` rather than throwing.
+ *
+ * Extracted from `executePrReviewBody`, which was at exactly its 50-line cap
+ * (#5385): the disclosure parameter had nowhere to go until something moved out.
+ */
+function rollUpDecisionCost(
+  voteResults: Parameters<typeof recordDecisionCost>[0]['votes'],
+  logger: ILogger
+): DecisionCostSummary | undefined {
   try {
-    costSummary = recordDecisionCost({
+    return recordDecisionCost({
       decisionId: `pr-${randomUUID().slice(0, 8)}`,
       gate: 'pr_review',
       votes: voteResults,
@@ -582,7 +490,31 @@ async function executePrReviewBody(
     logger.warn('Per-decision cost rollup failed (non-fatal)', {
       error: getErrorMessage(costError),
     });
+    return undefined;
   }
+}
+
+async function executePrReviewBody(
+  input: PrReviewInput,
+  logger: ILogger,
+  opts: { gatewayAdapters?: readonly IModelAdapter[]; removedBeforeThisCall?: number } = {}
+): Promise<ToolResult> {
+  const start = Date.now();
+  const { gatewayAdapters: adapters, removedBeforeThisCall: removed = 0 } = opts;
+  const { proposal, coverage } = preparePanelProposal(input, logger, removed);
+  const voteResults = await collectRealVotes({
+    roles: PR_REVIEW_ROLES,
+    proposal,
+    simulate: input.simulate,
+    logger,
+    ...(adapters !== undefined && { gatewayAdapters: adapters }),
+  });
+
+  const reviews = voteResults.map(toPrReviewVote);
+  const counts = summarizeReviews(reviews);
+  const aggregate = resolveAggregate(reviews, input, counts.errorCount, coverage, logger);
+
+  const costSummary = rollUpDecisionCost(voteResults, logger);
 
   // #4031: best-effort Option-C audit-record persistence. The producer surfaces
   // every non-persist (binding absent / simulated / no quorum / write-failed) as
@@ -619,6 +551,10 @@ async function executePrReviewBody(
  * when one is configured.
  */
 function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
+  // #5385: `removedBeforeThisCall` carries what the middleware stripped BEFORE
+  // dispatch; without it the proposal's own count is 0 and the disclosure is
+  // absent from the one path that persists a governance record.
+  const adapterOpt = gatewayAdapters !== undefined ? { gatewayAdapters } : {};
   return async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
     const parsed = PrReviewInputSchema.safeParse(args);
     if (!parsed.success) {
@@ -647,11 +583,18 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           toolName: 'pr_review',
           input,
           freshJobId: () => `pr-${randomUUID()}`,
-          run: () => executePrReviewBody(input, ctx.logger, gatewayAdapters),
+          run: () =>
+            executePrReviewBody(input, ctx.logger, {
+              ...adapterOpt,
+              removedBeforeThisCall: ctx.sanitization.commentsRemoved,
+            }),
           logger: ctx.logger,
         });
       }
-      return await executePrReviewBody(input, ctx.logger, gatewayAdapters);
+      return await executePrReviewBody(input, ctx.logger, {
+        ...adapterOpt,
+        removedBeforeThisCall: ctx.sanitization.commentsRemoved,
+      });
     } catch (error) {
       // #3731 discoverability: a sync run that times out (or otherwise fails)
       // should point the caller at async mode — the durable fix for runs that

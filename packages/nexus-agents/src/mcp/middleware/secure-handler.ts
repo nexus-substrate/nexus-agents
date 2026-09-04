@@ -78,11 +78,47 @@ export interface SecureHandlerConfig {
 /**
  * Extended handler context passed to the wrapped handler.
  */
+/**
+ * What the middleware removed from this call's input, disclosed to the handler
+ * (#5385).
+ *
+ * The middleware sanitizes BEFORE dispatch, so a handler receives cleaned args
+ * and cannot otherwise know either what its raw input was or what was taken
+ * out. That was low-impact while sanitization only stripped conversation-
+ * structure XML tags; #5258 added HTML-comment stripping, which fires on any
+ * markdown change — including this repo's own governance-regeneration PRs.
+ *
+ * Counts only, never the removed bytes: handing raw or stripped content back to
+ * the handler would partially defeat sanitize-before-dispatch, which is the
+ * property this middleware exists to guarantee.
+ */
+/*
+ * Not exported: every consumer reaches it through `HandlerContext.sanitization`
+ * or builds an object literal, so exporting the name adds a symbol with no
+ * cross-file consumer — which the #3024 gate correctly rejects.
+ */
+interface SanitizationContext {
+  /** Whether sanitization changed the args at all. */
+  readonly wasModified: boolean;
+  /** HTML comments removed from untrusted fields (#5258). */
+  readonly commentsRemoved: number;
+}
+
 export interface HandlerContext {
   /** Request context for this invocation */
   requestContext: RequestContext;
   /** Logger with request context attached */
   logger: ILogger;
+  /**
+   * What sanitization removed (#5385).
+   *
+   * REQUIRED, not optional, deliberately. An optional field invites
+   * `ctx.sanitization?.commentsRemoved ?? 0`, which renders "the middleware did
+   * not tell me" as "nothing was removed" — a default reported as a
+   * measurement, which is the shape this repo treats as a p1 on the governor
+   * path. Always present means always truthful.
+   */
+  readonly sanitization: SanitizationContext;
 }
 
 /**
@@ -439,32 +475,52 @@ function runPreChecks(
   mode: ExecutionMode,
   requestContext: RequestContext,
   logger: ILogger
-): { error: ToolResult | null; sanitizedArgs: unknown; nearMiss: boolean } {
+): {
+  error: ToolResult | null;
+  sanitizedArgs: unknown;
+  nearMiss: boolean;
+  sanitization: SanitizationContext;
+} {
+  // Reported even on the early-exit paths below, so a caller never has to
+  // distinguish "not sanitized" from "sanitized, nothing removed".
+  const noSanitization: SanitizationContext = { wasModified: false, commentsRemoved: 0 };
   const sizeResult = checkInputSize(args, logger, requestContext.requestId);
-  if (sizeResult) return { error: sizeResult, sanitizedArgs: args, nearMiss: false };
+  if (sizeResult) {
+    return {
+      error: sizeResult,
+      sanitizedArgs: args,
+      nearMiss: false,
+      sanitization: noSanitization,
+    };
+  }
 
   // Sanitize tool input: strip XML injection tags, detect injection patterns (Issue #828)
   const sanitizeResult = sanitizeToolInput(args);
   logSanitizationResult(sanitizeResult, logger, config.toolName);
   const sanitizedArgs = sanitizeResult.wasModified ? sanitizeResult.sanitized : args;
+  const sanitization: SanitizationContext = {
+    wasModified: sanitizeResult.wasModified,
+    commentsRemoved: sanitizeResult.commentsRemoved,
+  };
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)
   const tierError = checkSecurityTier(config, sanitizeResult, logger);
-  if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false };
+  if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false, sanitization };
 
   if (config.rateLimiter) {
     const rlResult = checkRateLimit(config.rateLimiter, logger);
     if (rlResult) {
       if (config.auditLogger)
         emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
-      return { error: rlResult, sanitizedArgs, nearMiss: false };
+      return { error: rlResult, sanitizedArgs, nearMiss: false, sanitization };
     }
   }
 
   const policy = runPolicyCheck(config, sanitizedArgs, mode, logger, requestContext);
-  if (policy.error) return { error: policy.error, sanitizedArgs, nearMiss: policy.nearMiss };
+  if (policy.error)
+    return { error: policy.error, sanitizedArgs, nearMiss: policy.nearMiss, sanitization };
 
-  return { error: null, sanitizedArgs, nearMiss: policy.nearMiss };
+  return { error: null, sanitizedArgs, nearMiss: policy.nearMiss, sanitization };
 }
 
 /**
@@ -514,6 +570,7 @@ export function createSecureHandler(
       error: preCheckError,
       sanitizedArgs,
       nearMiss,
+      sanitization,
     } = runPreChecks(config, args, mode, requestContext, requestLogger);
     if (preCheckError) return preCheckError;
 
@@ -521,6 +578,7 @@ export function createSecureHandler(
       requestContext,
       requestLogger,
       nearMiss,
+      sanitization,
       logLifecycle: inherited === undefined,
     });
   };
@@ -545,6 +603,8 @@ interface Invocation {
    * call no rule touched.
    */
   readonly nearMiss: boolean;
+  /** What sanitization removed, forwarded to the handler (#5385). */
+  readonly sanitization: SanitizationContext;
 }
 
 async function executeAndAudit(
@@ -559,7 +619,7 @@ async function executeAndAudit(
     const result = await executeHandler(
       handler,
       sanitizedArgs,
-      { requestContext, logger: requestLogger },
+      { requestContext, logger: requestLogger, sanitization: invocation.sanitization },
       requestLogger,
       invocation.logLifecycle
     );

@@ -16,6 +16,7 @@ import {
   type ToolHandler,
   type ContextAwareHandler,
   type HandlerContext,
+  type ToolResult,
 } from './secure-handler.js';
 import { type IPolicyFirewall, type PolicyDecision } from './policy-types.js';
 import { withMiddleware } from './middleware-chain.js';
@@ -1596,5 +1597,56 @@ describe('adoption preserves caller-derived fields (#4981 review)', () => {
     expect(seen?.caller.clientId).toBe('claude-cli');
     expect(seen?.trustTier).toBe('1');
     expect(measuredTrustTier(seen as NonNullable<typeof seen>)).toBe('1');
+  });
+
+  describe('sanitization disclosure on HandlerContext (#5385)', () => {
+    /**
+     * The middleware sanitizes before dispatch, so a handler cannot see what was
+     * removed from its input. `buildPrReviewProposal` annotates the voter
+     * proposal when comments are stripped — but on the MCP path it re-sanitizes
+     * already-clean text and counts 0, so the annotation never fires on the one
+     * path that PERSISTS a governance record.
+     */
+    it('tells the handler how many comments the middleware removed', async () => {
+      let seen: { wasModified: boolean; commentsRemoved: number } | undefined;
+      const handler = createSecureHandler(
+        (_args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
+          seen = {
+            wasModified: ctx.sanitization.wasModified,
+            commentsRemoved: ctx.sanitization.commentsRemoved,
+          };
+          return Promise.resolve({ content: [{ type: 'text', text: 'ok' }] });
+        },
+        { toolName: 'test_tool' }
+      );
+
+      await handler({ body: 'before <!-- one --> middle <!-- two --> after' });
+
+      expect(seen).toBeDefined();
+      expect(seen?.commentsRemoved).toBe(2);
+      expect(seen?.wasModified).toBe(true);
+    });
+
+    it('reports zero removals as a measurement, not as an absent field', async () => {
+      // The field is REQUIRED rather than optional on purpose. An optional one
+      // invites `ctx.sanitization?.commentsRemoved ?? 0`, which renders "the
+      // middleware did not tell me" as "nothing was removed" — the same vacuous
+      // shape this repo treats as a p1 on the governor path.
+      let seen: { wasModified: boolean; commentsRemoved: number } | undefined;
+      const handler = createSecureHandler(
+        (_args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
+          seen = {
+            wasModified: ctx.sanitization.wasModified,
+            commentsRemoved: ctx.sanitization.commentsRemoved,
+          };
+          return Promise.resolve({ content: [{ type: 'text', text: 'ok' }] });
+        },
+        { toolName: 'test_tool' }
+      );
+
+      await handler({ body: 'nothing to strip here' });
+
+      expect(seen).toEqual({ wasModified: false, commentsRemoved: 0 });
+    });
   });
 });
