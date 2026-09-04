@@ -513,8 +513,8 @@ _Governance Version: 2026-09-01_
 <!-- GOVERNANCE:VERSION:END -->
 
 _MCP Protocol: 2025-11-25_
-_Node.js: 22.x LTS_
-_TypeScript: 5.9+_
+_Node.js: >=22.5.0_
+_TypeScript: 6.x_
 
 <!-- GENERATED:FROM_AGENTS:END -->
 

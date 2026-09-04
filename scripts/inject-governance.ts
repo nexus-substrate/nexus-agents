@@ -23,7 +23,8 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
@@ -1531,8 +1532,116 @@ function checkStrategyRegistryGates(): boolean[] {
 interface Probe {
   path: string;
   pattern: RegExp;
-  expected: number;
+  /** A count, or (#5142) an exact string such as a version. */
+  expected: number | string;
   label: string;
+}
+
+/**
+ * The toolchain facts the AGENTS.md footer states (#5142, item 2).
+ *
+ * The footer said `TypeScript: 5.9+` while `package.json` said `^6.0.3`, and
+ * `MCP Protocol: 2025-11-25` while the only occurrences of that date in
+ * source are comments. Nothing read the footer, and the AGENTS→CLAUDE copy
+ * guaranteed the two COPIES agreed while checking neither against anything —
+ * the generator had made the drift more durable, not less.
+ *
+ * Same remedy as the #5218 governance stamp: one computed value, written into
+ * AGENTS.md by `inject`, probed by `check`. CLAUDE.md inherits it through the
+ * AGNOSTIC:BODY copy, so it is never a second writer.
+ */
+interface Toolchain {
+  /** Major version of the `typescript` dependency, rendered `6.x`. */
+  typescript: string;
+  /** `engines.node` verbatim, e.g. `>=22.5.0`. */
+  node: string;
+  /** The SDK's `LATEST_PROTOCOL_VERSION` — what the server actually speaks. */
+  mcpProtocol: string;
+}
+
+/**
+ * The package directory whose installed SDK is the one the published server
+ * runs. Resolved from THIS file's location on purpose: `ROOT` may point at a
+ * test sandbox (`NEXUS_SCRIPT_ROOT`) that has no `node_modules`, and the
+ * sandbox's `package.json` declares the same SDK range as the real one.
+ */
+const INSTALLED_PACKAGE_JSON = fileURLToPath(
+  new URL('../packages/nexus-agents/package.json', import.meta.url)
+);
+
+function readToolchain(): Toolchain {
+  const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as {
+    dependencies?: Record<string, string>;
+    engines?: Record<string, string>;
+  };
+  const tsRange = pkg.dependencies?.['typescript'];
+  const tsMajor = tsRange === undefined ? undefined : /(\d+)/.exec(tsRange)?.[1];
+  if (tsMajor === undefined) {
+    throw new Error(`cannot read a typescript major out of ${PACKAGE_JSON_PATH} dependencies`);
+  }
+  const node = pkg.engines?.['node'];
+  if (node === undefined || node === '') {
+    throw new Error(`cannot read engines.node out of ${PACKAGE_JSON_PATH}`);
+  }
+  // CJS build, so this is synchronous — `checkGovernance()` is sync and the
+  // CLI does `process.exit(checkGovernance() ? 0 : 1)`.
+  const sdk = createRequire(INSTALLED_PACKAGE_JSON)('@modelcontextprotocol/sdk/types.js') as {
+    LATEST_PROTOCOL_VERSION?: unknown;
+  };
+  const mcpProtocol = sdk.LATEST_PROTOCOL_VERSION;
+  if (typeof mcpProtocol !== 'string' || mcpProtocol === '') {
+    throw new Error('@modelcontextprotocol/sdk did not export a string LATEST_PROTOCOL_VERSION');
+  }
+  return { typescript: `${tsMajor}.x`, node, mcpProtocol };
+}
+
+const TOOLCHAIN_PATTERNS = {
+  typescript: /_TypeScript: ([^_\n]+)_/,
+  node: /_Node\.js: ([^_\n]+)_/,
+  mcpProtocol: /_MCP Protocol: ([^_\n]+)_/,
+} as const;
+
+function buildToolchainProbes(tc: Toolchain): Probe[] {
+  return [
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.typescript,
+      expected: tc.typescript,
+      label: 'AGENTS.md TypeScript footer',
+    },
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.node,
+      expected: tc.node,
+      label: 'AGENTS.md Node.js footer',
+    },
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.mcpProtocol,
+      expected: tc.mcpProtocol,
+      label: 'AGENTS.md MCP Protocol footer',
+    },
+  ];
+}
+
+function buildToolchainReplacements(tc: Toolchain): Replacement[] {
+  return [
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.typescript,
+      replacement: `_TypeScript: ${tc.typescript}_`,
+    },
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.node,
+      replacement: `_Node.js: ${tc.node}_`,
+    },
+    {
+      path: AGENTS_MD_PATH,
+      pattern: TOOLCHAIN_PATTERNS.mcpProtocol,
+      replacement: `_MCP Protocol: ${tc.mcpProtocol}_`,
+    },
+  ];
 }
 
 function buildAgentsMdProbes(t: number, s: number): Probe[] {
@@ -1626,6 +1735,7 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
   const { toolCount: t, skillCount: s, agentCount: a } = counts;
   return [
     ...buildAgentsMdProbes(t, s),
+    ...buildToolchainProbes(readToolchain()),
     ...buildMarketplaceProbes(t, s, a),
     ...buildPluginInstallProbes(t, s, a),
   ];
@@ -1639,7 +1749,7 @@ function runProbe(probe: Probe): boolean {
     console.error(`❌ ${probe.label}: pattern not found in ${probe.path}`);
     return false;
   }
-  const actual = Number(match[1]);
+  const actual = typeof probe.expected === 'string' ? (match[1] ?? '') : Number(match[1]);
   if (actual !== probe.expected) {
     console.error(
       `❌ ${probe.label}: expected ${String(probe.expected)}, found ${String(actual)} in ${probe.path}`
@@ -1758,33 +1868,42 @@ export async function injectGovernance(): Promise<void> {
     process.exit(1);
   }
   const registries = loadAllRegistries();
+  const { tools, experts, workflows, skills, models } = registries;
+  const agents = extractAgents();
+
+  // ORDER MATTERS (#5142). Everything that writes AGENTS.md must run BEFORE
+  // `applyAllSectionInjections`, because that step copies AGENTS.md's
+  // AGNOSTIC:BODY slice into CLAUDE.md (#3446). Run the other way round, a
+  // single `inject` leaves CLAUDE.md one pass behind any AGENTS.md value that
+  // just changed, and `check` then reports the FROM_AGENTS block stale. It
+  // was masked while the only inline values were counts that rarely move; the
+  // toolchain footer surfaced it on its first run.
+
+  // Inject the AGENTS.md Rules index (#2657) from `.rules/*.md` frontmatter —
+  // the cross-adapter bridge. Soft-skip if AGENTS.md has no markers yet.
+  await injectAgentsRulesIndex();
+
+  // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
+  // install docs) aligned with canonical registries — and (#5142) the
+  // AGENTS.md toolchain footer with package.json and the installed SDK.
+  injectAncillaryCounts({
+    toolCount: tools.length,
+    skillCount: skills.length,
+    agentCount: agents.length,
+  });
+
   const original = readFileSync(CLAUDE_MD_PATH, 'utf-8');
   const updated = applyAllSectionInjections(original, registries);
   await writeFormatted(CLAUDE_MD_PATH, updated);
-  // Bind to the post-write registry snapshot for the remaining steps.
-  const { tools, experts, workflows, skills, models } = registries;
 
   // Inject README MCP tools table (#2269) — same registry, scannable
   // descriptions. Soft-skip if README has no markers yet so this script
   // remains drop-in compatible with older checkouts.
   await injectReadmeToolTable(tools);
 
-  // Inject the AGENTS.md Rules index (#2657) from `.rules/*.md` frontmatter —
-  // the cross-adapter bridge. Soft-skip if AGENTS.md has no markers yet.
-  await injectAgentsRulesIndex();
-
   // #3334: regenerate both docs/ENTRYPOINTS.md MCP-tool enumerations (the
   // prose table and the BEGIN:MCP_TOOLS YAML block) from the same registry.
   await injectEntrypoints(tools);
-
-  // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
-  // install docs) aligned with canonical registries.
-  const agents = extractAgents();
-  injectAncillaryCounts({
-    toolCount: tools.length,
-    skillCount: skills.length,
-    agentCount: agents.length,
-  });
 
   // #1839: keep .claude-plugin/plugin.json `version` in sync with
   // packages/nexus-agents/package.json so marketplace listing never
@@ -1974,7 +2093,11 @@ function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
 }
 
 function injectAncillaryCounts(counts: AncillaryCounts): void {
-  for (const { path, pattern, replacement } of buildAncillaryReplacements(counts)) {
+  const replacements = [
+    ...buildAncillaryReplacements(counts),
+    ...buildToolchainReplacements(readToolchain()),
+  ];
+  for (const { path, pattern, replacement } of replacements) {
     if (!existsSync(path)) continue;
     const current = readFileSync(path, 'utf-8');
     const updated = current.replace(pattern, replacement);
