@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { registerGetJobResultTool } from './get-job-result-tool.js';
 import { writeJobPending, writeJobComplete } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { initTaskState, updateStage, appendResult } from '../../context/structured-task-state.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
 
 type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
@@ -126,6 +127,39 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
 
     expect(record['producerVersion']).toBe(FIXTURE_VERSION);
     expect(body['producerVersionMeasured']).toBe(true);
+    expect(body['producerVersionSource']).toBe('sidecar');
+  });
+
+  it('names the task-state source, whose synthesized record never carries a version', async () => {
+    // Under NEXUS_JOB_RESULT_SOURCE=task_state the record is adapted from the
+    // task-state log, which has no producer version. Reporting only
+    // `measured: false` would read as "pre-field record" — a third meaning
+    // for absence. The source disambiguates.
+    const originalSource = process.env['NEXUS_JOB_RESULT_SOURCE'];
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    try {
+      initTaskState({
+        taskId: 'orch-pv-ts',
+        stage: 'planning',
+        decisions: [],
+        blockers: [],
+        position: { currentStep: 'init' },
+        updatedAt: '2026-05-01T00:00:00Z',
+      });
+      updateStage('orch-pv-ts', 'complete', '2026-05-01T00:05:00Z');
+      appendResult('orch-pv-ts', { ok: true }, '2026-05-01T00:05:01Z');
+
+      const body = await envelope('orch-pv-ts');
+      const record = body['record'] as Record<string, unknown>;
+
+      expect(body['found']).toBe(true);
+      expect(body['producerVersionSource']).toBe('task_state');
+      expect(body['producerVersionMeasured']).toBe(false);
+      expect(record).not.toHaveProperty('producerVersion');
+    } finally {
+      if (originalSource === undefined) delete process.env['NEXUS_JOB_RESULT_SOURCE'];
+      else process.env['NEXUS_JOB_RESULT_SOURCE'] = originalSource;
+    }
   });
 
   it("marks a 'dev' producer unmeasured — two local builds both read 'dev'", async () => {
@@ -163,5 +197,6 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
     const body = await envelope('job-pv-missing');
     expect(body['found']).toBe(false);
     expect(body).not.toHaveProperty('producerVersionMeasured');
+    expect(body).not.toHaveProperty('producerVersionSource');
   });
 });

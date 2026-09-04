@@ -94,10 +94,14 @@ export const JobResultSchema = z.object({
    * so a terminal record names the process that settled it.
    *
    * Optional so v1 records written before this field existed still parse:
-   * absence means "produced before this field existed", not a version of
-   * `undefined`. The value is recorded verbatim, including `'dev'` — readers
-   * MUST run it through {@link isMeasuredBuildVersion} before treating two
-   * stamps as comparable.
+   * on a SIDECAR record, absence means "produced before this field existed",
+   * not a version of `undefined`. A record adapted from the task-state log
+   * (`jobResultFromTaskState`, selected by `NEXUS_JOB_RESULT_SOURCE=task_state`)
+   * NEVER carries it — that log records no producer version — so a reader
+   * must consult the source (`get_job_result`'s `producerVersionSource`)
+   * before reading absence as age. The value is recorded verbatim, including
+   * `'dev'` — readers MUST run it through {@link isMeasuredBuildVersion}
+   * before treating two stamps as comparable.
    */
   producerVersion: z.string().optional(),
 });

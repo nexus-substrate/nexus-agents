@@ -31,7 +31,7 @@ import {
   isMeasuredBuildVersion,
   type JobResult,
 } from '../jobs/job-result-store.js';
-import { resolveJobResult } from '../jobs/task-state-source.js';
+import { resolveJobResultWithSource, type JobResultSource } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getTimeProvider } from '../../core/index.js';
 
@@ -68,6 +68,14 @@ export interface GetJobResultResponse {
    * in which case the two stamps must not be compared.
    */
   readonly producerVersionMeasured?: boolean;
+  /**
+   * Which store the record came from (#5008 follow-up). Present whenever
+   * `found` is true. A `task_state` record is synthesized from the task-state
+   * log and never carries `producerVersion`, so on that source an absent
+   * version says nothing about the producer's age or build — only a `sidecar`
+   * record's absence means it predates the field.
+   */
+  readonly producerVersionSource?: JobResultSource;
   readonly errorMessage?: string;
 }
 
@@ -85,8 +93,8 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
   }
   // #3090: dual-read — prefers the Stage-2 task-state log when
   // NEXUS_JOB_RESULT_SOURCE=task_state, else the Stage-1 sidecar (default).
-  const record = resolveJobResult(parsed.data.jobId);
-  if (record === null) {
+  const resolved = resolveJobResultWithSource(parsed.data.jobId);
+  if (resolved === null) {
     const response: GetJobResultResponse = {
       jobId: parsed.data.jobId,
       found: false,
@@ -96,12 +104,14 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
     };
     return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
   }
+  const { record, source } = resolved;
   const abandoned = isAbandonedJob(record, getTimeProvider().now());
   const response: GetJobResultResponse = {
     jobId: parsed.data.jobId,
     found: true,
     record,
     producerVersionMeasured: isMeasuredBuildVersion(record.producerVersion),
+    producerVersionSource: source,
     ...(abandoned
       ? {
           abandoned: true,
@@ -126,7 +136,8 @@ export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDe
     'the structured record (status, result | error, timestamps, producerVersion) ' +
     'plus producerVersionMeasured — false when the producer was a dev build or the ' +
     'record predates the field, so its version must not be compared to this ' +
-    "server's _meta build stamp. Poll until " +
+    "server's _meta build stamp — and producerVersionSource (sidecar | task_state; " +
+    'a task_state record never carries a version). Poll until ' +
     'status !== "pending". Stage-1 of epic #2631 — Stage 2 will fold this ' +
     'into query_task_state once StructuredTaskState gains the result field.';
 
