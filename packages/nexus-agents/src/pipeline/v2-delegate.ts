@@ -11,6 +11,16 @@
  * Phase 1 (#927): Wires PolicyEvaluator into pipeline execution so
  * block mode halts execution on policy violations.
  *
+ * #4657: the plan declares NO policy gate. The entry gate #3703 added could
+ * never deny (`trustTierRule` denies only execute-typed stages; the only stage
+ * is route-typed). The plan is compiled by both `instrumentV2Pipeline`
+ * (`mcp/tools/delegate-to-model.ts`) and `executeOrchestratePipeline`
+ * (`v2-orchestrate.ts`), and both callers run it fire-and-forget beside the
+ * real work, so a gate that did fire would record a denial nothing honoured.
+ * Trust-tier enforcement that can refuse lives at `v2-orchestrate.ts`
+ * (`checkPipelinePolicy(task, 'execute')`, unchanged) and `dev-pipeline.ts`
+ * (`enforceConsensusExecutePolicy`).
+ *
  * @module pipeline/v2-delegate
  */
 import { createLogger } from '../core/index.js';
@@ -19,12 +29,7 @@ import { API_TIMEOUTS } from '../config/timeouts.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine, type PipelineStateSnapshot } from './policy-engine.js';
-import {
-  evaluatePipelinePolicy,
-  getPolicyMode,
-  getGateEnforcementMode,
-} from './policy-evaluator.js';
-import { START } from '../orchestration/graph/graph-types.js';
+import { evaluatePipelinePolicy, getPolicyMode } from './policy-evaluator.js';
 
 /**
  * Narrows the untyped `task.metadata` bag into the policy engine's typed
@@ -38,14 +43,9 @@ function toPipelineStateSnapshot(metadata: Record<string, unknown>): PipelineSta
 import { buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
-import type { TaskContract, PlanContract, PolicyGateSpec } from './task-contract.js';
-import type { IPolicyEngine, PolicyContext } from './policy-engine.js';
-import type {
-  GatePolicyEnforcement,
-  PolicyEvalResult,
-  PolicyViolation,
-} from './policy-evaluator.js';
-import type { IEventBus } from './event-types.js';
+import type { TaskContract, PlanContract } from './task-contract.js';
+import type { PolicyContext } from './policy-engine.js';
+import type { PolicyEvalResult, PolicyViolation } from './policy-evaluator.js';
 
 const logger = createLogger({ component: 'V2Delegate' });
 
@@ -61,44 +61,16 @@ type DelegatePipelineResult =
 /**
  * Creates a compiled V2 pipeline for delegate_to_model from a TaskContract.
  *
- * The pipeline has a single 'route' stage guarded by an entry policy gate.
- * Routing logic lives in the stage handler (placeholder here, real handler
- * injected by the MCP tool).
- *
- * Activation (#3703): the compile call now supplies a **default-WARN**
- * `policyEnforcement` bundle, so the entry gate evaluates real policy at the
- * stage boundary in production. WARN mode never throws and never blocks — it
- * only logs + emits `policy.evaluated` events on a violation, generating the
- * autonomy-soak evidence #3653 needs. This is scoped to v2-delegate's own
- * compile call: the shared `compilePlan` default (no enforcement) is
- * unchanged, so every other `compilePlan` caller is unaffected.
+ * The pipeline has a single 'route' stage and no policy gate (#4657), so the
+ * compile call passes no `policyEnforcement` bundle: with zero gates there is
+ * no node that would consult one, and supplying it read as "policy enforced
+ * at the stage boundary" when nothing was. Routing logic lives in the stage
+ * handler (placeholder here, real handler injected by the MCP tool).
  */
 export function createDelegatePipeline(task: TaskContract): DelegatePipelineResult {
   const plan = buildDelegatePlan(task);
   const runner = new PipelineRunner();
-  return runner.compile(plan, { policyEnforcement: buildWarnPolicyEnforcement(task) });
-}
-
-/**
- * Builds the default-WARN policy-enforcement bundle for the v2-delegate entry
- * gate (#3703). The mode resolves via `getGateEnforcementMode()` (warn by
- * default; block/off opt-in via `NEXUS_POLICY_GATE_MODE`), so this is safe to
- * activate in production — warn never throws.
- *
- * `overrides` exists for tests (inject a denying engine / capture events); the
- * production call passes none, getting the default engine + the shared pipeline
- * event bus.
- */
-export function buildWarnPolicyEnforcement(
-  task: TaskContract,
-  overrides: { engine?: IPolicyEngine; eventBus?: IEventBus } = {}
-): GatePolicyEnforcement {
-  return {
-    engine: overrides.engine ?? createDefaultPolicyEngine(),
-    pipelineState: toPipelineStateSnapshot(task.metadata),
-    eventBus: overrides.eventBus ?? getPipelineEventBus(),
-    mode: getGateEnforcementMode(),
-  };
+  return runner.compile(plan);
 }
 
 // ============================================================================
@@ -147,10 +119,12 @@ export function delegateInputToTaskContract(
   if (input.billing_mode !== undefined) {
     metadata['billingMode'] = input.billing_mode;
   }
-  // Closes #2957: producer-side wiring of caller trust tier. With this in
-  // place the V2 policy-engine's `trust-tier` rule actually gates the V2
-  // delegate pipeline; missing trustTier defaults to '4' (untrusted) in
-  // policy-engine.ts so the gate fails closed.
+  // #2957: producer-side wiring of caller trust tier into the policy snapshot;
+  // a missing trustTier defaults to '4' (untrusted) in policy-engine.ts. On
+  // the delegate path itself nothing can deny on it (#4657): the pre-execution
+  // check below evaluates a 'route' stage, which `trustTierRule` allows at
+  // every tier. It is kept so the snapshot is populated wherever this contract
+  // is evaluated against an execute stage.
   if (opts.trustTier !== undefined) metadata['trustTier'] = opts.trustTier;
   // estimate_tokens flag removed (#2723) — was never read downstream.
   return buildBaseTaskContract({
@@ -163,8 +137,14 @@ export function delegateInputToTaskContract(
 
 /**
  * Compiles and executes a V2 pipeline for the given TaskContract.
- * Evaluates policy before execution — block mode halts the pipeline.
  * Returns metrics for observability — never throws.
+ *
+ * The pre-execution policy check evaluates stage type 'route' — the real type
+ * of the only stage — which `trustTierRule` allows at every tier, so under the
+ * current rule set this path never reports `policyBlocked` (#4657). The
+ * execute-stage seams that can refuse are `v2-orchestrate.ts` and
+ * `dev-pipeline.ts`; this graph is fire-and-forget instrumentation beside the
+ * real delegation and must not claim a refusal it cannot perform.
  */
 export async function executeDelegatePipeline(task: TaskContract): Promise<PipelineMetrics> {
   const policyResult = checkPipelinePolicy(task, 'route');
@@ -255,48 +235,22 @@ function formatViolation(v: PolicyViolation): string {
 // Plan construction
 // ============================================================================
 
-/** Id of the entry stage the policy gate guards. */
+/** Id of the single route stage. */
 const ROUTE_STAGE_ID = 'route-model';
 
 /**
- * Entry gate for the v2-delegate pipeline (#3703). Sits on the START boundary
- * before the route stage so policy is evaluated before any routing work runs.
- * Enforcement is resolved by the runtime enforcement bundle (warn by default;
- * block opt-in via `NEXUS_POLICY_GATE_MODE`), NOT a per-gate field (#4019).
- */
-/**
- * The v2-delegate entry gate.
+ * Builds the v2-delegate PlanContract: a single route stage and no policy gate.
+ * Exported so the compile path and tests share one canonical plan shape.
  *
- * HONEST SCOPE (#4657): this gate cannot deny, and the reason is worth stating
- * where the gate is defined rather than leaving it to be rediscovered.
- *
- * `trustTierRule` — the only policy rule — denies on
- * `tier >= 3 && stageType === 'execute'`. This gate guards `route-model`, which
- * is declared `type: 'route'`, so the rule always allows. Declaring the stage
- * `execute` would make the gate fire, but it would be a lie: `nexus:model-router`
- * resolves to a no-op skeleton plugin (`core-plugins.ts`) and the whole pipeline
- * runs fire-and-forget as `instrumentV2Pipeline`.
- *
- * The consequence to watch is the telemetry, not the missing refusal. This gate
- * emits `policy.evaluated` on every run and always allows, which reads as
- * "policy enforced at the stage boundary, no violations" in the #3653 autonomy
- * soak. It is really "policy evaluated against a stage that does nothing". Do
- * not count these events as evidence of enforcement.
- *
- * Real trust-tier enforcement lives at `dev-pipeline.ts` (`enforceConsensusExecutePolicy`,
- * `stageType: 'execute'`, fails closed), which guards an actual invocation.
- */
-const ENTRY_GATE: PolicyGateSpec = {
-  id: 'gate-delegate-entry',
-  afterStage: START,
-  beforeStage: ROUTE_STAGE_ID,
-  rules: ['trust-tier'],
-};
-
-/**
- * Builds the v2-delegate PlanContract: a single route stage guarded by the
- * entry policy gate. Exported so the activation path and tests share one
- * canonical plan shape (#3703).
+ * Why no gate (#4657): the `trust-tier` entry gate that #3703 declared here
+ * guarded a route-typed stage, and `trustTierRule` denies only execute-typed
+ * stages, so it could not fire in any mode at any tier. Widening the rule was
+ * rejected by the panel because this graph is fire-and-forget instrumentation
+ * (`instrumentV2Pipeline`) whose verdict nothing reads: a gate that fired would
+ * write a denial record while the delegation proceeded. Declaring the stage
+ * `execute` would be a lie too — `nexus:model-router` is a no-op skeleton
+ * (`core-plugins.ts`). A gate belongs here only once the graph's verdict gates
+ * the actual delegation before spend.
  */
 export function buildDelegatePlan(task: TaskContract): PlanContract {
   return {
@@ -315,7 +269,7 @@ export function buildDelegatePlan(task: TaskContract): PlanContract {
         },
       },
     ],
-    policyGates: [ENTRY_GATE],
+    policyGates: [],
     estimatedCost: {
       totalTokensIn: 0,
       totalTokensOut: 0,
