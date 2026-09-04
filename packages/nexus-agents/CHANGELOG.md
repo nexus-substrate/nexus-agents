@@ -1,5 +1,96 @@
 # nexus-agents
 
+## 8.2.0
+
+### Minor Changes
+
+- [#5397](https://github.com/nexus-substrate/nexus-agents/pull/5397) [`f4dc50d`](https://github.com/nexus-substrate/nexus-agents/commit/f4dc50db0ee55605d88cb8b2966768dfd3a2d4cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): add a per-action corroboration surface, making stages.corroboration readable ([#5382](https://github.com/nexus-substrate/nexus-agents/issues/5382))
+
+  `stages.corroboration` was declared in `firewall-types.ts` and read **nowhere**
+  in the pipeline. A caller could set it and setting it did nothing — the
+  "configuration flag that cannot change behaviour" defect epic [#5281](https://github.com/nexus-substrate/nexus-agents/issues/5281) exists to
+  fix, in its sharpest form: a consumer who set `corroboration: true` believed
+  they had a stage they did not have.
+
+  **The issue's stated fix does not work as written**, which is worth recording
+  rather than quietly working around. It asked to wire the stage to
+  `validateActionCorroboration`. But `validateCorroboration` takes an
+  `AgentAction`, while `process()` is input-shaped and constructs no action — it
+  sanitizes, classifies and labels untrusted content, and the action is decided
+  later by the consumer. There is nothing to pass the validator at the point the
+  stage would have run.
+
+  That is the same structural gap that makes [#5380](https://github.com/nexus-substrate/nexus-agents/issues/5380) not a drop-in `evaluatePolicy`
+  swap, and it reframes part of the epic: the firewall and the production policy
+  surface are not merely running _different numbers of checks_, they operate at
+  **different points in the lifecycle**.
+
+  So the flag is wired to a new per-action entry point, `validateAction(action)`.
+  That is also the shape [#5383](https://github.com/nexus-substrate/nexus-agents/issues/5383) needs — production validates corroboration per
+  action (`issue-triage.ts:391`), so those callers cannot migrate onto the
+  firewall unless it offers one.
+
+  **A disabled stage reports `evaluated: false`, never `satisfied: true`.**
+  Modelled as a discriminated union, so a caller cannot reach `satisfied` without
+  first narrowing on `evaluated` — "not checked" is structurally unable to
+  masquerade as "checked and fine". Since the stage defaults to `false`, that
+  unevaluated branch is the _common_ case, which is exactly where a silent
+  satisfied verdict would do the most damage.
+
+  Refusal is gated on the same `NEXUS_FIREWALL_POLICY` rollout mode: `off`
+  surfaces the failure, `audit` reports `wouldRefuse` without refusing, `enforce`
+  returns `POLICY_REFUSED`. The mode gates the response and never manufactures a
+  finding — `enforce` with corroboration disabled refuses nothing, and a
+  corroborated action is served under `enforce`. Both are tested, because "refuse
+  everything" would otherwise pass every attack-shaped assertion.
+
+  Mutation-tested: making a disabled stage report `satisfied` fails 2 tests. That
+  mutation also exposed **5 of my own assertions passing vacuously** behind
+  `if (!result.value.evaluated) return` — the discriminant is now asserted before
+  it is narrowed on, so the tests fail rather than skip.
+
+### Patch Changes
+
+- [#5403](https://github.com/nexus-substrate/nexus-agents/pull/5403) [`fc03ee6`](https://github.com/nexus-substrate/nexus-agents/commit/fc03ee68650f5901b24ea645167bfd29a89b4ae0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(deps): raise the `fast-uri` and `qs` override floors past six open advisories
+
+  Six open Dependabot alerts, four high and two moderate, across two transitive
+  packages:
+
+  | severity | package  | advisory       | first patched |
+  | -------- | -------- | -------------- | ------------- |
+  | high     | fast-uri | CVE-2026-75931 | 4.1.3         |
+  | high     | fast-uri | CVE-2026-75975 | 4.1.3         |
+  | high     | fast-uri | CVE-2026-75899 | 4.1.3         |
+  | high     | fast-uri | CVE-2026-76172 | 4.1.3         |
+  | moderate | qs       | CVE-2026-82562 | 6.16.0        |
+  | moderate | qs       | CVE-2026-82417 | 6.16.0        |
+
+  **Neither package is a new dependency, and that is the point.** Both were
+  already pinned in `pnpm.overrides` — `fast-uri: ">=3.1.2"` and
+  `qs: ">=6.15.2"` — floors added for _earlier_ advisories in the same packages.
+  A `>=` floor keeps resolving to whatever the tree wants above it, so once a new
+  advisory landed above the floor, the override went on looking like active
+  mitigation while mitigating nothing: resolution sat at `fast-uri 4.1.2` against
+  a required 4.1.3, and `qs 6.15.3` against a required 6.16.0. An override that
+  names a package you have an open alert for is easy to read as "handled."
+
+  Raised to `>=4.1.3` and `>=6.16.0`. Resolution verified after install rather
+  than assumed from the manifest:
+
+  ```
+  fast-uri 4.1.4
+  qs 6.16.0
+  ```
+
+  Both arrive through `@modelcontextprotocol/sdk` — `fast-uri` under `ajv` /
+  `ajv-formats`, `qs` under `express` and `body-parser` — so they are in the
+  runtime dependency graph of the published package, not dev-only. (`fast-uri`
+  also appears dev-only under `@commitlint/cli`; that copy is covered by the same
+  override.) Both bumps stay within their existing major, so no consumer contract
+  changes.
+
+  Only `package.json` and `pnpm-lock.yaml` change; no source is touched.
+
 ## 8.1.2
 
 ### Patch Changes
