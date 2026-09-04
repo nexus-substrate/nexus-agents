@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.9.3
+
+### Patch Changes
+
+- [#5492](https://github.com/nexus-substrate/nexus-agents/pull/5492) [`47862dc`](https://github.com/nexus-substrate/nexus-agents/commit/47862dce5281d5aae83dad2da488b59d7bfdacb5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `PluginRegistryOptions.experimentalEnabled` and `experimentalAllow` are deprecated ([#5097](https://github.com/nexus-substrate/nexus-agents/issues/5097)). No production construction sets them — `registerCorePlugins` / `createCorePluginRegistry` build the registry with no options, every core manifest is `experimental: false`, and the registry is frozen right after core registration — so the experimental gate could never open and only core plugins ever load. Both fields stay accepted and still deny exactly as before; removal is tracked in [#5097](https://github.com/nexus-substrate/nexus-agents/issues/5097) for the next major. `docs/v2/05-plugin-system-spec.md` now says the experimental config is a design target, not shipped behaviour.
+
+  `StepEvent.kind` (and the `StepKind` union, `StepOptions.kind`) is removed. The module header claimed the field routed/coloured operator output, but neither the console renderer nor the logger bridge read it, and three of its seven values (`workflow.node`, `cli.call`) had no producer. None of these types was on the published API surface; the `withStep` callers in `graph-hooks`, `execute-expert`, `dev-pipeline`, `consensus-plan` and `triangulated-review` simply stop passing it. Emitted `step.*` events lose the `kind` key; every other field is unchanged.
+
 ## 8.9.2
 
 ### Patch Changes
