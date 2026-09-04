@@ -315,9 +315,33 @@ Four production packages still declare an install script — `@ast-grep/lang-go`
 - `scripts/check-install-scripts.ts` installs the packed tarball with npm and fails if any install script appears that is not in `scripts/install-script-allowlist.json`, if an allowlisted one changes what it runs, or if an allowlisted entry no longer exists.
 - `scripts/verify-npm-install.sh` installs with `--ignore-scripts` in a container with **no compiler present**, then proves the SQLite path and the polyglot scanner both still work — the scanner has to return two named findings from a fixture, so "found nothing" cannot pass for "clean".
 
-If you install with `--ignore-scripts` (or with pnpm 10, which ignores dependency build scripts by default), that is a supported configuration and needs no follow-up step.
+If you install with `--ignore-scripts` (or with pnpm 10, or with npm 12 — see below — both of which block dependency install scripts by default), that is a supported configuration and needs no follow-up step.
 
 Run `nexus-agents verify` to see both checks — `SQLite Storage` and `Native Grammars` — reported by name.
+
+#### `npm warn install-scripts` on npm 12 — expected, no action needed
+
+npm 12 blocks dependency install scripts by default and reports each one it blocked:
+
+```
+npm warn install-scripts 4 packages had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @ast-grep/lang-go@0.0.6 (postinstall: node postinstall.js)
+npm warn install-scripts   @ast-grep/lang-python@0.0.6 (postinstall: node postinstall.js)
+npm warn install-scripts   @google/genai@2.21.0 (preinstall: echo 'preinstall: no-op')
+npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)
+```
+
+**This is a warning, not a failure — the install exits `0` and everything works.** Blocked is the state this package is gated against, so npm 12's default is the path CI proves on every run. Verified against `nexus-agents@8.6.0` with npm 12.0.2:
+
+```
+✓ SQLite Storage: node:sqlite available (memory backends available)
+✓ Native Grammars: ast-grep python/go grammars parse (polyglot scanner available)
+Installation verified successfully!
+```
+
+You do **not** need to run `npm install-scripts approve`. None of the four scripts do anything nexus-agents requires: two verify a prebuilt grammar that already ships inside its own tarball, one is literally `echo`, and the fourth arrives transitively. Approving them is harmless but buys nothing.
+
+nexus-agents cannot silence this from its own side — `allowScripts` is deliberately consumer-side, so a published library cannot pre-approve its dependencies' scripts. The only way to remove the warning is to stop depending on packages that declare install scripts at all, which is tracked in [#5435](https://github.com/nexus-substrate/nexus-agents/issues/5435) because it would trade away the Gemini adapter and the polyglot scanner from a default install.
 
 ## CI/CD Integration
 
