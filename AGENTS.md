@@ -447,7 +447,7 @@ _Auto-generated from `skills/index.yaml`. 33 skills._
 
 ## Governance & Documentation Quality
 
-Voting thresholds, refactor gates, fitness audit, documentation governance in `.rules/governance.md` (auto-loaded). **Key numbers:** Fitness target ≥ 90/100; supermajority for architecture/security; unanimous for breaking API changes.
+Voting thresholds, refactor gates, fitness audit, documentation governance in `.rules/governance.md` (auto-loaded). **Key numbers:** fitness bar = the `fitness-gate` action default (`.github/actions/fitness-gate/action.yml`, 90), inherited by both the PR and release gates; supermajority for architecture/security; unanimous for breaking API changes.
 
 100-point rubric for technical docs (RFCs, ADRs, architecture docs, blog posts) in `.rules/docs-rubric.md` — five categories, each dimension tagged `[M]`echanical or `[J]`udgment. Defers to user-level skills (`blog-pre-publish`, `blog-argument-shape`, `blog-llm-tells`, `blog-factcheck`, `blog-overlap`) for prose dimensions.
 

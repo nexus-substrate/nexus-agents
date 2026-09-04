@@ -47,7 +47,7 @@ Preserve: files 400-600 lines if cohesive, functions 50-90 lines if clear, clear
 
 ## Fitness Audit
 
-Target: **90+/100** (current: 97/100). Releases MUST have fitness score ≥ 90.
+The bar is the `fitness-gate` action's default — `.github/actions/fitness-gate/action.yml` — and both the PR gate and the release gate inherit it rather than passing their own number (#5142). It is **90** today; change it there, and only there. Read the current score from the gate's own output (`nexus-agents fitness-audit --format=json`), never from a number copied into this file — the previous "(current: 97/100)" here was stale in both directions at once.
 
 ```bash
 nexus-agents fitness-audit
