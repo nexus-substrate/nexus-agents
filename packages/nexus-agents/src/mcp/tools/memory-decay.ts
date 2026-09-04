@@ -253,6 +253,16 @@ export class MemoryDecayManager {
   }
 
   /**
+   * The effective configuration this manager runs with (defaults overlaid by
+   * whatever the constructor received). #5097: the startup line in
+   * tool-memory reads THIS, not the value it passed in, so the log reports
+   * what the manager holds rather than what the caller believes it sent.
+   */
+  getConfig(): MemoryDecayConfig {
+    return this.config;
+  }
+
+  /**
    * Initialize with memory system references.
    */
   initialize(options: {

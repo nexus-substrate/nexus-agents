@@ -69,17 +69,40 @@ vi.mock('../../context/mobimem.js', () => ({
     close: vi.fn(),
   })),
 }));
-// Mock MemoryDecayManager to skip SQLite init (perf: saves ~500ms)
-vi.mock('./memory-decay.js', () => ({
-  MemoryDecayManager: vi.fn(() => ({
-    runDecay: vi.fn().mockReturnValue({ decayed: 0, removed: 0 }),
-    getStats: vi.fn().mockReturnValue({ totalEntries: 0, decayedEntries: 0 }),
-    shutdown: vi.fn(),
-  })),
-}));
+// Mock MemoryDecayManager to skip SQLite init (perf: saves ~500ms).
+// #5097: the mock resolves `getConfig()` the way the real constructor does
+// (defaults overlaid by the argument) so the threading tests below can read
+// back the effective values from the same seam production logs from.
+vi.mock('./memory-decay.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./memory-decay.js')>();
+  return {
+    ...actual,
+    // `function`, not an arrow: production `new`s it, and an arrow mock is
+    // "not a constructor" — which is why the sibling arrow mocks above never
+    // let the init chain complete in this file.
+    MemoryDecayManager: vi.fn(function (config: Partial<MemoryDecayConfig> = {}) {
+      return {
+        initialize: vi.fn(),
+        startAutoDecay: vi.fn(),
+        stopAutoDecay: vi.fn(),
+        runDecay: vi.fn().mockResolvedValue({ decayed: 0, removed: 0 }),
+        getStats: vi.fn().mockReturnValue({ totalEntries: 0, decayedEntries: 0 }),
+        getConfig: vi.fn().mockReturnValue({ ...actual.DEFAULT_DECAY_CONFIG, ...config }),
+        shutdown: vi.fn(),
+      };
+    }),
+  };
+});
 
-import { ToolMemoryManager, getToolMemory, shutdownToolMemory } from './tool-memory.js';
+import {
+  ToolMemoryManager,
+  getToolMemory,
+  shutdownToolMemory,
+  configureToolMemory,
+} from './tool-memory.js';
 import { SessionMemory } from '../../context/session-memory.js';
+import { MemoryDecayManager, DEFAULT_DECAY_CONFIG } from './memory-decay.js';
+import type { MemoryDecayConfig } from './memory-decay.js';
 
 // Shared setup: every test gets clean mocks + shutdown singleton.
 // Eliminates 6 duplicate beforeEach/afterEach blocks.
@@ -535,5 +558,139 @@ describe('shutdownToolMemory releases the auto-decay timer (#5402)', () => {
     expect(() => {
       shutdownToolMemory();
     }).not.toThrow();
+  });
+});
+
+describe('decay config reaches MemoryDecayManager (#5097 finding 2)', () => {
+  /**
+   * Before this, `initDecayManager` passed a hardcoded `{}` so every knob in
+   * `MemoryDecayConfig` was permanently `DEFAULT_DECAY_CONFIG`. These tests
+   * pin both seams: the constructor option, and the singleton configuration
+   * hook that `cli-server` calls with `config.memory` at startup.
+   *
+   * Values are chosen to differ from the defaults so identity cannot pass.
+   */
+  const ACTIVATED_LINE = 'MemoryDecayManager activated (Phase 5 #746)';
+
+  function activatedLineFields(logger: ILogger): Record<string, unknown> | undefined {
+    const call = vi.mocked(logger.info).mock.calls.find(([message]) => message === ACTIVATED_LINE);
+    return call?.[1];
+  }
+
+  afterEach(() => {
+    shutdownToolMemory();
+    configureToolMemory({});
+  });
+
+  it('constructs the manager with a non-default cap from the constructor option', async () => {
+    const logger = createMockLogger();
+    const manager = new ToolMemoryManager(logger, { decay: { agenticMaxEntries: 1234 } });
+    await manager.awaitBackendInitialization();
+
+    expect(MemoryDecayManager).toHaveBeenCalledWith(
+      expect.objectContaining({ agenticMaxEntries: 1234 }),
+      logger
+    );
+  });
+
+  it('enabled: false from config is what the manager receives', async () => {
+    const logger = createMockLogger();
+    const manager = new ToolMemoryManager(logger, { decay: { enabled: false } });
+    await manager.awaitBackendInitialization();
+
+    expect(MemoryDecayManager).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false }),
+      logger
+    );
+    // The effective value the manager holds is what gets logged.
+    expect(activatedLineFields(logger)).toMatchObject({ enabled: false });
+  });
+
+  it('logs ONE startup line naming the effective values', async () => {
+    const logger = createMockLogger();
+    const manager = new ToolMemoryManager(logger, {
+      decay: { agenticMaxEntries: 1234, decayIntervalMs: 5000 },
+    });
+    await manager.awaitBackendInitialization();
+
+    const activatedCalls = vi
+      .mocked(logger.info)
+      .mock.calls.filter(([message]) => message === ACTIVATED_LINE);
+    expect(activatedCalls).toHaveLength(1);
+    expect(activatedLineFields(logger)).toEqual({
+      ...DEFAULT_DECAY_CONFIG,
+      agenticMaxEntries: 1234,
+      decayIntervalMs: 5000,
+    });
+  });
+
+  it('an explicitly undefined key does not clobber the default', async () => {
+    // zod passes `enabled: undefined` through when a caller supplies it; a naive
+    // spread would then overwrite `enabled: true` with undefined.
+    const logger = createMockLogger();
+    const manager = new ToolMemoryManager(logger, {
+      decay: { enabled: undefined, agenticMaxEntries: 1234 },
+    });
+    await manager.awaitBackendInitialization();
+
+    expect(MemoryDecayManager).toHaveBeenCalledWith({ agenticMaxEntries: 1234 }, logger);
+    expect(activatedLineFields(logger)).toMatchObject({ enabled: true, agenticMaxEntries: 1234 });
+  });
+
+  it('unset config resolves to defaults and the startup line prints them', async () => {
+    const logger = createMockLogger();
+    const manager = new ToolMemoryManager(logger);
+    await manager.awaitBackendInitialization();
+
+    expect(MemoryDecayManager).toHaveBeenCalledWith({}, logger);
+    expect(activatedLineFields(logger)).toEqual(DEFAULT_DECAY_CONFIG);
+  });
+
+  describe('configureToolMemory — the cli-server seam', () => {
+    it('applies memory.decay to the singleton constructed afterwards', async () => {
+      const logger = createMockLogger();
+      const result = configureToolMemory({ memoryConfig: { decay: { agenticMaxEntries: 1234 } } });
+      expect(result).toEqual({ applied: true });
+
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+
+      expect(MemoryDecayManager).toHaveBeenCalledWith(
+        expect.objectContaining({ agenticMaxEntries: 1234 }),
+        logger
+      );
+    });
+
+    it('reports applied: false (and does not retro-fit) when the singleton already exists', async () => {
+      const logger = createMockLogger();
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+
+      const result = configureToolMemory({
+        memoryConfig: { decay: { agenticMaxEntries: 1234 } },
+        logger,
+      });
+      expect(result).toEqual({
+        applied: false,
+        reason: 'tool memory already constructed; decay config not applied',
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Tool memory already constructed; decay config not applied',
+        expect.anything()
+      );
+      // Even a later re-construction must not pick up the rejected config.
+      shutdownToolMemory();
+      const later = getToolMemory(logger);
+      await later.awaitBackendInitialization();
+      expect(MemoryDecayManager).toHaveBeenLastCalledWith({}, logger);
+    });
+
+    it('an absent memory section leaves the defaults in place', async () => {
+      const logger = createMockLogger();
+      expect(configureToolMemory({ memoryConfig: undefined })).toEqual({ applied: true });
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+      expect(MemoryDecayManager).toHaveBeenCalledWith({}, logger);
+    });
   });
 });

@@ -124,6 +124,12 @@ memory:
     enabled: true
     pruneThreshold: 0.3
 
+  # Coordinated decay across belief / agentic / adaptive / MobiMem (#5097)
+  decay:
+    enabled: true
+    decayIntervalMs: 3600000 # 1 hour
+    agenticMaxEntries: 10000
+
 # Security configuration
 security:
   # Allowed paths for file operations
@@ -832,6 +838,37 @@ memory:
       vault: true # Persistent storage
     pruneThreshold: 0.3
 ```
+
+### Coordinated Decay
+
+Configure the FADE-style decay sweep that `MemoryDecayManager` runs across the
+belief, agentic, adaptive and MobiMem stores. Every key is optional; an unset
+key falls through to the default in `DEFAULT_DECAY_CONFIG`
+(`packages/nexus-agents/src/mcp/tools/memory-decay.ts`) — the schema carries no
+second copy of the defaults. Before #5097 this manager was constructed with a
+hardcoded `{}`, so none of these keys could reach it.
+
+```yaml
+memory:
+  decay:
+    enabled: true # false disables the sweep entirely
+    decayIntervalMs: 3600000 # ms between automatic runs (default: 1 hour)
+    beliefMaxAgeDays: 30 # prune superseded beliefs older than this
+    agenticMaxEntries: 10000 # importance-based eviction starts above this
+    agenticImportanceThreshold: 0.3 # 0-1; agentic entries below are evicted
+    adaptivePriorityThreshold: 0.2 # 0-1; adaptive entries below are evicted
+    mobimemEvictOnDecay: true # run MobiMem TTL eviction on each sweep
+    checkCrossReferences: true # keep cross-referenced items past the sweep
+    crossReferenceGracePeriodMs: 604800000 # 7 days
+```
+
+Validation happens at config load: counts and durations must be positive safe
+integers (`crossReferenceGracePeriodMs` may be `0`), thresholds must lie in
+`[0, 1]`, and a bad value fails startup with the offending path named
+(`memory.decay.decayIntervalMs`, for example). The server logs one line at
+activation — `MemoryDecayManager activated (Phase 5 #746)` — carrying the
+effective value of every key, read back from the manager, so what ran is on
+record rather than what the file said.
 
 ## Security Configuration
 

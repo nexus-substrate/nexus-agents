@@ -127,6 +127,7 @@ vi.mock('./cli-server-feedback.js', () => ({
 
 vi.mock('./mcp/tools/tool-memory.js', () => ({
   shutdownToolMemory: vi.fn(),
+  configureToolMemory: vi.fn(() => ({ applied: true })),
 }));
 
 vi.mock('./cli-server-audit.js', () => ({

@@ -55,7 +55,7 @@ import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
-import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
+import { shutdownToolMemory, configureToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
 import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { shutdownTuneStage } from './pipeline/tune-stage.js';
@@ -481,6 +481,11 @@ async function initializeSubsystems(
     builtIn: expertResult.builtInCount,
     custom: expertResult.customCount,
   });
+
+  // #5097: memory.decay must reach the (still lazy) tool-memory singleton before
+  // the skill library, whose belief promoter is the first thing that constructs
+  // it. The only non-trivial outcome (already constructed) warns inside.
+  configureToolMemory({ memoryConfig: config.memory, logger });
 
   // Initialize skill library from configuration (Issue #491)
   const skillsResult = await initializeSkillLibrary({ skillsConfig: config.skills, logger });
