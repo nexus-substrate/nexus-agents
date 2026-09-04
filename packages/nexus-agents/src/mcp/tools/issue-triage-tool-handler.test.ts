@@ -54,6 +54,8 @@ function makeDeps(): Parameters<typeof _testing.createIssueTriageHandler>[0] {
 
 function makeCtx(): HandlerContext {
   return {
+    // #5385: the middleware always discloses what it removed; nothing here.
+    sanitization: { wasModified: false, commentsRemoved: 0 },
     requestContext: {
       requestId: 'test-req',
       toolName: 'issue_triage',
