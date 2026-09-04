@@ -360,10 +360,14 @@ jobs:
 
       - name: Run fitness audit
         id: fitness
+        # #5142 item 7 (ratified 5/6): no `threshold` here on purpose. The bar is
+        # the action's own default, so it lives in exactly one file —
+        # .github/actions/fitness-gate/action.yml — and the release gate inherits
+        # the same number. This gate hard-failed at 70 and warned at 90 while every
+        # document said 90: a PR could land at 71 and the release that followed
+        # would fail for it. scripts/fitness-threshold-single-source.test.ts
+        # fails if an override reappears.
         uses: ./.github/actions/fitness-gate
-        with:
-          threshold: '70'
-          warn-threshold: '90'
 
       - name: Upload fitness report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
