@@ -20,7 +20,7 @@ import {
   getBenchmarkEnvironment,
   createBenchmarkSummary,
 } from './benchmark-runner.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import {
   generateTestData,
   calculatePatternMetrics,
@@ -54,7 +54,7 @@ export const DEFAULT_MEMORY_BENCHMARK_CONFIG: MemoryBenchmarkConfig = {
  * Run store operation benchmark.
  */
 async function benchmarkStore(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   data: TestDataSet,
   config: MemoryBenchmarkConfig
 ): Promise<OperationBenchmark> {
@@ -82,7 +82,7 @@ async function benchmarkStore(
  * Run retrieve operation benchmark.
  */
 async function benchmarkRetrieve(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   data: TestDataSet,
   config: MemoryBenchmarkConfig
 ): Promise<OperationBenchmark> {
@@ -114,7 +114,7 @@ async function benchmarkRetrieve(
  * Measure search quality metrics.
  */
 async function measureSearchQuality(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   data: TestDataSet,
   config: MemoryBenchmarkConfig
 ): Promise<QualityMetrics> {
@@ -149,7 +149,7 @@ async function measureSearchQuality(
  * Run search operation benchmark.
  */
 async function benchmarkSearch(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   data: TestDataSet,
   config: MemoryBenchmarkConfig
 ): Promise<OperationBenchmark> {
@@ -186,7 +186,7 @@ async function benchmarkSearch(
  * Run prune operation benchmark.
  */
 async function benchmarkPrune(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   data: TestDataSet,
   config: MemoryBenchmarkConfig
 ): Promise<OperationBenchmark> {
@@ -214,7 +214,7 @@ async function benchmarkPrune(
  * Run all memory backend benchmarks.
  */
 export async function runMemoryBenchmarks(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   name: string,
   config: Partial<MemoryBenchmarkConfig> = {}
 ): Promise<BenchmarkSuiteResult> {

@@ -15,7 +15,7 @@
 import type { ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
 } from '../context/memory-backend-types.js';
@@ -111,7 +111,7 @@ export interface CoherenceConfig {
   /** List of cross-references to validate */
   readonly crossReferences?: readonly CrossReference[];
   /** Additional backend to check target keys against (for cross-backend refs) */
-  readonly targetBackend?: IMemoryBackend;
+  readonly targetBackend?: IContextMemoryBackend;
 }
 
 /**
@@ -279,7 +279,7 @@ function averageMetrics(
 
 /** Measure retrieval quality metrics for test cases. */
 async function measureRetrievalQuality(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   testCases: readonly RetrievalTestCase[],
   kValues: readonly number[],
   logger: ILogger
@@ -306,7 +306,7 @@ async function measureRetrievalQuality(
 
 /** Measure latency for store/retrieve operations. */
 async function measureLatency(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   iterations: number
 ): Promise<LatencyMeasurement> {
   const samples: number[] = [];
@@ -337,7 +337,7 @@ async function measureLatency(
 
 /** Estimate total storage used by entries. */
 async function measureStorage(
-  backend: IMemoryBackend
+  backend: IContextMemoryBackend
 ): Promise<{ storageBytes: number; entryCount: number }> {
   const allEntries = await backend.search('', 1000);
   const entries = allEntries.ok ? allEntries.value : [];
@@ -368,7 +368,9 @@ function buildCoherenceResult(validCount: number, totalCount: number): Coherence
 }
 
 /** Self-consistency check: validate all entries can be retrieved. */
-async function measureSelfConsistency(backend: IMemoryBackend): Promise<CoherenceMeasurement> {
+async function measureSelfConsistency(
+  backend: IContextMemoryBackend
+): Promise<CoherenceMeasurement> {
   const allEntries = await backend.search('', 1000);
   if (!allEntries.ok) return buildCoherenceResult(0, 0);
 
@@ -383,7 +385,7 @@ async function measureSelfConsistency(backend: IMemoryBackend): Promise<Coherenc
 /** Validate explicit cross-references exist in target backend. */
 async function validateCrossRefs(
   refs: readonly CrossReference[],
-  targetBackend: IMemoryBackend,
+  targetBackend: IContextMemoryBackend,
   logger?: ILogger
 ): Promise<CoherenceMeasurement> {
   let validCount = 0;
@@ -397,7 +399,7 @@ async function validateCrossRefs(
 
 /** Measure memory coherence by validating cross-references. */
 async function measureCoherence(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   config?: CoherenceConfig,
   logger?: ILogger
 ): Promise<CoherenceMeasurement> {
@@ -418,7 +420,7 @@ interface GrowthMeasurement {
 
 /** Measure storage growth rate under load (bytes per operation). */
 async function measureGrowthRate(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   operationCount: number = 50,
   logger?: ILogger
 ): Promise<GrowthMeasurement> {
@@ -462,7 +464,7 @@ interface DecayMeasurement {
 
 /** Measure decay consistency (ratio of items correctly pruned). */
 async function measureDecayConsistency(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   logger?: ILogger
 ): Promise<DecayMeasurement> {
   // For now, check that prune operation doesn't corrupt existing entries
@@ -543,7 +545,7 @@ function buildBenchmarkResult(m: BenchmarkMeasurements): MemoryBenchmarkResult {
  * Run memory benchmarks on a memory backend.
  */
 export async function runMemoryBenchmark(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   testCases: readonly RetrievalTestCase[],
   config?: BenchmarkConfig
 ): Promise<MemoryBenchmarkResult> {

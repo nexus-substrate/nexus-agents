@@ -10,7 +10,7 @@
 import { getTimeProvider } from '../core/index.js';
 import type { ILogger, AgentRole } from '../core/index.js';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryMetadata,
   MemoryError,
 } from '../context/memory-backend-types.js';
@@ -26,7 +26,7 @@ import { getAgentStateKey } from './memory-keys.js';
  * Persists agent memory state to the backend.
  */
 export async function persistMemoryState(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   state: AgentMemoryState,
   logger: ILogger
 ): Promise<Result<void, AgentMemoryError>> {
@@ -63,7 +63,7 @@ export async function persistMemoryState(
  * Loads agent memory state from the backend.
  */
 export async function loadMemoryState(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   agentId: string,
   role: AgentRole,
   logger: ILogger

@@ -8,7 +8,7 @@
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { getTimeProvider } from '../core/index.js';
-import type { IMemoryBackend, MemoryMetadata, MemoryError } from './memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryMetadata, MemoryError } from './memory-backend-types.js';
 import { MemoryImportance, MemoryError as MemError } from './memory-backend-types.js';
 import type {
   ICoreMemory,
@@ -30,7 +30,7 @@ import type {
 // ============================================================================
 
 export class CoreMemoryImpl implements ICoreMemory {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async getIdentity(agentId: string): Promise<Result<CoreMemoryData | null, MemoryError>> {
     const result = await this.backend.retrieve(`core:identity:${agentId}`);
@@ -68,7 +68,7 @@ export class CoreMemoryImpl implements ICoreMemory {
 // ============================================================================
 
 export class EpisodicMemoryImpl implements IEpisodicMemory {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async recordEpisode(episode: EpisodeData): Promise<Result<void, MemoryError>> {
     const importance =
@@ -123,7 +123,7 @@ export class EpisodicMemoryImpl implements IEpisodicMemory {
 // ============================================================================
 
 export class SemanticMemoryImpl implements ISemanticMemory {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async storeFact(fact: SemanticFact): Promise<Result<void, MemoryError>> {
     const meta: MemoryMetadata = {
@@ -190,7 +190,7 @@ export class SemanticMemoryImpl implements ISemanticMemory {
 // ============================================================================
 
 export class ProceduralMemoryImpl implements IProceduralMemory {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async storeProcedure(procedure: Procedure): Promise<Result<void, MemoryError>> {
     const tags = ['procedural', procedure.name, ...(procedure.tags ?? [])];
@@ -247,7 +247,7 @@ export class ProceduralMemoryImpl implements IProceduralMemory {
 // ============================================================================
 
 export class ResourceMemoryImpl implements IResourceMemory {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async storeResource(resource: ResourceReference): Promise<Result<void, MemoryError>> {
     const meta: MemoryMetadata = {
@@ -306,7 +306,7 @@ export class ResourceMemoryImpl implements IResourceMemory {
 // ============================================================================
 
 export class KnowledgeVaultImpl implements IKnowledgeVault {
-  constructor(private readonly backend: IMemoryBackend) {}
+  constructor(private readonly backend: IContextMemoryBackend) {}
 
   async store(entry: VaultEntry): Promise<Result<void, MemoryError>> {
     const importance =

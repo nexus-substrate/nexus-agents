@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MemoryRow, MemoryMetadata, MemoryEntry } from './memory-backend-types.js';
 import { MemoryImportance, MemoryError } from './memory-backend-types.js';
-import type { IMemoryBackend } from './memory-backend-types.js';
+import type { IContextMemoryBackend } from './memory-backend-types.js';
 import { TypedMemory } from './typed-memory.js';
 import { MobiMem } from './mobimem.js';
 import { ok, err } from '../core/result.js';
@@ -20,7 +20,7 @@ import { sanitizeFtsQuery, rowToEntry } from './memory-operations.js';
 // Mock Memory Backend
 // =============================================================================
 
-function createMockBackend(): IMemoryBackend & {
+function createMockBackend(): IContextMemoryBackend & {
   _storage: Map<string, { value: unknown; metadata: MemoryMetadata }>;
 } {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata }>();
@@ -611,7 +611,7 @@ describe('Error Recovery', () => {
   });
 
   it('should propagate backend errors correctly', async () => {
-    const failingBackend: IMemoryBackend = {
+    const failingBackend: IContextMemoryBackend = {
       store: vi.fn().mockResolvedValue(err(new MemoryError('Store failed'))),
       retrieve: vi.fn().mockResolvedValue(err(new MemoryError('Retrieve failed'))),
       search: vi.fn().mockResolvedValue(err(new MemoryError('Search failed'))),
@@ -634,7 +634,7 @@ describe('Error Recovery', () => {
   });
 
   it('should handle undefined values in search results', async () => {
-    const backend: IMemoryBackend = {
+    const backend: IContextMemoryBackend = {
       store: vi.fn().mockResolvedValue(ok(undefined)),
       retrieve: vi.fn().mockResolvedValue(ok(undefined)), // undefined instead of null
       search: vi.fn().mockResolvedValue(ok([])),

@@ -14,7 +14,7 @@ import {
   formatComparisonResults,
 } from './memory-benchmarks.js';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
   MemoryError,
@@ -25,7 +25,7 @@ import type { BenchmarkSuiteResult, OperationBenchmark } from './benchmark-types
 /**
  * Create a mock memory backend for testing.
  */
-function createMockBackend(): IMemoryBackend {
+function createMockBackend(): IContextMemoryBackend {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata; createdAt: Date }>();
 
   return {
@@ -102,7 +102,7 @@ describe('DEFAULT_MEMORY_BENCHMARK_CONFIG', () => {
 });
 
 describe('runMemoryBenchmarks', () => {
-  let mockBackend: IMemoryBackend;
+  let mockBackend: IContextMemoryBackend;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -521,7 +521,7 @@ describe('formatComparisonResults re-export', () => {
 });
 
 describe('Memory benchmark integration', () => {
-  let mockBackend: IMemoryBackend;
+  let mockBackend: IContextMemoryBackend;
 
   beforeEach(() => {
     vi.useFakeTimers();

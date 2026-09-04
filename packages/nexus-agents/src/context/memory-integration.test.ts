@@ -16,7 +16,7 @@ import type {
 } from './memory-backend-types.js';
 import { TypedMemory } from './typed-memory.js';
 import { MemoryType } from './memory-types.js';
-import type { IMemoryBackend, MemoryEntry } from './memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryEntry } from './memory-backend-types.js';
 import { ok, err } from '../core/result.js';
 import type { Result } from '../core/result.js';
 import { MemoryError } from './memory-backend-types.js';
@@ -164,7 +164,7 @@ function _createSharedMockDatabase(): ISQLiteDatabase & { store: MockMemoryStore
 // Mock Memory Backend for Testing
 // =============================================================================
 
-function createMockMemoryBackend(): IMemoryBackend & {
+function createMockMemoryBackend(): IContextMemoryBackend & {
   _storage: Map<string, { value: unknown; metadata: MemoryMetadata }>;
 } {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata }>();
@@ -433,7 +433,7 @@ describe('TypedMemory Integration', () => {
 
 describe('Backend Error Propagation', () => {
   it('should propagate storage errors through TypedMemory', async () => {
-    const failingBackend: IMemoryBackend = {
+    const failingBackend: IContextMemoryBackend = {
       store: vi.fn().mockResolvedValue(err(new MemoryError('Storage failed'))),
       retrieve: vi.fn().mockResolvedValue(ok(null)),
       search: vi.fn().mockResolvedValue(ok([])),
@@ -458,7 +458,7 @@ describe('Backend Error Propagation', () => {
   });
 
   it('should propagate search errors', async () => {
-    const failingBackend: IMemoryBackend = {
+    const failingBackend: IContextMemoryBackend = {
       store: vi.fn().mockResolvedValue(ok(undefined)),
       retrieve: vi.fn().mockResolvedValue(ok(null)),
       search: vi.fn().mockResolvedValue(err(new MemoryError('Search failed'))),
@@ -473,7 +473,7 @@ describe('Backend Error Propagation', () => {
   });
 
   it('should propagate prune errors', async () => {
-    const failingBackend: IMemoryBackend = {
+    const failingBackend: IContextMemoryBackend = {
       store: vi.fn().mockResolvedValue(ok(undefined)),
       retrieve: vi.fn().mockResolvedValue(ok(null)),
       search: vi.fn().mockResolvedValue(ok([])),

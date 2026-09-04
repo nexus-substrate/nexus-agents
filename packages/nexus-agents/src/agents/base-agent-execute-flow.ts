@@ -10,7 +10,7 @@
 import type { Result, Task, TaskResult, ILogger, Message } from '../core/index.js';
 import { AgentError, getTimeProvider } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { AgentStateMachine } from './state-machine.js';
 import type { AgentMemoryState, MemoryPersistenceMode } from './base-agent-memory-init.js';
 import {
@@ -46,7 +46,7 @@ export interface ExecuteFlowContext {
  */
 export interface TaskMemoryContext {
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   memoryState: AgentMemoryState | null;
   persistenceMode: MemoryPersistenceMode;
 }

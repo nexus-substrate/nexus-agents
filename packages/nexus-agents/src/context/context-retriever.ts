@@ -12,7 +12,7 @@
  * the consumer can either use directly or summarize into a prompt.
  *
  * **Implementation choice — typed singletons, not registry fan-out.**
- * Phase 1 (#2793) made `IMemoryBackend.query()` real on every attached
+ * Phase 1 (#2793) made `IContextMemoryBackend.query()` real on every attached
  * domain, so a registry-level `Promise.all(...domains.map(d => d.query()))`
  * would now work. But the result type is `unknown[]` per domain, which
  * loses the typed shapes consumers want. For typed reads, reaching into

@@ -24,7 +24,7 @@ import {
   getLearningsByType,
   persistMemoryState,
 } from './base-agent-memory-init.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ILogger } from '../core/index.js';
 
 /**
@@ -32,7 +32,7 @@ import type { ILogger } from '../core/index.js';
  */
 export interface FlushMemoryParams {
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   memoryState: AgentMemoryState | null;
   logger: ILogger;
 }
@@ -181,7 +181,6 @@ export interface GetTopPatternsParams {
   limit: number;
 }
 
-
 /**
  * Creates a readonly copy of agent memory state for observability.
  * Returns null if state is not initialized.
@@ -247,4 +246,3 @@ export function doGetLearnings(
 ): readonly TaskLearning[] {
   return getLearningsFromState({ ...ctx, taskType });
 }
-

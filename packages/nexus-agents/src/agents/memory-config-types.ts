@@ -7,7 +7,7 @@
  * @module agents/memory-config-types
  */
 
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory, RelevanceFilterConfig } from '../context/memory-types.js';
 import { DEFAULT_RELEVANCE_CONFIG } from '../context/memory-types.js';
 
@@ -64,7 +64,7 @@ export interface AgentMemoryConfig {
   /** Whether memory integration is enabled. Default: false (opt-in). */
   enabled?: boolean;
   /** Memory backend for general storage. */
-  backend?: IMemoryBackend;
+  backend?: IContextMemoryBackend;
   /** Typed memory for MIRIX-style 6-type architecture. */
   typedMemory?: ITypedMemory;
   /** Relevance filter configuration for role-based retrieval. */
@@ -82,7 +82,7 @@ export interface AgentMemoryConfig {
  */
 export interface ResolvedMemoryConfig {
   enabled: boolean;
-  backend: IMemoryBackend | undefined;
+  backend: IContextMemoryBackend | undefined;
   typedMemory: ITypedMemory | undefined;
   relevanceConfig: RelevanceFilterConfig;
   persistenceMode: MemoryPersistenceMode;

@@ -17,7 +17,7 @@ import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import {
   type HybridMemoryConfig,
-  type IMemoryBackend,
+  type IContextMemoryBackend,
   type ISQLiteDatabase,
   type MemoryEntry,
   type MemoryMetadata,
@@ -39,6 +39,9 @@ import {
 // Re-export types for convenience
 export {
   type HybridMemoryConfig,
+  type IContextMemoryBackend,
+  // Deprecated alias, re-exported so the context barrel keeps it (#5142).
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the alias IS the deprecation path (#5142); consumers keep the old name for one major
   type IMemoryBackend,
   type ISQLiteDatabase,
   type ISQLiteStatement,
@@ -57,7 +60,7 @@ import { openSqliteDatabase } from './open-database.js';
 /**
  * Hybrid memory backend using SQLite for storage and Markdown for export.
  */
-export class HybridMemoryBackend implements IMemoryBackend {
+export class HybridMemoryBackend implements IContextMemoryBackend {
   private readonly dbPath: string;
   private readonly logger: ILogger;
   private readonly autoExpire: boolean;

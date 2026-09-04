@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
 } from '../context/memory-backend-types.js';
@@ -25,7 +25,7 @@ import {
 // Mock Memory Backend
 // ============================================================================
 
-function createMockBackend(entries: Map<string, MemoryEntry>): IMemoryBackend {
+function createMockBackend(entries: Map<string, MemoryEntry>): IContextMemoryBackend {
   return {
     store(key: string, value: unknown, metadata: MemoryMetadata) {
       entries.set(key, {
@@ -77,7 +77,7 @@ function createMockBackend(entries: Map<string, MemoryEntry>): IMemoryBackend {
 // ============================================================================
 
 describe('memory-benchmark', () => {
-  let mockBackend: IMemoryBackend;
+  let mockBackend: IContextMemoryBackend;
   let entries: Map<string, MemoryEntry>;
 
   beforeEach(() => {
@@ -278,7 +278,7 @@ describe('memory-benchmark', () => {
         orphanedRefCount: 0,
         growthRateBytesPerOp: 256,
         decayConsistencyScore: 1.0,
-      decayItemsChecked: 10,
+        decayItemsChecked: 10,
         promotionRetentionRate: 0.95,
         decayRegretScore: 0.1,
       };

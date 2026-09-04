@@ -9,7 +9,7 @@
 
 import type { ILogger, IModelAdapter, AgentRole, AgentCapability } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory } from '../context/memory-types.js';
 import type { AgentStateMachine } from './state-machine.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
@@ -36,7 +36,7 @@ export interface AgentContextState {
   readonly budgetTracker: ITokenBudgetTracker;
   readonly eventBus: IEventBus;
   readonly memoryEnabled: boolean;
-  readonly memoryBackend: IMemoryBackend | undefined;
+  readonly memoryBackend: IContextMemoryBackend | undefined;
   readonly typedMemory: ITypedMemory | undefined;
   readonly memoryConfig: ResolvedMemoryConfig;
   readonly memoryState: AgentMemoryState | null;

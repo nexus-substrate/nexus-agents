@@ -10,7 +10,7 @@
 
 import { createLogger } from '../core/index.js';
 import type { TokenMetrics } from './benchmark-types.js';
-import type { IMemoryBackend, MemoryEntry } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryEntry } from '../context/memory-backend-types.js';
 import { generateTestData, type MemoryBenchmarkConfig } from './memory-benchmarks-helpers.js';
 import { DEFAULT_MEMORY_BENCHMARK_CONFIG } from './memory-benchmarks.js';
 
@@ -61,7 +61,7 @@ export function calculateTokenMetrics(
  * (only relevant entries from search) token usage.
  */
 export async function runTokenBenchmark(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   config: Partial<MemoryBenchmarkConfig> = {}
 ): Promise<readonly TokenBenchmarkResult[]> {
   const cfg = { ...DEFAULT_MEMORY_BENCHMARK_CONFIG, ...config };

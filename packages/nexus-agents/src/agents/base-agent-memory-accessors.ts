@@ -8,7 +8,7 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { TypedMemoryEntry } from '../context/memory-types.js';
 import type {
   AgentMemoryState,
@@ -33,7 +33,7 @@ import {
  */
 export interface MemoryAccessorContext {
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   memoryState: AgentMemoryState | null;
   logger: ILogger;
 }
@@ -129,4 +129,3 @@ export function getTaskLearningsByType(
 ): readonly TaskLearning[] {
   return doGetLearnings(ctx, taskType);
 }
-

@@ -7,7 +7,7 @@
  * (Source: Issue #748 - Memory evaluation framework)
  */
 
-import type { IMemoryBackend, MemoryMetadata } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryMetadata } from '../context/memory-backend-types.js';
 import type { RetrievalTestCase } from './memory-benchmark.js';
 
 /**
@@ -18,7 +18,7 @@ import type { RetrievalTestCase } from './memory-benchmark.js';
  * @returns Array of retrieval test cases
  */
 export async function generateSyntheticTestCases(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   count: number = 50
 ): Promise<RetrievalTestCase[]> {
   const testCases: RetrievalTestCase[] = [];

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ILogger } from '../core/index.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import { MemoryError } from '../context/memory-backend-types.js';
 import type { ITypedMemory, TypedMemoryEntry } from '../context/memory-types.js';
 import { MemoryImportance } from '../context/memory-backend-types.js';
@@ -48,13 +48,13 @@ vi.mock('./memory-keys.js', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockBackend(): IMemoryBackend {
+function createMockBackend(): IContextMemoryBackend {
   const mock = {
     store: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
     retrieve: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
     search: vi.fn(() => Promise.resolve({ ok: true, value: [] })),
     prune: vi.fn(() => Promise.resolve({ ok: true, value: 0 })),
-  } as unknown as IMemoryBackend;
+  } as unknown as IContextMemoryBackend;
   return mock;
 }
 

@@ -123,7 +123,7 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
   }
 
   // =========================================================================
-  // IMemoryBackend Methods (delegated to base)
+  // IContextMemoryBackend Methods (delegated to base)
   // =========================================================================
 
   store(key: string, value: unknown, metadata: MemoryMetadata): Promise<Result<void, MemoryError>> {

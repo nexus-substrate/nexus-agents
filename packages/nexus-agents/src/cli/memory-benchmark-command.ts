@@ -20,7 +20,7 @@ import {
   type BenchmarkThresholds,
 } from '../testing/memory-benchmark.js';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
 } from '../context/memory-backend-types.js';
@@ -61,7 +61,7 @@ const DEFAULT_THRESHOLDS: BenchmarkThresholds = {
 // ============================================================================
 
 /** Creates a simple in-memory backend for benchmarking. */
-function createBenchmarkBackend(): IMemoryBackend {
+function createBenchmarkBackend(): IContextMemoryBackend {
   const entries = new Map<string, MemoryEntry>();
   return {
     store(key: string, value: unknown, metadata: MemoryMetadata) {

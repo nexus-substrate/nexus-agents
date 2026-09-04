@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
-import type { MemoryEntry, MemoryError, IMemoryBackend } from './memory-backend-types.js';
+import type { MemoryEntry, MemoryError, IContextMemoryBackend } from './memory-backend-types.js';
 
 // ============================================================================
 // Scoring Configuration
@@ -185,7 +185,7 @@ export const PriorityRetrievalOptionsSchema = z.object({
 /**
  * Extended memory backend with adaptive priority-based retrieval.
  */
-export interface IAdaptiveMemory extends IMemoryBackend {
+export interface IAdaptiveMemory extends IContextMemoryBackend {
   /**
    * Retrieve memories sorted by priority score.
    * @param opts - Retrieval options

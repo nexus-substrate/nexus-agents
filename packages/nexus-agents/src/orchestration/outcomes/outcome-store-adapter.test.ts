@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 6 OutcomeStore IMemoryBackend adapter.
+ * Tests for the Phase 6 OutcomeStore IContextMemoryBackend adapter.
  *
  * @module orchestration/outcomes/outcome-store-adapter.test
  */
