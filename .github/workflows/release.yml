@@ -71,6 +71,115 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # #5429. Generated from the PACKABLE TARBALL, before publish, never from
+      # this workspace.
+      #
+      # It used to run `cdxgen -t pnpm --no-recurse` at the repo root, which
+      # resolves the root pnpm-lock.yaml. That lockfile covers website/ and
+      # every workspace package, and `pnpm.overrides` — repo-local and
+      # unpublished — changes transitive versions here and for nobody else. The
+      # result was uploaded to the release tag and attested. Measured:
+      #
+      #   root pnpm lockfile : 1231 components, incl. sharp-darwin-arm64,
+      #                        sharp-libvips-linux-ppc64, dict-csharp, dict-fsharp
+      #                        and protobufjs 8.8.0
+      #   packed tarball     :  184 components, 0 dev/website components,
+      #                        and protobufjs 7.6.6 — what users actually run
+      #
+      # A scanner reading the old SBOM for an advisory against protobufjs 7.6.x
+      # found nothing, for a release whose users run 7.6.6.
+      #
+      # BEFORE publish, deliberately. The panel's dissenting voter was right
+      # that anything derived from the PUBLISHED tarball runs after the package
+      # is already public, so such a check cannot fail the release — it can only
+      # complain afterwards — and it inherits registry propagation lag as
+      # flakiness. Packing locally avoids both: `npm pack` + `npm install`
+      # reproduces the consumer's dependency graph exactly (verified: 184
+      # components and protobufjs 7.6.6 either way), with no registry round
+      # trip. The tarball's DIGEST differs from the published one, which is why
+      # nothing here is used as an attestation subject — but an SBOM describes
+      # the dependency graph, not the bytes.
+      - name: Generate CycloneDX SBOM from the packable tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRATCH="${RUNNER_TEMP}/sbom"
+          rm -rf "$SCRATCH" && mkdir -p "$SCRATCH/pack" "$SCRATCH/tree"
+
+          (cd packages/nexus-agents && npm pack --pack-destination "$SCRATCH/pack")
+          TARBALL=$(ls "$SCRATCH"/pack/*.tgz | head -1)
+          echo "Packed: $(basename "$TARBALL")"
+
+          # --ignore-scripts so generating a bill of materials does not execute
+          # the install scripts it is describing (see scripts/install-script-allowlist.json).
+          # No --omit=optional: optionalDependencies install by default, so they
+          # are part of what a consumer receives.
+          npm install --prefix "$SCRATCH/tree" --ignore-scripts "$TARBALL"
+
+          npx -y @cyclonedx/cdxgen@12.3.1 \
+            -t npm \
+            --spec-version 1.6 \
+            -o sbom.cdx.json \
+            -p "$SCRATCH/tree" \
+            --no-recurse
+
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length > 0)' \
+            sbom.cdx.json > /dev/null
+          echo "SBOM generated: $(jq '.components | length' sbom.cdx.json) components"
+
+      # The gate that would have caught #5429, and the reason the step above
+      # runs before publish: it can still refuse.
+      #
+      # The discriminator is NOT "the SBOM names a root devDependency" — that
+      # was the first attempt and it failed on a correct SBOM, because
+      # `typescript`, `zod`, `yaml`, `ts-morph` and `tslib` are legitimately
+      # BOTH root devDependencies and runtime dependencies of the package.
+      # Subtracting the installed graph leaves only names that cannot reach a
+      # consumer by any route (eslint, husky, prettier, turbo, vitest, cspell,
+      # …), and those are the evidence.
+      - name: Verify the SBOM describes the package, not the workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          TREE="${RUNNER_TEMP}/sbom/tree"
+
+          find "$TREE/node_modules" -name package.json \
+            -not -path "*/node_modules/*/node_modules/*/node_modules/*" \
+            -exec jq -r '.name // empty' {} + 2>/dev/null | sort -u > "${RUNNER_TEMP}/installed.txt"
+          jq -r '.devDependencies | keys[]' package.json | sort -u > "${RUNNER_TEMP}/devdeps.txt"
+          comm -23 "${RUNNER_TEMP}/devdeps.txt" "${RUNNER_TEMP}/installed.txt" \
+            > "${RUNNER_TEMP}/workspace-only.txt"
+          jq -r '.components[].name' sbom.cdx.json | sort -u > "${RUNNER_TEMP}/components.txt"
+
+          # Guard the guard, first: with no workspace-only names to look for,
+          # the check below would find nothing and pass on any input.
+          if [[ ! -s "${RUNNER_TEMP}/workspace-only.txt" ]]; then
+            echo "::error::no workspace-only package names could be derived, so the" \
+              "leak check cannot fail — that makes it not a check (#5429)."
+            exit 1
+          fi
+
+          LEAKED=$(comm -12 "${RUNNER_TEMP}/workspace-only.txt" "${RUNNER_TEMP}/components.txt" || true)
+          if [[ -n "$LEAKED" ]]; then
+            echo "::error::SBOM names packages that cannot reach a consumer, so it" \
+              "describes the workspace and not the published package (#5429):"
+            printf '  %s\n' $LEAKED
+            exit 1
+          fi
+
+          COUNT=$(jq '.components | length' sbom.cdx.json)
+          if [[ "$COUNT" -lt 50 ]]; then
+            echo "::error::SBOM has only ${COUNT} components — too few to be the real graph (#5429)."
+            exit 1
+          fi
+          for required in zod semver openai; do
+            if ! grep -qx "$required" "${RUNNER_TEMP}/components.txt"; then
+              echo "::error::SBOM is missing the runtime dependency '${required}' (#5429)."
+              exit 1
+            fi
+          done
+          echo "SBOM check OK: ${COUNT} components, no workspace-only packages, runtime deps present."
+
       - name: Create Release Pull Request or Publish
         id: changesets
         # v2 pairs with Changesets CLI v3 (#4473). The two MUST move together:
@@ -239,27 +348,6 @@ jobs:
             '[{name: $name, version: $version}]')
           echo "publishedPackages=$published_pkgs" >> "$GITHUB_OUTPUT"
 
-      - name: Generate CycloneDX SBOM
-        # Node-native SBOM via @cyclonedx/cdxgen against pnpm-lock.yaml.
-        # Replaces the prior Rust-only cargo-sbom flow (#1852) which was
-        # gated on a non-existent crates/iso-parser/Cargo.toml and silently
-        # skipped on every release from 2.29.1 onward. cdxgen 12.3+ is run
-        # via npx so we don't need pnpm 10 (cdxgen 12.x's stated minimum).
-        # CycloneDX 1.6 is the current stable spec version.
-        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx -y @cyclonedx/cdxgen@12.3.1 \
-            -t pnpm \
-            --spec-version 1.6 \
-            -o sbom.cdx.json \
-            --no-recurse
-          # Sanity: confirm output is a valid CycloneDX 1.6 doc with components.
-          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length > 0)' \
-            sbom.cdx.json > /dev/null
-          echo "SBOM generated: $(jq '.components | length' sbom.cdx.json) components"
-
       - name: Upload SBOM to GitHub Release
         # changesets/action creates the GitHub release itself via
         # @changesets/changelog-github; it does NOT expose an `uploadUrl`
@@ -290,11 +378,20 @@ jobs:
         with:
           subject-path: sbom.cdx.json
 
-      - name: Attest npm package
-        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: packages/nexus-agents/package.json
+      # "Attest npm package" was removed here (#5429). It bound the digest of
+      # `packages/nexus-agents/package.json`, and pnpm rewrites the workspace
+      # protocol at pack time — source says `"nexus-memory": "workspace:*"`,
+      # the packed manifest says `"nexus-memory": "1.0.1"` — so the attested
+      # digest matched no file a consumer could obtain, and `dist/**` (reached
+      # via `bin`) was never a subject at all.
+      #
+      # Not repaired, because there is nothing correct to point it at: a
+      # locally packed tarball has a different digest from the published one
+      # (measured: 8840831f… published vs 1f615db0… packed, and a different
+      # byte size), and the published tarball is ALREADY signed correctly by
+      # npm's own Sigstore provenance via NPM_CONFIG_PROVENANCE above. A second
+      # attestation over the same bytes from the same OIDC identity adds a
+      # claim without adding assurance. Fewer claims, all true.
 
   # Manual publish (runs on workflow_dispatch)
   manual-publish:
