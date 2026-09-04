@@ -22,6 +22,7 @@ import type {
   DistilledRule,
   DistillerConfig,
   DistillerStats,
+  EffectThresholds,
   PatternType,
   RuleStatus,
   StrategyAction,
@@ -32,10 +33,56 @@ import { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
 // Helpers — pure functions
 // ============================================================================
 
-/** Sigmoid confidence: 1 / (1 + exp(-(n - center) / 5)) */
+/**
+ * Sample support: 1 / (1 + exp(-(n - center) / 5)).
+ *
+ * This is the `support` factor of a rule's confidence (#5004 finding 3). The
+ * name predates the support/effect split and is kept because it is exported
+ * from the package root.
+ */
 export function sigmoidConfidence(observations: number, center: number = 30): number {
   const raw = 1 / (1 + Math.exp(-(observations - center) / 5));
   return Math.max(0, Math.min(1, raw));
+}
+
+/** Clamp to [0, 1]; anything non-finite (a 0/0 threshold, a NaN metric) is 0. */
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * Effect size of a detected pattern in [0, 1] (#5004 finding 3): how far the
+ * metric sits past the detector threshold that produced it, normalised.
+ *
+ * - `failure-rate`: `(rate − failureRateThreshold) / (1 − failureRateThreshold)`
+ * - `success-rate`: `(rate − successRateThreshold) / (1 − successRateThreshold)`
+ * - `latency-spike`: `min(1, (ratio − latencyRatioThreshold) / latencyRatioThreshold)`
+ *
+ * A metric exactly at its threshold is 0: the detector fired, but there is no
+ * margin to act on. A metric at the far end of its scale is 1. Never NaN — a
+ * threshold with no headroom (failure threshold 1.0, latency threshold 0) or a
+ * NaN metric yields 0, so `baseDelta × confidence` in routing stays a number.
+ */
+export function effectFor(
+  patternType: PatternType,
+  metric: number,
+  thresholds: EffectThresholds
+): number {
+  switch (patternType) {
+    case 'failure-rate':
+      return clampUnit(
+        (metric - thresholds.failureRateThreshold) / (1 - thresholds.failureRateThreshold)
+      );
+    case 'success-rate':
+      return clampUnit(
+        (metric - thresholds.successRateThreshold) / (1 - thresholds.successRateThreshold)
+      );
+    case 'latency-spike':
+      return clampUnit(
+        (metric - thresholds.latencyRatioThreshold) / thresholds.latencyRatioThreshold
+      );
+  }
 }
 
 /** Build a fingerprint ID for a rule. */
@@ -176,7 +223,8 @@ export function detectLatencyPatterns(
  * automatically every `triggerThreshold` outcomes.
  */
 export class StrategyDistiller {
-  private readonly config: DistillerConfig;
+  /** Protected so `PersistentStrategyDistiller` hydrates legacy rules under the live thresholds. */
+  protected readonly config: DistillerConfig;
   private readonly outcomeStore: OutcomeStore;
   private readonly logger: ILogger;
   private readonly rules = new Map<string, DistilledRule>();
@@ -258,6 +306,13 @@ export class StrategyDistiller {
   /**
    * Promote high-confidence rules to RoutingMemory.
    * Rules must be active, non-tainted, with sufficient observations and confidence.
+   *
+   * @deprecated No production caller (#5004 finding 4). `DistilledRuleStage`
+   * is the single channel by which distilled rules reach routing; this
+   * second channel into `RoutingMemory` is kept only so the deprecation is
+   * non-breaking. Removal is tracked in #5467. Note the gate now compares
+   * `confidence = support × effect` against `promotionConfidence`, so a rule
+   * that would have promoted on sample size alone may no longer clear it.
    */
   promote(routingMemory: IRoutingMemory): number {
     let promoted = 0;
@@ -265,6 +320,7 @@ export class StrategyDistiller {
       if (rule.status !== 'active') continue;
       if (rule.tainted) continue;
       if (rule.observationCount < this.config.minObservationsForActive) continue;
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- deprecated together with this method (#5467)
       if (rule.confidence < this.config.promotionConfidence) continue;
 
       const performance = this.ruleToPerformance(rule);
@@ -313,7 +369,12 @@ export class StrategyDistiller {
       return;
     }
 
-    const confidence = sigmoidConfidence(pattern.observationCount);
+    // #5004 finding 3: confidence is what routing multiplies the base delta
+    // by, so it carries the effect size, damped by sample support. Sample
+    // size alone made a penalty track traffic volume, not performance.
+    const support = sigmoidConfidence(pattern.observationCount);
+    const effect = effectFor(pattern.patternType, pattern.metric, this.config);
+    const confidence = support * effect;
     const status = this.computeStatus(pattern.observationCount, existing?.status);
 
     if (existing !== undefined) {
@@ -321,6 +382,8 @@ export class StrategyDistiller {
         ...existing,
         action: pattern.action,
         confidence,
+        support,
+        effect,
         observationCount: pattern.observationCount,
         metric: pattern.metric,
         status,
@@ -334,6 +397,8 @@ export class StrategyDistiller {
         category: pattern.category,
         action: pattern.action,
         confidence,
+        support,
+        effect,
         observationCount: pattern.observationCount,
         metric: pattern.metric,
         status,
@@ -368,7 +433,9 @@ export class StrategyDistiller {
       // Expired rules sort first for eviction
       if (a[1].status === 'expired' && b[1].status !== 'expired') return -1;
       if (b[1].status === 'expired' && a[1].status !== 'expired') return 1;
-      // Then by confidence ascending (lowest evicted first)
+      // Then by confidence (support × effect) ascending — lowest evicted
+      // first, so a well-sampled rule barely past threshold goes before a
+      // thinner one with a decisive metric.
       return a[1].confidence - b[1].confidence;
     });
 

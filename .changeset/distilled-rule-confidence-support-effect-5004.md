@@ -1,0 +1,9 @@
+---
+'nexus-agents': minor
+---
+
+A distilled rule's `confidence` is now `support × effect` (#5004 finding 3).
+
+`DistilledRuleStage` scales a routing penalty or boost by `rule.confidence`, and that value was the sigmoid over observation count alone — so a CLI failing 62.5% of the time in a category was penalised exactly as hard as one failing 100% of the time, given the same traffic, and the penalty tracked volume rather than performance. `confidence` is now the product of `support` (the same sigmoid, unchanged) and `effect`, a new `[0, 1]` factor measuring how far the metric sits past its detector threshold: `(rate − threshold) / (1 − threshold)` for failure and success rates, `min(1, (ratio − threshold) / threshold)` for latency spikes. A 100% failure rate over 40 tasks moves the score by the full support; 62.5% over the same 40 tasks moves it by a sixteenth of that; a rule exactly at threshold contributes 0; a 6/6 failure stays small because support bounds it. Both factors are recorded on `DistilledRule` (`support`, `effect`) and persisted at distill time, since `effect` depends on the configured threshold and recomputing it on load would silently rescale old rules. Persisted rules from before this release hydrate with `support` derived from their observation count, `effect` recomputed from their persisted metric under the current thresholds, and `confidence` replaced by the product (logged at debug). Rule eviction under `maxRules` orders by the product as well. `effectFor(patternType, metric, thresholds)` and the `EffectThresholds` type are exported.
+
+`StrategyDistiller.promote()` and `DistillerConfig.promotionConfidence` are deprecated (#5004 finding 4): neither has a production caller, `DistilledRuleStage` is the single channel by which distilled rules reach routing, and `promote()`'s gate now compares the product. Both remain callable; removal is tracked in #5467.

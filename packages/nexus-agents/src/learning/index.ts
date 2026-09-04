@@ -97,6 +97,7 @@ export type {
   DistilledRule,
   DistillerConfig,
   DistillerStats,
+  EffectThresholds,
 } from './strategy-distiller-types.js';
 export { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
 export {
@@ -105,6 +106,7 @@ export {
   createPersistentDistillerOrFallback,
   registerPersistentDistillerFactory,
   sigmoidConfidence,
+  effectFor,
   detectFailurePatterns,
   detectSuccessPatterns,
   detectLatencyPatterns,

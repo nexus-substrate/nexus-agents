@@ -221,6 +221,8 @@ describe('getContextForTask', () => {
       category: 'code_generation',
       action: 'penalize',
       confidence: 0.85,
+      support: 0.85,
+      effect: 1,
       observationCount: 50,
       metric: 0.7,
       status: 'active',

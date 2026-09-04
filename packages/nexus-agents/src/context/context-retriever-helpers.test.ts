@@ -203,6 +203,8 @@ function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
     category: 'code_generation',
     action: 'boost',
     confidence: 0.8,
+    support: 0.8,
+    effect: 1,
     observationCount: 40,
     metric: 0.9,
     status: 'active',
