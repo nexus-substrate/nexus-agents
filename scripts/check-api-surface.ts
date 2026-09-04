@@ -23,6 +23,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
+import { COLLISION_HEADER } from './extract-api-surface.js';
+
 const SNAPSHOT = join(process.cwd(), 'api-surface.txt');
 
 /**
@@ -91,6 +93,67 @@ export function diffSurface(
   return { added, removed };
 }
 
+/**
+ * The cross-module collision count carried in the snapshot header, or `null`
+ * when the header is absent.
+ *
+ * `null` is distinct from `0` on purpose. A missing header means the file was
+ * generated before the count existed, or by an extractor that stopped emitting
+ * it — either way the ratchet has nothing to compare and must say so rather
+ * than reading absence as "no collisions".
+ */
+export function collisionCountOf(text: string): number | null {
+  for (const line of text.split('\n')) {
+    if (!line.startsWith(COLLISION_HEADER)) continue;
+    const parsed = Number.parseInt(line.slice(COLLISION_HEADER.length).trim(), 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * The collision ratchet (#5224): the number of names declared in more than one
+ * module may go DOWN or stay level, never up.
+ *
+ * Until #5224 the extractor fused those declarations into a single entry whose
+ * members came from both, so the snapshot described a type no source file
+ * contains and this gate diffed against it. They are now reported separately.
+ * The ratchet is what stops the list growing back while the underlying
+ * duplication (#5125, #5129) is worked through.
+ *
+ * It fires TODAY, on the next collision introduced — it is not waiting on the
+ * count reaching zero. When it does reach zero, turning this into a flat
+ * refusal is a one-line change.
+ *
+ * Returns a problem description, or `null` when the ratchet holds.
+ */
+export function checkCollisionRatchet(committed: string, current: string): string | null {
+  const now = collisionCountOf(current);
+  if (now === null) {
+    return (
+      `The generated surface carries no "${COLLISION_HEADER.trim()}" header. ` +
+      'The ratchet cannot compare anything, so it cannot fail — which makes it not a check. ' +
+      'Restore the header in scripts/extract-api-surface.ts (#5224).'
+    );
+  }
+  const before = collisionCountOf(committed);
+  if (before === null) {
+    return (
+      `api-surface.txt predates the collision header (#5224). ` +
+      'Regenerate it once with `pnpm api:surface` to set the baseline.'
+    );
+  }
+  if (now > before) {
+    return (
+      `Cross-module name collisions rose from ${String(before)} to ${String(now)}. ` +
+      'A name declared in two modules makes the published surface ambiguous and used to ' +
+      'be reported as one fused declaration. Rename one side, or reduce the count elsewhere ' +
+      'before adding this one.'
+    );
+  }
+  return null;
+}
+
 /** Header lines carry a symbol count that changes on almost every edit. */
 function withoutHeader(text: string): string {
   return text
@@ -110,6 +173,12 @@ function main(): void {
     maxBuffer: 64 * 1024 * 1024,
   });
   const committed = readFileSync(SNAPSHOT, 'utf8');
+
+  const ratchet = checkCollisionRatchet(committed, current);
+  if (ratchet !== null) {
+    console.error(`Public API surface: ${ratchet}\n`);
+    process.exit(1);
+  }
 
   const { added, removed } = diffSurface(withoutHeader(committed), withoutHeader(current));
 

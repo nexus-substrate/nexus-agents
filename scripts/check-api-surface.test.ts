@@ -10,7 +10,7 @@
  * @module scripts/check-api-surface.test
  */
 import { describe, it, expect } from 'vitest';
-import { diffSurface } from './check-api-surface.js';
+import { checkCollisionRatchet, collisionCountOf, diffSurface } from './check-api-surface.js';
 
 /** Two symbols that deliberately share a member line — the #4744 shape. */
 const COMMITTED = [
@@ -118,5 +118,64 @@ describe('diffSurface', () => {
 
     expect(added).toEqual([]);
     expect(removed).toEqual([]);
+  });
+});
+
+describe('the cross-module collision ratchet (#5224)', () => {
+  const withCount = (n: number): string =>
+    `# Public API surface\n# Cross-module name collisions: ${String(n)}\n\nInterfaceDeclaration A\n`;
+
+  describe('collisionCountOf', () => {
+    it('reads the count out of the header', () => {
+      expect(collisionCountOf(withCount(6))).toBe(6);
+      expect(collisionCountOf(withCount(0))).toBe(0);
+    });
+
+    it('returns null — not 0 — when the header is absent', () => {
+      // The distinction is the whole guard: reading a missing header as zero
+      // would make every snapshot look collision-free and the ratchet unable
+      // to fail.
+      expect(collisionCountOf('# Public API surface\n\nInterfaceDeclaration A\n')).toBeNull();
+    });
+
+    it('returns null for an unparseable count', () => {
+      expect(collisionCountOf('# Cross-module name collisions: lots\n')).toBeNull();
+    });
+  });
+
+  describe('checkCollisionRatchet', () => {
+    it('holds when the count is unchanged', () => {
+      expect(checkCollisionRatchet(withCount(6), withCount(6))).toBeNull();
+    });
+
+    it('holds when the count goes down', () => {
+      expect(checkCollisionRatchet(withCount(6), withCount(5))).toBeNull();
+    });
+
+    it('fails when the count goes up, naming both numbers', () => {
+      const problem = checkCollisionRatchet(withCount(6), withCount(7));
+
+      expect(problem).not.toBeNull();
+      expect(problem).toContain('rose from 6 to 7');
+    });
+
+    it('fails when the count rises from zero, so reaching zero is not a trapdoor', () => {
+      expect(checkCollisionRatchet(withCount(0), withCount(1))).toContain('rose from 0 to 1');
+    });
+
+    it('fails when the generator stops emitting the header at all', () => {
+      // Removing the header would otherwise silently disarm the ratchet — a
+      // check that cannot fail is not a check.
+      const problem = checkCollisionRatchet(withCount(6), 'InterfaceDeclaration A\n');
+
+      expect(problem).toContain('cannot fail');
+    });
+
+    it('fails when the committed snapshot predates the header', () => {
+      const problem = checkCollisionRatchet('InterfaceDeclaration A\n', withCount(6));
+
+      expect(problem).toContain('predates');
+      expect(problem).toContain('pnpm api:surface');
+    });
   });
 });
