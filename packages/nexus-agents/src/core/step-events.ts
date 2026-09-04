@@ -6,7 +6,7 @@
  * the JSON logger and the stderr ConsoleRenderer (peer subscribers)
  * observe the same events. Both subscribers key on `event`, `name`,
  * depth and status only; there is no per-step "kind" (#5097 removed it —
- * nothing read it and two of its seven values had no producer).
+ * nothing read it and three of its seven values had no producer).
  *
  * @module core/step-events
  * (Source: #1930 — human console notifications; ux-expert design.)
