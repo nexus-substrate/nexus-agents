@@ -20,6 +20,8 @@ import {
   getChangedFiles,
   extractMarkerEntries,
   isUnmeasurableManifest,
+  extractAddedIdentifiers,
+  checkPeerMentions,
 } from './check-registry-coverage.js';
 
 // ============================================================================
@@ -343,5 +345,117 @@ describe('peer files name the authored source, not a generated artifact (#5160)'
     // documents the variables, and every assertion here would still pass.
     const agents = fs.readFileSync(path.join(REPO, 'AGENTS.md'), 'utf-8');
     expect(agents).toContain('NEXUS_BILLING_MODE');
+  });
+});
+
+// ============================================================================
+// Peer-mention checking (#5222)
+// ============================================================================
+
+describe('extractAddedIdentifiers', () => {
+  const PATTERN = '\\bNEXUS_[A-Z0-9_]+\\b';
+
+  it('returns identifiers that appear only on added lines', () => {
+    const diff = [
+      '--- a/env-schema.ts',
+      '+++ b/env-schema.ts',
+      '   NEXUS_EXISTING: z.string().optional(),',
+      '+  NEXUS_BRAND_NEW: z.string().optional(),',
+    ].join('\n');
+    expect(extractAddedIdentifiers(diff, PATTERN)).toEqual(['NEXUS_BRAND_NEW']);
+  });
+
+  it('ignores the +++/--- file headers, which are not content', () => {
+    // A header like `+++ b/NEXUS_THING.ts` would otherwise be read as an added
+    // identifier and demand documentation for a filename.
+    const diff = ['--- a/NEXUS_OLD.ts', '+++ b/NEXUS_NEW.ts', '+  const x = 1;'].join('\n');
+    expect(extractAddedIdentifiers(diff, PATTERN)).toEqual([]);
+  });
+
+  it('treats a rename as no net addition — the name appears on both sides', () => {
+    // Removals are out of scope, and a moved line must not read as an addition.
+    const diff = [
+      '--- a/env-schema.ts',
+      '+++ b/env-schema.ts',
+      '-  NEXUS_MOVED: z.string(),',
+      '+  NEXUS_MOVED: z.string().optional(),',
+    ].join('\n');
+    expect(extractAddedIdentifiers(diff, PATTERN)).toEqual([]);
+  });
+
+  it('reports a pure removal as no additions', () => {
+    const diff = ['--- a/x.ts', '+++ b/x.ts', '-  NEXUS_GONE: z.string(),'].join('\n');
+    expect(extractAddedIdentifiers(diff, PATTERN)).toEqual([]);
+  });
+
+  it('de-duplicates and sorts', () => {
+    const diff = [
+      '+++ b/x.ts',
+      '+  NEXUS_B: z.string(), NEXUS_A: z.string(),',
+      '+  NEXUS_B: z.string(),',
+    ].join('\n');
+    expect(extractAddedIdentifiers(diff, PATTERN)).toEqual(['NEXUS_A', 'NEXUS_B']);
+  });
+
+  it('returns nothing for an empty diff rather than throwing', () => {
+    expect(extractAddedIdentifiers('', PATTERN)).toEqual([]);
+  });
+});
+
+describe('checkPeerMentions', () => {
+  const ADDED = ['NEXUS_ALPHA', 'NEXUS_BETA'];
+
+  it('reports evaluated:false when no identifiers were added — NOT a pass', () => {
+    // The load-bearing case. A pure removal, rename or reordering extracts
+    // nothing, and reporting `satisfied` there would be a verdict over an empty
+    // collection. The caller must fall back to the changed-file requirement.
+    const result = checkPeerMentions([], new Map([['docs/x.md', 'anything']]));
+    expect(result.evaluated).toBe(false);
+    if (result.evaluated) throw new Error('expected an unevaluated result');
+    expect(result.reason).toBe('no-identifiers-added');
+  });
+
+  it('passes when every added identifier appears in every peer', () => {
+    const peers = new Map([
+      ['AGENTS.md', 'we support NEXUS_ALPHA and NEXUS_BETA today'],
+      ['docs/CONFIGURATION.md', 'NEXUS_BETA, NEXUS_ALPHA'],
+    ]);
+    const result = checkPeerMentions(ADDED, peers);
+    expect(result.evaluated).toBe(true);
+    if (!result.evaluated) throw new Error('expected an evaluated result');
+    expect(result.undocumented).toEqual([]);
+  });
+
+  it('names the peer AND the identifier it is missing', () => {
+    // This is the case the gate was built for and previously could not see: the
+    // peer file WAS touched, so set-membership passed, but the new variable is
+    // documented nowhere.
+    const peers = new Map([
+      ['AGENTS.md', 'we support NEXUS_ALPHA today'],
+      ['docs/CONFIGURATION.md', 'NEXUS_ALPHA and NEXUS_BETA'],
+    ]);
+    const result = checkPeerMentions(ADDED, peers);
+    expect(result.evaluated).toBe(true);
+    if (!result.evaluated) throw new Error('expected an evaluated result');
+    expect(result.undocumented).toEqual([{ peer: 'AGENTS.md', missing: ['NEXUS_BETA'] }]);
+  });
+
+  it('treats an unreadable peer as undocumented, never as satisfied', () => {
+    // A peer that cannot be read yields no evidence of documentation. Failing
+    // closed here matters because the read failure mode (renamed/deleted file)
+    // is exactly when the docs are most likely wrong.
+    const peers = new Map<string, string | null>([['AGENTS.md', null]]);
+    const result = checkPeerMentions(ADDED, peers);
+    expect(result.evaluated).toBe(true);
+    if (!result.evaluated) throw new Error('expected an evaluated result');
+    expect(result.undocumented).toEqual([{ peer: 'AGENTS.md', missing: ADDED }]);
+  });
+
+  it('reports every missing identifier, not just the first', () => {
+    const peers = new Map([['AGENTS.md', 'nothing relevant here']]);
+    const result = checkPeerMentions(ADDED, peers);
+    expect(result.evaluated).toBe(true);
+    if (!result.evaluated) throw new Error('expected an evaluated result');
+    expect(result.undocumented[0]?.missing).toEqual(['NEXUS_ALPHA', 'NEXUS_BETA']);
   });
 });

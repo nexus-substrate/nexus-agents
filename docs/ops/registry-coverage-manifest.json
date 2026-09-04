@@ -35,7 +35,10 @@
       "source": "packages/nexus-agents/src/config/env-schema.ts",
       "marker": "NEXUS_",
       "peer_files": ["AGENTS.md", "docs/getting-started/CONFIGURATION.md"],
-      "rationale": "Receipts: #2315 \u2014 env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407)."
+      "rationale": "Receipts: #2315 \u2014 env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407). #5222: opted into the peer-MENTION check \u2014 the set-membership test only proved the peer was touched, so adding a variable and fixing an unrelated typo in the same PR passed with the variable documented nowhere.",
+      "peer_mentions": {
+        "extract": "\\bNEXUS_[A-Z0-9_]+\\b"
+      }
     }
   ]
 }

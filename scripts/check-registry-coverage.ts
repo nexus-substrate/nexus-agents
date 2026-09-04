@@ -47,6 +47,18 @@ interface RegistryEntry {
   readonly moved_from?: string;
   /** Marker name at the `moved_from` location, if it differed (default: `marker`). */
   readonly moved_from_marker?: string;
+  /**
+   * Opt-in content check (#5222). Without it, the peer requirement is set
+   * membership: ANY edit to the peer satisfies it, so adding `NEXUS_FOO` to
+   * env-schema.ts and fixing an unrelated typo in CONFIGURATION.md passes with
+   * `NEXUS_FOO` documented nowhere. Those differ exactly in the case the gate
+   * was built for.
+   *
+   * `extract` is a regex naming the identifiers a source change introduces.
+   * Identifiers ADDED by this PR must then appear in every peer file.
+   * Per-registry and optional, so opting one in cannot change the others.
+   */
+  readonly peer_mentions?: { readonly extract: string };
 }
 
 interface RegistryManifest {
@@ -58,6 +70,8 @@ interface RegistryManifest {
 interface Violation {
   readonly registry: RegistryEntry;
   readonly missing_peers: readonly string[];
+  /** Added identifiers absent from a peer that WAS changed (#5222). */
+  readonly undocumented?: readonly { readonly peer: string; readonly missing: readonly string[] }[];
 }
 
 // ============================================================================
@@ -206,6 +220,17 @@ export function validateManifest(manifest: RegistryManifest): readonly string[] 
         errors.push(`${reg.name}: peer missing → ${peer}`);
       }
     }
+    // #5222: an uncompilable `extract` would make the mention check throw at the
+    // point of use, mid-run, after other registries had already been judged.
+    // Catch it here with the other bitrot so the manifest is rejected whole.
+    if (reg.peer_mentions !== undefined) {
+      try {
+        new RegExp(reg.peer_mentions.extract, 'g');
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`${reg.name}: peer_mentions.extract is not a valid regex → ${message}`);
+      }
+    }
   }
   return errors;
 }
@@ -299,6 +324,82 @@ function readWorkingTree(filePath: string): string | null {
   }
 }
 
+/**
+ * Outcome of the peer-mention check for one registry (#5222).
+ *
+ * A discriminated union so a caller cannot read `undocumented` without first
+ * narrowing on `evaluated`. "Nothing was added, so nothing was checked" and
+ * "everything added is documented" are different states, and collapsing them
+ * would report a pass over an empty collection.
+ */
+export type PeerMentionCheck =
+  | { readonly evaluated: false; readonly reason: 'no-identifiers-added' }
+  | {
+      readonly evaluated: true;
+      readonly undocumented: readonly {
+        readonly peer: string;
+        readonly missing: readonly string[];
+      }[];
+    };
+
+/**
+ * Identifiers this diff ADDS, per `pattern`.
+ *
+ * Added means "on a `+` line and not on a `-` line", so a rename or a
+ * reformatted line nets to nothing. Removals are deliberately out of scope:
+ * asserting that a deleted variable is ALSO gone from the docs is a different
+ * check with different failure modes, and conflating them is how the empty case
+ * ends up answered by a language default.
+ *
+ * `+++`/`---` headers are skipped — they carry file paths, and a path like
+ * `b/NEXUS_THING.ts` would otherwise be read as an added identifier.
+ */
+export function extractAddedIdentifiers(diff: string, pattern: string): readonly string[] {
+  const re = new RegExp(pattern, 'g');
+  const added = new Set<string>();
+  const removed = new Set<string>();
+
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    const target = line.startsWith('+') ? added : line.startsWith('-') ? removed : null;
+    if (target === null) continue;
+    for (const found of line.slice(1).match(re) ?? []) target.add(found);
+  }
+
+  for (const gone of removed) added.delete(gone);
+  return [...added].sort();
+}
+
+/**
+ * Whether every added identifier appears in every peer file.
+ *
+ * Returns `evaluated: false` when the diff added nothing — a pure removal,
+ * rename or reordering. That case has nothing to assert, so it reports
+ * unmeasured and the caller falls back to the existing changed-file
+ * requirement. Reporting a pass there would be the vacuous verdict this repo
+ * treats as a p1 on the governor path.
+ *
+ * An unreadable peer counts as undocumented rather than satisfied: a file that
+ * cannot be read is no evidence of documentation, and the read failure mode
+ * (renamed or deleted peer) is exactly when the docs are most likely wrong.
+ */
+export function checkPeerMentions(
+  added: readonly string[],
+  peerContents: ReadonlyMap<string, string | null>
+): PeerMentionCheck {
+  if (added.length === 0) return { evaluated: false, reason: 'no-identifiers-added' };
+
+  const undocumented: { peer: string; missing: readonly string[] }[] = [];
+  for (const [peer, content] of peerContents) {
+    // `!== true` rather than `!content?.includes(id)`: the optional chain
+    // yields `boolean | undefined`, and an unreadable peer (undefined) must
+    // count as MISSING, which this states explicitly.
+    const missing = added.filter((id) => content?.includes(id) !== true);
+    if (missing.length > 0) undocumented.push({ peer, missing });
+  }
+  return { evaluated: true, undocumented };
+}
+
 /** Find peer files declared by the registry that are NOT in the changed-files set. */
 export function findMissingPeers(
   registry: RegistryEntry,
@@ -327,9 +428,21 @@ function printViolation(v: Violation): void {
   console.log(`✗ VIOLATION: ${v.registry.name}`);
   console.log(`  Source: ${v.registry.source}`);
   console.log(`  Rationale: ${v.registry.rationale}`);
-  console.log(`  Missing peer files (must also be updated in this PR):`);
-  for (const peer of v.missing_peers) {
-    console.log(`    - ${peer}`);
+
+  if (v.missing_peers.length > 0) {
+    console.log(`  Missing peer files (must also be updated in this PR):`);
+    for (const peer of v.missing_peers) {
+      console.log(`    - ${peer}`);
+    }
+  }
+
+  // #5222: the peer WAS changed, so the old message ("update the peer") would
+  // have told the author to do something they already did. Name the identifier.
+  for (const u of v.undocumented ?? []) {
+    console.log(`  ${u.peer} was changed but does not mention:`);
+    for (const id of u.missing) {
+      console.log(`    - ${id}`);
+    }
   }
   console.log('');
 }
@@ -367,6 +480,39 @@ export function isUnmeasurableManifest(registryCount: number): boolean {
   return registryCount === 0;
 }
 
+/**
+ * Content half of the peer requirement for one opted-in registry (#5222).
+ *
+ * Returns `null` when there is nothing to report — no opt-in, an unmeasured
+ * extraction, or everything documented. Only the caller's changed-file check
+ * has run at this point, and it passed, so `null` means the registry is clean.
+ */
+function findUndocumentedMentions(registry: RegistryEntry, verbose: boolean): Violation | null {
+  const mentions = registry.peer_mentions;
+  if (mentions === undefined) return null;
+
+  const added = extractAddedIdentifiers(getFileDiff(registry.source), mentions.extract);
+  const peerContents = new Map<string, string | null>(
+    registry.peer_files.map((peer) => [peer, readWorkingTree(peer)])
+  );
+  const result = checkPeerMentions(added, peerContents);
+
+  if (!result.evaluated) {
+    // Unmeasured, NOT a pass. The changed-file requirement already held, and
+    // that is the whole verdict for this registry in this PR.
+    if (verbose) {
+      console.log(
+        `  ${registry.name}: mention check unmeasured (${result.reason}) — ` +
+          `falling back to the changed-file requirement, which passed`
+      );
+    }
+    return null;
+  }
+
+  if (result.undocumented.length === 0) return null;
+  return { registry, missing_peers: [], undocumented: result.undocumented };
+}
+
 export function performCheck(verbose: boolean): CheckResult {
   const manifest = loadManifest();
   if (manifest === null) {
@@ -388,10 +534,19 @@ export function performCheck(verbose: boolean): CheckResult {
   const violations: Violation[] = [];
   for (const registry of manifest.registries) {
     if (!isRegistryChanged(registry, changedFiles)) continue;
+
     const missing = findMissingPeers(registry, changedFiles);
     if (missing.length > 0) {
+      // The peer was not touched at all. The mention check would add nothing
+      // here beyond a second way of saying the same thing.
       violations.push({ registry, missing_peers: missing });
+      continue;
     }
+
+    // Every peer was touched. #5222: that proves an edit happened, not that the
+    // edit documents anything, so opted-in registries also check content.
+    const undocumentedViolation = findUndocumentedMentions(registry, verbose);
+    if (undocumentedViolation !== null) violations.push(undocumentedViolation);
   }
 
   return { success: violations.length === 0, violations, bitrot_errors: [] };
