@@ -27,6 +27,16 @@
  * walk is testable offline, where run retention, pagination and cancelled runs
  * are not.
  *
+ * ## What is actually measured
+ *
+ * "Distinct versions on main's first-parent line after the one npm reports as
+ * `latest`", which equals "versions npm never received" for every version in
+ * this repo's history (707 first-parent bumps checked, 2026-09-04) but not in
+ * general: a `dist-tag` rollback of `latest`, or a reverted bump, both put
+ * versions npm already has after `latest` on the walk. The workflow message
+ * says "since npm's latest", not "never received", for that reason; #5463
+ * tracks intersecting with `npm view versions --json` if either case occurs.
+ *
  * ## Named empty case
  *
  * A walk that never finds the published version returns `unmeasured`, never an
