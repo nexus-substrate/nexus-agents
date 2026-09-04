@@ -20,7 +20,13 @@ jobs:
   check:
     name: Check model parameter-capability drift
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #5396: 10, not 5. These gates are ~90% `setup-node`; the check itself runs
+    # in seconds (`check:model-drift` is 17s over 1443 files). Three distinct
+    # jobs blew a 5-minute budget in one session, each reported as CANCELLED —
+    # indistinguishable from a concurrency cancel, so the natural response was
+    # to retry rather than investigate. 10 matches the house default and still
+    # catches a genuinely hung check.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
