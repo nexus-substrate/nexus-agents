@@ -44,6 +44,9 @@ export {
   // SICA schemas (Issue #492)
   SicaConfigSchema,
   DEFAULT_SICA_CONFIG,
+  // Memory schemas (Issue #5097)
+  MemoryDecayConfigSchema,
+  MemoryConfigSchema,
 } from './schemas.js';
 
 export type {
@@ -81,6 +84,9 @@ export type {
   ExternalPackSource,
   // SICA types (Issue #492)
   SicaConfig,
+  // Memory types (Issue #5097)
+  MemoryDecayConfigInput,
+  MemoryConfig,
 } from './schemas.js';
 
 // Routing config adapter (Issue #475)

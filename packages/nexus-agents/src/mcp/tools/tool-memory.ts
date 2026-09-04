@@ -57,9 +57,11 @@ import {
 } from './memory-promotion.js';
 import {
   MemoryDecayManager,
+  type MemoryDecayConfig,
   type DecayRunStats,
   type DecayAggregateStats,
 } from './memory-decay.js';
+import type { MemoryConfig, MemoryDecayConfigInput } from '../../config/schemas-memory.js';
 import type { UnifiedMemoryResult } from './tool-memory-types.js';
 import {
   querySessionMemory as querySessionMemoryHelper,
@@ -118,6 +120,54 @@ const MARKDOWN_DIR = path.join(MEMORY_BASE, 'markdown');
 let sharedInstance: ToolMemoryManager | null = null;
 
 /**
+ * Options applied to the NEXT shared instance (#5097). Set by
+ * `configureToolMemory` from the loaded nexus-agents.yaml; consumed by
+ * `getToolMemory` on first construction. The singleton stays lazy — nothing
+ * here constructs it — so configuring it costs no session or SQLite init.
+ */
+let pendingOptions: ToolMemoryOptions = {};
+
+/**
+ * Where the effective decay config came from. Names the empty case: a CLI path
+ * (composite-router / dev-pipeline / graph-executor via the context retriever)
+ * builds the singleton without `configureToolMemory` ever running, so its
+ * defaults would otherwise be indistinguishable from "yaml said default".
+ */
+type DecayConfigSource = 'config' | 'defaults (configureToolMemory never called)';
+
+const DECAY_SOURCE_NEVER_CONFIGURED: DecayConfigSource =
+  'defaults (configureToolMemory never called)';
+
+/** Construction options for {@link ToolMemoryManager}. */
+interface ToolMemoryOptions {
+  /**
+   * Overrides for the coordinated decay manager. Absent keys fall through to
+   * `DEFAULT_DECAY_CONFIG`; nothing else is defaulted here. Accepts the zod
+   * output shape (`key: undefined` allowed) — see {@link definedDecayOverrides}.
+   */
+  readonly decay?: MemoryDecayConfigInput | undefined;
+  /** Provenance of `decay`; absent means nobody configured it. */
+  readonly decaySource?: DecayConfigSource | undefined;
+}
+
+/**
+ * Drop `undefined`-valued keys before the overlay. `{ ...DEFAULTS, ...cfg }`
+ * would otherwise write `undefined` OVER a default when a key is present but
+ * unset, silently turning `enabled` into a falsy value (#5097).
+ */
+function definedDecayOverrides(input: MemoryDecayConfigInput): Partial<MemoryDecayConfig> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+/** Result of {@link configureToolMemory}. */
+type ConfigureToolMemoryResult =
+  { readonly applied: true } | { readonly applied: false; readonly reason: string };
+
+/**
  * Phase 5 of #2766. Attach a tool-memory backend to the unified registry
  * so `memory_stats` and future telemetry consumers can discover it
  * without the per-backend type-knowledge that `tool-memory.ts` carries
@@ -147,8 +197,35 @@ function attachToRegistry(
  * Automatically starts a session on first access.
  */
 export function getToolMemory(logger?: ILogger): ToolMemoryManager {
-  sharedInstance ??= new ToolMemoryManager(logger);
+  sharedInstance ??= new ToolMemoryManager(logger, pendingOptions);
   return sharedInstance;
+}
+
+/**
+ * Apply the `memory:` section of nexus-agents.yaml to the shared instance
+ * (#5097 finding 2). Called once by `cli-server` after config load, BEFORE any
+ * tool can touch memory.
+ *
+ * Returns `applied: false` — and warns — when the singleton already exists,
+ * because a config that arrives after construction cannot reach the running
+ * decay manager. Reporting that honestly beats a silent no-op: the operator
+ * set a knob and would otherwise assume it took. The rejected config is not
+ * kept for a later re-construction either; ordering is the caller's contract.
+ */
+export function configureToolMemory(options: {
+  readonly memoryConfig?: MemoryConfig | undefined;
+  readonly logger?: ILogger | undefined;
+}): ConfigureToolMemoryResult {
+  if (sharedInstance !== null) {
+    const reason = 'tool memory already constructed; decay config not applied';
+    (options.logger ?? createLogger({ component: 'ToolMemory' })).warn(
+      'Tool memory already constructed; decay config not applied',
+      { decay: options.memoryConfig?.decay }
+    );
+    return { applied: false, reason };
+  }
+  pendingOptions = { decay: options.memoryConfig?.decay, decaySource: 'config' };
+  return { applied: true };
 }
 
 /**
@@ -165,6 +242,10 @@ export function shutdownToolMemory(): void {
     sharedInstance.endSession();
     sharedInstance = null;
   }
+  // #5097: the configuration belongs to the instance it was applied to. A
+  // later instance without a fresh `configureToolMemory` must report
+  // "never called", not inherit a config nobody applied to it.
+  pendingOptions = {};
 }
 
 /**
@@ -207,10 +288,14 @@ export class ToolMemoryManager {
   private typedBackend: HybridMemoryBackend | null = null;
   private mobimem: MobiMem | null = null;
   private decayManager: MemoryDecayManager | null = null;
+  private readonly decayConfig: Partial<MemoryDecayConfig>;
+  private readonly decaySource: DecayConfigSource;
   private initPromise: Promise<void> | null = null;
 
-  constructor(logger?: ILogger) {
+  constructor(logger?: ILogger, options: ToolMemoryOptions = {}) {
     this.log = logger ?? createLogger({ component: 'ToolMemory' });
+    this.decayConfig = definedDecayOverrides(options.decay ?? {});
+    this.decaySource = options.decaySource ?? DECAY_SOURCE_NEVER_CONFIGURED;
 
     this.memory = new SessionMemory({
       memoryDir: DEFAULT_MEMORY_DIR,
@@ -434,9 +519,15 @@ export class ToolMemoryManager {
     this.decayManager?.stopAutoDecay();
   }
 
+  /** Provenance of the decay config this instance was built with (#5097). */
+  getDecayConfigSource(): DecayConfigSource {
+    return this.decaySource;
+  }
+
   private initDecayManager(): void {
     try {
-      this.decayManager = new MemoryDecayManager({}, this.log);
+      // #5097: was a hardcoded `{}` — every knob permanently default.
+      this.decayManager = new MemoryDecayManager(this.decayConfig, this.log);
       this.decayManager.initialize({
         beliefs: this.beliefs,
         agentic: this.agentic,
@@ -452,7 +543,12 @@ export class ToolMemoryManager {
           error: getErrorMessage(error),
         });
       });
-      this.log.info('MemoryDecayManager activated (Phase 5 #746)');
+      // The one startup line naming the EFFECTIVE values (#5097): read back
+      // from the manager, not from what was passed in.
+      this.log.info('MemoryDecayManager activated (Phase 5 #746)', {
+        ...this.decayManager.getConfig(),
+        source: this.decaySource,
+      });
     } catch (error: unknown) {
       this.log.debug('MemoryDecayManager init failed', {
         error: getErrorMessage(error),

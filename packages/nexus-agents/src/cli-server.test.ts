@@ -127,6 +127,7 @@ vi.mock('./cli-server-feedback.js', () => ({
 
 vi.mock('./mcp/tools/tool-memory.js', () => ({
   shutdownToolMemory: vi.fn(),
+  configureToolMemory: vi.fn(() => ({ applied: true })),
 }));
 
 vi.mock('./cli-server-audit.js', () => ({
@@ -483,6 +484,28 @@ describe('startServer', () => {
     await startServer(true, 'orchestrator', true, { verbose: true });
 
     expect(startOrchestratorMode).toHaveBeenCalledWith({ verbose: true });
+  });
+
+  it('configures tool memory BEFORE the skill library can construct it (#5097)', async () => {
+    // The skill library's belief promoter is the first thing that constructs
+    // the tool-memory singleton; a config that lands after it is rejected.
+    // Recorded as an order list so an empty list (neither ran) fails too.
+    const order: string[] = [];
+    const { configureToolMemory } = await import('./mcp/tools/tool-memory.js');
+    const { initializeSkillLibrary } = await import('./cli-server-skills.js');
+    vi.mocked(configureToolMemory).mockImplementation(() => {
+      order.push('configureToolMemory');
+      return { applied: true };
+    });
+    vi.mocked(initializeSkillLibrary).mockImplementation(() => {
+      order.push('initializeSkillLibrary');
+      return Promise.resolve({ initialized: false, reason: 'no config' });
+    });
+    const { startServer } = await import('./cli-server.js');
+
+    await startServer(false, 'server', true);
+
+    expect(order).toEqual(['configureToolMemory', 'initializeSkillLibrary']);
   });
 
   it('provides default orchestrator options when none given', async () => {

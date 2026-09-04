@@ -124,6 +124,11 @@ import { RoutingConfigSchema } from './schemas-routing.js';
 import { SkillLibraryConfigSchema } from './schemas-skills.js';
 import { SicaConfigSchema } from './schemas-sica.js';
 import { GatewayConfigSchema } from './schemas-gateway.js';
+import { MemoryConfigSchema } from './schemas-memory.js';
+
+// Memory schemas (Issue #5097)
+export { MemoryDecayConfigSchema, MemoryConfigSchema } from './schemas-memory.js';
+export type { MemoryDecayConfigInput, MemoryConfig } from './schemas-memory.js';
 
 /**
  * Complete application configuration schema.
@@ -144,6 +149,8 @@ export const AppConfigSchema = z.object({
   sica: SicaConfigSchema.optional(),
   /** Gateway middleware configuration (Issue #897) */
   gateway: GatewayConfigSchema.optional(),
+  /** Memory configuration — today only `decay` reaches runtime (Issue #5097) */
+  memory: MemoryConfigSchema.optional(),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
