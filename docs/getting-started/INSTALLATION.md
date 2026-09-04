@@ -339,9 +339,18 @@ npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinsta
 Installation verified successfully!
 ```
 
-You do **not** need to run `npm install-scripts approve`. None of the four scripts do anything nexus-agents requires: two verify a prebuilt grammar that already ships inside its own tarball, one is literally `echo`, and the fourth arrives transitively. Approving them is harmless but buys nothing.
+**You do not need to approve them.** None of the four scripts do anything nexus-agents requires: two verify a prebuilt grammar that already ships inside its own tarball, one is literally `echo`, and the fourth arrives transitively. Approving them is harmless but buys nothing.
 
-nexus-agents cannot silence this from its own side — `allowScripts` is deliberately consumer-side, so a published library cannot pre-approve its dependencies' scripts. The only way to remove the warning is to stop depending on packages that declare install scripts at all, which is tracked in [#5435](https://github.com/nexus-substrate/nexus-agents/issues/5435) because it would trade away the Gemini adapter and the polyglot scanner from a default install.
+npm suggests different remediation depending on how you installed, so the command it prints at you varies:
+
+| install                                     | what npm suggests                                                                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| into a project (`npm install nexus-agents`) | `npm install-scripts approve <pkg>`, which writes `allowScripts` into _your_ project's `package.json`                                     |
+| globally (`npm install -g nexus-agents`)    | `npm install -g --allow-scripts=<pkgs>` for one install, or `npm config set allow-scripts=<pkgs> --location=user` for all global installs |
+
+Both are consumer-side by design, which is why nexus-agents cannot pre-approve them on your behalf.
+
+The only way to remove the warning from nexus-agents' side is to stop depending on packages that declare install scripts at all, which is tracked in [#5435](https://github.com/nexus-substrate/nexus-agents/issues/5435) because it would trade away the Gemini adapter and the polyglot scanner from a default install.
 
 ## CI/CD Integration
 
