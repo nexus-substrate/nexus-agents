@@ -153,9 +153,15 @@ export function getToolMemory(logger?: ILogger): ToolMemoryManager {
 
 /**
  * Shut down the shared memory instance. Call during server cleanup.
+ *
+ * #5402: this dropped the reference and ended the session but left the
+ * auto-decay interval running, so the manager it closes over stayed resident and
+ * the event loop stayed held. A `shutdown` that leaves its subsystem running is
+ * a false statement in the code — the next reader has to run it to find out.
  */
 export function shutdownToolMemory(): void {
   if (sharedInstance !== null) {
+    sharedInstance.shutdownDecay();
     sharedInstance.endSession();
     sharedInstance = null;
   }
@@ -418,6 +424,16 @@ export class ToolMemoryManager {
   }
 
   /** Initialize coordinated decay manager (Phase 5 #746). */
+  /**
+   * Stop the auto-decay interval this instance started (#5402).
+   *
+   * Separate from `endSession`, which ends the RECORDED session; this releases
+   * the background timer. Idempotent — safe when decay never started.
+   */
+  shutdownDecay(): void {
+    this.decayManager?.stopAutoDecay();
+  }
+
   private initDecayManager(): void {
     try {
       this.decayManager = new MemoryDecayManager({}, this.log);
