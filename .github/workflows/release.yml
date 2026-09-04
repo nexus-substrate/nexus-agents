@@ -356,26 +356,62 @@ jobs:
       - name: Upload SBOM to GitHub Release
         # changesets/action creates the GitHub release itself via
         # @changesets/changelog-github; it does NOT expose an `uploadUrl`
-        # output. Derive the release tag from publishedPackages and use
-        # `gh release upload` which looks up the release by tag.
-        # (#1841 follow-up; SPDX dropped — CycloneDX is dominant for npm.)
+        # output, so the release is found by tag. (#1841 follow-up.)
+        #
+        # #5450: this step had NEVER uploaded anything. It read
+        # `steps.changesets.outputs.publishedPackages` — the v1 output name —
+        # and v2 calls it `published-packages`, so the tag came out empty on
+        # every normal publish, the step warned "skipping", and exited 0 as a
+        # success. No release from 8.5.0 through 8.6.1 carries an SBOM, while
+        # "Attest SBOM" signed one into Rekor each time. The #4473 comment above
+        # warns about exactly this v1→v2 rename trap for the INPUTS.
+        #
+        # The tag is now derived from packages/nexus-agents/package.json — the
+        # committed version this run published, on both the changesets path
+        # and the fallback path — and cross-checked against the action output
+        # when it is present. A publish happened (`published == 'true'` gated
+        # us in), so a tag that cannot be derived, a release that does not
+        # exist, or an upload that does not land is an ERROR, not a skip.
         if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Prefer changesets/action's output; fall back to the synthesized
-          # output from the race-recovery step.
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages || steps.fallback-publish.outputs.publishedPackages }}
+          # v2's real output name is hyphenated. The synthesized fallback keeps
+          # the camelCase name it always had.
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs['published-packages'] || steps.fallback-publish.outputs.publishedPackages }}
+          SBOM: ${{ runner.temp }}/sbom/sbom.cdx.json
         run: |
           set -euo pipefail
-          # publishedPackages is a JSON array: [{"name": "...", "version": "..."}]
-          TAG=$(printf '%s' "$PUBLISHED_PACKAGES" \
-            | jq -r '.[] | select(.name == "nexus-agents") | "\(.name)@\(.version)"')
-          if [[ -z "$TAG" ]]; then
-            echo "::warning::nexus-agents not in publishedPackages; skipping SBOM upload"
-            exit 0
+          VERSION=$(jq -r '.version' packages/nexus-agents/package.json)
+          if [[ -z "$VERSION" || "$VERSION" == "null" ]]; then
+            echo "::error::cannot read packages/nexus-agents/package.json version; refusing to guess the release tag (#5450)"
+            exit 1
+          fi
+          TAG="nexus-agents@${VERSION}"
+
+          # Cross-check, never a source: if the action DID report what it
+          # published, it must agree with package.json.
+          if [[ -n "${PUBLISHED_PACKAGES:-}" ]]; then
+            REPORTED=$(printf '%s' "$PUBLISHED_PACKAGES" \
+              | jq -r '.[] | select(.name == "nexus-agents") | .version' 2>/dev/null || true)
+            if [[ -n "$REPORTED" && "$REPORTED" != "$VERSION" ]]; then
+              echo "::error::published-packages reports nexus-agents@${REPORTED} but package.json is ${VERSION} (#5450)"
+              exit 1
+            fi
+          fi
+
+          if ! gh release view "$TAG" --json tagName >/dev/null 2>&1; then
+            echo "::error::no GitHub release found for ${TAG}; the SBOM has nothing to attach to (#5450)"
+            exit 1
           fi
           echo "Uploading SBOM to release tag: $TAG"
-          gh release upload "$TAG" "${RUNNER_TEMP}/sbom/sbom.cdx.json" --clobber
+          gh release upload "$TAG" "$SBOM" --clobber
+
+          # The check that would have caught #5450: the asset is on the release.
+          if ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx 'sbom.cdx.json'; then
+            echo "::error::upload reported success but ${TAG} lists no sbom.cdx.json asset (#5450)"
+            exit 1
+          fi
+          echo "SBOM attached to ${TAG}"
 
       - name: Attest SBOM
         if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
