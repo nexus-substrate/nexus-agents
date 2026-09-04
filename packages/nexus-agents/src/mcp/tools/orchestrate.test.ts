@@ -2,7 +2,11 @@
  * nexus-agents/mcp - Orchestrate Tool Tests
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import type { Result, ILogger, Task, TaskResult } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';
 import { RateLimiter } from '../middleware/index.js';
@@ -13,6 +17,7 @@ import {
   createMockOrchestrator,
   createTaskFromInput,
   mapPatternToOrchestratorType,
+  registerOrchestrateTool,
   type OrchestrateDeps,
   type OrchestrateInput,
 } from './orchestrate.js';
@@ -866,5 +871,114 @@ describe('createTaskFromInput — prior-memory wiring (#2921)', () => {
     const content = task.context.history?.[0]?.content ?? '';
     expect(content).toContain('[truncated]');
     expect(content.length).toBeLessThan(9000);
+  });
+});
+
+// ============================================================================
+// NEXUS_CONTEXT_RETRIEVER_INJECT at the orchestrate entry point (#2921, #5155)
+//
+// Drives the registered handler so the private injectMemoryContextForOrchestrate
+// gate is exercised end to end: flag on → the summary reaches the task the
+// orchestrator receives, as a prior-memory history entry. The gate read the
+// literal `1` only, so `true` was silently off (#5155).
+// ============================================================================
+
+describe('orchestrate handler — NEXUS_CONTEXT_RETRIEVER_INJECT accept-set (#5155)', () => {
+  type RegisteredCallback = (args: unknown) => Promise<unknown>;
+  const prevInject = process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+  const prevDataDir = process.env['NEXUS_DATA_DIR'];
+  let dataDir: string;
+  /** Spies installed by a test, restored in afterEach. */
+  const spies: { mockRestore(): void }[] = [];
+  const COMPLEX_TASK =
+    'Design and implement a distributed authentication service: OAuth2 login, ' +
+    'refresh-token rotation, per-tenant rate limiting, a tamper-evident audit log, ' +
+    'a zero-downtime migration of the existing user database across three regions, ' +
+    'integration tests for every failure mode, and a security review of the whole design.';
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'orchestrate-inject-'));
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    for (const spy of spies.splice(0)) spy.mockRestore();
+    if (prevInject === undefined) delete process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+    else process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = prevInject;
+    if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+    resetNexusDataDirCache();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  /** Runs the real handler with a stub orchestrator; returns the Task it received. */
+  async function taskSeenByOrchestrator(flagValue: string | undefined): Promise<Task> {
+    const retriever = await import('../../context/context-retriever.js');
+    // Empty-but-shaped: the handler's debug log reads `ctx.beliefs.length` etc.
+    // before the gate, so a bare `{}` would throw into the fail-soft catch and
+    // the flag-on case could never inject — the test would fail for the wrong
+    // reason. The summary itself comes from the mocked summarizer below.
+    spies.push(
+      vi.spyOn(retriever, 'getContextForTask').mockResolvedValue({
+        beliefs: [],
+        similarMemories: [],
+        recentLearnings: [],
+        experiencePatterns: [],
+        outcomes: null,
+        priorStrategies: [],
+        researchInsights: [],
+        rankedMemories: [],
+      }),
+      vi
+        .spyOn(retriever, 'summarizeContextForPrompt')
+        .mockReturnValue('### Beliefs\n- prior: prefer X over Y')
+    );
+    if (flagValue === undefined) delete process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+    else process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = flagValue;
+
+    const orchestrator = createCustomMockOrchestrator(createSuccessResult('inject-task'));
+    let captured: RegisteredCallback | undefined;
+    const server = {
+      registerTool: vi.fn((_name: string, _config: unknown, cb: RegisteredCallback) => {
+        captured = cb;
+      }),
+    };
+    const notifier = { info: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+    registerOrchestrateTool(server as never, {
+      orchestrator: orchestrator as unknown as NonNullable<OrchestrateDeps['orchestrator']>,
+      logger: createMockLogger(),
+      rateLimiter: createTestRateLimiter(),
+      notifier,
+    });
+    if (captured === undefined) throw new Error('handler was never registered');
+    // Non-trivial on purpose: a task the router classifies as `simple` takes
+    // the fast path and never reaches the orchestrator, so the injection would
+    // be unobservable (a control that certifies without measuring).
+    await captured({ task: COMPLEX_TASK, maxIterations: 1 });
+
+    const execute = orchestrator.execute as Mock;
+    expect(execute).toHaveBeenCalledTimes(1);
+    // The orchestrator receives an OrchestratorDefinition `{ type: 'task', task }`.
+    return (execute.mock.calls[0]?.[0] as { task: Task }).task;
+  }
+
+  function priorMemoryEntry(task: Task): string | undefined {
+    return task.context.history?.[0]?.content;
+  }
+
+  it('injects the summary when the flag is "true" (was silently off)', async () => {
+    const task = await taskSeenByOrchestrator('true');
+    expect(priorMemoryEntry(task)).toContain('prefer X over Y');
+  });
+
+  it('injects the summary for the original spelling "1"', async () => {
+    const task = await taskSeenByOrchestrator('1');
+    expect(priorMemoryEntry(task)).toContain('prefer X over Y');
+  });
+
+  it('does not inject when the flag is unset (default off)', async () => {
+    const task = await taskSeenByOrchestrator(undefined);
+    expect(priorMemoryEntry(task)).toBeUndefined();
   });
 });

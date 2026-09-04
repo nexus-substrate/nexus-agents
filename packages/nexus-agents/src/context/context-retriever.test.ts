@@ -943,8 +943,11 @@ describe('getContextPromptPrefix', () => {
     expect(await getContextPromptPrefix('any task')).toBeUndefined();
   });
 
-  it('returns undefined when the flag is a non-1 value', async () => {
-    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = 'true';
+  it('returns undefined when the flag is explicitly off ("0")', async () => {
+    // Previously pinned `'true'` → undefined as intended behaviour (#5155):
+    // the gate read `!== '1'`, so the boolean spelling was silently off. The
+    // `'true'` → enabled case now lives in the flag-matrix block below.
+    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '0';
     expect(await getContextPromptPrefix('any task')).toBeUndefined();
   });
 });
@@ -1000,6 +1003,15 @@ describe('getContextPromptPrefix — ranked × inject flag matrix (#3236)', () =
     expect(out).toBeDefined();
     expect(out).toContain('### Most relevant prior context');
     expect(out).not.toContain('### Beliefs');
+  });
+
+  it('inject "true" + ranked-off → renders the block, same as "1" (#5155)', async () => {
+    await seedBelief();
+    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = 'true';
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = await getContextPromptPrefix('authentication token refresh');
+    expect(out).toBeDefined();
+    expect(out).toContain('### Beliefs');
   });
 
   it('inject-on + ranked-off → renders the legacy per-section block', async () => {

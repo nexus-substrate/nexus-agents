@@ -129,6 +129,28 @@ describe('buildChildEnv (#2865)', () => {
     expect(env['CLAUDECODE']).toBeUndefined();
   });
 
+  it('escape hatch: NEXUS_SUBPROCESS_ENV_ALLOWLIST=false also restores full passthrough (#5155)', () => {
+    // `false` used to be silently ignored — only the literal `0` was read —
+    // so an operator spelling the hatch as a boolean kept the allowlist on.
+    vi.stubEnv('NEXUS_SUBPROCESS_ENV_ALLOWLIST', 'false');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws');
+    const env = buildChildEnv('gemini');
+    expect(env['ANTHROPIC_API_KEY']).toBe('sk-ant');
+    expect(env['AWS_SECRET_ACCESS_KEY']).toBe('aws');
+  });
+
+  it('allowlist stays ON when NEXUS_SUBPROCESS_ENV_ALLOWLIST is unset or "1" (default-true)', () => {
+    // Panel condition for the default-true flags: routing through the shared
+    // parser must not flip the unset case. `1` (and `true`) mean "keep the
+    // allowlist", the same as unset.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant');
+    for (const value of [undefined, '1', 'true']) {
+      vi.stubEnv('NEXUS_SUBPROCESS_ENV_ALLOWLIST', value);
+      expect(buildChildEnv('gemini')['ANTHROPIC_API_KEY']).toBeUndefined();
+    }
+  });
+
   it('vendor-key map covers every CliName with non-empty keys', () => {
     const map = getCliVendorKeys();
     for (const cli of ['claude', 'gemini', 'codex', 'opencode'] as const) {

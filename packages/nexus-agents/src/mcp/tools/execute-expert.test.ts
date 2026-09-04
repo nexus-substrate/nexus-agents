@@ -708,6 +708,24 @@ describe('maybeFetchContextPrefix gate (#3238)', () => {
     expect(await maybeFetchContextPrefix('any task', undefined)).toBeUndefined();
   });
 
+  it('fetches the prefix when the flag is "true" as well as "1" (#5155)', async () => {
+    // `true` used to fall through the `!== '1'` gate — silently off.
+    const retriever = await import('../../context/context-retriever.js');
+    const fetchSpy = vi.spyOn(retriever, 'getContextForTask').mockResolvedValue({} as never);
+    const summarizeSpy = vi
+      .spyOn(retriever, 'summarizeContextForPrompt')
+      .mockReturnValue('### Beliefs\n- prior: prefer X');
+    try {
+      for (const value of ['true', '1']) {
+        process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = value;
+        expect(await maybeFetchContextPrefix('some task', undefined)).toContain('prefer X');
+      }
+    } finally {
+      fetchSpy.mockRestore();
+      summarizeSpy.mockRestore();
+    }
+  });
+
   it('retrieval failure → observable WARN + continues without prefix (#3699)', async () => {
     process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '1';
     const retriever = await import('../../context/context-retriever.js');

@@ -88,7 +88,9 @@ const NexusEnvSchema = z.object({
   NEXUS_RETRY_JITTER: floatStr.optional(),
 
   // --- Rate Limit ---
-  NEXUS_RATE_LIMIT_ENABLED: boolStr.optional(),
+  // Read via parseBoolEnv (config/defaults-env.ts), so `1`/`0` work at runtime;
+  // the strict `boolStr` shape reported them invalid. Caught by the #5155 ratchet.
+  NEXUS_RATE_LIMIT_ENABLED: boolLooseStr.optional(),
   NEXUS_RATE_LIMIT_RPM: positiveIntStr.optional(),
   NEXUS_RATE_LIMIT_MAX_CONCURRENT: positiveIntStr.optional(),
   NEXUS_RATE_LIMIT_CAPACITY: positiveIntStr.optional(),
@@ -236,6 +238,14 @@ const NexusEnvSchema = z.object({
   NEXUS_NO_SCAFFOLD: boolLooseStr.optional(),
   NEXUS_TUNE_ENFORCE: boolLooseStr.optional(),
   NEXUS_VERSION_CHECK: boolLooseStr.optional(),
+  // #5155: these five each read a single private literal (`=== '1'`,
+  // `=== 'true'`, `=== '0'`) so the other spelling was a silent no-op. They
+  // now go through the same helper, so the schema tells the truth about them.
+  NEXUS_BUDGET_ENFORCE: boolLooseStr.optional(),
+  NEXUS_CONTEXT_RETRIEVER_INJECT: boolLooseStr.optional(),
+  NEXUS_DYNAMIC_MODELS: boolLooseStr.optional(),
+  NEXUS_GITIGNORE_AUTO: boolLooseStr.optional(),
+  NEXUS_SUBPROCESS_ENV_ALLOWLIST: boolLooseStr.optional(),
 
   // Lowercased before parsing, so mixed case is genuinely accepted.
   NEXUS_REPUTATION_GATING: z

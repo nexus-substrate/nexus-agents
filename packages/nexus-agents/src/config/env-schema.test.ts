@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import { dirname, join } from 'node:path';
@@ -496,5 +496,111 @@ describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#51
     // nothing and got a warning naming a spelling they had never seen.
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
     expect(CONFIG_MD).toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+  });
+});
+
+// =============================================================================
+// Every parseBoolEnv / parseBoolValue consumer is registered with the
+// boolLooseStr shape (#5155)
+// =============================================================================
+
+describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => {
+  // The #5142 coverage gate (scripts/check-env-schema-coverage.ts) proves a
+  // flag the code reads is REGISTERED; it says nothing about the accept-set.
+  // A boolean flag registered as strict `boolStr` (`true|false`) would report
+  // `NEXUS_X=1` invalid while the helper accepts it — and one registered as a
+  // free string would tell the user `yes` works when the helper discards it.
+  // So this reads the actual call sites and probes each name against the
+  // schema for the exact helper accept-set: `TRUE` in, `yes` out.
+  const SRC = join(REPO_ROOT, 'packages/nexus-agents/src');
+
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        out.push(...sourceFiles(full));
+        continue;
+      }
+      if (!entry.endsWith('.ts') || entry.includes('.test.') || entry.includes('.spec.')) continue;
+      out.push(full);
+    }
+    return out;
+  }
+
+  /**
+   * Names passed to the shared boolean parsers. Three shapes are resolved:
+   * a literal (`parseBoolEnv('NEXUS_X', …)`), a same-file constant
+   * (`const FLAG = 'NEXUS_X'` … `parseBoolEnv(FLAG, …)`), and the injected-env
+   * form (`parseBoolValue(source['NEXUS_X'], …)`). A constant imported from
+   * another module is not resolved — that shape has no instance today.
+   */
+  function boolFlagNamesIn(source: string): string[] {
+    const constants = new Map<string, string>();
+    for (const m of source.matchAll(/^(?:export )?const (\w+)\s*=\s*'(NEXUS_[A-Z0-9_]+)'/gm)) {
+      if (m[1] !== undefined && m[2] !== undefined) constants.set(m[1], m[2]);
+    }
+    const names: string[] = [];
+    for (const m of source.matchAll(/parseBoolEnv\(\s*(?:'(NEXUS_[A-Z0-9_]+)'|(\w+))\s*,/g)) {
+      const name = m[1] ?? (m[2] !== undefined ? constants.get(m[2]) : undefined);
+      if (name !== undefined) names.push(name);
+    }
+    for (const m of source.matchAll(/parseBoolValue\(\s*\w+\['(NEXUS_[A-Z0-9_]+)'\]/g)) {
+      if (m[1] !== undefined) names.push(m[1]);
+    }
+    return names;
+  }
+
+  function boolFlagCallSites(): Map<string, string[]> {
+    const sites = new Map<string, string[]>();
+    for (const file of sourceFiles(SRC)) {
+      for (const name of boolFlagNamesIn(readFileSync(file, 'utf8'))) {
+        sites.set(name, [...(sites.get(name) ?? []), file]);
+      }
+    }
+    return sites;
+  }
+
+  const KNOWN_SITES = boolFlagCallSites();
+
+  it('finds the call sites it is checking against', () => {
+    // Guard the guard: a regex that matched nothing would pass the assertions
+    // below over an empty set. The five #5155 flags plus the four registered
+    // earlier are the floor.
+    expect(KNOWN_SITES.size).toBeGreaterThanOrEqual(9);
+    expect([...KNOWN_SITES.keys()]).toEqual(
+      expect.arrayContaining([
+        'NEXUS_BUDGET_ENFORCE',
+        'NEXUS_DYNAMIC_MODELS',
+        'NEXUS_CONTEXT_RETRIEVER_INJECT',
+        'NEXUS_GITIGNORE_AUTO',
+        'NEXUS_SUBPROCESS_ENV_ALLOWLIST',
+      ])
+    );
+  });
+
+  it('registers every consumer name with the exact helper accept-set', () => {
+    const schemaKeys = new Set(getKnownNexusVarNames());
+    const unregistered: string[] = [];
+    const wrongShape: string[] = [];
+
+    for (const [name, files] of KNOWN_SITES) {
+      if (!schemaKeys.has(name)) {
+        unregistered.push(`${name} (${files.map((f) => f.replace(`${SRC}/`, '')).join(', ')})`);
+        continue;
+      }
+      // Probe the registered shape rather than reading the source: `TRUE` must
+      // be accepted (the helper lowercases) and `yes` must be rejected (the
+      // helper discards it).
+      vi.stubEnv(name, 'TRUE');
+      const acceptsUpper = !validateNexusEnv().invalidVars.some((v) => v.name === name);
+      vi.stubEnv(name, 'yes');
+      const rejectsYes = validateNexusEnv().invalidVars.some((v) => v.name === name);
+      vi.unstubAllEnvs();
+      if (!acceptsUpper || !rejectsYes) wrongShape.push(name);
+    }
+
+    expect(unregistered).toEqual([]);
+    expect(wrongShape).toEqual([]);
   });
 });

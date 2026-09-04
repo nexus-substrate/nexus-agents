@@ -11,15 +11,16 @@
  *  - every adapter that implements `listModels()` (opencode + SDK adapters),
  *    named by its CLI so `getCandidateCliNames` CAN filter on it.
  *
- * Opt-in: gated by `NEXUS_DYNAMIC_MODELS` (default OFF for the initial ship; the
- * flag flips ON in a follow-up once telemetry + QA confirm it, per the project's
- * gated default-off→on discipline). Every source is fail-OPEN — a failing probe
+ * Opt-in: gated by the boolean `NEXUS_DYNAMIC_MODELS` (`true`/`1`; default OFF
+ * for the initial ship; the flag flips ON in a follow-up once telemetry + QA
+ * confirm it, per the project's gated default-off→on discipline). Every source is fail-OPEN — a failing probe
  * yields `[]`, never an exception, so registration can never wedge routing.
  *
  * @module config/register-model-sources
  */
 
 import { createOpenRouterModelsSource } from './openrouter-models-source.js';
+import { parseBoolEnv } from './defaults-env.js';
 import { routingArmDisplaySlot } from '../cli-adapters/types.js';
 import type { RoutingArmId } from '../cli-adapters/types.js';
 
@@ -27,7 +28,7 @@ import type { AvailableModelsCache, AvailableModelsSource } from './available-mo
 
 /** Whether dynamic model discovery is enabled (opt-in; default OFF). */
 export function isDynamicModelsEnabled(): boolean {
-  return process.env['NEXUS_DYNAMIC_MODELS'] === 'true';
+  return parseBoolEnv('NEXUS_DYNAMIC_MODELS', false);
 }
 
 /** Minimal structural view of an adapter that can list its models. */
