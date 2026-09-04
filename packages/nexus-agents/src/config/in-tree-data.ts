@@ -295,9 +295,9 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     {
       id: 'codex-5.2',
-      displayName: 'GPT-5.2-Codex',
+      displayName: 'GPT-5.3 Codex Spark',
       provider: 'openai',
-      contextWindow: 272_000,
+      contextWindow: 128_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'pdf', 'code'],
       toolCapabilities: [
@@ -314,20 +314,27 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'No native image/audio/video generation',
         'Network access restricted in sandbox',
       ],
-      notes: 'Best code generation; 272K context; sandboxed execution environment',
+      // #5091: repointed from gpt-5.2-codex, which codex 0.146.0 no longer
+      // serves (~/.codex/models_cache.json visibility=list). Context window,
+      // max output and pricing are models.dev's figures for this slug
+      // (snapshot 2026-08-31). Quality scores are the codex arm's tier
+      // positions carried over from the replaced entry, not a measurement of
+      // this slug; `cost` is unchanged because the price is identical.
+      notes:
+        'GPT-5.3 Codex Spark (models.dev 2026-08-31); fast codex-tuned tier below GPT-5.4; 128K context; sandboxed execution environment',
       pricing: { inputPer1M: 1.75, outputPer1M: 14.0 },
       qualityScores: { reasoning: 9, codeGeneration: 10, speed: 8, cost: 7 },
-      maxOutputTokens: 100_000,
+      maxOutputTokens: 32_000,
       cliName: 'codex',
-      cliModelName: 'gpt-5.2-codex',
+      cliModelName: 'gpt-5.3-codex-spark',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },
     {
       id: 'codex-5.1-mini',
-      displayName: 'GPT-5.1-Mini-Codex',
+      displayName: 'GPT-5.4 Mini',
       provider: 'openai',
-      contextWindow: 200_000,
+      contextWindow: 400_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'code'],
       toolCapabilities: [
@@ -339,12 +346,20 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       ],
       specialFeatures: ['streaming'],
       constraints: ['Sandboxed execution only', 'No native image/audio/video generation'],
-      notes: 'Compact Codex variant; fast and cost-effective for code tasks; o3-mini backbone',
-      pricing: { inputPer1M: 1.1, outputPer1M: 4.4 },
-      qualityScores: { reasoning: 7, codeGeneration: 8, speed: 9, cost: 7 },
-      maxOutputTokens: 100_000,
+      // #5091: repointed from o3-mini, which codex 0.146.0 no longer serves
+      // (~/.codex/models_cache.json visibility=list). Context window, max
+      // output and pricing are models.dev's figures for this slug (snapshot
+      // 2026-08-31). Quality scores are the codex arm's tier positions carried
+      // over from the replaced entry, not a measurement of this slug; `cost`
+      // follows the registry's own price scale ($1/$5 haiku and $0.5/$3
+      // gemini-3-flash both score 9, and $0.75/$4.5 sits between them).
+      notes:
+        'GPT-5.4 Mini (models.dev 2026-08-31); compact codex tier; fast and cost-effective for code tasks; 400K context',
+      pricing: { inputPer1M: 0.75, outputPer1M: 4.5 },
+      qualityScores: { reasoning: 7, codeGeneration: 8, speed: 9, cost: 9 },
+      maxOutputTokens: 128_000,
       cliName: 'codex',
-      cliModelName: 'o3-mini',
+      cliModelName: 'gpt-5.4-mini',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },

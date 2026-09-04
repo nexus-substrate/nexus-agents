@@ -13,6 +13,16 @@ import { getDefaultModelForCli, getCliModelName } from '../../config/model-confi
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('codex'));
 
+/** A minimal successful `codex exec --json` stream. */
+const COMPLETED_NDJSON = [
+  JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+  JSON.stringify({
+    type: 'item.completed',
+    item: { id: 'item-1', type: 'agent_message', text: 'Done!' },
+  }),
+  JSON.stringify({ type: 'turn.completed' }),
+].join('\n');
+
 // Hoist the mock function so it's available during vi.mock()
 const mockExecAsync = vi.hoisted(() => vi.fn());
 
@@ -150,14 +160,16 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(info.costPerMillionOutput).toBe(30.0);
     });
 
-    it('should return correct info for o3-mini model (from registry)', () => {
-      const miniAdapter = new CodexCliAdapter({ model: 'o3-mini' });
+    it('should return correct info for gpt-5.4-mini model (from registry)', () => {
+      const miniAdapter = new CodexCliAdapter({ model: 'gpt-5.4-mini' });
       const info = miniAdapter.getModelInfo();
 
-      expect(info.id).toBe('o3-mini');
-      // o3-mini maps to codex-5.1-mini in registry: pricing {1.1, 4.4}
-      expect(info.costPerMillionInput).toBe(1.1);
-      expect(info.costPerMillionOutput).toBe(4.4);
+      expect(info.id).toBe('gpt-5.4-mini');
+      // gpt-5.4-mini is codex-5.1-mini's cliModelName since #5091 (o3-mini is no
+      // longer served by codex): models.dev pricing {0.75, 4.5}, 400K context.
+      expect(info.costPerMillionInput).toBe(0.75);
+      expect(info.costPerMillionOutput).toBe(4.5);
+      expect(info.contextWindow).toBe(400_000);
     });
 
     it('should return legacy costs for non-canonical model', () => {
@@ -280,6 +292,52 @@ describe('CodexCliAdapter (Subprocess)', () => {
       const args = calls[0]?.[1] as string[];
       expect(args).toContain('-m');
       expect(args).toContain('o3-mini');
+    });
+
+    // #5091: task.model carries the canonical registry id (resolve-model-for-tier →
+    // composite-router → orchestrate-command), which the codex binary rejects.
+    it('translates a registry id in task.model to the codex slug (#5091)', async () => {
+      const mockProcess = createMockProcess(COMPLETED_NDJSON);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      await adapter.execute({ content: 'Task', model: 'codex-5.3' });
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.4');
+      expect(args).not.toContain('codex-5.3');
+    });
+
+    it('passes a task.model that is already a codex slug through unchanged (#5091)', async () => {
+      const mockProcess = createMockProcess(COMPLETED_NDJSON);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      await adapter.execute({ content: 'Task', model: 'gpt-5.4' });
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.4');
+    });
+
+    it('passes a model unknown to the registry through verbatim and warns (#5091)', async () => {
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+        setLevel: vi.fn(),
+      };
+      const loggedAdapter = new CodexCliAdapter({ logger: mockLogger });
+      const mockProcess = createMockProcess(COMPLETED_NDJSON);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      await loggedAdapter.execute({ content: 'Task', model: 'codex-unknown-xyz' });
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args[args.indexOf('-m') + 1]).toBe('codex-unknown-xyz');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('not in the model registry'),
+        expect.objectContaining({ model: 'codex-unknown-xyz' })
+      );
     });
 
     it('should include -m flag with model when model is specified', async () => {

@@ -17,11 +17,13 @@ import {
   getCliModelName,
   resolveCliAlias,
   findCanonicalModel,
+  resolveCliModelName,
   buildModelInfo,
   buildCapabilityProfiles,
   buildCliCapabilityProfiles,
   buildTopsisProfiles,
   buildMockModelInfo,
+  findInTreeByCli,
   resolveModelCostPer1M,
   resolveCliCostPer1M,
 } from './model-config-helpers.js';
@@ -377,6 +379,113 @@ describe('resolveCliCostPer1M', () => {
       const c = resolveCliCostPer1M(cli);
       expect(c.input).toBeGreaterThan(0);
       expect(c.output).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
+// resolveCliModelName (#5091)
+// ============================================================================
+
+describe('resolveCliModelName', () => {
+  it('translates a canonical registry id to the cliModelName the binary expects', () => {
+    // codex-5.3 is the registry id; gpt-5.4 is what `codex -m` accepts.
+    expect(resolveCliModelName('codex', 'codex-5.3')).toBe('gpt-5.4');
+  });
+
+  it('passes a value that is already a cliModelName through unchanged', () => {
+    expect(resolveCliModelName('codex', 'gpt-5.4')).toBe('gpt-5.4');
+  });
+
+  it('translates a cliAlias to the cliModelName', () => {
+    expect(resolveCliModelName('claude', 'opus')).toBe('claude-opus-4-6');
+  });
+
+  it('translates a legacy aliases[] name to the cliModelName', () => {
+    expect(resolveCliModelName('claude', 'claude-opus-4')).toBe('claude-opus-4-6');
+  });
+
+  it('returns undefined for a model the registry does not know under that CLI', () => {
+    expect(resolveCliModelName('codex', 'nonexistent-model')).toBeUndefined();
+  });
+
+  it('returns undefined when the id belongs to a different CLI', () => {
+    // codex-5.3 is a codex entry; asking the gemini arm must not translate it.
+    expect(resolveCliModelName('gemini', 'codex-5.3')).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Codex registry entries (#5091)
+// ============================================================================
+
+describe('codex registry entries (#5091)', () => {
+  // Verified against ~/.codex/models_cache.json (codex 0.146.0, visibility=list):
+  // gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-mini,
+  // gpt-5.3-codex-spark. `gpt-5.2-codex` and `o3-mini` are not served.
+  it.each([
+    ['codex-5.3', 'gpt-5.4'],
+    ['codex-5.2', 'gpt-5.3-codex-spark'],
+    ['codex-5.1-mini', 'gpt-5.4-mini'],
+  ] as const)('%s → cliModelName %s (a slug codex serves)', (id, slug) => {
+    expect(getCliModelName(id)).toBe(slug);
+  });
+
+  /** The codex entry for `slug`, failing the test (not the type) when absent. */
+  function codexEntry(slug: string): NonNullable<ReturnType<typeof findCanonicalModel>> {
+    const entry = findCanonicalModel('codex', slug);
+    if (entry === undefined) throw new Error(`no codex entry for ${slug}`);
+    return entry;
+  }
+
+  it('describes the slug it points at, not the one it replaced', () => {
+    const spark = codexEntry('gpt-5.3-codex-spark');
+    expect(spark.displayName).toBe('GPT-5.3 Codex Spark');
+    expect(spark.contextWindow).toBe(128_000);
+    expect(spark.maxOutputTokens).toBe(32_000);
+    expect(spark.pricing).toEqual({ inputPer1M: 1.75, outputPer1M: 14.0 });
+    expect(spark.notes).not.toMatch(/5\.2/);
+
+    const mini = codexEntry('gpt-5.4-mini');
+    expect(mini.displayName).toBe('GPT-5.4 Mini');
+    expect(mini.contextWindow).toBe(400_000);
+    expect(mini.maxOutputTokens).toBe(128_000);
+    expect(mini.pricing).toEqual({ inputPer1M: 0.75, outputPer1M: 4.5 });
+    expect(mini.notes).not.toMatch(/o3/);
+  });
+
+  /** cliModelName → ids of every in-tree entry (any CLI) that claims it. */
+  function ownersByCliModelName(): Map<string, string[]> {
+    const owners = new Map<string, string[]>();
+    for (const cli of CLI_NAMES) {
+      for (const entry of findInTreeByCli(cli)) {
+        if (entry.cliModelName === undefined) continue;
+        owners.set(entry.cliModelName, [...(owners.get(entry.cliModelName) ?? []), entry.id]);
+      }
+    }
+    return owners;
+  }
+
+  it('every codex cliModelName is unique across the whole in-tree registry', () => {
+    const codex = findInTreeByCli('codex');
+    // Name the empty case: with no codex entries there is nothing to compare,
+    // and `[].every` would report the uniqueness claim as satisfied.
+    expect(codex.length).toBeGreaterThan(0);
+
+    const owners = ownersByCliModelName();
+    for (const entry of codex) {
+      const slug = entry.cliModelName ?? '';
+      expect(slug).not.toBe('');
+      const ids = owners.get(slug) ?? [];
+      expect(ids, `${slug} owned by ${ids.join(', ')}`).toEqual([entry.id]);
+    }
+  });
+
+  it('no codex entry collides with the gpt-5.5 entry the panel kept distinct', () => {
+    const others = findInTreeByCli('codex').filter((e) => e.id !== 'gpt-5.5');
+    expect(others.length).toBeGreaterThan(0);
+    for (const entry of others) {
+      expect(entry.cliModelName).not.toBe(getCliModelName('gpt-5.5'));
     }
   });
 });

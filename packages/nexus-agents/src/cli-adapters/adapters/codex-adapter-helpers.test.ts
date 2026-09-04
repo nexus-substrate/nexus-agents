@@ -7,12 +7,14 @@
  * @module cli-adapters/adapters/codex-adapter-helpers.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
+import type { ILogger } from '../../core/logger.js';
 import type {} from '../types.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   createCodexError,
   normalizeCodexResponse,
+  toCodexModelSlug,
 } from './codex-adapter-helpers.js';
 
 // ============================================================================
@@ -97,5 +99,46 @@ describe('normalizeCodexResponse', () => {
     const response = normalizeCodexResponse('Hello', undefined, { model: 'o3' });
     expect(response.text).toBe('Hello');
     expect(response.model).toBe('o3');
+  });
+});
+
+// ============================================================================
+// toCodexModelSlug (#5091)
+// ============================================================================
+
+function mockLogger(): { logger: ILogger; warn: Mock<ILogger['warn']> } {
+  const warn = vi.fn<ILogger['warn']>();
+  const logger: ILogger = {
+    debug: vi.fn<ILogger['debug']>(),
+    info: vi.fn<ILogger['info']>(),
+    warn,
+    error: vi.fn<ILogger['error']>(),
+    child: vi.fn<ILogger['child']>(),
+    setLevel: vi.fn<ILogger['setLevel']>(),
+  };
+  return { logger, warn };
+}
+
+describe('toCodexModelSlug', () => {
+  it('translates a canonical registry id to the slug codex accepts, without warning', () => {
+    const { logger, warn } = mockLogger();
+    expect(toCodexModelSlug('codex-5.3', logger)).toBe('gpt-5.4');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('passes an already-valid slug through unchanged, without warning', () => {
+    const { logger, warn } = mockLogger();
+    expect(toCodexModelSlug('gpt-5.4', logger)).toBe('gpt-5.4');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('passes an unknown model through verbatim and warns (fail-open, like claude/opencode)', () => {
+    const { logger, warn } = mockLogger();
+    expect(toCodexModelSlug('codex-unknown-xyz', logger)).toBe('codex-unknown-xyz');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('not in the model registry'),
+      expect.objectContaining({ model: 'codex-unknown-xyz' })
+    );
   });
 });

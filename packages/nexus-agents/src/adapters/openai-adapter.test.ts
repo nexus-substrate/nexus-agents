@@ -854,7 +854,8 @@ describe('OPENAI_MODELS', () => {
     expect(OPENAI_MODELS.GPT_5_2).toBe('gpt-5.2');
     expect(OPENAI_MODELS.GPT_5_2_INSTANT).toBe('gpt-5.2-chat-latest');
     expect(OPENAI_MODELS.GPT_5_2_PRO).toBe('gpt-5.2-pro');
-    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.2-codex');
+    // Registry-derived; codex-5.2 points at gpt-5.3-codex-spark since #5091.
+    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.3-codex-spark');
   });
 
   it('should have correct GPT-4o model identifiers', () => {
@@ -891,7 +892,10 @@ describe('OPENAI_MODEL_ALIASES', () => {
 describe('OPENAI_MODELS — derived constants', () => {
   it('GPT_5_2_CODEX derives from canonical registry codex-5.2 entry', () => {
     // Locks in #2200 Child 3 partial migration: this single overlap with
-    // the CLI registry (codex-5.2's cliModelName) is registry-derived.
-    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.2-codex');
+    // the CLI registry (codex-5.2's cliModelName) is registry-derived. Since
+    // #5091 that entry points at gpt-5.3-codex-spark (gpt-5.2-codex is no
+    // longer served), so the constant's KEY now lags its value — renaming the
+    // key is a public-API change tracked separately.
+    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.3-codex-spark');
   });
 });

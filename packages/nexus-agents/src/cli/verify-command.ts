@@ -15,6 +15,7 @@ import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
 import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
 import { checkNativeGrammars } from './doctor-native-grammars.js';
+import { checkCodexModels } from './doctor-codex-models.js';
 import { probeAllClis } from './cli-auth-probe.js';
 
 /**
@@ -258,6 +259,46 @@ async function checkGrammarAvailability(): Promise<VerifyCheck> {
 }
 
 /**
+ * Checks that every codex registry entry's `cliModelName` is a model the
+ * installed codex serves (#5091). Two of three were dead for months because
+ * nothing read the binary's list; this reads `~/.codex/models_cache.json`.
+ *
+ * `warn`, matching the other environment checks: nexus-agents runs, but every
+ * codex invocation that resolves to a dead slug is rejected. When the cache is
+ * absent the probe reports `unmeasured` — rendered here as a warn whose message
+ * says so, never as a pass, because `VerifyCheck` has no third state and a
+ * pass would claim a measurement that was not taken.
+ */
+function checkCodexModelSlugs(): VerifyCheck {
+  const result = checkCodexModels();
+  if (result.status === 'pass') {
+    return {
+      name: 'Codex Models',
+      passed: true,
+      message: `${String(result.served.length)} codex registry slug(s) served: ${result.served
+        .map((r) => r.cliModelName)
+        .join(', ')}`,
+    };
+  }
+  if (result.status === 'warn') {
+    return {
+      name: 'Codex Models',
+      passed: false,
+      severity: 'warn',
+      message: result.reason ?? 'codex registry slug(s) not served',
+      fix: 'Refresh the codex entries in config/in-tree-data.ts against ~/.codex/models_cache.json (visibility=list)',
+    };
+  }
+  return {
+    name: 'Codex Models',
+    passed: false,
+    severity: 'warn',
+    message: `unmeasured: ${result.reason ?? 'codex model list unavailable'}`,
+    fix: 'Install codex and run it once so ~/.codex/models_cache.json exists, then re-run verify',
+  };
+}
+
+/**
  * Checks that the nexus-agents data directories (per-repo + cross-repo
  * roots per epic #2872) exist and are writable.
  * `cli-commands.ts::dispatchCommand` initializes them lazily (#1398), so
@@ -351,6 +392,7 @@ export async function runVerify(): Promise<VerifyResult> {
     checkExpertSystem(),
     await checkSqliteAvailability(),
     await checkGrammarAvailability(),
+    checkCodexModelSlugs(),
     checkDataDirs(),
     await checkAdapterAvailability(),
   ];

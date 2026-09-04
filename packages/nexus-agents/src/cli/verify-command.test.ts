@@ -222,6 +222,23 @@ describe('verify-command', () => {
       expect(grammarCheck?.message).toContain('go');
     });
 
+    it('reports Codex Models with a verdict that says what it measured (#5091)', async () => {
+      const result = await runVerify();
+      const codexCheck = result.checks.find((c) => c.name === 'Codex Models');
+
+      expect(codexCheck).toBeDefined();
+      if (codexCheck === undefined) return;
+      // Whether this machine has a codex cache or not, the record must say
+      // which of the three verdicts it reached: a pass names the served slugs,
+      // a warn names the unserved one, and no cache reads as unmeasured.
+      if (codexCheck.passed) {
+        expect(codexCheck.message).toMatch(/served: /);
+      } else {
+        expect(codexCheck.severity).toBe('warn');
+        expect(codexCheck.message).toMatch(/not served|unmeasured/);
+      }
+    });
+
     it('includes Data Directories check', async () => {
       const result = await runVerify();
       const dirCheck = result.checks.find((c) => c.name === 'Data Directories');
@@ -239,6 +256,7 @@ describe('verify-command', () => {
       const warnables = [
         'SQLite Storage',
         'Native Grammars',
+        'Codex Models',
         'Data Directories',
         'Adapter Availability',
       ];

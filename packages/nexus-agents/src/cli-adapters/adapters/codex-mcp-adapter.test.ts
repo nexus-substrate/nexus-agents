@@ -118,14 +118,16 @@ describe('CodexMcpAdapter', () => {
       expect(info.costPerMillionOutput).toBe(30.0);
     });
 
-    it('should return correct info for o3-mini model (from registry)', () => {
-      const miniAdapter = new CodexMcpAdapter({ model: 'o3-mini' });
+    it('should return correct info for gpt-5.4-mini model (from registry)', () => {
+      const miniAdapter = new CodexMcpAdapter({ model: 'gpt-5.4-mini' });
       const info = miniAdapter.getModelInfo();
 
-      expect(info.id).toBe('o3-mini');
-      // o3-mini maps to codex-5.1-mini in registry: pricing {1.1, 4.4}
-      expect(info.costPerMillionInput).toBe(1.1);
-      expect(info.costPerMillionOutput).toBe(4.4);
+      expect(info.id).toBe('gpt-5.4-mini');
+      // gpt-5.4-mini is codex-5.1-mini's cliModelName since #5091 (o3-mini is no
+      // longer served by codex): models.dev pricing {0.75, 4.5}, 400K context.
+      expect(info.costPerMillionInput).toBe(0.75);
+      expect(info.costPerMillionOutput).toBe(4.5);
+      expect(info.contextWindow).toBe(400_000);
     });
   });
 
@@ -279,6 +281,58 @@ describe('CodexMcpAdapter', () => {
           'approval-policy': 'never',
         },
       });
+    });
+
+    it('translates a registry id in task.model to the codex slug (#5091)', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: 'Response' }],
+        }),
+      };
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
+
+      const newAdapter = new CodexMcpAdapter();
+      await newAdapter.execute({ content: 'Test task', model: 'codex-5.3' });
+
+      expect(mockClient.callTool).toHaveBeenCalledWith({
+        name: 'codex',
+        arguments: expect.objectContaining({ model: 'gpt-5.4' }),
+      });
+    });
+
+    it('passes a model unknown to the registry through verbatim and warns (#5091)', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: 'Response' }],
+        }),
+      };
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+        setLevel: vi.fn(),
+      };
+
+      const newAdapter = new CodexMcpAdapter({ logger: mockLogger });
+      await newAdapter.execute({ content: 'Test task', model: 'codex-unknown-xyz' });
+
+      expect(mockClient.callTool).toHaveBeenCalledWith({
+        name: 'codex',
+        arguments: expect.objectContaining({ model: 'codex-unknown-xyz' }),
+      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('not in the model registry'),
+        expect.objectContaining({ model: 'codex-unknown-xyz' })
+      );
     });
 
     it('should use codex-reply tool for session continuation', async () => {
