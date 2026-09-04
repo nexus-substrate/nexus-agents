@@ -23,7 +23,23 @@
  * @module nexus-memory/backends/open-database
  */
 
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
+
+/**
+ * Loaded through `createRequire`, not a static import (#5392).
+ *
+ * A static `import ... from 'node:sqlite'` is HOISTED by the bundler to the top
+ * of the emitted chunk, so it evaluates before any consumer code can run. Node
+ * emits the SQLite `ExperimentalWarning` at IMPORT time, so that ordering made
+ * the CLI's warning filter unable to fire at all. `createRequire` keeps the load
+ * synchronous — which is why node:sqlite was chosen — while deferring it to
+ * first call. Node caches the module, so repeat calls are free.
+ */
+const requireFromHere = createRequire(import.meta.url);
+
+function loadSqlite(): typeof import('node:sqlite') {
+  return requireFromHere('node:sqlite') as typeof import('node:sqlite');
+}
 
 /**
  * Result of running a prepared statement. Mirrors what both `node:sqlite` and
@@ -69,6 +85,7 @@ export function openSqliteDatabase(dbPath: string): SqliteDatabase {
     // when the parent dir is missing. Create it up front, idempotently.
     mkdirSync(dirname(dbPath), { recursive: true });
   }
+  const { DatabaseSync } = loadSqlite();
   const db = new DatabaseSync(dbPath);
   // `node:sqlite` has no `.pragma()` helper, so WAL goes through `exec`.
   db.exec('PRAGMA journal_mode = WAL');

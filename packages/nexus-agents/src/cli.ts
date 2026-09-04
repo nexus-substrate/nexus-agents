@@ -13,13 +13,12 @@
 // before any module loads core/logger.ts. See #2443.
 import './cli/cli-log-bootstrap.js';
 
-// #5388: node:sqlite is experimental on Node 22 and warns on first use. Memory
-// backends open a DB during ordinary startup, so filter that ONE warning before
-// anything can trigger it. CLI-only — a library consumer keeps their own
-// warning behaviour.
-import { suppressSqliteExperimentalWarning } from './cli/suppress-sqlite-warning.js';
-
-suppressSqliteExperimentalWarning();
+// #5392: MUST be a side-effect import, and MUST precede any module that reaches
+// `node:sqlite`. ESM evaluates every import before the first statement of this
+// body, and `open-database.ts` imports `node:sqlite` statically — so calling a
+// suppressor as a STATEMENT here ran after the warning had already been emitted.
+// That is how #5388 shipped a filter that could never fire.
+import './cli/suppress-sqlite-warning.js';
 
 import { parseArgs } from 'node:util';
 import { createLogger } from './core/index.js';

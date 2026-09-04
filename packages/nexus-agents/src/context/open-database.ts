@@ -36,11 +36,33 @@
  * @module context/open-database
  */
 
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import type { DatabaseSync } from 'node:sqlite';
 import type { ISQLiteDatabase } from '../core/types/database-types.js';
+
+/**
+ * Loaded through `createRequire` rather than a static import (#5392).
+ *
+ * A static `import ... from 'node:sqlite'` is HOISTED by the bundler to the top
+ * of the emitted chunk, so it evaluates before any code in this package can
+ * run — including the CLI's warning filter. Node emits the SQLite
+ * `ExperimentalWarning` at IMPORT time, not first use, so that ordering made
+ * the filter unable to fire at all: #5388 shipped a guard that could never
+ * work.
+ *
+ * `createRequire` keeps the load SYNCHRONOUS (so `openSqliteDatabase` and the
+ * constructors above it stay sync, which is the whole reason node:sqlite was
+ * chosen) while deferring it to first call — by which time the CLI entry point
+ * has installed its filter. Node caches the module, so repeat calls are free.
+ */
+const requireFromHere = createRequire(import.meta.url);
+
+function loadSqlite(): typeof import('node:sqlite') {
+  return requireFromHere('node:sqlite') as typeof import('node:sqlite');
+}
 
 /**
  * True for the two spellings of "do not touch the filesystem".
@@ -71,6 +93,7 @@ export function openSqliteDatabase(dbPath: string): ISQLiteDatabase {
     mkdirSync(dirname(dbPath), { recursive: true });
   }
 
+  const { DatabaseSync } = loadSqlite();
   const db = new DatabaseSync(dbPath);
 
   // WAL keeps concurrent MCP-server + CLI readers coherent. `node:sqlite` has

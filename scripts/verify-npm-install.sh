@@ -122,5 +122,21 @@ if ! printf '%s' "$SQLITE_OUT" | grep -qiE 'SQLite'; then
 fi
 ok "SQLite available without any install script"
 
+step "Phase 8: no experimental-SQLite warning leaks to users (#5392)"
+# `node:sqlite` is experimental on Node 22 and Node emits its warning at IMPORT
+# time, not first use. The CLI filters that one warning — but #5388 shipped a
+# filter that could never fire, because the bundler hoists a static
+# `import ... from 'node:sqlite'` above the filter's installation.
+#
+# Every unit test of the filter passed while it was useless, since each one
+# installed the filter and then raised a warning by hand. Only the built
+# artifact shows the truth, so assert on the artifact.
+WARN_OUT=$(nexus-agents doctor 2>&1 >/dev/null || true)
+if printf '%s' "$WARN_OUT" | grep -q 'SQLite is an experimental feature'; then
+  printf '%s\n' "$WARN_OUT" | head -5 >&2
+  fail "node:sqlite ExperimentalWarning leaked to stderr — the CLI filter is not firing (#5392)" 8
+fi
+ok "no experimental-SQLite warning on stderr"
+
 step "All smoke tests passed"
 printf '✅ nexus-agents@%s installs and runs cleanly\n' "$ACTUAL_VERSION"

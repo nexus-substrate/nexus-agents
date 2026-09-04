@@ -67,3 +67,11 @@ export function suppressSqliteExperimentalWarning(): void {
 
   process.emitWarning = filtered;
 }
+
+// Invoked ON IMPORT, deliberately. ESM evaluates all imports before the first
+// statement of the importing module, so a caller invoking this as a statement
+// would run AFTER `open-database.ts`'s static `node:sqlite` import had already
+// emitted the warning — which is exactly what #5388 shipped (#5392). Importing
+// this module for its side effect is the only ordering that works, so the entry
+// point must import it before anything that reaches node:sqlite.
+suppressSqliteExperimentalWarning();
