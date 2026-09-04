@@ -51,3 +51,26 @@ correct trade rather than an oversight.
 Not addressed here: distinguishing timeout from cancel in the summary. That is
 the more durable fix and needs its own design — GitHub reports both identically,
 so it would mean deriving it from job duration in the aggregate step.
+
+## Addendum — `Consolidation E2E`, raised 8 → 20
+
+Found while merging: PR #5397 failed with `CI Success` red and **no failing
+step**. Two jobs were killed, and both were at their cap, not superseded:
+
+```
+Consolidation E2E   started 04:14:56  killed 04:23:08   8m12s  (cap  8)
+Changeset Presence  started 04:20:24  killed 04:25:40   5m16s  (cap  5)
+```
+
+The 8m12s is the interesting one, because it nearly fooled me the other way:
+`8m12s > 5m` looked like proof that _this_ job had not hit a 5-minute cap, and
+therefore that the whole run had been superseded by a newer push — which would
+have meant the fix here was irrelevant and #5397 just needed a re-run. Checking
+the actual cap rather than assuming the uniform 5 is what settled it.
+
+`Consolidation E2E` does not fit the profile the rest of this changeset
+describes. It is not `setup-node` plus a seconds-long check; it runs a full
+`pnpm build` and then two `docker compose` container runs. So it gets 20 rather
+than the house-default 10 — 10 would have left two minutes of headroom on a job
+that had just exhausted its budget, which is the same bug with a larger number.
+These caps are runaway-guards, not SLAs.

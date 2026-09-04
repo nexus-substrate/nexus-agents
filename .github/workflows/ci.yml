@@ -353,7 +353,13 @@ jobs:
   consolidation-test:
     name: Consolidation E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # #5396: 20, not the 10 the install-bound gates get. This job is not
+    # setup-node plus a seconds-long check — it runs a full `pnpm build` and
+    # then two `docker compose` container runs. It burned 8m12s against its
+    # 8-minute cap on PR #5397 and was killed, reported as CANCELLED with no
+    # failing step. A runaway-guard, not an SLA: 20 leaves real headroom for a
+    # cold Docker layer cache while still catching a hung container.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
