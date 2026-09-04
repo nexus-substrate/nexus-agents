@@ -154,8 +154,21 @@ export interface PRTrustAssessment {
   readonly trustTier: string;
   /** Author's GitHub role. */
   readonly userRole: string;
-  /** Whether the author is on the maintainer allowlist. */
-  readonly isAllowlisted: boolean;
+  /**
+   * Whether the author is on the maintainer allowlist — present only when an
+   * allowlist was consulted (#4992). Absent means "no allowlist was consulted",
+   * which is the state on every live path today; it was previously recorded
+   * as `false` without being measured.
+   */
+  readonly isAllowlisted?: boolean;
+  /**
+   * Whether a durable `AuditLogger` was configured for this process (#4992
+   * review). `configured` — the trust event was handed to it; delivery to the
+   * hash chain is subject to the logger's own severity filter (trust events
+   * are `info`), queue and fail-loud flush, and is not confirmed per call.
+   * `none` — no audit logger (audit disabled, or the CLI path).
+   */
+  readonly auditSink: 'configured' | 'none';
   /** Reputation score (0-100) when reputation is enabled. */
   readonly reputationScore?: number | undefined;
   /** Suspicious signals detected (e.g. `new_account`, `injection_patterns_detected`). */

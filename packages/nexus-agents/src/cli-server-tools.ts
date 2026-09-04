@@ -83,6 +83,7 @@ import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
+import { configureUntrustedInputFirewall } from './dogfooding/untrusted-input-firewall.js';
 import {
   getSwarmObserver,
   startSwarmHealthSignals,
@@ -855,6 +856,11 @@ function initV2PipelineSubsystems(
   // shutdownTuneStage() in cli-server.ts:createShutdownCleanup. The audit sink
   // (#3323) records each enforced routing demotion to the immutable log.
   startTuneStage(pipelineEventBus, auditLogger !== undefined ? { auditLogger } : undefined);
+  // #4992: the shared untrusted-input firewall mirrors trust classifications to
+  // the same durable log. Without this call its events live only in an
+  // in-memory trail the next call clears, and the result says so
+  // (`auditSink: 'none'`).
+  configureUntrustedInputFirewall(auditLogger !== undefined ? { auditLogger } : {});
   // Close the loop's final producer: poll SwarmObserver health and emit
   // signal.swarm_unhealthy for CLI-attributable bottlenecks onto the same bus
   // (#3223). Paired with shutdownSwarmHealthSignals() in

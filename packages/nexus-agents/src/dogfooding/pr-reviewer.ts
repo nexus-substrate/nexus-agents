@@ -10,12 +10,13 @@
 import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
-import { classifyTrust } from '../security/trust-classifier.js';
-import type { ClassifyResult } from '../security/trust-classifier.js';
+import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+import type { TrustTier } from '../security/trust-types.js';
+import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { ReputationCache } from '../security/reputation-model.js';
-import type { ReputationGateDecision } from '../security/reputation-model.js';
+import type { ReputationAssessment, ReputationGateDecision } from '../security/reputation-model.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -47,6 +48,7 @@ import {
   generateSummary,
   createFailedReview,
   gatePRAuthor,
+  assessPRReputation,
   fetchAccountAgeDays,
   reviewPostingBlock,
 } from './pr-reviewer-helpers.js';
@@ -55,6 +57,16 @@ import {
 export { formatReviewComment } from './pr-reviewer-helpers.js';
 
 const logger = createLogger({ component: 'PRReviewer' });
+
+/**
+ * The access posture a PR review runs under, for the Rule of Two. Hardcoded
+ * to the conservative answer: the reviewer can post under the project's
+ * identity and the SCM provider resolves a live token. Shared by the firewall
+ * (#4992) and `auditReviewAction` so the two cannot disagree — the comment on
+ * `postReviewToGitHub` explains why RULE_OF_TWO firing at tier 3+ depends on
+ * both conjuncts staying `true`.
+ */
+const REVIEW_ACCESS_CONTEXT = { hasWriteAccess: true, hasSecretAccess: true } as const;
 
 /**
  * Multi-agent PR reviewer.
@@ -91,26 +103,39 @@ export class PRReviewer {
 
     const { metadata: prMetadata, provider, accountAgeDays } = fetchResult.value;
 
-    // Classify PR author trust tier (Issue #828 — defense-in-depth)
-    const trustResult = this.classifyPRAuthor(prMetadata);
+    // #3123: reputation is measured here, with the author's real account age,
+    // and handed to the firewall per call so ONE gate decides the enforced tier.
+    const reputation = assessPRReputation(
+      prMetadata,
+      this.reputationCache,
+      this.config.enableReputation,
+      accountAgeDays
+    );
+
+    // #4992: classify through the shared HostileInputFirewall so the trust
+    // decision reaches the security audit trail (originally Issue #828 —
+    // defense-in-depth). Signal-only under the default NEXUS_FIREWALL_POLICY=off;
+    // `auditReviewAction` stays the Rule-of-Two enforcement point.
+    const firewall = this.classifyPRAuthor(prMetadata, reputation);
+    if (!firewall.ok) return firewall;
+    const trustResult = firewall.value.trust;
     logger.info('PR author trust classified', {
       prNumber,
       author: prMetadata.author,
       trustTier: trustResult.trustTier,
       userRole: trustResult.userRole,
-      isAllowlisted: trustResult.isAllowlisted,
+      // Logged only when measured (#4992).
+      ...(firewall.value.isAllowlisted !== undefined
+        ? { isAllowlisted: firewall.value.isAllowlisted }
+        : {}),
     });
 
-    // #3123: assess reputation and apply the gating rollout mode (off/audit/
-    // enforce), mirroring issue_triage — closes the PR-path equivalent of the
-    // #828/#3106 dead-end (reputation was classified but never gated here).
-    const { gateDecision, trustAssessment } = gatePRAuthor(
-      prMetadata,
-      trustResult,
-      accountAgeDays,
-      this.reputationCache,
-      this.config.enableReputation
-    );
+    // #3123: apply the gating rollout mode (off/audit/enforce), mirroring
+    // issue_triage — closes the PR-path equivalent of the #828/#3106 dead-end
+    // (reputation was classified but never gated here).
+    const gated = gatePRAuthor(prMetadata, firewall.value, reputation);
+    if (!gated.ok) return gated;
+    const { gateDecision, trustAssessment } = gated.value;
 
     const expertReviews = await this.runExpertReviews(prMetadata, traceId);
     const result = this.aggregateReviews(prMetadata, expertReviews, startTime, trustAssessment);
@@ -221,14 +246,27 @@ export class PRReviewer {
   }
 
   /**
-   * Classifies the PR author's trust tier using GitHub author_association.
-   * (Source: Issue #828 — Wire security modules into production pipeline)
+   * Classifies the PR author's trust tier through the shared firewall (#4992;
+   * originally Issue #828 — Wire security modules into production pipeline).
+   *
+   * No maintainer allowlist is passed: there is no source for one today (no
+   * config field, no env var), so none is consulted and `isAllowlisted` stays
+   * absent on the result rather than being recorded as `false`.
    */
-  private classifyPRAuthor(pr: PRMetadata): ClassifyResult {
-    return classifyTrust({
-      username: pr.author,
-      authorAssociation: pr.authorAssociation,
-    });
+  private classifyPRAuthor(
+    pr: PRMetadata,
+    reputation: ReputationAssessment | undefined
+  ): Result<FirewallResult, Error> {
+    return runUntrustedInputFirewall(
+      {
+        type: 'pull_request',
+        username: pr.author,
+        authorAssociation: pr.authorAssociation,
+        title: pr.title,
+        body: pr.body,
+      },
+      { context: REVIEW_ACCESS_CONTEXT, reputation: { assessment: reputation } }
+    );
   }
 
   /**
@@ -433,15 +471,14 @@ Provide a structured review with:
    * Audits review posting against the policy gate. Gates on the reputation-
    * reconciled `enforcedTier` (#3123) rather than the raw classifier tier.
    */
-  private auditReviewAction(enforcedTier: ClassifyResult['trustTier']): {
+  private auditReviewAction(enforcedTier: TrustTier): {
     allowed: boolean;
     hasRuleOfTwoViolation: boolean;
     violations: readonly { rule: string; message: string }[];
   } {
     const context: ActionContext = {
       inputTrustTier: enforcedTier,
-      hasWriteAccess: true,
-      hasSecretAccess: true,
+      ...REVIEW_ACCESS_CONTEXT,
     };
     const decision = evaluatePolicy(
       {
