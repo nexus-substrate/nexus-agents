@@ -378,3 +378,110 @@ describe('policyEnforcement stage — Rule of Two (#3198)', () => {
     if (result.ok) expect(result.value.ruleOfTwoViolation).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Fail-closed refusal, gated (#5382, child of epic #5281)
+// ============================================================================
+
+describe('policy refusal is gated on NEXUS_FIREWALL_POLICY (#5382)', () => {
+  /**
+   * `process()` surfaces a blocking Rule-of-Two violation but still returns
+   * `ok()`, so a caller that checks only `result.ok` proceeds on input the
+   * production path refuses outright (`applySafetyActions` emits an explicit
+   * `RefuseAction`, issue-triage.ts:228, #4667).
+   *
+   * Closing that gap raises strictness on a PUBLISHED API — `HostileInputFirewall`
+   * is re-exported via `src/exports/security.ts` and pinned in `api-surface.txt`.
+   * The panel's dissent was specifically that a consumer reading a clean
+   * `process()` today would start getting refusals. So the refusal ships behind
+   * a mode flag that defaults to `off`.
+   *
+   * The FIRST test is the load-bearing one. The other two are worth little
+   * without it: a gate that changes behaviour by default has not gated anything.
+   */
+
+  /** The input that trips Rule of Two: NONE author, write + secret access. */
+  function blockingFirewall(mode?: string): HostileInputFirewall {
+    return createFirewall({
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+      ...(mode !== undefined ? { policyMode: mode } : {}),
+    });
+  }
+
+  it('off (the default) returns ok with the signal — byte-identical to pre-#5382', () => {
+    const result = blockingFirewall().process(issueInput());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The signal is still surfaced; only the refusal is withheld.
+    expect(result.value.ruleOfTwoViolation?.severity).toBe('block');
+    expect(result.value.policyMode).toBe('off');
+    expect(result.value.wouldRefuse).toBe(false);
+  });
+
+  it('enforce refuses, so a caller checking only result.ok cannot proceed', () => {
+    const result = blockingFirewall('enforce').process(issueInput());
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('POLICY_REFUSED');
+    expect(result.error.stage).toBe('policy');
+    // The refusal must say WHY, or a consumer cannot tell it from a crash.
+    expect(result.error.message).toContain('RULE_OF_TWO');
+  });
+
+  it('audit reports what enforce would refuse, without refusing', () => {
+    // This is the mode that makes a rollout measurable: it answers "what would
+    // change?" without changing it. Without `wouldRefuse` there is nothing to
+    // measure and audit mode would be indistinguishable from off.
+    const result = blockingFirewall('audit').process(issueInput());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.wouldRefuse).toBe(true);
+    expect(result.value.policyMode).toBe('audit');
+  });
+
+  it('enforce does NOT refuse benign input — the gate is not a kill switch', () => {
+    // Testing only the attack would let "refuse everything under enforce" pass.
+    // An allowlisted maintainer is the benign population that must stay served.
+    const fw = createFirewall({
+      allowlistedMaintainers: ['trusteduser'],
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+      policyMode: 'enforce',
+    });
+    const result = fw.process(issueInput({ username: 'trusteduser' }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.wouldRefuse).toBe(false);
+  });
+
+  it('enforce does not refuse when the policyEnforcement stage is disabled', () => {
+    // The mode gates the RESPONSE to a violation; it must not manufacture one
+    // where the stage that detects it never ran.
+    const fw = createFirewall({
+      stages: { policyEnforcement: false },
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+      policyMode: 'enforce',
+    });
+    const result = fw.process(issueInput());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.wouldRefuse).toBe(false);
+  });
+
+  it('reads the env var when no explicit mode is configured', () => {
+    // The wiring test: an operator sets the variable, not a constructor field.
+    // Without this the flag could be entirely unreachable in production and
+    // every test above would still pass.
+    const fw = createFirewall({
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+      env: { NEXUS_FIREWALL_POLICY: 'enforce' },
+    });
+    const result = fw.process(issueInput());
+
+    expect(result.ok).toBe(false);
+  });
+});

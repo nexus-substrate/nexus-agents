@@ -241,6 +241,18 @@ const NexusEnvSchema = z.object({
       message: 'Must be one of: off, audit, enforce',
     })
     .optional(),
+
+  // #5382: rollout gate for HostileInputFirewall behaviour changes. Defaults to
+  // `off` — unlike NEXUS_REPUTATION_GATING, which defaults to `enforce` — because
+  // the firewall is a PUBLISHED API with external callers, so a stricter default
+  // would be a silent breaking change. Same tri-state and same coercion as its
+  // two sibling flags; see security/firewall/firewall-policy-mode.ts.
+  NEXUS_FIREWALL_POLICY: z
+    .string()
+    .refine((v) => ['off', 'audit', 'enforce'].includes(v.toLowerCase()), {
+      message: 'Must be one of: off, audit, enforce',
+    })
+    .optional(),
 });
 
 // ============================================================================

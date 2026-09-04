@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import type { IAuditLogger } from '../../audit/audit-types.js';
+import type { FirewallPolicyMode } from './firewall-policy-mode.js';
 
 // ============================================================================
 // Source Adapter Interface
@@ -100,6 +101,22 @@ export interface FirewallConfig {
     readonly hasSecretAccess?: boolean;
   };
   /**
+   * Rollout gate for behaviour changes to this published API (#5382).
+   * Defaults to `NEXUS_FIREWALL_POLICY`, and to `off` when that is unset —
+   * under `off` the firewall behaves exactly as it did before #5382.
+   *
+   * Explicit here as well as in the environment because the firewall is a
+   * library: an embedding consumer must be able to opt in per instance without
+   * setting a process-wide variable.
+   */
+  readonly policyMode?: FirewallPolicyMode;
+  /**
+   * Environment to resolve `policyMode` from when it is not given explicitly.
+   * Injectable so the resolution path itself is testable — without this the
+   * flag could be unreachable in production with every unit test still passing.
+   */
+  readonly env?: NodeJS.ProcessEnv;
+  /**
    * Optional durable audit logger. When provided, every security decision the
    * firewall records is mirrored to this persistent, hash-chained store via
    * the audit bridge (#3291). When absent, decisions are in-memory only.
@@ -135,7 +152,14 @@ export type FirewallErrorCode =
   | 'SANITIZATION_FAILED'
   | 'CLASSIFICATION_FAILED'
   | 'REPUTATION_FAILED'
-  | 'INVALID_CONFIG';
+  | 'INVALID_CONFIG'
+  /**
+   * #5382: a blocking policy violation refused the input outright, rather than
+   * being surfaced as a signal on a successful result. Only reachable when the
+   * firewall policy mode is `enforce` — under the default `off` a violation is
+   * still returned via `ruleOfTwoViolation` on an `ok()` result.
+   */
+  | 'POLICY_REFUSED';
 
 /**
  * Structured error from the firewall pipeline.
