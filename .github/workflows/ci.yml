@@ -114,26 +114,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
 
-      # #5411: `npx tsx` resolves from the registry on every cold runner —
-      # `setup-node` caches the pnpm store, never `~/.npm/_npx`, and tsx was
-      # declared nowhere. That made `arch-lint` take 6m51s on CI for 3.95s of
-      # work and killed this job at its cap twice, reporting 0 lint errors.
-      # tsx is now a pinned devDependency, so it comes from the cached store.
-      # Cheap and first, so a regression fails in seconds rather than after
-      # the whole-repo eslint.
-      #
-      # governor-review.yml is excluded: governor-owned path per CODEOWNERS,
-      # not changed without owner ratification (same carve-out as #5400).
+      # #5411: gate against reintroducing registry-resolved tsx. The check
+      # lives in a script because its own error message contains the string it
+      # searches for, so an inline version matched its own definition and
+      # failed on a clean tree. Cheap and first, so a regression fails in
+      # seconds rather than after the whole-repo eslint.
       - name: No undeclared tsx invocations (#5411)
-        run: |
-          matches=$(grep -rn 'npx tsx' .github/workflows package.json packages/nexus-agents/package.json 2>/dev/null \
-            | grep -v 'governor-review.yml' || true)
-          if [ -n "$matches" ]; then
-            echo "::error::Found 'npx tsx'. tsx is a declared devDependency — use 'pnpm exec tsx' (#5411)."
-            echo "$matches"
-            exit 1
-          fi
-          echo "No 'npx tsx' in workflows or package manifests"
+        run: bash scripts/check-npx-tsx.sh
 
       - name: Run lint
         run: pnpm lint
