@@ -41,6 +41,8 @@ import type {
 import { FirewallConfigSchema } from './firewall-types.js';
 import { checkRuleOfTwo } from '../policy-gate.js';
 import type { Violation } from '../policy-gate.js';
+import { validateCorroboration } from '../corroboration-validator.js';
+import type { AgentAction, SourceCitation } from '../action-schema.js';
 import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'HostileInputFirewall' });
@@ -96,6 +98,34 @@ export interface FirewallResult {
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
   readonly durationMs: number;
 }
+
+/**
+ * Outcome of {@link HostileInputFirewall.validateAction} (#5382).
+ *
+ * A discriminated union rather than a struct with optional fields, deliberately:
+ * a caller cannot read `satisfied` without first narrowing on `evaluated`, so
+ * "the stage did not run" is structurally impossible to misread as "the stage
+ * ran and passed". `stages.corroboration` defaults to `false`, which makes the
+ * unevaluated branch the COMMON case — exactly where a silent `satisfied: true`
+ * would do the most damage.
+ */
+export type ActionValidation =
+  | {
+      readonly evaluated: false;
+      /** Why no verdict exists. Absence is attributable, not anonymous. */
+      readonly reason: 'corroboration-stage-disabled';
+      readonly policyMode: FirewallPolicyMode;
+    }
+  | {
+      readonly evaluated: true;
+      readonly satisfied: boolean;
+      /** Unmet corroboration requirements; empty when satisfied. */
+      readonly missing: readonly string[];
+      readonly corroboratingSources: readonly SourceCitation[];
+      readonly policyMode: FirewallPolicyMode;
+      /** Whether `enforce` would have refused this action (see FirewallResult). */
+      readonly wouldRefuse: boolean;
+    };
 
 // ============================================================================
 // HostileInputFirewall
@@ -243,6 +273,62 @@ export class HostileInputFirewall {
       message: `Refused by firewall policy: ${violation.rule} — ${violation.message}`,
       stage: 'policy',
     };
+  }
+
+  /**
+   * Validates corroboration for a decided action (#5382).
+   *
+   * Separate from {@link process} because the two operate at different points
+   * in the lifecycle, which is the real shape of the divergence epic #5281
+   * found: `process()` is INPUT-shaped — it sanitizes, classifies and labels
+   * untrusted content — while corroboration is ACTION-shaped, asking whether a
+   * decision the consumer has now reached is backed by sources of sufficient
+   * tier. There is no `AgentAction` in scope during `process()`, so the
+   * `stages.corroboration` flag could never have been wired there; this is the
+   * entry point that makes it readable.
+   *
+   * It is also the shape #5383 needs: production validates corroboration per
+   * action (`issue-triage.ts:391`), so those callers cannot migrate onto the
+   * firewall unless it offers a per-action surface.
+   *
+   * Returns `evaluated: false` when the stage is disabled — never a satisfied
+   * verdict for a check that did not run. Under `enforce` an unsatisfied action
+   * is refused with `POLICY_REFUSED`; under `audit` the would-be refusal is
+   * reported via `wouldRefuse` and the action is allowed through.
+   */
+  validateAction(action: AgentAction): Result<ActionValidation, FirewallError> {
+    if (!this.stages.corroboration) {
+      return ok({
+        evaluated: false,
+        reason: 'corroboration-stage-disabled',
+        policyMode: this.policyMode,
+      });
+    }
+
+    const corroboration = validateCorroboration(action);
+
+    if (!corroboration.satisfied && this.policyMode === 'enforce') {
+      logger.warn('Firewall REFUSED an uncorroborated action under enforce mode', {
+        actionType: corroboration.actionType,
+        missing: corroboration.missing,
+      });
+      return err({
+        code: 'POLICY_REFUSED',
+        message:
+          `Refused by firewall policy: ${corroboration.actionType} lacks required ` +
+          `corroboration — ${corroboration.missing.join('; ')}`,
+        stage: 'corroboration',
+      });
+    }
+
+    return ok({
+      evaluated: true,
+      satisfied: corroboration.satisfied,
+      missing: corroboration.missing,
+      corroboratingSources: corroboration.corroboratingSources,
+      policyMode: this.policyMode,
+      wouldRefuse: !corroboration.satisfied && this.policyMode === 'audit',
+    });
   }
 
   /** Returns the internal audit trail for inspection. */
