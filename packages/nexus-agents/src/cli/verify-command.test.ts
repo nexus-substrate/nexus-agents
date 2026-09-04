@@ -231,6 +231,10 @@ describe('verify-command', () => {
       // Whether this machine has a codex cache or not, the record must say
       // which of the three verdicts it reached: a pass names the served slugs,
       // a warn names the unserved one, and no cache reads as unmeasured.
+      // This test accepts all three because it runs against the real machine;
+      // the verdict DISCRIMINATION (pass vs warn vs unmeasured, and that no
+      // cache never passes) is carried by the fixture-driven unit tests in
+      // doctor-codex-models.test.ts, not here.
       if (codexCheck.passed) {
         expect(codexCheck.message).toMatch(/served: /);
       } else {

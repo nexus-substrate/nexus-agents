@@ -320,6 +320,13 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       // (snapshot 2026-08-31). Quality scores are the codex arm's tier
       // positions carried over from the replaced entry, not a measurement of
       // this slug; `cost` is unchanged because the price is identical.
+      // ROUTING CONSEQUENCE: `resolve-model-for-tier` ranks the balanced tier
+      // by codeGeneration and breaks the 10/10/10 tie on the higher `cost`
+      // score, so this entry (cost 7) wins the balanced codex tier over
+      // codex-5.3 (5) and gpt-5.5 (4). It already did; what changed is that
+      // the winner now runs (spark) instead of being rejected (gpt-5.2-codex).
+      // `resolve-model-for-tier.test.ts` pins this so a rescore is a visible
+      // decision, not a side effect.
       notes:
         'GPT-5.3 Codex Spark (models.dev 2026-08-31); fast codex-tuned tier below GPT-5.4; 128K context; sandboxed execution environment',
       pricing: { inputPer1M: 1.75, outputPer1M: 14.0 },

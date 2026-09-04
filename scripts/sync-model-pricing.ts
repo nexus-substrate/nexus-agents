@@ -47,7 +47,7 @@ const CLI_TO_UPSTREAM: Record<string, string[]> = {
   'gemini-2.5-pro': ['google/gemini-2.5-pro', 'gemini-2.5-pro'],
   'gemini-3-flash-preview': ['google/gemini-3-flash-preview', 'gemini-3-flash-preview'],
   'gemini-2.5-flash': ['google/gemini-2.5-flash', 'gemini-2.5-flash'],
-  'codex-5.3': ['openai/gpt-5.3-codex', 'gpt-5.3-codex'],
+  'codex-5.3': ['openai/gpt-5.4', 'gpt-5.4'],
   'codex-5.2': ['openai/gpt-5.3-codex-spark', 'gpt-5.3-codex-spark'],
   'codex-5.1-mini': ['openai/gpt-5.4-mini', 'gpt-5.4-mini'],
 };

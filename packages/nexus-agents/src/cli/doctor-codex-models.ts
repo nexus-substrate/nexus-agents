@@ -63,15 +63,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/** What a parse of `models_cache.json` found. */
+export interface ParsedCodexCache {
+  /** Slugs with `visibility: "list"` — what `codex` offers. */
+  readonly listed: readonly string[];
+  /** Well-formed `{slug}` rows of any visibility. */
+  readonly rows: number;
+  /** Well-formed rows that carry no `visibility` field at all. */
+  readonly withoutVisibility: number;
+}
+
 /**
- * Extract the `visibility: "list"` slugs from a raw `models_cache.json`.
+ * Parse a raw `models_cache.json`.
  *
  * Returns null when the document is not the cache's shape (unparseable, or no
  * `models` array) so the caller can report `unmeasured` rather than treating
  * a malformed file as "codex serves nothing". Individual malformed rows are
- * skipped, not fatal: one bad entry should not hide the rest.
+ * skipped, not fatal: one bad entry should not hide the rest. Rows that lack
+ * `visibility` are counted separately so the caller can say "the cache has
+ * models but not the field this probe reads" instead of "lists no models".
  */
-export function parseServedCodexSlugs(raw: string): string[] | null {
+export function parseServedCodexSlugs(raw: string): ParsedCodexCache | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -79,15 +91,18 @@ export function parseServedCodexSlugs(raw: string): string[] | null {
     return null;
   }
   if (!isRecord(parsed) || !Array.isArray(parsed['models'])) return null;
-  const slugs: string[] = [];
+  const listed: string[] = [];
+  let rows = 0;
+  let withoutVisibility = 0;
   for (const row of parsed['models'] as unknown[]) {
     if (!isRecord(row)) continue;
     const slug = row['slug'];
     if (typeof slug !== 'string' || slug === '') continue;
-    if (row['visibility'] !== 'list') continue;
-    slugs.push(slug);
+    rows += 1;
+    if (row['visibility'] === undefined) withoutVisibility += 1;
+    if (row['visibility'] === 'list') listed.push(slug);
   }
-  return slugs;
+  return { listed, rows, withoutVisibility };
 }
 
 /** Every codex registry entry that names a CLI slug. */
@@ -113,14 +128,24 @@ function readServedSlugs(cachePath: string): ServedSlugs {
       unmeasured: `codex model cache not readable at ${cachePath} (codex not installed, or never run)`,
     };
   }
-  const slugs = parseServedCodexSlugs(raw);
-  if (slugs === null) {
+  const parsed = parseServedCodexSlugs(raw);
+  if (parsed === null) {
     return { unmeasured: `${cachePath} is unparseable or not a codex model cache` };
   }
-  if (slugs.length === 0) {
-    return { unmeasured: `${cachePath} lists no models` };
+  if (parsed.listed.length === 0) {
+    if (parsed.withoutVisibility > 0) {
+      return {
+        unmeasured: `${cachePath} lists ${String(parsed.withoutVisibility)} model row(s) with no visibility field (unexpected cache shape; this probe reads visibility=list)`,
+      };
+    }
+    if (parsed.rows === 0) {
+      return { unmeasured: `${cachePath} lists no models` };
+    }
+    return {
+      unmeasured: `${cachePath} lists ${String(parsed.rows)} model(s), none with visibility=list`,
+    };
   }
-  return { slugs };
+  return { slugs: parsed.listed };
 }
 
 /**

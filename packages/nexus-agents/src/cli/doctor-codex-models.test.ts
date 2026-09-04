@@ -43,11 +43,23 @@ afterEach(() => {
 });
 
 describe('parseServedCodexSlugs', () => {
-  it('returns only visibility=list slugs', () => {
-    expect(parseServedCodexSlugs(cacheJson(['gpt-a', 'gpt-b'], ['hidden-c']))).toEqual([
-      'gpt-a',
-      'gpt-b',
-    ]);
+  it('returns only visibility=list slugs, counting every well-formed row', () => {
+    expect(parseServedCodexSlugs(cacheJson(['gpt-a', 'gpt-b'], ['hidden-c']))).toEqual({
+      listed: ['gpt-a', 'gpt-b'],
+      rows: 3,
+      withoutVisibility: 0,
+    });
+  });
+
+  it('counts rows that carry no visibility field separately', () => {
+    const raw = JSON.stringify({
+      models: [{ slug: 'gpt-a' }, { slug: 'gpt-b', visibility: 'list' }],
+    });
+    expect(parseServedCodexSlugs(raw)).toEqual({
+      listed: ['gpt-b'],
+      rows: 2,
+      withoutVisibility: 1,
+    });
   });
 
   it('returns null for unparseable JSON', () => {
@@ -62,7 +74,7 @@ describe('parseServedCodexSlugs', () => {
     const raw = JSON.stringify({
       models: [{ slug: 'gpt-a', visibility: 'list' }, { visibility: 'list' }, 'junk'],
     });
-    expect(parseServedCodexSlugs(raw)).toEqual(['gpt-a']);
+    expect(parseServedCodexSlugs(raw)?.listed).toEqual(['gpt-a']);
   });
 });
 
@@ -124,6 +136,29 @@ describe('checkCodexModels', () => {
 
     expect(result.status).toBe('unmeasured');
     expect(result.reason).toContain('lists no models');
+  });
+
+  it('reports unmeasured naming the missing visibility field when rows lack it', () => {
+    // Not "lists no models": the cache DOES list models, just not the field
+    // this probe reads. A wrong reason sends the operator to the wrong fix.
+    const file = join(dir, 'models_cache.json');
+    writeFileSync(file, JSON.stringify({ models: [{ slug: 'gpt-a' }, { slug: 'gpt-b' }] }));
+
+    const result = checkCodexModels(file);
+
+    expect(result.status).toBe('unmeasured');
+    expect(result.reason).toContain('2 model row(s) with no visibility field');
+    expect(result.reason).not.toContain('lists no models');
+  });
+
+  it('reports unmeasured when models exist but none is visibility=list', () => {
+    const file = join(dir, 'models_cache.json');
+    writeFileSync(file, cacheJson([], ['hidden-only']));
+
+    const result = checkCodexModels(file);
+
+    expect(result.status).toBe('unmeasured');
+    expect(result.reason).toContain('none with visibility=list');
   });
 
   it('reports unmeasured when the registry has no codex entries to check (named empty case)', () => {
