@@ -7,7 +7,7 @@
 
 import type { TaskResult, AgentRole, ILogger } from '../../core/index.js';
 import { getTimeProvider } from '../../core/index.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 
 /**
  * Maximum number of event listeners allowed per session.
@@ -22,7 +22,7 @@ export interface CollaborationSessionOptions {
   onMessage?: (message: CollaborationMessage) => void;
   roleResolver?: (expertId: string) => AgentRole;
   /** Optional event bus for cross-session event publishing */
-  eventBus?: IEventBus;
+  eventBus?: ICollaborationEventBus;
 }
 
 /** Session event types for callbacks. */

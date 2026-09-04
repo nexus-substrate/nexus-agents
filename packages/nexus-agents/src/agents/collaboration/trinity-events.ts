@@ -1,5 +1,5 @@
 /**
- * Trinity Protocol EventBus Integration Helpers
+ * Trinity Protocol CollaborationEventBus Integration Helpers
  * (Source: Issues #222, #216, Sprint #219)
  *
  * Provides helper functions for emitting protocol lifecycle and phase events
@@ -7,7 +7,7 @@
  */
 
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   ProtocolStartedEvent,
   ProtocolIterationEvent,
   ProtocolCompletedEvent,
@@ -25,7 +25,10 @@ export interface TrinityStartedParams {
 }
 
 /** Emits protocol.started event for Trinity protocol. */
-export function emitTrinityStarted(eventBus: IEventBus, params: TrinityStartedParams): void {
+export function emitTrinityStarted(
+  eventBus: ICollaborationEventBus,
+  params: TrinityStartedParams
+): void {
   const event = createEvent<ProtocolStartedEvent>(
     'protocol.started',
     {
@@ -54,7 +57,10 @@ export interface TrinityIterationParams {
 }
 
 /** Emits protocol.iteration event for each Trinity iteration. */
-export function emitTrinityIteration(eventBus: IEventBus, params: TrinityIterationParams): void {
+export function emitTrinityIteration(
+  eventBus: ICollaborationEventBus,
+  params: TrinityIterationParams
+): void {
   const event = createEvent<ProtocolIterationEvent>(
     'protocol.iteration',
     {
@@ -77,7 +83,10 @@ export interface TrinityCompletedParams {
 }
 
 /** Emits protocol.completed event for Trinity protocol. */
-export function emitTrinityCompleted(eventBus: IEventBus, params: TrinityCompletedParams): void {
+export function emitTrinityCompleted(
+  eventBus: ICollaborationEventBus,
+  params: TrinityCompletedParams
+): void {
   const event = createEvent<ProtocolCompletedEvent>(
     'protocol.completed',
     {
@@ -107,7 +116,10 @@ export interface TrinityPhaseStartedParams {
 }
 
 /** Emits protocol.trinity.phase_started event. */
-export function emitPhaseStarted(eventBus: IEventBus, params: TrinityPhaseStartedParams): void {
+export function emitPhaseStarted(
+  eventBus: ICollaborationEventBus,
+  params: TrinityPhaseStartedParams
+): void {
   const event = createEvent<TrinityPhaseStartedEvent>(
     'protocol.trinity.phase_started',
     {
@@ -136,7 +148,10 @@ export interface TrinityPhaseCompletedParams {
 }
 
 /** Emits protocol.trinity.phase_completed event. */
-export function emitPhaseCompleted(eventBus: IEventBus, params: TrinityPhaseCompletedParams): void {
+export function emitPhaseCompleted(
+  eventBus: ICollaborationEventBus,
+  params: TrinityPhaseCompletedParams
+): void {
   const event = createEvent<TrinityPhaseCompletedEvent>(
     'protocol.trinity.phase_completed',
     {

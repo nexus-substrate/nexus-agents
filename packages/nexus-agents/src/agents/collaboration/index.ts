@@ -329,12 +329,17 @@ export type {
   EventFilter,
   EventBusOptions,
   EventBusStats,
-  IEventBus,
+  ICollaborationEventBus,
 } from './event-bus-types.js';
 
 export { EventTopics } from './event-bus-types.js';
 
-export { EventBus, getGlobalEventBus, resetGlobalEventBus, createEvent } from './event-bus.js';
+export {
+  CollaborationEventBus,
+  getGlobalEventBus,
+  resetGlobalEventBus,
+  createEvent,
+} from './event-bus.js';
 
 // Circular Buffer for O(1) bounded collections (Source: Issue #407; canonical home now core/ #3288)
 export { CircularBuffer } from '../../core/circular-buffer.js';

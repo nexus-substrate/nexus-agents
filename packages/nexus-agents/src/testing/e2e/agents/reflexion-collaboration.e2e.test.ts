@@ -13,7 +13,7 @@ import {
   createReflexionProtocol,
   DEFAULT_CODE_REVIEW_PERSONAS,
   calculateWeightedSeverity,
-  EventBus,
+  CollaborationEventBus,
   getGlobalEventBus,
   resetGlobalEventBus,
   type Persona,
@@ -83,7 +83,7 @@ const TEST_PERSONAS: readonly Persona[] = [
 ] as const;
 
 describe('Reflexion Collaboration E2E', () => {
-  let eventBus: EventBus;
+  let eventBus: CollaborationEventBus;
   let events: unknown[];
 
   beforeEach(() => {

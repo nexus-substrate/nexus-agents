@@ -7,7 +7,7 @@
 
 import type { ILogger, IModelAdapter, AgentRole } from '../core/index.js';
 import { AgentStateMachine, type StateMachineOptions } from './state-machine.js';
-import type { IEventBus } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from './collaboration/event-bus-types.js';
 import { createEvent } from './collaboration/event-bus.js';
 import {
   initializePruningInfrastructure,
@@ -24,7 +24,7 @@ import {
 export interface StateMachineSetupParams {
   agentId: string;
   logger: ILogger;
-  eventBus: IEventBus;
+  eventBus: ICollaborationEventBus;
   options: StateMachineOptions | undefined;
 }
 

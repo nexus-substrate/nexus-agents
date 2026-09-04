@@ -11,7 +11,7 @@
 import { getTimeProvider } from '../core/index.js';
 import { clamp01 } from '../utils/math-utils.js';
 import type { WeightedAgentRecord, WeightedConsensusResult, Vote } from './types.js';
-import type { IEventBus } from '../core/event-bus.js';
+import type { ICollaborationEventBus } from '../core/event-bus.js';
 
 /**
  * Mutable agent record for internal tracking.
@@ -37,7 +37,7 @@ export interface WeightedVotingOptions {
   /** Configuration for voting thresholds and weights. */
   config?: Partial<import('./types.js').WeightedVotingConfig>;
   /** Optional event bus for Byzantine detection events (Issue #218). */
-  eventBus?: IEventBus;
+  eventBus?: ICollaborationEventBus;
   /** Whether to emit Byzantine detection events (default: true if eventBus provided). */
   emitEvents?: boolean;
 }

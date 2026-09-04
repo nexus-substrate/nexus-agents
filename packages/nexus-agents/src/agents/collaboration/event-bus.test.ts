@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
-  EventBus,
+  CollaborationEventBus,
   getGlobalEventBus,
   resetGlobalEventBus,
   createEvent,
@@ -22,11 +22,11 @@ import type {
 } from './event-bus-types.js';
 import { EventTopics } from './event-bus-types.js';
 
-describe('EventBus', () => {
-  let bus: EventBus;
+describe('CollaborationEventBus', () => {
+  let bus: CollaborationEventBus;
 
   beforeEach(() => {
-    bus = new EventBus();
+    bus = new CollaborationEventBus();
     resetGlobalEventBus();
   });
 
@@ -347,7 +347,7 @@ describe('EventBus', () => {
     });
 
     it('should enforce max history size', () => {
-      const smallBus = new EventBus({ maxHistorySize: 5 });
+      const smallBus = new CollaborationEventBus({ maxHistorySize: 5 });
 
       for (let i = 0; i < 10; i++) {
         smallBus.emit(createEvent<DomainEvent>(`event.${String(i)}`, { n: i }));
@@ -456,7 +456,7 @@ describe('EventBus', () => {
     });
 
     it('should handle async errors with asyncHandling enabled', async () => {
-      const asyncBus = new EventBus({ asyncHandling: true });
+      const asyncBus = new CollaborationEventBus({ asyncHandling: true });
       const errorListener = vi.fn().mockImplementation(async () => {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 5);
@@ -482,7 +482,7 @@ describe('EventBus', () => {
 
   describe('subscription limits', () => {
     it('should enforce maximum subscription limit', () => {
-      const maxBus = new EventBus();
+      const maxBus = new CollaborationEventBus();
 
       // Add 500 subscriptions (the limit)
       for (let i = 0; i < 500; i++) {
@@ -566,7 +566,7 @@ describe('EventBus', () => {
         error: vi.fn(),
       };
 
-      const loggingBus = new EventBus({ logger });
+      const loggingBus = new CollaborationEventBus({ logger });
 
       loggingBus.subscribe('test.log', vi.fn());
       loggingBus.emit(createEvent<DomainEvent>('test.log', {}));
@@ -583,7 +583,7 @@ describe('EventBus', () => {
         error: vi.fn(),
       };
 
-      const loggingBus = new EventBus({ logger });
+      const loggingBus = new CollaborationEventBus({ logger });
 
       loggingBus.subscribe('test.error', () => {
         throw new Error('Test error');
@@ -737,11 +737,11 @@ describe('createChildCorrelationId', () => {
   });
 });
 
-describe('EventBus correlation ID tracing', () => {
-  let bus: EventBus;
+describe('CollaborationEventBus correlation ID tracing', () => {
+  let bus: CollaborationEventBus;
 
   beforeEach(() => {
-    bus = new EventBus();
+    bus = new CollaborationEventBus();
   });
 
   it('should trace events across correlation ID hierarchy', () => {

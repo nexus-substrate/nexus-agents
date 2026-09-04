@@ -12,7 +12,7 @@ import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
 import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory } from '../context/memory-types.js';
 import type { AgentStateMachine } from './state-machine.js';
-import type { IEventBus } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from './collaboration/event-bus-types.js';
 import type { ContextPruner } from './context-pruner.js';
 import type { ResolvedPruningConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
 import type { ResolvedMemoryConfig, AgentMemoryState } from './base-agent-memory-init.js';
@@ -34,7 +34,7 @@ export interface AgentContextState {
   readonly logger: ILogger;
   readonly stateMachine: AgentStateMachine;
   readonly budgetTracker: ITokenBudgetTracker;
-  readonly eventBus: IEventBus;
+  readonly eventBus: ICollaborationEventBus;
   readonly memoryEnabled: boolean;
   readonly memoryBackend: IContextMemoryBackend | undefined;
   readonly typedMemory: ITypedMemory | undefined;

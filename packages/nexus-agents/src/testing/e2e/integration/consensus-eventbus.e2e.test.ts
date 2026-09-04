@@ -1,8 +1,8 @@
 /**
- * Consensus -> EventBus Integration E2E Tests
+ * Consensus -> CollaborationEventBus Integration E2E Tests
  *
- * Tests verifying the integration between consensus protocols and the EventBus system.
- * Also covers SwarmObserver -> EventBus integration.
+ * Tests verifying the integration between consensus protocols and the CollaborationEventBus system.
+ * Also covers SwarmObserver -> CollaborationEventBus integration.
  *
  * @module testing/e2e/integration/consensus-eventbus
  * (Source: Issue #323, Swarm Analysis Gap)
@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  EventBus,
+  CollaborationEventBus,
   resetGlobalEventBus,
   createEvent,
 } from '../../../agents/collaboration/event-bus.js';
@@ -18,14 +18,14 @@ import type { DomainEvent } from '../../../agents/collaboration/event-bus-types.
 import { SwarmObserver, createSwarmObserver } from '../../../observability/swarm-observer.js';
 import { VotingProtocol } from '../../../consensus/voting-protocol.js';
 
-describe('Consensus -> EventBus Integration E2E Tests', () => {
-  let eventBus: EventBus;
+describe('Consensus -> CollaborationEventBus Integration E2E Tests', () => {
+  let eventBus: CollaborationEventBus;
   let votingProtocol: VotingProtocol;
   let receivedEvents: DomainEvent[];
 
   beforeEach(() => {
     resetGlobalEventBus();
-    eventBus = new EventBus({ maxHistorySize: 100 });
+    eventBus = new CollaborationEventBus({ maxHistorySize: 100 });
     votingProtocol = new VotingProtocol();
     receivedEvents = [];
 
@@ -38,7 +38,7 @@ describe('Consensus -> EventBus Integration E2E Tests', () => {
     resetGlobalEventBus();
   });
 
-  it('should emit consensus events to EventBus', () => {
+  it('should emit consensus events to CollaborationEventBus', () => {
     // Create a voting session
     const session = votingProtocol.createSession('Code review decision', [
       'agent-1',
@@ -58,7 +58,7 @@ describe('Consensus -> EventBus Integration E2E Tests', () => {
     expect(receivedEvents[0]?.topic).toBe('consensus.session_created');
   });
 
-  it('should track vote cast events through EventBus', () => {
+  it('should track vote cast events through CollaborationEventBus', () => {
     const session = votingProtocol.createSession('Architecture decision', ['agent-a', 'agent-b']);
 
     // Emit vote cast events
@@ -84,7 +84,7 @@ describe('Consensus -> EventBus Integration E2E Tests', () => {
     expect(receivedEvents.every((e) => e.topic === 'consensus.vote_cast')).toBe(true);
   });
 
-  it('should query consensus event history from EventBus', () => {
+  it('should query consensus event history from CollaborationEventBus', () => {
     const session = votingProtocol.createSession('Test session', ['a1', 'a2']);
 
     // Emit multiple events
@@ -107,13 +107,13 @@ describe('Consensus -> EventBus Integration E2E Tests', () => {
   });
 });
 
-describe('SwarmObserver -> EventBus Integration E2E Tests', () => {
-  let eventBus: EventBus;
+describe('SwarmObserver -> CollaborationEventBus Integration E2E Tests', () => {
+  let eventBus: CollaborationEventBus;
   let observer: SwarmObserver;
 
   beforeEach(() => {
     resetGlobalEventBus();
-    eventBus = new EventBus();
+    eventBus = new CollaborationEventBus();
     observer = createSwarmObserver() as SwarmObserver;
   });
 
@@ -150,7 +150,7 @@ describe('SwarmObserver -> EventBus Integration E2E Tests', () => {
     expect(observer.getHealthMetrics().totalInteractions).toBeGreaterThanOrEqual(0);
   });
 
-  it('should correlate SwarmObserver metrics with EventBus history', () => {
+  it('should correlate SwarmObserver metrics with CollaborationEventBus history', () => {
     // Record multiple interactions
     const traceId = SwarmObserver.generateTraceId();
 

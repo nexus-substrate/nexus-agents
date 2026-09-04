@@ -11,7 +11,7 @@
 import type { Result } from '../../core/result.js';
 import type { AgentError } from '../../core/errors.js';
 import type { IAgent, AgentMessage, AgentResponse } from '../../core/types/index.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 import { AGENT_ROUTER_TIMEOUTS } from '../../config/timeouts.js';
 
 // =============================================================================
@@ -47,7 +47,7 @@ export interface AgentMessageRouterOptions {
   /** Configuration settings */
   readonly config?: AgentMessageRouterConfig;
   /** Event bus for message routing events. Uses global bus if not provided. */
-  readonly eventBus?: IEventBus;
+  readonly eventBus?: ICollaborationEventBus;
 }
 
 /** Options for the send method. */
@@ -108,7 +108,7 @@ export interface RouterStats {
  * Agent message router for peer-to-peer communication.
  *
  * Routes messages between agents using their handleMessage() methods
- * and emits message.sent/message.received events through the EventBus.
+ * and emits message.sent/message.received events through the CollaborationEventBus.
  */
 export interface IAgentMessageRouter {
   /**

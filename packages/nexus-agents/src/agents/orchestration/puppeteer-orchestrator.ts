@@ -6,7 +6,7 @@
  *
  * Features:
  * - Non-blocking agent lifecycle management via Promise-based API
- * - Event-driven coordination with EventBus integration
+ * - Event-driven coordination with CollaborationEventBus integration
  * - Emergent pattern detection (compaction, cyclicality)
  *
  * @module agents/orchestration/puppeteer-orchestrator
@@ -18,7 +18,7 @@ import type { Result } from '../../core/result.js';
 import type { IAgent, Task } from '../../core/index.js';
 import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 
-import type { IEventBus } from '../collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from '../collaboration/event-bus-types.js';
 import type {
   PuppeteerConfig,
   PuppeteerExecuteOptions,
@@ -71,7 +71,7 @@ export interface PuppeteerOrchestratorOptions {
   /** Optional custom pattern tracker */
   readonly patternTracker?: IPatternTracker;
   /** Optional event bus for observability */
-  readonly eventBus?: IEventBus;
+  readonly eventBus?: ICollaborationEventBus;
   /** Registry of available agents */
   readonly agents?: readonly IAgent[];
   /** Learning system configuration (Issue #154) */
@@ -90,7 +90,7 @@ export class PuppeteerOrchestrator {
   private readonly policyEngine: IPolicyEngine;
   private readonly stateManager: IStateManager;
   private readonly patternTracker: IPatternTracker;
-  private readonly eventBus: IEventBus | undefined;
+  private readonly eventBus: ICollaborationEventBus | undefined;
   private readonly agents: Map<string, IAgent>;
   private readonly experienceBuffer: ExperienceBuffer | null;
   private readonly learningConfig: LearningIntegrationConfig;

@@ -467,19 +467,19 @@ describe('ResilientAdapter', () => {
     });
   });
 
-  describe('EventBus emit failure handling', () => {
-    it('catches EventBus errors during failover emit', async () => {
+  describe('CollaborationEventBus emit failure handling', () => {
+    it('catches CollaborationEventBus errors during failover emit', async () => {
       await adapter.complete({ messages: [] });
 
       vi.mocked(getGlobalEventBus).mockImplementation(() => {
-        throw new Error('EventBus unavailable');
+        throw new Error('CollaborationEventBus unavailable');
       });
 
       // Trigger failover
       vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('codex'));
       await adapter.refresh();
 
-      // Failover completed despite EventBus error
+      // Failover completed despite CollaborationEventBus error
       expect(adapter.getHealth()?.state).toBe('healthy');
       expect(adapter.getHealth()?.failoverCount).toBe(1);
     });

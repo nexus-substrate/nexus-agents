@@ -3,7 +3,7 @@
  * (Source: Issue #217, Sprint #219)
  *
  * Routes messages between agents using their handleMessage() methods
- * and emits message.sent/message.received events through the EventBus.
+ * and emits message.sent/message.received events through the CollaborationEventBus.
  *
  * @module agents/collaboration/agent-message-router
  */
@@ -13,7 +13,7 @@ import { ok, err } from '../../core/result.js';
 import { AgentError } from '../../core/errors.js';
 import { createLogger } from '../../core/logger.js';
 import type { IAgent, AgentMessage, AgentResponse } from '../../core/types/index.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 import { getGlobalEventBus } from './event-bus.js';
 import type {
   IAgentMessageRouter,
@@ -62,7 +62,7 @@ interface BroadcastState {
 export class AgentMessageRouter implements IAgentMessageRouter {
   private readonly agents: Map<string, IAgent> = new Map();
   private readonly config: Required<AgentMessageRouterConfig>;
-  private readonly eventBus: IEventBus;
+  private readonly eventBus: ICollaborationEventBus;
   private readonly logger = createLogger({ component: 'AgentMessageRouter' });
   private readonly stats: MutableStats = {
     messagesSent: 0,

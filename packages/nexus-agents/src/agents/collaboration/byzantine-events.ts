@@ -1,5 +1,5 @@
 /**
- * Byzantine Detection EventBus Integration Helpers
+ * Byzantine Detection CollaborationEventBus Integration Helpers
  * (Source: Issue #218, Sprint #228)
  *
  * Provides helper functions for emitting Byzantine fault detection events.
@@ -9,7 +9,7 @@
  */
 
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   ByzantineWeightUpdatedEvent,
   ByzantinePatternDetectedEvent,
   ByzantineAgentFlaggedEvent,
@@ -32,7 +32,10 @@ export interface WeightUpdatedParams {
 }
 
 /** Emits byzantine.weight_updated event when an agent's weight changes. */
-export function emitWeightUpdated(eventBus: IEventBus, params: WeightUpdatedParams): void {
+export function emitWeightUpdated(
+  eventBus: ICollaborationEventBus,
+  params: WeightUpdatedParams
+): void {
   const event = createEvent<ByzantineWeightUpdatedEvent>(
     'byzantine.weight_updated',
     {
@@ -64,7 +67,10 @@ export interface PatternDetectedParams {
 }
 
 /** Emits byzantine.pattern_detected event when Byzantine pattern is detected. */
-export function emitPatternDetected(eventBus: IEventBus, params: PatternDetectedParams): void {
+export function emitPatternDetected(
+  eventBus: ICollaborationEventBus,
+  params: PatternDetectedParams
+): void {
   const event = createEvent<ByzantinePatternDetectedEvent>(
     'byzantine.pattern_detected',
     {
@@ -96,7 +102,10 @@ export interface AgentFlaggedParams {
 }
 
 /** Emits byzantine.agent_flagged event when an agent is flagged as Byzantine. */
-export function emitAgentFlagged(eventBus: IEventBus, params: AgentFlaggedParams): void {
+export function emitAgentFlagged(
+  eventBus: ICollaborationEventBus,
+  params: AgentFlaggedParams
+): void {
   const event = createEvent<ByzantineAgentFlaggedEvent>(
     'byzantine.agent_flagged',
     {
@@ -129,7 +138,7 @@ export interface CollusionSuspectedParams {
 
 /** Emits byzantine.collusion_suspected event when collusion pattern is suspected. */
 export function emitCollusionSuspected(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: CollusionSuspectedParams
 ): void {
   const event = createEvent<ByzantineCollusionSuspectedEvent>(

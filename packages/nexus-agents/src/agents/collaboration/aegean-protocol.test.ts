@@ -8,10 +8,10 @@ import { ok } from '../../core/index.js';
 import { AegeanProtocol, createAegeanProtocol } from './aegean-protocol.js';
 import { calculateQuorumSize, hasAcceptQuorum, isConsensusFailed } from './aegean-types.js';
 import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
-import type { IEventBus, TypedEvent } from './event-bus-types.js';
+import type { ICollaborationEventBus, TypedEvent } from './event-bus-types.js';
 
-/** Creates a mock EventBus for testing event emission. */
-function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
+/** Creates a mock CollaborationEventBus for testing event emission. */
+function createMockEventBus(): ICollaborationEventBus & { emittedEvents: TypedEvent[] } {
   const emittedEvents: TypedEvent[] = [];
   return {
     emittedEvents,
@@ -325,7 +325,7 @@ describe('Aegean helper functions', () => {
   });
 });
 
-describe('AegeanProtocol EventBus integration', () => {
+describe('AegeanProtocol CollaborationEventBus integration', () => {
   it('should emit protocol.started event on execution', async () => {
     const mockEventBus = createMockEventBus();
     const protocol = createAegeanProtocol({ eventBus: mockEventBus });
@@ -432,7 +432,7 @@ describe('AegeanProtocol EventBus integration', () => {
     expect(completedEvent?.payload.success).toBe(false);
   });
 
-  it('should use global EventBus when none provided', () => {
+  it('should use global CollaborationEventBus when none provided', () => {
     const protocol = createAegeanProtocol();
     expect(protocol.pattern).toBe('aegean');
   });

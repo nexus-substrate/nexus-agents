@@ -15,7 +15,7 @@ import type {
   ProtocolOptions,
 } from './collaboration-types.js';
 import { CollaborationSession, createCollaborationSession } from './collaboration-session.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 import { getGlobalEventBus } from './event-bus.js';
 import {
   emitReflexionStarted,
@@ -51,7 +51,7 @@ export interface ReflexionProtocolOptions extends ProtocolOptions {
   /** Reflexion-specific configuration */
   readonly reflexionConfig?: PartialReflexionConfig;
   /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
-  readonly eventBus?: IEventBus;
+  readonly eventBus?: ICollaborationEventBus;
 }
 
 /**
@@ -64,7 +64,7 @@ export interface ReflexionProtocolOptions extends ProtocolOptions {
 export class ReflexionProtocol implements ICollaborationProtocol {
   readonly pattern = 'reflexion' as const;
   protected readonly logger: ILogger;
-  protected readonly eventBus: IEventBus;
+  protected readonly eventBus: ICollaborationEventBus;
   protected session: CollaborationSession | null = null;
   protected cancelled = false;
   protected readonly options: ReflexionProtocolOptions;

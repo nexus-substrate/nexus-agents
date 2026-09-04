@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  EventBus,
+  CollaborationEventBus,
   resetGlobalEventBus,
   createEvent,
 } from '../../../agents/collaboration/event-bus.js';
@@ -76,7 +76,7 @@ describe('CLI Adapter -> Router -> Consensus Pipeline E2E Tests', () => {
   let adapters: Map<CliName, ICliAdapter>;
   let router: CompositeRouter;
   let votingProtocol: VotingProtocol;
-  let eventBus: EventBus;
+  let eventBus: CollaborationEventBus;
 
   beforeEach(() => {
     resetGlobalEventBus();
@@ -87,7 +87,7 @@ describe('CLI Adapter -> Router -> Consensus Pipeline E2E Tests', () => {
     ]);
     router = new CompositeRouter(adapters);
     votingProtocol = new VotingProtocol();
-    eventBus = new EventBus();
+    eventBus = new CollaborationEventBus();
   });
 
   afterEach(() => {

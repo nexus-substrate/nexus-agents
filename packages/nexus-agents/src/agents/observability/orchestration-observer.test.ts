@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { EventBus } from '../collaboration/event-bus.js';
+import { CollaborationEventBus } from '../collaboration/event-bus.js';
 import { createEvent } from '../collaboration/event-bus.js';
 import { OrchestrationObserver, createOrchestrationObserver } from './orchestration-observer.js';
 import type {
@@ -16,11 +16,11 @@ import type {
 } from './orchestration-observer-types.js';
 
 describe('OrchestrationObserver', () => {
-  let eventBus: EventBus;
+  let eventBus: CollaborationEventBus;
   let observer: OrchestrationObserver;
 
   beforeEach(() => {
-    eventBus = new EventBus();
+    eventBus = new CollaborationEventBus();
     observer = new OrchestrationObserver(eventBus);
   });
 

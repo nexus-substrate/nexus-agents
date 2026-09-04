@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { EventBus as CollaborationBus, createEvent } from '../core/event-bus.js';
+import { CollaborationEventBus as CollaborationBus, createEvent } from '../core/event-bus.js';
 import { EventBus as PipelineBus } from '../pipeline/event-bus.js';
 import type { PipelineEvent } from '../pipeline/event-types.js';
 import type { AdapterHealthInfo } from '../adapters/resilient-adapter-types.js';
