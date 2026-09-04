@@ -27,6 +27,12 @@ describe('MemoryDecayConfigSchema (#5097)', () => {
     if (result.success) expect(result.data.agenticMaxEntries).toBe(1234);
   });
 
+  it('accepts the documented 1000 ms interval floor', () => {
+    const result = MemoryDecayConfigSchema.safeParse({ decayIntervalMs: 1000 });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.decayIntervalMs).toBe(1000);
+  });
+
   it('accepts enabled: false', () => {
     const result = MemoryDecayConfigSchema.safeParse({ enabled: false });
     expect(result.success).toBe(true);
@@ -60,6 +66,8 @@ describe('MemoryDecayConfigSchema (#5097)', () => {
   it.each([
     ['negative interval', { decayIntervalMs: -1 }, 'decayIntervalMs'],
     ['zero interval', { decayIntervalMs: 0 }, 'decayIntervalMs'],
+    // Sweeps are not re-entrant; a sub-second cadence invites overlapping runs.
+    ['sub-second interval', { decayIntervalMs: 999 }, 'decayIntervalMs'],
     ['non-integer cap', { agenticMaxEntries: 10.5 }, 'agenticMaxEntries'],
     ['zero cap', { agenticMaxEntries: 0 }, 'agenticMaxEntries'],
     ['unsafe integer cap', { agenticMaxEntries: Number.MAX_SAFE_INTEGER + 2 }, 'agenticMaxEntries'],

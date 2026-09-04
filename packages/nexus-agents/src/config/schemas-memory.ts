@@ -22,6 +22,9 @@ import { z } from 'zod';
 /** Unit-interval score threshold. */
 const unitInterval = z.number().min(0).max(1);
 
+/** Smallest accepted `decayIntervalMs` — sweeps are not re-entrant (see field JSDoc). */
+export const MIN_DECAY_INTERVAL_MS = 1000;
+
 /**
  * Coordinated memory decay configuration.
  *
@@ -34,8 +37,13 @@ export const MemoryDecayConfigSchema = z.object({
   /** Whether decay runs at all (default: true) */
   enabled: z.boolean().optional(),
 
-  /** Interval between automatic decay runs in ms (default: 1 hour) */
-  decayIntervalMs: z.number().int().positive().optional(),
+  /**
+   * Interval between automatic decay runs in ms (default: 1 hour).
+   * Floor: {@link MIN_DECAY_INTERVAL_MS}. `runDecay` has no re-entrancy
+   * guard, so a sub-second cadence invites overlapping sweeps over the same
+   * stores; 1000 ms is the smallest value at which that is implausible.
+   */
+  decayIntervalMs: z.number().int().min(MIN_DECAY_INTERVAL_MS).optional(),
 
   /** Age in days before superseded beliefs are pruned (default: 30) */
   beliefMaxAgeDays: z.number().int().positive().optional(),

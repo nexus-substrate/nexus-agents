@@ -577,9 +577,10 @@ describe('decay config reaches MemoryDecayManager (#5097 finding 2)', () => {
     return call?.[1];
   }
 
+  const NEVER_CALLED = 'defaults (configureToolMemory never called)';
+
   afterEach(() => {
     shutdownToolMemory();
-    configureToolMemory({});
   });
 
   it('constructs the manager with a non-default cap from the constructor option', async () => {
@@ -621,6 +622,7 @@ describe('decay config reaches MemoryDecayManager (#5097 finding 2)', () => {
       ...DEFAULT_DECAY_CONFIG,
       agenticMaxEntries: 1234,
       decayIntervalMs: 5000,
+      source: NEVER_CALLED,
     });
   });
 
@@ -643,7 +645,48 @@ describe('decay config reaches MemoryDecayManager (#5097 finding 2)', () => {
     await manager.awaitBackendInitialization();
 
     expect(MemoryDecayManager).toHaveBeenCalledWith({}, logger);
-    expect(activatedLineFields(logger)).toEqual(DEFAULT_DECAY_CONFIG);
+    expect(activatedLineFields(logger)).toEqual({ ...DEFAULT_DECAY_CONFIG, source: NEVER_CALLED });
+  });
+
+  describe('source of the effective values — the empty case named', () => {
+    /**
+     * A CLI path (composite-router / dev-pipeline / graph-executor via the
+     * context retriever) builds the singleton without `configureToolMemory`
+     * ever running. Defaults there are indistinguishable from "yaml said
+     * default" unless the line says WHY they are defaults.
+     */
+    it('says configureToolMemory was never called when it was not', async () => {
+      const logger = createMockLogger();
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+
+      expect(manager.getDecayConfigSource()).toBe(NEVER_CALLED);
+      expect(activatedLineFields(logger)).toMatchObject({ source: NEVER_CALLED });
+    });
+
+    it("says 'config' once configureToolMemory ran, even with an absent memory section", async () => {
+      const logger = createMockLogger();
+      configureToolMemory({ memoryConfig: undefined });
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+
+      expect(manager.getDecayConfigSource()).toBe('config');
+      expect(activatedLineFields(logger)).toMatchObject({
+        ...DEFAULT_DECAY_CONFIG,
+        source: 'config',
+      });
+    });
+
+    it('shutdown forgets the configuration, so the next instance is honest about it', async () => {
+      configureToolMemory({ memoryConfig: { decay: { agenticMaxEntries: 1234 } } });
+      shutdownToolMemory();
+      const logger = createMockLogger();
+      const manager = getToolMemory(logger);
+      await manager.awaitBackendInitialization();
+
+      expect(MemoryDecayManager).toHaveBeenCalledWith({}, logger);
+      expect(manager.getDecayConfigSource()).toBe(NEVER_CALLED);
+    });
   });
 
   describe('configureToolMemory — the cli-server seam', () => {

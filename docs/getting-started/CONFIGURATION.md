@@ -852,7 +852,7 @@ hardcoded `{}`, so none of these keys could reach it.
 memory:
   decay:
     enabled: true # false disables the sweep entirely
-    decayIntervalMs: 3600000 # ms between automatic runs (default: 1 hour)
+    decayIntervalMs: 3600000 # ms between automatic runs (default: 1 hour; minimum 1000)
     beliefMaxAgeDays: 30 # prune superseded beliefs older than this
     agenticMaxEntries: 10000 # importance-based eviction starts above this
     agenticImportanceThreshold: 0.3 # 0-1; agentic entries below are evicted
@@ -863,12 +863,18 @@ memory:
 ```
 
 Validation happens at config load: counts and durations must be positive safe
-integers (`crossReferenceGracePeriodMs` may be `0`), thresholds must lie in
-`[0, 1]`, and a bad value fails startup with the offending path named
-(`memory.decay.decayIntervalMs`, for example). The server logs one line at
-activation — `MemoryDecayManager activated (Phase 5 #746)` — carrying the
-effective value of every key, read back from the manager, so what ran is on
-record rather than what the file said.
+integers (`crossReferenceGracePeriodMs` may be `0`; `decayIntervalMs` has a
+1000 ms floor because sweeps are not re-entrant and a sub-second cadence would
+let them overlap), thresholds must lie in `[0, 1]`, and a bad value fails
+startup with the offending path named (`memory.decay.decayIntervalMs`, for
+example). The server logs one line at activation —
+`MemoryDecayManager activated (Phase 5 #746)` — carrying the effective value of
+every key, read back from the manager, plus a `source` field: `config` when the
+MCP server applied `nexus-agents.yaml`, or
+`defaults (configureToolMemory never called)` on CLI paths (composite-router,
+dev-pipeline, graph-executor) that build the memory singleton without loading
+the file. Defaults on those paths are therefore labelled as such rather than
+passing for a file that happened to say the default.
 
 ## Security Configuration
 
