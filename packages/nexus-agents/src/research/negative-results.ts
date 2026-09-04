@@ -8,9 +8,10 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 import yaml from 'yaml';
 import { createLogger, getErrorMessage } from '../core/index.js';
+import { REGISTRY_PATH, resolveRegistryRoot } from '../cli/research-helpers-io.js';
 
 const logger = createLogger({ component: 'negative-results' });
 
@@ -27,19 +28,29 @@ interface NegativeResultsRegistry {
   negative_results: Record<string, NegativeResult>;
 }
 
-const REGISTRY_PATH = resolve('docs/research/registry/negative-results.yaml');
+const NEGATIVE_RESULTS_FILE = 'negative-results.yaml';
+
+/**
+ * Path of the negative-results registry, derived at call time (#5053) from
+ * the same root the other research registries use — never a cwd-relative
+ * path fixed at import, which followed wherever the server was started.
+ */
+function negativeResultsPath(): string {
+  return join(resolveRegistryRoot(), REGISTRY_PATH, NEGATIVE_RESULTS_FILE);
+}
 
 let cachedResults: NegativeResultsRegistry | undefined;
 
 function loadNegativeResults(): NegativeResultsRegistry {
   if (cachedResults !== undefined) return cachedResults;
+  const registryPath = negativeResultsPath();
   try {
-    const content = readFileSync(REGISTRY_PATH, 'utf-8');
+    const content = readFileSync(registryPath, 'utf-8');
     cachedResults = yaml.parse(content) as NegativeResultsRegistry;
     return cachedResults;
   } catch (error: unknown) {
     logger.debug('Could not load negative-results registry', {
-      path: REGISTRY_PATH,
+      path: registryPath,
       error: getErrorMessage(error),
     });
     return { negative_results: {} };
