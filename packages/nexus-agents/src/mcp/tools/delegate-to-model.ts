@@ -158,9 +158,10 @@ function enrichWithGovernance(
  * nothing on this path can deny on it: the graph declares no policy gate
  * (#4657) and its pre-execution check evaluates a route-typed stage, which
  * the trust-tier rule allows at every tier. Nothing here reads the graph's
- * verdict either, so a gate that fired would report a refusal the delegation
- * above never honoured — the reason the cannot-fire gate was removed rather
- * than widened. */
+ * verdict either (nor does `executeOrchestratePipeline`, the plan's other
+ * fire-and-forget caller), so a gate that fired would report a refusal the
+ * delegation above never honoured — the reason the cannot-fire gate was
+ * removed rather than widened. */
 function instrumentV2Pipeline(
   input: { task: string },
   logger: ILogger,

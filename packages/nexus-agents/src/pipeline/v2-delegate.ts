@@ -13,11 +13,13 @@
  *
  * #4657: the plan declares NO policy gate. The entry gate #3703 added could
  * never deny (`trustTierRule` denies only execute-typed stages; the only stage
- * is route-typed), and this graph runs fire-and-forget beside the real
- * delegation (`mcp/tools/delegate-to-model.ts`), so a gate that did fire would
- * record a denial the delegation never honoured. Trust-tier enforcement that
- * can refuse lives at `v2-orchestrate.ts` (`checkPipelinePolicy(task,
- * 'execute')`) and `dev-pipeline.ts` (`enforceConsensusExecutePolicy`).
+ * is route-typed). The plan is compiled by both `instrumentV2Pipeline`
+ * (`mcp/tools/delegate-to-model.ts`) and `executeOrchestratePipeline`
+ * (`v2-orchestrate.ts`), and both callers run it fire-and-forget beside the
+ * real work, so a gate that did fire would record a denial nothing honoured.
+ * Trust-tier enforcement that can refuse lives at `v2-orchestrate.ts`
+ * (`checkPipelinePolicy(task, 'execute')`, unchanged) and `dev-pipeline.ts`
+ * (`enforceConsensusExecutePolicy`).
  *
  * @module pipeline/v2-delegate
  */

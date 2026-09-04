@@ -332,8 +332,10 @@ describe('the delegate plan declares no policy gate (#4657)', () => {
   // delegation (`mcp/tools/delegate-to-model.ts`, `instrumentV2Pipeline`), so
   // a firing gate would record a denial while the model call it describes
   // proceeded. A gate that cannot fire was removed rather than turned into one
-  // that misreports. These tests pin the removal; a future gate here must be
-  // on the delegation's actual path before it is declared.
+  // that misreports. The plan is compiled by both `instrumentV2Pipeline` and
+  // `executeOrchestratePipeline`, both fire-and-forget. The first two tests
+  // pin the removal; a future gate here must be on the delegation's actual
+  // path before it is declared.
   const savedGateMode = process.env['NEXUS_POLICY_GATE_MODE'];
   const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
 
@@ -358,7 +360,11 @@ describe('the delegate plan declares no policy gate (#4657)', () => {
     expect([...result.value.graph.nodes.keys()]).toEqual(['route-model']);
   });
 
-  it('a delegate run emits zero policy.evaluated events, even at tier 4 in block mode', async () => {
+  it('fidelity pin: a delegate run emits zero policy.evaluated events, even at tier 4 in block mode', async () => {
+    // This is a pin on the event count, not a discriminator for the removal:
+    // it also held with the old gate, which emitted only on violations it
+    // could not raise. It exists so a soak reading zero delegate-graph
+    // policy events is a stated fact rather than an inference.
     process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
     process.env['NEXUS_V2_POLICY_MODE'] = 'block';
     const bus = getPipelineEventBus();
