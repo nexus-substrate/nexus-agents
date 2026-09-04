@@ -780,6 +780,57 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
       expect(output).toContain('memory-stats.ts');
     });
   });
+
+  // #5062: the gate matches the AST, not the text, so a doc comment or a
+  // string that NAMES the convention is not an offender. The old regex
+  // flagged both of these.
+  it('passes when `isError: true` appears only in a comment and a string literal (#5062)', () => {
+    withSandboxFile(TOOL, (original) => {
+      const mentioned = original.replace(
+        'export ',
+        '/** Errors return `{ isError: true }` from toolStructuredError. */\n' +
+          "const _doc = 'shape: { isError: true }';\n" +
+          'export '
+      );
+      expect(mentioned).not.toBe(original);
+      writeFileSync(box(TOOL), mentioned);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(true);
+      expect(output).not.toContain('raw `isError: true` literal');
+    });
+  });
+
+  // #5062: the old `[{,]\s*` anchor could not see past a comment line, so a
+  // property that follows one inside a multi-line literal slipped through.
+  it('fails when `isError: true` follows a comment line inside a multi-line object (#5062)', () => {
+    withSandboxFile(TOOL, (original) => {
+      const broken = original.replace(
+        'export ',
+        'const _raw = {\n  // deliberately raw\n  isError: true,\n  content: [],\n};\nexport '
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box(TOOL), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('raw `isError: true` literal');
+      expect(output).toContain('memory-stats.ts');
+    });
+  });
+
+  it('fails on `isError: true as const` (#5062)', () => {
+    withSandboxFile(TOOL, (original) => {
+      const broken = original.replace(
+        'export ',
+        'const _raw = { isError: true as const, content: [] };\nexport '
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box(TOOL), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('raw `isError: true` literal');
+      expect(output).toContain('memory-stats.ts');
+    });
+  });
 });
 
 // ============================================================================
