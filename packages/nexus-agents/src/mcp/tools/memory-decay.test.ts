@@ -297,3 +297,49 @@ describe('MemoryDecayManager with mock backends', () => {
     manager.shutdown();
   });
 });
+
+describe('the auto-decay timer releases the event loop (#5402)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is unref'd, so it is never the sole reason a process stays alive", () => {
+    // REAL timers here on purpose: vitest's fake timers stub `unref`, so this
+    // assertion would pass against un-unref'd code under fake timers — the
+    // vacuous shape. `hasRef()` on the actual handle is the observable fact.
+    const manager = new MemoryDecayManager({ enabled: true, decayIntervalMs: 60_000 });
+    manager.initialize({});
+    manager.startAutoDecay();
+
+    const timer = (manager as unknown as { decayTimer: NodeJS.Timeout | null }).decayTimer;
+    expect(timer).not.toBeNull();
+    // A 1-hour background maintenance sweep must not outvote the exit path;
+    // `task-store.ts` and `response-cache.ts` already unref theirs.
+    expect(timer?.hasRef()).toBe(false);
+
+    manager.stopAutoDecay();
+  });
+
+  it('stopAutoDecay clears the interval — asserted on the timer, not on a flag', () => {
+    vi.useFakeTimers();
+    const manager = new MemoryDecayManager({ enabled: true, decayIntervalMs: 60_000 });
+    manager.initialize({});
+
+    manager.startAutoDecay();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    manager.stopAutoDecay();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stopAutoDecay is idempotent when decay never started', () => {
+    vi.useFakeTimers();
+    const manager = new MemoryDecayManager({ enabled: false });
+    manager.initialize({});
+    expect(() => {
+      manager.stopAutoDecay();
+      manager.stopAutoDecay();
+    }).not.toThrow();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

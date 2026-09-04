@@ -499,3 +499,41 @@ describe('ToolMemoryManager belief integration', () => {
     expect(beliefs).toBeUndefined();
   });
 });
+
+describe('shutdownToolMemory releases the auto-decay timer (#5402)', () => {
+  /**
+   * The seam. `memory-decay.test.ts` proves `stopAutoDecay` clears the interval
+   * and that the interval is unref'd; this proves `shutdownToolMemory` actually
+   * CALLS it. Without this, deleting the `shutdownDecay()` line leaves every
+   * other test green — dropping the reference and ending the session is all the
+   * old assertions ever checked, while the timer and the manager it closes over
+   * stay resident.
+   *
+   * Asserted on the call rather than on the live timer because the decay manager
+   * is built inside an un-awaited async backend init that does not complete in
+   * this environment — a timer-observing test would have passed vacuously here,
+   * which is worse than not testing it.
+   */
+  it('calls shutdownDecay, not only endSession', () => {
+    const stopSpy = vi.spyOn(ToolMemoryManager.prototype, 'shutdownDecay');
+    const endSpy = vi.spyOn(ToolMemoryManager.prototype, 'endSession');
+
+    getToolMemory();
+    shutdownToolMemory();
+
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    // Pinned alongside so a future refactor cannot satisfy this test by
+    // swapping one teardown step for the other.
+    expect(endSpy).toHaveBeenCalledTimes(1);
+
+    stopSpy.mockRestore();
+    endSpy.mockRestore();
+  });
+
+  it('is a no-op when no shared instance exists', () => {
+    shutdownToolMemory();
+    expect(() => {
+      shutdownToolMemory();
+    }).not.toThrow();
+  });
+});
