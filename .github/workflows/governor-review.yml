@@ -73,11 +73,17 @@ jobs:
       - name: Compute changed files (base..head)
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
+            exit 1
+          fi
           FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
           {
+            echo "base=${BASE_SHA}"
             echo 'files<<FILES_EOF'
             echo "${FILES}"
             echo 'FILES_EOF'
@@ -90,7 +96,7 @@ jobs:
           # Without PR_BASE_SHA, resolvePrContext.baseSha is undefined and the
           # diff-binding never runs, so the gate cannot match any record (#4227).
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_SHA: ${{ steps.changed.outputs.base }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CHANGED_FILES: ${{ steps.changed.outputs.files }}
         # No continue-on-error: the script encodes warn (exit 0) vs fail-closed
@@ -128,9 +134,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
+            exit 1
+          fi
           FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
           APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
             --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
