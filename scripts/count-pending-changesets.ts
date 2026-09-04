@@ -56,12 +56,21 @@ function git(repoDir: string, args: readonly string[]): string {
 }
 
 /**
- * Number of changesets at `ref` that declare at least one release.
+ * Ids of the changesets at `ref` that declare at least one release, sorted.
  *
  * Empty changesets, `README.md` and `config.json` are all excluded — the first
  * because it declares no release, the others because they are not changesets.
+ * An id is the filename without `.md`, which is what `@changesets/read`
+ * parses; callers print `.changeset/<id>.md`.
+ *
+ * Exists so the release.yml stand-down can NAME what blocks it (#5077): a
+ * stale version PR is the usual cause, and "2 pending" left the operator to
+ * work out which two.
  */
-export async function countNonEmptyChangesetsAt(repoDir: string, ref: string): Promise<number> {
+export async function listNonEmptyChangesetsAt(
+  repoDir: string,
+  ref: string
+): Promise<readonly string[]> {
   const staging = mkdtempSync(join(tmpdir(), 'changeset-count-'));
   try {
     const changesetDir = join(staging, '.changeset');
@@ -93,17 +102,29 @@ export async function countNonEmptyChangesetsAt(repoDir: string, ref: string): P
     }
 
     const changesets = await readChangesets(staging);
-    return changesets.filter((changeset) => changeset.releases.length > 0).length;
+    return changesets
+      .filter((changeset) => changeset.releases.length > 0)
+      .map((changeset) => changeset.id)
+      .sort();
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
 }
 
+/** Number of changesets at `ref` that declare at least one release. */
+export async function countNonEmptyChangesetsAt(repoDir: string, ref: string): Promise<number> {
+  return (await listNonEmptyChangesetsAt(repoDir, ref)).length;
+}
+
 if (process.argv[1]?.endsWith('count-pending-changesets.ts') === true) {
-  const ref = process.argv[2] ?? 'HEAD';
-  countNonEmptyChangesetsAt(process.cwd(), ref)
-    .then((count) => {
-      process.stdout.write(`${String(count)}\n`);
+  // `--names` prints one id per line instead of the count, so release.yml can
+  // say WHICH changesets its stand-down is waiting on. Nothing at all is
+  // printed for zero pending, so `grep -c .` over the output is the count.
+  const names = process.argv.includes('--names');
+  const ref = process.argv.find((arg, i) => i >= 2 && !arg.startsWith('--')) ?? 'HEAD';
+  listNonEmptyChangesetsAt(process.cwd(), ref)
+    .then((ids) => {
+      process.stdout.write(names ? ids.map((id) => `${id}\n`).join('') : `${String(ids.length)}\n`);
     })
     .catch((error: unknown) => {
       // Fail loud rather than printing 0 — a swallowed error here would read as
