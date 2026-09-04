@@ -154,7 +154,7 @@ export function isTaskStateJobSource(): boolean {
 export type JobResultSource = 'sidecar' | 'task_state';
 
 /** A resolved record tagged with the source that produced it (#5008). */
-export interface ResolvedJobResult {
+interface ResolvedJobResult {
   readonly record: JobResult;
   readonly source: JobResultSource;
 }
