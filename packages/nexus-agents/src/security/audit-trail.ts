@@ -49,7 +49,13 @@ export interface TrustClassificationEvent extends AuditEventBase {
   readonly username: string;
   readonly assignedTier: TrustTier;
   readonly userRole: string;
-  readonly isAllowlisted: boolean;
+  /**
+   * Present only when a maintainer allowlist was consulted (#4992). A
+   * classification that consulted no list records nothing here rather than
+   * `false` — "not measured" and "measured false" must stay distinguishable in
+   * the audit record.
+   */
+  readonly isAllowlisted?: boolean;
   readonly wasDowngraded: boolean;
   readonly reason: string;
 }

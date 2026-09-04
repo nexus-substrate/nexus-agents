@@ -177,6 +177,9 @@ export type {
 // Hostile input firewall (Issue #826)
 export { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+// #4992: the per-call argument to `process()` — a consumer cannot pass an
+// allowlist or an access posture per call without the type that names them.
+export type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 // #5382: the return type of `validateAction`. Exported for the same reason as
 // FirewallPolicyMode below — a consumer cannot narrow a value it is handed
 // without the type that names its discriminant.

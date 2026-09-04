@@ -62,7 +62,8 @@ function mapTrust(e: TrustEvent): AuditEventInput {
     metadata: {
       assignedTier: e.assignedTier,
       userRole: e.userRole,
-      isAllowlisted: e.isAllowlisted,
+      // Absent when no allowlist was consulted (#4992) — never a default false.
+      ...(e.isAllowlisted !== undefined ? { isAllowlisted: e.isAllowlisted } : {}),
       wasDowngraded: e.wasDowngraded,
       component: e.component,
     },

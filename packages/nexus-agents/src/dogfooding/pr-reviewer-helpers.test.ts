@@ -22,6 +22,7 @@ import {
   generateSummary,
   formatReviewComment,
   createFailedReview,
+  buildPRTrustAssessment,
 } from './pr-reviewer-helpers.js';
 import type {
   PRMetadata,
@@ -827,3 +828,32 @@ function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRRe
     ...overrides,
   };
 }
+
+describe('buildPRTrustAssessment — isAllowlisted measured or absent (#4992)', () => {
+  const trust = {
+    trustTier: '3',
+    userRole: 'unknown',
+    isAllowlisted: false,
+    wasDowngraded: false,
+    reason: 'Role unknown → Tier 3',
+  } as const;
+  const gate = {
+    enforcedTier: '3',
+    reconciledTier: '3',
+    demotionSuppressed: false,
+    mode: 'off',
+  } as const;
+
+  it('omits isAllowlisted when the firewall consulted no allowlist', () => {
+    const assessment = buildPRTrustAssessment({ trust }, undefined, gate);
+    expect('isAllowlisted' in assessment).toBe(false);
+    expect(assessment.trustTier).toBe('3');
+  });
+
+  it('carries the measured value when the firewall consulted one', () => {
+    const measuredFalse = buildPRTrustAssessment({ trust, isAllowlisted: false }, undefined, gate);
+    expect(measuredFalse.isAllowlisted).toBe(false);
+    const measuredTrue = buildPRTrustAssessment({ trust, isAllowlisted: true }, undefined, gate);
+    expect(measuredTrue.isAllowlisted).toBe(true);
+  });
+});

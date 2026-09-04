@@ -231,3 +231,21 @@ describe('AuditTrail → durable sink end-to-end parity (#3291)', () => {
     expect(logger.log).toBeDefined();
   });
 });
+
+describe('trust events without a measured allowlist (#4992)', () => {
+  it('omits isAllowlisted from the durable metadata when the event does not carry it', () => {
+    const unmeasured: SecurityAuditEvent = {
+      ...base,
+      type: 'trust_classification',
+      username: 'alice',
+      assignedTier: '3',
+      userRole: 'contributor',
+      wasDowngraded: false,
+      reason: 'Role contributor → Tier 3 (no allowlist consulted)',
+    };
+    const input = securityAuditEventToInput(unmeasured);
+    expect(input.metadata).toBeDefined();
+    expect('isAllowlisted' in (input.metadata ?? {})).toBe(false);
+    expect(AuditEventInputSchema.safeParse(input).success).toBe(true);
+  });
+});

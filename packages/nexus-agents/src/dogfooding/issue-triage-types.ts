@@ -67,12 +67,7 @@ export interface IssueComment {
  * Issue category determined by keyword-based classification.
  */
 export type IssueCategory =
-  | 'bug'
-  | 'feature'
-  | 'question'
-  | 'documentation'
-  | 'security'
-  | 'performance';
+  'bug' | 'feature' | 'question' | 'documentation' | 'security' | 'performance';
 
 /**
  * Display names for issue categories.
@@ -169,8 +164,13 @@ export interface TrustAssessment {
   readonly trustTier: string;
   /** Author's GitHub role */
   readonly userRole: string;
-  /** Whether the author is on the maintainer allowlist */
-  readonly isAllowlisted: boolean;
+  /**
+   * Whether the author is on the maintainer allowlist — present only when an
+   * allowlist was consulted (#4992). Absent means "no allowlist was consulted",
+   * which is the state on every live path today; it was previously recorded
+   * as `false` without being measured.
+   */
+  readonly isAllowlisted?: boolean;
   /** Reputation score (0-100) if reputation model is enabled */
   readonly reputationScore?: number | undefined;
   /** Suspicious signals detected */

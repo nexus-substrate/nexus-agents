@@ -149,6 +149,48 @@ export interface FirewallConfig {
    * present a stricter tier and prove the check can fire.
    */
   readonly reputationAssessor?: (metadata: GitHubUserMetadata) => ReputationAssessment;
+  /**
+   * Whether the sanitizer's content tier is applied as a classification
+   * downgrade (#4992). Default `true` — the firewall's behaviour since #826:
+   * injection-bearing content from a Tier-2 author classifies as Tier 4.
+   *
+   * `false` keeps the classifier role-only. The sanitization stage still runs
+   * and still records its injection flags — only the tier downgrade is
+   * withheld. The dogfooding paths (`issue-triage`, `pr-reviewer`) set this
+   * because they route content signals through reputation gating, which has
+   * its own rollout knob (`NEXUS_REPUTATION_GATING`); applying the same signal
+   * at classification too would bypass that knob and change the recorded
+   * `trustTier` under the default `NEXUS_FIREWALL_POLICY=off`, which #5382
+   * promises is pass-through.
+   */
+  readonly contentDowngrade?: boolean;
+}
+
+/**
+ * Per-call inputs to {@link HostileInputFirewall.process} (#4992).
+ *
+ * These are the facts that vary by CALL rather than by instance, so a
+ * process-wide firewall (the dogfooding singleton) can serve many repositories
+ * and many access postures without holding any of them globally.
+ */
+export interface FirewallProcessOptions {
+  /**
+   * Maintainer allowlist for THIS call, from the repository context. Replaces —
+   * does not merge with — the construction-time list, and is forgotten after
+   * the call. When neither this nor the construction-time list was supplied,
+   * no allowlist is consulted and `FirewallResult.isAllowlisted` is absent.
+   */
+  readonly allowlistedMaintainers?: readonly string[];
+  /**
+   * Access posture of the caller for THIS call, feeding the Rule-of-Two check.
+   * Replaces the construction-time `context` for the call. Without it a shared
+   * instance would evaluate every caller against one posture, and
+   * `wouldRefuse` could never fire for a caller whose posture differs.
+   */
+  readonly context?: {
+    readonly hasWriteAccess: boolean;
+    readonly hasSecretAccess: boolean;
+  };
 }
 
 // ============================================================================

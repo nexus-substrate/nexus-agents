@@ -20,8 +20,9 @@ import type { Result } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
 import { hasToken } from '../scm/token-resolver.js';
-import { classifyTrust } from '../security/trust-classifier.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
+import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
 import type { TrustTier } from '../security/trust-types.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
@@ -194,8 +195,13 @@ export class IssueTriage {
     const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
     const safeBody = this.sanitizeContent(issueResult.body, issueResult.author);
 
-    // Classify trust + assess reputation (Issue #828 — new wiring)
-    const trustResult = this.classifyAuthor(issueResult);
+    // #4992: classify through the shared HostileInputFirewall so the trust
+    // decision reaches the security audit trail. Signal-only under the default
+    // NEXUS_FIREWALL_POLICY=off; `validateActions` below stays the Rule-of-Two
+    // enforcement point and reputation gating stays here.
+    const firewall = this.classifyAuthor(issueResult);
+    if (!firewall.ok) return firewall;
+    const trustResult = firewall.value.trust;
     const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
 
     // #3122: apply the reputation-gating rollout mode (off/audit/enforce). The
@@ -232,6 +238,7 @@ export class IssueTriage {
       issue: issueResult,
       actions: validatedActions,
       trustResult,
+      isAllowlisted: firewall.value.isAllowlisted,
       reputation,
       gateDecision,
       safeContent: { title: safeTitle, body: safeBody },
@@ -266,14 +273,45 @@ export class IssueTriage {
   }
 
   /**
-   * Classifies the issue author's trust tier.
-   * (Source: Issue #828 — trust-classifier wiring)
+   * Classifies the issue author's trust tier through the shared firewall
+   * (#4992; originally Issue #828 — trust-classifier wiring).
+   *
+   * The access posture is passed per call so the firewall's Rule-of-Two check
+   * sees the same facts `validateActions` enforces on. No maintainer allowlist
+   * is passed: there is no source for one today (no config field, no env var),
+   * so none is consulted and `isAllowlisted` stays absent on the result rather
+   * than being recorded as `false`.
    */
-  private classifyAuthor(issue: IssueMetadata): ClassifyResult {
-    return classifyTrust({
-      username: issue.author,
-      authorAssociation: issue.authorAssociation,
-    });
+  private classifyAuthor(issue: IssueMetadata): Result<FirewallResult, Error> {
+    return runUntrustedInputFirewall(
+      {
+        type: 'issue',
+        username: issue.author,
+        authorAssociation: issue.authorAssociation,
+        title: issue.title,
+        body: issue.body,
+      },
+      { context: this.accessContext() }
+    );
+  }
+
+  /**
+   * The access posture this triage runs under — the two Rule-of-Two conjuncts
+   * that are about the agent rather than the input. Shared by the firewall
+   * (#4992) and `validateActions` so the two cannot disagree.
+   */
+  private accessContext(): { hasWriteAccess: boolean; hasSecretAccess: boolean } {
+    return {
+      hasWriteAccess: !this.config.dryRun,
+      // #4681: read the token from where it ACTUALLY comes from. The previous
+      // form (`this.config.githubToken !== undefined`) was written to make this
+      // conjunct "real", but no production caller ever sets `githubToken` — the
+      // SCM provider resolves the live credential from GITHUB_TOKEN/GH_TOKEN.
+      // So the conjunct was permanently false and Rule of Two could never trip,
+      // which is precisely the constant it was introduced to remove.
+      // `hasToken()` is the canonical resolver-backed check.
+      hasSecretAccess: this.config.githubToken !== undefined || hasToken('github'),
+    };
   }
 
   /**
@@ -374,15 +412,7 @@ export class IssueTriage {
     // Tier-1/allowlist always wins.
     const context: ActionContext = {
       inputTrustTier: gateDecision.enforcedTier,
-      hasWriteAccess: !this.config.dryRun,
-      // #4681: read the token from where it ACTUALLY comes from. The previous
-      // form (`this.config.githubToken !== undefined`) was written to make this
-      // conjunct "real", but no production caller ever sets `githubToken` — the
-      // SCM provider resolves the live credential from GITHUB_TOKEN/GH_TOKEN.
-      // So the conjunct was permanently false and Rule of Two could never trip,
-      // which is precisely the constant it was introduced to remove.
-      // `hasToken()` is the canonical resolver-backed check.
-      hasSecretAccess: this.config.githubToken !== undefined || hasToken('github'),
+      ...this.accessContext(),
     };
 
     return actions.map((action) => {
@@ -415,12 +445,23 @@ export class IssueTriage {
     issue: IssueMetadata;
     actions: readonly ProposedAction[];
     trustResult: ClassifyResult;
+    /** Present only when the firewall consulted an allowlist (#4992). */
+    isAllowlisted: boolean | undefined;
     reputation: ReputationAssessment | undefined;
     gateDecision: ReputationGateDecision;
     safeContent: { title: string; body: string };
     startTime: number;
   }): IssueTriageResult {
-    const { issue, actions, trustResult, reputation, gateDecision, safeContent, startTime } = opts;
+    const {
+      issue,
+      actions,
+      trustResult,
+      isAllowlisted,
+      reputation,
+      gateDecision,
+      safeContent,
+      startTime,
+    } = opts;
     const [category, confidence] = categorizeIssue(safeContent.title, safeContent.body);
 
     // Tier 1 actors (owner/maintainer) cannot be suspicious — reconcile
@@ -430,7 +471,8 @@ export class IssueTriage {
     const trustAssessment: TrustAssessment = {
       trustTier: trustResult.trustTier,
       userRole: trustResult.userRole,
-      isAllowlisted: trustResult.isAllowlisted,
+      // Measured or absent (#4992): never the classifier's default `false`.
+      ...(isAllowlisted !== undefined ? { isAllowlisted } : {}),
       reputationScore: reputation?.reputationScore,
       suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
       isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),

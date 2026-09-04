@@ -40,7 +40,7 @@ import type {
   ReputationAssessment,
   GitHubUserMetadata,
 } from '../security/reputation-model.js';
-import type { ClassifyResult } from '../security/trust-classifier.js';
+import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
 
 const repLogger = createLogger({ component: 'PRReviewer.reputation' });
 
@@ -99,16 +99,18 @@ export function assessPRReputation(
 
 /** Builds the observability assessment surfaced on the review result (#3123). */
 export function buildPRTrustAssessment(
-  trustResult: ClassifyResult,
+  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted'>,
   reputation: ReputationAssessment | undefined,
   gateDecision: ReputationGateDecision
 ): PRTrustAssessment {
+  const trustResult = firewall.trust;
   // Tier-1 (owner/allowlisted) authors cannot be suspicious.
   const isTier1 = trustResult.trustTier === '1';
   return {
     trustTier: trustResult.trustTier,
     userRole: trustResult.userRole,
-    isAllowlisted: trustResult.isAllowlisted,
+    // Measured or absent (#4992): never the classifier's default `false`.
+    ...(firewall.isAllowlisted !== undefined ? { isAllowlisted: firewall.isAllowlisted } : {}),
     reputationScore: reputation?.reputationScore,
     suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
     isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
@@ -125,11 +127,12 @@ export function buildPRTrustAssessment(
  */
 export function gatePRAuthor(
   pr: PRMetadata,
-  trustResult: ClassifyResult,
+  firewall: Pick<FirewallResult, 'trust' | 'isAllowlisted'>,
   accountAgeDays: number | undefined,
   cache: ReputationCache,
   enableReputation: boolean
 ): { gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment } {
+  const trustResult = firewall.trust;
   const reputation = assessPRReputation(pr, cache, enableReputation, accountAgeDays);
   const gateDecision = gateWithReputation(
     trustResult.trustTier,
@@ -147,7 +150,7 @@ export function gatePRAuthor(
   }
   return {
     gateDecision,
-    trustAssessment: buildPRTrustAssessment(trustResult, reputation, gateDecision),
+    trustAssessment: buildPRTrustAssessment(firewall, reputation, gateDecision),
   };
 }
 

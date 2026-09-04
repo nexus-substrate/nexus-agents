@@ -378,12 +378,15 @@ function assignTrustTier(
  *
  * ⚠ **Use HostileInputFirewall.process() in agent code paths.** Calling
  * sanitizeInput() directly only runs Layer 1 — it does not evaluate the
- * Rule of Two (enforced in policy-gate.ts via evaluatePolicy) and does
- * not emit audit-trail events. An agent that processes untrusted input
- * while holding both write access and secrets violates the Rule of Two;
- * the policy gate is what catches this, and it only runs inside the
- * firewall pipeline. Direct use of this function is appropriate for
- * unit tests and pure content analysis, not for agent decision paths.
+ * Rule of Two and does not emit audit-trail events. An agent that processes
+ * untrusted input while holding both write access and secrets violates the
+ * Rule of Two; `evaluatePolicy` in policy-gate.ts enforces that per action,
+ * and the firewall evaluates it per input as a signal (refusing only under
+ * `NEXUS_FIREWALL_POLICY=enforce`). The live paths route their trust
+ * decision through the firewall as of #4992 and keep direct sanitizeInput()
+ * calls only for content cleaning of text they embed. Direct use of this
+ * function is appropriate for unit tests and pure content analysis, not
+ * for agent decision paths.
  *
  * @see packages/nexus-agents/src/security/firewall/firewall-pipeline.ts
  * @see packages/nexus-agents/src/security/policy-gate.ts

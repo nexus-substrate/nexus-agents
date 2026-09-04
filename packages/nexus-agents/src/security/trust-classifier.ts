@@ -84,11 +84,15 @@ export interface ClassifyResult {
  * 2. GitHub author_association → role → default tier
  * 3. Content injection analysis (can only downgrade, never upgrade)
  *
- * ⚠ **Use HostileInputFirewall.process() in agent code paths.** Calling
- * classifyTrust() directly skips the Rule-of-Two check in policy-gate
- * and does not emit audit-trail events. The firewall is the canonical
- * entry point for agent decisions; direct use is for unit tests and
- * non-decision analysis only.
+ * ⚠ **Use HostileInputFirewall.process() in agent code paths.** The live
+ * paths (`dogfooding/issue-triage`, `dogfooding/pr-reviewer`) route through
+ * it as of #4992. Calling classifyTrust() directly emits no audit-trail
+ * event, and unless the caller supplies `config.allowlistedMaintainers` no
+ * allowlist is consulted — `isAllowlisted: false` is then a default, not a
+ * measurement, and must not be recorded as one. Direct use is for unit tests
+ * and non-decision analysis only. (The Rule of Two is enforced separately by
+ * `evaluatePolicy` in policy-gate; the firewall evaluates it too, as a
+ * signal, and refuses on it only under `NEXUS_FIREWALL_POLICY=enforce`.)
  *
  * @see packages/nexus-agents/src/security/firewall/firewall-pipeline.ts
  * @see packages/nexus-agents/src/security/policy-gate.ts

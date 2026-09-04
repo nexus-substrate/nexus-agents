@@ -45,6 +45,7 @@ import type {
   ATLData,
   FirewallConfig,
   FirewallError,
+  FirewallProcessOptions,
   FirewallStages,
   SourceMetadata,
 } from './firewall-types.js';
@@ -67,6 +68,15 @@ const logger = createLogger({ component: 'HostileInputFirewall' });
 export interface FirewallResult {
   readonly sanitized: SanitizedInput;
   readonly trust: ClassifyResult;
+  /**
+   * Whether the author is on the maintainer allowlist — present ONLY when an
+   * allowlist was consulted (#4992), i.e. one was supplied at construction or
+   * per call. `trust.isAllowlisted` is the classifier's published always-boolean
+   * field and reads `false` whether the list was empty or never supplied; this
+   * field is the one to record, because absence here means "not measured"
+   * rather than "measured false" — the same treatment `reputationGate` gets.
+   */
+  readonly isAllowlisted?: boolean;
   readonly reputation?: ReputationAssessment;
   /**
    * The tier consumers should ENFORCE on (#3106): the classifier tier
@@ -157,7 +167,13 @@ export type ActionValidation =
  */
 export class HostileInputFirewall {
   private readonly stages: FirewallStages;
-  private readonly allowlisted: readonly string[];
+  /**
+   * Construction-time allowlist, or `undefined` when none was supplied (#4992).
+   * The Zod default of `[]` is deliberately NOT taken here: an absent list and
+   * an empty list must stay distinguishable so `isAllowlisted` can be omitted
+   * rather than recorded as `false` when nothing was consulted.
+   */
+  private readonly allowlisted: readonly string[] | undefined;
   private readonly maxInputLength: number;
   private readonly adapter: FirewallConfig['adapter'];
   private readonly reputationCache: ReputationCache;
@@ -169,6 +185,8 @@ export class HostileInputFirewall {
   private readonly reputationGatingMode: ReputationGatingMode;
   /** #5405 seam: how a reputation assessment is obtained. */
   private readonly assessReputationFn: (metadata: GitHubUserMetadata) => ReputationAssessment;
+  /** #4992: whether the sanitizer's content tier downgrades the classifier tier. */
+  private readonly contentDowngrade: boolean;
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -178,7 +196,8 @@ export class HostileInputFirewall {
       context: config.context,
     });
     this.stages = validated.stages;
-    this.allowlisted = validated.allowlistedMaintainers;
+    this.allowlisted =
+      config.allowlistedMaintainers !== undefined ? validated.allowlistedMaintainers : undefined;
     this.maxInputLength = validated.maxInputLength;
     this.adapter = config.adapter;
     this.reputationCache = new ReputationCache();
@@ -199,15 +218,23 @@ export class HostileInputFirewall {
       config.reputationGatingMode ?? resolveReputationGatingMode(config.env ?? process.env);
     this.assessReputationFn =
       config.reputationAssessor ?? ((metadata) => assessReputation(metadata, this.reputationCache));
+    this.contentDowngrade = config.contentDowngrade ?? true;
   }
 
   /**
    * Processes untrusted input through the firewall pipeline.
    * Returns a structured FirewallResult or a typed FirewallError.
+   *
+   * `options` carries the per-call facts (#4992): the repository's maintainer
+   * allowlist and the caller's access posture. Each replaces its
+   * construction-time counterpart for this call only, so one shared instance
+   * never holds a repository's allowlist or a caller's posture process-wide.
    */
-  process(input: unknown): Result<FirewallResult, FirewallError> {
+  process(input: unknown, options?: FirewallProcessOptions): Result<FirewallResult, FirewallError> {
     const start = Date.now();
     this.auditTrail.clear();
+    const allowlist = options?.allowlistedMaintainers ?? this.allowlisted;
+    const context = options?.context ?? this.context;
 
     // Stage 1: Extract metadata via adapter
     const metaResult = this.runExtraction(input);
@@ -215,10 +242,10 @@ export class HostileInputFirewall {
     const meta = metaResult.value;
 
     // Stage 2: Sanitize input
-    const sanitized = this.runSanitization(meta);
+    const sanitized = this.runSanitization(meta, allowlist);
 
     // Stage 3: Classify trust
-    const trust = this.runClassification(meta, sanitized);
+    const trust = this.runClassification(meta, sanitized, allowlist);
 
     // Stage 4: Assess reputation (optional)
     const reputation = this.runReputation(meta, sanitized);
@@ -231,39 +258,81 @@ export class HostileInputFirewall {
     // Stage 5: Generate ATL (labelled with the enforced tier)
     const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
 
-    // Stage 6: Rule-of-Two policy enforcement (#3198) — evaluate + surface the
-    // violation during firewall composition (previously the policyEnforcement
-    // stage was declared but never read). Signal only: the consumer enforces.
-    const ruleOfTwoViolation = this.stages.policyEnforcement
-      ? checkRuleOfTwo({
-          inputTrustTier: effectiveTrustTier,
-          hasWriteAccess: this.context.hasWriteAccess,
-          hasSecretAccess: this.context.hasSecretAccess,
-        })
-      : undefined;
-    if (ruleOfTwoViolation !== undefined) {
-      logger.warn('Firewall surfaced a Rule-of-Two violation', {
-        user: meta.username,
-        effectiveTrustTier,
-        rule: ruleOfTwoViolation.rule,
-      });
-    }
-
-    // #5382: decide the RESPONSE to a blocking violation.
-    const blocking = ruleOfTwoViolation?.severity === 'block';
+    // Stage 6: Rule-of-Two policy enforcement (#3198). Signal only: the
+    // consumer enforces — except under `enforce`, where it refuses (#5382).
+    const ruleOfTwoViolation = this.runPolicyEnforcement(meta, effectiveTrustTier, context);
     const refusal = this.refuseIfEnforcing(ruleOfTwoViolation, meta, effectiveTrustTier);
     if (refusal !== undefined) return err(refusal);
 
-    // Collect audit events
-    const auditEvents = this.auditTrail.query().map((e) => ({ id: e.id, type: e.type }));
+    return ok(
+      this.assembleResult({
+        sanitized,
+        trust,
+        // Measured or absent: present only when an allowlist was consulted.
+        isAllowlisted: allowlist !== undefined ? trust.isAllowlisted : undefined,
+        reputation,
+        effectiveTrustTier,
+        reputationGate,
+        atl,
+        ruleOfTwoViolation,
+        start,
+      })
+    );
+  }
 
-    return ok({
-      sanitized,
-      trust,
+  /**
+   * Evaluates the Rule of Two against the call's access posture and surfaces
+   * the violation (previously the `policyEnforcement` stage was declared but
+   * never read — #3198). Returns `undefined` when the stage is disabled or the
+   * rule holds.
+   */
+  private runPolicyEnforcement(
+    meta: SourceMetadata,
+    effectiveTrustTier: TrustTier,
+    context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean }
+  ): Violation | undefined {
+    if (!this.stages.policyEnforcement) return undefined;
+    const violation = checkRuleOfTwo({
+      inputTrustTier: effectiveTrustTier,
+      hasWriteAccess: context.hasWriteAccess,
+      hasSecretAccess: context.hasSecretAccess,
+    });
+    if (violation !== undefined) {
+      logger.warn('Firewall surfaced a Rule-of-Two violation', {
+        user: meta.username,
+        effectiveTrustTier,
+        rule: violation.rule,
+      });
+    }
+    return violation;
+  }
+
+  /**
+   * Builds the successful result. Optional fields are spread in only when they
+   * were evaluated, so absence keeps meaning "not measured" (see the field
+   * docs on {@link FirewallResult}).
+   */
+  private assembleResult(parts: {
+    readonly sanitized: SanitizedInput;
+    readonly trust: ClassifyResult;
+    readonly isAllowlisted: boolean | undefined;
+    readonly reputation: ReputationAssessment | undefined;
+    readonly effectiveTrustTier: TrustTier;
+    readonly reputationGate: ReputationGateDecision | undefined;
+    readonly atl: string;
+    readonly ruleOfTwoViolation: Violation | undefined;
+    readonly start: number;
+  }): FirewallResult {
+    const { isAllowlisted, reputation, reputationGate, ruleOfTwoViolation } = parts;
+    const blocking = ruleOfTwoViolation?.severity === 'block';
+    return {
+      sanitized: parts.sanitized,
+      trust: parts.trust,
+      ...(isAllowlisted !== undefined ? { isAllowlisted } : {}),
       ...(reputation !== undefined ? { reputation } : {}),
-      effectiveTrustTier,
+      effectiveTrustTier: parts.effectiveTrustTier,
       ...(reputationGate !== undefined ? { reputationGate } : {}),
-      atl,
+      atl: parts.atl,
       ...(ruleOfTwoViolation !== undefined ? { ruleOfTwoViolation } : {}),
       policyMode: this.policyMode,
       // Reached only when we did NOT refuse, so this is "audit mode saw
@@ -271,9 +340,9 @@ export class HostileInputFirewall {
       // signal is already on `ruleOfTwoViolation`, and reporting a would-be
       // refusal for a mode that has not opted in would overstate the gate.
       wouldRefuse: blocking && this.policyMode === 'audit',
-      auditEvents,
-      durationMs: Date.now() - start,
-    });
+      auditEvents: this.auditTrail.query().map((e) => ({ id: e.id, type: e.type })),
+      durationMs: Date.now() - parts.start,
+    };
   }
 
   /**
@@ -386,7 +455,10 @@ export class HostileInputFirewall {
     }
   }
 
-  private runSanitization(meta: SourceMetadata): SanitizedInput {
+  private runSanitization(
+    meta: SourceMetadata,
+    allowlist: readonly string[] | undefined
+  ): SanitizedInput {
     if (!this.stages.sanitization) {
       return createPassthroughSanitized(meta);
     }
@@ -396,7 +468,7 @@ export class HostileInputFirewall {
       mapAuthorAssociation(meta.authorAssociation),
       meta.username,
       {
-        allowlistedMaintainers: [...this.allowlisted],
+        allowlistedMaintainers: [...(allowlist ?? [])],
         maxInputLength: this.maxInputLength,
       }
     );
@@ -416,7 +488,11 @@ export class HostileInputFirewall {
     return result;
   }
 
-  private runClassification(meta: SourceMetadata, sanitized: SanitizedInput): ClassifyResult {
+  private runClassification(
+    meta: SourceMetadata,
+    sanitized: SanitizedInput,
+    allowlist: readonly string[] | undefined
+  ): ClassifyResult {
     if (!this.stages.trustClassification) {
       return createPassthroughClassification(meta);
     }
@@ -424,9 +500,11 @@ export class HostileInputFirewall {
     const result = classifyTrust({
       username: meta.username,
       authorAssociation: meta.authorAssociation,
-      sanitizedInput: sanitized,
+      // #4992: `contentDowngrade: false` withholds the sanitizer's content tier
+      // from the classifier; the flags themselves were still measured above.
+      ...(this.contentDowngrade ? { sanitizedInput: sanitized } : {}),
       config: {
-        allowlistedMaintainers: [...this.allowlisted],
+        allowlistedMaintainers: [...(allowlist ?? [])],
       },
     });
 
@@ -435,7 +513,8 @@ export class HostileInputFirewall {
         username: meta.username,
         assignedTier: result.trustTier,
         userRole: result.userRole,
-        isAllowlisted: result.isAllowlisted,
+        // Recorded only when an allowlist was consulted (#4992).
+        ...(allowlist !== undefined ? { isAllowlisted: result.isAllowlisted } : {}),
         wasDowngraded: result.wasDowngraded,
         reason: result.reason,
       });
