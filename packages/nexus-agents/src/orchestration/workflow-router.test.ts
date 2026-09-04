@@ -4,6 +4,7 @@
  * (Source: Issue #844 — Intelligent Workflow Pattern Router)
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { createWorkflowRouter } from './workflow-router.js';
 import type { TaskSignals } from './workflow-router-types.js';
@@ -426,5 +427,55 @@ describe('fallback', () => {
     // Either a rule matches or we get graph fallback — both valid
     expect(decision.pattern).toBeDefined();
     expect(decision.reasoning.length).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
+// Vestigial signal vocabulary (#5097 finding 5)
+// ============================================================================
+
+describe('qualityRequirement is never read (#5097)', () => {
+  // Fidelity pin: no routing rule consults `signals.qualityRequirement`, so
+  // setting it must not change the decision in any way. If a rule ever starts
+  // reading it, this test is the one that should fail — then un-deprecate the
+  // field and replace this pin with a test of the new behaviour.
+  const descriptions = [
+    'simple hello world task',
+    'refactor the auth module and add tests for edge cases',
+    'design and implement a completely new distributed consensus algorithm ' +
+      'with custom protocol handling, fault tolerance, leader election, ' +
+      'Byzantine fault detection, network partition recovery, and formal verification',
+  ];
+  const levels = ['best-effort', 'high', 'critical'] as const;
+
+  it.each(levels)('routing output is identical with and without qualityRequirement=%s', level => {
+    for (const description of descriptions) {
+      const base: TaskSignals = { description, isNovel: true };
+      const withHint: TaskSignals = { ...base, qualityRequirement: level };
+      expect(route(withHint)).toEqual(route(base));
+    }
+  });
+});
+
+describe('TimeConstraint inference vocabulary (#5097)', () => {
+  // `enrichSignals` is module-private and the router never surfaces the
+  // enriched signals, so the only honest pin on "what the inference can emit"
+  // is the set of literals the module assigns. Reading the source is
+  // deliberate: 'relaxed' and 'normal' are behaviourally indistinguishable to
+  // every consumer, so no black-box test can tell them apart.
+  const source = readFileSync(new URL('./workflow-router.ts', import.meta.url), 'utf8');
+
+  it("the inference emits only 'urgent' | 'normal' — no path produces 'relaxed'", () => {
+    const produced = [...source.matchAll(/timeConstraint:\s*'([a-z-]+)'/g)].map(m => m[1]);
+    // Name the empty case: a regex that matches nothing would "prove" the
+    // absence of 'relaxed' vacuously.
+    expect(produced.length).toBeGreaterThan(0);
+    expect([...new Set(produced)].sort()).toEqual(['normal', 'urgent']);
+  });
+
+  it("the only consumer tests for 'urgent'", () => {
+    const compared = [...source.matchAll(/timeConstraint\s*===\s*'([a-z-]+)'/g)].map(m => m[1]);
+    expect(compared.length).toBeGreaterThan(0);
+    expect([...new Set(compared)]).toEqual(['urgent']);
   });
 });
