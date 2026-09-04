@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { countNonEmptyChangesetsAt } from './count-pending-changesets.js';
+import { countNonEmptyChangesetsAt, listNonEmptyChangesetsAt } from './count-pending-changesets.js';
 
 const created: string[] = [];
 
@@ -81,5 +81,27 @@ describe('countNonEmptyChangesetsAt', () => {
     const dir = repoWithChangesets({ 'real.md': REAL });
     writeFileSync(join(dir, '.changeset', 'sneaky.md'), REAL, 'utf-8');
     await expect(countNonEmptyChangesetsAt(dir, 'HEAD')).resolves.toBe(1);
+  });
+});
+
+describe('listNonEmptyChangesetsAt', () => {
+  // The stand-down in release.yml names the blocking files (#5077): a stale
+  // version PR is the usual cause, and "2 pending" leaves the operator to
+  // work out which two. Ids are what @changesets/read parses — the filename
+  // without `.md` — so the caller can print them as `.changeset/<id>.md`.
+  it('names the changesets that declare a release, and only those', async () => {
+    const dir = repoWithChangesets({ 'real.md': REAL, 'empty.md': EMPTY, 'other.md': REAL });
+    await expect(listNonEmptyChangesetsAt(dir, 'HEAD')).resolves.toEqual(['other', 'real']);
+  });
+
+  it('returns an empty list, not a throw, when nothing is pending', async () => {
+    const dir = repoWithChangesets({ 'empty.md': EMPTY });
+    await expect(listNonEmptyChangesetsAt(dir, 'HEAD')).resolves.toEqual([]);
+  });
+
+  it('is what the count is derived from', async () => {
+    const dir = repoWithChangesets({ 'a.md': REAL, 'b.md': REAL, 'empty.md': EMPTY });
+    const names = await listNonEmptyChangesetsAt(dir, 'HEAD');
+    await expect(countNonEmptyChangesetsAt(dir, 'HEAD')).resolves.toBe(names.length);
   });
 });

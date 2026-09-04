@@ -97,6 +97,21 @@ A second, worse failure mode of that same fallback step. **Symptom:** npm marche
 
 **Backfill.** Tags + Releases for the versions published without them are restored separately — see #2696.
 
+### The stalled loop — repo ahead by several versions, every run green
+
+Under sustained merge activity the "next merge closes the loop" premise never
+holds: each version-PR merge bumps `package.json`, the release run finds a
+changeset a feature PR landed in the meantime, stands down, and a fresh version
+PR opens. On 2026-08-26 npm went 4.23.0 → 4.26.1 while 4.24.0, 4.25.0, 4.25.1
+and 4.26.0 were never published, and six consecutive release runs reported
+success (#5077). The tell in a run is `Generate CycloneDX SBOM` skipped with
+`Detect publish-race version skew` printing the stand-down warning.
+
+Nothing is lost — the eventual publish carries everything — but the npm version
+history has holes, and until #5077 nothing reported the condition. The
+procedure under Prevention (merge the regenerated version PR alone) is what
+unsticks it.
+
 ### Manual recovery (if the automatic fallback is somehow disabled)
 
 From `main` with `npm` credentials:
@@ -123,7 +138,13 @@ gh release upload "$TAG" sbom.cdx.json --clobber
 The race is rare. To minimize the chance of triggering it:
 
 - **Every shippable-source PR carries its own changeset.** Enforced by the `Changeset Presence` CI gate (`scripts/check-changeset.ts`) — a PR touching `packages/nexus-agents/src/**` fails CI without a `.changeset/*.md`. This is the structural fix: no changeset debt means the "Version Packages" PR reflects one batch at a time and never balloons.
-- **Don't let the "Version Packages" PR go stale.** When a `chore(release): version packages` PR is open, merge it promptly — ideally before unrelated PRs land. The autonomous-loop end-of-turn checklist should flag an open release PR. A stale version PR is how npm gets ahead of `main` (see the inverse-variant section above).
+- **Merge the "Version Packages" PR alone, after it has been regenerated.** A version PR is a snapshot of the changesets that existed when the action wrote it. Merging a stale one bumps `package.json` while a changeset is still on `main`, which is exactly the state the fallback stands down for — the merge publishes nothing (#5077). The procedure that closes the loop:
+  1. Merge the feature PRs.
+  2. Wait for the action to update the version PR so it consumes every changeset now on `main` — the release log says `updating found pull request #NNNN`.
+  3. Merge that version PR, and merge nothing else until its release run finishes.
+  4. Verify `npm view nexus-agents version` equals `packages/nexus-agents/package.json` before the next merge.
+
+  Step 2 is the one that gets skipped. A stale version PR is also how npm gets ahead of `main` when the inverse race fires (see the inverse-variant section above).
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
 - **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
 
