@@ -118,7 +118,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Check schema fan-out
-        run: pnpm exec tsx scripts/check-schema-fanout.ts ${{ github.event.pull_request.base.sha }} --verbose
+        run: pnpm exec tsx scripts/check-schema-fanout.ts origin/${{ github.base_ref || 'main' }} --verbose
 
   docs-coverage:
     name: Documentation Coverage
