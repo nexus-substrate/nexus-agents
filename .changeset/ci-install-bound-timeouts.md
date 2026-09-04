@@ -74,3 +74,37 @@ describes. It is not `setup-node` plus a seconds-long check; it runs a full
 than the house-default 10 — 10 would have left two minutes of headroom on a job
 that had just exhausted its budget, which is the same bug with a larger number.
 These caps are runaway-guards, not SLAs.
+
+## It is already red on `main`
+
+Written after the two sections above, and it changes what this is. While
+verifying the branch I checked the Documentation Gate on `main` itself, not just
+on the PR — the last four runs are all `cancelled`, back to `6998e2bd`:
+
+```
+33836678012  cancelled  26c872c3  04:24:19 -> 04:37:14
+33836095752  cancelled  f3825e4b  04:14:47 -> 04:25:52
+33836036339  cancelled  a560ca2c  04:13:51 -> 04:17:40
+33835860798  cancelled  9719f8db  04:11:03 -> 04:14:15
+```
+
+`cancel-in-progress: true` explains the first three: each push to `main`
+supersedes the previous run in the same group. It does **not** explain
+`26c872c3`, which is the tip — nothing newer arrived to cancel it. That run has
+exactly one killed job:
+
+```
+Claims Registry Drift   04:28:39 -> 04:33:54   5m15s   (cap 5)
+Docs Success            failure  (aggregator, reporting it correctly)
+```
+
+So `main`'s documentation gate has been failing on a timeout, and the three
+superseded runs above it are what made that easy to miss: in a list of four
+`cancelled` runs, the one that is a real failure looks like more of the same.
+Supersession and timeout are the same word in the UI, and here they were
+interleaved.
+
+This is the case for reading each job's own cap rather than the run's verdict,
+made a second time and on a different branch. It also means these caps are not a
+speculative fix for a flake seen once on a feature branch — the aggregator
+`Docs Success` (#4809) is doing its job and telling us the gate is down.
