@@ -116,16 +116,20 @@ jobs:
           # are part of what a consumer receives.
           npm install --prefix "$SCRATCH/tree" --ignore-scripts "$TARBALL"
 
+          # Written OUTSIDE the checkout. This step runs before the changesets
+          # action, and that action commits whatever is in the working tree into
+          # the version-PR branch — the first run after #5434 put sbom.cdx.json
+          # into "Version Packages" PR #5440 as a new tracked file.
           npx -y @cyclonedx/cdxgen@12.3.1 \
             -t npm \
             --spec-version 1.6 \
-            -o sbom.cdx.json \
+            -o "$SCRATCH/sbom.cdx.json" \
             -p "$SCRATCH/tree" \
             --no-recurse
 
           jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length > 0)' \
-            sbom.cdx.json > /dev/null
-          echo "SBOM generated: $(jq '.components | length' sbom.cdx.json) components"
+            "$SCRATCH/sbom.cdx.json" > /dev/null
+          echo "SBOM generated: $(jq '.components | length' "$SCRATCH/sbom.cdx.json") components"
 
       # The gate that would have caught #5429, and the reason the step above
       # runs before publish: it can still refuse.
@@ -142,6 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           TREE="${RUNNER_TEMP}/sbom/tree"
+          SBOM="${RUNNER_TEMP}/sbom/sbom.cdx.json"
 
           find "$TREE/node_modules" -name package.json \
             -not -path "*/node_modules/*/node_modules/*/node_modules/*" \
@@ -149,7 +154,7 @@ jobs:
           jq -r '.devDependencies | keys[]' package.json | sort -u > "${RUNNER_TEMP}/devdeps.txt"
           comm -23 "${RUNNER_TEMP}/devdeps.txt" "${RUNNER_TEMP}/installed.txt" \
             > "${RUNNER_TEMP}/workspace-only.txt"
-          jq -r '.components[].name' sbom.cdx.json | sort -u > "${RUNNER_TEMP}/components.txt"
+          jq -r '.components[].name' "$SBOM" | sort -u > "${RUNNER_TEMP}/components.txt"
 
           # Guard the guard, first: with no workspace-only names to look for,
           # the check below would find nothing and pass on any input.
@@ -167,7 +172,7 @@ jobs:
             exit 1
           fi
 
-          COUNT=$(jq '.components | length' sbom.cdx.json)
+          COUNT=$(jq '.components | length' "$SBOM")
           if [[ "$COUNT" -lt 50 ]]; then
             echo "::error::SBOM has only ${COUNT} components — too few to be the real graph (#5429)."
             exit 1
@@ -354,7 +359,7 @@ jobs:
         # output. Derive the release tag from publishedPackages and use
         # `gh release upload` which looks up the release by tag.
         # (#1841 follow-up; SPDX dropped — CycloneDX is dominant for npm.)
-        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Prefer changesets/action's output; fall back to the synthesized
@@ -370,13 +375,13 @@ jobs:
             exit 0
           fi
           echo "Uploading SBOM to release tag: $TAG"
-          gh release upload "$TAG" sbom.cdx.json --clobber
+          gh release upload "$TAG" "${RUNNER_TEMP}/sbom/sbom.cdx.json" --clobber
 
       - name: Attest SBOM
-        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: sbom.cdx.json
+          subject-path: ${{ runner.temp }}/sbom/sbom.cdx.json
 
       # "Attest npm package" was removed here (#5429). It bound the digest of
       # `packages/nexus-agents/package.json`, and pnpm rewrites the workspace
