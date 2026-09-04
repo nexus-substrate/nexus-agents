@@ -199,7 +199,22 @@ export function formatVerdict(verdict: RatificationVerdict): string {
 
 /** Reads evidence from the environment and returns a process exit code. */
 export function runRatificationGate(env: NodeJS.ProcessEnv): number {
-  const changed = (env['CHANGED_FILES'] ?? '')
+  // #5444: distinguish "no file list was supplied" from "the file list is
+  // empty". The workflow always supplies CHANGED_FILES (governor-review.yml);
+  // a local run does not. Absent, the gate has measured nothing — and it used
+  // to say "ratification not required", which is a verdict. A developer
+  // running the gate locally before pushing governor files was told, twice in
+  // one day, that none was needed. Nothing is asserted here, on purpose, and
+  // the message says so; CI is unaffected because CI sets the variable.
+  if (env['CHANGED_FILES'] === undefined) {
+    console.log(
+      'No CHANGED_FILES in the environment: this is a non-PR run, nothing was measured and ' +
+        'nothing is asserted. In CI the workflow supplies the changed-file list; locally, set ' +
+        'CHANGED_FILES to a newline-separated list to evaluate a diff.'
+    );
+    return 0;
+  }
+  const changed = env['CHANGED_FILES']
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l !== '');
