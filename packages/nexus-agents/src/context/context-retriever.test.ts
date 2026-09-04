@@ -28,6 +28,16 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { rankMemories } from './context-retriever-helpers.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
 import { getTokenLedger, _resetTokenLedgerForTests } from './token-ledger.js';
+import {
+  PAPERS_FILE,
+  REGISTRY_PATH,
+  TECHNIQUES_FILE,
+  _resetRegistryRootForTests,
+} from '../cli/research-helpers-io.js';
+import {
+  _resetActiveWorkspaceRootForTests,
+  setActiveWorkspaceRoot,
+} from '../config/nexus-data-dir.js';
 
 // File-level isolation (#4252): `summarizeContextForPrompt` now records a
 // token-ledger entry on every call. Route ALL tests in this file to an
@@ -60,11 +70,25 @@ describe('getContextForTask', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'context-retriever-'));
     prevDataDir = process.env['NEXUS_DATA_DIR'];
     process.env['NEXUS_DATA_DIR'] = dataDir;
+    // The research backend reads the registry at the resolved workspace root
+    // (#5053). Point it at an explicitly EMPTY registry so "no backends have
+    // data" holds by construction — before #5053 this block only passed
+    // because vitest's cwd resolved to the (since-deleted) shadow registry
+    // under packages/nexus-agents rather than the populated root one.
+    const registryDir = join(dataDir, REGISTRY_PATH);
+    mkdirSync(registryDir, { recursive: true });
+    writeFileSync(join(registryDir, TECHNIQUES_FILE), "schema_version: '1.0'\ntechniques: {}\n");
+    writeFileSync(join(registryDir, PAPERS_FILE), "schema_version: '1.0'\npapers: {}\n");
+    _resetRegistryRootForTests();
+    if (!setActiveWorkspaceRoot(dataDir))
+      throw new Error(`could not pin workspace root ${dataDir}`);
     setMemoryRegistry(createInMemoryMemoryRegistry());
     resetOutcomeStore();
   });
 
   afterEach(async () => {
+    _resetActiveWorkspaceRootForTests();
+    _resetRegistryRootForTests();
     await closeMemoryRegistry();
     if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
     else process.env['NEXUS_DATA_DIR'] = prevDataDir;
@@ -85,6 +109,7 @@ describe('getContextForTask', () => {
     expect(ctx.recentLearnings).toEqual([]);
     expect(ctx.experiencePatterns).toEqual([]);
     expect(ctx.priorStrategies).toEqual([]);
+    expect(ctx.researchInsights).toEqual([]);
     expect(ctx.rankedMemories).toEqual([]);
     // outcomes is a summary type — always present, just zeroed.
     expect(ctx.outcomes).not.toBeUndefined();

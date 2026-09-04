@@ -54,6 +54,9 @@ const registryRootByOrigin = new Map<string, string>();
 /** The cwd-fallback warning fires once per process overall, not per origin. */
 let warnedCwdFallback = false;
 
+// @export-no-consumer-yet — see #5053. Test-only reset hook for the per-origin
+// memo and the one-shot cwd warning, the same shape as the data-dir module's
+// `_reset*ForTests` helpers; no production consumer is intended.
 /** Test helper — clears the registry-root memo and the one-shot warning. */
 export function _resetRegistryRootForTests(): void {
   registryRootByOrigin.clear();
