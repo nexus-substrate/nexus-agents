@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { assessWiring, isReachableFromCi } from './check-script-wiring.js';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import {
+  MANUAL_ONLY,
+  assessWiring,
+  hasCliEntryGuard,
+  isReachableFromCi,
+  readInScopeScripts,
+  readNpmScripts,
+  readWorkflowText,
+} from './check-script-wiring.js';
 
 describe('isReachableFromCi', () => {
   it('does not count a paths: trigger entry as wiring (#5028)', () => {
@@ -74,10 +86,138 @@ describe('isReachableFromCi', () => {
   });
 });
 
+describe('hasCliEntryGuard', () => {
+  // The three shapes scripts/ actually uses (grepped, not invented):
+  //   process.argv[1]?.endsWith('x.ts') === true          (check-*, arch-lint, …)
+  //   import.meta.url === `file://${process.argv[1]}`     (claims-check, pr-review-*, …)
+  //   import.meta.url === pathToFileURL(argv[1]).href     (inject-governance, generate-tool-reference)
+  //   fileURLToPath(import.meta.url) === process.argv[1]  (check-harness-alignment)
+  it.each([
+    ["if (process.argv[1]?.endsWith('x.ts') === true) {\n  process.exit(main());\n}", 'endsWith'],
+    [
+      'const p = process.argv[1] ?? "";\nif (import.meta.url === `file://${p}`) {\n  main();\n}',
+      'file://',
+    ],
+    [
+      'const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;',
+      'pathToFileURL',
+    ],
+    [
+      'const invokedDirectly =\n  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];',
+      'fileURLToPath',
+    ],
+  ])('recognises the %s shape', (source) => {
+    expect(hasCliEntryGuard(source)).toBe(true);
+  });
+
+  it('does not treat a library module as an entry point', () => {
+    // audit-exceptions.ts: exports only, reached by its test sibling. That is a
+    // module, not a gate, and must not be reported as an unwired gate.
+    expect(
+      hasCliEntryGuard('export function loadLedger(root: string): string[] { return []; }')
+    ).toBe(false);
+  });
+
+  it('does not treat a bare import.meta.url URL resolution as a guard', () => {
+    // inject-governance.ts resolves a package.json path this way, hundreds of
+    // lines before its real guard. The resolution alone is not an entry point.
+    expect(
+      hasCliEntryGuard("const pkg = new URL('../packages/x/package.json', import.meta.url);")
+    ).toBe(false);
+  });
+});
+
+describe('readInScopeScripts', () => {
+  const dirs: string[] = [];
+  function fixture(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), 'wiring-scope-'));
+    dirs.push(root);
+    mkdirSync(join(root, 'scripts'));
+    for (const [name, body] of Object.entries(files))
+      writeFileSync(join(root, 'scripts', name), body);
+    return root;
+  }
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  const GUARD = "if (process.argv[1]?.endsWith('self.ts') === true) main();\n";
+
+  it('includes a non-check- script that carries a CLI entry guard (#5458)', () => {
+    // The #4553 class sitting just outside the old `check-` glob: a gate-shaped
+    // script under another name was invisible to the gate that exists to find
+    // unwired gates.
+    const root = fixture({ 'analyze-thing.ts': `export function f() {}\n${GUARD}` });
+    expect(readInScopeScripts(root)).toEqual(['analyze-thing.ts']);
+  });
+
+  it('keeps every check-*.ts in scope whether or not it has a guard', () => {
+    // check-pricing-drift.ts calls main() unconditionally; it was in scope
+    // before and must stay in scope.
+    const root = fixture({ 'check-plain.ts': 'main();\n' });
+    expect(readInScopeScripts(root)).toEqual(['check-plain.ts']);
+  });
+
+  it('ignores a non-check- script with no guard (a library module)', () => {
+    const root = fixture({ 'helpers.ts': 'export const x = 1;\n' });
+    expect(readInScopeScripts(root)).toEqual([]);
+  });
+
+  it('ignores test files even when they carry a guard-shaped line', () => {
+    const root = fixture({ 'thing.test.ts': GUARD, 'check-x.test.ts': 'it()' });
+    expect(readInScopeScripts(root)).toEqual([]);
+  });
+
+  it('returns sorted basenames', () => {
+    const root = fixture({ 'zeta.ts': GUARD, 'check-b.ts': '', 'alpha.ts': GUARD });
+    expect(readInScopeScripts(root)).toEqual(['alpha.ts', 'check-b.ts', 'zeta.ts']);
+  });
+});
+
 describe('assessWiring', () => {
+  it('reports an allowlisted script that is now wired as stale', () => {
+    // An allowlist entry is a claim ("nothing in CI runs this"). Once a
+    // workflow does run it, the claim is false and the entry is paperwork
+    // that would hide the next real regression under it.
+    const verdict = assessWiring({
+      inScopeScripts: ['check-a.ts'],
+      workflowText: 'run: npx tsx scripts/check-a.ts',
+      npmScripts: {},
+      allowlist: { 'check-a.ts': 'operator-run' },
+    });
+
+    expect(verdict.stale).toEqual([{ basename: 'check-a.ts', reason: 'wired' }]);
+    expect(verdict.manualOnly).toEqual([]);
+  });
+
+  it('reports an allowlisted script that is no longer enumerated as stale', () => {
+    // Deleted, renamed, or lost its guard: either way the entry no longer
+    // describes a script the gate can see.
+    const verdict = assessWiring({
+      inScopeScripts: [],
+      workflowText: '',
+      npmScripts: {},
+      allowlist: { 'gone.ts': 'was a gate once' },
+    });
+
+    expect(verdict.stale).toEqual([{ basename: 'gone.ts', reason: 'not-enumerated' }]);
+  });
+
+  it('reports no stale entries when the allowlist is empty (named empty case)', () => {
+    const verdict = assessWiring({
+      inScopeScripts: ['check-a.ts'],
+      workflowText: '',
+      npmScripts: {},
+      allowlist: {},
+    });
+
+    expect(verdict.stale).toEqual([]);
+    expect(verdict.unwired).toEqual(['check-a.ts']);
+  });
+
   it('partitions reachable from unreachable', () => {
     const verdict = assessWiring({
-      checkScripts: ['check-a.ts', 'check-b.ts'],
+      inScopeScripts: ['check-a.ts', 'check-b.ts'],
       workflowText: 'npx tsx scripts/check-a.ts',
       npmScripts: {},
     });
@@ -88,11 +228,39 @@ describe('assessWiring', () => {
 
   it('reports nothing unwired when everything is reachable', () => {
     const verdict = assessWiring({
-      checkScripts: ['check-a.ts'],
+      inScopeScripts: ['check-a.ts'],
       workflowText: 'npx tsx scripts/check-a.ts',
       npmScripts: {},
     });
 
     expect(verdict.unwired).toEqual([]);
+  });
+});
+
+describe('MANUAL_ONLY against the real tree', () => {
+  // The allowlist is measured, not trusted: every entry must still name a
+  // script that exists, that the gate enumerates, and that nothing in CI runs.
+  // A stale entry is exactly the kind of silent paperwork #4553 is about.
+  const root = process.cwd();
+  const workflowText = readWorkflowText(root);
+  const npmScripts = readNpmScripts(root);
+  const inScope = readInScopeScripts(root);
+
+  it('has at least one entry (the table is not decorative)', () => {
+    expect(Object.keys(MANUAL_ONLY).length).toBeGreaterThan(0);
+  });
+
+  it.each(Object.keys(MANUAL_ONLY))('%s exists, is enumerated, and is unwired', (basename) => {
+    expect(existsSync(join(root, 'scripts', basename))).toBe(true);
+    expect(inScope).toContain(basename);
+    expect(isReachableFromCi(basename, workflowText, npmScripts)).toBe(false);
+  });
+
+  it('the widened gate passes on the real tree', () => {
+    const verdict = assessWiring({ inScopeScripts: inScope, workflowText, npmScripts });
+    expect(verdict.unwired).toEqual([]);
+    expect(verdict.stale).toEqual([]);
+    // The widening must actually widen: at least one non-check- script is in scope.
+    expect(inScope.some((b) => !b.startsWith('check-'))).toBe(true);
   });
 });
