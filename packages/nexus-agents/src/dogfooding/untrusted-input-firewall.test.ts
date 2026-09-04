@@ -220,7 +220,7 @@ describe('configureUntrustedInputFirewall — the durable sink (#4992 review)', 
     runUntrustedInputFirewall(issue({ username: 'second-user' }), { context: READ_ONLY });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
-    expect(first.value.auditSink).toBe('durable');
+    expect(first.value.auditSink).toBe('configured');
     const trustRecords = log.mock.calls
       .map(([input]) => input as { action?: string; actor?: { id?: string } })
       .filter((input) => input.action === 'security.trust_classification');

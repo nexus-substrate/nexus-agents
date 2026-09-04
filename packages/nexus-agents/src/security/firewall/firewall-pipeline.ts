@@ -45,6 +45,7 @@ import {
   createPassthroughClassification,
   createPassthroughSanitized,
 } from './firewall-passthrough.js';
+import { describeGate } from './firewall-trust-reason.js';
 import type {
   ATLData,
   FirewallConfig,
@@ -131,13 +132,15 @@ export interface FirewallResult {
   readonly wouldRefuse: boolean;
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
   /**
-   * Where this run's audit events went (#4992 review). `durable` means every
-   * event was mirrored to the hash-chained `auditLogger` the instance was
-   * constructed with; `none` means they exist only in the in-memory trail,
-   * which the next `process()` call clears. A consumer that reports "recorded
-   * to the audit trail" must read this rather than assume it.
+   * Whether a durable `AuditLogger` was configured for this instance (#4992
+   * review). `configured` means this run's events were HANDED to that logger;
+   * delivery to the hash chain is subject to the logger's own severity filter
+   * (trust events are `info`), its bounded queue and its timed, fail-loud
+   * flush, and is NOT confirmed per call — the write is queued. `none` means
+   * the events exist only in the in-memory trail, which the next `process()`
+   * call clears. This is a construction-time fact, not a per-call outcome.
    */
-  readonly auditSink: 'durable' | 'none';
+  readonly auditSink: 'configured' | 'none';
   readonly durationMs: number;
 }
 
@@ -199,8 +202,8 @@ export class HostileInputFirewall {
   private readonly assessReputationFn: (metadata: GitHubUserMetadata) => ReputationAssessment;
   /** #4992: whether the sanitizer's content tier downgrades the classifier tier. */
   private readonly contentDowngrade: boolean;
-  /** #4992 review: whether a durable sink backs the audit trail. */
-  private readonly auditSink: 'durable' | 'none';
+  /** #4992 review: whether a durable logger was configured (not per-call delivery). */
+  private readonly auditSink: 'configured' | 'none';
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -220,7 +223,7 @@ export class HostileInputFirewall {
     this.auditTrail = createAuditTrail(
       config.auditLogger !== undefined ? createDurableAuditSink(config.auditLogger) : undefined
     );
-    this.auditSink = config.auditLogger !== undefined ? 'durable' : 'none';
+    this.auditSink = config.auditLogger !== undefined ? 'configured' : 'none';
     this.context = validated.context;
     // Explicit config wins; otherwise the environment; otherwise `off`. Resolved
     // once here rather than per `process()` call so a mid-run env change cannot
@@ -550,10 +553,7 @@ export class HostileInputFirewall {
       // Recorded only when an allowlist was consulted (#4992).
       ...(allowlist !== undefined ? { isAllowlisted: trust.isAllowlisted } : {}),
       wasDowngraded: trust.wasDowngraded || demoted,
-      reason:
-        demoted && gate !== undefined
-          ? `${trust.reason}; demoted to Tier ${effectiveTrustTier} by reputation gating (${gate.mode})`
-          : trust.reason,
+      reason: describeGate(trust.reason, demoted, gate),
     });
   }
 

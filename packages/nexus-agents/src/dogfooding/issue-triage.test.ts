@@ -877,11 +877,11 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     expect(v.trustAssessment.auditSink).toBe('none');
   });
 
-  it('records auditSink: durable when the shared instance carries the process audit logger', async () => {
+  it('records auditSink: configured when the shared instance carries the process audit logger', async () => {
     const { logger } = stubAuditLogger();
     _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
     const v = await triage();
-    expect(v.trustAssessment.auditSink).toBe('durable');
+    expect(v.trustAssessment.auditSink).toBe('configured');
   });
 
   it('under audit: a CONTRIBUTOR demoted by reputation is counted as wouldRefuse (one gate, one tier)', async () => {

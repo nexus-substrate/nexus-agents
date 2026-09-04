@@ -679,7 +679,7 @@ describe('durable sink and caller-supplied reputation (#4992 review)', () => {
     expect(result.value.auditSink).toBe('none');
   });
 
-  it('with a durable logger, one trust record lands per item and the next item does not erase it', () => {
+  it('with a configured logger, one trust record lands per item and the next item does not erase it', () => {
     const { logger, log } = stubAuditLogger();
     const fw = createFirewall({ auditLogger: logger });
 
@@ -687,7 +687,7 @@ describe('durable sink and caller-supplied reputation (#4992 review)', () => {
     const second = fw.process(issueInput({ username: 'second-user' }));
     expect(first.ok && second.ok).toBe(true);
     if (!first.ok || !second.ok) return;
-    expect(first.value.auditSink).toBe('durable');
+    expect(first.value.auditSink).toBe('configured');
 
     const trustRecords = log.mock.calls
       .map(([input]) => input as { action?: string; actor?: { id?: string } })
@@ -743,6 +743,12 @@ describe('durable sink and caller-supplied reputation (#4992 review)', () => {
     expect(result.value.effectiveTrustTier).toBe('2');
     expect(result.value.reputationGate?.reconciledTier).toBe('4');
     expect(result.value.reputationGate?.demotionSuppressed).toBe(true);
+    // The audit record must say the demotion was seen and withheld, or an
+    // audit-mode run reads as a clean Tier-2 classification.
+    const [event] = fw.getAuditTrail().query({ type: 'trust_classification' });
+    if (event?.type !== 'trust_classification') return;
+    expect(event.assignedTier).toBe('2');
+    expect(event.reason).toContain('would demote to Tier 4 (reputation gating: audit)');
   });
 
   it('a caller that measured nothing still gets the gate decision on the classifier tier', () => {

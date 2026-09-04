@@ -3692,7 +3692,7 @@ InterfaceDeclaration FirewallProcessOptions
 InterfaceDeclaration FirewallResult
   readonly atl: string
   readonly auditEvents: readonly { readonly id: string; readonly type: string; }[]
-  readonly auditSink: "none" | "durable"
+  readonly auditSink: "none" | "configured"
   readonly durationMs: number
   readonly effectiveTrustTier: "1" | "2" | "3" | "4"
   readonly isAllowlisted?: boolean | undefined

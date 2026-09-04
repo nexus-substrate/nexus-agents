@@ -971,12 +971,12 @@ describe('registerMcpTools wires the untrusted-input firewall to the durable aud
     const result = runUntrustedInputFirewall(PAYLOAD, { context: READ_ONLY });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.auditSink).toBe('durable');
+    expect(result.value.auditSink).toBe('configured');
     const actions = log.mock.calls.map(([input]) => (input as { action?: string }).action);
     expect(actions).toContain('security.trust_classification');
   });
 
-  it('without one (audit disabled), the firewall claims no durable emission', () => {
+  it('without one (audit disabled), the firewall reports no configured sink', () => {
     registerMcpTools(makeDefaultOptions());
 
     const result = runUntrustedInputFirewall(PAYLOAD, { context: READ_ONLY });
