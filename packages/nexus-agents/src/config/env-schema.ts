@@ -158,7 +158,7 @@ const NexusEnvSchema = z.object({
   // default. Read by dev-pipeline's consensus→execute gate, and by any compiled
   // gate node whose caller supplies a `policyEnforcement` bundle without a mode
   // (no in-tree caller supplies a bundle today). The V2 delegate graph declares
-  // no gate (#4657); v2-orchestrate's execute check reads NEXUS_V2_POLICY_MODE.
+  // no gate (#4657); v2-orchestrate's execute check reads the V2 policy-mode variable instead (its own entry below; see CONFIGURATION.md).
   NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
   // Path to a model-registry overlay manifest (buildDefaultRegistry / #3185 hot-reload).
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
