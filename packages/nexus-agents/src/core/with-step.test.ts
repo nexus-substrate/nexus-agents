@@ -133,7 +133,7 @@ describe('withStep', () => {
     expect(events[1]?.attrs).toEqual({ iteration: 3 });
   });
 
-  it('emits no `kind` — the field had no reader and two of its members no producer (#5097)', async () => {
+  it('emits no `kind` — the field had no reader and three of its members no producer (#5097)', async () => {
     // Renderer and logger bridge never read `kind`; `workflow.node` / `cli.call`
     // had zero producers. Pin the produced shape so the vocabulary cannot
     // silently re-grow a field nothing consumes.
