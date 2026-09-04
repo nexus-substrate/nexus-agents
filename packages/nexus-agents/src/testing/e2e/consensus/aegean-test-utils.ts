@@ -12,19 +12,22 @@ import { vi } from 'vitest';
 import type { IAgent, Task } from '../../../core/index.js';
 import { ok, err, AgentError } from '../../../core/index.js';
 import type { CollaborationConfig } from '../../../agents/collaboration/collaboration-types.js';
-import type { IEventBus, TypedEvent } from '../../../agents/collaboration/event-bus-types.js';
+import type {
+  ICollaborationEventBus,
+  TypedEvent,
+} from '../../../agents/collaboration/event-bus-types.js';
 import { generateTestId } from '../utils/index.js';
 
 // =============================================================================
-// Mock EventBus
+// Mock CollaborationEventBus
 // =============================================================================
 
-/** Mock EventBus with event tracking for testing. */
-export interface MockEventBus extends IEventBus {
+/** Mock CollaborationEventBus with event tracking for testing. */
+export interface MockEventBus extends ICollaborationEventBus {
   emittedEvents: TypedEvent[];
 }
 
-/** Creates a mock EventBus for tracking emitted events. */
+/** Creates a mock CollaborationEventBus for tracking emitted events. */
 export function createMockEventBus(): MockEventBus {
   const emittedEvents: TypedEvent[] = [];
   return {

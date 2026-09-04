@@ -107,7 +107,7 @@ export interface EventBusStats {
 /**
  * Event bus interface for agent-to-agent communication.
  */
-export interface IEventBus {
+export interface ICollaborationEventBus {
   /**
    * Emit an event to all matching subscribers.
    * @param event - The event to emit

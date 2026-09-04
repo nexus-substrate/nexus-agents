@@ -27,7 +27,7 @@ import {
 } from './base-agent.js';
 import { SimpleAgent } from './simple-agent.js';
 import { transitionToState } from './base-agent-state-helpers.js';
-import type { IEventBus, TypedEvent } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus, TypedEvent } from './collaboration/event-bus-types.js';
 
 /**
  * Mock logger for testing.
@@ -1040,11 +1040,11 @@ describe('BaseAgentOptionsSchema', () => {
 });
 
 // =============================================================================
-// EventBus Integration Tests (Issue #223)
+// CollaborationEventBus Integration Tests (Issue #223)
 // =============================================================================
 
-/** Creates a mock EventBus for testing event emission. */
-function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
+/** Creates a mock CollaborationEventBus for testing event emission. */
+function createMockEventBus(): ICollaborationEventBus & { emittedEvents: TypedEvent[] } {
   const emittedEvents: TypedEvent[] = [];
   return {
     emittedEvents,
@@ -1070,7 +1070,7 @@ function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
   };
 }
 
-describe('BaseAgent EventBus integration', () => {
+describe('BaseAgent CollaborationEventBus integration', () => {
   it('should use provided eventBus', () => {
     const mockEventBus = createMockEventBus();
     const agent = new SimpleAgent({

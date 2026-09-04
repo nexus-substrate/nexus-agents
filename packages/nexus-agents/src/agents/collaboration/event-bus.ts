@@ -10,7 +10,7 @@
 
 import { getTimeProvider } from '../../core/index.js';
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   DomainEvent,
   EventListener,
   Subscription,
@@ -51,7 +51,7 @@ export { generateCorrelationId, createChildCorrelationId } from './event-bus-hel
  *
  * @example
  * ```typescript
- * const bus = new EventBus();
+ * const bus = new CollaborationEventBus();
  *
  * // Subscribe to all session events
  * const sub = bus.subscribe('session.*', (event) => {
@@ -65,7 +65,7 @@ export { generateCorrelationId, createChildCorrelationId } from './event-bus-hel
  * sub.unsubscribe();
  * ```
  */
-export class EventBus implements IEventBus {
+export class CollaborationEventBus implements ICollaborationEventBus {
   private readonly subscriptions: Map<SubscriptionId, SubscriptionRecord> = new Map();
   private readonly history: CircularBuffer<DomainEvent>;
   private readonly asyncHandling: boolean;
@@ -287,10 +287,10 @@ export class EventBus implements IEventBus {
  * Create a singleton event bus instance for global coordination.
  * Use with caution - prefer dependency injection for testability.
  */
-let globalBus: EventBus | null = null;
+let globalBus: CollaborationEventBus | null = null;
 
-export function getGlobalEventBus(options?: EventBusOptions): EventBus {
-  globalBus ??= new EventBus(options);
+export function getGlobalEventBus(options?: EventBusOptions): CollaborationEventBus {
+  globalBus ??= new CollaborationEventBus(options);
   return globalBus;
 }
 

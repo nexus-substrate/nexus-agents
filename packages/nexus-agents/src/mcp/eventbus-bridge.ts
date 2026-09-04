@@ -1,12 +1,12 @@
 /**
- * EventBus to MCP Server Bridge
+ * CollaborationEventBus to MCP Server Bridge
  *
- * Bridges EventBus events to SwarmObserver for observability in
+ * Bridges CollaborationEventBus events to SwarmObserver for observability in
  * Claude Desktop context. Provides visibility into agent-to-agent
  * communication that would otherwise be opaque.
  *
  * @module mcp/eventbus-bridge
- * (Source: Issue #307 - EventBus MCP integration)
+ * (Source: Issue #307 - CollaborationEventBus MCP integration)
  */
 
 import type { ILogger } from '../core/index.js';
@@ -16,7 +16,7 @@ import {
   EventTopics,
   type Subscription,
   type DomainEvent,
-  type EventBus,
+  type CollaborationEventBus,
 } from '../agents/collaboration/index.js';
 import { SwarmObserver } from '../observability/index.js';
 import {
@@ -28,7 +28,7 @@ import {
 } from './eventbus-bridge-helpers.js';
 
 /**
- * Default EventBus configuration.
+ * Default CollaborationEventBus configuration.
  */
 const DEFAULT_CONFIG: Required<EventBusConfig> = {
   enabled: true,
@@ -97,7 +97,7 @@ function mergeConfig(config?: Partial<EventBusConfig>): Required<EventBusConfig>
  * Creates subscriptions for enabled event patterns.
  */
 function createSubscriptions(
-  eventBus: EventBus,
+  eventBus: CollaborationEventBus,
   subs: Required<EventBusConfig>['subscriptions'],
   handler: (event: DomainEvent) => void
 ): Subscription[] {
@@ -130,15 +130,15 @@ function createSubscriptions(
  */
 function createCleanupFunction(
   subscriptions: Subscription[],
-  eventBus: EventBus,
+  eventBus: CollaborationEventBus,
   logger: ILogger
 ): () => void {
   return (): void => {
-    logger.debug('Cleaning up EventBus bridge subscriptions');
+    logger.debug('Cleaning up CollaborationEventBus bridge subscriptions');
     for (const sub of subscriptions) {
       sub.unsubscribe();
     }
-    logger.info('EventBus bridge cleanup complete', {
+    logger.info('CollaborationEventBus bridge cleanup complete', {
       unsubscribedCount: subscriptions.length,
       finalStats: eventBus.getStats(),
     });
@@ -146,7 +146,7 @@ function createCleanupFunction(
 }
 
 /**
- * Initializes the EventBus bridge with SwarmObserver integration.
+ * Initializes the CollaborationEventBus bridge with SwarmObserver integration.
  *
  * Subscribes to configured event patterns and:
  * 1. Logs events at appropriate levels (debug for frequent, info for important)
@@ -155,7 +155,7 @@ function createCleanupFunction(
  *
  * @param observer - SwarmObserver instance for interaction tracking
  * @param logger - Logger instance for event logging
- * @param config - Optional EventBus configuration
+ * @param config - Optional CollaborationEventBus configuration
  * @returns Bridge result with cleanup function
  */
 export function initializeEventBusBridge(
@@ -166,14 +166,14 @@ export function initializeEventBusBridge(
   const mergedConfig = mergeConfig(config);
 
   if (!mergedConfig.enabled) {
-    logger.debug('EventBus bridge disabled by configuration');
+    logger.debug('CollaborationEventBus bridge disabled by configuration');
     return { initialized: false, subscriptionCount: 0, cleanup: () => {} };
   }
 
   const eventBus = getGlobalEventBus({ maxHistorySize: mergedConfig.maxHistorySize });
   const logConfig = mergedConfig.logging;
 
-  logger.info('Initializing EventBus bridge for MCP server', {
+  logger.info('Initializing CollaborationEventBus bridge for MCP server', {
     maxHistorySize: mergedConfig.maxHistorySize,
     subscriptions: mergedConfig.subscriptions,
   });
@@ -184,7 +184,7 @@ export function initializeEventBusBridge(
 
   const subscriptions = createSubscriptions(eventBus, mergedConfig.subscriptions, handler);
 
-  logger.info('EventBus bridge initialized', {
+  logger.info('CollaborationEventBus bridge initialized', {
     subscriptionCount: subscriptions.length,
     eventBusStats: eventBus.getStats(),
   });
@@ -219,17 +219,17 @@ function handleEvent(
   };
 
   if (logLevel === 'info') {
-    logger.info(`EventBus: ${event.topic}`, logContext);
+    logger.info(`CollaborationEventBus: ${event.topic}`, logContext);
   } else {
-    logger.debug(`EventBus: ${event.topic}`, logContext);
+    logger.debug(`CollaborationEventBus: ${event.topic}`, logContext);
   }
 
   recordEventToObserver(event, observer);
 }
 
 /**
- * Records an EventBus event to SwarmObserver.
- * Maps EventBus events to SwarmObserver's interaction model.
+ * Records an CollaborationEventBus event to SwarmObserver.
+ * Maps CollaborationEventBus events to SwarmObserver's interaction model.
  */
 function recordEventToObserver(event: DomainEvent, observer: SwarmObserver): void {
   const payload = event.payload as Record<string, unknown>;
@@ -286,7 +286,7 @@ function recordInteractionIfApplicable(
 }
 
 /**
- * Gets EventBus statistics for observability reporting.
+ * Gets CollaborationEventBus statistics for observability reporting.
  */
 export function getEventBusStats(): {
   eventsEmitted: number;

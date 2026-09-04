@@ -19,7 +19,7 @@ import type {
 } from './collaboration-types.js';
 import { DEFAULT_TIMEOUTS, DEFAULT_MAX_RETRIES } from './collaboration-types.js';
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   SessionCreatedEvent,
   SessionStatusChangedEvent,
   SessionParticipantJoinedEvent,
@@ -50,7 +50,7 @@ export class CollaborationSession {
   private readonly onStatusChange: ((status: SessionStatus) => void) | undefined;
   private readonly onMessage: ((message: CollaborationMessage) => void) | undefined;
   private readonly roleResolver: (expertId: string) => AgentRole;
-  private readonly eventBus: IEventBus | undefined;
+  private readonly eventBus: ICollaborationEventBus | undefined;
   private state: SessionState | null = null;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private readonly eventListeners: Array<(event: SessionEvent) => void> = [];

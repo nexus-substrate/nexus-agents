@@ -18,7 +18,7 @@ export type {
   EventFilter,
   EventBusOptions,
   EventBusStats,
-  IEventBus,
+  ICollaborationEventBus,
 } from './event-bus-core-types.js';
 
 // Re-export all event types

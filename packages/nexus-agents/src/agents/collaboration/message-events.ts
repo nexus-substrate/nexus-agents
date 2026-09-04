@@ -1,5 +1,5 @@
 /**
- * Message Routing EventBus Integration Helpers
+ * Message Routing CollaborationEventBus Integration Helpers
  * (Source: Issue #217, Sprint #219)
  *
  * Provides helper functions for emitting message.sent and message.received events.
@@ -8,7 +8,7 @@
  */
 
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   MessageSentEvent,
   MessageReceivedEvent,
   AgentTaskDelegatedEvent,
@@ -50,7 +50,7 @@ export interface MessageSentParams {
 }
 
 /** Emits message.sent event when a message is sent between agents. */
-export function emitMessageSent(eventBus: IEventBus, params: MessageSentParams): void {
+export function emitMessageSent(eventBus: ICollaborationEventBus, params: MessageSentParams): void {
   const event = createEvent<MessageSentEvent>(
     'message.sent',
     {
@@ -75,7 +75,10 @@ export interface MessageReceivedParams {
 }
 
 /** Emits message.received event when an agent receives a message. */
-export function emitMessageReceived(eventBus: IEventBus, params: MessageReceivedParams): void {
+export function emitMessageReceived(
+  eventBus: ICollaborationEventBus,
+  params: MessageReceivedParams
+): void {
   const event = createEvent<MessageReceivedEvent>(
     'message.received',
     {
@@ -105,7 +108,10 @@ export interface TaskDelegatedParams {
 }
 
 /** Emits agent.task_delegated event when an agent delegates a task. */
-export function emitTaskDelegated(eventBus: IEventBus, params: TaskDelegatedParams): void {
+export function emitTaskDelegated(
+  eventBus: ICollaborationEventBus,
+  params: TaskDelegatedParams
+): void {
   const event = createEvent<AgentTaskDelegatedEvent>(
     'agent.task_delegated',
     {
@@ -132,7 +138,10 @@ export interface ResultBroadcastParams {
 }
 
 /** Emits agent.result_broadcast event when an agent broadcasts a result. */
-export function emitResultBroadcast(eventBus: IEventBus, params: ResultBroadcastParams): void {
+export function emitResultBroadcast(
+  eventBus: ICollaborationEventBus,
+  params: ResultBroadcastParams
+): void {
   const event = createEvent<AgentResultBroadcastEvent>(
     'agent.result_broadcast',
     {

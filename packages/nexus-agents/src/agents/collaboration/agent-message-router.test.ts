@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgentMessageRouter, createAgentMessageRouter } from './agent-message-router.js';
-import { EventBus } from './event-bus.js';
+import { CollaborationEventBus } from './event-bus.js';
 import type {
   IAgent,
   AgentMessage,
@@ -68,10 +68,10 @@ function createTestMessage(
 
 describe('AgentMessageRouter', () => {
   let router: AgentMessageRouter;
-  let eventBus: EventBus;
+  let eventBus: CollaborationEventBus;
 
   beforeEach(() => {
-    eventBus = new EventBus({ maxHistorySize: 100 });
+    eventBus = new CollaborationEventBus({ maxHistorySize: 100 });
     router = new AgentMessageRouter({ eventBus });
   });
 

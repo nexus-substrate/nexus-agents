@@ -19,7 +19,7 @@ import type {
   Vote,
 } from './types.js';
 import { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
-import type { IEventBus } from '../core/event-bus.js';
+import type { ICollaborationEventBus } from '../core/event-bus.js';
 import {
   emitWeightUpdated,
   emitPatternDetected,
@@ -52,7 +52,7 @@ const logger = createLogger({ component: 'weighted-voting' });
 export class WeightedVoting implements IWeightedVoting {
   private readonly records: Map<string, MutableAgentRecord> = new Map();
   private readonly config: WeightedVotingConfig;
-  private readonly eventBus: IEventBus | undefined;
+  private readonly eventBus: ICollaborationEventBus | undefined;
   private readonly emitEvents: boolean;
 
   constructor(options: WeightedVotingOptions = {}) {

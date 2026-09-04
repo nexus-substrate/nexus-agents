@@ -8,7 +8,11 @@ import type { ILogger } from '../../core/logger.js';
 import { createLogger } from '../../core/logger.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { CliName } from '../../cli-adapters/types.js';
-import type { IEventBus, DomainEvent, Subscription } from '../collaboration/event-bus-types.js';
+import type {
+  ICollaborationEventBus,
+  DomainEvent,
+  Subscription,
+} from '../collaboration/event-bus-types.js';
 import {
   OrchestrationObserverConfigSchema,
   ObserverTopics,
@@ -46,7 +50,7 @@ import {
  * Tracks agent states, routing decisions, session metrics, and costs.
  */
 export class OrchestrationObserver implements IOrchestrationObserver {
-  private readonly eventBus: IEventBus;
+  private readonly eventBus: ICollaborationEventBus;
   private readonly config: OrchestrationObserverConfig;
   private readonly logger: ILogger;
 
@@ -76,7 +80,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   private consensusAbstained = 0;
   private consensusUnanimous = 0;
 
-  constructor(eventBus: IEventBus, options?: OrchestrationObserverOptions) {
+  constructor(eventBus: ICollaborationEventBus, options?: OrchestrationObserverOptions) {
     this.eventBus = eventBus;
     this.config = OrchestrationObserverConfigSchema.parse(options?.config ?? {});
     this.logger = options?.logger ?? createLogger({ component: 'OrchestrationObserver' });
@@ -446,7 +450,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
 
 /** Creates an OrchestrationObserver instance. */
 export function createOrchestrationObserver(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   options?: OrchestrationObserverOptions
 ): IOrchestrationObserver {
   return new OrchestrationObserver(eventBus, options);

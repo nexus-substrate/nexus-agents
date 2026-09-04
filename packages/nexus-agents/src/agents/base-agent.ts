@@ -30,7 +30,7 @@ import { AgentStateMachine } from './state-machine.js';
 import { transitionToState } from './base-agent-state-helpers.js';
 import { setupStateMachine, initializeInfrastructure } from './base-agent-constructor-helpers.js';
 import { BaseAgentOptionsSchema } from './agent-schemas.js';
-import type { IEventBus } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from './collaboration/event-bus-types.js';
 import { getGlobalEventBus } from './collaboration/event-bus.js';
 import { emitMessageReceived } from './collaboration/message-events.js';
 import type { ContextManager } from './context-manager.js';
@@ -103,7 +103,7 @@ export abstract class BaseAgent implements IAgent {
   protected readonly systemPrompt: string | undefined;
   protected readonly temperature: number;
   protected readonly maxTokens: number;
-  protected readonly eventBus: IEventBus;
+  protected readonly eventBus: ICollaborationEventBus;
   protected readonly emitMessageEvents: boolean;
   private initialized = false;
   private readonly contextPruningEnabled: boolean;

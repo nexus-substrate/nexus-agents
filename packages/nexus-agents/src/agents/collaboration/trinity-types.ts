@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import type { IAgent, Task } from '../../core/index.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 
 // =============================================================================
 // TRINITY Role Types
@@ -268,7 +268,7 @@ export interface CoordinationContext {
 export interface TrinityCoordinatorOptions {
   readonly config?: TrinityConfig;
   /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
-  readonly eventBus?: IEventBus;
+  readonly eventBus?: ICollaborationEventBus;
 }
 
 /** Resolved configuration with defaults applied. */

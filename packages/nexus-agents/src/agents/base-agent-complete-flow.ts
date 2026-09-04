@@ -15,7 +15,7 @@ import type {
 } from '../core/index.js';
 import { err, AgentError } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
-import type { IEventBus } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from './collaboration/event-bus-types.js';
 import type { ContextPruner } from './context-pruner.js';
 import type { ResolvedPruningConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
 import {
@@ -35,7 +35,7 @@ export interface CompleteFlowContext {
   contextPruner: ContextPruner | undefined;
   pruningConfig: ResolvedPruningConfig;
   pruningMetrics: ContextPruningMetrics;
-  eventBus: IEventBus;
+  eventBus: ICollaborationEventBus;
 }
 
 /**

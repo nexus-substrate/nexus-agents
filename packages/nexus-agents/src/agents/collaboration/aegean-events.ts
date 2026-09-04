@@ -1,12 +1,12 @@
 /**
- * Aegean Protocol EventBus Integration Helpers
+ * Aegean Protocol CollaborationEventBus Integration Helpers
  * (Source: Issues #220, #216)
  *
  * Provides helper functions for emitting protocol lifecycle and phase events.
  */
 
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   ProtocolStartedEvent,
   ProtocolIterationEvent,
   ProtocolCompletedEvent,
@@ -26,7 +26,10 @@ export interface ProtocolStartedParams {
 }
 
 /** Emits protocol.started event. */
-export function emitProtocolStarted(eventBus: IEventBus, params: ProtocolStartedParams): void {
+export function emitProtocolStarted(
+  eventBus: ICollaborationEventBus,
+  params: ProtocolStartedParams
+): void {
   const event = createEvent<ProtocolStartedEvent>(
     'protocol.started',
     {
@@ -54,7 +57,10 @@ export interface ProtocolIterationParams {
 }
 
 /** Emits protocol.iteration event for each round. */
-export function emitProtocolIteration(eventBus: IEventBus, params: ProtocolIterationParams): void {
+export function emitProtocolIteration(
+  eventBus: ICollaborationEventBus,
+  params: ProtocolIterationParams
+): void {
   const event = createEvent<ProtocolIterationEvent>(
     'protocol.iteration',
     {
@@ -77,7 +83,10 @@ export interface ProtocolCompletedParams {
 }
 
 /** Emits protocol.completed event. */
-export function emitProtocolCompleted(eventBus: IEventBus, params: ProtocolCompletedParams): void {
+export function emitProtocolCompleted(
+  eventBus: ICollaborationEventBus,
+  params: ProtocolCompletedParams
+): void {
   const event = createEvent<ProtocolCompletedEvent>(
     'protocol.completed',
     {
@@ -106,7 +115,7 @@ export interface AegeanRoundStartedParams {
 
 /** Emits protocol.aegean.round_started event. */
 export function emitAegeanRoundStarted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: AegeanRoundStartedParams
 ): void {
   const event = createEvent<AegeanRoundStartedEvent>(
@@ -132,7 +141,7 @@ export interface AegeanVoteCollectedParams {
 
 /** Emits protocol.aegean.vote_collected event. */
 export function emitAegeanVoteCollected(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: AegeanVoteCollectedParams
 ): void {
   const event = createEvent<AegeanVoteCollectedEvent>(
@@ -158,7 +167,7 @@ export interface AegeanQuorumDetectedParams {
 
 /** Emits protocol.aegean.quorum_detected event. */
 export function emitAegeanQuorumDetected(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: AegeanQuorumDetectedParams
 ): void {
   const event = createEvent<AegeanQuorumDetectedEvent>(

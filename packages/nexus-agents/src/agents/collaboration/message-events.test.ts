@@ -12,14 +12,14 @@ import {
   emitTaskDelegated,
   emitResultBroadcast,
 } from './message-events.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 import type { AgentMessage, TaskResult } from '../../core/types/index.js';
 
 // ============================================================================
 // Mock event bus
 // ============================================================================
 
-function makeMockEventBus(): IEventBus & { emit: ReturnType<typeof vi.fn> } {
+function makeMockEventBus(): ICollaborationEventBus & { emit: ReturnType<typeof vi.fn> } {
   return {
     emit: vi.fn(),
     emitAsync: vi.fn(),
@@ -28,7 +28,7 @@ function makeMockEventBus(): IEventBus & { emit: ReturnType<typeof vi.fn> } {
     once: vi.fn(),
     removeAllListeners: vi.fn(),
     listenerCount: vi.fn(),
-  } as unknown as IEventBus & { emit: ReturnType<typeof vi.fn> };
+  } as unknown as ICollaborationEventBus & { emit: ReturnType<typeof vi.fn> };
 }
 
 function makeMessage(overrides: Partial<AgentMessage> = {}): AgentMessage {

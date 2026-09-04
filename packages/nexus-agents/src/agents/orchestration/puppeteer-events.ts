@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { getTimeProvider } from '../../core/index.js';
-import type { DomainEvent, IEventBus } from '../collaboration/event-bus-types.js';
+import type { DomainEvent, ICollaborationEventBus } from '../collaboration/event-bus-types.js';
 import type { Task } from '../../core/index.js';
 import type {
   PuppeteerResult,
@@ -239,7 +239,7 @@ export interface PuppeteerErrorEvent extends DomainEvent {
  * Emit orchestration started event.
  */
 export function emitPuppeteerStarted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   sessionId: string,
   task: Task,
   agentCount: number = 0,
@@ -269,7 +269,7 @@ export function emitPuppeteerStarted(
  * Emit step completed event.
  */
 export function emitPuppeteerStepCompleted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   sessionId: string,
   step: PuppeteerStepResult
 ): void {
@@ -298,7 +298,7 @@ export function emitPuppeteerStepCompleted(
  * Emit orchestration completed event.
  */
 export function emitPuppeteerCompleted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   sessionId: string,
   result: PuppeteerResult
 ): void {
@@ -330,7 +330,7 @@ export function emitPuppeteerCompleted(
  * Emit error event.
  */
 export function emitPuppeteerError(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   sessionId: string,
   error: { code?: string; message: string },
   step?: number
@@ -358,7 +358,7 @@ export function emitPuppeteerError(
  * Emit pattern detected event.
  */
 export function emitPuppeteerPatternDetected(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   sessionId: string,
   patterns: EmergentPatterns
 ): void {

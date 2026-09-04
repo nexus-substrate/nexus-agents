@@ -418,7 +418,7 @@ export class ResilientAdapter implements IResilientAdapter {
         payload: info,
       });
     } catch (error: unknown) {
-      this.logger.debug('EventBus emit failed during failover', {
+      this.logger.debug('CollaborationEventBus emit failed during failover', {
         error: getErrorMessage(error),
       });
     }

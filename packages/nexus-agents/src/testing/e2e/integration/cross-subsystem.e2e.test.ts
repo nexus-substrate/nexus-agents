@@ -3,11 +3,11 @@
  *
  * Tests that verify interactions between ALL major subsystems working together.
  * This file contains end-to-end orchestration tests requiring: Routing, Memory,
- * Consensus, EventBus, Workflow, Agent, and Context Pruner to coordinate.
+ * Consensus, CollaborationEventBus, Workflow, Agent, and Context Pruner to coordinate.
  *
  * For focused integration tests (2-3 subsystems), see:
  * - routing-memory.e2e.test.ts: Routing -> Memory Integration
- * - consensus-eventbus.e2e.test.ts: Consensus -> EventBus, SwarmObserver -> EventBus
+ * - consensus-eventbus.e2e.test.ts: Consensus -> CollaborationEventBus, SwarmObserver -> CollaborationEventBus
  * - workflow-agent.e2e.test.ts: Workflow -> Agent, Memory -> Context Pruner
  * - cli-router-consensus.e2e.test.ts: CLI Adapter -> Router -> Consensus Pipeline
  *
@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  EventBus,
+  CollaborationEventBus,
   resetGlobalEventBus,
   createEvent,
 } from '../../../agents/collaboration/event-bus.js';
@@ -86,7 +86,7 @@ describe('End-to-End Multi-Subsystem Orchestration', () => {
   let router: CompositeRouter;
   let feedback: FeedbackIntegration;
   let observer: SwarmObserver;
-  let eventBus: EventBus;
+  let eventBus: CollaborationEventBus;
   let contextManager: ContextManager;
 
   beforeEach(() => {
@@ -104,7 +104,7 @@ describe('End-to-End Multi-Subsystem Orchestration', () => {
     feedback = new FeedbackIntegration();
     feedback.registerCompositeRouter(router);
     observer = createSwarmObserver() as SwarmObserver;
-    eventBus = new EventBus();
+    eventBus = new CollaborationEventBus();
     contextManager = new ContextManager({ maxTokens: 10000 });
   });
 
@@ -257,7 +257,7 @@ describe('Performance: Cross-Subsystem Latency', () => {
       ['codex', createMockCliAdapter('codex')],
     ]);
     const router = new CompositeRouter(adapters);
-    const eventBus = new EventBus();
+    const eventBus = new CollaborationEventBus();
 
     const tasks = Array.from({ length: 10 }, (_, i) =>
       createCliTask(`Concurrent task ${String(i)}`)

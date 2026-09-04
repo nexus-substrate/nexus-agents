@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { IEventBus, DomainEvent } from '../collaboration/event-bus-types.js';
+import type { ICollaborationEventBus, DomainEvent } from '../collaboration/event-bus-types.js';
 import type { Task } from '../../core/index.js';
 import type {
   PuppeteerResult,
@@ -31,7 +31,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockEventBus() {
   const events: DomainEvent[] = [];
-  const bus: IEventBus = {
+  const bus: ICollaborationEventBus = {
     emit: vi.fn((event: DomainEvent) => {
       events.push(event);
     }),

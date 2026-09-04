@@ -1,5 +1,5 @@
 /**
- * Reflexion Protocol EventBus Integration Helpers
+ * Reflexion Protocol CollaborationEventBus Integration Helpers
  * (Source: Issues #221, #216, Sprint #219)
  *
  * Provides helper functions for emitting protocol lifecycle and phase events
@@ -7,7 +7,7 @@
  */
 
 import type {
-  IEventBus,
+  ICollaborationEventBus,
   ProtocolStartedEvent,
   ProtocolIterationEvent,
   ProtocolCompletedEvent,
@@ -27,7 +27,10 @@ export interface ReflexionStartedParams {
 }
 
 /** Emits protocol.started event for Reflexion protocol. */
-export function emitReflexionStarted(eventBus: IEventBus, params: ReflexionStartedParams): void {
+export function emitReflexionStarted(
+  eventBus: ICollaborationEventBus,
+  params: ReflexionStartedParams
+): void {
   const event = createEvent<ProtocolStartedEvent>(
     'protocol.started',
     {
@@ -58,7 +61,7 @@ export interface ReflexionIterationParams {
 
 /** Emits protocol.iteration event for each Reflexion round. */
 export function emitReflexionIteration(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: ReflexionIterationParams
 ): void {
   const event = createEvent<ProtocolIterationEvent>(
@@ -84,7 +87,7 @@ export interface ReflexionCompletedParams {
 
 /** Emits protocol.completed event for Reflexion protocol. */
 export function emitReflexionCompleted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: ReflexionCompletedParams
 ): void {
   const event = createEvent<ProtocolCompletedEvent>(
@@ -115,7 +118,7 @@ export interface ReflexionCritiqueStartedParams {
 
 /** Emits protocol.reflexion.critique_started event. */
 export function emitCritiqueStarted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: ReflexionCritiqueStartedParams
 ): void {
   const event = createEvent<ReflexionCritiqueStartedEvent>(
@@ -141,7 +144,7 @@ export interface ReflexionCritiqueCompletedParams {
 
 /** Emits protocol.reflexion.critique_completed event. */
 export function emitCritiqueCompleted(
-  eventBus: IEventBus,
+  eventBus: ICollaborationEventBus,
   params: ReflexionCritiqueCompletedParams
 ): void {
   const event = createEvent<ReflexionCritiqueCompletedEvent>(
@@ -166,7 +169,10 @@ export interface ReflexionSynthesisParams {
 }
 
 /** Emits protocol.reflexion.synthesis event. */
-export function emitSynthesis(eventBus: IEventBus, params: ReflexionSynthesisParams): void {
+export function emitSynthesis(
+  eventBus: ICollaborationEventBus,
+  params: ReflexionSynthesisParams
+): void {
   const event = createEvent<ReflexionSynthesisEvent>(
     'protocol.reflexion.synthesis',
     {

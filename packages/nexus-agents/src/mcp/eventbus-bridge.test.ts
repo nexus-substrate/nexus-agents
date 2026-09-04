@@ -1,7 +1,7 @@
 /**
- * EventBus Bridge Tests
+ * CollaborationEventBus Bridge Tests
  *
- * Tests for the EventBus to MCP Server Bridge.
+ * Tests for the CollaborationEventBus to MCP Server Bridge.
  * Covers initialization, event handling, SwarmObserver integration,
  * and configuration options.
  *
@@ -14,7 +14,7 @@ import type { EventBusConfig } from '../config/index.js';
 import { initializeEventBusBridge, getEventBusStats } from './eventbus-bridge.js';
 import { SwarmObserver, createSwarmObserver } from '../observability/index.js';
 import {
-  type EventBus,
+  type CollaborationEventBus,
   getGlobalEventBus,
   resetGlobalEventBus,
   EventTopics,
@@ -88,7 +88,7 @@ describe('EventBusBridge', () => {
       initializeEventBusBridge(mockObserver, mockLogger);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Initializing EventBus bridge for MCP server',
+        'Initializing CollaborationEventBus bridge for MCP server',
         expect.objectContaining({
           maxHistorySize: 1000,
           subscriptions: expect.any(Object),
@@ -108,7 +108,9 @@ describe('EventBusBridge', () => {
       const config: Partial<EventBusConfig> = { enabled: false };
       initializeEventBusBridge(mockObserver, mockLogger, config);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith('EventBus bridge disabled by configuration');
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'CollaborationEventBus bridge disabled by configuration'
+      );
     });
 
     it('should create subscriptions for enabled event patterns', () => {
@@ -134,7 +136,7 @@ describe('EventBusBridge', () => {
       initializeEventBusBridge(mockObserver, mockLogger, config);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Initializing EventBus bridge for MCP server',
+        'Initializing CollaborationEventBus bridge for MCP server',
         expect.objectContaining({
           maxHistorySize: 500,
         })
@@ -145,7 +147,7 @@ describe('EventBusBridge', () => {
       initializeEventBusBridge(mockObserver, mockLogger);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'EventBus bridge initialized',
+        'CollaborationEventBus bridge initialized',
         expect.objectContaining({
           subscriptionCount: expect.any(Number),
           eventBusStats: expect.any(Object),
@@ -169,7 +171,7 @@ describe('EventBusBridge', () => {
       globalBus.emit(event);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('EventBus:'),
+        expect.stringContaining('CollaborationEventBus:'),
         expect.objectContaining({
           topic: EventTopics.CONSENSUS_REACHED,
         })
@@ -189,7 +191,7 @@ describe('EventBusBridge', () => {
       globalBus.emit(event);
 
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('EventBus:'),
+        expect.stringContaining('CollaborationEventBus:'),
         expect.objectContaining({
           topic: 'agent.task_delegated',
         })
@@ -285,9 +287,11 @@ describe('EventBusBridge', () => {
 
       result.cleanup();
 
-      expect(mockLogger.debug).toHaveBeenCalledWith('Cleaning up EventBus bridge subscriptions');
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Cleaning up CollaborationEventBus bridge subscriptions'
+      );
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'EventBus bridge cleanup complete',
+        'CollaborationEventBus bridge cleanup complete',
         expect.objectContaining({
           unsubscribedCount: result.subscriptionCount,
         })
@@ -378,7 +382,7 @@ describe('EventBusBridge', () => {
 
       // With frequentEventLevel set to 'info', should log at info level
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('EventBus:'),
+        expect.stringContaining('CollaborationEventBus:'),
         expect.any(Object)
       );
     });
@@ -447,7 +451,7 @@ describe('EventBusBridge', () => {
 
       // Byzantine events are important and should be logged at info level
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('EventBus:'),
+        expect.stringContaining('CollaborationEventBus:'),
         expect.objectContaining({
           topic: EventTopics.BYZANTINE_PATTERN_DETECTED,
         })
@@ -699,6 +703,6 @@ describe('EventBusBridge', () => {
 /**
  * Helper to get the global event bus.
  */
-function getGlobalBus(): EventBus {
+function getGlobalBus(): CollaborationEventBus {
   return getGlobalEventBus();
 }

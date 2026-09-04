@@ -13,7 +13,7 @@ import type {
 } from '../core/index.js';
 import { ok, err, AgentError, getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
-import type { IEventBus } from './collaboration/event-bus-types.js';
+import type { ICollaborationEventBus } from './collaboration/event-bus-types.js';
 import { createEvent } from './collaboration/event-bus.js';
 import type { ContextPruner } from './context-pruner.js';
 import { ContentPriority, type ContextManager } from './context-manager.js';
@@ -28,7 +28,7 @@ export interface PruneContextParams {
   contextPruner: ContextPruner;
   pruningConfig: ResolvedPruningConfig;
   pruningMetrics: ContextPruningMetrics;
-  eventBus: IEventBus;
+  eventBus: ICollaborationEventBus;
 }
 
 /** Result of context pruning execution. */

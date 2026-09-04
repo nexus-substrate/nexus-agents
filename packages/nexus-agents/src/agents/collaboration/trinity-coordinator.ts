@@ -35,7 +35,7 @@ import {
   createDefaultVerifierOutput,
   resolveConfig,
 } from './trinity-helpers.js';
-import type { IEventBus } from './event-bus-types.js';
+import type { ICollaborationEventBus } from './event-bus-types.js';
 import { getGlobalEventBus } from './event-bus.js';
 import {
   emitTrinityStarted,
@@ -61,7 +61,7 @@ export class TrinityCoordinator {
   private readonly config: ResolvedConfig;
   private readonly trinityConfig: TrinityConfig;
   private readonly log: ILogger;
-  private readonly eventBus: IEventBus;
+  private readonly eventBus: ICollaborationEventBus;
   private cancelFlag = false;
 
   constructor(options?: TrinityConfig | TrinityCoordinatorOptions) {

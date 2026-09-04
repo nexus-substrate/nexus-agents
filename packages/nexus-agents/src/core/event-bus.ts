@@ -19,7 +19,7 @@
  */
 
 export {
-  EventBus,
+  CollaborationEventBus,
   createEvent,
   getGlobalEventBus,
   resetGlobalEventBus,
@@ -28,7 +28,7 @@ export {
 } from '../agents/collaboration/event-bus.js';
 
 export type {
-  IEventBus,
+  ICollaborationEventBus,
   EventBusOptions,
   EventBusStats,
   EventListener,
