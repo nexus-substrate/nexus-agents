@@ -30,7 +30,7 @@ Nexus Agents is an intelligent orchestration platform for AI coding tools. It co
 - **Expert System**: Specialized agents (Code, Architecture, Security, etc.)
 - **Workflow Engine**: YAML-defined automated workflows
 - **MCP Protocol**: Claude Desktop integration via Model Context Protocol
-- **5 Consensus Strategies** (6 names — `higher_order` aliases the Bayesian path): multi-agent decisions with Byzantine-pattern detection in weighted voting (see [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md))
+- **5 Consensus Strategies** (6 names — `higher_order` aliases the Bayesian path): multi-agent decisions; the `WeightedByzantineVoting` pattern detector is exported but not on the live `consensus_vote` path (see [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md))
 - **7-Type Memory**: MIRIX-inspired memory architecture (see [MEMORY_SYSTEM.md](./docs/architecture/MEMORY_SYSTEM.md))
 - **Intelligent Routing**: Budget → parallel scoring → TOPSIS → LinUCB pipeline (full chain in [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md))
 
@@ -106,14 +106,14 @@ The EventBus enables direct agent-to-agent communication without client roundtri
 
 ### Event Types
 
-| Topic Pattern | Events                             | Description          |
-| ------------- | ---------------------------------- | -------------------- |
-| `session.*`   | created, status_changed, finalized | Session lifecycle    |
-| `consensus.*` | vote_requested, vote_cast, reached | Voting events        |
-| `agent.*`     | task_delegated, result_broadcast   | Agent coordination   |
-| `protocol.*`  | started, iteration, completed      | Protocol phases      |
-| `message.*`   | sent, received                     | Inter-agent messages |
-| `byzantine.*` | weight_updated, pattern_detected   | Byzantine detection  |
+| Topic Pattern | Events                             | Description                                                                                                     |
+| ------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `session.*`   | created, status_changed, finalized | Session lifecycle                                                                                               |
+| `consensus.*` | vote_requested, vote_cast, reached | Voting events                                                                                                   |
+| `agent.*`     | task_delegated, result_broadcast   | Agent coordination                                                                                              |
+| `protocol.*`  | started, iteration, completed      | Protocol phases                                                                                                 |
+| `message.*`   | sent, received                     | Inter-agent messages                                                                                            |
+| `byzantine.*` | weight_updated, pattern_detected   | Byzantine detection — emitted only by `WeightedByzantineVoting`, which is not on the live `consensus_vote` path |
 
 **Full details:** [AGENT_SYSTEM.md](docs/architecture/AGENT_SYSTEM.md)
 
@@ -276,7 +276,7 @@ interface IWorkflowEngine {
 4. **Memory Bounds** - Context pruning, history caps
 5. **Path Safety** - Normalized paths, directory jails
 6. **Timeout Protection** - TimeoutGuard for async operations
-7. **Byzantine Detection** - Weighted voting with pattern detection
+7. **Byzantine Detection** - `WeightedByzantineVoting` pattern detection (exported, not on the live `consensus_vote` path)
 
 **Full details:** [SECURITY.md](docs/architecture/SECURITY.md)
 

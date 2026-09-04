@@ -116,12 +116,14 @@ Where:
 
 ### Byzantine Detection Patterns
 
-| Pattern           | Detection                            | Action               |
-| ----------------- | ------------------------------------ | -------------------- |
-| Contrarian voting | Always votes opposite to majority    | Weight reduction     |
-| Collusion         | Identical votes with specific agents | Group weight penalty |
-| Flip-flopping     | Inconsistent votes on similar tasks  | Confidence discount  |
-| Abstention abuse  | Excessive abstentions                | Minimum weight       |
+**Status: exported, not on the live vote path.** `WeightedByzantineVoting` (`src/consensus/weighted-voting.ts`) is exported from `consensus/index.ts` but has no non-test construction site, and `ConsensusEngine` — the path `consensus_vote` runs — does not reference it. `detectByzantinePatterns` returns `false` without evaluating when fewer than 3 votes are present, then checks the two implemented patterns in order.
+
+| Pattern           | Detection                                                                          | Action               | Implemented                       |
+| ----------------- | ---------------------------------------------------------------------------------- | -------------------- | --------------------------------- |
+| Contrarian voting | Low-confidence vote against the majority by an agent with ≥2 prior Byzantine flags | Weight reduction     | Yes (`detectContrarianByzantine`) |
+| Collusion         | ≥3 agents, and more than 60% of voters, casting byte-identical votes               | Group weight penalty | Yes (`detectCollusionPattern`)    |
+| Flip-flopping     | Inconsistent votes on similar tasks                                                | Confidence discount  | No                                |
+| Abstention abuse  | Excessive abstentions                                                              | Minimum weight       | No                                |
 
 ---
 
