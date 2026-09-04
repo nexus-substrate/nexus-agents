@@ -163,6 +163,24 @@ describe('PluginRegistry', () => {
       );
       expect(denied.ok).toBe(false);
     });
+
+    it('still accepts the deprecated options and still denies when they do not open the gate (#5097)', () => {
+      // Deprecated, not removed: the fields are public API, so passing them
+      // must keep compiling and the denial behaviour must be unchanged.
+      const registry = new PluginRegistry({ experimentalEnabled: false, experimentalAllow: [] });
+      const denied = registry.register(
+        makePlugin({ id: 'nexus:experimental', trustLevel: 'experimental', experimental: true })
+      );
+      expect(denied.ok).toBe(false);
+      if (!denied.ok) {
+        expect(denied.error).toEqual({
+          type: 'missing_capability',
+          capability: 'experimental-plugins',
+        });
+      }
+      // A non-experimental plugin is unaffected by the deprecated options.
+      expect(registry.register(makePlugin({ id: 'nexus:plain' })).ok).toBe(true);
+    });
   });
 
   // ==========================================================================

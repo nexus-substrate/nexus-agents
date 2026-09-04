@@ -13,14 +13,12 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { getTimeProvider } from './time-provider.js';
 import { stepBus } from './step-bus.js';
-import type { StepEvent, StepErrorCategory, StepKind } from './step-events.js';
+import type { StepEvent, StepErrorCategory } from './step-events.js';
 import { truncateSummary } from './step-events.js';
 
 export interface StepOptions {
   /** Operator-facing name, e.g. 'research'. */
   readonly name: string;
-  /** Semantic kind for routing/coloring. */
-  readonly kind: StepKind;
   /** Optional attrs surfaced into events. */
   readonly attrs?: Record<string, unknown>;
   /**
@@ -103,7 +101,6 @@ function emitStarted(rt: StepRuntime): void {
     event: 'step.started',
     stepId: rt.stepId,
     name: rt.opts.name,
-    kind: rt.opts.kind,
     startedAt: new Date(rt.startNs).toISOString(),
     ...(rt.parentStepId !== undefined ? { parentStepId: rt.parentStepId } : {}),
     ...(rt.opts.attrs !== undefined ? { attrs: rt.opts.attrs } : {}),
@@ -116,7 +113,6 @@ function emitCompleted(rt: StepRuntime, summary: string | undefined): void {
     event: 'step.completed',
     stepId: rt.stepId,
     name: rt.opts.name,
-    kind: rt.opts.kind,
     durationMs: getTimeProvider().now() - rt.startNs,
     status: 'ok',
     ...(rt.parentStepId !== undefined ? { parentStepId: rt.parentStepId } : {}),
@@ -132,7 +128,6 @@ function emitFailed(rt: StepRuntime, err: unknown, summary: string | undefined):
     event: 'step.failed',
     stepId: rt.stepId,
     name: rt.opts.name,
-    kind: rt.opts.kind,
     durationMs: getTimeProvider().now() - rt.startNs,
     status: 'failed',
     errorCategory: categorizeError(err),

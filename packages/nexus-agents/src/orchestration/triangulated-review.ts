@@ -87,7 +87,6 @@ export async function executeTriangulatedReview(
   return withStep(
     {
       name: 'triangulated-review',
-      kind: 'consensus.vote',
       attrs: {
         clis: selectedClis.map((s) => s.cli),
         diffLength: diff.length,

@@ -812,7 +812,7 @@ async function resolveResearch(
   }
   options?.untrustedInputGuard?.();
   return withStep(
-    { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
+    { name: 'research', attrs: { task: task.slice(0, 100) } },
     async (ctx) => {
       const rc = await stages.research(task);
       ctx.setSummary(`${String(rc.text.length)} chars`);
@@ -927,7 +927,7 @@ async function runImplSecurityPhase(
   }
 
   const security = await withStep(
-    { name: 'security-scan', kind: 'pipeline.stage' },
+    { name: 'security-scan' },
     async (ctx) => {
       const r = await stages.securityScan();
       ctx.setSummary(r.passed ? 'passed' : 'FAILED');
@@ -974,7 +974,7 @@ async function runQualityGateStage(
   }
   const runGate = stages.qualityGate.bind(stages);
   return withStep(
-    { name: 'quality-gate', kind: 'pipeline.stage', attrs: { mode } },
+    { name: 'quality-gate', attrs: { mode } },
     async (ctx) => {
       const r = await runGate();
       const advisory = mode === 'advisory' && !r.passed;
@@ -1037,7 +1037,7 @@ async function runOrResumeDecompose(
     logger.info('Resuming from checkpoint', { stage: 'decompose' });
     return [...prior.tasks];
   }
-  const tasks = await withStep({ name: 'decompose', kind: 'pipeline.stage' }, async (ctx) => {
+  const tasks = await withStep({ name: 'decompose' }, async (ctx) => {
     const r = await stages.decompose(plan);
     ctx.setSummary(`${String(r.length)} tasks`);
     return r;
@@ -1079,7 +1079,7 @@ async function planVoteLoop(
 
   for (let i = 1; i <= limits.vote; i++) {
     plan = await withStep(
-      { name: `plan (i=${String(i)})`, kind: 'pipeline.stage', attrs: { iteration: i } },
+      { name: `plan (i=${String(i)})`, attrs: { iteration: i } },
       () => stages.plan(task, research, feedback)
     );
 
@@ -1092,7 +1092,7 @@ async function planVoteLoop(
     }
 
     const vote = await withStep(
-      { name: `vote (i=${String(i)})`, kind: 'consensus.vote', attrs: { iteration: i } },
+      { name: `vote (i=${String(i)})`, attrs: { iteration: i } },
       async (ctx) => {
         const r = await stages.vote(plan, research);
         ctx.setSummary(

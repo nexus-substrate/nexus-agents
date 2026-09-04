@@ -115,6 +115,25 @@ describe('createCorePluginRegistry', () => {
     expect(registry.listEnabled()).toHaveLength(3);
   });
 
+  it('loads only core plugins: none is experimental and the frozen registry refuses one (#5097)', () => {
+    // The production construction passes no PluginRegistryOptions, so the
+    // experimental gate can never open; freeze() then refuses any late
+    // registration. This is the behaviour the deprecation notice describes.
+    const registry = createCorePluginRegistry();
+    expect(registry.listEnabled().every((m) => !m.experimental)).toBe(true);
+    const late = registry.register({
+      ...TASK_ANALYZER_PLUGIN,
+      manifest: {
+        ...TASK_ANALYZER_PLUGIN.manifest,
+        id: 'nexus:late-experimental',
+        trustLevel: 'experimental',
+        experimental: true,
+      },
+    });
+    expect(late).toEqual({ ok: false, error: { type: 'registry_frozen' } });
+    expect(registry.isEnabled('nexus:late-experimental')).toBe(false);
+  });
+
   it('startup overhead is under 500ms', () => {
     const start = Date.now();
     createCorePluginRegistry();

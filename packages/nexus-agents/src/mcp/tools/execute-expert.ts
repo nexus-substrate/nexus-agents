@@ -697,7 +697,7 @@ async function runExpertTask(
   }
 
   return withStep(
-    { name: `expert:${expert.role}`, kind: 'expert.exec', attrs: { expertId, role: expert.role } },
+    { name: `expert:${expert.role}`, attrs: { expertId, role: expert.role } },
     async (ctx) => {
       const startTime = getTimeProvider().now();
       const result = await runExpertUnderHeartbeat(expertId, deps.logger, () =>
