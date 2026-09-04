@@ -525,6 +525,47 @@ describe('StrategyDistiller', () => {
       expect(rule?.confidence).toBeLessThan(0.02);
     });
 
+    it('recomputes an EXISTING rule’s effect from the new metric on re-distill', () => {
+      // First distill: 25/40 failed → rate 0.625, effect 0.0625.
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 25,
+        success: false,
+      });
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 15,
+        success: true,
+      });
+      distiller.distill();
+      const id = 'failure-rate:claude:code_generation';
+      expect(distiller.getRules().find((r) => r.id === id)?.effect).toBeCloseTo(0.0625, 10);
+
+      // The same group now fails every time: 40/40 → rate 1.0. A rule that
+      // kept its first-distill effect would still scale routing by 0.0625.
+      store.clear();
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 40,
+        success: false,
+      });
+      distiller.distill();
+
+      const updated = distiller.getRules().find((r) => r.id === id);
+      expect(updated).toBeDefined();
+      if (updated === undefined) return;
+      expect(updated.metric).toBe(1);
+      expect(updated.effect).toBe(1);
+      expect(updated.support).toBeCloseTo(sigmoidConfidence(40), 10);
+      expect(updated.confidence).toBeCloseTo(sigmoidConfidence(40) * 1, 10);
+    });
+
     it('gives a rule exactly at threshold an effect of 0 and a confidence of 0', () => {
       // 24/40 = 0.6 → detected (>=), but with no margin past the threshold.
       populateStore({
