@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Compare `AGY_MODEL_SLUGS` against what `agy models` actually serves (#5085).
  *

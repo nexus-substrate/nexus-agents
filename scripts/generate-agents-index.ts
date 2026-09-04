@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Agents Index Generator (#1825 follow-up)
  *
@@ -15,8 +14,8 @@
  * is missing its agent file.
  *
  * Usage:
- *   npx tsx scripts/generate-agents-index.ts          # generate
- *   npx tsx scripts/generate-agents-index.ts --check  # CI validation
+ *   pnpm exec tsx scripts/generate-agents-index.ts          # generate
+ *   pnpm exec tsx scripts/generate-agents-index.ts --check  # CI validation
  */
 
 /* eslint-disable no-console */
@@ -131,13 +130,13 @@ function main(): void {
 
   if (CHECK_MODE) {
     if (!existsSync(INDEX_PATH)) {
-      console.error(`❌ ${INDEX_PATH} does not exist. Run: npx tsx ${GENERATOR_ID}`);
+      console.error(`❌ ${INDEX_PATH} does not exist. Run: pnpm exec tsx ${GENERATOR_ID}`);
       process.exit(1);
     }
     const current = readFileSync(INDEX_PATH, 'utf-8');
     if (current !== yaml) {
       console.error('❌ agents/index.yaml is stale.');
-      console.error(`   Run: npx tsx ${GENERATOR_ID}`);
+      console.error(`   Run: pnpm exec tsx ${GENERATOR_ID}`);
       process.exit(1);
     }
     console.log(`✅ agents/index.yaml is up to date (${String(index.agents.length)} agents)`);

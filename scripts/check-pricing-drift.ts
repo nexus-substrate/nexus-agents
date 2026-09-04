@@ -17,7 +17,7 @@
  * Run periodically (e.g. after a model provider price change) or as a
  * pre-release sanity check.
  *
- * Usage: `npx tsx scripts/check-pricing-drift.ts`
+ * Usage: `pnpm exec tsx scripts/check-pricing-drift.ts`
  *
  * @module scripts/check-pricing-drift
  * (Source: Issue #1896 — litellm catalog cross-check)

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Authority-tier declaration gate (#3841, Epic D / ADR-0017).
  *

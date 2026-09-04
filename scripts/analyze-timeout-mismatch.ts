@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Timeout-mismatch evidence report.
  *
@@ -28,9 +27,9 @@
  *
  * ## Usage
  *
- *   npx tsx scripts/analyze-timeout-mismatch.ts            # write report
- *   npx tsx scripts/analyze-timeout-mismatch.ts --json     # JSON to stdout
- *   npx tsx scripts/analyze-timeout-mismatch.ts <path>     # read JSONL from <path>
+ *   pnpm exec tsx scripts/analyze-timeout-mismatch.ts            # write report
+ *   pnpm exec tsx scripts/analyze-timeout-mismatch.ts --json     # JSON to stdout
+ *   pnpm exec tsx scripts/analyze-timeout-mismatch.ts <path>     # read JSONL from <path>
  *
  * Default report path: docs/research/timeout-mismatch-v1.md
  *

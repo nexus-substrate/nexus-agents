@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Pin the generated TypeDoc page layout (#4523).
  *

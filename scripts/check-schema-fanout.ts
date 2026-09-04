@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * check-schema-fanout.ts — surface schema-change cascades.
  *
@@ -14,10 +13,10 @@
  * See docs/architecture/SCHEMA_FANOUT_COVERAGE.md (#2407). Implements #2408.
  *
  * Usage:
- *   npx tsx scripts/check-schema-fanout.ts            # Warn-only check
- *   npx tsx scripts/check-schema-fanout.ts --verbose  # Detailed output
- *   npx tsx scripts/check-schema-fanout.ts --strict   # Promote warnings to errors (v2)
- *   npx tsx scripts/check-schema-fanout.ts --manifest <path>
+ *   pnpm exec tsx scripts/check-schema-fanout.ts            # Warn-only check
+ *   pnpm exec tsx scripts/check-schema-fanout.ts --verbose  # Detailed output
+ *   pnpm exec tsx scripts/check-schema-fanout.ts --strict   # Promote warnings to errors (v2)
+ *   pnpm exec tsx scripts/check-schema-fanout.ts --manifest <path>
  *
  * Exit codes:
  *   0 - No warnings, OR warnings only (default v1 mode)
@@ -301,7 +300,7 @@ function main(): void {
 check-schema-fanout.ts — surface schema-change cascades
 
 Usage:
-  npx tsx scripts/check-schema-fanout.ts [options]
+  pnpm exec tsx scripts/check-schema-fanout.ts [options]
 
 Options:
   --verbose, -v  Show detailed output

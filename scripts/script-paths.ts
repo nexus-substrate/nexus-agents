@@ -21,7 +21,7 @@ import { join } from 'node:path';
  * at an isolated copy of the tree. This is the seam that lets the
  * governance-injection tests (#3954) run the check/inject logic in-process
  * against a temp sandbox instead of mutating the real working tree and shelling
- * out to `npx tsx`. Unset (the production default) leaves behavior identical.
+ * out to `pnpm exec tsx`. Unset (the production default) leaves behavior identical.
  */
 export const ROOT =
   process.env['NEXUS_SCRIPT_ROOT'] !== undefined && process.env['NEXUS_SCRIPT_ROOT'] !== ''

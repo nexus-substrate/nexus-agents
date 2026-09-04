@@ -90,8 +90,8 @@ This specification defines the **single canonical documentation pipeline** for n
 
 ```bash
 # Usage
-npx tsx scripts/generate-repo-index.ts       # Generate index
-npx tsx scripts/generate-repo-index.ts --check # CI validation
+pnpm exec tsx scripts/generate-repo-index.ts       # Generate index
+pnpm exec tsx scripts/generate-repo-index.ts --check # CI validation
 ```
 
 **Outputs:**
@@ -103,8 +103,8 @@ npx tsx scripts/generate-repo-index.ts --check # CI validation
 
 ```bash
 # Usage
-npx tsx scripts/inject-governance.ts inject  # Update CLAUDE.md
-npx tsx scripts/inject-governance.ts check   # CI validation
+pnpm exec tsx scripts/inject-governance.ts inject  # Update CLAUDE.md
+pnpm exec tsx scripts/inject-governance.ts check   # CI validation
 ```
 
 **Injected sections:**
@@ -202,7 +202,7 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 1. Create file in appropriate `docs/` directory
 2. Add entry to `docs/README.md` (required)
-3. Run `npx tsx scripts/generate-repo-index.ts` if capabilities changed
+3. Run `pnpm exec tsx scripts/generate-repo-index.ts` if capabilities changed
 4. Commit and push
 
 ### "I want to change the doc pipeline"
@@ -217,8 +217,8 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 ```bash
 # Run all checks locally
-npx tsx scripts/generate-repo-index.ts --check
-npx tsx scripts/inject-governance.ts check
+pnpm exec tsx scripts/generate-repo-index.ts --check
+pnpm exec tsx scripts/inject-governance.ts check
 ```
 
 ---

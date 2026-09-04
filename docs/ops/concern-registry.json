@@ -1,5 +1,5 @@
 {
-  "$comment": "One canonical implementation per OPERATION (#5123, epic #5121). The unit is the operation, not the symbol \u2014 CLAUDE.md's old table listed symbols, which is how it blessed both sides of adapter acquisition. Alternates record PRESENCE only, never call-site counts: counts make two unrelated PRs touching the same alternate conflict, and a gate that punishes uninvolved developers gets disabled. Reseed with: npx tsx scripts/check-concern-registry.ts baseline",
+  "$comment": "One canonical implementation per OPERATION (#5123, epic #5121). The unit is the operation, not the symbol \u2014 CLAUDE.md's old table listed symbols, which is how it blessed both sides of adapter acquisition. Alternates record PRESENCE only, never call-site counts: counts make two unrelated PRs touching the same alternate conflict, and a gate that punishes uninvolved developers gets disabled. Reseed with: pnpm exec tsx scripts/check-concern-registry.ts baseline",
   "concerns": [
     {
       "concern": "compute-token-cost-in-usd",

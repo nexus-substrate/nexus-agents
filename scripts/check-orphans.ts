@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * check-orphans.ts — surface src/ subtrees with no outside callers.
  *
@@ -29,8 +28,8 @@
  * promoted to blocking in #4583.
  *
  * Usage:
- *   npx tsx scripts/check-orphans.ts            # Check
- *   npx tsx scripts/check-orphans.ts --verbose  # Show every flagged orphan
+ *   pnpm exec tsx scripts/check-orphans.ts            # Check
+ *   pnpm exec tsx scripts/check-orphans.ts --verbose  # Show every flagged orphan
  *
  * Exit codes:
  *   0 - No flagged orphans and every allowlist exemption is well-formed
@@ -476,7 +475,7 @@ function main(): void {
 check-orphans.ts — surface src/ subtrees with no outside callers (blocking)
 
 Usage:
-  npx tsx scripts/check-orphans.ts [options]
+  pnpm exec tsx scripts/check-orphans.ts [options]
 
 Options:
   --verbose, -v  Show every flagged orphan

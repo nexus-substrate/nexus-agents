@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Stuck-release detector (#4500).
  *
@@ -145,7 +144,7 @@ function main(): void {
   console.log(`::error::${verdict.reason}`);
 
   // Write the issue body here rather than letting the workflow re-import this
-  // module inline: `npx tsx -e` does not resolve relative imports, so that
+  // module inline: `pnpm exec tsx -e` does not resolve relative imports, so that
   // shape fails at runtime. Keeping it in the script also honours the
   // "YAML stays a thin shell" condition from the #4500 panel.
   writeFileSync(join(ROOT, BODY_FILENAME), stallIssueBody(pending), 'utf8');

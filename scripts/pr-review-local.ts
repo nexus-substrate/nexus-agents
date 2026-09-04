@@ -1,14 +1,13 @@
-#!/usr/bin/env npx tsx
 /**
  * Local pr_review runner — uses your local Claude CLI subscription auth
  * instead of API keys (which would violate Anthropic's subscription ToS
  * when used in automated CI).
  *
  * Usage:
- *   npx tsx scripts/pr-review-local.ts <pr-number>           # one-shot
- *   npx tsx scripts/pr-review-local.ts --watch               # poll loop
- *   npx tsx scripts/pr-review-local.ts --watch --interval 600 # custom poll
- *   npx tsx scripts/pr-review-local.ts <pr-number> --no-post # dry run
+ *   pnpm exec tsx scripts/pr-review-local.ts <pr-number>           # one-shot
+ *   pnpm exec tsx scripts/pr-review-local.ts --watch               # poll loop
+ *   pnpm exec tsx scripts/pr-review-local.ts --watch --interval 600 # custom poll
+ *   pnpm exec tsx scripts/pr-review-local.ts <pr-number> --no-post # dry run
  *
  * What it does (one-shot): fetch the PR's canonical `base..head` diff (ledger-
  * excluded, #4229), run the same live 5-voter pr_review panel, post a single review

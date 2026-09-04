@@ -545,7 +545,7 @@ credentials are configured as repo secrets.
 **2. LOCAL on-demand run (no CI cost, uses your own credentials/telemetry):**
 
 ```bash
-NEXUS_META_SHADOW_TRAIN=1 npx tsx scripts/meta-shadow-soak.ts --count 12 --repo nexus-substrate/nexus-agents
+NEXUS_META_SHADOW_TRAIN=1 pnpm exec tsx scripts/meta-shadow-soak.ts --count 12 --repo nexus-substrate/nexus-agents
 ```
 
 Requires `gh` authenticated against the target repo (`gh auth status`) and

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Dropped-push-event detector (#4648).
  *

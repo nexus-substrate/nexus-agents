@@ -122,10 +122,10 @@ nexus-agents doctor
 nexus-agents fitness-audit
 
 # Generate capabilities index (MCP tools, CLIs, etc.)
-npx tsx scripts/generate-repo-index.ts
+pnpm exec tsx scripts/generate-repo-index.ts
 
 # Regenerate source-derived docs (AgentRole interface, module inventory, ADR counts)
-npx tsx scripts/generate-docs-content.ts
+pnpm exec tsx scripts/generate-docs-content.ts
 ```
 
 ---

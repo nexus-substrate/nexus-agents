@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Architectural Linting Script
  *

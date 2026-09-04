@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Fitness-guard: refuse hardcoded model-version strings outside config/.
  *

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Surface open issues whose named blockers have all closed (#4617).
  *

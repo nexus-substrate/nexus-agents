@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Producer-without-consumer gate (#3024).
@@ -31,7 +30,7 @@
  * outcome the audit sweep just established.
  *
  * Usage:
- *   npx tsx scripts/check-new-unused-exports.ts [base-ref]
+ *   pnpm exec tsx scripts/check-new-unused-exports.ts [base-ref]
  *   (base defaults to origin/main)
  *
  * @module scripts/check-new-unused-exports

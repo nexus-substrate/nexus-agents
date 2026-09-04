@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * check-registry-coverage.ts — enforce wiring-completeness for behavioral registries.
  *
@@ -13,8 +12,8 @@
  * See docs/architecture/REGISTRY_COVERAGE.md (#2405). Implements #2406.
  *
  * Usage:
- *   npx tsx scripts/check-registry-coverage.ts            # Check for violations
- *   npx tsx scripts/check-registry-coverage.ts --verbose  # Detailed output
+ *   pnpm exec tsx scripts/check-registry-coverage.ts            # Check for violations
+ *   pnpm exec tsx scripts/check-registry-coverage.ts --verbose  # Detailed output
  *
  * Exit codes:
  *   0 - No violations
@@ -605,7 +604,7 @@ function main(): void {
 check-registry-coverage.ts — enforce wiring-completeness for behavioral registries
 
 Usage:
-  npx tsx scripts/check-registry-coverage.ts [options]
+  pnpm exec tsx scripts/check-registry-coverage.ts [options]
 
 Options:
   --verbose, -v  Show detailed output

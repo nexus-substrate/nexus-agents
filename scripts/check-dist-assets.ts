@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Verify every runtime-read data asset actually reached `dist/` (#5083).
  *

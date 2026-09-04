@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Claims Check Gate
  *
@@ -17,7 +16,7 @@
  * and fails the build on documentation drift. #3826 wires it into CI as a gate.
  *
  * Usage:
- *   npx tsx scripts/claims-check.ts        # verify, exit 1 on drift
+ *   pnpm exec tsx scripts/claims-check.ts        # verify, exit 1 on drift
  *   pnpm claims:check
  *
  * @module scripts/claims-check

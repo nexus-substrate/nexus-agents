@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * pr-review-eval-run.ts — v6 pr_review eval batch runner (#4311, epic #3845;
  * unblocks #3849).
@@ -30,7 +29,7 @@
  *
  * Usage:
  *   npm run eval:run
- *   npx tsx scripts/pr-review-eval-run.ts
+ *   pnpm exec tsx scripts/pr-review-eval-run.ts
  *
  * @module scripts/pr-review-eval-run
  * (Source: #4311, epic #3845, unblocks #3849; scorer from #3848; rubric #3846)

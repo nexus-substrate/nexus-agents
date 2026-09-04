@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * MCP Tool Reference Generator (#3687, child of docs-site epic #3532).
  *
@@ -26,8 +25,8 @@
  *     repo-top-level `docs/` dir and requires a `title` in frontmatter.
  *
  * Usage:
- *   npx tsx scripts/generate-tool-reference.ts          # write the reference
- *   npx tsx scripts/generate-tool-reference.ts --check  # fail if out of date
+ *   pnpm exec tsx scripts/generate-tool-reference.ts          # write the reference
+ *   pnpm exec tsx scripts/generate-tool-reference.ts --check  # fail if out of date
  *
  * @module scripts/generate-tool-reference
  * (Source: Issue #3687)

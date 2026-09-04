@@ -22,7 +22,7 @@ The validated path for subscription users is `scripts/pr-review-local.ts` — ru
 Review a single PR by number:
 
 ```bash
-npx tsx scripts/pr-review-local.ts 2257
+pnpm exec tsx scripts/pr-review-local.ts 2257
 ```
 
 What it does:
@@ -40,7 +40,7 @@ Cost: ~5 voter calls = ~5 messages of subscription quota at typical PR size, ~2 
 Pass `--no-post` to print results without commenting on the PR:
 
 ```bash
-npx tsx scripts/pr-review-local.ts 2257 --no-post
+pnpm exec tsx scripts/pr-review-local.ts 2257 --no-post
 ```
 
 ## Watch mode
@@ -48,9 +48,9 @@ npx tsx scripts/pr-review-local.ts 2257 --no-post
 Poll open PRs every N seconds, review any without the `pr-reviewed` label:
 
 ```bash
-npx tsx scripts/pr-review-local.ts --watch
-npx tsx scripts/pr-review-local.ts --watch --interval 600   # 10-min poll
-npx tsx scripts/pr-review-local.ts --watch --include-drafts
+pnpm exec tsx scripts/pr-review-local.ts --watch
+pnpm exec tsx scripts/pr-review-local.ts --watch --interval 600   # 10-min poll
+pnpm exec tsx scripts/pr-review-local.ts --watch --include-drafts
 ```
 
 Skip rules in watch mode:
@@ -92,7 +92,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/william/git/nexus-agents
-ExecStart=/usr/bin/npx tsx scripts/pr-review-local.ts --watch --interval 600
+ExecStart=/usr/bin/pnpm exec tsx scripts/pr-review-local.ts --watch --interval 600
 Restart=on-failure
 RestartSec=30
 

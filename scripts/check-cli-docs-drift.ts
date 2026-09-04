@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * CLI documentation drift gate (#5142).
@@ -31,7 +30,7 @@
  * failure. Both directions of the name-set comparison are hard.
  *
  * Usage:
- *   npx tsx scripts/check-cli-docs-drift.ts            # CI gate
+ *   pnpm exec tsx scripts/check-cli-docs-drift.ts            # CI gate
  *
  * @module scripts/check-cli-docs-drift
  */

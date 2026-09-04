@@ -20,7 +20,7 @@
  * `clean`/"no drift") so a provider outage can never mask real drift. Advisory:
  * always exits 0 (drift is reported via an issue, never a red build).
  *
- * Usage: `npx tsx scripts/check-parameter-drift.ts`
+ * Usage: `pnpm exec tsx scripts/check-parameter-drift.ts`
  *
  * @module scripts/check-parameter-drift
  * (Source: Issue #4121 — provider-reality reconciliation for the param-capability map)

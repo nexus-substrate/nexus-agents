@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Tool-Output Consistency Lint (#2653, Epic B — reframed).
@@ -15,7 +14,7 @@
  * an ISO-8601 `z.string()` or a `Date`. (A voter once compared an epoch-ms
  * number to an ISO date as the same type.) See `.rules/hooks.md`.
  *
- * Usage: npx tsx scripts/check-tool-output-consistency.ts
+ * Usage: pnpm exec tsx scripts/check-tool-output-consistency.ts
  *
  * @module scripts/check-tool-output-consistency
  * (Source: Issue #2653, Epic B)

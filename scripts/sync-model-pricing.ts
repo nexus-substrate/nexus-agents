@@ -1,11 +1,10 @@
-#!/usr/bin/env -S npx tsx
 /**
  * sync-model-pricing — Fetch pricing data from models.dev and compare
  * against our canonical model registry.
  *
  * Usage:
- *   npx tsx scripts/sync-model-pricing.ts          # Show diff only
- *   npx tsx scripts/sync-model-pricing.ts --apply   # Apply changes
+ *   pnpm exec tsx scripts/sync-model-pricing.ts          # Show diff only
+ *   pnpm exec tsx scripts/sync-model-pricing.ts --apply   # Apply changes
  *
  * Source: Issue #1125
  */

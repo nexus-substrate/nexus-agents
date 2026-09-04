@@ -1,5 +1,5 @@
 {
-  "_comment": "Accepted overlapping MCP tool-description pairs (#2650). `check:tool-distinctness` fails CI on a NEW pair >= threshold or a baseline pair whose similarity rose past tolerance. To accept a new pair, add it here with a tracking issue; to reseed, run `npx tsx scripts/check-tool-distinctness.ts baseline <threshold>`.",
+  "_comment": "Accepted overlapping MCP tool-description pairs (#2650). `check:tool-distinctness` fails CI on a NEW pair >= threshold or a baseline pair whose similarity rose past tolerance. To accept a new pair, add it here with a tracking issue; to reseed, run `pnpm exec tsx scripts/check-tool-distinctness.ts baseline <threshold>`.",
   "threshold": 0.5,
   "tolerance": 0.03,
   "pairs": [

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Skills Index Generator (#1828)
  *
@@ -20,8 +19,8 @@
  * `[[skills.config]]` entry pointing at `skills/`).
  *
  * Usage:
- *   npx tsx scripts/generate-skills-index.ts          # generate
- *   npx tsx scripts/generate-skills-index.ts --check  # CI validation
+ *   pnpm exec tsx scripts/generate-skills-index.ts          # generate
+ *   pnpm exec tsx scripts/generate-skills-index.ts --check  # CI validation
  */
 
 /* eslint-disable no-console */
@@ -153,13 +152,13 @@ function main(): void {
 
   if (CHECK_MODE) {
     if (!existsSync(INDEX_PATH)) {
-      console.error(`❌ ${INDEX_PATH} does not exist. Run: npx tsx ${GENERATOR_ID}`);
+      console.error(`❌ ${INDEX_PATH} does not exist. Run: pnpm exec tsx ${GENERATOR_ID}`);
       process.exit(1);
     }
     const current = readFileSync(INDEX_PATH, 'utf-8');
     if (current !== yaml) {
       console.error('❌ skills/index.yaml is stale.');
-      console.error(`   Run: npx tsx ${GENERATOR_ID}`);
+      console.error(`   Run: pnpm exec tsx ${GENERATOR_ID}`);
       process.exit(1);
     }
     console.log(`✅ skills/index.yaml is up to date (${String(index.skills.length)} skills)`);

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * check-docs-indexed.ts - Validate all docs are in canonical index
  *
@@ -6,9 +5,9 @@
  * in docs/README.md (the canonical documentation index).
  *
  * Usage:
- *   npx tsx scripts/check-docs-indexed.ts           # Check for unindexed docs
- *   npx tsx scripts/check-docs-indexed.ts --verbose # Detailed output
- *   npx tsx scripts/check-docs-indexed.ts --fix     # Show what to add
+ *   pnpm exec tsx scripts/check-docs-indexed.ts           # Check for unindexed docs
+ *   pnpm exec tsx scripts/check-docs-indexed.ts --verbose # Detailed output
+ *   pnpm exec tsx scripts/check-docs-indexed.ts --fix     # Show what to add
  *
  * Exit codes:
  *   0 - All docs are indexed
@@ -262,7 +261,7 @@ function main(): void {
 check-docs-indexed.ts - Validate all docs are in canonical index
 
 Usage:
-  npx tsx scripts/check-docs-indexed.ts [options]
+  pnpm exec tsx scripts/check-docs-indexed.ts [options]
 
 Options:
   --verbose, -v  Show detailed output

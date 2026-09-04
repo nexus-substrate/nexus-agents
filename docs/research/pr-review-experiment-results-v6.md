@@ -114,7 +114,7 @@ Total verdicts recorded: 144.
 
 ```bash
 npm run eval:run
-# or: npx tsx scripts/pr-review-eval-run.ts
+# or: pnpm exec tsx scripts/pr-review-eval-run.ts
 ```
 
 The default invocation runs the LIVE 5-voter pr_review panel — 5 LLM calls per case (64 cases in the current corpus) — and requires model auth (a CLI adapter such as claude/gemini/codex, or `ANTHROPIC_API_KEY`). Results are appended to the #3848 JSONL store (`~/.nexus-agents/learning/pr-review-eval.jsonl` by default, `NEXUS_DATA_DIR`-relocatable) and this doc is regenerated in place. The plumbing above (corpus load, scoring, aggregation, doc/store write) is unit-tested with a deterministic stub panel — see `scripts/pr-review-eval-run.test.ts` and `scripts/pr-review-eval-run-core.test.ts`; no live model calls happen in CI.

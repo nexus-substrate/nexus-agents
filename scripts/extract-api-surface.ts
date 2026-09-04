@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Public API surface extractor (#4749).
  *

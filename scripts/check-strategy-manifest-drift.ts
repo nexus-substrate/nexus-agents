@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Strategy-manifest registry drift gate (#3837, Epic C / M2).
  *

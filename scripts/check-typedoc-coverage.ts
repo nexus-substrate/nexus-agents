@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * TypeDoc entry-point coverage gate (#4504).
  *

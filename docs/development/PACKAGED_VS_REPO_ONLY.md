@@ -32,7 +32,7 @@ be declared in `MODULE_RELATIVE_RESOLVERS`, either naming the shipped asset it
 needs or explicitly `null` with a reason. A new runtime file read **fails the
 build** until it is declared, which forces the author to answer "does this need
 to ship?" exactly once. It runs in `build` and at `ci.yml`'s
-`npx tsx scripts/check-dist-assets.ts` step.
+`pnpm exec tsx scripts/check-dist-assets.ts` step.
 
 That is the difference between this section and a comment. An invariant written
 down and ungated is a false sense of security — the reader trusts a property
