@@ -32,7 +32,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Validate conventional commits
-        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+        run: npx commitlint --from origin/${{ github.base_ref || 'main' }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
   changeset-check:
     name: Changeset Presence
@@ -55,7 +55,7 @@ jobs:
       # debt is the root cause of the release-race incidents (see
       # docs/ops/release-changeset-race.md).
       - name: Check changeset presence
-        run: pnpm exec tsx scripts/check-changeset.ts ${{ github.event.pull_request.base.sha }}
+        run: pnpm exec tsx scripts/check-changeset.ts origin/${{ github.base_ref || 'main' }}
 
   producer-consumer-check:
     name: Producer/Consumer Check
@@ -80,7 +80,7 @@ jobs:
       # the 2026-05-24 YAGNI audit sweep (~5,250 LOC deleted across 7
       # issues). Opt-out: `// @export-no-consumer-yet — see #<issue>`.
       - name: Check producer-without-consumer (#3024)
-        run: pnpm exec tsx scripts/check-new-unused-exports.ts ${{ github.event.pull_request.base.sha }}
+        run: pnpm exec tsx scripts/check-new-unused-exports.ts origin/${{ github.base_ref || 'main' }}
 
       - name: Public API surface
         # #4749: a name grep cannot answer a reachability question. Three type
