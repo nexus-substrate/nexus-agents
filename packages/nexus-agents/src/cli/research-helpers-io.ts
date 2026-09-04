@@ -18,7 +18,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/index.js';
 import { SecurityError, createLogger, getErrorMessage } from '../core/index.js';
 import { getActiveWorkspaceRoot } from '../config/nexus-data-dir.js';
-import { findRepoRoot } from '../config/repo-root-detection.js';
+import { findRepoRoot, isRepoRoot } from '../config/repo-root-detection.js';
 import { ParseError } from '../core/types/workflow.js';
 import type { TechniquesRegistry, PapersRegistry } from './research-types.js';
 import { ensureRegistryFile } from './research-scaffold.js';
@@ -43,16 +43,20 @@ export const PAPERS_FILE = 'papers.yaml';
 const logger = createLogger({ component: 'research-registry-root' });
 
 /**
- * Per-process memo of the discovered registry root (#5053). The MCP server
- * answers every `research_*` call from one process, so the discovery walk
- * runs once; the memo also bounds the cwd-fallback warning to one emission.
+ * Per-process memo of discovered registry roots (#5053), keyed on the origin
+ * the walk started from (the active workspace root, else cwd). The MCP server
+ * fetches its client's `roots` asynchronously after `initialized`, so a
+ * `research_*` call can land before — or a `roots/list_changed` after — the
+ * workspace root is known; keying on the origin means a changed origin
+ * resolves afresh instead of inheriting the first caller's cwd-derived root.
  */
-let memoisedRegistryRoot: string | undefined;
+const registryRootByOrigin = new Map<string, string>();
+/** The cwd-fallback warning fires once per process overall, not per origin. */
 let warnedCwdFallback = false;
 
 /** Test helper — clears the registry-root memo and the one-shot warning. */
 export function _resetRegistryRootForTests(): void {
-  memoisedRegistryRoot = undefined;
+  registryRootByOrigin.clear();
   warnedCwdFallback = false;
 }
 
@@ -67,7 +71,10 @@ function hasRegistryDir(dir: string): boolean {
 
 /**
  * Walks upward from `start` looking for the nearest ancestor (inclusive) that
- * already contains `docs/research/registry`. Mirrors `findRepoRoot`'s
+ * already contains `docs/research/registry`, searching only within the
+ * enclosing git repo: the walk ends at the first directory that `isRepoRoot`
+ * (after checking that directory itself), so a nested checkout never adopts —
+ * or writes into — an outer repo's registry. Mirrors `findRepoRoot`'s other
  * defenses: bounded depth, stops at the filesystem root, and refuses to cross
  * a mount point so a sandboxed workdir cannot pick up a host-side registry.
  */
@@ -82,6 +89,7 @@ function findRegistryAncestor(start: string): string | null {
   }
   for (let depth = 0; depth < 64; depth++) {
     if (hasRegistryDir(current)) return current;
+    if (isRepoRoot(current)) return null;
     const parent = dirname(current);
     if (parent === current) return null;
     try {
@@ -101,24 +109,31 @@ function findRegistryAncestor(start: string): string | null {
  *  1. An explicit `rootDir` argument wins outright (resolved, never memoised).
  *  2. The nearest ancestor of the active workspace root (MCP `roots`, #3991)
  *     — or of `process.cwd()` when none is set — that already contains
- *     `docs/research/registry`.
+ *     `docs/research/registry`, without crossing a repo boundary: the search
+ *     stops at the enclosing repo root, so a nested checkout never resolves
+ *     to an outer repo's registry.
  *  3. Otherwise the enclosing git repo root via `findRepoRoot`, so the
  *     first-run scaffold (#2470) lands at the repo root rather than below it.
  *  4. Otherwise cwd, with a warning emitted once per process: nothing above
  *     cwd identifies a project, so cwd is a guess rather than a discovery.
  *
- * Steps 2–4 are memoised per process. Before this resolver every helper
- * defaulted to cwd, so a server started inside `packages/nexus-agents` read
- * (and scaffolded) a shadow registry there instead of the repo's.
+ * Steps 2–4 are memoised per origin (workspace root or cwd), so a workspace
+ * root that arrives after the first call — MCP roots are fetched after
+ * `initialized` — is honoured rather than shadowed by an earlier cwd-derived
+ * result. Before this resolver every helper defaulted to cwd, so a server
+ * started inside `packages/nexus-agents` read (and scaffolded) a shadow
+ * registry there instead of the repo's.
  */
 export function resolveRegistryRoot(rootDir?: string): string {
   if (rootDir !== undefined) return resolve(rootDir);
-  if (memoisedRegistryRoot !== undefined) return memoisedRegistryRoot;
 
   const origin = getActiveWorkspaceRoot() ?? process.cwd();
+  const memoised = registryRootByOrigin.get(origin);
+  if (memoised !== undefined) return memoised;
+
   const discovered = findRegistryAncestor(origin) ?? findRepoRoot(origin);
   if (discovered !== null) {
-    memoisedRegistryRoot = discovered;
+    registryRootByOrigin.set(origin, discovered);
     return discovered;
   }
 
@@ -135,7 +150,7 @@ export function resolveRegistryRoot(rootDir?: string): string {
       { cwd: fallback, registryPath: REGISTRY_PATH }
     );
   }
-  memoisedRegistryRoot = fallback;
+  registryRootByOrigin.set(origin, fallback);
   return fallback;
 }
 

@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
@@ -19,8 +19,10 @@ import {
   TECHNIQUES_FILE,
   _resetRegistryRootForTests,
   getProjectRoot,
+  loadPapersRegistry,
   loadTechniquesRegistry,
   resolveRegistryRoot,
+  savePapersRegistry,
 } from './research-helpers-io.js';
 import {
   _resetActiveWorkspaceRootForTests,
@@ -140,6 +142,42 @@ describe('resolveRegistryRoot (#5053)', () => {
     expect(setActiveWorkspaceRoot(workspace)).toBe(true);
 
     expect(resolveRegistryRoot()).toBe(realpathSync(workspace));
+  });
+
+  it('a nested checkout never resolves to the outer repo registry (#5475 review)', async () => {
+    const outer = makeTmp('nexus-5053-outer-');
+    writeRegistry(outer);
+    const inner = join(outer, 'inner');
+    mkdirSync(join(inner, '.git'), { recursive: true });
+    mkdirSync(join(inner, 'docs'), { recursive: true });
+    process.chdir(inner);
+
+    expect(resolveRegistryRoot()).toBe(realpathSync(inner));
+
+    // The first-run scaffold (#2470) and a save must both land under inner.
+    const outerPapersBefore = readFileSync(join(outer, REGISTRY_PATH, PAPERS_FILE), 'utf-8');
+    const loaded = await loadPapersRegistry();
+    expect(loaded.ok).toBe(true);
+    const saved = await savePapersRegistry({
+      schema_version: '1.0',
+      papers: {},
+    });
+    expect(saved.ok).toBe(true);
+    expect(existsSync(join(inner, REGISTRY_PATH, PAPERS_FILE))).toBe(true);
+    expect(readFileSync(join(outer, REGISTRY_PATH, PAPERS_FILE), 'utf-8')).toBe(outerPapersBefore);
+  });
+
+  it('a workspace root set after a cwd-derived resolution is honoured (#5475 review)', () => {
+    const bare = makeTmp('nexus-5053-late-bare-');
+    process.chdir(bare);
+    expect(resolveRegistryRoot()).toBe(realpathSync(bare));
+
+    const workspace = makeTmp('nexus-5053-late-ws-');
+    writeRegistry(workspace);
+    expect(setActiveWorkspaceRoot(workspace)).toBe(true);
+
+    expect(resolveRegistryRoot()).toBe(realpathSync(workspace));
+    expect(fallbackWarnings()).toHaveLength(1);
   });
 
   it('loadTechniquesRegistry() without rootDir reads the ancestor registry, not cwd', async () => {
