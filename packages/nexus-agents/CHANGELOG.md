@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.9.2
+
+### Patch Changes
+
+- [#5484](https://github.com/nexus-substrate/nexus-agents/pull/5484) [`fa1bc68`](https://github.com/nexus-substrate/nexus-agents/commit/fa1bc6835a81c2ad5b025266f7c6d08a65dca4aa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The V2 delegate plan (`pipeline/v2-delegate.ts`, compiled by both `instrumentV2Pipeline` in `delegate_to_model` and `executeOrchestratePipeline` in `v2-orchestrate.ts`, both fire-and-forget) no longer declares a policy gate. The `trust-tier` entry gate [#3703](https://github.com/nexus-substrate/nexus-agents/issues/3703) added guarded a route-typed stage, and the only policy rule denies execute-typed stages, so it could not deny any input in any `NEXUS_POLICY_GATE_MODE` ([#4657](https://github.com/nexus-substrate/nexus-agents/issues/4657), pinned by [#5072](https://github.com/nexus-substrate/nexus-agents/issues/5072)). Widening the rule was rejected: the graph's verdict is read by nothing, so a gate that fired would have recorded a denial while the delegation proceeded. `buildWarnPolicyEnforcement` is removed with the gate, and the compile call no longer passes a `policyEnforcement` bundle that no node consulted.
+
+  No path that enforces changes. The trust-tier rule, `plan-compiler`, `policy-evaluator` and the two execute-stage seams that can refuse — the `v2-orchestrate.ts` file and its `checkPipelinePolicy(task, 'execute')` check (governed by `NEXUS_V2_POLICY_MODE`) and `dev-pipeline` (`enforceConsensusExecutePolicy`, governed by `NEXUS_POLICY_GATE_MODE`) — are unchanged. `NEXUS_POLICY_GATE_MODE`'s scope is now stated in `CONFIGURATION.md` and `env-schema.ts`: it governs dev-pipeline's consensus→execute gate and any compiled gate node whose caller supplies a `policyEnforcement` bundle (no in-tree caller does today); the V2 delegate graph declares none. `policy.evaluated` events and durable `policy_gate` records from the delegate graph were already zero, since the gate never produced a violation, so soak counts are unaffected.
+
 ## 8.9.1
 
 ### Patch Changes
