@@ -1685,6 +1685,7 @@ InterfaceDeclaration CollectRealVotesOptions
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined
   readonly proposal: string
   readonly roles: readonly VoterRole[]
+  readonly signal?: AbortSignal | undefined
   readonly simulate?: boolean | undefined
 FunctionDeclaration collectStream
   : typeof collectStream
