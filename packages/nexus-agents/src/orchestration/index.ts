@@ -97,6 +97,7 @@ export type {
   WorkflowPattern,
   DependencyStructure,
   TimeConstraint,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the deprecated alias IS the deprecation path (#5097); removal needs a breaking-change panel
   QualityRequirement,
   TaskSignals,
   RoutingDecision,

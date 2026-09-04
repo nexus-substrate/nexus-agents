@@ -24,11 +24,24 @@ export type DependencyStructure = 'linear' | 'dag' | 'independent' | 'unknown';
 
 /**
  * Time constraint urgency level.
+ *
+ * `'relaxed'` is accepted as a caller hint but no inference path produces it:
+ * `enrichSignals` in `workflow-router.ts` emits only `'urgent'` or `'normal'`,
+ * and the sole consumer (`ruleNovelTask`) tests only for `'urgent'`, so
+ * `'relaxed'` and `'normal'` route identically. Pinned by
+ * `workflow-router.test.ts` (#5097).
  */
 export type TimeConstraint = 'urgent' | 'normal' | 'relaxed';
 
 /**
  * Quality requirement level.
+ *
+ * @deprecated Never read. No routing rule consults `TaskSignals.qualityRequirement`;
+ * the value is accepted and silently dropped (a caller passing it through
+ * `meta-orchestrator.ts` `select()` has it spread into `TaskSignals` and ignored).
+ * Do not confuse it with the analyzer-extracted `analysis.constraints.quality`
+ * string, which IS read for clarification prompts. Removal from the public
+ * surface is tracked in #5097.
  */
 export type QualityRequirement = 'best-effort' | 'high' | 'critical';
 
@@ -51,7 +64,15 @@ export interface TaskSignals {
   readonly isNovel?: boolean | undefined;
   /** Time urgency */
   readonly timeConstraint?: TimeConstraint | undefined;
-  /** Quality requirement level */
+  /**
+   * Quality requirement level.
+   *
+   * @deprecated Never read — no routing rule consults this field, so setting it
+   * does not change the decision (pinned by `workflow-router.test.ts`). A caller
+   * passing it through `meta-orchestrator.ts` `select()` has it silently
+   * dropped. Removal is tracked in #5097.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the field's type is deprecated together with the field (#5097)
   readonly qualityRequirement?: QualityRequirement | undefined;
   /** Force a specific pattern (escape hatch per DevEx feedback) */
   readonly forcePattern?: WorkflowPattern | undefined;

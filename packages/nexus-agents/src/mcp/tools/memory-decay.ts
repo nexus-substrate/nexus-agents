@@ -12,7 +12,6 @@
  * Key features:
  * - Cross-memory reference tracking to prevent orphaned references
  * - Coordinated decay scheduling across memory types
- * - Configurable decay strategies per memory type
  *
  * @module mcp/tools/memory-decay
  * (Source: Issue #746 Phase 5 - Coordinated Decay/Forgetting)
@@ -30,11 +29,6 @@ import type { MobiMem } from '../../context/mobimem.js';
 // ============================================================================
 // Configuration
 // ============================================================================
-
-/**
- * Decay strategy for each memory type.
- */
-export type DecayStrategy = 'fifo' | 'age' | 'importance' | 'ttl' | 'exponential';
 
 /**
  * Configuration for coordinated memory decay.
