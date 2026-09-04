@@ -10,6 +10,7 @@ import {
   StrategyDistiller,
   createStrategyDistiller,
   sigmoidConfidence,
+  effectFor,
   detectFailurePatterns,
   detectSuccessPatterns,
   detectLatencyPatterns,
@@ -114,6 +115,54 @@ describe('sigmoidConfidence', () => {
   it('accepts custom center', () => {
     const c = sigmoidConfidence(10, 10);
     expect(c).toBeCloseTo(0.5, 1);
+  });
+});
+
+// ============================================================================
+// effectFor (#5004 finding 3)
+// ============================================================================
+
+describe('effectFor', () => {
+  const thresholds = {
+    failureRateThreshold: 0.6,
+    successRateThreshold: 0.8,
+    latencyRatioThreshold: 2.0,
+  };
+
+  it('is 0 for a metric exactly at its detector threshold', () => {
+    expect(effectFor('failure-rate', 0.6, thresholds)).toBe(0);
+    expect(effectFor('success-rate', 0.8, thresholds)).toBe(0);
+    expect(effectFor('latency-spike', 2.0, thresholds)).toBe(0);
+  });
+
+  it('normalises failure and success rates over the remaining headroom', () => {
+    // (0.625 - 0.6) / (1 - 0.6)
+    expect(effectFor('failure-rate', 0.625, thresholds)).toBeCloseTo(0.0625, 10);
+    expect(effectFor('failure-rate', 1.0, thresholds)).toBe(1);
+    // (0.9 - 0.8) / (1 - 0.8)
+    expect(effectFor('success-rate', 0.9, thresholds)).toBeCloseTo(0.5, 10);
+    expect(effectFor('success-rate', 1.0, thresholds)).toBe(1);
+  });
+
+  it('saturates a latency spike at twice the threshold ratio', () => {
+    // min(1, (3 - 2) / 2)
+    expect(effectFor('latency-spike', 3.0, thresholds)).toBeCloseTo(0.5, 10);
+    expect(effectFor('latency-spike', 4.0, thresholds)).toBe(1);
+    expect(effectFor('latency-spike', 40.0, thresholds)).toBe(1);
+  });
+
+  it('clamps a metric below the threshold to 0 rather than going negative', () => {
+    expect(effectFor('failure-rate', 0.1, thresholds)).toBe(0);
+    expect(effectFor('success-rate', 0.2, thresholds)).toBe(0);
+    expect(effectFor('latency-spike', 1.0, thresholds)).toBe(0);
+  });
+
+  it('never returns NaN — a degenerate threshold or metric yields 0', () => {
+    // A threshold of 1.0 leaves no headroom: (1 - 1) / (1 - 1). A NaN here
+    // would reach `computeDelta` as `baseDelta * NaN` and poison the score.
+    expect(effectFor('failure-rate', 1.0, { ...thresholds, failureRateThreshold: 1.0 })).toBe(0);
+    expect(effectFor('latency-spike', 3.0, { ...thresholds, latencyRatioThreshold: 0 })).toBe(0);
+    expect(effectFor('failure-rate', Number.NaN, thresholds)).toBe(0);
   });
 });
 
@@ -362,6 +411,144 @@ describe('StrategyDistiller', () => {
       bounded.distill();
       expect(bounded.getRules().length).toBeLessThanOrEqual(2);
     });
+
+    it('evicts by support × effect, not by sample size alone (#5004)', () => {
+      const bounded = new StrategyDistiller(store, undefined, { maxRules: 2 });
+
+      // X: the most observations, barely past threshold → high support, tiny effect.
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 25,
+        success: false,
+      });
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 15,
+        success: true,
+      });
+      // Y: fewer observations, but every one failed → support 0.5, effect 1.
+      populateStore({
+        store,
+        cli: 'gemini',
+        category: 'code_generation',
+        count: 30,
+        success: false,
+      });
+      // Z: many observations, every one failed → the strongest rule.
+      populateStore({
+        store,
+        cli: 'codex',
+        category: 'code_generation',
+        count: 40,
+        success: false,
+      });
+
+      bounded.distill();
+
+      const ids = bounded.getRules().map((r) => r.id);
+      expect(ids).toHaveLength(2);
+      // Sample-size ordering would have evicted Y (sigmoid(30) = 0.5 is the
+      // lowest). The product evicts X: sigmoid(40) × 0.0625 ≈ 0.055.
+      expect(ids).toContain('failure-rate:gemini:code_generation');
+      expect(ids).toContain('failure-rate:codex:code_generation');
+      expect(ids).not.toContain('failure-rate:claude:code_generation');
+    });
+  });
+
+  describe('confidence = support × effect (#5004 finding 3)', () => {
+    it('records support, effect and their product on a distilled rule', () => {
+      // A: 25/40 failed → rate 0.625, just past the 0.6 threshold.
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 25,
+        success: false,
+      });
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 15,
+        success: true,
+      });
+      // B: 40/40 failed → rate 1.0, the far end of the scale.
+      populateStore({
+        store,
+        cli: 'gemini',
+        category: 'code_generation',
+        count: 40,
+        success: false,
+      });
+
+      distiller.distill();
+
+      const a = distiller.getRules().find((r) => r.id === 'failure-rate:claude:code_generation');
+      const b = distiller.getRules().find((r) => r.id === 'failure-rate:gemini:code_generation');
+      expect(a).toBeDefined();
+      expect(b).toBeDefined();
+      if (a === undefined || b === undefined) return;
+
+      const support40 = sigmoidConfidence(40);
+      expect(a.support).toBeCloseTo(support40, 10);
+      expect(b.support).toBeCloseTo(support40, 10);
+      expect(a.effect).toBeCloseTo(0.0625, 10);
+      expect(b.effect).toBe(1);
+
+      // Same sample size, so the old formula gave both the same confidence.
+      // Negative control: A's confidence is NOT the sigmoid any more.
+      expect(a.confidence).toBeCloseTo(support40 * 0.0625, 10);
+      expect(a.confidence).not.toBeCloseTo(support40, 2);
+      // B saturates effect, so its confidence equals the support alone.
+      expect(b.confidence).toBeCloseTo(support40, 10);
+      expect(b.confidence).toBeGreaterThan(a.confidence);
+    });
+
+    it('keeps a 6/6 failure small — support bounds a perfect but thin signal', () => {
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 6,
+        success: false,
+      });
+      distiller.distill();
+
+      const rule = distiller.getRules()[0];
+      expect(rule).toBeDefined();
+      expect(rule?.effect).toBe(1);
+      expect(rule?.confidence).toBeCloseTo(sigmoidConfidence(6), 10);
+      expect(rule?.confidence).toBeLessThan(0.02);
+    });
+
+    it('gives a rule exactly at threshold an effect of 0 and a confidence of 0', () => {
+      // 24/40 = 0.6 → detected (>=), but with no margin past the threshold.
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 24,
+        success: false,
+      });
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 16,
+        success: true,
+      });
+      distiller.distill();
+
+      const rule = distiller.getRules().find((r) => r.id === 'failure-rate:claude:code_generation');
+      expect(rule).toBeDefined();
+      expect(rule?.effect).toBe(0);
+      expect(rule?.confidence).toBe(0);
+      expect(rule?.support).toBeCloseTo(sigmoidConfidence(40), 10);
+    });
   });
 
   describe('rule lifecycle', () => {
@@ -480,17 +667,22 @@ describe('StrategyDistiller', () => {
     });
   });
 
-  describe('promote()', () => {
+  /* eslint-disable @typescript-eslint/no-deprecated -- promote() and
+     promotionConfidence are deprecated (#5004 finding 4, removal #5467);
+     these tests exist to prove the deprecation is non-breaking. */
+  describe('promote() — deprecated, kept callable (#5004 finding 4, removal #5467)', () => {
     it('promotes active non-tainted rules to RoutingMemory', () => {
-      // Need enough observations for high confidence
+      // 40/40 failed: support sigmoid(40) ≈ 0.88 × effect 1 clears the 0.7 gate.
+      // This previously used 35/40, which the sample-size-only confidence
+      // (0.88) passed but the product (0.88 × 0.6875 ≈ 0.61) does not — see
+      // the gate test below.
       populateStore({
         store,
         cli: 'claude',
         category: 'code_generation',
-        count: 35,
+        count: 40,
         success: false,
       });
-      populateStore({ store, cli: 'claude', category: 'code_generation', count: 5, success: true });
 
       distiller.distill();
       const memory = createMockRoutingMemory();
@@ -502,6 +694,33 @@ describe('StrategyDistiller', () => {
       // Verify promoted status
       const promoted = distiller.getRules('promoted');
       expect(promoted.length).toBeGreaterThan(0);
+    });
+
+    it('gates on the support × effect product, not on sample size', () => {
+      // 35/40 failed: rate 0.875 → effect 0.6875; support 0.88 → product ≈ 0.61.
+      // The old sigmoid-only confidence (0.88) would have promoted this.
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 35,
+        success: false,
+      });
+      populateStore({ store, cli: 'claude', category: 'code_generation', count: 5, success: true });
+
+      distiller.distill();
+      const rule = distiller.getRules('active')[0];
+      expect(rule?.support).toBeGreaterThan(DEFAULT_DISTILLER_CONFIG.promotionConfidence);
+      expect(rule?.confidence).toBeLessThan(DEFAULT_DISTILLER_CONFIG.promotionConfidence);
+
+      const memory = createMockRoutingMemory();
+      expect(distiller.promote(memory)).toBe(0);
+      expect(memory.storePreference).not.toHaveBeenCalled();
+    });
+
+    it('is still callable with no rules — the deprecation is non-breaking', () => {
+      const memory = createMockRoutingMemory();
+      expect(distiller.promote(memory)).toBe(0);
     });
 
     it('does not promote draft rules', () => {
@@ -533,10 +752,9 @@ describe('StrategyDistiller', () => {
         store,
         cli: 'claude',
         category: 'code_generation',
-        count: 35,
+        count: 40,
         success: false,
       });
-      populateStore({ store, cli: 'claude', category: 'code_generation', count: 5, success: true });
 
       distiller.distill();
       const memory = createMockRoutingMemory();
@@ -545,6 +763,8 @@ describe('StrategyDistiller', () => {
       expect(count).toBeGreaterThan(0);
     });
   });
+
+  /* eslint-enable @typescript-eslint/no-deprecated */
 
   describe('createStrategyDistiller factory', () => {
     it('creates an instance', () => {

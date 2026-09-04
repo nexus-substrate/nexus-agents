@@ -17,8 +17,18 @@ import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import type { DistilledRule, DistillerConfig } from './strategy-distiller-types.js';
-import { StrategyDistiller, registerPersistentDistillerFactory } from './strategy-distiller.js';
+import type {
+  DistilledRule,
+  DistillerConfig,
+  EffectThresholds,
+} from './strategy-distiller-types.js';
+import { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
+import {
+  StrategyDistiller,
+  registerPersistentDistillerFactory,
+  sigmoidConfidence,
+  effectFor,
+} from './strategy-distiller.js';
 import { ensureLearningDir, getRulesFile } from '../config/learning-persistence.js';
 
 // ============================================================================
@@ -32,6 +42,11 @@ const DistilledRuleSchema = z.object({
   category: z.string(),
   action: z.enum(['penalize', 'boost', 'avoid']),
   confidence: z.number(),
+  // Optional only for records written before #5004 finding 3, when
+  // `confidence` was the sigmoid alone. `hydrateRule` fills them in; a
+  // current-shape record always carries both.
+  support: z.number().optional(),
+  effect: z.number().optional(),
   observationCount: z.number(),
   metric: z.number(),
   status: z.enum(['draft', 'active', 'promoted', 'expired']),
@@ -48,6 +63,41 @@ export const RulesSnapshotSchema = z.object({
 });
 
 export type RulesSnapshot = z.infer<typeof RulesSnapshotSchema>;
+
+type PersistedRule = z.infer<typeof DistilledRuleSchema>;
+
+/**
+ * Lift a persisted record to the current `DistilledRule` shape.
+ *
+ * A record from before #5004 finding 3 has no `support`/`effect` and a
+ * `confidence` that was the sigmoid alone. It gets `support` from its
+ * observation count, `effect` recomputed from its persisted `metric` under
+ * `thresholds` (the live config — the threshold it was distilled under was
+ * never recorded), and `confidence` replaced by the product so routing never
+ * multiplies by a sample-size-only value again. Nothing here can produce
+ * `undefined × x = NaN`. A record that already carries both fields is
+ * returned as-is.
+ */
+function hydrateRule(
+  raw: PersistedRule,
+  thresholds: EffectThresholds
+): { rule: DistilledRule; legacy: boolean } {
+  const { support, effect, ...rest } = raw;
+  if (support !== undefined && effect !== undefined) {
+    return { rule: { ...rest, support, effect }, legacy: false };
+  }
+  const derivedSupport = support ?? sigmoidConfidence(raw.observationCount);
+  const derivedEffect = effect ?? effectFor(raw.patternType, raw.metric, thresholds);
+  return {
+    rule: {
+      ...rest,
+      support: derivedSupport,
+      effect: derivedEffect,
+      confidence: derivedSupport * derivedEffect,
+    },
+    legacy: true,
+  };
+}
 
 // ============================================================================
 // Configuration
@@ -121,9 +171,18 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
         return;
       }
 
-      this.loadRules(result.data.rules);
+      const hydrated = result.data.rules.map((raw) => hydrateRule(raw, this.config));
+      const legacyIds = hydrated.filter((h) => h.legacy).map((h) => h.rule.id);
+      if (legacyIds.length > 0) {
+        this.persistLogger.debug(
+          'Hydrated legacy rules without support/effect; derived them under the current thresholds (#5004)',
+          { legacyCount: legacyIds.length, ruleIds: legacyIds, path: this.filePath }
+        );
+      }
+
+      this.loadRules(hydrated.map((h) => h.rule));
       this.persistLogger.info('Hydrated distilled rules from disk', {
-        ruleCount: result.data.rules.length,
+        ruleCount: hydrated.length,
         savedAt: result.data.savedAt,
         path: this.filePath,
       });
@@ -194,6 +253,10 @@ registerPersistentDistillerFactory(
  * throws. The caller is responsible for filtering to status / category /
  * tainted as appropriate — this loader returns the raw rule set so
  * future consumers can apply their own predicates.
+ *
+ * Legacy records (no `support`/`effect`, #5004) are lifted under
+ * `DEFAULT_DISTILLER_CONFIG` thresholds: there is no distiller instance here
+ * to read a live config from.
  */
 export function loadPersistedRules(filePath: string = getRulesFile()): readonly DistilledRule[] {
   if (!existsSync(filePath)) return [];
@@ -202,7 +265,7 @@ export function loadPersistedRules(filePath: string = getRulesFile()): readonly 
     const parsed: unknown = JSON.parse(content);
     const result = RulesSnapshotSchema.safeParse(parsed);
     if (!result.success) return [];
-    return result.data.rules;
+    return result.data.rules.map((raw) => hydrateRule(raw, DEFAULT_DISTILLER_CONFIG).rule);
   } catch {
     // Disk read / parse failures contribute an empty list — the consumer
     // contract is "absence means no signal," never an exception.

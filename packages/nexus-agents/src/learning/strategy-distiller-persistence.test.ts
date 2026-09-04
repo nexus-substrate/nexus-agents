@@ -18,6 +18,9 @@ import {
 } from './strategy-distiller-persistence.js';
 import type { RulesSnapshot } from './strategy-distiller-persistence.js';
 import type { DistilledRule } from './strategy-distiller-types.js';
+import { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
+import { sigmoidConfidence, effectFor } from './strategy-distiller.js';
+import type { ILogger } from '../core/index.js';
 
 // ============================================================================
 // Helpers
@@ -40,6 +43,31 @@ function makeRule(overrides?: Partial<DistilledRule>): DistilledRule {
     category: 'code_generation',
     action: 'penalize',
     confidence: 0.8,
+    support: 0.8,
+    effect: 1,
+    observationCount: 40,
+    metric: 0.7,
+    status: 'active',
+    createdAt: 1000,
+    updatedAt: 2000,
+    tainted: false,
+    ...overrides,
+  };
+}
+
+/**
+ * A rule as persisted BEFORE #5004 finding 3: `confidence` was the sigmoid over
+ * observations and `support`/`effect` did not exist. Typed loosely on purpose —
+ * this is the on-disk shape, not the current interface.
+ */
+function makeLegacyRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'failure-rate:claude:code_generation',
+    patternType: 'failure-rate',
+    cli: 'claude',
+    category: 'code_generation',
+    action: 'penalize',
+    confidence: sigmoidConfidence(40),
     observationCount: 40,
     metric: 0.7,
     status: 'active',
@@ -132,6 +160,103 @@ describe('PersistentStrategyDistiller', () => {
       expect(distiller.getRules()).toHaveLength(2);
     });
 
+    describe('legacy records without support/effect (#5004 finding 3)', () => {
+      function makeLogger(): ILogger & { debugCalls: Array<[string, unknown]> } {
+        const debugCalls: Array<[string, unknown]> = [];
+        const logger: ILogger & { debugCalls: Array<[string, unknown]> } = {
+          debugCalls,
+          debug: (message, context) => {
+            debugCalls.push([message, context]);
+          },
+          info: () => undefined,
+          warn: () => undefined,
+          error: () => undefined,
+          child: () => logger,
+          setLevel: () => undefined,
+        };
+        return logger;
+      }
+
+      it('derives support from observations and effect from the persisted metric', () => {
+        // The pre-#5004 on-disk shape: `confidence` = sigmoid(observations), no
+        // `support`, no `effect`.
+        const snapshot = { version: 1, savedAt: 'then', rules: [makeLegacyRecord()] };
+        writeFileSync(filePath, JSON.stringify(snapshot));
+        const logger = makeLogger();
+
+        const distiller = new PersistentStrategyDistiller(
+          new OutcomeStore(),
+          { filePath, dataDir: tmpDir },
+          logger
+        );
+
+        const rule = distiller.getRules()[0];
+        expect(rule).toBeDefined();
+        if (rule === undefined) return;
+        const support = sigmoidConfidence(40);
+        const effect = effectFor('failure-rate', 0.7, DEFAULT_DISTILLER_CONFIG); // 0.25
+        expect(rule.support).toBeCloseTo(support, 10);
+        expect(rule.effect).toBeCloseTo(effect, 10);
+        expect(rule.effect).toBeCloseTo(0.25, 10);
+        // The persisted sigmoid-only confidence is replaced by the product so
+        // routing never multiplies by a sample-size-only value again.
+        expect(rule.confidence).toBeCloseTo(support * effect, 10);
+        expect(Number.isNaN(rule.confidence)).toBe(false);
+
+        expect(
+          logger.debugCalls.some(([message]) => /legacy/i.test(message) || /support/i.test(message))
+        ).toBe(true);
+      });
+
+      it('recomputes effect with the CURRENT threshold, not the one the rule was distilled under', () => {
+        writeFileSync(
+          filePath,
+          JSON.stringify({ version: 1, savedAt: 'then', rules: [makeLegacyRecord()] })
+        );
+
+        const distiller = new PersistentStrategyDistiller(
+          new OutcomeStore(),
+          { filePath, dataDir: tmpDir },
+          undefined,
+          { failureRateThreshold: 0.5 }
+        );
+
+        // (0.7 - 0.5) / (1 - 0.5)
+        expect(distiller.getRules()[0]?.effect).toBeCloseTo(0.4, 10);
+      });
+
+      it('leaves a record that already carries support/effect untouched', () => {
+        const rule = makeRule({ confidence: 0.3, support: 0.6, effect: 0.5 });
+        writeFileSync(filePath, JSON.stringify(makeSnapshot([rule])));
+        const logger = makeLogger();
+
+        const distiller = new PersistentStrategyDistiller(
+          new OutcomeStore(),
+          { filePath, dataDir: tmpDir },
+          logger
+        );
+
+        const loaded = distiller.getRules()[0];
+        expect(loaded?.support).toBe(0.6);
+        expect(loaded?.effect).toBe(0.5);
+        expect(loaded?.confidence).toBe(0.3);
+        expect(logger.debugCalls.some(([message]) => /legacy/i.test(message))).toBe(false);
+      });
+
+      it('loadPersistedRules hydrates legacy records the same way', () => {
+        writeFileSync(
+          filePath,
+          JSON.stringify({ version: 1, savedAt: 'then', rules: [makeLegacyRecord()] })
+        );
+
+        const [rule] = loadPersistedRules(filePath);
+        expect(rule).toBeDefined();
+        expect(rule?.support).toBeCloseTo(sigmoidConfidence(40), 10);
+        expect(rule?.effect).toBeCloseTo(0.25, 10);
+        expect(rule?.confidence).toBeCloseTo(sigmoidConfidence(40) * 0.25, 10);
+      });
+    });
+
     it('starts fresh on corrupt JSON', () => {
       writeFileSync(filePath, '{not valid json');
 
@@ -205,6 +330,27 @@ describe('PersistentStrategyDistiller', () => {
       const parsed = RulesSnapshotSchema.parse(JSON.parse(content));
       expect(parsed.version).toBe(1);
       expect(parsed.rules.length).toBeGreaterThan(0);
+    });
+
+    it('persists support and effect at distill time (#5004 finding 3)', () => {
+      // Effect is a function of the threshold, which is config. Persisting it
+      // pins the value the rule was distilled under; recomputing on load would
+      // silently rescale every old rule when the threshold changes.
+      const store = new OutcomeStore();
+      populateFailures(store, 10);
+      const distiller = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        { failureRateThreshold: 0.5, minObservationsForDraft: 3 }
+      );
+      distiller.distill();
+
+      const raw: unknown = JSON.parse(readFileSync(filePath, 'utf-8'));
+      const persisted = (raw as { rules: Array<Record<string, unknown>> }).rules[0];
+      expect(persisted?.['support']).toBeCloseTo(sigmoidConfidence(10), 10);
+      expect(persisted?.['effect']).toBe(1); // 10/10 failed
+      expect(persisted?.['confidence']).toBeCloseTo(sigmoidConfidence(10), 10);
     });
 
     it('does not leave temp files on successful write', () => {

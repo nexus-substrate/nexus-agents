@@ -8,8 +8,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { DistilledRuleStage, createDistilledRuleStage } from './distilled-rule-stage.js';
 import type { RoutingContext, CliName } from '../router-stage.js';
-import type { StrategyDistiller } from '../../../learning/strategy-distiller.js';
+import {
+  StrategyDistiller,
+  sigmoidConfidence,
+  effectFor,
+} from '../../../learning/strategy-distiller.js';
 import type { DistilledRule, RuleStatus } from '../../../learning/strategy-distiller-types.js';
+import { DEFAULT_DISTILLER_CONFIG } from '../../../learning/strategy-distiller-types.js';
+import { OutcomeStore } from '../../../orchestration/outcomes/outcome-store.js';
+import type { TaskOutcome } from '../../../orchestration/outcomes/outcome-types.js';
 
 // ============================================================================
 // Helpers
@@ -40,6 +47,8 @@ function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
     category: 'code_generation',
     action: 'penalize',
     confidence: 0.8,
+    support: 0.8,
+    effect: 1,
     observationCount: 40,
     metric: 0.7,
     status: 'active',
@@ -48,6 +57,45 @@ function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
     tainted: false,
     ...overrides,
   };
+}
+
+/**
+ * A rule with `support`/`effect`/`confidence` derived the way the distiller
+ * derives them (#5004 finding 3), so a stage test pins the product contract
+ * rather than a hand-typed confidence.
+ */
+function makeMeasuredRule(
+  overrides: Partial<DistilledRule> & { observationCount: number; metric: number }
+): DistilledRule {
+  const patternType = overrides.patternType ?? 'failure-rate';
+  const support = sigmoidConfidence(overrides.observationCount);
+  const effect = effectFor(patternType, overrides.metric, DEFAULT_DISTILLER_CONFIG);
+  return makeRule({ ...overrides, patternType, support, effect, confidence: support * effect });
+}
+
+/** A real distiller over an OutcomeStore — the seam the stage actually consumes. */
+function distillerFrom(
+  groups: ReadonlyArray<{ cli: CliName; failures: number; successes: number }>
+): StrategyDistiller {
+  const store = new OutcomeStore();
+  let n = 0;
+  const outcome = (cli: CliName, success: boolean): TaskOutcome => ({
+    id: `o-${String(n++)}`,
+    cli,
+    category: 'code_generation',
+    model: 'm',
+    success,
+    durationMs: 1000,
+    timestamp: '2026-09-04T00:00:00Z',
+    source: 'delegate',
+  });
+  for (const g of groups) {
+    for (let i = 0; i < g.failures; i++) store.append(outcome(g.cli, false));
+    for (let i = 0; i < g.successes; i++) store.append(outcome(g.cli, true));
+  }
+  const distiller = new StrategyDistiller(store);
+  distiller.distill();
+  return distiller;
 }
 
 function createMockDistiller(rules: DistilledRule[] = []): StrategyDistiller {
@@ -244,6 +292,80 @@ describe('DistilledRuleStage', () => {
         const claudeScore = result.value.context.scores.get('claude') ?? 0;
         expect(claudeScore).toBeCloseTo(-2.5); // -5 * 0.5
       }
+    });
+
+    describe('penalty scales with effect, damped by support (#5004 finding 3)', () => {
+      const scoped = { taskCategory: 'code_generation' };
+
+      it('penalises a 1.0 failure rate harder than 0.625 at the same sample size', async () => {
+        // Both 40 observations, both `penalize`: the ONLY difference is how far
+        // past the 0.6 threshold each metric sits. Sample-size-only confidence
+        // gave these an identical delta.
+        const a = makeMeasuredRule({ id: 'a', cli: 'claude', observationCount: 40, metric: 0.625 });
+        const b = makeMeasuredRule({ id: 'b', cli: 'gemini', observationCount: 40, metric: 1.0 });
+        const stage = new DistilledRuleStage(createMockDistiller([a, b]), { penaltyDelta: -5 });
+
+        const result = await stage.route(createContext('t', ['claude', 'gemini'], [], scoped));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const deltaA = result.value.context.scores.get('claude') ?? 0;
+        const deltaB = result.value.context.scores.get('gemini') ?? 0;
+        expect(deltaB).toBeLessThan(deltaA);
+        // effect(1.0) = 1, so B's magnitude is the support alone.
+        expect(deltaB).toBeCloseTo(-5 * sigmoidConfidence(40), 10);
+        expect(deltaA).toBeCloseTo(-5 * sigmoidConfidence(40) * 0.0625, 10);
+      });
+
+      it('holds across the real distiller seam, where 1.0 escalates to avoid', async () => {
+        const distiller = distillerFrom([
+          { cli: 'claude', failures: 25, successes: 15 },
+          { cli: 'gemini', failures: 40, successes: 0 },
+        ]);
+        const stage = new DistilledRuleStage(distiller, { penaltyDelta: -5, avoidDelta: -10 });
+
+        const result = await stage.route(createContext('t', ['claude', 'gemini'], [], scoped));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const deltaA = result.value.context.scores.get('claude') ?? 0;
+        const deltaB = result.value.context.scores.get('gemini') ?? 0;
+        expect(deltaB).toBeLessThan(deltaA);
+        expect(deltaB).toBeCloseTo(-10 * sigmoidConfidence(40), 10);
+        // Previously -5 × sigmoid(40) ≈ -4.4; barely-past-threshold is now ≈ -0.275.
+        expect(deltaA).toBeCloseTo(-5 * sigmoidConfidence(40) * 0.0625, 10);
+      });
+
+      it('keeps a 6/6 failure small — support bounds a perfect but thin signal', async () => {
+        const distiller = distillerFrom([{ cli: 'claude', failures: 6, successes: 0 }]);
+        const stage = new DistilledRuleStage(distiller);
+
+        const result = await stage.route(createContext('t', ['claude', 'gemini'], [], scoped));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const delta = result.value.context.scores.get('claude') ?? 0;
+        expect(delta).toBeLessThan(0);
+        expect(Math.abs(delta)).toBeLessThan(0.1);
+      });
+
+      it('contributes 0 for a rule exactly at its threshold', async () => {
+        // 24/40 = 0.6: detected (>=) and active, but effect is 0.
+        const distiller = distillerFrom([{ cli: 'claude', failures: 24, successes: 16 }]);
+        const rule = distiller.getRules('active')[0];
+        expect(rule?.effect).toBe(0);
+        const stage = new DistilledRuleStage(distiller);
+
+        const result = await stage.route(createContext('t', ['claude', 'gemini'], [], scoped));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        expect(result.value.context.scores.get('claude')).toBe(0);
+        // The rule was applied — it just carried no weight.
+        expect(result.value.context.signals).toContain(
+          'distilled-rule:applied=failure-rate:claude:code_generation'
+        );
+      });
     });
 
     it('adds signals for applied rules', async () => {

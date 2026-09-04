@@ -38,8 +38,25 @@ export interface DistilledRule {
   readonly category: string;
   /** What routing action to take */
   readonly action: StrategyAction;
-  /** Confidence 0-1, computed via sigmoid(observations, center=30) */
+  /**
+   * Confidence 0-1 = `support × effect` (#5004 finding 3).
+   *
+   * This is the value `DistilledRuleStage.computeDelta` multiplies the base
+   * delta by, so it must answer "how much should routing move" — not "how
+   * many samples did we see". Before #5004 it was the sigmoid over
+   * observations alone, and a rule at 62.5% failure penalised exactly as
+   * hard as one at 100% given the same traffic.
+   */
   readonly confidence: number;
+  /** Sample support 0-1: `sigmoidConfidence(observationCount)` (center=30). */
+  readonly support: number;
+  /**
+   * Effect size 0-1: how far `metric` sits past its detector threshold,
+   * normalised over the remaining headroom — see `effectFor`. Persisted at
+   * distill time because the threshold is config; recomputing it on load
+   * would silently rescale old rules when the threshold changes.
+   */
+  readonly effect: number;
   /** Number of observations that informed this rule */
   readonly observationCount: number;
   /** The metric value (failure rate, success rate, or p90/median ratio) */
@@ -62,7 +79,14 @@ export interface DistillerConfig {
   readonly minObservationsForDraft: number;
   /** Minimum observations before activating a rule (default: 5) */
   readonly minObservationsForActive: number;
-  /** Confidence threshold for promotion to RoutingMemory (default: 0.7) */
+  /**
+   * Confidence threshold for promotion to RoutingMemory (default: 0.7).
+   *
+   * @deprecated Only read by `StrategyDistiller.promote()`, which has no
+   * production caller — `DistilledRuleStage` is the single channel by which
+   * distilled rules reach routing (#5004 finding 4). Removal is tracked in
+   * #5467. The gate compares `confidence`, which is now `support × effect`.
+   */
   readonly promotionConfidence: number;
   /** Failure rate above which a failure pattern is detected (default: 0.6) */
   readonly failureRateThreshold: number;
@@ -75,6 +99,12 @@ export interface DistillerConfig {
   /** Rule expiry time in ms (default: 24h) */
   readonly ruleExpiryMs: number;
 }
+
+/** The detector thresholds `effectFor` normalises a metric against. */
+export type EffectThresholds = Pick<
+  DistillerConfig,
+  'failureRateThreshold' | 'successRateThreshold' | 'latencyRatioThreshold'
+>;
 
 /** Default distiller configuration. */
 export const DEFAULT_DISTILLER_CONFIG: DistillerConfig = {

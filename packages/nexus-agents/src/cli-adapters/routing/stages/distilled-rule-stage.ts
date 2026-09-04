@@ -180,6 +180,18 @@ export class DistilledRuleStage implements IRouterStage {
     );
   }
 
+  /**
+   * Score delta for one rule: the action's base delta scaled by
+   * `rule.confidence`, which is `support × effect` (#5004 finding 3).
+   *
+   * `support` is the sigmoid over observations; `effect` is how far the
+   * metric sits past its detector threshold, in [0, 1]. So a 100% failure
+   * rate over 40 tasks moves the score by the full `support`, a 62.5% rate
+   * over the same 40 tasks moves it by a sixteenth of that, a 6/6 failure
+   * stays small because support bounds it, and a rule exactly at threshold
+   * contributes 0. Before #5004 confidence was sample support alone and the
+   * penalty tracked traffic volume rather than performance.
+   */
   private computeDelta(rule: DistilledRule): number {
     const baseDelta =
       rule.action === 'penalize'
