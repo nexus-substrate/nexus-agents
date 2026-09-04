@@ -175,8 +175,10 @@ jobs:
       # #5142: docs/ENTRYPOINTS.md is named canonical for CLI entry points and
       # drifted — 20 commands documented against 52 registered, plus two rows
       # naming implementation modules as if they were commands. Nothing compared
-      # the two lists. Baseline-aware: existing gaps are recorded debt, a NEW
-      # undocumented command or a phantom row fails.
+      # the two lists. Since #5458 the command tables are generated from the
+      # catalog by inject-governance.ts, so the baseline retired: a phantom row
+      # in the hand-written subcommand table, or any catalog command with no
+      # row (the generator soft-skips if its markers are deleted), fails.
       - name: CLI docs drift (#5142)
         run: pnpm exec tsx scripts/check-cli-docs-drift.ts
 

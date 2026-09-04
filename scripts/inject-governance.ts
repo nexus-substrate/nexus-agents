@@ -29,6 +29,7 @@ import * as prettier from 'prettier';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
+import { parseCommandCatalog, type ParsedCatalogEntry } from './parse-cli-command-catalog.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
 import { loadBaseline, runDistinctnessCheck } from './check-tool-distinctness.js';
 import { scanToolFilesWithCoverage } from './check-tool-output-consistency.js';
@@ -46,6 +47,11 @@ const README_PATH = join(ROOT, 'README.md');
 // while REGISTERED_TOOL_NAMES grew. Both are now generated from the same
 // registry + TOOL_DESCRIPTIONS corpus as the CLAUDE.md / README surfaces.
 const ENTRYPOINTS_PATH = join(ROOT, 'docs/ENTRYPOINTS.md');
+// #5458: docs/ENTRYPOINTS.md's CLI command tables are generated from the
+// command catalog (the same literal `--help` renders from). Deliberately NOT
+// one of `getGovernanceSourceDate()`'s inputs: a catalog edit must not move
+// the governance version stamp (#5491).
+const CLI_COMMAND_CATALOG = join(ROOT, 'packages/nexus-agents/src/cli-command-catalog.ts');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 // #3566: the canonical tool-name list is now the leaf `TOOL_MANIFEST` array;
 // `REGISTERED_TOOL_NAMES` is a derived re-export, so the parser reads the manifest.
@@ -110,6 +116,9 @@ const MARKERS = {
   // pre-existing `BEGIN/END:MCP_TOOLS` markers (see ENTRYPOINTS_YAML_*).
   entrypointsToolsStart: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:START -->',
   entrypointsToolsEnd: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->',
+  // #5458: ENTRYPOINTS.md CLI command tables, one per catalog audience band.
+  entrypointsCliStart: '<!-- GOVERNANCE:ENTRYPOINTS_CLI:START -->',
+  entrypointsCliEnd: '<!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->',
   // #3446 (Phase 2+3): CLAUDE.md's agnostic body is GENERATED from AGENTS.md's
   // `AGNOSTIC:BODY` slice so harness-neutral prose is authored exactly once.
   // The slice is injected between these markers; everything outside them
@@ -591,6 +600,127 @@ function generateEntrypointsYamlBlock(tools: ToolMetadata[]): string {
 }
 
 /**
+ * Read the CLI command catalog (#5458). Returns `[]` with an error when the
+ * file is missing or parses to nothing; the generator below refuses to render
+ * from `[]`, so a broken parser fails the check instead of emitting an empty
+ * table that reads as "no commands".
+ */
+function extractCliCommands(): ParsedCatalogEntry[] {
+  if (!existsSync(CLI_COMMAND_CATALOG)) {
+    console.error('CLI command catalog not found: ' + CLI_COMMAND_CATALOG);
+    return [];
+  }
+  const entries = parseCommandCatalog(readFileSync(CLI_COMMAND_CATALOG, 'utf-8'));
+  if (entries.length === 0) {
+    console.error('Could not parse COMMAND_CATALOG from ' + CLI_COMMAND_CATALOG);
+  }
+  return entries;
+}
+
+/**
+ * Audience bands in `--help` order, with the heading each renders under. The
+ * headings mirror `AUDIENCE_HEADINGS` in the catalog module so the doc groups
+ * commands the way `--help --all` does. `internal` IS rendered here — it is
+ * hidden from `--help` but these are real commands, and the reference is the
+ * one place a reader can find them.
+ */
+const CLI_AUDIENCE_HEADINGS: readonly { audience: string; heading: string }[] = [
+  { audience: 'essential', heading: 'Essential — install, configure, run' },
+  { audience: 'advanced', heading: 'Advanced — day-to-day extras' },
+  { audience: 'maintainer', heading: 'Maintainer — benchmarks, releases, deep diagnostics' },
+  { audience: 'internal', heading: 'Internal — dev/eval loops (hidden from --help)' },
+];
+
+/**
+ * One ENTRYPOINTS table cell for a catalog description: whitespace collapsed
+ * (a prettier-wrapped literal is still one line), backslashes escaped FIRST,
+ * then `|` — the same order as `entrypointsToolDescription`, for the same
+ * reason (a half-escaped pipe must not break the column) — then `<`, because
+ * a bare `<repo>` or `<path>` placeholder is inline HTML to markdownlint
+ * (MD033). Prettier preserves `\<` verbatim, so the block stays idempotent.
+ * Catalog descriptions carry no code spans, so `<` never needs to survive raw.
+ */
+function cliDescriptionCell(description: string): string {
+  return description
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/</g, '\\<');
+}
+
+/** One two-column `| Command | Description |` table, padded like the tool table. */
+function cliCommandTable(entries: readonly ParsedCatalogEntry[]): string[] {
+  const rows = entries.map((e) => ({
+    name: '`' + e.command + '`',
+    desc: cliDescriptionCell(e.description),
+  }));
+  const nameW = Math.max('Command'.length, ...rows.map((r) => r.name.length));
+  const descW = Math.max('Description'.length, ...rows.map((r) => r.desc.length));
+  const lines = [
+    `| ${'Command'.padEnd(nameW)} | ${'Description'.padEnd(descW)} |`,
+    `| ${'-'.repeat(nameW)} | ${'-'.repeat(descW)} |`,
+  ];
+  for (const r of rows) lines.push(`| ${r.name.padEnd(nameW)} | ${r.desc.padEnd(descW)} |`);
+  return lines;
+}
+
+/**
+ * Generate the ENTRYPOINTS.md CLI command tables (#5458): one `###` section per
+ * audience band, every catalog entry rendered exactly once. Only the columns
+ * the catalog vouches for — name and description — are generated; the
+ * hand-written subcommand/mode material lives OUTSIDE the markers, because no
+ * catalog field supplies it and inventing a column would be documentation the
+ * source cannot back. Throws on an empty catalog or an audience the heading
+ * table does not know: both would otherwise drop commands silently.
+ */
+function generateEntrypointsCliTables(commands: readonly ParsedCatalogEntry[]): string {
+  if (commands.length === 0) {
+    throw new Error(
+      'COMMAND_CATALOG parsed to zero entries — refusing to render an empty CLI table (#5458).'
+    );
+  }
+  const known = new Set(CLI_AUDIENCE_HEADINGS.map((b) => b.audience));
+  const unknown = commands.filter((c) => !known.has(c.audience)).map((c) => c.command);
+  if (unknown.length > 0) {
+    throw new Error(
+      `Catalog audience not in CLI_AUDIENCE_HEADINGS for: ${unknown.join(', ')} — ` +
+        'add the band to scripts/inject-governance.ts (#5458).'
+    );
+  }
+  const lines = [MARKERS.entrypointsCliStart, ''];
+  for (const band of CLI_AUDIENCE_HEADINGS) {
+    const entries = commands.filter((c) => c.audience === band.audience);
+    if (entries.length === 0) continue;
+    lines.push(`### ${band.heading}`, '', ...cliCommandTable(entries), '');
+  }
+  lines.push(
+    `_Auto-generated from \`COMMAND_CATALOG\` (\`packages/nexus-agents/src/cli-command-catalog.ts\`) by \`scripts/inject-governance.ts\`. ${String(commands.length)} commands._`,
+    '',
+    MARKERS.entrypointsCliEnd
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Inject the CLI command tables (#5458). Soft-skips when the CLI markers are
+ * absent so an un-prepped checkout is left alone rather than having a block
+ * appended at the end of the file.
+ */
+function applyEntrypointsCliInjection(
+  content: string,
+  commands: readonly ParsedCatalogEntry[]
+): string {
+  if (!content.includes(MARKERS.entrypointsCliStart)) return content;
+  return injectSection(
+    content,
+    MARKERS.entrypointsCliStart,
+    MARKERS.entrypointsCliEnd,
+    generateEntrypointsCliTables(commands)
+  );
+}
+
+/**
  * Regenerate both ENTRYPOINTS.md enumerations (prose table + YAML block) in
  * one pass (#3334). The prose table is injected via the GOVERNANCE marker
  * family; the YAML block reuses its own pre-existing `BEGIN/END:MCP_TOOLS`
@@ -618,11 +748,17 @@ function applyEntrypointsInjections(content: string, tools: ToolMetadata[]): str
  * the file or the prose-table markers are absent, so the script stays drop-in
  * compatible with older checkouts that haven't been marker-prepped.
  */
-async function injectEntrypoints(tools: ToolMetadata[]): Promise<void> {
+async function injectEntrypoints(
+  tools: ToolMetadata[],
+  commands: readonly ParsedCatalogEntry[]
+): Promise<void> {
   if (!existsSync(ENTRYPOINTS_PATH)) return;
   const content = readFileSync(ENTRYPOINTS_PATH, 'utf-8');
   if (!content.includes(MARKERS.entrypointsToolsStart)) return;
-  const updated = applyEntrypointsInjections(content, tools);
+  const updated = applyEntrypointsCliInjection(
+    applyEntrypointsInjections(content, tools),
+    commands
+  );
   if (updated !== content) await writeFormatted(ENTRYPOINTS_PATH, updated);
 }
 
@@ -631,18 +767,25 @@ async function injectEntrypoints(tools: ToolMetadata[]): Promise<void> {
  * registry (#3334). Soft-skip when the file or prose-table markers are absent;
  * otherwise fail (with a structured error) when regeneration would diff.
  */
-function checkEntrypoints(tools: ToolMetadata[]): boolean {
+function checkEntrypoints(tools: ToolMetadata[], commands: readonly ParsedCatalogEntry[]): boolean {
   if (!existsSync(ENTRYPOINTS_PATH)) return true;
   const content = readFileSync(ENTRYPOINTS_PATH, 'utf-8');
   if (!content.includes(MARKERS.entrypointsToolsStart)) return true;
-  const updated = applyEntrypointsInjections(content, tools);
-  if (updated !== content) {
+  let ok = true;
+  if (applyEntrypointsInjections(content, tools) !== content) {
     console.error(
       'docs/ENTRYPOINTS.md MCP tool enumerations are stale (#3334). Run: pnpm governance:inject'
     );
-    return false;
+    ok = false;
   }
-  return true;
+  // #5458: reported separately so the message names which block drifted.
+  if (applyEntrypointsCliInjection(content, commands) !== content) {
+    console.error(
+      'docs/ENTRYPOINTS.md CLI command tables are stale (#5458). Run: pnpm governance:inject'
+    );
+    ok = false;
+  }
+  return ok;
 }
 
 /**
@@ -1491,7 +1634,7 @@ export function checkGovernance(): boolean {
     ancillaryOk,
     versionOk,
     checkReadmeToolTable(actual.tools),
-    checkEntrypoints(actual.tools),
+    checkEntrypoints(actual.tools, extractCliCommands()),
     checkCanonicalPaths(),
     checkClaudeAgnosticBlock(),
     checkAdapterPrecedenceDocs(),
@@ -1902,8 +2045,9 @@ export async function injectGovernance(): Promise<void> {
   await injectReadmeToolTable(tools);
 
   // #3334: regenerate both docs/ENTRYPOINTS.md MCP-tool enumerations (the
-  // prose table and the BEGIN:MCP_TOOLS YAML block) from the same registry.
-  await injectEntrypoints(tools);
+  // prose table and the BEGIN:MCP_TOOLS YAML block) from the same registry —
+  // and (#5458) the CLI command tables from the command catalog.
+  await injectEntrypoints(tools, extractCliCommands());
 
   // #1839: keep .claude-plugin/plugin.json `version` in sync with
   // packages/nexus-agents/package.json so marketplace listing never

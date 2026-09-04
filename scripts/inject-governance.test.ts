@@ -33,6 +33,7 @@ import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
+import { parseCommandCatalog } from './parse-cli-command-catalog.js';
 
 /** Real repo root (parent of `scripts/`). Source of the pristine fixtures. */
 const REAL_ROOT = join(import.meta.dirname, '..');
@@ -1083,6 +1084,97 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
       const { ok, output } = runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
+    });
+  });
+});
+
+// ============================================================================
+// ENTRYPOINTS.md CLI command tables (#5458)
+// ============================================================================
+
+describe('inject-governance ENTRYPOINTS CLI command tables (#5458)', () => {
+  const ENTRYPOINTS = 'docs/ENTRYPOINTS.md';
+  const CATALOG = 'packages/nexus-agents/src/cli-command-catalog.ts';
+  const CLI_START = '<!-- GOVERNANCE:ENTRYPOINTS_CLI:START -->';
+  const CLI_END = '<!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->';
+
+  /** The generated CLI block from the sandbox ENTRYPOINTS.md. */
+  function readCliBlock(): string {
+    const content = readFileSync(box(ENTRYPOINTS), 'utf-8');
+    const start = content.indexOf(CLI_START);
+    const end = content.indexOf(CLI_END);
+    expect(start, 'CLI block start marker').toBeGreaterThanOrEqual(0);
+    expect(end, 'CLI block end marker').toBeGreaterThan(start);
+    return content.slice(start, end);
+  }
+
+  /** First-cell command names of every table row in the block, in order. */
+  function rowCommands(block: string): string[] {
+    return block
+      .split('\n')
+      .map((line) => /^\| `([^`]+)` /.exec(line)?.[1])
+      .filter((n): n is string => n !== undefined);
+  }
+
+  it('renders every catalog command exactly once, grouped by audience', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const block = readCliBlock();
+      const catalog = parseCommandCatalog(readFileSync(box(CATALOG), 'utf-8'));
+      expect(catalog.length).toBeGreaterThan(40);
+      const rows = rowCommands(block);
+      expect(rows.length).toBe(catalog.length);
+      for (const entry of catalog) {
+        expect(rows.filter((n) => n === entry.command).length, `row for ${entry.command}`).toBe(1);
+      }
+      // One `###` heading per audience band, in --help order.
+      const headings = block.split('\n').filter((l) => l.startsWith('### '));
+      expect(headings.length).toBe(4);
+      expect(headings[0]).toContain('Essential');
+      expect(headings[3]).toContain('Internal');
+      const footer = /(\d+) commands\._/.exec(block);
+      expect(footer).not.toBeNull();
+      expect(parseInt(footer![1]!, 10)).toBe(catalog.length);
+    });
+  });
+
+  it('check fails when a CLI command row is removed', () => {
+    withSandboxFile(ENTRYPOINTS, (original) => {
+      const broken = original.replace(/^\| `orchestrate` +\|[^\n]*\n/m, '');
+      expect(broken).not.toBe(original);
+      writeFileSync(box(ENTRYPOINTS), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('ENTRYPOINTS.md CLI command tables are stale');
+    });
+  });
+
+  it('escapes pipes and backslashes in a description so the table stays valid', async () => {
+    await withInjectSnapshot(async () => {
+      // Plant an entry whose description carries both characters that can
+      // break a markdown table cell; restore the catalog by hand afterwards
+      // (withSandboxFile is synchronous and inject is not).
+      const pristine = readFileSync(box(CATALOG), 'utf-8');
+      const planted =
+        "  {\n    command: 'pipe-probe',\n    description: 'Reads a | b, then C:\\\\path <repo>; second sentence.',\n    audience: 'internal',\n  },\n];";
+      const mutated = pristine.replace(/\n\];/, `\n${planted}`);
+      expect(mutated).not.toBe(pristine);
+      try {
+        writeFileSync(box(CATALOG), mutated);
+        await runInject();
+        const block = readCliBlock();
+        const row = block.split('\n').find((l) => l.startsWith('| `pipe-probe`'));
+        expect(row).toBeDefined();
+        // Two columns → exactly three unescaped pipes; the description's own
+        // pipe survives as `\|` and the backslash as `\\`.
+        expect(row!.split(/(?<!\\)\|/).length - 1).toBe(3);
+        expect(row).toContain('a \\| b');
+        expect(row).toContain('C:\\\\path');
+        // A bare placeholder is inline HTML to markdownlint (MD033).
+        expect(row).toContain('\\<repo>');
+      } finally {
+        writeFileSync(box(CATALOG), pristine);
+      }
     });
   });
 });
