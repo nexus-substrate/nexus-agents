@@ -17,12 +17,18 @@ ARG NEXUS_VERSION=latest
 ENV NEXUS_LOG_LEVEL=warn
 ENV NEXUS_AUTH_ENABLED=false
 
-# Minimal deps. better-sqlite3 needs build tooling at install time on some
-# Node alpine variants; bookworm-slim ships them precompiled for our binary
-# but we still install build-essential as a defensive fallback for
-# native-module rebuilds during npm install.
+# Deliberately NO build toolchain (#5427). It used to install python3 +
+# build-essential "as a defensive fallback for native-module rebuilds during
+# npm install", which described `better-sqlite3` — removed in #5388 — and
+# contradicted the install two files over: verify.sh passes --ignore-scripts,
+# so nothing rebuilds anything.
+#
+# Keeping it would have been worse than stale. The whole point of this image is
+# to mirror a constrained end-user machine; a compiler sitting in it is exactly
+# what would let a future native dependency quietly build its way out of a
+# failure the gate exists to catch.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates python3 build-essential \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # Run as non-root to mirror the marketplace install path

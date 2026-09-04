@@ -302,11 +302,22 @@ As of epic #2872, nexus-agents splits runtime data into two roots when run insid
 
 Run `nexus-agents setup` to pre-create this structure, or it will be created lazily on first use. `nexus-agents doctor` reports the resolved location of every subdir. Override the whole split with `NEXUS_DATA_DIR=<path>`, or opt out entirely with `NEXUS_REPO_PREFERRED=0` (all state in `~/.nexus-agents/`). In a sandbox without a writable `~`, cross-repo state transparently falls back to `<repo>/.nexus-agents/`.
 
-### better-sqlite3
+### Native code and install scripts
 
-Five memory backends (agentic, adaptive, typed, mobimem, decay) use `better-sqlite3` for persistent storage. It is included as a regular dependency and installed automatically with `pnpm install`. If it fails to compile (requires native build tools), basic session and belief memory still work without it.
+**Nothing in nexus-agents needs to compile at install time, and the CLI works with install scripts blocked.** Both halves are gated, not asserted — see below.
 
-Run `nexus-agents doctor` to check if it's available under "Checking data storage".
+Persistent memory (agentic, adaptive, typed, mobimem, decay) runs on **`node:sqlite`**, a Node builtin, since [#5388](https://github.com/nexus-substrate/nexus-agents/issues/5388) — which is why `engines` requires Node ≥ 22.5.0. It replaced `better-sqlite3`, whose install script built a native binding: where install scripts were blocked, `npm install` still exited `0` and the CLI then died with `Could not locate the bindings file`. A builtin has no install script to skip.
+
+The polyglot (Python/Go) security scanner does load native tree-sitter grammars, from `@ast-grep/lang-python` and `@ast-grep/lang-go`. Those ship **prebuilt** `.so` files inside their own npm tarballs for Linux, macOS (x64 + arm64) and Windows x64, so they neither download nor compile anything on a supported platform.
+
+Four production packages still declare an install script — `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `protobufjs` — and every one is inert for this package's purposes. That claim is enforced rather than trusted ([#5427](https://github.com/nexus-substrate/nexus-agents/issues/5427)):
+
+- `scripts/check-install-scripts.ts` installs the packed tarball with npm and fails if any install script appears that is not in `scripts/install-script-allowlist.json`, if an allowlisted one changes what it runs, or if an allowlisted entry no longer exists.
+- `scripts/verify-npm-install.sh` installs with `--ignore-scripts` in a container with **no compiler present**, then proves the SQLite path and the polyglot scanner both still work — the scanner has to return two named findings from a fixture, so "found nothing" cannot pass for "clean".
+
+If you install with `--ignore-scripts` (or with pnpm 10, which ignores dependency build scripts by default), that is a supported configuration and needs no follow-up step.
+
+Run `nexus-agents verify` to see both checks — `SQLite Storage` and `Native Grammars` — reported by name.
 
 ## CI/CD Integration
 
@@ -482,14 +493,17 @@ rm -rf ~/.config/nexus-agents
 
 ### `npm warn deprecated` on install (benign — no action needed)
 
-Installing `nexus-agents` prints two deprecation warnings. **Both are benign,
-expected, and safe to ignore** — they come from transitive dependencies of
-upstream packages, not from anything in the nexus-agents runtime:
+Installing `nexus-agents` prints one deprecation warning. It is **benign,
+expected, and safe to ignore** — it comes from a transitive dependency of an
+upstream package, not from anything in the nexus-agents runtime.
 
-| Warning                                                                | Where it comes from                                               | Why it's harmless                                                                                                                                                                          |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prebuild-install@…: No longer maintained`                             | `better-sqlite3` (latest still depends on it)                     | Runs only at **install time** to download the prebuilt SQLite binary. Not part of the runtime, not a security risk. ([#4043](https://github.com/nexus-substrate/nexus-agents/issues/4043)) |
-| `node-domexception@…: Use your platform's native DOMException instead` | `@google/genai` → `google-auth-library` → `gaxios` → `node-fetch` | A `DOMException` polyfill that is a no-op on Node ≥ 22 (which ships a native `DOMException`). Inert at runtime. ([#4044](https://github.com/nexus-substrate/nexus-agents/issues/4044))     |
+(The `prebuild-install@…: No longer maintained` warning listed here previously
+came from `better-sqlite3` and no longer appears at all: #5388 removed that
+dependency.)
+
+| Warning                                                                | Where it comes from                                               | Why it's harmless                                                                                                                                                                      |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node-domexception@…: Use your platform's native DOMException instead` | `@google/genai` → `google-auth-library` → `gaxios` → `node-fetch` | A `DOMException` polyfill that is a no-op on Node ≥ 22 (which ships a native `DOMException`). Inert at runtime. ([#4044](https://github.com/nexus-substrate/nexus-agents/issues/4044)) |
 
 Neither can currently be removed by upgrading: both persist in the **latest**
 versions of those upstream packages, and a library's `overrides` do not

@@ -208,6 +208,20 @@ describe('verify-command', () => {
       expect(sqliteCheck).toBeDefined();
     });
 
+    it('reports Native Grammars as PASSING, not merely present (#5427)', async () => {
+      // Deliberately stronger than its siblings above. `toBeDefined()` on this
+      // check would survive the exact regression it exists to catch: the
+      // grammars failing to parse still produces a check object. The verdict
+      // is the measurement, so the verdict is what is asserted.
+      const result = await runVerify();
+      const grammarCheck = result.checks.find((c) => c.name === 'Native Grammars');
+
+      expect(grammarCheck).toBeDefined();
+      expect(grammarCheck?.passed).toBe(true);
+      expect(grammarCheck?.message).toContain('python');
+      expect(grammarCheck?.message).toContain('go');
+    });
+
     it('includes Data Directories check', async () => {
       const result = await runVerify();
       const dirCheck = result.checks.find((c) => c.name === 'Data Directories');
@@ -222,7 +236,12 @@ describe('verify-command', () => {
 
     it('classifies sqlite, data-dir, and adapter failures as warn (not hard)', async () => {
       const result = await runVerify();
-      const warnables = ['SQLite Storage', 'Data Directories', 'Adapter Availability'];
+      const warnables = [
+        'SQLite Storage',
+        'Native Grammars',
+        'Data Directories',
+        'Adapter Availability',
+      ];
       for (const name of warnables) {
         const check = result.checks.find((c) => c.name === name);
         expect(check).toBeDefined();

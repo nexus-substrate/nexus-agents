@@ -17,6 +17,8 @@ on:
       - 'packages/nexus-agents/package.json'
       - 'packages/nexus-agents/src/**'
       - 'scripts/verify-npm-install.sh'
+      - 'scripts/check-install-scripts.ts'
+      - 'scripts/install-script-allowlist.json'
       - 'Dockerfile.npm-verify'
       - '.github/workflows/npm-verify.yml'
   push:
@@ -65,6 +67,22 @@ jobs:
           TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
           docker run --rm -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
             bash /home/verifier/verify.sh /pkg.tgz
+
+      # #5427. Measures what runs on a USER's machine at install time, so it
+      # installs the packed tarball with npm rather than reading the workspace:
+      # `pnpm.overrides` is repo-local and unpublished, and pnpm resolves
+      # differently, so the workspace tree carries protobufjs@8.8.0 (no
+      # postinstall) where a user gets protobufjs@7.6.6 (one postinstall). The
+      # workspace would report three install scripts where a user runs four.
+      #
+      # No --omit=optional: optionalDependencies install by default, so they are
+      # part of what a user actually executes. --ignore-scripts so the audit does
+      # not run the scripts it is auditing.
+      - name: Install-script ratchet against the packed tarball
+        run: |
+          TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
+          npm install --prefix "${{ runner.temp }}/ratchet" --ignore-scripts "$TARBALL"
+          pnpm exec tsx scripts/check-install-scripts.ts "${{ runner.temp }}/ratchet/node_modules"
 
   verify-published-latest:
     name: Verify published @latest
