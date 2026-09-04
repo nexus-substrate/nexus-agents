@@ -7,14 +7,18 @@
  * @see docs/research/RESEARCH_INDEX.md
  * @see Issue #237 (Epic #225)
  * @see Issue #353 (Security - Path traversal fix)
+ * @see Issue #5053 (Registry root resolution — workspace/repo root, not cwd)
  */
 
 import * as fs from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { realpathSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { resolveInsideRoot } from '../security/safe-path.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/index.js';
-import { SecurityError, getErrorMessage } from '../core/index.js';
+import { SecurityError, createLogger, getErrorMessage } from '../core/index.js';
+import { getActiveWorkspaceRoot } from '../config/nexus-data-dir.js';
+import { findRepoRoot } from '../config/repo-root-detection.js';
 import { ParseError } from '../core/types/workflow.js';
 import type { TechniquesRegistry, PapersRegistry } from './research-types.js';
 import { ensureRegistryFile } from './research-scaffold.js';
@@ -36,12 +40,111 @@ export const PAPERS_FILE = 'papers.yaml';
 // PROJECT ROOT
 // =============================================================================
 
+const logger = createLogger({ component: 'research-registry-root' });
+
 /**
- * Get the project root directory.
- * Note: Returns cwd since registry operations use explicit rootDir parameter
+ * Per-process memo of the discovered registry root (#5053). The MCP server
+ * answers every `research_*` call from one process, so the discovery walk
+ * runs once; the memo also bounds the cwd-fallback warning to one emission.
+ */
+let memoisedRegistryRoot: string | undefined;
+let warnedCwdFallback = false;
+
+/** Test helper — clears the registry-root memo and the one-shot warning. */
+export function _resetRegistryRootForTests(): void {
+  memoisedRegistryRoot = undefined;
+  warnedCwdFallback = false;
+}
+
+/** True iff `<dir>/docs/research/registry` exists as a directory. */
+function hasRegistryDir(dir: string): boolean {
+  try {
+    return statSync(join(dir, REGISTRY_PATH)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Walks upward from `start` looking for the nearest ancestor (inclusive) that
+ * already contains `docs/research/registry`. Mirrors `findRepoRoot`'s
+ * defenses: bounded depth, stops at the filesystem root, and refuses to cross
+ * a mount point so a sandboxed workdir cannot pick up a host-side registry.
+ */
+function findRegistryAncestor(start: string): string | null {
+  let current: string;
+  let startDev: number;
+  try {
+    current = realpathSync(start);
+    startDev = statSync(current).dev;
+  } catch {
+    return null;
+  }
+  for (let depth = 0; depth < 64; depth++) {
+    if (hasRegistryDir(current)) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    try {
+      if (statSync(parent).dev !== startDev) return null;
+    } catch {
+      return null;
+    }
+    current = parent;
+  }
+  return null;
+}
+
+/**
+ * Resolves the directory that owns `docs/research/registry` (#5053).
+ *
+ * Resolution order:
+ *  1. An explicit `rootDir` argument wins outright (resolved, never memoised).
+ *  2. The nearest ancestor of the active workspace root (MCP `roots`, #3991)
+ *     — or of `process.cwd()` when none is set — that already contains
+ *     `docs/research/registry`.
+ *  3. Otherwise the enclosing git repo root via `findRepoRoot`, so the
+ *     first-run scaffold (#2470) lands at the repo root rather than below it.
+ *  4. Otherwise cwd, with a warning emitted once per process: nothing above
+ *     cwd identifies a project, so cwd is a guess rather than a discovery.
+ *
+ * Steps 2–4 are memoised per process. Before this resolver every helper
+ * defaulted to cwd, so a server started inside `packages/nexus-agents` read
+ * (and scaffolded) a shadow registry there instead of the repo's.
+ */
+export function resolveRegistryRoot(rootDir?: string): string {
+  if (rootDir !== undefined) return resolve(rootDir);
+  if (memoisedRegistryRoot !== undefined) return memoisedRegistryRoot;
+
+  const origin = getActiveWorkspaceRoot() ?? process.cwd();
+  const discovered = findRegistryAncestor(origin) ?? findRepoRoot(origin);
+  if (discovered !== null) {
+    memoisedRegistryRoot = discovered;
+    return discovered;
+  }
+
+  let fallback: string;
+  try {
+    fallback = realpathSync(origin);
+  } catch {
+    fallback = resolve(origin);
+  }
+  if (!warnedCwdFallback) {
+    warnedCwdFallback = true;
+    logger.warn(
+      'No research registry or git repo found above the working directory; using cwd as the research registry root',
+      { cwd: fallback, registryPath: REGISTRY_PATH }
+    );
+  }
+  memoisedRegistryRoot = fallback;
+  return fallback;
+}
+
+/**
+ * Get the project root directory that owns the research registry.
+ * Delegates to {@link resolveRegistryRoot} — no longer bare `process.cwd()`.
  */
 export function getProjectRoot(): string {
-  return process.cwd();
+  return resolveRegistryRoot();
 }
 
 // =============================================================================
@@ -77,13 +180,13 @@ function validatePath(constructedPath: string, allowedRoot: string): Result<stri
  * Load techniques registry from YAML file.
  * Validates path to prevent directory traversal attacks.
  *
- * @param rootDir - Project root directory (defaults to cwd)
+ * @param rootDir - Project root directory (defaults to the resolved registry root, see {@link resolveRegistryRoot})
  * @returns Result with TechniquesRegistry or SecurityError/ParseError
  */
 export async function loadTechniquesRegistry(
   rootDir?: string
 ): Promise<Result<TechniquesRegistry, SecurityError | ParseError>> {
-  const root = rootDir ?? process.cwd();
+  const root = resolveRegistryRoot(rootDir);
   const filePath = join(root, REGISTRY_PATH, TECHNIQUES_FILE);
 
   const pathValidation = validatePath(filePath, root);
@@ -111,13 +214,13 @@ export async function loadTechniquesRegistry(
  * Load papers registry from YAML file.
  * Validates path to prevent directory traversal attacks.
  *
- * @param rootDir - Project root directory (defaults to cwd)
+ * @param rootDir - Project root directory (defaults to the resolved registry root, see {@link resolveRegistryRoot})
  * @returns Result with PapersRegistry or SecurityError/ParseError
  */
 export async function loadPapersRegistry(
   rootDir?: string
 ): Promise<Result<PapersRegistry, SecurityError | ParseError>> {
-  const root = rootDir ?? process.cwd();
+  const root = resolveRegistryRoot(rootDir);
   const filePath = join(root, REGISTRY_PATH, PAPERS_FILE);
 
   const pathValidation = validatePath(filePath, root);
@@ -148,14 +251,14 @@ export async function loadPapersRegistry(
  * Validates path to prevent directory traversal attacks.
  *
  * @param registry - The techniques registry to save
- * @param rootDir - Project root directory (defaults to cwd)
+ * @param rootDir - Project root directory (defaults to the resolved registry root, see {@link resolveRegistryRoot})
  * @returns Result with void on success or SecurityError/ParseError on failure
  */
 export async function saveTechniquesRegistry(
   registry: TechniquesRegistry,
   rootDir?: string
 ): Promise<Result<void, SecurityError | ParseError>> {
-  const root = rootDir ?? process.cwd();
+  const root = resolveRegistryRoot(rootDir);
   const filePath = join(root, REGISTRY_PATH, TECHNIQUES_FILE);
 
   const pathValidation = validatePath(filePath, root);
@@ -178,14 +281,14 @@ export async function saveTechniquesRegistry(
  * Validates path to prevent directory traversal attacks.
  *
  * @param registry - The papers registry to save
- * @param rootDir - Project root directory (defaults to cwd)
+ * @param rootDir - Project root directory (defaults to the resolved registry root, see {@link resolveRegistryRoot})
  * @returns Result with void on success or SecurityError/ParseError on failure
  */
 export async function savePapersRegistry(
   registry: PapersRegistry,
   rootDir?: string
 ): Promise<Result<void, SecurityError | ParseError>> {
-  const root = rootDir ?? process.cwd();
+  const root = resolveRegistryRoot(rootDir);
   const filePath = join(root, REGISTRY_PATH, PAPERS_FILE);
 
   const pathValidation = validatePath(filePath, root);

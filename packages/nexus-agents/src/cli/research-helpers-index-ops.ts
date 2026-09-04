@@ -16,15 +16,16 @@ import {
   generateStatsJson,
   generateSummaryReport,
 } from '../indexer/research-index/index.js';
+import { REGISTRY_PATH, getProjectRoot } from './research-helpers-io.js';
 
-/** Gets the registry path. */
+/** Gets the registry path — anchored at the resolved registry root (#5053), not cwd. */
 function getRegistryPath(): string {
-  return path.resolve(process.cwd(), 'docs/research/registry');
+  return path.join(getProjectRoot(), REGISTRY_PATH);
 }
 
-/** Gets the index output path. */
+/** Gets the index output path, anchored at the same root as the registry. */
 function getIndexPath(): string {
-  return path.resolve(process.cwd(), 'docs/research/RESEARCH_INDEX.md');
+  return path.join(getProjectRoot(), 'docs/research/RESEARCH_INDEX.md');
 }
 
 /**
