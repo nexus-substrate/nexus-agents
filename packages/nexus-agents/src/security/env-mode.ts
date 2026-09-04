@@ -19,33 +19,6 @@ import type { ILogger } from '../core/index.js';
 
 const defaultLogger = createLogger({ component: 'env-mode' });
 
-/** Options for {@link resolveEnvMode}. */
-export interface ResolveEnvModeOptions<T extends string> {
-  /** Injectable for testing; defaults to the module logger. */
-  readonly logger?: ILogger;
-  /**
-   * The mode an explicit-but-UNPARSEABLE value lands on. Defaults to
-   * `fallback`, so a caller that does not pass this is byte-identical to the
-   * previous behaviour.
-   *
-   * It exists because `fallback` answers two different questions with one
-   * value: "what does absence mean" and "what does a typo mean". For a flag
-   * whose unset default is the permissive end, those answers should differ —
-   * `NEXUS_FIREWALL_POLICY=enfroce` used to resolve to `off`, so an operator
-   * who explicitly asked for enforcement got a gate that refuses nothing
-   * (refines #3130; ratified by a 7-voter panel at the supermajority bar,
-   * 5 of 6 approvers — rationale in the changeset).
-   *
-   * Constrained deliberately: it is typed as the same `T` as `fallback`, so it
-   * can only select among the flag's own modes and can never introduce a
-   * fourth behaviour. It must never be MORE permissive than `fallback` — a
-   * typo may tighten the gate, never loosen it. A caller whose unset default is
-   * already the strictest mode (e.g. `NEXUS_REPUTATION_GATING`, which defaults
-   * to `enforce`) has nothing to correct and should not pass it.
-   */
-  readonly invalidFallback?: T;
-}
-
 /**
  * Resolve an enum-valued env var to one of its allowed values, coercing an
  * invalid/typo'd value rather than throwing. Unset or empty → `fallback`
@@ -58,14 +31,44 @@ export interface ResolveEnvModeOptions<T extends string> {
  * @param schema   Zod enum schema for the allowed values.
  * @param fallback Returned when `raw` is absent or empty.
  * @param varName  Env var name, for the warning message.
- * @param options  See {@link ResolveEnvModeOptions}.
+ * @param options  `logger` (injectable for tests) and `invalidFallback` (the
+ *                 mode an explicit-but-invalid value lands on; defaults to
+ *                 `fallback`). See the inline docs on the parameter.
  */
 export function resolveEnvMode<T extends string>(
   raw: string | undefined,
   schema: ZodType<T>,
   fallback: T,
   varName: string,
-  options: ResolveEnvModeOptions<T> = {}
+  options: {
+    /** Injectable for testing; defaults to the module logger. */
+    readonly logger?: ILogger;
+    /**
+     * The mode an explicit-but-UNPARSEABLE value lands on. Defaults to
+     * `fallback`, so a caller that does not pass it is byte-identical to the
+     * previous behaviour.
+     *
+     * It exists because `fallback` answers two different questions with one
+     * value: what absence means, and what a typo means. For a flag whose unset
+     * default is the permissive end those answers should differ —
+     * `NEXUS_FIREWALL_POLICY=enfroce` used to resolve to `off`, so an operator
+     * who explicitly asked for enforcement got a gate that refuses nothing
+     * (refines #3130; ratified by a 7-voter panel at the supermajority bar,
+     * 5 of 6 approvers — rationale in the changeset).
+     *
+     * Constrained deliberately: typed as the same `T` as `fallback`, so it can
+     * only select among the flag's own modes and can never introduce a fourth
+     * behaviour. It must never be MORE permissive than `fallback` — a typo may
+     * tighten the gate, never loosen it. A caller whose unset default is
+     * already the strictest mode (e.g. `NEXUS_REPUTATION_GATING`, which
+     * defaults to `enforce`) has nothing to correct and should not pass it.
+     *
+     * Declared inline rather than as an exported interface: no caller needs the
+     * name (they pass object literals), and exporting it would add a symbol
+     * with no cross-file consumer, which the #3024 gate correctly rejects.
+     */
+    readonly invalidFallback?: T;
+  } = {}
 ): T {
   const { logger = defaultLogger, invalidFallback } = options;
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
