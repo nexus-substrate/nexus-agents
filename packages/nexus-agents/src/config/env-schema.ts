@@ -189,10 +189,12 @@ const NexusEnvSchema = z.object({
   NEXUS_JOB_RESULT_SOURCE: z.enum(['sidecar', 'task_state']).optional(),
 
   // --- Hooks & Sessions ---
-  NEXUS_HOOK_VERBOSE: boolStr.optional(),
+  // All three are read via parseBoolEnv in cli/hooks/handlers/handler-utils.ts
+  // (`1`/`0` work at runtime); strict boolStr reported them invalid (#5155).
+  NEXUS_HOOK_VERBOSE: boolLooseStr.optional(),
   NEXUS_SESSIONS_DB: z.string().optional(),
-  NEXUS_DISABLE_SESSIONS: boolStr.optional(),
-  NEXUS_DISABLE_METRICS: boolStr.optional(),
+  NEXUS_DISABLE_SESSIONS: boolLooseStr.optional(),
+  NEXUS_DISABLE_METRICS: boolLooseStr.optional(),
 
   // --- Read by production code but previously unregistered (#5142) ---
   // Each type below was verified against the consuming call site, not inferred
