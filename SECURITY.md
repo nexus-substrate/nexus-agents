@@ -55,7 +55,7 @@ This project implements these security measures:
 
 ### Dependency Security
 
-- `pnpm audit` runs on every CI build
+- `pnpm audit --audit-level=high` runs on every CI build, **advisory** (`continue-on-error`): a third-party advisory publication must not redden every open PR, and suppressions need a warrant in `.github/audit-exceptions.json`. It audits the **workspace** lockfile, whose `pnpm.overrides` are repo-local and never reach a consumer — so it describes this checkout, not what `npm install nexus-agents` resolves. The published dependency graph is described by the release SBOM, generated from the packed tarball ([#5429](https://github.com/nexus-substrate/nexus-agents/issues/5429)).
 - Dependabot enabled for automated security updates
 - No deprecated packages allowed
 - Regular dependency review and updates
@@ -70,7 +70,7 @@ This project implements these security measures:
 
 Before each release:
 
-- [ ] `pnpm audit` shows no high/critical vulnerabilities
+- [ ] `pnpm audit --audit-level=high` is clean for the workspace, **and** the release SBOM (packed-tarball graph, `release.yml`) carries no component with an open high/critical advisory — the two audit different trees, and only the second is what users install
 - [ ] All dependencies are current and not deprecated
 - [ ] No secrets in code, logs, or test fixtures
 - [ ] Path traversal tests pass
