@@ -23,6 +23,11 @@ const memory = {
   isAgenticMemoryAvailable: vi.fn(() => true),
   isAdaptiveMemoryAvailable: vi.fn(() => true),
   isTypedMemoryAvailable: vi.fn(() => true),
+  // #5438: the backends start non-blocking, so the write path awaits them
+  // before any availability guard runs. Absent from this mock the await throws
+  // and the production catch swallows it — the fix would be untested while
+  // every assertion still passed.
+  awaitBackendInitialization: vi.fn((): Promise<void> => Promise.resolve()),
 };
 
 vi.mock('./tool-memory.js', () => ({
@@ -51,6 +56,45 @@ describe('memory_write reports persistence, not intent (#4997)', () => {
     vi.clearAllMocks();
     memory.isAgenticMemoryAvailable.mockReturnValue(true);
     memory.getBeliefCount.mockReturnValue(0);
+    memory.awaitBackendInitialization.mockImplementation((): Promise<void> => Promise.resolve());
+  });
+
+  it('waits for in-flight initialization before refusing a write (#5438)', async () => {
+    // The most damaging instance of the race: this path does not merely
+    // misreport, it DROPS the write and blames SQLite. Reproduced live on
+    // memory_stats — five backends reported absent, then all five present 55s
+    // later with 519 entries already stored.
+    memory.isAgenticMemoryAvailable.mockReturnValue(false);
+    memory.awaitBackendInitialization.mockImplementation((): Promise<void> => {
+      memory.isAgenticMemoryAvailable.mockReturnValue(true);
+      return Promise.resolve();
+    });
+    memory.recordKnowledge.mockResolvedValue({ persisted: true });
+
+    const body = await callMemoryWrite({ key: 'k', content: 'v', backend: 'agentic' });
+
+    expect(memory.awaitBackendInitialization).toHaveBeenCalled();
+    expect(body['success']).toBe(true);
+    expect(memory.recordKnowledge).toHaveBeenCalled();
+  });
+
+  it('still refuses when initialization finished and the backend is genuinely absent', async () => {
+    // The pair, so the await cannot become a blanket "always available".
+    // A distinct key: an identical repeat hits the content-hash dedup (#1455)
+    // and returns before dispatch, so the await would never run and the
+    // assertion below would fail for the wrong reason.
+    memory.isAgenticMemoryAvailable.mockReturnValue(false);
+
+    const body = await callMemoryWrite({
+      key: 'genuinely-absent',
+      content: 'v2',
+      backend: 'agentic',
+    });
+
+    expect(memory.awaitBackendInitialization).toHaveBeenCalled();
+    expect(body['success']).toBe(false);
+    expect(String(body['error'])).toContain('unavailable');
+    expect(memory.recordKnowledge).not.toHaveBeenCalled();
   });
 
   it('reports failure when the backend rejected the write', async () => {

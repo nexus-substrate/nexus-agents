@@ -25,6 +25,7 @@ const mockIsMobiMemAvailable = vi.fn();
 const mockIsDecayManagerAvailable = vi.fn();
 const mockGetBeliefCount = vi.fn();
 const mockGetSessionCounts = vi.fn(() => ({ tasksCount: 0, errorsCount: 0 }));
+const mockAwaitBackendInitialization = vi.fn((): Promise<void> => Promise.resolve());
 
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
@@ -38,6 +39,7 @@ vi.mock('./tool-memory.js', () => ({
     isMobiMemAvailable: mockIsMobiMemAvailable,
     isDecayManagerAvailable: mockIsDecayManagerAvailable,
     getBeliefCount: mockGetBeliefCount,
+    awaitBackendInitialization: mockAwaitBackendInitialization,
   }),
 }));
 
@@ -117,6 +119,8 @@ describe('memory-stats', () => {
       mockIsMobiMemAvailable.mockReset();
       mockIsDecayManagerAvailable.mockReset();
       mockGetBeliefCount.mockReset();
+      mockAwaitBackendInitialization.mockReset();
+      mockAwaitBackendInitialization.mockResolvedValue(undefined);
 
       // Defaults: no backends available
       mockGetRelevantLearnings.mockReturnValue(undefined);
@@ -159,6 +163,60 @@ describe('memory-stats', () => {
       expect(parsed.backends.belief).toBe(true);
       expect(parsed.backends.agentic).toBe(false);
       expect(parsed.collectedAt).toBeDefined();
+    });
+
+    it('waits for in-flight initialization before reporting a backend absent (#5438)', async () => {
+      // The live defect, reproduced: two identical calls 55s apart against the
+      // SAME server returned agentic/adaptive/typed/mobimem/decay all `false`
+      // and then all `true` (agentic holding 519 entries). The backends start
+      // non-blocking at session start and this read path never awaited them, so
+      // "still initializing" was reported as "unavailable" — indistinguishable
+      // from a failed backend or a missing node:sqlite.
+      let initialized = false;
+      mockAwaitBackendInitialization.mockImplementation((): Promise<void> => {
+        initialized = true;
+        return Promise.resolve();
+      });
+      mockIsAgenticMemoryAvailable.mockImplementation(() => initialized);
+      mockIsAdaptiveMemoryAvailable.mockImplementation(() => initialized);
+      mockIsMobiMemAvailable.mockImplementation(() => initialized);
+      mockIsDecayManagerAvailable.mockImplementation(() => initialized);
+
+      const result = await registeredHandler({}, {});
+
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(mockAwaitBackendInitialization).toHaveBeenCalled();
+      expect(parsed.backends.agentic).toBe(true);
+      expect(parsed.backends.adaptive).toBe(true);
+      expect(parsed.backends.mobimem).toBe(true);
+      expect(parsed.backends.decay).toBe(true);
+    });
+
+    it('still reports false when initialization finished and the backend really is absent', async () => {
+      // The other half: awaiting must not turn every backend into `true`. After
+      // init completes, `false` is a true statement about the world, and this
+      // is what keeps the fix from being a check that cannot fail.
+      mockAwaitBackendInitialization.mockResolvedValue(undefined);
+      mockIsAgenticMemoryAvailable.mockReturnValue(false);
+
+      const result = await registeredHandler({}, {});
+
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(mockAwaitBackendInitialization).toHaveBeenCalled();
+      expect(parsed.backends.agentic).toBe(false);
+    });
+
+    it('still reports stats when awaiting initialization rejects', async () => {
+      // A failed init must not take the whole tool down: the caller still needs
+      // the belief/session numbers and an honest `false` for the rest.
+      mockAwaitBackendInitialization.mockRejectedValue(new Error('sqlite open failed'));
+
+      const result = await registeredHandler({}, {});
+
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.backends.agentic).toBe(false);
+      expect(parsed.backends.session).toBe(true);
     });
 
     it('reports available backends', async () => {

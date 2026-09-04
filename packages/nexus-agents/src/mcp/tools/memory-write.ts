@@ -270,7 +270,27 @@ async function executeMemoryWrite(
   return response;
 }
 
+/**
+ * #5438: wait for the non-blocking startup initialization before dispatching.
+ *
+ * Three of the five writers refuse with `"<backend> memory backend unavailable
+ * (requires SQLite)"`, and each of those guards reads an availability flag that
+ * is `false` for a short window after session start while the backend is merely
+ * still opening. Reproduced live on `memory_stats`: five backends reported
+ * absent, then all five present 55 seconds later with 519 entries already
+ * there. Here the cost is worse than a misreport — the write is DROPPED, and
+ * the caller is told SQLite is the cause when it is not.
+ *
+ * Awaited once at the dispatch seam rather than inside each writer, so a new
+ * backend cannot be added without inheriting the wait.
+ */
 async function dispatchWrite(input: MemoryWriteInput): Promise<MemoryWriteResponse> {
+  try {
+    await getToolMemory().awaitBackendInitialization();
+  } catch {
+    // A backend that failed to initialise must still produce the writer's own
+    // honest "unavailable" response below, not an exception from the wait.
+  }
   switch (input.backend) {
     case 'session':
       return writeToSession(input.key, input.content, input.confidence);

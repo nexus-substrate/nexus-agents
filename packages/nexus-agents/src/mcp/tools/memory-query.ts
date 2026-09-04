@@ -208,6 +208,17 @@ async function executeMemoryQuery(
   logger: ILogger
 ): Promise<MemoryQueryResponse> {
   const toolMemory = getToolMemory();
+  // #5438: the SQLite backends start non-blocking, so for a window after
+  // session start `describeBackendCoverage` below would list agentic/adaptive/
+  // typed as `unavailable` when they are merely still opening — defeating the
+  // exact distinction #4999 added this coverage reporting to make.
+  try {
+    await toolMemory.awaitBackendInitialization();
+  } catch (error: unknown) {
+    logger.debug('Backend initialization failed before query', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const { effectiveQuery, expandedQuery, reflection } = await resolveReflection(
     input.query,
     logger

@@ -160,6 +160,21 @@ async function collectMemoryStats(
 ): Promise<MemoryStatsResponse> {
   const toolMemory = getToolMemory();
 
+  // The SQLite backends start non-blocking at session start, so reading
+  // availability without awaiting that reports "still opening" as
+  // "unavailable" — indistinguishable from failed, or from node:sqlite being
+  // absent (#5438). A rejection is swallowed deliberately: a backend that
+  // failed to initialise should surface as an honest `false` below, not take
+  // the whole stats call down and cost the caller the belief/session numbers
+  // too.
+  try {
+    await toolMemory.awaitBackendInitialization();
+  } catch (error: unknown) {
+    logger.debug('Backend initialization failed before stats collection', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const sessionStats = collectSessionStats(toolMemory);
 
   // Collect belief stats — read actual count from belief backend
