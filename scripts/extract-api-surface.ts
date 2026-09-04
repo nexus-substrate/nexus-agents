@@ -38,9 +38,20 @@ import { join } from 'node:path';
 
 const PKG = join(process.cwd(), 'packages', 'nexus-agents');
 
-/** Printed form of one exported declaration. */
+/**
+ * Printed form of one exported declaration.
+ *
+ * `origin` is the package-relative module the declaration lives in, and it is
+ * part of the identity (#5224). Keying on the name alone merged two unrelated
+ * declarations that happened to share a name into one entry whose members came
+ * from both — `IEventBus` carried `emit(DomainEvent)` AND `emit(PipelineEvent)`,
+ * `ModelTier` was simultaneously an interface and a three-member string union.
+ * The semver gate then diffed changes against a declaration no source file
+ * contains.
+ */
 interface SurfaceEntry {
   readonly name: string;
+  readonly origin: string;
   readonly kind: string;
   readonly lines: readonly string[];
 }
@@ -233,16 +244,45 @@ function resolveAlias(decl: Node): Node {
   return aliased ?? decl;
 }
 
-/** Multiple declarations under one name (overloads, merged decls) accumulate. */
+/**
+ * The package-relative module a declaration lives in, without extension.
+ *
+ * Declarations outside this package (a `@types` interface pulled in by a
+ * reference) collapse to `external`, so a machine-specific path never reaches
+ * the snapshot — the same hazard `normalizeTypeText` exists for.
+ */
+function originOf(decl: Node): string {
+  const path = decl.getSourceFile().getFilePath();
+  const marker = '/packages/nexus-agents/src/';
+  const at = path.indexOf(marker);
+  if (at === -1) return 'external';
+  return path.slice(at + marker.length).replace(/\.tsx?$/, '');
+}
+
+/**
+ * Declarations under one name IN ONE MODULE accumulate.
+ *
+ * Same-module accumulation is genuine TypeScript declaration merging — the
+ * `const X = [...] as const` + `type X = (typeof X)[number]` idiom this repo
+ * uses everywhere, plus interface/namespace merging and overloads. Those must
+ * stay merged; they really are one symbol.
+ *
+ * Two declarations of one name in DIFFERENT modules are not that, and were
+ * being merged all the same (#5224). Including the origin in the key separates
+ * the two cases without special-casing either.
+ */
 function record(entries: Map<string, SurfaceEntry>, name: string, decl: Node): void {
   const kind = decl.getKindName();
-  const existing = entries.get(name);
+  const origin = originOf(decl);
+  const key = `${name}\u0000${origin}`;
+  const existing = entries.get(key);
   const kinds =
     existing === undefined || existing.kind.includes(kind)
       ? (existing?.kind ?? kind)
       : `${existing.kind}|${kind}`;
-  entries.set(name, {
+  entries.set(key, {
     name,
+    origin,
     kind: kinds,
     lines: [...(existing?.lines ?? []), ...memberLines(decl)],
   });
@@ -278,22 +318,72 @@ export function extractSurface(entry: SourceFile): SurfaceEntry[] {
     if (seen.has(resolved)) continue;
     seen.add(resolved);
 
-    record(entries, name, resolved);
+    // A generic type PARAMETER is not an exported symbol. It cannot be
+    // imported, implemented or referenced by a consumer, so it can never be a
+    // breaking change — yet `T`, `E`, `R` and friends were being recorded as
+    // surface entries with no members, purely because the reference walk
+    // reaches them.
+    //
+    // Harmless while every `T` in the tree fused into one bodiless line. Once
+    // entries are keyed by origin (#5224) the same noise expands to one line
+    // per module that happens to name a generic `T` — 13 entries became 42,
+    // and 8 of the reported "colliding names" were type parameters rather
+    // than ambiguous public types. Excluded here so the count means what it
+    // says. Their references are still followed, so a constraint type that is
+    // public only through `T extends Foo` still reaches the surface.
+    if (!Node.isTypeParameterDeclaration(resolved)) record(entries, name, resolved);
     enqueueReferences(queue, seen, resolved);
   }
 
-  return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...entries.values()].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.origin.localeCompare(b.origin)
+  );
+}
+
+/** Header line carrying the cross-module collision count. Read by the gate. */
+export const COLLISION_HEADER = '# Cross-module name collisions: ';
+
+/**
+ * Names carried by declarations in more than one module.
+ *
+ * These are the entries the snapshot used to fuse. Exported so the gate can
+ * ratchet the count and so the extractor can report them by name.
+ */
+export function collidingNames(entries: readonly SurfaceEntry[]): string[] {
+  const origins = new Map<string, Set<string>>();
+  for (const e of entries) {
+    const set = origins.get(e.name) ?? new Set<string>();
+    set.add(e.origin);
+    origins.set(e.name, set);
+  }
+  return [...origins.entries()]
+    .filter(([, o]) => o.size > 1)
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export function renderSurface(entries: readonly SurfaceEntry[]): string {
+  // Only a COLLIDING name takes an origin suffix. Suffixing every entry would
+  // rewrite all ~2400 lines and make a file move read as a symbol removal
+  // everywhere; bounding it to the handful that actually collide keeps the
+  // churn to those entries and leaves the rest byte-identical.
+  const collisions = collidingNames(entries);
+  const collided = new Set(collisions);
   const out: string[] = [
     '# Public API surface — generated by scripts/extract-api-surface.ts (#4749)',
     '# Do not edit by hand. Regenerate with: pnpm api:surface',
     `# Exported symbols: ${String(entries.length)}`,
+    // A name declared in two modules is reported, not hidden (#5224). The
+    // count may only go down: `check-api-surface.ts` fails when a change adds
+    // one. It reaches zero when the underlying duplication (#5125, #5129) is
+    // resolved, and the gate becomes a hard refusal at that point — but the
+    // ratchet fires today, on the next collision introduced, not only then.
+    `${COLLISION_HEADER}${String(collisions.length)}`,
+    ...(collisions.length > 0 ? [`# Colliding names: ${collisions.join(', ')}`] : []),
     '',
   ];
   for (const e of entries) {
-    out.push(`${e.kind} ${e.name}`);
+    out.push(collided.has(e.name) ? `${e.kind} ${e.name} @${e.origin}` : `${e.kind} ${e.name}`);
     // Members are sorted so a reordering in source is not a spurious diff.
     out.push(...[...e.lines].sort());
   }
