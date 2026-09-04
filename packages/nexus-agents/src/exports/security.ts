@@ -169,6 +169,10 @@ export type {
 // Hostile input firewall (Issue #826)
 export { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+// #5382: the return type of `validateAction`. Exported for the same reason as
+// FirewallPolicyMode below — a consumer cannot narrow a value it is handed
+// without the type that names its discriminant.
+export type { ActionValidation } from '../security/firewall/firewall-pipeline.js';
 // #5382: the rollout gate for firewall behaviour changes. Exported because
 // `FirewallResult.policyMode` is part of the published surface — a consumer
 // cannot read the field it is handed without the type that names its values.
