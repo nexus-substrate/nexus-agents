@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.9.4
+
+### Patch Changes
+
+- [#5493](https://github.com/nexus-substrate/nexus-agents/pull/5493) [`b77f6a4`](https://github.com/nexus-substrate/nexus-agents/commit/b77f6a4288adb05b2ece4dadbb9af381a2458d69) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire the coordinated memory-decay knobs to `nexus-agents.yaml` ([#5097](https://github.com/nexus-substrate/nexus-agents/issues/5097) finding 2). `MemoryDecayManager` was constructed with a hardcoded `{}`, so all nine `MemoryDecayConfig` fields were permanently default and `enabled: false` was reachable only from a test. A new `memory.decay` section (validated: positive safe integers, `[0, 1]` thresholds, offending path named on failure) now reaches the manager via `configureToolMemory`, and the `MemoryDecayManager activated` startup line reports the effective value of every knob, read back from the manager. Defaults are unchanged.
+
 ## 8.9.3
 
 ### Patch Changes
