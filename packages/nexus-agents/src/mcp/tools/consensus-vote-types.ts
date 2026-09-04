@@ -26,6 +26,7 @@ import {
   VOTING_THRESHOLDS,
   type ConsensusAlgorithm,
 } from '../../consensus/types-core.js';
+import { checkUndeclaredOptions } from './consensus-vote-option-detection.js';
 
 /** Maximum proposal length (memory bounds per Issue #435). */
 export const MAX_PROPOSAL_LENGTH = 4000;
@@ -200,9 +201,13 @@ export const ConsensusVoteInputSchema = z.object({
     .max(MAX_PROPOSAL_LENGTH)
     .describe(
       'Proposal text to vote on. If the proposal asks voters to choose among named ' +
-        'alternatives, you MUST declare them in `options` (#4472). Without `options` the tally ' +
-        'records approve/reject/abstain only, so every voter who engages returns `approve` and ' +
-        'a 6-1 split on WHICH option persists as 7-0, 100% (#4452).'
+        'alternatives, declare them in `options` (#4472) — otherwise the tally records ' +
+        'approve/reject/abstain only, so every voter who engages returns `approve` and a 6-1 ' +
+        'split on WHICH option persists as 7-0, 100% (#4452). This is ENFORCED AS A WARNING, ' +
+        'not a refusal: a heuristic over the proposal text flags an apparent multi-option ' +
+        'proposal with no `options` and says so on `panelWarning` (#5360). The wording says ' +
+        '"declare", not "MUST", because the warning is what the code actually holds — it is ' +
+        'tightened back only in the same change that promotes the warning to a refusal.'
     ),
   options: z
     .array(z.string().min(1).max(200))
@@ -865,6 +870,28 @@ function applyOptionalResponseFields(
   const panelWarning = panelDegradationWarning(errorCount, result.votes.length);
   if (panelWarning !== undefined) {
     response.panelWarning = panelWarning;
+  }
+  // #5360: a proposal that names alternatives while `options` is undefined
+  // records a split as uniform approval — every voter approves the ACT of
+  // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.
+  //
+  // The all-approved signal is the sharper half: on a proposal that enumerates a
+  // fork it is the observed signature, and unlike a reasoning-variance detector
+  // it needs nothing the persisted record drops (#5339).
+  //
+  // APPENDED, not assigned. `panelWarning` already has two writers and a third
+  // that clobbered would silently drop whichever fired first.
+  const engaged = result.votes.length - errorCount;
+  const undeclared = checkUndeclaredOptions(
+    input.proposal,
+    input.options,
+    engaged > 0 && response.voteCounts.reject === 0 && response.voteCounts.abstain === 0
+  );
+  if (undeclared.flagged) {
+    response.panelWarning =
+      response.panelWarning === undefined
+        ? undeclared.warning
+        : `${response.panelWarning} ${undeclared.warning}`;
   }
   if (isHigherOrderStrategy(result.strategy) && result.higherOrderResult) {
     response.higherOrderMetadata = toHigherOrderMetadata(result.higherOrderResult);
