@@ -62,6 +62,42 @@ function repoWithBumps(): string {
   return dir;
 }
 
+/**
+ * `repoWithBumps()` plus a side branch, merged `--no-ff` between the 1.1.0 and
+ * 1.2.0 bumps, that carried an intermediate `1.1.0-side` version before being
+ * set back to 1.1.0. Commit dates are explicit and increasing so that without
+ * `--first-parent` git's date-ordered walk visits the side commits before the
+ * 1.1.0 bump — the mutation that survived a linear fixture.
+ */
+function repoWithMergedSideBranch(): string {
+  const dir = repoWithBumps();
+  let tick = 1_700_000_000;
+  const git = (...args: string[]): void => {
+    tick += 60;
+    const date = `${String(tick)} +0000`;
+    execFileSync('git', ['-C', dir, ...args], {
+      stdio: 'pipe',
+      env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date },
+    });
+  };
+  const pkg = join(dir, PACKAGE_JSON_PATH);
+  // Rewind main to the 1.1.0 bump (HEAD~2), then build the side branch on it.
+  git('branch', '-f', 'side', 'HEAD~2');
+  git('checkout', '-q', 'side');
+  writeFileSync(pkg, JSON.stringify({ name: 'nexus-agents', version: '1.1.0-side' }), 'utf-8');
+  git('commit', '-qam', 'chore: side bump');
+  writeFileSync(pkg, JSON.stringify({ name: 'nexus-agents', version: '1.1.0', side: true }), 'utf-8');
+  git('commit', '-qam', 'chore: side back to 1.1.0');
+  // Rebuild main's tail on top of the merge: 1.1.0 → merge(side) → deps → 1.2.0.
+  git('checkout', '-q', '-B', 'main2', 'HEAD~2');
+  git('merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  writeFileSync(pkg, JSON.stringify({ name: 'nexus-agents', version: '1.1.0', side: true, dependencies: { zod: '4.0.0' } }), 'utf-8');
+  git('commit', '-qam', 'chore(deps): bump zod');
+  writeFileSync(pkg, JSON.stringify({ name: 'nexus-agents', version: '1.2.0' }), 'utf-8');
+  git('commit', '-qam', 'chore(release): version packages');
+  return dir;
+}
+
 describe('unpublishedBumpsAt', () => {
   it('reports no bumps when npm already has the head version', () => {
     const dir = repoWithBumps();
@@ -101,5 +137,15 @@ describe('unpublishedBumpsAt', () => {
     const verdict = unpublishedBumpsAt(dir, 'HEAD', '1.0.0', { maxCommits: 2 });
     expect(verdict.kind).toBe('unmeasured');
     if (verdict.kind === 'unmeasured') expect(verdict.reason).toContain('2');
+  });
+
+  it('follows the first-parent line, ignoring versions a merged side branch passed through', () => {
+    // Without --first-parent the walk visits the side branch's 1.1.0-side and
+    // reports three unpublished versions where main only ever carried two.
+    const dir = repoWithMergedSideBranch();
+    expect(unpublishedBumpsAt(dir, 'HEAD', '1.0.0')).toEqual({
+      kind: 'measured',
+      versions: ['1.2.0', '1.1.0'],
+    });
   });
 });
