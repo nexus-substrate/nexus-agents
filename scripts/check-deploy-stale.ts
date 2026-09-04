@@ -157,6 +157,47 @@ const REGISTRY_URL = 'https://registry.npmjs.org/nexus-agents';
  * `MINUTES_SINCE_PUBLISH` still overrides, for tests and for a caller that
  * already knows.
  */
+/**
+ * Minutes since the registry last published ANYTHING, or `NaN` if unreadable.
+ *
+ * This bounds the absent-version case (#5430). "npm does not have the version
+ * *yet*" is a bounded-time claim, and #5077 is the proof it can be unbounded:
+ * four versions were skipped on npm while every release run reported success.
+ * `release.yml` and `deploy-website.yml` are independent workflows over the
+ * same version bump, so a merged version PR can leave the site wedged AND the
+ * version missing from npm — and an unconditional `0` then sits inside the
+ * grace window on every run, reporting `deploying / ok` forever. That is the
+ * "healthy while stale" outcome #4506 built this detector to end.
+ *
+ * A registry that published something minutes ago and does not yet have our
+ * version is credibly mid-publish. One that has been idle for days is not: the
+ * publish did not happen. The function cannot distinguish those from the
+ * version's own absence — both arrive as `undefined` — so it asks the registry
+ * when it last did anything instead.
+ *
+ * `GRACE_MINUTES` is reused rather than a second threshold invented: a publish
+ * that has not landed within the site's deploy window is not in flight either.
+ *
+ * `created` is excluded because it dates the package, not a publish. It only
+ * changes the answer when there is nothing else in the map — and that is
+ * precisely the case it must not answer: a freshly created package with zero
+ * published versions would otherwise read as "activity one minute ago", i.e.
+ * mid-publish, forever. (It cannot drag a max backwards; excluding it is about
+ * reachability, not ordering.) `modified` IS counted — it is the last publish
+ * time, and answers this question most directly when present.
+ */
+function registryIdleMinutes(time: Record<string, string>, nowMs: number): number {
+  let newestMs = Number.NaN;
+  for (const [key, value] of Object.entries(time)) {
+    if (key === 'created') continue;
+    const ms = Date.parse(value);
+    if (Number.isNaN(ms)) continue;
+    if (Number.isNaN(newestMs) || ms > newestMs) newestMs = ms;
+  }
+  if (Number.isNaN(newestMs)) return Number.NaN;
+  return (nowMs - newestMs) / 60_000;
+}
+
 /** The `time` map shape this reads out of the npm registry response. */
 export interface RegistryTimes {
   readonly time?: Record<string, string>;
@@ -171,10 +212,11 @@ export interface RegistryTimes {
  * SUPPLIED inputs, and every bug was in what the input turned out to be. The
  * I/O wrapper below is now the only untested part.
  *
- * Three outcomes, deliberately distinct:
+ * Four outcomes, deliberately distinct:
  *  - published → elapsed minutes
- *  - **absent** → `0`, a deploy in flight; npm does not have the version, so
- *    the site cannot be serving it
+ *  - **absent, registry still active** → `0`, a deploy in flight; npm does not
+ *    have the version, so the site cannot be serving it
+ *  - **absent, registry idle** → `NaN`. See {@link registryIdleMinutes}.
  *  - unparseable or no `time` map → `NaN`, reported as unmeasured
  */
 export function elapsedMinutesFrom(body: RegistryTimes, version: string, nowMs: number): number {
@@ -185,7 +227,10 @@ export function elapsedMinutesFrom(body: RegistryTimes, version: string, nowMs: 
   if (body.time === undefined) return Number.NaN;
 
   const published = body.time[version];
-  if (published === undefined) return 0;
+  if (published === undefined) {
+    const idle = registryIdleMinutes(body.time, nowMs);
+    return Number.isFinite(idle) && idle < GRACE_MINUTES ? 0 : Number.NaN;
+  }
 
   const publishedMs = Date.parse(published);
   if (Number.isNaN(publishedMs)) return Number.NaN;

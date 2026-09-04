@@ -188,12 +188,77 @@ describe('elapsedMinutesFrom — the seam all three bugs lived in', () => {
     expect(elapsedMinutesFrom(body, '3.6.10', NOW)).toBe(30);
   });
 
-  it('returns 0 for a version absent from the registry', () => {
+  it('returns 0 for an absent version while the registry is still active', () => {
     // Not published yet — the window between a version PR merging and the
     // publish landing. Returning NaN here made the check fail on every release.
+    // The sibling publish is RECENT, which is what makes "in flight" credible.
     expect(
-      elapsedMinutesFrom({ time: { '3.6.9': '2026-08-23T00:00:00.000Z' } }, '3.6.10', NOW)
+      elapsedMinutesFrom(
+        { time: { modified: '2026-08-23T00:58:00.000Z', '3.6.9': '2026-08-23T00:58:00.000Z' } },
+        '3.6.10',
+        NOW
+      )
     ).toBe(0);
+  });
+
+  it('returns NaN for an absent version when the registry has been idle (#5430)', () => {
+    // "npm does not have it YET" is a bounded-time claim, and #5077 is the
+    // proof it can be unbounded: four versions were skipped on npm while every
+    // release run reported success. With the site also wedged, `0` put the
+    // detector permanently inside the grace window and it reported
+    // `deploying / ok` forever — the exact "healthy while stale" outcome #4506
+    // built it to end.
+    const idle = {
+      time: { modified: '2026-08-20T00:00:00.000Z', '3.6.9': '2026-08-20T00:00:00.000Z' },
+    };
+
+    expect(Number.isNaN(elapsedMinutesFrom(idle, '3.6.10', NOW))).toBe(true);
+  });
+
+  it('falls back to the newest version entry when `modified` is missing', () => {
+    // Not every registry mirror returns `modified`. Absent it, the newest
+    // version timestamp answers the same question, so a missing convenience
+    // field must not silently restore the always-in-flight verdict.
+    const recent = { time: { '3.6.9': '2026-08-23T00:59:00.000Z' } };
+    const stale = { time: { '3.6.9': '2026-08-22T00:00:00.000Z' } };
+
+    expect(elapsedMinutesFrom(recent, '3.6.10', NOW)).toBe(0);
+    expect(Number.isNaN(elapsedMinutesFrom(stale, '3.6.10', NOW))).toBe(true);
+  });
+
+  it('reports an idle registry as unmeasured end to end, not as deploying', () => {
+    // The two halves must compose: NaN is only useful if the assessor refuses
+    // to call it healthy.
+    const idle = {
+      time: { modified: '2026-08-20T00:00:00.000Z', '3.6.9': '2026-08-20T00:00:00.000Z' },
+    };
+
+    expect(
+      assessDeployStaleness({
+        siteVersion: '3.6.9',
+        repoVersion: '3.6.10',
+        minutesSincePublish: elapsedMinutesFrom(idle, '3.6.10', NOW),
+      }).ok
+    ).toBe(false);
+  });
+
+  it('does not treat a recent `created` as publish activity', () => {
+    // `created` dates the package, not a publish. A freshly created package
+    // with ZERO published versions would otherwise read as "activity one
+    // minute ago" — in flight, forever. This is the only fixture where the
+    // exclusion changes the answer, so it is the only one that can catch its
+    // removal: with `created` counted, this returns 0 instead of NaN.
+    const body = { time: { created: '2026-08-23T00:59:00.000Z' } };
+
+    expect(Number.isNaN(elapsedMinutesFrom(body, '3.6.10', NOW))).toBe(true);
+  });
+
+  it('keeps an old `created` from displacing a recent publish', () => {
+    const body = {
+      time: { created: '2020-01-01T00:00:00.000Z', '3.6.9': '2026-08-23T00:59:00.000Z' },
+    };
+
+    expect(elapsedMinutesFrom(body, '3.6.10', NOW)).toBe(0);
   });
 
   it('returns NaN when the registry body has no time map at all', () => {
