@@ -604,7 +604,12 @@ export async function maybeEscalateContrarian(
   // Mirror executeVoting's opts so gateway routing (#4040) survives the escalation
   // re-vote — the object is forwarded by reference today, but the wider type makes
   // that contract explicit and refactor-safe.
-  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
+  opts?: {
+    voteTimeoutMs?: number;
+    gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
+    signal?: AbortSignal | undefined;
+  }
 ): Promise<{ escalated?: ExtendedVotingResult; degradeReason?: string }> {
   if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return {};
 
@@ -645,9 +650,14 @@ export async function maybeEscalateContrarian(
 export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger,
-  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
+  opts?: {
+    voteTimeoutMs?: number;
+    gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
+    signal?: AbortSignal | undefined;
+  }
 ): Promise<ExtendedVotingResult> {
-  const result = await executeVotingInner(input, logger, opts);
+  const result = await executeVotingInner(input, logger, opts ?? {});
   // #4135: stamp the response-layer decision (incl. `no_quorum`) ONCE, using the
   // SAME `resolveVoteDecision` `buildResponse` consumes, so pipeline consumers can
   // honor a quorum void instead of misreading it as a rejection — without
@@ -708,7 +718,15 @@ export function applyOptionGate(input: ConsensusVoteInput, result: ExtendedVotin
 async function executeVotingInner(
   input: ConsensusVoteInput,
   logger: ILogger,
-  opts?: { voteTimeoutMs?: number; gatewayAdapters?: readonly IModelAdapter[] | undefined }
+  // Required here, normalized by `executeVoting`. Every `opts.` inside was a
+  // branch against the same never-null value; taking the option away at this
+  // boundary removes them all rather than adding one more (#5393).
+  opts: {
+    voteTimeoutMs?: number;
+    gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
+    signal?: AbortSignal | undefined;
+  }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
   const algorithm = strategyToAlgorithm(strategy);
@@ -726,9 +744,10 @@ async function executeVotingInner(
     roles,
     proposal: input.proposal,
     simulate: input.simulateVotes,
-    ...(opts?.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
-    ...(opts?.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
+    ...(opts.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
+    ...(opts.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
     declaredOptions: input.options,
+    signal: opts.signal,
   });
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
@@ -919,12 +938,14 @@ function recordVoteSideEffects(
 
 async function handleConsensusVote(
   deps: ConsensusVoteDeps,
-  args: ConsensusVoteInput
+  args: ConsensusVoteInput,
+  signal?: AbortSignal
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   try {
     const result = await executeVoting(args, logger, {
       ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
+      signal,
     });
     const strategy = args.strategy ?? 'simple_majority';
 
@@ -973,13 +994,19 @@ type ConsensusVoteToolResponse = ToolResult;
  * Dispatch the vote on a background promise + return a pending envelope
  * (#3045 / epic #2631 Stage 4). Mirrors run_workflow / orchestrate.
  *
- * Cancellation semantics: when `cancel_job` lands while the vote is
- * in-flight, the existing collector unwinds via the AbortSignal plumbing
- * already in #3038 — `collectRealVotes` honors per-voter signals — and
- * the dispatcher writes whatever partial vote set landed before the
- * abort signal as the job result. That preserves audit visibility into
- * who voted before the cancel happened, instead of throwing away all
- * the work.
+ * Cancellation semantics (#5393). This paragraph previously claimed
+ * `collectRealVotes` "honors per-voter signals" via plumbing from #3038. It did
+ * not — the function had no signal parameter at all, so `cancel_job` marked the
+ * job cancelled while every remaining voter still ran. The comment describing a
+ * capability that did not exist is plausibly why that went unnoticed.
+ *
+ * What happens now: the signal is threaded to the vote launcher, which checks it
+ * after each stagger delay and does NOT launch the voters that have not started,
+ * recording them as error results rather than as any decision. Votes already
+ * in flight are left to settle — an adapter call is a subprocess or HTTP request
+ * whose cost is already incurred, and abandoning it would lose the result
+ * without saving the spend. The dispatcher still writes whatever landed, so
+ * audit visibility into who voted before the cancel is preserved.
  *
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
@@ -1025,7 +1052,10 @@ function dispatchAsyncConsensusVote(
     // callback RESOLVES — so a dead voter panel produced a job a caller polling
     // `get_job_result` read as a success. Reject instead, mirroring the sync
     // sibling's `toolStructuredError` on the same condition.
-    run: (_jobId, input) => unwrapVoteOrThrow(handleConsensusVote(deps, input)),
+    // #5393: arity 3. `runAsJob` derives `signalAccepted` from `run.length`, so
+    // taking the signal is what makes the job record say cancellation works —
+    // the claim follows the capability instead of being asserted separately.
+    run: (_jobId, input, signal) => unwrapVoteOrThrow(handleConsensusVote(deps, input, signal)),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }

@@ -848,3 +848,69 @@ describe('collectRealVotes — gateway routing (#4040)', () => {
     expect(calls(only)).toBe(3);
   });
 });
+
+describe('collectRealVotes forwards the cancel signal (#5393)', () => {
+  const logger = createLogger({ component: 'test', level: 'silent' });
+
+  function approvingAdapter(): IModelAdapter {
+    return {
+      providerId: 'test',
+      modelId: 'test-model',
+      capabilities: [],
+      complete: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          content: JSON.stringify({ decision: 'approve', reasoning: 'ok', confidence: 0.9 }),
+          usage: {},
+          stopReason: 'end_turn',
+          model: 'test',
+        },
+      }),
+      stream: vi.fn(),
+      countTokens: vi.fn().mockResolvedValue(100),
+      validateConfig: vi.fn().mockReturnValue({ ok: true }),
+    };
+  }
+
+  it('does not call the adapter when the signal is already aborted', async () => {
+    // The middle link. `voter-agents-deadline.test.ts` proves the launcher
+    // honours a signal, and the consensus_vote dispatch test proves the tool
+    // hands one to this function — but both stay green if THIS function drops
+    // it on the floor between them, which is the shape of the whole defect.
+    const controller = new AbortController();
+    controller.abort();
+    const adapter = approvingAdapter();
+
+    const results = await collectRealVotes({
+      roles: ['architect', 'security'],
+      proposal: 'Test proposal',
+      logger,
+      adapter,
+      signal: controller.signal,
+    });
+
+    expect(adapter.complete).not.toHaveBeenCalled();
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.source === 'error')).toBe(true);
+  });
+
+  it('still launches the voter when no signal is supplied', async () => {
+    // The empty case: omitting the signal must not suppress anything. Asserted
+    // on whether the adapter was REACHED, which is the exact contrast with the
+    // test above — the vote's eventual decision depends on parsing details this
+    // change does not touch, so asserting it here would couple this test to
+    // something unrelated.
+    const adapter = approvingAdapter();
+
+    await collectRealVotes({
+      roles: ['architect'],
+      proposal: 'Test proposal',
+      logger,
+      adapter,
+      timeoutMs: 10000,
+      maxRetries: 3,
+    });
+
+    expect(adapter.complete).toHaveBeenCalled();
+  });
+});
