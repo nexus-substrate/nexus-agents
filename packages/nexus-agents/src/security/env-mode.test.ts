@@ -27,20 +27,20 @@ function spyLogger(): ILogger {
 describe('resolveEnvMode (#3130)', () => {
   it('returns the parsed value for a valid (case-insensitive) input — no warning', () => {
     const logger = spyLogger();
-    expect(resolveEnvMode('ENFORCE', Schema, 'audit', VAR, logger)).toBe('enforce');
+    expect(resolveEnvMode('ENFORCE', Schema, 'audit', VAR, { logger })).toBe('enforce');
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('returns the fallback for unset/empty WITHOUT warning (absence is normal)', () => {
     const logger = spyLogger();
-    expect(resolveEnvMode(undefined, Schema, 'audit', VAR, logger)).toBe('audit');
-    expect(resolveEnvMode('', Schema, 'audit', VAR, logger)).toBe('audit');
+    expect(resolveEnvMode(undefined, Schema, 'audit', VAR, { logger })).toBe('audit');
+    expect(resolveEnvMode('', Schema, 'audit', VAR, { logger })).toBe('audit');
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('coerces an invalid NON-EMPTY value to the fallback AND warns (#3130)', () => {
     const logger = spyLogger();
-    expect(resolveEnvMode('enfroce', Schema, 'audit', VAR, logger)).toBe('audit');
+    expect(resolveEnvMode('enfroce', Schema, 'audit', VAR, { logger })).toBe('audit');
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining(VAR),
@@ -50,6 +50,47 @@ describe('resolveEnvMode (#3130)', () => {
 
   it('never throws on any input', () => {
     const logger = spyLogger();
-    expect(() => resolveEnvMode('garbage', Schema, 'off', VAR, logger)).not.toThrow();
+    expect(() => resolveEnvMode('garbage', Schema, 'off', VAR, { logger })).not.toThrow();
+  });
+});
+
+describe('invalidFallback - a typo may tighten the gate, never loosen it', () => {
+  it('omitting it leaves the invalid path on `fallback`, exactly as before', () => {
+    const logger = spyLogger();
+    // Regression guard for the other two callers: neither passes
+    // invalidFallback, so neither may change behaviour.
+    expect(resolveEnvMode('enfroce', Schema, 'off', VAR, { logger })).toBe('off');
+    expect(resolveEnvMode('enfroce', Schema, 'enforce', VAR, { logger })).toBe('enforce');
+  });
+
+  it('routes ONLY the invalid path to it - unset and empty still use `fallback`', () => {
+    const logger = spyLogger();
+    const opts = { logger, invalidFallback: 'audit' as const };
+    // The distinction the whole change rests on: absence and a typo are
+    // different states, and now resolve differently.
+    expect(resolveEnvMode(undefined, Schema, 'off', VAR, opts)).toBe('off');
+    expect(resolveEnvMode('', Schema, 'off', VAR, opts)).toBe('off');
+    expect(resolveEnvMode('enfroce', Schema, 'off', VAR, opts)).toBe('audit');
+    // Unset/empty stay silent - they are not operator errors.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('never diverts a VALID value', () => {
+    const logger = spyLogger();
+    const opts = { logger, invalidFallback: 'audit' as const };
+    expect(resolveEnvMode('off', Schema, 'enforce', VAR, opts)).toBe('off');
+    expect(resolveEnvMode('enforce', Schema, 'off', VAR, opts)).toBe('enforce');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns with the mode actually applied, not just the unset default', () => {
+    const logger = spyLogger();
+    resolveEnvMode('enfroce', Schema, 'off', VAR, { logger, invalidFallback: 'audit' });
+    // A line reading "coercing to default" would name `off`, a value the
+    // process did not use. The log and the runtime have to agree.
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('audit'),
+      expect.objectContaining({ raw: 'enfroce', default: 'off', applied: 'audit' })
+    );
   });
 });

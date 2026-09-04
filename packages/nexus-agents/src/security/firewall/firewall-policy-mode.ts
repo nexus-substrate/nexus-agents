@@ -61,10 +61,10 @@ export const FIREWALL_POLICY_ENV_VAR = 'NEXUS_FIREWALL_POLICY';
 /**
  * Resolve the firewall policy mode from the environment.
  *
- * Never throws: an invalid value coerces to the default and emits one `warn`,
- * because a security layer must not fail-closed at startup on an operator typo
- * (#3130). Unset or empty resolves silently — absence is the normal state, not
- * a misconfiguration.
+ * Never throws, because a security layer must not fail-closed at startup on an
+ * operator typo (#3130). The two non-happy paths resolve DIFFERENTLY, though:
+ * unset or empty resolves silently to `off` (absence is the normal state), while
+ * an explicit-but-invalid value resolves to `audit` and emits one `warn`.
  *
  * @param env    Environment to read (injectable for tests).
  * @param logger Injectable for tests; defaults to the shared module logger.
@@ -78,6 +78,17 @@ export function resolveFirewallPolicyMode(
     FirewallPolicyModeSchema,
     DEFAULT_FIREWALL_POLICY_MODE,
     FIREWALL_POLICY_ENV_VAR,
-    ...(logger !== undefined ? ([logger] as const) : ([] as const))
+    {
+      ...(logger !== undefined ? { logger } : {}),
+      // An explicit-but-invalid value lands on `audit`, NOT on the unset
+      // default `off`. Unset means "the operator has not opted in" and `off` is
+      // right for it; a typo means "the operator opted in and mistyped how",
+      // and answering that with the most permissive mode hands them a firewall
+      // that refuses nothing while they believe it is on. `audit` reports
+      // without refusing, so it cannot break an external caller any more than
+      // `off` can, and it emits the `wouldRefuse` telemetry the rollout is
+      // supposed to be collecting — which `off` does not.
+      invalidFallback: 'audit',
+    }
   );
 }

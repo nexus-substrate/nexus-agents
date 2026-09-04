@@ -19,6 +19,7 @@ import {
   FirewallPolicyModeSchema,
   resolveFirewallPolicyMode,
 } from './firewall-policy-mode.js';
+import type { FirewallPolicyMode } from './firewall-policy-mode.js';
 import type { ILogger } from '../../core/index.js';
 
 function makeLogger(): ILogger {
@@ -66,9 +67,18 @@ describe('firewall policy mode (#5382)', () => {
   });
 
   describe('a misconfiguration degrades safely and observably', () => {
-    it('coerces a typo to the default rather than throwing', () => {
-      // A security layer must not fail-closed at startup on a typo (#3130).
-      expect(resolveFirewallPolicyMode({ NEXUS_FIREWALL_POLICY: 'enfroce' })).toBe('off');
+    it('coerces a typo to `audit` rather than throwing', () => {
+      // A security layer must not fail-closed at startup on a typo (#3130), so
+      // this still never throws. What changed is WHICH mode it coerces to.
+      //
+      // This assertion used to read `.toBe('off')`, and it was pinning the
+      // defect: the unset default is `off`, so an operator who typed `enfroce`
+      // — explicitly asking for enforcement — got a firewall that refuses
+      // nothing, and the test recorded that as correct. Unset and mistyped are
+      // different states and now resolve differently. Ratified by a 7-voter
+      // panel at the supermajority bar (5 of 6 approvers); the two dissenting
+      // voters wanted a startup throw, which #3130 forecloses.
+      expect(resolveFirewallPolicyMode({ NEXUS_FIREWALL_POLICY: 'enfroce' })).toBe('audit');
     });
 
     it('warns on a typo, so the coercion is not silent', () => {
@@ -87,5 +97,39 @@ describe('firewall policy mode (#5382)', () => {
       resolveFirewallPolicyMode({}, logger);
       expect(logger.warn).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('an explicit-but-invalid NEXUS_FIREWALL_POLICY does not disable the gate', () => {
+  /**
+   * Permissiveness order for this flag: lower refuses less. `satisfies`
+   * rather than a type annotation so the literal types survive - a
+   * `Record<...>` annotation widens the values and the lookup below then
+   * reads as possibly-undefined under noUncheckedIndexedAccess.
+   */
+  const STRICTNESS = { off: 0, audit: 1, enforce: 2 } as const satisfies Record<
+    FirewallPolicyMode,
+    number
+  >;
+
+  it('resolves a typo to `audit`, while unset still resolves to `off`', () => {
+    // Before this change both answered `off`: an operator who typed `enfroce`
+    // got a firewall that refuses nothing, having explicitly asked for
+    // enforcement.
+    expect(resolveFirewallPolicyMode({ NEXUS_FIREWALL_POLICY: 'enfroce' })).toBe('audit');
+    expect(resolveFirewallPolicyMode({})).toBe('off');
+  });
+
+  it('holds the invariant: the invalid path is never MORE permissive than unset', () => {
+    // The guard against `invalidFallback` becoming an escape hatch. Stated as
+    // an ordering over modes rather than as literals, so it keeps holding if
+    // either default is ever changed.
+    const unset = resolveFirewallPolicyMode({});
+    const invalid = resolveFirewallPolicyMode({ NEXUS_FIREWALL_POLICY: 'not-a-mode' });
+    expect(STRICTNESS[invalid]).toBeGreaterThanOrEqual(STRICTNESS[unset]);
+  });
+
+  it('still never throws, whatever the value', () => {
+    expect(() => resolveFirewallPolicyMode({ NEXUS_FIREWALL_POLICY: ' garbage' })).not.toThrow();
   });
 });
