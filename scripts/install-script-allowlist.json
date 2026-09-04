@@ -1,0 +1,26 @@
+{
+  "$comment": "Install lifecycle scripts permitted in the PUBLISHED nexus-agents production dependency graph (#5427). Enforced by scripts/check-install-scripts.ts against a real `npm install` of the packed tarball. Adding an entry is a deliberate act: state in `why` what the script does and why a blocked install still leaves the CLI working. `prepare` is deliberately not a hook here — npm runs a dependency's `prepare` only for git/directory installs, never for a registry tarball, so ~15 more production packages declare one that no user ever executes.",
+  "minimumPackagesScanned": 100,
+  "allowed": [
+    {
+      "name": "@ast-grep/lang-go",
+      "hooks": { "postinstall": "node postinstall.js" },
+      "why": "Verifies a prebuilt tree-sitter grammar that ships INSIDE the tarball (prebuilds/prebuild-{Linux,macOS}-{X64,ARM64}, prebuild-Windows-X64); it downloads nothing and builds nothing on a supported platform. Blocked, the .so is still present and parse() works — proven by Phase 9, which asserts real findings from a scripts-blocked install."
+    },
+    {
+      "name": "@ast-grep/lang-python",
+      "hooks": { "postinstall": "node postinstall.js" },
+      "why": "Same package shape and same prebuilds/ layout as @ast-grep/lang-go. Covered by the same Phase 9 assertion."
+    },
+    {
+      "name": "@google/genai",
+      "hooks": { "preinstall": "echo 'preinstall: no-op'" },
+      "why": "Literally an echo. The package's own `prepare` (node scripts/prepare.js) is not reachable from a registry install."
+    },
+    {
+      "name": "protobufjs",
+      "hooks": { "postinstall": "node scripts/postinstall" },
+      "why": "Transitive via @google/genai. Generates CommonJS interop shims from files already in the tarball; the ESM entry points nexus-agents reaches do not depend on them. NOTE: this package is absent from the repo's own pnpm tree, which resolves protobufjs to 8.8.0 through a repo-local pnpm.overrides entry that is not published — which is why this check must run against an npm install of the tarball and never against the workspace."
+    }
+  ]
+}

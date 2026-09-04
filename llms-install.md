@@ -81,5 +81,5 @@ For the canonical, auto-generated list, see [docs/ENTRYPOINTS.md](docs/ENTRYPOIN
 If `nexus-agents doctor` reports issues:
 
 1. **No CLI adapters detected** — Set at least one API key above
-2. **better-sqlite3 missing** — Run `npm rebuild better-sqlite3`
+2. **SQLite Storage unavailable** — Upgrade to Node ≥ 22.5.0; storage is `node:sqlite`, a builtin, so there is nothing to rebuild
 3. **MCP connection fails** — Ensure `--mode=server` is in the args

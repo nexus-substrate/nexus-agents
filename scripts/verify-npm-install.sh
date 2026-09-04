@@ -18,6 +18,9 @@
 #   4 — --help missing core commands
 #   5 — doctor command failed
 #   6 — MCP stdio handshake failed
+#   7 — SQLite unusable after a scripts-blocked install (#5388)
+#   8 — node:sqlite experimental warning leaked to users (#5392)
+#   9 — ast-grep native grammars unusable / polyglot scanner found nothing (#5427)
 set -euo pipefail
 
 VERSION="${1:-latest}"
@@ -137,6 +140,59 @@ if printf '%s' "$WARN_OUT" | grep -q 'SQLite is an experimental feature'; then
   fail "node:sqlite ExperimentalWarning leaked to stderr — the CLI filter is not firing (#5392)" 8
 fi
 ok "no experimental-SQLite warning on stderr"
+
+step "Phase 9: ast-grep native grammars still parse (#5427)"
+# The OTHER native surface, and since #5388 removed better-sqlite3, the last
+# one. @ast-grep/lang-{python,go} ship prebuilt tree-sitter `.so` grammars and
+# declare a `postinstall`, so under the --ignore-scripts install above they are
+# in exactly the position better-sqlite3 was in: nothing rebuilt them.
+#
+# Importing them is not evidence — their `libraryPath` is a lazy getter, so the
+# import succeeds whether or not the `.so` exists. Parsing alone is not evidence
+# either: tree-sitter is error-tolerant, so the Go grammar parses Python source
+# without complaint and simply finds nothing. Both halves are why this asserts
+# on named RULE IDS from a fixture rather than on an exit code.
+GRAMMAR_FIXTURE=$(mktemp -d)
+trap 'rm -rf "$GRAMMAR_FIXTURE"' EXIT
+cat > "$GRAMMAR_FIXTURE/bad.py" <<'PYFIXTURE'
+import os
+
+
+def run(cmd):
+    os.system("ls " + cmd)
+    eval(cmd)
+PYFIXTURE
+
+# `nexus-agents verify` reports the grammars as a named check, so assert its
+# POSITIVE verdict — the same shape as Phase 7, and the diagnostic a user gets.
+GRAMMAR_VERIFY=$(nexus-agents verify 2>&1 || true)
+if ! printf '%s' "$GRAMMAR_VERIFY" | grep -qi 'Native Grammars'; then
+  printf '%s\n' "$GRAMMAR_VERIFY" >&2
+  fail "verify no longer reports a Native Grammars check — Phase 9 cannot fail, so it is not a check" 9
+fi
+if printf '%s' "$GRAMMAR_VERIFY" | grep -i 'Native Grammars' | grep -qiE 'unavailable|unusable|failed'; then
+  printf '%s\n' "$GRAMMAR_VERIFY" | grep -i 'Native Grammars' >&2
+  fail "verify reports the ast-grep grammars unusable after an --ignore-scripts install (#5427)" 9
+fi
+ok "verify reports Native Grammars healthy"
+
+# Then the real scanner end to end: dist/security/ast-rules YAML + dynamic
+# grammar registration + the walk. Run from inside the fixture directory
+# because collectAstQaFindings refuses a scope outside the cwd.
+GLOBAL_ROOT=$(npm root -g)
+cat > "$GRAMMAR_FIXTURE/probe.mjs" <<PROBE
+import { runAstQaRules } from '${GLOBAL_ROOT}/nexus-agents/dist/index.js';
+const findings = await runAstQaRules({ targetDir: process.cwd() });
+console.log(findings.map((f) => f.ruleId).sort().join(','));
+PROBE
+SCAN_OUT=$(cd "$GRAMMAR_FIXTURE" && node probe.mjs 2>&1 || true)
+for expected in dangerous-eval-python shell-injection-python; do
+  if ! printf '%s' "$SCAN_OUT" | grep -q "$expected"; then
+    printf 'scanner output: %s\n' "$SCAN_OUT" >&2
+    fail "polyglot scanner did not report $expected — the Python grammar is not usable (#5427)" 9
+  fi
+done
+ok "polyglot scanner returned both expected findings without any install script"
 
 step "All smoke tests passed"
 printf '✅ nexus-agents@%s installs and runs cleanly\n' "$ACTUAL_VERSION"

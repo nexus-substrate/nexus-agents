@@ -14,6 +14,7 @@ import { defaultConfig, loadConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
 import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
+import { checkNativeGrammars } from './doctor-native-grammars.js';
 import { probeAllClis } from './cli-auth-probe.js';
 
 /**
@@ -225,6 +226,38 @@ async function checkSqliteAvailability(): Promise<VerifyCheck> {
 }
 
 /**
+ * Checks that the prebuilt tree-sitter grammars behind the polyglot (Python/Go)
+ * security scanner actually load AND parse (#5427).
+ *
+ * `@ast-grep/lang-python` / `@ast-grep/lang-go` are the last native packages in
+ * the published runtime graph, and they declare a `postinstall`. Where install
+ * scripts are blocked this takes #5388's shape: the install exits 0, importing
+ * the registration object still succeeds — its `libraryPath` is a lazy getter —
+ * and only `parse()` reaches the `.so`.
+ *
+ * `warn`, matching SQLite Storage: the CLI works, but `runAstQaRules` returns
+ * nothing. That is the part worth reporting, because for a security scanner an
+ * empty result reads as "clean" rather than as "did not run".
+ */
+async function checkGrammarAvailability(): Promise<VerifyCheck> {
+  const result = await checkNativeGrammars();
+  if (result.available) {
+    return {
+      name: 'Native Grammars',
+      passed: true,
+      message: `ast-grep ${result.languages.join('/')} grammars parse (polyglot scanner available)`,
+    };
+  }
+  return {
+    name: 'Native Grammars',
+    passed: false,
+    severity: 'warn',
+    message: result.error ?? 'ast-grep native grammars unavailable',
+    fix: 'Reinstall without blocking scripts, or verify @ast-grep/lang-{python,go} shipped their prebuilds/ directory',
+  };
+}
+
+/**
  * Checks that the nexus-agents data directories (per-repo + cross-repo
  * roots per epic #2872) exist and are writable.
  * `cli-commands.ts::dispatchCommand` initializes them lazily (#1398), so
@@ -317,6 +350,7 @@ export async function runVerify(): Promise<VerifyResult> {
     checkConfigLoading(),
     checkExpertSystem(),
     await checkSqliteAvailability(),
+    await checkGrammarAvailability(),
     checkDataDirs(),
     await checkAdapterAvailability(),
   ];
