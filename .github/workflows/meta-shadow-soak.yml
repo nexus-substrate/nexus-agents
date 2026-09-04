@@ -163,7 +163,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "${NEXUS_DATA_DIR}/learning"
-          npx tsx scripts/meta-shadow-soak.ts \
+          pnpm exec tsx scripts/meta-shadow-soak.ts \
             --count "${{ inputs.count || '12' }}" \
             --repo "${{ inputs.repo != '' && inputs.repo || github.repository }}"
 

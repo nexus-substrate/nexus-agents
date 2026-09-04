@@ -148,7 +148,7 @@ jobs:
           EOF
 
           # Run the generator
-          npx tsx generate-tests.ts 2>&1 || echo "No tests generated"
+          pnpm exec tsx generate-tests.ts 2>&1 || echo "No tests generated"
 
           # Check if tests were generated
           if [ -f sica-results.json ]; then

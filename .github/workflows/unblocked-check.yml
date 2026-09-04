@@ -83,7 +83,7 @@ jobs:
           # Issues go in on STDIN, not an env var: 136 bodies is ~700 KB and
           # `execve` rejects that with E2BIG. The states map is small enough.
           printf '%s' "$ISSUES" | BLOCKER_STATES_JSON="$STATES" \
-            npx tsx scripts/check-unblocked.ts > /tmp/unblocked.full 2>&1
+            pnpm exec tsx scripts/check-unblocked.ts > /tmp/unblocked.full 2>&1
           # First line is a machine-readable STATUS:; the rest is the body.
           # The workflow must NEVER branch on the prose, which contains
           # attacker-controlled issue titles (#5088).

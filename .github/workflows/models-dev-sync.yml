@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/setup-node
 
       - name: Run sync script
-        run: npx tsx scripts/sync-models-dev.ts
+        run: pnpm exec tsx scripts/sync-models-dev.ts
         working-directory: ${{ github.workspace }}
 
       - name: Detect snapshot drift

@@ -184,7 +184,7 @@ jobs:
           # one file and zero releases, so the action published nothing AND
           # opened no PR, while this step stood down waiting for a release-PR
           # merge that was never going to happen. Both green, release stalled.
-          pending_changesets=$(npx tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
+          pending_changesets=$(pnpm exec tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
           if [ "$pending_changesets" -gt 0 ]; then
             echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets non-empty changeset(s) are still pending, so changesets/action will open a version PR. That merge closes the loop. Not force-publishing."
             exit 0

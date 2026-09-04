@@ -53,7 +53,7 @@ jobs:
       - name: Compare the live site against main
         id: assess
         continue-on-error: true
-        run: npx tsx scripts/check-deploy-stale.ts
+        run: pnpm exec tsx scripts/check-deploy-stale.ts
 
       # #4521: catch the CAUSE early, not just the consequence. A run wedged in
       # `queued` holds the `pages` concurrency group and silently cancels every
@@ -66,7 +66,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RUNS_JSON=$(gh run list --workflow=deploy-website.yml --limit 30 \
-            --json databaseId,status,createdAt) npx tsx scripts/check-stuck-runs.ts
+            --json databaseId,status,createdAt) pnpm exec tsx scripts/check-stuck-runs.ts
 
       - name: File or update the tracking issue
         if: steps.assess.outcome == 'failure' || steps.stuck.outcome == 'failure'
@@ -80,7 +80,7 @@ jobs:
           existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
             --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
 
-          npx tsx scripts/check-deploy-stale.ts > /tmp/detail.txt 2>&1 || true
+          pnpm exec tsx scripts/check-deploy-stale.ts > /tmp/detail.txt 2>&1 || true
           {
             echo "The published site does not match \`main\`."
             echo
