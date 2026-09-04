@@ -17,7 +17,13 @@ jobs:
   commitlint:
     name: Commit Messages
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #5396: 10, not 5. These gates are ~90% `setup-node`; the check itself runs
+    # in seconds (`check:model-drift` is 17s over 1443 files). Three distinct
+    # jobs blew a 5-minute budget in one session, each reported as CANCELLED —
+    # indistinguishable from a concurrency cancel, so the natural response was
+    # to retry rather than investigate. 10 matches the house default and still
+    # catches a genuinely hung check.
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,7 +37,13 @@ jobs:
   changeset-check:
     name: Changeset Presence
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #5396: 10, not 5. These gates are ~90% `setup-node`; the check itself runs
+    # in seconds (`check:model-drift` is 17s over 1443 files). Three distinct
+    # jobs blew a 5-minute budget in one session, each reported as CANCELLED —
+    # indistinguishable from a concurrency cancel, so the natural response was
+    # to retry rather than investigate. 10 matches the house default and still
+    # catches a genuinely hung check.
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,7 +60,13 @@ jobs:
   producer-consumer-check:
     name: Producer/Consumer Check
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #5396: 10, not 5. These gates are ~90% `setup-node`; the check itself runs
+    # in seconds (`check:model-drift` is 17s over 1443 files). Three distinct
+    # jobs blew a 5-minute budget in one session, each reported as CANCELLED —
+    # indistinguishable from a concurrency cancel, so the natural response was
+    # to retry rather than investigate. 10 matches the house default and still
+    # catches a genuinely hung check.
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -335,7 +353,13 @@ jobs:
   consolidation-test:
     name: Consolidation E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # #5396: 20, not the 10 the install-bound gates get. This job is not
+    # setup-node plus a seconds-long check — it runs a full `pnpm build` and
+    # then two `docker compose` container runs. It burned 8m12s against its
+    # 8-minute cap on PR #5397 and was killed, reported as CANCELLED with no
+    # failing step. A runaway-guard, not an SLA: 20 leaves real headroom for a
+    # cold Docker layer cache while still catching a hung container.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -358,7 +382,13 @@ jobs:
   model-string-drift:
     name: Model String Drift Check
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #5396: 10, not 5. These gates are ~90% `setup-node`; the check itself runs
+    # in seconds (`check:model-drift` is 17s over 1443 files). Three distinct
+    # jobs blew a 5-minute budget in one session, each reported as CANCELLED —
+    # indistinguishable from a concurrency cancel, so the natural response was
+    # to retry rather than investigate. 10 matches the house default and still
+    # catches a genuinely hung check.
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
