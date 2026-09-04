@@ -4,31 +4,17 @@
  * A typed, discriminated-union vocabulary for "operator-meaningful"
  * step boundaries. Emitted via a process-local EventEmitter so both
  * the JSON logger and the stderr ConsoleRenderer (peer subscribers)
- * observe the same events.
+ * observe the same events. Both subscribers key on `event`, `name`,
+ * depth and status only; there is no per-step "kind" (#5097 removed it —
+ * nothing read it and three of its seven values had no producer).
  *
  * @module core/step-events
  * (Source: #1930 — human console notifications; ux-expert design.)
  */
 
-/** Semantic kind of a step — used to color/route output. */
-export type StepKind =
-  | 'pipeline.stage'
-  | 'workflow.node'
-  | 'expert.exec'
-  | 'consensus.vote'
-  | 'mcp.tool'
-  | 'cli.call'
-  | 'graph.hook';
-
 /** Error categories mirror the subprocess-adapter classifier so renderer can tag failures. */
 export type StepErrorCategory =
-  | 'timeout'
-  | 'parse'
-  | 'connection'
-  | 'execution'
-  | 'policy'
-  | 'rate_limit'
-  | 'unknown';
+  'timeout' | 'parse' | 'connection' | 'execution' | 'policy' | 'rate_limit' | 'unknown';
 
 interface StepEventBase {
   /** Monotonic-enough unique id generated at step start. */
@@ -37,8 +23,6 @@ interface StepEventBase {
   parentStepId?: string;
   /** Operator-facing step name, e.g. 'research', 'vote:security'. */
   name: string;
-  /** Semantic kind. */
-  kind: StepKind;
   /** Optional key/value attributes surfaced into logs. */
   attrs?: Record<string, unknown>;
 }

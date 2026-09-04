@@ -180,6 +180,12 @@ interface IPluginRegistry {
 
 ### Experimental Plugin Config
 
+> **As shipped, only core plugins load.** No production code path constructs the
+> registry with `experimentalEnabled` / `experimentalAllow` (both `@deprecated`,
+> #5097), every core manifest is `experimental: false`, and the registry is frozen
+> right after core registration. The config below is the design target, not
+> current behaviour.
+
 ```yaml
 # nexus-agents.yaml
 plugins:

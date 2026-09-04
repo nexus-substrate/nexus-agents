@@ -35,7 +35,7 @@ describe('ConsoleRenderer', () => {
 
   it('renders glyph lines in TTY mode', async () => {
     capture(true);
-    await withStep({ name: 'research', kind: 'pipeline.stage' }, (ctx) => {
+    await withStep({ name: 'research' }, (ctx) => {
       ctx.setSummary('42 papers');
       return Promise.resolve();
     });
@@ -47,7 +47,7 @@ describe('ConsoleRenderer', () => {
 
   it('renders ASCII in non-TTY mode', async () => {
     capture(false);
-    await withStep({ name: 'research', kind: 'pipeline.stage' }, () => Promise.resolve());
+    await withStep({ name: 'research' }, () => Promise.resolve());
     expect(lines[0]).toMatch(/\[start\] research/);
     expect(lines[1]).toMatch(/\[ ok  \] research/);
   });
@@ -55,7 +55,7 @@ describe('ConsoleRenderer', () => {
   it('renders FAILED with error category', async () => {
     capture(false);
     await expect(
-      withStep({ name: 'x', kind: 'cli.call' }, () => {
+      withStep({ name: 'x' }, () => {
         throw new Error('timed out after 30s');
       })
     ).rejects.toThrow();
@@ -65,8 +65,8 @@ describe('ConsoleRenderer', () => {
 
   it('indents nested steps by depth', async () => {
     capture(false);
-    await withStep({ name: 'outer', kind: 'pipeline.stage' }, async () => {
-      await withStep({ name: 'inner', kind: 'pipeline.stage' }, () => Promise.resolve());
+    await withStep({ name: 'outer' }, async () => {
+      await withStep({ name: 'inner' }, () => Promise.resolve());
     });
     // outer.start, inner.start, inner.ok, outer.ok
     expect(lines).toHaveLength(4);
@@ -78,7 +78,7 @@ describe('ConsoleRenderer', () => {
 
   it('honors NO_COLOR flag forcing ASCII', async () => {
     capture(true, true);
-    await withStep({ name: 'x', kind: 'pipeline.stage' }, () => Promise.resolve());
+    await withStep({ name: 'x' }, () => Promise.resolve());
     expect(lines[0]).toMatch(/\[start\]/);
     expect(lines[0]).not.toMatch(/⋮/);
   });
@@ -90,7 +90,6 @@ describe('ConsoleRenderer', () => {
       event: 'step.completed',
       stepId: 'abc',
       name: 'slow',
-      kind: 'pipeline.stage',
       durationMs: 2300,
       status: 'ok',
     });

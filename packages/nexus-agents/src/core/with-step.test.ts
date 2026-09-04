@@ -1,7 +1,7 @@
 /**
  * Tests for withStep helper + step bus integration (#1930).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, beforeEach, afterEach } from 'vitest';
 import { withStep, currentStepId } from './with-step.js';
 import { stepBus } from './step-bus.js';
 import type { StepEvent } from './step-events.js';
@@ -23,9 +23,7 @@ describe('withStep', () => {
   });
 
   it('emits step.started then step.completed for a successful step', async () => {
-    const result = await withStep({ name: 'test', kind: 'pipeline.stage' }, () =>
-      Promise.resolve(42)
-    );
+    const result = await withStep({ name: 'test' }, () => Promise.resolve(42));
     expect(result).toBe(42);
     expect(events).toHaveLength(2);
     expect(events[0]?.event).toBe('step.started');
@@ -40,7 +38,7 @@ describe('withStep', () => {
   it('emits step.failed and rethrows on error', async () => {
     const boom = new Error('kaboom');
     await expect(
-      withStep({ name: 'fail-test', kind: 'pipeline.stage' }, () => {
+      withStep({ name: 'fail-test' }, () => {
         throw boom;
       })
     ).rejects.toBe(boom);
@@ -54,7 +52,7 @@ describe('withStep', () => {
 
   it('categorizes timeout errors', async () => {
     await expect(
-      withStep({ name: 'x', kind: 'cli.call' }, () => {
+      withStep({ name: 'x' }, () => {
         throw new Error('Request timed out after 30s');
       })
     ).rejects.toThrow();
@@ -67,7 +65,7 @@ describe('withStep', () => {
 
   it('categorizes rate limit errors', async () => {
     await expect(
-      withStep({ name: 'x', kind: 'cli.call' }, () => {
+      withStep({ name: 'x' }, () => {
         throw new Error('API rate limit exceeded');
       })
     ).rejects.toThrow();
@@ -80,10 +78,10 @@ describe('withStep', () => {
   it('propagates parentStepId via AsyncLocalStorage', async () => {
     let innerParent: string | undefined;
     let outerId = '';
-    await withStep({ name: 'outer', kind: 'pipeline.stage' }, async (ctx) => {
+    await withStep({ name: 'outer' }, async (ctx) => {
       outerId = ctx.stepId;
       expect(currentStepId()).toBe(ctx.stepId);
-      await withStep({ name: 'inner', kind: 'pipeline.stage' }, () => {
+      await withStep({ name: 'inner' }, () => {
         innerParent = events.find((e) => e.name === 'inner')?.parentStepId;
         return Promise.resolve();
       });
@@ -93,24 +91,20 @@ describe('withStep', () => {
   });
 
   it('honors explicit parent override', async () => {
-    await withStep({ name: 'leaf', kind: 'pipeline.stage', parent: 'custom-parent-id' }, () =>
-      Promise.resolve()
-    );
+    await withStep({ name: 'leaf', parent: 'custom-parent-id' }, () => Promise.resolve());
     expect(events[0]?.parentStepId).toBe('custom-parent-id');
   });
 
   it('honors parent:null to force root', async () => {
-    await withStep({ name: 'outer', kind: 'pipeline.stage' }, async () => {
-      await withStep({ name: 'root-inside', kind: 'pipeline.stage', parent: null }, () =>
-        Promise.resolve()
-      );
+    await withStep({ name: 'outer' }, async () => {
+      await withStep({ name: 'root-inside', parent: null }, () => Promise.resolve());
     });
     const rootInside = events.find((e) => e.name === 'root-inside');
     expect(rootInside?.parentStepId).toBeUndefined();
   });
 
   it('setSummary appears on completed event', async () => {
-    await withStep({ name: 'x', kind: 'pipeline.stage' }, (ctx) => {
+    await withStep({ name: 'x' }, (ctx) => {
       ctx.setSummary('42 papers, 3 clusters');
       return Promise.resolve();
     });
@@ -122,7 +116,7 @@ describe('withStep', () => {
 
   it('truncates summary over 120 chars', async () => {
     const longText = 'x'.repeat(200);
-    await withStep({ name: 'x', kind: 'pipeline.stage' }, (ctx) => {
+    await withStep({ name: 'x' }, (ctx) => {
       ctx.setSummary(longText);
       return Promise.resolve();
     });
@@ -134,10 +128,27 @@ describe('withStep', () => {
   });
 
   it('attrs are forwarded on both started and completed', async () => {
-    await withStep({ name: 'x', kind: 'pipeline.stage', attrs: { iteration: 3 } }, () =>
-      Promise.resolve()
-    );
+    await withStep({ name: 'x', attrs: { iteration: 3 } }, () => Promise.resolve());
     expect(events[0]?.attrs).toEqual({ iteration: 3 });
     expect(events[1]?.attrs).toEqual({ iteration: 3 });
+  });
+
+  it('emits no `kind` — the field had no reader and three of its members no producer (#5097)', async () => {
+    // Renderer and logger bridge never read `kind`; `workflow.node` / `cli.call`
+    // had zero producers. Pin the produced shape so the vocabulary cannot
+    // silently re-grow a field nothing consumes.
+    await expect(
+      withStep({ name: 'shape', attrs: { a: 1 } }, () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow();
+    await withStep({ name: 'shape', attrs: { a: 1 } }, () => Promise.resolve());
+    expect(events.map((e) => Object.keys(e).sort())).toEqual([
+      ['attrs', 'event', 'name', 'startedAt', 'stepId'],
+      ['attrs', 'durationMs', 'errorCategory', 'event', 'name', 'status', 'stepId', 'summary'],
+      ['attrs', 'event', 'name', 'startedAt', 'stepId'],
+      ['attrs', 'durationMs', 'event', 'name', 'status', 'stepId'],
+    ]);
+    expectTypeOf<StepEvent>().not.toHaveProperty('kind');
   });
 });

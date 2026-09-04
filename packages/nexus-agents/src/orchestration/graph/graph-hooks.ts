@@ -269,7 +269,6 @@ async function executeHook<T>(
   return withStep(
     {
       name: `hook:${base.hookPhase}:${base.nodeId}`,
-      kind: 'graph.hook',
       attrs: { nodeId: base.nodeId, hookName: base.hookName, phase: base.hookPhase },
     },
     async (ctx) => {

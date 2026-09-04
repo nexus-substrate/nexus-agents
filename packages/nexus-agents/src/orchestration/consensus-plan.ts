@@ -71,7 +71,6 @@ export async function executeConsensusPlan(
   return withStep(
     {
       name: 'consensus-plan',
-      kind: 'consensus.vote',
       attrs: {
         clis: selectedClis.map((s) => s.cli),
         taskLength: task.length,

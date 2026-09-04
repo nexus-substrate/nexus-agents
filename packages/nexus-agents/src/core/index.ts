@@ -33,7 +33,6 @@ export {
 
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)
 export type {
-  StepKind,
   StepErrorCategory,
   StepStartedEvent,
   StepCompletedEvent,

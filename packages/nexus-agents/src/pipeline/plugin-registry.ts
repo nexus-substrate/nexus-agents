@@ -24,11 +24,31 @@ const logger = createLogger({ component: 'PluginRegistry' });
 // Configuration
 // ============================================================================
 
-/** Options for controlling plugin registry behavior. */
+/**
+ * Options for controlling plugin registry behavior.
+ *
+ * Both fields are deprecated (#5097). No production construction sets them:
+ * `registerCorePlugins` / `createCorePluginRegistry` build the registry with
+ * no options, every `CORE_PLUGINS` manifest is `experimental: false`, and the
+ * registry is frozen right after core registration — so only core plugins
+ * ever load and the experimental gate cannot open. The fields stay accepted
+ * (and still deny) because they are public API; removal is tracked in #5097
+ * for the next major.
+ */
 export interface PluginRegistryOptions {
-  /** Allow experimental plugins to be registered. */
+  /**
+   * Allow experimental plugins to be registered.
+   *
+   * @deprecated No production construction sets this; only core plugins load.
+   * Still accepted and still gates as before. Removal tracked in #5097 (next major).
+   */
   readonly experimentalEnabled?: boolean;
-  /** Explicit allowlist of experimental plugin IDs. */
+  /**
+   * Explicit allowlist of experimental plugin IDs.
+   *
+   * @deprecated No production construction sets this; only core plugins load.
+   * Still accepted and still gates as before. Removal tracked in #5097 (next major).
+   */
   readonly experimentalAllow?: readonly string[];
 }
 
@@ -142,6 +162,7 @@ export class PluginRegistry implements IPluginRegistry {
   ): Result<void, RegistrationError> | undefined {
     if (!manifest.experimental) return undefined;
 
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- the deprecated option must keep gating until its removal in #5097
     if (this.options.experimentalEnabled !== true) {
       return {
         ok: false,
@@ -152,6 +173,7 @@ export class PluginRegistry implements IPluginRegistry {
       };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- the deprecated option must keep gating until its removal in #5097
     const allow = this.options.experimentalAllow;
     if (allow !== undefined && !allow.includes(manifest.id)) {
       return {

@@ -393,7 +393,6 @@ describe('heartbeat-monitor', () => {
           event: 'step.completed',
           stepId: 's1',
           name: 'x',
-          kind: 'expert.exec',
           durationMs: 1,
           status: 'ok',
         });
@@ -413,7 +412,6 @@ describe('heartbeat-monitor', () => {
         event: 'step.completed',
         stepId: 's2',
         name: 'y',
-        kind: 'expert.exec',
         durationMs: 1,
         status: 'ok',
       });
