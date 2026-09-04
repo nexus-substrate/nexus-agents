@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.7.0
+
+### Minor Changes
+
+- [#5453](https://github.com/nexus-substrate/nexus-agents/pull/5453) [`2c7166b`](https://github.com/nexus-substrate/nexus-agents/commit/2c7166bfc0cfca6da64863939a8876031929deca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Rename this package's context-store contract from `IMemoryBackend` to `IContextMemoryBackend`, keeping `IMemoryBackend` as a `@deprecated` alias ([#5142](https://github.com/nexus-substrate/nexus-agents/issues/5142)).
+
+  Two unrelated exported interfaces shared the name `IMemoryBackend` with zero overlapping members: `nexus-memory`'s registry contract (`domain/read/write/query/delete/stats/close`) and this package's context store (`store/retrieve/search/prune`). Inside nexus-agents, `implements IMemoryBackend` meant one of two disjoint contracts depending on the import line.
+
+  **Nothing breaks.** `IMemoryBackend` is still exported from `nexus-agents`, as an empty interface extending `IContextMemoryBackend` — the same structural type, assignable both ways, and still augmentable (a `type` alias would not have been). Existing imports compile and mean what they meant; editors show a deprecation notice. Removal is tracked for the next major in [#5452](https://github.com/nexus-substrate/nexus-agents/issues/5452).
+
+  Internal code now uses `IContextMemoryBackend`; an ESLint `no-restricted-imports` entry keeps the old name from creeping back in-tree. `nexus-memory`'s `IMemoryBackend` is unchanged.
+
 ## 8.6.1
 
 ### Patch Changes
