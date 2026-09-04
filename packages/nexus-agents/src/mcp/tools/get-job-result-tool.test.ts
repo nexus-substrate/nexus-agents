@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerGetJobResultTool } from './get-job-result-tool.js';
@@ -93,5 +93,75 @@ describe('get_job_result abandoned disclosure (#4976)', () => {
 
     expect(body['abandoned']).toBe(true);
     expect(String(body['errorMessage'])).toMatch(/dispatch again|no longer|gone/i);
+  });
+});
+
+describe('get_job_result producer-version disclosure (#5008)', () => {
+  // The tool's own `_meta['nexus-agents/build']` names the READER's build.
+  // After a mid-session install that is not the build that ran the job, so
+  // the response has to carry the record's own stamp — and say whether that
+  // stamp measures anything.
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const FIXTURE_VERSION = '9.9.9-fixture';
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-gjr-version-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('surfaces the recorded producerVersion and marks a real version measured', async () => {
+    writeJobComplete('job-pv-real', 'orchestrate', { ok: true }, FIXTURE_VERSION);
+
+    const body = await envelope('job-pv-real');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(record['producerVersion']).toBe(FIXTURE_VERSION);
+    expect(body['producerVersionMeasured']).toBe(true);
+  });
+
+  it("marks a 'dev' producer unmeasured — two local builds both read 'dev'", async () => {
+    writeJobComplete('job-pv-dev', 'orchestrate', { ok: true }, 'dev');
+
+    const body = await envelope('job-pv-dev');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(record['producerVersion']).toBe('dev');
+    expect(body['producerVersionMeasured']).toBe(false);
+  });
+
+  it('marks a legacy record (no field) unmeasured rather than defaulting a value', async () => {
+    const legacy = {
+      v: 1,
+      jobId: 'job-pv-legacy',
+      toolName: 'orchestrate',
+      status: 'complete',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      completedAt: '2026-08-01T00:01:00.000Z',
+      result: { ok: true },
+    };
+    mkdirSync(join(tmpDir, 'jobs'), { recursive: true });
+    writeFileSync(join(tmpDir, 'jobs', 'result-job-pv-legacy.json'), JSON.stringify(legacy));
+
+    const body = await envelope('job-pv-legacy');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(body['found']).toBe(true);
+    expect(record).not.toHaveProperty('producerVersion');
+    expect(body['producerVersionMeasured']).toBe(false);
+  });
+
+  it('does not claim a measurement for an unknown jobId', async () => {
+    const body = await envelope('job-pv-missing');
+    expect(body['found']).toBe(false);
+    expect(body).not.toHaveProperty('producerVersionMeasured');
   });
 });

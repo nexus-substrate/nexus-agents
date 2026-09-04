@@ -26,7 +26,11 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { isAbandonedJob, type JobResult } from '../jobs/job-result-store.js';
+import {
+  isAbandonedJob,
+  isMeasuredBuildVersion,
+  type JobResult,
+} from '../jobs/job-result-store.js';
 import { resolveJobResult } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getTimeProvider } from '../../core/index.js';
@@ -54,6 +58,16 @@ export interface GetJobResultResponse {
    * qualifier a poller needs to stop waiting.
    */
   readonly abandoned?: boolean;
+  /**
+   * Whether `record.producerVersion` identifies a build (#5008). Present
+   * whenever `found` is true.
+   *
+   * This tool's own `_meta['nexus-agents/build']` stamp names the READER's
+   * build; `record.producerVersion` names the build that ran the job. `false`
+   * when the record predates the field or the producer was a `'dev'` build,
+   * in which case the two stamps must not be compared.
+   */
+  readonly producerVersionMeasured?: boolean;
   readonly errorMessage?: string;
 }
 
@@ -87,6 +101,7 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
     jobId: parsed.data.jobId,
     found: true,
     record,
+    producerVersionMeasured: isMeasuredBuildVersion(record.producerVersion),
     ...(abandoned
       ? {
           abandoned: true,
@@ -108,7 +123,10 @@ export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDe
 
   const description =
     'Read the result of an async-mode tool invocation by jobId. Returns ' +
-    'the structured record (status, result | error, timestamps). Poll until ' +
+    'the structured record (status, result | error, timestamps, producerVersion) ' +
+    'plus producerVersionMeasured — false when the producer was a dev build or the ' +
+    'record predates the field, so its version must not be compared to this ' +
+    "server's _meta build stamp. Poll until " +
     'status !== "pending". Stage-1 of epic #2631 — Stage 2 will fold this ' +
     'into query_task_state once StructuredTaskState gains the result field.';
 

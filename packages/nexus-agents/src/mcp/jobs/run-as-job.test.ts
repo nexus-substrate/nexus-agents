@@ -13,6 +13,7 @@ import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
 import { _resetForTests as resetConcurrency, getInFlight, getJobCap } from './job-concurrency.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
+import { VERSION } from '../../version.js';
 
 interface DummyInput {
   readonly task: string;
@@ -487,5 +488,100 @@ describe('runAsJob — cancellation aborts in-flight work (#4086)', () => {
 
     // writeJobComplete ran but no-ops against the cancelled record (#4022).
     expect(readJobResult(jobId)?.status).toBe('cancelled');
+  });
+});
+
+describe('runAsJob — producerVersion stamps the record at write time (#5008)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  // NOT `VERSION`: a same-literal round trip cannot tell "stamped from the
+  // injected seam" from "stamped from the ambient constant" or "not stamped".
+  const FIXTURE_VERSION = '9.9.9-fixture';
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-runasjob-version-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('stamps the pending record on dispatch', () => {
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => 'job-pv-pending',
+      run: () => new Promise(() => {}),
+      producerVersion: FIXTURE_VERSION,
+    });
+    expect(readJobResult('job-pv-pending')?.producerVersion).toBe(FIXTURE_VERSION);
+  });
+
+  it('stamps the complete record with the injected version, which round-trips', async () => {
+    const params = {
+      toolName: 'orchestrate',
+      input: { task: 'ok' } as DummyInput,
+      freshJobId: () => 'job-pv-complete',
+      run: () => Promise.resolve({ value: 42 }),
+      producerVersion: FIXTURE_VERSION,
+    };
+    runAsJob<DummyInput, { value: number }>({ ...params, run: () => new Promise(() => {}) });
+    await runJobInBackground('job-pv-complete', params);
+    const record = readJobResult('job-pv-complete');
+    expect(record?.status).toBe('complete');
+    expect(record?.producerVersion).toBe(FIXTURE_VERSION);
+    expect(record?.producerVersion).not.toBe(VERSION);
+  });
+
+  it('stamps the failed record too — a rejection is still a write', async () => {
+    const params = {
+      toolName: 'orchestrate',
+      input: { task: 'boom' } as DummyInput,
+      freshJobId: () => 'job-pv-failed',
+      run: () => Promise.reject(new Error('kaboom')),
+      producerVersion: FIXTURE_VERSION,
+    };
+    runAsJob<DummyInput, never>({ ...params, run: () => new Promise(() => {}) });
+    await runJobInBackground('job-pv-failed', params);
+    const record = readJobResult('job-pv-failed');
+    expect(record?.status).toBe('failed');
+    expect(record?.producerVersion).toBe(FIXTURE_VERSION);
+  });
+
+  it('stamps a failure-shaped result recorded as failed (#4363 path)', async () => {
+    const params = {
+      toolName: 'orchestrate',
+      input: { task: 'shape' } as DummyInput,
+      freshJobId: () => 'job-pv-shape',
+      run: () => Promise.resolve({ ok: false, error: 'nope' }),
+      producerVersion: FIXTURE_VERSION,
+    };
+    runAsJob<DummyInput, { ok: boolean; error: string }>({
+      ...params,
+      run: () => new Promise(() => {}),
+    });
+    await runJobInBackground('job-pv-shape', params);
+    const record = readJobResult('job-pv-shape');
+    expect(record?.status).toBe('failed');
+    expect(record?.producerVersion).toBe(FIXTURE_VERSION);
+  });
+
+  it('defaults to the running server VERSION when the caller supplies none', async () => {
+    const params = {
+      toolName: 'orchestrate',
+      input: { task: 'ok' } as DummyInput,
+      freshJobId: () => 'job-pv-default',
+      run: () => Promise.resolve({ value: 1 }),
+    };
+    runAsJob<DummyInput, { value: number }>({ ...params, run: () => new Promise(() => {}) });
+    await runJobInBackground('job-pv-default', params);
+    expect(readJobResult('job-pv-default')?.producerVersion).toBe(VERSION);
   });
 });
