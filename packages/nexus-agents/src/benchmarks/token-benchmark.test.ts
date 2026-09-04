@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { estimateTokens, calculateTokenMetrics, runTokenBenchmark } from './token-benchmark.js';
 import type {
-  IMemoryBackend,
+  IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
   MemoryError,
 } from '../context/memory-backend-types.js';
 import type { Result } from '../core/result.js';
 
-function createMockBackend(): IMemoryBackend {
+function createMockBackend(): IContextMemoryBackend {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata; createdAt: Date }>();
 
   return {
@@ -114,7 +114,7 @@ describe('calculateTokenMetrics', () => {
 });
 
 describe('runTokenBenchmark', () => {
-  let mockBackend: IMemoryBackend;
+  let mockBackend: IContextMemoryBackend;
 
   beforeEach(() => {
     vi.useFakeTimers();

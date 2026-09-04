@@ -10,7 +10,7 @@
 
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider } from '../core/index.js';
-import type { IMemoryBackend, MemoryMetadata } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryMetadata } from '../context/memory-backend-types.js';
 
 // ============================================================================
 // Types
@@ -36,7 +36,7 @@ export interface DecayAppropriatenessMeasurement {
 
 /** Measure promotion effectiveness (retention rate of promoted memories). */
 export async function measurePromotionEffectiveness(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   logger?: ILogger
 ): Promise<PromotionMeasurement> {
   const promotedEntries: string[] = [];
@@ -78,7 +78,7 @@ export async function measurePromotionEffectiveness(
 
 /** Store test entries with specified importance level. */
 async function storeTestEntries(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   importance: 'low' | 'high',
   count: number
 ): Promise<string[]> {
@@ -96,7 +96,7 @@ async function storeTestEntries(
 }
 
 /** Count how many keys are no longer retrievable. */
-async function countDecayed(backend: IMemoryBackend, keys: string[]): Promise<number> {
+async function countDecayed(backend: IContextMemoryBackend, keys: string[]): Promise<number> {
   let decayed = 0;
   for (const key of keys) {
     const result = await backend.retrieve(key);
@@ -107,7 +107,7 @@ async function countDecayed(backend: IMemoryBackend, keys: string[]): Promise<nu
 
 /** Measure decay appropriateness (regret score for premature decay). */
 export async function measureDecayAppropriateness(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   logger?: ILogger
 ): Promise<DecayAppropriatenessMeasurement> {
   // Store entries with different importance levels

@@ -171,7 +171,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     if (!this.initialized) throw new MemoryError('AgenticMemoryBackend not initialized');
   }
 
-  // IMemoryBackend Methods (delegated to base)
+  // IContextMemoryBackend Methods (delegated to base)
   store(key: string, value: unknown, metadata: MemoryMetadata): Promise<Result<void, MemoryError>> {
     return this.base.store(key, value, metadata);
   }

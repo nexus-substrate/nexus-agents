@@ -24,7 +24,7 @@ import type {
 } from '../core/index.js';
 import { ok, err, AgentError, createLogger } from '../core/index.js';
 import { TokenBudgetTracker, type ITokenBudgetTracker } from '../context/token-budget-tracker.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory, TypedMemoryEntry } from '../context/memory-types.js';
 import { AgentStateMachine } from './state-machine.js';
 import { transitionToState } from './base-agent-state-helpers.js';
@@ -112,7 +112,7 @@ export abstract class BaseAgent implements IAgent {
   private readonly pruningConfig: ResolvedPruningConfig;
   private pruningMetrics: ContextPruningMetrics;
   private readonly memoryEnabled: boolean;
-  private readonly memoryBackend: IMemoryBackend | undefined;
+  private readonly memoryBackend: IContextMemoryBackend | undefined;
   private readonly typedMemory: ITypedMemory | undefined;
   private readonly memoryConfig: ResolvedMemoryConfig;
   private memoryState: AgentMemoryState | null = null;

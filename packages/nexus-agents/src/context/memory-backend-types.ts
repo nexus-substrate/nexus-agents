@@ -101,7 +101,7 @@ export class MemoryError extends NexusError {
 /**
  * Interface for memory backend implementations.
  */
-export interface IMemoryBackend {
+export interface IContextMemoryBackend {
   /**
    * Store a value with associated metadata.
    * @param key - Unique key for the memory
@@ -131,6 +131,27 @@ export interface IMemoryBackend {
    */
   prune(olderThan: Date): Promise<Result<number, MemoryError>>;
 }
+
+/**
+ * The previous name of {@link IContextMemoryBackend}.
+ *
+ * @deprecated Renamed in #5142: this package's context-store contract shared
+ * the name `IMemoryBackend` with `nexus-memory`'s unrelated registry contract
+ * (zero overlapping members), so `implements IMemoryBackend` meant one of two
+ * things depending on the import line. Use `IContextMemoryBackend`.
+ *
+ * An empty EXTENDING interface rather than a `type` alias, deliberately: a
+ * type alias cannot participate in declaration merging, so a consumer
+ * augmenting `IMemoryBackend` would have broken. This form is the same
+ * structural type, assignable both ways, and still augmentable — which is
+ * what makes the rename non-breaking (the majority-bar vote on #5142).
+ *
+ * Removal is tracked and blocked on the next major; see the issue linked
+ * from the #5142 record. Internal code must not import this name —
+ * `no-restricted-imports` in eslint.config.js enforces it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- the emptiness IS the point: same type, old name, still augmentable
+export interface IMemoryBackend extends IContextMemoryBackend {}
 
 // ============================================================================
 // Configuration

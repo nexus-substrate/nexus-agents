@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
-import type { MemoryEntry, MemoryError, IMemoryBackend } from './memory-backend-types.js';
+import type { MemoryEntry, MemoryError, IContextMemoryBackend } from './memory-backend-types.js';
 import type { RelationType } from './graph-memory-types.js';
 import { RelationTypeSchema } from './graph-memory-types.js';
 
@@ -164,12 +164,12 @@ export const LinkingOptionsSchema = z.object({
 
 /**
  * Agentic memory interface implementing A-MEM Zettelkasten-style organization.
- * Extends IMemoryBackend with automatic attribute extraction, dynamic linking,
+ * Extends IContextMemoryBackend with automatic attribute extraction, dynamic linking,
  * and memory evolution detection.
  *
  * (Source: Issue #122, arXiv:2502.12110)
  */
-export interface IAgenticMemory extends IMemoryBackend {
+export interface IAgenticMemory extends IContextMemoryBackend {
   /**
    * Store a memory with automatic attribute extraction.
    * Extracts keywords, tags, entities, and context from the value.

@@ -212,6 +212,38 @@ export default defineConfig([
     rules: { 'no-restricted-imports': 'off', 'no-restricted-syntax': 'off' },
   },
 
+  // #5142: `IMemoryBackend` is a @deprecated alias of `IContextMemoryBackend`
+  // kept on the public surface for one major. Internal code must use the new
+  // name, or the ambiguity the rename removed (nexus-memory exports an
+  // unrelated `IMemoryBackend`) creeps back one import at a time. The two
+  // barrels that RE-EXPORT the alias are exports, not uses, and are ignored —
+  // same reasoning as the createAllAdapters rule above.
+  {
+    name: 'nexus-agents/deprecated-imemorybackend-alias-5142',
+    files: ['packages/nexus-agents/src/**/*.ts'],
+    ignores: [
+      'packages/nexus-agents/src/context/memory-backend-types.ts',
+      'packages/nexus-agents/src/context/index.ts',
+      'packages/nexus-agents/src/exports/benchmarks.ts',
+      '**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/context/memory-backend-types', '**/context/memory-backend-types.js', '**/context', '**/context/index', '**/context/index.js'],
+              importNames: ['IMemoryBackend'],
+              message:
+                '`IMemoryBackend` (this package) is a deprecated alias of `IContextMemoryBackend` (#5142); nexus-memory exports an unrelated `IMemoryBackend`. Import `IContextMemoryBackend`.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Audit-sink interfaces must declare members as function PROPERTIES, never
   // method shorthand (#4991). TypeScript exempts method-shorthand parameters
   // from `strictFunctionTypes` and checks them bivariantly, so widening a

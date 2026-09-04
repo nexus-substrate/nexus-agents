@@ -15,7 +15,7 @@
  * every method is a no-op — the impl falls back to in-memory Maps.
  *
  * Why not route through `nexus-memory`'s `IMemoryBackend` directly:
- * `IMemoryBackend` is async per the Phase 2 vote, but MobiMem's existing
+ * `IContextMemoryBackend` is async per the Phase 2 vote, but MobiMem's existing
  * callers (`RoutingMemory.storePreference`, `recordExperience`, …) are
  * sync, and `KnnRoutingStage` (the consumer this fix unblocks) is sync
  * too. A sync side-channel that targets the same SQLite file `memory_stats`
@@ -23,7 +23,7 @@
  * an async ripple across the routing pipeline.
  *
  * Phase 5+ migrations route their concept-spaces through the full
- * `IMemoryBackend` contract.
+ * `IContextMemoryBackend` contract.
  *
  * @module context/mobimem-persistence
  */

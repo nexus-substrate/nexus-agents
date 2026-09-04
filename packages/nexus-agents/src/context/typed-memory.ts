@@ -12,7 +12,7 @@ import { ok } from '../core/result.js';
 import { getTimeProvider } from '../core/index.js';
 import type { AgentRole } from '../core/types/agent.js';
 import { createLogger } from '../core/logger.js';
-import type { IMemoryBackend, MemoryEntry, MemoryError } from './memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryEntry, MemoryError } from './memory-backend-types.js';
 import type {
   ITypedMemory,
   ICoreMemory,
@@ -52,10 +52,13 @@ export class TypedMemory implements ITypedMemory {
   readonly vault: IKnowledgeVault;
   readonly belief: IHindsightBeliefMemory;
 
-  private readonly backend: IMemoryBackend;
+  private readonly backend: IContextMemoryBackend;
   private readonly config: RelevanceFilterConfig;
 
-  constructor(backend: IMemoryBackend, config: RelevanceFilterConfig = DEFAULT_RELEVANCE_CONFIG) {
+  constructor(
+    backend: IContextMemoryBackend,
+    config: RelevanceFilterConfig = DEFAULT_RELEVANCE_CONFIG
+  ) {
     this.backend = backend;
     this.config = config;
     this.core = new CoreMemoryImpl(backend);
@@ -149,7 +152,7 @@ export class TypedMemory implements ITypedMemory {
 
 /** Create a typed memory instance. */
 export function createTypedMemory(
-  backend: IMemoryBackend,
+  backend: IContextMemoryBackend,
   config?: RelevanceFilterConfig
 ): ITypedMemory {
   return new TypedMemory(backend, config);

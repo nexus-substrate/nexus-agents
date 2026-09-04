@@ -18,7 +18,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { loadMemoryState } from './memory-operations.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ILogger } from '../core/index.js';
 
 const logger = {
@@ -31,7 +31,7 @@ const logger = {
 } as unknown as ILogger;
 
 /** A backend returning one pre-#5261 record, `successRate` and all. */
-function legacyBackend(): IMemoryBackend {
+function legacyBackend(): IContextMemoryBackend {
   return {
     retrieve: () =>
       Promise.resolve({
@@ -57,7 +57,7 @@ function legacyBackend(): IMemoryBackend {
     store: () => Promise.resolve({ ok: true, value: undefined }),
     search: () => Promise.resolve({ ok: true, value: [] }),
     prune: () => Promise.resolve({ ok: true, value: 0 }),
-  } as unknown as IMemoryBackend;
+  } as unknown as IContextMemoryBackend;
 }
 
 describe('legacy records survive the successRate removal (#5261)', () => {

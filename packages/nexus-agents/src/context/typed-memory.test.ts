@@ -14,11 +14,11 @@ import type {
   ResourceReference,
   VaultEntry,
 } from './memory-types.js';
-import type { IMemoryBackend, MemoryMetadata, MemoryEntry } from './memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryMetadata, MemoryEntry } from './memory-backend-types.js';
 import { ok } from '../core/result.js';
 
 // Mock memory backend
-function createMockBackend(): IMemoryBackend {
+function createMockBackend(): IContextMemoryBackend {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata }>();
 
   return {
@@ -52,7 +52,7 @@ function createMockBackend(): IMemoryBackend {
 }
 
 describe('TypedMemory', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let memory: TypedMemory;
 
   beforeEach(() => {

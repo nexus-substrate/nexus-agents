@@ -20,7 +20,7 @@ import { describe, it, expect } from 'vitest';
 
 import { formatBenchmarkResult, validateBenchmarkResults } from './memory-benchmark-output.js';
 import { runMemoryBenchmark, type MemoryBenchmarkResult } from './memory-benchmark.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 
 function resultWith(overrides: Partial<MemoryBenchmarkResult>): MemoryBenchmarkResult {
   return {
@@ -73,7 +73,6 @@ describe('decay consistency reports absence as absence (#5260)', () => {
   });
 });
 
-
 // ============================================================================
 // The producer seam — the real measurement, not just the renderer
 // ============================================================================
@@ -86,16 +85,18 @@ describe('the decay measurement itself reports absence (#5260)', () => {
    * between them not — so this drives the real `runMemoryBenchmark` with a
    * backend whose `search` fails, exercising the producer.
    */
-  function failingBackend(): IMemoryBackend {
+  function failingBackend(): IContextMemoryBackend {
     const fail = (): Promise<never> =>
-      Promise.resolve({ ok: false, error: { code: 'BACKEND_DOWN', message: 'search failed' } }) as
-        Promise<never>;
+      Promise.resolve({
+        ok: false,
+        error: { code: 'BACKEND_DOWN', message: 'search failed' },
+      }) as Promise<never>;
     return {
       store: () => Promise.resolve({ ok: true, value: undefined }),
       retrieve: fail,
       search: fail,
       prune: () => Promise.resolve({ ok: true, value: 0 }),
-    } as unknown as IMemoryBackend;
+    } as unknown as IContextMemoryBackend;
   }
 
   it('reports null, not 1.0, when the backend search fails', async () => {

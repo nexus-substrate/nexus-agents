@@ -53,10 +53,13 @@ export type {
   OperationComparison,
   BenchmarkComparison,
 } from '../benchmarks/memory-benchmarks.js';
-// Re-export IMemoryBackend and its transitive surface because they're the
+// Re-export IContextMemoryBackend and its transitive surface because they're the
 // parameter types of `runMemoryBenchmarks` in the public surface; without
 // these, TypeDoc warns that the referenced types are not included.
 export type {
+  IContextMemoryBackend,
+  // Deprecated alias kept on the public surface for one major (#5142).
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the alias IS the deprecation path (#5142); consumers keep the old name for one major
   IMemoryBackend,
   MemoryEntry,
   MemoryMetadata,

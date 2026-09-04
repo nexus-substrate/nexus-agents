@@ -25,7 +25,7 @@ import {
 } from './belief-memory.js';
 import {
   MemoryError,
-  type IMemoryBackend,
+  type IContextMemoryBackend,
   type MemoryEntry,
   type MemoryMetadata,
 } from './memory-backend-types.js';
@@ -56,7 +56,7 @@ function createMockLogger(): MockLogger {
   return mock;
 }
 
-function createMockMemoryBackend(): IMemoryBackend & {
+function createMockMemoryBackend(): IContextMemoryBackend & {
   _storage: Map<string, { value: unknown; metadata: MemoryMetadata }>;
 } {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata }>();
@@ -970,7 +970,7 @@ describe('Memory System Stress Tests', () => {
 
   describe('Backend Error Recovery', () => {
     it('should propagate backend errors through TypedMemory', async () => {
-      const failingBackend: IMemoryBackend = {
+      const failingBackend: IContextMemoryBackend = {
         store: vi.fn().mockResolvedValue(err(new MemoryError('Storage unavailable'))),
         retrieve: vi.fn().mockResolvedValue(ok(null)),
         search: vi.fn().mockResolvedValue(ok([])),

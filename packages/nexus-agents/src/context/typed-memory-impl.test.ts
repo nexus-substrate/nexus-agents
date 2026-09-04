@@ -8,7 +8,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import { ok, err } from '../core/result.js';
-import type { IMemoryBackend, MemoryEntry } from './memory-backend-types.js';
+import type { IContextMemoryBackend, MemoryEntry } from './memory-backend-types.js';
 import { MemoryError as MemError } from './memory-backend-types.js';
 import {
   CoreMemoryImpl,
@@ -23,7 +23,7 @@ import {
 // Mock Backend
 // ============================================================================
 
-function makeMockBackend(): IMemoryBackend {
+function makeMockBackend(): IContextMemoryBackend {
   const store = new Map<string, { value: unknown }>();
 
   return {
@@ -54,7 +54,7 @@ function makeMockBackend(): IMemoryBackend {
     prune: vi.fn(() => Promise.resolve(ok(0))),
     getStats: vi.fn(() => Promise.resolve(ok({ totalEntries: store.size, totalSize: 0 }))),
     close: vi.fn(() => Promise.resolve(ok(undefined))),
-  } as unknown as IMemoryBackend;
+  } as unknown as IContextMemoryBackend;
 }
 
 // ============================================================================
@@ -62,7 +62,7 @@ function makeMockBackend(): IMemoryBackend {
 // ============================================================================
 
 describe('CoreMemoryImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let core: CoreMemoryImpl;
 
   beforeEach(() => {
@@ -146,7 +146,7 @@ describe('CoreMemoryImpl', () => {
     const errorBackend = {
       ...makeMockBackend(),
       retrieve: vi.fn(() => Promise.resolve(err(new MemError('Connection lost')))),
-    } as unknown as IMemoryBackend;
+    } as unknown as IContextMemoryBackend;
     const errorCore = new CoreMemoryImpl(errorBackend);
     const result = await errorCore.getIdentity('a1');
     expect(result.ok).toBe(false);
@@ -158,7 +158,7 @@ describe('CoreMemoryImpl', () => {
 // ============================================================================
 
 describe('EpisodicMemoryImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let episodic: EpisodicMemoryImpl;
 
   beforeEach(() => {
@@ -213,7 +213,7 @@ describe('EpisodicMemoryImpl', () => {
 // ============================================================================
 
 describe('SemanticMemoryImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let semantic: SemanticMemoryImpl;
 
   beforeEach(() => {
@@ -308,7 +308,7 @@ describe('SemanticMemoryImpl', () => {
 // ============================================================================
 
 describe('ProceduralMemoryImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let procedural: ProceduralMemoryImpl;
 
   beforeEach(() => {
@@ -374,7 +374,7 @@ describe('ProceduralMemoryImpl', () => {
 // ============================================================================
 
 describe('ResourceMemoryImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let resource: ResourceMemoryImpl;
 
   beforeEach(() => {
@@ -435,7 +435,7 @@ describe('ResourceMemoryImpl', () => {
 // ============================================================================
 
 describe('KnowledgeVaultImpl', () => {
-  let backend: IMemoryBackend;
+  let backend: IContextMemoryBackend;
   let vault: KnowledgeVaultImpl;
 
   beforeEach(() => {

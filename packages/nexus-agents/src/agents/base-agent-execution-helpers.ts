@@ -9,7 +9,7 @@
 
 import type { ILogger, Task, AgentRole } from '../core/index.js';
 import { getTimeProvider } from '../core/index.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { AgentMemoryState, MemoryPersistenceMode } from './base-agent-memory-init.js';
 import {
   persistMemoryState,
@@ -50,7 +50,7 @@ export function recordFailedTaskError(params: RecordFailedTaskParams): AgentMemo
  */
 export interface PersistMemoryAfterTaskParams {
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   memoryState: AgentMemoryState | null;
   persistenceMode: MemoryPersistenceMode;
   task: Task;
@@ -109,7 +109,7 @@ export function categorizeTaskType(description: string): string {
  * Parameters for loading memory on initialization.
  */
 export interface LoadMemoryOnInitParams {
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   agentId: string;
   role: AgentRole;
   logger: ILogger;
@@ -127,7 +127,7 @@ export interface LoadMemoryOnInitResult {
  */
 export interface CleanupWithMemoryParams {
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   memoryState: AgentMemoryState | null;
   persistenceMode: MemoryPersistenceMode;
   logger: ILogger;

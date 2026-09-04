@@ -14,7 +14,7 @@ import type {
   MemoryEntry,
   MemoryMetadata,
   MemoryError,
-  IMemoryBackend,
+  IContextMemoryBackend,
 } from './memory-backend-types.js';
 
 // ============================================================================
@@ -158,7 +158,7 @@ export interface AddRelationshipOptions {
 /**
  * Extended memory backend with graph-based relationship operations.
  */
-export interface IGraphMemory extends IMemoryBackend {
+export interface IGraphMemory extends IContextMemoryBackend {
   /**
    * Add a relationship between two memory entries.
    * @param from - Source memory key

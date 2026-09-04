@@ -9,7 +9,7 @@
 
 import type { Result, ILogger, AgentContext, AgentRole } from '../core/index.js';
 import { ok, err, AgentError } from '../core/index.js';
-import type { IMemoryBackend } from '../context/memory-backend-types.js';
+import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory, TypedMemoryEntry } from '../context/memory-types.js';
 import {
   loadMemoryState,
@@ -25,7 +25,7 @@ export interface InitializationContext {
   role: AgentRole;
   initialized: boolean;
   memoryEnabled: boolean;
-  memoryBackend: IMemoryBackend | undefined;
+  memoryBackend: IContextMemoryBackend | undefined;
   typedMemory: ITypedMemory | undefined;
   maxInitialLoadEntries: number;
   autoLoadOnInit: boolean;

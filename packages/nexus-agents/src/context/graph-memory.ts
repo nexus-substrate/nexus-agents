@@ -132,7 +132,7 @@ export class GraphMemoryBackend implements IGraphMemory {
   }
 
   // =========================================================================
-  // IMemoryBackend Methods (delegated to base)
+  // IContextMemoryBackend Methods (delegated to base)
   // =========================================================================
 
   store(key: string, value: unknown, metadata: MemoryMetadata): Promise<Result<void, MemoryError>> {
