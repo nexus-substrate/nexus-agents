@@ -154,7 +154,11 @@ const NexusEnvSchema = z.object({
   // Drives the auto-remediation cycle (resolveAutoRemediateMode); default audit
   // (zero-write soak, #3769) when unset, explicit `off` disables.
   NEXUS_AUTO_REMEDIATE: z.enum(['off', 'audit', 'enforce']).optional(),
-  // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by default.
+  // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by
+  // default. Read by the seams that evaluate the trust-tier rule against an
+  // execute-typed stage: dev-pipeline's consensus→execute check and compiled graph
+  // gate nodes. The V2 delegate graph declares no gate (#4657); v2-orchestrate's
+  // execute check reads NEXUS_V2_POLICY_MODE instead.
   NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
   // Path to a model-registry overlay manifest (buildDefaultRegistry / #3185 hot-reload).
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),

@@ -1,0 +1,7 @@
+---
+'nexus-agents': patch
+---
+
+The V2 delegate plan (`pipeline/v2-delegate.ts`, run fire-and-forget beside `delegate_to_model`) no longer declares a policy gate. The `trust-tier` entry gate #3703 added guarded a route-typed stage, and the only policy rule denies execute-typed stages, so it could not deny any input in any `NEXUS_POLICY_GATE_MODE` (#4657, pinned by #5072). Widening the rule was rejected: the graph's verdict is read by nothing, so a gate that fired would have recorded a denial while the delegation proceeded. `buildWarnPolicyEnforcement` is removed with the gate, and the compile call no longer passes a `policyEnforcement` bundle that no node consulted.
+
+No path that enforces changes. The trust-tier rule, `plan-compiler`, `policy-evaluator` and the two execute-stage seams that can refuse — `v2-orchestrate` (`checkPipelinePolicy(task, 'execute')`, governed by `NEXUS_V2_POLICY_MODE`) and `dev-pipeline` (`enforceConsensusExecutePolicy`, governed by `NEXUS_POLICY_GATE_MODE`) — are unchanged. `NEXUS_POLICY_GATE_MODE`'s scope is now stated in `CONFIGURATION.md` and `env-schema.ts`: it governs the dev-pipeline consensus→execute check and compiled graph gate nodes, and the V2 delegate graph declares none. `policy.evaluated` events and durable `policy_gate` records from the delegate graph were already zero, since the gate never produced a violation, so soak counts are unaffected.

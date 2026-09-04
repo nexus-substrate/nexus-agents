@@ -4,18 +4,22 @@
  * Tests the V2 pipeline path for delegate_to_model.
  * Phase A (Issue #920): Tests DelegateInput→TaskContract conversion and pipeline metrics.
  * Phase 1 (#927): Tests PolicyEvaluator enforcement in pipeline execution.
+ * #4657: Pins that the delegate plan declares no policy gate.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 
 import {
+  buildDelegatePlan,
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
   checkPipelinePolicy,
 } from './v2-delegate.js';
+import { getPipelineEventBus } from './event-bus.js';
+import { createDefaultPolicyEngine } from './policy-engine.js';
+import { evaluatePipelinePolicy } from './policy-evaluator.js';
 import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
-import type { IPolicyEngine } from './policy-engine.js';
 
 // ============================================================================
 // Fixtures
@@ -258,95 +262,6 @@ describe('executeDelegatePipeline — policy enforcement', () => {
 });
 
 // ============================================================================
-// Activation: stage-boundary policy enforcement in production (#3703)
-// ============================================================================
-
-describe('createDelegatePipeline — policy gate activation (#3703)', () => {
-  const savedGateMode = process.env['NEXUS_POLICY_GATE_MODE'];
-
-  afterEach(() => {
-    if (savedGateMode !== undefined) process.env['NEXUS_POLICY_GATE_MODE'] = savedGateMode;
-    else delete process.env['NEXUS_POLICY_GATE_MODE'];
-  });
-
-  it('(a) produces a plan with a non-empty policy gate guarding the route stage', () => {
-    const result = createDelegatePipeline(makeTask());
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.plan.policyGates.length).toBeGreaterThan(0);
-    const gate = result.value.plan.policyGates[0]!;
-    expect(gate.beforeStage).toBe('route-model');
-    expect(gate.rules.length).toBeGreaterThan(0);
-    // The gate node is compiled into the graph (not a dangling spec).
-    expect(result.value.graph.nodes.has(gate.id)).toBe(true);
-  });
-
-  it('(a) the compiled gate runs in default WARN mode (gate node executes, passes)', async () => {
-    delete process.env['NEXUS_POLICY_GATE_MODE']; // default warn
-    const pipeline = createDelegatePipeline(makeTask());
-    expect(pipeline.ok).toBe(true);
-    if (!pipeline.ok) return;
-    const { PipelineRunner } = await import('./pipeline-runner.js');
-    const result = await new PipelineRunner().execute(pipeline.value, makeTask());
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value.success).toBe(true);
-  });
-
-  it('(b) WARN mode never throws + emits a policy event even when a rule denies', async () => {
-    // Inject an always-denying engine through the enforcement bundle and run the
-    // compiled gate in warn mode. WARN must NOT throw and MUST emit one event.
-    const { compilePlan } = await import('./plan-compiler.js');
-    const { executeGraph } = await import('../orchestration/graph/graph-executor.js');
-    const { EventBus } = await import('./event-bus.js');
-    const { buildDelegatePlan, buildWarnPolicyEnforcement } = await import('./v2-delegate.js');
-
-    const bus = new EventBus();
-    const denyDecision = { allow: false as const, reason: 'denied for test' };
-    const denyEngine: IPolicyEngine = {
-      registerRule: () => {},
-      evaluate: () => denyDecision,
-      listRules: () => [{ id: 'always-deny', priority: 0, evaluate: () => denyDecision }],
-    };
-    const plan = buildDelegatePlan(makeTask());
-    const compiled = compilePlan(plan, {
-      policyEnforcement: buildWarnPolicyEnforcement(makeTask(), {
-        engine: denyEngine,
-        eventBus: bus,
-      }),
-    });
-    expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
-    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // Gate did NOT halt the pipeline (warn) — route stage still ran.
-    const stageNode = result.value.nodeResults.find((r) => r.nodeId === 'route-model');
-    expect(stageNode?.status).toBe('success');
-    // Exactly one event per denying rule per gate run — bounded, non-flooding.
-    const policyEvents = bus.query({}).filter((e) => e.type === 'policy.evaluated');
-    expect(policyEvents).toHaveLength(1);
-  });
-
-  it('(d) BLOCK mode (opt-in) still throws on a denying rule (regression of #3177)', async () => {
-    const { enforceGatePolicy, PolicyBlockedError } = await import('./policy-evaluator.js');
-    const { buildWarnPolicyEnforcement } = await import('./v2-delegate.js');
-    const denyDecision = { allow: false as const, reason: 'denied' };
-    const denyEngine: IPolicyEngine = {
-      registerRule: () => {},
-      evaluate: () => denyDecision,
-      listRules: () => [{ id: 'always-deny', priority: 0, evaluate: () => denyDecision }],
-    };
-    const bundle = {
-      ...buildWarnPolicyEnforcement(makeTask(), { engine: denyEngine }),
-      mode: 'block' as const,
-    };
-    expect(() =>
-      enforceGatePolicy(bundle, { gateId: 'g', taskId: 't', stageType: 'route' })
-    ).toThrow(PolicyBlockedError);
-  });
-});
-
-// ============================================================================
 // Blast-radius: a non-v2-delegate compilePlan caller is UNAFFECTED (#3703)
 // ============================================================================
 
@@ -404,87 +319,91 @@ describe('blast radius — compilePlan default unchanged (#3703)', () => {
   });
 });
 
-describe('the entry gate guards a stage that does not execute (#4657)', () => {
-  // The compiled-gate machinery works: plan-compiler.test.ts proves a gate in
-  // front of an `execute`-typed stage throws PolicyBlockedError in block mode.
-  // What is missing is a PRODUCTION plan that gives it something to deny.
-  //
-  // These assertions pin the honest current state so it is a stated fact
-  // rather than something the next reader rediscovers by tracing four files —
-  // and so the day someone declares this stage `execute`, they are forced to
-  // confront that `nexus:model-router` is a no-op skeleton and the gate would
-  // then be firing against a stub.
+// ============================================================================
+// No policy gate in the delegate plan (#4657)
+// ============================================================================
 
-  it('the guarded stage is route-typed, so the trust-tier rule cannot deny here', async () => {
-    const { buildDelegatePlan } = await import('./v2-delegate.js');
-    const plan = buildDelegatePlan(makeTask());
+describe('the delegate plan declares no policy gate (#4657)', () => {
+  // History. #3703 put a `trust-tier` entry gate in front of `route-model`, and
+  // #5072 pinned the fact that it could not deny: `trustTierRule` denies only
+  // on `stageType === 'execute'`, and the only stage here is `route`. The
+  // #4657 panel then established that making it fire would be worse than
+  // leaving it dead — this graph runs fire-and-forget beside the real
+  // delegation (`mcp/tools/delegate-to-model.ts`, `instrumentV2Pipeline`), so
+  // a firing gate would record a denial while the model call it describes
+  // proceeded. A gate that cannot fire was removed rather than turned into one
+  // that misreports. These tests pin the removal; a future gate here must be
+  // on the delegation's actual path before it is declared.
+  const savedGateMode = process.env['NEXUS_POLICY_GATE_MODE'];
+  const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
 
-    const gate = plan.policyGates?.[0];
-    expect(gate).toBeDefined();
-    const guarded = plan.stages.find((s) => s.id === gate?.beforeStage);
-    expect(guarded).toBeDefined();
-
-    // `trustTierRule` denies only on stageType === 'execute'.
-    expect(guarded?.type).toBe('route');
-    expect(guarded?.type).not.toBe('execute');
+  afterEach(() => {
+    if (savedGateMode !== undefined) process.env['NEXUS_POLICY_GATE_MODE'] = savedGateMode;
+    else delete process.env['NEXUS_POLICY_GATE_MODE'];
+    if (savedPolicy !== undefined) process.env['NEXUS_V2_POLICY_MODE'] = savedPolicy;
+    else delete process.env['NEXUS_V2_POLICY_MODE'];
   });
 
-  it('no stage in the production delegate plan is execute-typed', async () => {
-    const { buildDelegatePlan } = await import('./v2-delegate.js');
+  it('declares zero policy gates', () => {
+    // Previously pinned as `policyGates.length > 0` guarding `route-model`
+    // (#3703) and as "the gate cannot deny" (#5072).
+    const plan = buildDelegatePlan(makeTask());
+    expect(plan.policyGates).toEqual([]);
+  });
+
+  it('compiles to a graph holding the route stage and no gate node', () => {
+    const result = createDelegatePipeline(makeTask());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect([...result.value.graph.nodes.keys()]).toEqual(['route-model']);
+  });
+
+  it('a delegate run emits zero policy.evaluated events, even at tier 4 in block mode', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const bus = getPipelineEventBus();
+    const seen: string[] = [];
+    const off = bus.subscribe({ type: 'policy.evaluated' }, (e) => {
+      if (e.type === 'policy.evaluated') seen.push(e.gateId);
+    });
+    try {
+      const contract = delegateInputToTaskContract({ task: 'untrusted input' }, { trustTier: '4' });
+      const metrics = await executeDelegatePipeline(contract);
+      expect(metrics.policyBlocked).toBeUndefined();
+      expect(metrics.executed).toBe(true);
+      expect(seen).toEqual([]);
+
+      // Positive control: the same bus and subscription DO carry a violation
+      // from an execute-typed evaluation, so the empty list above is a
+      // measurement, not a spy that cannot fire.
+      evaluatePipelinePolicy(
+        { engine: createDefaultPolicyEngine(), mode: 'block', eventBus: bus },
+        {
+          taskId: 'control',
+          stageId: 'control-gate',
+          stageType: 'execute',
+          pipelineState: { trustTier: '4' },
+        }
+      );
+      expect(seen).toEqual(['control-gate:trust-tier']);
+    } finally {
+      off();
+    }
+  });
+
+  it('no stage in the production delegate plan is execute-typed', () => {
+    // The reason no gate belongs here yet: `trustTierRule` has nothing to deny.
     const plan = buildDelegatePlan(makeTask());
     expect(plan.stages.filter((s) => s.type === 'execute')).toEqual([]);
   });
 
-  it('the REAL rule at the REAL gate cannot deny, even at tier 4 in block mode (#4657)', async () => {
-    // The end-to-end version of the two shape checks above, and the durable
-    // fix every voter on the #4657 panel agreed on regardless of which remedy
-    // they preferred.
-    //
-    // The sibling tests inject an always-denying engine, which proves the gate
-    // MECHANISM works. This one runs the actual `trustTierRule` against the
-    // actual `ENTRY_GATE` with the most untrusted input there is, in the
-    // strictest mode, and pins that nothing is denied — because the rule
-    // requires `stageType === 'execute'` and the only gate guards a `route`
-    // stage.
-    //
-    // Pinning a negative is the point. The day someone adds an execute-typed
-    // stage, widens the rule, or moves the gate, this test fails and forces the
-    // #4657 decision to be made deliberately instead of drifting.
-    const { compilePlan } = await import('./plan-compiler.js');
-    const { executeGraph } = await import('../orchestration/graph/graph-executor.js');
-    const { createDefaultPolicyEngine } = await import('./policy-engine.js');
-    const { buildDelegatePlan } = await import('./v2-delegate.js');
-
-    const compiled = compilePlan(buildDelegatePlan(makeTask()), {
-      policyEnforcement: {
-        engine: createDefaultPolicyEngine(),
-        mode: 'block',
-        // Untrusted, and explicitly so: the rule's own fail-closed default is
-        // also 4, so this must not pass merely by omission.
-        pipelineState: { trustTier: '4' },
-      },
-    });
-
-    expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
-    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
-
-    // No PolicyBlockedError, and the guarded stage ran.
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.nodeResults.find((r) => r.nodeId === 'route-model')?.status).toBe(
-      'success'
-    );
-  });
-
   it('the plan is backed by a skeleton plugin, which is why route is honest', async () => {
     const { MODEL_ROUTER_PLUGIN } = await import('./core-plugins.js');
-    const { buildDelegatePlan } = await import('./v2-delegate.js');
     const plan = buildDelegatePlan(makeTask());
 
     expect(plan.stages[0]?.pluginId).toBe(MODEL_ROUTER_PLUGIN.manifest.id);
     // If this description ever stops saying SKELETON, the plugin gained a real
-    // handler and this whole block should be revisited.
+    // handler and the no-gate decision above should be revisited.
     expect(MODEL_ROUTER_PLUGIN.manifest.description).toContain('SKELETON');
   });
 });

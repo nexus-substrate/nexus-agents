@@ -154,10 +154,13 @@ function enrichWithGovernance(
 }
 
 /** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920).
- * `trustTier` threaded in so the V2 policy-engine's `trust-tier` rule
- * actually gates the delegate pipeline (#2957). Pre-#2957 the V2 delegate
- * path had zero policy enforcement because the producer never wrote
- * trustTier into metadata. */
+ * `trustTier` is threaded into the contract's policy snapshot (#2957), but
+ * nothing on this path can deny on it: the graph declares no policy gate
+ * (#4657) and its pre-execution check evaluates a route-typed stage, which
+ * the trust-tier rule allows at every tier. Nothing here reads the graph's
+ * verdict either, so a gate that fired would report a refusal the delegation
+ * above never honoured — the reason the cannot-fire gate was removed rather
+ * than widened. */
 function instrumentV2Pipeline(
   input: { task: string },
   logger: ILogger,
