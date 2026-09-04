@@ -23,7 +23,12 @@ import type { Result } from '../core/index.js';
 import { ok, err, getErrorMessage } from '../core/index.js';
 import { ParseError } from '../core/types/workflow.js';
 
-import { REGISTRY_PATH, PAPERS_FILE, TECHNIQUES_FILE } from './research-helpers-io.js';
+import {
+  REGISTRY_PATH,
+  PAPERS_FILE,
+  TECHNIQUES_FILE,
+  resolveRegistryRoot,
+} from './research-helpers-io.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
 
 /**
@@ -126,9 +131,11 @@ export async function ensureRegistryFile(
 /**
  * Convenience: scaffold both papers.yaml and techniques.yaml. Used by the
  * research workflow startup paths that need both registries available.
+ * Without an explicit `rootDir` the files land at the resolved registry root
+ * (#5053), never at a bare cwd below it.
  */
 export async function ensureResearchRegistry(rootDir?: string): Promise<Result<void, ParseError>> {
-  const root = rootDir ?? process.cwd();
+  const root = resolveRegistryRoot(rootDir);
   const papers = await ensureRegistryFile(root, PAPERS_FILE);
   if (!papers.ok) return papers;
   const techniques = await ensureRegistryFile(root, TECHNIQUES_FILE);

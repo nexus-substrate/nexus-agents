@@ -18,24 +18,29 @@ import type { ResearchIndex } from '../indexer/research-index/index.js';
 vi.mock('node:fs/promises');
 vi.mock('node:path');
 vi.mock('../indexer/research-index/index.js');
+// #5053: the registry root comes from the resolver, not process.cwd(). This
+// file previously pinned the cwd behaviour via a `process.cwd` spy.
+vi.mock('./research-helpers-io.js', () => ({
+  REGISTRY_PATH: 'docs/research/registry',
+  getProjectRoot: (): string => '/test/project',
+}));
 
 const mockFs = vi.mocked(fs);
 const mockPath = vi.mocked(path);
 const mockIndexer = vi.mocked(indexer);
 
 describe('research-helpers-index-ops', () => {
-  const mockCwd = '/test/project';
   const mockRegistryPath = '/test/project/docs/research/registry';
   const mockIndexPath = '/test/project/docs/research/RESEARCH_INDEX.md';
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock process.cwd
-    vi.spyOn(process, 'cwd').mockReturnValue(mockCwd);
-
-    // Mock path.resolve
+    // Mock path.resolve / path.join
     mockPath.resolve.mockImplementation((...args: string[]) => {
+      return args.join('/').replace(/\/+/g, '/');
+    });
+    mockPath.join.mockImplementation((...args: string[]) => {
       return args.join('/').replace(/\/+/g, '/');
     });
 

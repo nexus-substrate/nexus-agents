@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
@@ -21,11 +22,12 @@ import {
 
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { getResearchStatus, findOverlaps } from '../../cli/research-helpers.js';
+import { getResearchStatus, findOverlaps, getProjectRoot } from '../../cli/research-helpers.js';
 import { checkRejected, formatRejectionWarning } from '../../research/negative-results.js';
 import { parseRegistry } from '../../indexer/research-index/index.js';
 import { generateStatsJson } from '../../indexer/research-index/index.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { REGISTRY_PATH } from '../../cli/research-helpers-io.js';
 
 // =============================================================================
 // SCHEMAS
@@ -158,7 +160,8 @@ async function handleOverlap(input: ResearchQueryInput): Promise<ResearchQueryRe
 
 /** Handles stats action. */
 function handleStats(): ResearchQueryResponse {
-  const registryPath = `${process.cwd()}/docs/research/registry`;
+  // #5053: resolve from the workspace/repo root, not the server's cwd.
+  const registryPath = join(getProjectRoot(), REGISTRY_PATH);
   const result = parseRegistry({ registryPath });
   if (!result.ok) {
     return {

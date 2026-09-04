@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { REGISTRY_PATH } from './research-helpers-io.js';
 import {
   getProjectRoot,
   toStatusSummary,
@@ -40,9 +43,13 @@ describe('research-helpers', () => {
   });
 
   describe('getProjectRoot', () => {
-    it('should return current working directory', () => {
+    // Previously pinned `process.cwd()` — the #5053 defect: vitest runs with
+    // cwd at packages/nexus-agents, which is not where the registry lives.
+    it('should return the ancestor that owns docs/research/registry, not cwd', () => {
       const result = getProjectRoot();
-      expect(result).toBe(process.cwd());
+      expect(result).not.toBe(process.cwd());
+      expect(existsSync(join(result, REGISTRY_PATH))).toBe(true);
+      expect(process.cwd().startsWith(result)).toBe(true);
     });
   });
 
