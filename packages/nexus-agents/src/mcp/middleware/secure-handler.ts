@@ -92,7 +92,12 @@ export interface SecureHandlerConfig {
  * the handler would partially defeat sanitize-before-dispatch, which is the
  * property this middleware exists to guarantee.
  */
-export interface SanitizationContext {
+/*
+ * Not exported: every consumer reaches it through `HandlerContext.sanitization`
+ * or builds an object literal, so exporting the name adds a symbol with no
+ * cross-file consumer — which the #3024 gate correctly rejects.
+ */
+interface SanitizationContext {
   /** Whether sanitization changed the args at all. */
   readonly wasModified: boolean;
   /** HTML comments removed from untrusted fields (#5258). */
