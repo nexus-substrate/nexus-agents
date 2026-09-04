@@ -91,7 +91,25 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10. This job was already at 10 before #5396, so the 5 -> 10 sweep
+    # did not touch it — and it is now hitting that cap. Measured on the run
+    # that died (job 100926656068), which reached exactly 10m00s with four
+    # steps still unrun, missing by roughly ten seconds:
+    #
+    #   setup-node             0m12s     <- 2% of the job, not the ~90% the
+    #   Run lint               2m10s        install-bound gates are
+    #   Run architectural lint 6m51s     <- the dominant cost
+    #   9 gate scripts         1-3s each
+    #
+    # The case for 20 rather than 11 or 12 is VARIANCE, not that one outlier:
+    # three runs inside one hour took 4m51s, 6m57s, and >10m04s. A cap set just
+    # above the worst observed run converts normal variance into an
+    # intermittently red PR — and a timed-out job reports as CANCELLED,
+    # indistinguishable from a concurrency supersede, so the natural response
+    # is to re-run rather than investigate (#5396). Runaway-guard, not an SLA.
+    #
+    # If `architectural lint` keeps growing, the fix is that step, not this cap.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
