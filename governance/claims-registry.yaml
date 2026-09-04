@@ -51,6 +51,24 @@ claims:
       subjectContains: '47 MCP tools'
     lastVerified: '2026-07-06'
 
+  - id: ecosystem-readme-tool-count
+    claim: 'ECOSYSTEM.md states the test repos exercise subsets of 47 MCP tools.'
+    # Added #5309 after ECOSYSTEM.md was found carrying a stale "46 MCP tools"
+    # while every other live doc and the manifest said 47. Same drift, and the
+    # same remedy, as `npm-readme-tool-count` above — which exists because
+    # packages/nexus-agents/README.md had drifted to "42". Two independent docs
+    # drifting the same way is the argument for registering the count wherever
+    # it is stated, rather than only where someone remembered to look.
+    subject: ECOSYSTEM.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: manifest-tool-count
+      path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
+      expected: 47
+      subjectContains: '47 MCP tools'
+    lastVerified: '2026-09-04'
+
   - id: consensus-strategy-count
     claim: 'README advertises six consensus strategy names backed by the algorithm enum.'
     subject: README.md
