@@ -258,3 +258,86 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
     expect(seen).toEqual(['only']); // exactly one attempt — no fallback loop
   });
 });
+
+describe('cancellation stops launching further voters (#5393)', () => {
+  const ROLES = ['architect', 'security', 'scope_steward'] as unknown as VoterRole[];
+
+  function baseInput(
+    voteFn: (role: VoterRole) => Promise<AgentVoteResult>
+  ): Omit<Parameters<typeof launchVotesWithOverallDeadline>[0], 'signal'> {
+    return {
+      roles: ROLES,
+      proposal: 'p',
+      roleAdapters: new Map<VoterRole, IModelAdapter>(),
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 5_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 1,
+      overallDeadlineMs: 10_000,
+      voteFn,
+    };
+  }
+
+  it('does not call the adapter for voters not yet launched', async () => {
+    // The acceptance criterion: prove the REMAINING adapter calls do not
+    // happen. Asserting only that the job status became `cancelled` would pass
+    // against code that cancels the bookkeeping and keeps spending.
+    const controller = new AbortController();
+    const called: VoterRole[] = [];
+    const voteFn = (role: VoterRole): Promise<AgentVoteResult> => {
+      called.push(role);
+      controller.abort(); // abort as soon as the first voter runs
+      return Promise.resolve(makeOkVote(role));
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      ...baseInput(voteFn),
+      signal: controller.signal,
+    });
+
+    expect(called).toHaveLength(1);
+    expect(results).toHaveLength(ROLES.length);
+  });
+
+  it('reports the un-launched voters as errors, never as approvals', async () => {
+    // A cancelled voter that returned a default `approve` would manufacture
+    // consensus out of work that never ran.
+    const controller = new AbortController();
+    const voteFn = (role: VoterRole): Promise<AgentVoteResult> => {
+      controller.abort();
+      return Promise.resolve(makeOkVote(role));
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      ...baseInput(voteFn),
+      signal: controller.signal,
+    });
+
+    const cancelled = results.filter((r) => r.source === 'error');
+    expect(cancelled).toHaveLength(ROLES.length - 1);
+    for (const r of cancelled) {
+      expect(r.error).toContain('cancelled');
+      expect(r.vote?.decision).not.toBe('approve');
+    }
+  });
+
+  it('runs every voter when the signal never fires', async () => {
+    // The empty case: no signal, or an un-aborted one, must change nothing.
+    const called: VoterRole[] = [];
+    const voteFn = (role: VoterRole): Promise<AgentVoteResult> => {
+      called.push(role);
+      return Promise.resolve(makeOkVote(role));
+    };
+
+    const withUnabortedSignal = await launchVotesWithOverallDeadline({
+      ...baseInput(voteFn),
+      signal: new AbortController().signal,
+    });
+    expect(called).toHaveLength(ROLES.length);
+    expect(withUnabortedSignal.every((r) => r.source === 'llm')).toBe(true);
+
+    called.length = 0;
+    await launchVotesWithOverallDeadline(baseInput(voteFn));
+    expect(called).toHaveLength(ROLES.length);
+  });
+});

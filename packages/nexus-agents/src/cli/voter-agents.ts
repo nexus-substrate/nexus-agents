@@ -259,6 +259,11 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
   /** Named alternatives for a multi-option proposal (#4472); each voter picks one. */
   readonly declaredOptions?: readonly string[] | undefined;
+  /**
+   * Cancellation for an in-flight panel (#5393). Stops LAUNCHING voters that
+   * have not started; votes already in flight settle. Absent changes nothing.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -497,6 +502,8 @@ interface StaggeredVoteInput {
   /** Passed straight to executeAgentVote; declaredOptions per #4472. */
   readonly voteOptions: VoteExecutionSettings;
   readonly interDelay: number;
+  /** Cancellation for the un-launched remainder of the panel (#5393). */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -537,6 +544,7 @@ async function launchStaggeredVotes(
     interDelay,
     overallDeadlineMs,
     voteFn: executeAgentVote,
+    signal: input.signal,
   });
 }
 
@@ -602,6 +610,7 @@ export async function collectRealVotes(
     logger,
     voteOptions,
     interDelay,
+    signal: options.signal,
   });
 
   // #4983: the only point the question is answerable. Lazy detection means the

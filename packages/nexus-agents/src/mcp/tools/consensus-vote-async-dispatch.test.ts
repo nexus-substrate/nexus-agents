@@ -135,6 +135,49 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     const record = readJobResult(await dispatch());
     expect(JSON.stringify(record)).toContain('voters failed');
   });
+
+  it('records signalAccepted:true on the pending record — the claim follows the runner arity (#5393)', async () => {
+    // `runAsJob` derives this from `run.length >= 3`, so this asserts the
+    // capability and the record together: the runner cannot claim cancellation
+    // it does not take, and cannot take it without the record saying so.
+    //
+    // Before #5393 every adopting tool declared an arity-2 runner, so this was
+    // `false` everywhere and `cancel_job` marked jobs cancelled while every
+    // remaining voter still ran.
+    //
+    // Read on the PENDING record deliberately: that is when the field is
+    // written and when it is actionable — a caller deciding whether cancelling
+    // is worth attempting asks before the job finishes, not after.
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(erroredVotes(opts.roles))
+    );
+
+    const handler = captureHandler();
+    const result = await handler(
+      { proposal: 'ship the thing', quickMode: true, mode: 'async' },
+      CTX
+    );
+    const env = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    const jobId = env['jobId'] as string;
+
+    expect(readJobResult(jobId)?.signalAccepted).toBe(true);
+  });
+
+  it('actually hands the signal to collectRealVotes (#5393)', async () => {
+    // The seam between "the runner takes a signal" and "the launcher honours
+    // one". Both ends have their own tests, and both stay green if the middle
+    // drops the signal on the floor — which is the shape of the defect this
+    // whole issue is about. Asserted on what the collector RECEIVED.
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(erroredVotes(opts.roles))
+    );
+
+    await dispatch();
+
+    expect(collectRealVotesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
 });
 
 // The success half of the transform is asserted directly: exercising it through

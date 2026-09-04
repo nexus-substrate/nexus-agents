@@ -41,11 +41,35 @@ export interface LaunchVotesInput {
   readonly overallDeadlineMs: number;
   /** Vote launcher (injected by caller — typically executeAgentVote). */
   readonly voteFn: VoteFn;
+  /**
+   * Cancellation for in-flight panels (#5393).
+   *
+   * Checked after each stagger delay, so a cancel stops LAUNCHING the voters
+   * that have not started. Votes already in flight are left to settle — an
+   * adapter call is a subprocess or an HTTP request whose cost is already
+   * incurred, and abandoning it would lose the result without saving the spend.
+   * The win is the remaining panel: cancelling a 7-voter vote after two have
+   * run stops five model calls.
+   *
+   * Absent or un-aborted changes nothing.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 const DEADLINE_MESSAGE = 'overall consensus deadline exceeded';
+/**
+ * #5393: reported for a voter the panel never launched. An ERROR result, never
+ * a default decision — a cancelled voter returning `approve` would manufacture
+ * consensus out of work that never ran.
+ */
+const CANCELLED_MESSAGE = 'cancelled before this voter was launched';
 
 /**
+ * #3587: a voter routed to a diverse CLI that hard-fails (e.g. an OpenRouter
+ * model without tool-use → "no endpoints that support tool use", which the
+ * responseFormat retry can't fix) would silently shrink the panel. Retry once on
+ * the known-good fallback adapter so one bad CLI cannot drop a voter.
+ *
  * Should a failed vote be retried on the fallback adapter? Only when the diverse
  * adapter produced a genuine error (not the overall-deadline filler, which means
  * there's no time left) AND it wasn't already the fallback (#3587).
@@ -113,6 +137,24 @@ function raceWithDeadline(
   });
 }
 
+/**
+ * Read through a function, not inline (#5393): after one
+ * `signal?.aborted === true` check TypeScript narrows the field to `false` for
+ * the rest of the enclosing closure, which is unsound across an `await` — the
+ * whole point is that it can flip while a vote is in flight.
+ */
+function cancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+/*
+ * #5393 added two guards — one per model call this function can make — to a body
+ * already at the 50-line cap. Splitting the staggered mapper out would need six
+ * closed-over values threaded through an options object, which is more structure
+ * than two `if` statements justify; the #3587 rationale moved onto
+ * `shouldRetryOnFallback` to pay for what it could. Revisit if this grows again.
+ */
+// eslint-disable-next-line max-lines-per-function -- see the note above (#5393)
 export async function launchVotesWithOverallDeadline(
   input: LaunchVotesInput
 ): Promise<readonly AgentVoteResult[]> {
@@ -147,13 +189,12 @@ export async function launchVotesWithOverallDeadline(
 
   const wrapped = roles.map(async (role, i): Promise<AgentVoteResult> => {
     if (i > 0 && interDelay > 0) await delay(interDelay);
+    if (cancelled(input.signal)) return createErrorVoteResult(role, CANCELLED_MESSAGE, 0);
     const adapter = roleAdapters.get(role) ?? fallbackAdapter;
     const primary = await voteOnAdapter(role, adapter);
-    // #3587: a voter routed to a diverse CLI that hard-fails (e.g. an OpenRouter
-    // model without tool-use → "no endpoints that support tool use", which the
-    // responseFormat retry can't fix) would silently shrink the panel. Retry
-    // once on the known-good fallback adapter so one bad CLI can't drop a voter.
     if (!shouldRetryOnFallback(primary, adapter, fallbackAdapter)) return primary;
+    // A retry is a second model call; do not spend it on a cancelled panel.
+    if (cancelled(input.signal)) return primary;
     logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
       role,
       failedCli: adapterCliKey(adapter),
