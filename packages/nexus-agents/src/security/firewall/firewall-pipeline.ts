@@ -25,8 +25,18 @@ import {
 } from '../audit-trail.js';
 import { createDurableAuditSink } from '../audit-bridge.js';
 import { sanitizeInput } from '../input-sanitizer.js';
-import type { ReputationAssessment, GitHubUserMetadata } from '../reputation-model.js';
-import { assessReputation, ReputationCache, reconcileTrustTier } from '../reputation-model.js';
+import type {
+  ReputationAssessment,
+  GitHubUserMetadata,
+  ReputationGatingMode,
+} from '../reputation-model.js';
+import {
+  assessReputation,
+  ReputationCache,
+  gateWithReputation,
+  resolveReputationGatingMode,
+} from '../reputation-model.js';
+import type { ReputationGateDecision } from '../reputation-model.js';
 import type { ClassifyResult } from '../trust-classifier.js';
 import { classifyTrust, mapAuthorAssociation } from '../trust-classifier.js';
 import type { SanitizedInput, TrustTier } from '../trust-types.js';
@@ -66,6 +76,16 @@ export interface FirewallResult {
    * reputation unenforced.
    */
   readonly effectiveTrustTier: TrustTier;
+  /**
+   * The reputation gating decision behind `effectiveTrustTier` (#5381).
+   *
+   * **Absent means the reputation stage did not run** — not "it ran and
+   * suppressed nothing". `ReputationGateDecision.demotionSuppressed` is a
+   * required boolean, so surfacing it unconditionally would report `false` for a
+   * check that never happened. Since the stage defaults to off, that
+   * unevaluated case is the common one.
+   */
+  readonly reputationGate?: ReputationGateDecision;
   readonly atl: string;
   /**
    * Rule-of-Two assessment surfaced by the `policyEnforcement` stage (#3198):
@@ -145,6 +165,10 @@ export class HostileInputFirewall {
   private readonly context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean };
   /** #5382 rollout gate; resolved once at construction, not per call. */
   private readonly policyMode: FirewallPolicyMode;
+  /** #5381 reputation-demotion gate; a DIFFERENT knob from `policyMode`. */
+  private readonly reputationGatingMode: ReputationGatingMode;
+  /** #5405 seam: how a reputation assessment is obtained. */
+  private readonly assessReputationFn: (metadata: GitHubUserMetadata) => ReputationAssessment;
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -168,6 +192,13 @@ export class HostileInputFirewall {
     // once here rather than per `process()` call so a mid-run env change cannot
     // make two inputs in the same batch answer to different policies.
     this.policyMode = config.policyMode ?? resolveFirewallPolicyMode(config.env ?? process.env);
+    // Same resolve-once discipline, but a SEPARATE knob: `NEXUS_REPUTATION_GATING`,
+    // defaulting to `enforce`. Production reads this one, so the firewall reading
+    // it too is what makes the two compositions agree under one configuration.
+    this.reputationGatingMode =
+      config.reputationGatingMode ?? resolveReputationGatingMode(config.env ?? process.env);
+    this.assessReputationFn =
+      config.reputationAssessor ?? ((metadata) => assessReputation(metadata, this.reputationCache));
   }
 
   /**
@@ -192,10 +223,10 @@ export class HostileInputFirewall {
     // Stage 4: Assess reputation (optional)
     const reputation = this.runReputation(meta, sanitized);
 
-    // #3106: reconcile the classifier tier with reputation into the tier
-    // consumers enforce on (demotion-only; Tier-1/allowlist wins; == classifier
-    // tier when reputation absent). Previously the reputation tier was dropped.
-    const effectiveTrustTier = reconcileTrustTier(trust.trustTier, reputation);
+    const { tier: effectiveTrustTier, gate: reputationGate } = this.runReputationGate(
+      trust.trustTier,
+      reputation
+    );
 
     // Stage 5: Generate ATL (labelled with the enforced tier)
     const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
@@ -231,6 +262,7 @@ export class HostileInputFirewall {
       trust,
       ...(reputation !== undefined ? { reputation } : {}),
       effectiveTrustTier,
+      ...(reputationGate !== undefined ? { reputationGate } : {}),
       atl,
       ...(ruleOfTwoViolation !== undefined ? { ruleOfTwoViolation } : {}),
       policyMode: this.policyMode,
@@ -412,6 +444,30 @@ export class HostileInputFirewall {
     return result;
   }
 
+  /**
+   * Reconcile the classifier tier with reputation, under the rollout mode
+   * production honours (#3106 reconciliation, #5381 gating).
+   *
+   * #3106's reconciliation is demotion-only; Tier-1/allowlist wins; it equals
+   * the classifier tier when reputation is absent. #5381 puts it behind
+   * `NEXUS_REPUTATION_GATING`, so `audit` is audit-only here too — previously
+   * the firewall enforced unconditionally while production suppressed, on
+   * identical configuration.
+   *
+   * Returns no gate at all when the stage is off, so absence in the result
+   * means "not evaluated" rather than "evaluated, nothing suppressed" —
+   * `demotionSuppressed` is a required boolean and would otherwise report
+   * `false` for a check that never ran.
+   */
+  private runReputationGate(
+    classifierTier: TrustTier,
+    reputation: ReputationAssessment | undefined
+  ): { readonly tier: TrustTier; readonly gate?: ReputationGateDecision } {
+    if (!this.stages.reputationAssessment) return { tier: classifierTier };
+    const gate = gateWithReputation(classifierTier, reputation, this.reputationGatingMode);
+    return { tier: gate.enforcedTier, gate };
+  }
+
   private runReputation(
     meta: SourceMetadata,
     sanitized: SanitizedInput
@@ -431,7 +487,7 @@ export class HostileInputFirewall {
       injectionFlags: sanitized.injectionFlags,
     };
 
-    const result = assessReputation(metadata, this.reputationCache);
+    const result = this.assessReputationFn(metadata);
 
     if (this.stages.audit) {
       emitReputationEvent(this.auditTrail, {

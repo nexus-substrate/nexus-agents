@@ -12,6 +12,11 @@
 import { z } from 'zod';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import type { FirewallPolicyMode } from './firewall-policy-mode.js';
+import type {
+  ReputationAssessment,
+  ReputationGatingMode,
+  GitHubUserMetadata,
+} from '../reputation-model.js';
 
 // ============================================================================
 // Source Adapter Interface
@@ -122,6 +127,28 @@ export interface FirewallConfig {
    * the audit bridge (#3291). When absent, decisions are in-memory only.
    */
   readonly auditLogger?: IAuditLogger;
+  /**
+   * Rollout gate for REPUTATION demotion (#5381). Distinct from `policyMode`:
+   * different env var (`NEXUS_REPUTATION_GATING`) and — load-bearing — a
+   * different default, `enforce` rather than `off`. Production reads this same
+   * knob (`issue-triage.ts`, `pr-reviewer-helpers.ts`), and the firewall reading
+   * a different one is what let the two compositions disagree under identical
+   * configuration.
+   */
+  readonly reputationGatingMode?: ReputationGatingMode;
+  /**
+   * Supplies the reputation assessment. Defaults to `assessReputation` over the
+   * instance's cache.
+   *
+   * Injectable for the same reason as `env` above: without it the reconciliation
+   * is unobservable. The firewall hands the reputation engine only
+   * `authorAssociation` + `injectionFlags` — the two inputs the trust classifier
+   * already consumed — so reputation is never stricter than the classifier and
+   * `reconcileTrustTier` returns the classifier tier every time. Deleting the
+   * reconciliation passed 1588 tests (#5405). This seam is what lets a test
+   * present a stricter tier and prove the check can fire.
+   */
+  readonly reputationAssessor?: (metadata: GitHubUserMetadata) => ReputationAssessment;
 }
 
 // ============================================================================
