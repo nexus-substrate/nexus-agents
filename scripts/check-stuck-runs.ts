@@ -88,11 +88,16 @@ export function assessStuckRuns(runs: readonly RunSummary[]): StuckRunVerdict {
 }
 
 /* eslint-disable no-console */
-/** Read run summaries from `RUNS_JSON` (supplied by the workflow via `gh`). */
-function readRuns(): RunSummary[] {
-  const raw = process.env['RUNS_JSON'];
-  if (raw === undefined || raw.trim() === '') return [];
-  const now = Date.now();
+/**
+ * Parse the `gh run list --json databaseId,status,createdAt` output the
+ * workflow passes in `RUNS_JSON`. Returns `undefined` when the input is absent
+ * or empty (#5670): the workflow runs `RUNS_JSON=$(gh ...) pnpm exec tsx ...`,
+ * so a `gh` failure leaves the variable empty and the step still runs. That
+ * used to parse as `[]` and pass as "no runs waiting" — a measured-sounding
+ * verdict over nothing. `gh`'s literal `[]` is still a genuinely empty list.
+ */
+export function readRunsFrom(raw: string | undefined, now: number): RunSummary[] | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
   const parsed = JSON.parse(raw) as Array<{
     databaseId: number;
     status: string;
@@ -106,7 +111,17 @@ function readRuns(): RunSummary[] {
 }
 
 function main(): void {
-  const verdict = assessStuckRuns(readRuns());
+  const runs = readRunsFrom(process.env['RUNS_JSON'], Date.now());
+  if (runs === undefined) {
+    const reason =
+      'unmeasured: RUNS_JSON was empty — `gh run list` produced no output, so whether a ' +
+      'deploy is wedged could not be checked. Not evidence that nothing is waiting.';
+    console.log(reason);
+    console.log(`::error::${reason}`);
+    process.exitCode = 1;
+    return;
+  }
+  const verdict = assessStuckRuns(runs);
   console.log(verdict.reason);
   if (!verdict.ok) {
     console.log(`::error::${verdict.reason}`);

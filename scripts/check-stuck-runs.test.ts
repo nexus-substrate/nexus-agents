@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assessStuckRuns, STUCK_AFTER_MINUTES } from './check-stuck-runs.js';
+import { assessStuckRuns, readRunsFrom, STUCK_AFTER_MINUTES } from './check-stuck-runs.js';
 import type { RunSummary } from './check-stuck-runs.js';
 
 const run = (id: number, status: string, ageMinutes: number): RunSummary => ({
@@ -63,5 +63,31 @@ describe('assessStuckRuns', () => {
     ]);
 
     expect(v.stuck.map((r) => r.databaseId).sort()).toEqual([1, 3]);
+  });
+});
+
+describe('readRunsFrom (#5670)', () => {
+  // The workflow runs `RUNS_JSON=$(gh run list ...) pnpm exec tsx ...`: a gh
+  // failure leaves RUNS_JSON empty and the step still runs. An empty input
+  // used to read as "no runs waiting" — a measured-sounding pass.
+  it('reports an unset RUNS_JSON as unread, not as an empty list', () => {
+    expect(readRunsFrom(undefined, Date.now())).toBeUndefined();
+  });
+
+  it('reports an empty RUNS_JSON as unread, not as an empty list', () => {
+    expect(readRunsFrom('   ', Date.now())).toBeUndefined();
+  });
+
+  it("reads gh's literal [] as a genuinely empty run list", () => {
+    expect(readRunsFrom('[]', Date.now())).toEqual([]);
+  });
+
+  it('computes the age of each run from the reference time', () => {
+    const now = Date.parse('2026-09-05T12:00:00Z');
+    const runs = readRunsFrom(
+      JSON.stringify([{ databaseId: 7, status: 'queued', createdAt: '2026-09-05T10:00:00Z' }]),
+      now
+    );
+    expect(runs).toEqual([{ databaseId: 7, status: 'queued', ageMinutes: 120 }]);
   });
 });
