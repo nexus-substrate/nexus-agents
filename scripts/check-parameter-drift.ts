@@ -13,6 +13,7 @@
  * Output contract (parsed by the workflow):
  *   PARAM_DRIFT_STATUS=clean|drift|skipped
  *   PARAM_DRIFT_COUNT=<n>
+ *   PARAM_DRIFT_JOINED=<registry models that joined the catalog> (#5677; 0 → skipped)
  *
  * FAIL-LOUD on a provider fetch failure: the OpenRouter catalog is never legitimately
  * empty, so an empty result is a fetch problem — we emit `skipped` (NOT a false
@@ -29,7 +30,11 @@
 import { fetchOpenRouterCatalog } from '../packages/nexus-agents/src/config/openrouter-models-source.js';
 import { getInTreeCapabilitiesMatrix } from '../packages/nexus-agents/src/config/model-config-helpers.js';
 import { unsupportedParametersForModel } from '../packages/nexus-agents/src/config/model-parameter-support.js';
-import { reconcileParameterDrift, type RegistryParamView } from './parameter-drift-reconcile.js';
+import {
+  reconcileParameterDrift,
+  summarizeParameterJoin,
+  type RegistryParamView,
+} from './parameter-drift-reconcile.js';
 
 /** Build the curated-map view: one entry per registered model with the ids it may
  * appear under in the provider catalog and its resolver-computed unsupported set. */
@@ -45,6 +50,37 @@ function buildRegistryViews(): RegistryParamView[] {
       unsupportedParameters: [...unsupportedParametersForModel(m.id)],
     };
   });
+}
+
+/**
+ * Name the join (#5677): the reconcile skips every registry model whose ids
+ * match nothing in the catalog, so an empty findings list used to read as
+ * "clean" even when nothing had been compared. Returns false (after emitting
+ * `skipped`) when no model joined.
+ */
+function reportJoin(
+  catalog: Parameters<typeof summarizeParameterJoin>[0],
+  registryViews: RegistryParamView[]
+): boolean {
+  const join = summarizeParameterJoin(catalog, registryViews);
+  console.log(
+    `Joined ${String(join.joined.length)} of ${String(registryViews.length)} registry models to the catalog.`
+  );
+  if (join.unmatched.length > 0) {
+    console.log('Not in the catalog under any known id (not reconciled):');
+    for (const id of join.unmatched) console.log(`  - ${id}`);
+  }
+  console.log(`PARAM_DRIFT_JOINED=${String(join.joined.length)}`);
+  if (join.joined.length === 0) {
+    console.error(
+      '⚠️  SKIP: no registry model joined the provider catalog — nothing was reconciled. ' +
+        'Not "no drift".'
+    );
+    console.log('PARAM_DRIFT_STATUS=skipped');
+    console.log('PARAM_DRIFT_COUNT=0');
+    return false;
+  }
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -70,11 +106,14 @@ async function main(): Promise<void> {
   console.log(`${String(withCaps)} advertise a supported_parameters list.\n`);
 
   const registryViews = buildRegistryViews();
+
+  if (!reportJoin(catalog, registryViews)) return;
+
   const findings = reconcileParameterDrift(catalog, registryViews);
 
   if (findings.length === 0) {
     console.log(
-      '✅ No parameter drift — the curated map agrees with the provider for all matched models.'
+      '✅ No parameter drift — the curated map agrees with the provider for every model that joined.'
     );
     console.log('PARAM_DRIFT_STATUS=clean');
     console.log('PARAM_DRIFT_COUNT=0');
