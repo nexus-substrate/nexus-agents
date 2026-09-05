@@ -124,7 +124,7 @@ describe('classifyTrust', () => {
     expect(result.userRole).toBe('unknown');
   });
 
-  it('downgrades to Tier 4 when sanitizedInput has injection flags', () => {
+  it('downgrades legacy sanitized input when the measurement marker is absent', () => {
     const sanitizedInput = makeSanitizedInput({
       trustTier: '4',
       injectionFlags: ['authority_claim'],
@@ -142,6 +142,24 @@ describe('classifyTrust', () => {
     expect(result.wasDowngraded).toBe(true);
     expect(result.reason).toContain('Downgraded');
     expect(result.reason).toContain('injection');
+  });
+
+  it('does not downgrade when the content tier is explicitly unmeasured', () => {
+    const sanitizedInput = makeSanitizedInput({
+      trustTier: '4',
+      contentTierMeasured: false,
+      injectionFlags: ['authority_claim'],
+      wasModified: true,
+    });
+
+    const result = classifyTrust({
+      username: 'repo-owner',
+      authorAssociation: 'OWNER',
+      sanitizedInput,
+    });
+
+    expect(result.trustTier).toBe('1');
+    expect(result.wasDowngraded).toBe(false);
   });
 
   it('does not upgrade tier when sanitizedInput has a lower numeric tier', () => {

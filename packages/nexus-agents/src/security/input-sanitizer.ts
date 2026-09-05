@@ -429,6 +429,7 @@ export function sanitizeInput(
       content: comments.cleaned,
       originalLength: content.length,
       trustTier,
+      contentTierMeasured: true,
       userRole,
       injectionFlags,
       strippedElements: allStripped,
@@ -459,6 +460,7 @@ function buildFailClosedResult(
     content: '',
     originalLength: originalContent.length,
     trustTier: allowlisted ? '1' : '4',
+    contentTierMeasured: true,
     userRole,
     injectionFlags: [],
     strippedElements: [

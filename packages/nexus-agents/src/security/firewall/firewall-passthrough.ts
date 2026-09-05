@@ -8,15 +8,18 @@
 
 import { mapAuthorAssociation } from '../trust-classifier.js';
 import type { ClassifyResult } from '../trust-classifier.js';
+import { ROLE_DEFAULT_TRUST } from '../trust-types.js';
 import type { SanitizedInput } from '../trust-types.js';
 import type { SourceMetadata } from './firewall-types.js';
 
 export function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput {
+  const userRole = mapAuthorAssociation(meta.authorAssociation);
   return {
     content: meta.content,
     originalLength: meta.content.length,
-    trustTier: '3',
-    userRole: mapAuthorAssociation(meta.authorAssociation),
+    trustTier: ROLE_DEFAULT_TRUST[userRole],
+    contentTierMeasured: false,
+    userRole,
     injectionFlags: [],
     strippedElements: [],
     wasModified: false,

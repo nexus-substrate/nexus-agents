@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { assessReputation, ReputationCache } from '../reputation-model.js';
 import type { ReputationAssessment } from '../reputation-model.js';
+import { mapAuthorAssociation } from '../trust-classifier.js';
+import { ROLE_DEFAULT_TRUST } from '../trust-types.js';
 
 import { createGitHubAdapter } from './github-adapter.js';
 import { HostileInputFirewall } from './firewall-pipeline.js';
@@ -135,6 +137,45 @@ describe('HostileInputFirewall', () => {
   });
 
   describe('stage toggling', () => {
+    it('preserves OWNER trust when sanitization is disabled', () => {
+      const fw = createFirewall({
+        stages: { sanitization: false },
+      });
+      const result = fw.process(issueInput({ authorAssociation: 'OWNER' }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.value.trust.trustTier).toBe('1');
+      expect(result.value.sanitized.trustTier).toBe('1');
+      expect(result.value.sanitized.contentTierMeasured).toBe(false);
+    });
+
+    it('uses the mapped role base tier for a first-time author when sanitization is disabled', () => {
+      const fw = createFirewall({
+        stages: { sanitization: false },
+      });
+      const result = fw.process(issueInput({ authorAssociation: 'NONE' }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const role = mapAuthorAssociation('NONE');
+      expect(result.value.sanitized.trustTier).toBe(ROLE_DEFAULT_TRUST[role]);
+      expect(result.value.sanitized.contentTierMeasured).toBe(false);
+    });
+
+    it('preserves OWNER trust when sanitization is enabled', () => {
+      const fw = createFirewall({
+        stages: { sanitization: true },
+      });
+      const result = fw.process(issueInput({ authorAssociation: 'OWNER' }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.value.trust.trustTier).toBe('1');
+      expect(result.value.sanitized.trustTier).toBe('1');
+      expect(result.value.sanitized.contentTierMeasured).toBe(true);
+    });
+
     it('skips sanitization when disabled', () => {
       const fw = createFirewall({
         stages: { sanitization: false },

@@ -114,8 +114,9 @@ export function classifyTrust(input: ClassifyInput): ClassifyResult {
 
   const baseTier = ROLE_DEFAULT_TRUST[userRole];
 
-  // If sanitized input available, check for downgrade
-  if (input.sanitizedInput !== undefined) {
+  // Explicit false means the sanitization stage did not measure content.
+  // Absence is legacy sanitizer output and remains measured fail-closed.
+  if (input.sanitizedInput !== undefined && input.sanitizedInput.contentTierMeasured !== false) {
     const contentTier = input.sanitizedInput.trustTier;
     const downgraded = TRUST_TIER_NUMERIC[contentTier] > TRUST_TIER_NUMERIC[baseTier];
 
