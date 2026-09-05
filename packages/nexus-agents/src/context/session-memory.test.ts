@@ -15,6 +15,7 @@ import {
   type CompletedTask,
   type ResolvedError,
 } from './session-memory.js';
+import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../core/time-provider.js';
 
 // ============================================================================
 // Test Setup
@@ -27,6 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetTimeProvider();
   if (fs.existsSync(testDir)) {
     fs.rmSync(testDir, { recursive: true });
   }
@@ -132,6 +134,23 @@ describe('SessionMemory', () => {
   // ============================================================================
 
   describe('recording', () => {
+    it('should stamp and persist a learning with its record time', () => {
+      const recordedAt = new Date('2026-09-05T14:30:00.000Z');
+      setTimeProvider(new FixedTimeProvider(recordedAt));
+      const memory = createTestMemory();
+      memory.startSession('record-time-test');
+
+      memory.recordLearning({
+        pattern: 'Preserve provenance timestamps',
+        context: 'Session memory queries',
+        confidence: 0.9,
+      });
+      memory.endSession('Recorded timestamp');
+
+      const reloaded = createTestMemory().loadEpisodes();
+      expect(reloaded[0]?.learnings[0]?.recordedAt).toBe(recordedAt.toISOString());
+    });
+
     it('should record learnings', () => {
       const memory = createTestMemory();
       memory.startSession('recording-test');
@@ -238,6 +257,26 @@ describe('SessionMemory', () => {
   // ============================================================================
 
   describe('retrieval', () => {
+    it('should load legacy learnings without a record time', () => {
+      fs.mkdirSync(testDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(testDir, 'episode-2026-01-01-legacy.json'),
+        JSON.stringify({
+          sessionId: 'legacy-session',
+          date: '2026-01-01',
+          durationMs: 1,
+          summary: 'Predates learning timestamps',
+          learnings: [{ pattern: 'Legacy pattern', context: 'Legacy context', confidence: 0.8 }],
+          tasksCompleted: [],
+          errorsResolved: [],
+        })
+      );
+
+      const episodes = createTestMemory().loadEpisodes();
+
+      expect(episodes[0]?.learnings[0]?.recordedAt).toBeUndefined();
+    });
+
     it('should load episodes from previous sessions', () => {
       // Create first session
       const memory1 = createTestMemory();

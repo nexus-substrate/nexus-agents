@@ -173,7 +173,10 @@ export class SessionMemory {
       );
     }
 
-    const updated = [...this.currentSession.learnings, learning];
+    const updated = [
+      ...this.currentSession.learnings,
+      { ...learning, recordedAt: getTimeProvider().nowIso() },
+    ];
     if (updated.length > this.maxLearningsPerSession) {
       updated.splice(0, updated.length - this.maxLearningsPerSession);
       this.log.debug('Learning FIFO eviction', { kept: this.maxLearningsPerSession });

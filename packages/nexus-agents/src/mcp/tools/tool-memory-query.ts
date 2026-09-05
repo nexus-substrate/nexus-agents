@@ -55,7 +55,8 @@ export function querySessionMemory(
     type: 'learning',
     content: `${l.pattern} (${l.context})`,
     relevance: scoreRelevance(l.pattern + ' ' + l.context, keywords),
-    timestamp: now,
+    timestamp: l.recordedAt !== undefined ? new Date(l.recordedAt) : now,
+    timestampSource: l.recordedAt !== undefined ? 'recorded' : 'query-time',
     metadata: { confidence: l.confidence, source: l.source },
   }));
 }

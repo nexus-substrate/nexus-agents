@@ -4,18 +4,24 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CreateTaskRequestHandlerExtra } from '@modelcontextprotocol/sdk/experimental/tasks';
 import type { ILogger, IModelAdapter, CompletionResponse, StreamChunk } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import type { Expert } from '../../agents/index.js';
 import { ExpertFactory, RecoverableExpert } from '../../agents/index.js';
 import { RateLimiter } from '../middleware/index.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
 import {
   ExecuteExpertInputSchema,
+  type ExecuteExpertInput,
   type ExecuteExpertDeps,
+  type ExecuteExpertResponse,
   buildTask,
   maybeFetchContextPrefix,
   buildSuccessResponse,
   extractExpertConfidence,
+  registerExecuteExpertTool,
 } from './execute-expert.js';
 
 /**
@@ -99,6 +105,61 @@ function createMockLogger(): ILogger {
     setLevel: vi.fn(),
   };
   return mockLogger;
+}
+
+type CapturedCreateTask = (
+  args: ExecuteExpertInput,
+  extra: CreateTaskRequestHandlerExtra
+) => Promise<unknown>;
+
+function captureCreateTask(deps: ExecuteExpertDeps): CapturedCreateTask {
+  let createTask: CapturedCreateTask | undefined;
+  const registerToolTask = vi.fn((...args: unknown[]) => {
+    createTask = (args[2] as { createTask: CapturedCreateTask }).createTask;
+  });
+  const server = { experimental: { tasks: { registerToolTask } } } as unknown as McpServer;
+  registerExecuteExpertTool(server, deps);
+  if (createTask === undefined) throw new Error('execute_expert task handler was not registered');
+  return createTask;
+}
+
+async function executeRegisteredExpert(
+  tokensUsed: number,
+  tokensMeasured: boolean
+): Promise<{ response: ExecuteExpertResponse; completion: Record<string, unknown> }> {
+  const expert = createMockExpert('code_expert');
+  expert.execute = vi.fn().mockResolvedValue({
+    ok: true,
+    value: {
+      output: 'analysis',
+      metadata: { durationMs: 10, tokensUsed, tokensMeasured, toolsUsed: [], model: 'test-model' },
+    },
+  });
+  const info = vi.fn();
+  const notifier: IMcpNotifier = { info, debug: vi.fn(), warn: vi.fn() };
+  const deps = createTestDeps();
+  deps.expertRegistry.set('test-expert', expert);
+  deps.notifier = notifier;
+  deps.cliCache = {
+    get: () => ({ healthy: true }),
+  } as unknown as NonNullable<ExecuteExpertDeps['cliCache']>;
+  const storeTaskResult = vi.fn().mockResolvedValue(undefined);
+  const extra = {
+    taskStore: {
+      createTask: vi.fn().mockResolvedValue({ taskId: 'task-1' }),
+      storeTaskResult,
+    },
+  } as unknown as CreateTaskRequestHandlerExtra;
+
+  await captureCreateTask(deps)({ expertId: 'test-expert', task: 'Review code' }, extra);
+  await vi.waitFor(() => {
+    expect(storeTaskResult).toHaveBeenCalled();
+  });
+  const stored = storeTaskResult.mock.calls[0]?.[2] as { content: Array<{ text: string }> };
+  const completion = info.mock.calls.find(
+    (call) => (call[1] as Record<string, unknown>)['event'] === 'expert_complete'
+  )?.[1] as Record<string, unknown>;
+  return { response: JSON.parse(stored.content[0]!.text) as ExecuteExpertResponse, completion };
 }
 
 describe('ExecuteExpertInputSchema', () => {
@@ -269,6 +330,62 @@ describe('buildSuccessResponse confidence surfacing (#3766)', () => {
     });
     expect(res.confidence).toBeUndefined();
     expect(res.output).toBe('just a string');
+  });
+});
+
+describe('buildSuccessResponse token provenance (#5536)', () => {
+  it('keeps the legacy response shape when provenance is unavailable', () => {
+    const response = buildSuccessResponse({
+      expertId: 'e1',
+      role: 'code',
+      output: 'analysis',
+      durationMs: 10,
+      tokensUsed: 25,
+    });
+
+    expect(response).not.toHaveProperty('tokensMeasured');
+  });
+
+  it('marks a placeholder zero as unmeasured when adapter usage is absent', () => {
+    const response = buildSuccessResponse({
+      expertId: 'e1',
+      role: 'code',
+      output: 'analysis',
+      durationMs: 10,
+      tokensUsed: 0,
+      tokensMeasured: false,
+    });
+
+    expect(response.tokensUsed).toBe(0);
+    expect(response.tokensMeasured).toBe(false);
+  });
+
+  it('preserves the measured token count when adapter usage is present', () => {
+    const response = buildSuccessResponse({
+      expertId: 'e1',
+      role: 'code',
+      output: 'analysis',
+      durationMs: 10,
+      tokensUsed: 321,
+      tokensMeasured: true,
+    });
+
+    expect(response.tokensUsed).toBe(321);
+    expect(response.tokensMeasured).toBe(true);
+  });
+
+  it('threads unmeasured provenance through the registered task and notifier', async () => {
+    const { response, completion } = await executeRegisteredExpert(0, false);
+
+    expect(response).toMatchObject({ tokensUsed: 0, tokensMeasured: false });
+    expect(completion).toMatchObject({ tokenUsage: 0, tokensMeasured: false });
+  });
+
+  it('threads measured provenance through the registered task and notifier', async () => {
+    const { response, completion } = await executeRegisteredExpert(321, true);
+
+    expect(response).toMatchObject({ tokensUsed: 321, tokensMeasured: true });
+    expect(completion).toMatchObject({ tokenUsage: 321, tokensMeasured: true });
   });
 });
 

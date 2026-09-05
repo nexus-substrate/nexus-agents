@@ -20,8 +20,14 @@ export interface UnifiedMemoryResult {
   content: string;
   /** Relevance score (0-1) based on keyword matching */
   relevance: number;
-  /** When the entry was created */
+  /** When the entry was created, or the query time when creation time is unavailable */
   timestamp: Date;
+  /**
+   * 'recorded' when the backend persisted a creation time; 'query-time' when the entry
+   * predates creation-time tracking and `timestamp` is only the time of this query (not
+   * when the entry was created). Absent on backends that always had real timestamps.
+   */
+  readonly timestampSource?: 'recorded' | 'query-time';
   /** Additional metadata (e.g., confidence, keywords) */
   metadata?: Record<string, unknown>;
 }
