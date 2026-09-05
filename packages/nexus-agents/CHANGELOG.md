@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.17.0
+
+### Minor Changes
+
+- [#5562](https://github.com/nexus-substrate/nexus-agents/pull/5562) [`e560a44`](https://github.com/nexus-substrate/nexus-agents/commit/e560a44ec04ad96ec2175fba8a6f866abdb3e22b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record input truncation in sanitizer results and security audit events so over-limit content is reported as modified ([#5560](https://github.com/nexus-substrate/nexus-agents/issues/5560)).
+
 ## 8.16.0
 
 ### Minor Changes
