@@ -154,6 +154,11 @@ export interface ExecuteExpertResponse {
   durationMs: number;
   /** Token usage from the model */
   tokensUsed: number;
+  /**
+   * Whether `tokensUsed` is measured. `false` means the adapter reported no
+   * usage, so `tokensUsed` is a placeholder zero rather than a measurement.
+   */
+  tokensMeasured?: boolean;
   /** Status of execution */
   status: 'success' | 'error';
   /** Error message if status is 'error' */
@@ -297,6 +302,7 @@ interface SuccessResponseParams {
   output: unknown;
   durationMs: number;
   tokensUsed: number;
+  tokensMeasured?: boolean | undefined;
   modelUsed?: string | undefined;
 }
 
@@ -324,6 +330,7 @@ export function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpe
     output: outputStr,
     durationMs: params.durationMs,
     tokensUsed: params.tokensUsed,
+    ...(params.tokensMeasured !== undefined ? { tokensMeasured: params.tokensMeasured } : {}),
     status: 'success',
   };
   if (params.modelUsed !== undefined) {
@@ -528,6 +535,7 @@ async function tryExpertFallback(
       output: result.value.output,
       durationMs: fallbackDurationMs,
       tokensUsed: result.value.metadata.tokensUsed,
+      tokensMeasured: result.value.metadata.tokensMeasured,
       modelUsed: fallbackCli,
     }),
   };
@@ -592,6 +600,7 @@ async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<Exp
       output: result.value.output,
       durationMs,
       tokensUsed: result.value.metadata.tokensUsed,
+      tokensMeasured: result.value.metadata.tokensMeasured,
       modelUsed: modelId,
     }),
   };
@@ -861,6 +870,22 @@ interface BackgroundExpertTaskOpts {
   notifier: IMcpNotifier;
 }
 
+/** Report a completed background expert task with token provenance. */
+function notifyExpertComplete(
+  notifier: IMcpNotifier,
+  taskId: string,
+  response: ExecuteExpertResponse
+): void {
+  notifier.info('execute_expert', {
+    event: 'expert_complete',
+    taskId,
+    role: response.role,
+    confidence: response.status === 'success' ? 1 : 0,
+    tokenUsage: response.tokensUsed,
+    ...(response.tokensMeasured !== undefined ? { tokensMeasured: response.tokensMeasured } : {}),
+  });
+}
+
 /**
  * Runs expert execution in the background, updating task store on completion.
  * Fire-and-forget — errors are caught and stored as task failures.
@@ -889,13 +914,7 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
       return;
     }
 
-    notifier.info('execute_expert', {
-      event: 'expert_complete',
-      taskId,
-      role: result.value.role,
-      confidence: result.value.status === 'success' ? 1 : 0,
-      tokenUsage: result.value.tokensUsed,
-    });
+    notifyExpertComplete(notifier, taskId, result.value);
 
     await taskStore.storeTaskResult(taskId, 'completed', {
       ...toolSuccess(JSON.stringify(result.value, null, 2)),

@@ -26,6 +26,8 @@ export interface SessionLearning {
   readonly confidence: number;
   /** Optional source (e.g., task, error, user feedback) */
   readonly source?: string;
+  /** ISO timestamp assigned by SessionMemory when the learning is recorded */
+  readonly recordedAt?: string;
 }
 
 export const SessionLearningSchema = z.object({
@@ -33,6 +35,7 @@ export const SessionLearningSchema = z.object({
   context: z.string().min(1),
   confidence: z.number().min(0).max(1),
   source: z.string().optional(),
+  recordedAt: z.iso.datetime().optional(),
 });
 
 // ============================================================================

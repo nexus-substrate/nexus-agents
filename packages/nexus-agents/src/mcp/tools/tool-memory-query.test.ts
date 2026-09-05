@@ -7,7 +7,7 @@
  * @module mcp/tools/tool-memory-query.test
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ILogger } from '../../core/index.js';
 
 // Mock SessionMemory
@@ -76,6 +76,7 @@ import {
   queryAgenticMemory,
   queryTypedMemory,
   queryAdaptiveMemory,
+  querySessionMemory,
 } from './tool-memory-query.js';
 import { ToolMemoryManager } from './tool-memory.js';
 
@@ -98,6 +99,45 @@ describe('tool-memory cross-query', () => {
     mockSessionMemory.startSession.mockReturnValue({ ok: true, value: [] });
     mockSessionMemory.searchLearnings.mockReturnValue([]);
     manager = new ToolMemoryManager(createMockLogger());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('session learning timestamps (#5536)', () => {
+    it('keeps the record time stable across later queries', () => {
+      const recordedAt = '2026-09-05T14:30:00.000Z';
+      const learning = {
+        pattern: 'Preserve provenance timestamps',
+        context: 'Session memory queries',
+        confidence: 0.9,
+        recordedAt,
+      };
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-05T15:30:00.000Z'));
+      const first = querySessionMemory([learning], ['provenance'], 1);
+      vi.setSystemTime(new Date('2026-09-06T15:30:00.000Z'));
+      const second = querySessionMemory([learning], ['provenance'], 1);
+
+      expect(first[0]?.timestamp).toEqual(new Date(recordedAt));
+      expect(second[0]?.timestamp).toEqual(first[0]?.timestamp);
+      expect(first[0]?.timestampSource).toBe('recorded');
+      expect(second[0]?.timestampSource).toBe('recorded');
+    });
+
+    it('marks query-time timestamps for legacy learnings without a record time', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-05T15:30:00.000Z'));
+      const results = querySessionMemory(
+        [{ pattern: 'Legacy learning', context: 'Old episode', confidence: 0.8 }],
+        ['legacy'],
+        1
+      );
+
+      expect(results[0]?.timestamp).toBeInstanceOf(Date);
+      expect(results[0]?.timestampSource).toBe('query-time');
+    });
   });
 
   describe('queryAll belief keyword fallback (#1225)', () => {
