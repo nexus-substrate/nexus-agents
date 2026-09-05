@@ -385,6 +385,50 @@ describe('toSuiteResult', () => {
     expect(suite.summary.passed).toBe(true);
   });
 
+  it('reports a suite whose invocations all failed as not passed, naming the scenario (#5689)', () => {
+    // passed:true / failures:[] were literals; failureCount and errors that
+    // benchmarkScenario recorded were never read.
+    const result: AdapterLatencyResult = {
+      timestamp: '2026-02-05T12:00:00-05:00',
+      environment: {
+        nodeVersion: 'v22.0.0',
+        platform: 'linux',
+        arch: 'x64',
+        cpuModel: 'CPU',
+        cpuCores: 4,
+        totalMemory: 8 * 1024 * 1024 * 1024,
+      },
+      results: [
+        {
+          adapterName: 'codex',
+          scenario: 'simple',
+          transport: 'subprocess',
+          latency: {
+            min: 0,
+            max: 0,
+            mean: 0,
+            p50: 0,
+            p75: 0,
+            p90: 0,
+            p95: 0,
+            p99: 0,
+            stdDev: 0,
+            sampleCount: 0,
+          },
+          successCount: 0,
+          failureCount: 5,
+          errors: ['spawn ENOENT'],
+        },
+      ],
+      totalDurationMs: 100,
+    };
+
+    const suite = toSuiteResult(result);
+
+    expect(suite.summary.passed).toBe(false);
+    expect(suite.summary.failures).toEqual(['codex/simple: 5/5 invocations failed (spawn ENOENT)']);
+  });
+
   it('handles empty results', () => {
     const result: AdapterLatencyResult = {
       timestamp: '2026-02-05T12:00:00-05:00',
@@ -404,6 +448,11 @@ describe('toSuiteResult', () => {
 
     expect(suite.operations).toHaveLength(0);
     expect(suite.summary.avgP95Latency).toBe(0);
+    // Benchmarked nothing: not a pass (#5689).
+    expect(suite.summary.passed).toBe(false);
+    expect(suite.summary.failures).toEqual([
+      'No operations were benchmarked - thresholds unmeasured',
+    ]);
   });
 });
 

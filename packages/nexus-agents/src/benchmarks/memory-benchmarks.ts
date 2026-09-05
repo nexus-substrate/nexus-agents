@@ -122,6 +122,7 @@ async function measureSearchQuality(
   let totalRecall = 0;
   let totalMrr = 0;
   let queries = 0;
+  let failedQueries = 0;
 
   for (const pattern of config.searchPatterns) {
     const relevant = data.entries.filter(
@@ -131,7 +132,13 @@ async function measureSearchQuality(
     if (relevant.length === 0) continue;
 
     const searchResult = await backend.search(pattern, 10);
-    if (!searchResult.ok) continue;
+    if (!searchResult.ok) {
+      // The query ran and returned nothing usable: score it as zero rather
+      // than drop it from the denominator (#5689).
+      queries++;
+      failedQueries++;
+      continue;
+    }
 
     const retrieved = searchResult.value.map((r) => r.key);
     const metrics = calculatePatternMetrics(retrieved, relevant);
@@ -142,7 +149,10 @@ async function measureSearchQuality(
     queries++;
   }
 
-  return computeAverageMetrics(totalPrecision, totalRecall, totalMrr, queries);
+  return {
+    ...computeAverageMetrics(totalPrecision, totalRecall, totalMrr, queries),
+    failedQueries,
+  };
 }
 
 /**

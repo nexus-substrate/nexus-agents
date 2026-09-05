@@ -94,6 +94,7 @@ function createMockTokenResult(savingsPercent: number): TokenBenchmarkResult {
     },
     savingsPercent,
     meetsMemZeroTarget: savingsPercent >= 90,
+    searchesFailed: 0,
   };
 }
 

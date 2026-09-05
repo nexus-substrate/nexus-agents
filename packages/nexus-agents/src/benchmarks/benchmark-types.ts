@@ -73,6 +73,11 @@ export interface QualityMetrics {
   readonly mrr: number;
   /** Normalized discounted cumulative gain at k. */
   readonly ndcgAtK: number;
+  /**
+   * Queries whose search call returned an error (#5689). Each is scored as
+   * zero precision/recall/MRR rather than dropped from the average.
+   */
+  readonly failedQueries?: number;
 }
 
 /**

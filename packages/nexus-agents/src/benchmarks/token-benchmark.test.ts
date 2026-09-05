@@ -10,9 +10,10 @@ import type {
   IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
-  MemoryError,
 } from '../context/memory-backend-types.js';
+import { MemoryError } from '../context/memory-backend-types.js';
 import type { Result } from '../core/result.js';
+import { DEFAULT_MEMORY_BENCHMARK_CONFIG } from './memory-benchmarks.js';
 
 function createMockBackend(): IContextMemoryBackend {
   const storage = new Map<string, { value: unknown; metadata: MemoryMetadata; createdAt: Date }>();
@@ -113,6 +114,8 @@ describe('calculateTokenMetrics', () => {
   });
 });
 
+const DEFAULT_SEARCH_PATTERN_COUNT = DEFAULT_MEMORY_BENCHMARK_CONFIG.searchPatterns.length;
+
 describe('runTokenBenchmark', () => {
   let mockBackend: IContextMemoryBackend;
 
@@ -123,6 +126,27 @@ describe('runTokenBenchmark', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('reports zero savings, not 100%, when every search failed (#5689)', async () => {
+    // A backend whose search is down produced no retrieval context, so the
+    // "optimized" token count was 0 and the savings read as 100% — the Mem0
+    // target met by a benchmark that retrieved nothing.
+    const down: IContextMemoryBackend = {
+      ...mockBackend,
+      search: vi.fn((): Promise<Result<MemoryEntry[], MemoryError>> =>
+        Promise.resolve({ ok: false, error: new MemoryError('down') })
+      ),
+    };
+    const config = { datasetSizes: [10] as const, warmupIterations: 1, measurementIterations: 1 };
+
+    const promise = runTokenBenchmark(down, config);
+    await vi.runAllTimersAsync();
+    const results = await promise;
+
+    expect(results[0]?.searchesFailed).toBe(DEFAULT_SEARCH_PATTERN_COUNT);
+    expect(results[0]?.savingsPercent).toBe(0);
+    expect(results[0]?.meetsMemZeroTarget).toBe(false);
   });
 
   it('should return results for each dataset size', async () => {

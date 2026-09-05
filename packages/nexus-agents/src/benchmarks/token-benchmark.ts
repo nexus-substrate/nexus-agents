@@ -28,6 +28,12 @@ export interface TokenBenchmarkResult {
   readonly optimized: TokenMetrics;
   readonly savingsPercent: number;
   readonly meetsMemZeroTarget: boolean;
+  /**
+   * Search calls that returned an error (#5689). When every search failed the
+   * "optimized" context is empty for the wrong reason, so `savingsPercent` is
+   * reported as 0 and the target as not met — not as a 100% saving.
+   */
+  readonly searchesFailed: number;
 }
 
 /**
@@ -85,20 +91,26 @@ export async function runTokenBenchmark(
 
     // Optimized: only search results included in context
     const searchResults: MemoryEntry[] = [];
+    let searchesFailed = 0;
     for (const pattern of cfg.searchPatterns) {
       const result = await backend.search(pattern, 10);
       if (result.ok) {
         searchResults.push(...result.value);
+      } else {
+        searchesFailed++;
       }
     }
+    const searchesSucceeded = cfg.searchPatterns.length - searchesFailed;
 
     const optimizedEntries = searchResults.map((r) => ({
       content: String(r.value),
     }));
     const optimized = calculateTokenMetrics(optimizedEntries, cfg.searchPatterns.length);
 
+    // No successful search → no retrieval happened, so an empty optimized
+    // context is not a saving (#5689).
     const savingsPercent =
-      baseline.totalTokens > 0
+      baseline.totalTokens > 0 && searchesSucceeded > 0
         ? ((baseline.totalTokens - optimized.totalTokens) / baseline.totalTokens) * 100
         : 0;
 
@@ -107,7 +119,8 @@ export async function runTokenBenchmark(
       baseline,
       optimized,
       savingsPercent,
-      meetsMemZeroTarget: savingsPercent >= 90,
+      meetsMemZeroTarget: searchesSucceeded > 0 && savingsPercent >= 90,
+      searchesFailed,
     });
   }
 
