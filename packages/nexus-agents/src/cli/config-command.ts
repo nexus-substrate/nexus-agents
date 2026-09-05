@@ -72,6 +72,7 @@ function printSetResult(result: ConfigSetResult, verbose: boolean): void {
     writeLine(`  Previous: ${formatValue(result.previousValue)}`);
   }
   writeLine(`  New: ${formatValue(result.newValue)}`);
+  writeLine(`  Scope: ${result.scope}`);
   writeEmptyLine();
 }
 
@@ -154,6 +155,7 @@ function printImportResult(result: ConfigImportResult): void {
   writeLine(`${colors.green}Imported configuration${colors.reset}`);
   writeLine(`  Path: ${result.path}`);
   writeLine(`  Entries: ${String(result.entriesImported)}`);
+  writeLine(`  Scope: ${result.scope}`);
   if (result.backupPath !== undefined) {
     writeLine(`  Backup: ${result.backupPath}`);
   }

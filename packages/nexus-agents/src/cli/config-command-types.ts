@@ -83,6 +83,7 @@ export interface ConfigGetResult extends ConfigResultBase {
 /** Result for set operation. */
 export interface ConfigSetResult extends ConfigResultBase {
   readonly action: 'set';
+  readonly scope: 'process';
   readonly key: string;
   readonly previousValue: unknown;
   readonly newValue: unknown;
@@ -122,6 +123,7 @@ export interface ConfigExportResult extends ConfigResultBase {
 /** Result for import operation. */
 export interface ConfigImportResult extends ConfigResultBase {
   readonly action: 'import';
+  readonly scope: 'process';
   readonly path: string;
   readonly entriesImported: number;
   readonly backupPath?: string;

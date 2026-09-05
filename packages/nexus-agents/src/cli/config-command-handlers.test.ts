@@ -138,6 +138,13 @@ describe('handleSet', () => {
     expect(r.message).toContain('TIMEOUT_DEFAULTS.apiMs');
     expect(r.message).toContain('5000');
   });
+  it('reports process scope and the mapped persistent environment variable', async () => {
+    const r = await handleSet('TIMEOUT_DEFAULTS.apiMs', '5000');
+    expect(r.scope).toBe('process');
+    expect(r.message).toContain('this invocation only');
+    expect(r.message).toContain('NEXUS_TIMEOUT_API');
+    expect(r.message).not.toBe('Set TIMEOUT_DEFAULTS.apiMs = 5000');
+  });
   it('throws on invalid numeric value', async () => {
     await expect(handleSet('TIMEOUT_DEFAULTS.cliMs', 'abc')).rejects.toThrow(ConfigCommandError);
   });
@@ -347,6 +354,15 @@ describe('handleImport', () => {
     const r = await handleImport('in.json', { force: true });
     expect(r.message).toContain('1');
     expect(r.message).toContain('/resolved/in.json');
+  });
+  it('reports process scope and persistence guidance for mapped imported keys', async () => {
+    vi.mocked(parseConfigFile).mockReturnValue({
+      entries: [{ category: 'TIMEOUT_DEFAULTS', key: 'cliMs', value: 5000 }],
+    });
+    const r = await handleImport('in.json', { force: true });
+    expect(r.scope).toBe('process');
+    expect(r.message).toContain('this invocation only');
+    expect(r.message).toContain('NEXUS_TIMEOUT_CLI');
   });
   it('defaults options to empty object', async () => {
     expect((await handleImport('in.json')).success).toBe(true);
