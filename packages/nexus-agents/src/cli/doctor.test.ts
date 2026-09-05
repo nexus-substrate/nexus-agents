@@ -136,6 +136,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
     },
     installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     harnessAlignment: {
+      inProject: true,
       agentsMdExists: true,
       files: [],
       alignedCount: 0,

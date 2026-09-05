@@ -5,16 +5,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 describe('checkHarnessAlignment', () => {
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'doctor-harness-'));
+    root = mkdtempOutsideRepo('doctor-harness-');
   });
 
   afterEach(() => {
@@ -27,14 +27,27 @@ describe('checkHarnessAlignment', () => {
     writeFileSync(abs, content, 'utf-8');
   }
 
-  it('reports agentsMdExists=false when AGENTS.md is missing', () => {
+  it('reports harness alignment as not applicable outside a project', () => {
     const check = checkHarnessAlignment(root);
+    expect(check.inProject).toBe(false);
     expect(check.agentsMdExists).toBe(false);
   });
 
-  it('reports agentsMdExists=true when AGENTS.md is present', () => {
+  it('reports missing AGENTS.md inside a package project', () => {
+    writeAt('package.json', '{}');
+    const nested = join(root, 'src', 'nested');
+    mkdirSync(nested, { recursive: true });
+
+    const check = checkHarnessAlignment(nested);
+    expect(check.inProject).toBe(true);
+    expect(check.agentsMdExists).toBe(false);
+  });
+
+  it('reports agentsMdExists=true when AGENTS.md is present in a project', () => {
+    writeAt('package.json', '{}');
     writeAt('AGENTS.md', '# AGENTS.md');
     const check = checkHarnessAlignment(root);
+    expect(check.inProject).toBe(true);
     expect(check.agentsMdExists).toBe(true);
   });
 

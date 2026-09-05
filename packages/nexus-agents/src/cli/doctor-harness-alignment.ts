@@ -17,7 +17,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { findRepoRoot } from '../config/repo-root-detection.js';
 
 /** Per-harness alignment status. */
 export interface HarnessFileStatus {
@@ -35,6 +36,8 @@ export interface HarnessFileStatus {
 
 /** Aggregated harness-alignment health. */
 export interface HarnessAlignmentCheck {
+  /** True iff cwd or an ancestor contains a package.json or .git marker. */
+  readonly inProject: boolean;
   /** True iff AGENTS.md is the federated surface (canonical doc exists). */
   readonly agentsMdExists: boolean;
   /** Per-harness rows. */
@@ -67,6 +70,7 @@ const HARNESS_FILES: ReadonlyArray<{ harness: string; path: string }> = [
  * to `process.cwd()`) and report alignment status.
  */
 export function checkHarnessAlignment(cwd: string = process.cwd()): HarnessAlignmentCheck {
+  const inProject = findRepoRoot(cwd) !== null || hasPackageJsonAncestor(cwd);
   const agentsMdPath = join(cwd, 'AGENTS.md');
   const agentsMdExists = existsSync(agentsMdPath);
 
@@ -79,12 +83,24 @@ export function checkHarnessAlignment(cwd: string = process.cwd()): HarnessAlign
   const missingCount = files.filter((f) => !f.exists).length;
 
   return {
+    inProject,
     agentsMdExists,
     files,
     alignedCount,
     driftCount,
     missingCount,
   };
+}
+
+/** Returns whether the starting directory or an ancestor contains package.json. */
+function hasPackageJsonAncestor(start: string): boolean {
+  let current = resolve(start);
+  for (;;) {
+    if (existsSync(join(current, 'package.json'))) return true;
+    const parent = dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
 }
 
 function inspectFile(
