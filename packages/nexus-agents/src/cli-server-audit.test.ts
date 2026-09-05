@@ -156,6 +156,53 @@ describe('logSecurityConfig', () => {
     expect(warned).toBe(true);
   });
 
+  it('reports auth the way initializeAuth resolves it: on by default, token method (#5663)', () => {
+    // Two resolvers disagreed about the default: this line said auth was off
+    // and warned about unprotected endpoints, while initializeAuth — five
+    // lines later in startServer — defaulted to enabled + token and enforced it.
+    const saved = process.env['NEXUS_AUTH_ENABLED'];
+    delete process.env['NEXUS_AUTH_ENABLED'];
+    try {
+      const logger = createMockLogger();
+
+      logSecurityConfig(logger);
+
+      const line = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+        (call: unknown[]) => call[0] === 'Security configuration'
+      );
+      expect((line as unknown[])[1]).toMatchObject({ authEnabled: true, authMethod: 'token' });
+      const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('Authentication explicitly disabled')
+      );
+      expect(warned).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env['NEXUS_AUTH_ENABLED'];
+      else process.env['NEXUS_AUTH_ENABLED'] = saved;
+    }
+  });
+
+  it('reports auth off, and warns, when NEXUS_AUTH_ENABLED=false (#5663)', () => {
+    const saved = process.env['NEXUS_AUTH_ENABLED'];
+    process.env['NEXUS_AUTH_ENABLED'] = 'false';
+    try {
+      const logger = createMockLogger();
+
+      logSecurityConfig(logger);
+
+      const line = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+        (call: unknown[]) => call[0] === 'Security configuration'
+      );
+      expect((line as unknown[])[1]).toMatchObject({ authEnabled: false });
+      const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('Authentication explicitly disabled')
+      );
+      expect(warned).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env['NEXUS_AUTH_ENABLED'];
+      else process.env['NEXUS_AUTH_ENABLED'] = saved;
+    }
+  });
+
   it('says audit is on, and does not warn, when it is enabled', () => {
     // The pair. A hardcoded `false` plus an unconditional warning would pass
     // both tests above while reporting a running audit chain as absent.
