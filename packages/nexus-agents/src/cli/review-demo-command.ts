@@ -11,7 +11,11 @@
 import { getTimeProvider, formatPercentage, getErrorMessage } from '../core/index.js';
 import type { IModelAdapter } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
-import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
+import {
+  createPRReviewer,
+  formatFileReviewCoverage,
+  formatReviewComment,
+} from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity, ReviewPostOutcome } from '../dogfooding/index.js';
 import type { ReviewDemoOptions, ProgressStep } from './review-demo-types.js';
 import {
@@ -270,9 +274,7 @@ function updateAllStepsCompleted(
 function getStepMessage(index: number, review: PRReviewResult): string {
   const msgMap: Record<number, string> = {
     0: 'OK',
-    // #4350: this printed `expertReviews.length` — the EXPERT count — under a
-    // "files" label, so a 7-file PR reported "3 files".
-    1: `${String(review.filesReviewed)} files`,
+    1: formatFileReviewCoverage(review),
     2: getExpertMessage(review, 'security'),
     3: getExpertMessage(review, 'code_quality'),
     4: getExpertMessage(review, 'testing'),
@@ -342,6 +344,7 @@ function printPostOutcome(outcome: ReviewPostOutcome): void {
 function printSummary(review: PRReviewResult): void {
   process.stdout.write(`Decision: ${review.decision.replaceAll('_', ' ').toUpperCase()}\n`);
   process.stdout.write(`Experts:  ${String(review.expertCount)}\n`);
+  process.stdout.write(`Files:    ${formatFileReviewCoverage(review)}\n`);
   process.stdout.write(`Consensus: ${formatPercentage(review.consensusScore)}\n`);
   process.stdout.write(`Duration: ${String(review.totalDurationMs)}ms\n\n`);
 }

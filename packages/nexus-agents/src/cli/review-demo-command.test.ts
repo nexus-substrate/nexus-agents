@@ -13,6 +13,12 @@ import type { ProgressStep } from './review-demo-types.js';
 
 vi.mock('../dogfooding/index.js', () => ({
   createPRReviewer: vi.fn(),
+  formatFileReviewCoverage: (review: {
+    filesReviewed: number;
+    totalFiles: number;
+    reviewCoverage: string;
+  }) =>
+    `${String(review.filesReviewed)} of ${String(review.totalFiles)} files reviewed (${review.reviewCoverage})`,
   formatReviewComment: vi.fn(() => '## Review Comment'),
 }));
 
@@ -129,6 +135,9 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
     },
     postOutcome: { status: 'posted' },
     filesReviewed: 7,
+    filesWithPatch: 7,
+    totalFiles: 7,
+    reviewCoverage: 'full' as const,
     ...overrides,
   } satisfies PRReviewResult;
 }
@@ -357,6 +366,7 @@ describe('reviewDemoCommand - successful review', () => {
     const output = stdoutCalls.join('');
     expect(output).toContain('APPROVE');
     expect(output).toContain('95%');
+    expect(output).toContain('7 of 7 files reviewed (full)');
   });
 
   it('prints "No issues found" when no findings', async () => {

@@ -212,14 +212,14 @@ export interface PRReviewResult {
   readonly totalDurationMs: number;
   /** Number of experts that participated */
   readonly expertCount: number;
-  /**
-   * Number of changed files the review covered (#4350).
-   *
-   * The demo command's progress line printed `expertReviews.length` under a
-   * "files" label, so a 7-file PR reported "3 files" — the expert count. The
-   * fetch was always correct; the result simply carried no file count to print.
-   */
+  /** Total number of changed files reported by the SCM provider. */
+  readonly totalFiles: number;
+  /** Number of changed files for which the SCM provider returned a patch. */
+  readonly filesWithPatch: number;
+  /** Number of file patches supplied to at least one non-errored expert. */
   readonly filesReviewed: number;
+  /** Whether the successful expert panel covered all, some, or no changed files. */
+  readonly reviewCoverage: 'full' | 'partial' | 'none';
   /** Consensus score (0-1) */
   readonly consensusScore: number;
   /** Debate rounds completed */

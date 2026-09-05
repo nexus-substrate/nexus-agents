@@ -37,6 +37,7 @@ import type {
   GitHubUserMetadata,
 } from '../security/reputation-model.js';
 import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+import { formatReviewStats } from './pr-review-stats.js';
 
 const repLogger = createLogger({ component: 'PRReviewer.reputation' });
 
@@ -188,9 +189,14 @@ export function extractStringField(
   return undefined;
 }
 
-export function formatDiffs(pr: PRMetadata): string {
+/** Formats fetched patches and reports how many were supplied without truncation. */
+export function formatDiffs(pr: PRMetadata): {
+  readonly text: string;
+  readonly filesIncluded: number;
+} {
   const maxDiffLength = 2000;
   let totalLength = 0;
+  let filesIncluded = 0;
   const diffs: string[] = [];
   for (const file of pr.files) {
     if (file.patch === undefined) continue;
@@ -200,9 +206,10 @@ export function formatDiffs(pr: PRMetadata): string {
     } else {
       diffs.push(diff);
       totalLength += diff.length;
+      filesIncluded++;
     }
   }
-  return diffs.join('\n\n');
+  return { text: diffs.join('\n\n'), filesIncluded };
 }
 
 // =============================================================================
@@ -436,7 +443,7 @@ export function formatReviewComment(result: PRReviewDraft): string {
   const decisionText = result.decision.replaceAll('_', ' ').toUpperCase();
 
   const findingsSection = formatFindingsSection(result);
-  const statsSection = formatStatsSection(result);
+  const statsSection = formatReviewStats(result);
 
   return `## ${emoji} Nexus Agents Review: ${decisionText}
 
@@ -478,29 +485,6 @@ function formatFindingsSection(result: PRReviewDraft): string {
   }
 
   return lines.join('\n');
-}
-
-function formatStatsSection(result: PRReviewDraft): string {
-  const { findingsBySeverity } = result;
-  const total = sumFindings(findingsBySeverity);
-
-  const parts: string[] = [];
-  for (const severity of ['critical', 'high', 'medium', 'low', 'info'] as ReviewSeverity[]) {
-    const count = findingsBySeverity[severity];
-    if (count > 0) {
-      parts.push(`${SEVERITY_EMOJI[severity]} ${String(count)} ${severity}`);
-    }
-  }
-
-  return `<details>
-<summary>Review Statistics (${String(total)} findings)</summary>
-
-- Experts: ${String(result.expertCount)}
-- Consensus: ${(result.consensusScore * 100).toFixed(0)}%
-- Duration: ${String(result.totalDurationMs)}ms
-- Findings: ${parts.join(', ') || 'none'}
-
-</details>`;
 }
 
 // =============================================================================
