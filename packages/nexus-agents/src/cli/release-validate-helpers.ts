@@ -18,41 +18,102 @@
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { z } from 'zod';
 import type { ExpertValidationResult, ValidationFinding } from './release-validate-types.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import { anyOf } from '../utils/verdict-aggregation.js';
+import { safeJsonParse } from '../utils/type-coercion.js';
 import { scanRecentCommitsForSecrets } from './release-secret-scan.js';
 
-/** Options passed to each expert validator. */
 export interface ValidatorOptions {
   readonly version: string;
   readonly verbose: boolean;
 }
 
-/**
- * Security expert validator.
- * Checks for vulnerabilities, dependency issues, and security patterns.
- */
+const NPM_AUDIT_REPORT_SCHEMA = z.object({
+  metadata: z.object({
+    vulnerabilities: z.object({
+      moderate: z.number().int().nonnegative(),
+      high: z.number().int().nonnegative(),
+      critical: z.number().int().nonnegative(),
+    }),
+  }),
+});
+
+type NpmAuditCounts = z.infer<typeof NPM_AUDIT_REPORT_SCHEMA>['metadata']['vulnerabilities'];
+
+function parseNpmAuditCounts(output: string): NpmAuditCounts | undefined {
+  const parsed = NPM_AUDIT_REPORT_SCHEMA.safeParse(safeJsonParse(output));
+  return parsed.success ? parsed.data.metadata.vulnerabilities : undefined;
+}
+
+function createNpmAuditFinding(counts: NpmAuditCounts): ValidationFinding | undefined {
+  const severeCounts = [
+    ...(counts.high > 0 ? [`${String(counts.high)} high`] : []),
+    ...(counts.critical > 0 ? [`${String(counts.critical)} critical`] : []),
+  ];
+  if (severeCounts.length > 0) {
+    return {
+      severity: 'error',
+      category: 'security',
+      title: `npm audit found ${severeCounts.join(' and ')} vulnerabilities`,
+      description: 'npm audit reported high or critical vulnerabilities.',
+      remediation: 'Run npm audit fix or review and update vulnerable dependencies.',
+    };
+  }
+  if (counts.moderate === 0) return undefined;
+  return {
+    severity: 'warning',
+    category: 'security',
+    title: `npm audit found ${String(counts.moderate)} moderate vulnerabilities`,
+    description: 'npm audit reported moderate vulnerabilities.',
+    remediation: 'Review and update vulnerable dependencies.',
+  };
+}
+
+function unavailableNpmAuditFinding(reason: string): ValidationFinding {
+  return {
+    severity: 'error',
+    category: 'security',
+    title: `npm audit unavailable: ${reason}`,
+    description: 'npm audit did not produce a valid vulnerability report.',
+    remediation: 'Restore npm audit availability and rerun release validation.',
+  };
+}
+
+function getErrorStdout(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('stdout' in error)) return undefined;
+  return typeof error.stdout === 'string' ? error.stdout : undefined;
+}
+
+function runNpmAudit(): ValidationFinding | undefined {
+  try {
+    const output = execSync('npm audit --json --audit-level=high', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+    });
+    const counts = parseNpmAuditCounts(output);
+    return counts === undefined
+      ? unavailableNpmAuditFinding('invalid JSON response')
+      : createNpmAuditFinding(counts);
+  } catch (error) {
+    const stdout = getErrorStdout(error);
+    const counts = stdout === undefined ? undefined : parseNpmAuditCounts(stdout);
+    if (counts !== undefined) return createNpmAuditFinding(counts);
+    const reason = error instanceof Error ? error.message : String(error);
+    return unavailableNpmAuditFinding(reason);
+  }
+}
+
+/** Checks for vulnerabilities, dependency issues, and security patterns. */
 export async function validateSecurity(options: ValidatorOptions): Promise<ExpertValidationResult> {
   const startTime = Date.now();
   const findings: ValidationFinding[] = [];
 
   // Check for npm audit issues
-  try {
-    execSync('npm audit --audit-level=high 2>/dev/null', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
-    });
-  } catch {
-    findings.push({
-      severity: 'warning',
-      category: 'security',
-      title: 'npm audit has findings',
-      description: 'npm audit reported high or critical vulnerabilities.',
-      remediation: 'Run npm audit fix or review and update vulnerable dependencies.',
-    });
-  }
+  const auditFinding = runNpmAudit();
+  if (auditFinding !== undefined) findings.push(auditFinding);
 
   // Check for .env files that shouldn't be committed
   if (existsSync('.env')) {
