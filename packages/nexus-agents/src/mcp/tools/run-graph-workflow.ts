@@ -318,6 +318,9 @@ function createGraphWorkflowHandler(
     if (input.workflow === 'list') {
       return toolSuccess(JSON.stringify(getGraphWorkflowList(), null, 2));
     }
+    const code = input.inputs['code'];
+    if (input.workflow === 'security-scan' && (typeof code !== 'string' || code.trim() === ''))
+      return toolStructuredError({ errorCategory: 'validation', message: 'Missing inputs.code' });
     notifier.info('run_graph_workflow', {
       event: 'graph_workflow_start',
       workflow: input.workflow,

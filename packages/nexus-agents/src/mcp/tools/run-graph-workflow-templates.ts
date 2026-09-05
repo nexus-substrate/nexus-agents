@@ -68,6 +68,7 @@ const WORKFLOW_METADATA: readonly GraphWorkflowInfo[] = [
     nodeCount: 4,
     hasConditionalEdges: true,
   },
+  /** Empty code is rejected at the run_graph_workflow tool boundary (#5528). */
   {
     name: 'security-scan',
     description:
