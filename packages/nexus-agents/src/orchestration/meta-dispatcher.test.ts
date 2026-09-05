@@ -111,6 +111,104 @@ describe('MetaDispatcher.dispatch', () => {
       await dispatcher.dispatch(decision, { goal: 'implement the feature' });
     expect(sink.getOutcomes()).toHaveLength(2);
   });
+
+  it('records success: false with a failureReason when executor resolves completed: false', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ completed: false, planStatus: 'unapproved' }),
+    };
+    const sink = createRecordingOutcomeSink();
+    const dispatcher = createMetaDispatcher({ executors, outcomeSink: sink });
+
+    const result = await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(result.result).toEqual({ completed: false, planStatus: 'unapproved' });
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
+    expect(outcomes[0]?.strategy).toBe(decision.strategy);
+    expect(outcomes[0]?.success).toBe(false);
+    expect(outcomes[0]?.failureReason).toBeDefined();
+    expect(typeof outcomes[0]?.failureReason).toBe('string');
+  });
+
+  it('records success: false with failureReason containing error when executor resolves success: false', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ success: false, error: 'boom' }),
+    };
+    const sink = createRecordingOutcomeSink();
+    const dispatcher = createMetaDispatcher({ executors, outcomeSink: sink });
+
+    const result = await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(result.result).toEqual({ success: false, error: 'boom' });
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
+    expect(outcomes[0]?.strategy).toBe(decision.strategy);
+    expect(outcomes[0]?.success).toBe(false);
+    expect(outcomes[0]?.failureReason).toContain('boom');
+  });
+
+  it('records success: true when a consensus executor resolves decision: rejected', async () => {
+    const decision = decisionFor('should we adopt A or B');
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ decision: 'rejected' }),
+    };
+    const sink = createRecordingOutcomeSink();
+    const dispatcher = createMetaDispatcher({ executors, outcomeSink: sink });
+
+    const result = await dispatcher.dispatch(decision, { goal: 'should we do X or Y' });
+    expect(result.result).toEqual({ decision: 'rejected' });
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
+    expect(outcomes[0]?.strategy).toBe(decision.strategy);
+    expect(outcomes[0]?.success).toBe(true);
+    expect(outcomes[0]?.failureReason).toBeUndefined();
+  });
+
+  it('records success: true for a dry-run dev-pipeline result with no planStatus', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ completed: false, dryRun: true }),
+    };
+    const sink = createRecordingOutcomeSink();
+    const dispatcher = createMetaDispatcher({ executors, outcomeSink: sink });
+
+    const result = await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(result.result).toEqual({ completed: false, dryRun: true });
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
+    expect(outcomes[0]?.strategy).toBe(decision.strategy);
+    expect(outcomes[0]?.success).toBe(true);
+    expect(outcomes[0]?.failureReason).toBeUndefined();
+  });
+
+  it('uses custom classifyResult when provided in options', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ customStatus: 'failed' }),
+    };
+    const sink = createRecordingOutcomeSink();
+    const dispatcher = createMetaDispatcher({
+      executors,
+      outcomeSink: sink,
+      classifyResult: (res) => {
+        const r = res as Record<string, unknown>;
+        return r['customStatus'] === 'failed'
+          ? { success: false, failureReason: 'custom failure' }
+          : { success: true };
+      },
+    });
+
+    const result = await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(result.result).toEqual({ customStatus: 'failed' });
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.success).toBe(false);
+    expect(outcomes[0]?.failureReason).toBe('custom failure');
+  });
 });
 
 describe('MetaDispatcher onOutcome callback (#3593)', () => {
@@ -160,6 +258,32 @@ describe('MetaDispatcher onOutcome callback (#3593)', () => {
 
     await dispatcher.dispatch(decision, { goal: 'implement the feature' }).catch(() => undefined);
     expect(captured).toBe(false);
+  });
+
+  it('fires onOutcome with success=false when executor resolves in-band failure', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.resolve({ success: false, error: 'boom' }),
+    };
+    let captured:
+      { success: boolean; decisionId: string; failureReason?: string | undefined } | undefined;
+    const dispatcher = createMetaDispatcher({
+      executors,
+      onOutcome: (record, d) => {
+        captured = {
+          success: record.success,
+          decisionId: d.decisionId,
+          ...(record.failureReason !== undefined ? { failureReason: record.failureReason } : {}),
+        };
+      },
+    });
+
+    await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(captured).toEqual({
+      success: false,
+      decisionId: decision.decisionId,
+      failureReason: 'boom',
+    });
   });
 
   it('swallows errors thrown by onOutcome (observability is best-effort)', async () => {
