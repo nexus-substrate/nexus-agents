@@ -102,9 +102,15 @@ jobs:
 
       - name: Compute PR diff
         id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
+            exit 1
+          fi
           # Cap diff at 50k chars (matches MAX_DIFF_LENGTH in pr-review-tool.ts).
           # Truncating before the tool sees it keeps the failure mode visible
           # in the workflow logs rather than buried in a Zod error.
