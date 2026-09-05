@@ -127,7 +127,9 @@ export class ScmError extends Error {
 /** File change in a pull request. */
 export interface ScmFileChange {
   readonly filename: string;
-  readonly status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied';
+  readonly status:
+    'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged' | 'unknown';
+  readonly rawStatus?: string;
   readonly additions: number;
   readonly deletions: number;
   readonly patch?: string;

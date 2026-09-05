@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import type { FullCapableProvider } from '../scm/types.js';
+import type { FullCapableProvider, ScmFileChange } from '../scm/types.js';
 import { FINDING_SEVERITY_LEVELS } from '../security/sarif-types.js';
 
 /**
@@ -19,7 +19,7 @@ export interface PRFileChange {
   /** File path */
   readonly filename: string;
   /** Change status */
-  readonly status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied';
+  readonly status: ScmFileChange['status'];
   /** Number of additions */
   readonly additions: number;
   /** Number of deletions */

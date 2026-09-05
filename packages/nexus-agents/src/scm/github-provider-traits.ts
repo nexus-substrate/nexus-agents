@@ -171,10 +171,14 @@ function mapFileChange(raw: GhApiFileJson): ScmFileChange {
     modified: 'modified',
     renamed: 'renamed',
     copied: 'copied',
+    changed: 'changed',
+    unchanged: 'unchanged',
   };
+  const status = statusMap[raw.status] ?? 'unknown';
   return {
     filename: raw.filename,
-    status: statusMap[raw.status] ?? 'modified',
+    status,
+    ...(status === 'unknown' ? { rawStatus: raw.status } : {}),
     additions: raw.additions,
     deletions: raw.deletions,
     ...(raw.patch !== undefined ? { patch: raw.patch } : {}),

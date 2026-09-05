@@ -130,6 +130,75 @@ describe('GitHubReviewer', () => {
       }
     });
 
+    describe('file status mapping', () => {
+      beforeEach(() => {
+        mockExecFile.mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            number: 42,
+            title: 'Status fidelity',
+            body: '',
+            html_url: 'https://github.com/owner/repo/pull/42',
+            user: { login: 'testuser' },
+            author_association: 'COLLABORATOR',
+            base: { ref: 'main' },
+            head: { ref: 'feat/status-fidelity', sha: 'abc123' },
+            draft: false,
+            labels: [],
+            additions: 1,
+            deletions: 1,
+          }),
+        });
+      });
+
+      it('preserves the changed status', async () => {
+        mockExecFile.mockResolvedValueOnce({
+          stdout: JSON.stringify([
+            { filename: 'changed.ts', status: 'changed', additions: 1, deletions: 1 },
+          ]),
+        });
+
+        const result = await reviewer.getPullRequestDetail(42);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.files[0]?.status).toBe('changed');
+          expect(result.value.files[0]?.rawStatus).toBeUndefined();
+        }
+      });
+
+      it('preserves the unchanged status', async () => {
+        mockExecFile.mockResolvedValueOnce({
+          stdout: JSON.stringify([
+            { filename: 'unchanged.ts', status: 'unchanged', additions: 0, deletions: 0 },
+          ]),
+        });
+
+        const result = await reviewer.getPullRequestDetail(42);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.files[0]?.status).toBe('unchanged');
+          expect(result.value.files[0]?.rawStatus).toBeUndefined();
+        }
+      });
+
+      it('maps an unknown status without hiding its raw value', async () => {
+        mockExecFile.mockResolvedValueOnce({
+          stdout: JSON.stringify([
+            { filename: 'weird.ts', status: 'weird', additions: 0, deletions: 0 },
+          ]),
+        });
+
+        const result = await reviewer.getPullRequestDetail(42);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.files[0]?.status).toBe('unknown');
+          expect(result.value.files[0]?.rawStatus).toBe('weird');
+        }
+      });
+    });
+
     it('returns error on API failure', async () => {
       mockExecFile.mockRejectedValue(new Error('gh: not found'));
 
