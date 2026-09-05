@@ -7123,6 +7123,7 @@ VariableDeclaration RepoSecurityPlanInputSchema
   : z.ZodObject<{ categories: z.ZodOptional<z.ZodArray<z.ZodString>>; maxScanners: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; repo: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration ReputationAssessment
   readonly assessedAt: string
+  readonly coverage?: { readonly activity: "measured" | "unmeasured"; } | undefined
   readonly effectiveTrustTier: "1" | "2" | "3" | "4"
   readonly isSuspicious: boolean
   readonly reason: string

@@ -25,6 +25,7 @@ const mockGetIssueDetail = vi.fn();
 const mockListCommentDetails = vi.fn();
 const mockFetchUserMetadata = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
+const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
 
 /** Builds ScmUserMetadata; defaults to an established (old) account. */
 function userMeta(overrides: Partial<ScmUserMetadata> = {}): ScmUserMetadata {
@@ -53,7 +54,7 @@ vi.mock('../core/index.js', async () => {
       info: vi.fn(),
       debug: vi.fn(),
       error: vi.fn(),
-      warn: vi.fn(),
+      warn: mockWarn,
     })),
   };
 });
@@ -540,16 +541,56 @@ describe('IssueTriage', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('should handle failed comments fetch gracefully', async () => {
+    it('marks activity unmeasured and does not demote when comments are unavailable', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ authorAssociation: 'CONTRIBUTOR' }))
+      );
+      mockFetchUserMetadata.mockResolvedValue(
+        ok(userMeta({ createdAt: new Date().toISOString() }))
+      );
+      const triage = new IssueTriage();
+      mockListCommentDetails.mockResolvedValue(ok([]));
+      await triage.triageIssue('https://github.com/owner/repo/issues/42');
       mockListCommentDetails.mockResolvedValue(
         err(new ScmError('gh api failed: Forbidden', 'github', 403))
       );
 
-      const triage = new IssueTriage();
       const result = await triage.triageIssue('https://github.com/owner/repo/issues/42');
 
-      // Should succeed even if comments fail
       expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.trustAssessment.suspiciousSignals).not.toContain(
+        'no_prior_contributions'
+      );
+      expect(result.value.trustAssessment.coverage?.activity).toBe('unmeasured');
+      expect(result.value.trustAssessment.enforcedTrustTier).toBe(
+        result.value.trustAssessment.trustTier
+      );
+      expect(mockWarn).toHaveBeenCalledTimes(1);
+      expect(mockWarn).toHaveBeenCalledWith(
+        'Failed to fetch issue comments; activity reputation is unmeasured',
+        expect.objectContaining({ issueNumber: 42, error: expect.stringContaining('Forbidden') })
+      );
+    });
+
+    it('preserves zero-activity signals and demotion for measured empty comments', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ authorAssociation: 'CONTRIBUTOR' }))
+      );
+      mockFetchUserMetadata.mockResolvedValue(
+        ok(userMeta({ createdAt: new Date().toISOString() }))
+      );
+      mockListCommentDetails.mockResolvedValue(ok([]));
+
+      const result = await new IssueTriage().triageIssue('https://github.com/owner/repo/issues/42');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.trustAssessment.suspiciousSignals).toContain('no_prior_contributions');
+      expect(result.value.trustAssessment.coverage?.activity).toBe('measured');
+      expect(Number(result.value.trustAssessment.enforcedTrustTier)).toBeGreaterThan(
+        Number(result.value.trustAssessment.trustTier)
+      );
     });
 
     it('should handle owner trust tier (Tier 1)', async () => {
