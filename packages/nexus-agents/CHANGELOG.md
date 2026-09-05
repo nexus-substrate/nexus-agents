@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.18.0
+
+### Minor Changes
+
+- [#5563](https://github.com/nexus-substrate/nexus-agents/pull/5563) [`fb46892`](https://github.com/nexus-substrate/nexus-agents/commit/fb468922c7443f61926eb9d425c2da8879ef2349) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report reputation activity coverage and keep unavailable issue-comment history from producing zero-activity signals or trust-tier demotions.
+
 ## 8.17.0
 
 ### Minor Changes
