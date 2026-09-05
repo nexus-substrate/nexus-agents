@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.22.2
+
+### Patch Changes
+
+- [#5605](https://github.com/nexus-substrate/nexus-agents/pull/5605) [`760bae1`](https://github.com/nexus-substrate/nexus-agents/commit/760bae1429663bfc5a001a45fd274f7bfc93ba1e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correlate CompositeRouter difficulty calibration and model-selection shadow outcomes with the routed execution so concurrent tasks cannot overwrite or misattribute one another's feedback.
+
 ## 8.22.1
 
 ### Patch Changes
