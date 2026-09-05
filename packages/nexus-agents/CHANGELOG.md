@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.2
+
+### Patch Changes
+
+- [#5657](https://github.com/nexus-substrate/nexus-agents/pull/5657) [`25fba78`](https://github.com/nexus-substrate/nexus-agents/commit/25fba78c1a45a28b9fa91258b3f77dcb67eeab66) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Attribute aggregator synthesis audit entries to 'aggregator' rather than borrowing 'code-quality' evaluator role, and widen `AuditEntry.agent` to `EvaluatorRole | 'aggregator'` ([#5655](https://github.com/nexus-substrate/nexus-agents/issues/5655)).
+
 ## 8.26.1
 
 ### Patch Changes
