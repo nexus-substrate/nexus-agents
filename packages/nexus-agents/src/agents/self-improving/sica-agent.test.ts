@@ -29,6 +29,8 @@ class MockAgent implements IAgent {
 
   private shouldFail = false;
   private executionCount = 0;
+  private tokensUsed = 100;
+  private tokensMeasured: boolean | undefined;
 
   setShouldFail(fail: boolean): void {
     this.shouldFail = fail;
@@ -36,6 +38,11 @@ class MockAgent implements IAgent {
 
   getExecutionCount(): number {
     return this.executionCount;
+  }
+
+  setTokenUsage(tokensUsed: number, tokensMeasured: boolean): void {
+    this.tokensUsed = tokensUsed;
+    this.tokensMeasured = tokensMeasured;
   }
 
   execute(task: Task): Promise<Result<TaskResult, AgentError>> {
@@ -50,10 +57,11 @@ class MockAgent implements IAgent {
         taskId: task.id,
         output: `Completed: ${task.description}`,
         metadata: {
-          tokensUsed: 100,
+          tokensUsed: this.tokensUsed,
           durationMs: 500,
           toolsUsed: [],
           model: 'mock-model',
+          ...(this.tokensMeasured !== undefined && { tokensMeasured: this.tokensMeasured }),
           executedCli: 'codex',
           executedCliSource: 'executed',
         },
@@ -130,6 +138,21 @@ describe('SicaAgent', () => {
       const metrics = sicaAgent.getVersionManager().getMetrics(version!.id);
       expect(metrics?.executionCount).toBe(1);
       expect(metrics?.successCount).toBe(1);
+    });
+
+    it('preserves unmeasured token usage from the base agent (#5626)', async () => {
+      mockAgent.setTokenUsage(0, false);
+
+      const result = await sicaAgent.execute(sampleTask);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.metrics).toMatchObject({ tokensUsed: 0, tokensMeasured: false });
+      const version = sicaAgent.getActiveVersion();
+      expect(sicaAgent.getVersionManager().getMetrics(version!.id)).toMatchObject({
+        avgTokensUsed: 0,
+        unmeasuredExecutions: 1,
+      });
     });
 
     it('should handle base agent failures', async () => {

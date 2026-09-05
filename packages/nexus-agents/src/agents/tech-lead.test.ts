@@ -973,6 +973,111 @@ describe('Orchestrator', () => {
   });
 
   describe('execute', () => {
+    it('reports token usage from one model completion (#5626)', async () => {
+      const adapter = createMockAdapter();
+      adapter.completeResult = ok({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              taskId: 'test-task-1',
+              complexity: 1,
+              taskType: 'implementation',
+              requirements: [],
+              risks: [],
+              needsDecomposition: false,
+              approach: 'Direct implementation',
+              estimatedEffort: 1,
+            }),
+          },
+        ],
+        usage: { inputTokens: 40, outputTokens: 60, totalTokens: 100 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      });
+      const orchestrator = new Orchestrator({ adapter });
+
+      const result = await orchestrator.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(adapter.complete).toHaveBeenCalledTimes(1);
+      expect(result.value.metadata).toMatchObject({ tokensUsed: 100, tokensMeasured: true });
+    });
+
+    it('accumulates token usage across model completions (#5626)', async () => {
+      const adapter = createMockAdapter();
+      vi.mocked(adapter.complete)
+        .mockResolvedValueOnce(
+          ok({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  taskId: 'test-task-1',
+                  complexity: 8,
+                  taskType: 'implementation',
+                  requirements: [],
+                  risks: [],
+                  needsDecomposition: true,
+                  approach: 'Decompose first',
+                  estimatedEffort: 8,
+                }),
+              },
+            ],
+            usage: { inputTokens: 20, outputTokens: 40, totalTokens: 60 },
+            stopReason: 'end_turn',
+            model: 'test-model',
+          })
+        )
+        .mockResolvedValueOnce(
+          ok({
+            content: [{ type: 'text', text: '[]' }],
+            usage: { inputTokens: 10, outputTokens: 30, totalTokens: 40 },
+            stopReason: 'end_turn',
+            model: 'test-model',
+          })
+        );
+      const orchestrator = new Orchestrator({ adapter });
+
+      const result = await orchestrator.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
+      expect(result.value.metadata).toMatchObject({ tokensUsed: 100, tokensMeasured: true });
+    });
+
+    it('marks token usage unmeasured when the adapter reports no usage (#5626)', async () => {
+      const adapter = createMockAdapter();
+      adapter.completeResult = ok({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              taskId: 'test-task-1',
+              complexity: 1,
+              taskType: 'implementation',
+              requirements: [],
+              risks: [],
+              needsDecomposition: false,
+              approach: 'Direct implementation',
+              estimatedEffort: 1,
+            }),
+          },
+        ],
+        stopReason: 'end_turn',
+        model: 'test-model',
+      });
+      const orchestrator = new Orchestrator({ adapter });
+
+      const result = await orchestrator.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.metadata).toMatchObject({ tokensUsed: 0, tokensMeasured: false });
+    });
+
     it('reports the CLI used by the last model-backed step (#5513)', async () => {
       const adapter = createMockAdapter(['cli-claude', 'cli-codex']);
       const orchestrator = new Orchestrator({
