@@ -58,6 +58,14 @@ jobs:
           set -euo pipefail
           local_version=$(jq -r '.version' packages/nexus-agents/package.json)
           published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
+          # The sentinel is not a measurement: 0.0.0 sorts below every real
+          # version, so the npm-ahead branch below could never fire when the
+          # registry did not answer and the step printed "Version sync OK"
+          # over a failed lookup. Same guard as the manual-publish job.
+          if [ "$published_version" = "0.0.0" ]; then
+            echo "::error::npm view nexus-agents version failed (or the package has never been published), so the npm-ahead skew is unmeasured — not OK. Re-run once the registry answers."
+            exit 1
+          fi
           larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
           if [ "$published_version" != "$local_version" ] && [ "$larger" = "$published_version" ]; then
             echo "::error::npm-ahead version skew: npm latest is $published_version but" \
