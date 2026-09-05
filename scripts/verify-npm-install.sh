@@ -14,7 +14,7 @@
 #   0 — all smoke tests passed
 #   1 — install failed
 #   2 — binary not on PATH
-#   3 — version mismatch
+#   3 — version mismatch or unknown install mode
 #   4 — --help missing core commands
 #   5 — doctor command failed
 #   6 — MCP stdio handshake failed
@@ -25,10 +25,54 @@ set -euo pipefail
 
 VERSION="${1:-latest}"
 EXPECTED_VERSION="${EXPECTED_NEXUS_VERSION:-}"  # optional pin
+INSTALL_MODE="${NEXUS_VERIFY_INSTALL_MODE:-ignore-scripts}"
 
 step() { printf '\n========== %s ==========\n' "$*"; }
 fail() { printf '❌ %s\n' "$*" >&2; exit "${2:-1}"; }
 ok()   { printf '✅ %s\n' "$*"; }
+
+read_installed_version() {
+  local raw_version
+  raw_version=$(nexus-agents --version 2>&1 | tr -d '\r' | tail -1 || true)
+  INSTALLED_VERSION=$(printf '%s' "$raw_version" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [[ -z "$INSTALLED_VERSION" ]]; then
+    fail "--version did not contain a semver after install: '$raw_version'" 3
+  fi
+}
+
+resolve_requested_version() {
+  local version_output
+  if [[ -f "$VERSION" ]]; then
+    if ! version_output=$(tar -xOf "$VERSION" package/package.json 2>&1); then
+      printf '%s\n' "$version_output" >&2
+      fail "could not read package.json from tarball: $VERSION" 3
+    fi
+    REQUESTED_VERSION=$(printf '%s' "$version_output" | node -e '
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk) => { input += chunk; });
+      process.stdin.on("end", () => { process.stdout.write(JSON.parse(input).version); });
+    ')
+  elif [[ "$VERSION" == "latest" ]]; then
+    if ! version_output=$(npm view nexus-agents version); then
+      fail "could not resolve requested version: $INSTALL_SPEC" 3
+    fi
+    REQUESTED_VERSION="$version_output"
+  else
+    if ! version_output=$(npm view "$INSTALL_SPEC" version); then
+      fail "could not resolve requested version: $INSTALL_SPEC" 3
+    fi
+    REQUESTED_VERSION=$(printf '%s' "$version_output" | tail -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  fi
+  if [[ -z "$REQUESTED_VERSION" ]]; then
+    fail "requested package version did not contain a semver" 3
+  fi
+}
+
+case "$INSTALL_MODE" in
+  ignore-scripts | default | npm12 | update | pnpm) ;;
+  *) fail "unknown install mode: $INSTALL_MODE" 3 ;;
+esac
 
 step "Phase 1: install nexus-agents@${VERSION}"
 # Detect tarball path vs version spec. Tarballs install by file path directly;
@@ -39,13 +83,86 @@ if [[ -f "$VERSION" ]]; then
 else
   INSTALL_SPEC="nexus-agents@${VERSION}"
 fi
-# Defense in depth: --ignore-scripts blocks postinstall hooks from arbitrary
-# packages in the dep tree. We can't hash-pin `npm install -g <name>@<version>`
-# the way Scorecard suggests (hash-pinning via --require-hashes needs a lock
-# file; global installs are by-name), but --ignore-scripts mitigates the class
-# of threats the pin-check defends against.
-if ! npm install -g "$INSTALL_SPEC" --omit=optional --ignore-scripts 2>&1; then
-  fail "npm install failed" 1
+case "$INSTALL_MODE" in
+  ignore-scripts)
+    # Defense in depth: --ignore-scripts blocks postinstall hooks from arbitrary
+    # packages in the dep tree. We can't hash-pin `npm install -g <name>@<version>`
+    # the way Scorecard suggests (hash-pinning via --require-hashes needs a lock
+    # file; global installs are by-name), but --ignore-scripts mitigates the class
+    # of threats the pin-check defends against.
+    if ! npm install -g "$INSTALL_SPEC" --omit=optional --ignore-scripts 2>&1; then
+      fail "npm install failed" 1
+    fi
+    ;;
+  default)
+    if ! npm install -g "$INSTALL_SPEC" 2>&1; then
+      fail "npm install failed" 1
+    fi
+    ;;
+  npm12)
+    if ! npm install -g npm@12 2>&1; then
+      fail "npm 12 install failed" 1
+    fi
+    hash -r
+    NPM_VERSION=$(npm -v)
+    if [[ "$NPM_VERSION" != 12.* ]]; then
+      fail "npm 12 activation failed: npm -v reported $NPM_VERSION" 1
+    fi
+    if ! npm install -g "$INSTALL_SPEC" 2>&1; then
+      fail "npm install failed under npm 12" 1
+    fi
+    ;;
+  update)
+    resolve_requested_version
+    if ! npm install -g nexus-agents@8.6.0 2>&1; then
+      fail "older nexus-agents install failed" 1
+    fi
+    read_installed_version
+    if [[ "$INSTALLED_VERSION" != "8.6.0" ]]; then
+      fail "older-version mismatch: expected 8.6.0, got $INSTALLED_VERSION" 3
+    fi
+    PREVIOUS_VERSION="$INSTALLED_VERSION"
+    if ! npm install -g "$INSTALL_SPEC" 2>&1; then
+      fail "npm update-in-place failed" 1
+    fi
+    read_installed_version
+    if [[ "$INSTALLED_VERSION" == "$PREVIOUS_VERSION" ]]; then
+      fail "update did not change version from $PREVIOUS_VERSION" 3
+    fi
+    if [[ "$INSTALLED_VERSION" != "$REQUESTED_VERSION" ]]; then
+      fail "updated-version mismatch: expected $REQUESTED_VERSION, got $INSTALLED_VERSION" 3
+    fi
+    ;;
+  pnpm)
+    export PNPM_HOME="$HOME/.pnpm"
+    export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
+    if ! corepack enable 2>&1; then
+      fail "corepack enable failed" 1
+    fi
+    if ! corepack prepare pnpm@latest --activate 2>&1; then
+      fail "pnpm activation failed" 1
+    fi
+    resolve_requested_version
+    if ! pnpm add -g "$INSTALL_SPEC" --config.minimumReleaseAge=0 2>&1; then
+      fail "pnpm global install failed" 1
+    fi
+    read_installed_version
+    if [[ "$INSTALLED_VERSION" != "$REQUESTED_VERSION" ]]; then
+      fail "pnpm-version mismatch: expected $REQUESTED_VERSION, got $INSTALLED_VERSION" 3
+    fi
+    if ! PNPM_PACKAGE_LIST=$(pnpm list -g --parseable nexus-agents 2>&1); then
+      printf '%s\n' "$PNPM_PACKAGE_LIST" >&2
+      fail "could not locate pnpm global package" 1
+    fi
+    PACKAGE_ROOT=$(printf '%s\n' "$PNPM_PACKAGE_LIST" | tail -1)
+    if [[ "$PACKAGE_ROOT" != */node_modules/nexus-agents || ! -d "$PACKAGE_ROOT" ]]; then
+      fail "pnpm global package path is invalid: $PACKAGE_ROOT" 1
+    fi
+    ;;
+esac
+
+if [[ "$INSTALL_MODE" != "pnpm" ]]; then
+  PACKAGE_ROOT="$(npm root -g)/nexus-agents"
 fi
 ok "installed"
 
@@ -65,6 +182,7 @@ ok "version: $ACTUAL_VERSION (raw output: $RAW_VERSION)"
 if [[ -n "$EXPECTED_VERSION" && "$ACTUAL_VERSION" != "$EXPECTED_VERSION"* ]]; then
   fail "version mismatch: expected $EXPECTED_VERSION, got $ACTUAL_VERSION" 3
 fi
+ok "INSTALL_MODE=$INSTALL_MODE: install ok ($ACTUAL_VERSION)"
 
 step "Phase 4: --help lists core commands"
 HELP_OUT=$(nexus-agents --help 2>&1 || true)
@@ -179,9 +297,8 @@ ok "verify reports Native Grammars healthy"
 # Then the real scanner end to end: dist/security/ast-rules YAML + dynamic
 # grammar registration + the walk. Run from inside the fixture directory
 # because collectAstQaFindings refuses a scope outside the cwd.
-GLOBAL_ROOT=$(npm root -g)
 cat > "$GRAMMAR_FIXTURE/probe.mjs" <<PROBE
-import { runAstQaRules } from '${GLOBAL_ROOT}/nexus-agents/dist/index.js';
+import { runAstQaRules } from '${PACKAGE_ROOT}/dist/index.js';
 const findings = await runAstQaRules({ targetDir: process.cwd() });
 console.log(findings.map((f) => f.ruleId).sort().join(','));
 PROBE
