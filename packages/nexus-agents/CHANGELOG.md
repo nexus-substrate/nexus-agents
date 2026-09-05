@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.24.0
+
+### Minor Changes
+
+- [#5637](https://github.com/nexus-substrate/nexus-agents/pull/5637) [`8ff5f76`](https://github.com/nexus-substrate/nexus-agents/commit/8ff5f76a1a355bcb4f50549a774b1446bae8f39c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve GitHub file statuses and expose unknown raw status values through the SCM API.
+
 ## 8.23.5
 
 ### Patch Changes
