@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.21.0
+
+### Minor Changes
+
+- [#5593](https://github.com/nexus-substrate/nexus-agents/pull/5593) [`e90ff0c`](https://github.com/nexus-substrate/nexus-agents/commit/e90ff0c035047b59b0f97ad5137a7874d28bc3d8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose per-type coverage for typed-memory statistics and render truncated or failed measurements honestly in `memory_stats`.
+
 ## 8.20.3
 
 ### Patch Changes
