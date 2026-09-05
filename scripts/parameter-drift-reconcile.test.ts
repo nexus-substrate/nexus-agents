@@ -11,6 +11,7 @@ import {
   DEFAULT_RECONCILABLE_PARAMS,
   type ProviderParamView,
   type RegistryParamView,
+  summarizeParameterJoin,
 } from './parameter-drift-reconcile.js';
 
 describe('reconcileParameterDrift (#4121)', () => {
@@ -145,5 +146,37 @@ describe('reconcileParameterDrift (#4121)', () => {
 
   it('DEFAULT_RECONCILABLE_PARAMS covers the temperature incidents', () => {
     expect(DEFAULT_RECONCILABLE_PARAMS).toContain('temperature');
+  });
+});
+
+describe('summarizeParameterJoin (#5677)', () => {
+  // The reconcile skips every registry model that does not join the catalog, so
+  // an empty findings list can mean "agreement" or "nothing joined". The gate
+  // needs the join count to tell them apart.
+  it('reports zero joined when no registry id matches a catalog id', () => {
+    const summary = summarizeParameterJoin(
+      [{ id: 'anthropic/claude-x', supportedParameters: ['temperature'] }],
+      [
+        {
+          modelId: 'claude-x',
+          providerIds: ['claude-x', 'claude-x-4-6'],
+          unsupportedParameters: [],
+        },
+      ]
+    );
+    expect(summary.joined).toEqual([]);
+    expect(summary.unmatched).toEqual(['claude-x']);
+  });
+
+  it('counts a model as joined only through a catalog entry that carries a capability list', () => {
+    const summary = summarizeParameterJoin(
+      [{ id: 'a', supportedParameters: ['temperature'] }, { id: 'b' }],
+      [
+        { modelId: 'A', providerIds: ['a'], unsupportedParameters: [] },
+        { modelId: 'B', providerIds: ['b'], unsupportedParameters: [] },
+      ]
+    );
+    expect(summary.joined).toEqual([{ modelId: 'A', providerId: 'a' }]);
+    expect(summary.unmatched).toEqual(['B']);
   });
 });

@@ -102,17 +102,46 @@ function joinToCatalog(
   return undefined;
 }
 
+/** Which registry models the reconcile could join to the catalog, and which it
+ * silently skipped. Reported by the gate (#5677) so "no findings" can be told
+ * apart from "nothing joined". */
+export interface ParameterJoinSummary {
+  readonly joined: ReadonlyArray<{ modelId: string; providerId: string }>;
+  readonly unmatched: readonly string[];
+}
+
+function indexCatalog(
+  providerModels: readonly ProviderParamView[]
+): Map<string, readonly string[]> {
+  // Keep only models that carry a capability list (the ones we can reconcile).
+  const byId = new Map<string, readonly string[]>();
+  for (const m of providerModels) {
+    if (m.supportedParameters !== undefined) byId.set(m.id, m.supportedParameters);
+  }
+  return byId;
+}
+
+export function summarizeParameterJoin(
+  providerModels: readonly ProviderParamView[],
+  registryModels: readonly RegistryParamView[]
+): ParameterJoinSummary {
+  const byId = indexCatalog(providerModels);
+  const joined: { modelId: string; providerId: string }[] = [];
+  const unmatched: string[] = [];
+  for (const reg of registryModels) {
+    const match = joinToCatalog(reg.providerIds, byId);
+    if (match === undefined) unmatched.push(reg.modelId);
+    else joined.push({ modelId: reg.modelId, providerId: match.providerId });
+  }
+  return { joined, unmatched };
+}
+
 export function reconcileParameterDrift(
   providerModels: readonly ProviderParamView[],
   registryModels: readonly RegistryParamView[],
   reconcilableParams: readonly string[] = DEFAULT_RECONCILABLE_PARAMS
 ): ParameterDriftFinding[] {
-  // Index the provider catalog by id, keeping only models that carry a capability
-  // list (the ones we can actually reconcile).
-  const byId = new Map<string, readonly string[]>();
-  for (const m of providerModels) {
-    if (m.supportedParameters !== undefined) byId.set(m.id, m.supportedParameters);
-  }
+  const byId = indexCatalog(providerModels);
 
   const findings: ParameterDriftFinding[] = [];
   for (const reg of registryModels) {
