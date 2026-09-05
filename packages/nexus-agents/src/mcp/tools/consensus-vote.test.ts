@@ -4,14 +4,19 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { ILogger } from '../../core/index.js';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ok, type ILogger, type IModelAdapter } from '../../core/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   ConsensusVoteInputSchema,
   CONSENSUS_VOTE_OUTPUT_SCHEMA,
   CONSENSUS_VOTE_TOOL_SCHEMA,
   createPolicyFailedResult,
+  executeVoting,
   maybeEscalateContrarian,
+  resetCorrelationTracker,
   type ConsensusVoteDeps,
   type AgentVoteSummary,
   type ConsensusVoteResponse,
@@ -45,6 +50,7 @@ vi.mock('../../pipeline/expert-bridge.js', () => ({
 }));
 import type { VoteRecord } from '../../audit/vote-record.js';
 import { rollupDecisionCost } from '../../observability/decision-cost.js';
+import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -1034,6 +1040,74 @@ describe('#4135: decision plumbing (executeVoting stamps decision; buildResponse
       base
     );
     expect(response.decision).toBe('no_quorum');
+  });
+});
+
+describe('#5545: correlation persistence follows the gated decision', () => {
+  const savedOutcome = z.object({ outcome: z.enum(['approved', 'rejected']) });
+
+  function approvingAdapter(modelId: string, selectedOption?: string): IModelAdapter {
+    const response = {
+      decision: 'approve',
+      reasoning: 'approved in regression test',
+      confidence: 0.9,
+      ...(selectedOption !== undefined ? { selectedOption } : {}),
+    };
+    return {
+      providerId: 'test',
+      modelId,
+      complete: vi.fn().mockResolvedValue(
+        ok({
+          content: [{ type: 'text' as const, text: JSON.stringify(response) }],
+          model: modelId,
+          stopReason: 'end_turn' as const,
+        })
+      ),
+    } as unknown as IModelAdapter;
+  }
+
+  async function runApproval(options?: string[]): Promise<'approved' | 'rejected'> {
+    const dataDir = mkdtempSync(join(tmpdir(), 'nexus-correlation-gate-'));
+    const originalDataDir = process.env['NEXUS_DATA_DIR'];
+    const selections = ['Rewrite', 'Rewrite', 'Rewrite', 'Rewrite', 'Patch', 'Patch', 'Patch'];
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    resetCorrelationTracker();
+    vi.useFakeTimers();
+    try {
+      const pending = executeVoting(
+        {
+          proposal: 'Rewrite or patch?',
+          simulateVotes: false,
+          quickMode: false,
+          threshold: 'supermajority',
+          ...(options !== undefined ? { options } : {}),
+        },
+        createMockLogger(),
+        {
+          gatewayAdapters: selections.map((selection, index) =>
+            approvingAdapter(`test-${String(index)}`, options === undefined ? undefined : selection)
+          ),
+        }
+      );
+      await vi.advanceTimersByTimeAsync(2000);
+      await pending;
+      const saved = savedOutcome.parse(JSON.parse(readFileSync(getCorrelationJsonlPath(), 'utf8')));
+      return saved.outcome;
+    } finally {
+      vi.useRealTimers();
+      resetCorrelationTracker();
+      if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }
+
+  it('records rejected when a 4-3 option split misses the supermajority bar', async () => {
+    await expect(runApproval(['Rewrite', 'Patch'])).resolves.toBe('rejected');
+  });
+
+  it('still records approved when no option gate applies', async () => {
+    await expect(runApproval()).resolves.toBe('approved');
   });
 });
 

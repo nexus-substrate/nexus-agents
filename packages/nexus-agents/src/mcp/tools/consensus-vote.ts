@@ -658,6 +658,10 @@ export async function executeVoting(
   }
 ): Promise<ExtendedVotingResult> {
   const result = await executeVotingInner(input, logger, opts ?? {});
+  // An escalated full-panel result was finalized (and recorded) by its recursive
+  // executeVoting call. Remember that state so this outer quick-mode frame does
+  // not persist the same full-panel proposal twice.
+  const correlationAlreadyRecorded = result.decision !== undefined;
   // #4135: stamp the response-layer decision (incl. `no_quorum`) ONCE, using the
   // SAME `resolveVoteDecision` `buildResponse` consumes, so pipeline consumers can
   // honor a quorum void instead of misreading it as a rejection — without
@@ -671,6 +675,12 @@ export async function executeVoting(
   // happen. No-op when no options were declared.
   applyOptionGate(input, result);
   result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  if (
+    !correlationAlreadyRecorded &&
+    (result.decision === 'approved' || result.decision === 'rejected')
+  ) {
+    recordVotesToTracker(result.votes, result.decision, logger);
+  }
   return result;
 }
 
@@ -778,8 +788,6 @@ async function executeVotingInner(
       log: logger,
     }
   );
-
-  recordVotesToTracker(votes, outcome, logger);
 
   const escalation = await maybeEscalateContrarian(
     input,
