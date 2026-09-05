@@ -68,7 +68,7 @@ nexus-agents auth init --force  # Regenerate token (overwrite existing)
 security:
   auth:
     enabled: true
-    method: token # 'token' (default) or 'oauth2' (future)
+    method: token # 'token' is the only implemented method; 'oauth2' is accepted but behaves as 'token' and warns (#5678, narrowed at the next major: #5681)
     tokenHeader: Authorization # Header name for Bearer token
     tokenFile: ~/.nexus-agents/auth/server-token # Token storage path
 ```

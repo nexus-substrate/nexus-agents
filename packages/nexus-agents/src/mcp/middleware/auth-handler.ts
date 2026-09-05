@@ -177,6 +177,15 @@ export class AuthHandler {
   constructor(config: Partial<AuthConfig> | undefined, logger?: ILogger) {
     this.config = resolveAuthConfig(config);
     this.logger = logger ?? createLogger({ component: 'AuthHandler' });
+    if (this.config.method === 'oauth2') {
+      // Accepted by the schema, implemented by nothing (#5678): every method
+      // runs the bearer-token path. Say so rather than let the config claim a
+      // mode that does not exist; the value is rejected at the next major (#5681).
+      this.logger.warn(
+        "security.auth.method 'oauth2' is not implemented and behaves as 'token' " +
+          '(bearer-token checks only). It will be rejected at the next major (#5681).'
+      );
+    }
     if (this.config.enabled) this.loadToken();
   }
 
