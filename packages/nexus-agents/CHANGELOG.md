@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.24.1
+
+### Patch Changes
+
+- [#5643](https://github.com/nexus-substrate/nexus-agents/pull/5643) [`1aa205e`](https://github.com/nexus-substrate/nexus-agents/commit/1aa205ea6f14484468b8f5eb7ba11c9fbe67f04b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - An empty LLM synthesis answer is recorded as a failed tier-2 attempt and escalated to reimagine, then falls back with `synthesisSource: 'fallback'`; it was recorded as a tier-2 success labelled `'llm'` while returning the fallback concatenation ([#5642](https://github.com/nexus-substrate/nexus-agents/issues/5642)).
+
 ## 8.24.0
 
 ### Minor Changes
