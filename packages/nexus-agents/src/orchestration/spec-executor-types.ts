@@ -34,6 +34,8 @@ export type SpecExecutionOptions = CompileOptions;
  * Result of executing a spec end-to-end.
  */
 export interface SpecExecutionResult {
+  /** Whether configured node handlers ran instead of dry-run placeholders */
+  readonly executed: boolean;
   /** The decomposed task DAG */
   readonly dag: TaskDag;
   /** Raw execution outputs from graph nodes */

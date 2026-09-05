@@ -8371,6 +8371,7 @@ TypeAliasDeclaration SpecExecutionOptions
 InterfaceDeclaration SpecExecutionResult
   readonly dag: { edges: { from: string; to: string; }[]; nodes: { capabilities: string[]; complexity: "simple" | "moderate" | "complex" | "expert"; dependsOn: string[]; description: string; id: string; sourceRequirement?: string | undefined; type: "config" | "code" | "test" | "docs" | "refactor"; }[]; roots: string[]; specTitle: string; totalComplexity: "simple" | "moderate" | "complex" | "expert"; }
   readonly durationMs: number
+  readonly executed: boolean
   readonly outputs: readonly string[]
   readonly validation: { allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; }[]; metCount: number; satisfaction: number; totalCriteria: number; }
 TypeAliasDeclaration SpecialFeature

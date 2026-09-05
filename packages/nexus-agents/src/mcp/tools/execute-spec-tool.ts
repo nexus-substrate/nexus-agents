@@ -66,6 +66,8 @@ export type ExecuteSpecInput = z.infer<typeof ExecuteSpecInputSchema>;
 
 export type ExecuteSpecDeps = BaseMcpToolDeps;
 
+const DRY_RUN_MODE = 'dry_run';
+
 // ============================================================================
 // Handler
 // ============================================================================
@@ -91,7 +93,7 @@ function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolRes
     title: parseResult.value.title,
     nodes: dagResult.value.nodes.length,
   });
-  const output = { mode: 'dry_run', spec: parseResult.value, dag: dagResult.value };
+  const output = { mode: DRY_RUN_MODE, spec: parseResult.value, dag: dagResult.value };
   return toolSuccess(JSON.stringify(output, null, 2));
 }
 
@@ -110,6 +112,17 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
 
   const analysis = analyzeFailures(result.value);
   const satisfaction = result.value.validation.satisfaction;
+
+  if (!result.value.executed) {
+    const output = {
+      mode: DRY_RUN_MODE,
+      executed: false,
+      execution: result.value,
+      analysis: analysis.ok ? analysis.value : null,
+    };
+    return toolSuccess(JSON.stringify(output, null, 2));
+  }
+
   logger.info('Spec execution completed', {
     satisfaction,
     passed: analysis.ok ? analysis.value.passed : false,
@@ -206,7 +219,8 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
   const description =
     'Execute a markdown specification through the full pipeline: ' +
     'parse, decompose into task DAG, compile to graph, execute, ' +
-    'validate against acceptance criteria, and analyze failures.';
+    'validate against acceptance criteria, and analyze failures. ' +
+    "Without a configured handler factory, execute mode runs placeholder handlers and reports mode 'dry_run'.";
 
   server.registerTool(
     'execute_spec',
