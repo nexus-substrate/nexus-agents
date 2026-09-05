@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.24.2
+
+### Patch Changes
+
+- [#5646](https://github.com/nexus-substrate/nexus-agents/pull/5646) [`5b516a9`](https://github.com/nexus-substrate/nexus-agents/commit/5b516a9af6c0784aeba40bb0488379100cfac635) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Classify in-band engine execution failures during dispatch outcome recording ([#5641](https://github.com/nexus-substrate/nexus-agents/issues/5641))
+
 ## 8.24.1
 
 ### Patch Changes
