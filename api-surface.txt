@@ -5994,7 +5994,7 @@ ClassDeclaration OutcomeFeedbackCollector
 InterfaceDeclaration OutcomeGroup
   readonly category: string
   readonly cli: "claude" | "gemini" | "codex" | "opencode"
-  readonly outcomes: readonly { baselineId?: string | undefined; category: "research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration"; cli: "claude" | "gemini" | "codex" | "opencode" | "unknown" | "api:anthropic" | "api:openai" | "api:google" | "api:custom-openai"; cliSource?: "executed" | "category-default" | undefined; durationMs: number; errorMessage?: string | undefined; failureCategory?: "authentication" | "unknown" | "timeout" | "rate_limit" | "connection" | "crash" | "adapter_unavailable" | "validation" | "parse" | "execution" | "generic" | undefined; family?: string | undefined; id: string; model: string; qualitySignals?: string[] | undefined; requestId?: string | undefined; retryCount?: number | undefined; routingStage?: string | undefined; source: "delegate" | "consensus" | "manual"; success: boolean; timestamp: string; traceId?: string | undefined; triageAction?: string | undefined; vendor?: string | undefined; voterRole?: string | undefined; wasRetried?: boolean | undefined; }[]
+  readonly outcomes: readonly { baselineId?: string | undefined; category: "research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration"; cli: "unknown" | "claude" | "gemini" | "codex" | "opencode" | "api:anthropic" | "api:openai" | "api:google" | "api:custom-openai"; cliSource?: "executed" | "category-default" | undefined; durationMs: number; errorMessage?: string | undefined; failureCategory?: "unknown" | "authentication" | "timeout" | "rate_limit" | "connection" | "crash" | "adapter_unavailable" | "validation" | "parse" | "execution" | "generic" | undefined; family?: string | undefined; id: string; model: string; qualitySignals?: string[] | undefined; requestId?: string | undefined; retryCount?: number | undefined; routingStage?: string | undefined; source: "delegate" | "consensus" | "manual"; success: boolean; timestamp: string; traceId?: string | undefined; triageAction?: string | undefined; vendor?: string | undefined; voterRole?: string | undefined; wasRetried?: boolean | undefined; }[]
 TypeAliasDeclaration OutcomeProcessedCallback
   = ( decision: RoutingDecision, outcome: TaskOutcome, reward: ComputedReward ) => void
 TypeAliasDeclaration OutcomeQuery
@@ -7875,7 +7875,8 @@ InterfaceDeclaration ScmFileChange
   readonly filename: string
   readonly patch?: string | undefined
   readonly previousFilename?: string | undefined
-  readonly status: "added" | "removed" | "modified" | "renamed" | "copied"
+  readonly rawStatus?: string | undefined
+  readonly status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed" | "unchanged" | "unknown"
 InterfaceDeclaration ScmIssue
   readonly author: string
   readonly body: string
