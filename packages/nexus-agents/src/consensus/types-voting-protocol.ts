@@ -90,7 +90,7 @@ export interface VotingProtocolConfig {
   maxRounds: number;
   /** Timeout per round in milliseconds (default: multi-llm-panel guard, 900000) */
   roundTimeoutMs: number;
-  /** Minimum agreement threshold (default: 0.67) */
+  /** Minimum agreement threshold (default: 2/3, approximately 0.667) */
   agreementThreshold: number;
   /** Enable anti-sycophancy detection (default: true) */
   enableAntiSycophancy: boolean;

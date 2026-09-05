@@ -388,9 +388,9 @@ describe('agreement-based cascading', () => {
   });
 
   it('cascades early rejection when approval is mathematically impossible', async () => {
-    // supermajority threshold = 0.67
+    // supermajority threshold = 2/3
     // 5 required voters — if 2 reject, maxPossibleApprovals = approvals + remaining
-    // After 2 rejects: approvals=0, remaining=3, max=3/5=0.6 < 0.67 → can never pass
+    // After 2 rejects: approvals=0, remaining=3, max=3/5=0.6 < 2/3 → can never pass
     const result = await engine.propose(
       createProposal({
         algorithm: 'supermajority',
@@ -402,7 +402,7 @@ describe('agreement-based cascading', () => {
 
     const id = result.value;
     await engine.vote(id, 'a1', rejectVote());
-    // After 2nd reject: max possible = (0 + 3) / 5 = 0.6 < 0.67
+    // After 2nd reject: max possible = (0 + 3) / 5 = 0.6 < 2/3
     await engine.vote(id, 'a2', rejectVote());
 
     const outcome = await engine.getResult(id);
@@ -426,9 +426,9 @@ describe('agreement-based cascading', () => {
   });
 
   it('does not cascade when outcome is still uncertain', async () => {
-    // supermajority threshold = 0.67
-    // 5 voters, 1 approve, 1 reject — remaining=3, maxRate=(1+3)/5=0.8 > 0.67
-    // minRate=1/5=0.2 < 0.67 — neither path triggers
+    // supermajority threshold = 2/3
+    // 5 voters, 1 approve, 1 reject — remaining=3, maxRate=(1+3)/5=0.8 > 2/3
+    // minRate=1/5=0.2 < 2/3 — neither path triggers
     const result = await engine.propose(
       createProposal({
         algorithm: 'supermajority',

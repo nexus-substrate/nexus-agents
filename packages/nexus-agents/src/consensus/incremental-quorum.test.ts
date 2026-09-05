@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { isVotingAmbiguous } from './incremental-quorum.js';
 import { createConsensusEngine } from './engine.js';
+import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
 import type { Vote, VoterExpansionCallback } from './types.js';
 
 // ============================================================================
@@ -36,8 +37,8 @@ describe('isVotingAmbiguous', () => {
 
   it('detects ambiguity when approval rate is near threshold', () => {
     // 2 approve, 2 reject out of 5 = 40% approval
-    // supermajority threshold = 67%, band = 0.15
-    // 40% is within [52%, 82%]? No. 40% < 52% → not ambiguous by band.
+    // supermajority threshold = 2/3, band = 0.15
+    // 40% is within approximately [51.7%, 81.7%]? No → not ambiguous by band.
     // But let's use simple_majority (50%): 40% is within [35%, 65%] → ambiguous
     const votes = makeVotes(2, 2);
     expect(
@@ -46,19 +47,25 @@ describe('isVotingAmbiguous', () => {
   });
 
   it('detects ambiguity when confidence is low', () => {
-    // 3 approve, 1 reject = 75% approval → above 67% threshold
+    // 3 approve, 1 reject = 75% approval → above the 2/3 threshold
     // But confidence is 0.4 (below 0.6) → ambiguous
     const votes = makeVotes(3, 1, 0.4);
     expect(
-      isVotingAmbiguous(votes, 5, 0.67, { confidenceThreshold: 0.6, ambiguityBand: 0.15 })
+      isVotingAmbiguous(votes, 5, SUPERMAJORITY_THRESHOLD, {
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.15,
+      })
     ).toBe(true);
   });
 
   it('returns false when clearly approved with high confidence', () => {
-    // 5 approve, 0 reject = 100% → well above 67%+15%=82%
+    // 5 approve, 0 reject = 100% → well above 2/3 + 15%
     const votes = makeVotes(5, 0, 0.9);
     expect(
-      isVotingAmbiguous(votes, 5, 0.67, { confidenceThreshold: 0.6, ambiguityBand: 0.15 })
+      isVotingAmbiguous(votes, 5, SUPERMAJORITY_THRESHOLD, {
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.15,
+      })
     ).toBe(false);
   });
 

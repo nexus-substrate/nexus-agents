@@ -21,6 +21,7 @@ import { researchContextFromText, type ResearchContext } from './research-contex
 import { classifyTask } from './adaptive-orchestrator.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
+import { SUPERMAJORITY_THRESHOLD } from '../consensus/types-core.js';
 import type {
   DevPipelineStages,
   PipelineTask,
@@ -153,9 +154,9 @@ describe('Pipeline Eval — Vote Cascade Logic', () => {
     expect(3 / 5 > 0.5).toBe(true);
   });
 
-  it('supermajority: 2/6 approvals + 4 remaining cannot reach 67%', () => {
-    expect((2 + 0) / 6 < 0.67).toBe(true); // worst case: 0 remaining approve
-    expect((2 + 4) / 6 >= 0.67).toBe(true); // best case: all 4 approve — CAN reach
+  it('supermajority: 2/6 approvals + 4 remaining can still reach 2/3', () => {
+    expect((2 + 0) / 6 < SUPERMAJORITY_THRESHOLD).toBe(true); // worst case
+    expect((2 + 4) / 6 >= SUPERMAJORITY_THRESHOLD).toBe(true); // best case
   });
 
   it('unanimous: 1 rejection is immediately decided', () => {

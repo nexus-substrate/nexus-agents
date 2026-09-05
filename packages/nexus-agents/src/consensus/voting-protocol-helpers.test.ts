@@ -9,6 +9,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
+
 import type {
   VotingSession,
   VotingRound,
@@ -42,7 +44,7 @@ function makeConfig(overrides: Partial<VotingProtocolConfig> = {}): VotingProtoc
     committeeSize: 3,
     maxRounds: 3,
     roundTimeoutMs: 60000,
-    agreementThreshold: 0.67,
+    agreementThreshold: SUPERMAJORITY_THRESHOLD,
     enableAntiSycophancy: true,
     sycophancyThreshold: 0.8,
     ...overrides,

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Vote } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD, type Vote } from './types-core.js';
 
 import {
   DEFAULT_QUORUM_THRESHOLDS,
@@ -30,6 +30,17 @@ function makeVotes(
   return new Map(decisions.map(([id, decision]) => [id, makeVote(decision)]));
 }
 
+function makeCountedVotes(approve: number, reject: number): ReadonlyMap<string, Vote> {
+  const decisions: Array<[string, 'approve' | 'reject']> = [];
+  for (let index = 0; index < approve; index++) {
+    decisions.push([`approve-${String(index)}`, 'approve']);
+  }
+  for (let index = 0; index < reject; index++) {
+    decisions.push([`reject-${String(index)}`, 'reject']);
+  }
+  return makeVotes(decisions);
+}
+
 function makeConfig(overrides: Partial<QuorumValidationConfig> = {}): QuorumValidationConfig {
   return {
     algorithm: 'simple_majority',
@@ -46,12 +57,12 @@ function makeConfig(overrides: Partial<QuorumValidationConfig> = {}): QuorumVali
 describe('DEFAULT_QUORUM_THRESHOLDS', () => {
   it('contains correct thresholds for all algorithms', () => {
     expect(DEFAULT_QUORUM_THRESHOLDS.simple_majority).toBe(0.5);
-    expect(DEFAULT_QUORUM_THRESHOLDS.supermajority).toBe(0.67);
+    expect(DEFAULT_QUORUM_THRESHOLDS.supermajority).toBe(SUPERMAJORITY_THRESHOLD);
     expect(DEFAULT_QUORUM_THRESHOLDS.unanimous).toBe(1.0);
     expect(DEFAULT_QUORUM_THRESHOLDS.proof_of_learning).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.opinion_wise).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.higher_order).toBe(0.5);
-    expect(DEFAULT_QUORUM_THRESHOLDS.weighted_byzantine).toBe(0.67);
+    expect(DEFAULT_QUORUM_THRESHOLDS.weighted_byzantine).toBe(SUPERMAJORITY_THRESHOLD);
   });
 
   it('is typed as Readonly', () => {
@@ -152,8 +163,8 @@ describe('QuorumValidator.validateQuorum', () => {
     });
   });
 
-  describe('supermajority algorithm', () => {
-    it('approves with supermajority (>=67%)', () => {
+  describe('supermajority threshold', () => {
+    it('approves with more than a 2/3 supermajority', () => {
       const result = validator.validateQuorum({
         votes: makeVotes([
           ['a1', 'approve'],
@@ -163,7 +174,7 @@ describe('QuorumValidator.validateQuorum', () => {
         ]),
         config: makeConfig({
           algorithm: 'supermajority',
-          threshold: 0.67,
+          threshold: SUPERMAJORITY_THRESHOLD,
           minVoters: 1,
         }),
       });
@@ -173,6 +184,27 @@ describe('QuorumValidator.validateQuorum', () => {
         expect(result.decision).toBe('approve');
       }
     });
+
+    it.each([
+      { approve: 2, reject: 1, approved: true },
+      { approve: 4, reject: 2, approved: true },
+      { approve: 1, reject: 2, approved: false },
+      { approve: 4, reject: 3, approved: false },
+      { approve: 5, reject: 2, approved: true },
+    ])(
+      'returns approved=$approved for a $approve/$reject unweighted split',
+      ({ approve, reject, approved }) => {
+        const result = validator.validateQuorum({
+          votes: makeCountedVotes(approve, reject),
+          config: makeConfig({
+            algorithm: 'simple_majority',
+            threshold: DEFAULT_QUORUM_THRESHOLDS.supermajority,
+          }),
+        });
+
+        expect(result.status === 'reached' && result.decision === 'approve').toBe(approved);
+      }
+    );
   });
 
   describe('unanimous algorithm', () => {
@@ -333,7 +365,7 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
         ['a1', 'approve'],
         ['a2', 'reject'],
       ]),
-      config: makeConfig({ algorithm: 'supermajority', threshold: 0.67 }),
+      config: makeConfig({ algorithm: 'supermajority', threshold: SUPERMAJORITY_THRESHOLD }),
     });
 
     expect(breakdown.totalWeight).toBeDefined();
@@ -375,7 +407,7 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
       votes,
       config: makeConfig({
         algorithm: 'supermajority',
-        threshold: 0.67,
+        threshold: SUPERMAJORITY_THRESHOLD,
         confidenceMultiplier: true,
       }),
     });
@@ -419,9 +451,9 @@ describe('QuorumValidator weighted quorum scenarios', () => {
         ['a2', 'approve'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'supermajority', threshold: 0.67 }),
+      config: makeConfig({ algorithm: 'supermajority', threshold: SUPERMAJORITY_THRESHOLD }),
     });
-    // Total weight: 0.8, threshold: 0.67 -> quorum reached
+    // Total weight: 0.8, threshold: 2/3 -> quorum reached
     expect(result.status).toBe('reached');
     if (result.status === 'reached') {
       expect(result.decision).toBe('approve');
@@ -439,9 +471,9 @@ describe('QuorumValidator weighted quorum scenarios', () => {
         ['a2', 'approve'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'supermajority', threshold: 0.67 }),
+      config: makeConfig({ algorithm: 'supermajority', threshold: SUPERMAJORITY_THRESHOLD }),
     });
-    // Total weight: 0.3, threshold: 0.67 -> not reached
+    // Total weight: 0.3, threshold: 2/3 -> not reached
     expect(result.status).toBe('not_reached');
     if (result.status === 'not_reached') {
       expect(result.reason).toBe('insufficient_weight');
@@ -501,9 +533,12 @@ describe('QuorumValidator weighted quorum scenarios', () => {
         ['a3', 'reject'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'weighted_byzantine', threshold: 0.67 }),
+      config: makeConfig({
+        algorithm: 'weighted_byzantine',
+        threshold: SUPERMAJORITY_THRESHOLD,
+      }),
     });
-    // Total weight 3.0 >= 0.67 threshold -> quorum reached
+    // Total weight 3.0 >= 2/3 threshold -> quorum reached
     expect(result.status).toBe('reached');
   });
 
@@ -568,7 +603,7 @@ describe('QuorumValidator edge cases', () => {
     }
     const result = validator.validateQuorum({
       votes: makeVotes(decisions),
-      config: makeConfig({ threshold: 0.67, minVoters: 50 }),
+      config: makeConfig({ threshold: SUPERMAJORITY_THRESHOLD, minVoters: 50 }),
     });
     expect(result.status).toBe('reached');
     if (result.status === 'reached') {

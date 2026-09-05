@@ -21,7 +21,7 @@ import { OPERATION_CLASSES } from '../config/timeouts.js';
 
 describe('SUPERMAJORITY_THRESHOLD centralization (#3571)', () => {
   it('pins the governance value at 2/3', () => {
-    expect(SUPERMAJORITY_THRESHOLD).toBe(0.67);
+    expect(SUPERMAJORITY_THRESHOLD).toBe(2 / 3);
   });
 
   it('VOTING_THRESHOLDS.supermajority resolves to the constant', () => {
