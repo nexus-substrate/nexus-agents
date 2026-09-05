@@ -13,40 +13,61 @@
  * so nothing compared the two lists. That is the #5142 shape: two artifacts
  * asserting the same fact with nothing checking they agree.
  *
- * WHY A CHECK RATHER THAN A GENERATOR. The doc's table carries human-authored
- * subcommand and mode columns that no catalog field supplies, so generating it
- * would lose information. The drift that matters is the NAME SET, and that is
- * mechanically comparable — so this reports names, and a human writes the prose.
+ * WHY THIS STILL EXISTS NOW THAT THE TABLE IS GENERATED (#5458). The catalog
+ * carries only a name and a description, so `inject-governance.ts` generates
+ * exactly those two columns between `GOVERNANCE:ENTRYPOINTS_CLI` markers; the
+ * hand-written subcommand/mode table stays outside them. Two gaps remain that
+ * the generator's own staleness check cannot see:
  *
- * BASELINE-AWARE, like the repo's three other ratchets (orphan-allowlist,
- * schema-fanout-manifest, tool-distinctness-baseline). Documenting all 53
- * commands is a docs project; blocking on it would strand this gate unmerged.
- * A committed baseline lists the currently-undocumented commands, and CI fails
- * on a NEW undocumented command or a doc entry naming a command that does not
- * exist. The baseline is the debt, visible and countable.
+ * - A PHANTOM row in the hand-maintained table — a first cell naming a command
+ *   that is not in the catalog. That is how `review-demo` and
+ *   `validation-dashboard` got in. Always a hard failure.
+ * - A MISSING command. The generator soft-skips when its markers are absent, so
+ *   deleting the marker block would silently stop the tables regenerating. Any
+ *   catalog command with no row in the section fails here.
+ *
+ * The 34-entry baseline this gate shipped with (#5142) retired with the
+ * generator: an undocumented command is no longer accepted debt, it is a gate
+ * failure. Both directions of the name-set comparison are hard.
  *
  * Usage:
  *   npx tsx scripts/check-cli-docs-drift.ts            # CI gate
- *   npx tsx scripts/check-cli-docs-drift.ts baseline   # reseed the baseline
  *
  * @module scripts/check-cli-docs-drift
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
+import { parseCommandCatalog } from './parse-cli-command-catalog.js';
 
 const ENTRYPOINTS = join(ROOT, 'docs/ENTRYPOINTS.md');
 const CATALOG = join(ROOT, 'packages/nexus-agents/src/cli-command-catalog.ts');
-const BASELINE = join(ROOT, 'docs/ops/cli-docs-drift-baseline.json');
 
-interface Baseline {
-  readonly undocumented: readonly string[];
-}
+/** Shape of a typed command name — shared by the catalog and doc scans. */
+const COMMAND_NAME = /[a-z][a-z0-9-]*/;
 
-/** Command names registered in the catalog — the source of truth. */
+/**
+ * Command names registered in the catalog — the source of truth. Read through
+ * the same AST parser the generator uses (#5458), so the two cannot disagree
+ * about what the catalog contains. `(default)` is a `--help` placeholder, not a
+ * typed command, and `documentedCommands` cannot match it either.
+ */
 export function catalogCommands(source: string): readonly string[] {
-  return [...source.matchAll(/^\s*command:\s*'([a-z][a-z0-9-]*)'/gm)].map((m) => m[1] ?? '');
+  const names = parseCommandCatalog(source)
+    .map((e) => e.command)
+    .filter((c) => c !== '(default)');
+  // `documentedCommands` matches first cells against COMMAND_NAME; a catalog
+  // command outside that pattern could never be matched and would read as
+  // undocumented — or, worse, as silently ignored. Fail loud instead.
+  const offPattern = names.filter((c) => !new RegExp(`^${COMMAND_NAME.source}$`).test(c));
+  if (offPattern.length > 0) {
+    throw new Error(
+      `cli-docs-drift: catalog command(s) ${offPattern.join(', ')} do not match ` +
+        `${COMMAND_NAME.source}; widen COMMAND_NAME in scripts/check-cli-docs-drift.ts`
+    );
+  }
+  return names;
 }
 
 /**
@@ -73,43 +94,32 @@ export function documentedCommands(doc: string): readonly string[] {
   const nextTop = rest.indexOf('\n## ');
   const ends = [modeSel, nextTop].filter((i) => i !== -1);
   const section = ends.length > 0 ? rest.slice(0, Math.min(...ends)) : rest;
-  return [...section.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|/gm)].map((m) => m[1] ?? '');
+  const cell = new RegExp(`^\\|\\s*\`(${COMMAND_NAME.source})\`\\s*\\|`, 'gm');
+  return [...section.matchAll(cell)].map((m) => m[1] ?? '');
 }
 
 export interface DriftReport {
   readonly phantom: readonly string[];
-  readonly newlyUndocumented: readonly string[];
-  readonly baselinedUndocumented: readonly string[];
+  readonly undocumented: readonly string[];
 }
 
 export function computeDrift(
   catalog: readonly string[],
-  documented: readonly string[],
-  baseline: Baseline
+  documented: readonly string[]
 ): DriftReport {
   const inCatalog = new Set(catalog);
   const inDocs = new Set(documented);
-  const accepted = new Set(baseline.undocumented);
 
-  // Documented but not registered — always a hard failure. A reader following
-  // the doc runs a command that does not exist.
-  const phantom = [...inDocs].filter((c) => !inCatalog.has(c)).sort();
-  const undocumented = [...inCatalog].filter((c) => !inDocs.has(c)).sort();
-
+  // Documented but not registered — a reader following the doc runs a command
+  // that does not exist. Registered but not documented — the generated block
+  // is missing or its markers were removed. Both are hard failures.
   return {
-    phantom,
-    newlyUndocumented: undocumented.filter((c) => !accepted.has(c)),
-    baselinedUndocumented: undocumented.filter((c) => accepted.has(c)),
+    phantom: [...inDocs].filter((c) => !inCatalog.has(c)).sort(),
+    undocumented: [...inCatalog].filter((c) => !inDocs.has(c)).sort(),
   };
 }
 
-function loadBaseline(): Baseline {
-  if (!existsSync(BASELINE)) return { undocumented: [] };
-  return JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
-}
-
 function main(): void {
-  const mode = process.argv[2] ?? 'check';
   const catalog = catalogCommands(readFileSync(CATALOG, 'utf8'));
   const documented = documentedCommands(readFileSync(ENTRYPOINTS, 'utf8'));
 
@@ -119,14 +129,7 @@ function main(): void {
     process.exit(1);
   }
 
-  if (mode === 'baseline') {
-    const undocumented = catalog.filter((c) => !documented.includes(c)).sort();
-    writeFileSync(BASELINE, `${JSON.stringify({ undocumented }, null, 2)}\n`);
-    console.log(`cli-docs-drift: baseline reseeded with ${String(undocumented.length)} entries.`);
-    return;
-  }
-
-  const drift = computeDrift(catalog, documented, loadBaseline());
+  const drift = computeDrift(catalog, documented);
   let failed = false;
 
   if (drift.phantom.length > 0) {
@@ -136,16 +139,19 @@ function main(): void {
     console.error('  Remove the row, or add the command. A reader following the doc gets nothing.');
   }
 
-  if (drift.newlyUndocumented.length > 0) {
+  if (drift.undocumented.length > 0) {
     failed = true;
-    console.error('\nNEW commands missing from docs/ENTRYPOINTS.md:');
-    for (const c of drift.newlyUndocumented) console.error(`  - ${c}`);
-    console.error('  Document them, or reseed: npx tsx scripts/check-cli-docs-drift.ts baseline');
+    console.error('\nCatalog commands with no row in docs/ENTRYPOINTS.md:');
+    for (const c of drift.undocumented) console.error(`  - ${c}`);
+    console.error(
+      '  The CLI tables are generated between GOVERNANCE:ENTRYPOINTS_CLI markers; ' +
+        'run `pnpm governance:inject` and check the markers are still present.'
+    );
   }
 
   console.log(
     `cli-docs-drift: ${String(catalog.length)} registered, ${String(documented.length)} documented, ` +
-      `${String(drift.baselinedUndocumented.length)} baselined as undocumented debt.`
+      `${String(drift.phantom.length)} phantom, ${String(drift.undocumented.length)} undocumented.`
   );
   process.exit(failed ? 1 : 0);
 }

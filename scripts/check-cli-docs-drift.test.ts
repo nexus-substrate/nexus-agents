@@ -56,28 +56,52 @@ describe('documentedCommands', () => {
 
 describe('catalogCommands', () => {
   it('reads command names from catalog entries', () => {
-    const src = `  {\n    command: 'auth',\n    description: 'x',\n  },\n  {\n    command: 'login',\n  },`;
+    const src = `export const COMMAND_CATALOG = [
+      { command: 'auth', description: 'x', audience: 'essential' },
+      { command: 'login', description: 'y', audience: 'maintainer' },
+    ];`;
     expect([...catalogCommands(src)]).toEqual(['auth', 'login']);
+  });
+
+  it('drops the (default) placeholder — it is not a typed command', () => {
+    const src = `export const COMMAND_CATALOG = [
+      { command: '(default)', description: 'x', audience: 'essential' },
+      { command: 'server', description: 'y', audience: 'internal' },
+    ];`;
+    expect([...catalogCommands(src)]).toEqual(['server']);
+  });
+
+  it('throws on a command name the doc scan could never match (#5458)', () => {
+    // `documentedCommands` only matches [a-z][a-z0-9-]*; a catalog name outside
+    // that would be reported undocumented forever, or ignored if the scan were
+    // widened carelessly. Either way the mismatch must be loud.
+    const src = `export const COMMAND_CATALOG = [
+      { command: 'Weird_Name', description: 'x', audience: 'internal' },
+    ];`;
+    expect(() => catalogCommands(src)).toThrow(/Weird_Name/);
+  });
+
+  it('propagates a catalog parse error instead of reporting a shorter set', () => {
+    const src = `export const COMMAND_CATALOG = [ ...EXTRA ];`;
+    expect(() => catalogCommands(src)).toThrow(/SpreadElement/);
   });
 });
 
 describe('computeDrift', () => {
-  const baseline = { undocumented: ['known-debt'] };
-
   it('flags a documented command that is not registered', () => {
-    const d = computeDrift(['real'], ['real', 'ghost'], baseline);
+    const d = computeDrift(['real'], ['real', 'ghost']);
     expect([...d.phantom]).toEqual(['ghost']);
   });
 
-  it('flags a new undocumented command but not a baselined one', () => {
-    const d = computeDrift(['known-debt', 'brand-new'], [], baseline);
-    expect([...d.newlyUndocumented]).toEqual(['brand-new']);
-    expect([...d.baselinedUndocumented]).toEqual(['known-debt']);
+  it('flags every undocumented command — there is no baseline any more (#5458)', () => {
+    const d = computeDrift(['documented', 'missing'], ['documented']);
+    expect([...d.undocumented]).toEqual(['missing']);
+    expect([...d.phantom]).toEqual([]);
   });
 
   it('reports nothing when the two sets agree', () => {
-    const d = computeDrift(['a'], ['a'], { undocumented: [] });
+    const d = computeDrift(['a'], ['a']);
     expect([...d.phantom]).toEqual([]);
-    expect([...d.newlyUndocumented]).toEqual([]);
+    expect([...d.undocumented]).toEqual([]);
   });
 });

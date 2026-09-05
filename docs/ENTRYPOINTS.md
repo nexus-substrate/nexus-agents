@@ -47,55 +47,132 @@ Most commonly used commands:
 
 **Entry Point:** `nexus-agents [command] [options]`
 
-Commands are grouped by user persona. **Daily use** is what you'll type during a normal session; **setup & inspection** runs at install / config time; **debug & observe** is for when something looks off; **server / internal** is called by hooks, CI, and editor MCP clients — not usually directly.
+The tables between the markers are generated from `COMMAND_CATALOG`
+(`packages/nexus-agents/src/cli-command-catalog.ts`), the same literal
+`nexus-agents --help` renders from, so every registered command appears here
+exactly once (#5458). Commands are grouped by the catalog's audience band:
+**essential** is what a new user needs to install, configure and run a first
+task; **advanced** is day-to-day but not first-touch; **maintainer** is
+benchmarks, release tooling and deep diagnostics (`--help --all`); **internal**
+is dev/eval loops hidden from `--help` entirely. `nexus-agents <command> --help`
+prints flags and examples for any of them.
 
-### Daily use
+<!-- GOVERNANCE:ENTRYPOINTS_CLI:START -->
 
-| Command       | Subcommand                                   | Description                                        | Mode         |
-| ------------- | -------------------------------------------- | -------------------------------------------------- | ------------ |
-| `orchestrate` | `<task>`                                     | Execute a task standalone (routes to the best CLI) | orchestrator |
-| `vote`        | `--proposal "..."`                           | Consensus voting (7 agents; `--quick` runs 3)      | any          |
-| `review`      | `<url>`                                      | Adversarial review of a GitHub PR                  | orchestrator |
-| `workflow`    | `run <name>`                                 | Execute a workflow template                        | orchestrator |
-| `research`    | `add` / `discover` / `review` / `prioritize` | Add papers, discover new ones, rank by impact      | any          |
+### Essential — install, configure, run
 
-### Setup & inspection
+| Command       | Description                                                                         |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `(default)`   | Start MCP server with stdio transport                                               |
+| `hello`       | Show welcome message and quick start (no API keys needed)                           |
+| `setup`       | Configure CLI integration (MCP + .rules + data dirs)                                |
+| `verify`      | Check install health (sqlite, adapters, config)                                     |
+| `doctor`      | Detailed system/adapter health check                                                |
+| `config`      | Manage configuration (init, get, set, list, export, import)                         |
+| `orchestrate` | Execute a task via CLI tools (standalone mode)                                      |
+| `vote`        | Run consensus vote on a proposal (7 agents; --quick uses 3)                         |
+| `workflow`    | Manage and run workflow templates (list, run)                                       |
+| `expert`      | Manage expert agents (list, create, execute)                                        |
+| `research`    | Manage research registry (status, add, stats, refresh)                              |
+| `auth`        | Manage authentication: init/show/rotate MCP tokens; status shows per-CLI auth state |
 
-| Command     | Subcommand                                                    | Description                                                | Mode |
-| ----------- | ------------------------------------------------------------- | ---------------------------------------------------------- | ---- |
-| `doctor`    | -                                                             | Check CLI health and dependencies (read-only)              | any  |
-| `setup`     | `[--skip-mcp\|rules\|hooks\|opencode\|gemini\|codex\|config]` | Configure MCP server + hooks + per-CLI configs in one shot | any  |
-| `config`    | `init`                                                        | Generate a starter `nexus-agents.yaml`                     | any  |
-| `expert`    | `list`                                                        | List available experts (built-in + custom)                 | any  |
-| `workflow`  | `list`                                                        | List available workflow templates                          | any  |
-| `init`      | `--portable [--mcp-config] [--install] [--uninstall]`         | Bootstrap workspace-local `.nexus-agents/` install         | any  |
-| `--help`    | -                                                             | Display help text                                          | any  |
-| `--version` | -                                                             | Display version                                            | any  |
+### Advanced — day-to-day extras
 
-### Debug & observe
+| Command              | Description                                                                                                                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tour`               | Guided walkthrough of the four headline tools — no API keys, no quota (#2851). --non-interactive runs straight through.                                                                                                             |
+| `session`            | Manage session persistence (list, show, export, delete)                                                                                                                                                                             |
+| `usage`              | Cost / usage / quality dashboard from per-call telemetry (#2469). --format=json for scripting.                                                                                                                                      |
+| `status`             | At-a-glance project health dashboard                                                                                                                                                                                                |
+| `capabilities`       | Show model capabilities matrix                                                                                                                                                                                                      |
+| `mode`               | Inspect detected mode (server/orchestrator) + signals + reasoning (#3214)                                                                                                                                                           |
+| `registry`           | Inspect + refresh the dynamic model registry (doctor / refresh)                                                                                                                                                                     |
+| `migrate`            | Relocate homedir state (sessions, checkpoints, traces, runs, audit, pipeline, tasks) into \<repo>/.nexus-agents/ for users adopting NEXUS_REPO_PREFERRED=1. Cross-repo state stays homedir. --dry-run for a no-op plan. Epic #2872. |
+| `init`               | Initialize portable nexus-agents config in a repo. Flags: --portable (#2305/#2308/#2311), --install / --uninstall (#2311), --gitignore, --mcp-config, --opencode \<path> (#2504), --force, --dry-run.                               |
+| `review`             | Review a GitHub PR (dogfooding helper)                                                                                                                                                                                              |
+| `scaffold`           | Generate project files from templates                                                                                                                                                                                               |
+| `validate`           | Run unified validation (doctor + fitness + config)                                                                                                                                                                                  |
+| `index`              | Generate and manage codebase index                                                                                                                                                                                                  |
+| `improvement-review` | Observability-driven improvement loop (#2402). Surfaces threshold breaches; --file-issues opt-in.                                                                                                                                   |
 
-| Command            | Subcommand           | Description                                                          | Mode |
-| ------------------ | -------------------- | -------------------------------------------------------------------- | ---- |
-| `routing-audit`    | `<task>`             | Show the routing decision for a task without executing it (dry-run)  | any  |
-| `system-review`    | -                    | Run a 5-phase introspection of the local install                     | any  |
-| `verify`           | -                    | Quick post-install verification                                      | any  |
-| `learning-metrics` | -                    | Show the learning-metrics dashboard                                  | any  |
-| `research`         | `status` / `overlap` | Inspect technique-implementation status; find overlapping techniques | any  |
+### Maintainer — benchmarks, releases, deep diagnostics
 
-### Server & internal (rarely typed directly)
+| Command              | Description                                                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `login`              | [deprecated alias] Soft alias of "auth status"; renamed in #2449                                                                                                              |
+| `auto-remediate`     | Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit\|enforce; never auto-merges.                                                                    |
+| `remediation-review` | Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound\|--unsound · sign-off --owner · readiness (enforce-readiness verdict + harmful-rate). |
+| `demo`               | API-free exploration mode (marketing/demo flow)                                                                                                                               |
+| `hooks`              | Claude CLI hook integration commands                                                                                                                                          |
+| `routing-audit`      | Debug model routing decisions                                                                                                                                                 |
+| `fitness-audit`      | Run CLI orchestration fitness score audit                                                                                                                                     |
+| `system-review`      | Automated system review (5-phase checklist)                                                                                                                                   |
+| `sprint`             | Automated sprint planning from open issues                                                                                                                                    |
+| `evaluate`           | Self-evaluation of codebase components                                                                                                                                        |
+| `issue`              | Issue template validation and management                                                                                                                                      |
+| `validation`         | Learning validation dashboard                                                                                                                                                 |
+| `learning-metrics`   | Aggregated learning metrics dashboard                                                                                                                                         |
+| `swe-bench`          | [deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.                                                                                                 |
+| `atbench`            | [deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.                                                                                                  |
+| `visualize`          | Generate Mermaid diagrams and ASCII dashboards                                                                                                                                |
+| `health`             | Swarm health metrics dashboard                                                                                                                                                |
+| `release-notes`      | Generate release notes from git commits                                                                                                                                       |
+| `release-validate`   | Run expert swarm validation for releases                                                                                                                                      |
+| `release-announce`   | Generate release announcements (blog, social)                                                                                                                                 |
 
-| Command     | Subcommand                                                          | Description                                               | Mode   |
-| ----------- | ------------------------------------------------------------------- | --------------------------------------------------------- | ------ |
-| `(default)` | -                                                                   | Start the MCP server (what editors call)                  | server |
-| `server`    | `[--interactive]`                                                   | Start MCP server explicitly; `--interactive` opens a REPL | server |
-| `hooks`     | `session-start` / `session-end` / `pre-tool` / `post-tool` / `stop` | Handle Claude Code hook events                            | any    |
-| `index`     | `generate` / `check` / `diagram`                                    | Generate / validate codebase index; emit Mermaid graph    | any    |
+### Internal — dev/eval loops (hidden from --help)
+
+| Command            | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `server`           | Start MCP server with stdio transport (explicit form) |
+| `e2e-eval`         | E2E evaluation scenario runner (dev loop)             |
+| `memory-benchmark` | Memory-system benchmark runner (dev loop)             |
+| `memory-eval`      | Comparative memory evaluation benchmark (dev loop)    |
+| `routing-ab`       | A/B comparison of routing strategies (dev loop)       |
+| `scenario`         | Execute a named scenario from the testing framework   |
+| `warm-up`          | Warm the model/adapter caches before a run            |
+
+_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 53 commands._
+
+<!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->
+
+### Subcommands and modes
+
+The catalog carries a name and a one-line description per command; it has no
+subcommand or mode field, so this table is hand-maintained and covers only the
+commands whose subcommand shape is not obvious from the description. **Mode**
+is the process mode the command needs (see Mode Selection below); `any` means
+it works in both.
+
+| Command         | Subcommand                                                          | Mode         | Notes                                                    |
+| --------------- | ------------------------------------------------------------------- | ------------ | -------------------------------------------------------- |
+| `(default)`     | -                                                                   | server       | What editors and MCP clients call                        |
+| `server`        | `[--interactive]`                                                   | server       | `--interactive` opens a REPL                             |
+| `orchestrate`   | `<task>`                                                            | orchestrator | Routes to the best CLI                                   |
+| `vote`          | `--proposal "..."`                                                  | any          | `--quick` runs the 3-voter panel                         |
+| `review`        | `<url>`                                                             | orchestrator | Adversarial review of a GitHub PR                        |
+| `workflow`      | `list` / `run <name>`                                               | orchestrator | `list` works in any mode                                 |
+| `research`      | `add` / `discover` / `review` / `prioritize` / `status` / `overlap` | any          | Registry management plus technique-implementation status |
+| `setup`         | `[--skip-mcp\|rules\|hooks\|opencode\|gemini\|codex\|config]`       | any          | MCP server + hooks + per-CLI configs in one shot         |
+| `config`        | `init` / `get` / `set` / `list` / `export` / `import`               | any          | `init` generates a starter `nexus-agents.yaml`           |
+| `expert`        | `list` / `create` / `execute`                                       | any          | Built-in + custom experts                                |
+| `init`          | `--portable [--mcp-config] [--install] [--uninstall]`               | any          | Bootstraps a workspace-local `.nexus-agents/` install    |
+| `routing-audit` | `<task>`                                                            | any          | Dry-run: shows the routing decision without executing    |
+| `hooks`         | `session-start` / `session-end` / `pre-tool` / `post-tool` / `stop` | any          | Claude Code hook events                                  |
+| `index`         | `generate` / `check` / `diagram`                                    | any          | `diagram` emits a Mermaid graph                          |
+| `--help`        | `[--all]`                                                           | any          | `--all` includes maintainer commands                     |
+| `--version`     | -                                                                   | any          | Display version                                          |
 
 ### Deprecated
 
-| Command     | Description                                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `swe-bench` | Harness extracted to [`nexus-substrate/nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) (epic #2514). In-tree commands stub out with a migration message. |
+Commands whose catalog description starts with `[deprecated]` still dispatch,
+but only to a migration message:
+
+- `swe-bench` and `atbench` — harnesses extracted to
+  [`nexus-substrate/nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench)
+  and [`nexus-substrate/nexus-eval-atbench`](https://github.com/nexus-substrate/nexus-eval-atbench)
+  (epic #2514); shims until the next minor.
+- `login` — soft alias of `auth status` (renamed in #2449).
 
 ### Mode Selection
 
