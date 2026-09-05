@@ -65,6 +65,7 @@ export async function executeSpec(
   }
 
   return ok({
+    executed: compileResult.value.executed,
     dag: dagResult.value,
     outputs,
     validation,

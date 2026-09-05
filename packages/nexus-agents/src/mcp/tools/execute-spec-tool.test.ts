@@ -45,6 +45,7 @@ vi.mock('../../orchestration/outcomes/index.js', () => ({
 const EXECUTE_SPEC_RESULT = {
   ok: true as const,
   value: {
+    executed: true,
     validation: { satisfaction: 1, allMet: true },
   },
 };
@@ -127,6 +128,10 @@ interface CapturedToolResult {
   content: Array<{ type: string; text: string }>;
 }
 
+function parseOutput(result: CapturedToolResult): Record<string, unknown> {
+  return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+}
+
 /** Registers the tool against a mock server and returns the captured callback. */
 function captureHandler(): (args: unknown) => Promise<CapturedToolResult> {
   let captured: ((args: unknown) => Promise<CapturedToolResult>) | undefined;
@@ -154,7 +159,7 @@ describe('execute_spec result recording (#5530)', () => {
   it('records unmet acceptance criteria as failure without success learning', async () => {
     executeSpecMock.mockResolvedValueOnce({
       ok: true,
-      value: { validation: { satisfaction: 0.5, allMet: false } },
+      value: { executed: true, validation: { satisfaction: 0.5, allMet: false } },
     });
 
     await captureHandler()({ spec: '# Feature\n\n## Requirements\n- x' });
@@ -177,6 +182,23 @@ describe('execute_spec result recording (#5530)', () => {
     expect(recordTaskMock).toHaveBeenCalledOnce();
     expect(recordErrorMock).not.toHaveBeenCalled();
   });
+
+  it('reports placeholder execution as a dry run without recording telemetry (#5505)', async () => {
+    executeSpecMock.mockResolvedValueOnce({
+      ok: true,
+      value: { executed: false, validation: { satisfaction: 1, allMet: true } },
+    });
+
+    const result = await captureHandler()({ spec: '# Feature\n\n## Requirements\n- x' });
+    const output = parseOutput(result);
+
+    expect(output['mode']).toBe('dry_run');
+    expect(output['executed']).toBe(false);
+    expect(outcomeAppendMock).not.toHaveBeenCalled();
+    expect(recordLearningMock).not.toHaveBeenCalled();
+    expect(recordTaskMock).not.toHaveBeenCalled();
+    expect(recordErrorMock).not.toHaveBeenCalled();
+  });
 });
 
 // #3732: `dispatch: 'async'` returns a jobId immediately and runs the full spec
@@ -187,7 +209,7 @@ describe('execute_spec async dispatch (#3732)', () => {
   const originalDataDir = process.env['NEXUS_DATA_DIR'];
 
   function envelope(result: CapturedToolResult): Record<string, unknown> {
-    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    return parseOutput(result);
   }
 
   beforeEach(() => {

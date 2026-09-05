@@ -49,6 +49,7 @@ function makeValidation(overrides?: Partial<ScenarioResult>): ScenarioResult {
 
 function makeResult(overrides?: Partial<SpecExecutionResult>): SpecExecutionResult {
   return {
+    executed: true,
     dag: makeDag(),
     outputs: ['[code] A works', '[code] B works'],
     validation: makeValidation(),

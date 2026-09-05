@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { executeSpec } from './spec-executor.js';
+import type { NodeHandlerFactory } from './spec-pipeline-types.js';
 
 // ============================================================================
 // Success Cases
@@ -35,6 +36,7 @@ Implement OAuth2 login for the app.
     expect(result.value.outputs.length).toBeGreaterThan(0);
     expect(result.value.validation).toBeDefined();
     expect(result.value.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.value.executed).toBe(false);
   });
 
   it('returns DAG with correct spec title', async () => {
@@ -78,6 +80,25 @@ Implement OAuth2 login for the app.
     // Node handler outputs include "[code] Add login endpoint"
     // Criterion "Login endpoint works" should match on "login" + "endpoint"
     expect(result.value.validation.totalCriteria).toBe(1);
+  });
+
+  it('reports that configured node handlers executed (#5505)', async () => {
+    const handlerFactory: NodeHandlerFactory = (node) => () =>
+      Promise.resolve({ results: [`Completed ${node.description}`] });
+    const spec = `# Feature
+
+## Requirements
+- Build API
+
+## Acceptance Criteria
+- [ ] API completed
+`;
+
+    const result = await executeSpec(spec, { handlerFactory });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.executed).toBe(true);
   });
 });
 

@@ -44,7 +44,7 @@ const DRY_RUN_FACTORY: NodeHandlerFactory = createDryRunHandler;
 export function compileSpecToGraph(
   markdown: string,
   options?: CompileOptions
-): Result<CompiledGraph, PipelineError> {
+): Result<CompiledGraph & { readonly executed: boolean }, PipelineError> {
   const parseResult = parseSpec(markdown);
   if (!parseResult.ok) {
     return err({ message: parseResult.error.message, stage: 'parse' });
@@ -57,6 +57,7 @@ export function compileSpecToGraph(
 
   const dag = dagResult.value;
   const handlerFactory = options?.handlerFactory ?? DRY_RUN_FACTORY;
+  const executed = handlerFactory !== DRY_RUN_FACTORY;
   const builder = new GraphBuilder();
   builder.addState('results', append<string>([]));
 
@@ -89,7 +90,7 @@ export function compileSpecToGraph(
     return err({ message: formatCompileError(compiled.error), stage: 'compile' });
   }
 
-  return ok(compiled.value);
+  return ok({ ...compiled.value, executed });
 }
 
 /** Finds nodes that have no outgoing dependency edges. */
