@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.15.3
+
+### Patch Changes
+
+- [#5551](https://github.com/nexus-substrate/nexus-agents/pull/5551) [`08c2bf4`](https://github.com/nexus-substrate/nexus-agents/commit/08c2bf4149e2d9b8dc28d7881839f1d7399020af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Assess post-vote panel independence from successful vote provenance so fallback executions and failed roles are reported accurately.
+
 ## 8.15.2
 
 ### Patch Changes
