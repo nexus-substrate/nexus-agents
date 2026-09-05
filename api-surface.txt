@@ -4110,6 +4110,7 @@ ClassDeclaration GitHubProvider
   getPRStatus(prNumber: number) => Promise<Result<PRStatus, ScmError>>
   listComments(issueNumber: number) => Promise<Result<readonly ScmComment[], ScmError>>
   listIssues(filters?: IssueFilters) => Promise<Result<readonly ScmIssue[], ScmError>>
+  listRepositoryLabels() => Promise<Result<readonly string[], ScmError>>
   mergePR(prNumber: number, options?: MergePROptions) => Promise<Result<void, ScmError>>
   readonly platform: "github"
 ClassDeclaration GitHubReviewer
@@ -4863,6 +4864,7 @@ InterfaceDeclaration IScmProvider
   getPRStatus(prNumber: number) => Promise<Result<PRStatus, ScmError>>
   listComments(issueNumber: number) => Promise<Result<readonly ScmComment[], ScmError>>
   listIssues(filters?: IssueFilters) => Promise<Result<readonly ScmIssue[], ScmError>>
+  listRepositoryLabels() => Promise<Result<readonly string[], Error>>
   mergePR(prNumber: number, options?: MergePROptions) => Promise<Result<void, ScmError>>
   readonly platform: ScmPlatform
   readonly repo: string

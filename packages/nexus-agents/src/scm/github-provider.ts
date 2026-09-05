@@ -127,8 +127,8 @@ function safeParseGhJson<T>(
 // gh CLI executor
 // ============================================================================
 
-async function execGh(args: readonly string[], repo: string): Promise<Result<string, ScmError>> {
-  const fullArgs = [...args, '--repo', repo];
+async function execGh(args: readonly string[], repo?: string): Promise<Result<string, ScmError>> {
+  const fullArgs = repo === undefined ? [...args] : [...args, '--repo', repo];
 
   try {
     const { stdout } = await execFileAsync('gh', fullArgs, {
@@ -236,6 +236,15 @@ export class GitHubProvider implements IScmProvider {
     const parsed = safeParseGhJson(result.value, z.array(GhIssueJsonSchema), 'listIssues');
     if (!parsed.ok) return parsed;
     return ok(parsed.value.map(mapIssue));
+  }
+
+  async listRepositoryLabels(): Promise<Result<readonly string[], ScmError>> {
+    const args = ['api', `repos/${this.repo}/labels`, '--paginate', '--jq', '.[].name'];
+
+    logger.debug('Listing repository labels', { repo: this.repo });
+    const result = await execGh(args);
+    if (!result.ok) return result;
+    return ok(result.value.length === 0 ? [] : result.value.split('\n'));
   }
 
   async addLabels(issueNumber: number, labels: readonly string[]): Promise<Result<void, ScmError>> {

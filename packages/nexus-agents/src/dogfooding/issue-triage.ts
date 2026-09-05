@@ -27,7 +27,6 @@ import type { TrustTier } from '../security/trust-types.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { validateCorroboration } from '../security/corroboration-validator.js';
-import type { CorroborationResult } from '../security/corroboration-validator.js';
 import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type {
   ReputationAssessment,
@@ -190,7 +189,7 @@ export class IssueTriage {
     const fetchResult = await this.fetchIssueData(owner, repo, issueNumber);
     if (!fetchResult.ok) return fetchResult;
 
-    const { issue: issueResult } = fetchResult.value;
+    const { issue: issueResult, existingLabels } = fetchResult.value;
 
     // Sanitize untrusted content (Issue #828 — input-sanitizer wiring)
     const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
@@ -235,7 +234,7 @@ export class IssueTriage {
     // RefuseAction is tier-4 "always allowed" (trust-classifier.ts:170), so it
     // survives the gate that blocks the rest.
     const withEscalation = applySafetyActions(actions, gateDecision, reputation, issueResult);
-    const validatedActions = this.validateActions(withEscalation, gateDecision);
+    const validatedActions = this.validateActions(withEscalation, gateDecision, existingLabels);
 
     const result = this.buildResult({
       issue: issueResult,
@@ -417,7 +416,8 @@ export class IssueTriage {
    */
   private validateActions(
     actions: readonly AgentAction[],
-    gateDecision: ReputationGateDecision
+    gateDecision: ReputationGateDecision,
+    existingLabels: ReadonlySet<string> | undefined
   ): ProposedAction[] {
     // #3119 + #3122: reputation GATES via the rollout mode. `enforce` uses the
     // reconciled (possibly demoted) tier; `audit`/`off` enforce the classifier
@@ -426,11 +426,12 @@ export class IssueTriage {
     const context: ActionContext = {
       inputTrustTier: gateDecision.enforcedTier,
       ...this.accessContext(),
+      ...(existingLabels !== undefined ? { existingLabels } : {}),
     };
 
     return actions.map((action) => {
       const policyDecision = evaluatePolicy(action, context);
-      const corrobResult = this.validateActionCorroboration(action);
+      const corrobResult = validateCorroboration(action);
 
       return {
         type: action.type,
@@ -440,15 +441,6 @@ export class IssueTriage {
         details: buildActionDetails(action, policyDecision, corrobResult),
       };
     });
-  }
-
-  /**
-   * Validates corroboration for a single action.
-   * This is the second NEW security module wiring completing #828.
-   * (Source: Issue #828 — corroboration-validator wiring)
-   */
-  private validateActionCorroboration(action: AgentAction): CorroborationResult {
-    return validateCorroboration(action);
   }
 
   /**
@@ -539,6 +531,7 @@ export class IssueTriage {
         comments: IssueComment[];
         commentsAvailable: boolean;
         accountAgeDays?: number;
+        existingLabels?: ReadonlySet<string>;
       },
       Error
     >
@@ -549,19 +542,7 @@ export class IssueTriage {
     if (!detailResult.ok) return err(detailResult.error);
 
     const detail = detailResult.value;
-    const issue: IssueMetadata = {
-      number: detail.number,
-      title: detail.title,
-      body: detail.body,
-      author: detail.author,
-      authorAssociation: detail.authorAssociation,
-      owner,
-      repo,
-      url: detail.url,
-      state: detail.state,
-      labels: [...detail.labels],
-      createdAt: detail.createdAt,
-    };
+    const issue: IssueMetadata = { ...detail, owner, repo };
 
     const commentsResult = await provider.listCommentDetails(issueNumber);
     if (!commentsResult.ok) {
@@ -573,17 +554,27 @@ export class IssueTriage {
     const comments = commentsResult.ok ? mapIssueComments(commentsResult.value) : [];
     const commentsAvailable = commentsResult.ok;
 
+    const labelsResult = await provider.listRepositoryLabels();
+    if (!labelsResult.ok) {
+      logger.warn('Failed to fetch repository labels; label validity is unmeasured', {
+        issueNumber,
+        error: labelsResult.error.message,
+      });
+    }
+
     // #3121: fetch the author's REAL account age (their account creation date,
     // not the issue date). Best-effort — on failure or an unparseable date we
     // omit it, so the reputation engine SKIPS the new_account signal (#3106)
     // rather than fabricating a value. Reputation must not block on this.
     const accountAgeDays = await this.fetchAccountAgeDays(provider, detail.author);
 
-    return ok(
-      accountAgeDays !== undefined
-        ? { issue, comments, commentsAvailable, accountAgeDays }
-        : { issue, comments, commentsAvailable }
-    );
+    return ok({
+      issue,
+      comments,
+      commentsAvailable,
+      ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
+      ...(labelsResult.ok ? { existingLabels: new Set(labelsResult.value) } : {}),
+    });
   }
 
   /**

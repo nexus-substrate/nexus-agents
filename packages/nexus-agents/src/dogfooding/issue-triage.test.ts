@@ -23,6 +23,7 @@ import { _setUntrustedInputFirewallForTests } from './untrusted-input-firewall.j
 // Mock SCM provider traits
 const mockGetIssueDetail = vi.fn();
 const mockListCommentDetails = vi.fn();
+const mockListRepositoryLabels = vi.fn();
 const mockFetchUserMetadata = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
 const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
@@ -99,10 +100,12 @@ describe('IssueTriage', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(ok(createMockIssueDetail()));
     mockListCommentDetails.mockResolvedValue(ok(createMockCommentDetails()));
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
     mockFetchUserMetadata.mockResolvedValue(ok(userMeta())); // established account by default
   });
 
@@ -445,21 +448,61 @@ describe('IssueTriage', () => {
       }
     });
 
-    it('blocks proposed labels when the repository label set is unavailable', async () => {
+    it('approves a proposed label present in the repository label set', async () => {
       mockListCommentDetails.mockResolvedValue(ok([]));
       mockGetIssueDetail.mockResolvedValue(
         ok(createMockIssueDetail({ authorAssociation: 'OWNER' }))
       );
 
-      const triage = new IssueTriage();
-      const result = await triage.triageIssue('https://github.com/owner/repo/issues/42');
+      const result = await new IssueTriage().triageIssue('https://github.com/owner/repo/issues/42');
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         const labelAction = result.value.proposedActions.find((a) => a.type === 'ProposeLabels');
         expect(labelAction).toBeDefined();
+        expect(labelAction?.policyApproved).toBe(true);
+        expect(labelAction?.details['policyViolations']).toEqual([]);
+        expect(mockListRepositoryLabels).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('blocks a proposed label absent from the repository label set', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ authorAssociation: 'OWNER' }))
+      );
+      mockListRepositoryLabels.mockResolvedValue(ok(['enhancement']));
+
+      const result = await new IssueTriage().triageIssue('https://github.com/owner/repo/issues/42');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const labelAction = result.value.proposedActions.find((a) => a.type === 'ProposeLabels');
+        expect(labelAction?.policyApproved).toBe(false);
+        expect(labelAction?.details['policyViolations']).toContain('INVALID_LABELS');
+      }
+    });
+
+    it('keeps the repository label set unavailable when its fetch fails', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ authorAssociation: 'OWNER' }))
+      );
+      mockListRepositoryLabels.mockResolvedValue(
+        err(new ScmError('gh api failed: rate limited', 'github', 429))
+      );
+
+      const result = await new IssueTriage().triageIssue('https://github.com/owner/repo/issues/42');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const labelAction = result.value.proposedActions.find((a) => a.type === 'ProposeLabels');
         expect(labelAction?.policyApproved).toBe(false);
         expect(labelAction?.details['policyViolations']).toContain('LABEL_SET_UNAVAILABLE');
+        expect(labelAction?.details['policyViolations']).not.toContain('INVALID_LABELS');
+        expect(mockWarn).toHaveBeenCalledTimes(1);
+        expect(mockWarn).toHaveBeenCalledWith(
+          'Failed to fetch repository labels; label validity is unmeasured',
+          expect.objectContaining({ error: expect.stringContaining('rate limited') })
+        );
       }
     });
 
@@ -831,10 +874,12 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(ok(createMockIssueDetail()));
     mockListCommentDetails.mockResolvedValue(ok(createMockCommentDetails()));
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
     mockFetchUserMetadata.mockResolvedValue(ok(userMeta()));
   });
 

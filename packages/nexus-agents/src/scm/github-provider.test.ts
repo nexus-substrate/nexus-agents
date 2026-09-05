@@ -150,6 +150,24 @@ describe('GitHubProvider', () => {
     });
   });
 
+  describe('listRepositoryLabels', () => {
+    it('returns names from every paginated repository-label response', async () => {
+      mockExecFile.mockResolvedValue({ stdout: 'bug\ndocumentation\nhelp wanted\n' });
+
+      const result = await provider.listRepositoryLabels();
+
+      expect(result).toEqual({ ok: true, value: ['bug', 'documentation', 'help wanted'] });
+      const callArgs = mockExecFile.mock.calls[0] as unknown[];
+      expect(callArgs[1]).toEqual([
+        'api',
+        'repos/owner/repo/labels',
+        '--paginate',
+        '--jq',
+        '.[].name',
+      ]);
+    });
+  });
+
   describe('addLabels', () => {
     it('returns ok on success', async () => {
       mockExecFile.mockResolvedValue({ stdout: '' });
