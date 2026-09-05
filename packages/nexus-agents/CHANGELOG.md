@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.14.1
+
+### Patch Changes
+
+- [#5534](https://github.com/nexus-substrate/nexus-agents/pull/5534) [`5e8239a`](https://github.com/nexus-substrate/nexus-agents/commit/5e8239aaa0cdccbf7521e499c4c450a8d8caf781) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve the executing CLI on failed consensus votes and record unattributed vote failures as unknown instead of assigning them to Claude.
+
+- [#5532](https://github.com/nexus-substrate/nexus-agents/pull/5532) [`e20cef6`](https://github.com/nexus-substrate/nexus-agents/commit/e20cef638122070b5c4f787b99e9bbbcf9a885c5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record spec executions with unmet acceptance criteria as failures without success learning, and preserve measured issue-triage confidence in recorded learnings.
+
+- [#5533](https://github.com/nexus-substrate/nexus-agents/pull/5533) [`a48bd00`](https://github.com/nexus-substrate/nexus-agents/commit/a48bd00b00b3e8f8d9fe3aa8ff0fd97ae4fbc4d4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reject security-scan graph workflows without non-empty code before execution so empty scans cannot record successful outcomes or learnings.
+
 ## 8.14.0
 
 ### Minor Changes
