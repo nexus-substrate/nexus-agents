@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.18.1
+
+### Patch Changes
+
+- [#5566](https://github.com/nexus-substrate/nexus-agents/pull/5566) [`22dd74a`](https://github.com/nexus-substrate/nexus-agents/commit/22dd74af6f0538408f7bfcd1da05799464031b64) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Improve review verdict parsing and ensure the posting policy validates the real review before publication.
+
 ## 8.18.0
 
 ### Minor Changes
