@@ -247,8 +247,9 @@ export class Orchestrator extends BaseAgent {
   /** Execute a task by analyzing, decomposing (if needed), and coordinating. */
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
     const startTime = getTimeProvider().now();
+    const usage = { tokensUsed: 0, tokensMeasured: false };
 
-    const analysisResult = await this.analyzeTask(task);
+    const analysisResult = await this.analyzeTaskWithUsage(task, usage);
     if (!analysisResult.ok) return err(analysisResult.error);
     const analysis = analysisResult.value;
 
@@ -263,7 +264,7 @@ export class Orchestrator extends BaseAgent {
 
     let subtasks: SubTask[] = [];
     if (analysis.needsDecomposition) {
-      const decomposeResult = await this.decomposeTask(task, analysis);
+      const decomposeResult = await this.decomposeTaskWithUsage(task, analysis, usage);
       if (!decomposeResult.ok) return err(decomposeResult.error);
       subtasks = decomposeResult.value;
     }
@@ -283,7 +284,8 @@ export class Orchestrator extends BaseAgent {
       output,
       metadata: {
         durationMs: getTimeProvider().now() - startTime,
-        tokensUsed: 0,
+        tokensUsed: usage.tokensUsed,
+        tokensMeasured: usage.tokensMeasured,
         toolsUsed: [],
         model: 'tech-lead-orchestration',
         ...(executedCli === undefined
@@ -300,6 +302,13 @@ export class Orchestrator extends BaseAgent {
 
   /** Analyze a task to understand its complexity and requirements. */
   async analyzeTask(task: Task): Promise<Result<TaskAnalysis, AgentError>> {
+    return this.analyzeTaskWithUsage(task, { tokensUsed: 0, tokensMeasured: false });
+  }
+
+  private async analyzeTaskWithUsage(
+    task: Task,
+    usage: { tokensUsed: number; tokensMeasured: boolean }
+  ): Promise<Result<TaskAnalysis, AgentError>> {
     if (this.adapter === undefined) {
       return ok(heuristicAnalysis(task, this.orchestratorOptions));
     }
@@ -313,6 +322,10 @@ export class Orchestrator extends BaseAgent {
 
     const result = await this.complete(request);
     if (!result.ok) return err(result.error);
+    if (result.value.usage !== undefined) {
+      usage.tokensUsed += result.value.usage.totalTokens;
+      usage.tokensMeasured = true;
+    }
 
     const parseResult = this.parseJson<TaskAnalysis>(
       extractTextContent(result.value.content),
@@ -331,6 +344,14 @@ export class Orchestrator extends BaseAgent {
 
   /** Decompose a task into subtasks. */
   async decomposeTask(task: Task, analysis: TaskAnalysis): Promise<Result<SubTask[], AgentError>> {
+    return this.decomposeTaskWithUsage(task, analysis, { tokensUsed: 0, tokensMeasured: false });
+  }
+
+  private async decomposeTaskWithUsage(
+    task: Task,
+    analysis: TaskAnalysis,
+    usage: { tokensUsed: number; tokensMeasured: boolean }
+  ): Promise<Result<SubTask[], AgentError>> {
     if (this.adapter === undefined) {
       return ok(heuristicDecomposition(task, analysis, this.orchestratorOptions.maxSubtasks));
     }
@@ -349,6 +370,10 @@ export class Orchestrator extends BaseAgent {
 
     const result = await this.complete(request);
     if (!result.ok) return err(result.error);
+    if (result.value.usage !== undefined) {
+      usage.tokensUsed += result.value.usage.totalTokens;
+      usage.tokensMeasured = true;
+    }
 
     try {
       // LLMs frequently wrap the JSON array in a markdown code fence
