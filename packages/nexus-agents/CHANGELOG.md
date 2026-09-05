@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.21.1
+
+### Patch Changes
+
+- [#5595](https://github.com/nexus-substrate/nexus-agents/pull/5595) [`e1d9172`](https://github.com/nexus-substrate/nexus-agents/commit/e1d91729a4689a04b8a236659e170633a75698a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clamp repo-map context within the shared prompt budget and include recent learnings and prior strategies in legacy context summaries.
+
 ## 8.21.0
 
 ### Minor Changes
