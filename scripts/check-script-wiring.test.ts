@@ -84,6 +84,38 @@ describe('isReachableFromCi', () => {
   it('reports a script with neither a workflow nor an npm script as unreachable', () => {
     expect(isReachableFromCi('check-x.ts', 'run: pnpm lint', noNpm)).toBe(false);
   });
+
+  it('does not count an npm-script invocation quoted inside a workflow string (#5501)', () => {
+    // verify-review.yml never runs review-pr.ts; it posts a comment whose TEXT
+    // says `pnpm review <n>`. Guarding review-pr.ts made the gate enumerate it,
+    // and the npm hop then reported it wired — "reachable from CI" for a script
+    // no workflow executes, which is the misreport this gate exists to catch.
+    const commentBody =
+      "body: 'Label removed. Please re-run `pnpm review ' + context.payload.pull_request.number + '` to review.'";
+    const review = { review: 'pnpm exec tsx scripts/review-pr.ts' };
+
+    expect(isReachableFromCi('review-pr.ts', commentBody, review)).toBe(false);
+  });
+
+  it('does not count a direct invocation quoted inside an echo (#5501)', () => {
+    // docs-check.yml's remediation hints: echo "Run 'pnpm exec tsx scripts/x.ts'".
+    const hint = `echo "Run 'pnpm exec tsx scripts/check-x.ts' and commit the changes"`;
+
+    expect(isReachableFromCi('check-x.ts', hint, noNpm)).toBe(false);
+  });
+
+  it('still counts an invocation that follows a closed string on the same line', () => {
+    // The pair: only an UNBALANCED quote before the invocation means "inside a
+    // string". `echo "…" && pnpm x` is a real run.
+    expect(
+      isReachableFromCi('check-x.ts', 'run: echo "checking" && pnpm check:x', {
+        'check:x': 'npx tsx scripts/check-x.ts',
+      })
+    ).toBe(true);
+    expect(
+      isReachableFromCi('check-x.ts', 'run: echo "checking" && npx tsx scripts/check-x.ts', noNpm)
+    ).toBe(true);
+  });
 });
 
 describe('hasCliEntryGuard', () => {
@@ -254,6 +286,23 @@ describe('MANUAL_ONLY against the real tree', () => {
     expect(existsSync(join(root, 'scripts', basename))).toBe(true);
     expect(inScope).toContain(basename);
     expect(isReachableFromCi(basename, workflowText, npmScripts)).toBe(false);
+  });
+
+  // #5501: these ran their body unconditionally at module top level, so the
+  // gate could not see them even though every one is (or is meant to be) an
+  // entry point. Each now carries the standard guard; if one loses it, the
+  // gate silently stops measuring it, which is the #4553 class again.
+  it.each([
+    'backfill-research-quality.ts',
+    'generate-agents-index.ts',
+    'generate-docs-content.ts',
+    'generate-repo-index.ts',
+    'generate-skills-index.ts',
+    'review-pr.ts',
+    'sync-models-dev.ts',
+    'sync-plugin-version.ts',
+  ])('%s carries a CLI entry guard and is enumerated (#5501)', (basename) => {
+    expect(inScope).toContain(basename);
   });
 
   it('the widened gate passes on the real tree', () => {

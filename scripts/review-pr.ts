@@ -12,20 +12,13 @@
  * (Source: Issue #182, 5-0 consensus vote for CLI-based PR review)
  */
 
-/* eslint-disable no-console */
-// Console output is intentional for CLI user feedback
-
-import {
-  execSync,
-  execFileSync,
-  spawn,
-  type ChildProcessWithoutNullStreams,
-} from 'node:child_process';
+/* eslint-disable no-console -- console output is intentional for CLI user feedback */
+import { execSync, execFileSync, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../packages/nexus-agents/src/config/nexus-tmp-dir.js';
 import { join } from 'node:path';
-
 import { REVIEW_PROMPT } from './review-pr-prompt.js';
 
 // Types
@@ -60,7 +53,6 @@ interface PRInfo {
 }
 
 // Constants
-
 const MODEL_COMMANDS: Record<string, { cmd: string; args: string[] }> = {
   claude: { cmd: 'claude', args: ['-p', '--output-format', 'text'] },
   gemini: { cmd: 'gemini', args: [] },
@@ -509,7 +501,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('review-pr.ts') === true) {
+  main().catch((error: unknown) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}

@@ -79,7 +79,7 @@ Existing implementations (TechLead, Puppeteer, WorkflowEngine) will be wrapped w
 1. **Phase 1: Interface Definition** (Complete)
    - Create `core/types/orchestrator.ts` with IOrchestrator interface
    - Export from `core/types/index.ts`
-   - Update fitness-score.ts to detect interface
+   - Update the fitness audit (`packages/nexus-agents/src/governance/fitness-score.ts`) to detect the interface
 
 2. **Phase 2: Adapters** (Complete)
    - Create `TechLeadAdapter implements IOrchestrator` ✓
@@ -103,4 +103,4 @@ Existing implementations (TechLead, Puppeteer, WorkflowEngine) will be wrapped w
 
 - Issue: #573
 - Related: docs/architecture/redundancy-analysis.md (Section 4)
-- Related: scripts/fitness-score.ts (Canonical Paths assessment)
+- Related: packages/nexus-agents/src/governance/fitness-score.ts (Canonical Paths assessment; the standalone `scripts/fitness-score.ts` was removed in #5501)

@@ -472,4 +472,6 @@ function main(): void {
   writeOutput(index, jsonContent, mdContent, jsonChanged, mdChanged);
 }
 
-main();
+if (process.argv[1]?.endsWith('generate-repo-index.ts') === true) {
+  main();
+}

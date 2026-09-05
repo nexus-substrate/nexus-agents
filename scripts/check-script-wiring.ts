@@ -22,7 +22,7 @@
  *
  * Not in scope, and stated so nothing infers coverage that does not exist:
  * scripts that run their body unconditionally at module top level with no
- * guard (`fitness-score.ts`, the `generate-*-index.ts` family, `sync-*.ts`).
+ * guard (`review-pr.ts`, the `generate-*-index.ts` family, `sync-*.ts`).
  * They are entry points too, but a top-level `process.exit(` is not a
  * detectable idiom the way a guard is; widening to them is a separate change.
  *
@@ -115,6 +115,19 @@ export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   // docs/research/pr-review-experiment-results-*.md. Not a per-push gate.
   'pr-review-eval-run.ts':
     'live-voter eval run on operator quota; results are committed, not gated',
+  // `pnpm review <PR#>`: the contributor-run CLI review. verify-review.yml
+  // tells the author to run it, CONTRIBUTION_GUIDE documents it, and it posts
+  // the review comment and the `cli-reviewed` label to GitHub under the
+  // operator's own account — which is why no workflow runs it. Guarded so the
+  // gate can see it (#5501).
+  'review-pr.ts':
+    'operator-run; verify-review.yml and CONTRIBUTION_GUIDE instruct contributors to run it; posts to GitHub',
+  // One-off enrichment of docs/research/registry/papers.yaml from Semantic
+  // Scholar (rate-limited network fetch, writes the registry). The research_add
+  // tool's message names it as the follow-up for a preprint with no citation
+  // data; not a per-push gate (#5501).
+  'backfill-research-quality.ts':
+    "one-off Semantic Scholar enrichment referenced by research-add.ts's tool message; network + registry write",
 };
 
 /**
@@ -170,14 +183,45 @@ export interface WiringVerdict {
 /** Runners a workflow step uses to execute a script directly. */
 const INVOCATION_RUNNERS = ['tsx', 'node', 'ts-node', 'bash', 'sh'] as const;
 
+type Quote = "'" | '"' | '`';
+
+function isQuote(character: string | undefined): character is Quote {
+  return character === "'" || character === '"' || character === '`';
+}
+
+function unclosedQuote(text: string): Quote | undefined {
+  let quote: Quote | undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\\') {
+      index += 1;
+    } else if (isQuote(character)) {
+      quote = quote === undefined ? character : quote === character ? undefined : quote;
+    }
+  }
+  return quote;
+}
+
+/** Does `pattern` match outside a quoted string on some line? */
+function matchesUnquotedOnSomeLine(text: string, pattern: RegExp): boolean {
+  for (const line of text.split('\n')) {
+    for (const match of line.matchAll(pattern)) {
+      const prefix = line.slice(0, match.index);
+      // #5501: text a workflow prints or posts is not a CI invocation.
+      if (unclosedQuote(prefix) === undefined) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * True when some line runs `<runner> … <basename>` — an execution, not a
  * mention. `paths:` entries and comments name the file without running it.
  */
 function invokesOnSomeLine(workflowText: string, runner: string, basename: string): boolean {
   const escaped = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\b${runner}\\s+[^\\n]*${escaped}`);
-  return pattern.test(workflowText);
+  const pattern = new RegExp(`\\b${runner}\\s+.*${escaped}`, 'g');
+  return matchesUnquotedOnSomeLine(workflowText, pattern);
 }
 
 export function isReachableFromCi(
@@ -202,7 +246,10 @@ export function isReachableFromCi(
     // A bare mention of the name elsewhere is not an invocation.
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (
-      new RegExp(`(?:pnpm|npm run|yarn)\\s+(?:--?[\\w-]+\\s+)*${escaped}\\b`).test(workflowText)
+      matchesUnquotedOnSomeLine(
+        workflowText,
+        new RegExp(`(?:pnpm|npm run|yarn)\\s+(?:--?[\\w-]+\\s+)*${escaped}\\b`, 'g')
+      )
     ) {
       return true;
     }

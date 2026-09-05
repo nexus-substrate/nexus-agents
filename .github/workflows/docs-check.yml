@@ -399,6 +399,28 @@ jobs:
             exit 1
           fi
 
+  research-index-drift:
+    name: Research Index Drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # docs/research/RESEARCH_INDEX.md is generated from the papers registry.
+      # `pnpm research:check` existed for years with no workflow running it, so
+      # the index drifted silently (#5501).
+      - name: Check generated research index
+        run: |
+          if pnpm research:check; then
+            echo "✅ Research index is up to date"
+          else
+            echo "::error::docs/research/RESEARCH_INDEX.md is out of date"
+            echo "Run 'pnpm research:generate' and commit the changes"
+            exit 1
+          fi
+
   # Job 8: DocOps Skill Synchronization
   docops-skill-sync:
     name: DocOps Skill Sync

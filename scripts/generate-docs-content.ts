@@ -365,4 +365,6 @@ function main(): void {
   }
 }
 
-main();
+if (process.argv[1]?.endsWith('generate-docs-content.ts') === true) {
+  main();
+}
