@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.25.0
+
+### Minor Changes
+
+- [#5647](https://github.com/nexus-substrate/nexus-agents/pull/5647) [`58610c4`](https://github.com/nexus-substrate/nexus-agents/commit/58610c4955b50ac7dcc90c746cc5eeaac10a0dfd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix dev-pipeline completion verdict to require all planned tasks to complete with status 'done' in addition to security gate passing, and expose `taskStatus` ('all_done' | 'partial' | 'none') ([#5645](https://github.com/nexus-substrate/nexus-agents/issues/5645)).
+
 ## 8.24.2
 
 ### Patch Changes
