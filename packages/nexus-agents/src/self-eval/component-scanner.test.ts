@@ -3,9 +3,10 @@
  * (Source: Issue #137)
  */
 
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import type { ILogger } from '../core/index.js';
 import { ComponentScanner, createComponentScanner, scanComponents } from './component-scanner.js';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
@@ -26,6 +27,20 @@ async function setupTestDir(): Promise<void> {
 
 async function cleanupTestDir(): Promise<void> {
   await rm(TEST_DIR, { recursive: true, force: true });
+}
+
+function createMockLogger(): { logger: ILogger; warn: ReturnType<typeof vi.fn> } {
+  const warn = vi.fn();
+  const logger: ILogger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn,
+    error: vi.fn(),
+    child: vi.fn(),
+    setLevel: vi.fn(),
+  };
+  logger.child = vi.fn(() => logger);
+  return { logger, warn };
 }
 
 // ============================================================================
@@ -306,5 +321,86 @@ describe('per-file test coverage (#4668)', () => {
     const inventory = await scanner.scan(dir);
 
     expect(inventory.components[0]?.testCoverage).toBeNull();
+  });
+
+  it('matches coverage keys when scanning a relative directory (#5654)', async () => {
+    const root = dir;
+    const srcDir = join(root, 'src');
+    const covDir = join(root, 'coverage');
+    mkdirSync(srcDir, { recursive: true });
+    mkdirSync(covDir, { recursive: true });
+
+    const absFile = join(srcDir, 'x.ts');
+    writeFileSync(absFile, 'export const x = 1;\n');
+    writeFileSync(
+      join(covDir, 'coverage-summary.json'),
+      JSON.stringify({
+        total: { lines: { pct: 50 } },
+        [absFile]: { lines: { pct: 75 } },
+      })
+    );
+
+    const prevCwd = process.cwd();
+    try {
+      process.chdir(root);
+      const scanner = new ComponentScanner({ coverageDir: 'coverage' });
+      const inventory = await scanner.scan('src');
+
+      expect(inventory.components).toHaveLength(1);
+      const component = inventory.components[0];
+      expect(component?.path).toBe('x.ts');
+      expect(component?.testCoverage).toBe(75);
+    } finally {
+      process.chdir(prevCwd);
+    }
+  });
+
+  it('warns when coverage summary loads but matches no scanned files (#5654)', async () => {
+    const src = join(dir, 'thing.ts');
+    writeFileSync(src, 'export const a = 1;\n');
+
+    const covDir = join(dir, 'coverage');
+    mkdirSync(covDir, { recursive: true });
+    writeFileSync(
+      join(covDir, 'coverage-summary.json'),
+      JSON.stringify({
+        total: { lines: { pct: 50 } },
+        '/some/other/file.ts': { lines: { pct: 90 } },
+      })
+    );
+
+    const { logger, warn } = createMockLogger();
+    const scanner = new ComponentScanner({ coverageDir: covDir, logger });
+    await scanner.scan(dir);
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      'Coverage summary loaded but matched no scanned files',
+      expect.objectContaining({
+        scannedFiles: 1,
+        summaryKeys: 2,
+      })
+    );
+  });
+
+  it('does not warn when at least one scanned file matches coverage summary (#5654)', async () => {
+    const src = join(dir, 'thing.ts');
+    writeFileSync(src, 'export const a = 1;\n');
+
+    const covDir = join(dir, 'coverage');
+    mkdirSync(covDir, { recursive: true });
+    writeFileSync(
+      join(covDir, 'coverage-summary.json'),
+      JSON.stringify({
+        total: { lines: { pct: 50 } },
+        [src]: { lines: { pct: 80 } },
+      })
+    );
+
+    const { logger, warn } = createMockLogger();
+    const scanner = new ComponentScanner({ coverageDir: covDir, logger });
+    await scanner.scan(dir);
+
+    expect(warn).not.toHaveBeenCalled();
   });
 });
