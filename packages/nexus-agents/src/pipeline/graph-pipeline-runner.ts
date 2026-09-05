@@ -27,7 +27,10 @@ const logger = createLogger({ component: 'graph-pipeline-runner' });
 export interface GraphPipelineOptions {
   /** When true, stop after the dryRunStopAfter stage. */
   readonly dryRun?: boolean | undefined;
-  /** Maximum graph execution steps (default: 20). */
+  /**
+   * Maximum graph node executions (default: 20). Parallel super-steps are
+   * atomic and start only when their full batch fits in the remaining budget.
+   */
   readonly maxSteps?: number | undefined;
 }
 

@@ -284,23 +284,69 @@ describe('executeGraph', () => {
       expect(result.error.message).toContain('aborted');
     });
 
-    it('respects maxSteps limit', async () => {
-      // Create a graph that would run many steps via conditional loop-like edges
+    it('fails when maxSteps is exhausted with a node pending', async () => {
       const graph = new GraphBuilder()
-        .addState('count', overwrite(0))
-        .addNode('A', (state) => Promise.resolve({ count: (state['count'] as number) + 1 }))
+        .addNode('A', noop)
+        .addNode('B', noop)
         .addEdge(START, 'A')
-        .addEdge('A', END) // Would stop at 1 step normally
+        .addEdge('A', 'B')
+        .addEdge('B', END)
         .compile();
 
       expect(graph.ok).toBe(true);
       if (!graph.ok) return;
 
       const result = await executeGraph(graph.value, {}, { maxSteps: 1 });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+
+      expect(result.error.message).toContain('maxSteps exhausted with 1 runnable node(s) pending');
+      expect(result.error.message).toContain('B');
+    });
+
+    it('succeeds when the graph drains at the maxSteps limit', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addNode('B', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { maxSteps: 2 });
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      expect(result.value.stepsExecuted).toBeLessThanOrEqual(1);
+      expect(result.value.stepsExecuted).toBe(2);
+    });
+
+    it('does not start a parallel batch that exceeds the remaining node budget', async () => {
+      const runA = vi.fn(noop);
+      const runB = vi.fn(noop);
+      const graph = new GraphBuilder()
+        .addNode('A', runA)
+        .addNode('B', runB)
+        .addEdge(START, 'A')
+        .addEdge(START, 'B')
+        .addEdge('A', END)
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { maxSteps: 1 });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+
+      expect(runA).not.toHaveBeenCalled();
+      expect(runB).not.toHaveBeenCalled();
+      expect(result.error.message).toContain('2 runnable node(s) pending');
+      expect(result.error.message).toContain('A');
+      expect(result.error.message).toContain('B');
     });
   });
 

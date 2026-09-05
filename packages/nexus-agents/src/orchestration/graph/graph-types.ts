@@ -312,6 +312,10 @@ export interface GraphExecutionResult {
 export interface GraphExecuteOptions {
   readonly signal?: AbortSignal;
   readonly timeout?: number;
+  /**
+   * Maximum node executions. A parallel super-step starts only when its full
+   * batch fits within the remaining budget.
+   */
   readonly maxSteps?: number;
   readonly onNodeComplete?: (result: NodeResult) => void;
   /**

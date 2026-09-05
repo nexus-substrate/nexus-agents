@@ -394,25 +394,49 @@ function checkInterrupt(
   return undefined;
 }
 
-/** Runs the super-step loop until no more runnable nodes or limit reached. */
+/** Runs the super-step loop until no more runnable nodes or the node limit is reached. */
 async function runSuperStepLoop(
   graph: CompiledGraph,
   ctx: ExecutionContext,
   startTime: number,
   options?: GraphExecuteOptions
 ): Promise<Result<GraphExecutionResult, Error> | undefined> {
-  const maxSteps = options?.maxSteps ?? DEFAULT_MAX_STEPS;
-  const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const { maxSteps, timeout, signal } = resolveLoopLimits(options);
 
   while (ctx.runnableIds.length > 0 && ctx.stepsExecuted < maxSteps) {
-    const aborted = checkInterrupt(startTime, timeout, options?.signal);
+    const aborted = checkInterrupt(startTime, timeout, signal);
     if (aborted !== undefined) return aborted as Result<GraphExecutionResult, Error>;
+    if (ctx.runnableIds.length > maxSteps - ctx.stepsExecuted) break;
 
     await executeSuperStep(graph, ctx, options);
     if (ctx.pendingInterrupt !== undefined) return undefined;
   }
 
-  return undefined;
+  return maxStepsExhausted(ctx);
+}
+
+/** Resolves loop defaults outside the branch-constrained execution loop. */
+function resolveLoopLimits(options?: GraphExecuteOptions): {
+  maxSteps: number;
+  timeout: number;
+  signal: AbortSignal | undefined;
+} {
+  return {
+    maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
+    timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
+    signal: options?.signal,
+  };
+}
+
+/** Returns an explicit failure when the node-execution budget leaves work pending. */
+function maxStepsExhausted(ctx: ExecutionContext): Result<GraphExecutionResult, Error> | undefined {
+  if (ctx.runnableIds.length === 0) return undefined;
+  const pendingIds = ctx.runnableIds.join(', ');
+  return err(
+    new Error(
+      `maxSteps exhausted with ${String(ctx.runnableIds.length)} runnable node(s) pending: ${pendingIds}`
+    )
+  );
 }
 
 /** Executes a single super-step: run nodes, merge state, resolve next. */
