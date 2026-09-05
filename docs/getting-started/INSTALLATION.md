@@ -89,6 +89,23 @@ If you prefer pnpm:
 pnpm add -g nexus-agents
 ```
 
+**pnpm installs an older version than npm does, by design.** pnpm's
+[`minimumReleaseAge`](https://pnpm.io/supply-chain-security) setting defaults
+to 1440 minutes: a version is not resolvable until it has been on the registry
+for a day. nexus-agents publishes several times on a busy day, so
+`pnpm add -g nexus-agents` (and `pnpm update -g nexus-agents`) silently
+resolves `latest` to the newest version that is at least a day old — measured
+in a clean `node:22` container with pnpm 11.25: npm installed 8.9.4, pnpm
+installed 8.3.0, no warning either way. To install the newest version through
+pnpm, opt out for that command:
+
+```bash
+pnpm add -g nexus-agents --config.minimumReleaseAge=0
+```
+
+or set `minimumReleaseAge: 0` in your global pnpm config. The one-day delay is
+a supply-chain safeguard; keep it unless you need a fix that shipped today.
+
 ### npx (No Install)
 
 Run without installing:
