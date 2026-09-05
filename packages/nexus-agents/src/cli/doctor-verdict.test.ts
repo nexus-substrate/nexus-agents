@@ -40,6 +40,7 @@ const base = {
   nodeSupported: true,
   hasAuthMethod: true,
   mcpServerReady: true,
+  installFreshness: { state: 'aligned' as const, version: '1.0.0' },
   scratchSpace: [scratch('ok')],
   clis: [healthyCli],
 };
@@ -47,6 +48,18 @@ const base = {
 describe('isAllHealthy', () => {
   it('is healthy when every input is fine', () => {
     expect(isAllHealthy(base)).toBe(true);
+  });
+
+  it('is UNHEALTHY when the global install is behind (#5613)', () => {
+    const installFreshness = { state: 'behind' as const, global: '1.0.0', expected: '2.0.0' };
+
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
+  });
+
+  it('is UNHEALTHY when install freshness is unmeasured (#5613)', () => {
+    const installFreshness = { state: 'unknown' as const, reason: 'not installed' };
+
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
   });
 
   it('is UNHEALTHY when a scratch filesystem is critical', () => {

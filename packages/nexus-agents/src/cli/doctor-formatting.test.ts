@@ -792,6 +792,32 @@ describe('doctor-formatting', () => {
 
       expect(getCalls().some((call) => call.includes('4 issue(s) found'))).toBe(true);
     });
+
+    it('counts and names a stale global install (#5613)', () => {
+      const result = createDoctorResult({
+        allHealthy: false,
+        installFreshness: { state: 'behind', global: '1.0.0', expected: '2.0.0' },
+      });
+
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('1 issue(s) found');
+      expect(summary).toMatch(/stale global install/i);
+    });
+
+    it('counts and names unmeasured install freshness (#5613)', () => {
+      const result = createDoctorResult({
+        allHealthy: false,
+        installFreshness: { state: 'unknown', reason: 'not installed' },
+      });
+
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('1 issue(s) found');
+      expect(summary).toMatch(/install freshness unmeasured/i);
+    });
   });
 
   describe('an unverified auth probe is not a failed one (#4661)', () => {

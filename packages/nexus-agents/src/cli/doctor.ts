@@ -49,6 +49,7 @@ import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
 import {
   assessInstallFreshness,
+  installFreshnessIsHealthy,
   readGlobalVersion,
   type InstallFreshness,
 } from './doctor-install-freshness.js';
@@ -825,6 +826,7 @@ export interface HealthVerdictInput {
   readonly nodeSupported: boolean;
   readonly hasAuthMethod: boolean;
   readonly mcpServerReady: boolean;
+  readonly installFreshness: InstallFreshness;
   readonly scratchSpace: readonly ScratchSpaceCheck[];
   readonly clis: readonly CliCheckResult[];
 }
@@ -847,6 +849,7 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     input.nodeSupported &&
     input.hasAuthMethod &&
     input.mcpServerReady &&
+    installFreshnessIsHealthy(input.installFreshness) &&
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
     // whenEmpty = false: zero detected CLIs is not a healthy install (#4581).
     allOf(
@@ -888,6 +891,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     nodeSupported: nodeVersion.supported,
     hasAuthMethod,
     mcpServerReady,
+    installFreshness: env.installFreshness,
     scratchSpace: env.scratchSpace,
     clis,
   });

@@ -11,6 +11,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
 import type { DoctorResult } from './doctor.js';
 
+const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
+
+vi.mock('../version.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../version.js')>();
+  return { ...actual, VERSION: TEST_VERSION };
+});
+
+// Keep freshness measured and aligned by default so healthy-path tests do not
+// depend on whether this test host has a global nexus-agents install.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn() };
+});
+
 // Mock the factory module
 vi.mock('../cli-adapters/factory.js', () => ({
   createAllAdapters: vi.fn(),
@@ -51,6 +65,7 @@ vi.mock('./cli-auth-probe.js', () => ({
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 /**
  * Helper to create a complete DoctorResult for print tests.
@@ -165,6 +180,9 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
 describe('Doctor Command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(execFileSync).mockReturnValue(
+      JSON.stringify({ dependencies: { 'nexus-agents': { version: TEST_VERSION } } })
+    );
     // Default mock for MCP server
     vi.mocked(createServer).mockReturnValue({ ok: true } as never);
     // Default mock for config file
@@ -208,6 +226,7 @@ describe('Doctor Command', () => {
 
       const result = await runDoctor();
 
+      expect(result.installFreshness).toEqual({ state: 'aligned', version: TEST_VERSION });
       expect(result.allHealthy).toBe(true);
       expect(result.mcpServerReady).toBe(true);
       expect(result.mcpClientReady).toBe(true);
