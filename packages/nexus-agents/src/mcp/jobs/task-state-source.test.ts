@@ -19,7 +19,7 @@ import {
   listJobsFromTaskState,
   resolveJobList,
 } from './task-state-source.js';
-import { writeJobComplete } from './job-result-store.js';
+import { writeJobCancelled, writeJobComplete, writeJobPending } from './job-result-store.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import {
   initTaskState,
@@ -154,13 +154,14 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeCompletedTaskLog(taskId: string, result: unknown): void {
+  function writeCompletedTaskLog(taskId: string, result: unknown, dispatch?: 'async'): void {
     initTaskState({
       taskId,
       stage: 'planning',
       decisions: [],
       blockers: [],
       position: { currentStep: 'init' },
+      ...(dispatch !== undefined ? { dispatch } : {}),
       updatedAt: '2026-05-01T00:00:00Z',
     });
     updateStage(taskId, 'complete', '2026-05-01T00:05:00Z');
@@ -256,6 +257,38 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     expect(r?.record.producerVersion).toBe('9.9.9-fixture');
   });
 
+  it('resolveJobResultWithSource: terminal sidecar outranks executing task state', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    initTaskState({
+      taskId: 'orch-src-cancelled',
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    writeJobPending('orch-src-cancelled', 'orchestrate');
+    writeJobCancelled('orch-src-cancelled', 'orchestrate', 'operator cancelled');
+
+    const resolved = resolveJobResultWithSource('orch-src-cancelled');
+
+    expect(resolved?.record.status).toBe('cancelled');
+    expect(resolved?.source).toBe('sidecar');
+  });
+
+  it('resolveJobResultWithSource: terminal task state remains authoritative', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    writeCompletedTaskLog('orch-src-terminal', { fromTaskState: true });
+    writeJobPending('orch-src-terminal', 'orchestrate');
+    writeJobCancelled('orch-src-terminal', 'orchestrate', 'stale cancellation');
+
+    const resolved = resolveJobResultWithSource('orch-src-terminal');
+
+    expect(resolved?.record.status).toBe('complete');
+    expect(resolved?.record.result).toEqual({ fromTaskState: true });
+    expect(resolved?.source).toBe('task_state');
+  });
+
   it('resolveJobResultWithSource: names sidecar when the flag is OFF', () => {
     writeCompletedTaskLog('orch-src-3', { fromTaskState: true });
     writeJobComplete('orch-src-3', 'orchestrate', { fromSidecar: true });
@@ -275,9 +308,9 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
   });
 
   // #3693: list-side dual-read — mirrors resolveJobResult's reader semantics.
-  it('listJobsFromTaskState: summarizes every task-state job', () => {
-    writeCompletedTaskLog('orch-list-1', { ok: 1 });
-    writeCompletedTaskLog('orch-list-2', { ok: 2 });
+  it('listJobsFromTaskState: summarizes async-dispatched task-state jobs', () => {
+    writeCompletedTaskLog('orch-list-1', { ok: 1 }, 'async');
+    writeCompletedTaskLog('orch-list-2', { ok: 2 }, 'async');
     const summaries = listJobsFromTaskState();
     const ids = summaries.map((s) => s.jobId).sort();
     expect(ids).toEqual(['orch-list-1', 'orch-list-2']);
@@ -295,13 +328,23 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     expect(ids).not.toContain('orch-only-taskstate');
   });
 
+  it('resolveJobList: excludes synchronous and legacy task-state records', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    writeCompletedTaskLog('orch-sync-only', { sync: true });
+
+    expect(resolveJobList()).toEqual([]);
+
+    writeCompletedTaskLog('orch-async-only', { async: true }, 'async');
+    expect(resolveJobList().map((summary) => summary.jobId)).toEqual(['orch-async-only']);
+  });
+
   it('resolveJobList: flag ON unions both sources, preferring task-state on collision', () => {
     process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
     writeJobComplete('orch-sidecar-only', 'orchestrate', { s: true });
-    writeCompletedTaskLog('orch-taskstate-only', { t: true });
+    writeCompletedTaskLog('orch-taskstate-only', { t: true }, 'async');
     // Same jobId in BOTH: task-state must win (it's the migration target).
     writeJobComplete('orch-both', 'orchestrate', { fromSidecar: true });
-    writeCompletedTaskLog('orch-both', { fromTaskState: true });
+    writeCompletedTaskLog('orch-both', { fromTaskState: true }, 'async');
     const summaries = resolveJobList();
     const ids = summaries.map((s) => s.jobId).sort();
     expect(ids).toEqual(['orch-both', 'orch-sidecar-only', 'orch-taskstate-only']);

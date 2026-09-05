@@ -159,9 +159,20 @@ interface ResolvedJobResult {
   readonly source: JobResultSource;
 }
 
+function resolvedJobResult(
+  jobId: string,
+  record: JobResult,
+  source: JobResultSource
+): ResolvedJobResult {
+  logger.debug('Resolved job result', { jobId, status: record.status, source });
+  return { record, source };
+}
+
 /**
  * Resolve an async job's result with dual-read semantics, naming the source:
- * - source toggle ON  → try the task-state log first, fall back to sidecar.
+ * - source toggle ON  → read both stores. A terminal task-state record stands;
+ *   otherwise a terminal sidecar outranks a non-terminal task-state record.
+ *   When neither is terminal, prefer task state and fall back to sidecar.
  * - source toggle OFF → sidecar only (current behavior, unchanged).
  *
  * The source matters to a reader of `producerVersion` (#5008): a task-state
@@ -177,15 +188,20 @@ export function resolveJobResultWithSource(
   jobId: string,
   customDir?: string
 ): ResolvedJobResult | null {
-  if (isTaskStateJobSource()) {
-    const fromState = readJobResultFromTaskState(jobId, customDir);
-    if (fromState !== null) {
-      logger.debug('Resolved job result from task-state', { jobId, status: fromState.status });
-      return { record: fromState, source: 'task_state' };
-    }
+  if (!isTaskStateJobSource()) {
+    const sidecar = readJobResult(jobId);
+    return sidecar === null ? null : resolvedJobResult(jobId, sidecar, 'sidecar');
   }
+  const fromState = readJobResultFromTaskState(jobId, customDir);
   const fromSidecar = readJobResult(jobId);
-  return fromSidecar === null ? null : { record: fromSidecar, source: 'sidecar' };
+  if (fromState !== null && fromState.status !== 'pending') {
+    return resolvedJobResult(jobId, fromState, 'task_state');
+  }
+  if (fromSidecar !== null && fromSidecar.status !== 'pending') {
+    return resolvedJobResult(jobId, fromSidecar, 'sidecar');
+  }
+  if (fromState !== null) return resolvedJobResult(jobId, fromState, 'task_state');
+  return fromSidecar === null ? null : resolvedJobResult(jobId, fromSidecar, 'sidecar');
 }
 
 /** {@link resolveJobResultWithSource} without the source tag. */
@@ -194,16 +210,17 @@ export function resolveJobResult(jobId: string, customDir?: string): JobResult |
 }
 
 /**
- * Summarize every async job recorded in the task-state log (#3693). Maps each
- * `state-<taskId>.jsonl` to a {@link JobSummary} via the same Stage-2→JobResult
- * adapter the single-job reader uses; entries that don't map (no terminal
- * cancellation/stage, unreadable) are skipped. `customDir` is for test isolation.
+ * Summarize async jobs recorded in the task-state log (#3693). Only records
+ * carrying `dispatch: 'async'` are eligible; synchronous orchestrations and
+ * legacy records without the discriminator are excluded because they cannot
+ * be proven async. Unreadable entries are skipped. `customDir` is for tests.
  */
 export function listJobsFromTaskState(customDir?: string): JobSummary[] {
   const summaries: JobSummary[] = [];
   for (const taskId of listTaskStateIds(customDir)) {
-    const record = readJobResultFromTaskState(taskId, customDir);
-    if (record !== null) summaries.push(toJobSummary(record));
+    const state = readTaskState(taskId, customDir);
+    if (!state.ok || state.value.dispatch !== 'async') continue;
+    summaries.push(toJobSummary(jobResultFromTaskState(state.value, taskId)));
   }
   return summaries;
 }

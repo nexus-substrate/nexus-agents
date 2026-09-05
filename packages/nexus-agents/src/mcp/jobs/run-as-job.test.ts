@@ -14,6 +14,7 @@ import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js'
 import { _resetForTests as resetConcurrency, getInFlight, getJobCap } from './job-concurrency.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 import { VERSION } from '../../version.js';
+import { initTaskState, readTaskState } from '../../context/structured-task-state.js';
 
 interface DummyInput {
   readonly task: string;
@@ -65,6 +66,42 @@ describe('runAsJob', () => {
     });
     expect(readJobResult('job-fixed-2')?.status).toBe('pending');
     expect(getInFlight('orchestrate')).toBe(1);
+  });
+
+  it('marks task state initialized by async-dispatched work', async () => {
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => 'job-task-state-async',
+      run: async (jobId) => {
+        await Promise.resolve();
+        initTaskState({
+          taskId: jobId,
+          stage: 'planning',
+          decisions: [],
+          blockers: [],
+          position: { currentStep: 'init' },
+          updatedAt: '2026-05-01T00:00:00Z',
+        });
+        initTaskState({
+          taskId: 'nested-sync-task',
+          stage: 'planning',
+          decisions: [],
+          blockers: [],
+          position: { currentStep: 'init' },
+          updatedAt: '2026-05-01T00:00:00Z',
+        });
+        return { ok: true };
+      },
+    });
+    await vi.waitFor(() => {
+      expect(readJobResult('job-task-state-async')?.status).toBe('complete');
+    });
+
+    const state = readTaskState('job-task-state-async');
+    expect(state.ok && state.value.dispatch).toBe('async');
+    const nested = readTaskState('nested-sync-task');
+    expect(nested.ok && nested.value.dispatch).toBeUndefined();
   });
 
   // #4972: `cancel_job` writes `cancelled` whether or not the tool can act on

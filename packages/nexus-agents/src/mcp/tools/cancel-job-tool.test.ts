@@ -7,7 +7,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CancelJobInputSchema, type CancelJobResponse } from './cancel-job-tool.js';
+import {
+  CancelJobInputSchema,
+  registerCancelJobTool,
+  type CancelJobResponse,
+} from './cancel-job-tool.js';
 import {
   writeJobPending,
   writeJobComplete,
@@ -16,6 +20,8 @@ import {
   readJobResult,
 } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { initTaskState, readTaskState } from '../../context/structured-task-state.js';
+import { RateLimiter } from '../middleware/rate-limiter.js';
 
 let tmpDir: string;
 const originalDataDir = process.env['NEXUS_DATA_DIR'];
@@ -165,5 +171,39 @@ describe('cancel_job outcomes', () => {
     const response = await callHandler('job-never-created');
     expect(response.outcome).toBe('unknown_job');
     expect(readJobResult('job-never-created')).toBeNull();
+  });
+
+  it('appends cancellation to an existing task-state log', async () => {
+    const jobId = 'job-task-state-cancel';
+    writeJobPending(jobId, 'orchestrate');
+    initTaskState({
+      taskId: jobId,
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    let registered:
+      ((args: unknown) => Promise<{ content: readonly { text: string }[] }>) | undefined;
+    const server = {
+      registerTool: (
+        _name: string,
+        _config: unknown,
+        callback: (args: unknown) => Promise<{ content: readonly { text: string }[] }>
+      ): void => {
+        registered = callback;
+      },
+    };
+    registerCancelJobTool(server as never, {
+      rateLimiter: new RateLimiter({ capacity: 100, refillRate: 100 }),
+    });
+    if (registered === undefined) throw new Error('cancel_job registered no callback');
+
+    await registered({ jobId, reason: 'operator cancelled' });
+
+    const state = readTaskState(jobId);
+    expect(state.ok && state.value.cancellation?.reason).toBe('operator cancelled');
   });
 });
