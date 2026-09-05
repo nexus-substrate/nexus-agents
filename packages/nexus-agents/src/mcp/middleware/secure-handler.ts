@@ -75,6 +75,14 @@ export interface SecureHandlerConfig {
   auditLogger?: IAuditLogger;
 }
 
+const registrationAuditLoggers = new WeakMap<ILogger, IAuditLogger>();
+
+/** Sets or clears the audit logger used while secure handlers are registered. */
+export function setSecureHandlerAuditLogger(logger: ILogger, auditLogger?: IAuditLogger): void {
+  if (auditLogger === undefined) registrationAuditLoggers.delete(logger);
+  else registrationAuditLoggers.set(logger, auditLogger);
+}
+
 /**
  * Extended handler context passed to the wrapped handler.
  */
@@ -534,6 +542,9 @@ export function createSecureHandler(
   handler: ToolHandler | ContextAwareHandler,
   config: SecureHandlerConfig
 ): ToolHandler {
+  const registeredAuditLogger = config.logger && registrationAuditLoggers.get(config.logger);
+  if (config.auditLogger === undefined && registeredAuditLogger !== undefined)
+    config = { ...config, auditLogger: registeredAuditLogger };
   const logger = config.logger ?? createLogger({ tool: config.toolName });
   const mode = config.executionMode ?? 'read-only';
 

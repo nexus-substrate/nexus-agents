@@ -16,9 +16,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { registerMcpTools, type RegisterMcpToolsOptions } from './cli-server-tools.js';
+import {
+  REGISTERED_TOOLS,
+  registerMcpTools,
+  type RegisterMcpToolsOptions,
+} from './cli-server-tools.js';
+import type { IAuditLogger } from './audit/audit-types.js';
 import type { ILogger } from './core/index.js';
 import type { WorkflowDefinition } from './core/index.js';
+import { TOOL_PREREQUISITES } from './mcp/middleware/tool-prerequisites.js';
 import { deriveWorkflowStatus } from './mcp/tools/run-workflow-helpers.js';
 
 /**
@@ -77,6 +83,72 @@ function makeLogger(): ILogger {
   l['child'] = vi.fn(() => l as unknown as ILogger);
   return l as unknown as ILogger;
 }
+
+function makeAuditLogger(): {
+  readonly auditLogger: IAuditLogger;
+  readonly logToolInvocation: ReturnType<typeof vi.fn>;
+} {
+  const logToolInvocation = vi.fn();
+  return {
+    logToolInvocation,
+    auditLogger: {
+      log: vi.fn(),
+      logToolInvocation,
+      logPolicyDecision: vi.fn(),
+      logSecurityEvent: vi.fn(),
+      logRateLimitViolation: vi.fn(),
+      logTierTransition: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      close: vi.fn(() => Promise.resolve()),
+    },
+  };
+}
+
+function allowAllPrerequisites(): () => void {
+  const spies = Object.values(TOOL_PREREQUISITES).map((prerequisite) =>
+    vi.spyOn(prerequisite, 'check').mockResolvedValue({ ok: true })
+  );
+  return () => {
+    for (const spy of spies) spy.mockRestore();
+  };
+}
+
+describe('registerMcpTools → secure-handler audit logger (#5621)', () => {
+  it('writes one invocation audit record for every secure-handler-backed tool', async () => {
+    const restorePrerequisites = allowAllPrerequisites();
+    const captured: CapturedTool[] = [];
+    const { auditLogger, logToolInvocation } = makeAuditLogger();
+    try {
+      registerMcpTools({
+        server: makeCapturingServer(captured),
+        logger: makeLogger(),
+        builtInTemplates: new Map(),
+        useMockTechLead: true,
+        auditLogger,
+      });
+      const secureToolNames = REGISTERED_TOOLS.filter((name) => name !== 'execute_expert');
+
+      expect(secureToolNames.length, 'zero secure tools registered').toBeGreaterThan(0);
+      expect(captured.map(({ name }) => name).sort()).toEqual([...REGISTERED_TOOLS].sort());
+      for (const name of secureToolNames) {
+        const tool = captured.find((candidate) => candidate.name === name);
+        expect(tool, `${name} was not registered`).toBeDefined();
+        logToolInvocation.mockClear();
+        await tool?.callback(null, {});
+        expect(
+          logToolInvocation,
+          `${name} did not emit exactly one invocation audit`
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          logToolInvocation,
+          `${name} emitted an audit for the wrong tool`
+        ).toHaveBeenCalledWith(expect.objectContaining({ toolName: name }));
+      }
+    } finally {
+      restorePrerequisites();
+    }
+  });
+});
 
 describe('registerMcpTools → run_workflow, no model adapter (#5116)', () => {
   function registerWithoutAdapter(): { captured: CapturedTool[]; logger: ILogger } {
