@@ -257,29 +257,50 @@ function isSecStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === 'string');
 }
 
-function applySecOptionalFields(
-  result: SecurityAnalysisResult,
-  p: Record<string, unknown>
-): void {
+function applySecOptionalFields(result: SecurityAnalysisResult, p: Record<string, unknown>): void {
   if (isSecPlainObject(p['compliance'])) {
-    result.compliance = p['compliance'] as unknown as NonNullable<SecurityAnalysisResult['compliance']>;
+    result.compliance = p['compliance'] as unknown as NonNullable<
+      SecurityAnalysisResult['compliance']
+    >;
   }
   if (isSecStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
   if (isSecStringArray(p['warnings'])) result.warnings = p['warnings'];
 }
 
+type FindingsCoverage = NonNullable<SecurityAnalysisResult['findingsCoverage']>;
+
+function coverageFor(rejectedFindings: number, validFindings: number): FindingsCoverage {
+  if (rejectedFindings === 0) return 'complete';
+  return validFindings === 0 ? 'unmeasured' : 'partial';
+}
+
+function scoreFor(
+  suppliedScore: unknown,
+  coverage: FindingsCoverage,
+  validVulns: Vulnerability[],
+  calculateScore: (vulns: Vulnerability[]) => number
+): number {
+  if (coverage === 'unmeasured') return 0;
+  if (coverage === 'partial') return calculateScore(validVulns);
+  return typeof suppliedScore === 'number' && suppliedScore >= 0 && suppliedScore <= 100
+    ? suppliedScore
+    : calculateScore(validVulns);
+}
+
 function buildSecurityCore(
   p: Record<string, unknown>,
   validVulns: Vulnerability[],
+  rejectedFindings: number,
   calculateScore: (vulns: Vulnerability[]) => number
 ): SecurityAnalysisResult {
-  const score = p['securityScore'];
   const conf = p['confidence'];
+  const findingsCoverage = coverageFor(rejectedFindings, validVulns.length);
+  const securityScore = scoreFor(p['securityScore'], findingsCoverage, validVulns, calculateScore);
   return {
     content: typeof p['content'] === 'string' ? p['content'] : 'Security analysis completed',
     vulnerabilities: validVulns,
-    securityScore:
-      typeof score === 'number' && score >= 0 && score <= 100 ? score : calculateScore(validVulns),
+    securityScore,
+    findingsCoverage,
     confidence: typeof conf === 'number' && conf >= 0 && conf <= 1 ? conf : 0.7,
   };
 }
@@ -296,13 +317,16 @@ export function parseSecurityResult(
     if (!isSecPlainObject(rawParsed)) throw new Error('Parsed value is not a plain object');
 
     // Validate vulnerabilities array items via the caller-supplied validator
-    const vulnCandidates = Array.isArray(rawParsed['vulnerabilities']) ? rawParsed['vulnerabilities'] : [];
-    const validVulns = vulnCandidates
-      .map((v) => validator(v))
-      .filter((r) => r.success)
-      .map((r) => r.data as Vulnerability);
+    const vulnCandidates = Array.isArray(rawParsed['vulnerabilities'])
+      ? rawParsed['vulnerabilities']
+      : [];
+    const validationResults = vulnCandidates.map((v) => validator(v));
+    const validVulns = validationResults.flatMap((result) =>
+      result.success && result.data !== undefined ? [result.data] : []
+    );
+    const rejectedFindings = vulnCandidates.length - validVulns.length;
 
-    const result = buildSecurityCore(rawParsed, validVulns, calculateScore);
+    const result = buildSecurityCore(rawParsed, validVulns, rejectedFindings, calculateScore);
     applySecOptionalFields(result, rawParsed);
     return result;
   } catch {
@@ -313,6 +337,7 @@ export function parseSecurityResult(
       content: text,
       vulnerabilities: heuristicVulns,
       securityScore: score,
+      findingsCoverage: 'complete',
       confidence: heuristicVulns.length > 0 ? 0.5 : 0.3,
     };
   }

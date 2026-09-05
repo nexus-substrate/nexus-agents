@@ -7956,6 +7956,7 @@ VariableDeclaration SearchUsagesInputSchema
   : z.ZodObject<{ dir: z.ZodOptional<z.ZodString>; lang: z.ZodOptional<z.ZodEnum<{ javascript: "javascript"; tsx: "tsx"; typescript: "typescript"; }>>; limit: z.ZodOptional<z.ZodNumber>; maxDepth: z.ZodOptional<z.ZodNumber>; path: z.ZodOptional<z.ZodString>; symbol: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration SecurityAnalysisResult
   compliance?: ComplianceStatus | undefined
+  findingsCoverage?: "partial" | "unmeasured" | "complete" | undefined
   securityScore: number
   vulnerabilities: Vulnerability[]
 TypeAliasDeclaration SecurityCapability

@@ -40,6 +40,7 @@ import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
 import { formatReviewStats } from './pr-review-stats.js';
 
 const repLogger = createLogger({ component: 'PRReviewer.reputation' });
+const PARTIAL_COVERAGE_NOTE = 'Security expert findings coverage is partial';
 
 // =============================================================================
 // Reputation Gating Helpers (#3123, epic #3118 Phase 5)
@@ -172,10 +173,8 @@ export function parseCategory(value: unknown): ReviewCategory {
 }
 
 export function extractSummary(output: Record<string, unknown>): string {
-  if (typeof output.summary === 'string') return output.summary;
-  if (typeof output.content === 'string') return output.content;
-  if (typeof output.message === 'string') return output.message;
-  return 'Review completed';
+  const summary = extractStringField(output, 'summary', 'content', 'message') ?? 'Review completed';
+  return output.findingsCoverage === 'partial' ? `${summary}\n${PARTIAL_COVERAGE_NOTE}` : summary;
 }
 
 export function extractStringField(
@@ -319,6 +318,13 @@ export function parseExpertReview(
 ): ParsedExpertReview {
   const findings = parseFindings(output, expertId, minSeverity);
   const verdict = parseVerdictMarker(output.verdict) ?? parseVerdictMarker(output.content);
+  if (output.findingsCoverage === 'unmeasured') {
+    return { findings, verdict: 'errored' };
+  }
+  if (output.findingsCoverage === 'partial') {
+    const partialVerdict = verdict === 'changes_requested' ? verdict : 'findings';
+    return { findings, verdict: partialVerdict };
+  }
   if (verdict !== undefined) return { findings, verdict };
   const hasFindingShape = collectSources(output).some((source) => Array.isArray(source));
   const hasWarningShape = parseWarnings(output.warnings).length > 0;

@@ -233,7 +233,35 @@ describe('parseSecurityResult', () => {
     expect(result.content).toBe('Analysis done');
     expect(result.vulnerabilities).toHaveLength(1);
     expect(result.securityScore).toBe(80);
+    expect(result.findingsCoverage).toBe('complete');
     expect(result.confidence).toBe(0.9);
+  });
+
+  it('marks rejected-only findings unmeasured with a fail-closed zero score', () => {
+    const json = JSON.stringify({
+      content: 'Analysis done',
+      vulnerabilities: [{ invalid: 'data' }],
+    });
+
+    const result = parseSecurityResult(json, mockScorer, mockValidator);
+
+    expect(result.vulnerabilities).toEqual([]);
+    expect(result.findingsCoverage).toBe('unmeasured');
+    expect(result.securityScore).toBe(0);
+  });
+
+  it('marks mixed validation partial and scores only validated findings', () => {
+    const json = JSON.stringify({
+      content: 'Analysis done',
+      vulnerabilities: [{ invalid: 'data' }, makeVuln({ severity: 'low' })],
+      securityScore: 5,
+    });
+
+    const result = parseSecurityResult(json, mockScorer, mockValidator);
+
+    expect(result.vulnerabilities).toHaveLength(1);
+    expect(result.findingsCoverage).toBe('partial');
+    expect(result.securityScore).toBe(50);
   });
 
   it('parses JSON from markdown code block', () => {
@@ -256,6 +284,7 @@ describe('parseSecurityResult', () => {
     const json = JSON.stringify({ content: 'test', vulnerabilities: [] });
     const result = parseSecurityResult(json, mockScorer, mockValidator);
     expect(result.securityScore).toBe(100);
+    expect(result.findingsCoverage).toBe('complete');
   });
 
   it('preserves optional fields', () => {

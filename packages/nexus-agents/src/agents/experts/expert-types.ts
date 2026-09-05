@@ -61,8 +61,20 @@ export interface CodeChange {
 export interface SecurityAnalysisResult extends ExpertOutput {
   /** Vulnerabilities found */
   vulnerabilities: Vulnerability[];
-  /** Security score (0-100) */
+  /**
+   * Security score (0-100). When `findingsCoverage === 'unmeasured'`, `securityScore` is `0`: a
+   * fail-closed placeholder and the worst score, so a reader that ignores the marker errs toward
+   * blocking, never toward a clean 100. `partial` scores only the validated findings; `complete` is
+   * unchanged.
+   */
   securityScore: number;
+  /**
+   * Coverage of the model-supplied findings after validation. When
+   * `findingsCoverage === 'unmeasured'`, `securityScore` is `0`: a fail-closed placeholder and the
+   * worst score, so a reader that ignores the marker errs toward blocking, never toward a clean
+   * 100. `partial` keeps the score over the validated findings; `complete` is unchanged.
+   */
+  findingsCoverage?: 'complete' | 'partial' | 'unmeasured' | undefined;
   /** Compliance status */
   compliance?: ComplianceStatus;
 }

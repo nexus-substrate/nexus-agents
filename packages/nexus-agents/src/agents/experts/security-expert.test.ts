@@ -373,6 +373,8 @@ describe('SecurityExpert', () => {
         // Only valid vulnerability should be included
         expect(output.vulnerabilities).toHaveLength(1);
         expect(output.vulnerabilities[0]!.id).toBe('VALID-001');
+        expect(output.findingsCoverage).toBe('partial');
+        expect(output.securityScore).toBe(97);
       }
     });
 
