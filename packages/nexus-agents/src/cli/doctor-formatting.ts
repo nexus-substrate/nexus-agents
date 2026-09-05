@@ -28,7 +28,7 @@ import type {
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
-import { describeInstallFreshness } from './doctor-install-freshness.js';
+import * as installFreshness from './doctor-install-freshness.js';
 import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
@@ -383,20 +383,19 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
-  const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
+  const unhealthyCount =
+    result.clis.filter((c) => !c.installed || !c.authenticated).length +
+    (installFreshness.installFreshnessIsHealthy(result.installFreshness) ? 0 : 1);
   const nodeIssue = result.nodeVersion.supported ? 0 : 1;
-  // #4851: the count enumerated CLIs, node and MCP while `isAllHealthy` ALSO
-  // fails on an unacceptable scratch severity — so a critical scratch
-  // filesystem with everything else fine printed "Summary: 0 issue(s) found",
-  // a summary shown only because something is wrong, saying nothing is wrong.
-  // Every term the verdict reads must be a term the count reads.
+  // #4851: every term the verdict reads must be a term the count reads;
+  // otherwise a lone failing diagnostic renders "Summary: 0 issue(s) found".
   const scratchIssue = scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace)) ? 0 : 1;
   const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1) + scratchIssue;
+  const freshnessNote = installFreshness.describeInstallFreshnessSummary(result.installFreshness);
   const summary = result.allHealthy
-    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}`;
-  writeLine(summary);
-  writeLine('');
+    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}${freshnessNote}`
+    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}${freshnessNote}`;
+  writeLine(`${summary}\n`);
 }
 
 /**
@@ -481,18 +480,10 @@ export function printDoctorResults(result: DoctorResult): void {
   printDoctorSummary(result);
 }
 
-/**
- * Prints whether the global install matches this build (#4767).
- *
- * The check computed the verdict and nothing printed it — running `doctor`
- * showed no line at all, which is the recorded-but-unread shape the check
- * itself exists to catch (#4959).
- */
+/** Prints the global install comparison added after its verdict was not surfaced (#4767, #4959). */
 function printInstallFreshness(check: DoctorResult['installFreshness']): void {
-  writeLine(`${colors.cyan}Checking global install freshness...${colors.reset}`);
-  writeLine('');
-  writeLine(`  ${describeInstallFreshness(check)}`);
-  writeLine('');
+  writeLine(`${colors.cyan}Checking global install freshness...${colors.reset}\n`);
+  writeLine(`  ${installFreshness.describeInstallFreshness(check)}\n`);
 }
 
 /**

@@ -82,11 +82,18 @@ export function describeInstallFreshness(result: InstallFreshness): string {
   }
 }
 
-/** True when the verdict should count against doctor's health score. */
+/** True only when install freshness was measured and matches this build. */
 export function installFreshnessIsHealthy(result: InstallFreshness): boolean {
   // `unknown` is NOT healthy. It is the state that produced #4767: nobody
   // checked, so nobody knew, and the absence read as fine.
   return result.state === 'aligned';
+}
+
+/** A short qualification for the overall doctor summary. */
+export function describeInstallFreshnessSummary(result: InstallFreshness): string {
+  if (result.state === 'behind') return ' — stale global install';
+  if (result.state === 'unknown') return ' — install freshness unmeasured';
+  return '';
 }
 
 /**
