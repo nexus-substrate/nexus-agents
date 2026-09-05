@@ -925,6 +925,7 @@ jobs:
       - repo-index
       - tool-reference-drift
       - strategy-reference-drift
+      - research-index-drift
       - docops-skill-sync
       - registry-coverage
       - mcp-description-drift
@@ -951,6 +952,7 @@ jobs:
              [[ "${{ needs.repo-index.result }}" != "success" && "${{ needs.repo-index.result }}" != "skipped" ]] || \
              [[ "${{ needs.tool-reference-drift.result }}" != "success" && "${{ needs.tool-reference-drift.result }}" != "skipped" ]] || \
              [[ "${{ needs.strategy-reference-drift.result }}" != "success" && "${{ needs.strategy-reference-drift.result }}" != "skipped" ]] || \
+             [[ "${{ needs.research-index-drift.result }}" != "success" && "${{ needs.research-index-drift.result }}" != "skipped" ]] || \
              [[ "${{ needs.docops-skill-sync.result }}" != "success" && "${{ needs.docops-skill-sync.result }}" != "skipped" ]] || \
              [[ "${{ needs.registry-coverage.result }}" != "success" && "${{ needs.registry-coverage.result }}" != "skipped" ]] || \
              [[ "${{ needs.mcp-description-drift.result }}" != "success" && "${{ needs.mcp-description-drift.result }}" != "skipped" ]] || \
