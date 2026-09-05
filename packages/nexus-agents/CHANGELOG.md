@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.1
+
+### Patch Changes
+
+- [#5656](https://github.com/nexus-substrate/nexus-agents/pull/5656) [`c8d4cca`](https://github.com/nexus-substrate/nexus-agents/commit/c8d4ccac655a8affa1bcb8665d0d7099c27f7748) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Self-eval outcomes persist the measured per-component evaluation time instead of `durationMs: 0`, so defect recommendations are no longer purged as skipped workers on the next outcome-store hydrate ([#5653](https://github.com/nexus-substrate/nexus-agents/issues/5653)).
+
 ## 8.26.0
 
 ### Minor Changes
