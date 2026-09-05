@@ -109,6 +109,12 @@ export class SicaAgent {
       versionId: version.id,
       metrics,
       triggeredImprovement: shouldImprove,
+      ...(result.value.metadata.executedCli !== undefined && {
+        executedCli: result.value.metadata.executedCli,
+      }),
+      ...(result.value.metadata.executedCliSource !== undefined && {
+        executedCliSource: result.value.metadata.executedCliSource,
+      }),
     });
   }
 

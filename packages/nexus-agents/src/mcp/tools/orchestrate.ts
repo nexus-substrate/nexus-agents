@@ -342,11 +342,9 @@ function buildOutcomeFailureFields(opts?: OutcomeRecordOptions): Record<string, 
 /**
  * Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws.
  *
- * Exported only so the attribution test can drive the `actualCli` path; no
- * production caller supplies it yet (#5499 — OrchestratorResult carries no
- * executed-CLI field), which is why every live record says `category-default`.
+ * Exported so focused attribution tests can drive both measured and fallback
+ * paths. Live successful orchestration supplies the executed CLI when known.
  */
-// @export-no-consumer-yet — see #5499
 export function recordToOutcomeStore(
   taskDescription: string,
   success: boolean,
@@ -381,7 +379,8 @@ function recordOrchestrationSuccess(
   taskId: string,
   taskDescription: string,
   stepsCompleted: number,
-  durationMs: number
+  durationMs: number,
+  actualCli?: CliNameLiteral
 ): void {
   try {
     const memory = getToolMemory();
@@ -417,7 +416,12 @@ function recordOrchestrationSuccess(
     });
   }
 
-  recordToOutcomeStore(taskDescription, true, durationMs);
+  recordToOutcomeStore(
+    taskDescription,
+    true,
+    durationMs,
+    actualCli === undefined ? undefined : { actualCli }
+  );
   triggerPromotionPipeline('orchestrate');
 }
 
@@ -657,7 +661,13 @@ function handleOrchestratorSuccess(ctx: {
     durationMs,
     buildRoutingInfo(ctx.decision)
   );
-  recordOrchestrationSuccess(ctx.taskId, ctx.taskDescription, output.stepsCompleted, durationMs);
+  recordOrchestrationSuccess(
+    ctx.taskId,
+    ctx.taskDescription,
+    output.stepsCompleted,
+    durationMs,
+    ctx.orchResult.executedCli
+  );
   recordRouterOutcome(ctx.workflowRouter, ctx.decision, true, durationMs);
   ctx.logger.info('Orchestration completed', {
     taskId: ctx.taskId,

@@ -54,6 +54,8 @@ class MockAgent implements IAgent {
           durationMs: 500,
           toolsUsed: [],
           model: 'mock-model',
+          executedCli: 'codex',
+          executedCliSource: 'executed',
         },
       })
     );
@@ -112,6 +114,10 @@ describe('SicaAgent', () => {
         expect(result.value.output).toContain('Completed');
         expect(result.value.versionId).toBeDefined();
         expect(result.value.metrics).toBeDefined();
+        expect(result.value).toMatchObject({
+          executedCli: 'codex',
+          executedCliSource: 'executed',
+        });
       }
     });
 

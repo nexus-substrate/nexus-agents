@@ -22,6 +22,8 @@ import type {
   OrchestratorStep,
 } from '../core/types/orchestrator.js';
 import { OrchestratorError } from '../core/types/orchestrator.js';
+import { CliNameSchema } from '../config/model-capabilities-types.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 // Shared utilities per ADR-0013
 import { generateHyphenId } from '../utils/id-utils.js';
 
@@ -40,6 +42,24 @@ export interface OrchestratorAgentLike {
 // Use shared utility for ID generation
 function generateId(prefix: string): string {
   return generateHyphenId(prefix, 6);
+}
+
+interface ExecutionAttribution {
+  readonly executedCli?: CliNameLiteral;
+  readonly executedCliSource: 'executed' | 'unknown';
+}
+
+/** Reads the measured CLI identity carried by an agent result. */
+function getExecutionAttribution(output: unknown): ExecutionAttribution {
+  if (typeof output !== 'object' || output === null) return { executedCliSource: 'unknown' };
+  const metadata = (output as Record<string, unknown>)['metadata'];
+  if (typeof metadata !== 'object' || metadata === null) return { executedCliSource: 'unknown' };
+  const fields = metadata as Record<string, unknown>;
+  const parsedCli = CliNameSchema.safeParse(fields['executedCli']);
+  if (!parsedCli.success || fields['executedCliSource'] !== 'executed') {
+    return { executedCliSource: 'unknown' };
+  }
+  return { executedCli: parsedCli.data, executedCliSource: 'executed' };
 }
 
 function createStep(
@@ -82,6 +102,7 @@ function createResult(
     totalTokensUsed: 0,
     tokensMeasured: steps.every((s) => s.tokensMeasured !== false),
     agentsUsed: steps.map((s) => s.agentId),
+    executedCliSource: 'unknown',
   };
 }
 
@@ -162,13 +183,10 @@ export class OrchestratorAdapter implements IOrchestrator {
       output,
       getTimeProvider().now() - start
     );
-    const result = createResult(
-      execId,
-      'orchestrator',
-      [step],
-      output,
-      getTimeProvider().now() - start
-    );
+    const result = {
+      ...createResult(execId, 'orchestrator', [step], output, getTimeProvider().now() - start),
+      ...getExecutionAttribution(output),
+    };
 
     this.executions.set(execId, COMPLETED_STATUS);
     this.history.push(result);

@@ -15,6 +15,7 @@
 import type { Result } from '../result.js';
 import type { IAgent, Task, AgentRole } from './agent.js';
 import type { ExecutionStatus } from './workflow.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 /**
  * Orchestration strategy type.
@@ -107,6 +108,15 @@ export interface OrchestratorResult {
   tokensMeasured?: boolean;
   /** Agents involved */
   agentsUsed: string[];
+  /**
+   * CLI used by the last model-backed step, when known.
+   *
+   * A run may use several CLIs after failover across steps. This field names
+   * only the last executed step's CLI; it is not an aggregate.
+   */
+  readonly executedCli?: CliNameLiteral;
+  /** Whether the executed CLI identity was measured or remains unknown. */
+  readonly executedCliSource?: 'executed' | 'unknown';
 }
 
 /**

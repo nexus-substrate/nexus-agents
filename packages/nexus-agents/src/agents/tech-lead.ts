@@ -54,6 +54,7 @@ import {
   createOrchestratorCollaborationHelper,
   type OrchestratorCollaborationConfig,
 } from './tech-lead-collaboration.js';
+import { CliNameSchema, type CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /** Default Orchestrator options. */
 const DEFAULT_OPTIONS: Required<OrchestratorOptions> = {
@@ -62,6 +63,13 @@ const DEFAULT_OPTIONS: Required<OrchestratorOptions> = {
   enableParallelHints: true,
   expertWeights: {},
 };
+
+/** Resolves only measured CLI bridge identities, never direct API providers. */
+function executedCliFromProviderId(providerId: string | undefined): CliNameLiteral | undefined {
+  if (providerId?.startsWith('cli-') !== true) return undefined;
+  const parsed = CliNameSchema.safeParse(providerId.slice('cli-'.length));
+  return parsed.success ? parsed.data : undefined;
+}
 
 /** Extended options for Orchestrator with collaboration. */
 interface OrchestratorExtendedOptions {
@@ -265,6 +273,10 @@ export class Orchestrator extends BaseAgent {
     // Enrich assignments with ICTM configurations (Issue #756)
     const { assignments } = enrichAssignmentsWithICTM(baseAssignments, subtasks, analysis);
     const output = this.buildExecutionPlan(task, analysis, subtasks, assignments);
+    // `providerId` is read after every model-backed step has completed. For a
+    // resilient adapter it now reflects the concrete post-failover delegate,
+    // so this is the last executed CLI rather than the configured preference.
+    const executedCli = executedCliFromProviderId(this.adapter?.providerId);
 
     return ok({
       taskId: task.id,
@@ -274,6 +286,9 @@ export class Orchestrator extends BaseAgent {
         tokensUsed: 0,
         toolsUsed: [],
         model: 'tech-lead-orchestration',
+        ...(executedCli === undefined
+          ? { executedCliSource: 'unknown' as const }
+          : { executedCli, executedCliSource: 'executed' as const }),
       },
     });
   }
