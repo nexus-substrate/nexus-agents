@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.22.4
+
+### Patch Changes
+
+- [#5612](https://github.com/nexus-substrate/nexus-agents/pull/5612) [`1d8035f`](https://github.com/nexus-substrate/nexus-agents/commit/1d8035f110ce6f51a693d6fa582ac370e728f975) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Return non-zero research CLI exit codes for handler errors and forward validated discovery sources from `--source`.
+
 ## 8.22.3
 
 ### Patch Changes
