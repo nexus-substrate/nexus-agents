@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.11.0
+
+### Minor Changes
+
+- [#5518](https://github.com/nexus-substrate/nexus-agents/pull/5518) [`8101816`](https://github.com/nexus-substrate/nexus-agents/commit/810181651e6ea0765c6c67a0258f1ccb96ce312b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A config file carrying `memory.session`, `memory.graph`, or `memory.typed` copied from the old documentation now fails validation and names the unknown key; previously, these keys loaded successfully and were silently ignored.
+
 ## 8.10.1
 
 ### Patch Changes
