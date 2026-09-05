@@ -74,6 +74,18 @@ describe('verify-command', () => {
       expect(nodeCheck?.passed).toBe(true); // Should pass in test environment
     });
 
+    it.each(['v20.19.0', 'v22.4.1'])('rejects Node %s with range', async (version) => {
+      const original = Object.getOwnPropertyDescriptor(process, 'version');
+      Object.defineProperty(process, 'version', { value: version, configurable: true });
+      try {
+        const nodeCheck = (await runVerify()).checks.find((c) => c.name === 'Node.js Version');
+        expect(nodeCheck?.passed).toBe(false);
+        expect(nodeCheck?.message).toContain('>=22.5.0');
+      } finally {
+        if (original !== undefined) Object.defineProperty(process, 'version', original);
+      }
+    });
+
     it('includes package exports check', async () => {
       const result = await runVerify();
 

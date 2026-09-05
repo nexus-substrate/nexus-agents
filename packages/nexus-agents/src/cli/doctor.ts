@@ -53,11 +53,8 @@ import {
   type InstallFreshness,
 } from './doctor-install-freshness.js';
 import { execFileSync } from 'node:child_process';
-import { VERSION } from '../version.js';
+import { VERSION, isNodeVersionSupported } from '../version.js';
 import { allOf } from '../utils/verdict-aggregation.js';
-
-/** Required Node.js major version. */
-const REQUIRED_NODE_MAJOR = 22;
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
@@ -476,7 +473,7 @@ function checkNodeVersion(): NodeVersionCheck {
   return {
     version,
     major,
-    supported: major >= REQUIRED_NODE_MAJOR,
+    supported: isNodeVersionSupported(version),
   };
 }
 
