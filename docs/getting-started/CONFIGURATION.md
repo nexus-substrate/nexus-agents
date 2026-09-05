@@ -589,8 +589,6 @@ The matching (equally unread) `TIMEOUT_DEFAULTS.cliSimpleMs` /
 timeouts were never driven by these knobs — they flow through the internal
 per-CLI `TIMEOUT_PROFILES` (`getTimeoutForCli`).
 
-## Model Configuration
-
 ### Removed (#5665)
 
 `NEXUS_AUTH_METHOD` was registered and documented (default `token`) but never
@@ -600,6 +598,8 @@ config file only, and the variable's sole reader was the startup log line
 remove rather than wire — same reasoning as #2977 / #4180); `validateNexusEnv`
 now reports it as unknown. Set `security.auth.method` in the config file
 instead.
+
+## Model Configuration
 
 ### Default Model
 
