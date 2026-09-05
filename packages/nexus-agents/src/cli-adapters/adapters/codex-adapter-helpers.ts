@@ -7,6 +7,8 @@
 
 import type { CliError, CliName, TokenUsage, CliResponse } from '../types.js';
 import { createCliError as sharedCreateCliError } from '../cli-error-helpers.js';
+import type { ILogger } from '../../core/logger.js';
+import { resolveCliModelName } from '../../config/model-config-helpers.js';
 
 // -----------------------------------------------------------------------------
 // Legacy Fallback Defaults (for non-canonical models)
@@ -74,3 +76,30 @@ export function normalizeCodexResponse(
 
 // Re-export from canonical source for backward compatibility
 export { delay } from '../../utils/async-utils.js';
+
+/**
+ * Translate a model identifier to the slug the `codex` binary accepts (#5091).
+ *
+ * `task.model` arrives as the canonical registry id (`codex-5.3`), which codex
+ * rejects; the registry's `cliModelName` (`gpt-5.4`) is what `-m` and the MCP
+ * `model` argument want. Shared by the subprocess and MCP transports so the
+ * translation exists once.
+ *
+ * Unknown model: passed through verbatim with a warning, the same fail-open
+ * choice `claude-adapter.ts` (`MODEL_TO_CLI_ALIAS[m] ?? m`) and
+ * `opencode-adapter.ts` (`resolveOpenCodeModel`) make. A caller pinning a slug
+ * the registry has not caught up with (codex ships new ones between releases)
+ * must still be able to run it, and codex rejects a bad `-m` with a non-zero
+ * exit, so the failure stays visible — unlike agy, whose exit-0 error is why
+ * `toAgyModelSlug` substitutes a default instead.
+ */
+export function toCodexModelSlug(model: string, logger: ILogger): string {
+  const slug = resolveCliModelName('codex', model);
+  if (slug === undefined) {
+    logger.warn('Model is not in the model registry for codex; passing it to codex unchanged', {
+      model,
+    });
+    return model;
+  }
+  return slug;
+}

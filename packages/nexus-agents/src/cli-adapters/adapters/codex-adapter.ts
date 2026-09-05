@@ -26,7 +26,7 @@ import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
-import { CODEX_LEGACY_DEFAULTS } from './codex-adapter-helpers.js';
+import { CODEX_LEGACY_DEFAULTS, toCodexModelSlug } from './codex-adapter-helpers.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -90,10 +90,11 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     // Add JSON output
     args.push('--json');
 
-    // Add model only if specified (use CLI default otherwise)
+    // Add model only if specified (use CLI default otherwise). task.model is
+    // the canonical registry id, which codex rejects — translate it (#5091).
     const model = task.model ?? this.model;
     if (model !== '') {
-      args.push('-m', model);
+      args.push('-m', toCodexModelSlug(model, this.logger));
     }
 
     // Add sandbox mode for safety (read-only by default)

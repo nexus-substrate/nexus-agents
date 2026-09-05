@@ -371,6 +371,28 @@ export function findCanonicalModel(
 }
 
 /**
+ * Resolve any model identifier a caller may hold — a canonical registry id
+ * (`codex-5.3`), a `cliAlias` (`opus`), a legacy `aliases[]` name, or the
+ * `cliModelName` itself — to the name the CLI binary accepts (#5091).
+ *
+ * `task.model` carries the canonical id (resolve-model-for-tier →
+ * composite-router → orchestrate-command), and for codex the id differs from
+ * `cliModelName` in 3 of 4 entries, so an adapter that passes it straight to
+ * the binary is rejected. This is the CLI-scoped generalisation of
+ * {@link getCliModelName}: same target field, but it accepts every name form
+ * {@link findCanonicalModel} matches and refuses to translate across CLIs.
+ *
+ * Returns `undefined` when the registry has no entry for `model` under `cli`,
+ * so the caller decides the unknown case (pass through, substitute a default,
+ * or refuse) instead of this helper answering it with a silent passthrough.
+ */
+export function resolveCliModelName(cli: CliNameLiteral, model: string): string | undefined {
+  const entry = findCanonicalModel(cli, model);
+  if (entry === undefined) return undefined;
+  return entry.cliModelName ?? entry.cliAlias ?? entry.id;
+}
+
+/**
  * Project a ModelEntry back to the legacy ModelCapability shape for
  * adapter callers that still expect the old type. New callers should
  * read fields directly off `ModelEntry`.

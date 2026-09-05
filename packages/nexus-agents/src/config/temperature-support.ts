@@ -12,8 +12,8 @@
  *    `temperature` outright ("Unsupported parameter"), and the GPT-5 family accepts
  *    only the default ("Only the default (1) value is supported") — except the
  *    non-reasoning `gpt-5-chat` variant. This repo routes codex-5.3→gpt-5.4,
- *    codex-5.2→gpt-5.2-codex, codex-5.1-mini→o3-mini, so gateway voters at the
- *    default 0.3 400 on all of them.
+ *    codex-5.2→gpt-5.3-codex-spark, codex-5.1-mini→gpt-5.4-mini (#5091), so
+ *    gateway voters at the default 0.3 400 on all of them.
  *
  * {@link temperatureUnsupportedForModel} is the single source of truth both the
  * native Claude adapter and the OpenAI-compatible gateway adapter consult before

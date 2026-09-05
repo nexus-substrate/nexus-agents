@@ -28,6 +28,7 @@ import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
 
+import { toCodexModelSlug } from './codex-adapter-helpers.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   type McpToolResult,
@@ -180,9 +181,11 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     const isReply = task.sessionId !== undefined && task.sessionId !== '';
     const toolName = isReply ? 'codex-reply' : 'codex';
 
+    // task.model is the canonical registry id, which codex rejects — translate
+    // it to the slug the MCP server's `model` argument accepts (#5091).
     const baseArgs = {
       prompt: task.content,
-      ...(task.model !== undefined && { model: task.model }),
+      ...(task.model !== undefined && { model: toCodexModelSlug(task.model, this.logger) }),
     };
 
     const args = isReply

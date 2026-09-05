@@ -30,11 +30,19 @@ import { getCliModelName } from '../config/model-config-helpers.js';
  *
  * GPT_5_2_CODEX derives from the canonical registry (codex-5.2's cliModelName)
  * because it overlaps with the Codex CLI; the rest are pure-API constants.
+ * Since #5091 that entry points at `gpt-5.3-codex-spark` (codex no longer
+ * serves gpt-5.2-codex), so the key's name lags its value; renaming the key is
+ * a public-API change and is tracked separately.
  */
 export const OPENAI_MODELS = {
   GPT_5_2: 'gpt-5.2',
   GPT_5_2_INSTANT: 'gpt-5.2-chat-latest',
   GPT_5_2_PRO: 'gpt-5.2-pro',
+  /**
+   * Registry-derived: resolves to `codex-5.2`'s `cliModelName`, which since
+   * #5091 is `gpt-5.3-codex-spark`, not a "5.2" model. The key name lags its
+   * value; renaming it is a public-API change tracked in #5489.
+   */
   GPT_5_2_CODEX: getCliModelName('codex-5.2'),
   GPT_4O: 'gpt-4o-2024-11-20',
   GPT_4O_MINI: 'gpt-4o-mini-2024-07-18',
