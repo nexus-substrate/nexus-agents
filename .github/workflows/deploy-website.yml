@@ -55,8 +55,13 @@ jobs:
         with:
           path: website/dist
 
-  link-check:
-    name: Check Links
+  # Advisory only (#5687). lychee resolves the Pages base path (`/nexus-agents/…`)
+  # against `--root-dir site` and reports ~6.8k "file not found" per run, so the
+  # count is a measurement artifact, not broken links. Until the root mapping is
+  # fixed and the real error count is known, this job is a report: `deploy` does
+  # not wait on it and its name says so. Re-enable per #5687 step 2.
+  link-report:
+    name: Link report (advisory, #5687)
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -88,7 +93,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: [build, link-check]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
