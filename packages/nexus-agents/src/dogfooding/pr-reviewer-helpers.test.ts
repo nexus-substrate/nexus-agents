@@ -13,6 +13,7 @@ import {
   extractSummary,
   extractStringField,
   parseFindings,
+  parseExpertReview,
   determineApproval,
   determineDecision,
   calculateConsensus,
@@ -312,6 +313,38 @@ describe('Finding Parsing', () => {
       };
 
       expect(parseFindings(output, 'expert', 'info')).toEqual([]);
+    });
+  });
+
+  describe('parseExpertReview', () => {
+    it('treats unmeasured security findings as an errored review', () => {
+      const parsed = parseExpertReview(
+        {
+          content: 'APPROVED',
+          vulnerabilities: [],
+          securityScore: 100,
+          findingsCoverage: 'unmeasured',
+        },
+        'security-expert',
+        'info'
+      );
+
+      expect(parsed).toMatchObject({ findings: [], verdict: 'errored' });
+    });
+
+    it('retains partial findings despite an approval marker', () => {
+      const parsed = parseExpertReview(
+        {
+          content: 'APPROVED',
+          vulnerabilities: [{ description: 'Validated issue', severity: 'medium' }],
+          findingsCoverage: 'partial',
+        },
+        'security-expert',
+        'info'
+      );
+
+      expect(parsed.findings).toHaveLength(1);
+      expect(parsed.verdict).toBe('findings');
     });
   });
 });

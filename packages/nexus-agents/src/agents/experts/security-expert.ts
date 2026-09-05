@@ -120,6 +120,7 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       content: 'Heuristic security analysis. Model adapter required for comprehensive review.',
       vulnerabilities,
       securityScore,
+      findingsCoverage: 'complete',
       recommendations: generateHeuristicRecommendations(vulnerabilities),
       warnings: generateSecurityWarnings(vulnerabilities),
       confidence: vulnerabilities.length > 0 ? 0.6 : 0.4,

@@ -521,6 +521,50 @@ describe('PRReviewer', () => {
       expect(result.value.decision).not.toBe('approve');
     });
 
+    it('does not approve unmeasured security findings', async () => {
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: true, experts: ['security'] },
+        adapterReturning({
+          content: 'APPROVED',
+          vulnerabilities: [{ invalid: 'data' }],
+        })
+      );
+
+      const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.expertReviews[0]).toMatchObject({ approved: false, errored: true });
+      expect(result.value.decision).not.toBe('approve');
+    });
+
+    it('surfaces partial security findings coverage in the expert summary', async () => {
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: true, experts: ['security'] },
+        adapterReturning({
+          content: 'APPROVED',
+          vulnerabilities: [
+            { invalid: 'data' },
+            {
+              id: 'VALID-001',
+              severity: 'medium',
+              type: 'A04:2021 - Insecure Design',
+              description: 'Validated issue',
+              remediation: 'Fix the issue',
+            },
+          ],
+        })
+      );
+
+      const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.expertReviews[0]?.summary).toContain('partial');
+    });
+
     it('reports no file coverage when patches are absent and every expert errored', async () => {
       mockGetPullRequestDetail.mockResolvedValue(
         ok({
