@@ -231,7 +231,7 @@ export async function executeAgentVote(
   // semantics are unchanged — this is still an error (abstain) vote.
   const remediation = authRemediation(result.error, adapter.providerId);
   const errorText = remediation === null ? result.error : `${result.error}\n\n${remediation}`;
-  return createErrorVoteResult(role, errorText, processingTimeMs);
+  return createErrorVoteResult(role, errorText, processingTimeMs, adapter.providerId);
 }
 
 // ============================================================================

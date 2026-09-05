@@ -382,9 +382,12 @@ That's my vote.`;
     });
 
     it('should return abstain vote when all retries exhausted (no simulation)', async () => {
-      const adapter = createMockAdapter({
-        response: { ok: false, error: new Error('Persistent failure') },
-      });
+      const adapter: IModelAdapter = {
+        ...createMockAdapter({
+          response: { ok: false, error: new Error('Persistent failure') },
+        }),
+        providerId: 'cli-codex',
+      };
 
       const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
         timeoutMs: 5000,
@@ -396,6 +399,7 @@ That's my vote.`;
       expect(result.vote.confidence).toBe(0);
       expect(result.vote.reasoning).toContain('[Error]');
       expect(result.error).toBe('Persistent failure');
+      expect(result.cli).toBe('codex');
     });
 
     // #3350: a stale-OAuth voter failure must surface a `<cli> login`

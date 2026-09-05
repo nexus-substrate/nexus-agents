@@ -21,8 +21,13 @@ import { getNexusDataDir, nexusDataPath } from '../../config/nexus-data-dir.js';
 import { VOTE_RECORDS_PATH_ENV } from '../../audit/vote-record-store.js';
 import type { ConsensusResult, Vote } from '../../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
+import {
+  getOutcomeStore,
+  OutcomeStore,
+  setOutcomeStore,
+} from '../../orchestration/outcomes/index.js';
 
-import { recordAuthenticVote } from './consensus-vote-recording.js';
+import { recordAuthenticVote, recordVoteOutcomes } from './consensus-vote-recording.js';
 
 // #3991: the runtime ledger resolves via nexusDataPath (governance category)
 // instead of findRepoRoot. Mock the resolver so each test pins the data root.
@@ -67,6 +72,41 @@ const realVotes: readonly AgentVoteResult[] = [
   agentVote('security', 'approve'),
   agentVote('catfish', 'reject'),
 ];
+
+describe('recordVoteOutcomes CLI attribution (#5529)', () => {
+  beforeEach(() => {
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  it('attributes a failed codex voter without changing a successful LLM voter', () => {
+    recordVoteOutcomes([
+      { ...agentVote('architect', 'approve'), cli: 'gemini' },
+      {
+        ...agentVote('security', 'abstain', 'error'),
+        cli: 'codex',
+        error: 'Codex failed',
+      },
+    ]);
+
+    const outcomes = getOutcomeStore().query();
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes[0]).toMatchObject({ cli: 'gemini', success: true });
+    expect(outcomes[1]).toMatchObject({ cli: 'codex', success: false });
+  });
+
+  it('attributes an error vote with no CLI to unknown, never claude', () => {
+    recordVoteOutcomes([
+      {
+        ...agentVote('security', 'abstain', 'error'),
+        error: 'Unattributed failure',
+      },
+    ]);
+
+    const outcome = getOutcomeStore().query()[0];
+    expect(outcome?.cli).toBe('unknown');
+    expect(outcome?.cli).not.toBe('claude');
+  });
+});
 
 describe('recordAuthenticVote persistence outcome (#3991)', () => {
   let dir: string;

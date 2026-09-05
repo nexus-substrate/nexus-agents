@@ -26,6 +26,7 @@ import {
   resolveVoteTimeout as _resolveVoteTimeout,
   validateTimeout as _validateTimeout,
 } from '../config/timeouts.js';
+import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /** Default vote timeout. Canonical source: `config/timeouts.ts`. */
 export const DEFAULT_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.defaultMs;
@@ -84,8 +85,15 @@ export const validateTimeout = _validateTimeout;
 export function createErrorVoteResult(
   role: VoterRole,
   errorMsg: string,
-  processingTimeMs: number
+  processingTimeMs: number,
+  providerId?: string
 ): AgentVoteResult {
+  const bareCli =
+    providerId?.startsWith('cli-') === true ? providerId.slice('cli-'.length) : providerId;
+  const cli =
+    bareCli !== undefined && (CLI_NAMES as readonly string[]).includes(bareCli)
+      ? (bareCli as CliNameLiteral)
+      : undefined;
   return {
     role,
     vote: {
@@ -96,6 +104,7 @@ export function createErrorVoteResult(
     processingTimeMs,
     source: 'error',
     error: errorMsg,
+    ...(cli !== undefined ? { cli } : {}),
   };
 }
 
