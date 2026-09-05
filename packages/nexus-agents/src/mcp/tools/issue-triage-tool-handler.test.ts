@@ -20,12 +20,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HandlerContext } from '../middleware/secure-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 
-const mockTriageIssue = vi.fn();
+const { mockRecordLearning, mockTriageIssue } = vi.hoisted(() => ({
+  mockRecordLearning: vi.fn(),
+  mockTriageIssue: vi.fn(),
+}));
 vi.mock('../../dogfooding/issue-triage.js', () => ({
   // vitest 4: arrow functions aren't constructor-callable. Use a real
   // function so `new IssueTriage(...)` works.
   IssueTriage: vi.fn(function () {
     return { triageIssue: mockTriageIssue };
+  }),
+}));
+vi.mock('./tool-memory.js', () => ({
+  getToolMemory: () => ({
+    recordError: vi.fn(),
+    recordLearning: mockRecordLearning,
+    recordTask: vi.fn(),
   }),
 }));
 
@@ -136,5 +146,39 @@ describe('createIssueTriageHandler (#2953)', () => {
     expect(parsed.issueNumber).toBe(42);
     expect(parsed.category).toBe('bug');
     expect(mockTriageIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it('records low and high measured classifier confidence in learnings', async () => {
+    for (const confidence of [0.1, 0.9]) {
+      mockTriageIssue.mockResolvedValueOnce({
+        ok: true,
+        value: {
+          issueNumber: 43,
+          repository: 'o/r',
+          category: 'other',
+          categoryConfidence: confidence,
+          trustAssessment: {
+            trustTier: '2',
+            userRole: 'CONTRIBUTOR',
+            isSuspicious: false,
+            suspiciousSignals: [],
+          },
+          proposedActions: [],
+          totalDurationMs: 100,
+        },
+      });
+
+      const handler = _testing.createIssueTriageHandler(makeDeps());
+      await handler({ issueUrl: 'https://github.com/o/r/issues/43' }, makeCtx());
+    }
+
+    expect(mockRecordLearning).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ confidence: 0.1 })
+    );
+    expect(mockRecordLearning).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ confidence: 0.9 })
+    );
   });
 });
