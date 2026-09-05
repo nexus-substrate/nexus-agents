@@ -133,6 +133,8 @@ export const SanitizedInputSchema = z.object({
   injectionFlags: z.array(InjectionFlagSchema),
   /** Elements stripped during sanitization (audit trail). */
   strippedElements: z.array(StrippedElementSchema),
+  /** Whether content exceeded the configured limit. Absent on records that predate this field. */
+  truncated: z.boolean().optional(),
   /** Whether any dangerous content was detected and stripped. */
   wasModified: z.boolean(),
   /** Timestamp of sanitization (ISO 8601). */

@@ -1379,7 +1379,7 @@ FunctionDeclaration classifyExpertFailure
 InterfaceDeclaration ClassifyInput
   readonly authorAssociation: string
   readonly config?: Partial<{ allowlistedMaintainers: string[]; failOpen: boolean; maxInputLength: number; }> | undefined
-  readonly sanitizedInput?: { content: string; contentTierMeasured?: boolean | undefined; injectionFlags: ("authority_claim" | "instruction_pattern" | "system_prompt_manipulation" | "hidden_content" | "urgency_manipulation" | "fake_conversation" | "base64_encoded" | "external_link_instruction")[]; originalLength: number; sanitizedAt: string; strippedElements: { length: number; reason: string; startIndex: number; tag: string; }[]; trustTier: "1" | "2" | "3" | "4"; userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"; wasModified: boolean; } | undefined
+  readonly sanitizedInput?: { content: string; contentTierMeasured?: boolean | undefined; injectionFlags: ("authority_claim" | "instruction_pattern" | "system_prompt_manipulation" | "hidden_content" | "urgency_manipulation" | "fake_conversation" | "base64_encoded" | "external_link_instruction")[]; originalLength: number; sanitizedAt: string; strippedElements: { length: number; reason: string; startIndex: number; tag: string; }[]; truncated?: boolean | undefined; trustTier: "1" | "2" | "3" | "4"; userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"; wasModified: boolean; } | undefined
   readonly username: string
 InterfaceDeclaration ClassifyResult
   readonly isAllowlisted: boolean
@@ -3702,7 +3702,7 @@ InterfaceDeclaration FirewallResult
   readonly reputation?: ReputationAssessment | undefined
   readonly reputationGate?: ReputationGateDecision | undefined
   readonly ruleOfTwoViolation?: { message: string; rule: string; severity: "warn" | "block"; } | undefined
-  readonly sanitized: { content: string; contentTierMeasured?: boolean | undefined; injectionFlags: ("authority_claim" | "instruction_pattern" | "system_prompt_manipulation" | "hidden_content" | "urgency_manipulation" | "fake_conversation" | "base64_encoded" | "external_link_instruction")[]; originalLength: number; sanitizedAt: string; strippedElements: { length: number; reason: string; startIndex: number; tag: string; }[]; trustTier: "1" | "2" | "3" | "4"; userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"; wasModified: boolean; }
+  readonly sanitized: { content: string; contentTierMeasured?: boolean | undefined; injectionFlags: ("authority_claim" | "instruction_pattern" | "system_prompt_manipulation" | "hidden_content" | "urgency_manipulation" | "fake_conversation" | "base64_encoded" | "external_link_instruction")[]; originalLength: number; sanitizedAt: string; strippedElements: { length: number; reason: string; startIndex: number; tag: string; }[]; truncated?: boolean | undefined; trustTier: "1" | "2" | "3" | "4"; userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"; wasModified: boolean; }
   readonly trust: ClassifyResult
   readonly wouldRefuse: boolean
 TypeAliasDeclaration FirewallStages
@@ -7800,6 +7800,7 @@ InterfaceDeclaration SanitizationEvent
   readonly source: string
   readonly strippedCount: number
   readonly strippedElements: readonly StrippedElementSummary[]
+  readonly truncated?: boolean | undefined
   readonly type: "sanitization"
   readonly wasModified: boolean
 FunctionDeclaration sanitize
@@ -7807,7 +7808,7 @@ FunctionDeclaration sanitize
 TypeAliasDeclaration SanitizedInput
   = z.infer<typeof SanitizedInputSchema>
 VariableDeclaration SanitizedInputSchema
-  : z.ZodObject<{ content: z.ZodString; contentTierMeasured: z.ZodOptional<z.ZodBoolean>; injectionFlags: z.ZodArray<z.ZodEnum<{ authority_claim: "authority_claim"; base64_encoded: "base64_encoded"; external_link_instruction: "external_link_instruction"; fake_conversation: "fake_conversation"; hidden_content: "hidden_content"; instruction_pattern: "instruction_pattern"; system_prompt_manipulation: "system_prompt_manipulation"; urgency_manipulation: "urgency_manipulation"; }>>; originalLength: z.ZodNumber; sanitizedAt: z.ZodISODateTime; strippedElements: z.ZodArray<z.ZodObject<{ length: z.ZodNumber; reason: z.ZodString; startIndex: z.ZodNumber; tag: z.ZodString; }, z.core.$strip>>; trustTier: z.ZodEnum<{ 1: "1"; 2: "2"; 3: "3"; 4: "4"; }>; userRole: z.ZodEnum<{ collaborator: "collaborator"; contributor: "contributor"; maintainer: "maintainer"; member: "member"; owner: "owner"; unknown: "unknown"; }>; wasModified: z.ZodBoolean; }, z.core.$strip>
+  : z.ZodObject<{ content: z.ZodString; contentTierMeasured: z.ZodOptional<z.ZodBoolean>; injectionFlags: z.ZodArray<z.ZodEnum<{ authority_claim: "authority_claim"; base64_encoded: "base64_encoded"; external_link_instruction: "external_link_instruction"; fake_conversation: "fake_conversation"; hidden_content: "hidden_content"; instruction_pattern: "instruction_pattern"; system_prompt_manipulation: "system_prompt_manipulation"; urgency_manipulation: "urgency_manipulation"; }>>; originalLength: z.ZodNumber; sanitizedAt: z.ZodISODateTime; strippedElements: z.ZodArray<z.ZodObject<{ length: z.ZodNumber; reason: z.ZodString; startIndex: z.ZodNumber; tag: z.ZodString; }, z.core.$strip>>; truncated: z.ZodOptional<z.ZodBoolean>; trustTier: z.ZodEnum<{ 1: "1"; 2: "2"; 3: "3"; 4: "4"; }>; userRole: z.ZodEnum<{ collaborator: "collaborator"; contributor: "contributor"; maintainer: "maintainer"; member: "member"; owner: "owner"; unknown: "unknown"; }>; wasModified: z.ZodBoolean; }, z.core.$strip>
 FunctionDeclaration sanitizeInput
   : typeof sanitizeInput
 TypeAliasDeclaration SanitizerConfig

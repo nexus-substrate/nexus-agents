@@ -90,6 +90,21 @@ describe('HostileInputFirewall', () => {
         expect.objectContaining({ tag: expect.any(String), reason: expect.any(String) })
       );
     });
+
+    it('records truncation on the sanitization audit event', () => {
+      const fw = createFirewall({ maxInputLength: 1000 });
+      const result = fw.process(issueInput({ body: 'A'.repeat(1001) }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = fw.getAuditTrail().query({ type: 'sanitization' });
+      expect(events).toHaveLength(1);
+      const sanitizationEvent = events[0];
+      if (sanitizationEvent?.type !== 'sanitization') return;
+
+      expect(sanitizationEvent.truncated).toBe(true);
+      expect(sanitizationEvent.wasModified).toBe(true);
+    });
   });
 
   describe('hostile input detection', () => {
