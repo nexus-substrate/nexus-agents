@@ -180,6 +180,18 @@ function mapInputDefinition(input: WorkflowDefinitionOutput['inputs'][number]): 
   return inputDef;
 }
 
+/** Maps Zod's undefined-valued optionals to exact optional core budget fields. */
+function mapPartialContextBudget(
+  source: NonNullable<WorkflowDefinitionOutput['steps'][number]['contextBudget']>
+): NonNullable<WorkflowStep['contextBudget']> {
+  const budget: NonNullable<WorkflowStep['contextBudget']> = {};
+  if (source.system !== undefined) budget.system = source.system;
+  if (source.task !== undefined) budget.task = source.task;
+  if (source.active !== undefined) budget.active = source.active;
+  if (source.reserved !== undefined) budget.reserved = source.reserved;
+  return budget;
+}
+
 /**
  * Maps Zod step definition output to core WorkflowStep.
  */
@@ -195,6 +207,8 @@ function mapWorkflowStep(step: WorkflowDefinitionOutput['steps'][number]): Workf
   if (step.retries !== undefined) stepDef.retries = step.retries;
   if (step.timeout !== undefined) stepDef.timeout = step.timeout;
   if (step.condition !== undefined) stepDef.condition = step.condition;
+  if (step.contextBudget !== undefined)
+    stepDef.contextBudget = mapPartialContextBudget(step.contextBudget);
   return stepDef;
 }
 
@@ -211,6 +225,7 @@ function toWorkflowDefinition(data: WorkflowDefinitionOutput): WorkflowDefinitio
   };
   if (data.description !== undefined) workflow.description = data.description;
   if (data.timeout !== undefined) workflow.timeout = data.timeout;
+  if (data.defaultBudget !== undefined) workflow.defaultBudget = data.defaultBudget;
   return workflow;
 }
 
