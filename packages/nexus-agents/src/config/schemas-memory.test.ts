@@ -7,6 +7,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { MemoryDecayConfigSchema, MemoryConfigSchema } from './schemas-memory.js';
 import { AppConfigSchema } from './schemas.js';
 import { DEFAULT_DECAY_CONFIG, type MemoryDecayConfig } from '../mcp/tools/memory-decay.js';
@@ -18,6 +22,29 @@ const BASE_APP_CONFIG = {
     tiers: { fast: ['claude-haiku'], balanced: ['claude-sonnet'], powerful: ['claude-opus'] },
   },
 };
+
+/** Repo root, from `<root>/packages/nexus-agents/src/config/`. */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const CONFIG_MD = readFileSync(join(REPO_ROOT, 'docs/getting-started/CONFIGURATION.md'), 'utf8');
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Keys indented directly beneath `memory:` in YAML examples. */
+function documentedMemoryKeys(): string[] {
+  const found = new Set<string>();
+  for (const blockMatch of CONFIG_MD.matchAll(/```ya?ml\n([\s\S]*?)```/g)) {
+    const block = blockMatch[1];
+    if (block === undefined) continue;
+    const parsed: unknown = parseYaml(block);
+    if (!isRecord(parsed)) continue;
+    const memory = parsed['memory'];
+    if (!isRecord(memory)) continue;
+    for (const key of Object.keys(memory)) found.add(key);
+  }
+  return [...found].sort();
+}
 
 describe('MemoryDecayConfigSchema (#5097)', () => {
   it('accepts a non-default cap and hands it through unchanged', () => {
@@ -87,6 +114,12 @@ describe('MemoryDecayConfigSchema (#5097)', () => {
 });
 
 describe('memory section of AppConfigSchema (#5097)', () => {
+  it('accepts memory.decay through MemoryConfigSchema', () => {
+    const result = MemoryConfigSchema.safeParse({ decay: { enabled: false } });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.decay).toEqual({ enabled: false });
+  });
+
   it('threads memory.decay through the top-level config', () => {
     const result = AppConfigSchema.safeParse({
       ...BASE_APP_CONFIG,
@@ -120,5 +153,29 @@ describe('memory section of AppConfigSchema (#5097)', () => {
     const result = MemoryConfigSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.decay).toBeUndefined();
+  });
+
+  it.each(['session', 'graph', 'typed'])('rejects unknown memory.%s and names it', (key) => {
+    const result = AppConfigSchema.safeParse({
+      ...BASE_APP_CONFIG,
+      memory: { [key]: {} },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (candidate) => candidate.code === 'unrecognized_keys' && candidate.keys.includes(key)
+      );
+      expect(issue?.path).toEqual(['memory']);
+      expect(issue?.message).toContain(key);
+    }
+  });
+});
+
+describe('documented memory keys match MemoryConfigSchema (#5494)', () => {
+  it('finds every direct memory key in YAML examples and recognizes it in the schema', () => {
+    const documentedKeys = documentedMemoryKeys();
+    expect(documentedKeys).not.toHaveLength(0);
+    expect(documentedKeys).toEqual(Object.keys(MemoryConfigSchema.shape).sort());
   });
 });
