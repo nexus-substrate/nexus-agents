@@ -20,6 +20,10 @@ import { describe, it, expect } from 'vitest';
 
 import { formatBenchmarkResult, validateBenchmarkResults } from './memory-benchmark-output.js';
 import { runMemoryBenchmark, type MemoryBenchmarkResult } from './memory-benchmark.js';
+import {
+  measurePromotionEffectiveness,
+  measureDecayAppropriateness,
+} from './memory-benchmark-phase3.js';
 import type { IContextMemoryBackend } from '../context/memory-backend-types.js';
 
 function resultWith(overrides: Partial<MemoryBenchmarkResult>): MemoryBenchmarkResult {
@@ -123,5 +127,121 @@ describe('the decay measurement itself reports absence (#5260)', () => {
       { minDecayConsistencyScore: 0.9 }
     );
     expect(verdict.pass).toBe(true);
+  });
+});
+
+// ============================================================================
+// Phase 3 metrics & coherence report absence as absence (#5664)
+// ============================================================================
+
+describe('unmeasured metrics report absence (#5664)', () => {
+  /**
+   * Backend whose search and store both return { ok: false, error }
+   * (retrieve unused, prune returns { ok: true, value: 0 }).
+   */
+  function searchAndStoreFailingBackend(): IContextMemoryBackend {
+    const fail = (): Promise<never> =>
+      Promise.resolve({
+        ok: false,
+        error: { code: 'BACKEND_DOWN', message: 'operation failed' },
+      }) as Promise<never>;
+    return {
+      store: fail,
+      retrieve: fail,
+      search: fail,
+      prune: () => Promise.resolve({ ok: true, value: 0 }),
+    } as unknown as IContextMemoryBackend;
+  }
+
+  it('reports null, not 1.0, for coherenceScore when backend search fails', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    expect(result.coherenceScore).toBeNull();
+  });
+
+  it('reports null, not 1.0, for retentionRate with itemsPromoted 0 when backend store fails', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const promotion = await measurePromotionEffectiveness(backend);
+    expect(promotion.retentionRate).toBeNull();
+    expect(promotion.itemsPromoted).toBe(0);
+
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    expect(result.promotionRetentionRate).toBeNull();
+  });
+
+  it('reports null, not 0, for regretScore with itemsDecayed 0 when seeding stores fail', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const appropriateness = await measureDecayAppropriateness(backend);
+    expect(appropriateness.regretScore).toBeNull();
+    expect(appropriateness.itemsDecayed).toBe(0);
+
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    expect(result.decayRegretScore).toBeNull();
+  });
+
+  it('validateBenchmarkResults fails on null metric when minCoherenceScore is set and names the metric', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    const verdict = validateBenchmarkResults(result, { minCoherenceScore: 0.9 });
+    expect(verdict.pass).toBe(false);
+    expect(verdict.failures.join(' ')).toContain('Coherence');
+    expect(verdict.failures.join(' ')).toContain('unmeasured');
+  });
+
+  it('validateBenchmarkResults fails on null metric when minPromotionRetentionRate is set and names the metric', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    const verdict = validateBenchmarkResults(result, { minPromotionRetentionRate: 0.9 });
+    expect(verdict.pass).toBe(false);
+    expect(verdict.failures.join(' ')).toContain('Promotion retention');
+    expect(verdict.failures.join(' ')).toContain('unmeasured');
+  });
+
+  it('validateBenchmarkResults fails on null metric when maxDecayRegretScore is set and names the metric', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    const verdict = validateBenchmarkResults(result, { maxDecayRegretScore: 0.1 });
+    expect(verdict.pass).toBe(false);
+    expect(verdict.failures.join(' ')).toContain('Decay regret');
+    expect(verdict.failures.join(' ')).toContain('unmeasured');
+  });
+
+  it('validateBenchmarkResults still passes when thresholds are not set and metrics are null', async () => {
+    const backend = searchAndStoreFailingBackend();
+    const result = await runMemoryBenchmark(backend, [], { quickMode: true });
+    const verdict = validateBenchmarkResults(result, { minMrr: 0 });
+    expect(verdict.pass).toBe(true);
+    expect(verdict.failures).toEqual([]);
+  });
+});
+
+describe('unmeasured formatting reports absence as unmeasured (#5664)', () => {
+  it('renders unmeasured rather than a percentage for null coherence, retention, and regret', () => {
+    const out = formatBenchmarkResult(
+      resultWith({
+        coherenceScore: null,
+        promotionRetentionRate: null,
+        decayRegretScore: null,
+      })
+    );
+    expect(out).toContain('Score: unmeasured');
+    expect(out).not.toContain('Score: 100.0%');
+    expect(out).toContain('Promotion retention: unmeasured');
+    expect(out).not.toContain('Promotion retention: 100.0%');
+    expect(out).toContain('Decay regret: unmeasured');
+    expect(out).not.toContain('Decay regret: 0.0%');
+  });
+
+  it('still renders real scores when metrics are measured', () => {
+    const out = formatBenchmarkResult(
+      resultWith({
+        coherenceScore: 0.95,
+        promotionRetentionRate: 0.85,
+        decayRegretScore: 0.15,
+      })
+    );
+    expect(out).toContain('Score: 95.0%');
+    expect(out).toContain('Promotion retention: 85.0%');
+    expect(out).toContain('Decay regret: 15.0%');
   });
 });

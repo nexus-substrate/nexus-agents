@@ -30,6 +30,37 @@ function formatDecayConsistency(result: MemoryBenchmarkResult): string {
   return `  Decay consistency: ${pct}% (${String(result.decayItemsChecked)} items)`;
 }
 
+function formatCoherence(result: MemoryBenchmarkResult): string[] {
+  const lines: string[] = ['▸ Coherence'];
+  if (result.coherenceScore === null) {
+    lines.push('  Score: unmeasured');
+  } else {
+    lines.push(`  Score: ${(result.coherenceScore * 100).toFixed(1)}%`);
+  }
+  if (result.orphanedRefCount > 0) {
+    lines.push(`  ⚠ Orphaned refs: ${String(result.orphanedRefCount)}`);
+  }
+  return lines;
+}
+
+function formatPhase3(result: MemoryBenchmarkResult): string[] {
+  const lines: string[] = ['▸ Phase 3: Promotion & Appropriateness'];
+  if (result.promotionRetentionRate === null) {
+    lines.push('  Promotion retention: unmeasured');
+  } else {
+    lines.push(`  Promotion retention: ${(result.promotionRetentionRate * 100).toFixed(1)}%`);
+  }
+  if (result.decayRegretScore === null) {
+    lines.push('  Decay regret: unmeasured');
+  } else {
+    lines.push(`  Decay regret: ${(result.decayRegretScore * 100).toFixed(1)}%`);
+    if (result.decayRegretScore > 0.3) {
+      lines.push('  ⚠ High regret indicates important memories being decayed');
+    }
+  }
+  return lines;
+}
+
 export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
   const lines: string[] = [
     '╔════════════════════════════════════════╗',
@@ -59,22 +90,13 @@ export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
   );
   lines.push(`  Avg bytes/entry: ${result.avgBytesPerEntry.toFixed(0)} bytes`);
   lines.push('');
-  lines.push('▸ Coherence');
-  lines.push(`  Score: ${(result.coherenceScore * 100).toFixed(1)}%`);
-  if (result.orphanedRefCount > 0) {
-    lines.push(`  ⚠ Orphaned refs: ${String(result.orphanedRefCount)}`);
-  }
+  lines.push(...formatCoherence(result));
   lines.push('');
   lines.push('▸ Phase 2: Growth & Decay');
   lines.push(`  Growth rate: ${result.growthRateBytesPerOp.toFixed(0)} bytes/op`);
   lines.push(formatDecayConsistency(result));
   lines.push('');
-  lines.push('▸ Phase 3: Promotion & Appropriateness');
-  lines.push(`  Promotion retention: ${(result.promotionRetentionRate * 100).toFixed(1)}%`);
-  lines.push(`  Decay regret: ${(result.decayRegretScore * 100).toFixed(1)}%`);
-  if (result.decayRegretScore > 0.3) {
-    lines.push('  ⚠ High regret indicates important memories being decayed');
-  }
+  lines.push(...formatPhase3(result));
   lines.push('');
   lines.push(`Duration: ${String(result.durationMs)}ms  |  ${result.timestamp.toISOString()}`);
   lines.push('╚════════════════════════════════════════╝');
