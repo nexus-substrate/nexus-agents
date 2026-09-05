@@ -111,12 +111,62 @@ describe('SdkAdapter', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.content[0]).toEqual({ type: 'text', text: 'Hello back!' });
-        expect(result.value.usage?.inputTokens).toBe(10);
-        expect(result.value.usage?.outputTokens).toBe(5);
+        expect(result.value.usage).toEqual({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+        });
         expect(result.value.stopReason).toBe('end_turn');
         expect(result.value.model).toBe('claude-sonnet-4-6');
       }
     });
+
+    it('uses the SDK total when component token counters are absent', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'counted',
+        finishReason: 'stop',
+        usage: { totalTokens: 20 },
+        response: { id: 'resp-total', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.usage?.totalTokens).toBe(20);
+      }
+    });
+
+    it.each([{}, { inputTokens: 10 }, { outputTokens: 5 }])(
+      'omits usage when the SDK counters cannot establish a total: %o',
+      async (usage) => {
+        const { generateText } = await import('ai');
+        vi.mocked(generateText).mockResolvedValueOnce({
+          text: 'uncounted',
+          finishReason: 'stop',
+          usage,
+          response: { id: 'resp-unmeasured', timestamp: new Date(), modelId: 'gpt-4o' },
+        } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+        const adapter = new SdkAdapter({
+          providerId: 'openai',
+          modelId: 'gpt-4o',
+          apiKey: 'test-key',
+        });
+
+        const result = await adapter.complete(TEST_REQUEST);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.usage).toBeUndefined();
+        }
+      }
+    );
 
     it('DROPS temperature for a reasoning model routed via the AI-SDK (#4062 drift guard)', async () => {
       // auto-adapter wires the openai/codex provider through SdkAdapter to models
@@ -269,7 +319,11 @@ describe('SdkAdapter', () => {
           type: 'text',
           text: JSON.stringify({ answer: 42 }),
         });
-        expect(result.value.usage?.inputTokens).toBe(10);
+        expect(result.value.usage).toEqual({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+        });
         expect(result.value.stopReason).toBe('end_turn');
         expect(result.value.model).toBe('claude-sonnet-4-6');
       }
