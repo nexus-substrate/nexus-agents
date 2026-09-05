@@ -235,6 +235,12 @@ security:
     enabled: true
     requestsPerMinute: 60
 
+  # Tamper-evident audit chain. The schema only applies its \`enabled: true\`
+  # default when this block is present, so it is written out explicitly (#5632).
+  audit:
+    enabled: true
+    enableHashChain: true
+
   # Path to secrets file (optional)
   # secretsFile: ./.nexus-secrets.yaml
 
