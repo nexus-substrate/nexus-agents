@@ -3,6 +3,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { execFileSync, execSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import {
   classifyAddedFiles,
@@ -12,6 +16,7 @@ import {
   importSpecifierPatterns,
   isTestSupportFile,
   nameHasProductionUse,
+  resolveComparisonBase,
 } from './check-new-unused-exports.js';
 
 describe('classifyAddedFiles', () => {
@@ -291,4 +296,70 @@ describe('isTestSupportFile is not a test-file predicate', () => {
       true
     );
   });
+});
+
+describe('resolveComparisonBase (#5671)', () => {
+  it('asks git for the merge-base of the ref and HEAD, trimmed', () => {
+    const calls: string[] = [];
+    const sha = resolveComparisonBase('origin/main', (cmd) => {
+      calls.push(cmd);
+      return 'abc123\n';
+    });
+    expect(calls).toEqual(['git merge-base origin/main HEAD']);
+    expect(sha).toBe('abc123');
+  });
+});
+
+describe('export ratchet end to end (#5671)', () => {
+  const SCRIPT = resolve(__dirname, 'check-new-unused-exports.ts');
+
+  /** A repo where main deletes a dead export AFTER the PR branched. */
+  function buildFixture(): string {
+    const root = mkdtempSync(join(tmpdir(), 'ratchet-'));
+    const git = (...args: string[]): string =>
+      execFileSync('git', args, { cwd: root, encoding: 'utf-8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'ratchet@test.local');
+    git('config', 'user.name', 'ratchet');
+    const src = join(root, 'packages', 'nexus-agents', 'src');
+    mkdirSync(src, { recursive: true });
+    const foo = join(src, 'foo.ts');
+    // `bar` is dead at M0 already (pre-existing debt); `keep` has a consumer.
+    writeFileSync(foo, 'export const bar = 1;\nexport const keep = 2;\n');
+    writeFileSync(join(src, 'use.ts'), "import { keep } from './foo.js';\nconsole.log(keep);\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'M0');
+    git('checkout', '-q', '-b', 'pr');
+    // The PR touches foo.ts without adding or removing an export.
+    writeFileSync(foo, '// touched by the PR\nexport const bar = 1;\nexport const keep = 2;\n');
+    git('commit', '-q', '-am', 'pr: touch foo');
+    // Meanwhile main deletes the dead export.
+    git('checkout', '-q', 'main');
+    writeFileSync(foo, 'export const keep = 2;\n');
+    git('commit', '-q', '-am', 'main: drop bar');
+    git('checkout', '-q', 'pr');
+    return root;
+  }
+
+  it('does not blame the PR for an export main deleted after the branch point', () => {
+    const root = buildFixture();
+    try {
+      let stdout = '';
+      let status = 0;
+      try {
+        stdout = execSync(`npx tsx ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
+      } catch (err) {
+        const e = err as { status?: number; stdout?: string; stderr?: string };
+        status = e.status ?? 1;
+        stdout = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+      }
+      // Before the fix the file list came from the merge-base but the base
+      // content came from main's tip (which lacks `bar`), so `bar` read as an
+      // export this PR added with no consumer — exit 1.
+      expect(status).toBe(0);
+      expect(stdout).not.toMatch(/Exports added by this PR with no production consumer/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

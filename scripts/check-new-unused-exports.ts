@@ -564,16 +564,33 @@ function reportExportRatchet(ratchet: { newDead: DeadExport[]; preexisting: Dead
   );
 }
 
+/**
+ * Resolve the ref CI hands us to the merge-base with HEAD (#5671). The file
+ * lists use the three-dot diff (`base...HEAD`), which is already relative to
+ * the merge-base, but `git show base:file` reads the ref's TIP — so a deletion
+ * landed on main after the branch point read as an export this PR added.
+ * One SHA for both halves of the comparison.
+ */
+export function resolveComparisonBase(ref: string, exec: (cmd: string) => string = run): string {
+  return exec(`git merge-base ${ref} HEAD`).trim();
+}
+
+function run(cmd: string): string {
+  return execSync(cmd, { encoding: 'utf-8' });
+}
+
 function main(): number {
-  const base = process.argv[2] ?? 'origin/main';
+  const ref = process.argv[2] ?? 'origin/main';
+  let base: string;
   let files: string[];
   try {
+    base = resolveComparisonBase(ref);
     files = addedFiles(base);
   } catch (err) {
     // A git-diff failure (shallow clone, missing ref) must not block CI —
     // the gate is advisory infrastructure, not a correctness check.
     console.warn(
-      `check-new-unused-exports: could not diff against ${base} — ` +
+      `check-new-unused-exports: could not diff against ${ref} — ` +
         `${err instanceof Error ? err.message : String(err)}. Skipping.`
     );
     return 0;
