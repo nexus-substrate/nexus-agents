@@ -67,7 +67,7 @@ export async function handleGet(key: string): Promise<ConfigGetResult> {
 
 /**
  * Handles the 'set' subcommand.
- * Sets a configuration value.
+ * Sets an in-process override for this invocation without persisting it.
  */
 export async function handleSet(key: string, valueStr: string): Promise<ConfigSetResult> {
   const parsed = parseConfigKey(key);
@@ -90,10 +90,18 @@ export async function handleSet(key: string, valueStr: string): Promise<ConfigSe
     'session'
   );
 
+  const envVar = config.getEnvVarName(
+    parsed.category as ConfigCategory,
+    parsed.key as keyof (typeof DEFAULTS)[ConfigCategory]
+  );
+  const persistenceGuidance =
+    envVar === undefined ? '' : ` Set ${envVar} to persist this value across invocations.`;
+
   return Promise.resolve({
     success: true,
     action: 'set',
-    message: `Set ${key} = ${String(newValue)}`,
+    scope: 'process',
+    message: `Set ${key} = ${String(newValue)} for this invocation only.${persistenceGuidance}`,
     key: parsed.fullKey,
     previousValue,
     newValue,
@@ -314,7 +322,7 @@ function applyConfigEntry(entry: { category: string; key: string; value: unknown
 
 /**
  * Handles the 'import' subcommand.
- * Imports configuration from a file.
+ * Imports configuration as in-process overrides for this invocation without persisting them.
  */
 export async function handleImport(
   file: string,
@@ -331,17 +339,32 @@ export async function handleImport(
 
   // Apply imported values
   let entriesImported = 0;
+  const config = getConfigManager();
+  const persistentEnvVars = new Set<string>();
   for (const entry of imported.entries) {
     if (applyConfigEntry(entry)) {
       entriesImported++;
+      const envVar = config.getEnvVarName(
+        entry.category as ConfigCategory,
+        entry.key as keyof (typeof DEFAULTS)[ConfigCategory]
+      );
+      if (envVar !== undefined) {
+        persistentEnvVars.add(envVar);
+      }
     }
   }
+
+  const persistenceGuidance =
+    persistentEnvVars.size === 0
+      ? ''
+      : ` Set ${Array.from(persistentEnvVars).join(', ')} to persist mapped values across invocations.`;
 
   // Build result with conditional backupPath for exactOptionalPropertyTypes compatibility
   const baseResult = {
     success: true as const,
     action: 'import' as const,
-    message: `Imported ${String(entriesImported)} entries from ${filePath}`,
+    scope: 'process' as const,
+    message: `Imported ${String(entriesImported)} entries from ${filePath} for this invocation only.${persistenceGuidance}`,
     path: filePath,
     entriesImported,
   };
