@@ -62,7 +62,7 @@ function makeResult(
 function appendSelfEvalResults(results: readonly AggregatedResult[]): void {
   const store = getOutcomeStore();
   for (const result of results) {
-    store.append(aggregatedResultToOutcome(result));
+    store.append(aggregatedResultToOutcome(result, { durationMs: 42 }));
   }
 }
 

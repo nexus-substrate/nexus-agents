@@ -45,8 +45,15 @@ export function selfEvalOutcomeId(componentPath: string): string {
  * - category              -> `code_review` (self-eval is a code assessment)
  * - cli/model             -> `claude` / `claude-default` (harness identity)
  * - source                -> `manual`
+ * - durationMs            -> the evaluation time the caller measured (#5653).
+ *                            Required: a zero placeholder made every non-retain
+ *                            record match the skipped-worker purge (#1528) and
+ *                            vanish on the next store hydrate.
  */
-export function aggregatedResultToOutcome(result: AggregatedResult): TaskOutcome {
+export function aggregatedResultToOutcome(
+  result: AggregatedResult,
+  timing: { readonly durationMs: number }
+): TaskOutcome {
   const success = result.finalRecommendation === 'retain';
 
   const qualitySignals = [
@@ -62,7 +69,7 @@ export function aggregatedResultToOutcome(result: AggregatedResult): TaskOutcome
     category: 'code_review',
     model: 'claude-default',
     success,
-    durationMs: 0,
+    durationMs: timing.durationMs,
     timestamp: result.timestamp.toISOString(),
     qualitySignals,
     source: 'manual',

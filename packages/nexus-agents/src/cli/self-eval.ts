@@ -52,11 +52,21 @@ export interface OutcomeSink {
  * than pile up). A store failure is logged and skipped — persistence is a
  * side channel and must never crash the eval run.
  */
-function persistResults(results: readonly AggregatedResult[], store: OutcomeSink): void {
+function persistResults(
+  results: readonly AggregatedResult[],
+  store: OutcomeSink,
+  evaluationMsByComponent: ReadonlyMap<string, number>
+): void {
   const log = createLogger({ component: 'self-eval' });
   for (const result of results) {
     try {
-      store.append(aggregatedResultToOutcome(result));
+      const durationMs = evaluationMsByComponent.get(result.component);
+      if (durationMs === undefined) {
+        // Persisting an unmeasured duration would recreate the #5653 purge
+        // bug; skip the record (logged below) rather than write a placeholder.
+        throw new Error(`no measured evaluation time for ${result.component}`);
+      }
+      store.append(aggregatedResultToOutcome(result, { durationMs }));
     } catch (error) {
       log.warn('Failed to persist self-eval outcome', {
         component: result.component,
@@ -90,6 +100,7 @@ async function evaluateDirectory(
   });
 
   const evaluationsByComponent = new Map<string, EvaluationResult[]>();
+  const evaluationMsByComponent = new Map<string, number>();
   let timedOut = false;
 
   // Evaluate each component
@@ -99,8 +110,14 @@ async function evaluateDirectory(
       break;
     }
 
+    // Measured per component with the sub-millisecond clock so the persisted
+    // outcome carries the real duration (#5653): the evaluators are local
+    // heuristics that finish inside one wall-clock millisecond, and a 0 would
+    // be purged as a skipped worker on the next store hydrate.
+    const evalStart = performance.now();
     const evaluations = await evaluateComponentWithTimeout(component, deadline - time.now());
     evaluationsByComponent.set(component.path, [...evaluations]);
+    evaluationMsByComponent.set(component.path, performance.now() - evalStart);
   }
 
   // Aggregate results
@@ -119,7 +136,7 @@ async function evaluateDirectory(
 
   // Persist to the OutcomeStore so self-eval feeds improvement_review /
   // tuning. Guarded so a store failure never crashes the eval (#3219).
-  persistResults(results, store);
+  persistResults(results, store, evaluationMsByComponent);
 
   return {
     results,
