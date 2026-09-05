@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.10.1
+
+### Patch Changes
+
+- [#5516](https://github.com/nexus-substrate/nexus-agents/pull/5516) [`a396123`](https://github.com/nexus-substrate/nexus-agents/commit/a3961235f1a2625817f0307814514425247808dc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the delegate pipeline's route-stage policy evaluation because the built-in policy can only deny execute stages, while retaining enforcement at the execute-stage seams.
+
 ## 8.10.0
 
 ### Minor Changes
