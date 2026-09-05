@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.23.1
+
+### Patch Changes
+
+- [#5618](https://github.com/nexus-substrate/nexus-agents/pull/5618) [`847845a`](https://github.com/nexus-substrate/nexus-agents/commit/847845a965ff3a1cac75fbc67be42be2a2b407de) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Include global install freshness in the doctor readiness verdict and summary, while reporting unknown freshness as unmeasured instead of failing the command.
+
 ## 8.23.0
 
 ### Minor Changes
