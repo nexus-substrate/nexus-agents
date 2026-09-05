@@ -214,7 +214,7 @@ function recordTriageSuccess(category: string, confidence: number, durationMs: n
     memory.recordLearning({
       pattern: `triage → ${category}`,
       context: `confidence=${String(confidence)} duration=${String(durationMs)}ms`,
-      confidence: 0.8,
+      confidence,
       source: 'manual',
     });
   } catch (error: unknown) {

@@ -115,8 +115,12 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
     passed: analysis.ok ? analysis.value.passed : false,
   });
 
-  recordSpecSuccess(satisfaction, durationMs);
-  recordSpecOutcome(true, durationMs);
+  if (result.value.validation.allMet) {
+    recordSpecSuccess(satisfaction, durationMs);
+    recordSpecOutcome(true, durationMs);
+  } else {
+    recordSpecOutcome(false, durationMs, 'acceptance criteria unmet');
+  }
 
   const output = {
     mode: 'execute',

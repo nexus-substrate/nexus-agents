@@ -9,6 +9,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const { outcomeAppendMock, recordErrorMock, recordLearningMock, recordTaskMock } = vi.hoisted(
+  () => ({
+    outcomeAppendMock: vi.fn(),
+    recordErrorMock: vi.fn(),
+    recordLearningMock: vi.fn(),
+    recordTaskMock: vi.fn(),
+  })
+);
+
 // Pass-through the secure-handler / timeout chain so the registered callback is
 // the bare handler — lets the tests invoke it directly (mirrors run_pipeline).
 vi.mock('../middleware/tool-wrapper.js', () => ({
@@ -19,13 +28,24 @@ vi.mock('../middleware/tool-wrapper.js', () => ({
 vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
+vi.mock('./tool-memory.js', () => ({
+  getToolMemory: () => ({
+    recordError: recordErrorMock,
+    recordLearning: recordLearningMock,
+    recordTask: recordTaskMock,
+  }),
+}));
+vi.mock('../../orchestration/outcomes/index.js', () => ({
+  categorizeOutcomeErrorMessage: () => 'unknown',
+  getOutcomeStore: () => ({ append: outcomeAppendMock }),
+}));
 
 // #3732: stub the spec executor so the async background run resolves fast and
 // deterministically (no live adapters in unit tests).
 const EXECUTE_SPEC_RESULT = {
   ok: true as const,
   value: {
-    validation: { satisfaction: 1 },
+    validation: { satisfaction: 1, allMet: true },
   },
 };
 const executeSpecMock = vi.fn(() => Promise.resolve(EXECUTE_SPEC_RESULT));
@@ -124,6 +144,40 @@ function captureHandler(): (args: unknown) => Promise<CapturedToolResult> {
   if (captured === undefined) throw new Error('handler not registered');
   return captured;
 }
+
+describe('execute_spec result recording (#5530)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    executeSpecMock.mockResolvedValue(EXECUTE_SPEC_RESULT);
+  });
+
+  it('records unmet acceptance criteria as failure without success learning', async () => {
+    executeSpecMock.mockResolvedValueOnce({
+      ok: true,
+      value: { validation: { satisfaction: 0.5, allMet: false } },
+    });
+
+    await captureHandler()({ spec: '# Feature\n\n## Requirements\n- x' });
+
+    expect(outcomeAppendMock).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+    expect(recordLearningMock).not.toHaveBeenCalled();
+    expect(recordTaskMock).not.toHaveBeenCalled();
+    expect(recordErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('acceptance criteria unmet') })
+    );
+  });
+
+  it('preserves successful outcome and learning when all criteria are met', async () => {
+    await captureHandler()({ spec: '# Feature\n\n## Requirements\n- x' });
+
+    expect(outcomeAppendMock).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    expect(recordLearningMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pattern: 'spec_execution → satisfaction=1' })
+    );
+    expect(recordTaskMock).toHaveBeenCalledOnce();
+    expect(recordErrorMock).not.toHaveBeenCalled();
+  });
+});
 
 // #3732: `dispatch: 'async'` returns a jobId immediately and runs the full spec
 // DAG pipeline in the background (poll get_job_result). execute_spec has no
