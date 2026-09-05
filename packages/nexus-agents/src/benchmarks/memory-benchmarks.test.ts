@@ -17,8 +17,8 @@ import type {
   IContextMemoryBackend,
   MemoryEntry,
   MemoryMetadata,
-  MemoryError,
 } from '../context/memory-backend-types.js';
+import { MemoryError } from '../context/memory-backend-types.js';
 import type { Result } from '../core/result.js';
 import type { BenchmarkSuiteResult, OperationBenchmark } from './benchmark-types.js';
 
@@ -178,6 +178,37 @@ describe('runMemoryBenchmarks', () => {
     expect(searchOp).toBeDefined();
     expect(searchOp?.quality).toBeDefined();
     expect(mockBackend.search).toHaveBeenCalled();
+  });
+
+  it('scores a failed search query as zero and counts it, instead of dropping it (#5689)', async () => {
+    // A backend that errors on one pattern and answers another perfectly used
+    // to report f1 = 1: the failed query never entered the denominator.
+    const realSearch = mockBackend.search;
+    const errsOnMemory: IContextMemoryBackend = {
+      ...mockBackend,
+      search: vi.fn((query: string, limit: number): Promise<Result<MemoryEntry[], MemoryError>> =>
+        query === 'memory'
+          ? Promise.resolve({
+              ok: false,
+              error: new MemoryError('down'),
+            })
+          : realSearch(query, limit)
+      ),
+    };
+    const config = {
+      datasetSizes: [5] as const,
+      warmupIterations: 1,
+      measurementIterations: 1,
+      searchPatterns: ['test', 'memory'] as const,
+    };
+
+    const promise = runMemoryBenchmarks(errsOnMemory, 'Test Backend', config);
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    const quality = result.operations.find((op) => op.operation === 'search')?.quality;
+    expect(quality?.failedQueries).toBe(1);
+    expect(quality?.precision).toBeLessThan(1);
   });
 
   it('should include prune operation benchmarks', async () => {

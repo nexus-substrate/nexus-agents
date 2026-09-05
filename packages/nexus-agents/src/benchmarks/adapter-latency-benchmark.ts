@@ -11,7 +11,11 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ICliAdapter } from '../cli-adapters/types-capability.js';
 import type { CliName, CliTransport } from '../cli-adapters/types-core.js';
-import { LatencySampler, getBenchmarkEnvironment } from './benchmark-runner.js';
+import {
+  createBenchmarkSummary,
+  LatencySampler,
+  getBenchmarkEnvironment,
+} from './benchmark-runner.js';
 import type {
   BenchmarkSuiteResult,
   BenchmarkEnvironment,
@@ -307,6 +311,21 @@ export function formatAdapterLatencyReport(result: AdapterLatencyResult): string
 }
 
 /**
+ * One failure line per scenario with failed invocations (#5689). `passed` used
+ * to be a literal; the failureCount and errors that benchmarkScenario recorded
+ * were never read.
+ */
+function invocationFailures(results: AdapterLatencyResult['results']): string[] {
+  return results
+    .filter((r) => r.failureCount > 0)
+    .map((r) => {
+      const total = r.successCount + r.failureCount;
+      const detail = r.errors.length > 0 ? ` (${r.errors.join('; ')})` : '';
+      return `${r.adapterName}/${r.scenario}: ${String(r.failureCount)}/${String(total)} invocations failed${detail}`;
+    });
+}
+
+/**
  * Convert adapter latency results to BenchmarkSuiteResult for compatibility
  * with the generic formatBenchmarkResults() function.
  */
@@ -331,12 +350,24 @@ export function toSuiteResult(result: AdapterLatencyResult): BenchmarkSuiteResul
     timestamp: result.timestamp,
   }));
 
+  // A suite that benchmarked nothing measured nothing (#4585 / #5689):
+  // reuse the generic summary's explicit empty case rather than a literal pass.
+  if (operations.length === 0) {
+    return {
+      name: 'CLI Adapter Latency',
+      component: 'cli-adapters',
+      version: '1.0.0',
+      operations,
+      environment: result.environment,
+      summary: createBenchmarkSummary([]),
+    };
+  }
+
   const totalDurationMs = operations.reduce((s, op) => s + op.throughput.durationMs, 0);
   const totalOps = operations.reduce((s, op) => s + op.throughput.totalOps, 0);
-  const avgP95 =
-    operations.length > 0
-      ? operations.reduce((s, op) => s + op.latency.p95, 0) / operations.length
-      : 0;
+  const avgP95 = operations.reduce((s, op) => s + op.latency.p95, 0) / operations.length;
+
+  const failures = invocationFailures(result.results);
 
   return {
     name: 'CLI Adapter Latency',
@@ -349,8 +380,8 @@ export function toSuiteResult(result: AdapterLatencyResult): BenchmarkSuiteResul
       totalOperations: totalOps,
       overallThroughput: totalDurationMs > 0 ? (totalOps / totalDurationMs) * 1000 : 0,
       avgP95Latency: avgP95,
-      passed: true,
-      failures: [],
+      passed: failures.length === 0,
+      failures,
     },
   };
 }
