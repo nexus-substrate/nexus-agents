@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.27.3
+
+### Patch Changes
+
+- [#5548](https://github.com/nexus-substrate/nexus-agents/pull/5548) [`81fed7d`](https://github.com/nexus-substrate/nexus-agents/commit/81fed7d4d110385627619eef28ad2ec423ffd402) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Use the exact two-thirds supermajority threshold so 2-of-3 and 4-of-6 approval quorums are accepted.
+
 ## 8.27.2
 
 ### Patch Changes
