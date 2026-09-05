@@ -63,6 +63,21 @@ export const ResearchQueryInputSchema = z.object({
  */
 export type ResearchQueryInput = z.infer<typeof ResearchQueryInputSchema>;
 
+// Envelope schema (#2340). Inner `data` is intentionally `z.unknown()` because
+// the four action variants return different shapes.
+const ResearchQueryOutputSchema = {
+  action: z.string(),
+  success: z.boolean(),
+  data: z.unknown(),
+  rejectionNotice: z.string().optional(),
+  negativeResults: z
+    .object({
+      status: z.literal('unavailable'),
+      reason: z.string(),
+    })
+    .optional(),
+};
+
 // =============================================================================
 // DEPS
 // =============================================================================
@@ -94,6 +109,8 @@ export interface ResearchQueryResponse {
    * a veto.
    */
   rejectionNotice?: string;
+  /** Present when the negative-results registry could not be measured. */
+  negativeResults?: { status: 'unavailable'; reason: string };
 }
 
 // =============================================================================
@@ -112,11 +129,18 @@ export interface ResearchQueryResponse {
  * a result. A prior rejection is evidence to weigh, not a veto — the failure
  * mode may not apply, or the record may be stale.
  */
-function rejectionNoticeFor(techniqueId: string | undefined): string | undefined {
-  if (techniqueId === undefined || techniqueId === '') return undefined;
-  const rejected = checkRejected(techniqueId);
-  if (rejected === undefined) return undefined;
-  return formatRejectionWarning(techniqueId, rejected);
+type RejectionMetadata = Pick<ResearchQueryResponse, 'negativeResults' | 'rejectionNotice'>;
+
+function rejectionMetadataFor(techniqueId: string | undefined): RejectionMetadata {
+  if (techniqueId === undefined || techniqueId === '') return {};
+  const result = checkRejected(techniqueId);
+  if (result.kind === 'rejected') {
+    return { rejectionNotice: formatRejectionWarning(techniqueId, result.entry) };
+  }
+  if (result.kind === 'unavailable') {
+    return { negativeResults: { status: 'unavailable', reason: result.reason } };
+  }
+  return {};
 }
 
 /** Handles status action. */
@@ -126,12 +150,12 @@ async function handleStatus(input: ResearchQueryInput): Promise<ResearchQueryRes
     status: input.status,
     format: 'json',
   });
-  const rejection = rejectionNoticeFor(input.techniqueId);
+  const rejection = rejectionMetadataFor(input.techniqueId);
   return {
     action: 'status',
     success: result.success,
     data: result,
-    ...(rejection !== undefined ? { rejectionNotice: rejection } : {}),
+    ...rejection,
   };
 }
 
@@ -149,12 +173,12 @@ async function handleOverlap(input: ResearchQueryInput): Promise<ResearchQueryRe
     threshold: input.threshold,
     format: 'json',
   });
-  const rejection = rejectionNoticeFor(input.techniqueId);
+  const rejection = rejectionMetadataFor(input.techniqueId);
   return {
     action: 'overlap',
     success: result.success,
     data: result,
-    ...(rejection !== undefined ? { rejectionNotice: rejection } : {}),
+    ...rejection,
   };
 }
 
@@ -254,6 +278,11 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_query' });
     return withToolError('Research query failed', logger, async () => {
       const result = await executeQuery(validationResult.data);
+      if (result.negativeResults?.status === 'unavailable') {
+        logger.warn('Negative-results registry unavailable', {
+          reason: result.negativeResults.reason,
+        });
+      }
       return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
@@ -302,30 +331,12 @@ export function registerResearchQueryTool(server: McpServer, deps: ResearchQuery
     logger,
   });
 
-  // Envelope schema (#2340). Inner `data` is intentionally `z.unknown()` —
-  // the four action variants (status/overlap/stats/search) return different
-  // shapes; modeling each precisely would require schema-per-action and is
-  // deferred. The envelope still gives MCP clients a stable validation surface.
-  const outputSchema = {
-    action: z.string(),
-    success: z.boolean(),
-    data: z.unknown(),
-    // Set by handleStatus/handleOverlap when the technique carries a recorded
-    // rejection (#4555). Undeclared until #5141, which made every such call fail
-    // -32602 on an SDK-validating client — the SDK applies
-    // `additionalProperties: false` to any declared outputSchema.
-    //
-    // This hid because it is DATA-dependent, not action-dependent: the
-    // round-trip check calls `action: 'stats'`, which never sets it.
-    rejectionNotice: z.string().optional(),
-  };
-
   server.registerTool(
     'research_query',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: ResearchQueryOutputSchema,
       annotations: getToolAnnotations('research_query'),
     },
     toSdkCallback(wrappedHandler)

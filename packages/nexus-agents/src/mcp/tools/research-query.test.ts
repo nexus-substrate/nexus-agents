@@ -156,7 +156,13 @@ describe('outputSchema declares every key ResearchQueryResponse returns (#5141)'
    * set must equal ResearchQueryResponse's. Same guard shape as
    * research-synthesize.test.ts (#5134).
    */
-  const RESPONSE_KEYS = ['action', 'data', 'rejectionNotice', 'success'] as const;
+  const RESPONSE_KEYS = [
+    'action',
+    'data',
+    'negativeResults',
+    'rejectionNotice',
+    'success',
+  ] as const;
 
   it('declares exactly the keys ResearchQueryResponse carries', () => {
     const server = { registerTool: vi.fn() };

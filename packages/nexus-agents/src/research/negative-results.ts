@@ -10,23 +10,35 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'yaml';
+import { z } from 'zod';
 import { createLogger, getErrorMessage } from '../core/index.js';
 import { REGISTRY_PATH, resolveRegistryRoot } from '../cli/research-helpers-io.js';
 
 const logger = createLogger({ component: 'negative-results' });
 
-interface NegativeResult {
-  name: string;
-  paper: string;
-  rejection_date: string;
-  failure_mode: string;
-  lessons_learned: string[];
-  reopen_conditions: string[];
-}
+const NegativeResultSchema = z.object({
+  name: z.string(),
+  paper: z.string(),
+  rejection_date: z.string(),
+  failure_mode: z.string(),
+  lessons_learned: z.array(z.string()),
+  reopen_conditions: z.array(z.string()),
+});
 
-interface NegativeResultsRegistry {
-  negative_results: Record<string, NegativeResult>;
-}
+const NegativeResultsRegistrySchema = z.object({
+  negative_results: z.record(z.string(), NegativeResultSchema),
+});
+
+type NegativeResult = z.infer<typeof NegativeResultSchema>;
+type NegativeResultsRegistry = z.infer<typeof NegativeResultsRegistrySchema>;
+type NegativeResultsLoadResult =
+  | { status: 'loaded'; registry: NegativeResultsRegistry }
+  | { status: 'unavailable'; reason: string };
+
+type RejectionCheckResult =
+  | { kind: 'rejected'; entry: NegativeResult }
+  | { kind: 'not-rejected' }
+  | { kind: 'unavailable'; reason: string };
 
 const NEGATIVE_RESULTS_FILE = 'negative-results.yaml';
 
@@ -41,37 +53,53 @@ function negativeResultsPath(): string {
 
 let cachedResults: NegativeResultsRegistry | undefined;
 
-function loadNegativeResults(): NegativeResultsRegistry {
-  if (cachedResults !== undefined) return cachedResults;
+function unavailableResult(registryPath: string, error: unknown): NegativeResultsLoadResult {
+  logger.debug('Could not load negative-results registry', {
+    path: registryPath,
+    error: getErrorMessage(error),
+  });
+  return {
+    status: 'unavailable',
+    reason: 'The negative-results registry could not be read or parsed',
+  };
+}
+
+function loadNegativeResults(): NegativeResultsLoadResult {
+  if (cachedResults !== undefined) return { status: 'loaded', registry: cachedResults };
   const registryPath = negativeResultsPath();
   try {
     const content = readFileSync(registryPath, 'utf-8');
-    cachedResults = yaml.parse(content) as NegativeResultsRegistry;
-    return cachedResults;
+    const parsed = NegativeResultsRegistrySchema.safeParse(yaml.parse(content) as unknown);
+    if (!parsed.success) return unavailableResult(registryPath, parsed.error);
+    cachedResults = parsed.data;
+    return { status: 'loaded', registry: cachedResults };
   } catch (error: unknown) {
-    logger.debug('Could not load negative-results registry', {
-      path: registryPath,
-      error: getErrorMessage(error),
-    });
-    return { negative_results: {} };
+    return unavailableResult(registryPath, error);
   }
 }
 
 /**
  * Check if a technique has been rejected.
- * Returns the rejection details if found, undefined otherwise.
+ * Distinguishes a recorded rejection, a measured non-rejection, and an
+ * unavailable registry. Unavailable loads are not cached, so the next call
+ * retries the file after a transient read or parse failure.
  */
-export function checkRejected(techniqueId: string): NegativeResult | undefined {
-  const registry = loadNegativeResults();
-  return registry.negative_results[techniqueId];
+export function checkRejected(techniqueId: string): RejectionCheckResult {
+  const loaded = loadNegativeResults();
+  if (loaded.status === 'unavailable') {
+    return { kind: 'unavailable', reason: loaded.reason };
+  }
+  const entry = loaded.registry.negative_results[techniqueId];
+  return entry === undefined ? { kind: 'not-rejected' } : { kind: 'rejected', entry };
 }
 
 /**
  * Get all rejected technique IDs.
  */
 export function getRejectedIds(): string[] {
-  const registry = loadNegativeResults();
-  return Object.keys(registry.negative_results);
+  const loaded = loadNegativeResults();
+  if (loaded.status === 'unavailable') return [];
+  return Object.keys(loaded.registry.negative_results);
 }
 
 /**
