@@ -48,8 +48,8 @@ export interface MemoryBenchmarkResult {
   readonly storageBytes: number;
   /** Number of entries benchmarked */
   readonly entryCount: number;
-  /** Memory coherence score (0-1, 1 = fully coherent) */
-  readonly coherenceScore: number;
+  /** Memory coherence score (0-1, 1 = fully coherent), or null when unmeasured (#5664) */
+  readonly coherenceScore: number | null;
   /** Timestamp of benchmark run */
   readonly timestamp: Date;
   /** Duration of benchmark in milliseconds */
@@ -76,10 +76,10 @@ export interface MemoryBenchmarkResult {
    * score.
    */
   readonly decayItemsChecked: number;
-  /** Promotion effectiveness: retention rate of promoted memories (Phase 3, 0-1) */
-  readonly promotionRetentionRate: number;
-  /** Decay appropriateness: regret score for premature decay (Phase 3, 0-1 lower is better) */
-  readonly decayRegretScore: number;
+  /** Promotion effectiveness: retention rate of promoted memories (Phase 3, 0-1), or null when unmeasured (#5664) */
+  readonly promotionRetentionRate: number | null;
+  /** Decay appropriateness: regret score for premature decay (Phase 3, 0-1 lower is better), or null when unmeasured (#5664) */
+  readonly decayRegretScore: number | null;
 }
 
 /**
@@ -351,7 +351,7 @@ async function measureStorage(
 
 /** Coherence measurement result. */
 interface CoherenceMeasurement {
-  readonly score: number;
+  readonly score: number | null;
   readonly totalRefs: number;
   readonly validRefs: number;
   readonly orphanedRefs: number;
@@ -360,7 +360,7 @@ interface CoherenceMeasurement {
 /** Build coherence result from counts. */
 function buildCoherenceResult(validCount: number, totalCount: number): CoherenceMeasurement {
   return {
-    score: totalCount > 0 ? validCount / totalCount : 1.0,
+    score: totalCount > 0 ? validCount / totalCount : null,
     totalRefs: totalCount,
     validRefs: validCount,
     orphanedRefs: totalCount - validCount,
@@ -510,8 +510,8 @@ interface BenchmarkMeasurements {
   coherence: CoherenceMeasurement;
   growth: GrowthMeasurement;
   decay: DecayMeasurement;
-  promotion: { retentionRate: number };
-  appropriateness: { regretScore: number };
+  promotion: { retentionRate: number | null };
+  appropriateness: { regretScore: number | null };
   durationMs: number;
 }
 

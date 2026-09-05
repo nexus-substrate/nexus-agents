@@ -18,14 +18,14 @@ import type { IContextMemoryBackend, MemoryMetadata } from '../context/memory-ba
 
 /** Promotion effectiveness measurement result. */
 export interface PromotionMeasurement {
-  readonly retentionRate: number;
+  readonly retentionRate: number | null;
   readonly itemsPromoted: number;
   readonly itemsRetained: number;
 }
 
 /** Decay appropriateness measurement result. */
 export interface DecayAppropriatenessMeasurement {
-  readonly regretScore: number;
+  readonly regretScore: number | null;
   readonly itemsDecayed: number;
   readonly prematureDecays: number;
 }
@@ -62,7 +62,7 @@ export async function measurePromotionEffectiveness(
     if (result.ok) retained++;
   }
 
-  const retentionRate = promotedEntries.length > 0 ? retained / promotedEntries.length : 1.0;
+  const retentionRate = promotedEntries.length > 0 ? retained / promotedEntries.length : null;
   logger?.debug('Promotion effectiveness measured', {
     promoted: promotedEntries.length,
     retained,
@@ -123,8 +123,9 @@ export async function measureDecayAppropriateness(
   const lowDecayed = await countDecayed(backend, lowKeys);
 
   // Regret = proportion of high-importance items decayed (lower is better)
+  const totalSeeded = lowKeys.length + highKeys.length;
   const totalDecayed = highDecayed + lowDecayed;
-  const regret = totalDecayed > 0 ? highDecayed / totalDecayed : 0;
+  const regret = totalDecayed > 0 ? highDecayed / totalDecayed : totalSeeded > 0 ? 0 : null;
 
   logger?.debug('Decay appropriateness measured', {
     highImportanceDecayed: highDecayed,
