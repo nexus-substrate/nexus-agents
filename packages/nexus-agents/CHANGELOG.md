@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.23.2
+
+### Patch Changes
+
+- [#5624](https://github.com/nexus-substrate/nexus-agents/pull/5624) [`78067e7`](https://github.com/nexus-substrate/nexus-agents/commit/78067e77ca15df8076c68285b9fb853dead92771) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Return an unlimited MCP tool limiter when rate limiting is disabled so runtime enforcement agrees with startup telemetry.
+
+- [#5625](https://github.com/nexus-substrate/nexus-agents/pull/5625) [`5ed87a0`](https://github.com/nexus-substrate/nexus-agents/commit/5ed87a030f16324c8fa5cf273dfa1d3d6e570301) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Ensure every secure MCP tool registered with a durable audit logger writes its policy, rate-limit, and invocation records to the shared audit chain.
+
 ## 8.23.1
 
 ### Patch Changes
