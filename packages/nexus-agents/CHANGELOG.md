@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.15.1
+
+### Patch Changes
+
+- [#5547](https://github.com/nexus-substrate/nexus-agents/pull/5547) [`3e7940b`](https://github.com/nexus-substrate/nexus-agents/commit/3e7940b197745a82795a8431f4a7d952407f85ca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist gated consensus decisions to correlation history so option-vetoed proposals train correlation analysis as rejected.
+
 ## 8.15.0
 
 ### Minor Changes
