@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.19.0
+
+### Minor Changes
+
+- [#5569](https://github.com/nexus-substrate/nexus-agents/pull/5569) [`1be2076`](https://github.com/nexus-substrate/nexus-agents/commit/1be2076304114fff3386f8d46ba258496c8ec703) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `correlationMaxAgeMs` and `observationDecayFactor` keys are retained as deprecated no-ops for compatibility, with removal tracked in [#5564](https://github.com/nexus-substrate/nexus-agents/issues/5564). Correlation history is now partitioned by each role's pinned model, while the model that actually answered is retained as provenance.
+
+### Patch Changes
+
+- [#5571](https://github.com/nexus-substrate/nexus-agents/pull/5571) [`321962b`](https://github.com/nexus-substrate/nexus-agents/commit/321962b49cea4145e0605ba7f05c8f6b8b2be101) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fail closed for label proposals when repository labels are unavailable, so label validity is reported unevaluated when the repository label set is not supplied.
+
 ## 8.18.1
 
 ### Patch Changes
