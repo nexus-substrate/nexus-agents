@@ -159,11 +159,56 @@ function errorMessage(err: unknown): string {
  */
 export type MetaOutcomeObserver = (record: MetaOutcomeRecord, decision: MetaDecision) => void;
 
+/**
+ * Result classification verdict.
+ */
+interface MetaResultClassification {
+  readonly success: boolean;
+  readonly failureReason?: string | undefined;
+}
+
+/**
+ * Classifier that inspects an engine result to determine success or in-band failure.
+ */
+export type MetaResultClassifier = (result: unknown) => MetaResultClassification;
+
+/**
+ * Default engine result classifier (#5641).
+ *
+ * Inspects engine results that report failure in-band:
+ * - `AdaptiveOrchestratorResult`: `success: false`
+ * - `DevPipelineResult`: `completed: false` (unless `dryRun: true` and `planStatus === undefined`)
+ *
+ * `ExtendedVotingResult` (consensus) with `decision: 'rejected'` is not an engine
+ * fault (#4362) — it remains `success: true`.
+ */
+export function classifyEngineResult(result: unknown): MetaResultClassification {
+  if (typeof result !== 'object' || result === null) {
+    return { success: true };
+  }
+  const record = result as Record<string, unknown>;
+
+  if (record['success'] === false) {
+    const reason = typeof record['error'] === 'string' ? record['error'] : 'no error message';
+    return { success: false, failureReason: reason };
+  }
+  if (record['completed'] === false) {
+    if (record['dryRun'] === true && record['planStatus'] === undefined) {
+      return { success: true };
+    }
+    const reason =
+      typeof record['error'] === 'string' ? record['error'] : 'pipeline did not complete';
+    return { success: false, failureReason: reason };
+  }
+  return { success: true };
+}
+
 interface DispatchDeps {
   readonly executors: StrategyExecutorMap;
   readonly outcomeSink: MetaOutcomeSink;
   readonly logger: ILogger;
   readonly onOutcome?: MetaOutcomeObserver | undefined;
+  readonly classifyResult: MetaResultClassifier;
 }
 
 /** Records one outcome to the sink, computing duration from the start timestamp. */
@@ -218,7 +263,8 @@ async function dispatchDecision(
 
   try {
     const result = await executor(decision, input);
-    recordOutcome(deps, decision, start, true);
+    const classification = deps.classifyResult(result);
+    recordOutcome(deps, decision, start, classification.success, classification.failureReason);
     return {
       decisionId,
       strategy,
@@ -250,12 +296,15 @@ async function dispatchDecision(
  * @param options.onOutcome - optional observer fired with (record, decision)
  *   after every dispatch; the train edge to the shadow selector is wired here
  *   by the caller (the dispatcher itself stays selector-agnostic). (#3593)
+ * @param options.classifyResult - optional custom result classifier; defaults
+ *   to {@link classifyEngineResult}. (#5641)
  */
 export function createMetaDispatcher(options: {
   readonly executors: StrategyExecutorMap;
   readonly outcomeSink?: MetaOutcomeSink | undefined;
   readonly logger?: ILogger | undefined;
   readonly onOutcome?: MetaOutcomeObserver | undefined;
+  readonly classifyResult?: MetaResultClassifier | undefined;
 }): IMetaDispatcher {
   const logger = options.logger ?? createLogger({ component: 'MetaDispatcher' });
   const outcomeSink = options.outcomeSink ?? createAuditLogOutcomeSink(logger);
@@ -264,6 +313,7 @@ export function createMetaDispatcher(options: {
     outcomeSink,
     logger,
     onOutcome: options.onOutcome,
+    classifyResult: options.classifyResult ?? classifyEngineResult,
   };
 
   return {

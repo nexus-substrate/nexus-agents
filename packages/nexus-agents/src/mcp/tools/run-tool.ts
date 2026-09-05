@@ -53,11 +53,13 @@ import { META_STRATEGY_CORPUS } from '../../orchestration/meta-strategy-corpus.j
 import { evaluateMetaStrategyReadiness } from '../../orchestration/meta-strategy-readiness.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import {
+  classifyEngineResult,
   createMetaDispatcher,
   type StrategyExecutorMap,
   type MetaOutcomeSink,
   type MetaOutcomeObserver,
 } from '../../orchestration/meta-dispatcher.js';
+import type { MetaResultClassifier } from '../../orchestration/meta-dispatcher.js';
 import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import {
   dispatchActionClass,
@@ -380,6 +382,7 @@ export async function executeGoal(
     readonly trustTier?: string | undefined;
     /** In-process gateway model adapters routed to consensus voters (#4042). */
     readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    readonly classifyResult?: MetaResultClassifier | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
@@ -398,6 +401,7 @@ export async function executeGoal(
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
+    ...(opts.classifyResult !== undefined ? { classifyResult: opts.classifyResult } : {}),
   });
   const dispatch = await dispatcher.dispatch(decision, toMetaInput(input, 'execute'));
   return {
@@ -412,10 +416,10 @@ export async function executeGoal(
 
 /**
  * Detect a business failure an engine reported in its own result, or null when
- * the run is honest-success (#4362).
+ * the run is honest-success (#4362, #5641).
  *
- * The MetaDispatcher types `DispatchResult.result` as `unknown`, so this reads
- * the two shapes the wired executors actually produce:
+ * Delegates the success/failure decision to {@link classifyEngineResult} while
+ * retaining tool-layer message and detail shaping:
  *
  * - `AdaptiveOrchestratorResult` (pipeline / research) — `success: false`
  * - `DevPipelineResult` (dev-pipeline) — `completed: false`
@@ -426,21 +430,17 @@ export async function executeGoal(
 function detectEngineFailure(
   result: unknown
 ): { message: string; detail?: Record<string, unknown> } | null {
-  if (typeof result !== 'object' || result === null) return null;
-  const record = result as Record<string, unknown>;
+  const classification = classifyEngineResult(result);
+  if (classification.success) return null;
 
-  if (record['success'] === false) {
-    const detail = typeof record['error'] === 'string' ? record['error'] : 'no error message';
-    return { message: `Engine reported failure: ${detail}` };
-  }
-  if (record['completed'] === false) {
-    // A dry run stops before completion BY REQUEST, so `completed: false` is
-    // the outcome the caller asked for rather than an engine fault. An empty
-    // plan is still a failure — producing one is the whole point of the run.
-    if (record['dryRun'] === true && record['planStatus'] === undefined) return null;
+  const record =
+    typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : undefined;
+
+  if (record?.['completed'] === false) {
     return { message: describeIncompletePipeline(record), detail: record };
   }
-  return null;
+  const detail = classification.failureReason ?? 'no error message';
+  return { message: `Engine reported failure: ${detail}` };
 }
 
 /**
