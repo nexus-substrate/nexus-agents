@@ -508,6 +508,13 @@ function printHarnessAlignment(check: DoctorResult['harnessAlignment']): void {
   writeLine(`${colors.cyan}Checking agent-harness alignment...${colors.reset}`);
   writeLine('');
 
+  if (!check.inProject) {
+    writeLine(
+      `${colors.gray}${symbols.circle}${colors.reset} AGENTS.md: not run inside a project — harness alignment not applicable (run doctor from your repo root)\n`
+    );
+    return;
+  }
+
   writeLine(
     `${formatStatus(check.agentsMdExists)} AGENTS.md: ${check.agentsMdExists ? 'present (federated surface)' : 'MISSING — federation invariant broken'}`
   );

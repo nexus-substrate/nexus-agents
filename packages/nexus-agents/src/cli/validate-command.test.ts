@@ -98,6 +98,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
     },
     installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     harnessAlignment: {
+      inProject: true,
       agentsMdExists: true,
       files: [],
       alignedCount: 0,

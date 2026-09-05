@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest';
+import { rmSync } from 'node:fs';
 import { printDoctorResults } from './doctor-formatting.js';
+import { checkHarnessAlignment } from './doctor-harness-alignment.js';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import type {
   DoctorResult,
   NodeVersionCheck,
@@ -24,12 +27,14 @@ vi.mock('./ansi-output.js', () => ({
     cyan: '\x1b[36m',
     bold: '\x1b[1m',
     dim: '\x1b[2m',
+    gray: '\x1b[90m',
     reset: '\x1b[0m',
   },
   symbols: {
     check: '✓',
     cross: '✗',
     warn: '⚠',
+    circle: '○',
   },
   writeLine: vi.fn(),
 }));
@@ -222,6 +227,7 @@ describe('doctor-formatting', () => {
       },
       installFreshness: ALIGNED_INSTALL,
       harnessAlignment: {
+        inProject: true,
         agentsMdExists: true,
         files: [],
         alignedCount: 0,
@@ -236,6 +242,46 @@ describe('doctor-formatting', () => {
   };
 
   describe('printDoctorResults', () => {
+    it('prints harness alignment as not applicable outside a project', () => {
+      const root = mkdtempOutsideRepo('doctor-formatting-');
+      try {
+        const result = {
+          ...createDoctorResult(),
+          harnessAlignment: checkHarnessAlignment(root),
+        };
+
+        printDoctorResults(result);
+
+        const calls = getCalls();
+        expect(
+          calls.some((call) =>
+            call.includes('\x1b[90m○\x1b[0m AGENTS.md: not run inside a project')
+          )
+        ).toBe(true);
+        expect(calls.some((call) => call.includes('not applicable'))).toBe(true);
+        expect(calls.some((call) => call.includes('invariant broken'))).toBe(false);
+        expect(calls.some((call) => call.includes('Cursor:'))).toBe(false);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('preserves the missing AGENTS.md failure inside a project', () => {
+      const result = {
+        ...createDoctorResult(),
+        harnessAlignment: {
+          ...createDoctorResult().harnessAlignment,
+          agentsMdExists: false,
+        },
+      };
+
+      printDoctorResults(result);
+
+      expect(
+        getCalls().some((call) => call.includes('MISSING — federation invariant broken'))
+      ).toBe(true);
+    });
+
     it('should print header and section titles', () => {
       const result = createDoctorResult();
       printDoctorResults(result);
