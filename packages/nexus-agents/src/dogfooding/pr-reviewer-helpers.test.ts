@@ -205,6 +205,23 @@ describe('Finding Parsing', () => {
       expect(findings[0]?.description).toBe('No unit tests for module');
     });
 
+    it('turns a changes-requested expert warning into a blocking finding', () => {
+      const output = {
+        content: 'CHANGES_REQUESTED',
+        warnings: ['high-severity defect'],
+      };
+
+      const findings = parseFindings(output, 'code_quality-expert', 'info');
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({
+        severity: 'high',
+        description: 'high-severity defect',
+        expertId: 'code_quality-expert',
+      });
+      expect(determineApproval(findings, 'changes_requested')).toBe(false);
+    });
+
     it('should filter by minimum severity', () => {
       const output = {
         findings: [
@@ -329,6 +346,10 @@ describe('Decision Helpers', () => {
     it('should approve with empty findings', () => {
       expect(determineApproval([])).toBe(true);
     });
+
+    it('does not approve an errored expert with no findings', () => {
+      expect(determineApproval([], 'errored')).toBe(false);
+    });
   });
 
   describe('determineDecision', () => {
@@ -389,6 +410,15 @@ describe('Decision Helpers', () => {
       const reviews: ExpertReviewResult[] = [createMockExpertReview({ approved: true })];
 
       expect(determineDecision(reviews, [])).toBe('approve');
+    });
+
+    it('does not approve when one expert errored and another approved', () => {
+      const reviews: ExpertReviewResult[] = [
+        createMockExpertReview({ approved: true }),
+        createFailedReview('testing-expert', 'testing', 10, 'Unrecognised review output'),
+      ];
+
+      expect(determineDecision(reviews, [])).toBe('comment');
     });
 
     it('does not let a failed expert downgrade a HIGH finding (#5012)', () => {

@@ -11,10 +11,15 @@ import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
 import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
-import type { TrustTier } from '../security/trust-types.js';
 import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
-import { evaluatePolicy } from '../security/policy-gate.js';
-import type { ActionContext } from '../security/policy-gate.js';
+import { evaluatePolicy, type ActionContext } from '../security/policy-gate.js';
+import {
+  DRAFT_REPLY_BODY_MAX_LENGTH,
+  validateAgentAction,
+  type SourceCitation,
+} from '../security/action-schema.js';
+import { validateCorroboration } from '../security/corroboration-validator.js';
+import { truncateText } from '../utils/text-utils.js';
 import { ReputationCache } from '../security/reputation-model.js';
 import type { ReputationAssessment, ReputationGateDecision } from '../security/reputation-model.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
@@ -37,7 +42,7 @@ import { parsePRUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import type { FullCapableProvider } from '../scm/types.js';
 import {
-  parseFindings,
+  parseExpertReview,
   extractSummary,
   determineApproval,
   determineDecision,
@@ -50,7 +55,9 @@ import {
   gatePRAuthor,
   assessPRReputation,
   fetchAccountAgeDays,
+  formatDiffs,
   reviewPostingBlock,
+  type ReviewPostingVerdict,
 } from './pr-reviewer-helpers.js';
 
 // Re-export for convenience
@@ -142,7 +149,7 @@ export class PRReviewer {
 
     const postOutcome: ReviewPostOutcome = this.config.dryRun
       ? { status: 'skipped', reason: 'dry-run' }
-      : await this.postReviewToGitHub(provider, parseResult.value, result, gateDecision);
+      : await this.postReviewToGitHub(provider, prMetadata, result, gateDecision);
 
     logger.info('PR review completed', {
       prNumber,
@@ -315,35 +322,13 @@ ${safeBody || 'No description provided.'}
 ${filesSummary}
 
 ### File Diffs
-${this.formatDiffs(pr)}
+${formatDiffs(pr)}
 
 Provide a structured review with:
 1. Overall approval (APPROVED/CHANGES_REQUESTED)
 2. Summary of findings
 3. Specific issues with severity (critical/high/medium/low/info)
 4. Suggested improvements`;
-  }
-
-  /**
-   * Formats file diffs for the review task.
-   */
-  private formatDiffs(pr: PRMetadata): string {
-    const maxDiffLength = 2000;
-    let totalLength = 0;
-    const diffs: string[] = [];
-
-    for (const file of pr.files) {
-      if (file.patch === undefined) continue;
-      const diff = `\`\`\`diff\n# ${file.filename}\n${file.patch}\n\`\`\``;
-      if (totalLength + diff.length > maxDiffLength * pr.files.length) {
-        diffs.push(`# ${file.filename}\n(diff truncated)`);
-      } else {
-        diffs.push(diff);
-        totalLength += diff.length;
-      }
-    }
-
-    return diffs.join('\n\n');
   }
 
   /**
@@ -361,8 +346,12 @@ Provide a structured review with:
       return createFailedReview(expertId, category, durationMs, 'No output');
     }
 
-    const findings = parseFindings(output, expertId, this.config.minSeverity);
-    const approved = determineApproval(findings);
+    const parsed = parseExpertReview(output, expertId, this.config.minSeverity);
+    if (parsed.verdict === 'errored') {
+      return createFailedReview(expertId, category, durationMs, 'Unrecognised review output');
+    }
+    const { findings } = parsed;
+    const approved = determineApproval(findings, parsed.verdict);
     // Default confidence - ResultMetadata doesn't track per-result confidence
     const confidence = 0.7;
 
@@ -433,29 +422,37 @@ Provide a structured review with:
    */
   private async postReviewToGitHub(
     provider: FullCapableProvider,
-    pr: { owner: string; repo: string; prNumber: number },
+    pr: PRMetadata,
     result: PRReviewDraft,
     gateDecision: ReputationGateDecision
   ): Promise<ReviewPostOutcome> {
-    const policyResult = this.auditReviewAction(gateDecision.enforcedTier);
+    const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
+    const formattedBody = formatReviewComment(result);
+    const body = truncateText(formattedBody, DRAFT_REPLY_BODY_MAX_LENGTH, '…[review truncated]');
+    const sources: SourceCitation[] = pr.files
+      .slice(0, 20)
+      .map((file) => ({ type: 'repoFile', path: file.filename }));
+    const context: ActionContext = {
+      inputTrustTier: gateDecision.enforcedTier,
+      ...REVIEW_ACCESS_CONTEXT,
+    };
+    const policyResult = this.auditReviewAction(body, sources, context);
     const blocked = reviewPostingBlock(policyResult);
     if (blocked !== undefined) {
       logger.warn(`${blocked.label}: review posting blocked`, {
-        prNumber: pr.prNumber,
+        prNumber: pr.number,
         violations: policyResult.violations,
       });
       return { status: 'skipped', reason: blocked.reason };
     }
     if (policyResult.violations.length > 0) {
       logger.info('Policy gate warnings for review posting', {
-        prNumber: pr.prNumber,
+        prNumber: pr.number,
         violations: policyResult.violations,
       });
     }
 
-    const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
-    const body = formatReviewComment(result);
-    const postResult = await provider.createReview(pr.prNumber, body, result.decision);
+    const postResult = await provider.createReview(pr.number, body, result.decision);
     if (!postResult.ok) {
       logger.error('Failed to post review', postResult.error);
       // #4354: this used to end here. The rejection was logged and dropped, the
@@ -467,37 +464,33 @@ Provide a structured review with:
     return { status: 'posted' };
   }
 
-  /**
-   * Audits review posting against the policy gate. Gates on the reputation-
-   * reconciled `enforcedTier` (#3123) rather than the raw classifier tier.
-   */
-  private auditReviewAction(enforcedTier: TrustTier): {
-    allowed: boolean;
-    hasRuleOfTwoViolation: boolean;
-    violations: readonly { rule: string; message: string }[];
-  } {
-    const context: ActionContext = {
-      inputTrustTier: enforcedTier,
-      ...REVIEW_ACCESS_CONTEXT,
-    };
-    const decision = evaluatePolicy(
-      {
-        type: 'DraftReply',
-        body: 'PR review comment',
-        requiresApproval: true,
-        sources: [
-          {
-            type: 'repoFile',
-            path: 'packages/nexus-agents/src/dogfooding/pr-reviewer.ts',
-          },
-        ],
-      },
-      context
-    );
+  private auditReviewAction(
+    body: string,
+    sources: readonly SourceCitation[],
+    context: ActionContext
+  ): ReviewPostingVerdict {
+    const validated = validateAgentAction({
+      type: 'DraftReply',
+      body,
+      requiresApproval: true,
+      sources,
+    });
+    if (!validated.ok) {
+      return {
+        allowed: false,
+        hasRuleOfTwoViolation: false,
+        violations: [{ rule: 'INVALID_ACTION', message: validated.error }],
+      };
+    }
+    const decision = evaluatePolicy(validated.value, context);
+    const corroboration = validateCorroboration(validated.value);
+    const corroborationViolation = corroboration.satisfied
+      ? []
+      : [{ rule: 'INSUFFICIENT_CORROBORATION', message: corroboration.missing.join('; ') }];
     return {
-      allowed: decision.allowed,
+      allowed: decision.allowed && corroboration.satisfied,
       hasRuleOfTwoViolation: decision.violations.some((v) => v.rule === 'RULE_OF_TWO'),
-      violations: decision.violations,
+      violations: [...decision.violations, ...corroborationViolation],
     };
   }
 
