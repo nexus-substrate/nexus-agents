@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
-  "generated": "2026-09-05T07:30:35.042Z",
+  "generated": "2026-09-05T07:42:12.085Z",
   "generator": "scripts/generate-repo-index.ts",
-  "packageVersion": "8.11.0",
+  "packageVersion": "8.12.0",
   "cli": {
     "binary": "nexus-agents",
     "commands": [

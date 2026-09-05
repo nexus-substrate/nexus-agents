@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.12.0
+
+### Minor Changes
+
+- [#5520](https://github.com/nexus-substrate/nexus-agents/pull/5520) [`ebfed31`](https://github.com/nexus-substrate/nexus-agents/commit/ebfed313297fa7540338d688c5aa8ac8de76f0bb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - When firewall sanitization is disabled, preserve author trust classifications by setting passthrough `trustTier` to the role-derived base tier and disclosing that it was not content-measured with `contentTierMeasured: false`; [#5517](https://github.com/nexus-substrate/nexus-agents/issues/5517) tracks making unmeasured tiers absent in the next major.
+
 ## 8.11.0
 
 ### Minor Changes
