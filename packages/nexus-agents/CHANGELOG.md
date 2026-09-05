@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.23.5
+
+### Patch Changes
+
+- [#5638](https://github.com/nexus-substrate/nexus-agents/pull/5638) [`20e1a8e`](https://github.com/nexus-substrate/nexus-agents/commit/20e1a8eaa9da64514b284ff9292bd18bd7ec48db) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report that config set and import overrides apply only to the current process, with environment-variable guidance for persistence.
+
+- [#5636](https://github.com/nexus-substrate/nexus-agents/pull/5636) [`119b87d`](https://github.com/nexus-substrate/nexus-agents/commit/119b87dd4ddb3afc56c7c8cc28c621b2863f536f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `config init` now writes an explicit `security.audit` block so a generated config has the tamper-evident audit chain on; the schema JSDoc states that the `enabled: true` default only applies when the block is present ([#5632](https://github.com/nexus-substrate/nexus-agents/issues/5632)).
+
 ## 8.23.4
 
 ### Patch Changes
