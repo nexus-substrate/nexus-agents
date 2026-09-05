@@ -10,6 +10,7 @@ import {
   getOutcomeStore,
   setOutcomeStore,
   OutcomeStore,
+  TaskOutcomeSchema,
 } from '../../orchestration/outcomes/index.js';
 
 // Pre-import heavy modules once instead of dynamic import per test (perf: saves ~2s)
@@ -91,6 +92,40 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
       source: 'delegate',
     });
     expect(store.size).toBe(initialSize + 1);
+  });
+
+  it('attributes an outcome to the supplied executed CLI (#5499)', () => {
+    orchestrateMod.recordToOutcomeStore('Implement a feature', true, 100, {
+      actualCli: 'gemini',
+    });
+
+    const recorded = getOutcomeStore().query().at(-1);
+    expect(recorded?.cli).toBe('gemini');
+    expect(recorded?.cliSource).toBe('executed');
+  });
+
+  it('labels category-default CLI attribution when execution CLI is unavailable (#5499)', () => {
+    orchestrateMod.recordToOutcomeStore('Implement a feature', true, 100);
+
+    const recorded = getOutcomeStore().query().at(-1);
+    expect(recorded?.cli).toBe('codex');
+    expect(recorded?.cliSource).toBe('category-default');
+  });
+
+  it('keeps legacy outcomes without cliSource unmeasured (#5499)', () => {
+    const parsed = TaskOutcomeSchema.safeParse({
+      id: 'legacy-outcome',
+      cli: 'claude',
+      category: 'exploration',
+      model: 'orchestrator',
+      success: true,
+      durationMs: 100,
+      timestamp: new Date().toISOString(),
+      source: 'delegate',
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.cliSource).toBeUndefined();
   });
 
   it('OutcomeStore accepts orchestrator model name', () => {
