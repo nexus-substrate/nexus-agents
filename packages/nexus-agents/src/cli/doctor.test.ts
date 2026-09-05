@@ -813,7 +813,7 @@ describe('Doctor Command', () => {
       expect(output).toContain('Node.js version');
       expect(output).toContain('v18.0.0');
       expect(output).toContain('Warning');
-      expect(output).toContain('22.x');
+      expect(output).toContain('>=22.5.0');
 
       writeSpy.mockRestore();
     });

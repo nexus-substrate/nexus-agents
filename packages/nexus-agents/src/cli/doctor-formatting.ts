@@ -29,9 +29,7 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import { describeInstallFreshness } from './doctor-install-freshness.js';
-
-/** Required Node.js major version (for warning message). */
-const REQUIRED_NODE_MAJOR = 22;
+import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
  * Formats a status symbol with color.
@@ -168,9 +166,7 @@ function printNodeVersionCheck(check: NodeVersionCheck): void {
     : `${colors.yellow}${check.version}${colors.reset}`;
   writeLine(`${formatStatus(check.supported, !check.supported)} Node.js version: ${versionText}`);
   if (!check.supported) {
-    writeLine(
-      `  ${colors.dim}Warning: Node.js ${String(REQUIRED_NODE_MAJOR)}.x LTS required${colors.reset}`
-    );
+    writeLine(`  ${colors.dim}Warning: Node.js ${NODE_ENGINE_RANGE} required${colors.reset}`);
   }
 }
 

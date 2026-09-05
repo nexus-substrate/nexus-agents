@@ -393,7 +393,7 @@ describe('doctor-formatting', () => {
         expect(nodeCall).toContain(tc.color);
         expect(nodeCall).toContain(tc.version);
         if (tc.warning)
-          expect(calls.some((call) => call.includes('Node.js 22.x LTS required'))).toBe(true);
+          expect(calls.some((call) => call.includes('Node.js >=22.5.0 required'))).toBe(true);
       }
     });
 

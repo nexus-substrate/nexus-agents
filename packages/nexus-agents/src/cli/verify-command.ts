@@ -8,7 +8,7 @@
  * (Source: Issue #253 - Quick verification step after installation)
  */
 
-import { VERSION } from '../version.js';
+import { VERSION, NODE_ENGINE_RANGE, isNodeVersionSupported } from '../version.js';
 import { getTimeProvider } from '../core/index.js';
 import { defaultConfig, loadConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
@@ -74,29 +74,20 @@ export interface VerifyResult {
  */
 function checkNodeVersion(): VerifyCheck {
   const version = process.version;
-  const major = parseInt(version.slice(1).split('.')[0] ?? '0', 10);
 
-  if (major >= 22) {
+  if (isNodeVersionSupported(version)) {
     return {
       name: 'Node.js Version',
       passed: true,
-      message: `${version} (LTS)`,
-    };
-  }
-
-  if (major >= 18) {
-    return {
-      name: 'Node.js Version',
-      passed: true,
-      message: `${version} (supported, recommend 22.x LTS)`,
+      message: `${version} (supported)`,
     };
   }
 
   return {
     name: 'Node.js Version',
     passed: false,
-    message: `${version} (unsupported)`,
-    fix: 'Install Node.js 22.x LTS from https://nodejs.org',
+    message: `${version} (unsupported; requires Node.js ${NODE_ENGINE_RANGE})`,
+    fix: `Install Node.js ${NODE_ENGINE_RANGE} from https://nodejs.org`,
   };
 }
 

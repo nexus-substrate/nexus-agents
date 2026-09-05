@@ -3,7 +3,9 @@
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { ILogger } from '../core/index.js';
+import { NODE_ENGINE_RANGE, isNodeVersionSupported } from '../version.js';
 import { checkVersionDrift, warnIfVersionStale } from './version-check.js';
 
 function fetchReturning(version: unknown, ok = true): typeof fetch {
@@ -28,6 +30,25 @@ function spyLogger(): ILogger {
 afterEach(() => {
   delete process.env['NEXUS_VERSION_CHECK'];
   vi.restoreAllMocks();
+});
+
+describe('Node engine compatibility (#5608)', () => {
+  it.each([
+    ['v20.19.0', false],
+    ['v22.4.1', false],
+    ['v22.5.0', true],
+    ['v24.0.0', true],
+  ])('reports %s supported=%s', (version, supported) => {
+    expect(isNodeVersionSupported(version)).toBe(supported);
+  });
+
+  it('pins the required range to package.json', () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+    ) as { engines: { node: string } };
+
+    expect(NODE_ENGINE_RANGE).toBe(manifest.engines.node);
+  });
 });
 
 describe('checkVersionDrift (#3283)', () => {
@@ -73,7 +94,10 @@ describe('checkVersionDrift (#3283)', () => {
 
   it('returns null on a non-ok response or unparseable version', async () => {
     expect(
-      await checkVersionDrift({ currentVersion: '2.76.0', fetchImpl: fetchReturning('2.96.0', false) })
+      await checkVersionDrift({
+        currentVersion: '2.76.0',
+        fetchImpl: fetchReturning('2.96.0', false),
+      })
     ).toBeNull();
     expect(
       await checkVersionDrift({ currentVersion: '2.76.0', fetchImpl: fetchReturning(undefined) })
@@ -94,7 +118,10 @@ describe('warnIfVersionStale (#3283)', () => {
 
   it('warns once when stale', async () => {
     const logger = spyLogger();
-    await warnIfVersionStale(logger, { currentVersion: '2.76.0', fetchImpl: fetchReturning('2.96.0') });
+    await warnIfVersionStale(logger, {
+      currentVersion: '2.76.0',
+      fetchImpl: fetchReturning('2.96.0'),
+    });
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('stale version'),
@@ -104,14 +131,20 @@ describe('warnIfVersionStale (#3283)', () => {
 
   it('does NOT warn when up to date', async () => {
     const logger = spyLogger();
-    await warnIfVersionStale(logger, { currentVersion: '2.96.0', fetchImpl: fetchReturning('2.96.0') });
+    await warnIfVersionStale(logger, {
+      currentVersion: '2.96.0',
+      fetchImpl: fetchReturning('2.96.0'),
+    });
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('does NOT warn when disabled via NEXUS_VERSION_CHECK=0', async () => {
     process.env['NEXUS_VERSION_CHECK'] = '0';
     const logger = spyLogger();
-    await warnIfVersionStale(logger, { currentVersion: '2.76.0', fetchImpl: fetchReturning('2.96.0') });
+    await warnIfVersionStale(logger, {
+      currentVersion: '2.76.0',
+      fetchImpl: fetchReturning('2.96.0'),
+    });
     expect(logger.warn).not.toHaveBeenCalled();
   });
 });
