@@ -158,14 +158,16 @@ async function executeWorkflow(
   }
 
   const workflowResult = result.value;
+  const stepResults = workflowResult.stepResults.map(toStepResultSummary);
+  const status = deriveWorkflowStatus(stepResults);
 
-  logger?.info('Workflow completed', {
+  logger?.info('Workflow execution finished', {
     workflowName: workflow.name,
     durationMs: getTimeProvider().now() - startTime,
     stepCount: workflowResult.stepResults.length,
+    status,
   });
 
-  const stepResults = workflowResult.stepResults.map(toStepResultSummary);
   return {
     ok: true,
     value: {
@@ -173,7 +175,7 @@ async function executeWorkflow(
       workflowName: workflowResult.workflowName,
       // #4351: was hardcoded 'completed'. A run whose steps all failed —
       // e.g. every adapter out of capacity — reported success to the caller.
-      status: deriveWorkflowStatus(stepResults),
+      status,
       stepResults,
       output: workflowResult.output,
       durationMs: workflowResult.totalDurationMs,
@@ -225,6 +227,17 @@ function recordWorkflowError(template: string, errorMessage: string): void {
       template,
     });
   }
+}
+
+function recordWorkflowOutcome(template: string, result: WorkflowToolResult): void {
+  if (result.status === 'completed') {
+    recordWorkflowSuccess(template, result.stepResults.length, result.durationMs);
+    return;
+  }
+  const reason = result.stepResults.some((step) => step.status === 'failed')
+    ? 'did not complete: one or more steps failed'
+    : 'did not complete: no step succeeded';
+  recordWorkflowError(template, reason);
 }
 
 /**
@@ -295,11 +308,7 @@ async function handleRunWorkflow(
     return buildFailureEnvelope(workflow.name, executeResult.error);
   }
 
-  recordWorkflowSuccess(
-    template,
-    executeResult.value.stepResults.length,
-    executeResult.value.durationMs
-  );
+  recordWorkflowOutcome(template, executeResult.value);
   return successResponse(executeResult.value);
 }
 

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WorkflowDefinition, StepResult, Result } from '../core/index.js';
+import type { ExecutionStatus, WorkflowDefinition, StepResult, Result } from '../core/index.js';
 import { ok, err, WorkflowError } from '../core/index.js';
 import { ParseError } from '../core/index.js';
 import {
@@ -56,6 +56,17 @@ const sampleWorkflow: WorkflowDefinition = {
     },
   ],
 };
+
+async function executeWithStepResults(stepResults: StepResult[]): Promise<ExecutionStatus> {
+  const deps = createMockDeps({
+    createExecutionPlan: vi.fn().mockReturnValue(ok({ phases: [{ steps: sampleWorkflow.steps }] })),
+    executePhase: vi.fn().mockResolvedValue(ok(stepResults)),
+  });
+  const testEngine = new WorkflowEngine(deps);
+  const execution = await testEngine.execute(sampleWorkflow, { input1: 'test' });
+  if (!execution.ok) throw execution.error;
+  return testEngine.getStatus(execution.value.executionId);
+}
 
 describe('WorkflowEngine', () => {
   let engine: WorkflowEngine;
@@ -156,6 +167,33 @@ describe('WorkflowEngine', () => {
         const status = engine.getStatus(result.value.executionId);
         expect(status.state).toBe('completed');
       }
+    });
+
+    it('stores all-skipped execution as failed because no step succeeded', async () => {
+      const status = await executeWithStepResults([
+        { stepId: 'step1', output: null, durationMs: 0, status: 'skipped' },
+        { stepId: 'step2', output: null, durationMs: 0, status: 'skipped' },
+      ]);
+
+      expect(status).toEqual({ state: 'failed', error: 'No workflow step succeeded' });
+    });
+
+    it('stores one success with skipped steps as completed', async () => {
+      const status = await executeWithStepResults([
+        { stepId: 'step1', output: 'done', durationMs: 10, status: 'success' },
+        { stepId: 'step2', output: null, durationMs: 0, status: 'skipped' },
+      ]);
+
+      expect(status.state).toBe('completed');
+    });
+
+    it('stores an execution with a failed step as failed', async () => {
+      const status = await executeWithStepResults([
+        { stepId: 'step1', output: 'done', durationMs: 10, status: 'success' },
+        { stepId: 'step2', output: null, durationMs: 10, status: 'failed', error: 'boom' },
+      ]);
+
+      expect(status).toEqual({ state: 'failed', error: 'One or more workflow steps failed' });
     });
 
     it('should handle execution plan errors', async () => {

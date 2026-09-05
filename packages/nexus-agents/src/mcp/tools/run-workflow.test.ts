@@ -21,6 +21,17 @@ import {
   type DryRunResult,
 } from './run-workflow.js';
 
+const memoryMocks = vi.hoisted(() => ({
+  recordTask: vi.fn(),
+  recordLearning: vi.fn(),
+  recordError: vi.fn(),
+  runPromotionPipeline: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('./tool-memory.js', () => ({
+  getToolMemory: () => memoryMocks,
+}));
+
 /**
  * Creates a permissive rate limiter for tests.
  */
@@ -318,6 +329,7 @@ describe('run_workflow tool execution', () => {
   let deps: RunWorkflowDeps;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockServer = createMockServer();
     mockLogger = createMockLogger();
   });
@@ -358,6 +370,45 @@ describe('run_workflow tool execution', () => {
       expect(parsed.status).toBe('completed');
       expect(parsed.stepResults).toHaveLength(2);
       expect(parsed.durationMs).toBe(1500);
+    });
+
+    it('records an all-skipped workflow as an error without a completed learning', async () => {
+      const skippedResult: WorkflowResult = {
+        ...createMockWorkflowResult('code-review'),
+        stepResults: [
+          { stepId: 'step-1', output: null, durationMs: 0, status: 'skipped' },
+          { stepId: 'step-2', output: null, durationMs: 0, status: 'skipped' },
+        ],
+      };
+      mockEngine = createMockWorkflowEngine({ executeResult: { ok: true, value: skippedResult } });
+      deps = {
+        workflowEngine: mockEngine,
+        resolveExecutionEngine: () => mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
+      registerRunWorkflowTool(
+        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+        deps
+      );
+      const response = await getToolHandler()({
+        template: 'code-review',
+        inputs: { target: 'src/main.ts' },
+      });
+      const parsed = JSON.parse(response.content[0]?.text ?? '{}') as WorkflowToolResult;
+
+      expect(parsed.status).toBe('failed');
+      expect(memoryMocks.recordLearning).not.toHaveBeenCalled();
+      expect(memoryMocks.recordTask).not.toHaveBeenCalled();
+      expect(memoryMocks.runPromotionPipeline).not.toHaveBeenCalled();
+      expect(memoryMocks.recordError).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('did not complete') })
+      );
+      expect(mockLogger.info).not.toHaveBeenCalledWith('Workflow completed', expect.anything());
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Workflow execution finished',
+        expect.objectContaining({ status: 'failed' })
+      );
     });
 
     it('should call workflowEngine.execute with correct arguments', async () => {

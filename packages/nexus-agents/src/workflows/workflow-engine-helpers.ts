@@ -124,6 +124,21 @@ export function buildFinalOutput(stepResults: StepResult[]): unknown {
 }
 
 /**
+ * Derive a workflow verdict from what its steps actually did.
+ *
+ * Any failed step fails the workflow. Skipped steps are non-failing only when
+ * at least one step succeeded; an empty or all-skipped run measured no success.
+ */
+export function deriveWorkflowStatus(
+  steps: readonly Pick<StepResult, 'status'>[]
+): 'completed' | 'failed' {
+  if (steps.length === 0) return 'failed';
+  if (steps.some((step) => step.status === 'failed')) return 'failed';
+  if (!steps.some((step) => step.status === 'success')) return 'failed';
+  return 'completed';
+}
+
+/**
  * Extract error message from unknown error type.
  * Re-exported from core for backward compatibility.
  */
