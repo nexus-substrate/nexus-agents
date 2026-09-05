@@ -213,12 +213,27 @@ export interface LoadUsageOptions {
   readonly category?: string;
 }
 
-function listUsageFiles(dir: string): readonly string[] {
-  if (!existsSync(dir)) return [];
+interface UsageFileList {
+  readonly files: readonly string[];
+  readonly readErrors: readonly string[];
+}
+
+function describeReadError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function listUsageFiles(dir: string): UsageFileList {
+  if (!existsSync(dir)) return { files: [], readErrors: [] };
   try {
-    return readdirSync(dir).filter((f) => f.startsWith('usage-') && f.endsWith('.jsonl'));
-  } catch {
-    return [];
+    const files = readdirSync(dir).filter(
+      (file) => file.startsWith('usage-') && file.endsWith('.jsonl')
+    );
+    return { files, readErrors: [] };
+  } catch (error) {
+    return {
+      files: [],
+      readErrors: [`usage ledger unreadable: failed to list ${dir}: ${describeReadError(error)}`],
+    };
   }
 }
 
@@ -302,12 +317,17 @@ function eventMatches(parsed: UsageEvent, f: LoadFilter): boolean {
   return true;
 }
 
-function parseFileLines(filePath: string, filter: LoadFilter): readonly UsageEvent[] {
+interface ParsedUsageFile {
+  readonly events: readonly UsageEvent[];
+  readonly readError?: string;
+}
+
+function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
   let content: string;
   try {
     content = readFileSync(filePath, 'utf-8');
-  } catch {
-    return [];
+  } catch (error) {
+    return { events: [], readError: `${filePath}: ${describeReadError(error)}` };
   }
   const out: UsageEvent[] = [];
   let rejected = 0;
@@ -334,19 +354,30 @@ function parseFileLines(filePath: string, filter: LoadFilter): readonly UsageEve
   if (rejected > 0) {
     logger.warn('Usage ledger lines rejected as unreadable', { filePath, rejected });
   }
-  return out;
+  return { events: out };
+}
+
+interface UsageLedgerLoadResult {
+  /** Valid events recovered from every readable ledger file. */
+  readonly events: readonly UsageEvent[];
+  /** True only when the ledger directory and every discovered file were readable. */
+  readonly complete: boolean;
+  /** Human-readable directory/file failures that made the result incomplete. */
+  readonly readErrors: readonly string[];
 }
 
 /**
- * Load all usage events from disk that match the filter. Reads every
- * monthly log file under the data dir; for sub-second filtering at scale
- * a future PR can index by month, but linear scan is fine at the
- * "operator dashboard" scale this command targets.
+ * Load all usage events from disk that match the filter, preserving whether
+ * every ledger file was readable. A missing usage directory is a complete,
+ * empty ledger. For sub-second filtering at scale a future PR can index by
+ * month, but linear scan is fine at the "operator dashboard" scale.
  */
-export function loadUsageEvents(opts: LoadUsageOptions = {}): readonly UsageEvent[] {
+export function loadUsageEvents(opts: LoadUsageOptions = {}): UsageLedgerLoadResult {
   const dir = join(getNexusDataDir(), 'usage');
-  const files = listUsageFiles(dir);
-  if (files.length === 0) return [];
+  const listed = listUsageFiles(dir);
+  if (listed.files.length === 0) {
+    return { events: [], complete: listed.readErrors.length === 0, readErrors: listed.readErrors };
+  }
   const filter: LoadFilter = {
     sinceMs: opts.sinceIso !== undefined ? Date.parse(opts.sinceIso) : Number.NEGATIVE_INFINITY,
     untilMs: opts.untilIso !== undefined ? Date.parse(opts.untilIso) : Number.POSITIVE_INFINITY,
@@ -354,10 +385,16 @@ export function loadUsageEvents(opts: LoadUsageOptions = {}): readonly UsageEven
     category: opts.category,
   };
   const events: UsageEvent[] = [];
-  for (const f of files) {
-    events.push(...parseFileLines(join(dir, f), filter));
+  const readErrors: string[] = [];
+  for (const file of listed.files) {
+    const parsed = parseFileLines(join(dir, file), filter);
+    events.push(...parsed.events);
+    if (parsed.readError !== undefined) readErrors.push(parsed.readError);
   }
-  return events;
+  if (readErrors.length === listed.files.length) {
+    readErrors[0] = `usage ledger unreadable: no files readable; ${readErrors[0] ?? ''}`;
+  }
+  return { events, complete: readErrors.length === 0, readErrors };
 }
 
 export interface ModelRollup {
@@ -369,8 +406,11 @@ export interface ModelRollup {
   readonly totalInputTokens: number;
   readonly totalOutputTokens: number;
   readonly totalUsdCost: number;
+  /** Calls whose cost is unknown; legacy events without `priced` do not count. */
+  readonly unpricedCallCount: number;
   readonly avgLatencyMs: number;
-  readonly costPerSuccessUsd: number;
+  /** Null when there were no successful calls. */
+  readonly costPerSuccessUsd: number | null;
 }
 
 /**
@@ -379,6 +419,7 @@ export interface ModelRollup {
  * going?" investigations.
  */
 export function rollupByModel(events: readonly UsageEvent[]): readonly ModelRollup[] {
+  if (events.length === 0) return [];
   const groups = new Map<string, UsageEvent[]>();
   for (const e of events) {
     const arr = groups.get(e.modelId);
@@ -392,10 +433,12 @@ export function rollupByModel(events: readonly UsageEvent[]): readonly ModelRoll
     const totalInputTokens = group.reduce((s, e) => s + e.inputTokens, 0);
     const totalOutputTokens = group.reduce((s, e) => s + e.outputTokens, 0);
     const totalUsdCost = group.reduce((s, e) => s + e.usdCost, 0);
+    // Legacy ledger lines predate `priced`; only an explicit false is unpriced.
+    const unpricedCallCount = group.filter((event) => event.priced === false).length;
     const totalLatency = group.reduce((s, e) => s + e.latencyMs, 0);
     const successRate = callCount === 0 ? 0 : successCount / callCount;
     const avgLatencyMs = callCount === 0 ? 0 : totalLatency / callCount;
-    const costPerSuccessUsd = successCount === 0 ? totalUsdCost : totalUsdCost / successCount;
+    const costPerSuccessUsd = successCount === 0 ? null : totalUsdCost / successCount;
     rollups.push({
       modelId,
       providerId: group[0]?.providerId ?? 'unknown',
@@ -405,6 +448,7 @@ export function rollupByModel(events: readonly UsageEvent[]): readonly ModelRoll
       totalInputTokens,
       totalOutputTokens,
       totalUsdCost,
+      unpricedCallCount,
       avgLatencyMs,
       costPerSuccessUsd,
     });

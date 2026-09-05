@@ -74,7 +74,7 @@ afterEach(() => {
 describe('usage ledger validation (#5328)', () => {
   it('loads a well-formed line', () => {
     writeLog(goodLine());
-    expect(loadUsageEvents()).toHaveLength(1);
+    expect(loadUsageEvents().events).toHaveLength(1);
   });
 
   it('ACCEPTS a legacy line missing priced/priceSource/category', () => {
@@ -94,39 +94,62 @@ describe('usage ledger validation (#5328)', () => {
         success: true,
       })
     );
-    expect(loadUsageEvents()).toHaveLength(1);
+    expect(loadUsageEvents().events).toHaveLength(1);
   });
 
   it('rejects a line whose usdCost is a string', () => {
     writeLog(goodLine({ usdCost: '1.5' }));
-    expect(loadUsageEvents()).toHaveLength(0);
+    expect(loadUsageEvents().events).toHaveLength(0);
   });
 
   it('rejects a line with no usdCost at all', () => {
     const { usdCost, ...rest } = JSON.parse(goodLine()) as Record<string, unknown>;
     void usdCost;
     writeLog(JSON.stringify(rest));
-    expect(loadUsageEvents()).toHaveLength(0);
+    expect(loadUsageEvents().events).toHaveLength(0);
   });
 
   it('rejects a line whose success is not a boolean', () => {
     writeLog(goodLine({ success: 'yes' }));
-    expect(loadUsageEvents()).toHaveLength(0);
+    expect(loadUsageEvents().events).toHaveLength(0);
   });
 
   it('still skips malformed JSON without throwing', () => {
     writeLog('{not json', goodLine());
-    expect(loadUsageEvents()).toHaveLength(1);
+    expect(loadUsageEvents().events).toHaveLength(1);
   });
 
   it('keeps the rollup finite when a corrupt line sits beside good ones', () => {
     // The observable failure, stated as its own test: this is what a user of
     // `nexus-agents usage` actually saw.
     writeLog(goodLine(), goodLine({ usdCost: 'oops' }), goodLine());
-    const rollup = rollupByModel(loadUsageEvents());
+    const rollup = rollupByModel(loadUsageEvents().events);
 
     expect(rollup).toHaveLength(1);
     expect(Number.isFinite(rollup[0]!.totalUsdCost)).toBe(true);
     expect(rollup[0]!.totalUsdCost).toBeCloseTo(3.0, 6);
+  });
+
+  it('reports a directory read failure instead of an empty ledger', () => {
+    writeFileSync(join(dir, 'usage'), 'not a directory');
+
+    const result = loadUsageEvents();
+
+    expect(result.complete).toBe(false);
+    expect(result.events).toEqual([]);
+    expect(result.readErrors.join(' ')).toContain('usage ledger');
+  });
+
+  it('keeps readable events when one of two ledger files is unreadable', () => {
+    const usageDir = join(dir, 'usage');
+    mkdirSync(usageDir, { recursive: true });
+    writeFileSync(join(usageDir, 'usage-readable.jsonl'), `${goodLine({ modelId: 'readable' })}\n`);
+    mkdirSync(join(usageDir, 'usage-unreadable.jsonl'));
+
+    const result = loadUsageEvents();
+
+    expect(result.complete).toBe(false);
+    expect(result.events.map((event) => event.modelId)).toEqual(['readable']);
+    expect(result.readErrors).toHaveLength(1);
   });
 });
