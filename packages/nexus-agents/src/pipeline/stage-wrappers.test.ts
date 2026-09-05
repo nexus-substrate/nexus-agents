@@ -65,7 +65,7 @@ function createMockStages(): DevPipelineStages {
     qaReview: vi
       .fn<() => Promise<QaReviewResult>>()
       .mockResolvedValue({ verdict: 'pass', feedback: '', issues: [] }),
-    securityScan: vi.fn().mockResolvedValue({ passed: true, feedback: 'Clean' }),
+    securityScan: vi.fn().mockResolvedValue({ passed: true, verdict: 'pass', feedback: 'Clean' }),
   };
 }
 
@@ -233,6 +233,7 @@ describe('Stage Wrappers', () => {
       const stages = createMockStages();
       vi.mocked(stages.securityScan).mockResolvedValue({
         passed: false,
+        verdict: 'fail',
         feedback: 'Critical finding',
       });
       const wrapper = createSecurityStageWrapper(stages);

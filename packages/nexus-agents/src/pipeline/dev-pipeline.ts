@@ -170,23 +170,26 @@ export interface DevPipelineResult {
    * Whether the security gate passed.
    *
    * Read together with {@link DevPipelineResult.securityRan} (#4772): `false`
-   * with `securityRan: false` means the gate never executed and is NOT a failed
-   * security review.
+   * with `securityRan: false` means no scan produced a measured verdict and is
+   * NOT a failed security review.
    */
   readonly securityPassed: boolean;
   /**
    * Whether the security gate actually ran (#4772).
    *
    * Set on every path `runDevPipeline` can return through, so
-   * `securityPassed: false` is always readable as verdict-vs-absence. Three
-   * paths stop before the scan: a dry run (plan+vote only), harness mode (tasks
-   * are handed back for external implementation), and a red quality gate in
-   * `blocking` mode. Only the post-scan return reports `true`.
+   * `securityPassed: false` is always readable as verdict-vs-absence. Four
+   * paths report `false`: a dry run (plan+vote only), harness mode (tasks are
+   * handed back for external implementation), a red quality gate in `blocking`
+   * mode, and a security scan that returned `skip`. Only a post-scan `pass` or
+   * `fail` verdict reports `true`.
    *
    * Absent means the producer predates the distinction (#4782), not that the
    * scan's status is unknown — treat an absent value as unmeasured, not `false`.
    */
   readonly securityRan?: boolean;
+  /** Security-stage feedback explaining why a skipped scan did not run. */
+  readonly securityNote?: string;
   /**
    * Why planning produced no usable plan, when it did not (#4772).
    *
@@ -242,8 +245,12 @@ export interface DevPipelineStages {
    * `qualityGate` mode in {@link DevPipelineOptions}, not this method.
    */
   qualityGate?(): Promise<{ passed: boolean; feedback: string }>;
-  /** Security scan. Returns true if passed. */
-  securityScan(): Promise<{ passed: boolean; feedback: string }>;
+  /** Security scan. Preserves pass, fail, and unmeasured skip verdicts. */
+  securityScan(): Promise<{
+    readonly passed: boolean;
+    readonly verdict: 'pass' | 'fail' | 'skip';
+    readonly feedback: string;
+  }>;
 }
 
 // ============================================================================
@@ -811,14 +818,11 @@ async function resolveResearch(
     return researchContextFromText(override);
   }
   options?.untrustedInputGuard?.();
-  return withStep(
-    { name: 'research', attrs: { task: task.slice(0, 100) } },
-    async (ctx) => {
-      const rc = await stages.research(task);
-      ctx.setSummary(`${String(rc.text.length)} chars`);
-      return rc;
-    }
-  );
+  return withStep({ name: 'research', attrs: { task: task.slice(0, 100) } }, async (ctx) => {
+    const rc = await stages.research(task);
+    ctx.setSummary(`${String(rc.text.length)} chars`);
+    return rc;
+  });
 }
 
 async function runPlanningPhase(
@@ -926,14 +930,11 @@ async function runImplSecurityPhase(
     };
   }
 
-  const security = await withStep(
-    { name: 'security-scan' },
-    async (ctx) => {
-      const r = await stages.securityScan();
-      ctx.setSummary(r.passed ? 'passed' : 'FAILED');
-      return r;
-    }
-  );
+  const security = await withStep({ name: 'security-scan' }, async (ctx) => {
+    const r = await stages.securityScan();
+    ctx.setSummary(r.passed ? 'passed' : 'FAILED');
+    return r;
+  });
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
     if (security.passed) cleanupCheckpoint(sid);
@@ -946,7 +947,8 @@ async function runImplSecurityPhase(
     voteIterations: planResult.iterations,
     qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
-    securityRan: true,
+    securityRan: security.verdict !== 'skip',
+    ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
   };
 }
 
@@ -973,20 +975,17 @@ async function runQualityGateStage(
     return { passed: true, feedback: 'Quality gate skipped' };
   }
   const runGate = stages.qualityGate.bind(stages);
-  return withStep(
-    { name: 'quality-gate', attrs: { mode } },
-    async (ctx) => {
-      const r = await runGate();
-      const advisory = mode === 'advisory' && !r.passed;
-      ctx.setSummary(r.passed ? 'passed' : advisory ? 'FAILED (advisory)' : 'FAILED');
-      if (advisory) {
-        logger.warn('Quality gate failed (advisory — not blocking)', {
-          feedback: r.feedback.slice(0, 200),
-        });
-      }
-      return r;
+  return withStep({ name: 'quality-gate', attrs: { mode } }, async (ctx) => {
+    const r = await runGate();
+    const advisory = mode === 'advisory' && !r.passed;
+    ctx.setSummary(r.passed ? 'passed' : advisory ? 'FAILED (advisory)' : 'FAILED');
+    if (advisory) {
+      logger.warn('Quality gate failed (advisory — not blocking)', {
+        feedback: r.feedback.slice(0, 200),
+      });
     }
-  );
+    return r;
+  });
 }
 
 /** Run plan/vote or return from checkpoint. */
@@ -1078,9 +1077,8 @@ async function planVoteLoop(
   let plan = '';
 
   for (let i = 1; i <= limits.vote; i++) {
-    plan = await withStep(
-      { name: `plan (i=${String(i)})`, attrs: { iteration: i } },
-      () => stages.plan(task, research, feedback)
+    plan = await withStep({ name: `plan (i=${String(i)})`, attrs: { iteration: i } }, () =>
+      stages.plan(task, research, feedback)
     );
 
     // #4772: the planner produced nothing. Voting on an empty plan wastes a

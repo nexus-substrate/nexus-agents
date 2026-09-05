@@ -94,7 +94,8 @@ function createVisionStages(): { stages: DevPipelineStages } {
       return Promise.resolve({ verdict: 'pass' as const, feedback: 'OK', issues: [] });
     },
 
-    securityScan: () => Promise.resolve({ passed: true, feedback: 'MCP calls sanitized' }),
+    securityScan: () =>
+      Promise.resolve({ passed: true, verdict: 'pass', feedback: 'MCP calls sanitized' }),
   };
 
   return { stages };

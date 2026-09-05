@@ -875,7 +875,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Security', passed ? 'Passed' : securityNote);
       // Flush pipeline memory session at end of run
       flushPipelineMemory();
-      return { passed, feedback: result.details };
+      return { passed, verdict: result.verdict, feedback: result.details };
     },
   };
 }

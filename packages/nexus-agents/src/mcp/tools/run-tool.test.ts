@@ -22,6 +22,7 @@ interface FakeDevPipelineResult {
   qaIterations: number;
   securityPassed: boolean;
   securityRan?: boolean;
+  securityNote?: string;
   planStatus?: 'empty';
   dryRun?: true;
 }
@@ -542,6 +543,30 @@ describe('run async dispatch (execute:true, #3732)', () => {
       expect(env?.['message']).toContain('stopped before the security gate');
       expect(env?.['message']).not.toContain('rejected');
       expect((env?.['detail'] as Record<string, unknown>)?.['securityRan']).toBe(false);
+    });
+
+    it('names a skipped security scan as absent and explains why the change is blocked', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 1,
+        securityPassed: false,
+        securityRan: false,
+        securityNote: 'semgrep not installed',
+      });
+      const handler = captureHandler();
+      const result = await handler({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('security scan did not run (semgrep not installed)');
+      expect(env?.['message']).toContain('the change is blocked until it does');
+      expect(env?.['message']).not.toContain('rejected');
     });
 
     it('names an empty plan as the reason rather than a generic non-completion', async () => {
