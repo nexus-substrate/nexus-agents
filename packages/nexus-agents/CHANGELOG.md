@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.3
+
+### Patch Changes
+
+- [#5660](https://github.com/nexus-substrate/nexus-agents/pull/5660) [`9d83553`](https://github.com/nexus-substrate/nexus-agents/commit/9d83553124df8910d81e33bcba9d9ff304e7b58a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve relative scan directories to absolute paths so coverage-summary.json lookups match absolute keys, and warn when a loaded coverage summary matches no scanned files ([#5654](https://github.com/nexus-substrate/nexus-agents/issues/5654)).
+
 ## 8.26.2
 
 ### Patch Changes
