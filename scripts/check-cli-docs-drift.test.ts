@@ -70,6 +70,21 @@ describe('catalogCommands', () => {
     ];`;
     expect([...catalogCommands(src)]).toEqual(['server']);
   });
+
+  it('throws on a command name the doc scan could never match (#5458)', () => {
+    // `documentedCommands` only matches [a-z][a-z0-9-]*; a catalog name outside
+    // that would be reported undocumented forever, or ignored if the scan were
+    // widened carelessly. Either way the mismatch must be loud.
+    const src = `export const COMMAND_CATALOG = [
+      { command: 'Weird_Name', description: 'x', audience: 'internal' },
+    ];`;
+    expect(() => catalogCommands(src)).toThrow(/Weird_Name/);
+  });
+
+  it('propagates a catalog parse error instead of reporting a shorter set', () => {
+    const src = `export const COMMAND_CATALOG = [ ...EXTRA ];`;
+    expect(() => catalogCommands(src)).toThrow(/SpreadElement/);
+  });
 });
 
 describe('computeDrift', () => {

@@ -30,27 +30,48 @@ export interface ParsedCatalogEntry {
 
 const CATALOG_VAR_NAME = 'COMMAND_CATALOG';
 const REQUIRED_FIELDS = ['command', 'description', 'audience'] as const;
+type RequiredField = (typeof REQUIRED_FIELDS)[number];
+
+/**
+ * Thrown for any catalog shape the parser cannot evaluate. Deliberately an
+ * error, not a skip: the generator and the drift gate read the catalog
+ * through this parser, so a silently dropped entry would vanish from the docs
+ * AND from the gate that compares them — `--help --all` would show N+1
+ * commands, the docs N, and CI would stay green.
+ */
+export class CatalogParseError extends Error {
+  constructor(message: string) {
+    super(`COMMAND_CATALOG: ${message} (scripts/parse-cli-command-catalog.ts, #5458)`);
+    this.name = 'CatalogParseError';
+  }
+}
 
 /** Read the string-literal properties of one `{ command, description, audience }` literal. */
-function entryFromObjectLiteral(obj: ts.ObjectLiteralExpression): ParsedCatalogEntry | undefined {
-  const fields: Partial<Record<(typeof REQUIRED_FIELDS)[number], string>> = {};
+function entryFromObjectLiteral(
+  obj: ts.ObjectLiteralExpression,
+  index: number
+): ParsedCatalogEntry {
+  const fields: Partial<Record<RequiredField, string>> = {};
   for (const prop of obj.properties) {
-    if (
-      ts.isPropertyAssignment(prop) &&
-      ts.isIdentifier(prop.name) &&
-      ts.isStringLiteralLike(prop.initializer)
-    ) {
-      const key = prop.name.text;
-      if ((REQUIRED_FIELDS as readonly string[]).includes(key)) {
-        fields[key as (typeof REQUIRED_FIELDS)[number]] = prop.initializer.text;
-      }
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+    const key = prop.name.text;
+    if (!(REQUIRED_FIELDS as readonly string[]).includes(key)) continue;
+    // Only a plain string literal (or a no-substitution template) can be read
+    // without evaluating code. Anything else — `${…}` templates, `'a' + 'b'`,
+    // a constant reference — is a value this parser cannot see.
+    if (!ts.isStringLiteralLike(prop.initializer)) {
+      throw new CatalogParseError(
+        `entry #${String(index)}: '${key}' is a ${ts.SyntaxKind[prop.initializer.kind]}, ` +
+          'not a string literal — the docs generator cannot evaluate it'
+      );
     }
+    fields[key as RequiredField] = prop.initializer.text;
   }
   const { command, description, audience } = fields;
-  // An entry missing a field is skipped, not padded: rendering a blank cell
-  // would present a half-written entry as documentation.
   if (command === undefined || description === undefined || audience === undefined) {
-    return undefined;
+    const missing = REQUIRED_FIELDS.filter((k) => fields[k] === undefined);
+    const label = command === undefined ? '' : ` ('${command}')`;
+    throw new CatalogParseError(`entry #${String(index)}${label} is missing ${missing.join(', ')}`);
   }
   return { command, description, audience };
 }
@@ -62,20 +83,24 @@ function readEntries(expr: ts.Expression | undefined): ParsedCatalogEntry[] | un
     node = node.expression;
   }
   if (node === undefined || !ts.isArrayLiteralExpression(node)) return undefined;
-  const entries: ParsedCatalogEntry[] = [];
-  for (const element of node.elements) {
-    if (!ts.isObjectLiteralExpression(element)) continue;
-    const entry = entryFromObjectLiteral(element);
-    if (entry !== undefined) entries.push(entry);
-  }
-  return entries;
+  return node.elements.map((element, index) => {
+    if (!ts.isObjectLiteralExpression(element)) {
+      throw new CatalogParseError(
+        `element #${String(index)} is a ${ts.SyntaxKind[element.kind]}, not an object literal — ` +
+          'a spread or reference hides commands from the docs generator'
+      );
+    }
+    return entryFromObjectLiteral(element, index);
+  });
 }
 
 /**
  * Parse `COMMAND_CATALOG` from a TS source file's text. Returns entries in
  * source order, or `[]` when no `COMMAND_CATALOG` array literal is found (a
  * non-literal initializer yields `[]`). Callers MUST treat `[]` as a parser
- * failure, not as an empty catalog — the catalog is never empty.
+ * failure, not as an empty catalog — the catalog is never empty. Throws
+ * `CatalogParseError` for any element or field it cannot read as a literal;
+ * both consumers let that propagate rather than rendering a shorter table.
  */
 export function parseCommandCatalog(content: string): ParsedCatalogEntry[] {
   const source = ts.createSourceFile(

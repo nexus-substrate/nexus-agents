@@ -44,6 +44,9 @@ import { parseCommandCatalog } from './parse-cli-command-catalog.js';
 const ENTRYPOINTS = join(ROOT, 'docs/ENTRYPOINTS.md');
 const CATALOG = join(ROOT, 'packages/nexus-agents/src/cli-command-catalog.ts');
 
+/** Shape of a typed command name — shared by the catalog and doc scans. */
+const COMMAND_NAME = /[a-z][a-z0-9-]*/;
+
 /**
  * Command names registered in the catalog — the source of truth. Read through
  * the same AST parser the generator uses (#5458), so the two cannot disagree
@@ -51,9 +54,20 @@ const CATALOG = join(ROOT, 'packages/nexus-agents/src/cli-command-catalog.ts');
  * typed command, and `documentedCommands` cannot match it either.
  */
 export function catalogCommands(source: string): readonly string[] {
-  return parseCommandCatalog(source)
+  const names = parseCommandCatalog(source)
     .map((e) => e.command)
     .filter((c) => c !== '(default)');
+  // `documentedCommands` matches first cells against COMMAND_NAME; a catalog
+  // command outside that pattern could never be matched and would read as
+  // undocumented — or, worse, as silently ignored. Fail loud instead.
+  const offPattern = names.filter((c) => !new RegExp(`^${COMMAND_NAME.source}$`).test(c));
+  if (offPattern.length > 0) {
+    throw new Error(
+      `cli-docs-drift: catalog command(s) ${offPattern.join(', ')} do not match ` +
+        `${COMMAND_NAME.source}; widen COMMAND_NAME in scripts/check-cli-docs-drift.ts`
+    );
+  }
+  return names;
 }
 
 /**
@@ -80,7 +94,8 @@ export function documentedCommands(doc: string): readonly string[] {
   const nextTop = rest.indexOf('\n## ');
   const ends = [modeSel, nextTop].filter((i) => i !== -1);
   const section = ends.length > 0 ? rest.slice(0, Math.min(...ends)) : rest;
-  return [...section.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|/gm)].map((m) => m[1] ?? '');
+  const cell = new RegExp(`^\\|\\s*\`(${COMMAND_NAME.source})\`\\s*\\|`, 'gm');
+  return [...section.matchAll(cell)].map((m) => m[1] ?? '');
 }
 
 export interface DriftReport {
