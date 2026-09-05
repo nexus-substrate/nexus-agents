@@ -245,10 +245,15 @@ export interface DevPipelineStages {
    * `qualityGate` mode in {@link DevPipelineOptions}, not this method.
    */
   qualityGate?(): Promise<{ passed: boolean; feedback: string }>;
-  /** Security scan. Preserves pass, fail, and unmeasured skip verdicts. */
+  /**
+   * Security scan. `verdict` preserves the scanner's tri-state so a `skip`
+   * (scanner absent or errored) is not recorded as a rejection (#5502).
+   * Optional so stage implementations that predate the field still satisfy
+   * the contract; when absent, `passed` is read as a measured pass/fail.
+   */
   securityScan(): Promise<{
     readonly passed: boolean;
-    readonly verdict: 'pass' | 'fail' | 'skip';
+    readonly verdict?: 'pass' | 'fail' | 'skip';
     readonly feedback: string;
   }>;
 }
