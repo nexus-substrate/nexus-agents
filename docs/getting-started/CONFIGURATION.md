@@ -233,7 +233,6 @@ two lists so they cannot drift apart again.
 | `NEXUS_SENSITIVE_REFS`           | Comma/space-separated org/gov reference **terms** scrubbed from auto-filed issue text (#3382 opsec). Intentionally not hardcoded — set your org's terms here. Unset ⇒ no scrubbing.       | unset                |
 | `NEXUS_RATE_LIMIT_RPM`           | Requests per minute                                                                                                                                                                       | `60`                 |
 | `NEXUS_AUTH_ENABLED`             | Enable MCP auth (applies only to network transports; no effect on the default stdio MCP)                                                                                                  | `true`               |
-| `NEXUS_AUTH_METHOD`              | Auth method                                                                                                                                                                               | `token`              |
 | `NEXUS_DRIFT_ADVISORY`           | Model-string drift CI gate: any value except `0` (incl. unset) = advisory (warn); `0` = blocking (#2199). CI sets `0` to enforce.                                                         | unset (advisory)     |
 
 `NEXUS_DRIFT_ADVISORY` is **script-scoped**: it is read by
@@ -589,6 +588,16 @@ The matching (equally unread) `TIMEOUT_DEFAULTS.cliSimpleMs` /
 `TIMEOUT_DEFAULTS.cliComplexMs` defaults keys are also gone. Per-complexity CLI
 timeouts were never driven by these knobs — they flow through the internal
 per-CLI `TIMEOUT_PROFILES` (`getTimeoutForCli`).
+
+### Removed (#5665)
+
+`NEXUS_AUTH_METHOD` was registered and documented (default `token`) but never
+reached enforcement: `initializeAuth` reads `security.auth.method` from the
+config file only, and the variable's sole reader was the startup log line
+(#5663). It has been removed from the env-schema by panel decision (3/3,
+remove rather than wire — same reasoning as #2977 / #4180); `validateNexusEnv`
+now reports it as unknown. Set `security.auth.method` in the config file
+instead.
 
 ## Model Configuration
 

@@ -116,7 +116,6 @@ const NexusEnvSchema = z.object({
 
   // --- Server ---
   NEXUS_AUTH_ENABLED: boolStr.optional(),
-  NEXUS_AUTH_METHOD: z.string().optional(),
 
   // --- Logging ---
   NEXUS_LOG_LEVEL: z
