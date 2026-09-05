@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.22.3
+
+### Patch Changes
+
+- [#5610](https://github.com/nexus-substrate/nexus-agents/pull/5610) [`1c5e129`](https://github.com/nexus-substrate/nexus-agents/commit/1c5e129eb9b7006a4489177e43161667a75c2d14) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fail release validation closed when npm audit is unavailable, and report parsed high, critical, and moderate vulnerability counts from npm's JSON audit output.
+
+- [#5611](https://github.com/nexus-substrate/nexus-agents/pull/5611) [`da0020e`](https://github.com/nexus-substrate/nexus-agents/commit/da0020e9779ba3bb4ce8defc93717818cf50857f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Validate the `verify` and `doctor` Node.js checks against the package engine range so unsupported runtimes below Node 22.5.0 are reported accurately.
+
 ## 8.22.2
 
 ### Patch Changes
