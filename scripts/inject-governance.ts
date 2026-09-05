@@ -26,7 +26,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
-import { Node, Project, SyntaxKind } from 'ts-morph';
+import { Node, Project, SyntaxKind, SourceFile } from 'ts-morph';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
@@ -1321,6 +1321,16 @@ function checkAdapterPrecedenceDocs(): boolean {
  */
 function hasRawIsErrorLiteral(project: Project, fileName: string, source: string): boolean {
   const sf = project.createSourceFile(fileName, source, { overwrite: true });
+  try {
+    return sourceHasRawIsErrorLiteral(sf);
+  } finally {
+    // One shared Project per check: drop each file after inspection so the
+    // in-memory program does not grow by every tool file scanned (#5062 review).
+    project.removeSourceFile(sf);
+  }
+}
+
+function sourceHasRawIsErrorLiteral(sf: SourceFile): boolean {
   return sf.getDescendantsOfKind(SyntaxKind.PropertyAssignment).some((prop) => {
     const nameNode = prop.getNameNode();
     const name = Node.isStringLiteral(nameNode) ? nameNode.getLiteralText() : nameNode.getText();
