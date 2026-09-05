@@ -4,7 +4,7 @@
  * (Source: Issue #840 — Expose graph workflows via MCP tool)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,12 +17,19 @@ import { RateLimiter } from '../middleware/index.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { getToolMemory } from './tool-memory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { parseToolErrorEnvelope } from '../error-envelope.js';
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+type ToolResponse = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+};
 type ToolHandler = (args: unknown) => Promise<ToolResponse>;
 
 interface MockRegisteredTool {
@@ -274,6 +281,46 @@ describe('pipeline workflow', () => {
     const result = parseResponse(response);
     const stepEvents = result.events.filter((e) => e.type === 'step_completed');
     expect(stepEvents.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ============================================================================
+// Security Scan Input Boundary (#5528)
+// ============================================================================
+
+describe('security-scan input boundary', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rejects absent or blank code without recording an outcome or learning', async () => {
+    const recordLearning = vi.spyOn(getToolMemory(), 'recordLearning');
+    const appendOutcome = vi.spyOn(getOutcomeStore(), 'append');
+    const handler = registerAndGetHandler();
+
+    for (const inputs of [{}, { code: '' }, { code: ' \n\t' }]) {
+      const response = await handler({ workflow: 'security-scan', inputs });
+      const envelope = parseToolErrorEnvelope(response._meta);
+
+      expect(response.isError).toBe(true);
+      expect(envelope?.errorCategory).toBe('validation');
+      expect(envelope?.message).toContain('inputs.code');
+    }
+    expect(recordLearning).not.toHaveBeenCalled();
+    expect(appendOutcome).not.toHaveBeenCalled();
+  });
+
+  it('runs non-empty code and records its success', async () => {
+    const recordLearning = vi.spyOn(getToolMemory(), 'recordLearning');
+    const appendOutcome = vi.spyOn(getOutcomeStore(), 'append');
+    const handler = registerAndGetHandler();
+
+    const response = await handler({ workflow: 'security-scan', inputs: { code: 'const x = 1;' } });
+
+    expect(response.isError).toBeUndefined();
+    expect(parseResponse(response).status).toBe('completed');
+    expect(recordLearning).toHaveBeenCalledOnce();
+    expect(appendOutcome).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 });
 
