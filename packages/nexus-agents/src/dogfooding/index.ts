@@ -51,6 +51,7 @@ export {
 
 // PR Reviewer
 export { PRReviewer, createPRReviewer, formatReviewComment } from './pr-reviewer.js';
+export { formatFileReviewCoverage } from './pr-review-stats.js';
 
 // Issue Triage (Issue #828)
 export { IssueTriage, createIssueTriage } from './issue-triage.js';

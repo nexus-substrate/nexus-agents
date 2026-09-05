@@ -41,6 +41,7 @@ import { DEFAULT_PR_REVIEW_CONFIG, CATEGORY_DISPLAY_NAMES } from './pr-review-ty
 import { parsePRUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import type { FullCapableProvider } from '../scm/types.js';
+import { getFileReviewCoverage } from './pr-review-stats.js';
 import {
   parseExpertReview,
   extractSummary,
@@ -322,7 +323,7 @@ ${safeBody || 'No description provided.'}
 ${filesSummary}
 
 ### File Diffs
-${formatDiffs(pr)}
+${formatDiffs(pr).text}
 
 Provide a structured review with:
 1. Overall approval (APPROVED/CHANGES_REQUESTED)
@@ -377,7 +378,6 @@ Provide a structured review with:
   ): PRReviewDraft {
     const allFindings = reviews.flatMap((r) => r.findings);
     const decision = determineDecision(reviews, allFindings);
-    const consensusScore = calculateConsensus(reviews);
 
     return {
       prNumber: pr.number,
@@ -389,8 +389,8 @@ Provide a structured review with:
       findingsByCategory: countByCategory(allFindings),
       totalDurationMs: getTimeProvider().now() - startTime,
       expertCount: reviews.length,
-      filesReviewed: pr.files.length,
-      consensusScore,
+      ...getFileReviewCoverage(pr, reviews, formatDiffs(pr).filesIncluded),
+      consensusScore: calculateConsensus(reviews),
       debateRounds: 1,
       timestamp: getTimeProvider().nowIso(),
       trustAssessment,

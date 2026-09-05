@@ -12,6 +12,12 @@ import { reviewCommand } from './review-command.js';
 // Mock the dogfooding module
 vi.mock('../dogfooding/index.js', () => ({
   createPRReviewer: vi.fn(),
+  formatFileReviewCoverage: (review: {
+    filesReviewed: number;
+    totalFiles: number;
+    reviewCoverage: string;
+  }) =>
+    `${String(review.filesReviewed)} of ${String(review.totalFiles)} files reviewed (${review.reviewCoverage})`,
   formatReviewComment: vi.fn(),
 }));
 
@@ -81,6 +87,9 @@ describe('review-command', () => {
     expertReviews: [],
     postOutcome: { status: 'posted' },
     filesReviewed: 7,
+    filesWithPatch: 7,
+    totalFiles: 7,
+    reviewCoverage: 'full',
     ...overrides,
   });
 
@@ -151,6 +160,7 @@ describe('review-command', () => {
       expect(output).toContain('Experts: 5');
       expect(output).toContain('90%');
       expect(output).toContain('3000ms');
+      expect(output).toContain('7 of 7 files reviewed (full)');
     });
 
     it('should display findings by severity', async () => {

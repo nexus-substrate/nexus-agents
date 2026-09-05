@@ -712,6 +712,7 @@ describe('GitHub Comment Formatting', () => {
       expect(comment).toContain('Experts: 3');
       expect(comment).toContain('Consensus: 75%');
       expect(comment).toContain('Duration: 1500ms');
+      expect(comment).toContain('7 of 7 files reviewed (full)');
       expect(comment).toContain(':rotating_light: 1 critical');
       expect(comment).toContain(':warning: 2 high');
     });
@@ -823,6 +824,9 @@ function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRRe
   return {
     postOutcome: { status: 'posted' },
     filesReviewed: 7,
+    filesWithPatch: 7,
+    totalFiles: 7,
+    reviewCoverage: 'full',
     prNumber: 1,
     repository: 'owner/repo',
     decision: 'approve',

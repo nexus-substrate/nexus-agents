@@ -9,10 +9,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ok, err } from '../core/index.js';
+import { ok, err, ModelError } from '../core/index.js';
+import type { IModelAdapter } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
 import type { ScmPullRequestDetail, ScmUserMetadata } from '../scm/types.js';
-import type { IModelAdapter } from '../core/index.js';
 import { parsePRUrl } from '../scm/url-parsers.js';
 import type { PRReviewResult } from './pr-review-types.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
@@ -95,7 +95,7 @@ vi.mock('../core/index.js', async () => {
 });
 
 /** Creates a mock SCM PR detail that the provider would return. */
-function createMockPRDetail(): ScmPullRequestDetail {
+function createMockPRDetail(overrides: Partial<ScmPullRequestDetail> = {}): ScmPullRequestDetail {
   return {
     number: 123,
     title: 'Test PR',
@@ -119,6 +119,7 @@ function createMockPRDetail(): ScmPullRequestDetail {
     ],
     additions: 50,
     deletions: 10,
+    ...overrides,
   };
 }
 
@@ -140,6 +141,17 @@ function adapterReturning(output: Record<string, unknown>): IModelAdapter {
     },
     countTokens: vi.fn().mockResolvedValue(10),
     validateConfig: vi.fn().mockReturnValue(ok(undefined)),
+  };
+}
+
+function successfulReviewAdapter(): IModelAdapter {
+  return adapterReturning({ content: 'APPROVED\nSummary: No issues found.' });
+}
+
+function erroredReviewAdapter(): IModelAdapter {
+  return {
+    ...adapterReturning({}),
+    complete: vi.fn().mockResolvedValue(err(new ModelError('adapter unavailable'))),
   };
 }
 
@@ -507,6 +519,111 @@ describe('PRReviewer', () => {
       if (!result.ok) return;
       expect(result.value.expertReviews[0]).toMatchObject({ approved: false, errored: true });
       expect(result.value.decision).not.toBe('approve');
+    });
+
+    it('reports no file coverage when patches are absent and every expert errored', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({
+          ...createMockPRDetail(),
+          files: [
+            { filename: 'src/a.ts', status: 'modified', additions: 1, deletions: 0 },
+            { filename: 'src/b.ts', status: 'modified', additions: 1, deletions: 0 },
+          ],
+        })
+      );
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: true, experts: ['security', 'testing'] },
+        erroredReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.filesWithPatch).toBe(0);
+      expect(result.value.filesReviewed).toBe(0);
+      expect(result.value.reviewCoverage).toBe('none');
+    });
+
+    it('reports full file coverage when every file has a patch and an expert succeeds', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({
+          ...createMockPRDetail(),
+          files: [
+            { filename: 'src/a.ts', status: 'modified', additions: 1, deletions: 0, patch: '+a' },
+            { filename: 'src/b.ts', status: 'modified', additions: 1, deletions: 0, patch: '+b' },
+          ],
+        })
+      );
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: true, experts: ['security'] },
+        successfulReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.filesWithPatch).toBe(2);
+      expect(result.value.filesReviewed).toBe(2);
+      expect(result.value.reviewCoverage).toBe('full');
+    });
+
+    it('reports partial file coverage when only one of two files has a patch', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({
+          ...createMockPRDetail(),
+          files: [
+            { filename: 'src/a.ts', status: 'modified', additions: 1, deletions: 0, patch: '+a' },
+            { filename: 'src/b.ts', status: 'modified', additions: 1, deletions: 0 },
+          ],
+        })
+      );
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: true, experts: ['security'] },
+        successfulReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.filesWithPatch).toBe(1);
+      expect(result.value.filesReviewed).toBe(1);
+      expect(result.value.reviewCoverage).toBe('partial');
+    });
+
+    it('does not count a patch omitted by the local diff budget as reviewed', async () => {
+      const oversizedPatch = `+${'x'.repeat(5_000)}`;
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({
+          ...createMockPRDetail(),
+          files: [
+            {
+              filename: 'src/large.ts',
+              status: 'modified',
+              additions: 5_000,
+              deletions: 0,
+              patch: oversizedPatch,
+            },
+            {
+              filename: 'src/small.ts',
+              status: 'modified',
+              additions: 1,
+              deletions: 0,
+              patch: '+x',
+            },
+          ],
+        })
+      );
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: true, experts: ['security'] },
+        successfulReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.filesWithPatch).toBe(2);
+      expect(result.value.filesReviewed).toBe(1);
+      expect(result.value.reviewCoverage).toBe('partial');
     });
   });
 
