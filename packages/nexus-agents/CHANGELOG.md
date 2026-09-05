@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.27.0
+
+### Minor Changes
+
+- [#5690](https://github.com/nexus-substrate/nexus-agents/pull/5690) [`016c86e`](https://github.com/nexus-substrate/nexus-agents/commit/016c86ef6c53453821f0f0e7d60e5104820bfe8e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Benchmarks no longer render absence as a pass: the token benchmark reports `searchesFailed` and 0% savings when no search succeeded; `toSuiteResult` computes `passed` from the recorded adapter failures (and reports an empty run as unmeasured); search-quality metrics score a failed query as zero and expose `failedQueries` ([#5689](https://github.com/nexus-substrate/nexus-agents/issues/5689)).
+
 ## 8.26.9
 
 ### Patch Changes
