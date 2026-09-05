@@ -75,6 +75,32 @@ describe('ToolRateLimiterFactory - getForTool', () => {
     const limiter = factory.getForTool('orchestrate');
     expect(limiter.getState().capacity).toBe(3);
   });
+
+  it('allows every request and reports unlimited capacity when disabled', () => {
+    const factory = createToolRateLimiterFactory({ enabled: false });
+    const limiter = factory.getForTool('orchestrate');
+
+    const acquisitions = Array.from({ length: 11 }, () => limiter.tryAcquire());
+
+    expect(acquisitions).toEqual(Array.from({ length: 11 }, () => true));
+    expect(factory.isEnabled()).toBe(false);
+    expect(factory.getStates()['orchestrate']).toEqual({
+      tokens: Number.POSITIVE_INFINITY,
+      capacity: Number.POSITIVE_INFINITY,
+      nextTokenMs: 0,
+    });
+  });
+
+  it('rejects the eleventh consecutive request when enabled', () => {
+    const factory = createToolRateLimiterFactory({ enabled: true });
+    const limiter = factory.getForTool('orchestrate');
+
+    const acquisitions = Array.from({ length: 11 }, () => limiter.tryAcquire());
+
+    expect(acquisitions.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => true));
+    expect(acquisitions[10]).toBe(false);
+    expect(factory.isEnabled()).toBe(true);
+  });
 });
 
 // ============================================================================
