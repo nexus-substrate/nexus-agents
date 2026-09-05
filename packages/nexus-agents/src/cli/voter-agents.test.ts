@@ -3,7 +3,7 @@
  * (Source: Issue #226, Issue #280 - timeout/retry fixes)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 // Mock delay to skip retry backoff waits (perf: saves ~2s from retry tests)
 vi.mock('../utils/async-utils.js', async (importOriginal) => {
@@ -634,8 +634,9 @@ That's my vote.`;
     // `pending-detection` at assignment time, so an equality check saw "one
     // model" and warned on EVERY vote — while a genuinely collapsed panel
     // produced the identical line. Both directions are pinned here.
-    function votingAdapter(modelId: string): IModelAdapter {
+    function votingAdapter(modelId: string, providerId = modelId): IModelAdapter {
       return {
+        providerId,
         modelId,
         complete: vi.fn().mockResolvedValue({
           ok: true,
@@ -650,6 +651,36 @@ That's my vote.`;
         }),
       } as unknown as IModelAdapter;
     }
+
+    function failingAdapter(modelId: string, providerId = modelId): IModelAdapter {
+      const adapter = votingAdapter(modelId, providerId);
+      (adapter.complete as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        error: new Error(`failure from ${modelId}`),
+      });
+      return adapter;
+    }
+
+    function captureWarnings(): { readonly logger: ILogger; readonly warnings: string[] } {
+      const warnings: string[] = [];
+      const logger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn((message: string) => warnings.push(message)),
+        error: vi.fn(),
+      } as unknown as ILogger;
+      return { logger, warnings };
+    }
+
+    function pinRolesTo(assignments: ReadonlyMap<VoterRole, IModelAdapter>): void {
+      for (const [role, adapter] of assignments) {
+        vi.stubEnv(`NEXUS_VOTER_MODEL_${role.toUpperCase()}`, adapter.modelId);
+      }
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
 
     async function warnsAfterVoting(modelId: string): Promise<string[]> {
       const warnings: string[] = [];
@@ -683,6 +714,77 @@ That's my vote.`;
 
       expect(warnings.some((w) => w.includes('ran on ONE model'))).toBe(false);
       expect(warnings.some((w) => w.includes('UNMEASURED'))).toBe(true);
+    });
+
+    it('warns when diverse primaries fail and one fallback model serves every vote', async () => {
+      const roles: VoterRole[] = ['architect', 'security', 'devex'];
+      const fallback = votingAdapter('fallback-model');
+      const primaries = roles.map((role) => failingAdapter(`primary-${role}`));
+      pinRolesTo(new Map(roles.map((role, index) => [role, primaries[index]!] as const)));
+      const { logger, warnings } = captureWarnings();
+
+      const results = await collectRealVotes({
+        roles,
+        proposal: 'Fallback provenance',
+        gatewayAdapters: [fallback, ...primaries],
+        interAgentDelayMs: 0,
+        maxRetries: 0,
+        logger,
+      });
+
+      expect(results.map((result) => result.model)).toEqual(roles.map(() => 'fallback-model'));
+      expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(true);
+    });
+
+    it('does not warn for a genuinely diverse successful panel', async () => {
+      const { logger, warnings } = captureWarnings();
+
+      await collectRealVotes({
+        roles: ['architect', 'security', 'devex'],
+        proposal: 'Diverse provenance',
+        gatewayAdapters: [
+          votingAdapter('gpt-5.5'),
+          votingAdapter('claude-sonnet-4-6'),
+          votingAdapter('gemini-3-pro'),
+        ],
+        interAgentDelayMs: 0,
+        logger,
+      });
+
+      expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(false);
+    });
+
+    it('excludes error votes from the post-vote model count', async () => {
+      const roles: VoterRole[] = ['architect', 'security', 'devex'];
+      const fallback = failingAdapter('fallback-error', 'cli-codex');
+      const sameModelA = votingAdapter('gpt-5.5');
+      const failedPrimary = failingAdapter('failed-primary');
+      const sameModelB = votingAdapter('gpt-5.5');
+      pinRolesTo(
+        new Map<VoterRole, IModelAdapter>([
+          ['architect', sameModelA],
+          ['security', failedPrimary],
+          ['devex', sameModelB],
+        ])
+      );
+      const { logger, warnings } = captureWarnings();
+
+      const results = await collectRealVotes({
+        roles,
+        proposal: 'Error provenance',
+        gatewayAdapters: [fallback, sameModelA, failedPrimary, sameModelB],
+        interAgentDelayMs: 0,
+        maxRetries: 0,
+        logger,
+      });
+
+      expect(results.map((result) => result.source)).toEqual(['llm', 'error', 'llm']);
+      expect(results[1]?.cli).toBe('codex');
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('ran on ONE model'),
+        expect.objectContaining({ roleCount: 2 })
+      );
+      expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(true);
     });
   });
 

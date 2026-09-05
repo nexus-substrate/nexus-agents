@@ -29,7 +29,7 @@ import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
-import { reportPanelIndependence } from './panel-independence.js';
+import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -613,10 +613,10 @@ export async function collectRealVotes(
     signal: options.signal,
   });
 
-  // #4983: the only point the question is answerable. Lazy detection means the
-  // adapters carry a placeholder until they have actually run, so a check at
-  // assignment time compares placeholders; by here each has resolved.
-  reportPanelIndependence([...roleAdapters.values()], roles.length, 'post-vote', logger);
+  // #4983/#5546: this is the only point the question is answerable. Assess the
+  // successful result provenance, not the assigned adapters: a failed primary
+  // may have been replaced by a vote from the shared fallback model.
+  reportVoteIndependence(results, logger);
   return results;
 }
 
