@@ -54,7 +54,6 @@ function makeOutcomes(count: number, overrides?: Partial<DashboardOutcome>): Das
 // getPeriodBounds
 // ============================================================================
 
-
 /**
  * Convergence score on the MEASURED path. Throws rather than coercing, so a
  * comparison test cannot silently pass by comparing two `null`s (#5255).
@@ -281,11 +280,23 @@ describe('calculateModelPerformance', () => {
     expect(result.winRate).toBeGreaterThanOrEqual(0);
   });
 
-  it('handles outcomes with no allModelRewards', () => {
+  it('reports comparableN = 0 when no outcome carries allModelRewards (#5650)', () => {
     const outcomes = makeOutcomes(3, { model: 'claude' });
     const result = calculateModelPerformance('claude', outcomes);
-    // No comparable outcomes, so winRate should be 0
-    expect(result.winRate).toBe(0);
+    // Nothing was compared: the win rate is unmeasured, and comparableN says so.
+    // (This test used to bless winRate === 0 here — the misreport.)
+    expect(result.comparableN).toBe(0);
+  });
+
+  it('reports comparableN as the number of outcomes the win rate was computed over (#5650)', () => {
+    const outcomes = [
+      makeOutcome({ model: 'claude', reward: 0.9, allModelRewards: { claude: 0.9, gemini: 0.5 } }),
+      makeOutcome({ model: 'claude', reward: 0.4, allModelRewards: { claude: 0.4, gemini: 0.8 } }),
+      makeOutcome({ model: 'claude', reward: 0.7 }),
+    ];
+    const result = calculateModelPerformance('claude', outcomes);
+    expect(result.comparableN).toBe(2);
+    expect(result.winRate).toBe(0.5);
   });
 });
 

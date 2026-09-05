@@ -5614,6 +5614,7 @@ InterfaceDeclaration ModelPerformance
 InterfaceDeclaration ModelPerformanceSummary
   readonly avgLatencyMs: number
   readonly avgReward: number
+  readonly comparableN: number
   readonly costEfficiency: number
   readonly model: string
   readonly n: number

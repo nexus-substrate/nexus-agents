@@ -81,7 +81,8 @@ export function renderModelPerformance(
       String(mp.n).padStart(6),
       successRateStr.padStart(showCI ? 25 : 12),
       mp.avgReward.toFixed(3).padStart(10),
-      `${(mp.winRate * 100).toFixed(0)}%`.padStart(8),
+      // No comparative outcomes → the win rate was never measured (#5650).
+      (mp.comparableN === 0 ? '-' : `${(mp.winRate * 100).toFixed(0)}%`).padStart(8),
     ].join(' | ');
     lines.push(row);
   }
@@ -158,8 +159,12 @@ export function renderHealthIndicators(health: DashboardHealthIndicators): strin
   const check = (ok: boolean | null): string => (ok === null ? '?' : ok ? '✓' : '✗');
 
   lines.push(`${check(health.hasMinimumData)} Minimum Data`);
-  lines.push(`${check(health.isLearning)} Learning Progress${health.isLearning === null ? ' (unmeasured)' : ''}`);
-  lines.push(`${check(health.healthyExploration)} Healthy Exploration${health.healthyExploration === null ? ' (unmeasured)' : ''}`);
+  lines.push(
+    `${check(health.isLearning)} Learning Progress${health.isLearning === null ? ' (unmeasured)' : ''}`
+  );
+  lines.push(
+    `${check(health.healthyExploration)} Healthy Exploration${health.healthyExploration === null ? ' (unmeasured)' : ''}`
+  );
   lines.push(`${check(health.noUnderperformers)} No Underperformers`);
   lines.push('');
   // #4714: absence renders as absence. A percentage here computed from
