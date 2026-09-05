@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseWorkflowYaml, parseWorkflowJson, validateWorkflow } from './workflow-parser.js';
+import { WorkflowDefinitionSchema, WorkflowStepSchema } from './workflow-types.js';
 
 // ============================================================================
 // Fixtures
@@ -58,6 +59,11 @@ const MINIMAL_JSON_OBJ = {
   name: 'test-workflow',
   version: '1.0.0',
   steps: [{ id: 'step1', agent: 'code_expert', action: 'Do something' }],
+};
+
+const INTENTIONALLY_DROPPED = {
+  workflow: new Set<string>(),
+  step: new Set<string>(),
 };
 
 // ============================================================================
@@ -314,6 +320,71 @@ describe('parseWorkflowJson', () => {
       expect(result.value.description).toBe('Full workflow');
       expect(result.value.steps[0]?.retries).toBe(3);
       expect(result.value.steps[0]?.parallel).toBe(true);
+    }
+  });
+
+  it('preserves workflow and step context budgets', () => {
+    const defaultBudget = { system: 0.15, task: 0.2, active: 0.5, reserved: 0.15 };
+    const contextBudget = { active: 0.65, reserved: 0.2 };
+    const definition = {
+      ...MINIMAL_JSON_OBJ,
+      defaultBudget,
+      steps: [{ ...MINIMAL_JSON_OBJ.steps[0], contextBudget }],
+    };
+
+    const result = parseWorkflowJson(JSON.stringify(definition));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.defaultBudget).toEqual(defaultBudget);
+      expect(result.value.steps[0]?.contextBudget).toEqual(contextBudget);
+    }
+  });
+
+  it('omits absent workflow and step context budget keys', () => {
+    const result = parseWorkflowJson(JSON.stringify(MINIMAL_JSON_OBJ));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).not.toHaveProperty('defaultBudget');
+      expect(result.value.steps[0]).not.toHaveProperty('contextBudget');
+    }
+  });
+
+  it('maps every accepted workflow and step schema key', () => {
+    const definition = {
+      name: 'schema-parity',
+      version: '1.0.0',
+      description: 'Exercises every accepted parser field',
+      inputs: [],
+      steps: [
+        {
+          id: 'step1',
+          agent: 'code_expert',
+          action: 'Exercise parser mapping',
+          inputs: { target: 'src/' },
+          dependsOn: [],
+          parallel: true,
+          retries: 1,
+          timeout: 30000,
+          condition: 'true',
+          contextBudget: { active: 0.5 },
+        },
+      ],
+      timeout: 120000,
+      defaultBudget: { system: 0.15, task: 0.2, active: 0.5, reserved: 0.15 },
+    };
+
+    const result = parseWorkflowJson(JSON.stringify(definition));
+
+    expect(result.ok).toBe(true);
+    expect(INTENTIONALLY_DROPPED.workflow.size).toBe(0);
+    expect(INTENTIONALLY_DROPPED.step.size).toBe(0);
+    if (result.ok) {
+      const workflowKeys = [...Object.keys(result.value), ...INTENTIONALLY_DROPPED.workflow];
+      const stepKeys = [...Object.keys(result.value.steps[0] ?? {}), ...INTENTIONALLY_DROPPED.step];
+      expect(workflowKeys.sort()).toEqual(Object.keys(WorkflowDefinitionSchema.shape).sort());
+      expect(stepKeys.sort()).toEqual(Object.keys(WorkflowStepSchema.shape).sort());
     }
   });
 
