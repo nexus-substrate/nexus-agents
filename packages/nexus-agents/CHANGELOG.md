@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.23.3
+
+### Patch Changes
+
+- [#5629](https://github.com/nexus-substrate/nexus-agents/pull/5629) [`811248a`](https://github.com/nexus-substrate/nexus-agents/commit/811248a1da23af3c0ad526c0268c690a41498cc4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Accumulate model-reported token usage across orchestrator analysis and decomposition, and mark missing usage as unmeasured ([#5626](https://github.com/nexus-substrate/nexus-agents/issues/5626)).
+
+- [#5628](https://github.com/nexus-substrate/nexus-agents/pull/5628) [`b60ce1b`](https://github.com/nexus-substrate/nexus-agents/commit/b60ce1be844487c21c378bc5d9767765dfb2aa55) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix review integrity so security expert output with only rejected findings reports unmeasured coverage and a fail-closed score of 0, while partial results score only validated findings and disclose reduced coverage to the PR reviewer. The reviewer keys its non-approving errored decision on findings coverage rather than the placeholder score.
+
 ## 8.23.2
 
 ### Patch Changes
