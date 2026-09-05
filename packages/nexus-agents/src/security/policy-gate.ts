@@ -180,9 +180,9 @@ const PRIVILEGE_GRANTING_LABELS: ReadonlySet<string> = new Set([
 /**
  * Refuse any proposal naming a privilege-granting label.
  *
- * Independent of {@link checkLabelValidity} on purpose: that check returns
- * early when the repository label set is unknown, and a denylist layered on
- * top of it would inherit that vacuous pass. This one needs no world state.
+ * Independent of {@link checkLabelValidity} on purpose: this check needs no
+ * repository world state and reports privileged labels even when label
+ * validity is unevaluated.
  */
 function checkPrivilegedLabels(action: AgentAction): Violation | undefined {
   if (action.type !== 'ProposeLabels') return undefined;
@@ -209,7 +209,13 @@ function checkPrivilegedLabels(action: AgentAction): Violation | undefined {
 function checkLabelValidity(action: AgentAction, context: ActionContext): Violation | undefined {
   if (action.type !== 'ProposeLabels') return undefined;
   const labels = context.existingLabels;
-  if (labels === undefined) return undefined;
+  if (labels === undefined) {
+    return {
+      rule: 'LABEL_SET_UNAVAILABLE',
+      message: 'repository label set not supplied; label validity unevaluated',
+      severity: 'block',
+    };
+  }
 
   const invalid = action.labels.filter((l) => !labels.has(l));
   if (invalid.length > 0) {
