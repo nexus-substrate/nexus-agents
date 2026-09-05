@@ -1929,6 +1929,28 @@ describe('absolute_quorum error policy (#4132)', () => {
       const res = decideAq(votes, { outcome: 'rejected' });
       expect(res.decision).toBe('rejected');
     });
+
+    it('a rejected 2-5 panel with one errored voter reports no_quorum', () => {
+      const votes = [
+        aqVote('architect', 'approve'),
+        aqVote('security', 'approve'),
+        aqVote('devex', 'reject'),
+        aqVote('ai_ml', 'reject'),
+        aqVote('pm', 'reject'),
+        aqVote('catfish', 'reject'),
+        aqVote('scope_steward', 'reject', 'error'),
+      ];
+      const result = aqResult(votes, { outcome: 'rejected' });
+
+      const outcome = resolveVoteDecision(
+        { proposal: 'p', errorPolicy: 'absolute_quorum' } as ConsensusVoteInput,
+        result,
+        1
+      );
+
+      expect(result.result.outcome).toBe('rejected');
+      expect(outcome.decision).toBe('no_quorum');
+    });
   });
 
   describe('absolute approval floor over the FULL panel', () => {

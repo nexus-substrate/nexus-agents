@@ -651,15 +651,11 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
             strategy,
             simulateVotes: config.simulateVotes ?? false,
             quickMode: config.quickMode ?? false,
+            // #5506: plan approval requires the requested panel, not only survivors.
+            errorPolicy: 'absolute_quorum',
           },
           logger
         );
-        // #4135: read the response-layer decision (honors a `no_quorum` void under
-        // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
-        // of the 2-valued engine outcome. Falls back to the engine outcome when
-        // `decision` is absent — default-policy callers never see `no_quorum`, so
-        // this is inert until a call site opts in. (The #4143 catch-block
-        // auto-approve bug below is a SEPARATE issue and is intentionally untouched.)
         // #4135: read the response-layer decision (honors a `no_quorum` void under
         // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
         // of the 2-valued engine outcome. `classifyVoteStageResult` maps it to the
