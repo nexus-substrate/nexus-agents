@@ -66,6 +66,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { detectSandbox } from './sandbox-detection.js';
 import { findRepoRoot } from './repo-root-detection.js';
 import { ensureGitignored } from './portable-mode.js';
+import { parseBoolEnv } from './defaults-env.js';
 
 /**
  * Subdirs scoped to a single repo's work (per the epic #2872 vote).
@@ -142,7 +143,7 @@ export function resetNexusDataDirCache(): void {
  * Tracks per-process state for the auto-gitignore wiring: we only need
  * to (a) probe + append to `.gitignore` once per repo, and (b) bail
  * cleanly if the operator has explicitly silenced the auto-add via
- * `NEXUS_GITIGNORE_AUTO=0`. Reset in tests via the helper below.
+ * `NEXUS_GITIGNORE_AUTO=false`. Reset in tests via the helper below.
  */
 const gitignoredRoots = new Set<string>();
 
@@ -210,8 +211,9 @@ export function _resetActiveWorkspaceRootForTests(): void {
  *
  * Side effect: on the first successful resolution per process per repo,
  * appends `.nexus-agents/` to the repo's `.gitignore` if not already
- * present. The operator can silence this with `NEXUS_GITIGNORE_AUTO=0`
- * (e.g. on CI runners with a frozen working tree).
+ * present. The operator can silence this with the boolean
+ * `NEXUS_GITIGNORE_AUTO` set to `false`/`0` (e.g. on CI runners with a
+ * frozen working tree).
  *
  * Returns `null` when any precondition fails; callers fall back to
  * `getNexusDataDir()` (homedir).
@@ -231,12 +233,12 @@ export function getNexusRepoDir(): string | null {
 
 /**
  * Best-effort fail-closed wiring: once per process per repo, ensure
- * `.nexus-agents/` is in `<repo>/.gitignore`. Silenced via
- * `NEXUS_GITIGNORE_AUTO=0`. Failures are non-fatal — the helper logs
- * to stderr and continues.
+ * `.nexus-agents/` is in `<repo>/.gitignore`. Silenced via the boolean
+ * `NEXUS_GITIGNORE_AUTO=false` (or `0`; default on — #5155). Failures are
+ * non-fatal — the helper logs to stderr and continues.
  */
 function maybeAutoGitignore(repoRoot: string): void {
-  if (process.env['NEXUS_GITIGNORE_AUTO'] === '0') return;
+  if (!parseBoolEnv('NEXUS_GITIGNORE_AUTO', true)) return;
   if (gitignoredRoots.has(repoRoot)) return;
   gitignoredRoots.add(repoRoot);
   // Only attempt when the repo root looks real — avoid spamming stderr

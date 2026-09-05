@@ -8,6 +8,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import { parseBoolEnv } from '../../config/defaults-env.js';
 import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS, getMcpSafeDeadlineMs } from '../../config/timeouts.js';
 import {
   classifyStallTick,
@@ -1262,7 +1263,7 @@ async function runOrchestratePipeline(params: {
  * Phase 3 of #2792 — read the unified memory context at the orchestration
  * entry point so every task starts informed by everything we've learned.
  * The fetch always runs (exercising the read path); prompt augmentation is
- * gated behind `NEXUS_CONTEXT_RETRIEVER_INJECT=1`.
+ * gated behind the boolean `NEXUS_CONTEXT_RETRIEVER_INJECT` (`true`/`1`; #5155).
  *
  * When the flag is set, mutates `input.context` with `priorMemorySummary`.
  * `createTaskFromInput` consumes that key — surfacing the summary as a
@@ -1289,7 +1290,7 @@ async function injectMemoryContextForOrchestrate(
       outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
       summaryChars: summary.length,
     });
-    if (process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] === '1' && summary !== '') {
+    if (parseBoolEnv('NEXUS_CONTEXT_RETRIEVER_INJECT', false) && summary !== '') {
       // Stash on input.context — createTaskFromInput routes it into the
       // task's history so the prompt builder includes it (#2921).
       const mutable = input as { context?: Record<string, unknown> };

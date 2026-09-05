@@ -30,6 +30,7 @@ import type { ScoredMemoryEntry } from './adaptive-memory-types.js';
 import type { ExperienceEntry } from './mobimem-types.js';
 import type { PerformanceSummary } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 import type { DistilledRule } from '../learning/strategy-distiller-types.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -684,7 +685,7 @@ const CONTEXT_INJECT_FLAG = 'NEXUS_CONTEXT_RETRIEVER_INJECT';
  * prompt: returns the {@link summarizeContextForPrompt} block for `task`, or
  * `undefined` when the rollout flag is unset or there is no signal.
  *
- * Centralizes the `NEXUS_CONTEXT_RETRIEVER_INJECT` gate (#2921) and the
+ * Centralizes the boolean `NEXUS_CONTEXT_RETRIEVER_INJECT` gate (`true`/`1`; #2921) and the
  * fetch→summarize sequence so each consumer (orchestrate, execute_expert,
  * pipeline stage-wrappers …) doesn't re-implement it. Default-off and fail-soft:
  * any retrieval error yields `undefined`. Callers whose prompt also feeds a
@@ -695,7 +696,7 @@ export async function getContextPromptPrefix(
   task: string,
   logger?: ILogger
 ): Promise<string | undefined> {
-  if (process.env[CONTEXT_INJECT_FLAG] !== '1') return undefined;
+  if (!parseBoolEnv(CONTEXT_INJECT_FLAG, false)) return undefined;
   const log = logger ?? createLogger({ component: 'ContextRetriever' });
   try {
     const ctx = await getContextForTask({ task, category: inferTaskCategory(task), logger: log });

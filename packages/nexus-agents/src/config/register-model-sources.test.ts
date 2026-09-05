@@ -19,10 +19,22 @@ describe('isDynamicModelsEnabled (#3404)', () => {
     expect(isDynamicModelsEnabled()).toBe(false);
   });
 
-  it('is true only for the exact string "true"', () => {
+  it('accepts the parseBoolEnv set: true|1 enable, false|0 disable (#5155)', () => {
+    // Previously pinned `'1'` → false as intended behaviour: the flag read
+    // `=== 'true'` while its siblings read `=== '1'`, so an operator who set
+    // NEXUS_DYNAMIC_MODELS=1 was silently left disabled.
     process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
     expect(isDynamicModelsEnabled()).toBe(true);
     process.env['NEXUS_DYNAMIC_MODELS'] = '1';
+    expect(isDynamicModelsEnabled()).toBe(true);
+    process.env['NEXUS_DYNAMIC_MODELS'] = 'false';
+    expect(isDynamicModelsEnabled()).toBe(false);
+    process.env['NEXUS_DYNAMIC_MODELS'] = '0';
+    expect(isDynamicModelsEnabled()).toBe(false);
+  });
+
+  it('stays disabled for a value outside the accept-set (yes → default)', () => {
+    process.env['NEXUS_DYNAMIC_MODELS'] = 'yes';
     expect(isDynamicModelsEnabled()).toBe(false);
   });
 });

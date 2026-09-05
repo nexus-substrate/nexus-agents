@@ -21,6 +21,7 @@ import type {
 import type { CreateTaskResult, GetTaskResult } from '@modelcontextprotocol/sdk/experimental/tasks';
 import type { ILogger, Task } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import { parseBoolEnv } from '../../config/defaults-env.js';
 import { isRateLimitLikeError } from '../../adapters/rate-limit-detector.js';
 
 import {
@@ -198,8 +199,8 @@ function sanitizeExpertSummary(summary: string): string {
 
 /**
  * Best-effort accumulated-context prefix for an expert task (#3238 — extends the
- * #2792 entry-point wiring to execute_expert). Gated behind
- * `NEXUS_CONTEXT_RETRIEVER_INJECT=1`, matching the orchestrate rollout (#2921):
+ * #2792 entry-point wiring to execute_expert). Gated behind the boolean
+ * `NEXUS_CONTEXT_RETRIEVER_INJECT` (`true`/`1`), matching the orchestrate rollout (#2921):
  * default-off, no behavior change until the bake-in flips it on. Fail-soft —
  * any error yields `undefined` and the task runs with no prefix.
  *
@@ -212,7 +213,7 @@ export async function maybeFetchContextPrefix(
   task: string,
   logger: ILogger | undefined
 ): Promise<string | undefined> {
-  if (process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] !== '1') return undefined;
+  if (!parseBoolEnv('NEXUS_CONTEXT_RETRIEVER_INJECT', false)) return undefined;
   const category = inferTaskCategory(task);
   try {
     const ctx = await getContextForTask({

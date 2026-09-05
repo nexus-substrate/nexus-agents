@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { parseBoolEnv } from '../../config/defaults-env.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -191,9 +192,9 @@ const OUTPUT_TOKEN_RATIO = 0.6;
 const DEFAULT_STAGE_COUNT = 6;
 
 /**
- * Estimate-relative per-run token budget (#3262), gated behind
- * `NEXUS_BUDGET_ENFORCE=1` (default-off — existing runs are byte-for-byte
- * unchanged). The dry-run estimator is per-CALL, so the whole run is
+ * Estimate-relative per-run token budget (#3262), gated behind the boolean
+ * `NEXUS_BUDGET_ENFORCE` (`true`/`1`; default-off — existing runs are
+ * byte-for-byte unchanged; #5155). The dry-run estimator is per-CALL, so the whole run is
  * approximated as `perCallTokens × stageCount` (stages of the effective
  * template), then capped at `× tolerance` (NEXUS_BUDGET_TOLERANCE, default 1.5).
  * Token-based — never dollars — so it holds under `NEXUS_BILLING_MODE=plan`.
@@ -205,7 +206,7 @@ function resolveRunBudget(
   templateId: string | undefined,
   logger: ILogger
 ): AgentBudgetConfig | undefined {
-  if (process.env['NEXUS_BUDGET_ENFORCE'] !== '1') return undefined;
+  if (!parseBoolEnv('NEXUS_BUDGET_ENFORCE', false)) return undefined;
   const effectiveId = templateId ?? classifyTask(task).pipelineType;
   const template = getTemplate(effectiveId) ?? getTemplate('general');
   const stageCount = template?.stages.length ?? DEFAULT_STAGE_COUNT;

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import { dirname, join } from 'node:path';
@@ -294,6 +294,23 @@ describe('env-schema', () => {
       expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_VERSION_CHECK');
     });
 
+    it('accepts 1/0 for the hook flags, which are read via parseBoolEnv (#5155)', () => {
+      // handler-utils.ts reads all three through parseBoolEnv, so `1`/`0` work
+      // at runtime (the hook tests set `=1`); the strict boolStr registration
+      // reported those spellings invalid — the inverse of the silent no-op.
+      for (const name of [
+        'NEXUS_HOOK_VERBOSE',
+        'NEXUS_DISABLE_SESSIONS',
+        'NEXUS_DISABLE_METRICS',
+      ]) {
+        for (const value of ['1', '0', 'TRUE']) {
+          vi.stubEnv(name, value);
+          expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(name);
+        }
+        vi.unstubAllEnvs();
+      }
+    });
+
     it('accepts NEXUS_REPUTATION_GATING in mixed case, as the consumer lowercases it', () => {
       vi.stubEnv('NEXUS_REPUTATION_GATING', 'Enforce');
       expect(validateNexusEnv().invalidVars).toHaveLength(0);
@@ -496,5 +513,248 @@ describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#51
     // nothing and got a warning naming a spelling they had never seen.
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
     expect(CONFIG_MD).toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+  });
+});
+
+// =============================================================================
+// Every parseBoolEnv / parseBoolValue consumer is registered with the
+// boolLooseStr shape (#5155)
+// =============================================================================
+
+describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => {
+  // The #5142 coverage gate (scripts/check-env-schema-coverage.ts) proves a
+  // flag the code reads is REGISTERED; it says nothing about the accept-set.
+  // A boolean flag registered as strict `boolStr` (`true|false`) would report
+  // `NEXUS_X=1` invalid while the helper accepts it — and one registered as a
+  // free string would tell the user `yes` works when the helper discards it.
+  // So this reads the actual call sites and probes each name against the
+  // schema for the exact helper accept-set: `TRUE` in, `yes` out.
+  const SRC = join(REPO_ROOT, 'packages/nexus-agents/src');
+
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        out.push(...sourceFiles(full));
+        continue;
+      }
+      if (!entry.endsWith('.ts') || entry.includes('.test.') || entry.includes('.spec.')) continue;
+      out.push(full);
+    }
+    return out;
+  }
+
+  /** One `parseBoolEnv` / `parseBoolValue` argument the scanner could not name. */
+  interface UnresolvedBoolRead {
+    readonly file: string;
+    readonly line: number;
+    readonly argument: string;
+  }
+
+  interface BoolFlagScan {
+    /** NEXUS_* names resolved from the call sites. */
+    readonly names: readonly string[];
+    /** Call sites whose argument is not a NEXUS_* literal by any known shape. */
+    readonly unresolved: readonly UnresolvedBoolRead[];
+  }
+
+  /**
+   * Call sites whose argument is a runtime value the scanner cannot resolve,
+   * keyed by file (relative to `src/`) → the env names that reach it. Each
+   * name is probed exactly like a resolved one. A site that is neither
+   * resolvable nor listed here FAILS the test, so a new indirect reader has
+   * to be tabled with its names before it can pass — the table is the
+   * visible, countable set of readers the regex cannot see.
+   */
+  const INDIRECT_BOOL_READERS: Readonly<Record<string, readonly string[]>> = {
+    // `isFeatureDisabled(envVar)` — called from stop.ts, post-tool.ts and
+    // session-end.ts with these two members of HookEnvVars.
+    'cli/hooks/handlers/handler-utils.ts': ['NEXUS_DISABLE_SESSIONS', 'NEXUS_DISABLE_METRICS'],
+  };
+
+  /**
+   * Resolve one call argument to a NEXUS_* name. Four shapes are known:
+   * a literal (`'NEXUS_X'`), a same-file constant (`const FLAG = 'NEXUS_X'`),
+   * a member expression (`HookEnvVars.NEXUS_X` — the member IS the name), and
+   * the injected-env form (`source['NEXUS_X']`). Anything else — a parameter,
+   * an imported constant, a computed key — is `undefined`, which the caller
+   * must treat as a failure, never as "nothing to check".
+   */
+  function resolveBoolFlagArgument(
+    argument: string,
+    constants: ReadonlyMap<string, string>
+  ): string | undefined {
+    const literal = /^['"](NEXUS_[A-Z0-9_]+)['"]$/.exec(argument);
+    if (literal?.[1] !== undefined) return literal[1];
+    const member = /^\w+\.(NEXUS_[A-Z0-9_]+)$/.exec(argument);
+    if (member?.[1] !== undefined) return member[1];
+    const bracket = /^\w+\[['"](NEXUS_[A-Z0-9_]+)['"]\]$/.exec(argument);
+    if (bracket?.[1] !== undefined) return bracket[1];
+    if (/^\w+$/.test(argument)) return constants.get(argument);
+    return undefined;
+  }
+
+  /**
+   * Scan one source text for `parseBoolEnv(...)` / `parseBoolValue(...)` reads.
+   * Pure — takes text, not a path — so the unresolved branch can be proven on
+   * an inline fixture. The helpers' own definitions in defaults-env.ts are
+   * blanked first (newlines kept, so line numbers stay true): the body of
+   * `parseBoolEnv` delegates with `parseBoolValue(process.env[envKey], …)`,
+   * which is the definition, not a consumer.
+   */
+  function scanBoolFlagReads(source: string, file: string): BoolFlagScan {
+    const code = source.replace(
+      /export function parseBool(?:Env|Value)\([^)]*\)[^{]*\{[\s\S]*?\n\}/g,
+      (m) => m.replace(/[^\n]/g, '')
+    );
+    const constants = new Map<string, string>();
+    for (const m of code.matchAll(/^(?:export )?const (\w+)\s*=\s*'(NEXUS_[A-Z0-9_]+)'/gm)) {
+      if (m[1] !== undefined && m[2] !== undefined) constants.set(m[1], m[2]);
+    }
+    const names: string[] = [];
+    const unresolved: UnresolvedBoolRead[] = [];
+    for (const m of code.matchAll(/parseBool(?:Env|Value)\(\s*([^,)]+?)\s*,/g)) {
+      const argument = m[1] ?? '';
+      const name = resolveBoolFlagArgument(argument, constants);
+      if (name !== undefined) names.push(name);
+      else unresolved.push({ file, line: code.slice(0, m.index).split('\n').length, argument });
+    }
+    return { names, unresolved };
+  }
+
+  interface TreeScan {
+    readonly sites: Map<string, string[]>;
+    /** Unresolved sites in files NOT tabled — each one fails the gate. */
+    readonly untabled: readonly UnresolvedBoolRead[];
+    /** Tabled files that no longer have an unresolved site — stale table. */
+    readonly staleTable: readonly string[];
+  }
+
+  function scanTree(): TreeScan {
+    const sites = new Map<string, string[]>();
+    const add = (name: string, file: string): void => {
+      sites.set(name, [...(sites.get(name) ?? []), file]);
+    };
+    const untabled: UnresolvedBoolRead[] = [];
+    const filesWithUnresolved = new Set<string>();
+    for (const full of sourceFiles(SRC)) {
+      const file = full.replace(`${SRC}/`, '');
+      const scan = scanBoolFlagReads(readFileSync(full, 'utf8'), file);
+      for (const name of scan.names) add(name, file);
+      if (scan.unresolved.length === 0) continue;
+      filesWithUnresolved.add(file);
+      const tabled = INDIRECT_BOOL_READERS[file];
+      if (tabled === undefined) untabled.push(...scan.unresolved);
+      else for (const name of tabled) add(name, file);
+    }
+    const staleTable = Object.keys(INDIRECT_BOOL_READERS).filter(
+      (f) => !filesWithUnresolved.has(f)
+    );
+    return { sites, untabled, staleTable };
+  }
+
+  const TREE = scanTree();
+  const KNOWN_SITES = TREE.sites;
+
+  it('reports an argument it cannot resolve instead of skipping it', () => {
+    // The scanner must fail closed: a parameter, an imported constant or a
+    // computed key is an env read the gate cannot see, and silently skipping
+    // it is how three strict-boolStr hook flags went unprobed (#5155 review).
+    const fixture = [
+      "const FLAG = 'NEXUS_FIXTURE_CONST';",
+      'export function isVerbose(): boolean {',
+      '  return parseBoolEnv(Vars.NEXUS_FIXTURE_MEMBER, false);',
+      '}',
+      'export function isDisabled(envVar: string): boolean {',
+      '  return parseBoolEnv(envVar, false);',
+      '}',
+      "const a = parseBoolEnv('NEXUS_FIXTURE_LITERAL', true);",
+      'const b = parseBoolEnv(FLAG, true);',
+      "const c = parseBoolValue(source['NEXUS_FIXTURE_BRACKET'], true);",
+      'const d = parseBoolValue(source[key], true);',
+    ].join('\n');
+    const scan = scanBoolFlagReads(fixture, 'fixture.ts');
+    expect(scan.names).toEqual([
+      'NEXUS_FIXTURE_MEMBER',
+      'NEXUS_FIXTURE_LITERAL',
+      'NEXUS_FIXTURE_CONST',
+      'NEXUS_FIXTURE_BRACKET',
+    ]);
+    expect(scan.unresolved).toEqual([
+      { file: 'fixture.ts', line: 6, argument: 'envVar' },
+      { file: 'fixture.ts', line: 11, argument: 'source[key]' },
+    ]);
+  });
+
+  it('does not count the helper definitions themselves as consumers', () => {
+    const helper = [
+      'export function parseBoolValue(value: string | undefined, fallback: boolean): boolean {',
+      '  return fallback;',
+      '}',
+      'export function parseBoolEnv(envKey: string, fallback: boolean): boolean {',
+      '  return parseBoolValue(process.env[envKey], fallback);',
+      '}',
+      "const x = parseBoolEnv('NEXUS_FIXTURE_AFTER', false);",
+    ].join('\n');
+    const scan = scanBoolFlagReads(helper, 'defaults-env.ts');
+    expect(scan.unresolved).toEqual([]);
+    expect(scan.names).toEqual(['NEXUS_FIXTURE_AFTER']);
+  });
+
+  it('finds the call sites it is checking against', () => {
+    // Guard the guard: a regex that matched nothing would pass the assertions
+    // below over an empty set. The five #5155 flags, the four registered
+    // earlier, and the three hook flags are the floor.
+    expect(KNOWN_SITES.size).toBeGreaterThanOrEqual(12);
+    expect([...KNOWN_SITES.keys()]).toEqual(
+      expect.arrayContaining([
+        'NEXUS_BUDGET_ENFORCE',
+        'NEXUS_DYNAMIC_MODELS',
+        'NEXUS_CONTEXT_RETRIEVER_INJECT',
+        'NEXUS_GITIGNORE_AUTO',
+        'NEXUS_SUBPROCESS_ENV_ALLOWLIST',
+        'NEXUS_HOOK_VERBOSE',
+        'NEXUS_DISABLE_SESSIONS',
+        'NEXUS_DISABLE_METRICS',
+      ])
+    );
+  });
+
+  it('fails on a call site it cannot resolve unless the file is tabled with its names', () => {
+    // Name the empty case: an INDIRECT_BOOL_READERS entry with no names would
+    // exempt a file from the gate while probing nothing.
+    for (const [file, names] of Object.entries(INDIRECT_BOOL_READERS)) {
+      expect(names.length, `${file} is tabled with no env names`).toBeGreaterThan(0);
+    }
+    expect(
+      TREE.untabled.map((u) => `${u.file}:${String(u.line)} parseBool*(${u.argument}, …)`)
+    ).toEqual([]);
+    expect(TREE.staleTable).toEqual([]);
+  });
+
+  it('registers every consumer name with the exact helper accept-set', () => {
+    const schemaKeys = new Set(getKnownNexusVarNames());
+    const unregistered: string[] = [];
+    const wrongShape: string[] = [];
+
+    for (const [name, files] of KNOWN_SITES) {
+      if (!schemaKeys.has(name)) {
+        unregistered.push(`${name} (${files.map((f) => f.replace(`${SRC}/`, '')).join(', ')})`);
+        continue;
+      }
+      // Probe the registered shape rather than reading the source: `TRUE` must
+      // be accepted (the helper lowercases) and `yes` must be rejected (the
+      // helper discards it).
+      vi.stubEnv(name, 'TRUE');
+      const acceptsUpper = !validateNexusEnv().invalidVars.some((v) => v.name === name);
+      vi.stubEnv(name, 'yes');
+      const rejectsYes = validateNexusEnv().invalidVars.some((v) => v.name === name);
+      vi.unstubAllEnvs();
+      if (!acceptsUpper || !rejectsYes) wrongShape.push(name);
+    }
+
+    expect(unregistered).toEqual([]);
+    expect(wrongShape).toEqual([]);
   });
 });

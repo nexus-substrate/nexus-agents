@@ -43,18 +43,32 @@ export function parseFloatEnv(envKey: string, fallback: number): number {
 }
 
 /**
- * Parses a boolean from an environment variable with fallback.
- * Only 'true'/'1' are truthy, 'false'/'0' are falsy.
- * Any other value returns the fallback.
+ * Parses a boolean flag value with fallback — the ONE accept-set for every
+ * `NEXUS_*` boolean flag (#5155): `true`/`1` are truthy, `false`/`0` are
+ * falsy, case-insensitively. Any other value (including `yes`/`no`/`on`/`off`
+ * and the empty string) returns the fallback; `config/env-schema.ts`
+ * (`boolLooseStr`) reports those at startup so the fallback is never silent.
+ *
+ * Pure so consumers that read an injected env object rather than
+ * `process.env` (e.g. `cli-adapters/subprocess-env.ts`) share the same set.
  */
-export function parseBoolEnv(envKey: string, fallback: boolean): boolean {
-  const envValue = process.env[envKey]?.toLowerCase();
-  if (envValue === undefined) {
+export function parseBoolValue(value: string | undefined, fallback: boolean): boolean {
+  const normalized = value?.toLowerCase();
+  if (normalized === undefined) {
     return fallback;
   }
-  if (envValue === 'true' || envValue === '1') return true;
-  if (envValue === 'false' || envValue === '0') return false;
+  if (normalized === 'true' || normalized === '1') return true;
+  if (normalized === 'false' || normalized === '0') return false;
   return fallback;
+}
+
+/**
+ * Parses a boolean from an environment variable with fallback.
+ * Delegates to {@link parseBoolValue}: only 'true'/'1' are truthy,
+ * 'false'/'0' are falsy (case-insensitive); any other value returns the fallback.
+ */
+export function parseBoolEnv(envKey: string, fallback: boolean): boolean {
+  return parseBoolValue(process.env[envKey], fallback);
 }
 
 // ============================================================================

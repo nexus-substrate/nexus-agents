@@ -337,6 +337,18 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
     expect(existsSync(join(tempRepo, '.gitignore'))).toBe(false);
   });
 
+  it('honors NEXUS_GITIGNORE_AUTO=false the same as 0 (#5155)', async () => {
+    // Only the literal `0` used to silence the side-effect; `false` was read
+    // as "enabled". The unset → enabled case is pinned by the auto-append test
+    // above (panel condition for the default-true flags).
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { existsSync } = await import('node:fs');
+    process.env['NEXUS_GITIGNORE_AUTO'] = 'false';
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).not.toBe(null);
+    expect(existsSync(join(tempRepo, '.gitignore'))).toBe(false);
+  });
+
   it('does not duplicate .nexus-agents/ in an existing .gitignore (idempotent)', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
     const { writeFileSync, readFileSync } = await import('node:fs');

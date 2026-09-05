@@ -16,6 +16,7 @@
  */
 
 import type { CliName } from './types.js';
+import { parseBoolValue } from '../config/defaults-env.js';
 
 /**
  * Marker stamped on EVERY spawned-CLI child env (#4033): how deep we are in the
@@ -94,7 +95,7 @@ const CLI_VENDOR_KEYS: Record<CliName, readonly string[]> = {
 /**
  * Env var naming ADDITIONAL var names to forward to spawned CLIs
  * (comma/whitespace-separated). The granular alternative to the
- * `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` hammer: for a custom gateway whose auth key
+ * `NEXUS_SUBPROCESS_ENV_ALLOWLIST=false` hammer: for a custom gateway whose auth key
  * is neither `NEXUS_`-prefixed nor a known vendor key (#4037), name it here to
  * forward ONLY that var while keeping full cross-vendor isolation for everything
  * else. `NEXUS_`-prefixed itself, so it also reaches nested runs.
@@ -137,11 +138,12 @@ function isAllowed(
  *
  * Granular extension: {@link NEXUS_SUBPROCESS_EXTRA_ENV} forwards named extra
  * vars (e.g. a custom gateway key) while keeping cross-vendor isolation — prefer
- * it over the blunt `=0` hatch (#4037).
+ * it over the blunt `=false` hatch (#4037).
  *
- * Escape hatch: `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` restores the
- * pre-#2865 full-passthrough behavior (minus `CLAUDECODE`) — a
- * field un-break if the allowlist ever drops a var a CLI needs.
+ * Escape hatch: the boolean `NEXUS_SUBPROCESS_ENV_ALLOWLIST` (default on)
+ * set to `false`/`0` restores the pre-#2865 full-passthrough behavior (minus
+ * `CLAUDECODE`) — a field un-break if the allowlist ever drops a var a CLI
+ * needs. Parsed with the shared `parseBoolValue` accept-set (#5155).
  */
 export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
   const source = process.env;
@@ -150,7 +152,7 @@ export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
   // overrides any inherited value rather than copying the parent's depth.
   const nextDepth = String(readSubprocessDepth(source) + 1);
 
-  if (source['NEXUS_SUBPROCESS_ENV_ALLOWLIST'] === '0') {
+  if (!parseBoolValue(source['NEXUS_SUBPROCESS_ENV_ALLOWLIST'], true)) {
     for (const [key, value] of Object.entries(source)) {
       if (value !== undefined && key !== 'CLAUDECODE') childEnv[key] = value;
     }

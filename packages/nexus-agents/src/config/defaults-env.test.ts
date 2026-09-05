@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
+import { parseIntEnv, parseFloatEnv, parseBoolEnv, parseBoolValue } from './defaults-env.js';
 
 // ============================================================================
 // Helpers
@@ -120,5 +120,38 @@ describe('parseBoolEnv', () => {
     expect(parseBoolEnv(TEST_KEY, false)).toBe(false);
     process.env[TEST_KEY] = 'garbage';
     expect(parseBoolEnv(TEST_KEY, true)).toBe(true);
+  });
+
+  it('is case-insensitive (TRUE / False)', () => {
+    process.env[TEST_KEY] = 'TRUE';
+    expect(parseBoolEnv(TEST_KEY, false)).toBe(true);
+    process.env[TEST_KEY] = 'False';
+    expect(parseBoolEnv(TEST_KEY, true)).toBe(false);
+  });
+});
+
+// ============================================================================
+// parseBoolValue — the pure accept-set parseBoolEnv delegates to (#5155)
+// ============================================================================
+
+describe('parseBoolValue', () => {
+  // Consumers that read an injected env object (subprocess-env.ts) cannot use
+  // parseBoolEnv, which reads process.env. The pure form is the ONE accept-set
+  // both share; a divergence here would re-create the per-site literals.
+  it('returns the fallback for undefined', () => {
+    expect(parseBoolValue(undefined, true)).toBe(true);
+    expect(parseBoolValue(undefined, false)).toBe(false);
+  });
+
+  it('accepts true|1 and false|0, case-insensitively', () => {
+    for (const v of ['true', '1', 'TRUE', 'True']) expect(parseBoolValue(v, false)).toBe(true);
+    for (const v of ['false', '0', 'FALSE', 'False']) expect(parseBoolValue(v, true)).toBe(false);
+  });
+
+  it('returns the fallback for yes/no/on/off and empty (not in the accept-set)', () => {
+    for (const v of ['yes', 'no', 'on', 'off', '', 'garbage']) {
+      expect(parseBoolValue(v, true)).toBe(true);
+      expect(parseBoolValue(v, false)).toBe(false);
+    }
   });
 });

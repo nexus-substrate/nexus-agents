@@ -47,7 +47,8 @@ vi.mock('../../pipeline/adaptive-orchestrator.js', async (importOriginal) => {
   };
 });
 
-import { PipelineInputSchema, registerPipelineTool } from './pipeline-tool.js';
+import { PipelineInputSchema, registerPipelineTool, runPipelineForGoal } from './pipeline-tool.js';
+import type { ILogger } from '../../core/index.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -220,6 +221,55 @@ describe('run_pipeline async dispatch (#3730)', () => {
 // only logged a warning and proceeded — a random panel could resolve
 // outcome:'approved' with zero live voters. Outside a test runner the handler
 // now rejects with a `permission` envelope unless NEXUS_ALLOW_SIMULATE=1.
+// The estimate-relative budget (#3262) is gated behind NEXUS_BUDGET_ENFORCE.
+// The gate read the literal `1` only, so `true` — the spelling every other
+// boolean flag accepts — left the run silently unenforced (#5155). The
+// observable is the logger: `resolveRunBudget` logs "token budget enforced"
+// (or the no-estimate warn) only when enforcement is on.
+describe('run budget gate NEXUS_BUDGET_ENFORCE (#3262, #5155)', () => {
+  const originalEnforce = process.env['NEXUS_BUDGET_ENFORCE'];
+
+  afterEach(() => {
+    if (originalEnforce === undefined) delete process.env['NEXUS_BUDGET_ENFORCE'];
+    else process.env['NEXUS_BUDGET_ENFORCE'] = originalEnforce;
+    runAdaptiveOrchestratorMock.mockClear();
+  });
+
+  function makeLogger(): ILogger & { info: ReturnType<typeof vi.fn> } {
+    return {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as ILogger & { info: ReturnType<typeof vi.fn> };
+  }
+
+  function budgetEnforced(logger: { info: ReturnType<typeof vi.fn> }): boolean {
+    return logger.info.mock.calls.some((call) => String(call[0]).includes('token budget enforced'));
+  }
+
+  it('enforces when NEXUS_BUDGET_ENFORCE=true (was silently unenforced)', async () => {
+    process.env['NEXUS_BUDGET_ENFORCE'] = 'true';
+    const logger = makeLogger();
+    await runPipelineForGoal('Build a login form with validation and tests', logger);
+    expect(budgetEnforced(logger)).toBe(true);
+  });
+
+  it('still enforces for the original spelling NEXUS_BUDGET_ENFORCE=1', async () => {
+    process.env['NEXUS_BUDGET_ENFORCE'] = '1';
+    const logger = makeLogger();
+    await runPipelineForGoal('Build a login form with validation and tests', logger);
+    expect(budgetEnforced(logger)).toBe(true);
+  });
+
+  it('does not enforce when unset (default off — existing runs unchanged)', async () => {
+    delete process.env['NEXUS_BUDGET_ENFORCE'];
+    const logger = makeLogger();
+    await runPipelineForGoal('Build a login form with validation and tests', logger);
+    expect(budgetEnforced(logger)).toBe(false);
+  });
+});
+
 describe('run_pipeline simulateVotes fail-closed gate (#4170)', () => {
   const originalVitest = process.env['VITEST'];
   const originalNodeEnv = process.env['NODE_ENV'];
