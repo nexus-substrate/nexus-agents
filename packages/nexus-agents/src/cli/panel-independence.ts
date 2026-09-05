@@ -11,6 +11,7 @@
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import { assessPanelIndependence } from '../config/model-equivalence.js';
 import type { PanelIndependence } from '../config/model-equivalence.js';
+import type { AgentVoteResult } from './vote-types.js';
 
 /**
  * When the check runs. Adapter detection is lazy (#811), so at `assignment`
@@ -32,8 +33,34 @@ export function reportPanelIndependence(
   phase: PanelCheckPhase,
   logger: ILogger
 ): void {
+  reportPanelModelIndependence(
+    adapters.map((adapter) => adapter.modelId),
+    roleCount,
+    phase,
+    logger
+  );
+}
+
+/** Reports independence from the models that successfully returned votes. */
+export function reportVoteIndependence(results: readonly AgentVoteResult[], logger: ILogger): void {
+  const successful = results.filter((result) => result.source === 'llm');
+  reportPanelModelIndependence(
+    successful.map((result) => result.model),
+    successful.length,
+    'post-vote',
+    logger
+  );
+}
+
+/** Classifies and reports panel independence from observed model provenance. */
+function reportPanelModelIndependence(
+  modelIds: readonly (string | undefined)[],
+  roleCount: number,
+  phase: PanelCheckPhase,
+  logger: ILogger
+): void {
   if (roleCount <= 1) return;
-  const verdict: PanelIndependence = assessPanelIndependence(adapters.map((a) => a.modelId));
+  const verdict: PanelIndependence = assessPanelIndependence(modelIds);
 
   if (verdict.kind === 'collapsed') {
     logger.warn('Consensus panel ran on ONE model — votes may correlate', {
