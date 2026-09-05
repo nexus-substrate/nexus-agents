@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.13.0
+
+### Minor Changes
+
+- [#5525](https://github.com/nexus-substrate/nexus-agents/pull/5525) [`a7137a1`](https://github.com/nexus-substrate/nexus-agents/commit/a7137a1e48f25a0e78b7362687d4fd576ca482bc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The distilled-rule stage now receives router outcomes so strategy distillation can actually trigger; previously, it never ran outside tests.
+
 ## 8.12.0
 
 ### Minor Changes
