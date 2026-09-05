@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.20.3
+
+### Patch Changes
+
+- [#5591](https://github.com/nexus-substrate/nexus-agents/pull/5591) [`4535c32`](https://github.com/nexus-substrate/nexus-agents/commit/4535c3237430f13c247c6053a0acedea13b96781) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Derive workflow execution state and learning records from one shared step-result verdict so empty or all-skipped runs fail without recording completed learnings.
+
 ## 8.20.2
 
 ### Patch Changes
