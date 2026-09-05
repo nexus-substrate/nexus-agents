@@ -27,11 +27,7 @@ import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
-import {
-  DEFAULT_CLI,
-  CLI_NAMES,
-  type CliNameLiteral,
-} from '../../config/model-capabilities-types.js';
+import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 const logger = createLogger({ tool: 'consensus-vote' });
 
@@ -234,10 +230,10 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
     const now = new Date().toISOString();
     for (const vote of votes) {
       if (vote.source === 'simulation') continue;
-      const cliName: CliNameLiteral =
+      const cliName =
         vote.cli !== undefined && (CLI_NAMES as readonly string[]).includes(vote.cli)
           ? (vote.cli as CliNameLiteral)
-          : DEFAULT_CLI;
+          : ('unknown' as const);
       const voteSuccess = vote.source === 'llm';
       store.append({
         id: `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
