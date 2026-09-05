@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.5
+
+### Patch Changes
+
+- [#5668](https://github.com/nexus-substrate/nexus-agents/pull/5668) [`dfbc2f5`](https://github.com/nexus-substrate/nexus-agents/commit/dfbc2f56d4d0c0320cb09bab83c4f8a18933e886) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report unmeasured benchmark metrics as null instead of falsely passing scores for coherence, promotion retention, and decay regret ([#5664](https://github.com/nexus-substrate/nexus-agents/issues/5664)).
+
 ## 8.26.4
 
 ### Patch Changes
