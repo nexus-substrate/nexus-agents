@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.22.0
+
+### Minor Changes
+
+- [#5598](https://github.com/nexus-substrate/nexus-agents/pull/5598) [`24600ea`](https://github.com/nexus-substrate/nexus-agents/commit/24600ea284b7c46509740fc15eff25815e7d5213) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose repository-label discovery through SCM providers and supply live label sets to issue-triage policy validation while preserving fail-closed behavior when GitHub cannot list labels.
+
 ## 8.21.1
 
 ### Patch Changes
