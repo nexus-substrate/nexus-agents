@@ -16,6 +16,7 @@ import type {
   StreamChunk,
   Result,
   ILogger,
+  TokenUsage,
 } from '../../core/index.js';
 import {
   ok,
@@ -72,6 +73,16 @@ interface GenerateObjectResult {
     totalTokens: number | undefined;
   };
   response: { modelId: string };
+}
+
+/** Maps SDK counters without presenting a partial component sum as a total. */
+function mapSdkUsage(usage: GenerateTextResult['usage']): TokenUsage | undefined {
+  const { inputTokens, outputTokens, totalTokens } = usage;
+  if (totalTokens !== undefined) {
+    return { inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0, totalTokens };
+  }
+  if (inputTokens === undefined || outputTokens === undefined) return undefined;
+  return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
 }
 
 /** Opaque schema handle returned by the AI SDK `jsonSchema` helper. */
@@ -432,13 +443,10 @@ export class SdkAdapter extends BaseAdapter {
     options: Record<string, unknown>
   ): Promise<CompletionResponse> {
     const result = await sdk.generateText(options);
+    const usage = mapSdkUsage(result.usage);
     return {
       content: [{ type: 'text', text: result.text }],
-      usage: {
-        inputTokens: result.usage.inputTokens ?? 0,
-        outputTokens: result.usage.outputTokens ?? 0,
-        totalTokens: result.usage.totalTokens ?? 0,
-      },
+      ...(usage !== undefined ? { usage } : {}),
       stopReason: mapFinishReason(result.finishReason),
       model: result.response.modelId,
     };
@@ -467,13 +475,10 @@ export class SdkAdapter extends BaseAdapter {
           '(missing object/usage/finishReason/response.modelId)'
       );
     }
+    const usage = mapSdkUsage(result.usage);
     return {
       content: [{ type: 'text', text: JSON.stringify(result.object) }],
-      usage: {
-        inputTokens: result.usage.inputTokens ?? 0,
-        outputTokens: result.usage.outputTokens ?? 0,
-        totalTokens: result.usage.totalTokens ?? 0,
-      },
+      ...(usage !== undefined ? { usage } : {}),
       stopReason: mapFinishReason(result.finishReason),
       model: result.response.modelId,
     };
