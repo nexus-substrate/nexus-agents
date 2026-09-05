@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Verify a clean global install of nexus-agents.
 #
-# Three modes:
+# Package-source modes:
 #   1. Latest published (default):
 #        docker build -t nexus-verify -f Dockerfile.npm-verify .
 #        docker run --rm nexus-verify
@@ -11,6 +11,10 @@
 #        cd packages/nexus-agents && pnpm build && npm pack --pack-destination /tmp
 #        docker build -t nexus-verify -f Dockerfile.npm-verify .
 #        docker run --rm -v /tmp/nexus-agents-2.29.0.tgz:/pkg.tgz nexus-verify bash /home/verifier/verify.sh /pkg.tgz
+#
+# Set NEXUS_VERIFY_INSTALL_MODE to exercise npm defaults, npm 12, an in-place
+# update, or pnpm. PNPM_HOME lives under this user's writable home, so package
+# installation stays non-root.
 FROM node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
 
 ARG NEXUS_VERSION=latest
@@ -30,6 +34,10 @@ ENV NEXUS_AUTH_ENABLED=false
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+# Create the Corepack shims while /usr/local/bin is writable. The pnpm mode
+# re-enables and activates pnpm as the unprivileged verifier user.
+RUN corepack enable
 
 # Run as non-root to mirror the marketplace install path
 RUN useradd -m -s /bin/bash verifier

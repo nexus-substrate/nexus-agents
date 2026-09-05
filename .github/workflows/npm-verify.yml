@@ -65,7 +65,10 @@ jobs:
       - name: Run smoke test against pre-publish tarball
         run: |
           TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
-          docker run --rm -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
+          # Keep the pre-publish tarball on the #5427 ignore-scripts path; the
+          # five-mode matrix below verifies packages only after publication.
+          docker run --rm -e NEXUS_VERIFY_INSTALL_MODE=ignore-scripts \
+            -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
             bash /home/verifier/verify.sh /pkg.tgz
 
       # #5427. Measures what runs on a USER's machine at install time, so it
@@ -85,10 +88,14 @@ jobs:
           pnpm exec tsx scripts/check-install-scripts.ts "${{ runner.temp }}/ratchet/node_modules"
 
   verify-published-latest:
-    name: Verify published @latest
+    name: Verify published @latest (${{ matrix.install_mode }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        install_mode: [ignore-scripts, default, npm12, update, pnpm]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,5 +105,7 @@ jobs:
 
       - name: Run smoke test
         run: |
-          docker run --rm nexus-verify bash /home/verifier/verify.sh \
+          docker run --rm \
+            -e NEXUS_VERIFY_INSTALL_MODE=${{ matrix.install_mode }} \
+            nexus-verify bash /home/verifier/verify.sh \
             "${{ github.event.inputs.version || 'latest' }}"
