@@ -30,6 +30,15 @@ describe('env-schema', () => {
       expect(result.invalidVars).toHaveLength(0);
     });
 
+    it('reports NEXUS_AUTH_METHOD as unknown — it never reached enforcement (#5665)', () => {
+      // The variable was registered and documented, but the only reader was
+      // the startup log line; AuthHandler never consulted it. Removed by panel
+      // decision rather than wired, as with #2977 / #4180.
+      vi.stubEnv('NEXUS_AUTH_METHOD', 'token');
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((v) => v.name)).toContain('NEXUS_AUTH_METHOD');
+    });
+
     it('recognizes the autonomous-remediation + policy + overlay vars (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'audit');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');
