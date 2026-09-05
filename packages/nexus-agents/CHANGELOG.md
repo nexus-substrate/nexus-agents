@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.14.0
+
+### Minor Changes
+
+- [#5526](https://github.com/nexus-substrate/nexus-agents/pull/5526) [`cba2c69`](https://github.com/nexus-substrate/nexus-agents/commit/cba2c6911e13f81ef90f8c07f4d28436e3527c30) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve usage-ledger read failures, unpriced calls, and the absence of successful calls through cost rollups and CLI output so missing measurements are never rendered as complete numeric results.
+
 ## 8.13.0
 
 ### Minor Changes
