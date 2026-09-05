@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.20.2
+
+### Patch Changes
+
+- [#5589](https://github.com/nexus-substrate/nexus-agents/pull/5589) [`09791b2`](https://github.com/nexus-substrate/nexus-agents/commit/09791b2e90e4f9086a5bd8f790a6482babe7afbf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report graph `maxSteps` exhaustion as a failure with pending node IDs, and keep parallel super-steps within the remaining node-execution budget.
+
 ## 8.20.1
 
 ### Patch Changes
