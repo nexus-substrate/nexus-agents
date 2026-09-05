@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
+import { Node, Project, SyntaxKind, SourceFile } from 'ts-morph';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
@@ -1310,6 +1311,44 @@ function checkAdapterPrecedenceDocs(): boolean {
 }
 
 /**
+ * True when `source` contains an object literal with an `isError` property
+ * whose value is the `true` keyword — `{ isError: true }`, also through
+ * `true as const` / `true satisfies boolean` / `(true)`. Decided on the
+ * AST, so a comment or string that merely NAMES the convention cannot
+ * match (#5062). Not covered: shorthand `{ isError }` and any value that
+ * is not the literal keyword (a variable, a call) — the gate is about the
+ * raw literal, not data flow.
+ */
+function hasRawIsErrorLiteral(project: Project, fileName: string, source: string): boolean {
+  const sf = project.createSourceFile(fileName, source, { overwrite: true });
+  try {
+    return sourceHasRawIsErrorLiteral(sf);
+  } finally {
+    // One shared Project per check: drop each file after inspection so the
+    // in-memory program does not grow by every tool file scanned (#5062 review).
+    project.removeSourceFile(sf);
+  }
+}
+
+function sourceHasRawIsErrorLiteral(sf: SourceFile): boolean {
+  return sf.getDescendantsOfKind(SyntaxKind.PropertyAssignment).some((prop) => {
+    const nameNode = prop.getNameNode();
+    const name = Node.isStringLiteral(nameNode) ? nameNode.getLiteralText() : nameNode.getText();
+    if (name !== 'isError') return false;
+    let value = prop.getInitializer();
+    while (
+      value !== undefined &&
+      (Node.isAsExpression(value) ||
+        Node.isSatisfiesExpression(value) ||
+        Node.isParenthesizedExpression(value))
+    ) {
+      value = value.getExpression();
+    }
+    return value?.getKind() === SyntaxKind.TrueKeyword;
+  });
+}
+
+/**
  * Verify every MCP tool returns errors through the structured error
  * envelope (Issue #2649, Epic A) — no tool file may build a raw
  * `{ isError: true }` literal. After the #2649 migration the only
@@ -1317,21 +1356,28 @@ function checkAdapterPrecedenceDocs(): boolean {
  * in `tool-result.ts`; every other error return must go through that
  * helper (or `toolError`, its back-compat alias).
  *
- * Scans `src/mcp/tools/**` (excluding `tool-result.ts` and tests). The
- * match pattern is anchored to start-of-line or an opening `{`/`,` so it
- * catches object-literal properties but not prose mentions of
- * `isError: true` inside JSDoc comments.
+ * Scans `src/mcp/tools/**` (excluding `tool-result.ts` and tests). Each
+ * file is parsed and the object-literal AST is inspected, so a JSDoc or
+ * string mention of `isError: true` is not an offender and a property
+ * that follows a comment line inside a multi-line literal is (#5062) —
+ * the previous line-anchored regex got both of those wrong.
  */
 function checkMcpErrorEnvelope(): boolean {
   const toolsDir = join(ROOT, 'packages/nexus-agents/src/mcp/tools');
   if (!existsSync(toolsDir)) return true;
-  const rawLiteral = /(?:^|[{,]\s*)isError\s*:\s*true\b/m;
+  // Syntax only: no tsconfig, no lib files, no import resolution. Each tool
+  // file is parsed in isolation, so this is a parse per file, not a program.
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    skipLoadingLibFiles: true,
+    skipFileDependencyResolution: true,
+  });
   const offenders: string[] = [];
   for (const entry of readdirSync(toolsDir)) {
     if (!entry.endsWith('.ts')) continue;
     if (entry.endsWith('.test.ts') || entry === 'tool-result.ts') continue;
     const content = readFileSync(join(toolsDir, entry), 'utf-8');
-    if (rawLiteral.test(content)) offenders.push(entry);
+    if (hasRawIsErrorLiteral(project, entry, content)) offenders.push(entry);
   }
   if (offenders.length > 0) {
     console.error(
