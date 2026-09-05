@@ -71,6 +71,27 @@ function createTestAdapters(): Map<CliName, ICliAdapter> {
   return map;
 }
 
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
+}
+
+function createExecutionScopedRouter(adapters: Map<CliName, ICliAdapter>): CompositeRouter {
+  return new CompositeRouter(adapters, {
+    enableZeroRouter: true,
+    zeroRouterConfig: { enableCalibration: true },
+    enableBudgetFilter: false,
+    enableTopsisRanking: false,
+    enableLinUCBSelection: true,
+    enableCapacityBalancing: false,
+    enableRoutingMemory: false,
+    enableStrategyDistillation: false,
+  });
+}
+
 describe('CompositeRouterConfigSchema', () => {
   it('should parse default config', () => {
     const result = CompositeRouterConfigSchema.parse({});
@@ -358,6 +379,68 @@ describe('CompositeRouter', () => {
       await shadowRouter.route(task);
       shadowRouter.recordDifficultyOutcome({ content: 'Some other task entirely' }, true);
       expect(readModelSelectionShadowRecords()).toHaveLength(0);
+    });
+
+    it('logs when rerouting drops an incomplete shadow comparison', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const log = makeSpyLogger();
+      shadowRouter = new CompositeRouter(createTestAdapters(), undefined, log);
+      const task: CliTask = { content: 'rerouted task' };
+
+      await shadowRouter.route(task);
+      await shadowRouter.route(task);
+
+      expect(log.debug).toHaveBeenCalledWith(
+        'Dropping incomplete model-selection shadow comparison after task reroute'
+      );
+    });
+
+    it('pairs identical-content concurrent executions with their own shadow decisions', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const concurrentAdapters = createTestAdapters();
+      shadowRouter = createExecutionScopedRouter(concurrentAdapters);
+      const bandit = (shadowRouter as unknown as { linucbBandit?: LinUCBBandit }).linucbBandit;
+      expect(bandit).toBeDefined();
+      if (bandit === undefined) return;
+      vi.spyOn(bandit, 'select')
+        .mockReturnValueOnce({ armIndex: 1, armName: 'gemini', ucbScore: 1 })
+        .mockReturnValueOnce({ armIndex: 0, armName: 'claude', ucbScore: 1 });
+      const gemini = concurrentAdapters.get('gemini');
+      const claude = concurrentAdapters.get('claude');
+      expect(gemini).toBeDefined();
+      expect(claude).toBeDefined();
+      if (gemini === undefined || claude === undefined) return;
+      const first = createDeferred<Awaited<ReturnType<ICliAdapter['execute']>>>();
+      const second = createDeferred<Awaited<ReturnType<ICliAdapter['execute']>>>();
+      vi.mocked(gemini.execute).mockReturnValueOnce(first.promise);
+      vi.mocked(claude.execute).mockReturnValueOnce(second.promise);
+      const taskA: CliTask = { content: 'identical concurrent task' };
+      const taskB: CliTask = { content: 'identical concurrent task' };
+
+      const executionA = shadowRouter.executeTask(taskA);
+      await vi.waitFor(() => {
+        expect(gemini.execute).toHaveBeenCalledOnce();
+      });
+      const executionB = shadowRouter.executeTask(taskB);
+      await vi.waitFor(() => {
+        expect(claude.execute).toHaveBeenCalledOnce();
+      });
+      first.resolve({ ok: true, value: { text: 'first' } });
+      second.resolve({
+        ok: false,
+        error: {
+          code: 'EXECUTION_ERROR',
+          message: 'second failed',
+          cli: 'claude',
+          retryable: false,
+        },
+      });
+      await Promise.all([executionA, executionB]);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(2);
+      expect(records.find((record) => record.cli === 'gemini')?.success).toBe(true);
+      expect(records.find((record) => record.cli === 'claude')?.success).toBe(false);
     });
 
     it('never breaks routing or outcome recording when the shadow log cannot be written', async () => {
@@ -1002,6 +1085,26 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       }).not.toThrow();
     });
 
+    it('skips calibration when no routed execution can be attributed', () => {
+      const log = makeSpyLogger();
+      const router = new CompositeRouter(
+        adapters,
+        { enableZeroRouter: true, zeroRouterConfig: { enableCalibration: true } },
+        log
+      );
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+      if (zeroRouter === undefined) return;
+      const calibrate = vi.spyOn(zeroRouter, 'calibrate');
+
+      router.recordDifficultyOutcome({ content: 'never routed' }, true);
+
+      expect(calibrate).not.toHaveBeenCalled();
+      expect(log.debug).toHaveBeenCalledWith(
+        'Skipping difficulty calibration: no routing attribution'
+      );
+    });
+
     it('should record outcome without quality score', async () => {
       const router = new CompositeRouter(adapters, {
         enableZeroRouter: true,
@@ -1162,7 +1265,10 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
 
     it('should auto-record feedback after successful execution', async () => {
       const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
-      const recordDifficultySpy = vi.spyOn(router, 'recordDifficultyOutcome');
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+      if (zeroRouter === undefined) return;
+      const calibrate = vi.spyOn(zeroRouter, 'calibrate');
 
       const task: CliTask = { content: 'Test task' };
       await router.executeTask(task);
@@ -1172,7 +1278,7 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(reward).toBeGreaterThan(0.3);
       expect(reward).toBeLessThanOrEqual(0.8);
       expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, reward, true);
-      expect(recordDifficultySpy).toHaveBeenCalledWith(task, true);
+      expect(calibrate).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
     });
 
     it('should auto-record feedback with reward 0 on failed execution', async () => {
@@ -1190,7 +1296,10 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       }
 
       const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
-      const recordDifficultySpy = vi.spyOn(router, 'recordDifficultyOutcome');
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+      if (zeroRouter === undefined) return;
+      const calibrate = vi.spyOn(zeroRouter, 'calibrate');
 
       const task: CliTask = { content: 'Failing task' };
       const result = await router.executeTask(task);
@@ -1198,7 +1307,79 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(result.ok).toBe(false);
       // Quality-enriched reward: 0.1 for failure (Issue #929)
       expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.1, false);
-      expect(recordDifficultySpy).toHaveBeenCalledWith(task, false);
+      expect(calibrate).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+    });
+
+    it('keeps interleaved calibration attributed to the routed execution', async () => {
+      router = createExecutionScopedRouter(adapters);
+      const bandit = (router as unknown as { linucbBandit?: LinUCBBandit }).linucbBandit;
+      const zeroRouter = router.getZeroRouter();
+      expect(bandit).toBeDefined();
+      expect(zeroRouter).toBeDefined();
+      if (bandit === undefined || zeroRouter === undefined) return;
+      vi.spyOn(bandit, 'select')
+        .mockReturnValueOnce({ armIndex: 1, armName: 'gemini', ucbScore: 1 })
+        .mockReturnValueOnce({ armIndex: 0, armName: 'claude', ucbScore: 1 });
+      const gemini = adapters.get('gemini');
+      const claude = adapters.get('claude');
+      expect(gemini).toBeDefined();
+      expect(claude).toBeDefined();
+      if (gemini === undefined || claude === undefined) return;
+      const first = createDeferred<Awaited<ReturnType<ICliAdapter['execute']>>>();
+      const second = createDeferred<Awaited<ReturnType<ICliAdapter['execute']>>>();
+      vi.mocked(gemini.execute).mockReturnValueOnce(first.promise);
+      vi.mocked(claude.execute).mockReturnValueOnce(second.promise);
+      const taskA: CliTask = { content: 'first concurrent task' };
+      const taskB: CliTask = { content: 'second concurrent task' };
+      const expectedDifficulty = zeroRouter.estimateDifficulty(taskA).aggregateScore;
+      const calibrate = vi.spyOn(zeroRouter, 'calibrate');
+
+      const executionA = router.executeTask(taskA);
+      await vi.waitFor(() => {
+        expect(gemini.execute).toHaveBeenCalledOnce();
+      });
+      const executionB = router.executeTask(taskB);
+      await vi.waitFor(() => {
+        expect(claude.execute).toHaveBeenCalledOnce();
+      });
+      first.resolve({ ok: true, value: { text: 'first' } });
+      await executionA;
+
+      expect(calibrate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estimatedDifficulty: expectedDifficulty,
+          selectedCli: 'gemini',
+        })
+      );
+      second.resolve({ ok: true, value: { text: 'second' } });
+      await executionB;
+    });
+
+    it('keeps sequential calibration behavior unchanged', async () => {
+      router = createExecutionScopedRouter(adapters);
+      const bandit = (router as unknown as { linucbBandit?: LinUCBBandit }).linucbBandit;
+      const zeroRouter = router.getZeroRouter();
+      expect(bandit).toBeDefined();
+      expect(zeroRouter).toBeDefined();
+      if (bandit === undefined || zeroRouter === undefined) return;
+      vi.spyOn(bandit, 'select').mockReturnValueOnce({
+        armIndex: 1,
+        armName: 'gemini',
+        ucbScore: 1,
+      });
+      const task: CliTask = { content: 'single routed task' };
+      const expectedDifficulty = zeroRouter.estimateDifficulty(task).aggregateScore;
+      const calibrate = vi.spyOn(zeroRouter, 'calibrate');
+
+      await router.executeTask(task);
+
+      expect(calibrate).toHaveBeenCalledOnce();
+      expect(calibrate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estimatedDifficulty: expectedDifficulty,
+          selectedCli: 'gemini',
+        })
+      );
     });
 
     it('should return routing error if routing fails', async () => {

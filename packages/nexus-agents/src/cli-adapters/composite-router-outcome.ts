@@ -29,7 +29,7 @@ import { clamp01 } from '../utils/math-utils.js';
 /** Module-level singleton — SharedTaskAnalyzer is stateless. */
 const sharedAnalyzer = createSharedTaskAnalyzer();
 
-/** Last routed task info for difficulty outcome recording. */
+/** Legacy compatibility shape; runtime attribution travels with the routed execution. */
 export interface LastRoutedTaskInfo {
   task: CliTask;
   selectedCli: RoutingArmId;
@@ -43,6 +43,7 @@ export interface OutcomeDependencies {
   linucbBandit: LinUCBBandit | undefined;
   preferenceRouter: PreferenceRouter | undefined;
   zeroRouter: IZeroRouter | undefined;
+  /** Retained for API compatibility; no longer read by outcome recording. */
   lastRoutedTask: LastRoutedTaskInfo | undefined;
   /**
    * Present so the outcome path can reproduce the budget feature the routing
@@ -110,36 +111,23 @@ export function recordPreferenceSignal(
   deps.logger.debug('Recorded preference', { strongModelPreferred });
 }
 
-/** Gets difficulty info for a task, using cached value if available. */
-export function getDifficultyInfo(
-  task: CliTask,
-  deps: OutcomeDependencies
-): { difficulty: number; selectedCli: RoutingArmId } {
-  if (deps.lastRoutedTask?.task.content === task.content) {
-    return {
-      difficulty: deps.lastRoutedTask.difficulty,
-      selectedCli: deps.lastRoutedTask.selectedCli,
-    };
-  }
-  if (deps.zeroRouter === undefined) {
-    return { difficulty: 0.5, selectedCli: 'claude' };
-  }
-  const estimate = deps.zeroRouter.estimateDifficulty(task);
-  return { difficulty: estimate.aggregateScore, selectedCli: 'claude' };
-}
-
 /** Records a difficulty outcome for ZeroRouter calibration. */
 export function recordZeroRouterOutcome(
   task: CliTask,
   success: boolean,
   qualityScore: number | undefined,
-  deps: OutcomeDependencies
+  deps: OutcomeDependencies,
+  attribution?: { difficulty: number; selectedCli: RoutingArmId }
 ): void {
   if (deps.zeroRouter === undefined) {
     deps.logger.debug('ZeroRouter not enabled, skipping difficulty outcome');
     return;
   }
-  const { difficulty, selectedCli } = getDifficultyInfo(task, deps);
+  if (attribution === undefined) {
+    deps.logger.debug('Skipping difficulty calibration: no routing attribution');
+    return;
+  }
+  const { difficulty, selectedCli } = attribution;
   const outcome = buildDifficultyOutcome(
     task.content,
     difficulty,
