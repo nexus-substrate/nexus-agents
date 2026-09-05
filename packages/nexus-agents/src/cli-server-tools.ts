@@ -120,6 +120,7 @@ import {
   setGlobalPolicyFirewall,
   stagePolicyFirewallForRollout,
 } from './mcp/middleware/policy-registry.js';
+import { setSecureHandlerAuditLogger } from './mcp/middleware/secure-handler.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
@@ -834,6 +835,16 @@ function registerToolCategories(ctx: ToolRegistrationContext): void {
   }
 }
 
+/** Registers one pass with its audit dependency visible to secure handlers. */
+function registerSecureToolCategories(ctx: ToolRegistrationContext): void {
+  setSecureHandlerAuditLogger(ctx.logger, ctx.auditLogger);
+  try {
+    registerToolCategories(ctx);
+  } finally {
+    setSecureHandlerAuditLogger(ctx.logger);
+  }
+}
+
 /** Initializes V2 Pipeline OS subsystems and logs summary. (Phases B-C, Issues #921-#922) */
 function initV2PipelineSubsystems(
   logger: ILogger,
@@ -927,7 +938,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
 
   const gatewayOptions = { ...options, server: observableServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
-  registerToolCategories(ctx);
+  registerSecureToolCategories(ctx);
 
   // Wire upstream MCP servers from gateway config (#1498). #2960: catch
   // rejections so an upstream-init failure surfaces in logs instead of
