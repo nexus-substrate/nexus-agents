@@ -11,12 +11,10 @@ import type { IZeroRouter } from './zero-router.js';
 import {
   recordBanditOutcome,
   recordPreferenceSignal,
-  getDifficultyInfo,
   recordZeroRouterOutcome,
   hasMinimumPreferenceData,
   computeQualityReward,
   resetQualityRewardCache,
-  type LastRoutedTaskInfo,
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
 import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/index.js';
@@ -244,64 +242,10 @@ describe('composite-router-outcome', () => {
     });
   });
 
-  describe('getDifficultyInfo', () => {
-    it('should return cached difficulty when task content matches', () => {
-      const task = createCliTask('cached task');
-      const lastRoutedTask: LastRoutedTaskInfo = {
-        task: createCliTask('cached task'),
-        selectedCli: 'gemini',
-        difficulty: 0.35,
-      };
-      const deps = createBaseDeps({ lastRoutedTask });
-
-      expect(getDifficultyInfo(task, deps)).toEqual({ difficulty: 0.35, selectedCli: 'gemini' });
-    });
-
-    it('should return default values when zeroRouter is undefined', () => {
-      const deps = createBaseDeps({ zeroRouter: undefined, lastRoutedTask: undefined });
-      expect(getDifficultyInfo(createCliTask(), deps)).toEqual({
-        difficulty: 0.5,
-        selectedCli: 'claude',
-      });
-    });
-
-    it('should estimate difficulty from zeroRouter when no cache match', () => {
-      const zeroRouter = createMockZeroRouter();
-      const deps = createBaseDeps({ zeroRouter, lastRoutedTask: undefined });
-      const task = createCliTask('new task');
-
-      const result = getDifficultyInfo(task, deps);
-
-      expect(zeroRouter.estimateDifficulty).toHaveBeenCalledWith(task);
-      expect(result).toEqual({ difficulty: 0.6, selectedCli: 'claude' });
-    });
-
-    it('should use zeroRouter when task content does not match cache', () => {
-      const zeroRouter = createMockZeroRouter();
-      const lastRoutedTask: LastRoutedTaskInfo = {
-        task: createCliTask('cached'),
-        selectedCli: 'gemini',
-        difficulty: 0.35,
-      };
-      const deps = createBaseDeps({ zeroRouter, lastRoutedTask });
-
-      getDifficultyInfo(createCliTask('different'), deps);
-      expect(zeroRouter.estimateDifficulty).toHaveBeenCalled();
-    });
-
-    it('should handle empty task content', () => {
-      const deps = createBaseDeps({ zeroRouter: undefined });
-      expect(getDifficultyInfo(createCliTask(''), deps)).toEqual({
-        difficulty: 0.5,
-        selectedCli: 'claude',
-      });
-    });
-  });
-
   describe('recordZeroRouterOutcome', () => {
     it('should skip when zeroRouter is undefined', () => {
       const deps = createBaseDeps({ zeroRouter: undefined });
-      recordZeroRouterOutcome(createCliTask(), true, 0.9, deps);
+      recordZeroRouterOutcome(createCliTask(), true, 0.9, deps, undefined);
 
       expect(deps.logger.debug).toHaveBeenCalledWith(
         'ZeroRouter not enabled, skipping difficulty outcome'
@@ -311,7 +255,10 @@ describe('composite-router-outcome', () => {
     it('should record outcome with quality score', () => {
       const zeroRouter = createMockZeroRouter();
       const deps = createBaseDeps({ zeroRouter });
-      recordZeroRouterOutcome(createCliTask(), true, 0.9, deps);
+      recordZeroRouterOutcome(createCliTask(), true, 0.9, deps, {
+        difficulty: 0.6,
+        selectedCli: 'claude',
+      });
 
       expect(zeroRouter.calibrate).toHaveBeenCalledWith(
         expect.objectContaining({ success: true, qualityScore: 0.9 })
@@ -326,7 +273,10 @@ describe('composite-router-outcome', () => {
     it('should record outcome without quality score', () => {
       const zeroRouter = createMockZeroRouter();
       const deps = createBaseDeps({ zeroRouter });
-      recordZeroRouterOutcome(createCliTask(), false, undefined, deps);
+      recordZeroRouterOutcome(createCliTask(), false, undefined, deps, {
+        difficulty: 0.6,
+        selectedCli: 'claude',
+      });
 
       expect(zeroRouter.calibrate).toHaveBeenCalledWith(
         expect.objectContaining({ success: false })
@@ -338,16 +288,14 @@ describe('composite-router-outcome', () => {
       });
     });
 
-    it('should use cached difficulty when available', () => {
+    it('should use the routed execution attribution', () => {
       const zeroRouter = createMockZeroRouter();
-      const lastRoutedTask: LastRoutedTaskInfo = {
-        task: createCliTask('cached'),
+      const deps = createBaseDeps({ zeroRouter });
+
+      recordZeroRouterOutcome(createCliTask('cached'), true, 0.8, deps, {
         selectedCli: 'codex',
         difficulty: 0.25,
-      };
-      const deps = createBaseDeps({ zeroRouter, lastRoutedTask });
-
-      recordZeroRouterOutcome(createCliTask('cached'), true, 0.8, deps);
+      });
 
       expect(zeroRouter.calibrate).toHaveBeenCalledWith(
         expect.objectContaining({ estimatedDifficulty: 0.25, selectedCli: 'codex' })
@@ -358,12 +306,13 @@ describe('composite-router-outcome', () => {
       const zeroRouter = createMockZeroRouter();
       const deps = createBaseDeps({ zeroRouter });
 
-      recordZeroRouterOutcome(createCliTask(), true, 0, deps);
+      const attribution = { difficulty: 0.6, selectedCli: 'claude' } as const;
+      recordZeroRouterOutcome(createCliTask(), true, 0, deps, attribution);
       expect(zeroRouter.calibrate).toHaveBeenCalledWith(
         expect.objectContaining({ success: true, qualityScore: 0 })
       );
 
-      recordZeroRouterOutcome(createCliTask(), false, 0.2, deps);
+      recordZeroRouterOutcome(createCliTask(), false, 0.2, deps, attribution);
       expect(zeroRouter.calibrate).toHaveBeenCalledWith(
         expect.objectContaining({ success: false, qualityScore: 0.2 })
       );
@@ -476,17 +425,6 @@ describe('composite-router-outcome', () => {
   });
 
   describe('Type interfaces', () => {
-    it('should structure LastRoutedTaskInfo correctly', () => {
-      const info: LastRoutedTaskInfo = {
-        task: createCliTask('test'),
-        selectedCli: 'claude',
-        difficulty: 0.75,
-      };
-      expect(info.task.content).toBe('test');
-      expect(info.selectedCli).toBe('claude');
-      expect(info.difficulty).toBe(0.75);
-    });
-
     it('should support minimal OutcomeDependencies', () => {
       const deps: OutcomeDependencies = {
         logger: createMockLogger(),
@@ -507,17 +445,12 @@ describe('composite-router-outcome', () => {
         linucbBandit: createMockLinUCBBandit(),
         preferenceRouter: createMockPreferenceRouter(),
         zeroRouter: createMockZeroRouter(),
-        lastRoutedTask: {
-          task: createCliTask(),
-          selectedCli: 'claude',
-          difficulty: 0.5,
-        },
+        lastRoutedTask: undefined,
       };
       expect(deps.cliNames).toHaveLength(3);
       expect(deps.linucbBandit).toBeDefined();
       expect(deps.preferenceRouter).toBeDefined();
       expect(deps.zeroRouter).toBeDefined();
-      expect(deps.lastRoutedTask).toBeDefined();
     });
   });
 });
