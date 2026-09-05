@@ -419,7 +419,7 @@ Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONF
 
 Every `NEXUS_*` variable is validated at startup against `config/env-schema.ts`; an unrecognized name is reported as unknown with a typo suggestion. A variable named in this table but missing from that schema is therefore reported as a typo despite being spelled correctly (#4722), so the two lists are cross-checked by a test.
 
-Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars).
+Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed); `NEXUS_TEST_TIMEOUT_MS` / `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` were removed for the same reason in #4180 (per-complexity CLI timeouts flow through `TIMEOUT_PROFILES`, not env vars). `NEXUS_AUTH_METHOD` was removed in #5665 (only the startup log line ever read it; `initializeAuth` takes the method from `security.auth.method` in the config file).
 
 ---
 
