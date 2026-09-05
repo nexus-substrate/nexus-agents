@@ -18,7 +18,11 @@ import type { WorkerResult } from './worker-dispatcher.js';
 import type { WorkerConflict } from './conflict-detector.js';
 import type { IModelAdapter } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
-import { resetSynthesisHistory } from './synthesis-history.js';
+import {
+  resetSynthesisHistory,
+  getSynthesisHistoryTracker,
+  createConflictPatternKey,
+} from './synthesis-history.js';
 
 // Reset synthesis history between tests to prevent cross-test contamination
 beforeEach(() => {
@@ -40,34 +44,35 @@ function makeConflict(filePath: string, workers: string[]): WorkerConflict {
 function makeMockAdapter(responseOrFactory: string | (() => ContentBlock)): IModelAdapter {
   if (typeof responseOrFactory === 'function') {
     return {
-      complete: vi.fn().mockImplementation(
-        (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+      complete: vi
+        .fn()
+        .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
           Promise.resolve({
             ok: true as const,
             value: { content: [responseOrFactory()] },
           })
-      ),
+        ),
     } as unknown as IModelAdapter;
   }
   return {
-    complete: vi.fn().mockImplementation(
-      (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+    complete: vi
+      .fn()
+      .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
         Promise.resolve({
           ok: true as const,
           value: { content: [{ type: 'text' as const, text: responseOrFactory }] },
         })
-    ),
+      ),
   } as unknown as IModelAdapter;
 }
 
 function makeFailingAdapter(errorMsg: string): IModelAdapter {
   return {
-    complete: vi.fn().mockImplementation(
-      (): Promise<{ ok: false; error: { message: string } }> =>
-        Promise.resolve({
-          ok: false as const,
-          error: { message: errorMsg },
-        })
+    complete: vi.fn().mockImplementation((): Promise<{ ok: false; error: { message: string } }> =>
+      Promise.resolve({
+        ok: false as const,
+        error: { message: errorMsg },
+      })
     ),
   } as unknown as IModelAdapter;
 }
@@ -213,6 +218,35 @@ describe('synthesizeResults', () => {
     if (result.ok) {
       expect(result.value).toContain('rate limiter');
     }
+  });
+
+  it('treats an empty LLM synthesis as a failed attempt, not an llm success (#5642)', async () => {
+    // The model answered with no text on both the tier-2 and the tier-3 call.
+    // Before the fix the empty tier-2 answer was recorded as a tier-2 success,
+    // labelled synthesisSource 'llm', and returned the raw concatenation the
+    // fallback path produces — indistinguishable in the record from a real
+    // synthesis, and it skipped the reimagine escalation.
+    const adapter = makeMockAdapter('');
+    const conflicts = [makeConflict('shared.ts', ['code', 'security'])];
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Modified shared.ts.'), makeResult('security', 'Hardened it.')],
+      conflicts,
+      taskDescription: 'Modify shared',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.synthesisSource).toBe('fallback');
+      expect(result.value).toContain('Modified shared.ts.');
+    }
+    // Escalated to tier 3 (second call) rather than stopping at the empty answer.
+    expect(vi.mocked(adapter.complete)).toHaveBeenCalledTimes(2);
+    const stats = getSynthesisHistoryTracker().getStats(
+      createConflictPatternKey(['code', 'security'])
+    );
+    expect(stats?.tier2Successes).toBe(0);
+    expect(stats?.consecutiveTier2Failures).toBe(1);
   });
 
   it('falls back to concatenated output on adapter failure', async () => {
@@ -408,8 +442,9 @@ describe('synthesizeResults', () => {
 
   it('falls back to raw worker outputs when response has no text blocks (Issue #1468)', async () => {
     const adapter = {
-      complete: vi.fn().mockImplementation(
-        (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+      complete: vi
+        .fn()
+        .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
           Promise.resolve({
             ok: true as const,
             value: {
@@ -423,7 +458,7 @@ describe('synthesizeResults', () => {
               ],
             },
           })
-      ),
+        ),
     } as unknown as IModelAdapter;
 
     const result = await synthesizeResults({
@@ -438,7 +473,9 @@ describe('synthesizeResults', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.synthesisSource).toBe('llm');
+    // A response with no text is a failed attempt, so the record says
+    // 'fallback' (#5642) — it used to be labelled 'llm' for the same value.
+    expect(result.synthesisSource).toBe('fallback');
     expect(result.value).toContain('Rate limiter implemented.');
     expect(result.value).toContain('Tests added.');
   });

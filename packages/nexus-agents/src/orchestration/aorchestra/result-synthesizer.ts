@@ -331,7 +331,6 @@ async function synthesizeTier2(
   excludedWorkerCount: number
 ): Promise<SynthesisResult> {
   const { results, conflicts, taskDescription, modelAdapter } = input;
-  const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
   const tracker = getSynthesisHistoryTracker();
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
@@ -342,13 +341,10 @@ async function synthesizeTier2(
     return mkFallback(results, conflicts, excludedWorkerCount);
   }
 
-  if (tier2Text === '') {
-    tracker.record(patternKey, 2, true);
-    const raw = successResults.map((r) => r.output).join('\n');
-    return { ok: true, value: raw, synthesisSource: 'llm', excludedWorkerCount };
-  }
-
-  if (!isSynthesisLowQuality(tier2Text, inputLength)) {
+  // An empty answer is a failed attempt, not a synthesis (#5642): it used to be
+  // recorded as a tier-2 success labelled 'llm' while returning the fallback's
+  // raw concatenation, and it skipped the reimagine escalation.
+  if (tier2Text !== '' && !isSynthesisLowQuality(tier2Text, inputLength)) {
     tracker.record(patternKey, 2, true);
     return { ok: true, value: tier2Text, synthesisSource: 'llm', excludedWorkerCount };
   }
