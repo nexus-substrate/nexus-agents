@@ -52,6 +52,7 @@ import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 import { getResearchInsightsForTask } from '../context/context-retriever.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-consensus.js';
+import { allOf, anyOf } from '../utils/verdict-aggregation.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -162,6 +163,12 @@ export interface QaReviewResult {
 
 /** Overall pipeline result. */
 export interface DevPipelineResult {
+  /**
+   * Whether the pipeline completed successfully.
+   *
+   * True only when every planned task is present in `tasks` with status 'done'
+   * AND the security gate passed (#5645).
+   */
   readonly completed: boolean;
   readonly plan: string;
   readonly tasks: readonly PipelineTask[];
@@ -213,6 +220,18 @@ export interface DevPipelineResult {
    * fault. Absent means a normal run.
    */
   readonly dryRun?: true;
+  /**
+   * Aggregate completion status of planned tasks (#5645).
+   *
+   * `'all_done'` when every planned task was implemented and passed QA;
+   * `'partial'` when some but not all tasks completed with status `'done'`;
+   * `'none'` when zero tasks completed with status `'done'` (including empty
+   * plans where nothing was planned).
+   *
+   * Optional so early-return shapes that never ran the implement loop need not
+   * carry it.
+   */
+  readonly taskStatus?: 'all_done' | 'partial' | 'none';
 }
 
 // ============================================================================
@@ -928,6 +947,34 @@ function buildHarnessResult(planResult: PlanVoteResult, tasks: PipelineTask[]): 
   };
 }
 
+/**
+ * Aggregate completion status of planned tasks (#5645).
+ * A plan with zero tasks completes nothing (whenEmpty: false).
+ */
+function deriveTaskAggregate(
+  plannedTasks: readonly PipelineTask[],
+  completedTasks: readonly PipelineTask[]
+): {
+  readonly allTasksDone: boolean;
+  readonly taskStatus: 'all_done' | 'partial' | 'none';
+} {
+  const completedById = new Map(completedTasks.map((t) => [t.id, t]));
+  const allTasksDone = allOf(
+    plannedTasks,
+    (task) => completedById.get(task.id)?.status === 'done',
+    false
+  );
+  const anyTaskDone = anyOf(
+    plannedTasks,
+    (task) => completedById.get(task.id)?.status === 'done',
+    false
+  );
+  return {
+    allTasksDone,
+    taskStatus: allTasksDone ? 'all_done' : anyTaskDone ? 'partial' : 'none',
+  };
+}
+
 /** Phases 4-5: Implement/QA + Quality Gate + Security with checkpoint support. */
 async function runImplSecurityPhase(
   planResult: { plan: string; iterations: number },
@@ -939,6 +986,8 @@ async function runImplSecurityPhase(
   const implResult = await implementQaLoop(tasks, stages, limits);
   if (sid !== undefined)
     saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
+
+  const { allTasksDone, taskStatus } = deriveTaskAggregate(tasks, implResult.completedTasks);
 
   // Local pre-ship quality gate (#3356). In 'blocking' mode a red gate fails
   // the phase before the security scan even runs — same posture as a blocking
@@ -954,6 +1003,7 @@ async function runImplSecurityPhase(
       // The gate short-circuited before the scan — absence, not a verdict.
       securityPassed: false,
       securityRan: false,
+      taskStatus,
     };
   }
 
@@ -968,13 +1018,14 @@ async function runImplSecurityPhase(
   }
 
   return {
-    completed: security.passed,
+    completed: allTasksDone && security.passed,
     plan: planResult.plan,
     tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
     voteIterations: planResult.iterations,
     qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
     securityRan: security.verdict !== 'skip',
+    taskStatus,
     ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
   };
 }

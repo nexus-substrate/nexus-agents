@@ -2888,6 +2888,7 @@ InterfaceDeclaration DevPipelineResult
   readonly securityNote?: string | undefined
   readonly securityPassed: boolean
   readonly securityRan?: boolean | undefined
+  readonly taskStatus?: "all_done" | "partial" | "none" | undefined
   readonly tasks: readonly PipelineTask[]
   readonly voteIterations: number
 InterfaceDeclaration DevPipelineStages
@@ -7474,7 +7475,7 @@ InterfaceDeclaration ReviewResponseMessage
   feedback: string
   requesterId: string
   reviewerId: string
-  severity?: "critical" | "none" | "major" | "minor" | undefined
+  severity?: "none" | "critical" | "major" | "minor" | undefined
   suggestions?: string[] | undefined
   type: "review_response"
 VariableDeclaration ReviewResponseMessageSchema
