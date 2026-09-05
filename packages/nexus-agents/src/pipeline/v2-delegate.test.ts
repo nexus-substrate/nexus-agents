@@ -3,8 +3,9 @@
  *
  * Tests the V2 pipeline path for delegate_to_model.
  * Phase A (Issue #920): Tests DelegateInput→TaskContract conversion and pipeline metrics.
- * Phase 1 (#927): Tests PolicyEvaluator enforcement in pipeline execution.
+ * Phase 1 (#927): Tests the shared PolicyEvaluator helper.
  * #4657: Pins that the delegate plan declares no policy gate.
+ * #5485: Pins that delegate execution performs no route-stage policy evaluation.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 
@@ -232,7 +233,7 @@ describe('checkPipelinePolicy', () => {
   // tests pinned that inert behavior — both removed.
 });
 
-describe('executeDelegatePipeline — policy enforcement', () => {
+describe('executeDelegatePipeline — no route-stage policy evaluation (#5485)', () => {
   const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
   const savedMode = process.env['NEXUS_V2_MODE'];
 
@@ -243,14 +244,10 @@ describe('executeDelegatePipeline — policy enforcement', () => {
     else delete process.env['NEXUS_V2_MODE'];
   });
 
-  // #2932: pre-#2932 this test exercised the `high-risk-approval` rule,
-  // which has been deleted (no producer ever wrote `highRisk`). The
-  // remaining `trust-tier` rule gates on `stageType === 'execute'` only,
-  // but `executeDelegatePipeline` calls `checkPipelinePolicy(task, 'route')`
-  // — different stage. There is no rule today that gates 'route', so
-  // there's no integration path through executeDelegatePipeline that
-  // would block. The block-mode coverage lives in the unit tests above
-  // (`checkPipelinePolicy` with stageType='execute' + trustTier:'3').
+  // #2932 removed the unwired `high-risk-approval` rule. The remaining
+  // `trust-tier` rule gates execute stages only, so #5485 removed the delegate
+  // path's route-stage check instead of retaining a check that could not fail.
+  // Execute-stage block-mode coverage lives in the unit tests above.
 
   it('proceeds normally when policy allows', async () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'off';
