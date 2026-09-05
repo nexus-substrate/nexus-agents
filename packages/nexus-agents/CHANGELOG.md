@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.7
+
+### Patch Changes
+
+- [#5675](https://github.com/nexus-substrate/nexus-agents/pull/5675) [`ef5ca9e`](https://github.com/nexus-substrate/nexus-agents/commit/ef5ca9e7b3442e6c83c0759c1e9145a7daf814c2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The Producer/Consumer export ratchet resolves the merge-base once and reads a modified file's base content from it, so an export main deleted after the branch point is no longer blamed on the PR ([#5671](https://github.com/nexus-substrate/nexus-agents/issues/5671)).
+
 ## 8.26.6
 
 ### Patch Changes
