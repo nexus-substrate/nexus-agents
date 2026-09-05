@@ -105,6 +105,14 @@ export function printResearchUsage(): void {
   process.stdout.write('  discover         Discover papers/repos from external sources\n');
   process.stdout.write('  review           Discover, score, and rank research findings\n');
   process.stdout.write('  prioritize       Rank actionable techniques by priority\n');
+  const flags = getCommandHelp('research')?.flags ?? [];
+  if (flags.length > 0) {
+    process.stdout.write('Options:\n');
+    for (const entry of flags) {
+      const suffix = entry.defaultValue === undefined ? '' : ` (default: ${entry.defaultValue})`;
+      process.stdout.write(`  ${entry.flag}  ${entry.description}${suffix}\n`);
+    }
+  }
 }
 
 /**

@@ -39,12 +39,11 @@ vi.mock('../pipeline/research-trigger.js', () => ({
 
 // Mock the auto-file helper so the handler test is hermetic (does not touch
 // `gh`). The helper's safeguards are covered in auto-file-suggestions.test.ts.
-const autoFileSuggestionsMock = vi.fn(
-  (tasks: ReadonlyArray<{ id: string }>): Promise<unknown> =>
-    Promise.resolve({
-      filed: tasks.map((t) => ({ id: t.id, url: '(dry-run)' })),
-      skipped: [],
-    })
+const autoFileSuggestionsMock = vi.fn((tasks: ReadonlyArray<{ id: string }>): Promise<unknown> =>
+  Promise.resolve({
+    filed: tasks.map((t) => ({ id: t.id, url: '(dry-run)' })),
+    skipped: [],
+  })
 );
 vi.mock('./auto-file-suggestions.js', () => ({
   autoFileSuggestions: (tasks: ReadonlyArray<{ id: string }>) => autoFileSuggestionsMock(tasks),
@@ -575,19 +574,27 @@ describe('researchCommand', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('should fail when the requested status technique does not exist', async () => {
+    const result = await researchCommand('status', ['nonexistent'], { format: 'table' });
+    expect(result.exitCode).toBe(1);
+  });
+
   it('should handle overlap subcommand', async () => {
     const result = await researchCommand('overlap', ['test-technique'], { format: 'table' });
     expect(result.text).toContain('Overlap Analysis');
     expect(result.exitCode).toBe(0);
   });
 
+  it('should fail when the overlap technique does not exist', async () => {
+    const result = await researchCommand('overlap', ['nonexistent'], { format: 'table' });
+    expect(result.exitCode).toBe(1);
+  });
+
   it('should require technique-id for overlap', async () => {
     const result = await researchCommand('overlap', [], {});
     expect(result.text).toContain('Error');
     expect(result.text).toContain('required');
-    // overlap's "missing arg" path returns from the inner handler as a plain
-    // string; the `ok()` wrapper sets exitCode 0. Exit code for input
-    // validation is governed by the dispatcher, not the subcommand handler.
+    expect(result.exitCode).toBe(1);
   });
 
   it('should handle add subcommand with missing arxiv-id', async () => {

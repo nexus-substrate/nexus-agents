@@ -30,6 +30,7 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     // CliExitResult maps the underlying 0|non-0 status to SUCCESS|SERVER_START_FAILED.
     expertListCommand: vi.fn().mockReturnValue(0),
     helloCommand: vi.fn().mockReturnValue(0),
+    researchCommand: vi.fn().mockResolvedValue({ text: 'ok', exitCode: 0 }),
     voteCommand: vi.fn().mockResolvedValue(0),
   };
 });
@@ -38,6 +39,7 @@ import {
   handleConfigCommand,
   handleExpertCommand,
   handleHelloCommand,
+  handleResearchCommand,
   handleUnimplementedCommand,
   handleVoteCommand,
 } from './cli-commands-handlers.js';
@@ -46,8 +48,10 @@ import {
   configInitCommand,
   expertListCommand,
   helloCommand,
+  researchCommand,
   voteCommand,
 } from './cli/index.js';
+import { printResearchUsage } from './cli-commands-usage.js';
 
 /**
  * Creates a ParsedCliArgs object with default values.
@@ -560,5 +564,67 @@ describe('handleVoteCommand forwards --option (#4963)', () => {
     });
 
     expect(voteMock.mock.calls[0]?.[0]).not.toHaveProperty('options');
+  });
+});
+
+describe('handleResearchCommand forwards advertised flags (#5609)', () => {
+  const researchMock = vi.mocked(researchCommand);
+
+  beforeEach(() => {
+    researchMock.mockClear();
+    researchMock.mockResolvedValue({ text: 'ok', exitCode: 0 });
+  });
+
+  it('forwards every flag rendered by printResearchUsage', async () => {
+    printResearchUsage();
+    const usage = vi
+      .mocked(process.stdout.write)
+      .mock.calls.map((call) => String(call[0]))
+      .join('');
+    const advertisedFlags = [...usage.matchAll(/--([a-z][a-z-]*)/g)]
+      .map((match) => match[1])
+      .filter((flag): flag is string => flag !== undefined);
+    expect(advertisedFlags.length).toBeGreaterThan(0);
+    expect(advertisedFlags).toContain('source');
+    vi.mocked(process.stdout.write).mockClear();
+
+    const base = createMockArgs();
+    const args = createMockArgs({
+      command: 'research',
+      subcommand: 'discover',
+      positionals: ['research', 'discover', 'agents'],
+      options: {
+        ...base.options,
+        format: 'json',
+        output: 'research.json',
+        dryRun: true,
+        source: 'github',
+      },
+    });
+    await handleResearchCommand(args);
+
+    const forwarded = researchMock.mock.calls[0]?.[2];
+    const parsedOptions = Object.fromEntries(Object.entries(args.options));
+    for (const flag of advertisedFlags) {
+      const optionKey = flag.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
+      expect(forwarded).toHaveProperty(optionKey, parsedOptions[optionKey]);
+    }
+  });
+
+  it('rejects a source outside the discover schema', async () => {
+    const base = createMockArgs();
+    const result = await handleResearchCommand(
+      createMockArgs({
+        command: 'research',
+        subcommand: 'discover',
+        positionals: ['research', 'discover', 'agents'],
+        options: { ...base.options, source: 'not-a-source' },
+      })
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ success: false, exitCode: 3, message: expect.any(String) })
+    );
+    expect(researchMock).not.toHaveBeenCalled();
   });
 });
