@@ -602,6 +602,95 @@ describe('summarizeContextForPrompt — research insights', () => {
   });
 });
 
+describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () => {
+  const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
+
+  afterEach(() => {
+    if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
+  });
+
+  it('renders a recent learning when it is the only available context', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const recentLearning = {
+      entry: {
+        key: 'learning-1',
+        value: 'prefer bounded context',
+        metadata: { importance: 'medium' as const },
+        createdAt: new Date('2026-06-01'),
+        accessedAt: new Date('2026-06-01'),
+      },
+      priority: { score: 0.5, components: { recency: 0.5, importance: 0.5, relevance: 0.5 } },
+    };
+
+    const out = summarizeContextForPrompt(emptyContext({ recentLearnings: [recentLearning] }));
+
+    expect(out).toContain('### Recent learnings (1 included, 0 dropped, 0 dropped tokens)');
+    expect(out).toContain('- prefer bounded context');
+  });
+
+  it('renders a prior strategy when it is the only available context', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const priorStrategy: DistilledRule = {
+      id: 'failure-rate:codex:code_generation',
+      patternType: 'failure-rate',
+      cli: 'codex',
+      category: 'code_generation',
+      action: 'penalize',
+      confidence: 0.85,
+      support: 0.85,
+      effect: 1,
+      observationCount: 50,
+      metric: 0.7,
+      status: 'active',
+      createdAt: 1000,
+      updatedAt: 2000,
+      tainted: false,
+    };
+
+    const out = summarizeContextForPrompt(emptyContext({ priorStrategies: [priorStrategy] }));
+
+    expect(out).toContain('### Prior strategies (1 included, 0 dropped, 0 dropped tokens)');
+    expect(out).toContain('- code_generation failure-rate penalize codex');
+  });
+
+  it('discloses the five-item slice for both retrieved sources', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const recentLearnings = Array.from({ length: 6 }, (_, index) => ({
+      entry: {
+        key: `learning-${String(index)}`,
+        value: `bounded context ${String(index)}`,
+        metadata: { importance: 'medium' as const },
+        createdAt: new Date('2026-06-01'),
+        accessedAt: new Date('2026-06-01'),
+      },
+      priority: { score: 0.5, components: { recency: 0.5, importance: 0.5, relevance: 0.5 } },
+    }));
+    const priorStrategies: DistilledRule[] = Array.from({ length: 6 }, (_, index) => ({
+      id: `failure-rate:codex:${String(index)}`,
+      patternType: 'failure-rate',
+      cli: 'codex',
+      category: 'code_generation',
+      action: 'penalize',
+      confidence: 0.85,
+      support: 0.85,
+      effect: 1,
+      observationCount: 50,
+      metric: 0.7,
+      status: 'active',
+      createdAt: 1000,
+      updatedAt: 2000,
+      tainted: false,
+    }));
+
+    const out = summarizeContextForPrompt(emptyContext({ recentLearnings, priorStrategies }));
+
+    expect(out).toMatch(/### Recent learnings \(5 included, 1 dropped, \d+ dropped tokens\)/);
+    expect(out).toMatch(/### Prior strategies \(5 included, 1 dropped, \d+ dropped tokens\)/);
+    expect(out).not.toContain('- bounded context 5');
+  });
+});
+
 // ============================================================================
 // summarizeContextForPrompt — NEXUS_CONTEXT_RANKED cross-ranked rendering (#3236)
 // ============================================================================
@@ -1024,6 +1113,23 @@ describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () =
       .find((e) => e.contextSource === 'repo-map');
     expect(repoEntry?.inputTokens).toBeGreaterThan(0);
     expect(repoEntry?.variant).toBe('NEXUS_REPO_MAP=1');
+  });
+
+  it('clamps the combined repo map and records only its emitted tokens (#5588)', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const budgetTokens = 100;
+    const clipNoticeReserveTokens = 30;
+    const ctx = emptyContext({ repoMap: 'x'.repeat(1000) });
+
+    const out = summarizeContextForPrompt(ctx, budgetTokens);
+    const emittedTokens = createTokenCounter().estimate(out);
+    const repoEntry = getTokenLedger()
+      .all()
+      .find((entry) => entry.contextSource === 'repo-map');
+
+    expect(emittedTokens).toBeLessThanOrEqual(budgetTokens + clipNoticeReserveTokens);
+    expect(repoEntry?.inputTokens).toBe(emittedTokens);
+    expect(getTokenLedger().summarize().bySource['memory-backend']).toBeUndefined();
   });
 
   it('an empty repoMap string appends nothing and records no repo-map entry', () => {

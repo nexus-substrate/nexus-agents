@@ -200,6 +200,38 @@ export function disclosedHeading(label: string, slice: ContextSlice): string {
   return `${label} (${String(slice.included)} included, ${String(slice.dropped)} dropped, ${String(slice.droppedTokens)} dropped tokens)`;
 }
 
+function renderDisclosedSection(
+  heading: string,
+  lines: readonly string[],
+  counter: { readonly estimate: (text: string) => number }
+): string {
+  const slice = sliceContextLines(lines, counter);
+  return `${disclosedHeading(heading, slice)}\n${slice.lines.join('\n')}`;
+}
+
+/** Render adaptive-memory and distilled-strategy sections for the legacy prompt path. */
+export function renderLegacyLearningSections(
+  ctx: UnifiedContext,
+  counter: { readonly estimate: (text: string) => number },
+  sanitize: (value: string) => string
+): readonly string[] {
+  const sections: string[] = [];
+  if (ctx.recentLearnings.length > 0) {
+    const lines = ctx.recentLearnings.map(({ entry }) => {
+      const value = typeof entry.value === 'string' ? entry.value : entry.key;
+      return `- ${sanitize(value)}`;
+    });
+    sections.push(renderDisclosedSection('### Recent learnings', lines, counter));
+  }
+  if (ctx.priorStrategies.length > 0) {
+    const lines = ctx.priorStrategies.map(
+      (rule) => `- ${sanitize(`${rule.category} ${rule.patternType} ${rule.action} ${rule.cli}`)}`
+    );
+    sections.push(renderDisclosedSection('### Prior strategies', lines, counter));
+  }
+  return sections;
+}
+
 // ---------------------------------------------------------------------------
 // Scoring internals
 // ---------------------------------------------------------------------------
@@ -274,6 +306,31 @@ export function clampToTokenBudget(text: string, maxTokens: number): TokenBudget
   }
   const kept = text.slice(0, maxChars);
   return { text: kept, clipped: true, omittedChars: text.length - kept.length };
+}
+
+/** Assemble, clamp once, and partition the emitted text by its source. */
+export function assembleClampedContext(
+  memoryBlock: string,
+  repoMap: string,
+  budgetTokens: number,
+  clipNoticeReserveTokens: number
+): { readonly text: string; readonly memory: string; readonly repoMap: string } {
+  const rendered =
+    repoMap === '' ? memoryBlock : memoryBlock === '' ? repoMap : `${memoryBlock}\n\n${repoMap}`;
+  if (rendered === '') return { text: '', memory: '', repoMap: '' };
+  const contentBudget = Math.max(0, budgetTokens - clipNoticeReserveTokens);
+  const { text: retained, clipped, omittedChars } = clampToTokenBudget(rendered, contentBudget);
+  const notice = clipped
+    ? `\n\n_(context clipped to fit the ~${String(budgetTokens)}-token budget; ~${String(omittedChars)} chars omitted — #4253)_`
+    : '';
+  const mapStart = memoryBlock === '' ? 0 : memoryBlock.length;
+  const retainedMap = retained.slice(mapStart);
+  const mapOwnsNotice = repoMap !== '' && (memoryBlock === '' || retainedMap !== '');
+  const memory =
+    retained.slice(0, Math.min(memoryBlock.length, retained.length)) +
+    (mapOwnsNotice ? '' : notice);
+  const emittedMap = retainedMap + (mapOwnsNotice ? notice : '');
+  return { text: `${retained}${notice}`, memory, repoMap: emittedMap };
 }
 
 /** Age in ms from a possibly-invalid Date; non-finite timestamps → neutral 0. */
