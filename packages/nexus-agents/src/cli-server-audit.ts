@@ -7,6 +7,7 @@
  * (Source: Issue #740 Phase 2 - audit logging and security config)
  */
 
+import { resolveAuthEnabled, resolveAuthMethod } from './cli-server-auth.js';
 import type { ILogger } from './core/index.js';
 import { createAuditLogger, type AuditLogger } from './audit/index.js';
 import type { SecurityConfig, AppConfig } from './config/index.js';
@@ -102,13 +103,15 @@ function createConfiguredPolicyFirewall(
   return createDefaultPolicyFirewall({ mode: policyVals.mode, logger });
 }
 
-/** Resolves auth state from env var and config. (Issue #739) */
+/**
+ * Resolves auth state the same way `initializeAuth` will (#739, #5663). This
+ * used to default to `enabled: false` / `'none'` while the enforcement side
+ * defaulted to `true` / `'token'`, so the startup line reported the default
+ * server as unprotected and warned about it, five lines before a token was
+ * loaded and enforced.
+ */
 function getAuthValues(config?: AppConfig): { enabled: boolean; method: string } {
-  const envAuth = process.env['NEXUS_AUTH_ENABLED'];
-  const configAuth = config?.security?.auth;
-  const enabled = envAuth === 'true' || (configAuth?.enabled ?? false);
-  const method = configAuth?.method ?? process.env['NEXUS_AUTH_METHOD'] ?? 'none';
-  return { enabled, method };
+  return { enabled: resolveAuthEnabled(config), method: resolveAuthMethod(config) };
 }
 
 /**

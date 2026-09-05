@@ -33,7 +33,12 @@ export interface AuthInitResult {
  * Resolves auth enabled state from config and environment.
  * Environment variable `NEXUS_AUTH_ENABLED` takes precedence over config.
  */
-function resolveAuthEnabled(config?: AppConfig): boolean {
+/**
+ * Whether auth is enabled: `NEXUS_AUTH_ENABLED` wins when set, else config,
+ * else ON. The startup security line reads this same resolver (#5663) so the
+ * log cannot say "disabled" for a server that goes on to enforce a token.
+ */
+export function resolveAuthEnabled(config?: AppConfig): boolean {
   const envValue = process.env['NEXUS_AUTH_ENABLED'];
   if (envValue !== undefined) {
     return envValue === 'true';
@@ -44,12 +49,17 @@ function resolveAuthEnabled(config?: AppConfig): boolean {
 /**
  * Builds AuthConfig from AppConfig and environment overrides.
  */
+/** The auth method that will be enforced: config, else `token` (#5663). */
+export function resolveAuthMethod(config?: AppConfig): AuthConfig['method'] {
+  return config?.security?.auth?.method ?? 'token';
+}
+
 function buildAuthConfig(config?: AppConfig): Partial<AuthConfig> {
   const enabled = resolveAuthEnabled(config);
   const configAuth = config?.security?.auth;
   return {
     enabled,
-    method: configAuth?.method ?? 'token',
+    method: resolveAuthMethod(config),
     tokenHeader: configAuth?.tokenHeader ?? 'Authorization',
     tokenFile: configAuth?.tokenFile ?? getDefaultTokenPath(),
   };
