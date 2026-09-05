@@ -19,16 +19,16 @@ import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 describe('negative results enforcement', () => {
   it('detects rejected techniques', () => {
     const result = checkRejected('latent-space-sharing');
-    // This exists in the actual registry
-    if (result !== undefined) {
-      expect(result.name).toContain('LatentMAS');
-      expect(result.failure_mode).toBe('architecture_incompatible');
+    expect(result.kind).toBe('rejected');
+    if (result.kind === 'rejected') {
+      expect(result.entry.name).toContain('LatentMAS');
+      expect(result.entry.failure_mode).toBe('architecture_incompatible');
     }
   });
 
-  it('returns undefined for non-rejected techniques', () => {
+  it('distinguishes a non-rejected technique from an unavailable registry', () => {
     const result = checkRejected('nonexistent-technique');
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ kind: 'not-rejected' });
   });
 
   it('lists all rejected IDs', () => {
@@ -94,6 +94,40 @@ describe('negative-results registry root (#5053)', () => {
     process.chdir(nested);
 
     expect(getRejectedIds()).toEqual(['root-only-rejected']);
-    expect(checkRejected('root-only-rejected')?.name).toBe('Root Only Rejected');
+    expect(checkRejected('root-only-rejected')).toMatchObject({
+      kind: 'rejected',
+      entry: { name: 'Root Only Rejected' },
+    });
+  });
+
+  it('reports an unreadable registry as unavailable and retries the next call', () => {
+    const registryFile = join(root, REGISTRY_PATH, 'negative-results.yaml');
+    rmSync(registryFile);
+    mkdirSync(registryFile);
+    process.chdir(root);
+
+    expect(checkRejected('root-only-rejected')).toEqual({
+      kind: 'unavailable',
+      reason: expect.any(String),
+    });
+
+    rmSync(registryFile, { recursive: true });
+    writeFileSync(
+      registryFile,
+      [
+        'negative_results:',
+        '  root-only-rejected:',
+        '    name: Root Only Rejected',
+        '    paper: arxiv-0000.00000',
+        "    rejection_date: '2026-01-01'",
+        '    failure_mode: did not work',
+        '    lessons_learned: []',
+        '    reopen_conditions: []',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
+
+    expect(checkRejected('root-only-rejected')).toMatchObject({ kind: 'rejected' });
   });
 });

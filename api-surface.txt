@@ -7271,6 +7271,7 @@ VariableDeclaration ResearchQueryInputSchema
 InterfaceDeclaration ResearchQueryResponse
   action: string
   data: unknown
+  negativeResults?: { reason: string; status: "unavailable"; } | undefined
   rejectionNotice?: string | undefined
   success: boolean
 TypeAliasDeclaration ResearchSynthesizeDeps

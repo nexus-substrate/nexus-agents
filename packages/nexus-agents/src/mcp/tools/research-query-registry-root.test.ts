@@ -20,6 +20,7 @@ import {
 } from '../../cli/research-helpers-io.js';
 import { _resetActiveWorkspaceRootForTests } from '../../config/nexus-data-dir.js';
 import { mkdtempOutsideRepo } from '../../testing/non-repo-temp-dir.js';
+import { resetNegativeResultsCache } from '../../research/negative-results.js';
 
 type Handler = (args: unknown) => Promise<{
   isError?: boolean;
@@ -30,9 +31,12 @@ interface StatusPayload {
   action: string;
   success: boolean;
   data: { techniques: Array<{ id: string }> };
+  rejectionNotice?: string;
+  negativeResults?: { status: 'unavailable'; reason: string };
 }
 
 const ROOT_TECHNIQUE_ID = 'seam-root-technique';
+const NEGATIVE_RESULTS_FILE = 'negative-results.yaml';
 
 function registerHandler(): Handler {
   const registerTool = vi.fn();
@@ -80,8 +84,24 @@ describe('research_query reads the registry at the workspace root (#5053)', () =
       "schema_version: '1.0'\npapers: {}\n",
       'utf-8'
     );
+    writeFileSync(
+      join(root, REGISTRY_PATH, NEGATIVE_RESULTS_FILE),
+      [
+        'negative_results:',
+        `  ${ROOT_TECHNIQUE_ID}:`,
+        '    name: Seam Root Technique',
+        '    paper: arxiv-0000.00000',
+        "    rejection_date: '2026-01-01'",
+        '    failure_mode: did not work',
+        '    lessons_learned: []',
+        '    reopen_conditions: []',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
     _resetRegistryRootForTests();
     _resetActiveWorkspaceRootForTests();
+    resetNegativeResultsCache();
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   });
 
@@ -89,6 +109,7 @@ describe('research_query reads the registry at the workspace root (#5053)', () =
     process.chdir(originalCwd);
     _resetRegistryRootForTests();
     _resetActiveWorkspaceRootForTests();
+    resetNegativeResultsCache();
     stderrSpy.mockRestore();
     rmSync(root, { recursive: true, force: true });
   });
@@ -98,11 +119,34 @@ describe('research_query reads the registry at the workspace root (#5053)', () =
     mkdirSync(nested, { recursive: true });
     process.chdir(nested);
 
-    const result = await registerHandler()({ action: 'status' });
+    const result = await registerHandler()({ action: 'status', techniqueId: ROOT_TECHNIQUE_ID });
 
     expect(result.isError, result.content[0]?.text).not.toBe(true);
     const payload = JSON.parse(result.content[0]?.text ?? '{}') as StatusPayload;
     expect(payload.success).toBe(true);
     expect(payload.data.techniques.map((t) => t.id)).toEqual([ROOT_TECHNIQUE_ID]);
+    expect(payload.rejectionNotice).toContain('REJECTED TECHNIQUE: Seam Root Technique');
+    expect(payload.negativeResults).toBeUndefined();
+  });
+
+  it('surfaces an unavailable negative-results registry and logs one warning', async () => {
+    rmSync(join(root, REGISTRY_PATH, NEGATIVE_RESULTS_FILE));
+    const nested = join(root, 'packages', 'nexus-agents', 'src');
+    mkdirSync(nested, { recursive: true });
+    process.chdir(nested);
+
+    const result = await registerHandler()({ action: 'status', techniqueId: ROOT_TECHNIQUE_ID });
+
+    expect(result.isError, result.content[0]?.text).not.toBe(true);
+    const payload = JSON.parse(result.content[0]?.text ?? '{}') as StatusPayload;
+    expect(payload.negativeResults).toEqual({
+      status: 'unavailable',
+      reason: expect.any(String),
+    });
+    expect(payload.rejectionNotice).toBeUndefined();
+    const warnings = stderrSpy.mock.calls.filter(([message]) =>
+      String(message).includes('Negative-results registry unavailable')
+    );
+    expect(warnings).toHaveLength(1);
   });
 });
