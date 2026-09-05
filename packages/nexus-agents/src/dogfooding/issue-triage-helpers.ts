@@ -8,7 +8,15 @@
  * (Source: Issue #828 — Wire remaining security modules)
  */
 
-import type { IssueCategory, IssueTriageResult, ProposedAction } from './issue-triage-types.js';
+import type { CorroborationResult } from '../security/corroboration-validator.js';
+import type { AgentAction } from '../security/action-schema.js';
+import type { ScmCommentDetail } from '../scm/types.js';
+import type {
+  IssueCategory,
+  IssueComment,
+  IssueTriageResult,
+  ProposedAction,
+} from './issue-triage-types.js';
 import { CATEGORY_DISPLAY_NAMES, CATEGORY_EMOJI } from './issue-triage-types.js';
 
 // ============================================================================
@@ -112,6 +120,45 @@ export function extractLabelsFromBody(title: string, body: string): string[] {
   }
 
   return labels.slice(0, 5);
+}
+
+/** Maps SCM comment details to the triage representation. */
+export function mapIssueComments(comments: readonly ScmCommentDetail[]): IssueComment[] {
+  return comments.map((comment) => ({
+    id: comment.id,
+    body: comment.body,
+    author: comment.author,
+    authorAssociation: comment.authorAssociation,
+    createdAt: comment.createdAt,
+  }));
+}
+
+/** Creates a human-readable description for a typed action. */
+export function describeAction(action: AgentAction): string {
+  switch (action.type) {
+    case 'ClassifyIssue':
+      return `Classified as ${action.category} (${String(Math.round(action.confidence * 100))}% confidence)`;
+    case 'ProposeLabels':
+      return `Suggest labels: ${action.labels.join(', ')}`;
+    case 'SummarizeIssue':
+      return action.summary.slice(0, 100);
+    default:
+      return `${action.type} action`;
+  }
+}
+
+/** Builds details object for a proposed action. */
+export function buildActionDetails(
+  action: AgentAction,
+  policy: { allowed: boolean; violations: readonly { rule: string; message: string }[] },
+  corrob: CorroborationResult
+): Record<string, unknown> {
+  return {
+    policyViolations: policy.violations.map((violation) => violation.rule),
+    missingCorroboration: corrob.missing,
+    ...(action.type === 'ClassifyIssue' && { category: action.category }),
+    ...(action.type === 'ProposeLabels' && { labels: action.labels }),
+  };
 }
 
 // ============================================================================

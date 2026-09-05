@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import type { ReputationAssessment } from '../security/reputation-model.js';
 
 // ============================================================================
 // Issue Metadata
@@ -182,6 +183,8 @@ export interface TrustAssessment {
   readonly auditSink: 'configured' | 'none';
   /** Reputation score (0-100) if reputation model is enabled */
   readonly reputationScore?: number | undefined;
+  /** Coverage of reputation dimensions; `unmeasured` is distinct from zero activity. */
+  readonly coverage?: ReputationAssessment['coverage'] | undefined;
   /** Suspicious signals detected */
   readonly suspiciousSignals: readonly string[];
   /** Whether the author is flagged as suspicious */

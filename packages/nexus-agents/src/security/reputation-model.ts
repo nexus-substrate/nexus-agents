@@ -58,6 +58,10 @@ export interface GitHubUserMetadata {
 export interface ReputationAssessment {
   readonly username: string;
   readonly userRole: GitHubUserRole;
+  /** Measurement coverage; absent on assessments created before coverage tracking. */
+  readonly coverage?: {
+    readonly activity: 'measured' | 'unmeasured';
+  };
   readonly suspiciousSignals: readonly SuspiciousSignal[];
   readonly isSuspicious: boolean;
   readonly effectiveTrustTier: TrustTier;
@@ -337,6 +341,14 @@ export function assessReputation(
   const assessment: ReputationAssessment = {
     username: metadata.username,
     userRole,
+    coverage: {
+      activity:
+        metadata.priorContributions !== undefined &&
+        metadata.recentCommentCount !== undefined &&
+        metadata.recentCommentWindowMinutes !== undefined
+          ? 'measured'
+          : 'unmeasured',
+    },
     suspiciousSignals: signals,
     isSuspicious: signals.length > 0,
     effectiveTrustTier: effectiveTier,

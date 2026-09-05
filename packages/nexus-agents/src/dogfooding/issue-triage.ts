@@ -38,7 +38,13 @@ import type { AgentAction, SourceCitation } from '../security/action-schema.js';
 import { parseIssueUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import type { ScmUserMetadata } from '../scm/types.js';
-import { categorizeIssue, extractLabelsFromBody } from './issue-triage-helpers.js';
+import {
+  buildActionDetails,
+  categorizeIssue,
+  describeAction,
+  extractLabelsFromBody,
+  mapIssueComments,
+} from './issue-triage-helpers.js';
 import type {
   IssueMetadata,
   IssueComment,
@@ -184,7 +190,7 @@ export class IssueTriage {
     const fetchResult = await this.fetchIssueData(owner, repo, issueNumber);
     if (!fetchResult.ok) return fetchResult;
 
-    const { issue: issueResult, comments, accountAgeDays } = fetchResult.value;
+    const { issue: issueResult } = fetchResult.value;
 
     // Sanitize untrusted content (Issue #828 — input-sanitizer wiring)
     const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
@@ -192,7 +198,7 @@ export class IssueTriage {
 
     // Reputation is measured here, with data the firewall cannot see (account
     // age, comment history), and handed to the firewall per call.
-    const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
+    const reputation = this.assessAuthorReputation(fetchResult.value);
 
     // #4992: classify through the shared HostileInputFirewall so the trust
     // decision reaches the security audit trail. Signal-only under the default
@@ -320,12 +326,14 @@ export class IssueTriage {
    * This is one of the two NEW security module wirings completing #828.
    * (Source: Issue #828 — reputation-model wiring)
    */
-  private assessAuthorReputation(
-    issue: IssueMetadata,
-    comments: readonly IssueComment[],
-    accountAgeDays: number | undefined
-  ): ReputationAssessment | undefined {
+  private assessAuthorReputation(data: {
+    issue: IssueMetadata;
+    comments: readonly IssueComment[];
+    commentsAvailable: boolean;
+    accountAgeDays?: number;
+  }): ReputationAssessment | undefined {
     if (!this.config.enableReputation) return undefined;
+    const { issue, comments, commentsAvailable, accountAgeDays } = data;
 
     // #4681: scan BOTH the title and the body. Scanning only the body left a
     // real bypass: an injection payload is plain text, so content-sanitization
@@ -343,14 +351,18 @@ export class IssueTriage {
     const metadata: GitHubUserMetadata = {
       username: issue.author,
       ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
-      priorContributions: countAuthorComments(issue.author, comments),
-      recentCommentCount: countRecentComments(issue.author, comments),
-      recentCommentWindowMinutes: 10,
+      ...(commentsAvailable
+        ? {
+            priorContributions: countAuthorComments(issue.author, comments),
+            recentCommentCount: countRecentComments(issue.author, comments),
+            recentCommentWindowMinutes: 10,
+          }
+        : {}),
       authorAssociation: issue.authorAssociation,
       injectionFlags,
     };
 
-    return assessReputation(metadata, this.reputationCache);
+    return assessReputation(metadata, commentsAvailable ? this.reputationCache : undefined);
   }
 
   /**
@@ -478,6 +490,7 @@ export class IssueTriage {
       ...(isAllowlisted !== undefined ? { isAllowlisted } : {}),
       auditSink,
       reputationScore: reputation?.reputationScore,
+      coverage: reputation?.coverage,
       suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
       isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
       // #3122: surface both the enforced tier (what the gate used) and the
@@ -520,7 +533,15 @@ export class IssueTriage {
     repo: string,
     issueNumber: number
   ): Promise<
-    Result<{ issue: IssueMetadata; comments: IssueComment[]; accountAgeDays?: number }, Error>
+    Result<
+      {
+        issue: IssueMetadata;
+        comments: IssueComment[];
+        commentsAvailable: boolean;
+        accountAgeDays?: number;
+      },
+      Error
+    >
   > {
     const provider = createFullGitHubProvider(`${owner}/${repo}`);
 
@@ -543,15 +564,14 @@ export class IssueTriage {
     };
 
     const commentsResult = await provider.listCommentDetails(issueNumber);
-    const comments: IssueComment[] = commentsResult.ok
-      ? commentsResult.value.map((c) => ({
-          id: c.id,
-          body: c.body,
-          author: c.author,
-          authorAssociation: c.authorAssociation,
-          createdAt: c.createdAt,
-        }))
-      : [];
+    if (!commentsResult.ok) {
+      logger.warn('Failed to fetch issue comments; activity reputation is unmeasured', {
+        issueNumber,
+        error: commentsResult.error.message,
+      });
+    }
+    const comments = commentsResult.ok ? mapIssueComments(commentsResult.value) : [];
+    const commentsAvailable = commentsResult.ok;
 
     // #3121: fetch the author's REAL account age (their account creation date,
     // not the issue date). Best-effort — on failure or an unparseable date we
@@ -560,7 +580,9 @@ export class IssueTriage {
     const accountAgeDays = await this.fetchAccountAgeDays(provider, detail.author);
 
     return ok(
-      accountAgeDays !== undefined ? { issue, comments, accountAgeDays } : { issue, comments }
+      accountAgeDays !== undefined
+        ? { issue, comments, commentsAvailable, accountAgeDays }
+        : { issue, comments, commentsAvailable }
     );
   }
 
@@ -587,49 +609,17 @@ export class IssueTriage {
   }
 }
 
-// ============================================================================
-// Private Helpers
-// ============================================================================
-
 /** Counts how many comments the author has made on the issue. */
 function countAuthorComments(author: string, comments: readonly IssueComment[]): number {
-  return comments.filter((c) => c.author === author).length;
+  return comments.filter((comment) => comment.author === author).length;
 }
 
 /** Counts recent comments from the author (within 10 minutes). */
 function countRecentComments(author: string, comments: readonly IssueComment[]): number {
   const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
   return comments.filter(
-    (c) => c.author === author && new Date(c.createdAt).getTime() > tenMinutesAgo
+    (comment) => comment.author === author && new Date(comment.createdAt).getTime() > tenMinutesAgo
   ).length;
-}
-
-/** Creates a human-readable description for a typed action. */
-function describeAction(action: AgentAction): string {
-  switch (action.type) {
-    case 'ClassifyIssue':
-      return `Classified as ${action.category} (${String(Math.round(action.confidence * 100))}% confidence)`;
-    case 'ProposeLabels':
-      return `Suggest labels: ${action.labels.join(', ')}`;
-    case 'SummarizeIssue':
-      return action.summary.slice(0, 100);
-    default:
-      return `${action.type} action`;
-  }
-}
-
-/** Builds details object for a proposed action. */
-function buildActionDetails(
-  action: AgentAction,
-  policy: { allowed: boolean; violations: readonly { rule: string; message: string }[] },
-  corrob: CorroborationResult
-): Record<string, unknown> {
-  return {
-    policyViolations: policy.violations.map((v) => v.rule),
-    missingCorroboration: corrob.missing,
-    ...(action.type === 'ClassifyIssue' && { category: action.category }),
-    ...(action.type === 'ProposeLabels' && { labels: action.labels }),
-  };
 }
 
 /**
