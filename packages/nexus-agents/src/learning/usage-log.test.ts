@@ -202,7 +202,7 @@ describe('recordUsageEvent + loadUsageEvents (#2469)', () => {
 
   it('appends a single event and reads it back', () => {
     recordUsageEvent(makeEvent({ modelId: 'gpt-4o', usdCost: 0.05 }));
-    const events = loadUsageEvents();
+    const { events } = loadUsageEvents();
     expect(events).toHaveLength(1);
     expect(events[0]?.modelId).toBe('gpt-4o');
     expect(events[0]?.usdCost).toBe(0.05);
@@ -212,20 +212,19 @@ describe('recordUsageEvent + loadUsageEvents (#2469)', () => {
     recordUsageEvent(makeEvent({ modelId: 'a', timestamp: '2026-05-01T00:00:00Z' }));
     recordUsageEvent(makeEvent({ modelId: 'b', timestamp: '2026-05-15T00:00:00Z' }));
     recordUsageEvent(makeEvent({ modelId: 'c', timestamp: '2026-05-30T00:00:00Z' }));
-    const events = loadUsageEvents();
+    const { events } = loadUsageEvents();
     expect(events).toHaveLength(3);
   });
 
   it('returns empty array when no log file exists', () => {
-    const events = loadUsageEvents();
-    expect(events).toEqual([]);
+    expect(loadUsageEvents()).toEqual({ events: [], complete: true, readErrors: [] });
   });
 
   it('filters by since/until time window', () => {
     recordUsageEvent(makeEvent({ timestamp: '2026-05-01T00:00:00Z' }));
     recordUsageEvent(makeEvent({ timestamp: '2026-05-15T00:00:00Z' }));
     recordUsageEvent(makeEvent({ timestamp: '2026-05-30T00:00:00Z' }));
-    const events = loadUsageEvents({
+    const { events } = loadUsageEvents({
       sinceIso: '2026-05-10T00:00:00Z',
       untilIso: '2026-05-20T00:00:00Z',
     });
@@ -237,7 +236,7 @@ describe('recordUsageEvent + loadUsageEvents (#2469)', () => {
     recordUsageEvent(makeEvent({ modelId: 'gpt-4o' }));
     recordUsageEvent(makeEvent({ modelId: 'claude-sonnet' }));
     recordUsageEvent(makeEvent({ modelId: 'gpt-4o' }));
-    const events = loadUsageEvents({ modelId: 'gpt-4o' });
+    const { events } = loadUsageEvents({ modelId: 'gpt-4o' });
     expect(events).toHaveLength(2);
   });
 
@@ -250,7 +249,7 @@ describe('recordUsageEvent + loadUsageEvents (#2469)', () => {
       writeFileSync(join(dir, files[0]), 'NOT_JSON\n', { flag: 'a' });
     }
     recordUsageEvent(makeEvent({ modelId: 'second' }));
-    const events = loadUsageEvents();
+    const { events } = loadUsageEvents();
     // Should get the two good events; the bad line is silently skipped.
     expect(events.length).toBeGreaterThanOrEqual(2);
   });
@@ -290,17 +289,29 @@ describe('rollupByModel (#2469)', () => {
     expect(rollups[0]?.costPerSuccessUsd).toBeCloseTo(0.2, 4);
   });
 
-  it('handles all-failure case (cost-per-success defaults to total cost)', () => {
+  it('reports no cost-per-success when there are no successes', () => {
     const rollups = rollupByModel([
       makeEvent({ modelId: 'a', success: false, usdCost: 0.1 }),
       makeEvent({ modelId: 'a', success: false, usdCost: 0.2 }),
     ]);
     expect(rollups[0]?.successRate).toBe(0);
-    expect(rollups[0]?.costPerSuccessUsd).toBeCloseTo(0.3, 4);
+    expect(rollups[0]?.costPerSuccessUsd).toBeNull();
   });
 
   it('returns empty array for no events', () => {
     expect(rollupByModel([])).toEqual([]);
+  });
+
+  it('counts explicitly unpriced calls', () => {
+    const rollups = rollupByModel([makeEvent({ priced: false, usdCost: 0 })]);
+
+    expect(rollups[0]?.unpricedCallCount).toBe(1);
+  });
+
+  it('treats legacy events without priced as priced', () => {
+    const rollups = rollupByModel([makeEvent()]);
+
+    expect(rollups[0]?.unpricedCallCount).toBe(0);
   });
 
   it('aggregates token counts', () => {

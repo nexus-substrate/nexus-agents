@@ -1,5 +1,10 @@
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import type { ParsedCliArgs } from './cli-types.js';
+import { handleUsageCommand } from './cli/usage-command.js';
 import {
   printIndexUsage,
   printOrchestrateUsage,
@@ -10,6 +15,26 @@ import {
   printWorkflowRunUsage,
 } from './cli-commands-usage.js';
 import { getCommandHelp } from './cli-command-help.js';
+import type { UsageEvent } from './learning/usage-log.js';
+
+function makeUsageArgs(): ParsedCliArgs {
+  return { positionals: ['usage'], options: {} } as unknown as ParsedCliArgs;
+}
+
+function makeUsageEvent(overrides: Partial<UsageEvent> = {}): UsageEvent {
+  return {
+    timestamp: new Date().toISOString(),
+    modelId: 'claude-sonnet',
+    providerId: 'anthropic',
+    inputTokens: 100,
+    outputTokens: 50,
+    usdCost: 0.1,
+    latencyMs: 100,
+    success: true,
+    priced: true,
+    ...overrides,
+  };
+}
 
 describe('cli-commands-usage', () => {
   let writeSpy: MockInstance;
@@ -212,5 +237,84 @@ describe('cli-commands-usage', () => {
         expect(output).toContain(`  ${example}\n`);
       }
     });
+  });
+});
+
+describe('handleUsageCommand ledger fidelity (#5522)', () => {
+  let dataDir: string;
+  let previousDataDir: string | undefined;
+  let logSpy: MockInstance;
+  let errorSpy: MockInstance;
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'usage-command-'));
+    previousDataDir = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+    if (previousDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = previousDataDir;
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  function output(): string {
+    return [...logSpy.mock.calls, ...errorSpy.mock.calls]
+      .map((call: unknown[]) => String(call[0]))
+      .join('\n');
+  }
+
+  function writeEvents(events: readonly UsageEvent[]): void {
+    const usageDir = join(dataDir, 'usage');
+    mkdirSync(usageDir, { recursive: true });
+    writeFileSync(
+      join(usageDir, 'usage-current.jsonl'),
+      `${events.map((event) => JSON.stringify(event)).join('\n')}\n`
+    );
+  }
+
+  it('returns non-zero and names the ledger when its directory cannot be read', async () => {
+    writeFileSync(join(dataDir, 'usage'), 'not a directory');
+
+    const result = await handleUsageCommand(makeUsageArgs());
+
+    expect(result.exitCode).not.toBe(0);
+    expect(output().toLowerCase()).toContain('usage ledger');
+  });
+
+  it('reports partial output when one ledger file is unreadable', async () => {
+    writeEvents([makeUsageEvent()]);
+    mkdirSync(join(dataDir, 'usage', 'usage-unreadable.jsonl'));
+
+    const result = await handleUsageCommand(makeUsageArgs());
+
+    expect(result.exitCode).not.toBe(0);
+    expect(output()).toContain('partial: 1 file(s) unreadable');
+    expect(output()).toContain('claude-sonnet');
+  });
+
+  it('labels model and grand-total costs when calls are unpriced', async () => {
+    writeEvents([makeUsageEvent({ priced: false, usdCost: 0 })]);
+
+    await handleUsageCommand(makeUsageArgs());
+
+    expect(output()).toContain('≥ $0.0000 (1 unpriced)');
+    expect(output()).toContain('cost / success  : ≥ $0.0000 / success');
+    expect(output().match(/unpriced/g)).toHaveLength(2);
+  });
+
+  it('renders N/A when a model has no successful calls', async () => {
+    writeEvents([
+      makeUsageEvent({ success: false, usdCost: 0.1 }),
+      makeUsageEvent({ success: false, usdCost: 0.2 }),
+    ]);
+
+    await handleUsageCommand(makeUsageArgs());
+
+    expect(output()).toContain('N/A (no successes)');
   });
 });

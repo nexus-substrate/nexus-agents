@@ -57,26 +57,38 @@ export async function handleUsageCommand(args: ParsedCliArgs): Promise<CliExitRe
   if (opts.modelId !== undefined) {
     (loadOpts as { modelId: string }).modelId = opts.modelId;
   }
-  const events = loadUsageEvents(loadOpts);
-  const rollups = rollupByModel(events);
+  const ledger = loadUsageEvents(loadOpts);
+  const rollups = rollupByModel(ledger.events);
+  const exitCode = ledger.complete ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED;
 
   if (opts.format === 'json') {
-    process.stdout.write(`${JSON.stringify({ since: opts.sinceIso, rollups }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          since: opts.sinceIso,
+          complete: ledger.complete,
+          readErrors: ledger.readErrors,
+          rollups,
+        },
+        null,
+        2
+      )}\n`
+    );
     await Promise.resolve();
-    return cliExit(EXIT_CODES.SUCCESS);
+    return cliExit(exitCode);
   }
 
-  printTextReport(opts, rollups, events.length);
+  printTextReport(opts, rollups, ledger.events.length, ledger.complete);
+  printReadStatus(ledger.readErrors);
   await Promise.resolve();
-  // #3942: RETURN the exit code; dispatcher owns process.exit. This command
-  // never forced an exit (natural exit 0) — SUCCESS (0) is byte-identical.
-  return cliExit(EXIT_CODES.SUCCESS);
+  return cliExit(exitCode);
 }
 
 function printTextReport(
   opts: UsageOptions,
   rollups: readonly ModelRollup[],
-  totalEvents: number
+  totalEvents: number,
+  complete: boolean
 ): void {
   console.log('Nexus Agents — Usage Report');
   console.log('===========================');
@@ -87,6 +99,7 @@ function printTextReport(
   console.log(`Events: ${String(totalEvents)}\n`);
 
   if (rollups.length === 0) {
+    if (!complete) return;
     console.log('No usage events recorded for this window.');
     console.log('');
     console.log('To start recording, calls must reach a recordUsageEvent()-instrumented');
@@ -103,13 +116,36 @@ function printTextReport(
     console.log(
       `  tokens          : ${String(r.totalInputTokens)} in / ${String(r.totalOutputTokens)} out`
     );
-    console.log(
-      `  cost            : $${r.totalUsdCost.toFixed(4)} ($${r.costPerSuccessUsd.toFixed(4)} / success)`
-    );
+    const costPerSuccess =
+      r.costPerSuccessUsd === null
+        ? 'N/A (no successes)'
+        : `${r.unpricedCallCount === 0 ? '' : '≥ '}$${r.costPerSuccessUsd.toFixed(4)} / success`;
+    console.log(`  cost            : ${formatCost(r.totalUsdCost, r.unpricedCallCount)}`);
+    console.log(`  cost / success  : ${costPerSuccess}`);
     console.log(`  avg latency     : ${r.avgLatencyMs.toFixed(0)}ms`);
     console.log('');
   }
 
   const totalCost = rollups.reduce((s, r) => s + r.totalUsdCost, 0);
-  console.log(`Total cost: $${totalCost.toFixed(4)} across ${String(rollups.length)} model(s).`);
+  const totalUnpriced = rollups.reduce((sum, rollup) => sum + rollup.unpricedCallCount, 0);
+  console.log(
+    `Total cost: ${formatCost(totalCost, totalUnpriced)} across ${String(rollups.length)} model(s).`
+  );
+}
+
+function formatCost(costUsd: number, unpricedCallCount: number): string {
+  const measured = `$${costUsd.toFixed(4)}`;
+  return unpricedCallCount === 0
+    ? measured
+    : `≥ ${measured} (${String(unpricedCallCount)} unpriced)`;
+}
+
+function printReadStatus(readErrors: readonly string[]): void {
+  if (readErrors.length === 0) return;
+  if (readErrors[0]?.startsWith('usage ledger unreadable:') === true) {
+    console.error(readErrors.join('; '));
+    return;
+  }
+  console.error(`Usage ledger partial: ${String(readErrors.length)} file(s) unreadable.`);
+  for (const error of readErrors) console.error(`  ${error}`);
 }
