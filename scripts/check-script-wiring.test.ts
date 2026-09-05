@@ -113,11 +113,15 @@ describe('isReachableFromCi', () => {
     // string". `echo "…" && pnpm x` is a real run.
     expect(
       isReachableFromCi('check-x.ts', 'run: echo "checking" && pnpm check:x', {
-        'check:x': 'npx tsx scripts/check-x.ts',
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
       })
     ).toBe(true);
     expect(
-      isReachableFromCi('check-x.ts', 'run: echo "checking" && npx tsx scripts/check-x.ts', noNpm)
+      isReachableFromCi(
+        'check-x.ts',
+        'run: echo "checking" && pnpm exec tsx scripts/check-x.ts',
+        noNpm
+      )
     ).toBe(true);
   });
 });
@@ -217,7 +221,7 @@ describe('assessWiring', () => {
     // that would hide the next real regression under it.
     const verdict = assessWiring({
       inScopeScripts: ['check-a.ts'],
-      workflowText: 'run: npx tsx scripts/check-a.ts',
+      workflowText: 'run: pnpm exec tsx scripts/check-a.ts',
       npmScripts: {},
       allowlist: { 'check-a.ts': 'operator-run' },
     });

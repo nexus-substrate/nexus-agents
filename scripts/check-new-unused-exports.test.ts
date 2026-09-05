@@ -312,6 +312,11 @@ describe('resolveComparisonBase (#5671)', () => {
 
 describe('export ratchet end to end (#5671)', () => {
   const SCRIPT = resolve(__dirname, 'check-new-unused-exports.ts');
+  // #5413: the fixture repo lives under tmpdir(), so neither runner works from
+  // that cwd -- npx resolves tsx from the registry on a cold runner (the exact
+  // cost #5411 removed), and `pnpm exec` finds no package in that workspace.
+  // Invoke the repo-local binary by absolute path instead.
+  const TSX = resolve(__dirname, '..', 'node_modules', '.bin', 'tsx');
 
   /** A repo where main deletes a dead export AFTER the PR branched. */
   function buildFixture(): string {
@@ -347,7 +352,7 @@ describe('export ratchet end to end (#5671)', () => {
       let stdout = '';
       let status = 0;
       try {
-        stdout = execSync(`npx tsx ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
+        stdout = execSync(`${TSX} ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
       } catch (err) {
         const e = err as { status?: number; stdout?: string; stderr?: string };
         status = e.status ?? 1;
