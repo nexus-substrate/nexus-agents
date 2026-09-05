@@ -328,6 +328,7 @@ function buildStructuredOutput(
     // describing it. A live `run_dev_pipeline({ dryRun: true })` came back with
     // no way to tell a successful dry run from a failed pipeline.
     ...(result.dryRun !== undefined ? { dryRun: result.dryRun } : {}),
+    ...(result.taskStatus !== undefined ? { taskStatus: result.taskStatus } : {}),
     voteIterations: result.voteIterations,
     qaIterations: result.qaIterations,
     plan: result.plan,

@@ -26,13 +26,26 @@ function describePlanFailure(record: Record<string, unknown>): string | undefine
   return undefined;
 }
 
-/** Says why a dev-pipeline result did not complete (#4789/#5506/#5575). */
+function describeTaskFailure(record: Record<string, unknown>): string | undefined {
+  if (record['taskStatus'] === 'none') {
+    return `${FAILURE_PREFIX} no planned tasks completed successfully`;
+  }
+  if (record['taskStatus'] === 'partial') {
+    return `${FAILURE_PREFIX} one or more planned tasks did not complete successfully`;
+  }
+  return undefined;
+}
+
+/** Says why a dev-pipeline result did not complete (#4789/#5506/#5575/#5645). */
 export function describeIncompletePipeline(record: Record<string, unknown>): string {
   const planFailure = describePlanFailure(record);
   if (planFailure !== undefined) return planFailure;
-  if (record['securityRan'] === true) {
+  const taskFailure = describeTaskFailure(record);
+  if (taskFailure !== undefined && record['securityPassed'] !== false) return taskFailure;
+  if (record['securityRan'] === true && record['securityPassed'] !== true) {
     return `${FAILURE_PREFIX} the security gate rejected the change`;
   }
+  if (taskFailure !== undefined) return taskFailure;
   if (record['securityRan'] === false) {
     if (typeof record['securityNote'] === 'string') {
       return `${FAILURE_PREFIX} the security scan did not run (${record['securityNote']}); the change is blocked until it does`;

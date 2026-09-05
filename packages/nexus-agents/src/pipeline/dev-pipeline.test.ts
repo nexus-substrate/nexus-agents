@@ -229,6 +229,125 @@ describe('runDevPipeline', () => {
     expect(result.securityNote).toContain('semgrep not installed');
   });
 
+  it('#5645 (a): all tasks QA-rejected + security passes reports completed false and taskStatus none', async () => {
+    const stages = createMockStages({
+      qaReview: vi.fn().mockResolvedValue({
+        verdict: 'reject',
+        feedback: 'Does not meet standards',
+        issues: ['issue 1'],
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.taskStatus).toBe('none');
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it('#5645 (b): one of three tasks rejected + security passes reports completed false and taskStatus partial', async () => {
+    const stages = createMockStages({
+      decompose: vi.fn().mockResolvedValue([
+        {
+          id: 'task-1',
+          title: 'Task 1',
+          description: 'Step 1',
+          assignedTo: 'coder',
+          status: 'pending',
+        },
+        {
+          id: 'task-2',
+          title: 'Task 2',
+          description: 'Step 2',
+          assignedTo: 'coder',
+          status: 'pending',
+        },
+        {
+          id: 'task-3',
+          title: 'Task 3',
+          description: 'Step 3',
+          assignedTo: 'coder',
+          status: 'pending',
+        },
+      ]),
+      qaReview: vi.fn().mockImplementation((task: PipelineTask) => {
+        if (task.id === 'task-2') {
+          return Promise.resolve({
+            verdict: 'reject',
+            feedback: 'Bug found',
+            issues: ['bad logic'],
+          });
+        }
+        return Promise.resolve({
+          verdict: 'pass',
+          feedback: 'Looks good',
+          issues: [],
+        });
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.taskStatus).toBe('partial');
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it('#5645 (c): all tasks done + security passes reports completed true and taskStatus all_done', async () => {
+    const stages = createMockStages();
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(true);
+    expect(result.taskStatus).toBe('all_done');
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it('#5645 (d): all tasks done + security fails reports completed false, taskStatus all_done, and securityPassed false', async () => {
+    const stages = createMockStages({
+      securityScan: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'fail',
+        feedback: 'Critical SQL injection',
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.taskStatus).toBe('all_done');
+    expect(result.securityPassed).toBe(false);
+  });
+
+  it('#5645 (e): an implementation that throws for one task reports completed false and taskStatus partial', async () => {
+    const stages = createMockStages({
+      implement: vi.fn().mockImplementation((task: PipelineTask) => {
+        if (task.id === 'task-1') {
+          return Promise.reject(new Error('Syntax error in generated code'));
+        }
+        return Promise.resolve('Code implementation complete');
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.taskStatus).toBe('partial');
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it('#5645 empty-plan: zero tasks + security passes reports completed false and taskStatus none', async () => {
+    const stages = createMockStages({
+      decompose: vi.fn().mockResolvedValue([]),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.taskStatus).toBe('none');
+    expect(result.securityPassed).toBe(true);
+  });
+
   it('#5575: stops unapproved after max vote iterations without implementing', async () => {
     const stages = createMockStages({
       vote: vi.fn().mockResolvedValue({
