@@ -127,10 +127,17 @@ export const SecurityConfigSchema = z.object({
   timeout: TimeoutConfigSchema.optional(),
   /** Tool allowlist — when set, only listed tools are registered (Issue #740) */
   toolAllowlist: z.array(z.string()).optional(),
-  /** Audit logging configuration (Issue #740 Phase 2) */
+  /**
+   * Audit logging configuration (Issue #740 Phase 2).
+   *
+   * The block is optional and the inner defaults only apply when it is present:
+   * a config with no `audit:` block is audit-OFF (`initializeAuditLogger`
+   * returns null and startup warns). `config init` writes the block explicitly
+   * so a generated config is on by default (#5632).
+   */
   audit: z
     .object({
-      /** Enable audit logging (default: true) */
+      /** Enable audit logging (default when the block is present: true) */
       enabled: z.boolean().default(true),
       /** Log directory (default: ~/.nexus-agents/audit) */
       logDir: z.string().optional(),

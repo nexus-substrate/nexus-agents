@@ -8,7 +8,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'node:fs';
 import { writeFile, mkdir } from 'node:fs/promises';
+import * as yaml from 'yaml';
 import { runConfigInit, printConfigInitResult, configInitCommand } from './config-init.js';
+import { AppConfigSchema } from '../config/schemas.js';
 
 // Mock fs modules
 vi.mock('node:fs', () => ({
@@ -50,6 +52,22 @@ describe('config-init', () => {
       expect(result.created).toBe(true);
       expect(result.path).toContain('nexus-agents.yaml');
       expect(writeFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('generates a config whose parsed security.audit.enabled is true (#5632)', async () => {
+      // The schema's inner `enabled.default(true)` only runs when an `audit:`
+      // block is present, so a generated config without one is audit-OFF while
+      // the schema JSDoc says default true. The generated file must carry the
+      // block explicitly so the effective default matches the documented one.
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      await runConfigInit();
+
+      const written = vi.mocked(writeFile).mock.calls[0]?.[1];
+      expect(typeof written).toBe('string');
+      const parsed = AppConfigSchema.parse(yaml.parse(written as string));
+      expect(parsed.security?.audit?.enabled).toBe(true);
+      expect(parsed.security?.audit?.enableHashChain).toBe(true);
     });
 
     it('should fail when file exists and force is not set', async () => {
