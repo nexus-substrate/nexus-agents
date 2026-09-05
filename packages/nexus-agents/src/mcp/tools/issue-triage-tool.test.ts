@@ -16,6 +16,7 @@ import { IssueTriageInputSchema } from './issue-triage-tool.js';
 // Mock SCM provider traits (same pattern as issue-triage.test.ts)
 const mockGetIssueDetail = vi.fn();
 const mockListCommentDetails = vi.fn();
+const mockListRepositoryLabels = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
 
 vi.mock('../../scm/github-provider-traits.js', () => ({
@@ -87,8 +88,10 @@ describe('issue_triage tool integration', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: vi.fn(),
     });
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
   });
 
   afterEach(() => {

@@ -24,6 +24,7 @@ import type { ScmIssueDetail, ScmUserMetadata } from '../scm/types.js';
 
 const mockGetIssueDetail = vi.fn();
 const mockListCommentDetails = vi.fn();
+const mockListRepositoryLabels = vi.fn();
 const mockFetchUserMetadata = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
 
@@ -171,10 +172,12 @@ async function triage(detail: ScmIssueDetail): Promise<{ approved: number; refus
     repo: 'owner/repo',
     getIssueDetail: mockGetIssueDetail,
     listCommentDetails: mockListCommentDetails,
+    listRepositoryLabels: mockListRepositoryLabels,
     fetchUserMetadata: mockFetchUserMetadata,
   });
   mockGetIssueDetail.mockResolvedValue(ok(detail));
   mockListCommentDetails.mockResolvedValue(ok([]));
+  mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
   mockFetchUserMetadata.mockResolvedValue(ok(meta(detail.author)));
 
   const r = await new IssueTriage({ enableReputation: true }).triageIssue(URL);
@@ -208,10 +211,12 @@ describe('reputation gating false-positive corpus (#4667)', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(ok(detail));
     mockListCommentDetails.mockResolvedValue(ok([]));
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
     mockFetchUserMetadata.mockResolvedValue(ok(meta(detail.author)));
 
     const r = await new IssueTriage({ enableReputation: true }).triageIssue(URL);
@@ -230,10 +235,12 @@ describe('the escalation ladder has three states, not two (#4667)', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(ok(detail));
     mockListCommentDetails.mockResolvedValue(ok([]));
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
     mockFetchUserMetadata.mockResolvedValue(
       ok(suspicious ? newMeta(detail.author) : meta(detail.author))
     );
@@ -287,6 +294,7 @@ describe('corroboration discriminates by author trust (#4667)', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
+      listRepositoryLabels: mockListRepositoryLabels,
       fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(
@@ -299,6 +307,7 @@ describe('corroboration discriminates by author trust (#4667)', () => {
       )
     );
     mockListCommentDetails.mockResolvedValue(ok([]));
+    mockListRepositoryLabels.mockResolvedValue(ok(['bug']));
     mockFetchUserMetadata.mockResolvedValue(ok(meta('u')));
     const r = await new IssueTriage({ enableReputation: true }).triageIssue(URL);
     if (!r.ok) throw r.error;
