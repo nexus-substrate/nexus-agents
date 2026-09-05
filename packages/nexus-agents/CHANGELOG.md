@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.16.0
+
+### Minor Changes
+
+- [#5557](https://github.com/nexus-substrate/nexus-agents/pull/5557) [`0739b85`](https://github.com/nexus-substrate/nexus-agents/commit/0739b85eae6aab4a969e9af5032d3e21226d70d7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose optional executed CLI attribution on orchestration results and record successful orchestrate outcomes against the last CLI that actually ran instead of the category default ([#5513](https://github.com/nexus-substrate/nexus-agents/issues/5513)).
+
+### Patch Changes
+
+- [#5556](https://github.com/nexus-substrate/nexus-agents/pull/5556) [`7b7b4f8`](https://github.com/nexus-substrate/nexus-agents/commit/7b7b4f879380ca361f0833d15e834b661845ce26) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Disclose how many belief and research context items the fixed prompt slices include and drop, including the estimated token cost of omitted items ([#5497](https://github.com/nexus-substrate/nexus-agents/issues/5497)).
+
 ## 8.15.3
 
 ### Patch Changes
