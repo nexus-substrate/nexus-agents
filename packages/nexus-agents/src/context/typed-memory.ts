@@ -39,6 +39,7 @@ import {
 import { HindsightBeliefMemory } from './belief-memory.js';
 
 const logger = createLogger({ component: 'typed-memory' });
+const STATS_SEARCH_CAP = 1000;
 
 /**
  * Typed memory system implementing MIRIX architecture.
@@ -108,15 +109,38 @@ export class TypedMemory implements ITypedMemory {
       vault: 0,
       belief: 0,
     };
+    const coverage: TypedMemoryStats['coverage'] = {
+      core: 'exact',
+      episodic: 'exact',
+      semantic: 'exact',
+      procedural: 'exact',
+      resource: 'exact',
+      vault: 'exact',
+      belief: 'exact',
+    };
     let total = 0;
+    let truncated = false;
     for (const type of Object.values(MemoryType)) {
-      const result = await this.backend.search(type, 1000);
-      if (result.ok) {
-        counts[type] = result.value.length;
-        total += result.value.length;
+      const result = await this.backend.search(type, STATS_SEARCH_CAP);
+      if (!result.ok) {
+        coverage[type] = 'error';
+        continue;
+      }
+      counts[type] = result.value.length;
+      total += result.value.length;
+      if (result.value.length === STATS_SEARCH_CAP) {
+        coverage[type] = 'truncated';
+        truncated = true;
       }
     }
-    return ok({ totalEntries: total, entriesByType: counts });
+    // Successful types remain useful; coverage identifies partial failures
+    // without discarding their measurements in a top-level error.
+    return ok({
+      totalEntries: total,
+      entriesByType: counts,
+      coverage,
+      ...(truncated ? { cap: STATS_SEARCH_CAP } : {}),
+    });
   }
 
   async pruneExpired(): Promise<Result<TypedMemoryPruneResult, MemoryError>> {

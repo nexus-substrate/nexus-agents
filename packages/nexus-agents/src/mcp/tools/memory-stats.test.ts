@@ -233,16 +233,43 @@ describe('memory-stats', () => {
       expect(parsed.backends.decay).toBe(true);
     });
 
-    it('includes typed memory stats when available', async () => {
-      const typedStats = { total: 42, byType: { semantic: 20, episodic: 22 } };
+    it('renders typed memory counts according to their coverage', async () => {
+      const typedStats = {
+        totalEntries: 1002,
+        entriesByType: {
+          core: 0,
+          episodic: 1000,
+          semantic: 2,
+          procedural: 0,
+          resource: 0,
+          vault: 0,
+          belief: 0,
+        },
+        coverage: {
+          core: 'error',
+          episodic: 'truncated',
+          semantic: 'exact',
+          procedural: 'exact',
+          resource: 'exact',
+          vault: 'exact',
+          belief: 'exact',
+        },
+        cap: 1000,
+      };
       mockGetTypedMemoryStats.mockResolvedValue(typedStats);
 
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content[0]!.text);
-      expect(parsed.typed).toEqual(typedStats);
+      expect(parsed.typed.entriesByType.core).toBe('unmeasured (error)');
+      expect(parsed.typed.entriesByType.episodic).toBe('≥ 1000 (truncated)');
+      expect(parsed.typed.entriesByType.semantic).toBe(2);
+      expect(parsed.typed.totalEntries).toBe('unmeasured (error)');
       expect(parsed.backends.typed).toBe(true);
+      typedStats.coverage.core = 'exact';
+      const truncated = JSON.parse((await registeredHandler({}, {})).content[0]!.text);
+      expect(truncated.typed.totalEntries).toBe('≥ 1002 (truncated)');
     });
 
     it('includes decay stats when requested', async () => {

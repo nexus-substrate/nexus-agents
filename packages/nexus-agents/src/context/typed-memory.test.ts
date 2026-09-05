@@ -15,7 +15,8 @@ import type {
   VaultEntry,
 } from './memory-types.js';
 import type { IContextMemoryBackend, MemoryMetadata, MemoryEntry } from './memory-backend-types.js';
-import { ok } from '../core/result.js';
+import { MemoryError } from './memory-backend-types.js';
+import { err, ok } from '../core/result.js';
 
 // Mock memory backend
 function createMockBackend(): IContextMemoryBackend {
@@ -339,12 +340,39 @@ describe('TypedMemory', () => {
     });
 
     it('should get memory statistics', async () => {
+      await backend.store('core-normal', null, { importance: 'low' });
       const result = await memory.getStats();
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value.entriesByType).toBeDefined();
+        expect(result.value.entriesByType.core).toBe(1);
         expect(typeof result.value.totalEntries).toBe('number');
+        expect(result.value.coverage.core).toBe('exact');
+        expect(result.value.cap).toBeUndefined();
       }
+    });
+
+    it('marks a failed type search as unmeasured', async () => {
+      vi.mocked(backend.search).mockImplementation((query) =>
+        Promise.resolve(query === MemoryType.CORE ? err(new MemoryError('failed')) : ok([]))
+      );
+
+      const result = await memory.getStats();
+
+      expect(result.ok && result.value.coverage.core).toBe('error');
+    });
+
+    it('marks counts that reach the 1000-entry cap as truncated', async () => {
+      const metadata: MemoryMetadata = { importance: 'low' };
+      await Promise.all(
+        Array.from({ length: 1001 }, (_, index) =>
+          backend.store(`core-${String(index)}`, null, metadata)
+        )
+      );
+
+      const result = await memory.getStats();
+
+      expect(result.ok && result.value.coverage.core).toBe('truncated');
+      expect(result.ok && result.value.cap).toBe(1000);
     });
 
     it('should prune expired entries', async () => {

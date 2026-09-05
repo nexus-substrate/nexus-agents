@@ -9460,6 +9460,8 @@ InterfaceDeclaration TypedMemoryPruneResult
   readonly prunedByType: Record<MemoryType, number>
   readonly prunedCount: number
 InterfaceDeclaration TypedMemoryStats
+  readonly cap?: number | undefined
+  readonly coverage: Record<MemoryType, "error" | "truncated" | "exact">
   readonly entriesByType: Record<MemoryType, number>
   readonly newestEntry?: Date | undefined
   readonly oldestEntry?: Date | undefined
