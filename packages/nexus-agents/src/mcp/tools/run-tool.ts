@@ -27,6 +27,7 @@ import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run.js';
+import { describeIncompletePipeline } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -436,40 +437,10 @@ function detectEngineFailure(
     // A dry run stops before completion BY REQUEST, so `completed: false` is
     // the outcome the caller asked for rather than an engine fault. An empty
     // plan is still a failure — producing one is the whole point of the run.
-    if (record['dryRun'] === true && record['planStatus'] !== 'empty') return null;
+    if (record['dryRun'] === true && record['planStatus'] === undefined) return null;
     return { message: describeIncompletePipeline(record), detail: record };
   }
   return null;
-}
-
-/**
- * Says WHY the dev pipeline did not complete (#4789).
- *
- * Every non-completion used to read `the dev pipeline did not complete`, and
- * `exec.result` was dropped — so a caller could not tell a security gate that
- * REJECTED the change from one that never ran, which is precisely the
- * distinction #4772/#4783 put into `securityRan`. The reason has to survive the
- * trip through the error envelope or it may as well not have been recorded.
- *
- * Reads `securityRan` as three-valued on purpose: absent means a producer that
- * predates the field, NOT `false`, so the generic message stands rather than
- * claiming a reason we do not have.
- */
-function describeIncompletePipeline(record: Record<string, unknown>): string {
-  const prefix = 'Engine reported failure:';
-  if (record['planStatus'] === 'empty') {
-    return `${prefix} the planner returned no plan, so nothing was built`;
-  }
-  if (record['securityRan'] === true) {
-    return `${prefix} the security gate rejected the change`;
-  }
-  if (record['securityRan'] === false) {
-    if (typeof record['securityNote'] === 'string') {
-      return `${prefix} the security scan did not run (${record['securityNote']}); the change is blocked until it does`;
-    }
-    return `${prefix} the run stopped before the security gate, which never ran`;
-  }
-  return `${prefix} the dev pipeline did not complete`;
 }
 
 /**

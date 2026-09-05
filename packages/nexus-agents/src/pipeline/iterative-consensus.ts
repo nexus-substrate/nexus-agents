@@ -30,11 +30,12 @@ export interface IterativeConsensusConfig {
   /** Voting strategy (default: 'higher_order'). */
   readonly strategy?: VotingStrategy | undefined;
   /**
-   * #4138: error policy for the vote (default: 'absolute_quorum'). The dev-pipeline
-   * plan gate opts in to `absolute_quorum` so an errored voter — especially the
-   * contrarian — degrades to a recoverable `no_quorum` (which the bounded
-   * `maxNoQuorumRetries` re-run then terminal path already honors) instead of being
-   * silently dropped from the denominator. Overridable per-caller.
+   * #4138: error policy for votes run by this reusable helper (default:
+   * 'absolute_quorum'). An errored voter degrades to a recoverable `no_quorum`
+   * handled by `maxNoQuorumRetries`. Overridable per caller.
+   *
+   * The production dev-pipeline plan gate applies the same policy directly through
+   * `DevPipelineStages.vote`; it does not call `runIterativeConsensus`.
    */
   readonly errorPolicy?: ErrorPolicy | undefined;
   /**
@@ -66,7 +67,7 @@ export interface IterativeConsensusResult {
 
 const DEFAULT_MAX_ITERATIONS = 3;
 /** #4135: default bounded re-runs for a `no_quorum` void (separate from maxIterations). */
-const DEFAULT_MAX_NO_QUORUM_RETRIES = 2;
+export const DEFAULT_MAX_NO_QUORUM_RETRIES = 2;
 const DEFAULT_MAX_PROPOSAL_LENGTH = 4000;
 const DEFAULT_STRATEGY: VotingStrategy = 'higher_order';
 const DEFAULT_PREFIX = 'pipeline';
@@ -100,21 +101,35 @@ interface ConsensusLoopState {
  * bounded re-runs are exhausted.
  */
 async function voteWithQuorumRecovery(state: ConsensusLoopState): Promise<VoteResult> {
-  let vote = await executeSingleVote(state.plan, state.config, state.log);
-  for (
-    let attempt = 1;
-    vote.kind === 'no_quorum' && attempt <= state.maxNoQuorumRetries;
-    attempt++
-  ) {
-    state.log.warn('Vote reached no_quorum — re-running the missing voice (bounded)', {
-      attempt,
-      maxNoQuorumRetries: state.maxNoQuorumRetries,
-      reason: vote.reason,
-    });
-    emitPipelineStageEvent(state.prefix, 'vote', 'started');
-    vote = await executeSingleVote(state.plan, state.config, state.log);
+  const outcome = await retryNoQuorumVote(
+    () => executeSingleVote(state.plan, state.config, state.log),
+    state.maxNoQuorumRetries,
+    (attempt, vote) => {
+      state.log.warn('Vote reached no_quorum — re-running the missing voice (bounded)', {
+        attempt,
+        maxNoQuorumRetries: state.maxNoQuorumRetries,
+        reason: vote.reason,
+      });
+      emitPipelineStageEvent(state.prefix, 'vote', 'started');
+    }
+  );
+  return outcome.vote;
+}
+
+/** Re-run one unchanged proposal after recoverable `no_quorum` results. */
+export async function retryNoQuorumVote(
+  executeVote: () => Promise<VoteResult>,
+  maxRetries = DEFAULT_MAX_NO_QUORUM_RETRIES,
+  onRetry?: (attempt: number, vote: Extract<VoteResult, { kind: 'no_quorum' }>) => void
+): Promise<{ readonly vote: VoteResult; readonly retries: number }> {
+  let vote = await executeVote();
+  let retries = 0;
+  while (vote.kind === 'no_quorum' && retries < maxRetries) {
+    retries++;
+    onRetry?.(retries, vote);
+    vote = await executeVote();
   }
-  return vote;
+  return { vote, retries };
 }
 
 /**
@@ -250,7 +265,7 @@ function buildVotingInput(
     strategy: c.strategy ?? DEFAULT_STRATEGY,
     simulateVotes: c.simulateVotes ?? false,
     quickMode: c.quickMode ?? false,
-    // #4138: the dev-pipeline plan gate opts in to absolute_quorum (overridable).
+    // #4138: this reusable helper opts into absolute_quorum by default.
     errorPolicy: c.errorPolicy ?? 'absolute_quorum',
   };
 }

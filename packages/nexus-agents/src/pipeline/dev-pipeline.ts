@@ -51,6 +51,7 @@ import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.
 import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 import { getResearchInsightsForTask } from '../context/context-retriever.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
+import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-consensus.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -191,14 +192,18 @@ export interface DevPipelineResult {
   /** Security-stage feedback explaining why a skipped scan did not run. */
   readonly securityNote?: string;
   /**
-   * Why planning produced no usable plan, when it did not (#4772).
-   *
-   * Absent means the plan is a real plan. `'empty'` means the planner returned
-   * nothing — previously the stage substituted the PROMPT for the plan, so a
-   * failed run was indistinguishable from a successful one and downstream
-   * stages voted on the input text.
+   * Terminal planning-gate state. Absent means the panel approved a usable plan.
+   * `'empty'` means the planner returned nothing; `'no_quorum'` means the retry
+   * budget ended without a valid panel; `'unapproved'` means every permitted
+   * revision was rejected. Every present state stops before implementation.
    */
-  readonly planStatus?: 'empty';
+  readonly planStatus?: 'empty' | 'no_quorum' | 'unapproved';
+  /** Last quorum failure reason when {@link planStatus} is `'no_quorum'`. */
+  readonly planVoteReason?: string;
+  /** Last panel approval percentage for a terminal plan-vote outcome. */
+  readonly planVoteApprovalPercentage?: number;
+  /** Last rejection feedback when {@link planStatus} is `'unapproved'`. */
+  readonly planVoteFeedback?: string;
   /**
    * Whether this run stopped after plan+vote because the caller asked it to.
    *
@@ -411,6 +416,12 @@ async function runDevPipelineInner(
   if (options?.dryRun === true) {
     logger.info('Dry run — stopping after plan+vote');
     return buildDryRunResult(planResult);
+  }
+
+  if (planResult.planStatus !== undefined) {
+    const result = buildPlanFailureResult(planResult);
+    applyPipelineHindsight(bm, task, sid, result);
+    return result;
   }
 
   // CONSENSUS → EXECUTE policy gate (#3704). The legacy dev-pipeline does not
@@ -776,13 +787,7 @@ async function assemblePlanContext(
 }
 
 /** Build a partial result for dry-run mode. */
-function buildDryRunResult(planResult: {
-  plan: string;
-  iterations: number;
-  conditional: boolean;
-  conditions: readonly string[];
-  caveats: readonly string[];
-}): DevPipelineResult {
+function buildDryRunResult(planResult: PlanVoteResult): DevPipelineResult {
   return {
     completed: false,
     // Says WHY completion is false: by request, not by fault.
@@ -795,7 +800,39 @@ function buildDryRunResult(planResult: {
     // "the security gate rejected this"; `securityRan: false` says it never ran.
     securityPassed: false,
     securityRan: false,
-    ...(planResult.plan.trim() === '' ? { planStatus: 'empty' as const } : {}),
+    ...(planResult.planStatus !== undefined ? { planStatus: planResult.planStatus } : {}),
+    ...(planResult.planVoteReason !== undefined
+      ? { planVoteReason: planResult.planVoteReason }
+      : {}),
+    ...(planResult.planVoteApprovalPercentage !== undefined
+      ? { planVoteApprovalPercentage: planResult.planVoteApprovalPercentage }
+      : {}),
+    ...(planResult.planVoteFeedback !== undefined
+      ? { planVoteFeedback: planResult.planVoteFeedback }
+      : {}),
+  };
+}
+
+/** Build a terminal planning result that cannot enter decompose/implement. */
+function buildPlanFailureResult(planResult: PlanVoteResult): DevPipelineResult {
+  return {
+    completed: false,
+    plan: planResult.plan,
+    tasks: [],
+    voteIterations: planResult.iterations,
+    qaIterations: 0,
+    securityPassed: false,
+    securityRan: false,
+    planStatus: planResult.planStatus ?? 'unapproved',
+    ...(planResult.planVoteReason !== undefined
+      ? { planVoteReason: planResult.planVoteReason }
+      : {}),
+    ...(planResult.planVoteApprovalPercentage !== undefined
+      ? { planVoteApprovalPercentage: planResult.planVoteApprovalPercentage }
+      : {}),
+    ...(planResult.planVoteFeedback !== undefined
+      ? { planVoteFeedback: planResult.planVoteFeedback }
+      : {}),
   };
 }
 
@@ -836,13 +873,7 @@ async function runPlanningPhase(
   prior: PipelineCheckpointState | null,
   options: DevPipelineOptions | undefined
 ): Promise<{
-  planResult: {
-    plan: string;
-    iterations: number;
-    conditional: boolean;
-    conditions: readonly string[];
-    caveats: readonly string[];
-  };
+  planResult: PlanVoteResult;
   /** #3234: research-maturity of this run, attached to decomposed tasks. */
   researchMaturity: number;
 }> {
@@ -864,7 +895,7 @@ async function runPlanningPhase(
     sid,
     limits: resolveIterationLimits(options),
   });
-  if (sid !== undefined) {
+  if (sid !== undefined && planResult.planStatus === undefined) {
     saveStageCheckpoint(sid, 'plan', {
       type: 'plan',
       text: planResult.plan,
@@ -872,7 +903,7 @@ async function runPlanningPhase(
     });
     saveStageCheckpoint(sid, 'vote', {
       type: 'vote',
-      approved: planResult.conditional || planResult.iterations > 0,
+      approved: true,
       conditional: planResult.conditional,
       conditions: planResult.conditions,
       caveats: planResult.caveats,
@@ -883,16 +914,7 @@ async function runPlanningPhase(
 }
 
 /** Build result for harness mode — tasks returned for external implementation. */
-function buildHarnessResult(
-  planResult: {
-    plan: string;
-    iterations: number;
-    conditional: boolean;
-    conditions: readonly string[];
-    caveats: readonly string[];
-  },
-  tasks: PipelineTask[]
-): DevPipelineResult {
+function buildHarnessResult(planResult: PlanVoteResult, tasks: PipelineTask[]): DevPipelineResult {
   return {
     completed: false,
     plan: planResult.plan,
@@ -1000,13 +1022,7 @@ async function runPlanOrResume(
   research: string,
   stages: DevPipelineStages,
   run: { sid: string | undefined; limits: IterationLimits }
-): Promise<{
-  plan: string;
-  iterations: number;
-  conditional: boolean;
-  conditions: readonly string[];
-  caveats: readonly string[];
-}> {
+): Promise<PlanVoteResult> {
   const { sid: sessionId, limits } = run;
   if (prior?.plan !== undefined) {
     logger.info('Resuming from checkpoint', { stage: 'plan', sessionId });
@@ -1028,6 +1044,16 @@ interface ConditionalMeta {
   readonly caveats: readonly string[];
   /** #3234: research-maturity of the run, attached to each fresh task. */
   readonly researchMaturity?: number | undefined;
+}
+
+/** Result of the plan/revision loop, including terminal gate evidence. */
+interface PlanVoteResult extends ConditionalMeta {
+  readonly plan: string;
+  readonly iterations: number;
+  readonly planStatus?: 'empty' | 'no_quorum' | 'unapproved';
+  readonly planVoteReason?: string;
+  readonly planVoteApprovalPercentage?: number;
+  readonly planVoteFeedback?: string;
 }
 
 /** Run decompose or return from checkpoint. */
@@ -1077,9 +1103,10 @@ async function planVoteLoop(
   stages: DevPipelineStages,
   sessionId: string | undefined,
   limits: IterationLimits
-): Promise<{ plan: string; iterations: number } & ConditionalMeta> {
+): Promise<PlanVoteResult> {
   let feedback: string | undefined;
   let plan = '';
+  let lastRejected: Extract<VoteResult, { kind: 'rejected' }> | undefined;
 
   for (let i = 1; i <= limits.vote; i++) {
     plan = await withStep({ name: `plan (i=${String(i)})`, attrs: { iteration: i } }, () =>
@@ -1091,36 +1118,39 @@ async function planVoteLoop(
     // see `planStatus: 'empty'` instead of a plausible-looking result.
     if (plan.trim() === '') {
       logger.warn('Planner returned no plan — stopping before vote', { iteration: i, sessionId });
-      return { plan: '', iterations: i, conditional: false, conditions: [], caveats: [] };
+      return {
+        plan: '',
+        iterations: i,
+        conditional: false,
+        conditions: [],
+        caveats: [],
+        planStatus: 'empty',
+      };
     }
 
-    const vote = await withStep(
-      { name: `vote (i=${String(i)})`, attrs: { iteration: i } },
-      async (ctx) => {
-        const r = await stages.vote(plan, research);
-        ctx.setSummary(
-          `${String(Math.round(r.approvalPercentage))}% ${isApproved(r) ? 'approved' : 'rejected'}`
-        );
-        return r;
+    const voteOutcome = await retryNoQuorumVote(
+      () => runPlanVote(plan, research, stages, i),
+      DEFAULT_MAX_NO_QUORUM_RETRIES,
+      (attempt, vote) => {
+        logQuorumRetry(attempt, vote, sessionId);
       }
     );
+    const vote = voteOutcome.vote;
 
     // Closes #2963 site 4: include sessionId so plan-loop post-mortems
     // can correlate to checkpointed sessions on disk. The variable
     // was already in scope at the caller (#dev-pipeline runDevPipeline);
     // threaded through runPlanOrResume → planVoteLoop here.
-    if (isApproved(vote)) {
-      const meta = extractConditionalMeta(vote);
-      logger.info('Plan approved', {
-        iteration: i,
-        approval: vote.approvalPercentage,
-        sessionId,
-        ...meta,
-      });
-      return { plan, iterations: i, ...meta };
+    if (vote.kind === 'approved' || vote.kind === 'conditional_go') {
+      return buildApprovedPlanResult(plan, i, vote, sessionId);
     }
 
-    feedback = getVoteFeedback(vote);
+    if (vote.kind === 'no_quorum') {
+      return buildNoQuorumPlanResult(plan, i, vote, voteOutcome.retries);
+    }
+
+    lastRejected = vote;
+    feedback = vote.feedback;
     logger.warn('Plan rejected, iterating', {
       iteration: i,
       feedback: feedback.slice(0, 200),
@@ -1128,8 +1158,100 @@ async function planVoteLoop(
     });
   }
 
-  logger.warn('Max vote iterations reached, proceeding with last plan', { sessionId });
-  return { plan, iterations: limits.vote, conditional: false, conditions: [], caveats: [] };
+  return buildUnapprovedPlanResult(plan, limits.vote, lastRejected, sessionId);
+}
+
+function buildApprovedPlanResult(
+  plan: string,
+  iterations: number,
+  vote: Exclude<VoteResult, { kind: 'rejected' | 'no_quorum' }>,
+  sessionId: string | undefined
+): PlanVoteResult {
+  const meta = extractConditionalMeta(vote);
+  logger.info('Plan approved', {
+    iteration: iterations,
+    approval: vote.approvalPercentage,
+    sessionId,
+    ...meta,
+  });
+  return { plan, iterations, ...meta };
+}
+
+/** Run one stage-aware plan vote so progress/outcome instrumentation remains intact. */
+async function runPlanVote(
+  plan: string,
+  research: string,
+  stages: DevPipelineStages,
+  iteration: number
+): Promise<VoteResult> {
+  return withStep({ name: `vote (i=${String(iteration)})`, attrs: { iteration } }, async (ctx) => {
+    const result = await stages.vote(plan, research);
+    const label =
+      result.kind === 'no_quorum' ? 'no_quorum' : isApproved(result) ? 'approved' : 'rejected';
+    ctx.setSummary(`${String(Math.round(result.approvalPercentage))}% ${label}`);
+    return result;
+  });
+}
+
+function logQuorumRetry(
+  attempt: number,
+  vote: Extract<VoteResult, { kind: 'no_quorum' }>,
+  sessionId: string | undefined
+): void {
+  logger.warn('Plan vote reached no_quorum — re-running the same plan', {
+    attempt,
+    maxNoQuorumRetries: DEFAULT_MAX_NO_QUORUM_RETRIES,
+    reason: vote.reason,
+    sessionId,
+  });
+}
+
+function buildNoQuorumPlanResult(
+  plan: string,
+  iterations: number,
+  vote: Extract<VoteResult, { kind: 'no_quorum' }>,
+  retries: number
+): PlanVoteResult {
+  logger.warn('Plan vote could not reach quorum — stopping', {
+    retries,
+    reason: vote.reason,
+  });
+  return {
+    plan,
+    iterations,
+    conditional: false,
+    conditions: [],
+    caveats: [],
+    planStatus: 'no_quorum',
+    planVoteReason: vote.reason,
+    planVoteApprovalPercentage: vote.approvalPercentage,
+  };
+}
+
+function buildUnapprovedPlanResult(
+  plan: string,
+  iterations: number,
+  vote: Extract<VoteResult, { kind: 'rejected' }> | undefined,
+  sessionId: string | undefined
+): PlanVoteResult {
+  const feedback = vote?.feedback ?? 'No plan vote was run';
+  const approvalPercentage = vote?.approvalPercentage ?? 0;
+  logger.warn('Max vote iterations reached without plan approval — stopping', {
+    sessionId,
+    iterations,
+    approvalPercentage,
+    feedback: feedback.slice(0, 200),
+  });
+  return {
+    plan,
+    iterations,
+    conditional: false,
+    conditions: [],
+    caveats: [],
+    planStatus: 'unapproved',
+    planVoteApprovalPercentage: approvalPercentage,
+    planVoteFeedback: feedback,
+  };
 }
 
 /** Result of implementing a single task. */

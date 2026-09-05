@@ -23,7 +23,10 @@ interface FakeDevPipelineResult {
   securityPassed: boolean;
   securityRan?: boolean;
   securityNote?: string;
-  planStatus?: 'empty';
+  planStatus?: 'empty' | 'no_quorum' | 'unapproved';
+  planVoteReason?: string;
+  planVoteApprovalPercentage?: number;
+  planVoteFeedback?: string;
   dryRun?: true;
 }
 const runDevPipelineForGoalMock = vi.fn(
@@ -590,6 +593,54 @@ describe('run async dispatch (execute:true, #3732)', () => {
       const env = errorEnvelope(result);
       expect(env?.['message']).toContain('planner returned no plan');
       expect((env?.['detail'] as Record<string, unknown>)?.['planStatus']).toBe('empty');
+    });
+
+    it('names an exhausted plan rejection with its iteration count', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'last rejected plan',
+        tasks: [],
+        voteIterations: 3,
+        qaIterations: 0,
+        securityPassed: false,
+        securityRan: false,
+        planStatus: 'unapproved',
+        planVoteApprovalPercentage: 40,
+        planVoteFeedback: 'Still not right',
+      });
+      const result = await captureHandler()({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain('the panel did not approve the plan after 3 iterations');
+    });
+
+    it('names a terminal plan no_quorum with the last reason', async () => {
+      runDevPipelineForGoalMock.mockResolvedValueOnce({
+        completed: false,
+        plan: 'unchanged plan',
+        tasks: [],
+        voteIterations: 1,
+        qaIterations: 0,
+        securityPassed: false,
+        securityRan: false,
+        planStatus: 'no_quorum',
+        planVoteReason: 'catfish voter errored',
+        planVoteApprovalPercentage: 86,
+      });
+      const result = await captureHandler()({
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+      });
+
+      const env = errorEnvelope(result);
+      expect(env?.['message']).toContain(
+        'the plan vote could not reach quorum: catfish voter errored'
+      );
     });
 
     it('still reports a bare non-completion when the result says nothing more', async () => {

@@ -129,6 +129,7 @@ describe('runDevPipeline', () => {
 
     expect(result.completed).toBe(true);
     expect(result.voteIterations).toBe(1);
+    expect(result.planStatus).toBeUndefined();
     expect(result.securityPassed).toBe(true);
     expect(result.tasks).toHaveLength(2);
     expect(stages.research).toHaveBeenCalledWith('Build feature X');
@@ -228,7 +229,7 @@ describe('runDevPipeline', () => {
     expect(result.securityNote).toContain('semgrep not installed');
   });
 
-  it('proceeds after max vote iterations with last plan', async () => {
+  it('#5575: stops unapproved after max vote iterations without implementing', async () => {
     const stages = createMockStages({
       vote: vi.fn().mockResolvedValue({
         kind: 'rejected',
@@ -238,9 +239,50 @@ describe('runDevPipeline', () => {
     });
 
     const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.planStatus).toBe('unapproved');
+    expect(result.planVoteApprovalPercentage).toBe(40);
+    expect(result.planVoteFeedback).toBe('Still not right');
     expect(result.voteIterations).toBe(3);
-    // Pipeline continues with the last plan even if vote never approved
-    expect(result.tasks).toHaveLength(2);
+    expect(stages.plan).toHaveBeenCalledTimes(3);
+    expect(stages.decompose).not.toHaveBeenCalled();
+    expect(stages.implement).not.toHaveBeenCalled();
+    expect(stages.qaReview).not.toHaveBeenCalled();
+    expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+
+  it('#5506: retries the same no_quorum plan separately, then stops without implementing', async () => {
+    const vote = vi.fn().mockResolvedValue({
+      kind: 'no_quorum',
+      reason: 'catfish voter errored',
+      approvalPercentage: 86,
+    } satisfies VoteResult);
+    const stages = createMockStages({ vote });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.planStatus).toBe('no_quorum');
+    expect(result.planVoteReason).toContain('catfish voter errored');
+    expect(result.planVoteApprovalPercentage).toBe(86);
+    // One plan revision iteration; the initial vote plus two quorum re-runs are separate.
+    expect(result.voteIterations).toBe(1);
+    expect(stages.plan).toHaveBeenCalledTimes(1);
+    expect(stages.plan).toHaveBeenCalledWith(
+      'Build feature X',
+      'Research findings: relevant context gathered',
+      undefined
+    );
+    expect(vote).toHaveBeenCalledTimes(3);
+    const unchangedPlan = 'Implementation plan: step 1, step 2, step 3';
+    expect(vote).toHaveBeenNthCalledWith(1, unchangedPlan, expect.any(String));
+    expect(vote).toHaveBeenNthCalledWith(2, unchangedPlan, expect.any(String));
+    expect(vote).toHaveBeenNthCalledWith(3, unchangedPlan, expect.any(String));
+    expect(stages.decompose).not.toHaveBeenCalled();
+    expect(stages.implement).not.toHaveBeenCalled();
+    expect(stages.qaReview).not.toHaveBeenCalled();
+    expect(stages.securityScan).not.toHaveBeenCalled();
   });
 
   it('honors a caller-supplied vote-iteration cap (#4939)', async () => {

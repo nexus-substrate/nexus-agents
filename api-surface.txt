@@ -2008,7 +2008,7 @@ InterfaceDeclaration ConsensusVoteRequestedEvent
 InterfaceDeclaration ConsensusVoteResponse
   approvalPercentage: number
   costSummary?: DecisionCostSummary | undefined
-  decision: "pending" | "approved" | "rejected" | "timeout" | "no_quorum"
+  decision: "pending" | "approved" | "rejected" | "no_quorum" | "timeout"
   durationMs: number
   higherOrderMetadata?: HigherOrderMetadata | undefined
   optionOutcome?: { approverCount: number; leadingOption?: string; leadingShare: number; selectedCount: number; tally: ReadonlyArray<{ count: number; option: string; }>; thresholdMet: boolean; unattributedApprovals: number; vetoReason?: string; } | undefined
@@ -2880,7 +2880,10 @@ InterfaceDeclaration DevPipelineResult
   readonly completed: boolean
   readonly dryRun?: true | undefined
   readonly plan: string
-  readonly planStatus?: "empty" | undefined
+  readonly planStatus?: "empty" | "no_quorum" | "unapproved" | undefined
+  readonly planVoteApprovalPercentage?: number | undefined
+  readonly planVoteFeedback?: string | undefined
+  readonly planVoteReason?: string | undefined
   readonly qaIterations: number
   readonly securityNote?: string | undefined
   readonly securityPassed: boolean

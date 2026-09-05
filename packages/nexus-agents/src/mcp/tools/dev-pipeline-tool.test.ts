@@ -397,6 +397,27 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['planStatus']).toBe('empty');
   });
 
+  it('surfaces terminal plan-vote evidence in the response envelope', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      plan: 'last plan',
+      tasks: [],
+      voteIterations: 3,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+      planStatus: 'unapproved',
+      planVoteApprovalPercentage: 40,
+      planVoteFeedback: 'Still not right',
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    expect(output['planStatus']).toBe('unapproved');
+    expect(output['planVoteApprovalPercentage']).toBe(40);
+    expect(output['planVoteFeedback']).toBe('Still not right');
+  });
+
   it('surfaces the dryRun marker too', async () => {
     // #4993 added `dryRun` to DevPipelineResult for the same reason as the two
     // fields above — `completed: false` was the request, not a fault — and then
