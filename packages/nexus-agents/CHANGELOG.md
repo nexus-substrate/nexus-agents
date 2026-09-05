@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.20.1
+
+### Patch Changes
+
+- [#5586](https://github.com/nexus-substrate/nexus-agents/pull/5586) [`699fa7f`](https://github.com/nexus-substrate/nexus-agents/commit/699fa7fa6395336255112c3639d5f65319843d92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve workflow-level and step-level context budgets when parsing YAML and JSON workflow definitions.
+
 ## 8.20.0
 
 ### Minor Changes
