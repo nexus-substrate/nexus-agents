@@ -308,6 +308,11 @@ describe('outcome persistence', () => {
       const parsed = JSON.parse(mockStdout.join('')) as { results: unknown[] };
       expect(appended.length).toBe(parsed.results.length);
       expect(appended.length).toBeGreaterThan(0);
+      // Each record carries the measured evaluation time (#5653); a zero
+      // placeholder would be purged as a skipped worker on the next hydrate.
+      for (const outcome of appended) {
+        expect(outcome.durationMs).toBeGreaterThan(0);
+      }
       // Every appended outcome is a self-eval-sourced record.
       for (const outcome of appended) {
         expect(outcome.id.startsWith('self-eval-')).toBe(true);
