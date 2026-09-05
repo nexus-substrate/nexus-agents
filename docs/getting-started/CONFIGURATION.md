@@ -929,7 +929,7 @@ Configure authentication for network-exposed MCP transports:
 security:
   auth:
     enabled: true # Enable authentication
-    method: token # 'token' or 'oauth2'
+    method: token # 'token' is the only implemented method; 'oauth2' is accepted but behaves as 'token' and warns (#5678)
     tokenHeader: Authorization # Header name for bearer token
     tokenFile: ~/.nexus-agents/auth/server-token # Token file path (auth/ is cross-repo)
 ```

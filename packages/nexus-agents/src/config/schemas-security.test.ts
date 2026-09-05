@@ -261,6 +261,8 @@ describe('SecurityConfigSchema', () => {
     expect(result.timeout?.defaultTimeoutMs).toBe(15000);
     expect(result.toolAllowlist).toEqual(['orchestrate', 'delegate']);
     expect(result.audit?.enabled).toBe(true);
+    // Accepted, not implemented: AuthHandler warns and behaves as 'token'
+    // (#5678); the value is rejected at the next major (#5681).
     expect(result.auth?.method).toBe('oauth2');
   });
 
