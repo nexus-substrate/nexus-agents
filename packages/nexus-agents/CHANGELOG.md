@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.9
+
+### Patch Changes
+
+- [#5682](https://github.com/nexus-substrate/nexus-agents/pull/5682) [`ce7ce00`](https://github.com/nexus-substrate/nexus-agents/commit/ce7ce00de31ca360bf097ff4d7e9810647abf668) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `security.auth.method: 'oauth2'` now logs a startup warning that it is not implemented and behaves as `'token'`; the docs no longer present it as a live choice. The value is narrowed out of the schema at the next major ([#5681](https://github.com/nexus-substrate/nexus-agents/issues/5681)). Panel decision on [#5678](https://github.com/nexus-substrate/nexus-agents/issues/5678).
+
 ## 8.26.8
 
 ### Patch Changes
