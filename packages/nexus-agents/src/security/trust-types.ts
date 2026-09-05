@@ -112,8 +112,21 @@ export const SanitizedInputSchema = z.object({
   content: z.string(),
   /** Original content before sanitization (for audit). */
   originalLength: z.number().int().nonnegative(),
-  /** Assigned trust tier based on user role and content analysis. */
+  /**
+   * Assigned trust tier based on user role and content analysis.
+   *
+   * Deprecation note: required today; a future major makes it absent when
+   * unmeasured (see the next-major issue named in the changeset).
+   */
   trustTier: TrustTierSchema,
+  /**
+   * True when `trustTier` is the sanitizer's measured content tier; false when
+   * the sanitization stage was disabled and `trustTier` is only the
+   * role-derived base tier. Absent on records that predate this field; an
+   * absent value MUST be treated as measured so legacy content downgrades are
+   * preserved fail-closed.
+   */
+  contentTierMeasured: z.boolean().optional(),
   /** GitHub user role of the input source. */
   userRole: GitHubUserRoleSchema,
   /** Injection patterns detected in content. */

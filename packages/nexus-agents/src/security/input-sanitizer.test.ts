@@ -17,6 +17,12 @@ import type {} from './trust-types.js';
 import { vi } from 'vitest';
 
 describe('sanitizeInput', () => {
+  it('marks its content tier as measured', () => {
+    const result = sanitizeInput('Normal text', 'unknown', 'someone');
+
+    expect(result.contentTierMeasured).toBe(true);
+  });
+
   // ========================================================================
   // 1. HTML Stripping (Trail of Bits vectors)
   // ========================================================================

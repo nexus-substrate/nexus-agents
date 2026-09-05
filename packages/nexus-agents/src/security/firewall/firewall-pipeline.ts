@@ -525,7 +525,9 @@ export class HostileInputFirewall {
       authorAssociation: meta.authorAssociation,
       // #4992: `contentDowngrade: false` withholds the sanitizer's content tier
       // from the classifier; the flags themselves were still measured above.
-      ...(this.contentDowngrade ? { sanitizedInput: sanitized } : {}),
+      ...(this.contentDowngrade && sanitized.contentTierMeasured !== false
+        ? { sanitizedInput: sanitized }
+        : {}),
       config: {
         allowlistedMaintainers: [...(allowlist ?? [])],
       },

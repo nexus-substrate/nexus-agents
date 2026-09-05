@@ -108,8 +108,27 @@ routing:
 
 # Memory configuration
 memory:
+  # Session memory
+  session:
+    maxEntries: 1000
+    ttlMs: 86400000 # 24 hours
+
+  # Graph memory
+  graph:
+    enabled: true
+    maxNodes: 10000
+    maxEdges: 50000
+
+  # Typed memory (MIRIX six-type system)
+  typed:
+    enabled: true
+    pruneThreshold: 0.3
+
+  # Coordinated decay across belief / agentic / adaptive / MobiMem (#5097)
   decay:
     enabled: true
+    decayIntervalMs: 3600000 # 1 hour
+    agenticMaxEntries: 10000
 
 # Security configuration
 security:
@@ -776,6 +795,49 @@ These stages are disabled by default for backward compatibility. Enable them to 
 | `qualityConstraint` | Enforce quality thresholds with cost awareness     | Balancing quality and cost |
 
 ## Memory Configuration
+
+### Session Memory
+
+Configure conversation context:
+
+```yaml
+memory:
+  session:
+    maxEntries: 1000 # Max memories per session
+    ttlMs: 86400000 # 24 hour TTL
+    pruneStrategy: lru # Least recently used
+```
+
+### Graph Memory
+
+Configure relationship tracking:
+
+```yaml
+memory:
+  graph:
+    enabled: true
+    maxNodes: 10000
+    maxEdges: 50000
+    similarityThreshold: 0.6
+```
+
+### Typed Memory (MIRIX)
+
+Configure six-type memory system:
+
+```yaml
+memory:
+  typed:
+    enabled: true
+    types:
+      core: true # Agent identity
+      episodic: true # Task experiences
+      semantic: true # Domain knowledge
+      procedural: true # Learned workflows
+      resource: true # External references
+      vault: true # Persistent storage
+    pruneThreshold: 0.3
+```
 
 ### Coordinated Decay
 
