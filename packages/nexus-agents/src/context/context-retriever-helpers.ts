@@ -163,6 +163,43 @@ export function topRankedWithinBudget(
   return kept;
 }
 
+/** Disclosure returned beside each fixed legacy context slice. */
+export interface ContextSlice {
+  readonly lines: readonly string[];
+  readonly included: number;
+  readonly dropped: number;
+  readonly droppedTokens: number;
+}
+
+/**
+ * Select five rendered items and disclose how much ranked context was omitted.
+ *
+ * Selection intentionally remains a fixed `slice(0, 5)` until #5497's
+ * token-budget half is triggered by default-on context injection (#2795).
+ * Every item is estimated once; dropped estimates are summed from that record.
+ */
+export function sliceContextLines(
+  lines: readonly string[],
+  counter: { readonly estimate: (text: string) => number }
+): ContextSlice {
+  const estimated = lines.map((line) => ({ line, tokens: counter.estimate(line) }));
+  const selected = estimated.slice(0, 5);
+  const omitted = estimated.slice(5);
+  const droppedTokens =
+    omitted.length === 0 ? 0 : omitted.reduce((sum, item) => sum + item.tokens, 0);
+  return {
+    lines: selected.map(({ line }) => line),
+    included: selected.length,
+    dropped: omitted.length,
+    droppedTokens,
+  };
+}
+
+/** Format a section heading with its fixed-slice disclosure. */
+export function disclosedHeading(label: string, slice: ContextSlice): string {
+  return `${label} (${String(slice.included)} included, ${String(slice.dropped)} dropped, ${String(slice.droppedTokens)} dropped tokens)`;
+}
+
 // ---------------------------------------------------------------------------
 // Scoring internals
 // ---------------------------------------------------------------------------

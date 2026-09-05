@@ -42,6 +42,8 @@ import {
   rankMemories,
   topRankedWithinBudget,
   clampToTokenBudget,
+  sliceContextLines,
+  disclosedHeading,
   type RankedMemoryItem,
 } from './context-retriever-helpers.js';
 import { createTokenCounter } from './token-counter.js';
@@ -598,13 +600,14 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
   const sections: string[] = [];
 
   if (ctx.beliefs.length > 0) {
-    const lines = ctx.beliefs
-      .slice(0, 5)
-      .map(
+    const slice = sliceContextLines(
+      ctx.beliefs.map(
         (b) =>
           `- ${oneLine(b.subject)} ${oneLine(b.predicate)} ${oneLine(b.object)} (confidence: ${b.confidence})`
-      );
-    sections.push(`### Beliefs\n${lines.join('\n')}`);
+      ),
+      contextTokenCounter
+    );
+    sections.push(`${disclosedHeading('### Beliefs', slice)}\n${slice.lines.join('\n')}`);
   }
 
   if (ctx.similarMemories.length > 0) {
@@ -631,7 +634,7 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
   }
 
   if (ctx.researchInsights.length > 0) {
-    const lines = ctx.researchInsights.slice(0, 5).map((r) => {
+    const lines = ctx.researchInsights.map((r) => {
       // Evidence tier (#4287) is appended only when the papers.yaml join
       // resolved; absent ⇒ the line is byte-identical to the pre-#4287 render.
       // Wrap in oneLine() like every other rendered field so an untrusted
@@ -639,7 +642,10 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
       const evidence = r.evidenceTier !== undefined ? `, evidence: ${oneLine(r.evidenceTier)}` : '';
       return `- ${oneLine(r.name)} (${oneLine(r.status)}${evidence}) — ${oneLine(r.topic)}`;
     });
-    sections.push(`### Prior research on this topic\n${lines.join('\n')}`);
+    const slice = sliceContextLines(lines, contextTokenCounter);
+    sections.push(
+      `${disclosedHeading('### Prior research on this topic', slice)}\n${slice.lines.join('\n')}`
+    );
   }
 
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
