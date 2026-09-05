@@ -22,11 +22,13 @@ const {
   mockExecuteDiscovery,
   mockAnalyzeGaps,
   mockExecuteVoting,
+  mockCheckSecurityScan,
 } = vi.hoisted(() => ({
   mockExecuteExpert: vi.fn(),
   mockExecuteDiscovery: vi.fn(),
   mockAnalyzeGaps: vi.fn(),
   mockExecuteVoting: vi.fn(),
+  mockCheckSecurityScan: vi.fn(),
   mockGetOutcomeSummaryText: vi.fn(),
   mockGetOutcomeStore: vi.fn(() => ({ append: vi.fn(), query: vi.fn().mockReturnValue([]) })),
   mockGenerateWeatherReport: vi.fn(),
@@ -93,7 +95,7 @@ vi.mock('./event-bus.js', () => ({
 }));
 
 vi.mock('./security-gate.js', () => ({
-  checkSecurityScan: () => () => Promise.resolve({ verdict: 'pass', details: 'ok' }),
+  checkSecurityScan: () => mockCheckSecurityScan,
 }));
 
 // #4135: the vote stage dynamically imports executeVoting — stub it so the vote
@@ -133,6 +135,22 @@ describe('createAgentStages — central workflow hub', () => {
     mockAnalyzeGaps
       .mockReset()
       .mockResolvedValue({ focus: 'gaps', success: true, analysis: {}, recommendations: [] });
+    mockCheckSecurityScan.mockReset().mockResolvedValue({ verdict: 'pass', details: 'ok' });
+  });
+
+  it('passes through a skipped security-scan verdict', async () => {
+    mockCheckSecurityScan.mockResolvedValue({
+      verdict: 'skip',
+      details: 'semgrep not installed',
+    });
+
+    const result = await createAgentStages().securityScan();
+
+    expect(result).toEqual({
+      passed: false,
+      verdict: 'skip',
+      feedback: 'semgrep not installed',
+    });
   });
 
   describe('research stage (#1712 / #3372 structured)', () => {

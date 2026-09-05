@@ -2877,6 +2877,7 @@ InterfaceDeclaration DevPipelineResult
   readonly plan: string
   readonly planStatus?: "empty" | undefined
   readonly qaIterations: number
+  readonly securityNote?: string | undefined
   readonly securityPassed: boolean
   readonly securityRan?: boolean | undefined
   readonly tasks: readonly PipelineTask[]
@@ -2888,7 +2889,7 @@ InterfaceDeclaration DevPipelineStages
   qaReview(task: PipelineTask, implementation: string) => Promise<QaReviewResult>
   qualityGate(() => Promise<{ feedback: string; passed: boolean; }>) | undefined
   research(task: string) => Promise<ResearchContext>
-  securityScan() => Promise<{ feedback: string; passed: boolean; }>
+  securityScan() => Promise<{ readonly feedback: string; readonly passed: boolean; readonly verdict?: "pass" | "fail" | "skip"; }>
   vote(plan: string, research: string) => Promise<VoteResult>
 TypeAliasDeclaration DifficultyDimension
   = z.infer<typeof DifficultyDimensionSchema>

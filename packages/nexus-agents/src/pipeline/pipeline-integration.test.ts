@@ -55,7 +55,7 @@ function createMockStages(): DevPipelineStages {
     qaReview: vi
       .fn<(task: PipelineTask, impl: string) => Promise<QaReviewResult>>()
       .mockResolvedValue({ verdict: 'pass', feedback: 'Looks good', issues: [] }),
-    securityScan: vi.fn().mockResolvedValue({ passed: true, findings: [] }),
+    securityScan: vi.fn().mockResolvedValue({ passed: true, verdict: 'pass', feedback: '' }),
   };
 }
 

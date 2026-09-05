@@ -464,6 +464,9 @@ function describeIncompletePipeline(record: Record<string, unknown>): string {
     return `${prefix} the security gate rejected the change`;
   }
   if (record['securityRan'] === false) {
+    if (typeof record['securityNote'] === 'string') {
+      return `${prefix} the security scan did not run (${record['securityNote']}); the change is blocked until it does`;
+    }
     return `${prefix} the run stopped before the security gate, which never ran`;
   }
   return `${prefix} the dev pipeline did not complete`;

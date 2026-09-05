@@ -97,6 +97,7 @@ describe('#4355: an unmeasured gate does not pass', () => {
     const result = await stages.securityScan?.();
 
     expect(result?.passed).toBe(false);
+    expect(result?.verdict).toBe('skip');
   });
 
   it('passes a security scan that actually ran clean', async () => {

@@ -28,7 +28,7 @@ function mockStages(): DevPipelineStages {
     decompose: vi.fn().mockResolvedValue([]),
     implement: vi.fn().mockResolvedValue('i'),
     qaReview: vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', issues: [] }),
-    securityScan: vi.fn().mockResolvedValue({ passed: true, findings: [] }),
+    securityScan: vi.fn().mockResolvedValue({ passed: true, verdict: 'pass', feedback: '' }),
   };
 }
 

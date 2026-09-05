@@ -114,7 +114,9 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
       feedback: 'Looks good',
       issues: [],
     } satisfies QaReviewResult),
-    securityScan: vi.fn().mockResolvedValue({ passed: true, feedback: 'No findings' }),
+    securityScan: vi
+      .fn()
+      .mockResolvedValue({ passed: true, verdict: 'pass', feedback: 'No findings' }),
     qualityGate: vi.fn().mockResolvedValue({ passed: true, feedback: 'All checks passed.' }),
     ...overrides,
   };
@@ -196,14 +198,34 @@ describe('runDevPipeline', () => {
 
   it('fails when security scan blocks', async () => {
     const stages = createMockStages({
-      securityScan: vi
-        .fn()
-        .mockResolvedValue({ passed: false, feedback: 'Critical SQL injection' }),
+      securityScan: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'fail',
+        feedback: 'Critical SQL injection',
+      }),
     });
 
     const result = await runDevPipeline('Build feature X', stages);
     expect(result.completed).toBe(false);
     expect(result.securityPassed).toBe(false);
+    expect(result.securityRan).toBe(true);
+  });
+
+  it('records a skipped security scan as absent while remaining fail-closed', async () => {
+    const stages = createMockStages({
+      securityScan: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'skip',
+        feedback: 'semgrep not installed',
+      }),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(false);
+    expect(result.securityPassed).toBe(false);
+    expect(result.securityRan).toBe(false);
+    expect(result.securityNote).toContain('semgrep not installed');
   });
 
   it('proceeds after max vote iterations with last plan', async () => {
