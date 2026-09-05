@@ -28,6 +28,7 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { rankMemories } from './context-retriever-helpers.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
 import { getTokenLedger, _resetTokenLedgerForTests } from './token-ledger.js';
+import { createTokenCounter } from './token-counter.js';
 import {
   PAPERS_FILE,
   REGISTRY_PATH,
@@ -507,6 +508,71 @@ describe('summarizeContextForPrompt — research insights', () => {
     expect(summarizeContextForPrompt(emptyContext())).toBe('');
   });
 
+  it('discloses both fixed slices when seven ranked items are clipped to five', () => {
+    const beliefs = Array.from({ length: 7 }, (_, i) => ({
+      beliefId: `b-${String(i)}`,
+      subject: `subject ${String(i)}`,
+      predicate: 'supports',
+      object: `context ${String(i)}`,
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    }));
+    const researchInsights = Array.from({ length: 7 }, (_, i) =>
+      makeTechnique({ id: `t-${String(i)}`, name: `Technique ${String(i)}`, topic: 'routing' })
+    );
+    const counter = createTokenCounter();
+    const beliefTokens = [5, 6]
+      .map((i) =>
+        counter.estimate(`- subject ${String(i)} supports context ${String(i)} (confidence: high)`)
+      )
+      .reduce((sum, tokens) => sum + tokens, 0);
+    const researchTokens = [5, 6]
+      .map((i) => counter.estimate(`- Technique ${String(i)} (planned) — routing`))
+      .reduce((sum, tokens) => sum + tokens, 0);
+
+    const out = summarizeContextForPrompt(emptyContext({ beliefs, researchInsights }));
+
+    expect(out).toContain(
+      `### Beliefs (5 included, 2 dropped, ${String(beliefTokens)} dropped tokens)`
+    );
+    expect(out).toContain(
+      `### Prior research on this topic (5 included, 2 dropped, ${String(researchTokens)} dropped tokens)`
+    );
+  });
+
+  it('names the empty dropped case when three ranked items fit each fixed slice', () => {
+    const belief = {
+      beliefId: 'b-1',
+      subject: 'subject',
+      predicate: 'supports',
+      object: 'context',
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    } as const;
+    const beliefs = Array.from({ length: 3 }, (_, i) => ({
+      ...belief,
+      beliefId: `b-${String(i)}`,
+    }));
+    const researchInsights = Array.from({ length: 3 }, (_, i) =>
+      makeTechnique({ id: `t-${String(i)}` })
+    );
+
+    const out = summarizeContextForPrompt(emptyContext({ beliefs, researchInsights }));
+
+    expect(out).toContain('### Beliefs (3 included, 0 dropped, 0 dropped tokens)');
+    expect(out).toContain(
+      '### Prior research on this topic (3 included, 0 dropped, 0 dropped tokens)'
+    );
+  });
+
   it('collapses newlines in a field so a poisoned value cannot inject extra prompt lines (#3471)', () => {
     const ctx = emptyContext({
       researchInsights: [
@@ -573,7 +639,7 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
     // Independently reconstruct the legacy expected string for the single belief.
     const expected =
       '## Prior Context (Nexus Memory)\n' +
-      '### Beliefs\n' +
+      '### Beliefs (1 included, 0 dropped, 0 dropped tokens)\n' +
       '- authentication token refresh requires oauth (confidence: high)';
     expect(legacy).toBe(expected);
   });
