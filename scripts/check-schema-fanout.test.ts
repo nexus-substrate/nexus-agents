@@ -2,8 +2,8 @@
  * Unit tests for check-schema-fanout.ts (#2408).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync } from 'node:child_process';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { execSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -12,7 +12,86 @@ import {
   isSchemaChanged,
   findUntouchedConsumerTests,
   getChangedFiles,
+  checkSchemaFanout,
 } from './check-schema-fanout.js';
+
+describe('schema-fan-out CLI', () => {
+  it('fails when the manifest does not exist', () => {
+    const missingManifest = path.join(os.tmpdir(), 'missing-schema-fanout-manifest.json');
+    const script = path.join(import.meta.dirname, 'check-schema-fanout.ts');
+
+    const result = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', script, '--manifest', missingManifest],
+      { encoding: 'utf-8' }
+    );
+
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).toContain(
+      `schema-fan-out check could not run: Manifest not found: ${missingManifest}`
+    );
+  });
+});
+
+describe('checkSchemaFanout', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns false and reports why the check could not run', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const success = checkSchemaFanout(false, false, {
+      success: false,
+      warnings: [],
+      bitrot_errors: [],
+      error: 'Manifest not found: /tmp/missing-manifest.json',
+    });
+
+    expect(success).toBe(false);
+    expect(error).toHaveBeenCalledWith(
+      '✗ schema-fan-out check could not run: Manifest not found: /tmp/missing-manifest.json'
+    );
+  });
+
+  it('returns true and prints the clean line after a successful check', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const success = checkSchemaFanout(false, false, {
+      success: true,
+      warnings: [],
+      bitrot_errors: [],
+    });
+
+    expect(success).toBe(true);
+    expect(log).toHaveBeenCalledWith('✓ No schema-fan-out warnings.\n');
+  });
+
+  it('preserves warn-only behavior after a successful check with warnings', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const success = checkSchemaFanout(false, false, {
+      success: true,
+      warnings: [
+        {
+          schema: {
+            name: 'TestSchema',
+            source: 'src/schema.ts',
+            marker: 'TestSchema',
+            consumer_tests: ['src/schema.test.ts'],
+            rationale: 'Regression test',
+          },
+          missing_tests: ['src/schema.test.ts'],
+        },
+      ],
+      bitrot_errors: [],
+    });
+
+    expect(success).toBe(true);
+    expect(log).toHaveBeenCalledWith('⚠ 1 schema-fan-out warning(s).\n');
+  });
+});
 
 // ============================================================================
 // Pure-function tests
