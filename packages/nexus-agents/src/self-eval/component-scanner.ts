@@ -10,7 +10,7 @@
 
 import { readFileSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, basename, extname, relative } from 'node:path';
+import { join, basename, extname, relative, resolve } from 'node:path';
 import type { ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 
@@ -166,13 +166,26 @@ export class ComponentScanner {
     const startTime = getTimeProvider().now();
     this.log.info('Starting component scan', { directory });
 
-    const files = await this.findFiles(directory);
+    const resolvedDirectory = resolve(directory);
+    const files = await this.findFiles(resolvedDirectory);
     const components: ComponentInfo[] = [];
 
     for (const filePath of files) {
-      const component = await this.analyzeFile(directory, filePath);
+      const component = await this.analyzeFile(resolvedDirectory, filePath);
       if (component) {
         components.push(component);
+      }
+    }
+
+    const summary = this.loadCoverageSummary();
+    if (summary !== null) {
+      const summaryKeys = Object.keys(summary);
+      const hasCoverageMatch = components.some((c) => c.testCoverage !== null);
+      if (!hasCoverageMatch) {
+        this.log.warn('Coverage summary loaded but matched no scanned files', {
+          scannedFiles: components.length,
+          summaryKeys: summaryKeys.length,
+        });
       }
     }
 
@@ -245,10 +258,11 @@ export class ComponentScanner {
   private loadCoverageSummary(): CoverageSummary | null {
     if (this.coverageSummary !== undefined) return this.coverageSummary;
 
-    const file = join(this.coverageDir, 'coverage-summary.json');
+    const file = join(resolve(this.coverageDir), 'coverage-summary.json');
     try {
       const parsed: unknown = JSON.parse(readFileSync(file, 'utf-8'));
-      this.coverageSummary = parsed as CoverageSummary;
+      this.coverageSummary =
+        parsed !== null && typeof parsed === 'object' ? (parsed as CoverageSummary) : null;
     } catch {
       // Absent (no coverage run) or malformed — both mean unmeasured, and
       // neither should fail a scan.
