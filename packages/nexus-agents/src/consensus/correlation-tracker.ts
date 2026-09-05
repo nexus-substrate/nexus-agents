@@ -20,6 +20,7 @@ import type {
   HigherOrderVotingConfig,
   CorrelationTrackerStats,
   AgentPairKey,
+  CorrelationRecordContext,
 } from './higher-order-types.js';
 import { createAgentPairKey, DEFAULT_HIGHER_ORDER_CONFIG } from './higher-order-types.js';
 import {
@@ -30,6 +31,7 @@ import {
   computeCorrelationCoefficient,
   partitionIntoIndependentGroups,
 } from './correlation-helpers.js';
+import { CorrelationModelPartitions } from './correlation-model-partitions.js';
 
 // Re-export helper types and functions for convenience
 export type { MutablePairwiseHistory } from './correlation-helpers.js';
@@ -55,7 +57,7 @@ const logger = createLogger({ component: 'correlation-tracker' });
 export class CorrelationTracker implements ICorrelationTracker {
   private readonly config: HigherOrderVotingConfig;
   private readonly observations: Map<string, VotingObservation[]> = new Map();
-  private readonly pairwiseHistory: Map<AgentPairKey, MutablePairwiseHistory> = new Map();
+  private readonly modelPartitions;
   private readonly agentProposals: Map<string, Map<string, VotingObservation>> = new Map();
   /** Ordered list of proposal IDs for FIFO eviction */
   private readonly proposalOrder: string[] = [];
@@ -63,14 +65,28 @@ export class CorrelationTracker implements ICorrelationTracker {
 
   constructor(config?: Partial<HigherOrderVotingConfig>) {
     this.config = { ...DEFAULT_HIGHER_ORDER_CONFIG, ...config };
+    this.modelPartitions = new CorrelationModelPartitions(this.config.maxTrackedPairs, logger);
     logger.info('CorrelationTracker initialized', {
       maxObservationsPerAgent: this.config.maxObservationsPerAgent,
       maxProposals: this.config.maxProposals,
     });
   }
 
-  recordVote(agentId: string, vote: Vote, outcome: 'approved' | 'rejected'): void {
+  setCurrentModelPins(modelPins: ReadonlyMap<string, string>): void {
+    this.modelPartitions.setCurrentPins(modelPins);
+    this.invalidateCache();
+  }
+
+  recordVote(
+    agentId: string,
+    vote: Vote,
+    outcome: 'approved' | 'rejected',
+    context?: CorrelationRecordContext
+  ): void {
+    if (context !== undefined) this.setCurrentModelPins(context.modelPins);
     const proposalId = `proposal-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
+    const modelKey = context?.modelPins.get(agentId);
+    const observedModel = context?.observedModels?.get(agentId);
     const observation: VotingObservation = {
       proposalId,
       agentId,
@@ -78,6 +94,8 @@ export class CorrelationTracker implements ICorrelationTracker {
       confidence: vote.confidence,
       alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
       timestamp: new Date(getTimeProvider().now()),
+      ...(modelKey !== undefined ? { modelKey } : {}),
+      ...(observedModel !== undefined ? { observedModel } : {}),
     };
     this.storeObservation(agentId, observation);
     this.invalidateCache();
@@ -86,14 +104,18 @@ export class CorrelationTracker implements ICorrelationTracker {
   recordProposalVotes(
     proposalId: string,
     votes: ReadonlyMap<string, Vote>,
-    outcome: 'approved' | 'rejected'
+    outcome: 'approved' | 'rejected',
+    context?: CorrelationRecordContext
   ): void {
+    if (context !== undefined) this.setCurrentModelPins(context.modelPins);
     // FIFO eviction when proposal limit reached (Issue #521)
     this.evictOldProposalsIfNeeded();
 
     const proposalObservations: VotingObservation[] = [];
 
     for (const [agentId, vote] of votes) {
+      const modelKey = context?.modelPins.get(agentId);
+      const observedModel = context?.observedModels?.get(agentId);
       const observation: VotingObservation = {
         proposalId,
         agentId,
@@ -101,6 +123,8 @@ export class CorrelationTracker implements ICorrelationTracker {
         confidence: vote.confidence,
         alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
         timestamp: new Date(getTimeProvider().now()),
+        ...(modelKey !== undefined ? { modelKey } : {}),
+        ...(observedModel !== undefined ? { observedModel } : {}),
       };
       this.storeObservation(agentId, observation);
       this.storeAgentProposal(agentId, proposalId, observation);
@@ -110,7 +134,7 @@ export class CorrelationTracker implements ICorrelationTracker {
     // Track proposal order for FIFO eviction
     this.proposalOrder.push(proposalId);
 
-    this.updatePairwiseCorrelations(proposalId, proposalObservations);
+    this.updatePairwiseCorrelations(proposalObservations);
     this.invalidateCache();
 
     logger.debug('Recorded proposal votes', {
@@ -124,7 +148,7 @@ export class CorrelationTracker implements ICorrelationTracker {
   computeCorrelationMatrix(): CorrelationMatrix {
     const matrix: CorrelationMatrix = new Map();
 
-    for (const [pairKey, history] of this.pairwiseHistory) {
+    for (const [pairKey, history] of this.getActivePairwiseHistory()) {
       if (history.jointObservations >= this.config.minObservationsForCorrelation) {
         matrix.set(pairKey, history.correlation);
       }
@@ -135,7 +159,7 @@ export class CorrelationTracker implements ICorrelationTracker {
 
   getCorrelation(agentA: string, agentB: string): CorrelationCoefficient | undefined {
     const pairKey = createAgentPairKey(agentA, agentB);
-    const history = this.pairwiseHistory.get(pairKey);
+    const history = this.getActivePairwiseHistory().get(pairKey);
 
     if (history === undefined) return undefined;
     if (history.jointObservations < this.config.minObservationsForCorrelation) return undefined;
@@ -153,10 +177,11 @@ export class CorrelationTracker implements ICorrelationTracker {
     }
 
     const correlationMatrix = this.computeCorrelationMatrix();
+    const activeHistory = this.getActivePairwiseHistory();
     const subsets = partitionIntoIndependentGroups(
       agents,
       correlationMatrix,
-      this.pairwiseHistory,
+      activeHistory,
       this.config
     );
 
@@ -170,10 +195,11 @@ export class CorrelationTracker implements ICorrelationTracker {
   }
 
   hasSufficientData(agentIds: readonly string[]): boolean {
-    if (agentIds.length < 2) return true;
+    if (agentIds.length < 2) return false;
 
     let pairsWithData = 0;
     const totalPairs = (agentIds.length * (agentIds.length - 1)) / 2;
+    const activeHistory = this.getActivePairwiseHistory();
 
     for (let i = 0; i < agentIds.length; i++) {
       for (let j = i + 1; j < agentIds.length; j++) {
@@ -181,7 +207,7 @@ export class CorrelationTracker implements ICorrelationTracker {
         const agentB = agentIds[j];
         if (agentA !== undefined && agentB !== undefined) {
           const pairKey = createAgentPairKey(agentA, agentB);
-          const history = this.pairwiseHistory.get(pairKey);
+          const history = activeHistory.get(pairKey);
           if (
             history !== undefined &&
             history.jointObservations >= this.config.minObservationsForCorrelation
@@ -204,8 +230,9 @@ export class CorrelationTracker implements ICorrelationTracker {
 
     let totalCorrelation = 0;
     let pairsWithSufficientData = 0;
+    const activeHistory = this.getActivePairwiseHistory();
 
-    for (const [, history] of this.pairwiseHistory) {
+    for (const [, history] of activeHistory) {
       if (history.jointObservations >= this.config.minObservationsForCorrelation) {
         totalCorrelation += history.correlation;
         pairsWithSufficientData++;
@@ -219,7 +246,7 @@ export class CorrelationTracker implements ICorrelationTracker {
 
     return {
       totalAgents: agents.length,
-      trackedPairs: this.pairwiseHistory.size,
+      trackedPairs: activeHistory.size,
       totalObservations,
       averageCorrelation:
         pairsWithSufficientData > 0 ? totalCorrelation / pairsWithSufficientData : 0,
@@ -230,7 +257,7 @@ export class CorrelationTracker implements ICorrelationTracker {
 
   clear(): void {
     this.observations.clear();
-    this.pairwiseHistory.clear();
+    this.modelPartitions.clear();
     this.agentProposals.clear();
     this.proposalOrder.length = 0;
     this.cachedSubsets = null;
@@ -265,32 +292,6 @@ export class CorrelationTracker implements ICorrelationTracker {
         evictedProposalId,
         reason: 'maxProposals',
         remainingProposals: this.proposalOrder.length,
-      });
-    }
-  }
-
-  /**
-   * Evict the oldest pairwise history entry (by lastUpdated) when
-   * maxTrackedPairs limit is exceeded.
-   */
-  private evictOldestPair(): void {
-    if (this.pairwiseHistory.size <= this.config.maxTrackedPairs) return;
-
-    let oldestKey: AgentPairKey | undefined;
-    let oldestTime = Infinity;
-    for (const [key, history] of this.pairwiseHistory) {
-      const time = history.lastUpdated.getTime();
-      if (time < oldestTime) {
-        oldestTime = time;
-        oldestKey = key;
-      }
-    }
-    if (oldestKey !== undefined) {
-      this.pairwiseHistory.delete(oldestKey);
-      logger.debug('Evicted oldest pairwise history entry', {
-        evictedKey: oldestKey,
-        reason: 'maxTrackedPairs',
-        remainingPairs: this.pairwiseHistory.size,
       });
     }
   }
@@ -330,7 +331,7 @@ export class CorrelationTracker implements ICorrelationTracker {
     agentProposalMap.set(proposalId, observation);
   }
 
-  private updatePairwiseCorrelations(proposalId: string, observations: VotingObservation[]): void {
+  private updatePairwiseCorrelations(observations: VotingObservation[]): void {
     for (let i = 0; i < observations.length; i++) {
       for (let j = i + 1; j < observations.length; j++) {
         const obsA = observations[i];
@@ -338,10 +339,8 @@ export class CorrelationTracker implements ICorrelationTracker {
         if (obsA === undefined || obsB === undefined) continue;
 
         const pairKey = createAgentPairKey(obsA.agentId, obsB.agentId);
-        let history = this.pairwiseHistory.get(pairKey);
-
-        if (history === undefined) {
-          history = {
+        const history = this.modelPartitions.getOrCreate(pairKey, () => {
+          return {
             pairKey,
             jointObservations: 0,
             agreements: 0,
@@ -349,9 +348,7 @@ export class CorrelationTracker implements ICorrelationTracker {
             correlation: 0,
             lastUpdated: new Date(getTimeProvider().now()),
           };
-          this.pairwiseHistory.set(pairKey, history);
-          this.evictOldestPair();
-        }
+        });
 
         // Skip abstain observations — they are neutral (Issue #763)
         if (!isComparable(obsA, obsB)) continue;
@@ -372,6 +369,10 @@ export class CorrelationTracker implements ICorrelationTracker {
 
   private getTrackedAgents(): string[] {
     return Array.from(this.observations.keys());
+  }
+
+  private getActivePairwiseHistory(): Map<AgentPairKey, MutablePairwiseHistory> {
+    return this.modelPartitions.getActiveHistory();
   }
 
   private invalidateCache(): void {

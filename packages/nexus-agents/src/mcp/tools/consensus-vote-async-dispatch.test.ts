@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
@@ -59,10 +59,16 @@ vi.mock('../middleware/secure-handler.js', () => ({
       fn(args, ctx),
 }));
 
-import { registerConsensusVoteTool, unwrapVoteOrThrow } from './consensus-vote.js';
+import {
+  executeVoting,
+  registerConsensusVoteTool,
+  resetCorrelationTracker,
+  unwrapVoteOrThrow,
+} from './consensus-vote.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
 
 interface CapturedToolResult {
   isError?: boolean;
@@ -247,6 +253,53 @@ describe('consensus_vote recording fidelity (#5544)', () => {
     expect(recordingMocks.recordAuthenticVote).toHaveBeenCalledWith(
       expect.objectContaining({ strategy: 'unanimous', resolvedDecision: 'no_quorum' })
     );
+  });
+});
+
+describe('consensus_vote correlation model provenance (#5555)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-vote-correlation-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetCorrelationTracker();
+    collectRealVotesMock.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_DATA_DIR'];
+    resetNexusDataDirCache();
+    resetCorrelationTracker();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('persists the assigned pin when a fallback model answers', async () => {
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(
+        opts.roles.map((role) => ({
+          role,
+          vote: { decision: 'approve' as const, reasoning: 'fallback answered', confidence: 0.9 },
+          processingTimeMs: 1,
+          source: 'llm' as const,
+          pinnedModel: `${role}-primary`,
+          model: 'fallback-model',
+        }))
+      )
+    );
+
+    await executeVoting(
+      { proposal: 'fallback partition', quickMode: false, simulateVotes: false },
+      CTX.logger as unknown as import('../../core/index.js').ILogger
+    );
+    const saved = JSON.parse(readFileSync(getCorrelationJsonlPath(), 'utf8')) as {
+      votes: Array<{ modelKey?: string; observedModel?: string }>;
+    };
+
+    expect(saved.votes[0]).toMatchObject({
+      modelKey: 'architect-primary',
+      observedModel: 'fallback-model',
+    });
   });
 });
 

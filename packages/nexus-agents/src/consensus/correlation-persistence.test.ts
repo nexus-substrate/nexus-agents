@@ -122,6 +122,20 @@ describe('createPersistedProposal', () => {
     expect(proposal.votes[0]?.confidence).toBe(0.95);
   });
 
+  it('should preserve pinned and observed model provenance', () => {
+    const votes = makeVotesMap([['architect', 'approve']]);
+
+    const proposal = createPersistedProposal('prop-model', votes, 'approved', {
+      modelPins: new Map([['architect', 'primary-model']]),
+      observedModels: new Map([['architect', 'fallback-model']]),
+    });
+
+    expect(proposal.votes[0]).toMatchObject({
+      modelKey: 'primary-model',
+      observedModel: 'fallback-model',
+    });
+  });
+
   it('should handle empty votes map', () => {
     const votes = new Map<string, Vote>();
     const proposal = createPersistedProposal('prop-empty', votes, 'rejected');
@@ -182,12 +196,41 @@ describe('saveCorrelationData and loadCorrelationData', () => {
     const loadResult = loadCorrelationData();
     expect(loadResult.ok).toBe(true);
     if (loadResult.ok) {
-      // Schema version bumped to 2 with the #2973 JSONL switch — the wrapper
+      // Schema version 3 adds model provenance — the wrapper
       // shape is the load-result envelope, not what's actually on disk.
-      expect(loadResult.value.version).toBe(2);
+      expect(loadResult.value.version).toBe(3);
       expect(loadResult.value.proposals).toHaveLength(1);
       expect(loadResult.value.proposals[0]?.proposalId).toBe('rt-1');
       expect(loadResult.value.proposals[0]?.votes).toHaveLength(2);
+    }
+  });
+
+  it('should round-trip model keys while retaining legacy votes without them', () => {
+    const legacy = createPersistedProposal(
+      'legacy-shape',
+      makeVotesMap([['architect', 'approve']]),
+      'approved'
+    );
+    const partitioned = createPersistedProposal(
+      'partitioned-shape',
+      makeVotesMap([['architect', 'reject']]),
+      'rejected',
+      {
+        modelPins: new Map([['architect', 'primary-model']]),
+        observedModels: new Map([['architect', 'fallback-model']]),
+      }
+    );
+
+    expect(saveCorrelationData([legacy, partitioned]).ok).toBe(true);
+    const loaded = loadCorrelationData();
+
+    expect(loaded.ok).toBe(true);
+    if (loaded.ok) {
+      expect(loaded.value.proposals[0]?.votes[0]).not.toHaveProperty('modelKey');
+      expect(loaded.value.proposals[1]?.votes[0]).toMatchObject({
+        modelKey: 'primary-model',
+        observedModel: 'fallback-model',
+      });
     }
   });
 
@@ -410,6 +453,67 @@ describe('createPersistentCorrelationTracker', () => {
     const stats = tracker.getStats();
     expect(stats.totalAgents).toBe(2);
     expect(stats.totalObservations).toBeGreaterThan(0);
+  });
+
+  it('loads legacy records into the first pinned model partition', () => {
+    const votes = makeVotesMap([
+      ['architect', 'approve'],
+      ['security', 'approve'],
+    ]);
+    saveCorrelationData([
+      createPersistedProposal('legacy-1', votes, 'approved'),
+      createPersistedProposal('legacy-2', votes, 'approved'),
+    ]);
+    const tracker = createPersistentCorrelationTracker({ minObservationsForCorrelation: 2 });
+
+    tracker.recordProposalVotes(
+      'first-pinned',
+      new Map([['architect', makeVote('approve')]]),
+      'approved',
+      {
+        modelPins: new Map([
+          ['architect', 'architect-model'],
+          ['security', 'security-model'],
+        ]),
+      }
+    );
+
+    expect(tracker.hasSufficientData(['architect', 'security'])).toBe(true);
+    expect(tracker.getCorrelation('architect', 'security')).toBe(1);
+  });
+
+  it('assigns later legacy records to the first model seen for each role', () => {
+    const votes = makeVotesMap([
+      ['architect', 'approve'],
+      ['security', 'approve'],
+    ]);
+    const keyed = (
+      proposalId: string,
+      architectModel: string
+    ): ReturnType<typeof createPersistedProposal> =>
+      createPersistedProposal(proposalId, votes, 'approved', {
+        modelPins: new Map([
+          ['architect', architectModel],
+          ['security', 'security-model'],
+        ]),
+      });
+    saveCorrelationData([
+      keyed('model-a', 'architect-a'),
+      keyed('model-b', 'architect-b'),
+      createPersistedProposal('later-legacy', votes, 'approved'),
+    ]);
+
+    const tracker = createPersistentCorrelationTracker({ minObservationsForCorrelation: 2 });
+
+    expect(tracker.hasSufficientData(['architect', 'security'])).toBe(false);
+    expect(tracker.setCurrentModelPins).toBeDefined();
+    tracker.setCurrentModelPins?.(
+      new Map([
+        ['architect', 'architect-a'],
+        ['security', 'security-model'],
+      ])
+    );
+    expect(tracker.hasSufficientData(['architect', 'security'])).toBe(true);
   });
 });
 

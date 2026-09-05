@@ -119,6 +119,11 @@ export interface AgentVoteResult {
    */
   readonly model?: string | undefined;
   /**
+   * Model assigned to this role before execution. Unlike `model`, this stays on
+   * the primary assignment when router failover serves the vote elsewhere.
+   */
+  readonly pinnedModel?: string | undefined;
+  /**
    * Input tokens the adapter reported for this voter's LLM call, when known
    * (#3910). Propagated from `CompletionResponse.usage` so per-decision cost
    * aggregation resolves from `unmeasured` to MEASURED. Absent for

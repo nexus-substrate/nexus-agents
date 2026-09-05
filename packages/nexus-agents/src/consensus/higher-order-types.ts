@@ -98,6 +98,10 @@ export interface VotingObservation {
   readonly alignedWithOutcome: boolean;
   /** Timestamp of the vote */
   readonly timestamp: Date;
+  /** Pinned model identity used to select the correlation partition. */
+  readonly modelKey?: string;
+  /** Model that actually answered, retained for provenance only. */
+  readonly observedModel?: string;
 }
 
 export const VotingObservationSchema = z.object({
@@ -107,7 +111,17 @@ export const VotingObservationSchema = z.object({
   confidence: z.number().min(0).max(1),
   alignedWithOutcome: z.boolean(),
   timestamp: z.date(),
+  modelKey: z.string().optional(),
+  observedModel: z.string().optional(),
 });
+
+/** Model identities associated with one correlation-recording operation. */
+export interface CorrelationRecordContext {
+  /** Role-to-pinned-model map used for correlation partition selection. */
+  readonly modelPins: ReadonlyMap<string, string>;
+  /** Role-to-serving-model map retained only as observation provenance. */
+  readonly observedModels?: ReadonlyMap<string, string>;
+}
 
 /**
  * Aggregated voting history for a pair of agents.
@@ -142,19 +156,27 @@ export const PairwiseVotingHistorySchema = z.object({
 
 /**
  * Configuration for higher-order voting.
+ * Correlation aggregates are lifetime evidence; retained records are count-bounded
+ * by `maxProposals` FIFO and `maxObservationsPerAgent`, and active history is
+ * partitioned by each role's pinned model. The legacy correlation lifetime keys
+ * are deprecated and ignored.
  */
 export interface HigherOrderVotingConfig {
   /** Minimum observations before using correlation data (default: 10) */
   readonly minObservationsForCorrelation: number;
   /** Correlation threshold to consider agents correlated (default: 0.3) */
   readonly correlationThreshold: number;
-  /** Maximum correlation age in milliseconds before recalculation (default: 24h) */
+  /**
+   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
+   */
   readonly correlationMaxAgeMs: number;
   /** Independence threshold for ISP grouping (default: 0.2) */
   readonly independenceThreshold: number;
   /** Whether to fall back to simple voting when correlation data insufficient */
   readonly fallbackToSimpleVoting: boolean;
-  /** Decay factor for old observations (0-1, default: 0.95) */
+  /**
+   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
+   */
   readonly observationDecayFactor: number;
   /** Maximum observations to store per agent before FIFO eviction (default: 1000) */
   readonly maxObservationsPerAgent: number;
@@ -167,9 +189,15 @@ export interface HigherOrderVotingConfig {
 export const HigherOrderVotingConfigSchema = z.object({
   minObservationsForCorrelation: z.number().int().positive().default(10),
   correlationThreshold: z.number().min(0).max(1).default(0.3),
+  /**
+   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
+   */
   correlationMaxAgeMs: z.number().int().positive().default(86400000), // 24 hours
   independenceThreshold: z.number().min(0).max(1).default(0.2),
   fallbackToSimpleVoting: z.boolean().default(true),
+  /**
+   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
+   */
   observationDecayFactor: z.number().min(0).max(1).default(0.95),
   maxObservationsPerAgent: z.number().int().positive().default(1000),
   maxProposals: z.number().int().positive().default(5000),
@@ -266,10 +294,18 @@ export const CorrelationTrackerStatsSchema = z.object({
  * Interface for correlation tracking between agents.
  */
 export interface ICorrelationTracker {
+  /** Select the active model partition for each pinned role. */
+  setCurrentModelPins?(modelPins: ReadonlyMap<string, string>): void;
+
   /**
    * Record a vote and its outcome for correlation tracking.
    */
-  recordVote(agentId: string, vote: Vote, outcome: 'approved' | 'rejected'): void;
+  recordVote(
+    agentId: string,
+    vote: Vote,
+    outcome: 'approved' | 'rejected',
+    context?: CorrelationRecordContext
+  ): void;
 
   /**
    * Record votes from multiple agents for the same proposal.
@@ -277,7 +313,8 @@ export interface ICorrelationTracker {
   recordProposalVotes(
     proposalId: string,
     votes: ReadonlyMap<string, Vote>,
-    outcome: 'approved' | 'rejected'
+    outcome: 'approved' | 'rejected',
+    context?: CorrelationRecordContext
   ): void;
 
   /**

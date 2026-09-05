@@ -4,9 +4,53 @@
  * @module consensus/correlation-tracker.test
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const loggerMocks = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  child: vi.fn(),
+  setLevel: vi.fn(),
+}));
+
+vi.mock('../core/logger.js', () => ({ createLogger: () => loggerMocks }));
+
 import { CorrelationTracker, createCorrelationTracker } from './correlation-tracker.js';
 import type { Vote } from './types-core.js';
+import type { AgentPairKey } from './higher-order-types.js';
+import type { MutablePairwiseHistory } from './correlation-helpers.js';
+
+function makeVote(decision: 'approve' | 'reject' = 'approve'): Vote {
+  return { decision, confidence: 0.9, reasoning: 'partition test' };
+}
+
+function makePins(architect: string): ReadonlyMap<string, string> {
+  return new Map([
+    ['architect', architect],
+    ['security', 'security-model'],
+    ['devex', 'devex-model'],
+  ]);
+}
+
+function activeHistory(
+  tracker: CorrelationTracker
+): ReadonlyMap<AgentPairKey, MutablePairwiseHistory> {
+  return (
+    tracker as unknown as {
+      getActivePairwiseHistory(): ReadonlyMap<AgentPairKey, MutablePairwiseHistory>;
+    }
+  ).getActivePairwiseHistory();
+}
+
+function createLogCapturingTracker(): {
+  tracker: CorrelationTracker;
+  info: ReturnType<typeof vi.fn>;
+} {
+  loggerMocks.info.mockClear();
+  return { tracker: new CorrelationTracker(), info: loggerMocks.info };
+}
 
 describe('CorrelationTracker', () => {
   describe('createCorrelationTracker', () => {
@@ -177,14 +221,14 @@ describe('CorrelationTracker', () => {
   });
 
   describe('hasSufficientData', () => {
-    it('returns true for single agent', () => {
+    it('returns false for a single agent because no pair was measured', () => {
       const tracker = new CorrelationTracker();
-      expect(tracker.hasSufficientData(['agent1'])).toBe(true);
+      expect(tracker.hasSufficientData(['agent1'])).toBe(false);
     });
 
-    it('returns true when no data (vacuously)', () => {
+    it('reports an empty tracker as unmeasured', () => {
       const tracker = new CorrelationTracker();
-      expect(tracker.hasSufficientData([])).toBe(true);
+      expect(tracker.hasSufficientData([])).toBe(false);
     });
 
     it('returns false when insufficient observations for correlation', () => {
@@ -215,6 +259,133 @@ describe('CorrelationTracker', () => {
       }
 
       expect(tracker.hasSufficientData(['agent1', 'agent2'])).toBe(true);
+    });
+  });
+
+  describe('model partitions', () => {
+    it('moves only one role pairs and logs both partition sizes', () => {
+      const { tracker, info } = createLogCapturingTracker();
+      const votes = new Map([
+        ['architect', makeVote()],
+        ['security', makeVote()],
+        ['devex', makeVote()],
+      ]);
+      tracker.recordProposalVotes('first', votes, 'approved', { modelPins: makePins('model-a') });
+      tracker.recordProposalVotes('second', votes, 'approved', { modelPins: makePins('model-a') });
+      const stablePairBefore = JSON.stringify(activeHistory(tracker).get('devex:security'));
+
+      tracker.recordProposalVotes('switch', new Map([['architect', makeVote()]]), 'approved', {
+        modelPins: makePins('model-b'),
+      });
+
+      expect(JSON.stringify(activeHistory(tracker).get('devex:security'))).toBe(stablePairBefore);
+      expect(activeHistory(tracker).has('architect:security')).toBe(false);
+      expect(info).toHaveBeenCalledWith('Correlation model partition switched', {
+        role: 'architect',
+        previousModel: 'model-a',
+        newModel: 'model-b',
+        partitionLeftSize: 4,
+        partitionEnteredSize: 0,
+      });
+    });
+
+    it('does not switch for an unchanged pin', () => {
+      const { tracker, info } = createLogCapturingTracker();
+      const context = { modelPins: makePins('model-a') };
+
+      tracker.recordProposalVotes(
+        'first',
+        new Map([['architect', makeVote()]]),
+        'approved',
+        context
+      );
+      tracker.recordProposalVotes(
+        'second',
+        new Map([['architect', makeVote()]]),
+        'approved',
+        context
+      );
+
+      expect(
+        info.mock.calls.filter(([message]) => message === 'Correlation model partition switched')
+      ).toHaveLength(0);
+    });
+
+    it('uses the pin rather than the observed fallback model for partitioning', () => {
+      const { tracker, info } = createLogCapturingTracker();
+      const modelPins = makePins('model-a');
+
+      tracker.recordProposalVotes('primary', new Map([['architect', makeVote()]]), 'approved', {
+        modelPins,
+        observedModels: new Map([['architect', 'fallback-one']]),
+      });
+      tracker.recordProposalVotes('fallback', new Map([['architect', makeVote()]]), 'approved', {
+        modelPins,
+        observedModels: new Map([['architect', 'fallback-two']]),
+      });
+
+      expect(
+        info.mock.calls.filter(([message]) => message === 'Correlation model partition switched')
+      ).toHaveLength(0);
+    });
+
+    it('resumes earlier counts when a role reverts to its previous pin', () => {
+      loggerMocks.info.mockClear();
+      const tracker = new CorrelationTracker({ minObservationsForCorrelation: 2 });
+      const votes = new Map([
+        ['architect', makeVote()],
+        ['security', makeVote()],
+      ]);
+      tracker.recordProposalVotes('old-1', votes, 'approved', { modelPins: makePins('model-a') });
+      tracker.recordProposalVotes('old-2', votes, 'approved', { modelPins: makePins('model-a') });
+      tracker.recordProposalVotes('switch', new Map([['architect', makeVote()]]), 'approved', {
+        modelPins: makePins('model-b'),
+      });
+      tracker.recordProposalVotes(
+        'new',
+        new Map([
+          ['architect', makeVote('reject')],
+          ['security', makeVote()],
+        ]),
+        'approved',
+        { modelPins: makePins('model-b') }
+      );
+      tracker.recordProposalVotes('revert', new Map([['architect', makeVote()]]), 'approved', {
+        modelPins: makePins('model-a'),
+      });
+
+      expect(activeHistory(tracker).get('architect:security')?.jointObservations).toBe(2);
+      expect(tracker.getCorrelation('architect', 'security')).toBe(1);
+      expect(loggerMocks.info).toHaveBeenCalledWith('Correlation model partition switched', {
+        role: 'architect',
+        previousModel: 'model-b',
+        newModel: 'model-a',
+        partitionLeftSize: 1,
+        partitionEnteredSize: 2,
+      });
+    });
+
+    it('adopts legacy history into the first model without logging a switch', () => {
+      const { tracker, info } = createLogCapturingTracker();
+      const votes = new Map([
+        ['architect', makeVote()],
+        ['security', makeVote()],
+      ]);
+      tracker.recordProposalVotes('legacy', votes, 'approved');
+
+      tracker.recordProposalVotes(
+        'first-pinned',
+        new Map([['architect', makeVote()]]),
+        'approved',
+        {
+          modelPins: makePins('model-a'),
+        }
+      );
+
+      expect(activeHistory(tracker).get('architect:security')?.jointObservations).toBe(1);
+      expect(
+        info.mock.calls.filter(([message]) => message === 'Correlation model partition switched')
+      ).toHaveLength(0);
     });
   });
 

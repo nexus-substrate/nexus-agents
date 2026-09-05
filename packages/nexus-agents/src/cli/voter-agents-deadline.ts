@@ -91,6 +91,11 @@ function adapterCliKey(adapter: IModelAdapter): string {
   return (adapter as { name?: string }).name ?? adapter.providerId;
 }
 
+/** Preserve the panel resolver's primary assignment across fallback execution. */
+function withPinnedModel(result: AgentVoteResult, pinnedModel: string): AgentVoteResult {
+  return { ...result, pinnedModel };
+}
+
 /**
  * Per-key serializer (#3348). Returns a `run(key, fn)` that chains each fn
  * behind the previous fn for the same key, so at most one runs per key at a
@@ -147,28 +152,38 @@ function cancelled(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
-/*
- * #5393 added two guards — one per model call this function can make — to a body
- * already at the 50-line cap. Splitting the staggered mapper out would need six
- * closed-over values threaded through an options object, which is more structure
- * than two `if` statements justify; the #3587 rationale moved onto
- * `shouldRetryOnFallback` to pay for what it could. Revisit if this grows again.
- */
-// eslint-disable-next-line max-lines-per-function -- see the note above (#5393)
+type VoteOnAdapter = (role: VoterRole, adapter: IModelAdapter) => Promise<AgentVoteResult>;
+
+async function launchRoleVote(
+  role: VoterRole,
+  index: number,
+  input: LaunchVotesInput,
+  voteOnAdapter: VoteOnAdapter
+): Promise<AgentVoteResult> {
+  if (index > 0 && input.interDelay > 0) await delay(input.interDelay);
+  const adapter = input.roleAdapters.get(role) ?? input.fallbackAdapter;
+  const pinnedModel = adapter.modelId;
+  if (cancelled(input.signal)) {
+    return withPinnedModel(createErrorVoteResult(role, CANCELLED_MESSAGE, 0), pinnedModel);
+  }
+  const primary = await voteOnAdapter(role, adapter);
+  if (!shouldRetryOnFallback(primary, adapter, input.fallbackAdapter)) {
+    return withPinnedModel(primary, pinnedModel);
+  }
+  if (cancelled(input.signal)) return withPinnedModel(primary, pinnedModel);
+  input.logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
+    role,
+    failedCli: adapterCliKey(adapter),
+    fallbackCli: adapterCliKey(input.fallbackAdapter),
+    error: primary.error,
+  });
+  return withPinnedModel(await voteOnAdapter(role, input.fallbackAdapter), pinnedModel);
+}
+
 export async function launchVotesWithOverallDeadline(
   input: LaunchVotesInput
 ): Promise<readonly AgentVoteResult[]> {
-  const {
-    roles,
-    proposal,
-    roleAdapters,
-    fallbackAdapter,
-    logger,
-    voteOptions,
-    interDelay,
-    overallDeadlineMs,
-    voteFn,
-  } = input;
+  const { roles, proposal, logger, voteOptions, overallDeadlineMs, voteFn } = input;
 
   const startedAt = Date.now();
   const serialize = createKeyedSerializer();
@@ -187,22 +202,7 @@ export async function launchVotesWithOverallDeadline(
       );
     });
 
-  const wrapped = roles.map(async (role, i): Promise<AgentVoteResult> => {
-    if (i > 0 && interDelay > 0) await delay(interDelay);
-    if (cancelled(input.signal)) return createErrorVoteResult(role, CANCELLED_MESSAGE, 0);
-    const adapter = roleAdapters.get(role) ?? fallbackAdapter;
-    const primary = await voteOnAdapter(role, adapter);
-    if (!shouldRetryOnFallback(primary, adapter, fallbackAdapter)) return primary;
-    // A retry is a second model call; do not spend it on a cancelled panel.
-    if (cancelled(input.signal)) return primary;
-    logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
-      role,
-      failedCli: adapterCliKey(adapter),
-      fallbackCli: adapterCliKey(fallbackAdapter),
-      error: primary.error,
-    });
-    return voteOnAdapter(role, fallbackAdapter);
-  });
+  const wrapped = roles.map((role, index) => launchRoleVote(role, index, input, voteOnAdapter));
 
   const results = await Promise.all(wrapped);
 
