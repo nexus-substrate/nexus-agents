@@ -339,8 +339,15 @@ function buildOutcomeFailureFields(opts?: OutcomeRecordOptions): Record<string, 
   return fields;
 }
 
-/** Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws. */
-function recordToOutcomeStore(
+/**
+ * Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws.
+ *
+ * Exported only so the attribution test can drive the `actualCli` path; no
+ * production caller supplies it yet (#5499 — OrchestratorResult carries no
+ * executed-CLI field), which is why every live record says `category-default`.
+ */
+// @export-no-consumer-yet — see #5499
+export function recordToOutcomeStore(
   taskDescription: string,
   success: boolean,
   durationMs: number,
@@ -349,10 +356,12 @@ function recordToOutcomeStore(
   try {
     const match = detectTaskCategory(taskDescription);
     const cli = opts?.actualCli ?? match?.primaryCli ?? DEFAULT_CLI;
+    const cliSource = opts?.actualCli === undefined ? 'category-default' : 'executed';
     const category = match?.category ?? 'exploration';
     getOutcomeStore().append({
       id: `orch-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli,
+      cliSource,
       category,
       model: 'orchestrator',
       success,

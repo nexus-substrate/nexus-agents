@@ -63,10 +63,15 @@ export const OutcomeFailureCategorySchema = z.enum([
 export const OutcomeCliSchema = z.union([CliNameSchema, ApiArmIdSchema, z.literal('unknown')]);
 export type OutcomeCli = z.infer<typeof OutcomeCliSchema>;
 
+/** Provenance for the CLI attributed to an outcome. */
+const OutcomeCliSourceSchema = z.enum(['executed', 'category-default']);
+
 /** Schema for a single recorded task outcome. */
 export const TaskOutcomeSchema = z.object({
   id: z.string().min(1),
   cli: OutcomeCliSchema,
+  /** How the CLI attribution was obtained. Absent on legacy, unmeasured records. */
+  cliSource: OutcomeCliSourceSchema.optional(),
   category: TaskCategorySchema,
   model: z.string().min(1),
   success: z.boolean(),
