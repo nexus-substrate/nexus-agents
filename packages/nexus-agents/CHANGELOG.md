@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.15.2
+
+### Patch Changes
+
+- [#5549](https://github.com/nexus-substrate/nexus-agents/pull/5549) [`13d4750`](https://github.com/nexus-substrate/nexus-agents/commit/13d47507168d2c2a46bfc5d1dec28e5f6ef9d47d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record the executed consensus strategy and resolved decision, while keeping no-quorum votes out of learning and adaptive outcome samples ([#5544](https://github.com/nexus-substrate/nexus-agents/issues/5544)).
+
 ## 8.15.1
 
 ### Patch Changes
