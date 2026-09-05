@@ -164,7 +164,7 @@ export function topRankedWithinBudget(
 }
 
 /** Disclosure returned beside each fixed legacy context slice. */
-export interface ContextSlice {
+interface ContextSlice {
   readonly lines: readonly string[];
   readonly included: number;
   readonly dropped: number;
