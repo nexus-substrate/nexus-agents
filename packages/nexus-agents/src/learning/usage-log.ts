@@ -357,7 +357,7 @@ function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
   return { events: out };
 }
 
-export interface UsageLedgerLoadResult {
+interface UsageLedgerLoadResult {
   /** Valid events recovered from every readable ledger file. */
   readonly events: readonly UsageEvent[];
   /** True only when the ledger directory and every discovered file were readable. */
