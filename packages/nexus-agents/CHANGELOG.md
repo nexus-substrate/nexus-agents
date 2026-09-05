@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.19.1
+
+### Patch Changes
+
+- [#5573](https://github.com/nexus-substrate/nexus-agents/pull/5573) [`d77d03e`](https://github.com/nexus-substrate/nexus-agents/commit/d77d03ed2ba814e6711ba145957e5629e18e191d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report PR file-review coverage from patches that reached a successful expert, including explicit full, partial, or no-coverage status in review summaries ([#5561](https://github.com/nexus-substrate/nexus-agents/issues/5561)).
+
 ## 8.19.0
 
 ### Minor Changes
