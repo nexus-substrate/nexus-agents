@@ -113,6 +113,19 @@ describe('runGraphPipeline', () => {
 
     expect(result.finalState[K.TASK]).toBe('My task');
   });
+
+  it('reports failure when maxSteps leaves a pipeline stage pending', async () => {
+    const stages = createMockStages();
+    const registry = createDevStageRegistry(stages);
+
+    const result = await runGraphPipeline('Build feature', DEV_PIPELINE_TEMPLATE, registry, {
+      maxSteps: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('maxSteps exhausted');
+    expect(result.error).toContain('plan');
+  });
 });
 
 // #4362 (increment 1 of the unanimous Option C decision on #4351). Two fail-open
