@@ -17,10 +17,11 @@
  *   npx tsx scripts/check-schema-fanout.ts            # Warn-only check
  *   npx tsx scripts/check-schema-fanout.ts --verbose  # Detailed output
  *   npx tsx scripts/check-schema-fanout.ts --strict   # Promote warnings to errors (v2)
+ *   npx tsx scripts/check-schema-fanout.ts --manifest <path>
  *
  * Exit codes:
  *   0 - No warnings, OR warnings only (default v1 mode)
- *   1 - Schema not found OR --strict and warnings emitted
+ *   1 - Manifest missing/unparseable OR --strict and warnings emitted
  */
 
 /* eslint-disable no-console */
@@ -50,6 +51,10 @@ interface Warning {
   readonly schema: SchemaEntry;
   readonly missing_tests: readonly string[];
 }
+
+type ManifestLoadResult =
+  | { readonly success: true; readonly manifest: SchemaFanoutManifest }
+  | { readonly success: false; readonly error: string };
 
 // ============================================================================
 // Git helpers (execFileSync — no shell, see PR #2421 security review)
@@ -110,18 +115,16 @@ export function getFileDiff(filePath: string, cwd: string = REPO_ROOT): string {
 // Manifest loading + validation
 // ============================================================================
 
-export function loadManifest(): SchemaFanoutManifest | null {
-  if (!fs.existsSync(MANIFEST_PATH)) {
-    console.error(`✗ Schema-fanout manifest not found: ${MANIFEST_PATH}`);
-    return null;
+export function loadManifest(manifestPath: string = MANIFEST_PATH): ManifestLoadResult {
+  if (!fs.existsSync(manifestPath)) {
+    return { success: false, error: `Manifest not found: ${manifestPath}` };
   }
   try {
-    const content = fs.readFileSync(MANIFEST_PATH, 'utf-8');
-    return JSON.parse(content) as SchemaFanoutManifest;
+    const content = fs.readFileSync(manifestPath, 'utf-8');
+    return { success: true, manifest: JSON.parse(content) as SchemaFanoutManifest };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`✗ Failed to parse manifest: ${message}`);
-    return null;
+    return { success: false, error: `Failed to parse manifest: ${message}` };
   }
 }
 
@@ -203,13 +206,15 @@ interface CheckResult {
   readonly success: boolean;
   readonly warnings: readonly Warning[];
   readonly bitrot_errors: readonly string[];
+  readonly error?: string;
 }
 
-export function performCheck(verbose: boolean): CheckResult {
-  const manifest = loadManifest();
-  if (manifest === null) {
-    return { success: false, warnings: [], bitrot_errors: [] };
+export function performCheck(verbose: boolean, manifestPath: string = MANIFEST_PATH): CheckResult {
+  const loaded = loadManifest(manifestPath);
+  if (!loaded.success) {
+    return { success: false, warnings: [], bitrot_errors: [], error: loaded.error };
   }
+  const { manifest } = loaded;
 
   const bitrotErrors = validateManifest(manifest);
   if (bitrotErrors.length > 0) {
@@ -235,11 +240,13 @@ export function performCheck(verbose: boolean): CheckResult {
   return { success: true, warnings, bitrot_errors: [] };
 }
 
-function checkSchemaFanout(verbose: boolean, strict: boolean): boolean {
+export function checkSchemaFanout(
+  verbose: boolean,
+  strict: boolean,
+  result: CheckResult = performCheck(verbose)
+): boolean {
   console.log('Schema-Fan-Out Check (#2408 — v1 warn-only)');
   console.log('============================================\n');
-
-  const result = performCheck(verbose);
 
   if (result.bitrot_errors.length > 0) {
     console.error('✗ Manifest bitrot detected (paths in manifest do not exist on disk):\n');
@@ -247,6 +254,11 @@ function checkSchemaFanout(verbose: boolean, strict: boolean): boolean {
       console.error(`  ${e}`);
     }
     console.error('\nFix the manifest at docs/ops/schema-fanout-manifest.json.');
+    return false;
+  }
+
+  if (!result.success) {
+    console.error(`✗ schema-fan-out check could not run: ${result.error ?? 'Unknown error'}`);
     return false;
   }
 
@@ -271,6 +283,14 @@ function checkSchemaFanout(verbose: boolean, strict: boolean): boolean {
   return strict ? false : true;
 }
 
+function resolveManifestPath(args: readonly string[]): string | null {
+  const optionIndex = args.indexOf('--manifest');
+  if (optionIndex === -1) return MANIFEST_PATH;
+  const value = args[optionIndex + 1];
+  if (value === undefined || value.startsWith('-')) return null;
+  return path.resolve(value);
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   const verbose = args.includes('--verbose') || args.includes('-v');
@@ -286,16 +306,24 @@ Usage:
 Options:
   --verbose, -v  Show detailed output
   --strict       Promote warnings to errors (v2 mode)
+  --manifest     Override the schema-fan-out manifest path
   --help, -h     Show this help
 
 Exit codes:
   0 - No warnings, OR warnings only (default v1 mode)
-  1 - Bitrot detected, OR --strict and warnings emitted
+  1 - Manifest missing/unparseable, bitrot detected, OR --strict with warnings
 `);
     process.exit(0);
   }
 
-  const success = checkSchemaFanout(verbose, strict);
+  const manifestPath = resolveManifestPath(args);
+  if (manifestPath === null) {
+    console.error('✗ --manifest requires a path.');
+    process.exit(1);
+  }
+
+  const result = performCheck(verbose, manifestPath);
+  const success = checkSchemaFanout(verbose, strict, result);
   process.exit(success ? 0 : 1);
 }
 
