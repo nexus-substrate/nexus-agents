@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.23.0
+
+### Minor Changes
+
+- [#5617](https://github.com/nexus-substrate/nexus-agents/pull/5617) [`96bd911`](https://github.com/nexus-substrate/nexus-agents/commit/96bd911e36faa79bb844995644077ad91d2a0028) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report unavailable negative-results registries distinctly from measured non-rejections in research checks and `research_query` responses, while retrying failed registry loads on the next query.
+
 ## 8.22.4
 
 ### Patch Changes
