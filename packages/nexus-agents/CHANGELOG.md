@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.6
+
+### Patch Changes
+
+- [#5672](https://github.com/nexus-substrate/nexus-agents/pull/5672) [`0e6e017`](https://github.com/nexus-substrate/nexus-agents/commit/0e6e0173d6ae4a9c0a6224cc8bb6055bb908a66c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The wedged-deploy health check reports an empty `RUNS_JSON` as unmeasured and fails, instead of reading a `gh` failure as "no runs waiting" ([#5670](https://github.com/nexus-substrate/nexus-agents/issues/5670)).
+
 ## 8.26.5
 
 ### Patch Changes
