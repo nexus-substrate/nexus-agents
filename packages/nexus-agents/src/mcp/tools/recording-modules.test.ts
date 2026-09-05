@@ -67,7 +67,12 @@ describe('consensus-vote-recording', () => {
 
   it('recordVoteSuccess records task and learning to memory', async () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
-    recordVoteSuccess('Should we use X?', 'supermajority', 'approved', 5000);
+    recordVoteSuccess({
+      proposal: 'Should we use X?',
+      strategy: 'supermajority',
+      decision: 'approved',
+      durationMs: 5000,
+    });
     expect(mockRecordTask).toHaveBeenCalledOnce();
     expect(mockRecordTask).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -98,7 +103,12 @@ describe('consensus-vote-recording', () => {
   it('recordVoteSuccess truncates proposal in approach', async () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
     const longProposal = 'A'.repeat(100);
-    recordVoteSuccess(longProposal, 'majority', 'rejected', 1000);
+    recordVoteSuccess({
+      proposal: longProposal,
+      strategy: 'majority',
+      decision: 'rejected',
+      durationMs: 1000,
+    });
     const approachArg = mockRecordTask.mock.calls[0]?.[0]?.approach as string;
     expect(approachArg.length).toBeLessThan(100);
   });
@@ -107,20 +117,26 @@ describe('consensus-vote-recording', () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
     const store = getOutcomeStore();
     const initialSize = store.size;
-    recordVoteSuccess('Demo proposal', 'majority', 'approved', 100, [
-      {
-        role: 'architect',
-        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
-        source: 'simulation' as const,
-        processingTimeMs: 0,
-      },
-      {
-        role: 'security',
-        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
-        source: 'simulation' as const,
-        processingTimeMs: 0,
-      },
-    ]);
+    recordVoteSuccess({
+      proposal: 'Demo proposal',
+      strategy: 'majority',
+      decision: 'approved',
+      durationMs: 100,
+      votes: [
+        {
+          role: 'architect',
+          vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+          source: 'simulation' as const,
+          processingTimeMs: 0,
+        },
+        {
+          role: 'security',
+          vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+          source: 'simulation' as const,
+          processingTimeMs: 0,
+        },
+      ],
+    });
     expect(mockRecordTask).not.toHaveBeenCalled();
     expect(mockRecordLearning).not.toHaveBeenCalled();
     expect(store.size).toBe(initialSize);
@@ -128,20 +144,26 @@ describe('consensus-vote-recording', () => {
 
   it('recordVoteSuccess still records when at least one vote is from an LLM', async () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
-    recordVoteSuccess('Mixed proposal', 'majority', 'approved', 100, [
-      {
-        role: 'architect',
-        vote: { decision: 'approve', reasoning: 'real', confidence: 0.9 },
-        source: 'llm' as const,
-        processingTimeMs: 1000,
-      },
-      {
-        role: 'security',
-        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
-        source: 'simulation' as const,
-        processingTimeMs: 0,
-      },
-    ]);
+    recordVoteSuccess({
+      proposal: 'Mixed proposal',
+      strategy: 'majority',
+      decision: 'approved',
+      durationMs: 100,
+      votes: [
+        {
+          role: 'architect',
+          vote: { decision: 'approve', reasoning: 'real', confidence: 0.9 },
+          source: 'llm' as const,
+          processingTimeMs: 1000,
+        },
+        {
+          role: 'security',
+          vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+          source: 'simulation' as const,
+          processingTimeMs: 0,
+        },
+      ],
+    });
     expect(mockRecordTask).toHaveBeenCalledOnce();
     expect(mockRecordLearning).toHaveBeenCalledOnce();
   });

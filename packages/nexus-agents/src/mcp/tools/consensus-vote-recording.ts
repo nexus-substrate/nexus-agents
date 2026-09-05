@@ -32,21 +32,27 @@ import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-
 const logger = createLogger({ tool: 'consensus-vote' });
 
 /**
- * Records a successful consensus vote to session memory AND outcome store. Best-effort.
+ * Records a completed consensus vote to session memory and, when measured,
+ * the learning and outcome stores. Best-effort.
  *
  * When every vote is simulated, this is a no-op: simulated votes are random
  * (#2319) and must not seed the learning store or outcome store, otherwise
  * test/demo runs poison real routing decisions.
+ * A `no_quorum` decision records only the task occurrence because the panel
+ * measured no verdict to learn from or feed into adaptive routing (#5544).
  */
-export function recordVoteSuccess(
-  proposal: string,
-  strategy: string,
-  outcome: string,
-  duration: number,
-  votes?: readonly AgentVoteResult[]
-): void {
+export function recordVoteSuccess(args: {
+  proposal: string;
+  strategy: string;
+  decision: VoteRecord['decision'];
+  durationMs: number;
+  approvalPercentage?: number;
+  votes?: readonly AgentVoteResult[];
+}): void {
   const allSimulated =
-    votes !== undefined && votes.length > 0 && votes.every((v) => v.source === 'simulation');
+    args.votes !== undefined &&
+    args.votes.length > 0 &&
+    args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
     logger.debug('Skipping memory + outcome recording — all votes simulated');
     return;
@@ -55,29 +61,41 @@ export function recordVoteSuccess(
   try {
     const memory = getToolMemory();
     memory.recordTask({
-      approach: `Consensus vote: ${strategy} on "${proposal.slice(0, 50)}"`,
+      approach: `Consensus vote: ${args.strategy} on "${args.proposal.slice(0, 50)}"`,
       challenges: [],
-      durationMs: duration,
+      durationMs: args.durationMs,
     });
-    memory.recordLearning({
-      pattern: `${strategy} vote → ${outcome}`,
-      context: `proposal="${proposal.slice(0, 40)}" duration=${String(duration)}ms`,
-      confidence: 0.8,
-      source: 'consensus-vote',
-    });
-    void memory.runPromotionPipeline().catch((error: unknown) => {
-      logger.warn('Promotion pipeline failed', { error });
-    });
+    if (args.decision !== 'no_quorum') {
+      memory.recordLearning({
+        pattern: `${args.strategy} vote → ${args.decision}`,
+        context: `proposal="${args.proposal.slice(0, 40)}" duration=${String(args.durationMs)}ms`,
+        confidence: learningConfidence(args.decision, args.approvalPercentage),
+        source: 'consensus-vote',
+      });
+      void memory.runPromotionPipeline().catch((error: unknown) => {
+        logger.warn('Promotion pipeline failed', { error });
+      });
+    }
   } catch (error: unknown) {
     logger.warn('Failed to record vote success to memory', { error: getErrorMessage(error) });
   }
 
+  if (args.decision === 'no_quorum') return;
   // Also record to outcome store for adaptive routing feedback (#1551).
   // recordVoteOutcomes already filters per-vote `source === 'simulation'`,
   // but we keep the all-simulated guard above to skip the memory writes too.
-  if (votes !== undefined) {
-    recordVoteOutcomes(votes);
+  if (args.votes !== undefined) {
+    recordVoteOutcomes(args.votes);
   }
+}
+
+function learningConfidence(
+  decision: Exclude<VoteRecord['decision'], 'no_quorum'>,
+  approvalPercentage: number | undefined
+): number {
+  if (approvalPercentage === undefined) return 0.8;
+  const approvalConfidence = approvalPercentage / 100;
+  return decision === 'approved' ? approvalConfidence : 1 - approvalConfidence;
 }
 
 /** Strategy values that map cleanly onto a {@link VoteRecord} strategy. */

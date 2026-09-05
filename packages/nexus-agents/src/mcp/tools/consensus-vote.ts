@@ -955,8 +955,6 @@ async function handleConsensusVote(
       ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
       signal,
     });
-    const strategy = args.strategy ?? 'simple_majority';
-
     // Detect all-error votes: return structured error instead of fake "rejected" (#1552)
     const errorVotes = result.votes.filter((v) => v.source === 'error');
     if (errorVotes.length === result.votes.length && result.votes.length > 0) {
@@ -969,16 +967,20 @@ async function handleConsensusVote(
       };
     }
 
-    recordVoteSuccess(
-      args.proposal,
-      strategy,
-      result.result.outcome,
-      result.totalTimeMs,
-      result.votes
-    );
+    if (result.decision === undefined) {
+      throw new Error('Consensus vote completed without a resolved decision');
+    }
+    recordVoteSuccess({
+      proposal: args.proposal,
+      strategy: result.strategy,
+      decision: toRecordDecision(result.decision) ?? 'no_quorum',
+      durationMs: result.totalTimeMs,
+      approvalPercentage: result.result.approvalPercentage,
+      votes: result.votes,
+    });
     const { costSummary, voteRecord } = recordVoteSideEffects(
       args.proposal,
-      strategy,
+      result.strategy,
       result,
       logger,
       args.ratifies

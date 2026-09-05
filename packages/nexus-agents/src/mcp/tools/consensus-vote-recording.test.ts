@@ -27,7 +27,20 @@ import {
   setOutcomeStore,
 } from '../../orchestration/outcomes/index.js';
 
-import { recordAuthenticVote, recordVoteOutcomes } from './consensus-vote-recording.js';
+const memoryMocks = vi.hoisted(() => ({
+  recordTask: vi.fn(),
+  recordLearning: vi.fn(),
+  runPromotionPipeline: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('./tool-memory.js', () => ({
+  getToolMemory: () => memoryMocks,
+}));
+
+import {
+  recordAuthenticVote,
+  recordVoteOutcomes,
+  recordVoteSuccess,
+} from './consensus-vote-recording.js';
 
 // #3991: the runtime ledger resolves via nexusDataPath (governance category)
 // instead of findRepoRoot. Mock the resolver so each test pins the data root.
@@ -72,6 +85,54 @@ const realVotes: readonly AgentVoteResult[] = [
   agentVote('security', 'approve'),
   agentVote('catfish', 'reject'),
 ];
+
+describe('recordVoteSuccess decision fidelity (#5544)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  it('records the task but no learning or outcome sample for no_quorum', () => {
+    const votes = [
+      agentVote('architect', 'approve'),
+      { ...agentVote('security', 'abstain', 'error'), error: 'timeout' },
+    ];
+
+    recordVoteSuccess({
+      proposal: 'Require every voter',
+      strategy: 'unanimous',
+      decision: 'no_quorum',
+      durationMs: 10,
+      approvalPercentage: 50,
+      votes,
+    });
+
+    expect(memoryMocks.recordTask).toHaveBeenCalledOnce();
+    expect(memoryMocks.recordLearning).not.toHaveBeenCalled();
+    expect(memoryMocks.runPromotionPipeline).not.toHaveBeenCalled();
+    expect(getOutcomeStore().size).toBe(0);
+  });
+
+  it('continues recording learning and outcomes for an approved decision', () => {
+    const votes = [agentVote('architect', 'approve')];
+
+    recordVoteSuccess({
+      proposal: 'Ship it',
+      strategy: 'simple_majority',
+      decision: 'approved',
+      durationMs: 10,
+      approvalPercentage: 90,
+      votes,
+    });
+
+    expect(memoryMocks.recordTask).toHaveBeenCalledOnce();
+    expect(memoryMocks.recordLearning).toHaveBeenCalledWith(
+      expect.objectContaining({ pattern: 'simple_majority vote → approved', confidence: 0.9 })
+    );
+    expect(memoryMocks.runPromotionPipeline).toHaveBeenCalledOnce();
+    expect(getOutcomeStore().size).toBe(1);
+  });
+});
 
 describe('recordVoteOutcomes CLI attribution (#5529)', () => {
   beforeEach(() => {

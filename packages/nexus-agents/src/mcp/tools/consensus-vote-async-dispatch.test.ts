@@ -29,6 +29,23 @@ vi.mock('../../cli/voter-agents.js', () => ({
     collectRealVotesMock(opts),
 }));
 
+const recordingMocks = vi.hoisted(() => ({
+  recordVoteSuccess: vi.fn(),
+  recordAuthenticVote: vi.fn(() => ({
+    persisted: false as const,
+    reason: 'all-simulated' as const,
+    detail: 'test recording disabled',
+  })),
+}));
+vi.mock('./consensus-vote-recording.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./consensus-vote-recording.js')>();
+  return {
+    ...actual,
+    recordVoteSuccess: recordingMocks.recordVoteSuccess,
+    recordAuthenticVote: recordingMocks.recordAuthenticVote,
+  };
+});
+
 // Pass the registered callback through untouched so the test can invoke it.
 vi.mock('../middleware/tool-wrapper.js', () => ({
   wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
@@ -92,6 +109,8 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     resetNexusDataDirCache();
     resetJobConcurrency();
     collectRealVotesMock.mockReset();
+    recordingMocks.recordVoteSuccess.mockClear();
+    recordingMocks.recordAuthenticVote.mockClear();
   });
 
   afterEach(() => {
@@ -176,6 +195,57 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
 
     expect(collectRealVotesMock).toHaveBeenCalledWith(
       expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+});
+
+describe('consensus_vote recording fidelity (#5544)', () => {
+  beforeEach(() => {
+    collectRealVotesMock.mockReset();
+    recordingMocks.recordVoteSuccess.mockClear();
+    recordingMocks.recordAuthenticVote.mockClear();
+  });
+
+  it('records the executed threshold strategy and no_quorum decision', async () => {
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(
+        opts.roles.map((role, index) =>
+          index === 1
+            ? {
+                role,
+                vote: { decision: 'abstain' as const, reasoning: 'timeout', confidence: 0 },
+                processingTimeMs: 1,
+                source: 'error' as const,
+                error: 'timeout',
+              }
+            : {
+                role,
+                vote: { decision: 'approve' as const, reasoning: 'ready', confidence: 0.9 },
+                processingTimeMs: 1,
+                source: 'llm' as const,
+              }
+        )
+      )
+    );
+
+    const result = await captureHandler()(
+      { proposal: 'require every voter', quickMode: true, threshold: 'unanimous' },
+      CTX
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(recordingMocks.recordVoteSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proposal: 'require every voter',
+        strategy: 'unanimous',
+        decision: 'no_quorum',
+        durationMs: expect.any(Number),
+        approvalPercentage: 100,
+        votes: expect.any(Array),
+      })
+    );
+    expect(recordingMocks.recordAuthenticVote).toHaveBeenCalledWith(
+      expect.objectContaining({ strategy: 'unanimous', resolvedDecision: 'no_quorum' })
     );
   });
 });
