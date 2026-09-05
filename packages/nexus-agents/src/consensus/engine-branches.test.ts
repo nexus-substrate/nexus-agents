@@ -244,6 +244,7 @@ describe('OWVoting ISP-wins-over-OW branch', () => {
 
     // Mock tracker with sufficient data and multiple independent subsets
     const tracker: ICorrelationTracker = {
+      setCurrentModelPins: vi.fn(),
       recordVote: vi.fn(),
       recordProposalVotes: vi.fn(),
       computeCorrelationMatrix: vi.fn().mockReturnValue(corrMatrix),
@@ -286,6 +287,7 @@ describe('OWVoting fallbackToSimpleVoting: false', () => {
     emptyMatrix.set(createAgentPairKey('agent-1', 'agent-2'), 0.0);
 
     const tracker: ICorrelationTracker = {
+      setCurrentModelPins: vi.fn(),
       recordVote: vi.fn(),
       recordProposalVotes: vi.fn(),
       computeCorrelationMatrix: vi.fn().mockReturnValue(emptyMatrix),
@@ -314,6 +316,7 @@ describe('OWVoting fallbackToSimpleVoting: false', () => {
     votes.set('agent-2', rejectVote(0.8));
 
     const tracker: ICorrelationTracker = {
+      setCurrentModelPins: vi.fn(),
       recordVote: vi.fn(),
       recordProposalVotes: vi.fn(),
       computeCorrelationMatrix: vi.fn(),

@@ -24,6 +24,8 @@ The consensus system exposes 6 core voting algorithm names (five distinct strate
 - **higher_order**: Bayesian-optimal aggregation with correlation awareness — alias for `opinion_wise` (#514)
 - **opinion_wise**: Opinion-based aggregation
 
+Correlation aggregates are lifetime evidence; retained records are count-bounded by `maxProposals` FIFO and `maxObservationsPerAgent`, and active history is partitioned by each role's pinned model. The `correlationMaxAgeMs` and `observationDecayFactor` config keys are deprecated and ignored.
+
 **Research-Based Protocols (Referenced):**
 The system draws inspiration from several research protocols documented in our research index, including Aegean (Byzantine fault tolerant), Reflexion (multi-agent critique), and Self-Refine patterns.
 

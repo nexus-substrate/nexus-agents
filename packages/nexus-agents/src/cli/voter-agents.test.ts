@@ -733,7 +733,41 @@ That's my vote.`;
       });
 
       expect(results.map((result) => result.model)).toEqual(roles.map(() => 'fallback-model'));
+      expect(results.map((result) => result.pinnedModel)).toEqual(
+        primaries.map((adapter) => adapter.modelId)
+      );
       expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(true);
+    });
+
+    it('captures a primary pin before adapter execution can change its model ID', async () => {
+      const adapter = votingAdapter('assigned-primary');
+      const complete = (): ReturnType<IModelAdapter['complete']> => {
+        (adapter as { modelId: string }).modelId = 'detected-serving-model';
+        return Promise.resolve({
+          ok: true,
+          value: {
+            content: [
+              {
+                type: 'text' as const,
+                text: '{"decision":"approve","confidence":0.9,"reasoning":"Test vote."}',
+              },
+            ],
+            model: 'detected-serving-model',
+            stopReason: 'end_turn',
+          },
+        });
+      };
+      (adapter as { complete: IModelAdapter['complete'] }).complete = complete;
+
+      const [result] = await collectRealVotes({
+        roles: ['architect'],
+        proposal: 'Mutable model identity',
+        adapter,
+        interAgentDelayMs: 0,
+      });
+
+      expect(result?.model).toBe('detected-serving-model');
+      expect(result?.pinnedModel).toBe('assigned-primary');
     });
 
     it('does not warn for a genuinely diverse successful panel', async () => {

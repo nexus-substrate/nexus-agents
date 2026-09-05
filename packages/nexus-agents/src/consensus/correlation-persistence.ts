@@ -25,15 +25,26 @@
 
 import * as fs from 'node:fs';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
-import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { ICorrelationTracker, HigherOrderVotingConfig } from './higher-order-types.js';
 import { DEFAULT_HIGHER_ORDER_CONFIG } from './higher-order-types.js';
-import type { Vote } from './types-core.js';
 import { createCorrelationTracker } from './correlation-tracker.js';
+import {
+  PersistedCorrelationDataSchema,
+  PersistedProposalSchema,
+  replayProposals,
+  type PersistedCorrelationData,
+  type PersistedProposal,
+} from './correlation-persistence-records.js';
+
+export {
+  createPersistedProposal,
+  PersistedCorrelationDataSchema,
+  type PersistedCorrelationData,
+} from './correlation-persistence-records.js';
 
 const logger: ILogger = createLogger({ component: 'correlation-persistence' });
 
@@ -52,53 +63,8 @@ const FILE_MODE = 0o600;
 /** Directory permissions: user read/write/execute only */
 const DIR_MODE = 0o700;
 
-/** Schema version for forward compatibility. Bumped to 2 with the JSONL switch. */
-const SCHEMA_VERSION = 2;
-
-// ============================================================================
-// Persisted Data Types
-// ============================================================================
-
-/**
- * A single persisted vote within a proposal.
- */
-const PersistedVoteSchema = z.object({
-  agentId: z.string(),
-  decision: z.enum(['approve', 'reject', 'abstain']),
-  confidence: z.number().min(0).max(1),
-});
-
-/** Type for a persisted vote entry */
-type PersistedVote = z.infer<typeof PersistedVoteSchema>;
-
-/**
- * A persisted proposal with its votes and outcome.
- * Stored as a replayable record so internal tracker state
- * is reconstructed through the public API.
- */
-const PersistedProposalSchema = z.object({
-  proposalId: z.string(),
-  votes: z.array(PersistedVoteSchema),
-  outcome: z.enum(['approved', 'rejected']),
-  timestamp: z.iso.datetime(),
-});
-
-/** Type for a persisted proposal entry */
-type PersistedProposal = z.infer<typeof PersistedProposalSchema>;
-
-/**
- * Top-level persisted correlation data structure (legacy `correlations.json`).
- * Kept exported for back-compat — the JSONL format stores `PersistedProposal`
- * directly per line and has no wrapper.
- */
-export const PersistedCorrelationDataSchema = z.object({
-  version: z.number().int().positive(),
-  proposals: z.array(PersistedProposalSchema),
-  savedAt: z.iso.datetime(),
-});
-
-/** Validated persisted correlation data */
-export type PersistedCorrelationData = z.infer<typeof PersistedCorrelationDataSchema>;
+/** Schema version 3 adds optional pinned and observed model provenance. */
+const SCHEMA_VERSION = 3;
 
 // ============================================================================
 // Path Helpers
@@ -394,38 +360,6 @@ export function compactCorrelationData(
   }
 }
 
-// ============================================================================
-// Persistent Tracker Factory
-// ============================================================================
-
-/**
- * Replays persisted proposals into a tracker via `recordProposalVotes()`,
- * reconstructing all internal state through the public API.
- */
-function replayProposals(
-  tracker: ICorrelationTracker,
-  proposals: readonly PersistedProposal[]
-): number {
-  let replayed = 0;
-
-  for (const proposal of proposals) {
-    const votes = new Map<string, Vote>();
-
-    for (const vote of proposal.votes) {
-      votes.set(vote.agentId, {
-        decision: vote.decision,
-        reasoning: 'replayed from persistence',
-        confidence: vote.confidence,
-      });
-    }
-
-    tracker.recordProposalVotes(proposal.proposalId, votes, proposal.outcome);
-    replayed++;
-  }
-
-  return replayed;
-}
-
 /**
  * Creates a correlation tracker pre-loaded with persisted history.
  *
@@ -461,41 +395,4 @@ export function createPersistentCorrelationTracker(
   });
 
   return tracker;
-}
-
-// ============================================================================
-// Proposal Recording Helper
-// ============================================================================
-
-/**
- * Creates a persistable proposal record from vote data.
- *
- * Use this to build proposals that can be passed to `saveCorrelationData()`.
- *
- * @param proposalId - Unique proposal identifier
- * @param votes - Map of agent IDs to their votes
- * @param outcome - Final proposal outcome
- * @returns A persistable proposal record
- */
-export function createPersistedProposal(
-  proposalId: string,
-  votes: ReadonlyMap<string, Vote>,
-  outcome: 'approved' | 'rejected'
-): PersistedProposal {
-  const persistedVotes: PersistedVote[] = [];
-
-  for (const [agentId, vote] of votes) {
-    persistedVotes.push({
-      agentId,
-      decision: vote.decision,
-      confidence: vote.confidence,
-    });
-  }
-
-  return {
-    proposalId,
-    votes: persistedVotes,
-    outcome,
-    timestamp: new Date().toISOString(),
-  };
 }

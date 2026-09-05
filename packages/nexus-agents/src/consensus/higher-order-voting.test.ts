@@ -15,6 +15,7 @@ import {
   createAgentPairKey,
   parseAgentPairKey,
   DEFAULT_HIGHER_ORDER_CONFIG,
+  HigherOrderVotingConfigSchema,
   type CorrelationMatrix,
   type IndependentSubset,
   type AgentPairKey,
@@ -95,6 +96,51 @@ describe('Higher-Order Types', () => {
       expect(DEFAULT_HIGHER_ORDER_CONFIG.minObservationsForCorrelation).toBe(10);
       expect(DEFAULT_HIGHER_ORDER_CONFIG.correlationThreshold).toBe(0.3);
       expect(DEFAULT_HIGHER_ORDER_CONFIG.fallbackToSimpleVoting).toBe(true);
+    });
+
+    it('accepts deprecated correlation lifetime knobs as inert no-ops', () => {
+      const minimumValues = {
+        correlationMaxAgeMs: 1,
+        observationDecayFactor: 0,
+      };
+      const maximumValues = {
+        correlationMaxAgeMs: Number.MAX_SAFE_INTEGER,
+        observationDecayFactor: 1,
+      };
+      const defaults = HigherOrderVotingConfigSchema.parse({});
+      const parsedMinimums = HigherOrderVotingConfigSchema.parse(minimumValues);
+      const parsedMaximums = HigherOrderVotingConfigSchema.parse(maximumValues);
+      const minimumTracker = createCorrelationTracker({
+        minObservationsForCorrelation: 1,
+        ...minimumValues,
+      });
+      const maximumTracker = createCorrelationTracker({
+        minObservationsForCorrelation: 1,
+        ...maximumValues,
+      });
+      const votes = createVoteMap([
+        ['alice', 'approve'],
+        ['bob', 'approve'],
+      ]);
+
+      minimumTracker.recordProposalVotes('proposal-1', votes, 'approved');
+      maximumTracker.recordProposalVotes('proposal-1', votes, 'approved');
+
+      const expectedDefaults = {
+        correlationMaxAgeMs: 86400000,
+        observationDecayFactor: 0.95,
+      };
+      expect(defaults).toMatchObject(expectedDefaults);
+      expect(DEFAULT_HIGHER_ORDER_CONFIG).toMatchObject(expectedDefaults);
+      expect(parsedMinimums).toMatchObject(minimumValues);
+      expect(parsedMaximums).toMatchObject(maximumValues);
+      expect(maximumTracker.hasSufficientData(['alice', 'bob'])).toBe(
+        minimumTracker.hasSufficientData(['alice', 'bob'])
+      );
+      expect(maximumTracker.computeCorrelationMatrix()).toEqual(
+        minimumTracker.computeCorrelationMatrix()
+      );
+      expect(maximumTracker.getStats()).toEqual(minimumTracker.getStats());
     });
   });
 });
@@ -255,8 +301,8 @@ describe('CorrelationTracker', () => {
   });
 
   describe('hasSufficientData', () => {
-    it('should return true for single agent', () => {
-      expect(tracker.hasSufficientData(['alice'])).toBe(true);
+    it('should report a single agent as unmeasured', () => {
+      expect(tracker.hasSufficientData(['alice'])).toBe(false);
     });
 
     it('should return false with insufficient observations', () => {

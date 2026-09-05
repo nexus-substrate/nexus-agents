@@ -37,6 +37,7 @@ import { collectRealVotes } from '../../cli/voter-agents.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
+  CorrelationRecordContext,
   HigherOrderVotingResult,
   ICorrelationTracker,
 } from '../../consensus/higher-order-types.js';
@@ -328,11 +329,13 @@ async function processVotesThroughEngine(
 function runHigherOrderVoting(
   strategy: VotingStrategy,
   voteMap: Map<string, Vote>,
-  logger: ILogger
+  logger: ILogger,
+  context: CorrelationRecordContext
 ): HigherOrderVotingResult | undefined {
   if (!isHigherOrderStrategy(strategy)) return undefined;
   const hovStrategy = new HigherOrderVotingStrategy();
   const tracker = getOrCreateCorrelationTracker();
+  tracker.setCurrentModelPins?.(context.modelPins);
   const result = hovStrategy.aggregate(voteMap, tracker);
   logger.info('Higher-Order Voting complete', {
     method: result.method,
@@ -340,6 +343,16 @@ function runHigherOrderVoting(
     posteriorApproval: result.posteriorApproval.toFixed(3),
   });
   return result;
+}
+
+function buildCorrelationContext(votes: readonly AgentVoteResult[]): CorrelationRecordContext {
+  const modelPins = new Map<string, string>();
+  const observedModels = new Map<string, string>();
+  for (const vote of votes) {
+    if (vote.pinnedModel !== undefined) modelPins.set(vote.role, vote.pinnedModel);
+    if (vote.model !== undefined) observedModels.set(vote.role, vote.model);
+  }
+  return { modelPins, observedModels };
 }
 
 function recordVotesToTracker(
@@ -360,14 +373,15 @@ function recordVotesToTracker(
   if (llmVotes.length === 0) return; // nothing real to record
   const llmVoteMap = new Map<string, Vote>();
   for (const v of llmVotes) llmVoteMap.set(v.role, v.vote);
+  const context = buildCorrelationContext(llmVotes);
 
   const tracker = getOrCreateCorrelationTracker();
   const id = `consensus-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
-  tracker.recordProposalVotes(id, llmVoteMap, outcome);
+  tracker.recordProposalVotes(id, llmVoteMap, outcome, context);
   logger.debug('Recorded votes to tracker', { proposalId: id, outcome });
 
   try {
-    const persisted = createPersistedProposal(id, llmVoteMap, outcome);
+    const persisted = createPersistedProposal(id, llmVoteMap, outcome, context);
     const saveResult = saveCorrelationData([persisted]);
     if (!saveResult.ok) {
       logger.warn('Failed to persist correlation data', { error: saveResult.error.message });
@@ -423,7 +437,7 @@ async function processVotesWithCascade(
 
   const higherOrderResult = cascadeInfo.decided
     ? undefined
-    : runHigherOrderVoting(opts.strategy, voteMap, opts.log);
+    : runHigherOrderVoting(opts.strategy, voteMap, opts.log, buildCorrelationContext(engineVotes));
   const outcome: 'approved' | 'rejected' =
     engineResult.outcome === 'approved' ? 'approved' : 'rejected';
 
