@@ -138,6 +138,7 @@ describe('security pipeline integration', () => {
         inputTrustTier: trust.trustTier,
         hasWriteAccess: true,
         hasSecretAccess: false,
+        existingLabels: new Set(['bug', 'ci']),
       };
       const decision = evaluatePolicy(action, context);
       expect(decision.allowed).toBe(true);

@@ -141,7 +141,10 @@ describe('evaluatePolicy', () => {
     // ProposeLabels reaches this point having already cleared citation,
     // trust-tier, influence-block, Rule-of-Two and label-validity, and undoes
     // in one click.
-    const decision = evaluatePolicy(makePropose([maintainerSource]), makeContext('1'));
+    const decision = evaluatePolicy(
+      makePropose([maintainerSource]),
+      makeContext('1', { existingLabels: new Set(['bug']) })
+    );
     expect(decision.allowed).toBe(true);
     expect(decision.requiresApproval).toBe(false);
     expect(decision.violations).toHaveLength(0);
@@ -232,13 +235,17 @@ describe('evaluatePolicy', () => {
     );
   });
 
-  it('skips label validation when existingLabels missing', () => {
+  it('blocks label proposals when the repository label set is unavailable', () => {
     const action = makePropose([repoSource], ['nonexistent']);
     const ctx = makeContext('1');
     const decision = evaluatePolicy(action, ctx);
 
-    const labelViolations = decision.violations.filter((v) => v.rule === 'INVALID_LABELS');
-    expect(labelViolations).toHaveLength(0);
+    expect(decision.allowed).toBe(false);
+    expect(decision.violations).toContainEqual({
+      rule: 'LABEL_SET_UNAVAILABLE',
+      severity: 'block',
+      message: 'repository label set not supplied; label validity unevaluated',
+    });
   });
 
   it('warns on source trust mismatch', () => {
@@ -424,8 +431,9 @@ describe('privilege-granting labels are never proposable (#4688)', () => {
   it('still allows ordinary labels', () => {
     const decision = evaluatePolicy(
       makePropose([repoSource], ['bug', 'documentation']),
-      makeContext('1')
+      makeContext('1', { existingLabels: new Set(['bug', 'documentation']) })
     );
+    expect(decision.allowed).toBe(true);
     expect(JSON.stringify(decision)).not.toContain('PRIVILEGED_LABEL');
   });
 

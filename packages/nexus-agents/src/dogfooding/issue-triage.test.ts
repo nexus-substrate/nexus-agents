@@ -445,8 +445,11 @@ describe('IssueTriage', () => {
       }
     });
 
-    it('should generate ProposeLabels action for bug', async () => {
+    it('blocks proposed labels when the repository label set is unavailable', async () => {
       mockListCommentDetails.mockResolvedValue(ok([]));
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ authorAssociation: 'OWNER' }))
+      );
 
       const triage = new IssueTriage();
       const result = await triage.triageIssue('https://github.com/owner/repo/issues/42');
@@ -455,6 +458,8 @@ describe('IssueTriage', () => {
       if (result.ok) {
         const labelAction = result.value.proposedActions.find((a) => a.type === 'ProposeLabels');
         expect(labelAction).toBeDefined();
+        expect(labelAction?.policyApproved).toBe(false);
+        expect(labelAction?.details['policyViolations']).toContain('LABEL_SET_UNAVAILABLE');
       }
     });
 
