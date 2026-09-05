@@ -29,42 +29,106 @@ const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
 
 const defaultOptions: ValidatorOptions = { version: '2.0.0', verbose: false };
+const cleanAuditReport = JSON.stringify({
+  metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 } },
+});
 
 // ============================================================================
 // validateSecurity
 // ============================================================================
 
 describe('validateSecurity', () => {
-  it('passes when no audit issues and no .env', () => {
-    mockExecSync.mockReturnValue('');
+  it('passes when npm audit reports no vulnerabilities and no .env', () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      return '';
+    });
     mockExistsSync.mockReturnValue(false);
     return validateSecurity(defaultOptions).then((result) => {
       expect(result.expert).toBe('security');
       expect(result.passed).toBe(true);
       expect(result.confidence).toBe(0.85);
+      expect(result.findings.map((finding) => finding.title)).not.toContainEqual(
+        expect.stringContaining('npm audit')
+      );
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'npm audit --json --audit-level=high',
+        expect.objectContaining({
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        })
+      );
     });
   });
 
-  it('adds warning when npm audit fails', () => {
+  it('fails when npm audit reports two high vulnerabilities', () => {
+    const auditError = Object.assign(new Error('npm audit found vulnerabilities'), {
+      status: 1,
+      stdout: JSON.stringify({
+        metadata: {
+          vulnerabilities: { info: 0, low: 0, moderate: 0, high: 2, critical: 0, total: 2 },
+        },
+      }),
+    });
     mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === 'string' && cmd.includes('npm audit')) {
-        throw new Error('audit failed');
-      }
-      // Secret check - no matches
-      throw new Error('no match');
+      if (cmd.includes('npm audit')) throw auditError;
+      return '';
     });
     mockExistsSync.mockReturnValue(false);
     return validateSecurity(defaultOptions).then((result) => {
-      const auditFinding = result.findings.find((f) => f.title === 'npm audit has findings');
+      const auditFinding = result.findings.find((finding) => finding.title.includes('2 high'));
+      expect(auditFinding).toBeDefined();
+      expect(auditFinding!.severity).toBe('error');
+      expect(result.passed).toBe(false);
+    });
+  });
+
+  it('fails closed when npm audit is unavailable', () => {
+    const unavailableError = Object.assign(new Error('spawnSync npm ENOENT'), {
+      code: 'ENOENT',
+      stdout: '',
+    });
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) throw unavailableError;
+      return '';
+    });
+    mockExistsSync.mockReturnValue(false);
+    return validateSecurity(defaultOptions).then((result) => {
+      const auditFinding = result.findings.find((finding) =>
+        finding.title.includes('npm audit unavailable')
+      );
+      expect(auditFinding).toBeDefined();
+      expect(auditFinding!.title).toContain('spawnSync npm ENOENT');
+      expect(auditFinding!.severity).toBe('error');
+      expect(result.passed).toBe(false);
+    });
+  });
+
+  it('warns but passes when npm audit reports only moderate vulnerabilities', () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) {
+        return JSON.stringify({
+          metadata: {
+            vulnerabilities: { info: 0, low: 0, moderate: 3, high: 0, critical: 0, total: 3 },
+          },
+        });
+      }
+      return '';
+    });
+    mockExistsSync.mockReturnValue(false);
+    return validateSecurity(defaultOptions).then((result) => {
+      const auditFinding = result.findings.find((finding) => finding.title.includes('3 moderate'));
       expect(auditFinding).toBeDefined();
       expect(auditFinding!.severity).toBe('warning');
-      // Warnings don't fail, only errors do
       expect(result.passed).toBe(true);
     });
   });
 
   it('adds error when .env exists', () => {
-    mockExecSync.mockReturnValue('');
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      return '';
+    });
     mockExistsSync.mockReturnValue(true);
     return validateSecurity(defaultOptions).then((result) => {
       const envFinding = result.findings.find((f) => f.title === '.env file present');
@@ -76,8 +140,8 @@ describe('validateSecurity', () => {
 
   it('adds warning for potential secrets in commits', () => {
     mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === 'string' && cmd.includes('npm audit')) return '';
-      if (typeof cmd === 'string' && cmd.includes('git diff')) return 'const API_KEY = "secret"';
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      if (cmd.includes('git diff')) return 'const API_KEY = "secret"';
       return '';
     });
     mockExistsSync.mockReturnValue(false);
@@ -93,7 +157,8 @@ describe('validateSecurity', () => {
     // history, timeout) — which used to be swallowed, leaving an empty
     // findings list that read as "scanned, clean".
     mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === 'string' && cmd.includes('git diff')) {
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      if (cmd.includes('git diff')) {
         throw new Error('fatal: bad revision HEAD~10');
       }
       return '';
@@ -107,9 +172,10 @@ describe('validateSecurity', () => {
   });
 
   it('does not record a scan-did-not-run finding when the scan runs clean (#4581)', () => {
-    // The counterpart: a scan that ran and matched nothing must stay silent,
-    // or the new finding would fire on every clean release and be ignored.
-    mockExecSync.mockReturnValue('');
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      return '';
+    });
     mockExistsSync.mockReturnValue(false);
     return validateSecurity(defaultOptions).then((result) => {
       expect(result.findings.map((f) => f.title)).not.toContain('Secret scan did not run');
@@ -117,7 +183,10 @@ describe('validateSecurity', () => {
   });
 
   it('includes durationMs', () => {
-    mockExecSync.mockReturnValue('');
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm audit')) return cleanAuditReport;
+      return '';
+    });
     mockExistsSync.mockReturnValue(false);
     return validateSecurity(defaultOptions).then((result) => {
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
