@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.20.0
+
+### Minor Changes
+
+- [#5581](https://github.com/nexus-substrate/nexus-agents/pull/5581) [`de12819`](https://github.com/nexus-substrate/nexus-agents/commit/de12819a5feab8aeecb75d39ad59be99b5fe70f7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make development-pipeline plan votes require absolute quorum, retry quorum failures without consuming plan-revision attempts, and stop before implementation when the panel cannot reach quorum or approve the plan.
+
 ## 8.19.1
 
 ### Patch Changes
