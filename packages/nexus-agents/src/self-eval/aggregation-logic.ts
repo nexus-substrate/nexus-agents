@@ -105,7 +105,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp,
-      agent: 'code-quality',
+      agent: 'aggregator',
       claim: 'Aggregation started',
       evidence: `${String(evaluations.length)} evaluations received`,
       verified: true,
@@ -113,7 +113,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp: new Date(getTimeProvider().now()),
-      agent: 'code-quality',
+      agent: 'aggregator',
       claim: `Component classified as ${criticality}`,
       evidence: componentPath,
       verified: true,
@@ -164,7 +164,7 @@ export class EvaluationAggregator {
   ): void {
     auditTrail.push({
       timestamp: new Date(getTimeProvider().now()),
-      agent: 'code-quality',
+      agent: 'aggregator',
       claim: `Final recommendation: ${recommendation}`,
       evidence: `Confidence: ${confidence.toFixed(2)}, Evidence quality: ${evidenceQuality.toFixed(2)}`,
       verified: true,

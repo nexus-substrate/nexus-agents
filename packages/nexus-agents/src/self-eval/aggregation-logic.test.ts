@@ -101,6 +101,75 @@ describe('EvaluationAggregator', () => {
       expect(result.auditTrail.length).toBeGreaterThan(0);
       expect(result.auditTrail.some((e) => e.claim.includes('complexity'))).toBe(true);
     });
+
+    it('attributes aggregator synthesis entries to aggregator and preserves evaluator roles', () => {
+      const aggregator = createAggregator();
+      const evaluations = [
+        createEvaluation({
+          agent: 'code-quality',
+          recommendation: 'retain',
+          metrics: [{ metric: 'complexity', value: 10, source: 'scanner' }],
+          concerns: ['Minor style issue'],
+        }),
+        createEvaluation({
+          agent: 'architecture-fit',
+          recommendation: 'deprecate',
+          metrics: [{ metric: 'coupling', value: 20, source: 'scanner' }],
+          concerns: ['Tight coupling with legacy module'],
+        }),
+        createEvaluation({
+          agent: 'practical-value',
+          recommendation: 'deprecate',
+          metrics: [{ metric: 'usage-count', value: 0, source: 'scanner' }],
+          concerns: ['Zero callers found in repo'],
+        }),
+      ];
+
+      const result = aggregator.aggregate('src/utils/test-helper.ts', evaluations);
+
+      expect(result.finalRecommendation).not.toBe('retain');
+      expect(result.finalRecommendation).toBe('deprecate');
+
+      const startEntry = result.auditTrail.find((e) => e.claim.startsWith('Aggregation started'));
+      expect(startEntry).toBeDefined();
+      expect(startEntry?.agent).toBe('aggregator');
+
+      const classifiedEntry = result.auditTrail.find((e) =>
+        e.claim.startsWith('Component classified as')
+      );
+      expect(classifiedEntry).toBeDefined();
+      expect(classifiedEntry?.agent).toBe('aggregator');
+
+      const finalEntry = result.auditTrail.find((e) => e.claim.startsWith('Final recommendation'));
+      expect(finalEntry).toBeDefined();
+      expect(finalEntry?.agent).toBe('aggregator');
+
+      const cqMetric = result.auditTrail.find((e) => e.claim === 'Reported complexity: 10');
+      expect(cqMetric).toBeDefined();
+      expect(cqMetric?.agent).toBe('code-quality');
+
+      const cqConcern = result.auditTrail.find((e) => e.claim === 'Minor style issue');
+      expect(cqConcern).toBeDefined();
+      expect(cqConcern?.agent).toBe('code-quality');
+
+      const afMetric = result.auditTrail.find((e) => e.claim === 'Reported coupling: 20');
+      expect(afMetric).toBeDefined();
+      expect(afMetric?.agent).toBe('architecture-fit');
+
+      const afConcern = result.auditTrail.find(
+        (e) => e.claim === 'Tight coupling with legacy module'
+      );
+      expect(afConcern).toBeDefined();
+      expect(afConcern?.agent).toBe('architecture-fit');
+
+      const pvMetric = result.auditTrail.find((e) => e.claim === 'Reported usage-count: 0');
+      expect(pvMetric).toBeDefined();
+      expect(pvMetric?.agent).toBe('practical-value');
+
+      const pvConcern = result.auditTrail.find((e) => e.claim === 'Zero callers found in repo');
+      expect(pvConcern).toBeDefined();
+      expect(pvConcern?.agent).toBe('practical-value');
+    });
   });
 
   describe('determineCriticality', () => {

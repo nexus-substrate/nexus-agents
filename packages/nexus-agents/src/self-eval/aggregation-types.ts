@@ -20,7 +20,7 @@ export interface AuditEntry {
   /** Entry timestamp */
   readonly timestamp: Date;
   /** Agent that made the claim */
-  readonly agent: EvaluatorRole;
+  readonly agent: EvaluatorRole | 'aggregator';
   /** The claim or action */
   readonly claim: string;
   /** Supporting evidence (metric citation) */
