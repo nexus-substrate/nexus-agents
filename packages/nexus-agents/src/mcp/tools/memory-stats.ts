@@ -24,6 +24,7 @@ import {
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getMemoryRegistry } from 'nexus-memory';
+import { MemoryType, type TypedMemoryStats } from '../../context/memory-types.js';
 
 // ============================================================================
 // Schema & Types
@@ -154,6 +155,39 @@ function collectSessionStats(toolMemory: ReturnType<typeof getToolMemory>): Sess
   return stats;
 }
 
+function renderTypedCount(
+  count: number,
+  coverage: TypedMemoryStats['coverage'][MemoryType]
+): number | string {
+  if (coverage === 'error') return 'unmeasured (error)';
+  if (coverage === 'truncated') return `≥ ${String(count)} (truncated)`;
+  return count;
+}
+
+function aggregateCoverage(
+  coverage: TypedMemoryStats['coverage']
+): TypedMemoryStats['coverage'][MemoryType] {
+  const values = Object.values(coverage);
+  if (values.includes('error')) return 'error';
+  if (values.includes('truncated')) return 'truncated';
+  return 'exact';
+}
+
+function renderTypedStats(stats: TypedMemoryStats | undefined): Record<string, unknown> | null {
+  if (stats === undefined) return null;
+  const entriesByType = Object.fromEntries(
+    Object.values(MemoryType).map((type) => [
+      type,
+      renderTypedCount(stats.entriesByType[type], stats.coverage[type]),
+    ])
+  );
+  return {
+    ...stats,
+    totalEntries: renderTypedCount(stats.totalEntries, aggregateCoverage(stats.coverage)),
+    entriesByType,
+  };
+}
+
 async function collectMemoryStats(
   input: MemoryStatsInput,
   logger: ILogger
@@ -216,7 +250,7 @@ async function collectMemoryStats(
     backends,
     session: sessionStats,
     belief: beliefStats,
-    typed: typedStats !== undefined ? (typedStats as unknown as Record<string, unknown>) : null,
+    typed: renderTypedStats(typedStats),
     mobimem:
       mobimemStats !== undefined ? (mobimemStats as unknown as Record<string, unknown>) : null,
     decay: decayStats,

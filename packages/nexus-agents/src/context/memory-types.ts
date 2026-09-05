@@ -179,6 +179,10 @@ export interface ITypedMemory {
 export interface TypedMemoryStats {
   readonly totalEntries: number;
   readonly entriesByType: Record<MemoryType, number>;
+  /** Whether each count is complete, capped, or unavailable. */
+  readonly coverage: Record<MemoryType, 'exact' | 'truncated' | 'error'>;
+  /** Search cap when at least one count is truncated. */
+  readonly cap?: number;
   readonly oldestEntry?: Date;
   readonly newestEntry?: Date;
   readonly totalSizeBytes?: number;
