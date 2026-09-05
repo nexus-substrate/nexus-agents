@@ -349,14 +349,14 @@ export const DEFAULT_CONSENSUS_CONFIG: ConsensusEngineConfig = {
 };
 
 /**
- * The 2/3 supermajority agreement threshold — the governance constant for
+ * The exact 2/3 supermajority agreement threshold — the governance constant for
  * "supermajority" / Byzantine (2-of-3) quorum. SINGLE SOURCE (#3571): every
- * consensus site that needs a supermajority references this instead of a bare
- * `0.67` literal, so the governance threshold cannot silently drift between
- * modules. (Per-algorithm values like 0.5/1.0 are intentionally NOT centralized
- * — 0.5 is semantically overloaded across several algorithms.)
+ * consensus site that needs a supermajority references this constant. It must
+ * not be rounded: `0.67` rejected an exact 2-of-3 quorum (#5543).
+ * (Per-algorithm values like 0.5/1.0 are intentionally NOT centralized — 0.5 is
+ * semantically overloaded across several algorithms.)
  */
-export const SUPERMAJORITY_THRESHOLD = 0.67;
+export const SUPERMAJORITY_THRESHOLD = 2 / 3;
 
 /**
  * Voting thresholds for each algorithm.

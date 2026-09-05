@@ -174,9 +174,9 @@ describe('Agreement-based cascading', () => {
   // excluded). With abstains present the two diverged.
   it('respects strategy denominator with abstains in supermajority (#2822)', async () => {
     // 5-voter supermajority with [approve, abstain, abstain, abstain, pending].
-    // Pre-fix: cascade computed max approval = (1+1)/5 = 0.40 < 0.67 → reject.
+    // Pre-fix: cascade computed max approval = (1+1)/5 = 0.40 < 2/3 → reject.
     // Strategy at close (last approves): 2 approve / 0 reject / 3 abstain →
-    // votingVotes = 2 → 2/2 = 1.0 ≥ 0.67 → APPROVE. Different winners.
+    // votingVotes = 2 → 2/2 = 1.0 ≥ 2/3 → APPROVE. Different winners.
     // Post-fix: cascade probes the strategy directly, sees that
     // best-case (last approves) → approve and worst-case (last rejects) →
     // reject, so it does NOT cascade — waits for the last voter.
@@ -237,12 +237,10 @@ describe('Agreement-based cascading', () => {
   });
 
   it('matches supermajority `>=` boundary semantics (#2822)', async () => {
-    // 3-voter supermajority where the strategy uses `>=` (strategies.ts:158).
+    // 3-voter supermajority where the strategy uses `>=`.
     // Votes: 2 approve + 1 pending. Best-case (last approves): 3/3 = 100% → approve.
-    // Worst-case (last rejects): 2/3 = 66.67% → strategy `>= 0.67` is FALSE
-    // (2/3 ≈ 0.6667, threshold is exactly 0.67) → reject. Different outcomes,
-    // so cascade should NOT fire. Pre-#2822 used strict `>` so could have
-    // disagreed; now we delegate so we get strategy semantics by construction.
+    // Worst-case (last rejects): 2/3 meets the exact threshold → approve. Both
+    // outcomes agree, so the engine should cascade to approval after vote two.
     const engine = new ConsensusEngine();
     const result = await engine.propose({
       title: 'Supermajority boundary check',
@@ -256,10 +254,11 @@ describe('Agreement-based cascading', () => {
     await engine.vote(pid, 'a1', makeVote('approve'));
     await engine.vote(pid, 'a2', makeVote('approve'));
 
-    // Best/worst disagree at this threshold — must NOT cascade
+    // Best/worst agree at this exact threshold — cascade to approval.
     const outcome = await engine.getResult(pid);
     if (!outcome.ok) throw new Error('getResult failed');
-    expect(outcome.value.voteCounts.total).toBe(2); // still open
+    expect(outcome.value.outcome).toBe('approved');
+    expect(outcome.value.voteCounts.total).toBe(2);
   });
 
   it('does not cascade when no requiredVoters are set', async () => {

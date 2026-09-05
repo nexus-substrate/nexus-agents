@@ -315,14 +315,14 @@ const protocol = selector.selectProtocol(taskConfig);
 // Explicit protocol selection
 const session = new CollaborationSession({
   pattern: 'aegean',
-  quorum: 0.67,
+  quorum: 2 / 3, // 2/3 (≈0.667)
   maxRounds: 3,
 });
 
 // Byzantine-fault-tolerant voting
 const weighted = new WeightedVoting({
   minTrustScore: 0.3,
-  quorumThreshold: 0.67,
+  quorumThreshold: 2 / 3, // 2/3 (≈0.667)
   weightDecay: 0.9,
   weightRecovery: 1.05,
 });

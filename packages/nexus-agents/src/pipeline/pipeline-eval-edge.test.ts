@@ -17,6 +17,7 @@ import { classifyTask } from './adaptive-orchestrator.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import { isRateLimitText, RATE_LIMIT_PATTERNS } from '../adapters/rate-limit-detector.js';
+import { SUPERMAJORITY_THRESHOLD } from '../consensus/types-core.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
 import { vi } from 'vitest';
 
@@ -208,7 +209,11 @@ function cascadeDecided(
   rejections: number,
   total: number
 ): boolean {
-  const thresholds = { majority: 0.5, supermajority: 0.67, unanimous: 1.0 };
+  const thresholds = {
+    majority: 0.5,
+    supermajority: SUPERMAJORITY_THRESHOLD,
+    unanimous: 1.0,
+  };
   const t = thresholds[algorithm];
   if (total === 0) return false;
   if (algorithm === 'unanimous' && rejections > 0) return true;
@@ -235,13 +240,13 @@ describe('Pipeline Eval — Cascade Boundary Conditions', () => {
     expect(cascadeDecided('supermajority', 5, 0, 6)).toBe(true);
   });
 
-  it('supermajority: 4/6 cannot early-lock (matches engine threshold)', () => {
-    // Engine uses >=0.67; 4/6 ≈ 0.6667 < 0.67 so neither engine nor cascade approves
+  it('supermajority: exact 2/3 cannot early-lock with a strict cascade comparison', () => {
+    // Final consensus accepts 2/3; this early-cascade helper deliberately requires more than 2/3.
     expect(cascadeDecided('supermajority', 4, 0, 6)).toBe(false);
   });
 
   it('supermajority: 3 rejections of 6 locks rejection', () => {
-    // Max possible approvals = 3, 3/6 = 0.5 < 0.67 → locked
+    // Max possible approvals = 3, 3/6 = 0.5 < 2/3 → locked
     expect(cascadeDecided('supermajority', 0, 3, 6)).toBe(true);
   });
 

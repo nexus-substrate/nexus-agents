@@ -409,7 +409,7 @@ const voting = createWeightedVoting({
   eventBus,
   config: {
     initialWeight: 0.5,
-    quorumThreshold: 0.67,
+    quorumThreshold: 2 / 3, // 2/3 (≈0.667)
     byzantineFlagThreshold: 3,
   },
 });

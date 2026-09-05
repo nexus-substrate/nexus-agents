@@ -81,7 +81,7 @@ export interface WeightedVotingConfig {
   readonly byzantineFlagThreshold: number;
   /** Initial weight for new agents (default: 0.5) */
   readonly initialWeight: number;
-  /** Quorum threshold for valid consensus (default: 0.67) */
+  /** Quorum threshold for valid consensus (default: 2/3, approximately 0.667) */
   readonly quorumThreshold: number;
 }
 

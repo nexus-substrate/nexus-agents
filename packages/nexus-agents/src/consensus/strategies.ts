@@ -68,10 +68,10 @@ function deriveWeightBasis(votes: Map<string, Vote>, weights: Map<string, number
  * Evaluates an approval ratio against a threshold — the shared math behind
  * the simple-majority, supermajority and proof-of-learning strategies.
  *
- * `inclusive` selects the comparison: `>=` for supermajority (67% passes at
- * exactly 67%), strict `>` for simple-majority and proof-of-learning (a tie
- * at the threshold is not enough). Callers apply their own zero-denominator
- * guard before calling this.
+ * `inclusive` selects the comparison: `>=` for supermajority (an exact 2/3
+ * passes), strict `>` for simple-majority and proof-of-learning (a tie at the
+ * threshold is not enough). Callers apply their own zero-denominator guard
+ * before calling this.
  */
 function evaluateThreshold(
   approveCount: number,
@@ -191,7 +191,7 @@ export class SimpleMajorityStrategy extends BaseVotingStrategy {
 }
 
 /**
- * Supermajority voting strategy (>=67% approval).
+ * Supermajority voting strategy (at least 2/3 approval).
  */
 export class SupermajorityStrategy extends BaseVotingStrategy {
   readonly algorithm: ConsensusAlgorithm = 'supermajority';
@@ -216,14 +216,15 @@ export class SupermajorityStrategy extends BaseVotingStrategy {
       threshold,
       true
     );
+    const thresholdPercentage = (threshold * 100).toFixed(1);
 
     return {
       approved,
       approvalPercentage,
       voteCounts: counts,
       reason: approved
-        ? `Approved with ${approvalPercentage.toFixed(1)}% (>=${String(threshold * 100)}% required)`
-        : `Rejected with ${approvalPercentage.toFixed(1)}% (<${String(threshold * 100)}% threshold)`,
+        ? `Approved with ${approvalPercentage.toFixed(1)}% (>=${thresholdPercentage}% required)`
+        : `Rejected with ${approvalPercentage.toFixed(1)}% (<${thresholdPercentage}% threshold)`,
     };
   }
 }

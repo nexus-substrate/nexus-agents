@@ -90,13 +90,26 @@ describe('SupermajorityStrategy', () => {
     expect(strategy.algorithm).toBe('supermajority');
   });
 
-  it('approves with supermajority (>=67%)', () => {
+  it('approves with at least a 2/3 supermajority', () => {
     expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).approved).toBe(true);
     expect(strategy.calculateOutcome(makeVotes(67, 33, 0)).approved).toBe(true);
   });
 
+  it.each([
+    { approve: 2, reject: 1, approved: true },
+    { approve: 4, reject: 2, approved: true },
+    { approve: 1, reject: 2, approved: false },
+    { approve: 4, reject: 3, approved: false },
+    { approve: 5, reject: 2, approved: true },
+  ])(
+    'returns $approved with $approve approvals and $reject rejections',
+    ({ approve, reject, approved }) => {
+      expect(strategy.calculateOutcome(makeVotes(approve, reject, 0)).approved).toBe(approved);
+    }
+  );
+
   it('rejects below supermajority threshold', () => {
-    expect(strategy.calculateOutcome(makeVotes(2, 1, 0)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(1, 2, 0)).approved).toBe(false);
     expect(strategy.calculateOutcome(makeVotes(3, 2, 0)).approved).toBe(false);
   });
 
@@ -106,8 +119,8 @@ describe('SupermajorityStrategy', () => {
   });
 
   it('includes correct reason messages', () => {
-    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).reason).toContain('>=67%');
-    expect(strategy.calculateOutcome(makeVotes(2, 1, 0)).reason).toContain('<67%');
+    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).reason).toContain('>=66.7%');
+    expect(strategy.calculateOutcome(makeVotes(1, 1, 0)).reason).toContain('<66.7%');
   });
 });
 
