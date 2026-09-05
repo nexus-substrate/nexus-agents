@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ok, err } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
 import type { ScmPullRequestDetail, ScmUserMetadata } from '../scm/types.js';
+import type { IModelAdapter } from '../core/index.js';
 import { parsePRUrl } from '../scm/url-parsers.js';
 import type { PRReviewResult } from './pr-review-types.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
@@ -26,6 +27,20 @@ const mockGetPullRequestDetail = vi.fn();
 const mockCreateReview = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
 const mockFetchUserMetadata = vi.fn();
+const mockFormatReviewComment = vi.hoisted(() => vi.fn());
+const mockValidateAgentAction = vi.hoisted(() => vi.fn());
+
+vi.mock('./pr-reviewer-helpers.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pr-reviewer-helpers.js')>();
+  mockFormatReviewComment.mockImplementation(actual.formatReviewComment);
+  return { ...actual, formatReviewComment: mockFormatReviewComment };
+});
+
+vi.mock('../security/action-schema.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../security/action-schema.js')>();
+  mockValidateAgentAction.mockImplementation(actual.validateAgentAction);
+  return { ...actual, validateAgentAction: mockValidateAgentAction };
+});
 
 /** Builds a mock SCM user metadata record (default: established 2015 account). */
 function userMeta(overrides: Partial<ScmUserMetadata> = {}): ScmUserMetadata {
@@ -104,6 +119,27 @@ function createMockPRDetail(): ScmPullRequestDetail {
     ],
     additions: 50,
     deletions: 10,
+  };
+}
+
+function adapterReturning(output: Record<string, unknown>): IModelAdapter {
+  return {
+    providerId: 'test-provider',
+    modelId: 'test-model',
+    capabilities: ['completion'],
+    complete: vi.fn().mockResolvedValue(
+      ok({
+        content: [{ type: 'text', text: JSON.stringify(output) }],
+        stopReason: 'end_turn',
+        model: 'test-model',
+      })
+    ),
+    async *stream() {
+      await Promise.resolve();
+      yield { type: 'message_stop' as const };
+    },
+    countTokens: vi.fn().mockResolvedValue(10),
+    validateConfig: vi.fn().mockReturnValue(ok(undefined)),
   };
 }
 
@@ -457,6 +493,21 @@ describe('PRReviewer', () => {
         expect(result.value.findingsByCategory).toHaveProperty('architecture');
       }
     });
+
+    it('marks an expert with no recognisable verdict shape as errored and does not approve', async () => {
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: true, experts: ['code_quality'] },
+        adapterReturning({ content: 'Review completed' })
+      );
+
+      const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.expertReviews[0]).toMatchObject({ approved: false, errored: true });
+      expect(result.value.decision).not.toBe('approve');
+    });
   });
 
   describe('reviewPR - GitHub posting', () => {
@@ -470,6 +521,57 @@ describe('PRReviewer', () => {
       await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
 
       expect(mockCreateReview).not.toHaveBeenCalled();
+    });
+
+    it('posts exactly the validated truncated review body when formatting exceeds the limit', async () => {
+      const formatted = 'x'.repeat(2_500);
+      mockFormatReviewComment.mockReturnValueOnce(formatted);
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: false, experts: ['code_quality'] },
+        adapterReturning({ content: 'APPROVED', warnings: [] })
+      );
+
+      await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(mockCreateReview).toHaveBeenCalledOnce();
+      const postedBody = mockCreateReview.mock.calls[0]?.[1];
+      expect(postedBody).toHaveLength(2_000);
+      expect(postedBody).toContain('[review truncated]');
+      expect(postedBody).not.toBe(formatted);
+      expect(mockValidateAgentAction).toHaveBeenCalledWith(
+        expect.objectContaining({ body: postedBody })
+      );
+    });
+
+    it('does not post when the real formatted body violates the DraftReply schema', async () => {
+      mockFormatReviewComment.mockReturnValueOnce('short');
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: false, experts: ['code_quality'] },
+        adapterReturning({ content: 'APPROVED', warnings: [] })
+      );
+
+      const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(true);
+      expect(mockCreateReview).not.toHaveBeenCalled();
+      if (!result.ok) return;
+      expect(result.value.postOutcome).toMatchObject({ status: 'skipped' });
+    });
+
+    it('posts an ordinary validated review unchanged', async () => {
+      const formatted = 'Ordinary review body';
+      mockFormatReviewComment.mockReturnValueOnce(formatted);
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const reviewer = new PRReviewer(
+        { dryRun: false, experts: ['code_quality'] },
+        adapterReturning({ content: 'APPROVED', warnings: [] })
+      );
+
+      await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
+
+      expect(mockCreateReview).toHaveBeenCalledWith(123, formatted, 'approve');
     });
   });
 });

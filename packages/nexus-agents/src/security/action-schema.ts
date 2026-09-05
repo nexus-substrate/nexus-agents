@@ -125,9 +125,11 @@ const ProposeLabelsAction = z.object({
 });
 
 /** Draft a reply comment (always requires human approval before posting). */
+export const DRAFT_REPLY_BODY_MAX_LENGTH = 2000;
+
 const DraftReplyAction = z.object({
   type: z.literal('DraftReply'),
-  body: z.string().min(10).max(2000),
+  body: z.string().min(10).max(DRAFT_REPLY_BODY_MAX_LENGTH),
   requiresApproval: z.literal(true),
   sources: z.array(SourceCitationSchema).min(1).max(20),
 });

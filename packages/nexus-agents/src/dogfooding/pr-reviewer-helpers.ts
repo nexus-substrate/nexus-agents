@@ -188,6 +188,23 @@ export function extractStringField(
   return undefined;
 }
 
+export function formatDiffs(pr: PRMetadata): string {
+  const maxDiffLength = 2000;
+  let totalLength = 0;
+  const diffs: string[] = [];
+  for (const file of pr.files) {
+    if (file.patch === undefined) continue;
+    const diff = `\`\`\`diff\n# ${file.filename}\n${file.patch}\n\`\`\``;
+    if (totalLength + diff.length > maxDiffLength * pr.files.length) {
+      diffs.push(`# ${file.filename}\n(diff truncated)`);
+    } else {
+      diffs.push(diff);
+      totalLength += diff.length;
+    }
+  }
+  return diffs.join('\n\n');
+}
+
 // =============================================================================
 // Finding Parsing
 // =============================================================================
@@ -207,6 +224,10 @@ export function parseFindings(
       const finding = parseOneFinding(item, expertId, minOrder);
       if (finding !== null) findings.push(finding);
     }
+  }
+  for (const warning of parseWarnings(output.warnings)) {
+    const finding = parseWarningFinding(warning, expertId, minOrder);
+    if (finding !== null) findings.push(finding);
   }
   return findings;
 }
@@ -241,11 +262,71 @@ function parseOneFinding(item: unknown, expertId: string, minOrder: number): Rev
   };
 }
 
+function parseWarnings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((warning): warning is string => typeof warning === 'string');
+}
+
+function parseWarningFinding(
+  warning: string,
+  expertId: string,
+  minOrder: number
+): ReviewFinding | null {
+  const severity = parseSeverity(
+    warning.match(/\b(critical|high|medium|low|info)-?severity\b/i)?.[1]
+  );
+  return parseOneFinding(
+    {
+      title: 'Expert warning',
+      description: warning,
+      severity,
+      category: parseCategory(expertId.replace(/-expert$/, '')),
+    },
+    expertId,
+    minOrder
+  );
+}
+
+type ExpertVerdict = 'approved' | 'changes_requested' | 'findings' | 'errored';
+
+interface ParsedExpertReview {
+  readonly findings: ReviewFinding[];
+  readonly verdict: ExpertVerdict;
+}
+
+function parseVerdictMarker(
+  value: unknown
+): Exclude<ExpertVerdict, 'findings' | 'errored'> | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.toUpperCase().replaceAll('-', '_').replaceAll(' ', '_');
+  if (/\b(?:CHANGES_REQUESTED|REQUEST_CHANGES)\b/.test(normalized)) return 'changes_requested';
+  if (/\b(?:APPROVED|APPROVE)\b/.test(normalized)) return 'approved';
+  return undefined;
+}
+
+/** Parses one expert output into a single, validated review verdict. */
+export function parseExpertReview(
+  output: Record<string, unknown>,
+  expertId: string,
+  minSeverity: ReviewSeverity
+): ParsedExpertReview {
+  const findings = parseFindings(output, expertId, minSeverity);
+  const verdict = parseVerdictMarker(output.verdict) ?? parseVerdictMarker(output.content);
+  if (verdict !== undefined) return { findings, verdict };
+  const hasFindingShape = collectSources(output).some((source) => Array.isArray(source));
+  const hasWarningShape = parseWarnings(output.warnings).length > 0;
+  return { findings, verdict: hasFindingShape || hasWarningShape ? 'findings' : 'errored' };
+}
+
 // =============================================================================
 // Decision Helpers
 // =============================================================================
 
-export function determineApproval(findings: ReviewFinding[]): boolean {
+export function determineApproval(
+  findings: ReviewFinding[],
+  verdict: ExpertVerdict = 'findings'
+): boolean {
+  if (verdict === 'errored' || verdict === 'changes_requested') return false;
   const hasBlocking = findings.some((f) => f.severity === 'critical' || f.severity === 'high');
   return !hasBlocking;
 }
@@ -258,20 +339,20 @@ export function determineDecision(
   // approve nor object. `allOf(reviews, …, false)` already refuses to call
   // ZERO reviews unanimous approval (#4581); feeding it synthetic approvals
   // for failed experts defeated that guard by making the list non-empty.
-  const verdicts = reviews.filter((r) => r.errored !== true);
+  const completedReviews = reviews.filter((r) => r.errored !== true);
   const hasCritical = findings.some((f) => f.severity === 'critical');
   const hasHigh = findings.some((f) => f.severity === 'high');
   // Zero expert reviews is not unanimous approval (#4581): with `true` here the
   // `hasHigh && !allApproved` branch could never fire on an unreviewed PR, so a
   // HIGH finding silently downgraded from request_changes to comment.
-  const allApproved = allOf(verdicts, (r) => r.approved, false);
+  const allApproved = allOf(reviews, (r) => r.errored !== true && r.approved, false);
 
   if (hasCritical) return 'request_changes';
   if (hasHigh && !allApproved) return 'request_changes';
   if (findings.length > 0) return 'comment';
   // Nothing read the diff, so there is nothing to approve. `comment` posts the
   // failure summaries without asserting the change is fine.
-  if (verdicts.length === 0) return 'comment';
+  if (completedReviews.length === 0 || !allApproved) return 'comment';
   return 'approve';
 }
 
@@ -449,10 +530,10 @@ export function createFailedReview(
 }
 
 /** The policy gate's verdict on posting a review, as the caller needs it. */
-interface ReviewPostingVerdict {
+export interface ReviewPostingVerdict {
   readonly allowed: boolean;
   readonly hasRuleOfTwoViolation: boolean;
-  readonly violations: readonly { rule: string }[];
+  readonly violations: readonly { rule: string; message?: string }[];
 }
 
 /**
