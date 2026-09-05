@@ -36,7 +36,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler } from '../middleware/secure-handler.js';
 import {
@@ -48,6 +48,9 @@ import {
 import { readJobResult, writeJobCancelled, type JobStatus } from '../jobs/job-result-store.js';
 import { abortJob } from '../jobs/job-abort-registry.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { appendCancellation, readTaskState } from '../../context/structured-task-state.js';
+
+const defaultLogger = createLogger({ tool: 'cancel_job' });
 
 export const CancelJobInputSchema = z.object({
   jobId: z
@@ -76,7 +79,7 @@ export interface CancelJobResponse {
 
 export type CancelJobDeps = BaseMcpToolDeps;
 
-function cancelJobHandler(args: unknown): Promise<ToolResult> {
+function cancelJobHandler(args: unknown, logger: ILogger = defaultLogger): Promise<ToolResult> {
   const parsed = CancelJobInputSchema.safeParse(args);
   if (!parsed.success) {
     return Promise.resolve(
@@ -120,8 +123,21 @@ function cancelJobHandler(args: unknown): Promise<ToolResult> {
 
   // Status is 'pending' — perform the cancel.
   return Promise.resolve(
-    toolSuccess(JSON.stringify(cancelPendingJob(jobId, existing.toolName, reason), null, 2))
+    toolSuccess(JSON.stringify(cancelPendingJob(jobId, existing.toolName, logger, reason), null, 2))
   );
+}
+
+/** Best-effort mirror into an existing canonical task-state log (#5622). */
+function appendTaskStateCancellation(jobId: string, logger: ILogger, reason?: string): void {
+  if (!readTaskState(jobId).ok) return;
+  const requestedAt = new Date().toISOString();
+  const result = appendCancellation(jobId, {
+    requestedAt,
+    ...(reason !== undefined ? { reason } : {}),
+  });
+  if (!result.ok) {
+    logger.warn('task-state: cancellation record failed', { jobId, error: result.error.message });
+  }
 }
 
 /**
@@ -129,8 +145,14 @@ function cancelJobHandler(args: unknown): Promise<ToolResult> {
  * the in-flight work (#4086). When the aborted `run()` rejects, the terminal
  * writers no-op against the `cancelled` record (#4022), so the cancellation wins.
  */
-function cancelPendingJob(jobId: string, toolName: string, reason?: string): CancelJobResponse {
+function cancelPendingJob(
+  jobId: string,
+  toolName: string,
+  logger: ILogger,
+  reason?: string
+): CancelJobResponse {
   writeJobCancelled(jobId, toolName, reason);
+  appendTaskStateCancellation(jobId, logger, reason);
   const aborted = abortJob(jobId, reason);
   return {
     jobId,
@@ -147,7 +169,7 @@ function cancelPendingJob(jobId: string, toolName: string, reason?: string): Can
 
 /** @category MCP */
 export function registerCancelJobTool(server: McpServer, deps: CancelJobDeps): void {
-  const logger = deps.logger ?? createLogger({ tool: 'cancel_job' });
+  const logger = deps.logger ?? defaultLogger;
   const toolSchema = {
     jobId: z
       .string()
@@ -167,7 +189,7 @@ export function registerCancelJobTool(server: McpServer, deps: CancelJobDeps): v
     'via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the ' +
     'terminal record); second cancel returns already_cancelled.';
 
-  const secureHandler = createSecureHandler(cancelJobHandler, {
+  const secureHandler = createSecureHandler((args: unknown) => cancelJobHandler(args, logger), {
     toolName: 'cancel_job',
     rateLimiter: deps.rateLimiter,
     logger,

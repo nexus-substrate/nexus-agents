@@ -26,6 +26,7 @@ import { registerJobAbort, unregisterJobAbort } from './job-abort-registry.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
 import { release, suggestRetryAfterMs, tryAcquire } from './job-concurrency.js';
 import { resolveClassGuardMs } from '../../config/timeouts.js';
+import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.js';
 
 /**
  * Async-job-body runaway-guard (#3734). A backgrounded job body has NO MCP
@@ -356,10 +357,10 @@ export async function runJobInBackground<I, R, E>(
     // Race the body against the runaway-guard. On guard expiry the guard
     // rejects with the sentinel → recorded as failed below. On body settle the
     // guard is cleared so it can never fire afterward.
-    const result = await Promise.race([
-      params.run(jobId, params.input, controller.signal),
-      guard.expired,
-    ]);
+    const body = withAsyncTaskStateDispatch(jobId, () =>
+      params.run(jobId, params.input, controller.signal)
+    );
+    const result = await Promise.race([body, guard.expired]);
     // #4363: `writeJobComplete` used to fire on ANY resolved value, so a
     // callback resolving a failure-shaped payload recorded `complete` and a
     // caller polling `get_job_result` read it as a success. Fail closed by

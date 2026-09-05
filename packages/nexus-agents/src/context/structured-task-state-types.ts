@@ -143,6 +143,11 @@ export const TASK_RESULT_MAX_BYTES = 1_048_576;
  */
 export const StructuredTaskStateSchema = z.object({
   taskId: z.string().min(1),
+  /**
+   * Marks state created by the shared async-job dispatcher (#5622).
+   * Optional for backward compatibility; absence does not prove async dispatch.
+   */
+  dispatch: z.literal('async').optional(),
   stage: TaskStageSchema,
   decisions: z.array(TaskDecisionSchema),
   blockers: z.array(TaskBlockerSchema),

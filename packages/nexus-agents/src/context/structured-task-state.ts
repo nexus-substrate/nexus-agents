@@ -16,6 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
@@ -42,6 +43,13 @@ const TASKS_SUBDIR = 'tasks';
 
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
+
+const asyncTaskStateJob = new AsyncLocalStorage<string>();
+
+/** Run work whose task-state initialization must record async dispatch. @internal */
+export function withAsyncTaskStateDispatch<T>(jobId: string, operation: () => T): T {
+  return asyncTaskStateJob.run(jobId, operation);
+}
 
 function getTasksDir(customDir?: string): string {
   if (customDir !== undefined) return path.resolve(customDir);
@@ -126,7 +134,13 @@ function appendLogEntry(
  * state as an `init` log entry. Safe to call once per taskId.
  */
 export function initTaskState(state: StructuredTaskState, customDir?: string): Result<void, Error> {
-  return appendLogEntry(state.taskId, { event: 'init', ts: state.updatedAt, state }, customDir);
+  const isAsyncJob = asyncTaskStateJob.getStore() === state.taskId;
+  const persistedState = isAsyncJob ? { ...state, dispatch: 'async' as const } : state;
+  return appendLogEntry(
+    state.taskId,
+    { event: 'init', ts: state.updatedAt, state: persistedState },
+    customDir
+  );
 }
 
 export function appendDecision(
