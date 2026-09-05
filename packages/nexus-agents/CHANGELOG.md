@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.23.4
+
+### Patch Changes
+
+- [#5630](https://github.com/nexus-substrate/nexus-agents/pull/5630) [`e682510`](https://github.com/nexus-substrate/nexus-agents/commit/e6825102fbd6111ec8845023e467e5caeeea600d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reconcile task-state job reads with terminal sidecars, persist async-dispatch provenance for accurate job listings, and mirror cancellations into existing task-state logs.
+
 ## 8.23.3
 
 ### Patch Changes
