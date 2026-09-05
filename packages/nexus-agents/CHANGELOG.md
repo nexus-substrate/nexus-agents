@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.8
+
+### Patch Changes
+
+- [#5679](https://github.com/nexus-substrate/nexus-agents/pull/5679) [`79a7b92`](https://github.com/nexus-substrate/nexus-agents/commit/79a7b926990075eafd494e92ccf6bd6a1b3a5fb8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The weekly parameter-drift gate reports how many registry models joined the provider catalog (`PARAM_DRIFT_JOINED`), lists the ones it could not reconcile, and emits `skipped` instead of `clean` when nothing joined ([#5677](https://github.com/nexus-substrate/nexus-agents/issues/5677)).
+
 ## 8.26.7
 
 ### Patch Changes
