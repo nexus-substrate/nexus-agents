@@ -30,9 +30,15 @@ export interface ModelPerformanceSummary {
   readonly rewardStats: DistributionStats;
   /** Average latency in milliseconds */
   readonly avgLatencyMs: number;
-  /** Win rate vs other models */
+  /**
+   * Win rate vs other models, over the {@link comparableN} outcomes that carried
+   * counterfactual rewards. Unmeasured — `comparableN === 0` — reads `0` here
+   * for compatibility; check `comparableN` before treating it as a defeat (#5650).
+   */
   readonly winRate: number;
   readonly winRateCI: ConfidenceInterval;
+  /** Number of outcomes the win rate was computed over; 0 means unmeasured (#5650). */
+  readonly comparableN: number;
   /** Cost efficiency (reward per token) */
   readonly costEfficiency: number;
 }

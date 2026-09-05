@@ -56,6 +56,7 @@ function makeModelSummary(overrides?: Partial<ModelPerformanceSummary>): ModelPe
     avgLatencyMs: 1500,
     winRate: 0.65,
     winRateCI: makeCI(0.55, 0.65, 0.75),
+    comparableN: 40,
     costEfficiency: 0.5,
     ...overrides,
   };
@@ -200,6 +201,20 @@ describe('renderModelPerformance', () => {
     const models = [makeModelSummary()];
     const result = renderModelPerformance(models, { showConfidenceIntervals: true });
     expect(result).toContain('95% CI');
+  });
+
+  it('renders an unmeasured win rate as "-" rather than 0% (#5650)', () => {
+    const models = [makeModelSummary({ winRate: 0, comparableN: 0 })];
+    const result = renderModelPerformance(models, { showConfidenceIntervals: false });
+    // The win-rate column is the last cell of the row.
+    expect(result).not.toMatch(/\|\s+0%$/m);
+    expect(result).toMatch(/\|\s+-$/m);
+  });
+
+  it('renders a measured 0% win rate as 0% (#5650)', () => {
+    const models = [makeModelSummary({ winRate: 0, comparableN: 5 })];
+    const result = renderModelPerformance(models, { showConfidenceIntervals: false });
+    expect(result).toMatch(/\|\s+0%$/m);
   });
 
   it('renders multiple models', () => {

@@ -97,6 +97,7 @@ export function calculateModelPerformance(
     avgLatencyMs,
     winRate: winLoss.winRate,
     winRateCI: winLoss.winRateCI,
+    comparableN: comparableOutcomes.length,
     costEfficiency,
   };
 }
