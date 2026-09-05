@@ -8,8 +8,7 @@
  * Phase A (Issue #920): Adds DelegateInput→TaskContract conversion and
  * pipeline execution metrics for config-flag-gated V2 instrumentation.
  *
- * Phase 1 (#927): Wires PolicyEvaluator into pipeline execution so
- * block mode halts execution on policy violations.
+ * Phase 1 (#927): Adds the shared policy evaluator used by enforcing callers.
  *
  * #4657: the plan declares NO policy gate. The entry gate #3703 added could
  * never deny (`trustTierRule` denies only execute-typed stages; the only stage
@@ -17,8 +16,10 @@
  * (`mcp/tools/delegate-to-model.ts`) and `executeOrchestratePipeline`
  * (`v2-orchestrate.ts`), and both callers run it fire-and-forget beside the
  * real work, so a gate that did fire would record a denial nothing honoured.
- * Trust-tier enforcement that can refuse lives at `v2-orchestrate.ts`
- * (`checkPipelinePolicy(task, 'execute')`, unchanged) and `dev-pipeline.ts`
+ * #5485 removes the remaining route-stage evaluation from
+ * `executeDelegatePipeline`: a check that cannot fail is not a check.
+ * Trust-tier enforcement that can refuse remains at `v2-orchestrate.ts`
+ * (`checkPipelinePolicy(task, 'execute')`) and `dev-pipeline.ts`
  * (`enforceConsensusExecutePolicy`).
  *
  * @module pipeline/v2-delegate
@@ -45,7 +46,7 @@ import { buildBaseTaskContract } from './task-contract-builders.js';
 import type { CompiledPipeline } from './pipeline-runner.js';
 import type { TaskContract, PlanContract } from './task-contract.js';
 import type { PolicyContext } from './policy-engine.js';
-import type { PolicyEvalResult, PolicyViolation } from './policy-evaluator.js';
+import type { PolicyEvalResult } from './policy-evaluator.js';
 
 const logger = createLogger({ component: 'V2Delegate' });
 
@@ -120,11 +121,9 @@ export function delegateInputToTaskContract(
     metadata['billingMode'] = input.billing_mode;
   }
   // #2957: producer-side wiring of caller trust tier into the policy snapshot;
-  // a missing trustTier defaults to '4' (untrusted) in policy-engine.ts. On
-  // the delegate path itself nothing can deny on it (#4657): the pre-execution
-  // check below evaluates a 'route' stage, which `trustTierRule` allows at
-  // every tier. It is kept so the snapshot is populated wherever this contract
-  // is evaluated against an execute stage.
+  // a missing trustTier defaults to '4' (untrusted) in policy-engine.ts. The
+  // delegate path performs no route-stage policy evaluation (#5485); the
+  // snapshot remains available to callers that evaluate an execute stage.
   if (opts.trustTier !== undefined) metadata['trustTier'] = opts.trustTier;
   // estimate_tokens flag removed (#2723) — was never read downstream.
   return buildBaseTaskContract({
@@ -139,19 +138,12 @@ export function delegateInputToTaskContract(
  * Compiles and executes a V2 pipeline for the given TaskContract.
  * Returns metrics for observability — never throws.
  *
- * The pre-execution policy check evaluates stage type 'route' — the real type
- * of the only stage — which `trustTierRule` allows at every tier, so under the
- * current rule set this path never reports `policyBlocked` (#4657). The
- * execute-stage seams that can refuse are `v2-orchestrate.ts` and
- * `dev-pipeline.ts`; this graph is fire-and-forget instrumentation beside the
- * real delegation and must not claim a refusal it cannot perform.
+ * This path performs no route-stage policy evaluation (#5485): the only
+ * built-in rule denies execute stages, so such a check could not fail. The
+ * enforcing seams remain the execute check in `v2-orchestrate.ts` and
+ * `enforceConsensusExecutePolicy` in `dev-pipeline.ts`.
  */
 export async function executeDelegatePipeline(task: TaskContract): Promise<PipelineMetrics> {
-  const policyResult = checkPipelinePolicy(task, 'route');
-  if (!policyResult.allowed) {
-    return policyBlockedMetrics(policyResult);
-  }
-
   const compiled = createDelegatePipeline(task);
   if (!compiled.ok) {
     return { compiled: false, executed: false, stepsExecuted: 0, durationMs: 0 };
@@ -210,25 +202,6 @@ export function checkPipelinePolicy(task: TaskContract, stageType: string): Poli
     });
   }
   return result;
-}
-
-/** Creates PipelineMetrics for a policy-blocked execution. */
-function policyBlockedMetrics(result: PolicyEvalResult): PipelineMetrics {
-  const violations = result.violations.map(formatViolation);
-  return {
-    compiled: false,
-    executed: false,
-    stepsExecuted: 0,
-    durationMs: 0,
-    policyBlocked: true,
-    policyViolations: violations,
-  };
-}
-
-/** Formats a PolicyViolation for metrics output. */
-function formatViolation(v: PolicyViolation): string {
-  const base = `${v.ruleId}: ${v.reason}`;
-  return v.escalateTo !== undefined ? `${base} [escalate: ${v.escalateTo}]` : base;
 }
 
 // ============================================================================
