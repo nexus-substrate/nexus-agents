@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.10.0
+
+### Minor Changes
+
+- [#5514](https://github.com/nexus-substrate/nexus-agents/pull/5514) [`0bb66ae`](https://github.com/nexus-substrate/nexus-agents/commit/0bb66aea1e3543117a01a049400d259f23dd2e7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Label orchestrate outcome records with whether CLI attribution came from the executed CLI or the task category default, while keeping legacy persisted outcomes unmeasured.
+
+- [#5511](https://github.com/nexus-substrate/nexus-agents/pull/5511) [`3e70c72`](https://github.com/nexus-substrate/nexus-agents/commit/3e70c72de10f7b951cd843a2b75c2b7d65e246cf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve skipped security-scan verdicts so incomplete pipelines report missing scan evidence instead of claiming the security gate rejected the change.
+
 ## 8.9.4
 
 ### Patch Changes
