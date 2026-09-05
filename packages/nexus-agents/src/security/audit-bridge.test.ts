@@ -53,6 +53,7 @@ const samples: Record<SecurityAuditEvent['type'], SecurityAuditEvent> = {
     type: 'sanitization',
     source: 'github-issue',
     wasModified: true,
+    truncated: true,
     strippedCount: 2,
     injectionFlagCount: 1,
     strippedElements: [{ tag: '<script>', reason: 'injection vector' }],
@@ -152,6 +153,12 @@ describe('securityAuditEventToInput (#3291)', () => {
   it('flags suspicious reputation + injection sanitization as warnings', () => {
     expect(securityAuditEventToInput(samples.reputation).severity).toBe('warning');
     expect(securityAuditEventToInput(samples.sanitization).severity).toBe('warning');
+  });
+
+  it('carries sanitization truncation into durable metadata', () => {
+    const input = securityAuditEventToInput(samples.sanitization);
+
+    expect(input.metadata?.['truncated']).toBe(true);
   });
 
   it('carries the user identity into the actor for user-scoped events', () => {

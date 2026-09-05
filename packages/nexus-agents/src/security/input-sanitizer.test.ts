@@ -12,11 +12,18 @@
 
 import { describe, it, expect } from 'vitest';
 import { sanitizeInput } from './input-sanitizer.js';
-import type {} from './trust-types.js';
+import { SanitizedInputSchema } from './trust-types.js';
 
 import { vi } from 'vitest';
 
 describe('sanitizeInput', () => {
+  it('parses legacy records without truncation metadata', () => {
+    const legacy = { ...sanitizeInput('Normal text', 'unknown', 'someone') };
+    delete legacy.truncated;
+
+    expect(SanitizedInputSchema.safeParse(legacy).success).toBe(true);
+  });
+
   it('marks its content tier as measured', () => {
     const result = sanitizeInput('Normal text', 'unknown', 'someone');
 
@@ -476,12 +483,35 @@ describe('sanitizeInput', () => {
       expect(result.strippedElements).toEqual([]);
     });
 
-    it('truncates very long input to maxInputLength', () => {
-      const longContent = 'A'.repeat(100_000);
+    it('records clean input truncated at maxInputLength as modified', () => {
+      const longContent = 'A'.repeat(1001);
       const config = { maxInputLength: 1000 };
       const result = sanitizeInput(longContent, 'unknown', 'someone', config);
-      expect(result.content.length).toBeLessThanOrEqual(1000);
-      expect(result.originalLength).toBe(100_000);
+
+      expect(result.wasModified).toBe(true);
+      expect(result.truncated).toBe(true);
+      expect(result.originalLength).toBe(1001);
+      expect(result.content).toHaveLength(1000);
+      expect(result.strippedElements).toEqual([]);
+    });
+
+    it('records clean input below maxInputLength as unmodified', () => {
+      const content = 'A'.repeat(999);
+      const result = sanitizeInput(content, 'unknown', 'someone', { maxInputLength: 1000 });
+
+      expect(result.truncated).toBe(false);
+      expect(result.wasModified).toBe(false);
+      expect(result.originalLength).toBe(999);
+      expect(result.content).toHaveLength(999);
+    });
+
+    it('keeps stripped-but-not-truncated input marked as modified', () => {
+      const content = 'Before <img src="x" /> after';
+      const result = sanitizeInput(content, 'unknown', 'someone', { maxInputLength: 1000 });
+
+      expect(result.truncated).toBe(false);
+      expect(result.wasModified).toBe(true);
+      expect(result.strippedElements).toHaveLength(1);
     });
 
     it('handles input with multiple injection types simultaneously', () => {

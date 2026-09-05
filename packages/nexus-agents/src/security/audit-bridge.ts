@@ -154,6 +154,7 @@ function mapSanitization(e: SanitizationEvt): AuditEventInput {
     metadata: {
       source: e.source,
       wasModified: e.wasModified,
+      ...(e.truncated !== undefined ? { truncated: e.truncated } : {}),
       strippedCount: e.strippedCount,
       injectionFlagCount: e.injectionFlagCount,
       strippedElements: e.strippedElements,

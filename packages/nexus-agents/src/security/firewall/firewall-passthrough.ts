@@ -22,6 +22,7 @@ export function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput
     userRole,
     injectionFlags: [],
     strippedElements: [],
+    truncated: false,
     wasModified: false,
     sanitizedAt: new Date().toISOString(),
   };

@@ -403,12 +403,13 @@ export function sanitizeInput(
   config?: Partial<SanitizerConfig>
 ): SanitizedInput {
   const cfg = SanitizerConfigSchema.parse(config ?? {});
-  const truncated = content.slice(0, cfg.maxInputLength);
+  const truncatedContent = content.slice(0, cfg.maxInputLength);
+  const truncated = truncatedContent.length < content.length;
   const allowlisted = cfg.allowlistedMaintainers.includes(username);
 
   try {
     // Pipeline: decode entity-encoded dangerous tags, then strip dangerous content
-    const entityDecoded = applyEntityEvasionDefense(truncated);
+    const entityDecoded = applyEntityEvasionDefense(truncatedContent);
     const html = stripDangerousHtml(entityDecoded.cleaned);
     const xml = stripXmlTags(html.cleaned);
     const comments = stripHtmlComments(xml.cleaned);
@@ -420,7 +421,7 @@ export function sanitizeInput(
     ];
 
     // Detect injection patterns on ORIGINAL content (before stripping)
-    const injectionFlags = detectInjectionPatterns(truncated);
+    const injectionFlags = detectInjectionPatterns(truncatedContent);
 
     // Assign trust tier
     const trustTier = assignTrustTier(userRole, injectionFlags, allowlisted);
@@ -433,11 +434,12 @@ export function sanitizeInput(
       userRole,
       injectionFlags,
       strippedElements: allStripped,
-      wasModified: allStripped.length > 0,
+      truncated,
+      wasModified: truncated || allStripped.length > 0,
       sanitizedAt: new Date().toISOString(),
     };
   } catch (err: unknown) {
-    return buildFailClosedResult(err, content, truncated, userRole, allowlisted);
+    return buildFailClosedResult(err, content, truncatedContent, userRole, allowlisted);
   }
 }
 
@@ -471,6 +473,7 @@ function buildFailClosedResult(
         length: truncated.length,
       },
     ],
+    truncated: truncated.length < originalContent.length,
     wasModified: true,
     sanitizedAt: new Date().toISOString(),
   };

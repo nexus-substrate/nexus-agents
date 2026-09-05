@@ -136,6 +136,8 @@ export interface SanitizationEvent extends AuditEventBase {
   readonly type: 'sanitization';
   readonly source: string;
   readonly wasModified: boolean;
+  /** Whether input exceeded the configured limit. Absent on events that predate this field. */
+  readonly truncated?: boolean;
   readonly strippedCount: number;
   readonly injectionFlagCount: number;
   /**

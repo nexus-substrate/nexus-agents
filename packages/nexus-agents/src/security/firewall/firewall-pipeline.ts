@@ -500,6 +500,7 @@ export class HostileInputFirewall {
       emitSanitizationEvent(this.auditTrail, {
         source: meta.sourceType,
         wasModified: result.wasModified,
+        ...(result.truncated !== undefined ? { truncated: result.truncated } : {}),
         strippedCount: result.strippedElements.length,
         injectionFlagCount: result.injectionFlags.length,
         strippedElements: result.strippedElements
