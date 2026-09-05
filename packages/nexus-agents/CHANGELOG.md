@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.26.0
+
+### Minor Changes
+
+- [#5651](https://github.com/nexus-substrate/nexus-agents/pull/5651) [`dc989a0`](https://github.com/nexus-substrate/nexus-agents/commit/dc989a06ef18cb0c783215dd9289d416fc48b634) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `ModelPerformanceSummary` gains `comparableN`, the number of outcomes the win rate was computed over; the validation dashboard renders `-` instead of `0%` when a model has no comparative outcomes ([#5650](https://github.com/nexus-substrate/nexus-agents/issues/5650)).
+
 ## 8.25.0
 
 ### Minor Changes
