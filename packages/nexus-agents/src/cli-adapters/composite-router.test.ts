@@ -34,6 +34,7 @@ import type { LinUCBBandit } from './linucb-bandit.js';
 import { getModelSelectionShadowFile } from '../config/learning-persistence.js';
 import { getDefaultModelForCli } from '../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { StrategyDistiller } from '../learning/strategy-distiller.js';
 
 /**
  * Creates a mock CLI adapter for testing.
@@ -414,6 +415,42 @@ describe('CompositeRouter', () => {
   });
 
   describe('recordOutcome', () => {
+    describe('strategy distillation', () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it('forwards each production outcome when strategy distillation is enabled', () => {
+        const onOutcome = vi.spyOn(StrategyDistiller.prototype, 'onOutcome');
+        const distillingRouter = new CompositeRouter(adapters, {
+          enableStrategyDistillation: true,
+        });
+        const task: CliTask = { content: 'Test task' };
+        const outcomeCount = 3;
+
+        for (let index = 0; index < outcomeCount; index++) {
+          distillingRouter.recordOutcome('claude', task, 0.8, true);
+        }
+
+        expect(onOutcome).toHaveBeenCalledTimes(outcomeCount);
+      });
+
+      it('does not forward outcomes when strategy distillation is disabled', () => {
+        const onOutcome = vi.spyOn(StrategyDistiller.prototype, 'onOutcome');
+        const nonDistillingRouter = new CompositeRouter(adapters, {
+          enableStrategyDistillation: false,
+        });
+        const task: CliTask = { content: 'Test task' };
+        const outcomeCount = 3;
+
+        for (let index = 0; index < outcomeCount; index++) {
+          nonDistillingRouter.recordOutcome('claude', task, 0.8, true);
+        }
+
+        expect(onOutcome).not.toHaveBeenCalled();
+      });
+    });
+
     it('should record outcome without error', async () => {
       const task: CliTask = { content: 'Test task' };
       await router.route(task);
@@ -1134,6 +1171,7 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       const reward = recordOutcomeSpy.mock.calls[0]?.[2] as number;
       expect(reward).toBeGreaterThan(0.3);
       expect(reward).toBeLessThanOrEqual(0.8);
+      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, reward, true);
       expect(recordDifficultySpy).toHaveBeenCalledWith(task, true);
     });
 
@@ -1159,7 +1197,7 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
 
       expect(result.ok).toBe(false);
       // Quality-enriched reward: 0.1 for failure (Issue #929)
-      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.1);
+      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.1, false);
       expect(recordDifficultySpy).toHaveBeenCalledWith(task, false);
     });
 

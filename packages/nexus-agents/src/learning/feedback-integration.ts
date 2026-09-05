@@ -498,7 +498,12 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
     // Compute reward and send to CompositeRouter
     const reward = this.collector.computeReward(outcome);
-    this.compositeRouter.recordOutcome(decision.cliName, { content: decision.task }, reward.reward);
+    this.compositeRouter.recordOutcome(
+      decision.cliName,
+      { content: decision.task },
+      reward.reward,
+      outcome.success
+    );
 
     this.logger.debug('Feedback routed to CompositeRouter', {
       cliName: decision.cliName,

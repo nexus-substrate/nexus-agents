@@ -1790,7 +1790,7 @@ ClassDeclaration CompositeRouter
   getZeroRouter() => IZeroRouter | undefined
   hasMinimumPreferenceData() => boolean
   recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number) => void
-  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number) => void
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean) => void
   recordPreference(query: string, strongModelPreferred: boolean, quality?: { strong?: number; weak?: number; }) => void
   route(task: CliTask) => Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>
 TypeAliasDeclaration CompositeRouterConfig
@@ -4425,7 +4425,7 @@ InterfaceDeclaration ICompositeRouter
   getZeroRouter() => IZeroRouter | undefined
   hasMinimumPreferenceData() => boolean
   recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number) => void
-  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number) => void
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean) => void
   recordPreference(query: string, strongPreferred: boolean, quality?: { strong?: number; weak?: number; }) => void
   route(task: CliTask) => Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>
 InterfaceDeclaration IConsensusEngine
