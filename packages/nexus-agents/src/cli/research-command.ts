@@ -137,7 +137,7 @@ function optBoolean(options: Record<string, unknown>, key: string): boolean {
 async function handleStatusCommand(
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<string | ResearchCommandResult> {
   const status =
     (optString(options, 'status') as ResearchStatusOptions['status'] | undefined) ?? 'all';
   const format =
@@ -148,7 +148,8 @@ async function handleStatusCommand(
     format,
   };
   const result = await getResearchStatus(statusOptions);
-  return formatStatusResult(result, format);
+  const text = formatStatusResult(result, format);
+  return result.success ? text : failure(text);
 }
 
 /**
@@ -157,10 +158,10 @@ async function handleStatusCommand(
 async function handleOverlapCommand(
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<string | ResearchCommandResult> {
   const techniqueId = args[0];
   if (techniqueId === undefined || techniqueId === '') {
-    return 'Error: technique-id is required for overlap command';
+    return failure('Error: technique-id is required for overlap command');
   }
   const format =
     (optString(options, 'format') as ResearchOverlapOptions['format'] | undefined) ?? 'table';
@@ -170,16 +171,20 @@ async function handleOverlapCommand(
     format,
   };
   const result = await findOverlaps(overlapOptions);
-  return formatOverlapResult(result, format);
+  const text = formatOverlapResult(result, format);
+  return result.success ? text : failure(text);
 }
 
 /**
  * Handle add subcommand
  */
-async function handleAddCommand(args: string[], options: Record<string, unknown>): Promise<string> {
+async function handleAddCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string | ResearchCommandResult> {
   const arxivId = args[0];
   if (arxivId === undefined || arxivId === '') {
-    return 'Error: arxiv-id is required for add command';
+    return failure('Error: arxiv-id is required for add command');
   }
   // Delegate to the shared core (#2640 Phase 1). The MCP path's
   // executeResearchAdd includes a dedup check, session-memory
@@ -301,10 +306,10 @@ function renderDiscoverResponse(response: ResearchDiscoverResponse): string {
 async function handleDiscoverCommand(
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<string | ResearchCommandResult> {
   const topic = args[0] ?? optString(options, 'topic');
   if (topic === undefined || topic === '') {
-    return 'Error: --topic is required for discover command';
+    return failure('Error: --topic is required for discover command');
   }
   // Use Zod parse so defaults (source='all', maxResults=10, relevanceThreshold,
   // etc.) come from the canonical schema, not from CLI-side duplicate values.
@@ -316,7 +321,7 @@ async function handleDiscoverCommand(
     }),
   });
   if (!parsed.success) {
-    return `Error: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+    return failure(`Error: ${parsed.error.issues.map((i) => i.message).join('; ')}`);
   }
   const logger = createLogger({ component: 'cli-research-discover' });
   const response = await executeDiscovery(parsed.data, logger);
@@ -331,10 +336,10 @@ async function handleDiscoverCommand(
 async function handleReviewCommand(
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<string | ResearchCommandResult> {
   const topic = args[0] ?? optString(options, 'topic');
   if (topic === undefined || topic === '') {
-    return 'Error: --topic is required for review command';
+    return failure('Error: --topic is required for review command');
   }
   const maxResults = optNumber(options, 'maxResults') ?? 10;
   const createIssues = optBoolean(options, 'createIssues');
@@ -364,11 +369,11 @@ async function handlePrioritizeCommand(
 async function handleSynthesizeCommand(
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<string | ResearchCommandResult> {
   const topic = args[0] ?? optString(options, 'topic');
   const result = await synthesizeResearch(topic);
   if (!result.ok) {
-    return `Error: ${result.error.message}`;
+    return failure(`Error: ${result.error.message}`);
   }
   return formatSynthesisResult(result.value);
 }
@@ -564,15 +569,26 @@ export interface ResearchCommandResult {
   readonly exitCode: number;
 }
 
-/** Wrap a string-returning handler as a `ResearchCommandResult` with exit code 0. */
-function ok(handler: (args: string[], options: Record<string, unknown>) => Promise<string>) {
+/** Build an explicit failed command result for validation and lookup errors. */
+function failure(text: string): ResearchCommandResult {
+  return { text, exitCode: 1 };
+}
+
+/** Wrap a handler result, retaining an Error-prefix backstop for legacy handlers. */
+function ok(
+  handler: (
+    args: string[],
+    options: Record<string, unknown>
+  ) => Promise<string | ResearchCommandResult>
+) {
   return async (
     args: string[],
     options: Record<string, unknown>
-  ): Promise<ResearchCommandResult> => ({
-    text: await handler(args, options),
-    exitCode: 0,
-  });
+  ): Promise<ResearchCommandResult> => {
+    const result = await handler(args, options);
+    if (typeof result !== 'string') return result;
+    return { text: result, exitCode: result.startsWith('Error:') ? 1 : 0 };
+  };
 }
 
 /** Handle index subcommand. Preserves the underlying `exitCode` so callers can fail CI on stale registries (#2761). */
@@ -580,19 +596,6 @@ async function handleIndexCommand(args: string[]): Promise<ResearchCommandResult
   const indexOptions = parseResearchIndexArgs(args);
   const result = await researchIndexCommand(indexOptions);
   return { text: result.message, exitCode: result.exitCode };
-}
-
-/** Handle add subcommand. Forwards the underlying `success` as exit code 0/1. */
-async function handleAddCommandWithExit(
-  args: string[],
-  options: Record<string, unknown>
-): Promise<ResearchCommandResult> {
-  const text = await handleAddCommand(args, options);
-  // `handleAddCommand` returns "Error: ..." prefix on validation failures
-  // and `result.message` on success. Translate the "Error:" prefix to a
-  // non-zero exit so caller scripts can detect failure.
-  const exitCode = text.startsWith('Error:') ? 1 : 0;
-  return { text, exitCode };
 }
 
 /** Subcommand dispatch map to reduce cyclomatic complexity. */
@@ -603,7 +606,7 @@ type SubcommandHandler = (
 const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
   status: ok(handleStatusCommand),
   overlap: ok(handleOverlapCommand),
-  add: handleAddCommandWithExit,
+  add: ok(handleAddCommand),
   stats: ok((_args, options) => handleStatsCommand(options)),
   refresh: ok((_args, options) => handleRefreshCommand(options)),
   check: ok(() => handleCheckCommand()),

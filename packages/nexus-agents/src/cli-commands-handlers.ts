@@ -77,6 +77,7 @@ import {
 } from './cli-commands-usage.js';
 import { getErrorMessage } from './core/index.js';
 import { suggestCommand } from './cli-command-suggester.js';
+import { ResearchDiscoverInputSchema } from './mcp/tools/research-discover.js';
 
 // Re-export complex handlers for backward compatibility
 export {
@@ -397,6 +398,15 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<CliExi
   }
   if (args.options.dryRun) {
     options['dryRun'] = true;
+  }
+  if (args.options.source !== undefined) {
+    const source = ResearchDiscoverInputSchema.shape.source.safeParse(args.options.source);
+    if (!source.success) {
+      const message = `Invalid research source: ${args.options.source}`;
+      process.stdout.write(`Error: ${message}\n`);
+      return cliExit(EXIT_CODES.INVALID_ARGS, message);
+    }
+    options['source'] = source.data;
   }
 
   try {

@@ -234,6 +234,7 @@ const RESEARCH_HELP: CommandHelpEntry = {
   flags: [
     { flag: '--format=<fmt>', description: 'Output format: table, json', defaultValue: 'table' },
     { flag: '-o, --output=<path>', description: 'Custom output path for refresh' },
+    { flag: '--source=<source>', description: 'Discovery source for the discover subcommand' },
   ],
 };
 
