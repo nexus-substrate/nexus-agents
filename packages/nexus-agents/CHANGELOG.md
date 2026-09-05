@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.27.1
+
+### Patch Changes
+
+- [#5673](https://github.com/nexus-substrate/nexus-agents/pull/5673) [`b230b0e`](https://github.com/nexus-substrate/nexus-agents/commit/b230b0ef0444b634f4c45a79e8cbf81b79626954) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `NEXUS_AUTH_METHOD` is removed from the env schema and docs: it never reached enforcement (only the startup log line read it), so `validateNexusEnv` now reports it as unknown; set `security.auth.method` in the config file instead ([#5665](https://github.com/nexus-substrate/nexus-agents/issues/5665), panel 3/3).
+
 ## 8.27.0
 
 ### Minor Changes
