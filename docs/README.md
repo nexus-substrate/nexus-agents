@@ -77,7 +77,6 @@ docs/
 ├── interfaces/            # Interface specifications
 ├── ops/                   # Operational runbooks
 ├── reference/             # Generated CLI/MCP/strategy references
-├── metrics/               # System metrics
 └── workflows/             # Workflow documentation
 ```
 

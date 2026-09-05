@@ -55,6 +55,9 @@ function generateHeader(dateStr: string, totalPapers: number, totalTechniques: n
     '',
     `**Generated:** ${dateStr} (ET)`,
     `**Total Papers:** ${String(totalPapers)} | **Techniques:** ${String(totalTechniques)} | **Topics:** ${String(ALL_TOPICS.length)}`,
+    // Blank line before the `---` that follows: without it, Markdown reads the
+    // rule as a setext underline and the header line becomes an H2 (#5501).
+    '',
   ].join('\n');
 }
 

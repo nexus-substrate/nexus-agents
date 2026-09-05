@@ -245,4 +245,6 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(console.error);
+if (process.argv[1]?.endsWith('backfill-research-quality.ts') === true) {
+  main().catch(console.error);
+}

@@ -170,4 +170,6 @@ function main(): void {
   console.log(`✅ Wrote ${INDEX_PATH} (${String(index.skills.length)} skills)`);
 }
 
-main();
+if (process.argv[1]?.endsWith('generate-skills-index.ts') === true) {
+  main();
+}

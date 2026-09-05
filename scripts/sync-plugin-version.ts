@@ -15,14 +15,20 @@ import { resolve } from 'node:path';
 const PKG_PATH = resolve(import.meta.dirname, '..', 'packages', 'nexus-agents', 'package.json');
 const PLUGIN_PATH = resolve(import.meta.dirname, '..', '.claude-plugin', 'plugin.json');
 
-const pkg = JSON.parse(readFileSync(PKG_PATH, 'utf-8')) as { version: string };
-const plugin = JSON.parse(readFileSync(PLUGIN_PATH, 'utf-8')) as Record<string, unknown>;
+function main(): void {
+  const pkg = JSON.parse(readFileSync(PKG_PATH, 'utf-8')) as { version: string };
+  const plugin = JSON.parse(readFileSync(PLUGIN_PATH, 'utf-8')) as Record<string, unknown>;
 
-if (plugin['version'] === pkg.version) {
-  console.log(`plugin.json already at ${pkg.version}`);
-  process.exit(0);
+  if (plugin['version'] === pkg.version) {
+    console.log(`plugin.json already at ${pkg.version}`);
+    process.exit(0);
+  }
+
+  plugin['version'] = pkg.version;
+  writeFileSync(PLUGIN_PATH, JSON.stringify(plugin, null, 2) + '\n');
+  console.log(`plugin.json updated to ${pkg.version}`);
 }
 
-plugin['version'] = pkg.version;
-writeFileSync(PLUGIN_PATH, JSON.stringify(plugin, null, 2) + '\n');
-console.log(`plugin.json updated to ${pkg.version}`);
+if (process.argv[1]?.endsWith('sync-plugin-version.ts') === true) {
+  main();
+}
