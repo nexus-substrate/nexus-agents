@@ -157,8 +157,8 @@ const DEFAULT_TOKEN_ESTIMATE = 1000;
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
   executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
-  /** Record a bandit outcome for a distinct routing arm (CLI slot or api:* arm) (#3422). */
-  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number): void;
+  /** Record a routing outcome for a distinct routing arm (CLI slot or api:* arm) (#3422). */
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean): void;
   recordPreference(
     query: string,
     strongPreferred: boolean,
@@ -607,7 +607,7 @@ export class CompositeRouter implements ICompositeRouter {
 
     // Record bandit outcome with quality-enriched reward (Issue #929)
     const reward = computeQualityReward(slot, success, durationMs);
-    this.recordOutcome(arm, task, reward);
+    this.recordOutcome(arm, task, reward, success);
 
     // Record difficulty outcome for ZeroRouter learning
     this.recordDifficultyOutcome(task, success);
@@ -993,8 +993,19 @@ export class CompositeRouter implements ICompositeRouter {
     return err(new CompositeRoutingError(msg, stage, error instanceof Error ? error : undefined));
   }
 
-  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number): void {
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean): void {
     recordBanditOutcome(cliName, task, reward, this.getOutcomeDependencies());
+    if (
+      this.config.enableStrategyDistillation &&
+      this.distilledRuleStage !== undefined &&
+      success !== undefined
+    ) {
+      this.distilledRuleStage.recordOutcome({
+        selectedCli: routingArmDisplaySlot(cliName),
+        task: task.content,
+        success,
+      });
+    }
   }
 
   recordPreference(
