@@ -121,6 +121,36 @@ describe('OrchestratorFactory', () => {
       expect(orchestrator).toBeDefined();
     });
 
+    it('returns the CLI executed by the wired orchestrator agent (#5513)', async () => {
+      const mockTechLead = {
+        execute: vi.fn().mockResolvedValue(
+          ok({
+            output: {},
+            metadata: { executedCli: 'codex', executedCliSource: 'executed' },
+          })
+        ),
+      };
+      const factoryWithTL = new OrchestratorFactory(
+        { logger: mockLogger, techLead: mockTechLead },
+        mockEngine
+      );
+
+      const result = await factoryWithTL.create('orchestrator').execute(
+        {
+          type: 'task',
+          task: { id: 'task-1', description: 'Implement feature', context: {} },
+        },
+        {}
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toMatchObject({
+        executedCli: 'codex',
+        executedCliSource: 'executed',
+      });
+    });
+
     it('wires PuppeteerOrchestrator instance when provided', () => {
       const mockPuppeteer = { execute: vi.fn() };
       const factoryWithPP = new OrchestratorFactory(
@@ -129,6 +159,29 @@ describe('OrchestratorFactory', () => {
       );
       const orchestrator = factoryWithPP.create('puppeteer');
       expect(orchestrator).toBeDefined();
+    });
+
+    it('does not trust CLI metadata embedded in puppeteer output (#5513)', async () => {
+      const mockPuppeteer = {
+        execute: vi
+          .fn()
+          .mockResolvedValue(
+            ok({ metadata: { executedCli: 'codex', executedCliSource: 'executed' } })
+          ),
+      };
+      const factoryWithPP = new OrchestratorFactory(
+        { logger: mockLogger, puppeteerOrchestrator: mockPuppeteer },
+        mockEngine
+      );
+
+      const result = await factoryWithPP
+        .create('puppeteer')
+        .execute({ type: 'policy', policyId: 'policy-1', initialState: {} }, {});
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.executedCli).toBeUndefined();
+      expect(result.value.executedCliSource).toBe('unknown');
     });
   });
 });

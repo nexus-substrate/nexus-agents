@@ -12,6 +12,10 @@ import {
   OutcomeStore,
   TaskOutcomeSchema,
 } from '../../orchestration/outcomes/index.js';
+import { ok } from '../../core/result.js';
+import { OrchestratorAdapter } from '../../orchestration/orchestrator-adapters.js';
+import { NOOP_NOTIFIER } from '../mcp-notifier.js';
+import { RateLimiter } from '../middleware/index.js';
 
 // Pre-import heavy modules once instead of dynamic import per test (perf: saves ~2s)
 import * as orchestrateMod from './orchestrate.js';
@@ -70,6 +74,45 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
 
   afterEach(() => {
     setOutcomeStore(new OutcomeStore());
+    vi.unstubAllEnvs();
+  });
+
+  it('attributes a production-path outcome to the executing CLI (#5513)', async () => {
+    vi.stubEnv('NEXUS_TASK_STATE_ENABLED', '0');
+    const executingAgent = {
+      execute: vi.fn().mockResolvedValue(
+        ok({
+          output: {},
+          metadata: { executedCli: 'codex', executedCliSource: 'executed' },
+        })
+      ),
+    };
+    const orchestrator = new OrchestratorAdapter();
+    orchestrator.setOrchestrator(executingAgent);
+    let handler: ((args: unknown) => Promise<unknown>) | undefined;
+    const server = {
+      registerTool: vi.fn(
+        (_name: string, _config: unknown, callback: (args: unknown) => Promise<unknown>): void => {
+          handler = callback;
+        }
+      ),
+    };
+    orchestrateMod.registerOrchestrateTool(server as never, {
+      orchestrator,
+      notifier: NOOP_NOTIFIER,
+      rateLimiter: new RateLimiter({ capacity: 10, refillRate: 10, refillIntervalMs: 1000 }),
+    });
+    if (handler === undefined) throw new Error('orchestrate handler was not registered');
+
+    await handler({
+      task: 'Refactor the distributed authentication architecture for concurrent security workloads.',
+    });
+
+    expect(executingAgent.execute).toHaveBeenCalledOnce();
+    expect(getOutcomeStore().query().at(-1)).toMatchObject({
+      cli: 'codex',
+      cliSource: 'executed',
+    });
   });
 
   it('records a success outcome to OutcomeStore after orchestration', () => {

@@ -9,6 +9,8 @@
  * (Source: arXiv:2504.15228, Issue #151)
  */
 
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
+
 /**
  * Unique identifier for an agent version.
  */
@@ -238,6 +240,10 @@ export interface SicaExecutionResult {
   readonly metrics: ExecutionMetrics;
   /** Whether this triggered an improvement attempt */
   readonly triggeredImprovement: boolean;
+  /** CLI used by the wrapped agent's last model-backed step, when known. */
+  readonly executedCli?: CliNameLiteral;
+  /** Whether the wrapped agent measured an executed CLI identity. */
+  readonly executedCliSource?: 'executed' | 'unknown';
 }
 
 /**

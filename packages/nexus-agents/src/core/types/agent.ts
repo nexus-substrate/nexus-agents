@@ -6,6 +6,7 @@
 
 import type { Result } from '../result.js';
 import type { AgentError } from '../errors.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 /**
  * Agent state in the lifecycle.
@@ -144,6 +145,10 @@ export interface ResultMetadata {
   toolsUsed: string[];
   /** Model used */
   model: string;
+  /** CLI used by the last model-backed step, when the adapter reports CLI identity. */
+  readonly executedCli?: CliNameLiteral;
+  /** Whether the executed CLI identity was measured or remains unknown. */
+  readonly executedCliSource?: 'executed' | 'unknown';
 }
 
 /**

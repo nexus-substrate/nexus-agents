@@ -5934,6 +5934,8 @@ InterfaceDeclaration OrchestratorResult
   executionId: string
   orchestratorType: OrchestratorType
   output: unknown
+  readonly executedCli?: "claude" | "gemini" | "codex" | "opencode" | undefined
+  readonly executedCliSource?: "unknown" | "executed" | undefined
   steps: OrchestratorStep[]
   tokensMeasured?: boolean | undefined
   totalDurationMs: number
@@ -7404,6 +7406,8 @@ InterfaceDeclaration ResultConflict
 InterfaceDeclaration ResultMetadata
   durationMs: number
   model: string
+  readonly executedCli?: "claude" | "gemini" | "codex" | "opencode" | undefined
+  readonly executedCliSource?: "unknown" | "executed" | undefined
   tokensMeasured?: boolean | undefined
   tokensUsed: number
   toolsUsed: string[]

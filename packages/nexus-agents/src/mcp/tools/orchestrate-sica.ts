@@ -97,6 +97,12 @@ function createSicaOrchestratorAdapter(sicaAgent: SicaAgent, _logger: ILogger): 
             tokensUsed: sicaResult.metrics.tokensUsed,
             toolsUsed: [],
             model: 'sica-orchestrator',
+            ...(sicaResult.executedCli !== undefined && {
+              executedCli: sicaResult.executedCli,
+            }),
+            ...(sicaResult.executedCliSource !== undefined && {
+              executedCliSource: sicaResult.executedCliSource,
+            }),
             // SICA-specific metadata
             sicaVersionId: sicaResult.versionId,
             sicaTriggeredImprovement: sicaResult.triggeredImprovement,

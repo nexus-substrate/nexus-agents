@@ -46,9 +46,13 @@ function createMockLogger(): MockLogger {
 /**
  * Mock model adapter for testing.
  */
-function createMockAdapter(): IModelAdapter & {
+function createMockAdapter(
+  providerIds: string | readonly string[] = 'test-provider'
+): IModelAdapter & {
   completeResult: Result<CompletionResponse, ModelError>;
 } {
+  const providerSequence = typeof providerIds === 'string' ? [providerIds] : providerIds;
+  let completionCount = 0;
   const mockResponse: CompletionResponse = {
     content: [{ type: 'text', text: '{}' }],
     usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
@@ -57,13 +61,17 @@ function createMockAdapter(): IModelAdapter & {
   };
 
   return {
-    providerId: 'test-provider',
+    get providerId() {
+      const index = Math.max(0, Math.min(completionCount - 1, providerSequence.length - 1));
+      return providerSequence[index] ?? 'test-provider';
+    },
     modelId: 'test-model',
     capabilities: ['completion'],
     completeResult: ok(mockResponse),
     complete: vi.fn().mockImplementation(function (this: {
       completeResult: Result<CompletionResponse, ModelError>;
     }) {
+      completionCount++;
       return Promise.resolve(this.completeResult);
     }),
     stream: vi.fn().mockImplementation(function* (): Iterable<StreamChunk> {
@@ -965,6 +973,24 @@ describe('Orchestrator', () => {
   });
 
   describe('execute', () => {
+    it('reports the CLI used by the last model-backed step (#5513)', async () => {
+      const adapter = createMockAdapter(['cli-claude', 'cli-codex']);
+      const orchestrator = new Orchestrator({
+        adapter,
+        techLeadOptions: { decompositionThreshold: 1 },
+      });
+
+      const result = await orchestrator.execute(createTestTask());
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
+      expect(result.value.metadata).toMatchObject({
+        executedCli: 'codex',
+        executedCliSource: 'executed',
+      });
+    });
+
     it('should execute task and return execution plan', async () => {
       const orchestrator = new Orchestrator();
       const task = createTestTask({
