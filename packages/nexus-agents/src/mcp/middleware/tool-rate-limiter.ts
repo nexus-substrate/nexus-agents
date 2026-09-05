@@ -13,7 +13,32 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { ToolRateLimit, ToolCategory } from '../../config/schemas.js';
 import { DEFAULT_TOOL_RATE_LIMITS } from '../../config/schemas.js';
-import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
+import { RateLimiter, type RateLimiterConfig, type RateLimiterState } from './rate-limiter.js';
+
+const UNLIMITED_CAPACITY = Number.POSITIVE_INFINITY;
+
+class UnlimitedRateLimiter extends RateLimiter {
+  constructor(name: string, logger: ILogger) {
+    super({
+      capacity: UNLIMITED_CAPACITY,
+      refillRate: UNLIMITED_CAPACITY,
+      name,
+      logger,
+    });
+  }
+
+  override tryAcquire(): boolean {
+    return true;
+  }
+
+  override getState(): RateLimiterState {
+    return {
+      tokens: UNLIMITED_CAPACITY,
+      capacity: UNLIMITED_CAPACITY,
+      nextTokenMs: 0,
+    };
+  }
+}
 
 /**
  * Configuration for the tool rate limiter factory.
@@ -153,6 +178,15 @@ export class ToolRateLimiterFactory {
     const existing = this.limiters.get(toolName);
     if (existing !== undefined) {
       return existing;
+    }
+
+    if (!this.enabled) {
+      const limiter = new UnlimitedRateLimiter(
+        `rate-limit-${toolName}`,
+        this.logger.child({ tool: toolName })
+      );
+      this.limiters.set(toolName, limiter);
+      return limiter;
     }
 
     // Create new limiter with tool-specific config
