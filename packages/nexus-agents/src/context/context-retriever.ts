@@ -41,7 +41,8 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import {
   rankMemories,
   topRankedWithinBudget,
-  clampToTokenBudget,
+  assembleClampedContext,
+  renderLegacyLearningSections,
   sliceContextLines,
   disclosedHeading,
   type RankedMemoryItem,
@@ -508,39 +509,26 @@ function oneLine(value: string): string {
  * own internal {@link RANKED_PREFIX_TOKEN_BUDGET}) — it is a final clamp
  * applied after rendering.
  *
- * **Token ledger wiring (#4252, Phase 0 of epic #4251):** every non-empty
- * result is also recorded in the {@link getTokenLedger} as one `memory-backend`
- * entry, tagged with `variant: 'ranked' | 'legacy'` for which rendering path
- * produced it. This is the single highest-value measurement point named by
- * #4252 — without it, the C3 (#4253 caps) and C1' (#4254 repo-map) savings
- * have no per-call baseline to diff against.
+ * **Token ledger wiring (#4252, Phase 0 of epic #4251):** emitted memory and
+ * repo-map portions are recorded separately after the final clamp. Memory
+ * entries carry `variant: 'ranked' | 'legacy'`; repo-map entries retain their
+ * source tag so the #4251 A/B can compare their actual prompt cost.
  */
 export function summarizeContextForPrompt(
   ctx: UnifiedContext,
   budgetTokens: number = DEFAULT_CONTEXT_BUDGET_TOKENS
 ): string {
   const ranked = process.env[CONTEXT_RANKED_FLAG] === '1';
-  const rendered = ranked ? summarizeRankedContext(ctx) : summarizeLegacyContext(ctx);
-  const clamped = clampRenderedContext(rendered, budgetTokens);
-  recordAssembledContextTokens(clamped, ranked);
-  return appendRepoMapSection(clamped, ctx);
-}
-
-/**
- * Append the ranked repo-map block (#4254) after the memory-backend block when
- * `ctx.repoMap` is present. Its emitted token count is recorded in the token
- * ledger tagged `contextSource: 'repo-map'` — a SEPARATE entry from the
- * memory-backend one — so the repo-map's cost is independently visible for the
- * #4251 A/B. Best-effort (the ledger never throws). When `ctx.repoMap` is
- * absent (flag off / rank-gated out) this returns the memory block unchanged,
- * so flag-off output stays byte-for-byte identical and no `repo-map` ledger
- * entry is written.
- */
-function appendRepoMapSection(memoryBlock: string, ctx: UnifiedContext): string {
-  const map = ctx.repoMap;
-  if (map === undefined || map === '') return memoryBlock;
-  recordRepoMapTokens(map);
-  return memoryBlock === '' ? map : `${memoryBlock}\n\n${map}`;
+  const memoryBlock = ranked ? summarizeRankedContext(ctx) : summarizeLegacyContext(ctx);
+  const emitted = assembleClampedContext(
+    memoryBlock,
+    ctx.repoMap ?? '',
+    budgetTokens,
+    CLIP_NOTICE_RESERVE_TOKENS
+  );
+  recordAssembledContextTokens(emitted.memory, ranked);
+  if (emitted.repoMap !== '') recordRepoMapTokens(emitted.repoMap);
+  return emitted.text;
 }
 
 /** Variant tag recording the flag config that produced a repo-map ledger entry (#4254). */
@@ -582,19 +570,6 @@ export const DEFAULT_CONTEXT_BUDGET_TOKENS = 2500;
 /** Tokens reserved for the trailing clip notice so the final block stays close to `budgetTokens` once the notice is appended. */
 const CLIP_NOTICE_RESERVE_TOKENS = 30;
 
-/**
- * Apply the final per-call budget clamp (#4253) to an already-rendered
- * context block, appending a visible notice when clamping actually
- * truncated something. No-op on an empty or already-in-budget block.
- */
-function clampRenderedContext(rendered: string, budgetTokens: number): string {
-  if (rendered === '') return rendered;
-  const contentBudget = Math.max(0, budgetTokens - CLIP_NOTICE_RESERVE_TOKENS);
-  const { text: kept, clipped, omittedChars } = clampToTokenBudget(rendered, contentBudget);
-  if (!clipped) return rendered;
-  return `${kept}\n\n_(context clipped to fit the ~${String(budgetTokens)}-token budget; ~${String(omittedChars)} chars omitted — #4253)_`;
-}
-
 /** The legacy (flag-off) per-backend-section rendering (#3148 / #3471). Extracted from {@link summarizeContextForPrompt} so the budget guard wraps both rendering paths identically (#4253). */
 function summarizeLegacyContext(ctx: UnifiedContext): string {
   const sections: string[] = [];
@@ -616,6 +591,8 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
       .map((m) => `- ${oneLine(m.attributes.contextDescription)}`);
     sections.push(`### Similar prior work\n${lines.join('\n')}`);
   }
+
+  sections.push(...renderLegacyLearningSections(ctx, contextTokenCounter, oneLine));
 
   if (ctx.experiencePatterns.length > 0) {
     const lines = ctx.experiencePatterns

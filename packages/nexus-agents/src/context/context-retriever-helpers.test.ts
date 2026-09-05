@@ -15,6 +15,7 @@ import { inferTaskCategory, summarizeContextForPrompt } from './context-retrieve
 import type { UnifiedContext } from './context-retriever.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
 import {
+  assembleClampedContext,
   rankMemories,
   topRankedWithinBudget,
   type RankedMemoryItem,
@@ -364,5 +365,34 @@ describe('rankMemories — fail-soft', () => {
     });
     expect(ranked).toHaveLength(1);
     expect(Number.isFinite(ranked[0]!.relevanceScore)).toBe(true);
+  });
+});
+
+describe('assembleClampedContext — source attribution (#5588)', () => {
+  it('attributes the separator to an unclipped repo-map section', () => {
+    expect(assembleClampedContext('memory', 'map', 100, 30)).toEqual({
+      text: 'memory\n\nmap',
+      memory: 'memory',
+      repoMap: '\n\nmap',
+    });
+  });
+
+  it('attributes the clip notice to memory when no repo-map content is retained', () => {
+    const result = assembleClampedContext('m'.repeat(1000), 'map', 10, 0);
+    expect(result.memory).toBe(result.text);
+    expect(result.repoMap).toBe('');
+  });
+
+  it('attributes a retained map prefix and clip notice to the repo-map section', () => {
+    const result = assembleClampedContext('memory', 'x'.repeat(1000), 10, 0);
+    expect(result.memory).toBe('memory');
+    expect(result.repoMap).toContain('\n\n');
+    expect(`${result.memory}${result.repoMap}`).toBe(result.text);
+  });
+
+  it('attributes a partially retained separator to the repo-map section', () => {
+    const result = assembleClampedContext('1234567', 'map', 2, 0);
+    expect(result.repoMap).toContain('\n');
+    expect(`${result.memory}${result.repoMap}`).toBe(result.text);
   });
 });
