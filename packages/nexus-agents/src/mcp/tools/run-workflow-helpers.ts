@@ -16,6 +16,8 @@ import { WorkflowError, SecurityError } from '../../core/index.js';
 import { getBuiltInTemplatesPath } from '../../workflows/template-loader.js';
 import type { StepResultSummary, DryRunResult, RunWorkflowDeps } from './run-workflow-types.js';
 
+export { deriveWorkflowStatus } from '../../workflows/workflow-engine-helpers.js';
+
 // ============================================================================
 // Path Detection
 // ============================================================================
@@ -108,39 +110,6 @@ export function getAllowedWorkflowDirs(deps: RunWorkflowDeps): string[] {
 // ============================================================================
 // Step Result Conversion
 // ============================================================================
-
-/**
- * Derive the workflow's reported status from what its steps actually did.
- *
- * `run_workflow` used to hardcode `status: 'completed'` once the runner
- * returned, and `WorkflowResult` carries no overall success field — only
- * per-step status. So a run in which every step failed was surfaced as a
- * completed workflow, and a caller reading only the top-level status saw
- * success (#4351, observed live when adapter capacity was exhausted).
- *
- * Any failed step ⇒ failed: partial success is not success at a job boundary,
- * because a consumer that acts on "completed" would act on incomplete work.
- * `skipped` is a deliberate control-flow outcome and does not fail the run.
- * An empty step list is failed — nothing ran, which is the exact shape #4351
- * reported.
- */
-export function deriveWorkflowStatus(
-  steps: readonly Pick<StepResultSummary, 'status'>[]
-): 'completed' | 'failed' {
-  if (steps.length === 0) return 'failed';
-  if (steps.some((s) => s.status === 'failed')) return 'failed';
-  // "No step failed" is NOT "the workflow completed" (#5116). Before the mock
-  // executor was made honest it reported every unexecuted step as 'success', so
-  // this case could not arise; now that such steps are 'skipped', an all-skipped
-  // run would otherwise aggregate to 'completed' — moving the fabricated success
-  // one level up, from the step to the workflow.
-  //
-  // This is the empty-case rule from .rules/development-disciplines.md: a
-  // verdict over a collection must say what absence means, and `!some(failed)`
-  // renders absence as health.
-  if (!steps.some((s) => s.status === 'success')) return 'failed';
-  return 'completed';
-}
 
 /**
  * Convert StepResult to StepResultSummary for tool output.

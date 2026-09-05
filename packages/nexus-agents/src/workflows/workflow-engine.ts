@@ -21,6 +21,7 @@ import {
   type ExecutionOptions,
   resolveConfig,
   buildFinalOutput,
+  deriveWorkflowStatus,
   extractErrorMessage,
 } from './workflow-engine-helpers.js';
 import type { WorkflowEngineDeps, ActiveExecution } from './workflow-engine-types.js';
@@ -149,8 +150,20 @@ export class WorkflowEngine implements IWorkflowEngine {
       output: buildFinalOutput(stepResults.value),
       totalDurationMs: getTimeProvider().now() - startTime,
     };
-    this.updateExecutionStatus(executionId, { state: 'completed', result });
+    this.storeExecutionResult(executionId, result);
     return ok(result);
+  }
+
+  private storeExecutionResult(executionId: string, result: WorkflowResult): void {
+    const verdict = deriveWorkflowStatus(result.stepResults);
+    if (verdict === 'completed') {
+      this.updateExecutionStatus(executionId, { state: verdict, result });
+      return;
+    }
+    const error = result.stepResults.some((step) => step.status === 'failed')
+      ? 'One or more workflow steps failed'
+      : 'No workflow step succeeded';
+    this.updateExecutionStatus(executionId, { state: verdict, error });
   }
 
   private handleExecutionError(
