@@ -71,10 +71,15 @@ export type MemoryDecayConfigInput = z.infer<typeof MemoryDecayConfigSchema>;
 
 /**
  * `memory:` section of nexus-agents.yaml.
+ *
+ * Unknown keys are deliberately rejected: `session`, `graph`, and `typed`
+ * were documented silent no-ops for seven months before #5494.
  */
-export const MemoryConfigSchema = z.object({
-  /** Coordinated decay knobs (#5097) */
-  decay: MemoryDecayConfigSchema.optional(),
-});
+export const MemoryConfigSchema = z
+  .object({
+    /** Coordinated decay knobs (#5097) */
+    decay: MemoryDecayConfigSchema.optional(),
+  })
+  .strict();
 
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
