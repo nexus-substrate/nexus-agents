@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.15.0
+
+### Minor Changes
+
+- [#5539](https://github.com/nexus-substrate/nexus-agents/pull/5539) [`f364ea6`](https://github.com/nexus-substrate/nexus-agents/commit/f364ea635ee9b8091c004ddf065033314c8c4402) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve token-measurement provenance in `execute_expert` responses and notifications, and report session-learning timestamp provenance while retaining query-time timestamps for legacy learnings that predate creation-time tracking.
+
+- [#5538](https://github.com/nexus-substrate/nexus-agents/pull/5538) [`0f78d8c`](https://github.com/nexus-substrate/nexus-agents/commit/0f78d8c00066fbbb765b4bf20baf865638d36164) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report whether spec handlers actually executed and label placeholder-only execute requests as dry runs without recording unmeasured learning or outcome telemetry.
+
 ## 8.14.2
 
 ### Patch Changes
