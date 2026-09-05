@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.14.2
+
+### Patch Changes
+
+- [#5537](https://github.com/nexus-substrate/nexus-agents/pull/5537) [`f2b2644`](https://github.com/nexus-substrate/nexus-agents/commit/f2b26442d5d02907c1e3f93f50c00d6570fb2c0d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Treat harness alignment as not applicable when doctor runs outside a project while preserving missing AGENTS.md failures within project directories.
+
 ## 8.14.1
 
 ### Patch Changes
