@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.22.1
+
+### Patch Changes
+
+- [#5603](https://github.com/nexus-substrate/nexus-agents/pull/5603) [`f3f50e1`](https://github.com/nexus-substrate/nexus-agents/commit/f3f50e15659b7b43f0a150a89a15f48721a1b891) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Derive AI SDK total token usage from complete input and output counters when the SDK omits its total, and leave incomplete or absent usage unmeasured.
+
 ## 8.22.0
 
 ### Minor Changes
