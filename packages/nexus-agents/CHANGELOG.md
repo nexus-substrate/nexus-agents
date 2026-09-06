@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.9
+
+### Patch Changes
+
+- [#5732](https://github.com/nexus-substrate/nexus-agents/pull/5732) [`473ef24`](https://github.com/nexus-substrate/nexus-agents/commit/473ef2453ab4b9469fadaa3d6f137c8ca276ab8e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Rate-limit audit records now carry the limiter state that produced the denial. The secure-handler emitter passed literal `currentRate: 0, limitRate: 0`, so every rate-limited MCP call persisted "Rate limit exceeded: 0/0 requests" into the durable audit chain. The measured capacity and spent tokens are threaded from the same limiter read that denied the call.
+
 ## 8.28.8
 
 ### Patch Changes
