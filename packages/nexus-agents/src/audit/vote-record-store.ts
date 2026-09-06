@@ -52,6 +52,7 @@ import type {
   VoteRecord,
   VoteRecordOptionCount,
   VoteRecordOptionCoverage,
+  VoteRecordPanelCoverage,
   VoterSummary,
 } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-record.js';
@@ -244,10 +245,32 @@ function deriveOptionFields(votes: readonly AgentVoteResult[]): {
  */
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
-  optionCoverage: VoteRecordOptionCoverage | undefined
-): '1.2' | '1.3' | '1.4' {
+  optionCoverage: VoteRecordOptionCoverage | undefined,
+  panelCoverage: VoteRecordPanelCoverage | undefined
+): '1.2' | '1.3' | '1.4' | '1.5' {
+  if (panelCoverage !== undefined) return '1.5';
   if (optionCoverage !== undefined) return '1.4';
   return optionTally !== undefined ? '1.3' : '1.2';
+}
+
+/**
+ * Panel coverage (#5738): what the panel asked for versus what answered.
+ *
+ * `toVoterSummaries` drops voters at `source: 'error'` and `voteCounts` counts
+ * only responders, so without this the record cannot distinguish a genuine
+ * three-voter panel from a seven-voter panel that lost four. Returns undefined
+ * when every requested voter responded — absence keeps a clean record on the
+ * pre-1.5 hash projection.
+ */
+function panelCoverageOf(votes: readonly AgentVoteResult[]): VoteRecordPanelCoverage | undefined {
+  const erroredRoles = votes.filter((v) => v.source === 'error').map((v) => v.role);
+  if (erroredRoles.length === 0) return undefined;
+  return {
+    requested: votes.length,
+    responded: votes.length - erroredRoles.length,
+    errored: erroredRoles.length,
+    erroredRoles,
+  };
 }
 
 /**
@@ -296,8 +319,9 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   // parsing seven free-text `reasoning` fields. Absent when no voter declared an
   // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
   const { optionTally, optionCoverage } = deriveOptionFields(input.votes);
+  const panelCoverage = panelCoverageOf(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: recordVersion(optionTally, optionCoverage),
+    version: recordVersion(optionTally, optionCoverage, panelCoverage),
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -317,6 +341,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
     ...(optionTally !== undefined ? { optionTally } : {}),
     ...(optionCoverage !== undefined ? { optionCoverage } : {}),
+    ...(panelCoverage !== undefined ? { panelCoverage } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };
