@@ -160,6 +160,22 @@ jobs:
             --paginate \
             --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .actor.login // empty' \
             2>/dev/null | tail -n1 || echo '')
+          # WHEN the label was applied, from the same event. A label is not
+          # dismissed when new commits arrive, but an approval IS
+          # (`dismiss_stale_reviews` on main), so without this the label route
+          # was the laxer of the two ratification paths.
+          LABEL_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/timeline" \
+            --paginate \
+            --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .created_at // empty' \
+            2>/dev/null | tail -n1 || echo '')
+          # SERVER-assigned, not the commit's own date. Author/committer dates
+          # live in the commit object and are set by the client, so
+          # `GIT_COMMITTER_DATE` backdates them freely — a commit stamped before
+          # the label would read as "the label is newer, therefore current".
+          # The earliest workflow run for the sha is when GitHub first saw the
+          # push, and the pusher cannot forge it.
+          HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+            --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -167,6 +183,8 @@ jobs:
             echo "approvals=${APPROVALS}"
             echo "labels=${LABELS}"
             echo "label_actor=${LABEL_ACTOR}"
+            echo "label_time=${LABEL_TIME}"
+            echo "head_time=${HEAD_TIME}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate
@@ -175,6 +193,8 @@ jobs:
           APPROVALS: ${{ steps.evidence.outputs.approvals }}
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
+          RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
+          HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
         run: npx tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------
@@ -221,6 +241,8 @@ jobs:
             APPROVALS=""
             LABELS=""
             LABEL_ACTOR=""
+            LABEL_TIME=""
+            HEAD_TIME=""
           else
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
               --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
@@ -233,6 +255,24 @@ jobs:
               --paginate \
               --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .actor.login // empty' \
               2>/dev/null | tail -n1 || echo '')
+            LABEL_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/timeline" \
+              --paginate \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .created_at // empty' \
+              2>/dev/null | tail -n1 || echo '')
+            # The PR's OWN head, not ${SHA}. ${SHA} is the squash commit, created
+            # after the label by construction, so comparing against it would
+            # report every label-ratified PR as stale and redden main for the
+            # benign population this gate exists to let through.
+            PR_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              --jq '.head.sha // empty')
+            if [ -n "${PR_HEAD_SHA}" ]; then
+              # See the pre-merge job: server-assigned run time, never the
+              # client-settable commit date.
+              HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${PR_HEAD_SHA}&per_page=100" \
+                --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
+            else
+              HEAD_TIME=""
+            fi
           fi
           {
             echo 'files<<FILES_EOF'
@@ -241,6 +281,8 @@ jobs:
             echo "approvals=${APPROVALS}"
             echo "labels=${LABELS}"
             echo "label_actor=${LABEL_ACTOR}"
+            echo "label_time=${LABEL_TIME}"
+            echo "head_time=${HEAD_TIME}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
@@ -249,4 +291,6 @@ jobs:
           APPROVALS: ${{ steps.evidence.outputs.approvals }}
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
+          RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
+          HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
         run: npx tsx scripts/check-governor-ratification.ts

@@ -232,6 +232,32 @@ export function readPrReviewRecords(filePath: string): {
 }
 
 /**
+ * Describe an unreadable ledger, or `null` when every line parsed.
+ *
+ * `readPrReviewRecords` DROPS a line it cannot parse or validate, so a consumer
+ * that destructures `{ records }` alone loses the tampered line entirely rather
+ * than failing on it. Editing a covered field is caught by the record's own
+ * hash; editing a record OUT OF SCHEMA — an unknown key against the `.strict()`
+ * shape, a broken brace — removed the evidence instead, and taking out the
+ * highest `sequence` left no gap for the sequence check either.
+ *
+ * Lives here, next to the reader that produces `invalidLines`, because what a
+ * dropped line MEANS is the reader's knowledge, not each caller's. The sibling
+ * vote-record gate already fails closed on the same signal.
+ */
+export function ledgerIntegrityFailure(
+  invalidLines: readonly number[],
+  filePath: string
+): string | null {
+  if (invalidLines.length === 0) return null;
+  return (
+    `${String(invalidLines.length)} unparseable line(s) in ${filePath} ` +
+    `(line(s) ${invalidLines.join(', ')}). A record the reader cannot validate is a ` +
+    'record it cannot verify; repair the ledger.'
+  );
+}
+
+/**
  * Read the ledger tip: the maximum existing `sequence` and the advisory last-line
  * hash. Mirrors the vote-record store's `readLedgerTip` (#3927). The producer
  * assigns the next record `sequence = maxSequence + 1` and records `previousHash`

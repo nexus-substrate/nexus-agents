@@ -67,7 +67,17 @@ export const RATIFICATION_LABEL = 'owner-ratified';
 export type RatificationVerdict =
   | { kind: 'not-applicable' }
   | { kind: 'ratified'; via: 'owner-approval' | 'ratification-label'; detail: string }
-  | { kind: 'unratified'; touched: readonly string[] }
+  | {
+      kind: 'unratified';
+      touched: readonly string[];
+      /**
+       * Present when the refusal is specifically a ratification label that
+       * predates the head it would cover. The two timestamps travel with the
+       * verdict so the CI line can tell the owner what to do — re-apply — rather
+       * than leaving them to guess why a labelled PR came back unratified.
+       */
+      staleLabel?: { labelAppliedAt: string; headObservedAt: string };
+    }
   | { kind: 'indeterminate'; reason: string };
 
 /** Everything the verdict is computed from. */
@@ -96,6 +106,42 @@ export interface RatificationInputs {
    * `indeterminate` rather than ratified or unratified.
    */
   readonly labelAppliedBy?: string | undefined;
+  /**
+   * When {@link RATIFICATION_LABEL} was applied (ISO 8601), from the same
+   * `labeled` timeline event that yields {@link labelAppliedBy}.
+   *
+   * A label is not dismissed when new commits arrive. An approval IS —
+   * `dismiss_stale_reviews` is enabled on `main`, so GitHub flips a stale review
+   * to `DISMISSED` and the workflow's `state == "APPROVED"` filter stops
+   * matching it. Without a timestamp the two ratification routes were unequal in
+   * the direction that matters: an `owner-ratified` label applied while the PR
+   * touched only docs stayed valid after a later commit added
+   * `packages/nexus-agents/src/audit/`, and the post-merge backstop reproduced
+   * the same verdict, so nothing went red.
+   *
+   * `undefined` means the time could not be established — treated like an
+   * unattributable applier, i.e. `indeterminate`, never ratified.
+   */
+  readonly labelAppliedAt?: string | undefined;
+  /**
+   * When GitHub FIRST OBSERVED the current head (ISO 8601) — the earliest
+   * `created_at` among the workflow runs for that sha.
+   *
+   * Deliberately NOT the commit's committer date. Both author and committer
+   * dates live in the commit object and are set by the client, so
+   * `GIT_COMMITTER_DATE` backdates them freely: an attacker with a ratified
+   * PR could push a commit stamped before the label and have the staleness
+   * check read it as "the label is newer, therefore current". The panel's
+   * contrarian voter raised exactly this on the first draft of this change and
+   * was right. A workflow run's `created_at` is assigned server-side and cannot
+   * be forged by the pusher.
+   *
+   * Compared against {@link labelAppliedAt} to answer "did the ratifier see
+   * these bytes?". Any push invalidates the label, which is what
+   * `dismiss_stale_reviews` already does to an approval — a ratification route
+   * laxer than the review route it stands in for is the gap this closes.
+   */
+  readonly headObservedAt?: string | undefined;
   /** Logins permitted to ratify, from the CODEOWNERS governor section. */
   readonly owners: readonly string[];
 }
@@ -127,6 +173,46 @@ export function governorOwnersFromCodeowners(codeownersText: string): string[] {
   return [...owners];
 }
 
+/**
+ * Is the label older than the bytes it is claimed to ratify?
+ *
+ * Returns `null` when the label is current and the ratification may stand.
+ * Anything else is a refusal: an unparseable or missing timestamp resolves to
+ * `indeterminate`, because a ratification whose age cannot be established is
+ * exactly what a later human spot-check trusts.
+ */
+function labelStaleness(
+  labelAppliedAt: string | undefined,
+  headObservedAt: string | undefined,
+  touched: readonly string[]
+): RatificationVerdict | null {
+  const labelMs = labelAppliedAt === undefined ? NaN : Date.parse(labelAppliedAt);
+  const headMs = headObservedAt === undefined ? NaN : Date.parse(headObservedAt);
+
+  if (Number.isNaN(labelMs) || Number.isNaN(headMs)) {
+    return {
+      kind: 'indeterminate',
+      reason:
+        `the \`${RATIFICATION_LABEL}\` label is present and attributed, but we could not ` +
+        'establish whether it predates the current head — a ratification of unknown age ' +
+        'cannot be told apart from one granted for a different diff',
+    };
+  }
+
+  if (labelMs < headMs) {
+    return {
+      kind: 'unratified',
+      touched,
+      staleLabel: {
+        labelAppliedAt: String(labelAppliedAt),
+        headObservedAt: String(headObservedAt),
+      },
+    };
+  }
+
+  return null;
+}
+
 /** Computes the ratification verdict. Pure — all evidence is passed in. */
 export function evaluateRatification(inputs: RatificationInputs): RatificationVerdict {
   if (inputs.governorPatternCount === 0) {
@@ -155,38 +241,56 @@ export function evaluateRatification(inputs: RatificationInputs): RatificationVe
     return { kind: 'ratified', via: 'owner-approval', detail: `approved by @${approver}` };
   }
 
-  // The label route, attributed (#4690).
-  //
-  // This branch used to accept the label's mere PRESENCE and record no
-  // applier, while the approval branch above resolves a login and records
-  // `approved by @who`. That made the two routes unequal in both directions:
-  // applying a label is a weaker permission than submitting an owner review,
-  // and it was the route with no provenance in the record.
   if (inputs.labels.some((l) => l.toLowerCase() === RATIFICATION_LABEL)) {
-    const appliedBy = inputs.labelAppliedBy;
-
-    if (appliedBy === undefined) {
-      return {
-        kind: 'indeterminate',
-        reason:
-          `the \`${RATIFICATION_LABEL}\` label is present but we could not establish ` +
-          'who applied it — an unattributable ratification must not be recorded as ' +
-          'ratified, because that is exactly what a later human spot-check trusts',
-      };
-    }
-
-    if (!ownerSet.has(appliedBy.toLowerCase())) {
-      return { kind: 'unratified', touched: inputs.touchedGovernorFiles };
-    }
-
-    return {
-      kind: 'ratified',
-      via: 'ratification-label',
-      detail: `labelled by @${appliedBy}`,
-    };
+    return evaluateLabelRoute(inputs, ownerSet);
   }
 
   return { kind: 'unratified', touched: inputs.touchedGovernorFiles };
+}
+
+/**
+ * The label route, attributed (#4690) and dated.
+ *
+ * This branch used to accept the label's mere PRESENCE and record no applier,
+ * while the approval branch resolves a login and records `approved by @who`.
+ * That made the two routes unequal in both directions: applying a label is a
+ * weaker permission than submitting an owner review, and it was the route with
+ * no provenance in the record. The date is the same asymmetry one level down —
+ * `dismiss_stale_reviews` retires an approval when new commits arrive, and
+ * nothing retired a label.
+ */
+function evaluateLabelRoute(
+  inputs: RatificationInputs,
+  ownerSet: ReadonlySet<string>
+): RatificationVerdict {
+  const appliedBy = inputs.labelAppliedBy;
+
+  if (appliedBy === undefined) {
+    return {
+      kind: 'indeterminate',
+      reason:
+        `the \`${RATIFICATION_LABEL}\` label is present but we could not establish ` +
+        'who applied it — an unattributable ratification must not be recorded as ' +
+        'ratified, because that is exactly what a later human spot-check trusts',
+    };
+  }
+
+  if (!ownerSet.has(appliedBy.toLowerCase())) {
+    return { kind: 'unratified', touched: inputs.touchedGovernorFiles };
+  }
+
+  const staleness = labelStaleness(
+    inputs.labelAppliedAt,
+    inputs.headObservedAt,
+    inputs.touchedGovernorFiles
+  );
+  if (staleness !== null) return staleness;
+
+  return {
+    kind: 'ratified',
+    via: 'ratification-label',
+    detail: `labelled by @${appliedBy} at ${String(inputs.labelAppliedAt)}`,
+  };
 }
 
 /** Renders a verdict for the CI log / job summary. */
@@ -200,6 +304,19 @@ export function formatVerdict(verdict: RatificationVerdict): string {
       return `::error::Ratification gate is broken: ${verdict.reason}`;
     case 'unratified': {
       const list = verdict.touched.map((f) => `  - ${f}`).join('\n');
+      if (verdict.staleLabel !== undefined) {
+        return (
+          `::error::The \`${RATIFICATION_LABEL}\` label predates the current head, so it ` +
+          'ratifies a diff that is no longer the one being merged.\n' +
+          `${list}\n` +
+          `Label applied: ${verdict.staleLabel.labelAppliedAt}\n` +
+          `Head first observed by GitHub: ${verdict.staleLabel.headObservedAt}\n` +
+          'An approving review is dismissed automatically when new commits arrive ' +
+          '(`dismiss_stale_reviews` on `main`); a label is not, so the gate applies the same\n' +
+          'rule here. The head time is the earliest workflow run for the sha — server-assigned,\n' +
+          'so a backdated commit date cannot defeat it. Remove and re-apply the label.'
+        );
+      }
       return (
         '::error::This PR modifies governance-of-the-governor paths without ratification.\n' +
         `${list}\n` +
@@ -212,6 +329,26 @@ export function formatVerdict(verdict: RatificationVerdict): string {
       );
     }
   }
+}
+
+/**
+ * The label's provenance, from the workflow's evidence step.
+ *
+ * WHO applied it (#4690) and WHEN. An absent field is omitted rather than
+ * defaulted, so the gate sees "could not establish" and reports `indeterminate`
+ * instead of accepting an unattributed or undated ratification.
+ */
+function labelEvidenceFromEnv(
+  env: NodeJS.ProcessEnv
+): Pick<RatificationInputs, 'labelAppliedBy' | 'labelAppliedAt' | 'headObservedAt'> {
+  const actor = (env['RATIFICATION_LABEL_ACTOR'] ?? '').trim();
+  const labelTime = (env['RATIFICATION_LABEL_TIME'] ?? '').trim();
+  const headTime = (env['HEAD_OBSERVED_AT'] ?? '').trim();
+  return {
+    ...(actor !== '' ? { labelAppliedBy: actor } : {}),
+    ...(labelTime !== '' ? { labelAppliedAt: labelTime } : {}),
+    ...(headTime !== '' ? { headObservedAt: headTime } : {}),
+  };
 }
 
 /** Reads evidence from the environment and returns a process exit code. */
@@ -252,18 +389,13 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     return 1;
   }
 
-  // #4690: WHO applied the ratification label. Supplied by the workflow from the
-  // PR timeline's most recent `labeled` event. Empty/absent ⇒ undefined ⇒ the
-  // gate reports `indeterminate` rather than accepting an unattributed label.
-  const labelActor = (env['RATIFICATION_LABEL_ACTOR'] ?? '').trim();
-
   const verdict = evaluateRatification({
     touchedGovernorFiles: governorFilesTouched(changed, governorPathsFromCodeowners(codeowners)),
     governorPatternCount: governorPathsFromCodeowners(codeowners).length,
     approvals,
     labels,
     owners: governorOwnersFromCodeowners(codeowners),
-    ...(labelActor !== '' ? { labelAppliedBy: labelActor } : {}),
+    ...labelEvidenceFromEnv(env),
   });
 
   // stderr for every verdict, matching check-governor-review.ts — CI annotations

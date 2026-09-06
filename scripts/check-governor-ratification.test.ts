@@ -15,6 +15,7 @@ import {
   evaluateRatification,
   governorOwnersFromCodeowners,
   RATIFICATION_LABEL,
+  formatVerdict,
   runRatificationGate,
 } from './check-governor-ratification.js';
 
@@ -106,6 +107,10 @@ describe('evaluateRatification', () => {
       labels: ['owner-ratified'],
       owners: OWNERS,
       labelAppliedBy: 'williamzujkowski',
+      // Applied after the head it ratifies. Undated is now `indeterminate` —
+      // see the staleness suite below.
+      labelAppliedAt: '2026-09-06T12:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
     expect(verdict.kind).toBe('ratified');
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('ratification-label');
@@ -233,6 +238,8 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
     approvals: [] as string[],
     labels: [RATIFICATION_LABEL],
     owners: OWNERS,
+    labelAppliedAt: '2026-09-06T12:00:00Z',
+    headObservedAt: '2026-09-06T11:00:00Z',
   };
 
   it('ratifies when a governor-path owner applied the label, and names them', () => {
@@ -338,5 +345,145 @@ describe('runRatificationGate with no inputs (#5444)', () => {
     } finally {
       c.restore();
     }
+  });
+});
+
+// ============================================================================
+// The ratification label must not outlive the diff it ratified
+// ============================================================================
+
+describe('a ratification label predating the head is not a ratification', () => {
+  // The asymmetry this closes. `dismiss_stale_reviews` is enabled on `main`, so
+  // GitHub flips a stale APPROVED review to DISMISSED and the workflow's
+  // `state == "APPROVED"` filter stops matching it. Nothing retires a LABEL, so
+  // the two routes were unequal in the direction that matters: an
+  // `owner-ratified` label applied while the PR touched only docs stayed valid
+  // after a later commit added `packages/nexus-agents/src/audit/`, and the
+  // post-merge backstop reproduced the same verdict — nothing went red.
+  const base = {
+    governorPatternCount: GOVERNOR_PATTERNS.length,
+    touchedGovernorFiles: ['packages/nexus-agents/src/audit/audit-logger.ts'],
+    approvals: [] as string[],
+    labels: [RATIFICATION_LABEL],
+    owners: OWNERS,
+    labelAppliedBy: 'williamzujkowski',
+  };
+
+  it('refuses a label applied before the current head', () => {
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: '2026-09-06T10:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
+    });
+
+    expect(v.kind).toBe('unratified');
+    if (v.kind === 'unratified') {
+      // The refusal must say WHY, or the owner cannot tell it from a PR that
+      // was never ratified at all.
+      expect(v.staleLabel?.labelAppliedAt).toBe('2026-09-06T10:00:00Z');
+      expect(v.staleLabel?.headObservedAt).toBe('2026-09-06T11:00:00Z');
+      expect(v.touched).toContain('packages/nexus-agents/src/audit/audit-logger.ts');
+    }
+  });
+
+  it('accepts a label applied after the current head', () => {
+    // The pair that keeps the refusal from applying to everything — without it
+    // the gate would reject every label-ratified PR, which is the benign
+    // population this route exists to serve.
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: '2026-09-06T11:00:01Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
+    });
+
+    expect(v.kind).toBe('ratified');
+    if (v.kind === 'ratified') expect(v.via).toBe('ratification-label');
+  });
+
+  it('accepts a label applied at exactly the head commit time', () => {
+    // Equality is not staleness. A strict `<=` here would fail a ratification
+    // applied in the same second as the push.
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
+    });
+
+    expect(v.kind).toBe('ratified');
+  });
+
+  it('is INDETERMINATE when the label has no timestamp', () => {
+    // Absence of measurement, not absence of staleness. A ratification whose
+    // age cannot be established is exactly what a later spot-check trusts.
+    const v = evaluateRatification({ ...base, headObservedAt: '2026-09-06T11:00:00Z' });
+
+    expect(v.kind).toBe('indeterminate');
+    if (v.kind === 'indeterminate') expect(v.reason).toContain('predates');
+  });
+
+  it('does not trust a commit date: the head time is server-observed', () => {
+    // The dissent that this design absorbed. Commit author/committer dates live
+    // in the commit object and are client-set, so `GIT_COMMITTER_DATE` backdates
+    // them freely — an attacker with a ratified PR could push a commit stamped
+    // BEFORE the label and have the check read it as current. The field is the
+    // earliest workflow-run `created_at` for the sha, which GitHub assigns.
+    // This test pins the field's meaning; the producer is the workflow.
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: '2026-09-06T12:00:00Z',
+      // A forged commit date would say 2026-09-05; the server saw the push at
+      // 13:00, after the label, so the label is stale regardless.
+      headObservedAt: '2026-09-06T13:00:00Z',
+    });
+
+    expect(v.kind).toBe('unratified');
+  });
+
+  it('is INDETERMINATE when the head has no timestamp', () => {
+    const v = evaluateRatification({ ...base, labelAppliedAt: '2026-09-06T12:00:00Z' });
+
+    expect(v.kind).toBe('indeterminate');
+  });
+
+  it('is INDETERMINATE when either timestamp is unparseable', () => {
+    // A garbage value must not silently compare as NaN and fall through to
+    // ratified — `NaN < x` is false, which would have read as "not stale".
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: 'not-a-date',
+      headObservedAt: '2026-09-06T11:00:00Z',
+    });
+
+    expect(v.kind).toBe('indeterminate');
+  });
+
+  it('does not apply the staleness rule to the approval route', () => {
+    // Approvals are retired by GitHub itself; re-checking them here would be a
+    // second, weaker implementation of a control that already works.
+    const v = evaluateRatification({
+      ...base,
+      labels: [],
+      approvals: ['williamzujkowski'],
+      labelAppliedAt: '2026-09-06T10:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
+    });
+
+    expect(v.kind).toBe('ratified');
+    if (v.kind === 'ratified') expect(v.via).toBe('owner-approval');
+  });
+
+  it('renders the stale refusal with both timestamps and the remedy', () => {
+    const message = formatVerdict({
+      kind: 'unratified',
+      touched: ['CODEOWNERS'],
+      staleLabel: {
+        labelAppliedAt: '2026-09-06T10:00:00Z',
+        headObservedAt: '2026-09-06T11:00:00Z',
+      },
+    });
+
+    expect(message).toContain('2026-09-06T10:00:00Z');
+    expect(message).toContain('2026-09-06T11:00:00Z');
+    expect(message).toContain('re-apply');
   });
 });

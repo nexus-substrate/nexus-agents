@@ -114,6 +114,7 @@ export {
   buildPrReviewRecord,
   resolvePrReviewRecordsPath,
   readPrReviewRecords,
+  ledgerIntegrityFailure,
 } from './pr-review-record-store.js';
 export type { BuildPrReviewRecordInput } from './pr-review-record-store.js';
 
