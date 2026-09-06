@@ -319,17 +319,32 @@ Full policy in [`.rules/untrusted-input.md`](./.rules/untrusted-input.md) and [d
 
 ## Consensus voting thresholds
 
-When calling `consensus_vote`:
+When calling `consensus_vote`, **pass the bar as the `strategy`**. `strategy`
+discards `threshold`: `resolveStrategy` returns `input.strategy` whenever it is
+set, so `{ threshold: 'supermajority', strategy: 'higher_order' }` runs at
+`higher_order`'s bar, which is **0.5** (`VOTING_THRESHOLDS` in
+`consensus/types-core.ts`). Written the old way, the architecture and security
+rows below were a simple majority (#5315, #5344).
 
-| Trigger                  | Threshold     | Strategy        |
-| ------------------------ | ------------- | --------------- |
-| Architecture changes     | supermajority | higher_order    |
-| Breaking API changes     | unanimous     | higher_order    |
-| Security-related changes | supermajority | higher_order    |
-| Sprint planning          | majority      | simple_majority |
-| Feature prioritization   | majority      | simple_majority |
+| Trigger                  | Pass this `strategy` | Bar   |
+| ------------------------ | -------------------- | ----- |
+| Architecture changes     | `supermajority`      | 0.667 |
+| Breaking API changes     | `unanimous`          | 1.0   |
+| Security-related changes | `supermajority`      | 0.667 |
+| Sprint planning          | `simple_majority`    | 0.5   |
+| Feature prioritization   | `simple_majority`    | 0.5   |
 
-Overlapping triggers use the strictest threshold (`unanimous > supermajority > majority`). Full rules in [`.rules/governance.md`](./.rules/governance.md).
+Choose `higher_order` for its contrarian-escalation behaviour, never for a
+stricter verdict — it does not aggregate by correlation weight either (#4701),
+so its verdict is a plain tally at 0.5.
+
+The bar is measured over voters who cast approve or reject; abstentions and
+errored seats leave the denominator. With a full 7-voter panel and no
+abstentions or errors, supermajority is 5 of 7. **Governor-path ratification
+votes must additionally pass `errorPolicy: 'absolute_quorum'`**, so a degraded
+panel cannot ratify a change to the governance substrate (#5344, panel option c).
+
+Overlapping triggers use the strictest bar (`unanimous > supermajority > majority`). Full rules in [`.rules/governance.md`](./.rules/governance.md).
 
 ## Getting help
 

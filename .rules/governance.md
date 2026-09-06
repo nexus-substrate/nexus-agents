@@ -11,24 +11,45 @@ Quick reference for governance enforcement. Loaded when working on architecture,
 
 ## Consensus Voting Triggers
 
-| Trigger                   | Threshold     | Agents | Strategy        |
-| ------------------------- | ------------- | ------ | --------------- |
-| Architecture changes      | supermajority | 5      | higher_order    |
-| Breaking API changes      | unanimous     | 5      | higher_order    |
-| Security-related changes  | supermajority | 5      | higher_order    |
-| Sprint planning decisions | majority      | 3      | simple_majority |
-| Feature prioritization    | majority      | 5      | simple_majority |
+**Pass the bar as the `strategy`.** `strategy` discards `threshold`:
+`resolveStrategy` (`mcp/tools/consensus-vote.ts`) returns `input.strategy`
+whenever it is set, so `{ threshold: 'supermajority', strategy: 'higher_order' }`
+runs at `higher_order`'s bar — which is **0.5** (`VOTING_THRESHOLDS` in
+`consensus/types-core.ts`). This table used to prescribe exactly that pairing,
+which made the architecture and security rows a simple majority (#5315, #5344).
+
+| Trigger                   | Pass this `strategy` | Bar   | Agents |
+| ------------------------- | -------------------- | ----- | ------ |
+| Architecture changes      | `supermajority`      | 0.667 | 5      |
+| Breaking API changes      | `unanimous`          | 1.0   | 5      |
+| Security-related changes  | `supermajority`      | 0.667 | 5      |
+| Sprint planning decisions | `simple_majority`    | 0.5   | 3      |
+| Feature prioritization    | `simple_majority`    | 0.5   | 5      |
 
 Overlapping triggers → use STRICTEST. Order: `unanimous > supermajority > majority`.
 
-**Strategy guidance:** Use `higher_order` (Bayesian correlation-aware aggregation) for architecture and security votes where correlated agent agreement is a risk. Use `simple_majority` for routine decisions. The `higher_order` strategy deweights correlated votes and applies Bayesian confidence calibration.
+**What the bar is measured over.** Voters who cast approve or reject. Abstentions
+and errored seats leave the denominator, so supermajority is 5 of 7 when the whole
+panel answers and 4 of 5 when two seats are missing. `panelCoverage` on the vote
+record names the errored roles (#5738), and an errored seat is retried once before
+the tally (#5578).
+
+**Governor-path ratification votes must pass `errorPolicy: 'absolute_quorum'`**, so
+a degraded panel cannot ratify a change to the governance substrate — `.rules/`,
+`AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/governance/`, the drift-injection
+machinery, voter configuration and `CODEOWNERS`. Decided by panel on #5344,
+option (c), 5 of 6.
+
+**When to choose `higher_order`:** for its contrarian-escalation behaviour, never
+for a stricter verdict. It does not aggregate by correlation weight either — the
+verdict is a plain tally and the Bayesian analysis feeds escalation only (#4701).
 
 ```bash
-# Architecture/security votes — use higher_order strategy
-nexus-agents vote --proposal "..." --threshold supermajority --strategy higher_order
+# Architecture/security votes — the BAR is the strategy
+nexus-agents vote --proposal "..." --strategy supermajority
 
-# Routine decisions — simple majority is sufficient
-nexus-agents vote --proposal "..." --threshold majority --quick
+# Routine decisions
+nexus-agents vote --proposal "..." --strategy simple_majority --quick
 ```
 
 ## Refactor Threshold
