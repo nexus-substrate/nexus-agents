@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { CliName } from '../../types-core.js';
 import { CapabilityMatchStage, createCapabilityMatchStage } from './capability-match-stage.js';
 import type { RoutingContext } from '../router-stage.js';
 
@@ -118,56 +119,54 @@ describe('CapabilityMatchStage', () => {
       }
     });
 
-    it('applies specialization bonus for code + codex', async () => {
-      const ctx = createContext('implement and refactor this function code');
-      const result = await stage.route(ctx);
+    /**
+     * The DELTA, not the sign (#5723). `toBeGreaterThan(0)` was already
+     * guaranteed by the base weighted capability score for every CLI, so
+     * `getSpecializationBonus` could return 0 unconditionally — the task matrix
+     * never consulted — with all four of these tests still green.
+     */
+    async function specializationDelta(cli: CliName, specialized: string): Promise<number> {
+      const neutralResult = await stage.route(createContext('do the thing'));
+      const specializedResult = await stage.route(createContext(specialized));
+      expect(neutralResult.ok).toBe(true);
+      expect(specializedResult.ok).toBe(true);
+      if (!neutralResult.ok || !specializedResult.ok) return 0;
+      const neutral = neutralResult.value.context.scores.get(cli) ?? 0;
+      const boosted = specializedResult.value.context.scores.get(cli) ?? 0;
+      return boosted - neutral;
+    }
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const scores = result.value.context.scores;
-        // Codex should have high score for code tasks
-        const codexScore = scores.get('codex') ?? 0;
-        expect(codexScore).toBeGreaterThan(0);
-      }
+    it('applies specialization bonus for code + codex', async () => {
+      expect(
+        await specializationDelta('codex', 'implement and refactor this function code')
+      ).toBeGreaterThan(0);
     });
 
     it('applies specialization bonus for research + gemini', async () => {
-      const ctx = createContext('research and investigate the state of the art literature');
-      const result = await stage.route(ctx);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const scores = result.value.context.scores;
-        // Gemini should get research specialization bonus
-        const geminiScore = scores.get('gemini') ?? 0;
-        expect(geminiScore).toBeGreaterThan(0);
-      }
+      expect(
+        await specializationDelta(
+          'gemini',
+          'research and investigate the state of the art literature'
+        )
+      ).toBeGreaterThan(0);
     });
 
     it('applies specialization bonus for exploration + gemini', async () => {
-      const ctx = createContext('explore and navigate the codebase to find relevant files');
-      const result = await stage.route(ctx);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const scores = result.value.context.scores;
-        // Gemini should get exploration specialization bonus
-        const geminiScore = scores.get('gemini') ?? 0;
-        expect(geminiScore).toBeGreaterThan(0);
-      }
+      expect(
+        await specializationDelta(
+          'gemini',
+          'explore and navigate the codebase to find relevant files'
+        )
+      ).toBeGreaterThan(0);
     });
 
     it('applies specialization bonus for security + claude', async () => {
-      const ctx = createContext('audit security vulnerabilities and perform threat modeling');
-      const result = await stage.route(ctx);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const scores = result.value.context.scores;
-        // Claude should get security specialization bonus
-        const claudeScore = scores.get('claude') ?? 0;
-        expect(claudeScore).toBeGreaterThan(0);
-      }
+      expect(
+        await specializationDelta(
+          'claude',
+          'audit security vulnerabilities and perform threat modeling'
+        )
+      ).toBeGreaterThan(0);
     });
 
     it('adds trace to context', async () => {

@@ -142,24 +142,31 @@ describe('tool-memory cross-query', () => {
 
   describe('queryAll belief keyword fallback (#1225)', () => {
     it('should find beliefs by keyword when exact subject fails', async () => {
-      // Retain a belief with a specific subject
+      // The query must NOT match a subject, or the exact path answers and the
+      // fallback under test never runs. `length >= 0` was true of every
+      // possible output (#5723) — including the fallback matching everything.
       await manager.recordBelief('TypeScript', 'is_preferred_for', 'backend development');
+      await manager.recordBelief('AuditLogger', 'writes', 'a hash chain');
 
-      // Query with a keyword that appears in the belief content
-      const results = await manager.queryAll('TypeScript');
+      const results = await manager.queryAll('backend');
+      const beliefs = results.filter((r) => r.source === 'belief');
 
-      // Should find the belief via keyword fallback even if exact subject doesn't match
-      const beliefResults = results.filter((r) => r.source === 'belief');
-      expect(beliefResults.length).toBeGreaterThanOrEqual(0);
+      expect(beliefs.length).toBeGreaterThan(0);
+      expect(JSON.stringify(beliefs)).toContain('TypeScript');
+      expect(JSON.stringify(beliefs)).not.toContain('AuditLogger');
     });
 
     it('should prefer exact subject match over keyword fallback', async () => {
+      // Two beliefs, so "prefer" is observable — the old test wrote one and
+      // asserted a tautology, which no ordering could fail.
       await manager.recordBelief('routing', 'uses', 'CompositeRouter');
+      await manager.recordBelief('memory', 'mentions', 'routing in passing');
 
-      // Exact match should work
       const results = await manager.queryAll('routing');
-      const beliefResults = results.filter((r) => r.source === 'belief');
-      expect(beliefResults.length).toBeGreaterThanOrEqual(0);
+      const beliefs = results.filter((r) => r.source === 'belief');
+
+      expect(beliefs.length).toBeGreaterThan(0);
+      expect(JSON.stringify(beliefs[0])).toContain('CompositeRouter');
     });
   });
 
