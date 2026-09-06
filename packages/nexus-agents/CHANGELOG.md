@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.2
+
+### Patch Changes
+
+- [#5703](https://github.com/nexus-substrate/nexus-agents/pull/5703) [`03d18e6`](https://github.com/nexus-substrate/nexus-agents/commit/03d18e62970eb0d6fa3fe1ca53ef341e91bcfa60) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Triangulated review and consensus planning no longer count a CLI whose output did not parse as a successful, "used" CLI: the partition records `success: false` with an `unparseable …` error, it is excluded from `clisUsed` and from a success outcome record, and a literal empty findings array is still a clean review ([#5697](https://github.com/nexus-substrate/nexus-agents/issues/5697)).
+
 ## 8.28.1
 
 ### Patch Changes
