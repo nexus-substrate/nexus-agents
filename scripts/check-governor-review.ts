@@ -50,6 +50,8 @@ import {
 import {
   canonicalGitDiffArgs,
   computeReviewedDiffHash,
+  reviewedDiffWasTruncated,
+  MAX_REVIEWED_DIFF_BYTES,
 } from '../packages/nexus-agents/src/audit/reviewed-diff-hash.js';
 
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
@@ -241,6 +243,20 @@ export interface GovernorReviewInputs {
    * diff bytes but claims a different base has inaccurate provenance.
    */
   readonly baseSha: string;
+  /**
+   * Whether the canonical diff the hash was computed over exceeded
+   * {@link MAX_REVIEWED_DIFF_BYTES} and was truncated.
+   *
+   * The truncation is part of the canonical form, so content past the cap is
+   * UNBOUND on both the producer and the gate side: two diffs identical in
+   * their first 50 KB hash the same however they differ after it. `git diff`
+   * orders by path, so a new file sorting last lands entirely past the cap. The
+   * gate had this string in hand, computed the hash, and dropped it —
+   * `reviewedDiffWasTruncated` exists in the same module and had exactly one
+   * caller, which logs at review time where no consumer of the ledger can read
+   * it (#5818).
+   */
+  readonly reviewedDiffTruncated: boolean;
   readonly changedFiles: readonly string[];
   readonly governorPatterns: readonly string[];
   readonly records: readonly PrReviewRecord[];
@@ -364,8 +380,26 @@ function matchedRecordOutcome(
   }
   return {
     kind: 'pass',
-    reason: `diff-bound pr_review record found for PR #${String(inputs.prNumber)} (reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, verdict=${match.verdict})`,
+    reason:
+      `diff-bound pr_review record found for PR #${String(inputs.prNumber)} ` +
+      `(reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, ` +
+      `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}`,
   };
+}
+
+/**
+ * Names the portion of the diff the hash actually bound.
+ *
+ * A pass over a truncated diff is a PARTIAL verification honestly labelled; the
+ * same pass unlabelled is a partial verification recorded as complete, which is
+ * the failure CLAUDE.md names on the governor path.
+ */
+function truncationCaveat(truncated: boolean): string {
+  if (!truncated) return '';
+  return (
+    ` — PARTIAL: the canonical diff exceeded ${String(MAX_REVIEWED_DIFF_BYTES)} bytes, so the ` +
+    'hash binds only the first that many bytes; content past the cap is unattested'
+  );
 }
 
 export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorReviewOutcome {
@@ -463,14 +497,25 @@ export function resolvePrContext(argv: readonly string[]): {
  * are not present in a shallow CI checkout) — the caller treats that as
  * "cannot verify" → WARN, never a false PASS.
  */
-function recomputeReviewedDiffHash(baseSha: string, headSha: string): string | undefined {
+/**
+ * Recompute the canonical diff hash AND report whether the bytes it binds are
+ * the whole diff.
+ *
+ * The truncation is part of the canonical form, so this function had the string
+ * in hand, computed the hash, and dropped it — leaving the gate unable to say
+ * which portion it verified (#5818).
+ */
+function recomputeReviewedDiff(
+  baseSha: string,
+  headSha: string
+): { hash: string; truncated: boolean } | undefined {
   try {
     const diff = execFileSync('git', canonicalGitDiffArgs(baseSha, headSha), {
       cwd: ROOT,
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
     });
-    return computeReviewedDiffHash(diff);
+    return { hash: computeReviewedDiffHash(diff), truncated: reviewedDiffWasTruncated(diff) };
   } catch {
     return undefined;
   }
@@ -526,7 +571,13 @@ function resolveGateContext(
   argv: readonly string[],
   records: readonly PrReviewRecord[]
 ):
-  | { prNumber: number; reviewedDiffHash: string; baseSha: string; changedFiles: string[] }
+  | {
+      prNumber: number;
+      reviewedDiffHash: string;
+      reviewedDiffTruncated: boolean;
+      baseSha: string;
+      changedFiles: string[];
+    }
   | { exit: number } {
   const { prNumber, baseSha, headSha } = resolvePrContext(argv);
   const changedFiles = resolveChangedFiles(argv);
@@ -542,8 +593,8 @@ function resolveGateContext(
   }
 
   // Option-C (#3831): recompute the canonical reviewed-diff hash from base..head.
-  const reviewedDiffHash = recomputeReviewedDiffHash(baseSha, headSha);
-  if (reviewedDiffHash === undefined) {
+  const reviewedDiff = recomputeReviewedDiff(baseSha, headSha);
+  if (reviewedDiff === undefined) {
     const code = tamperExitCode(records); // fail-closed even when git can't diff
     if (code !== null) return { exit: code };
     const msg =
@@ -555,7 +606,13 @@ function resolveGateContext(
     return { exit: 0 };
   }
 
-  return { prNumber, reviewedDiffHash, baseSha, changedFiles };
+  return {
+    prNumber,
+    reviewedDiffHash: reviewedDiff.hash,
+    reviewedDiffTruncated: reviewedDiff.truncated,
+    baseSha,
+    changedFiles,
+  };
 }
 
 export function runGovernorReviewGate(
@@ -584,6 +641,7 @@ export function runGovernorReviewGate(
   const outcome = analyzeGovernorReview({
     prNumber: ctx.prNumber,
     reviewedDiffHash: ctx.reviewedDiffHash,
+    reviewedDiffTruncated: ctx.reviewedDiffTruncated,
     baseSha: ctx.baseSha,
     changedFiles: ctx.changedFiles,
     governorPatterns,
