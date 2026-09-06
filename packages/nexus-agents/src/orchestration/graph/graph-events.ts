@@ -55,6 +55,21 @@ export function emitNodeResults(
         error: r.error ?? 'unknown',
         timestamp: ts,
       });
+    } else if (r.status === 'interrupted' || r.status === 'skipped') {
+      // NOT a completion. `NodeResult.status` is four-way and the `else` branch
+      // folded both of these into `node_completed`, so a node that paused for
+      // human input — `stateUpdates: {}`, nothing produced — was published to
+      // the hash-chained audit trail as "completed in 0ms", and a `skipped`
+      // result's `error` string was dropped because the completion event has no
+      // slot for it.
+      emit({
+        type: 'node_not_completed',
+        nodeId: r.nodeId,
+        stepNumber: ctx.stepsExecuted,
+        reason: r.status,
+        ...(r.error !== undefined ? { detail: r.error } : {}),
+        timestamp: ts,
+      });
     } else {
       const resultKeys = Object.keys(r.stateUpdates);
       emit({
@@ -133,7 +148,8 @@ export function emitExecutionComplete(
   totalSteps: number,
   totalNodes: number,
   durationMs: number,
-  options?: GraphExecuteOptions
+  options?: GraphExecuteOptions,
+  halted?: boolean
 ): void {
   const emit = options?.onEvent;
   if (emit === undefined) return;
@@ -142,6 +158,9 @@ export function emitExecutionComplete(
     totalSteps,
     totalNodes,
     durationMs,
+    // Omitted when the run genuinely finished, so an unpaused execution is
+    // unchanged for every existing consumer.
+    ...(halted === true ? { halted: true } : {}),
     timestamp: getTimeProvider().now(),
   });
 }

@@ -550,11 +550,29 @@ export function createGraphAuditBridge(
   };
 }
 
+type GraphEventLike = { readonly type: string; readonly [key: string]: unknown };
+
+/**
+ * A node that produced nothing: paused for human input, or refused by its
+ * precondition. The audit trail is hash-chained, so this must not land in it as
+ * "completed in 0ms".
+ */
+function formatNotCompleted(event: GraphEventLike): string {
+  const detail = event['detail'];
+  const suffix = typeof detail === 'string' && detail !== '' ? `: ${detail}` : '';
+  return `Node ${String(event['nodeId'])} ${String(event['reason'])} (did not complete)${suffix}`;
+}
+
+/** A completion, qualified when the run actually paused rather than finished. */
+function formatCompletion(event: GraphEventLike): string {
+  return event['halted'] === true
+    ? `HALTED awaiting input after ${String(event['totalSteps'])} steps, ${String(event['durationMs'])}ms — NOT complete`
+    : `Complete: ${String(event['totalSteps'])} steps, ${String(event['durationMs'])}ms`;
+}
+
 /** Formats a brief detail string from a graph event. */
-function formatGraphEventDetail(event: {
-  readonly type: string;
-  readonly [key: string]: unknown;
-}): string {
+function formatGraphEventDetail(event: GraphEventLike): string {
+  if (event.type === 'node_not_completed') return formatNotCompleted(event);
   switch (event.type) {
     case 'node_started':
       return `Node ${String(event['nodeId'])} starting`;
@@ -567,7 +585,7 @@ function formatGraphEventDetail(event: {
     case 'step_completed':
       return `Step ${String(event['stepNumber'])}: ${String(event['nodesExecuted'])} nodes`;
     case 'execution_complete':
-      return `Complete: ${String(event['totalSteps'])} steps, ${String(event['durationMs'])}ms`;
+      return formatCompletion(event);
     default:
       return event.type;
   }

@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { GraphBuilder, overwrite, START, END } from './graph-builder.js';
 import { executeGraph, resumeFromCheckpoint } from './graph-executor.js';
 import { interrupt } from './graph-types.js';
-import type { NodeContext, NodeReturn } from './graph-types.js';
+import type { GraphEvent, NodeContext, NodeReturn } from './graph-types.js';
 import { InMemoryCheckpointStore } from './checkpoint-store.js';
 
 describe('HITL primitives (#1895)', () => {
@@ -18,10 +18,8 @@ describe('HITL primitives (#1895)', () => {
     it('halts the super-step loop when a node returns Interrupt', async () => {
       const graph = new GraphBuilder()
         .addState('answer', overwrite<string | undefined>(undefined))
-        .addNode(
-          'ask',
-          (): Promise<NodeReturn> =>
-            Promise.resolve(interrupt('approval', 'Approve the auth flow change?'))
+        .addNode('ask', (): Promise<NodeReturn> =>
+          Promise.resolve(interrupt('approval', 'Approve the auth flow change?'))
         )
         .addNode('proceed', (state) =>
           Promise.resolve({ answer: `proceeded with ${String(state['answer'])}` })
@@ -318,5 +316,90 @@ describe('HITL primitives (#1895)', () => {
       if (!resumed.ok) return;
       expect(resumed.value.finalState['seenValues']).toBe('{"q1":"A"}');
     });
+  });
+});
+
+// ============================================================================
+// The event stream must not report a paused run as a finished one
+// ============================================================================
+
+describe('interrupt events', () => {
+  // `emitNodeResults` had `if failed → node_error, else → node_completed`, and
+  // `NodeResult.status` is four-way. So an `interrupted` node — `stateUpdates:
+  // {}`, nothing produced — was published as "completed in 0ms", and
+  // `execution_complete` was emitted BEFORE the halt check, because
+  // `runSuperStepLoop` returns `undefined` on the interrupt path exactly as it
+  // does when the graph runs out of nodes.
+  //
+  // These events feed `createGraphAuditBridge`, which writes them into the
+  // hash-chained audit trail. `halted` — the truthful marker — lives on the
+  // returned `Result`, which an `onEvent` consumer never sees.
+  async function runInterruptGraph(): Promise<GraphEvent[]> {
+    const graph = new GraphBuilder()
+      .addNode('ask', () => Promise.resolve(interrupt('approval', 'Approve?')))
+      .addEdge(START, 'ask')
+      .addEdge('ask', END)
+      .compile();
+    if (!graph.ok) throw new Error('graph did not compile');
+
+    const events: GraphEvent[] = [];
+    await executeGraph(
+      graph.value,
+      {},
+      {
+        checkpointStore: new InMemoryCheckpointStore(),
+        executionId: 'exec-events',
+        onEvent: (e) => events.push(e),
+      }
+    );
+    return events;
+  }
+
+  it('does not report the interrupted node as completed', async () => {
+    const events = await runInterruptGraph();
+
+    expect(events.filter((e) => e.type === 'node_completed' && e.nodeId === 'ask')).toHaveLength(0);
+  });
+
+  it('reports it as not completed, naming the reason', async () => {
+    const events = await runInterruptGraph();
+    const notCompleted = events.find((e) => e.type === 'node_not_completed');
+
+    expect(notCompleted).toBeDefined();
+    if (notCompleted?.type === 'node_not_completed') {
+      expect(notCompleted.nodeId).toBe('ask');
+      expect(notCompleted.reason).toBe('interrupted');
+    }
+  });
+
+  it('marks the completion event as halted', async () => {
+    const events = await runInterruptGraph();
+    const complete = events.find((e) => e.type === 'execution_complete');
+
+    expect(complete).toBeDefined();
+    if (complete?.type === 'execution_complete') expect(complete.halted).toBe(true);
+  });
+
+  it('leaves a graph that finishes reporting an unqualified completion', async () => {
+    // The pair. Without it, always setting `halted` would pass — and every
+    // finished run would read as paused.
+    const graph = new GraphBuilder()
+      .addNode('work', () => Promise.resolve({ done: true }))
+      .addEdge(START, 'work')
+      .addEdge('work', END)
+      .compile();
+    if (!graph.ok) throw new Error('graph did not compile');
+
+    const events: GraphEvent[] = [];
+    await executeGraph(
+      graph.value,
+      {},
+      { executionId: 'exec-clean', onEvent: (e) => events.push(e) }
+    );
+
+    const complete = events.find((e) => e.type === 'execution_complete');
+    if (complete?.type === 'execution_complete') expect(complete.halted).toBeUndefined();
+    expect(events.some((e) => e.type === 'node_completed' && e.nodeId === 'work')).toBe(true);
+    expect(events.some((e) => e.type === 'node_not_completed')).toBe(false);
   });
 });

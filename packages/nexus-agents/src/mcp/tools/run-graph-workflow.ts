@@ -44,6 +44,7 @@ import {
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
+import { formatDetail } from './run-graph-workflow-events.js';
 
 // ============================================================================
 // Types & Schema
@@ -381,49 +382,6 @@ function toEventSummary(event: GraphEvent): GraphEventSummary {
     return { type: event.type, nodeId: event.nodeId, detail: formatDetail(event) };
   }
   return { type: event.type, detail: formatDetail(event) };
-}
-
-type HookEvent = Extract<GraphEvent, { type: 'hook_started' | 'hook_completed' | 'hook_failed' }>;
-
-/** Type guard for the three hook lifecycle events. */
-function isHookEvent(event: GraphEvent): event is HookEvent {
-  return (
-    event.type === 'hook_started' || event.type === 'hook_completed' || event.type === 'hook_failed'
-  );
-}
-
-/** Detail string for the three hook lifecycle events (split out for complexity). */
-function formatHookDetail(event: HookEvent): string {
-  const where = `${event.hookPhase}: ${event.hookName} on ${event.nodeId}`;
-  switch (event.type) {
-    case 'hook_started':
-      return where;
-    case 'hook_completed':
-      return `${where} in ${String(event.durationMs)}ms`;
-    case 'hook_failed':
-      return `${where}: ${event.error}`;
-  }
-}
-
-function formatDetail(event: GraphEvent): string {
-  // Hook events are dispatched out-of-switch to keep complexity within budget.
-  if (isHookEvent(event)) return formatHookDetail(event);
-  switch (event.type) {
-    case 'node_started':
-      return `Starting ${event.nodeId}`;
-    case 'node_completed':
-      return `${event.nodeId} in ${String(event.durationMs)}ms`;
-    case 'node_error':
-      return `${event.nodeId}: ${event.error}`;
-    case 'step_completed':
-      return `${String(event.nodesExecuted)} nodes`;
-    case 'execution_complete':
-      return `${String(event.totalSteps)} steps, ${String(event.durationMs)}ms`;
-    case 'state_updated':
-      return event.updatedKeys.join(', ');
-    case 'context_unavailable':
-      return `Context unavailable for category '${event.category}': ${event.error}`;
-  }
 }
 
 interface ErrorResponseOpts {
