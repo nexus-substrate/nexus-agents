@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.37.0
+
+### Minor Changes
+
+- [#5807](https://github.com/nexus-substrate/nexus-agents/pull/5807) [`ab1599b`](https://github.com/nexus-substrate/nexus-agents/commit/ab1599b3e342a0fec4f5cbd208dc0ca488b3e541) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report a timeout knob that is set, valid, and silently discarded.
+  `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` above 3600s is accepted by the schema
+  and thrown away, and every `NEXUS_TIMEOUT_MULTIPLIER` above 1 is a no-op for
+  that class, because its declared guard sits exactly at the MCP request ceiling —
+  for `async-job-body` the two documented knobs can only lower the guard.
+  `describeClassGuard` now reports what was requested versus what was used and
+  which knob was reduced, and `validateNexusEnv` warns about it alongside the
+  unknown-name and invalid-value reports it already produced.
+
 ## 8.36.0
 
 ### Minor Changes
