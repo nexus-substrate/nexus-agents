@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.4
+
+### Patch Changes
+
+- [#5706](https://github.com/nexus-substrate/nexus-agents/pull/5706) [`09e0f29`](https://github.com/nexus-substrate/nexus-agents/commit/09e0f29136c699add0a4fc4042b6a4cb3c48627c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `codex-5.3` now maps to `gpt-5.6-terra` (pricing and context from models.dev 2026-09-06; quality positions carried over and disclosed as unmeasured): codex-cli 0.150.0 no longer serves `gpt-5.4`, which the `verify` Codex Models check reported on its first live run. Panel [#5694](https://github.com/nexus-substrate/nexus-agents/issues/5694), option A ([#5694](https://github.com/nexus-substrate/nexus-agents/issues/5694)).
+
 ## 8.28.3
 
 ### Patch Changes
