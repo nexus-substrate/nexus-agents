@@ -57,7 +57,7 @@ import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory, configureToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
-import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
+import { shutdownPipelineEventBridge } from './pipeline/event-bus-bridge.js';
 import { shutdownTuneStage } from './pipeline/tune-stage.js';
 import { shutdownImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
 import {
@@ -245,8 +245,11 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
     // Cleanup the cached MCP-config tempdir (closes #2946)
     await shutdownExpertBridge();
 
-    // Release the EventBus → OutcomeStore feedback subscription (closes #2938)
-    shutdownFeedbackSubscriber();
+    // Release the V2 pipeline → global event forwarder. This slot used to hold
+    // `shutdownFeedbackSubscriber()`, which was an unconditional no-op: nothing
+    // ever called `startFeedbackSubscriber`, because #5003's panel removed that
+    // bridge on purpose. The forwarder is the subscription that WAS leaking.
+    shutdownPipelineEventBridge();
 
     // Release the shadow TuneStage signal subscription (#3147)
     shutdownTuneStage();
