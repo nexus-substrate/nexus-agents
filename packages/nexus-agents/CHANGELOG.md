@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.3
+
+### Patch Changes
+
+- [#5705](https://github.com/nexus-substrate/nexus-agents/pull/5705) [`5e9eb98`](https://github.com/nexus-substrate/nexus-agents/commit/5e9eb98e2060de1d35cb86d6fce2568476e01b0e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `NEXUS_SANDBOX` is validated as the non-empty flavor string every producer and reader uses (`docker-opencode`, …) instead of a boolean, so a correctly configured sandbox no longer warns "invalid value" at startup; the sandbox-factory fallback text no longer calls the variable an isolation mechanism ([#5695](https://github.com/nexus-substrate/nexus-agents/issues/5695)).
+
 ## 8.28.2
 
 ### Patch Changes
