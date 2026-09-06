@@ -189,7 +189,9 @@ export class RoutingContextStore implements IRoutingContextStore {
       totalDataPoints: total,
       dataPointsByDomain,
       strongModelPreferenceRate: preferenceRate,
-      estimatedCostSavingsRate: 1 - preferenceRate,
+      // An empty store saved nothing (#5700); `total` beside it says why the
+      // rate is 0. Matches cli-adapters/preference-router-store.
+      estimatedCostSavingsRate: total > 0 ? 1 - preferenceRate : 0,
       lastUpdatedAt: latestUpdate,
     };
   }
