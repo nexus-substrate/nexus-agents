@@ -61,10 +61,46 @@ beforeAll(() => {
     join(docsRoot, 'architecture', 'NO_TITLE.md'),
     '---\ndescription: no title here\n---\n\n# Body\n'
   );
+  // The generated TypeDoc reference. It lives under docs/ and carries a title,
+  // but it is EXCLUDED from the docs collection and mounted at /api/ instead
+  // (website/src/content.config.ts), so /docs/api/... is a 404 (#5750).
+  mkdirSync(join(docsRoot, 'api'), { recursive: true });
+  writeFileSync(join(docsRoot, 'api', 'core.md'), '---\ntitle: core\n---\n\n# core\n');
+  writeFileSync(
+    join(docsRoot, 'api', 'cli-adapters.md'),
+    '---\ntitle: cli-adapters\n---\n\n# cli\n'
+  );
 });
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
+});
+
+describe('the generated API reference is mounted at /api/, not /docs/api/ (#5750)', () => {
+  /**
+   * docs/api is excluded from the `docs` collection and served by its own
+   * collection at /api/, so rewriting those links through DOCS_PREFIX produced
+   * a 404. The published site carried 1,156 inbound links to
+   * /nexus-agents/docs/api/core/ — roughly every page — against a directory
+   * that does not exist in the build output.
+   */
+  it('rewrites an api link to the /api/ route', () => {
+    expect(rewrite('../api/core.md')).toBe('/nexus-agents/api/core/');
+  });
+
+  it('keeps the anchor', () => {
+    expect(rewrite('../api/core.md#result')).toBe('/nexus-agents/api/core/#result');
+  });
+
+  it('keeps the filename as the slug — the api route does not underscore it', () => {
+    // fileToSlug turns `cli-adapters` into `cli_adapters`, but the built route
+    // is /api/cli-adapters/, so the docs slug rule must not apply here.
+    expect(rewrite('../api/cli-adapters.md')).toBe('/nexus-agents/api/cli-adapters/');
+  });
+
+  it('still sends a non-api docs page through the docs route', () => {
+    expect(rewrite('ROUTING_SYSTEM.md')).toBe(`${DOCS_PREFIX}/architecture/routing_system/`);
+  });
 });
 
 describe('remarkRewriteLinks', () => {

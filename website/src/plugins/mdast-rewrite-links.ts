@@ -29,6 +29,15 @@ import { fileURLToPath } from 'node:url';
 import { defineMdastPlugin, type MdastPluginDefinition } from 'satteri';
 
 const DOCS_PREFIX = '/nexus-agents/docs';
+/**
+ * The generated TypeDoc reference lives at `docs/api/**` in the repo but is
+ * EXCLUDED from the `docs` collection and served by its own collection at
+ * `/api/` (see website/src/content.config.ts). Rewriting those links through
+ * `DOCS_PREFIX` produced a 404 on every one: the published site carried 1,156
+ * inbound links to `/nexus-agents/docs/api/core/` — roughly every page —
+ * against a directory the build never emits (#5750).
+ */
+const API_PREFIX = '/nexus-agents/api';
 const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
 
 /** Convert a filename segment (no extension) into a lowercase slug segment. */
@@ -74,6 +83,13 @@ function rewriteIntraDocsLink(docsRoot: string, resolved: string, anchor: string
   }
   if (!hasPublishedFrontmatter(docsRoot, resolved)) {
     return `${GITHUB_BLOB}/docs/${resolved}${anchor}`;
+  }
+  // The api collection's route uses the file name as-is, so the docs slug rule
+  // (lowercase, `-` and `.` to `_`) must not apply — `cli-adapters.md` is served
+  // at /api/cli-adapters/, not /api/cli_adapters/ (#5750).
+  const apiName = /^api\/([^/]+)\.md$/i.exec(resolved)?.[1];
+  if (apiName !== undefined) {
+    return `${API_PREFIX}/${apiName}/${anchor}`;
   }
   const parts = resolved.split('/');
   const slugParts = parts.map((p, i) => (i === parts.length - 1 ? fileToSlug(p) : p.toLowerCase()));
