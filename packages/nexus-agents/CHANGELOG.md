@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.29.0
+
+### Minor Changes
+
+- [#5734](https://github.com/nexus-substrate/nexus-agents/pull/5734) [`f744031`](https://github.com/nexus-substrate/nexus-agents/commit/f74403120d8920e69ace307124b87487bb568bf1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Audit lifecycle records now state the phase they actually observed. `system.startup` with outcome `success` was written the moment the audit logger was constructed — before authentication, tool registration and transport connect — so a throw in any later step left a durable "startup succeeded" record. Startup now emits `system.startup.begin` at that point and `system.startup` with `success` or `failure` at the real completion point. Shutdown emits `system.shutdown.begin` only: the audit sink is the first thing closed, so a completion record is not writable. `AuditLogger.logSystemShutdown` is deprecated and delegates to `logSystemShutdownBegin`.
+
+- [#5739](https://github.com/nexus-substrate/nexus-agents/pull/5739) [`98e96ae`](https://github.com/nexus-substrate/nexus-agents/commit/98e96ae7a966b0e7a73583cbe59e09d71735e7bb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records can now say that the panel was degraded. An errored voter was dropped from both `voters` and `voteCounts`, so a seven-role panel that lost four of them persisted as a clean three-voter record, and under `reduce_denominator` a 6-of-7 panel with one dead voter recorded as a unanimous six-voter approval. Schema 1.5 adds an optional `panelCoverage` with the requested, responded and errored counts plus the errored roles. It is folded into the self-hash only when present, so every existing record still verifies.
+
+### Patch Changes
+
+- [#5733](https://github.com/nexus-substrate/nexus-agents/pull/5733) [`8b01cfc`](https://github.com/nexus-substrate/nexus-agents/commit/8b01cfc2cb346da1be118e5180847c0b7a3f329e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Two governance verifiers now measure code instead of text. The claim counters (`countEnumMembers`, `countManifestTools`) strip comments before counting, so an enum member or tool entry deleted by commenting it out no longer counts as live evidence. The mock-orchestration opt-in check excludes its own source and the env schema from its scan, so the "no guard found" warning can actually fire when the guard is gone.
+
 ## 8.28.9
 
 ### Patch Changes
