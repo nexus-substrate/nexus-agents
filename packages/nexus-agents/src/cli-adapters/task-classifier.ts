@@ -179,7 +179,8 @@ const MIN_CONFIDENCE_THRESHOLD = 0.3;
  * ```typescript
  * const result = classifyTask('Implement a new authentication module');
  * // result.type === 'code'
- * // result.confidence === 0.7
+ * // result.confidence === 0.277  — two of 26 `code` keywords match
+ * // result.alternativeType === 'general'  — below MIN_CONFIDENCE_THRESHOLD
  * ```
  */
 export function classifyTask(

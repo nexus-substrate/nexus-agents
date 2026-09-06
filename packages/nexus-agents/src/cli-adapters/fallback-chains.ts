@@ -209,7 +209,7 @@ function createEmptyMetricsRegistry(): Record<FallbackTaskType, FallbackChainMet
  * @example
  * ```typescript
  * const chain = getFallbackChain('code');
- * // chain === ['claude', 'codex', 'gemini']
+ * // chain === ['codex', 'claude', 'gemini', 'opencode']
  * ```
  */
 export function getFallbackChain(
