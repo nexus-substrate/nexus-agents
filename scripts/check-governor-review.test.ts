@@ -96,6 +96,7 @@ function inputs(overrides: Partial<GovernorReviewInputs> = {}): GovernorReviewIn
   return {
     prNumber: 5000,
     reviewedDiffHash: DIFF_HASH,
+    reviewedDiffTruncated: false,
     baseSha: SHA_BASE,
     changedFiles: ['packages/nexus-agents/src/audit/audit-logger.ts'],
     governorPatterns: GOVERNOR_PATTERNS,
@@ -464,5 +465,57 @@ describe('the gate itself fails closed on an unreadable ledger', () => {
     // redden every governor PR — the benign population it exists to let
     // through — so the two cases must stay distinguishable.
     expect(withLedger('')).not.toBe(1);
+  });
+});
+
+// ============================================================================
+// A pass over a truncated diff must say which portion it verified
+// ============================================================================
+
+describe('reviewed-diff truncation is stated in the verdict', () => {
+  // `computeReviewedDiffHash` truncates to MAX_REVIEWED_DIFF_BYTES as part of
+  // the canonical form, so content past the cap is UNBOUND on both the producer
+  // and the gate side: two diffs identical in their first 50 KB hash the same
+  // however they differ after it. `git diff` orders by path, so a new file
+  // sorting last lands entirely past the cap.
+  //
+  // The gate had the diff string in hand, computed the hash and dropped it.
+  // `reviewedDiffWasTruncated` lives in the same module and had exactly one
+  // caller, which logs at review time where no consumer of the ledger can read
+  // it. A partial verification labelled as complete is the failure CLAUDE.md
+  // names on the governor path (#5818).
+  function passingInputs(truncated: boolean): GovernorReviewInputs {
+    return inputs({
+      reviewedDiffTruncated: truncated,
+      records: [record({ prNumber: 5000, reviewedDiffHash: DIFF_HASH, verdict: 'approve' })],
+    });
+  }
+
+  it('labels a pass over a truncated diff as partial', () => {
+    const outcome = analyzeGovernorReview(passingInputs(true));
+
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('PARTIAL');
+      expect(outcome.reason).toContain('unattested');
+    }
+  });
+
+  it('leaves a pass over a whole diff unqualified', () => {
+    // The pair. Without it, always appending the caveat would pass — and every
+    // complete verification would read as partial, which is the same defect
+    // mirrored.
+    const outcome = analyzeGovernorReview(passingInputs(false));
+
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).not.toContain('PARTIAL');
+    }
+  });
+
+  it('still passes — the caveat qualifies the verdict, it does not change it', () => {
+    // Deliberate: the gate is warn-first and this is a disclosure fix. Turning
+    // a truncated diff into a failure is a separate, behavioural decision.
+    expect(analyzeGovernorReview(passingInputs(true)).kind).toBe('pass');
   });
 });
