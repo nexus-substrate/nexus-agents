@@ -1067,9 +1067,27 @@ function checkClaudeAgnosticBlock(): boolean {
  * date rollover on branches that haven't been touched today. The
  * staleness check in release-validate-helpers.ts:222 keeps working
  * because the format is unchanged.
+ *
+ * `config/in-tree-data.ts` (MODEL_CAPS) is deliberately NOT a source (#5491,
+ * panel option b): model pricing and slug data is not governance content, and
+ * including it forced every routine data PR — a pricing sync, a dead-slug
+ * repoint — to commit a regenerated stamp into AGENTS.md/CLAUDE.md and so
+ * through the governor ratification gate, diluting the signal the owner is
+ * asked to review. Consequence to know: a model ADDITION does change generated
+ * governance text (the supported-models line) while leaving this stamp where it
+ * was, so the stamp can read older than the block above it. The idempotency
+ * check still fails on that generated-text drift, which is the gate that
+ * matters; the stamp is a date, not the measurement.
  */
+export const GOVERNANCE_STAMP_SOURCES: readonly string[] = [
+  TOOLS_INDEX,
+  EXPERT_CONFIG,
+  TEMPLATE_TYPES,
+  SKILLS_INDEX_PATH,
+];
+
 function getGovernanceSourceDate(): string {
-  const sources = [TOOLS_INDEX, EXPERT_CONFIG, TEMPLATE_TYPES, SKILLS_INDEX_PATH, MODEL_CAPS];
+  const sources = GOVERNANCE_STAMP_SOURCES;
   let latest = '';
   for (const path of sources) {
     try {

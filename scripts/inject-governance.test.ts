@@ -68,6 +68,7 @@ let SANDBOX = '';
 let core: {
   checkGovernance: () => boolean;
   injectGovernance: () => Promise<void>;
+  GOVERNANCE_STAMP_SOURCES: readonly string[];
 };
 
 /** Absolute path inside the sandbox for a repo-relative path. */
@@ -186,6 +187,25 @@ async function withInjectSnapshot(body: () => Promise<void>): Promise<void> {
 // ============================================================================
 // Check command (validates current state)
 // ============================================================================
+
+
+describe('governance stamp source set (#5491)', () => {
+  it('does not include the model registry — model data is not governance content', () => {
+    // in-tree-data.ts was a stamp source, so a pricing sync or a dead-slug
+    // repoint moved the stamp, forced the regenerated line to be committed into
+    // AGENTS.md/CLAUDE.md, and pushed a routine data PR through the governor
+    // ratification gate. Panel #5491 chose to drop it (option b, 4/6).
+    expect(core.GOVERNANCE_STAMP_SOURCES.some((p) => p.endsWith('config/in-tree-data.ts'))).toBe(false);
+  });
+
+  it('still derives the stamp from the governance-content sources', () => {
+    const tails = core.GOVERNANCE_STAMP_SOURCES.map((p) => p.split('/').slice(-2).join('/'));
+    expect(tails).toContain('tools/index.ts');
+    expect(tails).toContain('experts/expert-config.ts');
+    expect(tails).toContain('workflows/template-types.ts');
+    expect(core.GOVERNANCE_STAMP_SOURCES.length).toBeGreaterThanOrEqual(4);
+  });
+});
 
 describe('inject-governance check', () => {
   it('passes on the sandbox CLAUDE.md', () => {
