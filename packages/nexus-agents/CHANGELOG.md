@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.31.0
+
+### Minor Changes
+
+- [#5747](https://github.com/nexus-substrate/nexus-agents/pull/5747) [`e5a0502`](https://github.com/nexus-substrate/nexus-agents/commit/e5a05023c6db292c34824d0e1695793f8f3d9fb0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records now keep each voter's stated grounds. `generateVoteHash` already hashed `{role, decision, reasoning}` and the record then discarded the text, so the chain attested to a value it did not store and a blocking dissent survived only in the terminal scrollback of whoever ran the vote. Schema 1.6 adds an optional `reasoning` per voter entry, clipped at 20,000 characters with a `reasoningTruncated` marker on the entry it clipped. Entry-level fields are folded into the self-hash only when present, so every existing record still verifies.
+
 ## 8.30.0
 
 ### Minor Changes
