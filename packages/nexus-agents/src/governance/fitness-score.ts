@@ -8,9 +8,16 @@
 
 /* eslint-disable max-lines -- cohesive fitness calculator (governance allows 400-600) */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger, type ILogger } from '../core/index.js';
+import {
+  DETERMINISM_EXCLUDES,
+  countFiles,
+  countMockGuardSites,
+  countPatternInDir,
+  fileContains,
+} from './source-scan.js';
 
 /** Find package root by walking up from current dir to find package.json with our name */
 function findPkgRoot(): string {
@@ -30,66 +37,6 @@ const PKG_ROOT = findPkgRoot();
 const SRC_ROOT = join(PKG_ROOT, 'src');
 const REPO_ROOT = join(PKG_ROOT, '../..');
 const DOCS_ROOT = join(REPO_ROOT, 'docs');
-
-const DETERMINISM_EXCLUDES: RegExp[] = [
-  /\.test\.ts$/,
-  /\.spec\.ts$/,
-  /random-provider\.ts$/,
-  /time-provider\.ts$/,
-];
-
-// =========================================================================
-// Filesystem utility methods (inlined from scripts/fitness-utils.ts)
-// =========================================================================
-
-function countFiles(dir: string, pattern: RegExp): number {
-  if (!existsSync(dir)) return 0;
-  let count = 0;
-  for (const entry of readdirSync(dir)) {
-    const fullPath = join(dir, entry);
-    const stat = statSync(fullPath);
-    if (stat.isDirectory() && !entry.startsWith('.')) {
-      count += countFiles(fullPath, pattern);
-    } else if (pattern.test(entry)) {
-      count++;
-    }
-  }
-  return count;
-}
-
-function fileContains(filePath: string, pattern: RegExp): boolean {
-  if (!existsSync(filePath)) return false;
-  return pattern.test(readFileSync(filePath, 'utf-8'));
-}
-
-function isExcluded(entry: string, excludePatterns?: RegExp[]): boolean {
-  return excludePatterns?.some((p) => p.test(entry)) ?? false;
-}
-
-function countMatchesInFile(fullPath: string, contentPattern: RegExp): number {
-  const matches = readFileSync(fullPath, 'utf-8').match(contentPattern);
-  return matches?.length ?? 0;
-}
-
-function countPatternInDir(
-  dir: string,
-  filePattern: RegExp,
-  contentPattern: RegExp,
-  excludePatterns?: RegExp[]
-): number {
-  if (!existsSync(dir)) return 0;
-  let count = 0;
-  for (const entry of readdirSync(dir)) {
-    const fullPath = join(dir, entry);
-    const stat = statSync(fullPath);
-    if (stat.isDirectory() && !entry.startsWith('.') && entry !== 'node_modules') {
-      count += countPatternInDir(fullPath, filePattern, contentPattern, excludePatterns);
-    } else if (filePattern.test(entry) && !isExcluded(entry, excludePatterns)) {
-      count += countMatchesInFile(fullPath, contentPattern);
-    }
-  }
-  return count;
-}
 
 // =========================================================================
 // Public types
@@ -446,12 +393,7 @@ export class FitnessScoreCalculator {
     let score = 15;
 
     // Check: mock orchestration requires explicit env var opt-in
-    const mockGuardCount = countPatternInDir(
-      SRC_ROOT,
-      /\.ts$/,
-      /NEXUS_ALLOW_MOCK_ORCHESTRATION/g,
-      DETERMINISM_EXCLUDES
-    );
+    const mockGuardCount = countMockGuardSites(SRC_ROOT);
     if (mockGuardCount === 0) {
       score -= 3;
       findings.push(
