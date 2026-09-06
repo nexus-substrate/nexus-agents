@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.38.2
+
+### Patch Changes
+
+- [#5821](https://github.com/nexus-substrate/nexus-agents/pull/5821) [`b8c03a0`](https://github.com/nexus-substrate/nexus-agents/commit/b8c03a0812c2947fe85939bc432a0b4dce033810) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `DetectedFailure.severity` can now be `critical`. The mapping was an object
+  keyed by number walked with `Object.entries`, and `1.0` stringifies to the key
+  `"1"` — a canonical array index, which ES property enumeration puts first. The
+  real order was `["1","0.3","0.5","0.7"]`, so at full confidence the loop
+  assigned `critical` and then overwrote it with `low`, `medium` and `high`.
+  `FailureSeverity` and its Zod enum both published `critical` as a reachable
+  state and nothing could reach it.
+
 ## 8.38.1
 
 ### Patch Changes
