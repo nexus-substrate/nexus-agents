@@ -370,21 +370,6 @@ function clampCauseFor(
 }
 
 /**
- * Every class whose resolved guard was reduced by the request ceiling.
- *
- * No filter on "was it configured": a class declared above the ceiling would be
- * silently capped with no operator involvement, and hiding that was the same
- * defect one level up. `clampCause` says who to blame. Returns `[]` when
- * nothing was reduced — which today is the case whenever no knob is set, since
- * every declared guard is at or below the ceiling.
- */
-export function findClampedTimeoutOverrides(): readonly ClassGuardResolution[] {
-  return Object.keys(OPERATION_CLASSES)
-    .map((cls) => describeClassGuard(cls as OperationClassName))
-    .filter((r) => r.clampedByRequestCeiling);
-}
-
-/**
  * Resolves the runaway-guard for a specific tool via its {@link TOOL_CLASS}
  * classification, falling back to {@link DEFAULT_OPERATION_CLASS}. Honors the
  * multiplier + per-class env overrides through {@link resolveClassGuardMs}.

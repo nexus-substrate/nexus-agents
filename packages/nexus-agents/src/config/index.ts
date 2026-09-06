@@ -178,7 +178,7 @@ export type {
 
 // Environment variable validation (Issue #1016)
 export { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
-export type { EnvValidationResult, UnknownVar, InvalidVar } from './env-schema.js';
+export type { EnvValidationResult, UnknownVar, InvalidVar, IneffectiveVar } from './env-schema.js';
 
 // In-tree model data (renamed from `model-capabilities` in #2546 slice E).
 // Data-only module; consumers should prefer registry helpers in

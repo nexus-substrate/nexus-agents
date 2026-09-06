@@ -20,7 +20,6 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import {
   describeClassGuard,
-  findClampedTimeoutOverrides,
   resolveClassGuardMs,
   MCP_TIMEOUTS,
   OPERATION_CLASSES,
@@ -70,12 +69,12 @@ describe('the ceiling that swallows an override is visible', () => {
   });
 });
 
-describe('findClampedTimeoutOverrides only reports what was configured', () => {
+describe('validateNexusEnv only reports a knob that actually asked for more', () => {
   it('finds nothing when nothing was set', () => {
     // The empty case, named: with no knob set every declared guard resolves at
     // or below the ceiling, so [] here means "nothing was reduced", not
     // "nothing was checked".
-    expect(findClampedTimeoutOverrides()).toEqual([]);
+    expect(validateNexusEnv().ineffectiveVars).toEqual([]);
   });
 
   it('blames the override, not the multiplier, when both are set', () => {
@@ -101,9 +100,7 @@ describe('findClampedTimeoutOverrides only reports what was configured', () => {
   it('finds the class whose override was discarded', () => {
     vi.stubEnv(OVERRIDE, String(MCP_TIMEOUTS.maxMs * 2));
 
-    const clamped = findClampedTimeoutOverrides();
-
-    expect(clamped.map((c) => c.cls)).toContain('async-job-body');
+    expect(validateNexusEnv().ineffectiveVars.map((v) => v.name)).toContain(OVERRIDE);
   });
 
   it('finds a class whose multiplier was discarded even with no per-class override', () => {
@@ -111,11 +108,9 @@ describe('findClampedTimeoutOverrides only reports what was configured', () => {
     // class sitting at the ceiling, every value above 1 does nothing.
     vi.stubEnv(MULTIPLIER, '2');
 
-    const clamped = findClampedTimeoutOverrides();
-
-    expect(clamped.map((c) => c.cls)).toContain('async-job-body');
-    expect(clamped.find((c) => c.cls === 'async-job-body')?.overrideEnvVar).toBeNull();
-    expect(clamped.find((c) => c.cls === 'async-job-body')?.clampCause).toBe('multiplier');
+    expect(validateNexusEnv().ineffectiveVars.map((v) => v.name)).toContain(MULTIPLIER);
+    expect(describeClassGuard('async-job-body').overrideEnvVar).toBeNull();
+    expect(describeClassGuard('async-job-body').clampCause).toBe('multiplier');
   });
 });
 

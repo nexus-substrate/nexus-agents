@@ -15,9 +15,12 @@ import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import {
-  findClampedTimeoutOverrides,
+  describeClassGuard,
   MCP_TIMEOUTS,
+  OPERATION_CLASSES,
   TIMEOUT_MULTIPLIER_ENV_VAR,
+  type ClassGuardResolution,
+  type OperationClassName,
 } from './timeouts.js';
 
 // ============================================================================
@@ -452,30 +455,40 @@ function logValidationWarnings(
   }
 }
 
-/** Timeout knobs that were set and then clamped away. */
+/**
+ * Timeout knobs that were set and then clamped away.
+ *
+ * Every class is asked, not only the configured ones: a class declared above
+ * the request ceiling would be capped with no operator involvement at all, and
+ * hiding that would be the same defect one level up. `clampCause` says who to
+ * blame, and a clamp attributable to no knob is reported to nobody rather than
+ * pinned on a variable the operator never set.
+ */
 function findIneffectiveVars(): IneffectiveVar[] {
-  return findClampedTimeoutOverrides().flatMap((r) => {
-    // Name the knob that actually asked for more. Defaulting an unattributed
-    // clamp to the multiplier would blame a variable the operator may not have
-    // set — the same misattribution this report exists to avoid.
-    const name =
-      r.clampCause === 'override' && r.overrideEnvVar !== null
-        ? r.overrideEnvVar
-        : r.clampCause === 'multiplier'
-          ? TIMEOUT_MULTIPLIER_ENV_VAR
-          : null;
-    if (name === null) return [];
-    return [
-      {
-        name,
-        requestedMs: r.requestedMs,
-        effectiveMs: r.effectiveMs,
-        reason:
-          `The '${r.cls}' class guard is capped at the MCP request ceiling ` +
-          `(${String(MCP_TIMEOUTS.maxMs)}ms), so values above it are discarded.`,
-      },
-    ];
-  });
+  const classNames = Object.keys(OPERATION_CLASSES) as OperationClassName[];
+  const resolutions: ClassGuardResolution[] = classNames.map((cls) => describeClassGuard(cls));
+  return resolutions
+    .filter((r) => r.clampedByRequestCeiling)
+    .flatMap((r) => {
+      // Name the knob that actually asked for more.
+      const name =
+        r.clampCause === 'override' && r.overrideEnvVar !== null
+          ? r.overrideEnvVar
+          : r.clampCause === 'multiplier'
+            ? TIMEOUT_MULTIPLIER_ENV_VAR
+            : null;
+      if (name === null) return [];
+      return [
+        {
+          name,
+          requestedMs: r.requestedMs,
+          effectiveMs: r.effectiveMs,
+          reason:
+            `The '${r.cls}' class guard is capped at the MCP request ceiling ` +
+            `(${String(MCP_TIMEOUTS.maxMs)}ms), so values above it are discarded.`,
+        },
+      ];
+    });
 }
 
 // ============================================================================

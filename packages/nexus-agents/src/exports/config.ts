@@ -31,6 +31,7 @@ export {
   getKnownNexusVarNames,
   type EnvValidationResult,
   type UnknownVar,
+  type IneffectiveVar,
   type InvalidVar,
 } from '../config/index.js';
 
