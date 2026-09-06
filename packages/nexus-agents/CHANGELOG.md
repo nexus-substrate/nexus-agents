@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.40.1
+
+### Patch Changes
+
+- [#5838](https://github.com/nexus-substrate/nexus-agents/pull/5838) [`fc28c3f`](https://github.com/nexus-substrate/nexus-agents/commit/fc28c3fbe5b79a3a73d7d156342b998def28ab5a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The vote CLI now prints the decision it recorded. `executeVoting` stamps
+  `decision` without mutating the engine's 2-valued `result.outcome`, and
+  `computeAbsoluteQuorumDecision` returns `no_quorum` while the outcome stays
+  `approved` — so a voided vote printed `Result: APPROVED` in green while the
+  audit record, the GitHub comment and the exit code all said `no_quorum`. Every
+  persisted artifact was right and the one a human reads live was wrong.
+  `runVote` also now populates `optionGate`, which [#5362](https://github.com/nexus-substrate/nexus-agents/issues/5362) added to the return type
+  and never to the literal, leaving the option-veto explanation unreachable; and
+  the recorded GitHub comment marks an errored seat as `ERRORED` with the error
+  count, instead of publishing a failed voter as a genuine `ABSTAIN`.
+
 ## 8.40.0
 
 ### Minor Changes
