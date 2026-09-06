@@ -28,6 +28,7 @@
 import type { ExecutionStrategy } from './meta-orchestrator.js';
 import { getStrategyManifest } from './strategy-manifest-registry.js';
 import type { AuthorityTier, ExecuteEnvelope } from './strategy-manifest.js';
+import { AUTHORITY_TIERS } from './strategy-manifest.js';
 
 /**
  * The authority classes an action can carry, ordered least→most authoritative —
@@ -35,17 +36,20 @@ import type { AuthorityTier, ExecuteEnvelope } from './strategy-manifest.js';
  * it EXERCISES; a strategy's tier is the authority it is PERMITTED. The guard
  * refuses when the former exceeds the latter.
  *
- * Kept as its own enum (rather than reusing AuthorityTier) so the two roles read
+ * Kept as its own NAME (rather than reusing AuthorityTier) so the two roles read
  * distinctly at call sites — `guardAuthority(strategy, 'enforce')` says "this is an
- * enforce-class action", not "this strategy is enforce-tier".
+ * enforce-class action", not "this strategy is enforce-tier". The ORDERING is
+ * `AUTHORITY_TIERS` itself (#5711): both arrays were declared independently while
+ * that constant's JSDoc claimed to be the single ordered source, so a reordering
+ * of one would silently have changed what this guard refuses.
  */
-export const ACTION_CLASSES = ['observe', 'suggest', 'advisory', 'enforce'] as const;
+export const ACTION_CLASSES = AUTHORITY_TIERS;
 export type ActionClass = (typeof ACTION_CLASSES)[number];
 
 /**
  * The tier/action ordering as a rank map (index in the least→most array). The two
- * vocabularies share an ordering by construction — {@link ACTION_CLASSES} mirrors
- * the `AuthorityTierSchema` enum order — so a single rank table serves both.
+ * vocabularies share an ordering by construction — {@link ACTION_CLASSES} IS
+ * {@link AUTHORITY_TIERS} — so a single rank table serves both.
  */
 const RANK: Readonly<Record<ActionClass, number>> = Object.freeze(
   Object.fromEntries(ACTION_CLASSES.map((c, i) => [c, i])) as Record<ActionClass, number>

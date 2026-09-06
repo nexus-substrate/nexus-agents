@@ -47,7 +47,6 @@
  * (Source: ADR-0017, Issue #3839, #3843)
  */
 
-import { existsSync, readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { AuthorityTierSchema } from './strategy-manifest.js';
@@ -185,16 +184,4 @@ export type LoopTierRegistry = z.infer<typeof LoopTierRegistrySchema>;
 export function parseLoopTierRegistry(yamlText: string): LoopTierRegistry {
   const raw: unknown = parseYaml(yamlText);
   return LoopTierRegistrySchema.parse(raw);
-}
-
-/**
- * Load + validate the loop-tier registry from disk. Fail-closed: a missing file
- * or a schema violation throws rather than returning a partial registry.
- * @throws if the file is missing or fails schema validation.
- */
-export function loadLoopTierRegistry(registryPath: string): LoopTierRegistry {
-  if (!existsSync(registryPath)) {
-    throw new Error(`Loop-tier registry not found: ${registryPath}`);
-  }
-  return parseLoopTierRegistry(readFileSync(registryPath, 'utf-8'));
 }

@@ -23,8 +23,25 @@ import {
   guardExecuteEnvelope,
   ExecuteEnvelopeRefusalError,
 } from './authority-tier-guard.js';
+import { AUTHORITY_TIERS } from './strategy-manifest.js';
 import { getStrategyManifest, STRATEGY_MANIFEST_REGISTRY } from './strategy-manifest-registry.js';
 import type { AuthorityTier } from './strategy-manifest.js';
+
+describe('ACTION_CLASSES derives from AUTHORITY_TIERS (#5711)', () => {
+  it('is the same ordering, by construction rather than by comment', () => {
+    // The two arrays were declared independently while AUTHORITY_TIERS' JSDoc
+    // claimed to be "the single ordered source" both consumers derive from.
+    // Nothing enforced that, so the orderings were free to drift silently.
+    expect([...ACTION_CLASSES]).toEqual([...AUTHORITY_TIERS]);
+  });
+
+  it('ranks every tier the schema accepts', () => {
+    for (const tier of AUTHORITY_TIERS) {
+      expect(authorityRank(tier)).toBeGreaterThanOrEqual(0);
+    }
+    expect(new Set(AUTHORITY_TIERS.map((t) => authorityRank(t))).size).toBe(AUTHORITY_TIERS.length);
+  });
+});
 
 describe('authority-tier guard — tier→action mapping (#3841)', () => {
   it('orders the action classes least→most authoritative', () => {
