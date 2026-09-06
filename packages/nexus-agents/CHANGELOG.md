@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.8
+
+### Patch Changes
+
+- [#5719](https://github.com/nexus-substrate/nexus-agents/pull/5719) [`d069852`](https://github.com/nexus-substrate/nexus-agents/commit/d06985224dcac9ba12adde407ae55231eee5e756) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Issue-triage stamps its source citations with the tier the policy gate actually enforced, and gates its tier-1/2 action on the same value, instead of the pre-reputation classifier tier.
+
 ## 8.28.7
 
 ### Patch Changes
