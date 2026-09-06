@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.38.4
+
+### Patch Changes
+
+- [#5828](https://github.com/nexus-substrate/nexus-agents/pull/5828) [`6856165`](https://github.com/nexus-substrate/nexus-agents/commit/6856165495fa9db112fabe7a61fc662c2bf03d89) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `createIssue` no longer reports success for an issue it cannot identify. `gh
+issue create` has no `--json`, so the number is scraped from the URL it prints;
+  the pattern was anchored to end-of-string and fell back to `number: 0` inside an
+  `ok(...)`, so a trailing gh notice line, a `?`/`#` suffix, or a build that writes
+  the URL to stderr produced a "created" issue whose identity was `0` — and
+  `task-tracker.createTask` fed that straight into `addComment(0)` and
+  `gh issue close 0`. The number is now matched anywhere in the output and an
+  unparseable result is an error. `ScmIssue` gains an optional `url`, which
+  `task-tracker` was already reading through a cast for a field that did not
+  exist, so `TrackedTask.url` was permanently `undefined` on the GitHub path.
+
 ## 8.38.3
 
 ### Patch Changes
