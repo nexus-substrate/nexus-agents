@@ -5,6 +5,7 @@
  * agent behavior, outputs, and execution patterns.
  */
 
+import { severityForConfidence } from './failure-severity.js';
 import type { Message, ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
@@ -63,6 +64,7 @@ const FRAGILE_EXECUTION_INDICATORS = [
 /**
  * Failure detector that analyzes agent behavior for failure archetypes.
  */
+
 export class FailureDetector {
   private readonly config: DetectorConfig;
   private readonly logger: ILogger;
@@ -315,17 +317,7 @@ export class FailureDetector {
     indicators: string[],
     confidence: number
   ): DetectedFailure {
-    const severityMap: Record<number, DetectedFailure['severity']> = {
-      0.3: 'low',
-      0.5: 'medium',
-      0.7: 'high',
-      1.0: 'critical',
-    };
-
-    let severity: DetectedFailure['severity'] = 'low';
-    for (const [threshold, sev] of Object.entries(severityMap)) {
-      if (confidence >= parseFloat(threshold)) severity = sev;
-    }
+    const severity = severityForConfidence(confidence);
 
     return {
       archetype,
