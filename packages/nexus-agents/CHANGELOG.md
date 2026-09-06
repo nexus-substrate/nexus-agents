@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.31.3
+
+### Patch Changes
+
+- [#5767](https://github.com/nexus-substrate/nexus-agents/pull/5767) [`bf4c33f`](https://github.com/nexus-substrate/nexus-agents/commit/bf4c33f6bc00e789bd3848f20b0f2cfa9d518879) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Five doc comments that contradicted the code they document are corrected. `modelTimeoutMs` documented a 30s default against an actual 120s; `enableCapacityBalancing` read as if it excluded exhausted candidates when removal additionally requires a second flag that defaults to false; `getFallbackChain('code')` and `classifyTask` both carried examples whose stated results the functions do not produce. No behaviour changes.
+
 ## 8.31.2
 
 ### Patch Changes
