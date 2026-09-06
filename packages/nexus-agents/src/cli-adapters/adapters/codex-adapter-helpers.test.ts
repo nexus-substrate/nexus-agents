@@ -122,13 +122,13 @@ function mockLogger(): { logger: ILogger; warn: Mock<ILogger['warn']> } {
 describe('toCodexModelSlug', () => {
   it('translates a canonical registry id to the slug codex accepts, without warning', () => {
     const { logger, warn } = mockLogger();
-    expect(toCodexModelSlug('codex-5.3', logger)).toBe('gpt-5.4');
+    expect(toCodexModelSlug('codex-5.3', logger)).toBe('gpt-5.6-terra');
     expect(warn).not.toHaveBeenCalled();
   });
 
   it('passes an already-valid slug through unchanged, without warning', () => {
     const { logger, warn } = mockLogger();
-    expect(toCodexModelSlug('gpt-5.4', logger)).toBe('gpt-5.4');
+    expect(toCodexModelSlug('gpt-5.6-terra', logger)).toBe('gpt-5.6-terra');
     expect(warn).not.toHaveBeenCalled();
   });
 

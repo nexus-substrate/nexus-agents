@@ -79,11 +79,11 @@ describe('createCliAdapter', () => {
   });
 
   it('should pass model option to Codex adapter', () => {
-    const adapter = createCliAdapter({ cli: 'codex', model: 'gpt-5.4' });
+    const adapter = createCliAdapter({ cli: 'codex', model: 'gpt-5.6-terra' });
     const info = adapter.getModelInfo();
 
-    expect(info.id).toBe('gpt-5.4');
-    expect(info.name).toBe(expectedDisplayName('codex', 'gpt-5.4'));
+    expect(info.id).toBe('gpt-5.6-terra');
+    expect(info.name).toBe(expectedDisplayName('codex', 'gpt-5.6-terra'));
   });
 
   it('should use default models when not specified', () => {

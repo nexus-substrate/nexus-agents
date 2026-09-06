@@ -11,7 +11,7 @@
  * 2. OpenAI REASONING models (#4062): the o-series (o1/o3/o3-mini/o4-mini) reject
  *    `temperature` outright ("Unsupported parameter"), and the GPT-5 family accepts
  *    only the default ("Only the default (1) value is supported") — except the
- *    non-reasoning `gpt-5-chat` variant. This repo routes codex-5.3→gpt-5.4,
+ *    non-reasoning `gpt-5-chat` variant. This repo routes codex-5.3→gpt-5.6-terra,
  *    codex-5.2→gpt-5.3-codex-spark, codex-5.1-mini→gpt-5.4-mini (#5091), so
  *    gateway voters at the default 0.3 400 on all of them.
  *

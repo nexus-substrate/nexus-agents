@@ -269,7 +269,14 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     {
       id: 'codex-5.3',
-      displayName: 'GPT-5.4',
+      // #5694: repointed from gpt-5.4, which codex-cli 0.150.0 no longer serves
+      // (the verify Codex Models check caught it on its first live run). Terra
+      // is the served gpt-5.6 variant whose price position (2/12) sits where
+      // gpt-5.4 (2.5/15) did, below gpt-5.5 (5/30). Pricing and context are
+      // models.dev 2026-09-06; qualityScores are CARRIED OVER from the gpt-5.4
+      // entry, not measured — a tier position, so the codex balanced/best
+      // tie-breaks keep their order (panel #5694, option A, 2/3).
+      displayName: 'GPT-5.6 Terra',
       provider: 'openai',
       contextWindow: 1_050_000,
       outputModalities: ['text', 'structured_json', 'code'],
@@ -284,12 +291,13 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'computer_use',
       ],
       specialFeatures: ['streaming'],
-      notes: 'GPT-5.4; replaces GPT-5.3-Codex in Codex CLI; 1M context; native computer use',
-      pricing: { inputPer1M: 2.5, outputPer1M: 15.0 },
+      notes:
+        'GPT-5.6 Terra ("balanced agentic coding model" per the codex catalog); served by codex-cli 0.150.0; 1M context; the codex cache reports a 272K default window against models.dev\'s 1.05M',
+      pricing: { inputPer1M: 2.0, outputPer1M: 12.0 },
       qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 5 },
       maxOutputTokens: 128_000,
       cliName: 'codex',
-      cliModelName: 'gpt-5.4',
+      cliModelName: 'gpt-5.6-terra',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },

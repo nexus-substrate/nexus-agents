@@ -143,20 +143,20 @@ describe('would-have-self-healed counter (#4069)', () => {
   });
 
   it('recordWouldHaveSelfHealed increments directly (reactive-path entry)', () => {
-    recordWouldHaveSelfHealed('gpt-5.4', 'temperature');
-    recordWouldHaveSelfHealed('gpt-5.4', 'temperature');
-    expect(getWouldHaveSelfHealedCounts().get('gpt-5.4:temperature')).toBe(2);
+    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
+    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
+    expect(getWouldHaveSelfHealedCounts().get('gpt-5.6-terra:temperature')).toBe(2);
   });
 
   it('getWouldHaveSelfHealedCounts returns a defensive copy', () => {
-    recordWouldHaveSelfHealed('gpt-5.4', 'temperature');
+    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
     const snapshot = getWouldHaveSelfHealedCounts() as Map<string, number>;
-    snapshot.set('gpt-5.4:temperature', 999);
-    expect(getWouldHaveSelfHealedCounts().get('gpt-5.4:temperature')).toBe(1);
+    snapshot.set('gpt-5.6-terra:temperature', 999);
+    expect(getWouldHaveSelfHealedCounts().get('gpt-5.6-terra:temperature')).toBe(1);
   });
 
   it('reset clears the counter', () => {
-    recordWouldHaveSelfHealed('gpt-5.4', 'temperature');
+    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
     _resetWouldHaveSelfHealed();
     expect(getWouldHaveSelfHealedCounts().size).toBe(0);
   });

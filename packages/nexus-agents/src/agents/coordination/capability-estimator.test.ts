@@ -77,8 +77,8 @@ describe('estimateModelCapability', () => {
   });
 
   it('resolves canonical models by cliModelName', () => {
-    // 'gpt-5.4' is cliModelName for codex-5.3
-    const cap = estimateModelCapability('gpt-5.4', 'parallelizable');
+    // 'gpt-5.6-terra' is cliModelName for codex-5.3
+    const cap = estimateModelCapability('gpt-5.6-terra', 'parallelizable');
     // codex-5.3: reasoning=10, codeGeneration=10, avg=10, /10 = 1.0
     expect(cap.estimatedAccuracy).toBeCloseTo(1.0);
   });

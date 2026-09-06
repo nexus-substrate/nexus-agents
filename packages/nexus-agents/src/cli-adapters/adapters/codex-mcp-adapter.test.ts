@@ -299,7 +299,7 @@ describe('CodexMcpAdapter', () => {
 
       expect(mockClient.callTool).toHaveBeenCalledWith({
         name: 'codex',
-        arguments: expect.objectContaining({ model: 'gpt-5.4' }),
+        arguments: expect.objectContaining({ model: 'gpt-5.6-terra' }),
       });
     });
 

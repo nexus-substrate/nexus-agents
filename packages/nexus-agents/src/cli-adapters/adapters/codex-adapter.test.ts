@@ -303,7 +303,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       await adapter.execute({ content: 'Task', model: 'codex-5.3' });
 
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.4');
+      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.6-terra');
       expect(args).not.toContain('codex-5.3');
     });
 
@@ -311,10 +311,10 @@ describe('CodexCliAdapter (Subprocess)', () => {
       const mockProcess = createMockProcess(COMPLETED_NDJSON);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      await adapter.execute({ content: 'Task', model: 'gpt-5.4' });
+      await adapter.execute({ content: 'Task', model: 'gpt-5.6-terra' });
 
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.4');
+      expect(args[args.indexOf('-m') + 1]).toBe('gpt-5.6-terra');
     });
 
     it('passes a model unknown to the registry through verbatim and warns (#5091)', async () => {
