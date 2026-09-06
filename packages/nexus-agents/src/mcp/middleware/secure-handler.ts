@@ -23,13 +23,14 @@ import {
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
 import { checkRateLimit, emitRateLimitAudit } from './secure-handler-rate-limit.js';
+import {
+  checkSecurityTier,
+  emitSecurityTierAudit,
+  type SecurityTier,
+} from './secure-handler-tier.js';
 import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
-import {
-  sanitizeToolInput,
-  logSanitizationResult,
-  type SanitizeToolInputResult,
-} from './tool-input-sanitizer.js';
+import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalPolicyFirewall } from './policy-registry.js';
 import { recordPolicyVerdict } from './policy-audit-emit.js';
@@ -41,16 +42,7 @@ export type { ToolResult };
  */
 export type ToolHandler = (args: unknown) => Promise<ToolResult>;
 
-/**
- * Security tier for MCP tools. Controls input validation strictness.
- *
- * - 'standard': Default. XML injection tag stripping only (existing behavior).
- * - 'user-facing': Accepts user task descriptions. Rejects known injection patterns.
- * - 'external': Processes external URLs/content. Strictest validation.
- *
- * @see Issue #1586 — Tiered security validation
- */
-export type SecurityTier = 'standard' | 'user-facing' | 'external';
+export type { SecurityTier };
 
 /**
  * Configuration for the secure handler wrapper.
@@ -416,45 +408,6 @@ function emitToolAudit({
 }
 
 /** Emits an audit event for a policy denial. */
-/** Reject inputs with detected injection patterns for elevated security tiers. */
-function checkSecurityTier(
-  config: SecureHandlerConfig,
-  sanitizeResult: SanitizeToolInputResult,
-  logger: ILogger
-): ToolResult | null {
-  const tier = config.securityTier ?? 'standard';
-  // A value the sanitizer could not reduce to a fixed point is refused at EVERY
-  // tier, standard included, because the argument still carries whatever the
-  // stripper could not remove. `detectedPatterns` cannot catch it — the pattern
-  // detectors match phrases, not tags, so a deeply nested `<system>` returned
-  // clean-looking metadata with an empty pattern list. Refusing here is fail-
-  // closed and rare: it takes six levels of hand-nested tags to reach.
-  if (sanitizeResult.sanitizationIncomplete) {
-    logger.warn('Input rejected: sanitizer did not reach a fixed point', { tier });
-    return toolStructuredError({
-      errorCategory: 'permission',
-      message:
-        'Input validation failed: the input could not be fully sanitized within the pass budget, ' +
-        'so it still contains markup the sanitizer removes. Simplify the input and retry.',
-    });
-  }
-  if (tier === 'standard' || sanitizeResult.detectedPatterns.length === 0) {
-    return null;
-  }
-  logger.warn('Input rejected by security tier validation', {
-    tier,
-    patterns: sanitizeResult.detectedPatterns,
-  });
-  // Security-tier rejection of suspected injection patterns — an
-  // access-control denial, categorized `permission` (#2649).
-  return toolStructuredError({
-    errorCategory: 'permission',
-    message:
-      `Input validation failed: detected patterns [${sanitizeResult.detectedPatterns.join(', ')}]. ` +
-      'Remove prompt injection patterns and retry.',
-  });
-}
-
 /** Pre-execution checks: input size, input sanitization, rate limit, policy. */
 function runPreChecks(
   config: SecureHandlerConfig,
@@ -491,8 +444,16 @@ function runPreChecks(
   };
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)
-  const tierError = checkSecurityTier(config, sanitizeResult, logger);
-  if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false, sanitization };
+  const refusal = checkSecurityTier(config.securityTier ?? 'standard', sanitizeResult, logger);
+  if (refusal !== null) {
+    // Without this the refused call is the ONE kind of traffic that leaves no
+    // trace in the audit chain: it returns above both the rate limiter and
+    // `executeAndAudit`, so an attack read as a quiet period. See
+    // `secure-handler-tier.ts` for why the limiter still runs after this check.
+    if (config.auditLogger)
+      emitSecurityTierAudit(config.auditLogger, config.toolName, requestContext, refusal);
+    return { error: refusal.error, sanitizedArgs, nearMiss: false, sanitization };
+  }
 
   if (config.rateLimiter) {
     const denial = checkRateLimit(config.rateLimiter, logger);
