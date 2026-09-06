@@ -110,7 +110,7 @@ describe('evaluateRatification', () => {
       // Applied after the head it ratifies. Undated is now `indeterminate` —
       // see the staleness suite below.
       labelAppliedAt: '2026-09-06T12:00:00Z',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
     expect(verdict.kind).toBe('ratified');
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('ratification-label');
@@ -239,7 +239,7 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
     labels: [RATIFICATION_LABEL],
     owners: OWNERS,
     labelAppliedAt: '2026-09-06T12:00:00Z',
-    headCommittedAt: '2026-09-06T11:00:00Z',
+    headObservedAt: '2026-09-06T11:00:00Z',
   };
 
   it('ratifies when a governor-path owner applied the label, and names them', () => {
@@ -373,7 +373,7 @@ describe('a ratification label predating the head is not a ratification', () => 
     const v = evaluateRatification({
       ...base,
       labelAppliedAt: '2026-09-06T10:00:00Z',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
 
     expect(v.kind).toBe('unratified');
@@ -381,7 +381,7 @@ describe('a ratification label predating the head is not a ratification', () => 
       // The refusal must say WHY, or the owner cannot tell it from a PR that
       // was never ratified at all.
       expect(v.staleLabel?.labelAppliedAt).toBe('2026-09-06T10:00:00Z');
-      expect(v.staleLabel?.headCommittedAt).toBe('2026-09-06T11:00:00Z');
+      expect(v.staleLabel?.headObservedAt).toBe('2026-09-06T11:00:00Z');
       expect(v.touched).toContain('packages/nexus-agents/src/audit/audit-logger.ts');
     }
   });
@@ -393,7 +393,7 @@ describe('a ratification label predating the head is not a ratification', () => 
     const v = evaluateRatification({
       ...base,
       labelAppliedAt: '2026-09-06T11:00:01Z',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
 
     expect(v.kind).toBe('ratified');
@@ -406,7 +406,7 @@ describe('a ratification label predating the head is not a ratification', () => 
     const v = evaluateRatification({
       ...base,
       labelAppliedAt: '2026-09-06T11:00:00Z',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
 
     expect(v.kind).toBe('ratified');
@@ -415,10 +415,28 @@ describe('a ratification label predating the head is not a ratification', () => 
   it('is INDETERMINATE when the label has no timestamp', () => {
     // Absence of measurement, not absence of staleness. A ratification whose
     // age cannot be established is exactly what a later spot-check trusts.
-    const v = evaluateRatification({ ...base, headCommittedAt: '2026-09-06T11:00:00Z' });
+    const v = evaluateRatification({ ...base, headObservedAt: '2026-09-06T11:00:00Z' });
 
     expect(v.kind).toBe('indeterminate');
     if (v.kind === 'indeterminate') expect(v.reason).toContain('predates');
+  });
+
+  it('does not trust a commit date: the head time is server-observed', () => {
+    // The dissent that this design absorbed. Commit author/committer dates live
+    // in the commit object and are client-set, so `GIT_COMMITTER_DATE` backdates
+    // them freely — an attacker with a ratified PR could push a commit stamped
+    // BEFORE the label and have the check read it as current. The field is the
+    // earliest workflow-run `created_at` for the sha, which GitHub assigns.
+    // This test pins the field's meaning; the producer is the workflow.
+    const v = evaluateRatification({
+      ...base,
+      labelAppliedAt: '2026-09-06T12:00:00Z',
+      // A forged commit date would say 2026-09-05; the server saw the push at
+      // 13:00, after the label, so the label is stale regardless.
+      headObservedAt: '2026-09-06T13:00:00Z',
+    });
+
+    expect(v.kind).toBe('unratified');
   });
 
   it('is INDETERMINATE when the head has no timestamp', () => {
@@ -433,7 +451,7 @@ describe('a ratification label predating the head is not a ratification', () => 
     const v = evaluateRatification({
       ...base,
       labelAppliedAt: 'not-a-date',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
 
     expect(v.kind).toBe('indeterminate');
@@ -447,7 +465,7 @@ describe('a ratification label predating the head is not a ratification', () => 
       labels: [],
       approvals: ['williamzujkowski'],
       labelAppliedAt: '2026-09-06T10:00:00Z',
-      headCommittedAt: '2026-09-06T11:00:00Z',
+      headObservedAt: '2026-09-06T11:00:00Z',
     });
 
     expect(v.kind).toBe('ratified');
@@ -460,7 +478,7 @@ describe('a ratification label predating the head is not a ratification', () => 
       touched: ['CODEOWNERS'],
       staleLabel: {
         labelAppliedAt: '2026-09-06T10:00:00Z',
-        headCommittedAt: '2026-09-06T11:00:00Z',
+        headObservedAt: '2026-09-06T11:00:00Z',
       },
     });
 

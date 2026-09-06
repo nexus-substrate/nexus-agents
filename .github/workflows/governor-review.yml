@@ -168,7 +168,14 @@ jobs:
             --paginate \
             --jq '[.[] | select(.event == "labeled" and .label.name == "owner-ratified")] | last | .created_at // empty' \
             2>/dev/null | tail -n1 || echo '')
-          HEAD_TIME=$(git show -s --format=%cI "${HEAD_SHA}" || echo '')
+          # SERVER-assigned, not the commit's own date. Author/committer dates
+          # live in the commit object and are set by the client, so
+          # `GIT_COMMITTER_DATE` backdates them freely — a commit stamped before
+          # the label would read as "the label is newer, therefore current".
+          # The earliest workflow run for the sha is when GitHub first saw the
+          # push, and the pusher cannot forge it.
+          HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+            --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -187,7 +194,7 @@ jobs:
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
-          HEAD_COMMITTED_AT: ${{ steps.evidence.outputs.head_time }}
+          HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
         run: npx tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------
@@ -259,8 +266,10 @@ jobs:
             PR_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
               --jq '.head.sha // empty')
             if [ -n "${PR_HEAD_SHA}" ]; then
-              HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}" \
-                --jq '.commit.committer.date // empty' 2>/dev/null || echo '')
+              # See the pre-merge job: server-assigned run time, never the
+              # client-settable commit date.
+              HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${PR_HEAD_SHA}&per_page=100" \
+                --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
             else
               HEAD_TIME=""
             fi
@@ -283,5 +292,5 @@ jobs:
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
-          HEAD_COMMITTED_AT: ${{ steps.evidence.outputs.head_time }}
+          HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
         run: npx tsx scripts/check-governor-ratification.ts

@@ -76,7 +76,7 @@ export type RatificationVerdict =
        * verdict so the CI line can tell the owner what to do — re-apply — rather
        * than leaving them to guess why a labelled PR came back unratified.
        */
-      staleLabel?: { labelAppliedAt: string; headCommittedAt: string };
+      staleLabel?: { labelAppliedAt: string; headObservedAt: string };
     }
   | { kind: 'indeterminate'; reason: string };
 
@@ -124,15 +124,24 @@ export interface RatificationInputs {
    */
   readonly labelAppliedAt?: string | undefined;
   /**
-   * Committer date of the PR head (ISO 8601).
+   * When GitHub FIRST OBSERVED the current head (ISO 8601) — the earliest
+   * `created_at` among the workflow runs for that sha.
+   *
+   * Deliberately NOT the commit's committer date. Both author and committer
+   * dates live in the commit object and are set by the client, so
+   * `GIT_COMMITTER_DATE` backdates them freely: an attacker with a ratified
+   * PR could push a commit stamped before the label and have the staleness
+   * check read it as "the label is newer, therefore current". The panel's
+   * contrarian voter raised exactly this on the first draft of this change and
+   * was right. A workflow run's `created_at` is assigned server-side and cannot
+   * be forged by the pusher.
    *
    * Compared against {@link labelAppliedAt} to answer "did the ratifier see
-   * these bytes?". Deliberately the HEAD commit rather than the newest commit
-   * touching a governor path: that is what `dismiss_stale_reviews` does to an
-   * approval — any push invalidates it — and a ratification route that is
+   * these bytes?". Any push invalidates the label, which is what
+   * `dismiss_stale_reviews` already does to an approval — a ratification route
    * laxer than the review route it stands in for is the gap this closes.
    */
-  readonly headCommittedAt?: string | undefined;
+  readonly headObservedAt?: string | undefined;
   /** Logins permitted to ratify, from the CODEOWNERS governor section. */
   readonly owners: readonly string[];
 }
@@ -174,11 +183,11 @@ export function governorOwnersFromCodeowners(codeownersText: string): string[] {
  */
 function labelStaleness(
   labelAppliedAt: string | undefined,
-  headCommittedAt: string | undefined,
+  headObservedAt: string | undefined,
   touched: readonly string[]
 ): RatificationVerdict | null {
   const labelMs = labelAppliedAt === undefined ? NaN : Date.parse(labelAppliedAt);
-  const headMs = headCommittedAt === undefined ? NaN : Date.parse(headCommittedAt);
+  const headMs = headObservedAt === undefined ? NaN : Date.parse(headObservedAt);
 
   if (Number.isNaN(labelMs) || Number.isNaN(headMs)) {
     return {
@@ -196,7 +205,7 @@ function labelStaleness(
       touched,
       staleLabel: {
         labelAppliedAt: String(labelAppliedAt),
-        headCommittedAt: String(headCommittedAt),
+        headObservedAt: String(headObservedAt),
       },
     };
   }
@@ -272,7 +281,7 @@ function evaluateLabelRoute(
 
   const staleness = labelStaleness(
     inputs.labelAppliedAt,
-    inputs.headCommittedAt,
+    inputs.headObservedAt,
     inputs.touchedGovernorFiles
   );
   if (staleness !== null) return staleness;
@@ -301,10 +310,11 @@ export function formatVerdict(verdict: RatificationVerdict): string {
           'ratifies a diff that is no longer the one being merged.\n' +
           `${list}\n` +
           `Label applied: ${verdict.staleLabel.labelAppliedAt}\n` +
-          `Head committed: ${verdict.staleLabel.headCommittedAt}\n` +
+          `Head first observed by GitHub: ${verdict.staleLabel.headObservedAt}\n` +
           'An approving review is dismissed automatically when new commits arrive ' +
           '(`dismiss_stale_reviews` on `main`); a label is not, so the gate applies the same\n' +
-          'rule here. Remove and re-apply the label to ratify the current head.'
+          'rule here. The head time is the earliest workflow run for the sha — server-assigned,\n' +
+          'so a backdated commit date cannot defeat it. Remove and re-apply the label.'
         );
       }
       return (
@@ -330,14 +340,14 @@ export function formatVerdict(verdict: RatificationVerdict): string {
  */
 function labelEvidenceFromEnv(
   env: NodeJS.ProcessEnv
-): Pick<RatificationInputs, 'labelAppliedBy' | 'labelAppliedAt' | 'headCommittedAt'> {
+): Pick<RatificationInputs, 'labelAppliedBy' | 'labelAppliedAt' | 'headObservedAt'> {
   const actor = (env['RATIFICATION_LABEL_ACTOR'] ?? '').trim();
   const labelTime = (env['RATIFICATION_LABEL_TIME'] ?? '').trim();
-  const headTime = (env['HEAD_COMMITTED_AT'] ?? '').trim();
+  const headTime = (env['HEAD_OBSERVED_AT'] ?? '').trim();
   return {
     ...(actor !== '' ? { labelAppliedBy: actor } : {}),
     ...(labelTime !== '' ? { labelAppliedAt: labelTime } : {}),
-    ...(headTime !== '' ? { headCommittedAt: headTime } : {}),
+    ...(headTime !== '' ? { headObservedAt: headTime } : {}),
   };
 }
 
