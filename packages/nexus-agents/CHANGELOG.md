@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.31.1
+
+### Patch Changes
+
+- [#5759](https://github.com/nexus-substrate/nexus-agents/pull/5759) [`701c49f`](https://github.com/nexus-substrate/nexus-agents/commit/701c49fd44db2692f6164f335856af75f27fceea) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Two untrusted-input channels in the PR reviewer are now measured. The EXTERNAL CONTENT envelope around PR diffs could be terminated by the diff content itself, because the sanitizer has no reason to know about the envelope's own markers; forged markers are neutralized and raise an injection signal. The PR title was excluded from the injection scan that decides the enforced trust tier, so the same payload demoted an author from the body and raised nothing from the title — title and body are now scanned together, as the firewall's GitHub adapter already did.
+
+- [#5762](https://github.com/nexus-substrate/nexus-agents/pull/5762) [`8ee86e3`](https://github.com/nexus-substrate/nexus-agents/commit/8ee86e39cb787a26209f4d8eb437977141ead372) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Two statistics in the learning loop were computable outside their own range. `pValue` could exceed 1 across the whole near-null region, because the continuity correction was subtracted from the difference before the division and a negative z was then doubled as an upper tail; the corrected statistic is now clamped at 0. `recommendedSampleSize` was ~56% too high, because `getZScore` applies the two-tail transform itself and was being handed already-transformed arguments; a one-tailed `zQuantile` primitive now backs both.
+
 ## 8.31.0
 
 ### Minor Changes
