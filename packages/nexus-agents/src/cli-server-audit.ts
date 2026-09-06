@@ -50,7 +50,10 @@ export function initializeAuditLogger(
     logger
   );
 
-  auditLogger.logSystemStartup({ auditLogDir: logDir });
+  // Startup has BEGUN here — authentication, tool registration and transport
+  // connect have not run yet. `startServer` writes the completion record
+  // once the server reaches "waiting for requests" (#5577).
+  auditLogger.logSystemStartupBegin({ auditLogDir: logDir });
   logger.info('Audit logging enabled', { logDir });
   return auditLogger;
 }
@@ -65,7 +68,9 @@ export async function shutdownAuditLogger(
   if (auditLogger === null) return;
 
   try {
-    auditLogger.logSystemShutdown();
+    // Begin only: this logger is closed on the next line, before the rest of
+    // the teardown, so a completion record is not writable (#5577).
+    auditLogger.logSystemShutdownBegin();
     await auditLogger.close();
     logger.info('Audit logger shutdown complete');
   } catch (error) {
@@ -73,6 +78,39 @@ export async function shutdownAuditLogger(
       'Error shutting down audit logger',
       error instanceof Error ? error : new Error(String(error))
     );
+  }
+}
+
+/**
+ * Writes the startup COMPLETION record (#5577).
+ *
+ * Call only once the server has actually reached "waiting for requests".
+ * `initializeAuditLogger` writes the matching `system.startup.begin`.
+ */
+export function recordStartupComplete(auditLogger: AuditLogger | null, mode: string): void {
+  auditLogger?.logSystemStartup({ mode });
+}
+
+/**
+ * Runs a startup step and records a FAILED startup if it throws, then
+ * rethrows (#5577).
+ *
+ * Without this the begin record has no answer: the process dies and the log
+ * shows a startup that neither succeeded nor failed.
+ */
+export async function recordStartupFailure<T>(
+  auditLogger: AuditLogger | null,
+  step: string,
+  run: () => Promise<T>
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    auditLogger?.logSystemStartup(
+      { failedAt: step, error: error instanceof Error ? error.message : String(error) },
+      'failure'
+    );
+    throw error;
   }
 }
 

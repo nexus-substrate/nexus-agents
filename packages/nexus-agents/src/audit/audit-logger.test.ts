@@ -373,14 +373,47 @@ describe('AuditLogger', () => {
     });
   });
 
-  describe('logSystemShutdown', () => {
-    it('logs with system actor and metadata', async () => {
+  describe('logSystemShutdownBegin', () => {
+    it('records the BEGIN action, not a completed shutdown (#5577)', async () => {
       const l = new AuditLogger(makeConfig(), s);
-      l.logSystemShutdown({ reason: 'graceful' });
+      l.logSystemShutdownBegin({ reason: 'graceful' });
       await l.flush();
       const e = callArg(s.write, 0);
-      expect(e.action).toBe('system.shutdown');
+      // The sink closes before the rest of the teardown, so this record must
+      // not claim the shutdown finished.
+      expect(e.action).toBe('system.shutdown.begin');
       expect(e.metadata).toEqual({ reason: 'graceful' });
+    });
+  });
+
+  describe('startup phase records (#5577)', () => {
+    it('logSystemStartupBegin records the begin action', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemStartupBegin({ auditLogDir: '/tmp/x' });
+      await l.flush();
+      const e = callArg(s.write, 0);
+      expect(e.action).toBe('system.startup.begin');
+      expect(e.outcome).toBe('success');
+    });
+
+    it('logSystemStartup can record a FAILED startup', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemStartup({ failedAt: 'subsystem_init' }, 'failure');
+      await l.flush();
+      const e = callArg(s.write, 0);
+      expect(e.action).toBe('system.startup');
+      expect(e.outcome).toBe('failure');
+      expect(e.severity).toBe('warning');
+      expect(e.description).toContain('failed');
+    });
+
+    it('logSystemStartup still defaults to success', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemStartup({ mode: 'server' });
+      await l.flush();
+      const e = callArg(s.write, 0);
+      expect(e.action).toBe('system.startup');
+      expect(e.outcome).toBe('success');
     });
   });
 

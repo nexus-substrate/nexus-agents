@@ -360,7 +360,7 @@ describe('logTierTransition — payload is hash-covered (#3921)', () => {
     // are stamped v2).
     const { logger, storage } = makeLogger();
     logger.logSystemStartup({ note: 'boot' });
-    logger.logSystemShutdown({ note: 'halt' });
+    logger.logSystemShutdownBegin({ note: 'halt' });
     await logger.close();
     const events = storage.getAll();
     expect(events.every((e) => e.hashVersion === undefined)).toBe(true);

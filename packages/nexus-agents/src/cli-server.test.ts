@@ -87,6 +87,7 @@ vi.mock('./cli-server-lifecycle.js', () => ({
   recordServerShutdown: vi.fn(),
   logFinalHealthMetrics: vi.fn(),
   logFinalEventBusStats: vi.fn(),
+  watchParentProcess: vi.fn(),
 }));
 
 vi.mock('./cli-orchestrator.js', () => ({
@@ -135,6 +136,12 @@ vi.mock('./cli-server-audit.js', () => ({
   shutdownAuditLogger: vi.fn(() => Promise.resolve()),
   logSecurityConfig: vi.fn(() => ({ authorize: vi.fn() })),
   getPolicyValues: vi.fn(() => ({ defaultExec: 'safe' })),
+  recordStartupComplete: vi.fn(),
+  // Must actually RUN the step, not swallow it: the real wrapper is
+  // pass-through on success and only adds a record on throw (#5577).
+  recordStartupFailure: vi.fn((_logger: unknown, _step: string, run: () => Promise<unknown>) =>
+    run()
+  ),
 }));
 
 // ============================================================================

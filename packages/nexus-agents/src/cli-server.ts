@@ -15,7 +15,6 @@ import {
 import { initializeBuiltInTemplates } from './workflows/index.js';
 import { createUnifiedRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import { MCP_TIMEOUTS } from './config/timeouts.js';
-import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import { exitIfNestedSubprocessServer } from './cli-server-nesting-guard.js';
 import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
@@ -37,6 +36,7 @@ import {
   initializeSwarmObserver,
   initializeEventBus,
   recordServerStartup,
+  watchParentProcess,
   recordServerShutdown,
   logFinalHealthMetrics,
   logFinalEventBusStats,
@@ -63,6 +63,8 @@ import { shutdownImprovementReviewScheduler } from './mcp/tools/improvement-revi
 import {
   initializeAuditLogger,
   shutdownAuditLogger,
+  recordStartupComplete,
+  recordStartupFailure,
   logSecurityConfig,
   getPolicyValues,
 } from './cli-server-audit.js';
@@ -521,13 +523,18 @@ async function initializeSubsystems(
   const policyFirewall = logSecurityConfig(serverLogger, config);
   const auditLogger = initializeAuditLogger(config.security, serverLogger);
 
-  // Initialize authentication handler (Issue #739). Side effects only —
-  // auth state is wired into the request pipeline inside initializeAuth.
-  initializeAuth(config, serverLogger);
-  // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
-  await initializeAndRegisterTools(server, serverLogger, policyFirewall, config, {
-    feedbackIntegration: feedbackResult.feedbackIntegration,
-    auditLogger,
+  // Everything inside can throw, and a throw must reach the audit log as a
+  // FAILED startup rather than leaving the earlier begin record unanswered
+  // (#5577).
+  await recordStartupFailure(auditLogger, 'subsystem_init', async () => {
+    // Initialize authentication handler (Issue #739). Side effects only —
+    // auth state is wired into the request pipeline inside initializeAuth.
+    initializeAuth(config, serverLogger);
+    // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
+    await initializeAndRegisterTools(server, serverLogger, policyFirewall, config, {
+      feedbackIntegration: feedbackResult.feedbackIntegration,
+      auditLogger,
+    });
   });
 
   return { server, serverLogger, observer, eventBusBridge, auditLogger };
@@ -606,13 +613,7 @@ export async function startServer(
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
 
-  // Issue #810: Monitor stdin for parent process death to prevent zombie processes
-  const stdinMonitor = getStdinLifecycleMonitor();
-  stdinMonitor.start();
-  stdinMonitor.onClose(() => {
-    logger.warn('Parent process closed stdin, shutting down');
-    process.exit(0);
-  });
+  watchParentProcess(logger); // Issue #810: exit when the parent closes stdin
 
   // Setup graceful shutdown with observer and EventBus cleanup
   const cleanup = createShutdownCleanup({
@@ -629,5 +630,7 @@ export async function startServer(
   // Startup complete — cancel the watchdog so it can't fire during request
   // handling (#2163).
   clearTimeout(startupWatchdog);
+  // The startup COMPLETION record, written only here (#5577).
+  recordStartupComplete(auditLogger, mode);
   logger.debug('Server running, waiting for requests...');
 }

@@ -8,6 +8,7 @@
  * (Source: Issue #339)
  */
 
+import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import type { ILogger } from './core/index.js';
 import { getTimeProvider } from './core/index.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
@@ -167,5 +168,20 @@ export function logFinalEventBusStats(logger: ILogger): void {
     activeSubscriptions: finalStats.activeSubscriptions,
     historySize: finalStats.historySize,
     errorCount: finalStats.errorCount,
+  });
+}
+
+/**
+ * Exits the process when the parent closes stdin (Issue #810).
+ *
+ * A stdio MCP server whose parent dies keeps running as a zombie holding the
+ * pipe open; the monitor turns that into a clean exit.
+ */
+export function watchParentProcess(logger: ILogger): void {
+  const monitor = getStdinLifecycleMonitor();
+  monitor.start();
+  monitor.onClose(() => {
+    logger.warn('Parent process closed stdin, shutting down');
+    process.exit(0);
   });
 }

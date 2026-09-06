@@ -621,7 +621,9 @@ ClassDeclaration AuditLogger
   logRateLimitViolation(opts: RateLimitAuditOpts) => void
   logSecurityEvent(opts: SecurityEventAuditOpts) => void
   logSystemShutdown(metadata?: Record<string, unknown>) => void
-  logSystemStartup(metadata?: Record<string, unknown>) => void
+  logSystemShutdownBegin(metadata?: Record<string, unknown>) => void
+  logSystemStartup(metadata?: Record<string, unknown>, outcome?: "success" | "failure") => void
+  logSystemStartupBegin(metadata?: Record<string, unknown>) => void
   logTierTransition(opts: TierTransitionAuditOpts) => void
   logToolInvocation(opts: ToolInvocationAuditOpts) => void
 TypeAliasDeclaration AuditOutcome
