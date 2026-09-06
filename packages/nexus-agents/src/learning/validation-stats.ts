@@ -19,6 +19,7 @@ import type {
 import { DEFAULT_STATISTICAL_OPTIONS } from './validation-stats-types.js';
 import {
   getZScore,
+  zQuantile,
   normalCDF,
   calculateZStatistic,
   calculateDifferenceCI,
@@ -347,8 +348,13 @@ export function calculateMinSampleSize(
   const p2 = baselineRate + minimumDetectableEffect;
   const pBar = (p1 + p2) / 2;
 
-  const zAlpha = getZScore(1 - alpha / 2);
-  const zBeta = getZScore(power);
+  // `getZScore` takes a CONFIDENCE level and applies the two-tail transform
+  // itself, so `1 - alpha / 2` double-applied it (2.2418 where 1.96 is wanted)
+  // and `power` was read as a confidence level rather than the one-tailed
+  // quantile it is (1.2817 where 0.8416 is wanted). Together they inflated
+  // every recommendation by ~56% (#5760).
+  const zAlpha = getZScore(1 - alpha);
+  const zBeta = zQuantile(power);
 
   const numerator =
     (zAlpha * Math.sqrt(2 * pBar * (1 - pBar)) +
