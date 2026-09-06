@@ -70,6 +70,10 @@ export interface PreferenceStats {
   readonly totalDataPoints: number;
   readonly dataPointsByDomain: Record<Domain, number>;
   readonly strongModelPreferenceRate: number;
+  /**
+   * 1 - strongModelPreferenceRate over the recorded data points; 0 when
+   * `totalDataPoints` is 0 (nothing routed, nothing saved — #5700).
+   */
   readonly estimatedCostSavingsRate: number;
   readonly lastUpdatedAt: Date;
 }

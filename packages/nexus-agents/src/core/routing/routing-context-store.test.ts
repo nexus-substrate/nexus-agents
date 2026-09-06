@@ -363,7 +363,10 @@ describe('PreferenceStats type shape', () => {
     const stats: PreferenceStats = store.getPreferenceStats();
     expect(stats.totalDataPoints).toBe(0);
     expect(stats.strongModelPreferenceRate).toBe(0);
-    expect(stats.estimatedCostSavingsRate).toBe(1);
+    // Nothing was routed, so nothing was saved (#5700). This used to bless 1.0 —
+    // the most flattering value — from zero data points; the sibling
+    // preference-router store already reported 0 for the same empty case.
+    expect(stats.estimatedCostSavingsRate).toBe(0);
     expect(stats.lastUpdatedAt).toBeInstanceOf(Date);
     expect(typeof stats.dataPointsByDomain).toBe('object');
   });
