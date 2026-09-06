@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.1
+
+### Patch Changes
+
+- [#5701](https://github.com/nexus-substrate/nexus-agents/pull/5701) [`e13a9a0`](https://github.com/nexus-substrate/nexus-agents/commit/e13a9a092e26b404655396ca14cd723b75d744da) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `RoutingContextStore.getPreferenceStats()` reports `estimatedCostSavingsRate: 0` for an empty store instead of `1.0`, matching the preference-router store's empty case ([#5700](https://github.com/nexus-substrate/nexus-agents/issues/5700)).
+
 ## 8.28.0
 
 ### Minor Changes
