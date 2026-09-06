@@ -28,6 +28,8 @@ import {
   DECISION_EMOJI,
 } from './pr-review-types.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
+export { formatDiffs } from './pr-diff-fence.js';
+import { formatDiffs } from './pr-diff-fence.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import { assessReputation } from '../security/reputation-model.js';
 import type {
@@ -70,7 +72,8 @@ export async function fetchAccountAgeDays(
 
 /**
  * Assesses the PR author's reputation from the signals available in the PR
- * event: author association + injection flags from the (sanitized) PR body, plus
+ * event: author association + injection flags from the (sanitized) PR body AND
+ * its diffs (#5697-adjacent: the diff is the larger untrusted channel), plus
  * the author's real account age when it was fetched (#3133). `accountAgeDays` is
  * OMITTED when the lookup failed — never fabricated, so the engine skips the
  * `new_account` signal. Returns undefined when reputation is disabled.
@@ -90,7 +93,11 @@ export function assessPRReputation(
     username: pr.author,
     ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
     authorAssociation: pr.authorAssociation,
-    injectionFlags: sanitizeResult.injectionFlags,
+    // Body AND diff: the diff is the larger untrusted channel and used to raise
+    // no signal at all, so a payload in an added line demoted nobody.
+    injectionFlags: [
+      ...new Set([...sanitizeResult.injectionFlags, ...formatDiffs(pr).injectionFlags]),
+    ],
   };
   return assessReputation(metadata, cache);
 }
@@ -186,29 +193,6 @@ export function extractStringField(
     if (typeof value === 'string') return value;
   }
   return undefined;
-}
-
-/** Formats fetched patches and reports how many were supplied without truncation. */
-export function formatDiffs(pr: PRMetadata): {
-  readonly text: string;
-  readonly filesIncluded: number;
-} {
-  const maxDiffLength = 2000;
-  let totalLength = 0;
-  let filesIncluded = 0;
-  const diffs: string[] = [];
-  for (const file of pr.files) {
-    if (file.patch === undefined) continue;
-    const diff = `\`\`\`diff\n# ${file.filename}\n${file.patch}\n\`\`\``;
-    if (totalLength + diff.length > maxDiffLength * pr.files.length) {
-      diffs.push(`# ${file.filename}\n(diff truncated)`);
-    } else {
-      diffs.push(diff);
-      totalLength += diff.length;
-      filesIncluded++;
-    }
-  }
-  return { text: diffs.join('\n\n'), filesIncluded };
 }
 
 // =============================================================================
