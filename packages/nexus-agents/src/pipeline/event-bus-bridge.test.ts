@@ -184,6 +184,7 @@ describe('startPipelineEventBridge / shutdownPipelineEventBridge', () => {
     type: 'stage.started',
     executionId: 'e1',
     stageId: 's1',
+    pluginId: 'p1',
     timestamp: Date.now(),
   });
 
