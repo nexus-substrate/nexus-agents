@@ -4,7 +4,7 @@
  * @module core/task-analysis/capability-gap-ledger-persistence.test
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -146,5 +146,83 @@ describe('every declared gap type survives a round trip (#4651)', () => {
     const reloaded = createPersistentCapabilityGapLedger({ filePath });
     expect(reloaded.loadReport().malformedLines).toBe(0);
     expect(reloaded.summarize()[0]?.type).toBe(type);
+  });
+});
+
+// ============================================================================
+// The load report must distinguish "cannot read" from "written and empty"
+// ============================================================================
+
+describe('GapLedgerLoadReport completeness', () => {
+  const dirs: string[] = [];
+  function scratch(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'gap-ledger-report-'));
+    dirs.push(dir);
+    return join(dir, 'capability-gaps.jsonl');
+  }
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('flags a file that exists and could not be read', () => {
+    // The module's docstring claimed "cannot read" stayed distinguishable from
+    // "nothing there" while both produced `fileExisted: true, loaded: 0,
+    // malformedLines: 0, expiredEntries: 0`. A DIRECTORY at the ledger path
+    // exists and cannot be read as a file — the same shape as an EACCES after
+    // an ownership change.
+    const filePath = scratch();
+    mkdirSync(filePath, { recursive: true });
+
+    const report = createPersistentCapabilityGapLedger({ filePath }).loadReport();
+
+    expect(report.fileExisted).toBe(true);
+    expect(report.readFailed).toBe(true);
+    expect(report.loaded).toBe(0);
+  });
+
+  it('does not flag a readable empty file as a read failure', () => {
+    // The pair, and the case the flag has to stay apart from: an empty ledger
+    // is a real measurement of zero demand.
+    const filePath = scratch();
+    writeFileSync(filePath, '', 'utf-8');
+
+    const report = createPersistentCapabilityGapLedger({ filePath }).loadReport();
+
+    expect(report.fileExisted).toBe(true);
+    expect(report.readFailed).toBe(false);
+    expect(report.loaded).toBe(0);
+  });
+
+  it('reports zero capped entries for a ledger under the cap', () => {
+    // `loaded` counts what survived the cap, so without this field a ledger at
+    // the ceiling reports the same number every load however much was written
+    // past it (#5785).
+    const filePath = scratch();
+    writeFileSync(
+      filePath,
+      `${JSON.stringify({ name: 'g', type: CAPABILITY_GAP_TYPES[0], suggestion: 's', timestamp: new Date().toISOString() })}\n`,
+      'utf-8'
+    );
+
+    expect(createPersistentCapabilityGapLedger({ filePath }).loadReport().cappedEntries).toBe(0);
+  });
+
+  it('counts the entries the cap dropped', () => {
+    const filePath = scratch();
+    const now = new Date().toISOString();
+    const lines = Array.from({ length: 5003 }, (_, i) =>
+      JSON.stringify({
+        name: `g${String(i)}`,
+        type: CAPABILITY_GAP_TYPES[0],
+        suggestion: 's',
+        timestamp: now,
+      })
+    ).join('\n');
+    writeFileSync(filePath, `${lines}\n`, 'utf-8');
+
+    const report = createPersistentCapabilityGapLedger({ filePath }).loadReport();
+
+    expect(report.loaded).toBe(5000);
+    expect(report.cappedEntries).toBe(3);
   });
 });
