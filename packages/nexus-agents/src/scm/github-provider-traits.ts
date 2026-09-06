@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getErrorMessage } from '../core/index.js';
 import type {
   IScmReviewer,
   IScmUserInfo,
@@ -130,20 +130,20 @@ async function resolveGhTokenImpl(): Promise<string | undefined> {
   return cachedGhToken;
 }
 
-async function execGhApi(endpoint: string, method?: string): Promise<Result<string, ScmError>> {
+/** Page size for paginated list endpoints; GitHub's maximum, and its default is 30. */
+const GH_API_PAGE_SIZE = 100;
+
+async function execGhApiRaw(args: readonly string[]): Promise<Result<string, ScmError>> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const exec = promisify(execFile);
-
-  const args = ['api', endpoint];
-  if (method !== undefined) args.push('--method', method);
 
   // Inject token into subprocess environment to prevent keyring access failures
   const token = await resolveGhToken();
   const env = token !== undefined ? { ...process.env, GH_TOKEN: token } : undefined;
 
   try {
-    const { stdout } = await exec('gh', args, {
+    const { stdout } = await exec('gh', [...args], {
       maxBuffer: 10 * 1024 * 1024,
       timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
       ...(env !== undefined ? { env } : {}),
@@ -153,9 +153,60 @@ async function execGhApi(endpoint: string, method?: string): Promise<Result<stri
     const execError = error as { message: string; stderr?: string };
     return err(
       new ScmError(`gh api failed: ${execError.message}`, 'github', undefined, {
-        endpoint,
+        endpoint: args[1] ?? '',
         stderr: execError.stderr,
       })
+    );
+  }
+}
+
+async function execGhApi(endpoint: string, method?: string): Promise<Result<string, ScmError>> {
+  const args = ['api', endpoint];
+  if (method !== undefined) args.push('--method', method);
+  return execGhApiRaw(args);
+}
+
+/**
+ * Fetch EVERY page of a `gh api` list endpoint, as one object per line.
+ *
+ * A bare `gh api <list-endpoint>` returns GitHub's default first page of 30 and
+ * discards the `Link` cursor, so `getPullRequestDetail` saw at most 30 changed
+ * files of any PR and `listCommentDetails` at most the 30 OLDEST comments —
+ * both returned `ok(...)` with nothing to say a page had been left behind. The
+ * review pipeline then computed `reviewCoverage: 'full'` against that truncated
+ * denominator and posted "30 of 30 files reviewed" on a 120-file PR.
+ *
+ * `--paginate` alone is not enough: on a JSON-array endpoint it concatenates one
+ * array per page, which is not valid JSON. `--slurp` would fix that but landed
+ * in gh 2.51 and this repo runs against 2.45. `--jq '.[]'` emits one compact
+ * object per line across all pages, which parses on every version.
+ */
+async function execGhApiList<T>(endpoint: string): Promise<Result<T[], ScmError>> {
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const result = await execGhApiRaw([
+    'api',
+    `${endpoint}${separator}per_page=${String(GH_API_PAGE_SIZE)}`,
+    '--paginate',
+    '--jq',
+    '.[]',
+  ]);
+  if (!result.ok) return result;
+
+  // An endpoint with no items yields empty stdout. `''.split('\n')` is `['']`,
+  // so the filter is what keeps "no comments" from parsing as one bad line.
+  const lines = result.value.split('\n').filter((l) => l.trim() !== '');
+  try {
+    return ok(lines.map((l) => JSON.parse(l) as T));
+  } catch (error) {
+    return err(
+      new ScmError(
+        `gh api returned unparseable page data: ${getErrorMessage(error)}`,
+        'github',
+        undefined,
+        {
+          endpoint,
+        }
+      )
     );
   }
 }
@@ -211,12 +262,14 @@ export class GitHubReviewer implements IScmReviewer {
     const prResult = await execGhApi(`repos/${repo}/pulls/${String(prNumber)}`);
     if (!prResult.ok) return prResult;
 
-    const filesResult = await execGhApi(`repos/${repo}/pulls/${String(prNumber)}/files`);
+    const filesResult = await execGhApiList<GhApiFileJson>(
+      `repos/${repo}/pulls/${String(prNumber)}/files`
+    );
     if (!filesResult.ok) return filesResult;
+    const files = filesResult.value;
 
     try {
       const pr = JSON.parse(prResult.value) as GhApiPrJson;
-      const files = JSON.parse(filesResult.value) as GhApiFileJson[];
 
       return ok({
         number: pr.number,
@@ -310,11 +363,13 @@ export class GitHubReviewer implements IScmReviewer {
     const repo = this.provider.repo;
     logger.debug('Listing comment details', { repo, issueNumber });
 
-    const result = await execGhApi(`repos/${repo}/issues/${String(issueNumber)}/comments`);
+    const result = await execGhApiList<GhApiCommentJson>(
+      `repos/${repo}/issues/${String(issueNumber)}/comments`
+    );
     if (!result.ok) return result;
 
     try {
-      const comments = JSON.parse(result.value) as GhApiCommentJson[];
+      const comments = result.value;
       return ok(
         comments.map((c) => ({
           id: c.id,
