@@ -1,6 +1,5 @@
 {
   "version": "1.0.0",
-  "generated": "2026-09-06T11:18:02.616Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "8.29.0",
   "cli": {

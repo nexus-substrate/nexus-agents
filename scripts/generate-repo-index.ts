@@ -64,7 +64,18 @@ interface WorkflowTemplate {
 
 interface RepoIndex {
   version: string;
-  generated: string;
+  /**
+   * NO `generated` wall-clock stamp (#5461). It changed exactly when the
+   * content changed — the change detection below stripped it before comparing,
+   * so it never varied on its own — while sitting on a single line that every
+   * regenerating PR rewrote. Two PRs regenerating this artifact for unrelated
+   * reasons therefore conflicted on that line alone, and every
+   * `chore(release): version packages` regenerates it, so open PRs went
+   * CONFLICTING at each release (and a CONFLICTING PR gets zero
+   * `pull_request` runs, which reads as "no checks" rather than "conflict").
+   * `packageVersion` stays: it is content. A "when" is recoverable from the
+   * commit that last touched the file.
+   */
   generator: string;
   packageVersion: string;
   cli: {
@@ -236,7 +247,6 @@ function getPackageVersion(): string {
 function generateIndex(): RepoIndex {
   return {
     version: '1.0.0',
-    generated: new Date().toISOString(),
     generator: 'scripts/generate-repo-index.ts',
     packageVersion: getPackageVersion(),
     cli: {
@@ -262,7 +272,6 @@ function generateMarkdown(index: RepoIndex): string {
 
   let md = `# Repository Capabilities Index
 
-**Generated:** ${index.generated}
 **Package Version:** ${index.packageVersion}
 **Generator:** \`${index.generator}\`
 
@@ -349,9 +358,8 @@ function hasJsonChanged(filePath: string, newContent: string): boolean {
     const existing = fs.readFileSync(filePath, 'utf-8');
     const existingObj = JSON.parse(existing) as Record<string, unknown>;
     const newObj = JSON.parse(newContent) as Record<string, unknown>;
-    // Compare without generated timestamp
-    delete existingObj['generated'];
-    delete newObj['generated'];
+    // #5461: nothing to strip. The output no longer carries a wall-clock
+    // stamp, so a plain comparison already answers "did the content change".
     return JSON.stringify(existingObj) !== JSON.stringify(newObj);
   } catch {
     return true;
@@ -365,11 +373,8 @@ function hasMdChanged(filePath: string, newContent: string): boolean {
   if (!fs.existsSync(filePath)) {
     return true;
   }
-  const existing = fs.readFileSync(filePath, 'utf-8');
-  // Compare ignoring the generated timestamp line
-  const existingWithoutTs = existing.replace(/\*\*Generated:\*\* [^\n]+/, '');
-  const newWithoutTs = newContent.replace(/\*\*Generated:\*\* [^\n]+/, '');
-  return existingWithoutTs !== newWithoutTs;
+  // #5461: no timestamp line to ignore any more.
+  return fs.readFileSync(filePath, 'utf-8') !== newContent;
 }
 
 // ============================================================================
