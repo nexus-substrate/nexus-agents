@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.31.6
+
+### Patch Changes
+
+- [#5781](https://github.com/nexus-substrate/nexus-agents/pull/5781) [`df4f6c6`](https://github.com/nexus-substrate/nexus-agents/commit/df4f6c67ca2cfc8bb2b529cfd8c66c86a75332eb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Degree centrality is a fraction again, and a progress bar no longer throws on an out-of-range value. `getDegreeCentrality` counted the edge list — one edge per interaction — against a denominator of distinct neighbour slots, so two agents talking three times scored 1.5. `renderBar` then computed a negative width and `'░'.repeat(-8)` threw a `RangeError` that killed the entire dashboard render. Centrality now counts distinct neighbours, and both bar renderers clamp.
+
 ## 8.31.5
 
 ### Patch Changes
