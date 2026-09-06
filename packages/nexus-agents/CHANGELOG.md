@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.7
+
+### Patch Changes
+
+- [#5716](https://github.com/nexus-substrate/nexus-agents/pull/5716) [`4a7b674`](https://github.com/nexus-substrate/nexus-agents/commit/4a7b674061eac8b8343359262ae519f34ab2fd1b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The security-layer sanitizer strips every HTML comment rather than only keyword-bearing ones, matching the MCP-layer sanitizer, and raises the `hidden_content` flag when it does — the flag the reputation model already acts on but nothing produced.
+
 ## 8.28.6
 
 ### Patch Changes
