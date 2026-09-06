@@ -13,6 +13,7 @@ import type { ICliAdapter, CliName, RoutingArmId } from './types.js';
 import type { TaskProfile } from '../core/index.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
+import type { TopsisConfig } from './topsis-types.js';
 import type { LatencyTrackerConfig, LatencyTrackerStats } from './latency-tracker-types.js';
 import type { RoutingMemoryConfig, RoutingMemoryStats } from '../context/routing-memory.js';
 import type {
@@ -149,6 +150,15 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
   zeroRouterConfig?: Partial<ZeroRouterConfig>;
+  /**
+   * TOPSIS ranking configuration (optional, uses defaults if not provided).
+   *
+   * Added in #5785. `adaptRoutingConfig` returned the three sibling stage
+   * configs and dropped this one, and the stage constructed itself with no
+   * arguments — so a `routing.topsis` block in nexus-agents.yaml was
+   * schema-validated, defaulted, and then ignored.
+   */
+  topsisConfig?: Partial<TopsisConfig>;
   /** Latency tracker configuration (optional, uses defaults if not provided) (Issue #361) */
   latencyTrackerConfig?: Partial<LatencyTrackerConfig>;
   /** Routing memory configuration (optional, uses defaults if not provided) (Issue #463) */
