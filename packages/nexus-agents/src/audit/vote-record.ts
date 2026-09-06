@@ -77,6 +77,38 @@ export const VoteRecordOptionCoverageSchema = z
   .strict();
 export type VoteRecordOptionCoverage = z.infer<typeof VoteRecordOptionCoverageSchema>;
 
+/**
+ * How much of the requested panel actually voted (#5738, schema 1.5).
+ *
+ * `voteCounts` and `voters` describe the voters that RESPONDED. An errored
+ * voter is dropped from both, so a seven-role panel that lost four of them
+ * persisted as a clean three-voter record — and under `reduce_denominator`
+ * (the default for every strategy but `unanimous`) a 6-of-7 panel with one
+ * dead voter recorded as a unanimous six-voter approval. That is the record a
+ * human spot-check of a governor-path merge reads.
+ *
+ * Measured before this landed: 23 of 199 records in the live ledger carried a
+ * denominator that was neither the full panel nor quick mode, with nothing in
+ * the record saying why.
+ *
+ * Same shape of fix as `optionCoverage` (#4472) and for the same reason:
+ * recording what did NOT arrive is what makes a partial measurement legible AS
+ * partial. Absent when every requested voter responded.
+ */
+export const VoteRecordPanelCoverageSchema = z
+  .object({
+    /** Voters the panel asked for. */
+    requested: z.number().int().nonnegative(),
+    /** Voters that returned a usable vote — the denominator of `voteCounts`. */
+    responded: z.number().int().nonnegative(),
+    /** Voters that errored or timed out. */
+    errored: z.number().int().nonnegative(),
+    /** The roles behind `errored`, in panel order. */
+    erroredRoles: z.array(z.string().min(1).max(100)),
+  })
+  .strict();
+export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSchema>;
+
 export const VoterSummarySchema = z
   .object({
     role: z.string().min(1).max(100),
@@ -130,7 +162,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -195,6 +227,12 @@ export const VoteRecordSchema = z
      */
     optionCoverage: VoteRecordOptionCoverageSchema.optional(),
     /**
+     * Panel coverage (#5738, schema 1.5). Present only when at least one
+     * requested voter failed to return a vote; absent keeps a clean panel on
+     * the pre-1.5 projection, so every historical record still verifies.
+     */
+    panelCoverage: VoteRecordPanelCoverageSchema.optional(),
+    /**
      * The loop/strategy subject this vote RATIFIES (#3927 item 1). Present only on
      * a ratification vote; set at vote time and bound into the self-hash (so it is
      * tamper-evident). The authority-tier promotion gate
@@ -218,6 +256,69 @@ export type VoteRecord = z.infer<typeof VoteRecordSchema>;
 
 /** The payload fields (everything except `hash`) — the self-hash projection. */
 type VoteRecordPayload = Omit<VoteRecord, 'hash'>;
+
+/**
+ * Append the optional fields to the canonical projection, each ONLY when
+ * present, in schema order.
+ *
+ * This is the back-compat rule the whole record set depends on: a record
+ * without an optional field re-hashes byte-identical to the form that predates
+ * it, so every historical record still verifies. It stays tamper-evident —
+ * adding, removing or editing one of these on a persisted record flips the
+ * hash.
+ *
+ * Extracted from {@link computeVoteRecordHash} when `panelCoverage` (#5738)
+ * pushed that function past the 50-line cap.
+ */
+function foldOptionalFields(base: object, payload: VoteRecordPayload): object {
+  // `ratifies` (#3927) is folded in ONLY when present, appended after the stable
+  // base fields. This keeps the projection BYTE-IDENTICAL to the pre-1.2 form for
+  // any record without it — so every historical 1.1 record (which never carried
+  // `ratifies`) re-hashes unchanged (back-compat). It stays fully tamper-evident:
+  // adding, removing, or editing `ratifies` on a persisted record flips the hash
+  // (an absent field re-hashes one way, a present field the other).
+  // `optionTally` (#4452) is folded in on the same principle as `ratifies`:
+  // ONLY when present, appended after the stable base, with each entry rebuilt
+  // field-by-field in schema order. A record without it re-hashes byte-identical
+  // to the pre-1.3 form, so every historical record still verifies.
+  const withTally =
+    payload.optionTally !== undefined
+      ? {
+          ...base,
+          optionTally: payload.optionTally.map((o) => ({ option: o.option, count: o.count })),
+        }
+      : base;
+  // `optionCoverage` (#4472, schema 1.4) follows the same append-when-present
+  // rule, inserted after `optionTally` and before `ratifies` so the canonical
+  // order matches the schema order. Absent ⇒ byte-identical to the 1.3 form.
+  const withCoverage =
+    payload.optionCoverage !== undefined
+      ? {
+          ...withTally,
+          optionCoverage: {
+            approverCount: payload.optionCoverage.approverCount,
+            selectedCount: payload.optionCoverage.selectedCount,
+            unattributedApprovals: payload.optionCoverage.unattributedApprovals,
+          },
+        }
+      : withTally;
+  // `panelCoverage` (#5738, schema 1.5) follows the same append-when-present
+  // rule, after `optionCoverage` and before `ratifies`. Absent ⇒ byte-identical
+  // to the 1.4 form, so every historical record re-hashes unchanged.
+  const withPanel =
+    payload.panelCoverage !== undefined
+      ? {
+          ...withCoverage,
+          panelCoverage: {
+            requested: payload.panelCoverage.requested,
+            responded: payload.panelCoverage.responded,
+            errored: payload.panelCoverage.errored,
+            erroredRoles: [...payload.panelCoverage.erroredRoles],
+          },
+        }
+      : withCoverage;
+  return payload.ratifies !== undefined ? { ...withPanel, ratifies: payload.ratifies } : withPanel;
+}
 
 /**
  * Compute the SHA-256 over the canonical payload projection. Unlike the
@@ -259,40 +360,7 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     })),
     correlationId: payload.correlationId ?? null,
   };
-  // `ratifies` (#3927) is folded in ONLY when present, appended after the stable
-  // base fields. This keeps the projection BYTE-IDENTICAL to the pre-1.2 form for
-  // any record without it — so every historical 1.1 record (which never carried
-  // `ratifies`) re-hashes unchanged (back-compat). It stays fully tamper-evident:
-  // adding, removing, or editing `ratifies` on a persisted record flips the hash
-  // (an absent field re-hashes one way, a present field the other).
-  // `optionTally` (#4452) is folded in on the same principle as `ratifies`:
-  // ONLY when present, appended after the stable base, with each entry rebuilt
-  // field-by-field in schema order. A record without it re-hashes byte-identical
-  // to the pre-1.3 form, so every historical record still verifies.
-  const withTally =
-    payload.optionTally !== undefined
-      ? {
-          ...base,
-          optionTally: payload.optionTally.map((o) => ({ option: o.option, count: o.count })),
-        }
-      : base;
-  // `optionCoverage` (#4472, schema 1.4) follows the same append-when-present
-  // rule, inserted after `optionTally` and before `ratifies` so the canonical
-  // order matches the schema order. Absent ⇒ byte-identical to the 1.3 form.
-  const withCoverage =
-    payload.optionCoverage !== undefined
-      ? {
-          ...withTally,
-          optionCoverage: {
-            approverCount: payload.optionCoverage.approverCount,
-            selectedCount: payload.optionCoverage.selectedCount,
-            unattributedApprovals: payload.optionCoverage.unattributedApprovals,
-          },
-        }
-      : withTally;
-  const canonical = JSON.stringify(
-    payload.ratifies !== undefined ? { ...withCoverage, ratifies: payload.ratifies } : withCoverage
-  );
+  const canonical = JSON.stringify(foldOptionalFields(base, payload));
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
