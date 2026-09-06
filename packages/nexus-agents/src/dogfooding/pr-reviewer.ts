@@ -60,6 +60,7 @@ import {
   reviewPostingBlock,
   type ReviewPostingVerdict,
 } from './pr-reviewer-helpers.js';
+import { buildReviewCitations, reportUnverifiedCorroboration } from './pr-review-citations.js';
 
 // Re-export for convenience
 export { formatReviewComment } from './pr-reviewer-helpers.js';
@@ -429,9 +430,7 @@ Provide a structured review with:
     const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
     const formattedBody = formatReviewComment(result);
     const body = truncateText(formattedBody, DRAFT_REPLY_BODY_MAX_LENGTH, '…[review truncated]');
-    const sources: SourceCitation[] = pr.files
-      .slice(0, 20)
-      .map((file) => ({ type: 'repoFile', path: file.filename }));
+    const sources: SourceCitation[] = buildReviewCitations(pr.files);
     const context: ActionContext = {
       inputTrustTier: gateDecision.enforcedTier,
       ...REVIEW_ACCESS_CONTEXT,
@@ -484,6 +483,7 @@ Provide a structured review with:
     }
     const decision = evaluatePolicy(validated.value, context);
     const corroboration = validateCorroboration(validated.value);
+    reportUnverifiedCorroboration(corroboration, logger);
     const corroborationViolation = corroboration.satisfied
       ? []
       : [{ rule: 'INSUFFICIENT_CORROBORATION', message: corroboration.missing.join('; ') }];

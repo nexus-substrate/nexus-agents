@@ -27,11 +27,21 @@ export type ActionValidationResult =
 // Source Citations
 // ============================================================================
 
-/** Source citation from a file tracked in the repository. */
+/**
+ * Source citation from a file tracked in the repository.
+ *
+ * `existsOnBaseRef` records whether the cited path was present on the base ref
+ * *before* the untrusted change under review. A citation built from a PR's own
+ * changed-file list can name a path the author invented in that same PR, which
+ * is repo evidence in name only — the same mislabel #4667 fixed for issue
+ * bodies. Absent means the producer did not check; `false` means it checked and
+ * the path is author-supplied.
+ */
 const RepoFileSource = z.object({
   type: z.literal('repoFile'),
   path: z.string().min(1),
   line: z.number().int().positive().optional(),
+  existsOnBaseRef: z.boolean().optional(),
   commit: z
     .string()
     .regex(/^[a-f0-9]{7,40}$/)
