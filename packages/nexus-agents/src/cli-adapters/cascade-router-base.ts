@@ -27,7 +27,16 @@ import type { UnifiedRoutingDecision, RoutingStrategy } from './unified-routing-
 export interface CascadeRouterBaseConfig {
   /** Maximum number of stages to execute (default: 3) */
   readonly maxStages?: number;
-  /** Timeout per model execution in milliseconds (default: 30000) */
+  /**
+   * Timeout per model execution in milliseconds (default: 120000).
+   *
+   * The doc said 30000 until #5765. The default was raised to 120s in #1484
+   * because cascade tasks are standard+ complexity and 30s cut architecture,
+   * security and research work short; the note recording that sits on the
+   * constant below, where a reader hovering this field never sees it. A caller
+   * sizing an outer deadline from the documented 30s was budgeting for a
+   * quarter of the real one.
+   */
   readonly modelTimeoutMs?: number;
   /** Logger instance */
   readonly logger?: ILogger;

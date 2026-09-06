@@ -1,5 +1,9 @@
 /* eslint-disable max-lines */
-// 426 lines — cohesive single-concern engine. Per governance, 400-600 OK if cohesive.
+// 711 lines. The suppression's original justification — "426 lines, and
+// governance allows 400-600 if cohesive" — stopped being true as the file grew;
+// it now sits well past the band it invoked. Recorded honestly rather than
+// left asserting a size the file has not had for a long time; splitting it is
+// tracked separately (#5766).
 
 /**
  * nexus-agents/consensus - Consensus Engine
