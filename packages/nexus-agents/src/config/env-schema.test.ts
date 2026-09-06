@@ -39,6 +39,25 @@ describe('env-schema', () => {
       expect(result.unknownVars.map((v) => v.name)).toContain('NEXUS_AUTH_METHOD');
     });
 
+    it('accepts the documented NEXUS_SANDBOX flavor string (#5695)', () => {
+      // The schema said boolean while the guide, `init --opencode` and doctor
+      // all use flavor strings such as docker-opencode, so a correctly
+      // configured sandbox warned "invalid value" on every start.
+      vi.stubEnv('NEXUS_SANDBOX', 'docker-opencode');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_SANDBOX');
+      expect(result.unknownVars).toHaveLength(0);
+    });
+
+    it('accepts an empty NEXUS_SANDBOX as the off switch (#5695)', () => {
+      // `export NEXUS_SANDBOX=""` is how an operator overrides the image's
+      // export for one run; sandbox-detection reads empty as unset, so the
+      // validator must not call the documented off state invalid.
+      vi.stubEnv('NEXUS_SANDBOX', '');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_SANDBOX');
+    });
+
     it('recognizes the autonomous-remediation + policy + overlay vars (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'audit');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');

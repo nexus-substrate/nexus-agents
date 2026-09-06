@@ -143,8 +143,13 @@ const NexusEnvSchema = z.object({
   NEXUS_TMPDIR: z.string().optional(),
   // ClawGuard access-policy mode.
   NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
-  // Sandbox mode (epic #2500).
-  NEXUS_SANDBOX: boolStr.optional(),
+  // Sandbox FLAVOR string (`docker-opencode`, `codex`, …), set by the host
+  // image so sandbox-detection knows it is inside one (epic #2500, #5026). It
+  // was registered as a boolean while every producer and reader used a flavor
+  // string, so the documented value warned as invalid at startup (#5695).
+  // Empty is the POSIX idiom for "override the image's export and turn it off";
+  // sandbox-detection reads empty as unset, so the validator accepts it too.
+  NEXUS_SANDBOX: z.string().optional(),
   NEXUS_SANDBOX_ROOT: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
   // Explicit opt-in for simulateVotes outside test runners (#4170) — read by
