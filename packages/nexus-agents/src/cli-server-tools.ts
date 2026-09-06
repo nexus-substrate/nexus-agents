@@ -81,7 +81,7 @@ import type { ILogger } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
-import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
+import { startPipelineEventBridge } from './pipeline/event-bus-bridge.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
 import { configureUntrustedInputFirewall } from './dogfooding/untrusted-input-firewall.js';
 import {
@@ -852,7 +852,10 @@ function initV2PipelineSubsystems(
 ): void {
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
-  const bridge = createEventBusBridge({ source: pipelineEventBus });
+  // Was `createEventBusBridge(...)` with the returned `dispose` dropped, so the
+  // V2→V1 forwarder outlived every shutdown. Now it follows the same
+  // start/shutdown shape as the tune stage and the other subsystems below.
+  startPipelineEventBridge(pipelineEventBus);
   // #5003: the EventBus → OutcomeStore bridge is GONE. `StageFailedEvent`
   // carries no `cli`, so it hardcoded `cli: 'claude'` + `category:
   // 'code_generation'` on every stage failure — the exact fabrication
@@ -888,10 +891,17 @@ function initV2PipelineSubsystems(
   startImprovementReviewScheduler();
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
+  // Two claims used to sit here that the line could not support.
+  // `bridged: bridge.forwarded()` was read during init, before any pipeline
+  // event could exist, so it was structurally 0 on every startup — a count that
+  // could only ever report absence. `feedbackSubscriber: 'active'` asserted a
+  // subscription that #5003's panel DELETED on purpose: the EventBus →
+  // OutcomeStore bridge hardcoded `cli: 'claude'` on every stage failure and
+  // double-counted against `agent-executor`, which is now the single canonical
+  // outcome writer. Nothing called `startFeedbackSubscriber`; the log said
+  // otherwise.
   logger.info('V2 Pipeline OS initialized', {
     plugins: pluginRegistry.listEnabled().length,
-    bridged: bridge.forwarded(),
-    feedbackSubscriber: 'active',
     policyRules: policyEngine.listRules().length,
     v2Mode: v2Config.mode,
     policyMode: v2Config.policyMode,

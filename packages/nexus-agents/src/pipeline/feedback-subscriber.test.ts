@@ -8,11 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
 import { EventBus } from './event-bus.js';
-import {
-  createFeedbackSubscriber,
-  startFeedbackSubscriber,
-  shutdownFeedbackSubscriber,
-} from './feedback-subscriber.js';
+import { createFeedbackSubscriber } from './feedback-subscriber.js';
 import { OutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { PipelineEvent } from './event-types.js';
 
@@ -171,52 +167,38 @@ describe('createFeedbackSubscriber', () => {
   });
 });
 
-// Server-wide lifecycle (Issue #2938) — pre-2938, nothing ever subscribed
-// the bridge so the feedback loop the module advertised didn't exist.
-// cli-server-tools.ts:initV2PipelineSubsystems now calls
-// startFeedbackSubscriber once at server init, paired with
-// shutdownFeedbackSubscriber in cli-server.ts:createShutdownCleanup.
-describe('startFeedbackSubscriber / shutdownFeedbackSubscriber lifecycle', () => {
-  beforeEach(() => {
-    // Make sure no prior test left a subscription wired to a different bus.
-    shutdownFeedbackSubscriber();
+// ============================================================================
+// The server does NOT run this subscriber, and nothing should claim it does
+// ============================================================================
+
+describe('there is no server-wide feedback subscription', () => {
+  // #2938 added a `startFeedbackSubscriber` / `shutdownFeedbackSubscriber`
+  // singleton pair. #5003's panel then removed the bridge from the server: the
+  // subscriber hardcoded `cli: 'claude'` on every stage failure (StageFailedEvent
+  // carries no `cli`) and double-counted against `agent-executor`, which is the
+  // single canonical outcome writer. Only the START half was removed — shutdown
+  // stayed wired into `createShutdownCleanup` as an unconditional no-op, and the
+  // init log kept reporting `feedbackSubscriber: 'active'` for a subscription
+  // that no longer existed.
+  it('exposes only the caller-managed factory', async () => {
+    const mod: Record<string, unknown> = await import('./feedback-subscriber.js');
+
+    expect(typeof mod['createFeedbackSubscriber']).toBe('function');
+    // A singleton pair here is what the server used to hold. If it comes back,
+    // it must come back with a caller — not as a shutdown with no start.
+    expect(mod['startFeedbackSubscriber']).toBeUndefined();
+    expect(mod['shutdownFeedbackSubscriber']).toBeUndefined();
   });
 
-  it('wires the EventBus → OutcomeStore bridge for the process lifetime', () => {
-    startFeedbackSubscriber(bus, store);
+  it('still records outcomes for a caller that manages its own subscription', () => {
+    // The public API an SDK embedder uses, and the reason the module stays.
+    const unsubscribe = createFeedbackSubscriber(bus, store);
 
-    bus.emit(stageFailed('exec-lifecycle'));
-
+    bus.emit(stageFailed('exec-embedder'));
     expect(store.size).toBe(1);
-    shutdownFeedbackSubscriber();
-  });
 
-  it('is idempotent — repeated start calls do not double-subscribe', () => {
-    startFeedbackSubscriber(bus, store);
-    startFeedbackSubscriber(bus, store);
-    startFeedbackSubscriber(bus, store);
-
-    bus.emit(stageFailed('exec-idem'));
-
-    // Subscribed exactly once — the event records exactly one outcome.
+    unsubscribe();
+    bus.emit(stageFailed('exec-after-unsubscribe'));
     expect(store.size).toBe(1);
-    shutdownFeedbackSubscriber();
-  });
-
-  it('shutdown releases the subscription so further events are not recorded', () => {
-    startFeedbackSubscriber(bus, store);
-    shutdownFeedbackSubscriber();
-
-    bus.emit(stageFailed('exec-post-shutdown'));
-
-    expect(store.size).toBe(0);
-  });
-
-  it('shutdown is idempotent — calling twice does not throw', () => {
-    startFeedbackSubscriber(bus, store);
-    expect(() => {
-      shutdownFeedbackSubscriber();
-      shutdownFeedbackSubscriber();
-    }).not.toThrow();
   });
 });

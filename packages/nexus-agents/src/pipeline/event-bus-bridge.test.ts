@@ -6,7 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { EventBus } from './event-bus.js';
-import { createEventBusBridge } from './event-bus-bridge.js';
+import {
+  createEventBusBridge,
+  startPipelineEventBridge,
+  shutdownPipelineEventBridge,
+} from './event-bus-bridge.js';
 import type { PipelineEvent } from './event-types.js';
 
 // ============================================================================
@@ -164,5 +168,59 @@ describe('createEventBusBridge', () => {
       'pipeline.stage.started',
       'pipeline.policy.evaluated',
     ]);
+  });
+});
+
+// ============================================================================
+// The server-wide forwarder must be releasable
+// ============================================================================
+
+describe('startPipelineEventBridge / shutdownPipelineEventBridge', () => {
+  // `initV2PipelineSubsystems` called `createEventBusBridge` and dropped the
+  // returned `dispose`, so the V2→V1 forwarder outlived every shutdown:
+  // `createShutdownCleanup` released the V1 bridge, the tune stage, swarm
+  // health, failover and the scheduler, and had no handle for this one.
+  const started = (): PipelineEvent => ({
+    type: 'stage.started',
+    executionId: 'e1',
+    stageId: 's1',
+    pluginId: 'p1',
+    timestamp: Date.now(),
+  });
+
+  it('forwards while running and stops after shutdown', () => {
+    const source = new EventBus();
+    startPipelineEventBridge(source);
+
+    source.emit(started());
+    const whileRunning = mockEmit.mock.calls.length;
+
+    shutdownPipelineEventBridge();
+    source.emit(started());
+
+    expect(whileRunning).toBeGreaterThan(0);
+    // The assertion the leak would fail: after shutdown, nothing forwards.
+    expect(mockEmit.mock.calls.length).toBe(whileRunning);
+  });
+
+  it('is idempotent — repeated starts do not double-forward', () => {
+    const source = new EventBus();
+    startPipelineEventBridge(source);
+    startPipelineEventBridge(source);
+    startPipelineEventBridge(source);
+
+    source.emit(started());
+
+    expect(mockEmit.mock.calls.length).toBe(1);
+    shutdownPipelineEventBridge();
+  });
+
+  it('shutdown is idempotent and safe when nothing was started', () => {
+    // The empty case: the shutdown slot in `createShutdownCleanup` runs on
+    // every teardown, including runs where init never happened.
+    expect(() => {
+      shutdownPipelineEventBridge();
+      shutdownPipelineEventBridge();
+    }).not.toThrow();
   });
 });

@@ -110,3 +110,35 @@ export function createEventBusBridge(options: EventBusBridgeOptions): PipelineBr
     dispose: unsub,
   };
 }
+
+// ============================================================================
+// Server lifecycle
+// ============================================================================
+
+/**
+ * The server-wide V2→V1 forwarder's unsubscribe, or `null` when not running.
+ *
+ * `initV2PipelineSubsystems` called `createEventBusBridge` and dropped the
+ * returned `dispose` on the floor, so the forwarder outlived every shutdown —
+ * `createShutdownCleanup` disposes the V1 bridge, the tune stage, swarm health,
+ * failover and the scheduler, and had no handle for this one.
+ */
+let cachedBridgeDispose: Unsubscribe | null = null;
+
+/**
+ * Start the server-wide pipeline→global event forwarder. Idempotent, and
+ * returns the same result shape as {@link createEventBusBridge} so the caller
+ * can still read `forwarded()` later.
+ */
+export function startPipelineEventBridge(source: IEventBus): void {
+  if (cachedBridgeDispose !== null) return;
+  cachedBridgeDispose = createEventBusBridge({ source }).dispose;
+}
+
+/** Release the forwarder. Idempotent; paired with the start above. */
+export function shutdownPipelineEventBridge(): void {
+  if (cachedBridgeDispose !== null) {
+    cachedBridgeDispose();
+    cachedBridgeDispose = null;
+  }
+}
