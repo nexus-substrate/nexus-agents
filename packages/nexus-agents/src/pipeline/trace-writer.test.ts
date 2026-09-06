@@ -3,6 +3,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TraceWriter } from './trace-writer.js';
 import type { IEventBus, EventFilter, EventHandler, PipelineEvent } from './event-types.js';
 
@@ -81,5 +84,57 @@ describe('TraceWriter', () => {
     writer.stop();
     bus.fire(makeEvent('stopped', 0));
     expect(writer).toBeDefined();
+  });
+});
+
+// ============================================================================
+// A failed stage must keep the model attribution its emitter supplied
+// ============================================================================
+
+describe('stage.failed model attribution (#4194)', () => {
+  // `agent-executor` emits `stage.failed` WITH `model`, added by #4194 so a
+  // failed stage could be attributed to the model that ran it, and
+  // `ExecutionTraceEntry` has had a `modelId` slot for it all along.
+  // `extractStageAttribution` re-packed the record without it, so `query_trace`
+  // could not attribute a failure even when the emitter knew exactly which
+  // model produced it — and with the server-side feedback subscriber gone, the
+  // trace is the only remaining reader of that field.
+  async function writeAndRead(event: PipelineEvent): Promise<Record<string, unknown>[]> {
+    const dir = await mkdtemp(join(tmpdir(), 'trace-'));
+    const bus = createMockBus();
+    const writer = new TraceWriter(bus, { runsDir: dir, runId: 'run-1' });
+    bus.fire(event);
+    await writer.flush();
+    const text = await readFile(join(dir, 'run-1', 'trace.jsonl'), 'utf8');
+    return text
+      .split('\n')
+      .filter((l) => l.trim() !== '')
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  }
+
+  const failed = (model?: string): PipelineEvent => ({
+    type: 'stage.failed',
+    timestamp: Date.now(),
+    executionId: 'exec-1',
+    stageId: 'plan',
+    error: 'boom',
+    ...(model !== undefined ? { model } : {}),
+  });
+
+  it('records the model the emitter reported', async () => {
+    const [entry] = await writeAndRead(failed('gpt-5-codex'));
+
+    expect(entry?.['modelId']).toBe('gpt-5-codex');
+    expect(entry?.['error']).toBe('boom');
+  });
+
+  it('omits modelId when the stage had no single model', async () => {
+    // The pair. The emitter's own contract is "omit for stages with no single
+    // model — never guess", so an absent field must stay absent rather than
+    // become an empty string or a placeholder.
+    const [entry] = await writeAndRead(failed());
+
+    expect(entry).toBeDefined();
+    expect(entry?.['modelId']).toBeUndefined();
   });
 });

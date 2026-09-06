@@ -213,7 +213,19 @@ function extractStageAttribution(
 ): Partial<ExecutionTraceEntry> {
   const base = { executionId: event.executionId, nodeId: event.stageId };
   if (event.type === 'stage.failed') {
-    return { ...base, error: event.error, errorTaxonomy: event.errorTaxonomy };
+    return {
+      ...base,
+      error: event.error,
+      errorTaxonomy: event.errorTaxonomy,
+      // #4194 added `model` to StageFailedEvent so a failed stage could be
+      // attributed to the model that ran it, and `ExecutionTraceEntry` has had a
+      // `modelId` slot for it all along. This branch re-packed the record
+      // without it, so `query_trace` could not attribute a failure even when the
+      // emitter knew exactly which model produced it. Omitted, never guessed,
+      // when the stage had no single model — which is what the emitter's own
+      // comment requires.
+      ...(event.model !== undefined ? { modelId: event.model } : {}),
+    };
   }
   if (event.type === 'stage.completed') {
     return { ...base, durationMs: event.durationMs };
