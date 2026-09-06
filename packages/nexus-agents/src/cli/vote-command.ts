@@ -123,13 +123,25 @@ interface SummaryContext {
   readonly result: ConsensusResult;
   readonly votes: readonly AgentVoteResult[];
   readonly threshold: ConsensusAlgorithm;
+  /**
+   * The RESOLVED decision, not the engine's 2-valued outcome.
+   *
+   * `executeVoting` stamps `decision` without mutating `result.outcome`, and
+   * `computeAbsoluteQuorumDecision` can return `no_quorum` while the outcome
+   * stays `approved` — an errored seat, or an unmet absolute approval floor.
+   * The summary read `outcome`, so a voided vote printed `Result: APPROVED` in
+   * green while the audit record, the GitHub comment and the exit code all said
+   * `no_quorum`. Every persisted artifact was right and the one a human reads
+   * live was wrong, in the laundering direction.
+   */
+  readonly decision: VoteDecisionStatus;
   /** #5362: present when the option gate drove the rejection. */
   readonly optionGate?: OptionGateExplain;
 }
 
 function printSummary(ctx: SummaryContext): void {
-  const { result, votes, threshold } = ctx;
-  const { voteCounts, approvalPercentage, outcome, quorumReached } = result;
+  const { result, votes, threshold, decision } = ctx;
+  const { voteCounts, approvalPercentage, quorumReached } = result;
   const errored = votes.filter((v) => v.source === 'error').length;
   const simulated = votes.filter((v) => v.source === 'simulation').length;
 
@@ -141,10 +153,13 @@ function printSummary(ctx: SummaryContext): void {
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
 
-  const outcomeColor =
-    outcome === 'approved' ? colors.green : outcome === 'rejected' ? colors.red : colors.yellow;
+  // Yellow for a void: it is neither an approval nor the panel rejecting, and
+  // the colour is the first thing a human reads.
+  const decisionColor =
+    decision === 'approved' ? colors.green : decision === 'no_quorum' ? colors.yellow : colors.red;
+  const { text: decisionText } = decisionResultLabel(decision);
   const cause = explainOutcome({
-    outcome,
+    decision,
     quorumReached,
     errored,
     votes,
@@ -152,9 +167,7 @@ function printSummary(ctx: SummaryContext): void {
     threshold,
     ...(ctx.optionGate === undefined ? {} : { optionGate: ctx.optionGate }),
   });
-  writeLine(
-    `\n${colors.bold}Result: ${outcomeColor}${outcome.toUpperCase()}${colors.reset}${cause}\n`
-  );
+  writeLine(`\n${colors.bold}Result: ${decisionColor}${decisionText}${colors.reset}${cause}\n`);
 
   if (simulated > 0) {
     // Banner reinforces what individual rows already flagged — visible at a
@@ -188,7 +201,12 @@ interface OptionGateExplain {
 }
 
 export interface OutcomeExplainCtx {
-  readonly outcome: string;
+  /**
+   * The RESOLVED decision. Was the engine's 2-valued `outcome`, which cannot
+   * express `no_quorum` — so a voided vote got no explanation at all, because
+   * every arm below was gated on `outcome === 'rejected'`.
+   */
+  readonly decision: VoteDecisionStatus;
   readonly quorumReached: boolean;
   readonly errored: number;
   readonly votes: readonly AgentVoteResult[];
@@ -212,7 +230,14 @@ export interface OutcomeExplainCtx {
  * @internal
  */
 export function explainOutcome(ctx: OutcomeExplainCtx): string {
-  if (ctx.outcome !== 'rejected') return '';
+  if (ctx.decision === 'no_quorum') {
+    // A void is recoverable and its cause is the thing an operator acts on:
+    // re-run the missing voice, or lower the bar deliberately.
+    return ctx.errored > 0
+      ? ` ${colors.dim}— quorum void (${String(ctx.errored)} of ${String(ctx.votes.length)} voter(s) failed); re-run to recover${colors.reset}`
+      : ` ${colors.dim}— quorum void: the absolute approval floor was not met by the full panel${colors.reset}`;
+  }
+  if (ctx.decision !== 'rejected') return '';
   if (!ctx.quorumReached && ctx.errored > 0) {
     const total = ctx.votes.length;
     const survived = total - ctx.errored;
@@ -312,16 +337,32 @@ export function formatVoteComment(result: VotingResult, decision?: VoteDecisionS
   const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
 
   const voteRows = result.votes
-    .map(({ role, vote }) => {
+    .map(({ role, vote, source }) => {
       const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
-      const decision = vote.decision.toUpperCase();
-      const confidence = formatPercentage(vote.confidence);
+      // `createErrorVoteResult` gives a failed seat `decision: 'abstain',
+      // confidence: 0`. Dropping `source` published a timed-out or auth-failed
+      // voter as a genuine ABSTAIN — indistinguishable, in the durable
+      // governance artifact, from a voter that convened and declined.
+      const decision = source === 'error' ? 'ERRORED' : vote.decision.toUpperCase();
+      const confidence = source === 'error' ? '—' : formatPercentage(vote.confidence);
       return `| ${roleLabel} | ${decision} | ${confidence} |`;
     })
     .join('\n');
 
+  const errored = result.votes.filter((v) => v.source === 'error').length;
   const { voteCounts, approvalPercentage } = result.result;
-  const summary = `Approve: ${String(voteCounts.approve)}, Reject: ${String(voteCounts.reject)}, Abstain: ${String(voteCounts.abstain)} (${approvalPercentage.toFixed(1)}% approval)`;
+  // Under the default `reduce_denominator` the counts EXCLUDE errored seats, so
+  // a 7-row table sat above a 6-voter tally with nothing reconciling them. The
+  // errored count is what closes that gap.
+  const summary =
+    `Approve: ${String(voteCounts.approve)}, Reject: ${String(voteCounts.reject)}, ` +
+    `Abstain: ${String(voteCounts.abstain)}` +
+    (errored > 0 ? `, Errored: ${String(errored)}` : '') +
+    ` (${approvalPercentage.toFixed(1)}% approval` +
+    (errored > 0
+      ? `, measured over ${String(result.votes.length - errored)} responding voter(s)`
+      : '') +
+    ')';
 
   return `## Consensus Vote Result
 
@@ -445,6 +486,12 @@ async function runVote(options: VoteCommandOptions): Promise<
     // Likewise: an error-policy short-circuit voided the vote, and without it
     // the record calls a void a `rejected` (#4953).
     ...(result.policyReason !== undefined ? { policyReason: result.policyReason } : {}),
+    // #5362 widened the RETURN TYPE for this and never added it to the literal,
+    // so `explainOutcome`'s gate arm — written to consume it — was unreachable
+    // and every option veto fell through to the generic threshold message,
+    // blaming an approval bar the vote had cleared. TypeScript stayed silent
+    // because the field is optional.
+    ...(result.optionGate !== undefined ? { optionGate: result.optionGate } : {}),
   };
 }
 
@@ -570,6 +617,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       result: result.result,
       votes: result.votes,
       threshold: result.threshold,
+      decision: result.decision,
       ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
     });
     if (options.verbose === true) printHashes(result.votes);

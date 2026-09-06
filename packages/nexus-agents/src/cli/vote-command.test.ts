@@ -326,7 +326,7 @@ describe('explainOutcome (#2441 + #2442)', () => {
     overrides: Partial<Parameters<typeof explainOutcome>[0]> = {}
   ): Parameters<typeof explainOutcome>[0] {
     return {
-      outcome: 'rejected',
+      decision: 'rejected',
       quorumReached: false,
       errored: 0,
       votes: [] as readonly AgentVoteResult[],
@@ -415,8 +415,27 @@ describe('explainOutcome (#2441 + #2442)', () => {
     expect(explained).not.toContain('should not win');
   });
 
-  it('returns empty string when outcome is approved', () => {
-    expect(explainOutcome(ctx({ outcome: 'approved', quorumReached: true }))).toBe('');
+  it('returns empty string when the decision is approved', () => {
+    expect(explainOutcome(ctx({ decision: 'approved', quorumReached: true }))).toBe('');
+  });
+
+  it('explains a quorum void, which the 2-valued outcome could not express', () => {
+    // `executeVoting` stamps `decision` without mutating `result.outcome`, so a
+    // void kept `outcome: 'approved'` and every arm here was gated on
+    // `outcome === 'rejected'` — a voided vote got no explanation at all.
+    const explained = stripAnsi(
+      explainOutcome(ctx({ decision: 'no_quorum', quorumReached: true, errored: 0 }))
+    );
+    expect(explained).toContain('quorum void');
+    expect(explained).toContain('absolute approval floor');
+  });
+
+  it('names the failed seats when a void was caused by errors', () => {
+    const explained = stripAnsi(
+      explainOutcome(ctx({ decision: 'no_quorum', errored: 2, votes: baseVotes }))
+    );
+    expect(explained).toContain('2 of');
+    expect(explained).toContain('re-run');
   });
 
   it('explains "quorum not reached" with errored-voter count when applicable', () => {
@@ -773,5 +792,58 @@ describe('voteCommand records an error-policy void correctly (#4953)', () => {
 
     const call = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
     expect(call?.[0]).toMatchObject({ errorVoided: false });
+  });
+});
+
+// ============================================================================
+// The recorded comment must not publish a failed seat as an abstention
+// ============================================================================
+
+describe('formatVoteComment with an errored voter', () => {
+  // `createErrorVoteResult` gives a failed voter `decision: 'abstain',
+  // confidence: 0` with `source: 'error'`. The formatter dropped `source`, so a
+  // timed-out or auth-failed seat was published in the durable governance
+  // artifact as `| Contrarian Analyst | ABSTAIN | 0% |` — indistinguishable
+  // from a voter that convened and declined. Worse, under the default
+  // `reduce_denominator` the tally EXCLUDES errored seats, so a 7-row table sat
+  // above a 6-voter summary with nothing reconciling them.
+  function withErroredCatfish(): VotingResult {
+    const base = createMockVotingResult();
+    return {
+      ...base,
+      votes: [
+        ...base.votes,
+        {
+          role: 'catfish',
+          vote: { decision: 'abstain', reasoning: 'voter failed', confidence: 0 },
+          processingTimeMs: 0,
+          source: 'error',
+        },
+      ],
+    };
+  }
+
+  it('marks the failed seat instead of calling it an abstention', () => {
+    const comment = formatVoteComment(withErroredCatfish());
+
+    expect(comment).toContain('ERRORED');
+    expect(comment).not.toMatch(/Contrarian Analyst \| ABSTAIN/);
+  });
+
+  it('states the errored count and the denominator the approval was measured over', () => {
+    const comment = formatVoteComment(withErroredCatfish());
+
+    expect(comment).toContain('Errored: 1');
+    expect(comment).toContain('responding voter(s)');
+  });
+
+  it('leaves a clean panel unchanged', () => {
+    // The pair. Without it, always printing an errored count would pass — and
+    // every clean vote would carry a caveat that means nothing.
+    const comment = formatVoteComment(createMockVotingResult());
+
+    expect(comment).not.toContain('Errored:');
+    expect(comment).not.toContain('ERRORED');
+    expect(comment).not.toContain('responding voter(s)');
   });
 });
