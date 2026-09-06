@@ -8761,6 +8761,7 @@ InterfaceDeclaration SwarmHealthMetrics @observability/swarm-observer-types
   readonly clusters: AgentCluster[]
   readonly errorAgents: number
   readonly successRate: number
+  readonly timedInteractions?: number | undefined
   readonly totalAgents: number
   readonly totalInteractions: number
 ClassDeclaration SwarmObserver

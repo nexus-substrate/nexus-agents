@@ -206,7 +206,12 @@ export class SwarmObserver implements ISwarmObserver {
     const recentEdges = edges.filter((e) => new Date(e.timestamp).getTime() >= windowStart);
 
     const successCount = recentEdges.filter((e) => e.outcome === 'success').length;
-    const totalLatency = recentEdges.reduce((sum, e) => sum + (e.durationMs ?? 0), 0);
+    // Divide by the edges that were TIMED. Summing `?? 0` over every edge and
+    // dividing by all of them folded untimed interactions in as zero, so one
+    // 100ms edge beside one untimed edge reported 50ms (#5782). The correct
+    // form already existed in interaction-graph.ts:236-241.
+    const timedEdges = recentEdges.filter((e) => e.durationMs !== undefined);
+    const totalLatency = timedEdges.reduce((sum, e) => sum + (e.durationMs ?? 0), 0);
 
     const activeAgents = this.countActiveAgents(windowStart);
     const errorAgents = this.countErrorAgents();
@@ -216,8 +221,9 @@ export class SwarmObserver implements ISwarmObserver {
       activeAgents,
       errorAgents,
       totalInteractions: recentEdges.length,
+      timedInteractions: timedEdges.length,
       successRate: recentEdges.length > 0 ? successCount / recentEdges.length : 0,
-      avgLatencyMs: recentEdges.length > 0 ? totalLatency / recentEdges.length : 0,
+      avgLatencyMs: timedEdges.length > 0 ? totalLatency / timedEdges.length : 0,
       bottlenecks: this.getBottlenecks(),
       clusters: this.getEmergentClusters(),
       calculatedAt: getTimeProvider().nowIso(),

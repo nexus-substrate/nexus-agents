@@ -182,8 +182,25 @@ export interface SwarmHealthMetrics {
   readonly totalInteractions: number;
   /** Successful interaction rate (0-1) */
   readonly successRate: number;
-  /** Average interaction latency (ms) */
+  /**
+   * Mean latency over the interactions that CARRIED a duration (#5782).
+   *
+   * `durationMs` is optional on a recorded interaction and the server-wide
+   * producer (`mcp/eventbus-bridge.ts`) does not set it, so this is a mean over
+   * a subset. Read it with `timedInteractions`, not with `totalInteractions`.
+   */
   readonly avgLatencyMs: number;
+  /**
+   * How many of `totalInteractions` carried a `durationMs` (#5782).
+   *
+   * Without it the mean cannot be read: 100ms over one timed edge and 100ms
+   * over fifty are the same number with very different weight, and 0 means
+   * "nothing was timed" rather than "instant".
+   *
+   * Optional so adding it does not break an external constructor of this
+   * published type; every in-tree producer sets it.
+   */
+  readonly timedInteractions?: number;
   /** Current bottlenecks */
   readonly bottlenecks: BottleneckInfo[];
   /** Detected clusters */
