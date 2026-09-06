@@ -369,6 +369,24 @@ export type GraphEvent =
       readonly timestamp: number;
     }
   | {
+      /**
+       * A node that did not run to completion: it paused for human input
+       * (`interrupted`) or its precondition refused it (`skipped`).
+       *
+       * `NodeResult.status` is four-way, and the emitter's `else` branch used to
+       * fold both of these into `node_completed` — so a node that produced
+       * nothing was published to the hash-chained audit trail as "completed in
+       * 0ms", and a `skipped` result's `error` string was dropped entirely
+       * because the completion event has no slot for it.
+       */
+      readonly type: 'node_not_completed';
+      readonly nodeId: string;
+      readonly stepNumber: number;
+      readonly reason: 'interrupted' | 'skipped';
+      readonly detail?: string;
+      readonly timestamp: number;
+    }
+  | {
       readonly type: 'state_updated';
       readonly stepNumber: number;
       readonly updatedKeys: readonly string[];
@@ -385,6 +403,18 @@ export type GraphEvent =
       readonly totalSteps: number;
       readonly totalNodes: number;
       readonly durationMs: number;
+      /**
+       * True when the run stopped awaiting human input rather than finishing.
+       *
+       * `runSuperStepLoop` returns `undefined` on the interrupt path, which is
+       * the same "loop ended normally" signal as running out of runnable nodes,
+       * so this event was emitted unconditionally BEFORE the halt check. A
+       * paused run published a completion indistinguishable from a finished
+       * one, and `halted` — the truthful marker — lives on the returned
+       * `Result`, which an `onEvent` consumer such as the audit bridge never
+       * sees.
+       */
+      readonly halted?: boolean;
       readonly timestamp: number;
     }
   | {

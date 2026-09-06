@@ -189,7 +189,20 @@ export async function executeGraph(
     durationMs: totalDurationMs,
   });
 
-  emitExecutionComplete(ctx.stepsExecuted, ctx.allResults.length, totalDurationMs, options);
+  // The halt state has to be known BEFORE the event is emitted.
+  // `runSuperStepLoop` returns `undefined` on the interrupt path, which is the
+  // same "loop ended normally" signal as running out of runnable nodes, so this
+  // used to publish a completion and only then discover it must return a
+  // `halted` checkpoint. `halted` lives on the returned `Result`, which an
+  // `onEvent` consumer such as the audit bridge never sees.
+  const wasHalted = ctx.pendingInterrupt !== undefined;
+  emitExecutionComplete(
+    ctx.stepsExecuted,
+    ctx.allResults.length,
+    totalDurationMs,
+    options,
+    wasHalted
+  );
 
   if (ctx.pendingInterrupt !== undefined) {
     const halted = saveInterruptCheckpoint(ctx, options);
