@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.28.6
+
+### Patch Changes
+
+- [#5708](https://github.com/nexus-substrate/nexus-agents/pull/5708) [`5c57f55`](https://github.com/nexus-substrate/nexus-agents/commit/5c57f55181d5faedb6361eeade73e76cdeaa9962) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The local pr-review ledger binds its record to `git merge-base origin/<base> <head>` — the base the governor gate recomputes since [#5476](https://github.com/nexus-substrate/nexus-agents/issues/5476) — instead of the PR payload's `base.sha`, and keeps the original as `apiBaseSha`; the `pr_review` tool's `baseSha` docs say the same ([#5692](https://github.com/nexus-substrate/nexus-agents/issues/5692)).
+
 ## 8.28.5
 
 ### Patch Changes
