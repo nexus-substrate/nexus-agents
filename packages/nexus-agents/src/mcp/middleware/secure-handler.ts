@@ -423,6 +423,21 @@ function checkSecurityTier(
   logger: ILogger
 ): ToolResult | null {
   const tier = config.securityTier ?? 'standard';
+  // A value the sanitizer could not reduce to a fixed point is refused at EVERY
+  // tier, standard included, because the argument still carries whatever the
+  // stripper could not remove. `detectedPatterns` cannot catch it — the pattern
+  // detectors match phrases, not tags, so a deeply nested `<system>` returned
+  // clean-looking metadata with an empty pattern list. Refusing here is fail-
+  // closed and rare: it takes six levels of hand-nested tags to reach.
+  if (sanitizeResult.sanitizationIncomplete) {
+    logger.warn('Input rejected: sanitizer did not reach a fixed point', { tier });
+    return toolStructuredError({
+      errorCategory: 'permission',
+      message:
+        'Input validation failed: the input could not be fully sanitized within the pass budget, ' +
+        'so it still contains markup the sanitizer removes. Simplify the input and retry.',
+    });
+  }
   if (tier === 'standard' || sanitizeResult.detectedPatterns.length === 0) {
     return null;
   }
