@@ -22,7 +22,7 @@ import { VOTER_ROLES } from './vote-types.js';
 import type { Vote } from '../consensus/types.js';
 import type { VoteUsage } from './voter-execution.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
@@ -30,6 +30,14 @@ import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
+import {
+  DEFAULT_ERRORED_ROLE_BACKOFF_MS,
+  retryErroredRoles,
+} from './voter-retry.js';
+import { NoAdapterError, resolveAdapterOrFail } from './voter-adapter-resolve.js';
+
+// Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
+export { NoAdapterError };
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -107,6 +115,7 @@ export function computeOverallConsensusDeadlineMs(
  */
 /** Default inter-agent delay to prevent rate limiting (ms). Raised from 1s to 2s (#1802). */
 export const DEFAULT_INTER_AGENT_DELAY_MS = 2000;
+
 
 export interface VoterAgentOptions {
   /** Logger instance */
@@ -264,39 +273,13 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    * have not started; votes already in flight settle. Absent changes nothing.
    */
   readonly signal?: AbortSignal | undefined;
-}
-
-/**
- * Error thrown when no adapter is available and simulation is disabled.
- */
-export class NoAdapterError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NoAdapterError';
-  }
-}
-
-/**
- * Resolves the model adapter, handling errors per Issue #280.
- */
-function resolveAdapter(
-  options: CollectRealVotesOptions,
-  logger: ILogger
-): { adapter: IModelAdapter } | { error: string } {
-  try {
-    if (options.adapter !== undefined) return { adapter: options.adapter };
-    // #4040: prefer an in-process gateway adapter as the fallback so a
-    // gateway-only environment (no CLIs installed) never hits the CLI registry,
-    // which would throw "No model adapter configured".
-    const gateway = options.gatewayAdapters;
-    if (gateway !== undefined && gateway.length > 0 && gateway[0] !== undefined) {
-      return { adapter: gateway[0] };
-    }
-    const registry = getGlobalRegistry({ logger });
-    return { adapter: registry.getDefault() };
-  } catch (error) {
-    return { error: getErrorMessage(error) };
-  }
+  /**
+   * Delay before the per-role retry of errored voters (#5578). Defaults to
+   * {@link DEFAULT_ERRORED_ROLE_BACKOFF_MS}; 0 disables the wait, which is what
+   * tests want. The retry itself is not optional — the panel applies it under
+   * every error policy, per the #5578 design panel (option b, 6 of 6).
+   */
+  readonly erroredRoleBackoffMs?: number | undefined;
 }
 
 /**
@@ -568,21 +551,8 @@ export async function collectRealVotes(
     return createSimulatedVotes(roles, proposal);
   }
 
-  const adapterResult = resolveAdapter(options, logger);
-
-  if ('error' in adapterResult) {
-    logger.error('No adapter available for voting', undefined, { error: adapterResult.error });
-
-    if (allowSimulation === true) {
-      logger.warn('Falling back to simulation (allowSimulation=true)');
-      return createSimulatedVotes(roles, proposal, 'No adapter available');
-    }
-
-    throw new NoAdapterError(
-      `No adapter available for voting: ${adapterResult.error}. ` +
-        'Install a CLI (claude/gemini/codex) or set ANTHROPIC_API_KEY.'
-    );
-  }
+  const adapterResult = resolveAdapterOrFail(options, logger, allowSimulation === true);
+  if ('simulated' in adapterResult) return createSimulatedVotes(roles, proposal, 'No adapter available');
 
   // Per Issue #845: Use diverse adapters when no explicit adapter is provided
   const roleAdapters =
@@ -602,7 +572,7 @@ export async function collectRealVotes(
   };
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
-  const results = await launchStaggeredVotes({
+  const launchInput: StaggeredVoteInput = {
     roles,
     proposal,
     roleAdapters,
@@ -611,7 +581,16 @@ export async function collectRealVotes(
     voteOptions,
     interDelay,
     signal: options.signal,
-  });
+  };
+  const firstPass = await launchStaggeredVotes(launchInput);
+  // #5578: recover an errored seat with one extra call rather than losing it
+  // (reduce_denominator) or replaying the whole panel (absolute_quorum).
+  const results = await retryErroredRoles(
+    firstPass,
+    (retryRoles) => launchStaggeredVotes({ ...launchInput, roles: retryRoles }),
+    logger,
+    options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS
+  );
 
   // #4983/#5546: this is the only point the question is answerable. Assess the
   // successful result provenance, not the assigned adapters: a failed primary
