@@ -54,9 +54,19 @@ function computeResultCounts(results: readonly TaskTestResult[]): {
 
 /**
  * Determines if the run was successful.
+ *
+ * A run with failing tasks did not succeed. The previous form was
+ * `failureCount === 0 || !stopOnFailure`, and `stopOnFailure` defaults to
+ * `false` — so `!stopOnFailure` was `true` and the expression short-circuited
+ * to `true` for EVERY failure count. The one boolean a CI gate would branch on
+ * was a function of an execution-control flag rather than of the results, and
+ * could only come out `false` when a caller opted in.
+ *
+ * `stopOnFailure` stays what it is: whether the runner halts early. It is not
+ * an input to the verdict.
  */
-function determineSuccess(failureCount: number, stopOnFailure: boolean): boolean {
-  return failureCount === 0 || !stopOnFailure;
+function determineSuccess(failureCount: number): boolean {
+  return failureCount === 0;
 }
 
 /**
@@ -131,7 +141,7 @@ function buildBaseResult(params: BaseResultParams): TestRunResult {
  */
 export async function buildTestRunResult(options: RunResultOptions): Promise<TestRunResult> {
   const { failureCount } = computeResultCounts(options.results);
-  const success = determineSuccess(failureCount, options.config.stopOnFailure);
+  const success = determineSuccess(failureCount);
   const metrics = computeAggregatedMetrics(options.results);
   const environment = await getEnvironmentInfo(options.adapters);
 
