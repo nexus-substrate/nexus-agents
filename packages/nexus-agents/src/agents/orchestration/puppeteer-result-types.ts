@@ -13,9 +13,25 @@ import type {
   PuppeteerState,
 } from './puppeteer-state-types.js';
 
-/** Reasons for terminating orchestration. */
+/**
+ * Reasons for terminating orchestration.
+ *
+ * Every condition `shouldTerminate` can stop on must be nameable here. It was
+ * not: `shouldTerminate` stops on `totalCost >= maxCostBudget`, this union had
+ * no member for it, and `determineTerminationReason` fell through to a trailing
+ * `return 'max_steps'` — so a run halted at step 6 of 50 by the wallet reported
+ * that it had exhausted its step ceiling, and the learning loop was trained on
+ * that (#5792).
+ */
 export type PuppeteerTerminationReason =
-  'task_complete' | 'max_steps' | 'timeout' | 'error' | 'cancelled' | 'convergence';
+  | 'task_complete'
+  | 'max_steps'
+  | 'timeout'
+  | 'error'
+  | 'cancelled'
+  | 'convergence'
+  | 'budget_exceeded'
+  | 'unknown';
 
 /**
  * Result of one orchestration step.
