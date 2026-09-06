@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.32.0
+
+### Minor Changes
+
+- [#5784](https://github.com/nexus-substrate/nexus-agents/pull/5784) [`601a5a3`](https://github.com/nexus-substrate/nexus-agents/commit/601a5a3aab5569bb7140b8cdb3346d70269d600c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `avgLatencyMs` divides by the interactions it actually timed. Both the swarm-level metric and the per-edge one summed `durationMs` over the timed edges and then divided by every edge, folding untimed interactions in as zero — one 100ms interaction beside one untimed interaction reported 50ms as a measurement. The server-wide producer records interactions with no duration at all, so this was the common case. `SwarmHealthMetrics` gains an optional `timedInteractions` so the coverage behind the mean is readable.
+
 ## 8.31.6
 
 ### Patch Changes
