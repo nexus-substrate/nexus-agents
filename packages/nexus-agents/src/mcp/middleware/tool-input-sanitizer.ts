@@ -27,6 +27,19 @@ export interface SanitizeToolInputResult {
   /** Injection patterns detected (for logging) */
   readonly detectedPatterns: readonly string[];
   /**
+   * True when a value could NOT be reduced to a fixed point within the pass
+   * budget, so `sanitized` still carries whatever the stripper could not
+   * remove.
+   *
+   * `wasModified` cannot answer this: it is equally true for a clean strip and
+   * for a strip that gave up. A nested tag reconstructs itself as its wrapper
+   * is removed, so depth N needs N passes — at depth 6 the result was
+   * `<system>PAYLOAD` with `wasModified: true` and no detected pattern, and
+   * `checkSecurityTier` had nothing to refuse on. Treat true as "do not hand
+   * this to a model".
+   */
+  readonly sanitizationIncomplete: boolean;
+  /**
    * Number of HTML comments removed (#5258).
    *
    * Reported rather than discarded so a reader can tell that content was taken
@@ -124,6 +137,8 @@ function stripHtmlComments(value: string): { cleaned: string; removed: number } 
 function sanitizeString(value: string): {
   cleaned: string;
   modified: boolean;
+  /** True when the pass budget ran out with the value still reducible. */
+  incomplete: boolean;
   commentsRemoved: number;
 } {
   // Loop to a fixed point over BOTH strips together. Each one can reconstruct
@@ -144,8 +159,16 @@ function sanitizeString(value: string): {
   //
   // Bounded rather than `while`: a pathological input must not spin here, and
   // five passes clears any nesting depth seen in practice (two suffice for the
-  // payloads above). If the cap is ever hit the value is returned as it stands
-  // and reported modified, so the caller still sees that something was stripped.
+  // payloads above).
+  //
+  // Hitting the cap is NOT the same as a clean strip, and reporting it as one
+  // was the defect. Stripping a nested tag splices the surrounding fragments
+  // back into a live tag, so depth N needs N passes: at depth 6 this returned
+  // `<system>PAYLOAD` with `modified: true` and no detected pattern — exactly
+  // what a successful strip returns — and `checkSecurityTier` passed it
+  // through at every tier. `incomplete` is the signal that separates
+  // "cleaned" from "gave up while still dirty". Raising MAX_PASSES only moves
+  // the depth.
   const MAX_PASSES = 5;
   let cleaned = value;
   let commentsRemoved = 0;
@@ -160,9 +183,15 @@ function sanitizeString(value: string): {
     if (afterComments === cleaned) break;
     cleaned = afterComments;
   }
+  // One more strip: if it still changes the string, the loop ran out of passes
+  // rather than reaching a fixed point, and `cleaned` still carries whatever it
+  // could not remove.
+  XML_INJECTION_PATTERN.lastIndex = 0;
+  const probe = stripHtmlComments(cleaned.replace(XML_INJECTION_PATTERN, '')).cleaned;
   return {
     cleaned,
     modified: cleaned !== value,
+    incomplete: probe !== cleaned,
     commentsRemoved,
   };
 }
@@ -185,15 +214,16 @@ function detectPatterns(value: string): string[] {
  */
 function sanitizeValue(
   value: unknown,
-  stats: { count: number; patterns: string[]; commentsRemoved: number }
+  stats: { count: number; patterns: string[]; commentsRemoved: number; incomplete: boolean }
 ): unknown {
   if (typeof value === 'string') {
     const patterns = detectPatterns(value);
     if (patterns.length > 0) {
       stats.patterns.push(...patterns);
     }
-    const { cleaned, modified, commentsRemoved } = sanitizeString(value);
+    const { cleaned, modified, incomplete, commentsRemoved } = sanitizeString(value);
     if (modified) stats.count++;
+    if (incomplete) stats.incomplete = true;
     stats.commentsRemoved += commentsRemoved;
     return cleaned;
   }
@@ -205,6 +235,13 @@ function sanitizeValue(
   if (value !== null && typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      // Scan the KEY too. This recursed over values and copied keys verbatim,
+      // so relocating a payload from a value into a key raised no signal at
+      // all and `checkSecurityTier` had nothing to refuse on. The key is not
+      // rewritten — renaming a caller's key silently is its own misreport —
+      // but it now contributes to `detectedPatterns` like any other string.
+      const keyPatterns = detectPatterns(key);
+      if (keyPatterns.length > 0) stats.patterns.push(...keyPatterns);
       result[key] = sanitizeValue(val, stats);
     }
     return result;
@@ -227,11 +264,12 @@ export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
       wasModified: false,
       modifiedCount: 0,
       detectedPatterns: [],
+      sanitizationIncomplete: false,
       commentsRemoved: 0,
     };
   }
 
-  const stats = { count: 0, patterns: [] as string[], commentsRemoved: 0 };
+  const stats = { count: 0, patterns: [] as string[], commentsRemoved: 0, incomplete: false };
   const sanitized = sanitizeValue(args, stats);
   const uniquePatterns = [...new Set(stats.patterns)];
 
@@ -240,6 +278,7 @@ export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
     wasModified: stats.count > 0,
     modifiedCount: stats.count,
     detectedPatterns: uniquePatterns,
+    sanitizationIncomplete: stats.incomplete,
     commentsRemoved: stats.commentsRemoved,
   };
 }
