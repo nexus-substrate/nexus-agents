@@ -73,13 +73,41 @@ jobs:
           path: ./lychee-report.md
           retention-days: 7
 
-      - name: Comment on PR with broken links
+      # Distinguish "links are broken" from "the checker could not run" (#5742).
+      # lychee writes the report only once it has results; a non-zero exit
+      # BEFORE that (network, config, rate limit — exit 35 was seen on an
+      # unchanged tree that passed four minutes earlier) leaves no file. The
+      # step used to read it unguarded and die on ENOENT, so the one artifact
+      # that says what went wrong was replaced by a Node stack trace.
+      - name: Report the link-check outcome
         if: failure() && github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
-            const report = fs.readFileSync('./lychee-report.md', 'utf8');
+            const path = './lychee-report.md';
+
+            if (!fs.existsSync(path)) {
+              // Nothing was measured. Say that, rather than letting a red
+              // "Check Links" read as a broken link.
+              core.warning(
+                'lychee exited non-zero without writing a report — the link set was NOT measured. ' +
+                  'This is a checker failure, not a broken link. Re-run the job.'
+              );
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body:
+                  '## 🔗 Link check did not run\n\n' +
+                  'lychee exited non-zero **before producing a report**, so the link set was not ' +
+                  'measured. This is a failure of the checker, not evidence of a broken link — ' +
+                  're-run the job. See the step log for the exit code.'
+              });
+              return;
+            }
+
+            const report = fs.readFileSync(path, 'utf8');
 
             // Truncate if too long
             const maxLength = 60000;
@@ -87,7 +115,7 @@ jobs:
               ? report.substring(0, maxLength) + '\n\n... (truncated)'
               : report;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
