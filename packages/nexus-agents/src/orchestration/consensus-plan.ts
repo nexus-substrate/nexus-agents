@@ -86,7 +86,7 @@ export async function executeConsensusPlan(
       const { agreedSteps, divergences } = synthesize(successPlans);
       const risks = collectRisks(successPlans);
       const alternatives = collectAlternatives(successPlans);
-      const summary = buildPlanSummary(agreedSteps, divergences, clisUsed, successPlans.length);
+      const summary = buildPlanSummary(agreedSteps, divergences, clisUsed, partitions);
 
       recordPlanOutcomes(partitions);
 
@@ -198,6 +198,22 @@ async function dispatchPlans(
       const plan = parsePlan(rawOutput);
       const model = resolveExecutionModelId(adapter, result.value.model);
 
+      if (plan === null) {
+        // The CLI answered without a parseable plan (#5697): no plan was
+        // produced, so this is not a planning success and the CLI is not
+        // "used" — the outcome store and the summary both read `success`.
+        logger.warn('Plan CLI output was unparseable', { cli });
+        return {
+          cli,
+          success: false,
+          plan: null,
+          rawOutput,
+          durationMs,
+          model,
+          error: UNPARSEABLE_PLAN,
+        };
+      }
+
       return { cli, success: true, plan, rawOutput, durationMs, model };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
@@ -213,6 +229,13 @@ async function dispatchPlans(
 }
 
 /** Builds a failed plan partition with real model attribution (#4194). */
+/** Error text carried by a partition whose CLI answered without a parseable plan (#5697). */
+const UNPARSEABLE_PLAN = 'unparseable plan output: no JSON plan object';
+
+function isUnparseable(p: CliPlanPartition): boolean {
+  return !p.success && p.error === UNPARSEABLE_PLAN;
+}
+
 function failedPlanPartition(
   cli: CliName,
   durationMs: number,
@@ -448,18 +471,19 @@ function buildPlanSummary(
   agreedSteps: readonly AgreedStep[],
   divergences: readonly Divergence[],
   clisUsed: readonly CliName[],
-  parsedPlanCount: number
+  partitions: readonly CliPlanPartition[]
 ): string {
   if (clisUsed.length === 0) {
+    // Every CLI answered, none of them parseably (#4585). Without this the
+    // summary rendered as an ordinary consensus plan that happened to contain
+    // zero steps — a clean sheet over zero evidence. Since #5697 an
+    // unparseable answer is not a "used" CLI, so the distinction lives on the
+    // partitions rather than on a parsed-plan count.
+    const unparseable = partitions.filter((p) => isUnparseable(p)).map((p) => p.cli);
+    if (unparseable.length > 0) {
+      return `No parseable plan from any of ${String(unparseable.length)} CLI(s): ${unparseable.join(', ')}. Nothing was compared.`;
+    }
     return 'All planning CLIs failed. No plan to synthesize.';
-  }
-
-  // Every CLI answered, none of them parseably (#4585). Without this the
-  // summary rendered as an ordinary consensus plan that happened to contain
-  // zero steps and zero divergences — a clean sheet over zero evidence, which
-  // reads in the record as agreement rather than as nothing to compare.
-  if (parsedPlanCount === 0) {
-    return `No parseable plan from any of ${String(clisUsed.length)} CLI(s): ${clisUsed.join(', ')}. Nothing was compared.`;
   }
 
   const multiAgreed = agreedSteps.filter((s) => s.proposedBy.length > 1).length;
