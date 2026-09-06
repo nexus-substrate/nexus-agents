@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { countMockGuardSites } from './fitness-score.js';
+import { countMockGuardSites } from './source-scan.js';
 
 let root = '';
 
