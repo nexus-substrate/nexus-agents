@@ -193,10 +193,51 @@ describe('queryTraceFromDisk', () => {
 
     const result = await queryTraceFromDisk({ runId: 'run-malformed' }, tempDir);
 
-    // Should parse 2 valid lines, skip 2 malformed ones
+    // Should parse 2 valid lines, skip 2 malformed ones — and SAY it skipped
+    // them. This test previously asserted only `totalEvents: 2`, which pinned
+    // the defect: a half-corrupt trace was byte-identical to a run that emitted
+    // 2 events.
     expect(result.source).toBe('disk');
     expect(result.totalEvents).toBe(2);
     expect(result.events).toHaveLength(2);
+    expect(result.skippedLines).toBe(2);
+    expect(result.errorCategory).toBe('parse_error');
+    expect(result.errorMessage).toContain('could not be parsed');
+  });
+
+  it('omits skippedLines entirely for a clean trace', async () => {
+    // The pair. Without it, reporting a skip count unconditionally would pass,
+    // and every clean read would start carrying a `parse_error` category.
+    const runDir = join(tempDir, 'run-clean');
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, 'trace.jsonl'),
+      `${JSON.stringify({ eventType: 'model.called', agentId: 'a1' })}\n`
+    );
+
+    const result = await queryTraceFromDisk({ runId: 'run-clean' }, tempDir);
+
+    expect(result.totalEvents).toBe(1);
+    expect(result.skippedLines).toBeUndefined();
+    expect(result.errorCategory).toBeUndefined();
+  });
+
+  it('does not report an over-size trace as not_found', async () => {
+    // `source` is the existence oracle. The over-size branch spread
+    // EMPTY_RESPONSE, so the one case where the trace certainly exists and is
+    // certainly non-empty said "there is no trace for this run" — with
+    // `totalEvents: 0` beside a `truncated: true` that contradicts it.
+    const runDir = join(tempDir, 'run-huge');
+    await mkdir(runDir, { recursive: true });
+    // One line over the cap; the reader stats before it reads, so the content
+    // never has to be valid JSONL.
+    await writeFile(join(runDir, 'trace.jsonl'), 'x'.repeat(100 * 1024 * 1024 + 1));
+
+    const result = await queryTraceFromDisk({ runId: 'run-huge' }, tempDir);
+
+    expect(result.source).toBe('disk');
+    expect(result.truncated).toBe(true);
+    expect(result.errorCategory).toBe('too_large');
   });
 
   it('blocks path traversal at runtime via resolve guard', async () => {

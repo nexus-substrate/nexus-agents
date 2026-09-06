@@ -50,7 +50,8 @@ export type QueryTraceInput = z.infer<typeof QueryTraceInputSchema>;
 // ============================================================================
 
 /** Error categories for trace query failures. */
-export type TraceErrorCategory = 'not_found' | 'permission_error' | 'parse_error' | 'unknown';
+export type TraceErrorCategory =
+  'not_found' | 'permission_error' | 'parse_error' | 'too_large' | 'unknown';
 
 export interface QueryTraceResponse {
   readonly runId: string;
@@ -58,6 +59,16 @@ export interface QueryTraceResponse {
   readonly totalEvents: number;
   readonly truncated: boolean;
   readonly source: 'disk' | 'not_found';
+  /**
+   * Lines the reader could not parse, omitted when none.
+   *
+   * `totalEvents` counts what SURVIVED `JSON.parse`, not what the file
+   * contained. A partially-flushed JSONL trace — the normal failure mode for an
+   * append-only file written by a process that died mid-write — used to be
+   * byte-identical to a run that simply emitted fewer events. Same fix the
+   * audit-chain reader got under #4787.
+   */
+  readonly skippedLines?: number;
   readonly errorCategory?: TraceErrorCategory;
   readonly errorMessage?: string;
 }
@@ -110,19 +121,29 @@ function userFacingTraceError(err: unknown, runId: string): string {
   }
 }
 
-/** Parse JSONL content into records, skipping malformed lines. */
-function parseJsonlLines(content: string): Record<string, unknown>[] {
-  return content
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line) as Record<string, unknown>];
-      } catch {
-        return []; // Skip malformed JSONL lines
-      }
-    });
+/**
+ * Parse JSONL content, COUNTING the lines that could not be read.
+ *
+ * The count is the point. Swallowing every `SyntaxError` silently made
+ * `totalEvents` a count of survivors reported as a count of events, and left
+ * `parse_error` — a category this module declares and renders a message for —
+ * unreachable from the disk path, because no `SyntaxError` ever escaped to
+ * `classifyTraceError`.
+ */
+function parseJsonlLines(content: string): {
+  events: Record<string, unknown>[];
+  skippedLines: number;
+} {
+  const events: Record<string, unknown>[] = [];
+  let skippedLines = 0;
+  for (const line of content.trim().split('\n').filter(Boolean)) {
+    try {
+      events.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      skippedLines++;
+    }
+  }
+  return { events, skippedLines };
 }
 
 const EMPTY_RESPONSE: Omit<QueryTraceResponse, 'runId'> = {
@@ -131,6 +152,64 @@ const EMPTY_RESPONSE: Omit<QueryTraceResponse, 'runId'> = {
   truncated: false,
   source: 'not_found',
 };
+
+/**
+ * The response for a trace too large to read.
+ *
+ * NOT `EMPTY_RESPONSE`. That spreads `source: 'not_found'`, so the one case
+ * where the trace certainly exists and is certainly non-empty was reported as
+ * "there is no trace for this run" — with `totalEvents: 0`, a measurement never
+ * taken, beside a `truncated: true` that contradicts it. `source` is the
+ * existence oracle, and a consumer branching on `'not_found'` never reaches the
+ * contradiction.
+ */
+function overSizeResponse(runId: string, sizeBytes: number): QueryTraceResponse {
+  return {
+    runId,
+    events: [],
+    totalEvents: 0,
+    truncated: true,
+    source: 'disk',
+    errorCategory: 'too_large',
+    errorMessage:
+      `Trace for runId '${runId}' is ${String(sizeBytes)} bytes, over the ` +
+      `${String(MAX_TRACE_FILE_BYTES)}-byte read cap; no events were read`,
+  };
+}
+
+/**
+ * Build the success response, disclosing any lines the reader could not parse.
+ *
+ * The skip count is omitted when zero, so a clean read is byte-identical to
+ * what every existing consumer already saw.
+ */
+function readTraceResponse(
+  input: QueryTraceInput,
+  read: { events: Record<string, unknown>[]; skippedLines: number }
+): QueryTraceResponse {
+  const limit = input.limit ?? 100;
+  const parsed =
+    input.eventType !== undefined
+      ? read.events.filter((e) => e['eventType'] === input.eventType)
+      : read.events;
+
+  return {
+    runId: input.runId,
+    events: parsed.slice(0, limit),
+    totalEvents: parsed.length,
+    truncated: parsed.length > limit,
+    source: 'disk',
+    ...(read.skippedLines > 0
+      ? {
+          skippedLines: read.skippedLines,
+          errorCategory: 'parse_error' as const,
+          errorMessage:
+            `${String(read.skippedLines)} line(s) in the trace for runId '${input.runId}' ` +
+            'could not be parsed; the events returned are what survived',
+        }
+      : {}),
+  };
+}
 
 /** Read trace events from disk for a given run_id. */
 export async function queryTraceFromDisk(
@@ -151,24 +230,11 @@ export async function queryTraceFromDisk(
   try {
     const fileStat = await stat(tracePath);
     if (fileStat.size > MAX_TRACE_FILE_BYTES) {
-      return { runId: input.runId, ...EMPTY_RESPONSE, truncated: true };
+      return overSizeResponse(input.runId, fileStat.size);
     }
 
     const content = await readFile(tracePath, 'utf-8');
-    let parsed = parseJsonlLines(content);
-    const limit = input.limit ?? 100;
-
-    if (input.eventType !== undefined) {
-      parsed = parsed.filter((e) => e['eventType'] === input.eventType);
-    }
-
-    return {
-      runId: input.runId,
-      events: parsed.slice(0, limit),
-      totalEvents: parsed.length,
-      truncated: parsed.length > limit,
-      source: 'disk',
-    };
+    return readTraceResponse(input, parseJsonlLines(content));
   } catch (err: unknown) {
     const category = classifyTraceError(err);
     const message = userFacingTraceError(err, input.runId);
