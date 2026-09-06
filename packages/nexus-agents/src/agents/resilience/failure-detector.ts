@@ -63,6 +63,42 @@ const FRAGILE_EXECUTION_INDICATORS = [
 /**
  * Failure detector that analyzes agent behavior for failure archetypes.
  */
+/**
+ * Map a confidence score to a severity level.
+ *
+ * The previous form was an object keyed by number, walked with
+ * `Object.entries` and last-match-wins:
+ *
+ * ```ts
+ * const severityMap: Record<number, Severity> = { 0.3:'low', 0.5:'medium', 0.7:'high', 1.0:'critical' };
+ * for (const [t, sev] of Object.entries(severityMap)) if (confidence >= parseFloat(t)) severity = sev;
+ * ```
+ *
+ * `1.0` stringifies to the key `"1"`, which is a canonical array index, and ES
+ * property enumeration puts integer-like keys FIRST — the real order is
+ * `["1","0.3","0.5","0.7"]`. So at confidence 1 the loop assigned `critical`
+ * and then overwrote it with `low`, `medium` and finally `high`. `critical` was
+ * unreachable for every possible input, while `FailureSeverity` and its Zod
+ * enum both published it as a state a consumer could expect.
+ *
+ * An ordered array of thresholds cannot develop that defect: the order is the
+ * literal's own, and it is the thing under test.
+ */
+const SEVERITY_THRESHOLDS: readonly (readonly [number, DetectedFailure['severity']])[] = [
+  [0.3, 'low'],
+  [0.5, 'medium'],
+  [0.7, 'high'],
+  [1.0, 'critical'],
+];
+
+export function severityForConfidence(confidence: number): DetectedFailure['severity'] {
+  let severity: DetectedFailure['severity'] = 'low';
+  for (const [threshold, level] of SEVERITY_THRESHOLDS) {
+    if (confidence >= threshold) severity = level;
+  }
+  return severity;
+}
+
 export class FailureDetector {
   private readonly config: DetectorConfig;
   private readonly logger: ILogger;
@@ -315,17 +351,7 @@ export class FailureDetector {
     indicators: string[],
     confidence: number
   ): DetectedFailure {
-    const severityMap: Record<number, DetectedFailure['severity']> = {
-      0.3: 'low',
-      0.5: 'medium',
-      0.7: 'high',
-      1.0: 'critical',
-    };
-
-    let severity: DetectedFailure['severity'] = 'low';
-    for (const [threshold, sev] of Object.entries(severityMap)) {
-      if (confidence >= parseFloat(threshold)) severity = sev;
-    }
+    const severity = severityForConfidence(confidence);
 
     return {
       archetype,
