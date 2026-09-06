@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.28.5
+
+### Patch Changes
+
+- [#5712](https://github.com/nexus-substrate/nexus-agents/pull/5712) [`80add98`](https://github.com/nexus-substrate/nexus-agents/commit/80add9811e177c46bc7dee6a346a81bf668f5c58) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `ACTION_CLASSES` derives from `AUTHORITY_TIERS` instead of restating it, so the ordering the authority guard refuses on cannot drift from the manifest's; the uncalled `loadLoopTierRegistry` is removed ([#5711](https://github.com/nexus-substrate/nexus-agents/issues/5711)).
+
+- [#5709](https://github.com/nexus-substrate/nexus-agents/pull/5709) [`ce5ffb9`](https://github.com/nexus-substrate/nexus-agents/commit/ce5ffb9a5633a74e06a14765811cfc93a29527f0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - PR diff content is sanitized and wrapped in the `EXTERNAL CONTENT` envelope before it reaches the review experts, and the flags it raises now feed the author's reputation assessment alongside the PR body's.
+
 ## 8.28.4
 
 ### Patch Changes
