@@ -132,7 +132,7 @@ function createDeprecatedModeFallback(
     requestedMode,
     actualMode: 'policy',
     reason:
-      'In-process Docker/Deno executors were deleted in #2551. Use the OpenCode sandbox bootstrap for real isolation (NEXUS_SANDBOX environment variable, see docs/guides/SANDBOXED-USAGE.md).',
+      'In-process Docker/Deno executors were deleted in #2551. For real isolation run inside the OpenCode Docker image (docs/guides/SANDBOXED-USAGE.md); the NEXUS_SANDBOX variable only tells nexus-agents it is inside one, it does not confine anything (#5026).',
   });
 
   const executor = new PolicySandboxExecutor(policyConfig);
@@ -141,7 +141,7 @@ function createDeprecatedModeFallback(
     executor,
     actualMode: 'policy',
     usedFallback: true,
-    warning: `Sandbox mode "${requestedMode}" is no longer supported; using "policy" mode. For real isolation, use the NEXUS_SANDBOX bootstrap.`,
+    warning: `Sandbox mode "${requestedMode}" is no longer supported; using "policy" mode. For real isolation run inside the OpenCode Docker image (docs/guides/SANDBOXED-USAGE.md); NEXUS_SANDBOX only signals that you are inside one.`,
   };
 }
 
