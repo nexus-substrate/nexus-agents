@@ -43,6 +43,7 @@ import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 import {
   readPrReviewRecords,
+  ledgerIntegrityFailure,
   verifyPrReviewRecordSet,
   type PrReviewRecord,
 } from '../packages/nexus-agents/src/audit/index.js';
@@ -557,10 +558,25 @@ function resolveGateContext(
   return { prNumber, reviewedDiffHash, baseSha, changedFiles };
 }
 
-export function runGovernorReviewGate(argv: readonly string[]): number {
+export function runGovernorReviewGate(
+  argv: readonly string[],
+  // A parameter, not an env var: the ledger path must not be steerable by the
+  // environment of a gate whose whole job is tamper-evidence. Tests supply a
+  // fixture; production takes the default and never passes this.
+  ledgerFile: string = PR_REVIEW_RECORDS_FILE
+): number {
   const codeownersText = existsSync(CODEOWNERS_FILE) ? readFileSync(CODEOWNERS_FILE, 'utf-8') : '';
   const governorPatterns = governorPathsFromCodeowners(codeownersText);
-  const { records } = readPrReviewRecords(PR_REVIEW_RECORDS_FILE);
+  const { records, invalidLines } = readPrReviewRecords(ledgerFile);
+
+  // A dropped line is evidence that vanished, not evidence that passed. The
+  // sibling ledger gate already fails closed on this signal
+  // (`vote-record-ratification.ts`): a malformed ledger is a repair job.
+  const ledgerFailure = ledgerIntegrityFailure(invalidLines, ledgerFile);
+  if (ledgerFailure !== null) {
+    console.error(`[governor-review] FAIL (integrity, fail-closed): ${ledgerFailure}`);
+    return 1;
+  }
 
   const ctx = resolveGateContext(argv, records);
   if ('exit' in ctx) return ctx.exit;

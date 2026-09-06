@@ -16,6 +16,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   analyzeGovernorReview,
@@ -26,9 +29,14 @@ import {
   parseGenesisExemptions,
   resolvePrContext,
   resolveChangedFiles,
+  runGovernorReviewGate,
   type GovernorReviewInputs,
 } from './check-governor-review.js';
 import type { PrReviewRecord } from '../packages/nexus-agents/src/audit/index.js';
+import {
+  ledgerIntegrityFailure,
+  readPrReviewRecords,
+} from '../packages/nexus-agents/src/audit/index.js';
 import {
   buildPrReviewRecord,
   type BuildPrReviewRecordInput,
@@ -378,5 +386,83 @@ describe('PR context + changed-files resolution', () => {
       'b.ts',
       'c.ts',
     ]);
+  });
+});
+
+// ============================================================================
+// A ledger line the reader cannot validate must fail the gate, not vanish
+// ============================================================================
+
+describe('ledgerIntegrityFailure', () => {
+  // `readPrReviewRecords` drops a line it cannot parse or validate. The gate
+  // destructured `{ records }` and discarded `invalidLines`, so tampering that
+  // takes a record OUT OF SCHEMA — an unknown key against the `.strict()`
+  // shape, a broken brace — removed the evidence instead of failing the check.
+  // Editing a covered field is caught by the record's hash; this was not caught
+  // at all, and removing the highest `sequence` left no gap for the sequence
+  // check either.
+  const LEDGER = 'governance/pr-review-records.jsonl';
+
+  it('reports the lines that could not be read', () => {
+    const failure = ledgerIntegrityFailure([3, 7], LEDGER);
+
+    expect(failure).not.toBeNull();
+    expect(failure).toContain('3, 7');
+    expect(failure).toContain(LEDGER);
+  });
+
+  it('returns null for a ledger that parsed completely', () => {
+    // The pair. Without it the predicate could return a failure for everything
+    // and the assertions above would still pass.
+    expect(ledgerIntegrityFailure([], LEDGER)).toBeNull();
+  });
+
+  it('does not treat an empty ledger as an integrity failure', () => {
+    // The empty case, named: today's committed ledger is 0 bytes, so
+    // `invalidLines` is empty and `records` is empty. That is "nothing to
+    // verify", which the warn branch already reports — not "the ledger is
+    // corrupt". Conflating them would redden every governor PR.
+    const { records, invalidLines } = readPrReviewRecords('/nonexistent/ledger.jsonl');
+
+    expect(records).toEqual([]);
+    expect(ledgerIntegrityFailure(invalidLines, LEDGER)).toBeNull();
+  });
+
+  it('flags a record made unreadable by an out-of-schema edit', () => {
+    // Drives the real reader over a real tampered line, so the test fails if
+    // the schema stops being strict — the property the fix depends on.
+    const dir = mkdtempSync(join(tmpdir(), 'ledger-'));
+    const file = join(dir, 'pr-review-records.jsonl');
+    writeFileSync(file, `${JSON.stringify({ sequence: 0, tampered: 'yes' })}\n`, 'utf8');
+
+    const { records, invalidLines } = readPrReviewRecords(file);
+
+    expect(records).toEqual([]);
+    expect(invalidLines).toEqual([1]);
+    expect(ledgerIntegrityFailure(invalidLines, file)).not.toBeNull();
+  });
+});
+
+describe('the gate itself fails closed on an unreadable ledger', () => {
+  // The seam, not the parts. The predicate above is pure and its tests pass
+  // whether or not the GATE consults it — which is exactly the shape that let
+  // `invalidLines` sit destructured-away in the first place. This drives the
+  // real entry point.
+  function withLedger(contents: string): number {
+    const dir = mkdtempSync(join(tmpdir(), 'gov-ledger-'));
+    const file = join(dir, 'pr-review-records.jsonl');
+    writeFileSync(file, contents, 'utf8');
+    return runGovernorReviewGate([], file);
+  }
+
+  it('exits 1 when a ledger line cannot be validated', () => {
+    expect(withLedger(`${JSON.stringify({ sequence: 0, tampered: 'yes' })}\n`)).toBe(1);
+  });
+
+  it('does not exit 1 for an empty ledger', () => {
+    // Today's committed ledger is 0 bytes. If this returned 1 the gate would
+    // redden every governor PR — the benign population it exists to let
+    // through — so the two cases must stay distinguishable.
+    expect(withLedger('')).not.toBe(1);
   });
 });
