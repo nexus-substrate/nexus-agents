@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 8.34.0
+
+### Minor Changes
+
+- [#5798](https://github.com/nexus-substrate/nexus-agents/pull/5798) [`5870405`](https://github.com/nexus-substrate/nexus-agents/commit/5870405763d4ff236d33881bc60fb163d5859328) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record base-ref provenance on PR-review citations. `postReviewToGitHub` cited
+  the PR's own changed-file list, including files the PR ADDS, so the
+  corroboration record attributed repo provenance to paths the author invented in
+  the same change — the mislabel class [#4667](https://github.com/nexus-substrate/nexus-agents/issues/4667) fixed for issue bodies, on the PR
+  path. `RepoFileSource` gains an optional `existsOnBaseRef`, and
+  `CorroborationResult` gains `clearedOnlyByUnverifiedSources` so the record can
+  say the floor was cleared entirely by author-supplied paths.
+
+  Chosen by a 7-voter panel (option D, 5/6 approvers, supermajority met): the
+  corroboration floor itself is deliberately unchanged, because dropping
+  added-file citations would leave an add-only PR with zero sources and refuse a
+  legitimate review. [#5796](https://github.com/nexus-substrate/nexus-agents/issues/5796) tracks tightening the bar.
+
 ## 8.33.1
 
 ### Patch Changes
