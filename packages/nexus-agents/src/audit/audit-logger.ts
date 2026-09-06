@@ -641,27 +641,92 @@ export class AuditLogger implements IAuditLogger {
     });
   }
 
-  /** Log system startup event */
-  logSystemStartup(metadata?: Record<string, unknown>): void {
+  /**
+   * Log that startup has begun (#5577).
+   *
+   * Emitted when the audit logger itself is constructed, which is long before
+   * authentication, tool registration and transport connect have run. The
+   * completion record is `system.startup`, written at the point the server
+   * reaches "waiting for requests" — see `logSystemStartup`.
+   *
+   * `outcome` is `success` because the enum has no in-progress value; the
+   * phase lives in the action name, not the outcome.
+   */
+  logSystemStartupBegin(metadata?: Record<string, unknown>): void {
     this.log({
       category: 'system',
       severity: 'info',
       outcome: 'success',
-      action: 'system.startup',
-      description: 'Nexus Agents system started',
+      action: 'system.startup.begin',
+      description: 'Nexus Agents startup begun',
       actor: SYSTEM_ACTOR,
       metadata,
     });
   }
 
-  /** Log system shutdown event */
+  /**
+   * Log the startup COMPLETION record (#5577).
+   *
+   * Must be called only once startup has actually finished. Before #5577 this
+   * was written the moment the audit logger was constructed, so a throw in
+   * authentication, tool registration or transport connect left a durable
+   * "startup succeeded" record for a server that never started.
+   *
+   * @param metadata - Optional structured detail attached to the record.
+   * @param outcome - `success` when the server reached "waiting for requests";
+   *   `failure` when the startup sequence threw.
+   */
+  logSystemStartup(
+    metadata?: Record<string, unknown>,
+    outcome: 'success' | 'failure' = 'success'
+  ): void {
+    this.log({
+      category: 'system',
+      severity: outcome === 'failure' ? 'warning' : 'info',
+      outcome,
+      action: 'system.startup',
+      description:
+        outcome === 'failure' ? 'Nexus Agents startup failed' : 'Nexus Agents system started',
+      actor: SYSTEM_ACTOR,
+      metadata,
+    });
+  }
+
+  /**
+   * @deprecated Use {@link logSystemShutdownBegin}. Kept so #5577 does not
+   *   remove a published method; it now delegates, so the record it writes is
+   *   `system.shutdown.begin` rather than the old `system.shutdown` /
+   *   `success`, which claimed a shutdown that had not happened. Removal is
+   *   tracked for the next major.
+   * @param metadata - Optional structured detail attached to the record.
+   */
   logSystemShutdown(metadata?: Record<string, unknown>): void {
+    this.logSystemShutdownBegin(metadata);
+  }
+
+  /**
+   * Log that shutdown has begun (#5577).
+   *
+   * There is deliberately no matching completion record. This logger is the
+   * FIRST thing closed in the cleanup handler — the EventBus, observer,
+   * memory, bridge and server are torn down after it — so by the time
+   * shutdown has actually completed the sink is closed and nothing can be
+   * written. The previous `system.shutdown` / `success` record claimed a
+   * completed shutdown that had not happened.
+   *
+   * Known consequence, raised by the panel that chose this shape: a
+   * `system.shutdown.begin` with no successor is indistinguishable from a
+   * hard kill. That cannot be resolved from inside a dying process; recording
+   * the real outcome needs a supervisor outside it. Absence of a completion
+   * record here is by construction, not a lost event.
+   */
+  logSystemShutdownBegin(metadata?: Record<string, unknown>): void {
     this.log({
       category: 'system',
       severity: 'info',
       outcome: 'success',
-      action: 'system.shutdown',
-      description: 'Nexus Agents system shutdown',
+      action: 'system.shutdown.begin',
+      description: 'Nexus Agents shutdown begun (no completion record — see logSystemShutdownBegin)',
       actor: SYSTEM_ACTOR,
       metadata,
     });

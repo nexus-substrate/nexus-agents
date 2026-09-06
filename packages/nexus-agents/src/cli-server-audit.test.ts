@@ -6,10 +6,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initializeAuditLogger, logSecurityConfig } from './cli-server-audit.js';
+import {
+  initializeAuditLogger,
+  logSecurityConfig,
+  recordStartupComplete,
+  recordStartupFailure,
+} from './cli-server-audit.js';
 import type { ILogger } from './core/index.js';
 
 function createMockLogger(): ILogger {
@@ -23,6 +28,30 @@ function createMockLogger(): ILogger {
   };
   (mock.child as ReturnType<typeof vi.fn>).mockReturnValue(mock);
   return mock;
+}
+
+/** Every recorded event under `dir`, parsed. */
+function readEvents(dir: string): { action?: string; outcome?: string }[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.jsonl'))
+    .flatMap((f) =>
+      readFileSync(join(dir, f), 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as { action?: string; outcome?: string })
+    );
+}
+
+/** Every `action` recorded in the audit files written under `dir`. */
+function readActions(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.jsonl'))
+    .flatMap((f) =>
+      readFileSync(join(dir, f), 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => String((JSON.parse(line) as { action?: unknown }).action))
+    );
 }
 
 describe('initializeAuditLogger', () => {
@@ -105,6 +134,140 @@ describe('initializeAuditLogger', () => {
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('audit bootstrap records a BEGIN, not a completed startup (#5577)', () => {
+  /**
+   * `initializeAuditLogger` runs before authentication, tool registration and
+   * transport connect. It used to write `system.startup` with outcome
+   * `success` — a durable "startup succeeded" record for a server that had
+   * not started, and that survived a throw in any later step.
+   */
+  it('writes system.startup.begin and no system.startup record', async () => {
+    const logger = createMockLogger();
+    const tmpDir = mkdtempSync(join(tmpdir(), 'nexus-audit-begin-'));
+    try {
+      const result = initializeAuditLogger(
+        {
+          allowedPaths: ['./'],
+          blockedPatterns: [],
+          rateLimit: { enabled: true, requestsPerMinute: 60 },
+          audit: {
+            enabled: true,
+            logDir: tmpDir,
+            minSeverity: 'info',
+            enableHashChain: false,
+            maxFileSizeBytes: 10 * 1024 * 1024,
+            maxFiles: 10,
+          },
+        },
+        logger
+      );
+      expect(result).not.toBeNull();
+      if (result === null) return;
+      await result.flush();
+
+      const actions = readActions(tmpDir);
+      expect(actions).toContain('system.startup.begin');
+      // The completion record belongs to startServer, not to this function.
+      expect(actions).not.toContain('system.startup');
+
+      await result.close();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('recordStartupFailure / recordStartupComplete (#5577)', () => {
+  function auditConfig(logDir: string): Parameters<typeof initializeAuditLogger>[0] {
+    return {
+      allowedPaths: ['./'],
+      blockedPatterns: [],
+      rateLimit: { enabled: true, requestsPerMinute: 60 },
+      audit: {
+        enabled: true,
+        logDir,
+        minSeverity: 'info' as const,
+        enableHashChain: false,
+        maxFileSizeBytes: 10 * 1024 * 1024,
+        maxFiles: 10,
+      },
+    };
+  }
+
+  it('records a FAILED startup when a step throws, and rethrows', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'nexus-audit-fail-'));
+    try {
+      const auditLogger = initializeAuditLogger(auditConfig(tmpDir), createMockLogger());
+      expect(auditLogger).not.toBeNull();
+
+      await expect(
+        recordStartupFailure(auditLogger, 'subsystem_init', () =>
+          Promise.reject(new Error('tool registration exploded'))
+        )
+      ).rejects.toThrow('tool registration exploded');
+
+      await auditLogger?.flush();
+      const events = readEvents(tmpDir);
+      const startup = events.filter((e) => e.action === 'system.startup');
+      expect(startup).toHaveLength(1);
+      expect(startup[0]?.outcome).toBe('failure');
+      // No success record anywhere: the server never started.
+      expect(events.some((e) => e.action === 'system.startup' && e.outcome === 'success')).toBe(
+        false
+      );
+
+      await auditLogger?.close();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('is pass-through on success and writes no startup record', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'nexus-audit-pass-'));
+    try {
+      const auditLogger = initializeAuditLogger(auditConfig(tmpDir), createMockLogger());
+
+      const value = await recordStartupFailure(auditLogger, 'subsystem_init', () =>
+        Promise.resolve('wired')
+      );
+      expect(value).toBe('wired');
+
+      await auditLogger?.flush();
+      expect(readActions(tmpDir)).not.toContain('system.startup');
+
+      await auditLogger?.close();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('recordStartupComplete writes the success record', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'nexus-audit-done-'));
+    try {
+      const auditLogger = initializeAuditLogger(auditConfig(tmpDir), createMockLogger());
+
+      recordStartupComplete(auditLogger, 'server');
+
+      await auditLogger?.flush();
+      const startup = readEvents(tmpDir).filter((e) => e.action === 'system.startup');
+      expect(startup).toHaveLength(1);
+      expect(startup[0]?.outcome).toBe('success');
+
+      await auditLogger?.close();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('is a no-op when audit is disabled', async () => {
+    const value = await recordStartupFailure(null, 'subsystem_init', () => Promise.resolve(7));
+    expect(value).toBe(7);
+    expect(() => {
+      recordStartupComplete(null, 'server');
+    }).not.toThrow();
   });
 });
 
