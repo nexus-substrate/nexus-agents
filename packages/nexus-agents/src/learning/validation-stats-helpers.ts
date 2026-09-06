@@ -20,22 +20,37 @@ export const Z_SCORES: Record<number, number> = {
 };
 
 /**
- * Get z-score for a confidence level.
- * Uses lookup table for common values, Hastings approximation for others.
+ * Standard normal quantile — the z with `p` of the mass below it (#5760).
+ *
+ * ONE-TAILED. `zQuantile(0.8)` is 0.8416, not 1.2816. This is the primitive;
+ * {@link getZScore} is the two-tailed wrapper over it, and conflating the two
+ * is what made `calculateMinSampleSize` ask for ~56% more traffic than the
+ * stated power requires.
  */
-export function getZScore(confidence: number): number {
-  const knownScore = Z_SCORES[confidence];
-  if (knownScore !== undefined) {
-    return knownScore;
-  }
-  // Approximate using inverse normal CDF (Hastings approximation)
-  const p = 1 - (1 - confidence) / 2;
+export function zQuantile(p: number): number {
+  // Hastings approximation to the inverse normal CDF.
   const t = Math.sqrt(-2 * Math.log(1 - p));
   return (
     t -
     (2.515517 + 0.802853 * t + 0.010328 * t * t) /
       (1 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t)
   );
+}
+
+/**
+ * Get the TWO-TAILED critical z for a confidence level.
+ *
+ * `getZScore(0.95)` is 1.96 — the value with 2.5% in each tail. It applies the
+ * two-tail transform itself, so callers must pass a CONFIDENCE level (0.95),
+ * never an already-transformed quantile (0.975). Use {@link zQuantile} for a
+ * one-tailed value.
+ */
+export function getZScore(confidence: number): number {
+  const knownScore = Z_SCORES[confidence];
+  if (knownScore !== undefined) {
+    return knownScore;
+  }
+  return zQuantile(1 - (1 - confidence) / 2);
 }
 
 /**
@@ -84,7 +99,13 @@ export function calculateZStatistic(params: ZStatParams): number {
   if (useContinuityCorrection && total1 > 0 && total2 > 0) {
     correction = 0.5 * (1 / total1 + 1 / total2);
   }
-  return se > 0 ? (Math.abs(difference) - correction) / se : 0;
+  // Clamp at 0 (#5760). The correction cannot flip the direction of the test:
+  // when it exceeds |difference| the corrected statistic is 0, not negative.
+  // Without this, doubling the upper tail of a negative z produced a "p-value"
+  // above 1 — compareProportions(5, 10, 5, 10) returned 1.345 — across the
+  // whole near-null region, which is exactly where an experiment sits before
+  // it has signal.
+  return se > 0 ? Math.max(0, Math.abs(difference) - correction) / se : 0;
 }
 
 /**
