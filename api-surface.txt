@@ -7901,6 +7901,7 @@ InterfaceDeclaration ScmIssue
   readonly labels: readonly string[]
   readonly number: number
   readonly title: string
+  readonly url?: string | undefined
 InterfaceDeclaration ScmIssueDetail
   readonly authorAssociation: string
   readonly state: string

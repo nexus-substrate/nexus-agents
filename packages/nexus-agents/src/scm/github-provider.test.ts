@@ -289,3 +289,71 @@ describe('GitHubProvider', () => {
     });
   });
 });
+
+// ============================================================================
+// createIssue must not report success for an issue it cannot identify
+// ============================================================================
+
+describe('createIssue identity', () => {
+  // `gh issue create` has no `--json`, so the number can only be scraped from
+  // the URL it prints. The previous form anchored to end-of-string and fell
+  // back to `number: 0` INSIDE an ok(...), which is the one failure a caller
+  // could not detect — and `task-tracker.createTask` feeds that straight into
+  // `addComment(0)` and `gh issue close 0`.
+  let provider: GitHubProvider;
+
+  beforeEach(() => {
+    provider = new GitHubProvider('owner/repo');
+    mockExecFile.mockReset();
+  });
+
+  it('parses the number from a clean URL', async () => {
+    mockExecFile.mockResolvedValue({ stdout: 'https://github.com/o/r/issues/42\n' });
+
+    const result = await provider.createIssue('t', 'b');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.number).toBe(42);
+      expect(result.value.url).toBe('https://github.com/o/r/issues/42');
+    }
+  });
+
+  it('parses the number when gh appends a notice line', async () => {
+    // The end-anchored regex failed here and silently returned 0.
+    mockExecFile.mockResolvedValue({
+      stdout: 'https://github.com/o/r/issues/42\nnote: label applied\n',
+    });
+
+    const result = await provider.createIssue('t', 'b');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.number).toBe(42);
+  });
+
+  it('fails when the output carries no issue number', async () => {
+    // A gh build that writes the URL to stderr leaves stdout empty. An issue
+    // whose identity is unknown is not a usable result: reporting ok() hands
+    // the caller a 0 to make its next API call with.
+    mockExecFile.mockResolvedValue({ stdout: '' });
+
+    const result = await provider.createIssue('t', 'b');
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('never returns issue number 0 on the success path', async () => {
+    // The property, stated directly. GitHub issue numbers start at 1, so 0 is
+    // only ever the placeholder.
+    for (const stdout of [
+      '',
+      'nothing useful here',
+      'https://github.com/o/r/pull/42',
+      'error: could not create issue',
+    ]) {
+      mockExecFile.mockResolvedValue({ stdout });
+      const result = await provider.createIssue('t', 'b');
+      if (result.ok) expect(result.value.number).not.toBe(0);
+    }
+  });
+});
