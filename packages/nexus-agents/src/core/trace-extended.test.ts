@@ -54,9 +54,9 @@ describe('trace', () => {
     it('calculates cost for canonical Codex model', () => {
       const cost = calculateCost('codex-5.3', 10000, 5000);
       expect(cost).toBeDefined();
-      // codex-5.3: $2.5/1M input, $15/1M output
-      // Expected: (10000/1M * 2.5) + (5000/1M * 15) = 0.025 + 0.075 = 0.1
-      expect(cost).toBeCloseTo(0.1, 6);
+      // codex-5.3 → gpt-5.6-terra: $2/1M input, $12/1M output (#5694)
+      // Expected: (10000/1M * 2) + (5000/1M * 12) = 0.02 + 0.06 = 0.08
+      expect(cost).toBeCloseTo(0.08, 6);
     });
 
     it('handles partial model name matches', () => {
@@ -79,8 +79,8 @@ describe('trace', () => {
     it('handles large token counts', () => {
       const cost = calculateCost('codex-5.3', 1_000_000, 500_000);
       expect(cost).toBeDefined();
-      // Expected: (1M/1M * 2.5) + (500K/1M * 15) = 2.5 + 7.5 = 10
-      expect(cost).toBeCloseTo(10, 2);
+      // Expected: (1M/1M * 2) + (500K/1M * 12) = 2 + 6 = 8 (#5694)
+      expect(cost).toBeCloseTo(8, 2);
     });
   });
 

@@ -875,8 +875,8 @@ describe('Tracer', () => {
 
       const metrics = tracer.getAggregatedMetrics();
       // claude-sonnet: 1M * 3 + 0.5M * 15 = 10.5
-      // codex-5.3: 1M * 2.5 + 0.5M * 15 = 10.0
-      expect(metrics.totalCostUsd).toBeCloseTo(20.5, 2);
+      // codex-5.3 → gpt-5.6-terra: 1M * 2 + 0.5M * 12 = 8.0 (#5694)
+      expect(metrics.totalCostUsd).toBeCloseTo(18.5, 2);
     });
 
     it('should calculate duration from earliest start to latest end', () => {
