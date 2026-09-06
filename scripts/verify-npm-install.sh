@@ -143,7 +143,13 @@ case "$INSTALL_MODE" in
       fail "pnpm activation failed" 1
     fi
     resolve_requested_version
-    if ! pnpm add -g "$INSTALL_SPEC" --config.minimumReleaseAge=0 2>&1; then
+    # KEBAB, not camelCase. pnpm 12 defaults `minimumReleaseAge` to 24h, so
+    # `latest` resolves to the newest release OLDER than that — 8.19.1 while
+    # latest was 8.31.0. `--config.minimumReleaseAge=0` is accepted and
+    # silently ignored; `--config.minimum-release-age=0` is the form that
+    # takes. Verified in a clean node:22-bookworm-slim container against
+    # pnpm 12.3.4: camelCase installed 8.19.1, kebab installed 8.31.0.
+    if ! pnpm add -g "$INSTALL_SPEC" --config.minimum-release-age=0 2>&1; then
       fail "pnpm global install failed" 1
     fi
     read_installed_version
