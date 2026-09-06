@@ -34,18 +34,21 @@ describe('createFromICTM', () => {
 
   it('expert has role custom', () => {
     const result = createFromICTM(makeICTM(), 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.role).toBe('custom');
   });
 
   it('expert id includes subtask id', () => {
     const result = createFromICTM(makeICTM(), 'my-task');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.id).toBe('ictm-my-task');
   });
 
   it('expert name includes subtask id', () => {
     const result = createFromICTM(makeICTM(), 'abc');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.name).toBe('ICTM Agent (abc)');
   });
@@ -53,6 +56,7 @@ describe('createFromICTM', () => {
   it('expert systemPrompt matches ICTM instructions', () => {
     const ictm = makeICTM({ instructions: 'Review the API layer.' });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.systemPrompt).toBe('Review the API layer.');
   });
@@ -60,6 +64,7 @@ describe('createFromICTM', () => {
   it('expert capabilities match ICTM tools', () => {
     const ictm = makeICTM({ tools: { capabilities: ['task_execution', 'tool_use'] } });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.capabilities).toEqual(['task_execution', 'tool_use']);
   });
@@ -67,6 +72,7 @@ describe('createFromICTM', () => {
   it('expert modelPreference.temperature matches ICTM', () => {
     const ictm = makeICTM({ model: { temperature: 0.1, maxTokens: 2048, reasoning: 'extended' } });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.modelPreference?.temperature).toBe(0.1);
   });
@@ -74,12 +80,14 @@ describe('createFromICTM', () => {
   it('expert modelPreference.maxTokens matches ICTM', () => {
     const ictm = makeICTM({ model: { temperature: 0.3, maxTokens: 8192, reasoning: 'standard' } });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.modelPreference?.maxTokens).toBe(8192);
   });
 
   it('expert metadata includes ictm: true', () => {
     const result = createFromICTM(makeICTM(), 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.metadata?.ictm).toBe(true);
   });
@@ -87,6 +95,7 @@ describe('createFromICTM', () => {
   it('expert metadata includes contextFilter', () => {
     const ictm = makeICTM();
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const meta = result.value.expertConfig.metadata;
     expect(meta?.contextFilter).toEqual(ictm.context);
@@ -95,6 +104,7 @@ describe('createFromICTM', () => {
   it('expert metadata includes reasoningDepth', () => {
     const ictm = makeICTM({ model: { temperature: 0.1, maxTokens: 8192, reasoning: 'extended' } });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.metadata?.reasoningDepth).toBe('extended');
   });
@@ -117,6 +127,7 @@ describe('createFromICTM', () => {
       },
     });
     const result = createFromICTM(ictm, 'sub-1');
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.expertConfig.modelPreference?.provider).toBe('anthropic');
     expect(result.value.expertConfig.modelPreference?.modelId).toBe('claude-sonnet-4-6');
