@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.31.4
+
+### Patch Changes
+
+- [#5769](https://github.com/nexus-substrate/nexus-agents/pull/5769) [`dd5153b`](https://github.com/nexus-substrate/nexus-agents/commit/dd5153b86b5771cd3c3f6146098bc2d2a07279e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `conditional_go` vote result is documented as having no production producer. Nothing constructs it outside tests, so `extractConditionalMeta`'s branch and the second disjunct of both `isApproved` and `isVoteAccepted` are unreachable, and a task's `conditions`/`caveats` are always absent. The note follows the shape of the `no_quorum` sibling, which records the same kind of fact; whether to wire the variant or remove it is [#5768](https://github.com/nexus-substrate/nexus-agents/issues/5768).
+
 ## 8.31.3
 
 ### Patch Changes
