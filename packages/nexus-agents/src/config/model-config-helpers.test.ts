@@ -167,7 +167,7 @@ describe('resolveCliAlias', () => {
 
 describe('findCanonicalModel', () => {
   it('finds codex model by cliModelName', () => {
-    const model = findCanonicalModel('codex', 'gpt-5.4');
+    const model = findCanonicalModel('codex', 'gpt-5.6-terra');
     expect(model).toBeDefined();
     expect(model?.id).toBe('codex-5.3');
   });
@@ -214,14 +214,15 @@ describe('findCanonicalModel', () => {
 
 describe('buildModelInfo', () => {
   it('builds model info for codex model', () => {
-    const info = buildModelInfo('codex', 'gpt-5.4');
+    const info = buildModelInfo('codex', 'gpt-5.6-terra');
     expect(info).toBeDefined();
-    expect(info?.id).toBe('gpt-5.4');
-    expect(info?.name).toBe('GPT-5.4');
+    expect(info?.id).toBe('gpt-5.6-terra');
+    expect(info?.name).toBe('GPT-5.6 Terra');
     expect(info?.contextWindow).toBe(1_050_000);
     expect(info?.maxOutput).toBe(128_000);
-    expect(info?.costPerMillionInput).toBe(2.5);
-    expect(info?.costPerMillionOutput).toBe(15.0);
+    // models.dev 2026-09-06 for gpt-5.6-terra (#5694)
+    expect(info?.costPerMillionInput).toBe(2.0);
+    expect(info?.costPerMillionOutput).toBe(12.0);
   });
 
   it('builds model info for gemini model', () => {
@@ -389,12 +390,12 @@ describe('resolveCliCostPer1M', () => {
 
 describe('resolveCliModelName', () => {
   it('translates a canonical registry id to the cliModelName the binary expects', () => {
-    // codex-5.3 is the registry id; gpt-5.4 is what `codex -m` accepts.
-    expect(resolveCliModelName('codex', 'codex-5.3')).toBe('gpt-5.4');
+    // codex-5.3 is the registry id; gpt-5.6-terra is what `codex -m` accepts.
+    expect(resolveCliModelName('codex', 'codex-5.3')).toBe('gpt-5.6-terra');
   });
 
   it('passes a value that is already a cliModelName through unchanged', () => {
-    expect(resolveCliModelName('codex', 'gpt-5.4')).toBe('gpt-5.4');
+    expect(resolveCliModelName('codex', 'gpt-5.6-terra')).toBe('gpt-5.6-terra');
   });
 
   it('translates a cliAlias to the cliModelName', () => {
@@ -424,7 +425,7 @@ describe('codex registry entries (#5091)', () => {
   // gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-mini,
   // gpt-5.3-codex-spark. `gpt-5.2-codex` and `o3-mini` are not served.
   it.each([
-    ['codex-5.3', 'gpt-5.4'],
+    ['codex-5.3', 'gpt-5.6-terra'],
     ['codex-5.2', 'gpt-5.3-codex-spark'],
     ['codex-5.1-mini', 'gpt-5.4-mini'],
   ] as const)('%s → cliModelName %s (a slug codex serves)', (id, slug) => {

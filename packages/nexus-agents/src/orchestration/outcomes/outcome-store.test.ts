@@ -788,7 +788,7 @@ describe('OutcomeStore.queryByModelWithFamilyFallback (#2548)', () => {
     store.append(makeOutcome({ id: 'cold', model: 'claude-opus-4-7' }));
     // 4 outcomes for a DIFFERENT vendor (codex)
     for (let i = 0; i < 4; i++) {
-      store.append(makeOutcome({ id: `codex-${String(i)}`, cli: 'codex', model: 'gpt-5.4' }));
+      store.append(makeOutcome({ id: `codex-${String(i)}`, cli: 'codex', model: 'gpt-5.6-terra' }));
     }
     const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
     // Family broadening must NOT pick up the codex outcomes — different vendor.
@@ -802,7 +802,7 @@ describe('OutcomeStore.queryByModelWithFamilyFallback (#2548)', () => {
   it('reports `empty` scope when no outcomes match literal OR family', () => {
     const store = new OutcomeStore();
     // Single outcome for an unrelated model
-    store.append(makeOutcome({ id: 'other', cli: 'codex', model: 'gpt-5.4' }));
+    store.append(makeOutcome({ id: 'other', cli: 'codex', model: 'gpt-5.6-terra' }));
     const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
     expect(result.scope).toBe('empty');
     expect(result.outcomes).toHaveLength(0);

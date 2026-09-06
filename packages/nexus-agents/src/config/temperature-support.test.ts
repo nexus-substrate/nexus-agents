@@ -93,9 +93,9 @@ describe('temperatureUnsupportedForModel (#4061)', () => {
       'o3-mini',
       'o4-mini',
       'gpt-5',
-      'gpt-5.4',
+      'gpt-5.6-terra',
       'gpt-5.2-codex',
-      'codex-5.3', // internal id; resolves to gpt-5.4 but match either way
+      'codex-5.3', // internal id; resolves to gpt-5.6-terra but match either way
       'openai/o3-mini', // provider-prefixed → last segment matched
     ];
     it.each(reasoning)('%s → true', (id) => {
@@ -159,7 +159,7 @@ describe('warnTemperatureDropped — fail loudly on a dropped behavioral param (
 
   it('warns separately for distinct models', () => {
     warnTemperatureDropped('claude-opus-4-8');
-    warnTemperatureDropped('gpt-5.4');
+    warnTemperatureDropped('gpt-5.6-terra');
     expect(warnSpy).toHaveBeenCalledTimes(2);
   });
 });

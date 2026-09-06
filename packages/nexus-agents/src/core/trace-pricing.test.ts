@@ -82,9 +82,9 @@ describe('trace-pricing', () => {
     });
 
     it('resolves codex models by cliModelName', () => {
-      // codex-5.3 has cliModelName 'gpt-5.4': $2.5/1M input, $15/1M output
-      const cost = calculateCost('gpt-5.4', 1_000_000, 1_000_000);
-      expect(cost).toBe(2.5 + 15);
+      // codex-5.3 has cliModelName 'gpt-5.6-terra': $2/1M input, $12/1M output (#5694)
+      const cost = calculateCost('gpt-5.6-terra', 1_000_000, 1_000_000);
+      expect(cost).toBe(2 + 12);
     });
 
     it('prices legacy models the catalogue still lists (#4406)', () => {
