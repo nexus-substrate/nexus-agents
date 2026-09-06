@@ -67,6 +67,17 @@ beforeAll(() => {
     join(docsRoot, 'security', 'API_KEY_BOUNDARIES.md'),
     '---\ntitle: Key Boundaries\n---\n\n# Keys\n'
   );
+  // A nested api page and an index page, both real shapes (#5750).
+  mkdirSync(join(docsRoot, 'api', 'exports'), { recursive: true });
+  writeFileSync(
+    join(docsRoot, 'api', 'exports', 'pipeline.md'),
+    '---\ntitle: pipeline\n---\n\n# pipeline\n'
+  );
+  mkdirSync(join(docsRoot, 'reference', 'tools'), { recursive: true });
+  writeFileSync(
+    join(docsRoot, 'reference', 'tools', 'index.md'),
+    '---\ntitle: MCP Tool Reference\n---\n\n# Tools\n'
+  );
   // Unpublished — no frontmatter at all, so it is not a site page.
   writeFileSync(join(docsRoot, 'architecture', 'NOTES.md'), '# Just notes\n');
   // Unpublished — frontmatter present but no title field.
@@ -109,6 +120,12 @@ describe('the generated API reference is mounted at /api/, not /docs/api/ (#5750
     // fileToSlug turns `cli-adapters` into `cli_adapters`, but the built route
     // is /api/cli-adapters/, so the docs slug rule must not apply here.
     expect(rewrite('../api/cli-adapters.md')).toBe('/nexus-agents/api/cli-adapters/');
+  });
+
+  it('rewrites a NESTED api link, keeping the whole path', () => {
+    // docs/api/exports/pipeline.md is served at /api/exports/pipeline/ — five
+    // of the last twelve broken links were this shape (#5750).
+    expect(rewrite('../api/exports/pipeline.md')).toBe('/nexus-agents/api/exports/pipeline/');
   });
 
   it('still sends a non-api docs page through the docs route', () => {
@@ -164,6 +181,24 @@ describe('remarkRewriteLinks', () => {
     it('keeps an underscored filename intact', () => {
       expect(rewrite('../security/API_KEY_BOUNDARIES.md')).toBe(
         `${DOCS_PREFIX}/security/api_key_boundaries/`
+      );
+    });
+
+    it('sends a data file under docs/ to the GitHub blob URL (#5750)', () => {
+      // A .json or .yaml under docs/ can never be a site page; leaving the link
+      // relative published a dead in-site path.
+      expect(rewrite('../ops/docops-manifest.json')).toBe(
+        `${GITHUB_BLOB}/docs/ops/docops-manifest.json`
+      );
+      expect(rewrite('../research/registry/papers.yaml')).toBe(
+        `${GITHUB_BLOB}/docs/research/registry/papers.yaml`
+      );
+    });
+
+    it('serves an index.md as its directory (#5750)', () => {
+      // docs/reference/tools/index.md publishes at /docs/reference/tools/.
+      expect(rewrite('../reference/tools/index.md')).toBe(
+        `${DOCS_PREFIX}/reference/tools/`
       );
     });
 
