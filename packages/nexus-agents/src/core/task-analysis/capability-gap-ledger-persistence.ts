@@ -56,12 +56,32 @@ interface PersistedGapEntry {
 export interface GapLedgerLoadReport {
   /** False means nothing was ever written — distinct from "written and empty". */
   readonly fileExisted: boolean;
+  /**
+   * True when the file exists but could not be read at all (EACCES, the path
+   * replaced by a directory, an I/O error).
+   *
+   * Without this, "cannot read" and "written and empty" produced the IDENTICAL
+   * report — `fileExisted: true, loaded: 0, malformedLines: 0, expiredEntries: 0`
+   * — while this module's own docstring claimed the two stayed distinguishable.
+   * The distinction is load-bearing: `checkForCapabilityGapTriggers` filters
+   * `summarize()` by occurrence count, so an unreadable ledger silences the
+   * self-directed research backlog for the one reason it must not — the
+   * measurement failing rather than the demand being absent.
+   */
+  readonly readFailed: boolean;
   /** Entries loaded and retained. */
   readonly loaded: number;
   /** Lines that could not be parsed as an entry. Never silently dropped. */
   readonly malformedLines: number;
   /** Entries dropped by the retention window. */
   readonly expiredEntries: number;
+  /**
+   * Entries dropped by the {@link DEFAULT_MAX_ENTRIES} cap, oldest first.
+   *
+   * `loaded` counts what survived the cap, so a ledger at the ceiling reported
+   * the same number every load however much was written past it (#5785).
+   */
+  readonly cappedEntries: number;
 }
 
 /** Options for {@link createPersistentCapabilityGapLedger}. */
@@ -153,30 +173,19 @@ function summarize(entries: readonly PersistedGapEntry[]): readonly GapSummary[]
 }
 
 /**
- * Reads the backing file, partitioning every line into loaded, malformed, or
- * expired. Never throws: an unreadable file yields zero entries with
- * `fileExisted` true, so "cannot read" stays distinguishable from "nothing there".
+ * Split raw JSONL into retained, malformed and expired.
+ *
+ * Every line lands in exactly one bucket. A line that cannot be parsed, or that
+ * parses to the wrong shape, is COUNTED rather than skipped — under-reporting
+ * frequency is the failure this ledger exists to avoid.
  */
-function loadEntries(
-  filePath: string,
-  cutoff: number,
-  maxEntries: number
-): { entries: PersistedGapEntry[]; report: GapLedgerLoadReport } {
+function partitionLines(
+  raw: string,
+  cutoff: number
+): { entries: PersistedGapEntry[]; malformedLines: number; expiredEntries: number } {
   const entries: PersistedGapEntry[] = [];
   let malformedLines = 0;
   let expiredEntries = 0;
-  const fileExisted = existsSync(filePath);
-
-  if (!fileExisted) {
-    return { entries, report: { fileExisted, loaded: 0, malformedLines: 0, expiredEntries: 0 } };
-  }
-
-  let raw = '';
-  try {
-    raw = readFileSync(filePath, 'utf-8');
-  } catch {
-    raw = '';
-  }
 
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
@@ -199,11 +208,71 @@ function loadEntries(
     entries.push(parsed);
   }
 
-  if (entries.length > maxEntries) entries.splice(0, entries.length - maxEntries);
+  return { entries, malformedLines, expiredEntries };
+}
+
+/**
+ * Reads the backing file, partitioning every line into loaded, malformed,
+ * expired, or capped.
+ *
+ * Never throws. An unreadable file yields zero entries with `fileExisted` true
+ * AND `readFailed` true — the second half is what actually makes "cannot read"
+ * distinguishable from "written and empty", which the previous version of this
+ * comment claimed while the two produced identical reports.
+ */
+function loadEntries(
+  filePath: string,
+  cutoff: number,
+  maxEntries: number
+): { entries: PersistedGapEntry[]; report: GapLedgerLoadReport } {
+  const entries: PersistedGapEntry[] = [];
+  let malformedLines = 0;
+  let expiredEntries = 0;
+  const fileExisted = existsSync(filePath);
+
+  if (!fileExisted) {
+    return {
+      entries,
+      report: {
+        fileExisted,
+        readFailed: false,
+        loaded: 0,
+        malformedLines: 0,
+        expiredEntries: 0,
+        cappedEntries: 0,
+      },
+    };
+  }
+
+  let raw = '';
+  let readFailed = false;
+  try {
+    raw = readFileSync(filePath, 'utf-8');
+  } catch {
+    // The file is there and we could not read it. Reporting that as an empty
+    // ledger is the failure this flag exists to prevent.
+    raw = '';
+    readFailed = true;
+  }
+
+  const partitioned = partitionLines(raw, cutoff);
+  entries.push(...partitioned.entries);
+  malformedLines = partitioned.malformedLines;
+  expiredEntries = partitioned.expiredEntries;
+
+  const cappedEntries = entries.length > maxEntries ? entries.length - maxEntries : 0;
+  if (cappedEntries > 0) entries.splice(0, cappedEntries);
 
   return {
     entries,
-    report: { fileExisted, loaded: entries.length, malformedLines, expiredEntries },
+    report: {
+      fileExisted,
+      readFailed,
+      loaded: entries.length,
+      malformedLines,
+      expiredEntries,
+      cappedEntries,
+    },
   };
 }
 
