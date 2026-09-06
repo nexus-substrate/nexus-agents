@@ -58,6 +58,18 @@ vi.mock('node:child_process', async () => {
   return { execFile: execFileFn };
 });
 
+/**
+ * What `gh api <list> --paginate --jq '.[]'` actually writes: one compact JSON
+ * object per line, concatenated across every page. The source switched to that
+ * form because a bare `gh api` returns only GitHub's first 30 and drops the
+ * `Link` cursor, and because `--paginate` alone concatenates one JSON ARRAY per
+ * page, which is not parseable. Fixtures must match the real shape or they
+ * would pass against a reader that cannot handle it.
+ */
+function ndjson(items: readonly unknown[]): string {
+  return items.map((i) => JSON.stringify(i)).join('\n');
+}
+
 describe('GitHubReviewer', () => {
   let reviewer: GitHubReviewer;
 
@@ -95,7 +107,7 @@ describe('GitHubReviewer', () => {
       });
       // Second call: Files
       mockExecFile.mockResolvedValueOnce({
-        stdout: JSON.stringify([
+        stdout: ndjson([
           {
             filename: 'src/index.ts',
             status: 'modified',
@@ -152,7 +164,7 @@ describe('GitHubReviewer', () => {
 
       it('preserves the changed status', async () => {
         mockExecFile.mockResolvedValueOnce({
-          stdout: JSON.stringify([
+          stdout: ndjson([
             { filename: 'changed.ts', status: 'changed', additions: 1, deletions: 1 },
           ]),
         });
@@ -168,7 +180,7 @@ describe('GitHubReviewer', () => {
 
       it('preserves the unchanged status', async () => {
         mockExecFile.mockResolvedValueOnce({
-          stdout: JSON.stringify([
+          stdout: ndjson([
             { filename: 'unchanged.ts', status: 'unchanged', additions: 0, deletions: 0 },
           ]),
         });
@@ -184,9 +196,7 @@ describe('GitHubReviewer', () => {
 
       it('maps an unknown status without hiding its raw value', async () => {
         mockExecFile.mockResolvedValueOnce({
-          stdout: JSON.stringify([
-            { filename: 'weird.ts', status: 'weird', additions: 0, deletions: 0 },
-          ]),
+          stdout: ndjson([{ filename: 'weird.ts', status: 'weird', additions: 0, deletions: 0 }]),
         });
 
         const result = await reviewer.getPullRequestDetail(42);
@@ -267,7 +277,7 @@ describe('GitHubReviewer', () => {
   describe('listCommentDetails', () => {
     it('returns comments with author associations', async () => {
       mockExecFile.mockResolvedValue({
-        stdout: JSON.stringify([
+        stdout: ndjson([
           {
             id: 1,
             body: 'First comment',
@@ -430,5 +440,113 @@ describe('createFullGitHubProvider', () => {
     if (result.ok) {
       expect(result.value.headSha).toBe('def456');
     }
+  });
+});
+
+// ============================================================================
+// List endpoints must fetch every page, and say so in the command they run
+// ============================================================================
+
+describe('paginated list endpoints', () => {
+  // A bare `gh api repos/o/r/pulls/N/files` returns GitHub's default first page
+  // of 30 and discards the `Link` cursor. `getPullRequestDetail` therefore saw
+  // at most 30 changed files of any PR, and `listCommentDetails` at most the 30
+  // OLDEST comments — both returning ok(...) with nothing to say a page had been
+  // left behind. Downstream, `getFileReviewCoverage` divided by that truncated
+  // denominator and posted "30 of 30 files reviewed (full)" on a 120-file PR.
+  let reviewer: GitHubReviewer;
+
+  beforeEach(() => {
+    reviewer = new GitHubReviewer(new GitHubProvider('owner/repo'));
+    mockExecFile.mockReset();
+    resetGhTokenCache();
+    delete process.env['GITHUB_TOKEN'];
+    process.env['GH_TOKEN'] = 'test-token';
+  });
+
+  function argsOfCall(index: number): string[] {
+    return (mockExecFile.mock.calls[index]?.[1] ?? []) as string[];
+  }
+
+  it('asks gh to walk every page of the PR file list', async () => {
+    mockExecFile.mockResolvedValueOnce({ stdout: JSON.stringify({ number: 42 }) });
+    mockExecFile.mockResolvedValueOnce({
+      stdout: ndjson([{ filename: 'a.ts', status: 'modified' }]),
+    });
+
+    await reviewer.getPullRequestDetail(42);
+
+    const args = argsOfCall(1);
+    expect(args).toContain('--paginate');
+    // `--paginate` alone concatenates one JSON array per page, which does not
+    // parse. `--slurp` fixes that but landed in gh 2.51; `--jq '.[]'` works on
+    // every version, so the flag pair is load-bearing, not decorative.
+    expect(args).toContain('--jq');
+    expect(args).toContain('.[]');
+    expect(args.some((a) => a.includes('per_page=100'))).toBe(true);
+  });
+
+  it('returns more than one page worth of files', async () => {
+    // The assertion the 30-cap fails: 45 files must arrive as 45.
+    const files = Array.from({ length: 45 }, (_, i) => ({
+      filename: `src/f${String(i)}.ts`,
+      status: 'modified',
+      additions: 1,
+      deletions: 0,
+    }));
+    mockExecFile.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        number: 42,
+        title: 'Big PR',
+        body: '',
+        html_url: 'https://github.com/owner/repo/pull/42',
+        user: { login: 'testuser' },
+        author_association: 'COLLABORATOR',
+        base: { ref: 'main' },
+        head: { ref: 'feat/big', sha: 'abc123' },
+        draft: false,
+        labels: [],
+        additions: 45,
+        deletions: 0,
+      }),
+    });
+    mockExecFile.mockResolvedValueOnce({ stdout: ndjson(files) });
+
+    const result = await reviewer.getPullRequestDetail(42);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.files).toHaveLength(45);
+  });
+
+  it('asks gh to walk every page of the comment list', async () => {
+    mockExecFile.mockResolvedValueOnce({ stdout: ndjson([]) });
+
+    await reviewer.listCommentDetails(7);
+
+    const args = argsOfCall(0);
+    expect(args).toContain('--paginate');
+    expect(args.some((a) => a.includes('per_page=100'))).toBe(true);
+  });
+
+  it('reads an empty list as zero items, not one bad line', async () => {
+    // The empty case, named: `''.split('\n')` is `['']`, so without the blank
+    // filter an issue with no comments would fail to parse rather than return
+    // none — and this endpoint is on the reputation path, where a parse error
+    // and "no comments" mean very different things.
+    mockExecFile.mockResolvedValueOnce({ stdout: '' });
+
+    const result = await reviewer.listCommentDetails(7);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([]);
+  });
+
+  it('fails loudly when a page line cannot be parsed', async () => {
+    // A truncated stream must not silently yield the objects that did parse.
+    mockExecFile.mockResolvedValueOnce({ stdout: '{"id":1}\n{"id":' });
+
+    const result = await reviewer.listCommentDetails(7);
+
+    expect(result.ok).toBe(false);
   });
 });
