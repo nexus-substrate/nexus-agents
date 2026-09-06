@@ -135,6 +135,10 @@ function resolveWithinCwd(target: string): { resolved: string } | { error: strin
 interface FileScope {
   files: string[];
   root: string;
+  /** Subdirectories the walk did not descend because maxDepth ran out. */
+  skippedDirs: number;
+  /** Files dropped by the MAX_FILES_SCANNED cap. */
+  omittedFiles: number;
 }
 
 /** Resolve the input scope to a concrete file list (single file or a bounded dir walk). */
@@ -142,12 +146,23 @@ async function resolveFileScope(input: SearchUsagesInput): Promise<FileScope | {
   if (input.path !== undefined) {
     const guard = resolveWithinCwd(input.path);
     if ('error' in guard) return guard;
-    return { files: [guard.resolved], root: resolve('.') };
+    // A single named file: nothing was walked, so nothing could be skipped.
+    return { files: [guard.resolved], root: resolve('.'), skippedDirs: 0, omittedFiles: 0 };
   }
   const guard = resolveWithinCwd(input.dir ?? process.cwd());
   if ('error' in guard) return guard;
   const walk = await findSourceFiles(guard.resolved, input.maxDepth ?? DEFAULT_USAGES_MAX_DEPTH);
-  return { files: walk.files.slice(0, MAX_FILES_SCANNED), root: guard.resolved };
+  // Both ways the scope can be smaller than the request, carried out so the
+  // output can say so. `skippedDirs` is documented by `findSourceFiles` as a
+  // truncation signal and was destructured away at the point of production;
+  // the file cap silently dropped the tail, leaving `filesScanned: 5000`
+  // indistinguishable from "there were exactly 5000 files".
+  return {
+    files: walk.files.slice(0, MAX_FILES_SCANNED),
+    root: guard.resolved,
+    skippedDirs: walk.skippedDirs,
+    omittedFiles: walk.files.length > MAX_FILES_SCANNED ? walk.files.length - MAX_FILES_SCANNED : 0,
+  };
 }
 
 interface FileUsage extends UsageMatch {
@@ -181,6 +196,40 @@ async function collectUsages(
   return { results, total };
 }
 
+/**
+ * Say when the scan did not cover the scope it was asked about.
+ *
+ * `truncated` meant match-overflow ONLY, so a scope cut short by `maxDepth` or
+ * by the file cap reported "0 usages" with no qualifier — and `filesScanned`,
+ * being the size of the ALREADY-truncated set, corroborated the wrong answer
+ * instead of qualifying it. The sibling `search_codebase` surfaces the same
+ * walk's `skippedDirs` (#4243); this tool shares that walk precisely so their
+ * scopes stay comparable, and consumed only half the signal.
+ */
+function applyScopeTruncation(payload: Record<string, unknown>, scope: FileScope): void {
+  if (scope.skippedDirs === 0 && scope.omittedFiles === 0) return;
+
+  const reasons: string[] = [];
+  if (scope.skippedDirs > 0) {
+    payload['skippedDirs'] = scope.skippedDirs;
+    const plural = scope.skippedDirs === 1 ? 'y was' : 'ies were';
+    reasons.push(
+      `${String(scope.skippedDirs)} subdirector${plural} not walked because maxDepth was exhausted`
+    );
+  }
+  if (scope.omittedFiles > 0) {
+    payload['omittedFiles'] = scope.omittedFiles;
+    reasons.push(
+      `${String(scope.omittedFiles)} file(s) past the ${String(MAX_FILES_SCANNED)}-file cap were not read`
+    );
+  }
+
+  payload['scopeTruncated'] = true;
+  payload['scopeNote'] =
+    `The scan did not cover the whole scope: ${reasons.join('; ')}. ` +
+    'Absence of matches here is not absence of usages.';
+}
+
 function buildOutput(
   input: SearchUsagesInput,
   scope: FileScope,
@@ -200,6 +249,7 @@ function buildOutput(
     payload['omittedMatches'] = collected.total - collected.results.length;
     payload['limit'] = limit;
   }
+  applyScopeTruncation(payload, scope);
   return JSON.stringify(payload, null, 2);
 }
 

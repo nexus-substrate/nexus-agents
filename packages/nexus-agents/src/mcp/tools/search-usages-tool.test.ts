@@ -145,3 +145,52 @@ describe('search-usages-tool (#4265)', () => {
     });
   });
 });
+
+// ============================================================================
+// A scan that did not cover the scope must say so
+// ============================================================================
+
+describe('scope truncation disclosure', () => {
+  // `truncated` used to mean match-overflow ONLY. A scope cut short by
+  // `maxDepth` — or by the 5000-file cap — reported "0 usages" with no
+  // qualifier, and `filesScanned`, being the size of the ALREADY-truncated set,
+  // corroborated the wrong answer instead of qualifying it. The sibling
+  // `search_codebase` surfaces the same walk's `skippedDirs` (#4243); this tool
+  // shares that walk precisely so their scopes stay comparable.
+  async function run(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const result = await searchUsagesHandler(input, makeCtx());
+    const text = result.content[0]?.type === 'text' ? result.content[0].text : '{}';
+    return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  it('flags a scan whose walk hit maxDepth', async () => {
+    // `src/` is many levels deep; depth 1 cannot reach any of it.
+    const payload = await run({ symbol: 'thisSymbolDoesNotExistAnywhere', dir: '.', maxDepth: 1 });
+
+    expect(payload['scopeTruncated']).toBe(true);
+    expect(payload['skippedDirs']).toBeGreaterThan(0);
+    expect(String(payload['scopeNote'])).toContain('not absence of usages');
+  });
+
+  it('does not flag a scan that covered its scope', async () => {
+    // The pair. Without it, flagging unconditionally would pass — and every
+    // complete scan would carry a warning that means nothing.
+    const payload = await run({
+      symbol: 'thisSymbolDoesNotExistAnywhere',
+      path: 'package.json',
+    });
+
+    expect(payload['scopeTruncated']).toBeUndefined();
+    expect(payload['skippedDirs']).toBeUndefined();
+  });
+
+  it('reports zero matches and the truncation together, not one or the other', async () => {
+    // The shape that made this dangerous: a caller reads `totalMatches: 0` and
+    // concludes the symbol is unused. The count and the caveat must arrive on
+    // the same object.
+    const payload = await run({ symbol: 'thisSymbolDoesNotExistAnywhere', dir: '.', maxDepth: 1 });
+
+    expect(payload['totalMatches']).toBe(0);
+    expect(payload['scopeTruncated']).toBe(true);
+  });
+});
