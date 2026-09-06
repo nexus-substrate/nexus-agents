@@ -389,6 +389,39 @@ describe('ratificationGateFindings — the gate reads the evidence ledger (#5028
     // verdict about any promotion.
     expect(ratificationGateFindings(new Map(), '')).toEqual([]);
   });
+
+  it('still reports a corrupt ledger when no promotion has been claimed', () => {
+    // The ledger-integrity findings do not depend on the evidence map, but the
+    // gate returned early on an empty one — and the evidence ledger IS empty in
+    // this tree (`evidence: []`), so a PR that forged or truncated
+    // governance/vote-records.jsonl passed green. The tamper-evidence check
+    // that exists to catch exactly that was unreachable.
+    const forged = JSON.stringify({
+      id: 'vote-1',
+      decision: 'approved',
+      strategy: 'higher_order',
+      ratifies: 'dev-pipeline',
+      proposal: 'promote dev-pipeline to enforce',
+      sequence: 1,
+      recordedAt: '2026-08-26T00:00:00.000Z',
+      proposalHash: 'x'.repeat(64),
+      approvalPercentage: 100,
+      voteCounts: { approve: 7, reject: 0, abstain: 0, total: 7 },
+      voters: [],
+      hash: 'y'.repeat(64),
+      version: '1.2',
+    });
+
+    const findings = ratificationGateFindings(new Map(), forged);
+
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it('still reports an unparseable ledger when no promotion has been claimed', () => {
+    const findings = ratificationGateFindings(new Map(), 'not json at all\n');
+
+    expect(findings.length).toBeGreaterThan(0);
+  });
 });
 
 describe('analyzeTierTransitionEvents — ratification gate (#3842, hardened #3894)', () => {
