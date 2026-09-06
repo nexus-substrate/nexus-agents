@@ -66,8 +66,15 @@ export function determineTerminationReason(
   const lastStep = trajectory[trajectory.length - 1];
   if (lastStep?.terminationReason) return lastStep.terminationReason;
 
+  // Mirrors `shouldTerminate`'s order above. Any condition that can stop the
+  // loop must have a branch here, or it silently borrows another one's name.
   if (state.step >= config.maxSteps) return 'max_steps';
   if (getTimeProvider().now() - startTime >= config.timeoutMs) return 'timeout';
+  if (state.metadata.totalCost >= config.maxCostBudget) return 'budget_exceeded';
 
-  return 'max_steps';
+  // The loop stopped for a reason none of the guards above explains. Naming it
+  // `unknown` is the point: the previous trailing `return 'max_steps'` let a
+  // budget stop at step 6 of 50 claim it had run out of steps, and no consumer
+  // could tell the difference without re-deriving the arithmetic itself.
+  return 'unknown';
 }
