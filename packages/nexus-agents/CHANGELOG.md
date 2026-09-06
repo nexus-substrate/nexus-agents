@@ -1,5 +1,30 @@
 # nexus-agents
 
+## 8.39.1
+
+### Patch Changes
+
+- [#5831](https://github.com/nexus-substrate/nexus-agents/pull/5831) [`603bc08`](https://github.com/nexus-substrate/nexus-agents/commit/603bc08bb1978813ff243adb054dd644de1452e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `query_trace` now says what it could not read. `totalEvents` counted the lines
+  that survived `JSON.parse`, so a partially-flushed JSONL trace — the normal
+  failure mode for an append-only file written by a process that died mid-write —
+  was byte-identical to a run that simply emitted fewer events; `skippedLines` and
+  a `parse_error` category are now reported, and that category was previously
+  unreachable from the disk path because no `SyntaxError` ever escaped the parser.
+  Separately, a trace over the 100 MB read cap was reported as
+  `source: 'not_found', totalEvents: 0` — "there is no trace for this run", for
+  the one case where the trace certainly exists and is certainly non-empty. It is
+  now `source: 'disk'` with a `too_large` category.
+
+- [#5832](https://github.com/nexus-substrate/nexus-agents/pull/5832) [`2d5f910`](https://github.com/nexus-substrate/nexus-agents/commit/2d5f9103d84485a1c7154e922d87f5b1d48a8711) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `search_usages` now reports a scan that did not cover its scope. `truncated`
+  meant match-overflow only, so a walk cut short by `maxDepth` — or a file list
+  cut by the 5000-file cap — returned "0 usages" with no qualifier, and
+  `filesScanned`, being the size of the already-truncated set, corroborated the
+  wrong answer instead of qualifying it. `findSourceFiles` returns `skippedDirs`
+  as a documented truncation signal and it was destructured away at the point of
+  production; the sibling `search_codebase` surfaces the same walk's count
+  ([#4243](https://github.com/nexus-substrate/nexus-agents/issues/4243)). The output now carries `scopeTruncated`, `skippedDirs`, `omittedFiles`
+  and a note saying that absence of matches here is not absence of usages.
+
 ## 8.39.0
 
 ### Minor Changes
