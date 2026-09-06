@@ -66,9 +66,16 @@ describe('estimateReasoningDifficulty', () => {
   });
 
   it('applies task type bonus for code_review', () => {
+    // Against a baseline, like the architecture and large_codebase siblings.
+    // `toBeGreaterThan(0)` was already guaranteed by reasoningComplexity: 5,
+    // so dropping 'code_review' from the bonus list left all 44 tests green.
     const profile = makeProfile({ taskType: 'code_review', reasoningComplexity: 5 });
     const result = estimateReasoningDifficulty('task', profile);
-    expect(result).toBeGreaterThan(0);
+    const general = estimateReasoningDifficulty(
+      'task',
+      makeProfile({ taskType: 'general', reasoningComplexity: 5 })
+    );
+    expect(result).toBeGreaterThan(general);
   });
 
   it('applies task type bonus for large_codebase', () => {

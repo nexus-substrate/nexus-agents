@@ -378,9 +378,20 @@ describe('composite-router-outcome', () => {
       expect(fast - slow).toBeCloseTo(0.2, 1);
     });
 
-    it('clamps reward to [0, 1] range', () => {
-      expect(computeQualityReward('codex', true, 100_000)).toBeGreaterThanOrEqual(0);
-      expect(computeQualityReward('codex', true, 0)).toBeLessThanOrEqual(1);
+    it('stays inside the range the formula can actually produce', () => {
+      // The old assertion was `>= 0` and `<= 1`, which the formula satisfies by
+      // construction: a success is 0.5 + rate*0.3 - penalty with rate in [0, 1]
+      // and penalty in [0, 0.2], so the value is always in [0.3, 0.8] and the
+      // clamp can never bind. Removing `clamp01` left all 31 tests green.
+      // Assert the reachable bounds instead, which a formula change would move.
+      const slowest = computeQualityReward('codex', true, 100_000);
+      const fastest = computeQualityReward('codex', true, 0);
+
+      expect(slowest).toBeGreaterThanOrEqual(0.3);
+      expect(fastest).toBeLessThanOrEqual(0.8);
+      // A failure is a flat floor, well below any success.
+      expect(computeQualityReward('codex', false, 0)).toBe(0.1);
+      expect(computeQualityReward('codex', false, 0)).toBeLessThan(slowest);
     });
 
     it('caches the per-CLI success rate — avoids re-scanning the store every call (#3261)', () => {
