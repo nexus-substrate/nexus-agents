@@ -114,11 +114,41 @@ const VoteRecordPanelCoverageSchema = z
   .strict();
 export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSchema>;
 
+/**
+ * Longest reasoning kept per voter (#5373). Mirrors the CLI display guard from
+ * #5372 rather than inventing a second number. A clipped entry says so on
+ * itself — a silently truncated argument is the failure this field exists to
+ * fix.
+ */
+export const MAX_VOTER_REASONING_CHARS = 20_000;
+
 export const VoterSummarySchema = z
   .object({
     role: z.string().min(1).max(100),
     decision: z.enum(['approve', 'reject', 'abstain']),
     confidence: z.number().min(0).max(1),
+    /**
+     * The voter's stated grounds (#5373, schema 1.6).
+     *
+     * `generateVoteHash` already hashed `{role, decision, reasoning}` and then
+     * discarded the text, so the chain attested to a value it did not store and
+     * nobody could re-verify the hash without re-obtaining the reasoning. On
+     * #5228 a contrarian rejection was clipped mid-sentence in the terminal, the
+     * grounds were unrecoverable, and the same defect resurfaced a round later —
+     * one round of a 7-voter panel is 7-13 minutes of model time, and the
+     * objection was right both times.
+     *
+     * Stored whole rather than sampled. Warn-mode near-misses are emitted per
+     * TOOL CALL, thousands a day; votes are emitted per PANEL, dozens a day at
+     * most, so ~17 KB per vote is not the same growth problem.
+     *
+     * Absence is not an empty argument: an errored voter has no entry in
+     * `voters` at all (see `panelCoverage`), so `reasoning: ''` means a live
+     * voter returned nothing, which is itself a signal.
+     */
+    reasoning: z.string().max(MAX_VOTER_REASONING_CHARS).optional(),
+    /** True when `reasoning` was clipped to {@link MAX_VOTER_REASONING_CHARS}. */
+    reasoningTruncated: z.literal(true).optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -167,7 +197,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -358,10 +388,17 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
       abstain: payload.voteCounts.abstain,
       total: payload.voteCounts.total,
     },
+    // `reasoning` / `reasoningTruncated` (#5373, schema 1.6) are appended per
+    // entry ONLY when present, on the same rule as the record-level optional
+    // fields: a pre-1.6 voter entry re-hashes byte-identical, so every
+    // historical record still verifies, while editing or removing a stored
+    // reasoning flips the hash.
     voters: payload.voters.map((v) => ({
       role: v.role,
       decision: v.decision,
       confidence: v.confidence,
+      ...(v.reasoning !== undefined ? { reasoning: v.reasoning } : {}),
+      ...(v.reasoningTruncated === true ? { reasoningTruncated: true } : {}),
     })),
     correlationId: payload.correlationId ?? null,
   };

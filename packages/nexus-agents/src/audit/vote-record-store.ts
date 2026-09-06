@@ -55,7 +55,12 @@ import type {
   VoteRecordPanelCoverage,
   VoterSummary,
 } from './vote-record.js';
-import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-record.js';
+import {
+  VoteRecordSchema,
+  computeVoteRecordHash,
+  hashProposal,
+  MAX_VOTER_REASONING_CHARS,
+} from './vote-record.js';
 
 /**
  * Repo-relative path of the COMMITTED governance ledger the promotion gate
@@ -142,11 +147,36 @@ function outcomeToDecision(
 function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
   const summaries: VoterSummary[] = [];
   for (const v of votes) {
+    // An errored voter has no entry here at all; `panelCoverage` names it
+    // (#5738). So an entry with `reasoning: ''` means a live voter returned
+    // nothing, which is distinguishable from a seat that never answered.
     if (v.source === 'error') continue;
     const vote: Vote = v.vote;
-    summaries.push({ role: v.role, decision: vote.decision, confidence: vote.confidence });
+    summaries.push({
+      role: v.role,
+      decision: vote.decision,
+      confidence: vote.confidence,
+      ...reasoningFields(vote.reasoning),
+    });
   }
   return summaries;
+}
+
+/**
+ * The stored reasoning, clipped with a marker rather than silently (#5373).
+ *
+ * A truncated argument that does not say it was truncated is the failure this
+ * field exists to fix — on #5228 a contrarian rejection was clipped
+ * mid-sentence and its grounds were unrecoverable.
+ */
+function reasoningFields(
+  reasoning: string
+): { reasoning: string; reasoningTruncated?: true } {
+  if (reasoning.length <= MAX_VOTER_REASONING_CHARS) return { reasoning };
+  return {
+    reasoning: reasoning.slice(0, MAX_VOTER_REASONING_CHARS),
+    reasoningTruncated: true,
+  };
 }
 
 /**
@@ -246,8 +276,10 @@ function deriveOptionFields(votes: readonly AgentVoteResult[]): {
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
   optionCoverage: VoteRecordOptionCoverage | undefined,
-  panelCoverage: VoteRecordPanelCoverage | undefined
-): '1.2' | '1.3' | '1.4' | '1.5' {
+  panelCoverage: VoteRecordPanelCoverage | undefined,
+  voters: readonly VoterSummary[]
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' {
+  if (voters.some((v) => v.reasoning !== undefined)) return '1.6';
   if (panelCoverage !== undefined) return '1.5';
   if (optionCoverage !== undefined) return '1.4';
   return optionTally !== undefined ? '1.3' : '1.2';
@@ -320,8 +352,9 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
   const { optionTally, optionCoverage } = deriveOptionFields(input.votes);
   const panelCoverage = panelCoverageOf(input.votes);
+  const voters = toVoterSummaries(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: recordVersion(optionTally, optionCoverage, panelCoverage),
+    version: recordVersion(optionTally, optionCoverage, panelCoverage, voters),
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -336,7 +369,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
       abstain: input.result.voteCounts.abstain,
       total: input.result.voteCounts.total,
     },
-    voters: toVoterSummaries(input.votes),
+    voters,
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
     ...(optionTally !== undefined ? { optionTally } : {}),

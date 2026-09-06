@@ -86,16 +86,20 @@ describe('buildVoteRecord', () => {
       result: consensusResult(),
       votes,
     });
-    expect(record.version).toBe('1.2');
+    // 1.6 since #5373: every live voter's reasoning is stored, which is the
+    // latest optional field. The optionTally/optionCoverage assertions below
+    // are what test those fields' presence.
+    expect(record.version).toBe('1.6');
     expect(record.sequence).toBe(0); // default first sequence
     expect(record.decision).toBe('approved');
     expect(record.proposalHash).toHaveLength(64);
     expect(record.approvalPercentage).toBeCloseTo(66.7);
     expect(record.voteCounts).toEqual({ approve: 2, reject: 1, abstain: 0, total: 3 });
+    // #5373: the stored grounds travel with each entry.
     expect(record.voters).toEqual([
-      { role: 'architect', decision: 'approve', confidence: 0.8 },
-      { role: 'security', decision: 'approve', confidence: 0.8 },
-      { role: 'catfish', decision: 'reject', confidence: 0.8 },
+      { role: 'architect', decision: 'approve', confidence: 0.8, reasoning: 'because' },
+      { role: 'security', decision: 'approve', confidence: 0.8, reasoning: 'because' },
+      { role: 'catfish', decision: 'reject', confidence: 0.8, reasoning: 'because' },
     ]);
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
@@ -174,7 +178,7 @@ describe('buildVoteRecord', () => {
       votes,
     });
     expect(record.optionTally).toBeUndefined();
-    expect(record.version).toBe('1.2');
+    expect(record.version).toBe('1.6'); // #5373: stored reasoning
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
@@ -196,7 +200,7 @@ describe('buildVoteRecord', () => {
     });
     // #4472: a tally now always travels with its coverage, so a record
     // carrying one is 1.4. Historical 1.3 records still verify.
-    expect(record.version).toBe('1.4');
+    expect(record.version).toBe('1.6'); // #5373: stored reasoning outranks 1.4
     // The fixture's third voter is catfish(reject) and was assigned 'C'. Only
     // approvers count — this expectation previously asserted `C: 1`, encoding
     // the very defect e2e validation later surfaced in a live record.
