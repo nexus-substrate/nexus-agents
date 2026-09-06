@@ -164,6 +164,23 @@ function appendRefusalIfHostile(
  * 7. Validate corroboration (corroboration-validator) [#828]
  * 8. Return proposed actions
  */
+/** Warn when a demotion was computed but the gating mode did not enforce it (#3122). */
+function logSuppressedDemotion(
+  issueNumber: number,
+  author: string,
+  trustResult: ClassifyResult,
+  gateDecision: ReputationGateDecision
+): void {
+  if (!gateDecision.demotionSuppressed) return;
+  logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
+    issueNumber,
+    author,
+    mode: gateDecision.mode,
+    classifierTier: trustResult.trustTier,
+    reconciledTier: gateDecision.reconciledTier,
+  });
+}
+
 export class IssueTriage {
   private readonly config: IssueTriageConfig;
   private readonly reputationCache: ReputationCache;
@@ -215,18 +232,11 @@ export class IssueTriage {
       // gate must not be papered over with the classifier tier.
       return err(new Error('Untrusted-input firewall returned no reputation gate decision'));
     }
-    if (gateDecision.demotionSuppressed) {
-      logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
-        issueNumber,
-        author: issueResult.author,
-        mode: gateDecision.mode,
-        classifierTier: trustResult.trustTier,
-        reconciledTier: gateDecision.reconciledTier,
-      });
-    }
+    logSuppressedDemotion(issueNumber, issueResult.author, trustResult, gateDecision);
 
-    // Generate and validate actions
-    const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
+    // Generate and validate actions, at the tier the gate ENFORCED (#5719)
+    const enforced = { ...trustResult, trustTier: gateDecision.enforcedTier };
+    const actions = this.generateActions(safeTitle, safeBody, issueResult, enforced);
     // #4667: a hostile enforced tier must produce an explicit refusal. Before
     // this, tier 4 merely meant every generated action failed the policy gate —
     // the caller saw fewer approved actions and no statement that anything was
@@ -371,6 +381,13 @@ export class IssueTriage {
     safeTitle: string,
     safeBody: string,
     issue: IssueMetadata,
+    /**
+     * The classify result with `trustTier` RECONCILED to the tier the policy
+     * gate actually enforced (#5719). Stamping a citation with the
+     * pre-reputation tier makes the record disagree with what anyone enforced,
+     * and `checkSourceTrustTiers` inspects only `issueComment`, so nothing
+     * catches it. `userRole` is still the classifier's — that is what it names.
+     */
     trustResult: ClassifyResult
   ): AgentAction[] {
     const actions: AgentAction[] = [];
