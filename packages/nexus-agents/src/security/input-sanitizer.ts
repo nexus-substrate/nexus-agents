@@ -214,6 +214,8 @@ function applyEntityEvasionDefense(content: string): {
 function stripDangerousHtml(content: string): {
   cleaned: string;
   stripped: StrippedElement[];
+  /** True when the loop ran out of passes with the pattern still matching. */
+  incomplete: boolean;
 } {
   const stripped: StrippedElement[] = [];
   let cleaned = content;
@@ -231,14 +233,26 @@ function stripDangerousHtml(content: string): {
       return '';
     });
   }
-  return { cleaned, stripped };
+  // One more probe. The loop above exits either because the pattern stopped
+  // matching or because it ran out of passes, and the caller could not tell
+  // which — so unconverged content was returned as clean.
+  DANGEROUS_HTML_PATTERN.lastIndex = 0;
+  return { cleaned, stripped, incomplete: DANGEROUS_HTML_PATTERN.test(cleaned) };
 }
 
-/** Strips XML-like tags that mimic conversation structure.
- * Loops until stable to prevent reconstructed patterns after removal (#1496). */
+/**
+ * Strips XML-like tags that mimic conversation structure.
+ *
+ * Loops to remove a tag RECONSTRUCTED by an earlier removal (#1496):
+ * `<sy` + `<system>` + `stem>` becomes `<system>` once the inner tag goes. Each
+ * nesting level costs one pass, so depth N needs N+1 — and at depth 6 the loop
+ * exhausted its budget and returned a live `<system>` tag as clean.
+ */
 function stripXmlTags(content: string): {
   cleaned: string;
   stripped: StrippedElement[];
+  /** True when the loop ran out of passes with the pattern still matching. */
+  incomplete: boolean;
 } {
   const stripped: StrippedElement[] = [];
   let cleaned = content;
@@ -256,7 +270,8 @@ function stripXmlTags(content: string): {
       return '';
     });
   }
-  return { cleaned, stripped };
+  XML_INJECTION_PATTERN.lastIndex = 0;
+  return { cleaned, stripped, incomplete: XML_INJECTION_PATTERN.test(cleaned) };
 }
 
 /** Strips HTML comments that may contain hidden instructions.
@@ -434,8 +449,22 @@ export function sanitizeInput(
       ...comments.stripped,
     ];
 
-    // Detect injection patterns on ORIGINAL content (before stripping)
-    const injectionFlags = detectInjectionPatterns(truncatedContent);
+    // Detect on the original AND on what survived stripping, unioned.
+    //
+    // Running only on the original meant a flag could never see a tag that
+    // exists ONLY after stripping — which is exactly the unconverged case. A
+    // six-deep `<sy<sy…<system foo>…stem>` payload left a live `<system>` in
+    // `content` while `injectionFlags` was `[]` and the author kept tier 3, so
+    // `assessPRReputation` and `assessReputation` saw no hostility at all. The
+    // `foo` attribute is what made it slip: `XML_INJECTION_PATTERN` matches
+    // `<system\b[^>]*>` but the `fake_conversation` detector has no attribute
+    // form, so the ORIGINAL raised nothing.
+    const injectionFlags = [
+      ...new Set([
+        ...detectInjectionPatterns(truncatedContent),
+        ...detectInjectionPatterns(comments.cleaned),
+      ]),
+    ];
 
     // Assign trust tier
     const trustTier = assignTrustTier(userRole, injectionFlags, allowlisted);
@@ -447,6 +476,8 @@ export function sanitizeInput(
       contentTierMeasured: true,
       userRole,
       injectionFlags,
+      // Omitted when every loop converged, so no existing record changes shape.
+      ...(html.incomplete || xml.incomplete ? { sanitizationIncomplete: true } : {}),
       strippedElements: allStripped,
       truncated,
       wasModified: truncated || allStripped.length > 0,

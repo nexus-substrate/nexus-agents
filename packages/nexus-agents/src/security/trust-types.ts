@@ -137,6 +137,17 @@ export const SanitizedInputSchema = z.object({
   truncated: z.boolean().optional(),
   /** Whether any dangerous content was detected and stripped. */
   wasModified: z.boolean(),
+  /**
+   * True when a strip loop exhausted its pass budget with its own pattern still
+   * matching — i.e. `content` still carries markup the sanitizer removes.
+   *
+   * Absent on records that predate this field, and absent means converged, so
+   * no existing record changes meaning. Treat `true` as "do not hand this to a
+   * model": `wasModified` is `true` and `strippedElements.length` is at the cap
+   * in BOTH the converged and the unconverged case, so nothing else separated
+   * them. Mirrors `sanitizationIncomplete` on the MCP-layer sanitizer (#5788).
+   */
+  sanitizationIncomplete: z.boolean().optional(),
   /** Timestamp of sanitization (ISO 8601). */
   sanitizedAt: z.iso.datetime(),
 });
