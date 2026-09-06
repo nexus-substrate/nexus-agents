@@ -330,14 +330,25 @@ export function parseSecurityResult(
     applySecOptionalFields(result, rawParsed);
     return result;
   } catch {
-    // JSON parse failed — fall back to heuristic detection on model output (#1404)
+    // JSON parse failed — fall back to heuristic detection on model output
+    // (#1404). Reaching here means the model's answer could not be parsed AT
+    // ALL, so none of the review it performed survives; the regex fallback
+    // then runs over the model's own prose, not over the code under review.
+    //
+    // This branch used to report `findingsCoverage: 'complete'`, and
+    // `calculateSecurityScore([])` returns 100 — so an adapter that answered
+    // "I could not complete this review." was recorded as a clean, fully
+    // covered security review scoring 100. The structured path above already
+    // fails closed through `coverageFor`/`scoreFor`; this one bypassed both.
+    // A prose hit is evidence of SOMETHING, so it is `partial` rather than
+    // `unmeasured`, but it is never `complete`.
     const heuristicVulns = detectHeuristicVulnerabilities(text);
-    const score = calculateScore(heuristicVulns);
+    const findingsCoverage: FindingsCoverage = heuristicVulns.length > 0 ? 'partial' : 'unmeasured';
     return {
       content: text,
       vulnerabilities: heuristicVulns,
-      securityScore: score,
-      findingsCoverage: 'complete',
+      securityScore: scoreFor(undefined, findingsCoverage, heuristicVulns, calculateScore),
+      findingsCoverage,
       confidence: heuristicVulns.length > 0 ? 0.5 : 0.3,
     };
   }

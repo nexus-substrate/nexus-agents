@@ -271,13 +271,45 @@ describe('parseSecurityResult', () => {
     expect(result.vulnerabilities).toEqual([]);
   });
 
-  it('falls back to heuristic detection for invalid JSON (#1404)', () => {
+  it('reports an unparseable answer as unmeasured, not a clean review', () => {
+    // This test previously asserted `securityScore` 100 on this path, pinning
+    // the defect as intended behaviour: the branch is reached only when the
+    // model's answer could not be parsed at all, so nothing was measured, and
+    // `calculateSecurityScore([])` returns 100. An adapter answering
+    // "I could not complete this review." was recorded as a clean review.
     const result = parseSecurityResult('not valid json', mockScorer, mockValidator);
+
     expect(result.content).toBe('not valid json');
     // Heuristic fallback: no vulnerability patterns matched in plain text
     expect(result.vulnerabilities).toEqual([]);
-    expect(result.securityScore).toBe(100); // calculateSecurityScore([]) = 100
+    expect(result.findingsCoverage).toBe('unmeasured');
+    expect(result.securityScore).toBe(0);
     expect(result.confidence).toBe(0.3);
+  });
+
+  it('reports a prose-only heuristic hit as partial, scored on what it found', () => {
+    // The pair that keeps the assertion above from passing for the wrong
+    // reason: a heuristic hit IS evidence of something, so it must not collapse
+    // to `unmeasured` — but it is still not a parsed review, so never
+    // `complete`.
+    const text = 'The handler builds a query with string concatenation: SQL injection risk.';
+    const result = parseSecurityResult(text, mockScorer, mockValidator);
+
+    expect(result.vulnerabilities.length).toBeGreaterThan(0);
+    expect(result.findingsCoverage).toBe('partial');
+    expect(result.securityScore).toBeLessThan(100);
+    expect(result.confidence).toBe(0.5);
+  });
+
+  it('never reports an unparseable answer as complete', () => {
+    // The property that matters downstream: `parseExpertReview` maps
+    // `unmeasured` to verdict `errored`, and treats `complete` as a real
+    // review. Both fallback shapes must stay out of `complete`.
+    for (const text of ['not valid json', 'SQL injection risk in the handler']) {
+      expect(parseSecurityResult(text, mockScorer, mockValidator).findingsCoverage).not.toBe(
+        'complete'
+      );
+    }
   });
 
   it('uses calculator when score not provided', () => {

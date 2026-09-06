@@ -396,9 +396,15 @@ describe('SecurityExpert', () => {
       if (result.ok) {
         const output = result.value.output as SecurityAnalysisResult;
         expect(output.content).toBe('No vulnerabilities found in the reviewed code.');
-        // Heuristic fallback: no patterns matched → empty vulns, score 100 (#1404)
+        // The heuristic fallback matched nothing, but it ran over the model's
+        // PROSE, not the code — and the model's actual answer never parsed. So
+        // the review is `unmeasured` with a fail-closed score, not a clean 100.
+        // This fixture is the exact hazard: a model that says "no
+        // vulnerabilities found" in plain text used to be recorded as a
+        // complete review scoring 100 (#5791).
         expect(output.vulnerabilities).toEqual([]);
-        expect(output.securityScore).toBe(100);
+        expect(output.findingsCoverage).toBe('unmeasured');
+        expect(output.securityScore).toBe(0);
       }
     });
   });
