@@ -22,8 +22,8 @@ import {
   generateProposal,
   generateProposalBody,
   createSprintIssue,
-  voteOutcomeForExitCode,
 } from './sprint-command.js';
+import { voteOutcomeForExitCode } from './sprint-helpers.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintIssue,
