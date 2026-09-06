@@ -137,6 +137,11 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          # pipefail: a failed `gh api` below must fail the step, not yield an
+          # empty APPROVALS/LABELS the gate reads as "nobody approved" (#5685).
+          # LABEL_ACTOR keeps its tolerant `|| echo ''` — empty is its documented
+          # indeterminate, and the trailing `||` still catches a failure there.
+          set -o pipefail
           BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
           if [ -z "${BASE_SHA}" ]; then
             echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
@@ -204,6 +209,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
+          # See the pre-merge job: a failed `gh api` must fail the step rather
+          # than vote "no approvals" (#5685).
+          set -o pipefail
           FILES=$(git diff --name-only "${SHA}~1" "${SHA}")
           PR_NUMBER=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/pulls" \
             --jq '.[0].number // empty')
