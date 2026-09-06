@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.36.0
+
+### Minor Changes
+
+- [#5805](https://github.com/nexus-substrate/nexus-agents/pull/5805) [`4c26e30`](https://github.com/nexus-substrate/nexus-agents/commit/4c26e304f0a803f19d0cb31b827222ee46c258f1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - SICA no longer reports measurements it never took.
+  `VersionTestMetrics.passRate` was `result.errors.length === 0 ? 1 : 0.5` — not a
+  rate, and `1` whenever `validate: false` left `errors` empty by construction,
+  with no test process ever spawned. It is now `valid / checked` derived from the
+  validation tally the generator already computed and threw away, absent when
+  nothing was checked, and accompanied by `passRateBasis`
+  (`static_validation` | `unmeasured`) so a reader knows nothing was executed.
+  `ImprovementValidation.performanceChange` was a literal `0` on both the success
+  and the failure path, so it distinguished nothing; it is now optional and
+  omitted when no comparison ran.
+
 ## 8.35.0
 
 ### Minor Changes
