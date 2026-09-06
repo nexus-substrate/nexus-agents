@@ -101,7 +101,7 @@ export const CompositeRouterConfigSchema = z.object({
    * which defaults to FALSE — #4456's signal-only posture. So on the default
    * configuration a measurably exhausted arm is observed and counted but stays
    * a candidate, and `getStats().capacity.excludedCount` is structurally 0.
-   * The doc read as if this flag alone did the excluding until #5765.
+   * The doc read as if this flag alone did the excluding until #5767.
    *
    * Declared for #807 but never read by any stage until #4373: for its whole
    * life this flag defaulted to `true` while promising a behaviour that did not

@@ -30,7 +30,7 @@ export interface CascadeRouterBaseConfig {
   /**
    * Timeout per model execution in milliseconds (default: 120000).
    *
-   * The doc said 30000 until #5765. The default was raised to 120s in #1484
+   * The doc said 30000 until #5767. The default was raised to 120s in #1484
    * because cascade tasks are standard+ complexity and 30s cut architecture,
    * security and research work short; the note recording that sits on the
    * constant below, where a reader hovering this field never sees it. A caller
