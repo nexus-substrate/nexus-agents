@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryImportance } from './memory-backend-types.js';
-import type { MemoryEntry } from './memory-backend-types.js';
+import type { MemoryEntry, MemoryRow } from './memory-backend-types.js';
 import type { ScoredMemoryEntry } from './adaptive-memory-types.js';
 import { DEFAULT_SCORING_CONFIG } from './adaptive-memory-types.js';
 import {
@@ -15,6 +15,7 @@ import {
   calculatePriorityScore,
   filterScoredEntries,
   mergeScoringConfig,
+  scoreAndSortEntries,
 } from './adaptive-memory-helpers.js';
 
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -238,5 +239,63 @@ describe('mergeScoringConfig', () => {
     const config = mergeScoringConfig({ decay: { halfLifeMs: 7200000, minScore: 0.05 } });
     expect(config.weights).toEqual(DEFAULT_SCORING_CONFIG.weights);
     expect(config.decay.halfLifeMs).toBe(7200000);
+  });
+});
+
+// ============================================================================
+// scoreAndSortEntries
+// ============================================================================
+
+describe('scoreAndSortEntries', () => {
+  function makeRow(key: string, metadata: string): MemoryRow {
+    return {
+      key,
+      value: JSON.stringify(`value for ${key}`),
+      metadata,
+      created_at: 1700000000000 - 7200000,
+      accessed_at: 1700000000000 - 3600000,
+      expires_at: null,
+    };
+  }
+
+  const readable = JSON.stringify({ importance: MemoryImportance.HIGH });
+
+  it('reports rows skipped for unreadable metadata (#5835)', () => {
+    // Was: a corrupt row was scored under a fabricated MEDIUM importance, so
+    // it competed for a slot against memories whose importance was real.
+    const report = scoreAndSortEntries(
+      [makeRow('good', readable), makeRow('bad', 'NOT_JSON'), makeRow('shape', 'null')],
+      undefined,
+      DEFAULT_SCORING_CONFIG
+    );
+
+    expect(report.entries.map((e) => e.entry.key)).toEqual(['good']);
+    expect(report.unreadable.map((u) => u.key).sort()).toEqual(['bad', 'shape']);
+    expect(report.unreadable.map((u) => u.reason)).toContain('metadata_not_json');
+    expect(report.unreadable.map((u) => u.reason)).toContain('metadata_wrong_shape');
+  });
+
+  it('reports no skips when every row is readable', () => {
+    // Pair test: the skip path must not fire on well-formed rows.
+    const report = scoreAndSortEntries(
+      [makeRow('a', readable), makeRow('b', readable)],
+      undefined,
+      DEFAULT_SCORING_CONFIG
+    );
+
+    expect(report.entries).toHaveLength(2);
+    expect(report.unreadable).toEqual([]);
+  });
+
+  it('reports every row when none can be read', () => {
+    // The empty case: an all-corrupt store must not read as an empty store.
+    const report = scoreAndSortEntries(
+      [makeRow('a', 'NOT_JSON'), makeRow('b', 'NOT_JSON')],
+      undefined,
+      DEFAULT_SCORING_CONFIG
+    );
+
+    expect(report.entries).toEqual([]);
+    expect(report.unreadable).toHaveLength(2);
   });
 });

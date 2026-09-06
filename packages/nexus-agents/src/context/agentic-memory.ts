@@ -227,8 +227,17 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       this.ensureInit();
       const row = queryMemoryByKey(this.getDb(), key);
       if (row === undefined) return Promise.resolve(ok(null));
-      const entry = memoryRowToAgenticEntry(row, this.extractionConfig);
-      return Promise.resolve(ok(entry));
+      const converted = memoryRowToAgenticEntry(row, this.extractionConfig);
+      if (!converted.ok) {
+        return Promise.resolve(
+          err(
+            new MemoryError(`Unreadable metadata for key: ${key}`, {
+              context: { reason: converted.error.reason, detail: converted.error.detail },
+            })
+          )
+        );
+      }
+      return Promise.resolve(ok(converted.value));
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(err(new MemoryError('Failed to retrieve with attributes', { cause })));

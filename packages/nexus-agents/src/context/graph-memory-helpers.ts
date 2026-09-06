@@ -18,7 +18,13 @@ import type {
 import { DEFAULT_GRAPH_MEMORY_CONFIG } from './graph-memory-types.js';
 import type { MemoryEntry, ISQLiteDatabase } from './memory-backend-types.js';
 // Shared utilities per ADR-0013
-import { getMemoryEntry as sharedGetMemoryEntry } from '../utils/memory-db-utils.js';
+import {
+  getMemoryEntry as sharedGetMemoryEntry,
+  type MemoryLookupFailure,
+} from '../utils/memory-db-utils.js';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'GraphMemoryHelpers' });
 
 // ============================================================================
 // SQL Schema
@@ -199,6 +205,33 @@ function buildTraversalResult(
   return { entry, depth, path };
 }
 
+/**
+ * Read the node a traversal has reached, or report why it produced no result.
+ *
+ * A node skipped for corrupt metadata would otherwise be indistinguishable
+ * from one that does not exist (#5835).
+ */
+function lookUpVisitedNode(
+  db: ISQLiteDatabase,
+  current: { key: string; depth: number; path: readonly string[]; edge?: GraphEdge }
+): TraversalResult | undefined {
+  const looked = sharedGetMemoryEntry(db, current.key);
+  if (looked.ok) {
+    return buildTraversalResult(looked.value, current.depth, current.path, current.edge);
+  }
+  noteSkippedNode(current.key, looked.error);
+  return undefined;
+}
+
+/** Log a traversal skip that a caller would otherwise read as "no such node". */
+function noteSkippedNode(key: string, failure: MemoryLookupFailure): void {
+  if (failure.kind !== 'unreadable') return;
+  logger.warn('Graph traversal skipped a node with unreadable metadata', {
+    key,
+    reason: failure.unreadable.reason,
+  });
+}
+
 /** Perform BFS traversal. */
 export function bfsTraverse(config: BFSConfig): TraversalResult[] {
   const { db, startKey, opts } = config;
@@ -214,10 +247,8 @@ export function bfsTraverse(config: BFSConfig): TraversalResult[] {
     if (current === undefined) break;
 
     if (current.depth > 0 || opts.includeStart) {
-      const entry = sharedGetMemoryEntry(db, current.key);
-      if (entry !== undefined) {
-        state.results.push(buildTraversalResult(entry, current.depth, current.path, current.edge));
-      }
+      const result = lookUpVisitedNode(db, current);
+      if (result !== undefined) state.results.push(result);
     }
 
     if (current.depth >= opts.maxDepth) continue;
