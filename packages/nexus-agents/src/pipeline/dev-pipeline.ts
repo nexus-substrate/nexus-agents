@@ -89,6 +89,18 @@ export interface PipelineTask {
 export type VoteResult =
   | { readonly kind: 'approved'; readonly approvalPercentage: number }
   | { readonly kind: 'rejected'; readonly feedback: string; readonly approvalPercentage: number }
+  // NO PRODUCTION PATH PRODUCES THIS TODAY (#5768). The only constructor is
+  // `createVoteResult` below, whose sole caller is dev-pipeline.test.ts; every
+  // production vote producer builds the literal inline and emits only
+  // `approved` / `rejected` (iterative-consensus.ts:243,297,328,345 and
+  // agent-executor.ts:120,122). So three live-looking branches are unreachable
+  // in production: `extractConditionalMeta`'s `conditional_go` check, and the
+  // second disjunct of both `isApproved` here and `isVoteAccepted` in
+  // iterative-consensus.ts — which means `conditions`/`caveats` on a task are
+  // always absent. Documented rather than removed because the variant is
+  // published type surface; wire-or-remove is the decision in #5768. Written
+  // in the shape of the `no_quorum` note below, which records the same kind of
+  // fact for the same reason.
   | {
       readonly kind: 'conditional_go';
       readonly conditions: readonly string[];
@@ -104,7 +116,15 @@ export type VoteResult =
   // `getVoteFeedback` already treat it as not-approved / no-feedback.
   | { readonly kind: 'no_quorum'; readonly reason: string; readonly approvalPercentage: number };
 
-/** Construct VoteResult from legacy approval flow. */
+/**
+ * Construct VoteResult from legacy approval flow.
+ *
+ * NO PRODUCTION CALLER (#5768) — only dev-pipeline.test.ts. Its two siblings
+ * `isApproved` and `getVoteFeedback` ARE wired (stage-wrappers.ts:16), which is
+ * what makes the asymmetry worth recording: this is the only thing that can
+ * emit `conditional_go`, so the variant's branches are unreachable while it
+ * stays uncalled.
+ */
 export function createVoteResult(
   approved: boolean,
   feedback: string,
