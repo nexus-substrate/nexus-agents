@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.35.0
+
+### Minor Changes
+
+- [#5803](https://github.com/nexus-substrate/nexus-agents/pull/5803) [`fc751e0`](https://github.com/nexus-substrate/nexus-agents/commit/fc751e08fcddaabec96bcd5644b33e62a2dbccef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `SessionMetrics.failureCount` can now count. It was written in exactly one place
+  in the package — `createInitialSessionMetrics`, setting it to `0` — because
+  there was nothing to increment on: `CollaborationSession.submitResult` emitted
+  `session.result_submitted` while `markExpertFailed` emitted nothing at all, so
+  an observer saw every success and no failure and any ratio built from the pair
+  was 100% by construction. Adds `SessionExpertFailedEvent`, emitted from
+  `markExpertFailed` with the retry count and whether the failure was terminal,
+  and an observer handler that counts only terminal failures.
+
 ## 8.34.2
 
 ### Patch Changes
