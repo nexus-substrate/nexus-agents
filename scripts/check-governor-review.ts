@@ -91,6 +91,15 @@ export const GOVERNOR_SECTION_END_LINE = `# ${GOVERNOR_SECTION_END_MARKER}`;
 export function governorSectionLines(codeownersText: string): {
   lines: string[];
   terminated: boolean;
+  /**
+   * Whether the START marker was found (#5576). Only `terminated` was tracked,
+   * so a missing or renamed start marker returned `lines: []` with no signal —
+   * indistinguishable from a section that exists and is empty, and both derive
+   * zero governor patterns, which every gate downstream read as "nothing to
+   * assert". The end-marker case was #5137; this is the same shape one line
+   * earlier.
+   */
+  started: boolean;
 } {
   const lines: string[] = [];
   let inSection = false;
@@ -108,7 +117,7 @@ export function governorSectionLines(codeownersText: string): {
     if (line === '' || line.startsWith('#')) continue;
     lines.push(line);
   }
-  return { lines, terminated };
+  return { lines, terminated, started: inSection };
 }
 
 /**
@@ -268,6 +277,25 @@ export interface GovernorReviewInputs {
  * `^[0-9a-f]{40}$` format — otherwise we PASS rather than risk a spurious warn.
  */
 /**
+ * Zero parsed patterns means the CODEOWNERS governor section could not be read —
+ * a missing or renamed START marker, or an empty section (#5576). Without this,
+ * "no governor paths touched" is a default dressed as a measurement, and a
+ * one-line edit to a governor-owned file disarms this gate for every later PR.
+ */
+function unreadableCodeownersSection(
+  patterns: readonly string[]
+): GovernorReviewOutcome | undefined {
+  if (patterns.length > 0) return undefined;
+  return {
+    kind: 'fail',
+    message:
+      'no governor path patterns could be parsed from CODEOWNERS — the ' +
+      'governance-of-the-governor section is missing, renamed or empty, so this gate ' +
+      'cannot assert anything. Restore the section markers in CODEOWNERS (#5576).',
+  };
+}
+
+/**
  * Verdict of a set of diff-bound records, aggregated (#4058 follow-up).
  *
  * `request_changes` wins over `approve`. The gate used to take
@@ -354,13 +382,17 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
     };
   }
 
-  // (2) Does the PR touch any governor path?
+  // (2) Did we parse ANY governor pattern? (#5576)
+  const unreadable = unreadableCodeownersSection(inputs.governorPatterns);
+  if (unreadable !== undefined) return unreadable;
+
+  // (3) Does the PR touch any governor path?
   const touched = governorFilesTouched(inputs.changedFiles, inputs.governorPatterns);
   if (touched.length === 0) {
     return { kind: 'pass', reason: 'no governor paths touched — nothing to assert' };
   }
 
-  // (3) Genesis exemption (condition 5).
+  // (4) Genesis exemption (condition 5).
   if (inputs.genesisExemptPrs.has(inputs.prNumber)) {
     return {
       kind: 'pass',

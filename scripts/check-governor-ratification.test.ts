@@ -19,6 +19,14 @@ import {
 } from './check-governor-ratification.js';
 
 const OWNERS = ['williamzujkowski'];
+const GOVERNOR_PATTERNS = governorPathsFromCodeowners(
+  [
+    "# Governor's own core",
+    '/packages/nexus-agents/src/audit/ @owner',
+    '/CODEOWNERS @owner',
+    '# END governor-owned paths',
+  ].join('\n')
+);
 
 describe('governorOwnersFromCodeowners', () => {
   const CODEOWNERS = [
@@ -56,8 +64,23 @@ describe('evaluateRatification', () => {
       approvals: [],
       labels: [],
       owners: OWNERS,
+      governorPatternCount: GOVERNOR_PATTERNS.length,
     });
     expect(verdict.kind).toBe('not-applicable');
+  });
+
+  it('is indeterminate, not not-applicable, when no governor pattern could be parsed (#5576)', () => {
+    // "nothing was touched" and "we could not tell what counts as touched" are
+    // different measurements. A missing CODEOWNERS start marker yields zero
+    // patterns, so every PR looked like the former.
+    const verdict = evaluateRatification({
+      touchedGovernorFiles: [],
+      approvals: [],
+      labels: [],
+      owners: OWNERS,
+      governorPatternCount: 0,
+    });
+    expect(verdict.kind).toBe('indeterminate');
   });
 
   it('ratifies on an approving review from a governor-path owner', () => {
@@ -66,6 +89,7 @@ describe('evaluateRatification', () => {
       approvals: ['williamzujkowski'],
       labels: [],
       owners: OWNERS,
+      governorPatternCount: GOVERNOR_PATTERNS.length,
     });
     expect(verdict.kind).toBe('ratified');
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('owner-approval');
@@ -76,6 +100,7 @@ describe('evaluateRatification', () => {
     // applier at all, which is the gap that change closes — see the
     // attribution suite below.
     const verdict = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
       touchedGovernorFiles: ['CLAUDE.md'],
       approvals: [],
       labels: ['owner-ratified'],
@@ -92,6 +117,7 @@ describe('evaluateRatification', () => {
       approvals: ['a-bot', 'some-contributor'],
       labels: [],
       owners: OWNERS,
+      governorPatternCount: GOVERNOR_PATTERNS.length,
     });
     expect(verdict.kind).toBe('unratified');
   });
@@ -102,6 +128,7 @@ describe('evaluateRatification', () => {
       approvals: [],
       labels: ['bug', 'ready-to-merge'],
       owners: OWNERS,
+      governorPatternCount: GOVERNOR_PATTERNS.length,
     });
     expect(verdict.kind).toBe('unratified');
   });
@@ -111,6 +138,7 @@ describe('evaluateRatification', () => {
     // an absence of measurement, and reporting it as a normal unratified verdict
     // would blame the PR for a broken gate.
     const verdict = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
       touchedGovernorFiles: ['packages/nexus-agents/src/audit/x.ts'],
       approvals: ['williamzujkowski'],
       labels: [],
@@ -125,6 +153,7 @@ describe('evaluateRatification', () => {
       approvals: [],
       labels: [],
       owners: OWNERS,
+      governorPatternCount: GOVERNOR_PATTERNS.length,
     });
     expect(verdict.kind).toBe('unratified');
     if (verdict.kind === 'unratified') expect(verdict.touched).toHaveLength(2);
@@ -207,7 +236,11 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
   };
 
   it('ratifies when a governor-path owner applied the label, and names them', () => {
-    const v = evaluateRatification({ ...base, labelAppliedBy: 'williamzujkowski' });
+    const v = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
+      ...base,
+      labelAppliedBy: 'williamzujkowski',
+    });
     expect(v.kind).toBe('ratified');
     if (v.kind === 'ratified') {
       expect(v.via).toBe('ratification-label');
@@ -217,7 +250,11 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
   });
 
   it('does NOT ratify when a non-owner applied the label', () => {
-    const v = evaluateRatification({ ...base, labelAppliedBy: 'drive-by-contributor' });
+    const v = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
+      ...base,
+      labelAppliedBy: 'drive-by-contributor',
+    });
     expect(v.kind).toBe('unratified');
   });
 
@@ -225,7 +262,11 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
     // Timeline unavailable, or a label present with no corresponding event.
     // An unattributable ratification recorded as `ratified` launders an
     // unreviewed governance change as reviewed.
-    const v = evaluateRatification({ ...base, labelAppliedBy: undefined });
+    const v = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
+      ...base,
+      labelAppliedBy: undefined,
+    });
     expect(v.kind).toBe('indeterminate');
     if (v.kind === 'indeterminate') {
       expect(v.reason).toMatch(/who applied/i);
@@ -234,6 +275,7 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
 
   it('owner approval still wins without any label attribution', () => {
     const v = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
       ...base,
       labels: [],
       approvals: ['williamzujkowski'],
@@ -244,7 +286,11 @@ describe('the ratification label must be attributed to an owner (#4690)', () => 
   });
 
   it('the applier check is case-insensitive, like the approver check', () => {
-    const v = evaluateRatification({ ...base, labelAppliedBy: 'WilliamZujkowski' });
+    const v = evaluateRatification({
+      governorPatternCount: GOVERNOR_PATTERNS.length,
+      ...base,
+      labelAppliedBy: 'WilliamZujkowski',
+    });
     expect(v.kind).toBe('ratified');
   });
 });

@@ -74,6 +74,14 @@ export type RatificationVerdict =
 export interface RatificationInputs {
   /** Changed files that matched a governor path. */
   readonly touchedGovernorFiles: readonly string[];
+  /**
+   * How many governor path patterns were parsed from CODEOWNERS (#5576). Zero
+   * means the section could not be read — a missing or renamed start marker, or
+   * an empty section — so an empty {@link touchedGovernorFiles} is absence of
+   * measurement, not absence of governor files, and must not render as
+   * `not-applicable`.
+   */
+  readonly governorPatternCount: number;
   /** Logins that submitted an APPROVED review. */
   readonly approvals: readonly string[];
   /** Labels currently on the PR. */
@@ -121,6 +129,15 @@ export function governorOwnersFromCodeowners(codeownersText: string): string[] {
 
 /** Computes the ratification verdict. Pure — all evidence is passed in. */
 export function evaluateRatification(inputs: RatificationInputs): RatificationVerdict {
+  if (inputs.governorPatternCount === 0) {
+    return {
+      kind: 'indeterminate',
+      reason:
+        'no governor path patterns could be parsed from CODEOWNERS — the ' +
+        'governance-of-the-governor section is missing, renamed or empty, so this gate ' +
+        'cannot tell whether the PR touches a governor path (#5576)',
+    };
+  }
   if (inputs.touchedGovernorFiles.length === 0) return { kind: 'not-applicable' };
 
   if (inputs.owners.length === 0) {
@@ -242,6 +259,7 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
 
   const verdict = evaluateRatification({
     touchedGovernorFiles: governorFilesTouched(changed, governorPathsFromCodeowners(codeowners)),
+    governorPatternCount: governorPathsFromCodeowners(codeowners).length,
     approvals,
     labels,
     owners: governorOwnersFromCodeowners(codeowners),
