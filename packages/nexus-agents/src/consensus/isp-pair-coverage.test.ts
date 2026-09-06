@@ -13,10 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import {
-  computeSubsetIndependence,
-  computeSubsetIndependenceScore,
-} from './correlation-helpers.js';
+import { computeSubsetIndependence } from './subset-independence.js';
 import { aggregateSubsets } from './higher-order-helpers.js';
 import type { CorrelationMatrix } from './higher-order-types.js';
 import type { IndependentSubset } from './higher-order-types.js';
@@ -66,12 +63,12 @@ describe('computeSubsetIndependence reports how much it measured', () => {
     expect(result.observedPairs).toBe(0);
   });
 
-  it('keeps the original score function returning exactly what it did', () => {
-    // The behaviour this change must NOT alter.
+  it('keeps the score itself exactly as it was', () => {
+    // The behaviour this change must NOT alter — the weighting is untouched.
     expect(
-      computeSubsetIndependenceScore(['a', 'c', 'd'], matrix({ 'a:c': 0.1, 'a:d': 0.1 }))
+      computeSubsetIndependence(['a', 'c', 'd'], matrix({ 'a:c': 0.1, 'a:d': 0.1 })).score
     ).toBeCloseTo(0.1);
-    expect(computeSubsetIndependenceScore(['a'], matrix({}))).toBe(0);
+    expect(computeSubsetIndependence(['a'], matrix({})).score).toBe(0);
   });
 });
 

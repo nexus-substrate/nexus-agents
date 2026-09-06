@@ -285,16 +285,30 @@ export class QuorumValidator implements IQuorumValidator {
     counts[decision] += weight;
   }
 
-  private calculateQuorumStatus(
-    opts: QuorumStatusInput
-  ): { threshold: number; actualQuorum: number; quorumReached: boolean; reasoning: string } {
-    const { voteCounts, weightedCounts, totalWeight, config, requiredParticipants, anyWeightSupplied } =
-      opts;
+  private calculateQuorumStatus(opts: QuorumStatusInput): {
+    threshold: number;
+    actualQuorum: number;
+    quorumReached: boolean;
+    reasoning: string;
+  } {
+    const {
+      voteCounts,
+      weightedCounts,
+      totalWeight,
+      config,
+      requiredParticipants,
+      anyWeightSupplied,
+    } = opts;
     const threshold = config.threshold;
 
     // For weighted algorithms, use weighted counts
     if (weightedCounts !== undefined && totalWeight !== undefined && totalWeight > 0) {
-      return this.calculateWeightedQuorum(weightedCounts, totalWeight, threshold, anyWeightSupplied);
+      return this.calculateWeightedQuorum(
+        weightedCounts,
+        totalWeight,
+        threshold,
+        anyWeightSupplied
+      );
     }
 
     // For simple algorithms, use vote counts
