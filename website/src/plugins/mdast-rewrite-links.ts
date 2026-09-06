@@ -40,12 +40,27 @@ const DOCS_PREFIX = '/nexus-agents/docs';
 const API_PREFIX = '/nexus-agents/api';
 const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
 
-/** Convert a filename segment (no extension) into a lowercase slug segment. */
+/**
+ * Convert a filename segment (no extension) into a lowercase slug segment.
+ *
+ * HYPHENS ARE PRESERVED (#5750). They were folded into underscores, which is
+ * not what the site builds: `docs/adr/0017-authority-ladder.md` publishes at
+ * `/docs/adr/0017-authority-ladder/`, and the rewriter pointed every link at
+ * `0017_authority_ladder`. That accounted for the last 69 broken links on the
+ * published site, all of them to hyphenated filenames.
+ *
+ * Underscores are kept as-is for the same reason, verified the same way:
+ * `docs/security/API_KEY_BOUNDARIES.md` publishes at `api_key_boundaries`.
+ *
+ * Dots and whitespace still fold to `_`. No file in `docs/` has either today,
+ * so that half is unverified against a real build and is left alone rather
+ * than changed on a guess.
+ */
 function fileToSlug(name: string): string {
   return name
     .replace(/\.md$/i, '')
     .toLowerCase()
-    .replace(/[.\-\s]+/g, '_');
+    .replace(/[.\s]+/g, '_');
 }
 
 /**

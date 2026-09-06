@@ -54,6 +54,19 @@ beforeAll(() => {
     join(docsRoot, 'architecture', 'MULTI-REPO ORCHESTRATION.md'),
     '---\ntitle: Multi Repo\n---\n\n# Multi\n'
   );
+  // Hyphenated and underscored real-world shapes, both verified against the
+  // built site: /docs/adr/0017-authority-ladder/ and
+  // /docs/security/api_key_boundaries/ (#5750).
+  mkdirSync(join(docsRoot, 'adr'), { recursive: true });
+  writeFileSync(
+    join(docsRoot, 'adr', '0017-authority-ladder.md'),
+    '---\ntitle: Authority Ladder\n---\n\n# Ladder\n'
+  );
+  mkdirSync(join(docsRoot, 'security'), { recursive: true });
+  writeFileSync(
+    join(docsRoot, 'security', 'API_KEY_BOUNDARIES.md'),
+    '---\ntitle: Key Boundaries\n---\n\n# Keys\n'
+  );
   // Unpublished — no frontmatter at all, so it is not a site page.
   writeFileSync(join(docsRoot, 'architecture', 'NOTES.md'), '# Just notes\n');
   // Unpublished — frontmatter present but no title field.
@@ -131,9 +144,26 @@ describe('remarkRewriteLinks', () => {
       );
     });
 
-    it('normalises dots, dashes and spaces in the slug to underscores', () => {
+    it('keeps hyphens and folds spaces in the slug (#5750)', () => {
+      // Hyphens are preserved because that is what the site builds:
+      // docs/adr/0017-authority-ladder.md publishes at
+      // /docs/adr/0017-authority-ladder/. Folding them to underscores made
+      // every link to a hyphenated doc a 404 — the last 69 broken links on the
+      // published site.
       expect(rewrite('./MULTI-REPO ORCHESTRATION.md')).toBe(
-        `${DOCS_PREFIX}/architecture/multi_repo_orchestration/`
+        `${DOCS_PREFIX}/architecture/multi-repo_orchestration/`
+      );
+    });
+
+    it('keeps a hyphenated filename intact, as the built route does', () => {
+      expect(rewrite('../adr/0017-authority-ladder.md')).toBe(
+        `${DOCS_PREFIX}/adr/0017-authority-ladder/`
+      );
+    });
+
+    it('keeps an underscored filename intact', () => {
+      expect(rewrite('../security/API_KEY_BOUNDARIES.md')).toBe(
+        `${DOCS_PREFIX}/security/api_key_boundaries/`
       );
     });
 
