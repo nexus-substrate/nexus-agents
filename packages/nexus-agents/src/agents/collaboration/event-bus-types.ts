@@ -27,6 +27,7 @@ export type {
   SessionStatusChangedEvent,
   SessionParticipantJoinedEvent,
   SessionResultSubmittedEvent,
+  SessionExpertFailedEvent,
   SessionFinalizedEvent,
   MessageSentEvent,
   MessageReceivedEvent,

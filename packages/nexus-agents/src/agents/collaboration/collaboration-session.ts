@@ -24,6 +24,7 @@ import type {
   SessionStatusChangedEvent,
   SessionParticipantJoinedEvent,
   SessionResultSubmittedEvent,
+  SessionExpertFailedEvent,
   SessionFinalizedEvent,
   ConsensusVoteRequestedEvent,
   ConsensusVoteCastEvent,
@@ -248,7 +249,7 @@ export class CollaborationSession {
   }
 
   /** Marks an expert as failed. */
-  markExpertFailed(expertId: string, _error: string): Result<void, AgentError> {
+  markExpertFailed(expertId: string, error: string): Result<void, AgentError> {
     if (this.state === null) return err(new AgentError('No active session'));
 
     const participant = this.state.participants.find((p) => p.expertId === expertId);
@@ -259,7 +260,8 @@ export class CollaborationSession {
     const maxRetries = this.state.config.maxRetries ?? DEFAULT_MAX_RETRIES;
     participant.retryCount += 1;
 
-    if (participant.retryCount > maxRetries) {
+    const terminal = participant.retryCount > maxRetries;
+    if (terminal) {
       this.logger.warn('Expert failed after max retries', { expertId });
       participant.status = 'failed';
     } else {
@@ -269,6 +271,17 @@ export class CollaborationSession {
       });
       participant.status = 'pending';
     }
+
+    // `submitResult` has emitted on the bus since this class was written and
+    // this path emitted nothing, so every observer saw a session's successes
+    // and none of its failures (#5793). The `_error` parameter was unused for
+    // the same reason — nothing carried it anywhere.
+    this.emitBusEvent<SessionExpertFailedEvent>('session.expert_failed', {
+      expertId,
+      error,
+      retryCount: participant.retryCount,
+      terminal,
+    });
 
     this.checkProgress();
     return ok(undefined);

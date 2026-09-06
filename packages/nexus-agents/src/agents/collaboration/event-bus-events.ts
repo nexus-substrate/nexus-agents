@@ -48,6 +48,30 @@ export interface SessionResultSubmittedEvent extends DomainEvent {
   };
 }
 
+/**
+ * An expert failed during the session.
+ *
+ * `SessionResultSubmittedEvent` had no counterpart: `submitResult` emitted, and
+ * `markExpertFailed` emitted nothing at all, so an observer could see every
+ * success and no failure. `OrchestrationObserver.SessionMetrics.failureCount`
+ * was the visible consequence — a counter with no incrementing write anywhere
+ * in the package (#5793).
+ *
+ * `terminal` distinguishes the two things `markExpertFailed` does: a retryable
+ * failure returns the participant to `pending` and may still succeed, while an
+ * exhausted one sets `failed`. A consumer counting session failures wants the
+ * second; one measuring flakiness wants both.
+ */
+export interface SessionExpertFailedEvent extends DomainEvent {
+  readonly topic: 'session.expert_failed';
+  readonly payload: {
+    readonly expertId: string;
+    readonly error: string;
+    readonly retryCount: number;
+    readonly terminal: boolean;
+  };
+}
+
 export interface SessionFinalizedEvent extends DomainEvent {
   readonly topic: 'session.finalized';
   readonly payload: {
@@ -308,6 +332,7 @@ export type TypedEvent =
   | SessionStatusChangedEvent
   | SessionParticipantJoinedEvent
   | SessionResultSubmittedEvent
+  | SessionExpertFailedEvent
   | SessionFinalizedEvent
   | MessageSentEvent
   | MessageReceivedEvent

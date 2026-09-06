@@ -142,6 +142,9 @@ export class OrchestrationObserver implements IOrchestrationObserver {
       case 'session.result_submitted':
         this.onResultSubmitted(sessionId, payload);
         break;
+      case 'session.expert_failed':
+        this.onExpertFailed(sessionId, payload);
+        break;
       case 'session.finalized':
         this.onSessionFinalized(sessionId, payload);
         break;
@@ -267,6 +270,30 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     if (metrics !== undefined) {
       metrics.taskCount++;
       metrics.successCount++;
+    }
+  }
+
+  /**
+   * Count an expert failure against the session.
+   *
+   * Only a TERMINAL failure counts: a retryable one returns the participant to
+   * `pending` and may still submit a result, so counting it would make
+   * `successCount + failureCount` exceed the work actually attempted. Before
+   * this handler existed, `failureCount` had no incrementing write anywhere in
+   * the package and any ratio built from the pair was 100% by construction
+   * (#5793).
+   */
+  private onExpertFailed(sessionId: string, payload: Record<string, unknown>): void {
+    const expertId = extractStringField(payload, 'expertId');
+    if (expertId !== '') {
+      this.updateAgentState(expertId, 'idle');
+    }
+    if (payload['terminal'] !== true) return;
+
+    const metrics = this.sessionMetrics.get(sessionId);
+    if (metrics !== undefined) {
+      metrics.taskCount++;
+      metrics.failureCount++;
     }
   }
 
