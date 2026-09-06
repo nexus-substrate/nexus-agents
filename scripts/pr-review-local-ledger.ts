@@ -62,16 +62,29 @@ export interface PrMeta {
   readonly baseRef: string;
   readonly headRef: string;
   /** 40-hex base commit SHA — the range base the gate recomputes the diff hash over. */
+  /**
+   * The base the reviewed diff is computed from: `git merge-base
+   * origin/<baseRef> <headSha>` (#5692). The governor gate recomputes the
+   * reviewed-diff hash from the merge-base since #5476, so binding a record to
+   * the API's `.base.sha` — the branch tip when the PR opened — made a record
+   * on an aged branch hash a diff containing other people's commits and never
+   * match. Falls back to {@link apiBaseSha} when the merge-base cannot be
+   * computed (shallow clone, unfetched ref).
+   */
   readonly baseSha: string;
   /** 40-hex head commit SHA — the range head. */
+  /** The API's `.base.sha` (base branch tip at PR-open time), kept for provenance (#5692). */
+  readonly apiBaseSha: string;
   readonly headSha: string;
 }
 
 /**
- * Fetch PR metadata INCLUDING the base+head commit SHAs (#4229). The SHAs
- * (`.base.sha`/`.head.sha`) — not just the ref names — are what the governor gate
- * recomputes the reviewed-diff hash over, so a persisted record can only match if
- * it is bound to these exact commits.
+ * Fetch PR metadata INCLUDING the base+head commit SHAs (#4229) and resolve the
+ * base to the MERGE-BASE (#5692). The governor gate recomputes the reviewed-diff
+ * hash from `git merge-base origin/<base_ref> <head>` (#5476), so a record can
+ * only match if it is bound to the same base; the API's `.base.sha` is the base
+ * branch tip at PR-open time and drifts as main advances. `apiBaseSha` keeps the
+ * original so a reader can tell which base a record used.
  */
 export async function fetchPrMeta(prNumber: number, exec: GhGitExec = execFileP): Promise<PrMeta> {
   const { stdout } = await exec('gh', [
@@ -88,14 +101,42 @@ export async function fetchPrMeta(prNumber: number, exec: GhGitExec = execFileP)
     baseSha?: string;
     headSha?: string;
   };
+  const apiBaseSha = m.baseSha ?? '';
+  const headSha = m.headSha ?? '';
+  const baseRef = m.baseRef ?? '';
   return {
     title: m.title ?? '',
     body: m.body ?? '',
     headRef: m.headRef ?? '',
-    baseRef: m.baseRef ?? '',
-    baseSha: m.baseSha ?? '',
-    headSha: m.headSha ?? '',
+    baseRef,
+    baseSha: await resolveMergeBase(baseRef, headSha, apiBaseSha, exec),
+    apiBaseSha,
+    headSha,
   };
+}
+
+/**
+ * `git merge-base origin/<baseRef> <headSha>`, or `apiBaseSha` when it cannot be
+ * computed (#5692). Never returns empty while `apiBaseSha` is non-empty: a
+ * missing ref is a reason to fall back to the older base, not to bind the record
+ * to nothing.
+ */
+async function resolveMergeBase(
+  baseRef: string,
+  headSha: string,
+  apiBaseSha: string,
+  exec: GhGitExec
+): Promise<string> {
+  if (baseRef === '' || headSha === '') return apiBaseSha;
+  try {
+    const { stdout } = await exec('git', ['merge-base', `origin/${baseRef}`, headSha], {
+      cwd: ROOT,
+    });
+    const sha = stdout.trim();
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : apiBaseSha;
+  } catch {
+    return apiBaseSha;
+  }
 }
 
 /**

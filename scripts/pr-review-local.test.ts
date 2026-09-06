@@ -63,6 +63,66 @@ describe('fetchPrMeta (base/head SHA fetch, #4229 Part 2)', () => {
     expect(jq).toContain('.base.sha');
     expect(jq).toContain('.head.sha');
   });
+
+  it('resolves baseSha to the merge-base, not the API base.sha (#5692)', async () => {
+    // The governor gate recomputes the reviewed-diff hash from
+    // `git merge-base origin/<base_ref> <head>` since #5476. The API's
+    // `.base.sha` is the branch tip at PR-open time, so on a branch whose base
+    // has advanced the record hashed a diff containing other people's commits
+    // and could never match the gate.
+    const mergeBase = 'c'.repeat(40);
+    const calls: Array<{ cmd: string; args: readonly string[] }> = [];
+    const exec: GhGitExec = (cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'git' && args[0] === 'merge-base') {
+        return Promise.resolve({ stdout: `${mergeBase}\n`, stderr: '' });
+      }
+      return Promise.resolve({
+        stdout: JSON.stringify({
+          title: 'T',
+          body: 'B',
+          baseRef: 'main',
+          headRef: 'feat/x',
+          baseSha: 'a'.repeat(40),
+          headSha: 'b'.repeat(40),
+        }),
+        stderr: '',
+      });
+    };
+
+    const meta = await fetchPrMeta(5692, exec);
+
+    expect(meta.baseSha).toBe(mergeBase);
+    expect(meta.apiBaseSha).toBe('a'.repeat(40));
+    const mb = calls.find((c) => c.cmd === 'git' && c.args[0] === 'merge-base');
+    expect(mb?.args).toEqual(['merge-base', 'origin/main', 'b'.repeat(40)]);
+  });
+
+  it('falls back to the API base.sha when the merge-base cannot be computed (#5692)', async () => {
+    // A shallow clone or an unfetched base ref must not yield an empty baseSha:
+    // the old value is still the honest best effort, and the record carries
+    // apiBaseSha so a reader can tell which one was used.
+    const exec: GhGitExec = (cmd, args) => {
+      if (cmd === 'git' && args[0] === 'merge-base') return Promise.reject(new Error('no ref'));
+      if (cmd === 'git') return Promise.resolve({ stdout: '', stderr: '' });
+      return Promise.resolve({
+        stdout: JSON.stringify({
+          title: 'T',
+          body: 'B',
+          baseRef: 'main',
+          headRef: 'feat/x',
+          baseSha: 'a'.repeat(40),
+          headSha: 'b'.repeat(40),
+        }),
+        stderr: '',
+      });
+    };
+
+    const meta = await fetchPrMeta(5692, exec);
+
+    expect(meta.baseSha).toBe('a'.repeat(40));
+    expect(meta.apiBaseSha).toBe('a'.repeat(40));
+  });
 });
 
 describe('pr-review-local ledger feeder (#4229 Part 2 — real git)', () => {
