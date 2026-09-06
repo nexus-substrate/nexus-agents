@@ -266,8 +266,27 @@ describe('executeTriangulatedReview', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
+    // A CLI whose output did not parse did not review anything (#5697): it is
+    // not "used", and its partition says why. This test used to bless
+    // clisUsed === ['codex'] with zero findings — a clean review from prose.
+    expect(result.value.clisUsed).toEqual([]);
+    expect(result.value.findings.length).toBe(0);
+    const partition = result.value.partitions.find((p) => p.cli === 'codex');
+    expect(partition?.success).toBe(false);
+    expect(partition?.error).toContain('unparseable');
+  });
+
+  it('treats a literal empty findings array as a successful review with nothing to report (#5697)', async () => {
+    const adapters = buildAdapters(['codex', createReviewAdapter('codex', '[]')]);
+
+    const result = await executeTriangulatedReview(sampleDiff, adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
     expect(result.value.clisUsed).toEqual(['codex']);
     expect(result.value.findings.length).toBe(0);
+    expect(result.value.partitions.find((p) => p.cli === 'codex')?.success).toBe(true);
   });
 
   it('sorts findings by severity then confidence', async () => {

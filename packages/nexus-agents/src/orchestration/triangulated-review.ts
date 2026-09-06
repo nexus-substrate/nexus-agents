@@ -265,6 +265,11 @@ async function dispatchReviews(
       const findings = parseFindings(text, cli);
       const model = result.value.model;
 
+      if (findings === null) {
+        logger.warn('Review CLI output was unparseable', { cli });
+        return unparseablePartition(cli, text, durationMs, model);
+      }
+
       return model !== undefined
         ? { cli, success: true, findings, summary: text, durationMs, model }
         : { cli, success: true, findings, summary: text, durationMs };
@@ -294,15 +299,44 @@ function createTimeout(ms: number, cli: CliName): Promise<never> {
 const moduleLogger = createLogger({ component: 'triangulated-review' });
 
 /** Parses CLI output into structured findings. */
-function parseFindings(text: string, cli: CliName): ReviewFinding[] {
+/**
+ * The CLI answered, but not with a findings array (#5697): it reviewed nothing
+ * we can use. Recording that as a success with zero findings made prose
+ * indistinguishable from a clean review, in the summary and in the outcome
+ * store. Same guard as pr-reviewer-helpers (#5012).
+ */
+function unparseablePartition(
+  cli: CliName,
+  text: string,
+  durationMs: number,
+  model: string | undefined
+): CliReviewPartition {
+  return {
+    cli,
+    success: false,
+    findings: [],
+    summary: text,
+    durationMs,
+    error: 'unparseable review output: no JSON findings array',
+    ...(model !== undefined ? { model } : {}),
+  };
+}
+
+/**
+ * Parse the CLI's findings array. Returns `null` — not `[]` — when the text
+ * carries no JSON array or it does not parse (#5697): an empty array is a
+ * review that found nothing, an unparseable answer is no review at all, and
+ * the caller must be able to tell them apart.
+ */
+function parseFindings(text: string, cli: CliName): ReviewFinding[] | null {
   try {
     // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
     // backtracking. Previously `/\[[\s\S]*\]/` — same class as #1899.
     const candidate = extractJsonArray(text);
-    if (candidate === undefined) return [];
+    if (candidate === undefined) return null;
 
     const parsed: unknown = JSON.parse(candidate);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return null;
 
     return parsed
       .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
@@ -327,7 +361,7 @@ function parseFindings(text: string, cli: CliName): ReviewFinding[] {
       cli,
       error: getErrorMessage(e),
     });
-    return [];
+    return null;
   }
 }
 

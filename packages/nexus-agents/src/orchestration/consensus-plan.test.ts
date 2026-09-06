@@ -305,8 +305,13 @@ describe('executeConsensusPlan', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.clisUsed).toEqual(['claude']);
+    // A CLI whose plan did not parse produced no plan (#5697): not "used",
+    // and its partition records the failure instead of a planning success.
+    expect(result.value.clisUsed).toEqual([]);
     expect(result.value.agreedSteps.length).toBe(0);
+    const partition = result.value.partitions.find((p) => p.cli === 'claude');
+    expect(partition?.success).toBe(false);
+    expect(partition?.error).toContain('unparseable');
   });
 
   it('records task outcomes', async () => {
