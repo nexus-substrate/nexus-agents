@@ -32,6 +32,19 @@ export interface CorroborationResult {
   readonly missing: readonly string[];
   /** Action type that was validated. */
   readonly actionType: AgentActionType;
+  /**
+   * True when the floor was cleared, and EVERY `repoFile` citation that cleared
+   * it is one the producer checked and found absent from the base ref
+   * (`existsOnBaseRef === false`) — i.e. a path the author of the untrusted
+   * change invented in that same change.
+   *
+   * `satisfied` deliberately does not read this: which actions are permitted is
+   * unchanged. What changes is that the record can now say the corroboration
+   * was author-supplied, instead of attributing repo provenance to a path that
+   * has none. False when any citation is verified, when none were checked, or
+   * when the floor was not cleared at all.
+   */
+  readonly clearedOnlyByUnverifiedSources: boolean;
 }
 
 /**
@@ -61,6 +74,18 @@ function hasMaintainerCommand(sources: readonly SourceCitation[]): boolean {
 /** Check if sources include a Tier 1 issue comment. */
 function hasTier1Comment(sources: readonly SourceCitation[]): boolean {
   return sources.some((s) => s.type === 'issueComment' && s.authorTrustTier === '1');
+}
+
+/**
+ * Did every `repoFile` citation get checked against the base ref and found
+ * absent? Requires at least one such citation, so an empty or unchecked set is
+ * false rather than vacuously true — the empty case here means "nothing to
+ * report", not "everything is unverified".
+ */
+function allRepoFilesAreAuthorSupplied(sources: readonly SourceCitation[]): boolean {
+  const repoFiles = sources.filter((s) => s.type === 'repoFile');
+  if (repoFiles.length === 0) return false;
+  return repoFiles.every((s) => s.existsOnBaseRef === false);
 }
 
 /** Check if sources include a repo file reference. */
@@ -209,6 +234,7 @@ export function validateCorroboration(action: AgentAction): CorroborationResult 
       corroboratingSources: sources,
       missing: [],
       actionType: action.type,
+      clearedOnlyByUnverifiedSources: allRepoFilesAreAuthorSupplied(sources),
     };
   }
 
@@ -227,11 +253,15 @@ export function validateCorroboration(action: AgentAction): CorroborationResult 
     }
   }
 
+  const satisfied = missing.length === 0;
   return {
-    satisfied: missing.length === 0,
+    satisfied,
     corroboratingSources: corroborating,
     missing,
     actionType: action.type,
+    // Only meaningful about a floor that was actually cleared; a refused action
+    // has no corroboration to characterise.
+    clearedOnlyByUnverifiedSources: satisfied && allRepoFilesAreAuthorSupplied(corroborating),
   };
 }
 
