@@ -17,6 +17,7 @@ import type {
   AgentPairKey,
 } from './higher-order-types.js';
 import { createAgentPairKey } from './higher-order-types.js';
+import { computeSubsetIndependence } from './subset-independence.js';
 
 // ============================================================================
 // Pairwise History Types
@@ -145,40 +146,6 @@ export function isIndependentFromSubset(
 }
 
 /**
- * Compute the average absolute correlation within a subset.
- *
- * @param subset - Agent IDs in the subset
- * @param correlationMatrix - Correlation matrix
- * @returns Average absolute correlation (0 if no pairs)
- */
-export function computeSubsetIndependenceScore(
-  subset: readonly string[],
-  correlationMatrix: CorrelationMatrix
-): number {
-  if (subset.length < 2) return 0;
-
-  let totalCorrelation = 0;
-  let pairs = 0;
-
-  for (let i = 0; i < subset.length; i++) {
-    for (let j = i + 1; j < subset.length; j++) {
-      const agentA = subset[i];
-      const agentB = subset[j];
-      if (agentA !== undefined && agentB !== undefined) {
-        const pairKey = createAgentPairKey(agentA, agentB);
-        const correlation = correlationMatrix.get(pairKey);
-        if (correlation !== undefined) {
-          totalCorrelation += Math.abs(correlation);
-          pairs++;
-        }
-      }
-    }
-  }
-
-  return pairs > 0 ? totalCorrelation / pairs : 0;
-}
-
-/**
  * Compute the minimum observation count for pairs within a subset.
  *
  * @param subset - Agent IDs in the subset
@@ -246,13 +213,14 @@ export function partitionIntoIndependentGroups(
       }
     }
 
-    const independenceScore = computeSubsetIndependenceScore(subset, correlationMatrix);
+    const independence = computeSubsetIndependence(subset, correlationMatrix);
     const observationCount = computeSubsetObservationCount(subset, pairwiseHistory);
 
     subsets.push({
       id: `subset-${String(subsetId++)}`,
       agentIds: subset,
-      independenceScore,
+      independenceScore: independence.score,
+      pairCoverage: { observed: independence.observedPairs, total: independence.totalPairs },
       observationCount,
     });
   }

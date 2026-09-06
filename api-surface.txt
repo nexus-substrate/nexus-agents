@@ -4304,7 +4304,7 @@ InterfaceDeclaration HigherOrderVotingResult
   readonly reasoning: string
   readonly usedCorrelationData: boolean
 VariableDeclaration HigherOrderVotingResultSchema
-  : z.ZodObject<{ decision: z.ZodEnum<{ approve: "approve"; no_consensus: "no_consensus"; reject: "reject"; }>; downweightedAgents: z.ZodArray<z.ZodString>; effectiveVoteCount: z.ZodNumber; improvementOverBaseline: z.ZodNumber; independentSubsets: z.ZodOptional<z.ZodArray<z.ZodObject<{ agentIds: z.ZodArray<z.ZodString>; id: z.ZodString; independenceScore: z.ZodNumber; observationCount: z.ZodNumber; }, z.core.$strip>>>; method: z.ZodEnum<{ isp: "isp"; ow: "ow"; simple: "simple"; }>; posteriorApproval: z.ZodNumber; posteriorRejection: z.ZodNumber; reasoning: z.ZodString; usedCorrelationData: z.ZodBoolean; }, z.core.$strip>
+  : z.ZodObject<{ decision: z.ZodEnum<{ approve: "approve"; no_consensus: "no_consensus"; reject: "reject"; }>; downweightedAgents: z.ZodArray<z.ZodString>; effectiveVoteCount: z.ZodNumber; improvementOverBaseline: z.ZodNumber; independentSubsets: z.ZodOptional<z.ZodArray<z.ZodObject<{ agentIds: z.ZodArray<z.ZodString>; id: z.ZodString; independenceScore: z.ZodNumber; observationCount: z.ZodNumber; pairCoverage: z.ZodObject<{ observed: z.ZodNumber; total: z.ZodNumber; }, z.core.$strip>; }, z.core.$strip>>>; method: z.ZodEnum<{ isp: "isp"; ow: "ow"; simple: "simple"; }>; posteriorApproval: z.ZodNumber; posteriorRejection: z.ZodNumber; reasoning: z.ZodString; usedCorrelationData: z.ZodBoolean; }, z.core.$strip>
 ClassDeclaration HigherOrderVotingStrategy
 InterfaceDeclaration HindsightRecord
   readonly actualOutcome: string
@@ -4633,8 +4633,9 @@ InterfaceDeclaration IndependentSubset
   readonly id: string
   readonly independenceScore: number
   readonly observationCount: number
+  readonly pairCoverage: { readonly observed: number; readonly total: number; }
 VariableDeclaration IndependentSubsetSchema
-  : z.ZodObject<{ agentIds: z.ZodArray<z.ZodString>; id: z.ZodString; independenceScore: z.ZodNumber; observationCount: z.ZodNumber; }, z.core.$strip>
+  : z.ZodObject<{ agentIds: z.ZodArray<z.ZodString>; id: z.ZodString; independenceScore: z.ZodNumber; observationCount: z.ZodNumber; pairCoverage: z.ZodObject<{ observed: z.ZodNumber; total: z.ZodNumber; }, z.core.$strip>; }, z.core.$strip>
 InterfaceDeclaration IneffectiveVar
   readonly effectiveMs: number
   readonly name: string

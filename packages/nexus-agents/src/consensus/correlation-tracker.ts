@@ -41,7 +41,6 @@ export {
   didAlignWithOutcome,
   computeCorrelationCoefficient,
   isIndependentFromSubset,
-  computeSubsetIndependenceScore,
   computeSubsetObservationCount,
   partitionIntoIndependentGroups,
 } from './correlation-helpers.js';

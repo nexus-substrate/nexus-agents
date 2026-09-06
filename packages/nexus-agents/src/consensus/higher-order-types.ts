@@ -65,8 +65,25 @@ export interface IndependentSubset {
   readonly id: string;
   /** Agent IDs in this independent subset */
   readonly agentIds: readonly string[];
-  /** Average internal independence score (lower = more independent) */
+  /**
+   * Average internal independence score (lower = more independent).
+   *
+   * Averaged over the pairs that HAVE a correlation, so read it together with
+   * {@link pairCoverage}: a subset whose pairs were measured at 0 and one whose
+   * pairs were never observed both score 0, and 0 is the score that earns the
+   * maximum posterior weight.
+   */
   readonly independenceScore: number;
+  /**
+   * How many of the subset's agent pairs actually had a correlation, out of how
+   * many exist.
+   *
+   * `observed < total` means {@link independenceScore} is an average over a
+   * subset of the pairs — the unobserved ones contributed nothing rather than
+   * being represented as unknown. A singleton has `total: 0`: there is no pair
+   * to observe, so its score is not a measurement at all.
+   */
+  readonly pairCoverage: { readonly observed: number; readonly total: number };
   /** Number of observations supporting this grouping */
   readonly observationCount: number;
 }
@@ -75,6 +92,10 @@ export const IndependentSubsetSchema = z.object({
   id: z.string(),
   agentIds: z.array(z.string()),
   independenceScore: z.number().min(0).max(1),
+  pairCoverage: z.object({
+    observed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
   observationCount: z.number().int().nonnegative(),
 });
 

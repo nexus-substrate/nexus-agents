@@ -12,13 +12,13 @@ import type {
 } from './higher-order-types.js';
 import { createAgentPairKey } from './higher-order-types.js';
 import type { MutablePairwiseHistory } from './correlation-helpers.js';
+import { computeSubsetIndependence } from './subset-independence.js';
 import {
   isComparable,
   votesAgree,
   didAlignWithOutcome,
   computeCorrelationCoefficient,
   isIndependentFromSubset,
-  computeSubsetIndependenceScore,
   computeSubsetObservationCount,
   partitionIntoIndependentGroups,
 } from './correlation-helpers.js';
@@ -207,16 +207,19 @@ describe('isIndependentFromSubset', () => {
 });
 
 // ============================================================================
-// computeSubsetIndependenceScore
+// computeSubsetIndependence
+//
+// Moved to `subset-independence.ts` with the coverage it is only meaningful
+// beside; the score arithmetic below is unchanged.
 // ============================================================================
 
-describe('computeSubsetIndependenceScore', () => {
+describe('computeSubsetIndependence score', () => {
   it('returns 0 for single agent', () => {
-    expect(computeSubsetIndependenceScore(['a'], new Map())).toBe(0);
+    expect(computeSubsetIndependence(['a'], new Map()).score).toBe(0);
   });
 
   it('returns 0 for no correlation data', () => {
-    expect(computeSubsetIndependenceScore(['a', 'b'], new Map())).toBe(0);
+    expect(computeSubsetIndependence(['a', 'b'], new Map()).score).toBe(0);
   });
 
   it('computes average absolute correlation', () => {
@@ -224,7 +227,7 @@ describe('computeSubsetIndependenceScore', () => {
     matrix.set(createAgentPairKey('a', 'b'), 0.4);
     matrix.set(createAgentPairKey('a', 'c'), -0.6);
     matrix.set(createAgentPairKey('b', 'c'), 0.2);
-    const score = computeSubsetIndependenceScore(['a', 'b', 'c'], matrix);
+    const { score } = computeSubsetIndependence(['a', 'b', 'c'], matrix);
     // (0.4 + 0.6 + 0.2) / 3 = 0.4
     expect(score).toBeCloseTo(0.4);
   });
