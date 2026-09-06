@@ -18,7 +18,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { severityForConfidence } from './failure-detector.js';
+import { severityForConfidence } from './failure-severity.js';
 import { FailureSeveritySchema } from './failure-types.js';
 
 describe('severityForConfidence', () => {
