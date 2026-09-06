@@ -273,12 +273,15 @@ function stripHtmlComments(content: string): {
     HTML_COMMENT_PATTERN.lastIndex = 0;
     const prevLength = cleaned.length;
     cleaned = cleaned.replace(HTML_COMMENT_PATTERN, (match, offset: number) => {
-      const hasInstruction = /\b(ignore|execute|close|merge|delete|apply)\b/i.test(match);
-      if (!hasInstruction) return match;
-
+      // Unconditional: the old keyword list (ignore|execute|close|merge|delete|
+      // apply) let agent-directed text phrased around it survive, invisible in
+      // rendered markdown, into the prompt. The MCP-layer sanitizer already
+      // strips every comment and documents itself as strictly stronger; the two
+      // layers now agree, and a comment in a PR body is not content a reviewer
+      // reads anyway.
       stripped.push({
         tag: '<!-- ... -->',
-        reason: 'HTML comment with instruction-like content',
+        reason: 'HTML comment (hidden content)',
         startIndex: offset,
         length: match.length,
       });
@@ -307,9 +310,20 @@ function stripHtmlComments(content: string): {
   return { cleaned, stripped };
 }
 
-/** Detects injection patterns in content without modifying it. */
+/** Non-global twin of HTML_COMMENT_PATTERN — `.test` must not carry lastIndex state. */
+const HTML_COMMENT_DETECT = /<!--[\s\S]*?-->/;
+
+/**
+ * Detects injection patterns in content without modifying it. `hidden_content`
+ * is raised here for any HTML comment: the flag is in HOSTILE_INJECTION_FLAGS
+ * and the reputation model acts on it, but nothing produced it, so that arm of
+ * `hasHostileInjection` could never fire.
+ */
 function detectInjectionPatterns(content: string): InjectionFlag[] {
   const flags = new Set<InjectionFlag>();
+  if (HTML_COMMENT_DETECT.test(content)) {
+    flags.add('hidden_content');
+  }
   for (const { flag, pattern } of INJECTION_PATTERNS) {
     // Reset lastIndex for global patterns
     pattern.lastIndex = 0;
