@@ -14,9 +14,13 @@ import type {
   AgenticMemoryEntry,
 } from './agentic-memory-types.js';
 // Shared utilities per ADR-0013
-import { memoryRowToEntry } from '../utils/memory-db-utils.js';
+import {
+  memoryRowToEntry,
+  type UnreadableMemoryRow,
+} from '../utils/memory-db-utils.js';
 import { extractAttributes } from './agentic-memory-extraction.js';
 import { createLogger } from '../core/index.js';
+import { type Result, ok } from '../core/result.js';
 
 const logger = createLogger({ component: 'AgenticMemoryDbHelpers' });
 
@@ -63,8 +67,10 @@ export function parseAmemAttributes(metadata: unknown): MemoryAttributes | null 
 export function memoryRowToAgenticEntry(
   row: MemoryRow,
   extractionConfig: ExtractionConfig
-): AgenticMemoryEntry {
-  const baseEntry = memoryRowToEntry(row);
+): Result<AgenticMemoryEntry, UnreadableMemoryRow> {
+  const converted = memoryRowToEntry(row);
+  if (!converted.ok) return converted;
+  const baseEntry = converted.value;
 
   let parsedMeta: Record<string, unknown> = {};
   try {
@@ -78,7 +84,35 @@ export function memoryRowToAgenticEntry(
   const attributes =
     parseAmemAttributes(parsedMeta) ?? extractAttributes(baseEntry.value, extractionConfig);
 
-  return { ...baseEntry, attributes };
+  return ok({ ...baseEntry, attributes });
+}
+
+/**
+ * Keep the readable entries, and report the rows that were skipped.
+ *
+ * Callers that return a plain array still log the skip count, so a shorter
+ * result is never mistaken for a smaller store (#5835).
+ */
+function collectReadable(
+  rows: readonly MemoryRow[],
+  extractionConfig: ExtractionConfig,
+  context: string
+): AgenticMemoryEntry[] {
+  const entries: AgenticMemoryEntry[] = [];
+  const skipped: string[] = [];
+  for (const row of rows) {
+    const converted = memoryRowToAgenticEntry(row, extractionConfig);
+    if (converted.ok) entries.push(converted.value);
+    else skipped.push(converted.error.key);
+  }
+  if (skipped.length > 0) {
+    logger.warn('Skipped memory rows with unreadable metadata', {
+      context,
+      skipped: skipped.length,
+      keys: skipped,
+    });
+  }
+  return entries;
 }
 
 /**
@@ -103,7 +137,7 @@ export function searchWithAttributes(
   `);
 
   const rows = stmt.all(sanitized, limit);
-  return rows.map((row) => memoryRowToAgenticEntry(row, extractionConfig));
+  return collectReadable(rows, extractionConfig, 'searchWithAttributes');
 }
 
 /**
@@ -166,13 +200,26 @@ export function findMatchingMemories(
   extractionConfig: ExtractionConfig
 ): Array<{ entry: AgenticMemoryEntry; overlap: number }> {
   const matches: Array<{ entry: AgenticMemoryEntry; overlap: number }> = [];
+  const skipped: string[] = [];
   for (const row of rows) {
     const attrs = getAttributesFromRow(row, extractionConfig);
     const targetSet = getAttributeSet(attrs, attributeType);
     let overlap = 0;
     for (const item of sourceSet) if (targetSet.has(item)) overlap++;
-    if (overlap > 0)
-      matches.push({ entry: memoryRowToAgenticEntry(row, extractionConfig), overlap });
+    if (overlap === 0) continue;
+    const converted = memoryRowToAgenticEntry(row, extractionConfig);
+    if (!converted.ok) {
+      skipped.push(converted.error.key);
+      continue;
+    }
+    matches.push({ entry: converted.value, overlap });
+  }
+  if (skipped.length > 0) {
+    logger.warn('Skipped memory rows with unreadable metadata', {
+      context: 'findMatchingMemories',
+      skipped: skipped.length,
+      keys: skipped,
+    });
   }
   matches.sort((a, b) => b.overlap - a.overlap);
   return matches;

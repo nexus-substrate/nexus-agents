@@ -28,6 +28,7 @@ import { AdaptiveMemoryConfigSchema } from './adaptive-memory-types.js';
 import {
   mergeScoringConfig,
   scoreAndSortEntries,
+  type ScoredEntriesReport,
   touchMemory,
   calculatePriorityScore,
 } from './adaptive-memory-helpers.js';
@@ -162,10 +163,20 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
       const rows = getAllMemoryRows(db, maxFetch);
 
       // Score, filter, and sort
-      const scored = scoreAndSortEntries(rows, opts, this.scoringConfig);
+      const scored: ScoredEntriesReport = scoreAndSortEntries(rows, opts, this.scoringConfig);
+      if (scored.unreadable.length > 0) {
+        this.log.warn('Skipped memory rows with unreadable metadata', {
+          skipped: scored.unreadable.length,
+          keys: scored.unreadable.map((u) => u.key),
+        });
+      }
 
-      this.log.debug('Retrieved by priority', { count: scored.length, query: opts?.query });
-      return Promise.resolve(ok(scored));
+      this.log.debug('Retrieved by priority', {
+        count: scored.entries.length,
+        skipped: scored.unreadable.length,
+        query: opts?.query,
+      });
+      return Promise.resolve(ok(scored.entries));
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(err(new MemoryError('Failed to retrieve by priority', { cause })));
@@ -186,9 +197,19 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
         return Promise.resolve(err(new MemoryError(`Key not found: ${key}`)));
       }
 
-      const entry = memoryRowToEntry(row);
+      const converted = memoryRowToEntry(row);
+      if (!converted.ok) {
+        return Promise.resolve(
+          err(
+            new MemoryError(`Unreadable metadata for key: ${key}`, {
+              context: { reason: converted.error.reason, detail: converted.error.detail },
+            })
+          )
+        );
+      }
+
       const priority = calculatePriorityScore({
-        entry,
+        entry: converted.value,
         now: new Date(getTimeProvider().now()),
         config: this.scoringConfig,
         ...(query !== undefined && { query }),

@@ -26,7 +26,10 @@ import {
   stringifyValue as sharedStringifyValue,
 } from '../utils/text-utils.js';
 import { calculateTokenOverlap } from '../utils/similarity-utils.js';
-import { memoryRowToEntry as sharedMemoryRowToEntry } from '../utils/memory-db-utils.js';
+import {
+  memoryRowToEntry as sharedMemoryRowToEntry,
+  type UnreadableMemoryRow,
+} from '../utils/memory-db-utils.js';
 
 // ============================================================================
 // Recency Scoring
@@ -247,19 +250,23 @@ export function touchMemory(db: ISQLiteDatabase, key: string): boolean {
 // Scoring Pipeline
 // ============================================================================
 
-/**
- * Score all entries and return sorted by priority.
- */
-export function scoreAndSortEntries(
+/** Score every readable row, collecting the ones that could not be read. */
+function scoreRows(
   rows: MemoryRow[],
   opts: PriorityRetrievalOptions | undefined,
   config: ScoringConfig
-): ScoredMemoryEntry[] {
+): { scored: ScoredMemoryEntry[]; unreadable: UnreadableMemoryRow[] } {
   const now = new Date(getTimeProvider().now());
+  const scored: ScoredMemoryEntry[] = [];
+  const unreadable: UnreadableMemoryRow[] = [];
 
-  // Convert and score
-  const scored: ScoredMemoryEntry[] = rows.map((row) => {
-    const entry = sharedMemoryRowToEntry(row);
+  for (const row of rows) {
+    const converted = sharedMemoryRowToEntry(row);
+    if (!converted.ok) {
+      unreadable.push(converted.error);
+      continue;
+    }
+    const entry = converted.value;
     const priority = calculatePriorityScore({
       entry,
       now,
@@ -267,8 +274,33 @@ export function scoreAndSortEntries(
       ...(opts?.query !== undefined && { query: opts.query }),
       ...(opts?.weights !== undefined && { weightOverrides: opts.weights }),
     });
-    return { entry, priority };
-  });
+    scored.push({ entry, priority });
+  }
+
+  return { scored, unreadable };
+}
+
+/**
+ * Scored entries plus the rows that could not be read at all.
+ *
+ * The unreadable list is not cosmetic: without it a caller cannot tell a
+ * shorter result apart from a genuinely smaller store (#5835).
+ */
+export interface ScoredEntriesReport {
+  readonly entries: ScoredMemoryEntry[];
+  readonly unreadable: readonly UnreadableMemoryRow[];
+}
+
+/**
+ * Score all entries and return sorted by priority, alongside the rows skipped
+ * because their metadata is unreadable.
+ */
+export function scoreAndSortEntries(
+  rows: MemoryRow[],
+  opts: PriorityRetrievalOptions | undefined,
+  config: ScoringConfig
+): ScoredEntriesReport {
+  const { scored, unreadable } = scoreRows(rows, opts, config);
 
   // Filter - build config with only defined properties
   const filterConfig: FilterConfig = {
@@ -283,7 +315,7 @@ export function scoreAndSortEntries(
 
   // Apply limit
   const limit = opts?.limit ?? 100;
-  return filtered.slice(0, limit);
+  return { entries: filtered.slice(0, limit), unreadable };
 }
 
 // ============================================================================

@@ -18,7 +18,7 @@ import {
 } from './agentic-memory-db-helpers.js';
 import type { ISQLiteDatabase, ISQLiteStatement, MemoryRow } from './memory-backend-types.js';
 import { MemoryImportance } from './memory-backend-types.js';
-import type { MemoryAttributes } from './agentic-memory-types.js';
+import type { MemoryAttributes, AgenticMemoryEntry } from './agentic-memory-types.js';
 import { DEFAULT_EXTRACTION_CONFIG } from './agentic-memory-types.js';
 
 // =============================================================================
@@ -169,10 +169,17 @@ describe('parseAmemAttributes', () => {
 // =============================================================================
 
 describe('memoryRowToAgenticEntry', () => {
+  /** Unwrap an entry the test asserts is readable. */
+  function expectEntry(row: MemoryRow): AgenticMemoryEntry {
+    const result = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+    if (!result.ok) throw new Error(`expected a readable row, got ${result.error.reason}`);
+    return result.value;
+  }
+
   it('should convert row with A-MEM attributes', () => {
     const row = createMemoryRowWithAmem('test-key', ['typescript', 'memory']);
 
-    const entry = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+    const entry = expectEntry(row);
 
     expect(entry.key).toBe('test-key');
     expect(entry.attributes.keywords).toContain('typescript');
@@ -188,25 +195,29 @@ describe('memoryRowToAgenticEntry', () => {
       metadata: JSON.stringify({ importance: 'medium' }),
     });
 
-    const entry = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+    const entry = expectEntry(row);
 
     expect(entry.key).toBe('plain-key');
     expect(entry.attributes).toBeDefined();
     expect(entry.attributes.keywords).toBeDefined();
   });
 
-  it('should handle corrupt metadata JSON gracefully (#1187)', () => {
+  it('reports corrupt metadata as unreadable rather than extracting from it (#5835)', () => {
+    // Was: the row came back with a fabricated MEDIUM importance and
+    // attributes extracted from the value, indistinguishable from a row whose
+    // author wrote exactly that.
     const row = createMemoryRow({
       key: 'corrupt-meta',
       value: JSON.stringify('valid value'),
       metadata: '{not valid json!!!',
     });
 
-    const entry = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+    const result = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
 
-    expect(entry.key).toBe('corrupt-meta');
-    expect(entry.attributes).toBeDefined();
-    expect(entry.attributes.keywords).toBeDefined();
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected the row to be unreadable');
+    expect(result.error.key).toBe('corrupt-meta');
+    expect(result.error.reason).toBe('metadata_not_json');
   });
 
   it('should handle complex nested values', () => {
@@ -218,7 +229,7 @@ describe('memoryRowToAgenticEntry', () => {
       }),
     });
 
-    const entry = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+    const entry = expectEntry(row);
 
     expect(entry.key).toBe('complex-key');
     expect(entry.value).toEqual({
@@ -466,6 +477,9 @@ describe('findMatchingMemories', () => {
         key: 'mem1',
         value: JSON.stringify('data'),
         metadata: JSON.stringify({
+          // `importance` is required by MemoryMetadataSchema, which
+          // memory-backend.store() already enforces on write (#5835).
+          importance: MemoryImportance.MEDIUM,
           amem: {
             keywords: [],
             semanticTags: ['code', 'security'],
@@ -482,6 +496,9 @@ describe('findMatchingMemories', () => {
         key: 'mem2',
         value: JSON.stringify('data'),
         metadata: JSON.stringify({
+          // `importance` is required by MemoryMetadataSchema, which
+          // memory-backend.store() already enforces on write (#5835).
+          importance: MemoryImportance.MEDIUM,
           amem: {
             keywords: [],
             semanticTags: ['testing'],
@@ -511,6 +528,9 @@ describe('findMatchingMemories', () => {
         key: 'mem1',
         value: JSON.stringify('data'),
         metadata: JSON.stringify({
+          // `importance` is required by MemoryMetadataSchema, which
+          // memory-backend.store() already enforces on write (#5835).
+          importance: MemoryImportance.MEDIUM,
           amem: {
             keywords: [],
             semanticTags: [],
@@ -530,6 +550,9 @@ describe('findMatchingMemories', () => {
         key: 'mem2',
         value: JSON.stringify('data'),
         metadata: JSON.stringify({
+          // `importance` is required by MemoryMetadataSchema, which
+          // memory-backend.store() already enforces on write (#5835).
+          importance: MemoryImportance.MEDIUM,
           amem: {
             keywords: [],
             semanticTags: [],
