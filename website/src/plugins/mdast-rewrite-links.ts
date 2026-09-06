@@ -38,6 +38,14 @@ const DOCS_PREFIX = '/nexus-agents/docs';
  * against a directory the build never emits (#5750).
  */
 const API_PREFIX = '/nexus-agents/api';
+
+/**
+ * Extensions that are data, not page assets (#5750). A link to one of these
+ * under `docs/` goes to the source on GitHub; anything else with an extension
+ * (images, for instance) keeps its relative link, which resolves because the
+ * file is copied alongside the page.
+ */
+const DATA_EXTENSIONS = new Set(['.json', '.yaml', '.yml', '.toml', '.csv', '.jsonl']);
 const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
 
 /**
@@ -94,20 +102,34 @@ function hasPublishedFrontmatter(docsRoot: string, resolved: string): boolean {
 function rewriteIntraDocsLink(docsRoot: string, resolved: string, anchor: string): string | null {
   const ext = extname(resolved).toLowerCase();
   if (ext !== '.md' && ext !== '') {
-    return null;
+    // A DATA file under docs/ can never be a site page, so leaving the link
+    // relative published a dead in-site path — docs/README.md links to
+    // ./design/ARCHITECTURE_MAP.json, ./ops/docops-manifest.json and two
+    // registry YAMLs, 4 of the last 12 broken links (#5750). Send those to the
+    // source, the same place an unpublished .md goes.
+    //
+    // Everything else (images and the like) still passes through untouched:
+    // those are copied alongside the page and their relative link resolves.
+    return DATA_EXTENSIONS.has(ext) ? `${GITHUB_BLOB}/docs/${resolved}${anchor}` : null;
   }
   if (!hasPublishedFrontmatter(docsRoot, resolved)) {
     return `${GITHUB_BLOB}/docs/${resolved}${anchor}`;
   }
-  // The api collection's route uses the file name as-is, so the docs slug rule
-  // (lowercase, `-` and `.` to `_`) must not apply — `cli-adapters.md` is served
-  // at /api/cli-adapters/, not /api/cli_adapters/ (#5750).
-  const apiName = /^api\/([^/]+)\.md$/i.exec(resolved)?.[1];
-  if (apiName !== undefined) {
-    return `${API_PREFIX}/${apiName}/${anchor}`;
+  // The api collection's route uses the path as-is under /api/, so the docs
+  // slug rule must not apply — `cli-adapters.md` is served at
+  // /api/cli-adapters/ and `exports/pipeline.md` at /api/exports/pipeline/
+  // (#5750).
+  const apiPath = /^api\/(.+)\.md$/i.exec(resolved)?.[1];
+  if (apiPath !== undefined) {
+    return `${API_PREFIX}/${apiPath}/${anchor}`;
   }
   const parts = resolved.split('/');
   const slugParts = parts.map((p, i) => (i === parts.length - 1 ? fileToSlug(p) : p.toLowerCase()));
+  // An `index.md` is served AS its directory: docs/reference/tools/index.md
+  // publishes at /docs/reference/tools/, not /docs/reference/tools/index/.
+  if (slugParts[slugParts.length - 1] === 'index' && slugParts.length > 1) {
+    slugParts.pop();
+  }
   return `${DOCS_PREFIX}/${slugParts.join('/')}/${anchor}`;
 }
 
