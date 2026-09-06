@@ -269,13 +269,18 @@ More normal text.`;
     expect(sanitized.strippedElements.length).toBeGreaterThan(0);
   });
 
-  it('preserves benign HTML comments without instructions', () => {
+  it('strips every HTML comment, keyword-bearing or not', () => {
     const content = `Code example:
 <!-- This is a regular code comment -->
 More text.`;
     const { sanitized } = classifyContent(content, 'NONE');
-    // Benign comments should be preserved
-    expect(sanitized.content).toContain('<!-- This is a regular code comment -->');
+    // This test used to assert the comment was PRESERVED. The keyword list let
+    // agent-directed text phrased around it survive, invisible in rendered
+    // markdown, into the prompt; the MCP-layer sanitizer already stripped every
+    // comment and the two layers now agree.
+    expect(sanitized.content).not.toContain('<!--');
+    expect(sanitized.content).toContain('Code example:');
+    expect(sanitized.content).toContain('More text.');
   });
 
   it('strips comments with "execute" keyword', () => {
@@ -619,8 +624,7 @@ describe('Input Truncation', () => {
     const sanitized = sanitizeInput(content, 'unknown', 'user');
     // Default maxInputLength is 50000, so the payload is within range
     expect(sanitized.wasModified).toBe(true);
-  }, // Extended timeout: under full suite load with GC pressure, scanning
-  // 50k chars through multiple regex passes can exceed 5s. In isolation
+  }, // 50k chars through multiple regex passes can exceed 5s. In isolation // Extended timeout: under full suite load with GC pressure, scanning
   // the test completes in <10ms. See #1990 for the root cause diagnosis.
   15_000);
 });

@@ -237,10 +237,29 @@ describe('sanitizeInput', () => {
       expect(result.wasModified).toBe(true);
     });
 
-    it('preserves benign HTML comments', () => {
+    it('strips every HTML comment, not only keyword-bearing ones', () => {
+      // The keyword list (ignore|execute|close|merge|delete|apply) let any
+      // agent-directed text phrased around it survive, invisible in rendered
+      // markdown, all the way into the expert prompt. The MCP-layer sanitizer
+      // already strips comments unconditionally and documents itself as
+      // strictly stronger; the two now agree.
       const content = 'Hello <!-- this is a normal comment --> world';
       const result = sanitizeInput(content, 'unknown', 'someone');
-      expect(result.content).toContain('<!-- this is a normal comment -->');
+      expect(result.content).not.toContain('<!--');
+      expect(result.content).toContain('Hello');
+      expect(result.content).toContain('world');
+    });
+
+    it('flags hidden content when a comment is stripped', () => {
+      // hidden_content is in HOSTILE_INJECTION_FLAGS and the reputation model
+      // acts on it, but nothing produced it — that arm could never fire.
+      const result = sanitizeInput('a <!-- hidden --> b', 'unknown', 'someone');
+      expect(result.injectionFlags).toContain('hidden_content');
+    });
+
+    it('raises no hidden-content flag when there is no comment', () => {
+      const result = sanitizeInput('a plain body', 'unknown', 'someone');
+      expect(result.injectionFlags).not.toContain('hidden_content');
     });
 
     it('strips comments with close/merge/delete keywords', () => {
