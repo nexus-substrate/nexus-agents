@@ -22,6 +22,7 @@ import {
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
+import { checkRateLimit, emitRateLimitAudit } from './secure-handler-rate-limit.js';
 import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import {
@@ -135,17 +136,6 @@ export interface HandlerContext {
 export type ContextAwareHandler = (args: unknown, ctx: HandlerContext) => Promise<ToolResult>;
 
 /**
- * Creates a rate limit error response. Rate limits are transient — the
- * structured envelope marks it retryable (#2649).
- */
-function rateLimitError(nextTokenMs: number): ToolResult {
-  return toolStructuredError({
-    errorCategory: 'transient',
-    message: `Rate limit exceeded. Try again in ${String(nextTokenMs)}ms.`,
-  });
-}
-
-/**
  * Creates a policy denial error response — an access-control denial,
  * categorized `permission` (#2649).
  */
@@ -235,16 +225,6 @@ function checkInputSize(args: unknown, logger: ILogger, requestId: string): Tool
 /**
  * Checks rate limiter and returns error if exceeded.
  */
-function checkRateLimit(rateLimiter: RateLimiter, logger: ILogger): ToolResult | null {
-  const acquired = rateLimiter.tryAcquire();
-  if (!acquired) {
-    const state = rateLimiter.getState();
-    logger.warn('Rate limit exceeded');
-    return rateLimitError(state.nextTokenMs);
-  }
-  return null;
-}
-
 /** Options for policy check */
 interface PolicyCheckOptions {
   firewall: IPolicyFirewall;
@@ -436,22 +416,6 @@ function emitToolAudit({
 }
 
 /** Emits an audit event for a policy denial. */
-/** Emits an audit event for a rate limit violation. */
-function emitRateLimitAudit(
-  auditLogger: IAuditLogger,
-  toolName: string,
-  ctx: RequestContext
-): void {
-  const actor = actorFromContext(ctx);
-  auditLogger.logRateLimitViolation({
-    toolName,
-    actor,
-    currentRate: 0,
-    limitRate: 0,
-    requestId: ctx.requestId,
-  });
-}
-
 /** Reject inputs with detected injection patterns for elevated security tiers. */
 function checkSecurityTier(
   config: SecureHandlerConfig,
@@ -516,11 +480,11 @@ function runPreChecks(
   if (tierError !== null) return { error: tierError, sanitizedArgs, nearMiss: false, sanitization };
 
   if (config.rateLimiter) {
-    const rlResult = checkRateLimit(config.rateLimiter, logger);
-    if (rlResult) {
+    const denial = checkRateLimit(config.rateLimiter, logger);
+    if (denial) {
       if (config.auditLogger)
-        emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
-      return { error: rlResult, sanitizedArgs, nearMiss: false, sanitization };
+        emitRateLimitAudit(config.auditLogger, config.toolName, requestContext, denial.state);
+      return { error: denial.error, sanitizedArgs, nearMiss: false, sanitization };
     }
   }
 
