@@ -113,6 +113,12 @@ describe('OpenAI mapper preserves usage absence (#4439)', () => {
       usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
     } as never);
 
+    // `out` itself must be present: optional chaining made this pass when
+    // `mapResponseUsage` returned undefined ALTOGETHER, which is the opposite
+    // of what this file exists to protect — a vendor usage block that reached
+    // us and was then discarded (#5723 follow-up).
+    expect(out).toBeDefined();
+    expect(out?.inputTokens).toBe(1);
     expect(out?.cachedInputTokens).toBeUndefined();
   });
 });

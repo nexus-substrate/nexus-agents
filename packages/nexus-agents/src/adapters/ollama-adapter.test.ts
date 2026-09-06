@@ -321,7 +321,12 @@ describe('OllamaAdapter', () => {
       const result = await new OllamaAdapter(validConfig).complete({
         messages: [{ role: 'user', content: 'Hi!' }],
       });
-      if (result.ok) expect(result.value.stopReason).toBe(expected);
+      // Assert the happy path before narrowing on it: without this, a
+      // `complete()` that never returns a response leaves all four of these
+      // green (24 of 26 in this file passed against exactly that mutation).
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stopReason).toBe(expected);
     });
   });
 
