@@ -290,16 +290,83 @@ export function classOverrideEnvVar(cls: OperationClassName): string {
  * @returns The resolved guard in milliseconds.
  */
 export function resolveClassGuardMs(cls: OperationClassName): number {
+  return describeClassGuard(cls).effectiveMs;
+}
+
+/**
+ * What an operator asked for, and what they actually got.
+ *
+ * `resolveClassGuardMs` applies three clamps and returns one number, so a
+ * request that was reduced is indistinguishable from one that was honoured.
+ * That matters most for the classes whose declared guard already sits at or
+ * near `MCP_TIMEOUTS.maxMs`: `async-job-body` is declared at exactly the
+ * ceiling, so `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` is accepted by
+ * the schema (an unbounded positive int) and every `NEXUS_TIMEOUT_MULTIPLIER`
+ * above 1 is a no-op — for that class the two documented knobs can only lower
+ * the guard, never raise it, and nothing said so.
+ */
+export interface ClassGuardResolution {
+  readonly cls: OperationClassName;
+  /** The guard actually used. */
+  readonly effectiveMs: number;
+  /** What the base, env override and multiplier asked for, before the ceiling. */
+  readonly requestedMs: number;
+  /** True when the request was reduced by `MCP_TIMEOUTS.maxMs`. */
+  readonly clampedByRequestCeiling: boolean;
+  /** The per-class override env var name, when one is set. */
+  readonly overrideEnvVar: string | null;
+  /**
+   * What asked for more than the ceiling allowed. Meaningful only when
+   * `clampedByRequestCeiling` is true.
+   *
+   * `declared_default` is the case with no operator involvement at all — a
+   * class declared above the ceiling in `OPERATION_CLASSES`. No class is today,
+   * but naming it keeps the report from blaming a knob nobody set.
+   */
+  readonly clampCause: 'override' | 'multiplier' | 'declared_default' | null;
+}
+
+/** Resolves a class guard and reports how the answer was reached. */
+export function describeClassGuard(cls: OperationClassName): ClassGuardResolution {
   const base: number = OPERATION_CLASSES[cls].guardMs;
-  const envRaw = process.env[classOverrideEnvVar(cls)];
+  const envVar = classOverrideEnvVar(cls);
+  const envRaw = process.env[envVar];
   let chosen = base;
+  let overrideSet = false;
   if (envRaw !== undefined) {
     const parsed = Number(envRaw);
-    if (!Number.isNaN(parsed) && parsed > 0) chosen = parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      chosen = parsed;
+      overrideSet = true;
+    }
   }
   const clampedBase = Math.min(Math.max(chosen, CLASS_OVERRIDE_MIN_MS), CLASS_OVERRIDE_MAX_MS);
-  const scaled = Math.round(clampedBase * resolveTimeoutMultiplier());
-  return Math.min(scaled, MCP_TIMEOUTS.maxMs);
+  const requestedMs = Math.round(clampedBase * resolveTimeoutMultiplier());
+  const effectiveMs = Math.min(requestedMs, MCP_TIMEOUTS.maxMs);
+  const clamped = requestedMs > effectiveMs;
+  return {
+    cls,
+    effectiveMs,
+    requestedMs,
+    clampedByRequestCeiling: clamped,
+    overrideEnvVar: overrideSet ? envVar : null,
+    clampCause: clamped ? clampCauseFor(overrideSet, clampedBase) : null,
+  };
+}
+
+/**
+ * Which input pushed the request past the ceiling.
+ *
+ * Order matters: an explicit per-class override is the operator's most specific
+ * instruction, so it is named first even when a multiplier is also set.
+ */
+function clampCauseFor(
+  overrideSet: boolean,
+  clampedBase: number
+): 'override' | 'multiplier' | 'declared_default' {
+  if (overrideSet && clampedBase > MCP_TIMEOUTS.maxMs) return 'override';
+  if (process.env[TIMEOUT_MULTIPLIER_ENV_VAR] !== undefined) return 'multiplier';
+  return overrideSet ? 'override' : 'declared_default';
 }
 
 /**

@@ -14,6 +14,14 @@ import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
+import {
+  describeClassGuard,
+  MCP_TIMEOUTS,
+  OPERATION_CLASSES,
+  TIMEOUT_MULTIPLIER_ENV_VAR,
+  type ClassGuardResolution,
+  type OperationClassName,
+} from './timeouts.js';
 
 // ============================================================================
 // Helper Zod types for string-encoded values
@@ -367,10 +375,27 @@ export interface InvalidVar {
   readonly error: string;
 }
 
+/**
+ * A variable that is spelled correctly, holds a valid value, and still changes
+ * nothing — the request was reduced by a downstream clamp.
+ *
+ * This is the category the report was missing. "Unknown" catches a typo and
+ * "invalid" catches a bad value; a correctly-set variable that is silently
+ * capped passes both and does nothing, which is the failure mode #5155 named
+ * for the boolean flags and which the timeout knobs still had.
+ */
+export interface IneffectiveVar {
+  readonly name: string;
+  readonly requestedMs: number;
+  readonly effectiveMs: number;
+  readonly reason: string;
+}
+
 /** Result of validating NEXUS_* environment variables. */
 export interface EnvValidationResult {
   readonly unknownVars: readonly UnknownVar[];
   readonly invalidVars: readonly InvalidVar[];
+  readonly ineffectiveVars: readonly IneffectiveVar[];
 }
 
 // ============================================================================
@@ -412,7 +437,8 @@ function classifyEnvKeys(
 function logValidationWarnings(
   logger: ILogger,
   unknownVars: readonly UnknownVar[],
-  invalidVars: readonly InvalidVar[]
+  invalidVars: readonly InvalidVar[],
+  ineffectiveVars: readonly IneffectiveVar[]
 ): void {
   for (const u of unknownVars) {
     const hint = u.suggestion !== null ? ` (did you mean ${u.suggestion}?)` : '';
@@ -421,6 +447,48 @@ function logValidationWarnings(
   for (const inv of invalidVars) {
     logger.warn(`Invalid environment variable ${inv.name}="${inv.value}": ${inv.error}`);
   }
+  for (const ineff of ineffectiveVars) {
+    logger.warn(
+      `Environment variable ${ineff.name} had no effect: requested ` +
+        `${String(ineff.requestedMs)}ms, using ${String(ineff.effectiveMs)}ms. ${ineff.reason}`
+    );
+  }
+}
+
+/**
+ * Timeout knobs that were set and then clamped away.
+ *
+ * Every class is asked, not only the configured ones: a class declared above
+ * the request ceiling would be capped with no operator involvement at all, and
+ * hiding that would be the same defect one level up. `clampCause` says who to
+ * blame, and a clamp attributable to no knob is reported to nobody rather than
+ * pinned on a variable the operator never set.
+ */
+function findIneffectiveVars(): IneffectiveVar[] {
+  const classNames = Object.keys(OPERATION_CLASSES) as OperationClassName[];
+  const resolutions: ClassGuardResolution[] = classNames.map((cls) => describeClassGuard(cls));
+  return resolutions
+    .filter((r) => r.clampedByRequestCeiling)
+    .flatMap((r) => {
+      // Name the knob that actually asked for more.
+      const name =
+        r.clampCause === 'override' && r.overrideEnvVar !== null
+          ? r.overrideEnvVar
+          : r.clampCause === 'multiplier'
+            ? TIMEOUT_MULTIPLIER_ENV_VAR
+            : null;
+      if (name === null) return [];
+      return [
+        {
+          name,
+          requestedMs: r.requestedMs,
+          effectiveMs: r.effectiveMs,
+          reason:
+            `The '${r.cls}' class guard is capped at the MCP request ceiling ` +
+            `(${String(MCP_TIMEOUTS.maxMs)}ms), so values above it are discarded.`,
+        },
+      ];
+    });
 }
 
 // ============================================================================
@@ -455,11 +523,13 @@ export function validateNexusEnv(logger?: ILogger): EnvValidationResult {
     }
   }
 
+  const ineffectiveVars = findIneffectiveVars();
+
   if (logger !== undefined) {
-    logValidationWarnings(logger, unknownVars, invalidVars);
+    logValidationWarnings(logger, unknownVars, invalidVars, ineffectiveVars);
   }
 
-  return { unknownVars, invalidVars };
+  return { unknownVars, invalidVars, ineffectiveVars };
 }
 
 /**
