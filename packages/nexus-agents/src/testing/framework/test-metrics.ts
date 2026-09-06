@@ -88,7 +88,9 @@ export function computeCliMetrics(results: readonly TaskTestResult[]): Map<CliNa
     const successCount = cliResults.filter((r) => r.success).length;
     const successRate = taskCount > 0 ? successCount / taskCount : 0;
 
-    const scores = cliResults.filter((r) => r.success).map((r) => r.rubricScore.overallScore);
+    // Every result — see `computeCoreMetrics`: filtering on `success` filters on
+    // the score itself, which pins the average above the pass bar.
+    const scores = cliResults.map((r) => r.rubricScore.overallScore);
     const averageScore = scores.length > 0 ? mean(scores) : 0;
 
     const totalDuration = cliResults.reduce((sum, r) => sum + r.durationMs, 0);
@@ -128,7 +130,9 @@ export function computeCategoryMetrics(
     const successCount = catResults.filter((r) => r.success).length;
     const successRate = taskCount > 0 ? successCount / taskCount : 0;
 
-    const scores = catResults.filter((r) => r.success).map((r) => r.rubricScore.overallScore);
+    // Every result — see `computeCoreMetrics`: filtering on `success` filters on
+    // the score itself, which pins the average above the pass bar.
+    const scores = catResults.map((r) => r.rubricScore.overallScore);
     const averageScore = scores.length > 0 ? mean(scores) : 0;
 
     // Determine best CLI for this category
@@ -178,7 +182,9 @@ export function computeDifficultyMetrics(
     const successCount = diffResults.filter((r) => r.success).length;
     const successRate = taskCount > 0 ? successCount / taskCount : 0;
 
-    const scores = diffResults.filter((r) => r.success).map((r) => r.rubricScore.overallScore);
+    // Every result — see `computeCoreMetrics`: filtering on `success` filters on
+    // the score itself, which pins the average above the pass bar.
+    const scores = diffResults.map((r) => r.rubricScore.overallScore);
     const averageScore = scores.length > 0 ? mean(scores) : 0;
 
     metrics.set(difficulty, {
@@ -257,7 +263,15 @@ interface CoreMetrics {
 function computeCoreMetrics(results: readonly TaskTestResult[]): CoreMetrics {
   const totalTasks = results.length;
   const successfulTasks = results.filter((r) => r.success).length;
-  const scores = results.filter((r) => r.success).map((r) => r.rubricScore.overallScore);
+  // ALL results, not just the passing ones. `checkSuccess` is
+  // `overallScore >= (task.minimumScore ?? 0.5)`, so `r.success === false` means
+  // precisely "scored below the bar" — filtering on it removed every
+  // sub-threshold score from the numerator AND the denominator and pinned
+  // `averageScore` at `>= minimumScore` no matter how badly the run went. A run
+  // where 9 of 10 tasks scored 0.1 reported a BETTER average than one where all
+  // 10 scored 0.6. `bestCli` below already averages over every result, so the
+  // same object was carrying two denominators for one population.
+  const scores = results.map((r) => r.rubricScore.overallScore);
   const totalDurationMs = results.reduce((sum, r) => sum + r.durationMs, 0);
   const totalTokens = results.reduce(
     (sum, r) => sum + r.tokenUsage.inputTokens + r.tokenUsage.outputTokens,

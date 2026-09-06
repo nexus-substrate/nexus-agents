@@ -648,6 +648,61 @@ describe('TestRunner', () => {
     });
   });
 
+  describe('run verdict', () => {
+    // `determineSuccess` was `failureCount === 0 || !stopOnFailure`, and
+    // `stopOnFailure` defaults to FALSE — so `!stopOnFailure` was `true` and the
+    // expression short-circuited to `true` for every failure count. The one
+    // boolean a CI gate branches on was a function of an execution-control flag
+    // rather than of the results, and could only come out `false` when a caller
+    // opted in. The suite never covered it: the only `success === false`
+    // assertion sets `stopOnFailure: true`.
+    it('is false when tasks failed, under the default config', async () => {
+      const failTask = createTestTask({
+        id: 'fail-verdict',
+        minimumScore: 1.0,
+        expectedPatterns: ['impossible_pattern_xyz123'],
+      });
+      taskRegistry.registerAll([failTask]);
+
+      const runner = createTestRunner({
+        adapters,
+        taskRegistry,
+        rubricScorer,
+        routingScorer,
+        config: { parallelism: 1 },
+      });
+
+      const result = await runner.runAll();
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metrics.failedTasks).toBeGreaterThan(0);
+        expect(result.value.success).toBe(false);
+      }
+    });
+
+    it('is true when every task passed', async () => {
+      // The pair. Without it, hard-coding `false` would pass.
+      taskRegistry.registerAll([createTestTask({ id: 'pass-verdict' })]);
+
+      const runner = createTestRunner({
+        adapters,
+        taskRegistry,
+        rubricScorer,
+        routingScorer,
+        config: { parallelism: 1 },
+      });
+
+      const result = await runner.runAll();
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.metrics.failedTasks).toBe(0);
+        expect(result.value.success).toBe(true);
+      }
+    });
+  });
+
   describe('metrics aggregation', () => {
     it('should compute correct success rate', async () => {
       const successTask = createTestTask({ id: 'success-task' });

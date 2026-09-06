@@ -335,3 +335,68 @@ describe('test-metrics estimateCost agrees with the budget path (#5122)', () => 
     }
   });
 });
+
+// ============================================================================
+// The average score must not be computed over a set selected BY the score
+// ============================================================================
+
+describe('averageScore denominator', () => {
+  // `checkSuccess` is `rubricScore.overallScore >= (task.minimumScore ?? 0.5)`,
+  // so `r.success === false` means precisely "scored below the bar". Filtering
+  // the score list on `success` removed every sub-threshold score from the
+  // numerator AND the denominator, pinning `averageScore` at `>= minimumScore`
+  // no matter how badly the run went. `bestCli`, in the same function, already
+  // averaged over every result — one object, two denominators for one
+  // population.
+  const pass = makeResult({ success: true, rubricScore: { overallScore: 0.9 } as never });
+  const fail = makeResult({
+    success: false,
+    rubricScore: { overallScore: 0.1 } as never,
+  });
+
+  it('includes failing scores in the aggregate average', () => {
+    const metrics = computeAggregatedMetrics([pass, fail]);
+
+    expect(metrics.averageScore).toBeCloseTo(0.5);
+    expect(metrics.totalTasks).toBe(2);
+  });
+
+  it('reports a worse average for a worse run', () => {
+    // The property, stated directly: the old form reported 0.9 for the
+    // mostly-failing run and 0.6 for the all-passing one — backwards.
+    const mostlyFailing = computeAggregatedMetrics([
+      pass,
+      ...Array.from({ length: 9 }, () =>
+        makeResult({
+          success: false,
+          rubricScore: { overallScore: 0.1 } as never,
+        })
+      ),
+    ]);
+    const allPassing = computeAggregatedMetrics(
+      Array.from({ length: 10 }, () =>
+        makeResult({
+          success: true,
+          rubricScore: { overallScore: 0.6 } as never,
+        })
+      )
+    );
+
+    expect(mostlyFailing.averageScore).toBeLessThan(allPassing.averageScore);
+  });
+
+  it('applies the same denominator per CLI, category and difficulty', () => {
+    // All four sites had the identical filter; fixing only the aggregate would
+    // leave three breakdowns disagreeing with the total they roll up to.
+    const metrics = computeAggregatedMetrics([pass, fail]);
+
+    expect(metrics.byCliMetrics.get('claude')?.averageScore).toBeCloseTo(0.5);
+    expect(metrics.byCategoryMetrics.get('code_generation')?.averageScore).toBeCloseTo(0.5);
+    expect(metrics.byDifficultyMetrics.get('easy')?.averageScore).toBeCloseTo(0.5);
+  });
+
+  it('still reports 0 for an empty run', () => {
+    // The empty case, unchanged: no results is not a score of anything.
+    expect(computeAggregatedMetrics([]).averageScore).toBe(0);
+  });
+});
