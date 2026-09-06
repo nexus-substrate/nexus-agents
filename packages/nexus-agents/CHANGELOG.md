@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.38.3
+
+### Patch Changes
+
+- [#5825](https://github.com/nexus-substrate/nexus-agents/pull/5825) [`7a153c1`](https://github.com/nexus-substrate/nexus-agents/commit/7a153c170c334aa05ab614be1b31206c71178336) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - An OpenAI stream no longer reports a usage block in which nothing was measured.
+  OpenAI populates `chunk.usage` on a streaming response only when the request
+  sets `stream_options: { include_usage: true }`, which nothing in this tree does,
+  so both `?? 0` fallbacks always took the zero branch and every stream emitted
+  `{inputTokens: 0, outputTokens: 0, totalTokens: 0}`. `inputTokensMeasured:
+false` covered only the first of the three, and there is no
+  `outputTokensMeasured` — so a consumer honouring the flag discounted
+  `inputTokens` and read `outputTokens: 0` as a measured zero. `usage` is now
+  omitted when the API reported none, matching the SDK adapter's stream path and
+  the policy documented on the field itself.
+
 ## 8.38.2
 
 ### Patch Changes
