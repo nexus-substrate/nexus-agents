@@ -223,6 +223,13 @@ describe('CodexCliAdapter (Subprocess)', () => {
         ]),
         expect.any(Object)
       );
+
+      // The sandbox flag is a SAFETY control, and arrayContaining cannot catch
+      // its removal or loosening (#5723): every other assertion in this file is
+      // omission-free, so `-s danger-full-access` — write access to the user's
+      // tree on every routed codex exec — passed the whole suite.
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args[args.indexOf('-s') + 1]).toBe('read-only');
     });
 
     it('should include task content directly (not JSON-stringified)', async () => {
