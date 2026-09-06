@@ -144,6 +144,10 @@ export const PrReviewInputSchema = z.object({
    * the gate to FIND the record, `prDiff`'s first 50_000 bytes must match the
    * canonical `git diff <baseSha>..<headSha>` the gate recomputes (the hash
    * truncates at that byte cap) — pass the canonical diff, not a reordered one.
+   * Since #5476 the gate computes that base as `git merge-base origin/<base_ref>
+   * <head>`, NOT the PR payload's `base.sha` (which is the base branch tip when
+   * the PR opened and drifts as main advances), so pass the merge-base as
+   * `baseSha` or the record will not match on an aged branch (#5692).
    */
   prNumber: z
     .number()
@@ -156,7 +160,7 @@ export const PrReviewInputSchema = z.object({
     .regex(/^[0-9a-f]{40}$/, 'baseSha must be a 40-char lowercase hex commit sha')
     .optional()
     .describe(
-      '40-hex base commit sha the reviewed diff was computed from (Option-C binding, #4031)'
+      '40-hex base commit sha the reviewed diff was computed from — pass `git merge-base origin/<base> <head>`, the base the gate recomputes (Option-C binding, #4031, #5692)'
     ),
   repoPath: z
     .string()
