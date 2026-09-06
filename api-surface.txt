@@ -1792,6 +1792,7 @@ ClassDeclaration CompositeRouter
   getOrchestrationObserver() => IOrchestrationObserver | undefined
   getRoutingMemory() => IRoutingMemory | undefined
   getStats() => CompositeRouterStats
+  getTopsisConfig() => TopsisConfig | undefined
   getZeroRouter() => IZeroRouter | undefined
   hasMinimumPreferenceData() => boolean
   recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number) => void
@@ -1815,6 +1816,7 @@ InterfaceDeclaration CompositeRouterConfigWithPreference
   qualityConstraintConfig?: Partial<QualityConstraintConfig> | undefined
   resourceStrategyConfig?: Partial<ResourceStrategyConfig> | undefined
   routingMemoryConfig?: Partial<RoutingMemoryConfig> | undefined
+  topsisConfig?: Partial<TopsisConfig> | undefined
   zeroRouterConfig?: Partial<{ difficultyToTier: Record<"medium" | "hard" | "easy", "balanced" | "fast" | "powerful">; enableCalibration: boolean; maxCalibrationOutcomes: number; minCalibrationOutcomes: number; thresholds: { easyUpperBound: number; hardLowerBound: number; }; tierToClis: Record<"balanced" | "fast" | "powerful", ("claude" | "gemini" | "codex" | "opencode")[]>; verbose: boolean; weights: { context_length: number; creativity: number; knowledge: number; precision: number; reasoning: number; }; }> | undefined
 InterfaceDeclaration CompositeRouterStats
   readonly avgDecisionTimeMs: number

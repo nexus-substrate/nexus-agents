@@ -52,6 +52,7 @@ import type {
 } from '../agents/observability/orchestration-observer-types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
+import type { TopsisConfig } from './topsis-types.js';
 import { LinUCBBandit } from './linucb-bandit.js';
 import { PreferenceRouter } from './preference-router.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
@@ -259,6 +260,7 @@ export class CompositeRouter implements ICompositeRouter {
     const {
       preferenceRouterConfig,
       zeroRouterConfig,
+      topsisConfig,
       latencyTrackerConfig,
       routingMemoryConfig,
       confidenceCascadeConfig,
@@ -287,7 +289,8 @@ export class CompositeRouter implements ICompositeRouter {
       adapters,
       preferenceRouterConfig,
       zeroRouterConfig,
-      latencyTrackerConfig
+      latencyTrackerConfig,
+      topsisConfig
     );
     this.initializeMemoryAndStages(routingMemoryConfig, {
       confidenceCascade: confidenceCascadeConfig,
@@ -324,7 +327,8 @@ export class CompositeRouter implements ICompositeRouter {
     adapters: Map<RoutingArmId, ICliAdapter>,
     preferenceConfig?: Partial<PreferenceRouterConfig>,
     zeroConfig?: Partial<ZeroRouterConfig>,
-    latencyConfig?: Partial<LatencyTrackerConfig>
+    latencyConfig?: Partial<LatencyTrackerConfig>,
+    topsisConfig?: Partial<TopsisConfig>
   ): void {
     if (this.config.enableBudgetFilter && adapters.size > 0) {
       this.budgetRouter = this.buildBudgetRouter(adapters);
@@ -332,7 +336,9 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.config.enableZeroRouter) this.zeroRouter = new ZeroRouter(zeroConfig, this.logger);
     if (this.config.enablePreferenceRouting)
       this.preferenceRouter = new PreferenceRouter(preferenceConfig);
-    if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
+    // #5785: pass the configured block. This was `new TopsisRouter()`, so a
+    // `routing.topsis` section in nexus-agents.yaml never reached the stage.
+    if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter(topsisConfig);
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
       // Arms include distinct api:* arms (#3422). Persisted outcomes/priors are
       // slot-attributed, so api:* arms start cold and gain no warm-start credit
@@ -771,6 +777,19 @@ export class CompositeRouter implements ICompositeRouter {
   getAvailableModelsCache():
     import('../config/available-models-cache.js').AvailableModelsCache | undefined {
     return this.availableModelsCache;
+  }
+
+  /**
+   * The TOPSIS config the ranking stage was actually built with, or undefined
+   * when ranking is disabled (#5785).
+   *
+   * Mirrors `getAvailableModelsCache` above: a narrow accessor so the WIRING is
+   * verifiable, not just the adapter's output. The adapter used to return a
+   * `topsisConfig` that this class never read, and a test asserting only the
+   * adapter would have passed against that.
+   */
+  getTopsisConfig(): TopsisConfig | undefined {
+    return this.topsisRouter?.getConfig();
   }
 
   private getStageDependencies(): StageDependencies {

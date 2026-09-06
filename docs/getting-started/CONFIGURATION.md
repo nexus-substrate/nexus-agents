@@ -96,11 +96,13 @@ routing:
     costBudgetUsd: 10.0 # Session cost limit
     resetIntervalMs: 3600000 # 1 hour reset
 
-  # TOPSIS multi-criteria weights
+  # TOPSIS multi-criteria ranking
   topsis:
-    qualityWeight: 0.5
-    costWeight: 0.3
-    latencyWeight: 0.2
+    minQualityThreshold: 5 # 0-10; candidates below this are not ranked
+    criteria: # weights must sum to 1.0
+      - { name: quality, weight: 0.5, beneficial: true }
+      - { name: cost, weight: 0.3, beneficial: false }
+      - { name: latency, weight: 0.2, beneficial: false }
 
   # LinUCB bandit configuration
   linucb:
@@ -751,9 +753,10 @@ Adjust multi-criteria optimization:
 ```yaml
 routing:
   topsis:
-    qualityWeight: 0.5 # Prioritize quality
-    costWeight: 0.3 # Consider cost
-    latencyWeight: 0.2 # Some latency tolerance
+    criteria: # weights must sum to 1.0
+      - { name: quality, weight: 0.5, beneficial: true } # prioritise quality
+      - { name: cost, weight: 0.3, beneficial: false } # consider cost
+      - { name: latency, weight: 0.2, beneficial: false } # some latency tolerance
 ```
 
 For cost-sensitive deployments:
@@ -761,9 +764,10 @@ For cost-sensitive deployments:
 ```yaml
 routing:
   topsis:
-    qualityWeight: 0.3
-    costWeight: 0.5
-    latencyWeight: 0.2
+    criteria:
+      - { name: quality, weight: 0.3, beneficial: true }
+      - { name: cost, weight: 0.5, beneficial: false }
+      - { name: latency, weight: 0.2, beneficial: false }
 ```
 
 ### LinUCB Bandit
@@ -1048,9 +1052,10 @@ routing:
   budget:
     costBudgetUsd: 1.0
   topsis:
-    qualityWeight: 0.3
-    costWeight: 0.6
-    latencyWeight: 0.1
+    criteria:
+      - { name: quality, weight: 0.3, beneficial: true }
+      - { name: cost, weight: 0.6, beneficial: false }
+      - { name: latency, weight: 0.1, beneficial: false }
 ```
 
 ### Quality-Focused
@@ -1065,9 +1070,10 @@ routing:
   budget:
     costBudgetUsd: 50.0
   topsis:
-    qualityWeight: 0.7
-    costWeight: 0.1
-    latencyWeight: 0.2
+    criteria:
+      - { name: quality, weight: 0.7, beneficial: true }
+      - { name: cost, weight: 0.1, beneficial: false }
+      - { name: latency, weight: 0.2, beneficial: false }
 ```
 
 ### CI/CD Pipeline

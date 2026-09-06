@@ -244,6 +244,10 @@ export function adaptRoutingConfig(
     zeroRouterConfig: adaptZeroRouterConfig(config.zeroRouter),
     latencyTrackerConfig: adaptLatencyTrackerConfig(config.latencyTracker),
     routingMemoryConfig: adaptRoutingMemoryConfig(config.routingMemory),
+    // #5785: the fourth stage config. It was absent here while the adapter for
+    // it (`getTopsisConfigFromYaml`) sat unused, so a `routing.topsis` block
+    // was validated and defaulted and then never reached the stage.
+    topsisConfig: getTopsisConfigFromYaml(yamlConfig),
   };
 }
 
