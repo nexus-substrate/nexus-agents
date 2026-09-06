@@ -291,7 +291,9 @@ export class SicaAgent {
       attemptedAt: new Date(getTimeProvider().now()),
       validation: {
         passed: true,
-        performanceChange: 0,
+        // No `performanceChange`: the derived version has not executed a single
+        // task at this point, so there is no comparison to report. `checks`
+        // already names the one thing that did happen (#5795).
         checks: [{ name: 'version_created', passed: true }],
       },
     };

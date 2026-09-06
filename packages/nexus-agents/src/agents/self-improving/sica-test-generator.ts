@@ -83,7 +83,7 @@ export class SicaTestGenerator implements ITestGenerator {
       );
     }
 
-    const { tests, errors } = await this.processGaps(gaps, options, opts);
+    const { tests, errors, validation } = await this.processGaps(gaps, options, opts);
     const coverageAfter = this.projectCoverage(coverageBefore, tests);
     const coverageGain = coverageAfter.line - coverageBefore.line;
 
@@ -107,6 +107,7 @@ export class SicaTestGenerator implements ITestGenerator {
       coverageAfter,
       coverageGain,
       errors,
+      ...(validation !== undefined ? { validation } : {}),
       durationMs,
     };
   }
@@ -126,7 +127,11 @@ export class SicaTestGenerator implements ITestGenerator {
     gaps: readonly CoverageGap[],
     options: TestGenerationOptions,
     opts: ResolvedOptions
-  ): Promise<{ tests: GeneratedTest[]; errors: string[] }> {
+  ): Promise<{
+    tests: GeneratedTest[];
+    errors: string[];
+    validation?: { checked: number; valid: number };
+  }> {
     const tests: GeneratedTest[] = [];
     const errors: string[] = [];
 
@@ -143,6 +148,13 @@ export class SicaTestGenerator implements ITestGenerator {
       const results = await this.validateTests(tests);
       const invalid = results.filter((r) => !r.valid);
       if (invalid.length > 0) errors.push(`${String(invalid.length)} tests failed validation`);
+      // The counts used to be thrown away here, leaving `updateVersionMetrics`
+      // with nothing but `errors.length` to derive a "pass rate" from (#5794).
+      return {
+        tests,
+        errors,
+        validation: { checked: results.length, valid: results.length - invalid.length },
+      };
     }
 
     return { tests, errors };
@@ -305,12 +317,23 @@ export class SicaTestGenerator implements ITestGenerator {
   private updateVersionMetrics(versionId: VersionId, result: TestGenerationResult): void {
     const existing = this.versionMetrics.get(versionId);
     const tests = [...(existing?.generatedTests ?? []), ...result.tests];
-    const passRate = result.errors.length === 0 ? 1 : 0.5;
+    // `result.errors.length === 0 ? 1 : 0.5` was neither a rate nor a
+    // measurement: it collapsed any number of invalid tests to 0.5, and
+    // returned 1 whenever `validate: false` left `errors` empty by
+    // construction — with no test ever executed (#5794). Absence is now
+    // reported as absence.
+    const measured = result.validation;
 
     this.versionMetrics.set(versionId, {
       versionId,
       testCount: tests.length,
-      passRate,
+      ...(measured !== undefined && measured.checked > 0
+        ? { passRate: measured.valid / measured.checked }
+        : {}),
+      passRateBasis:
+        measured !== undefined && measured.checked > 0
+          ? ('static_validation' as const)
+          : ('unmeasured' as const),
       coverage: result.coverageAfter,
       generatedTests: tests,
       lastUpdatedAt: new Date(getTimeProvider().now()),

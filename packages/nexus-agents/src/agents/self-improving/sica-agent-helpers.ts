@@ -126,7 +126,9 @@ export function createFailedAttempt(
     attemptedAt: new Date(getTimeProvider().now()),
     validation: {
       passed: false,
-      performanceChange: 0,
+      // No `performanceChange`: the attempt never produced a version to
+      // compare, so there is nothing to report. A literal 0 here made the field
+      // identical on the success and failure paths (#5795).
       checks: [{ name: 'creation', passed: false, details: reason }],
     },
   };
