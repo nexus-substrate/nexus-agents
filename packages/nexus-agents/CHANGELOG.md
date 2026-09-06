@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.40.0
+
+### Minor Changes
+
+- [#5834](https://github.com/nexus-substrate/nexus-agents/pull/5834) [`e5f8c33`](https://github.com/nexus-substrate/nexus-agents/commit/e5f8c338200120887f393bcc4f5f5ca140a321f7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `GapLedgerLoadReport` can now say what it could not read. Its docstring claimed
+  "an unreadable file yields zero entries with `fileExisted` true, so 'cannot
+  read' stays distinguishable from 'nothing there'" — but an existing-but-empty
+  file produced the identical tuple, so the two were not distinguishable at all.
+  `readFailed` reports the case, which matters because
+  `checkForCapabilityGapTriggers` filters `summarize()` by occurrence count: an
+  unreadable ledger silenced the self-directed research backlog for the one reason
+  it must not, the measurement failing rather than the demand being absent.
+  `cappedEntries` reports the entries the 5000-entry cap dropped, which `loaded`
+  counted as never having existed ([#5785](https://github.com/nexus-substrate/nexus-agents/issues/5785)).
+
 ## 8.39.1
 
 ### Patch Changes
