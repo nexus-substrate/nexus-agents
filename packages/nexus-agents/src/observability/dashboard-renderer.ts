@@ -208,7 +208,11 @@ export class TextDashboardRenderer implements IDashboardRenderer {
   }
 
   private renderBar(value: number, width: number): string {
-    const filled = Math.round(value * width);
+    // Clamped for the same reason as `renderProgressBar`: a value outside
+    // [0, 1] made `empty` negative and `'░'.repeat(-8)` threw, killing the
+    // whole render. Centrality was the source (fixed in interaction-graph.ts);
+    // the clamp is what stops the next unbounded metric doing it again.
+    const filled = Math.min(width, Math.max(0, Math.round(value * width)));
     const empty = width - filled;
     return '█'.repeat(filled) + '░'.repeat(empty);
   }

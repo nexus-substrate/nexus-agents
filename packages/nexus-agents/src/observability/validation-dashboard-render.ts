@@ -20,7 +20,13 @@ import type {
  * Render a progress bar.
  */
 export function renderProgressBar(value: number, max: number, width: number = 20): string {
-  const filled = Math.round((value / max) * width);
+  // Clamp before repeating. A value above `max` — an exploration rate over its
+  // 0.3 reference, a feature weight over 1.0, a centrality that overflowed —
+  // made `empty` negative, and `'░'.repeat(-8)` throws a RangeError that takes
+  // every other metric on the page down with it. A renderer must not be the
+  // thing that fails on its own input.
+  const ratio = max === 0 ? 0 : value / max;
+  const filled = Math.min(width, Math.max(0, Math.round(ratio * width)));
   const empty = width - filled;
   return `[${'█'.repeat(filled)}${'░'.repeat(empty)}]`;
 }

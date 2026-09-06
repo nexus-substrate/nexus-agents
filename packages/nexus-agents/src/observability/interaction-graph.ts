@@ -107,8 +107,14 @@ export class DirectedInteractionGraph implements IInteractionGraph {
     const maxPossibleDegree = (nodeCount - 1) * 2; // in + out
 
     for (const node of this.nodes) {
-      const outDegree = this.getOutgoingEdges(node).length;
-      const inDegree = this.getIncomingEdges(node).length;
+      // DISTINCT neighbours, not the edge list. `addEdge` pushes one edge per
+      // interaction, so counting edges measured interaction VOLUME against a
+      // denominator of neighbour slots — two different populations, and the
+      // ratio was not bounded by 1. Two agents talking three times produced
+      // 1.5, which `renderBar` turned into `'░'.repeat(-8)` and a RangeError
+      // that killed the whole dashboard render.
+      const outDegree = new Set(this.getOutgoingEdges(node).map((e) => e.to)).size;
+      const inDegree = new Set(this.getIncomingEdges(node).map((e) => e.from)).size;
       const totalDegree = outDegree + inDegree;
       centrality.set(node, totalDegree / maxPossibleDegree);
     }
