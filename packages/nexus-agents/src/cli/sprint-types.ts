@@ -57,8 +57,15 @@ export interface SprintProposal {
 export interface SprintPlanResult extends CommandResult {
   /** Generated proposal */
   readonly proposal?: SprintProposal;
-  /** Vote result if vote was requested */
-  readonly voteOutcome?: 'approved' | 'rejected' | 'pending' | 'skipped';
+  /**
+   * Vote result if a vote was requested.
+   *
+   * `no_quorum` (#4135, wired here in #5344) is DISTINCT from `rejected`: the
+   * panel could not reach a valid quorum, which says nothing about the sprint
+   * plan. Collapsing it into `rejected` recorded a verdict on the plan when the
+   * panel had not delivered one.
+   */
+  readonly voteOutcome?: 'approved' | 'rejected' | 'no_quorum' | 'pending' | 'skipped';
   /** Created issue number if issue was created */
   readonly createdIssueNumber?: number;
 }

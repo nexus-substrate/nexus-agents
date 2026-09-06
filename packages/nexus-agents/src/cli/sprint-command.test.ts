@@ -23,6 +23,7 @@ import {
   generateProposalBody,
   createSprintIssue,
 } from './sprint-command.js';
+import { voteOutcomeForExitCode } from './sprint-helpers.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintIssue,
@@ -410,5 +411,32 @@ describe('createSprintIssue', () => {
 
     // Title + flags only — the body (with `|`, `(`, `)`) lives in stdin.
     expect(mockExec.mock.calls[0]?.[0]).not.toMatch(/[|()]/);
+  });
+});
+
+describe('voteOutcomeForExitCode (#5344)', () => {
+  /**
+   * `sprint plan --vote` collapsed every non-zero exit into `rejected`, so a
+   * panel that could not reach quorum was recorded as having rejected the
+   * sprint plan. That is a verdict on the plan, and nobody delivered one — the
+   * last of the four consumers #4135 named that had not been wired.
+   */
+  it('records a quorum void as no_quorum, not as a rejection', () => {
+    expect(voteOutcomeForExitCode(2)).toBe('no_quorum');
+  });
+
+  it('still records a genuine rejection', () => {
+    expect(voteOutcomeForExitCode(1)).toBe('rejected');
+  });
+
+  it('still records an approval', () => {
+    expect(voteOutcomeForExitCode(0)).toBe('approved');
+  });
+
+  it('treats an unrecognised non-zero exit as a rejection, not as a quorum void', () => {
+    // Fail closed on the side that blocks issue creation: only exit 2, which
+    // the caller opts into via `onNoQuorum: 'exit2'`, means the panel was short.
+    expect(voteOutcomeForExitCode(3)).toBe('rejected');
+    expect(voteOutcomeForExitCode(127)).toBe('rejected');
   });
 });

@@ -24,6 +24,7 @@ import {
   isNotEpic,
   categorizeByPriority,
   printSprintResult,
+  voteOutcomeForExitCode,
 } from './sprint-helpers.js';
 
 // Re-export helpers for backward compatibility
@@ -248,9 +249,13 @@ async function handlePlanSubcommand(options: SprintCommandOptions): Promise<Spri
       proposal: voteProposal,
       threshold: 'supermajority',
       dryRun: options.dryRun === true,
+      // `exit2` is what makes a quorum void distinguishable here. Under the
+      // default `fail` policy `no_quorum` and a genuine rejection both exit 1,
+      // and this command would have to call them the same thing (#5344).
+      onNoQuorum: 'exit2',
     });
 
-    voteOutcome = exitCode === 0 ? 'approved' : 'rejected';
+    voteOutcome = voteOutcomeForExitCode(exitCode);
   }
 
   // Create issue if requested and vote passed (or no vote)
