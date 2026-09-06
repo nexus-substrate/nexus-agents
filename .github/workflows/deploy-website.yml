@@ -55,11 +55,18 @@ jobs:
         with:
           path: website/dist
 
-  # Advisory only (#5687). lychee resolves the Pages base path (`/nexus-agents/…`)
-  # against `--root-dir site` and reports ~6.8k "file not found" per run, so the
-  # count is a measurement artifact, not broken links. Until the root mapping is
-  # fixed and the real error count is known, this job is a report: `deploy` does
-  # not wait on it and its name says so. Re-enable per #5687 step 2.
+  # Advisory only (#5687 step 3). The root mapping is FIXED as of step 2: the
+  # artifact is extracted into `site/nexus-agents`, mirroring the published base
+  # path, so an absolute `/nexus-agents/x` link resolves to a real file instead
+  # of a phantom `site/nexus-agents/x` under a site root that never had it.
+  #
+  # Measured against the real published artifact (run 34032633262):
+  #   before  6798 errors / 4395 OK
+  #   after   1988 errors / 9205 OK
+  # So 4810 of the reported errors were the mapping artifact — and 1988 are
+  # REAL broken internal links the advisory job was burying. They are still
+  # here, so `fail:` stays false and `deploy` still does not wait on this job.
+  # Flipping it is #5687 step 3, blocked on #5750 (the real links).
   link-report:
     name: Link report (advisory, #5687)
     needs: build
@@ -72,8 +79,12 @@ jobs:
           name: github-pages
           path: .
 
-      - name: Extract artifact
-        run: mkdir -p site && tar -xf artifact.tar -C site
+      # Extract UNDER the published base path. The site is served at
+      # `/nexus-agents/`, so its absolute links are `/nexus-agents/...`;
+      # `--root-dir site` resolves those against `site/`, which only matches
+      # the on-disk layout when the artifact sits in `site/nexus-agents`.
+      - name: Extract artifact under the published base path
+        run: mkdir -p site/nexus-agents && tar -xf artifact.tar -C site/nexus-agents
 
       - name: Link check with lychee
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
@@ -82,13 +93,13 @@ jobs:
             --no-progress
             --offline
             --root-dir site
-            --exclude-path 'site/_astro'
+            --exclude-path 'site/nexus-agents/_astro'
             --exclude '\.md$'
             --exclude '\.md#'
             --exclude '\.\./\.\.'
             --exclude 'src/'
             --exclude 'packages/'
-            'site/**/*.html'
+            'site/nexus-agents/**/*.html'
           fail: false
 
   deploy:
