@@ -40,3 +40,61 @@ describe('TOOL_MANIFEST (canonical tool list)', () => {
     }
   });
 });
+
+describe('idempotentHint has something behind it (#5504)', () => {
+  /**
+   * `idempotentHint` is what a gateway or agent runtime reads to decide a retry
+   * is safe after a lost response — the case where the client cannot tell "the
+   * call succeeded and the answer was lost" from "it never happened".
+   *
+   * `delegate_to_model` declared it while minting a fresh run id per call, so a
+   * retry delegated to the model again: a second run directory, a second trace,
+   * a second bill. 3,227 `delegate-*` run directories had accumulated.
+   *
+   * The gate is deliberately mechanical rather than clever. It does not try to
+   * infer idempotency from the implementation — a static analysis of "is there a
+   * dedupe path" would be brittle and would fail honest tools. It asks only that
+   * a tool making the claim writes down what absorbs the repeat, in a field a
+   * reviewer can check against the code.
+   *
+   * Scoped to `readOnlyHint: false`, because that is where the claim is a claim
+   * about BEHAVIOUR. A read-only tool is idempotent by not writing anything.
+   */
+  const claimsIdempotentWhileWriting = TOOL_MANIFEST.filter(
+    (t) => t.annotations.idempotentHint && !t.annotations.readOnlyHint
+  );
+
+  it('finds the tools the rule applies to', () => {
+    // Guards the guard: if this drops to zero the assertion below passes
+    // vacuously and the gate stops gating.
+    expect(claimsIdempotentWhileWriting.length).toBeGreaterThan(0);
+  });
+
+  // TOOL_MANIFEST is `as const`, so `idempotencyBasis` is present only in the
+  // literal types of the entries that carry it. Read it off the widened shape —
+  // the point of the test is that the field EXISTS at runtime.
+  const basisOf = (name: string): string | undefined =>
+    (TOOL_MANIFEST.find((t) => t.name === name) as { idempotencyBasis?: string } | undefined)
+      ?.idempotencyBasis;
+
+  it.each(claimsIdempotentWhileWriting.map((t) => t.name))(
+    '%s states what absorbs a repeat call',
+    (name) => {
+      expect(basisOf(name), `${name} declares idempotentHint: true`).toBeDefined();
+      expect(basisOf(name)?.length ?? 0).toBeGreaterThan(20);
+    }
+  );
+
+  it('does not claim idempotency for delegate_to_model', () => {
+    // Every call mints a fresh run id, so a retry runs the delegation again.
+    const entry = TOOL_MANIFEST.find((t) => t.name === 'delegate_to_model');
+    expect(entry?.annotations.idempotentHint).toBe(false);
+  });
+
+  it('keeps the basis out of the MCP annotations', () => {
+    // The wire shape stays standard: idempotencyBasis is repo metadata.
+    for (const tool of TOOL_MANIFEST) {
+      expect((tool.annotations as Record<string, unknown>)['idempotencyBasis']).toBeUndefined();
+    }
+  });
+});

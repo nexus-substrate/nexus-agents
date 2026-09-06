@@ -61,6 +61,22 @@ export interface ToolAnnotations {
 export interface ToolSideEffectsEntry {
   readonly annotations: ToolAnnotations;
   readonly sideEffects: readonly SideEffect[];
+  /**
+   * How a repeat call is absorbed (#5504). REQUIRED — and enforced by a test —
+   * when `idempotentHint: true` sits beside `readOnlyHint: false`, because that
+   * is the combination where the claim is a claim about behaviour rather than a
+   * consequence of not writing anything.
+   *
+   * `idempotentHint` is what a gateway reads to decide a retry is safe after a
+   * lost response. `delegate_to_model` declared it while minting a fresh run id
+   * per call, so a retry delegated to the model twice — paying twice and
+   * producing two divergent traces. A one-line claim with nothing behind it is
+   * exactly the shape that survives review.
+   *
+   * NOT part of the MCP annotations: `getMcpAnnotations` returns `annotations`
+   * only, so this never ships over the wire as a non-standard field.
+   */
+  readonly idempotencyBasis?: string;
 }
 
 /**
@@ -180,7 +196,13 @@ export const TOOL_MANIFEST = [
       // (recordLearning + runPromotionPipeline) for learning feedback.
       readOnlyHint: false,
       destructiveHint: false,
-      idempotentHint: true,
+      // NOT idempotent (#5504). Every call mints a fresh run id
+      // (`${idPrefix}-${randomUUID().slice(0, 8)}` in
+      // pipeline/task-contract-builders.ts), so an identical retry delegates to
+      // the model again: a second run directory, a second trace, a second bill.
+      // A gateway reads this hint to decide a retry is safe after a lost
+      // response, which is the case where the damage lands.
+      idempotentHint: false,
       openWorldHint: false,
     },
     sideEffects: [
@@ -252,6 +274,9 @@ export const TOOL_MANIFEST = [
       { category: 'explicit', description: 'Adds paper to research registry on disk' },
       { category: 'implicit', description: 'Fetches metadata from arXiv API' },
     ],
+    idempotencyBasis:
+      'Dedupes on arxivId: `paperExists` short-circuits before any write and the '
+      + 'second call returns "already exists in registry" (#5504).',
   },
   {
     name: 'research_add_source',
@@ -463,6 +488,9 @@ export const TOOL_MANIFEST = [
       openWorldHint: false,
     },
     sideEffects: [{ category: 'explicit', description: 'Generates draft model registry entry' }],
+    idempotencyBasis:
+      'Never persists — the tool returns a draft ModelCapability entry for human '
+      + 'review, so a repeat produces the same draft and no state (#5504).',
   },
   {
     name: 'query_trace',
@@ -553,6 +581,9 @@ export const TOOL_MANIFEST = [
     // #3930: break-glass kill-switch — you only call it to abort a runaway async
     // job, so it is low-usage BY DESIGN, not dead weight. Never auto-deprecate.
     neverDeprecate: true,
+    idempotencyBasis:
+      'A second cancellation against the same job returns `already_cancelled` '
+      + 'against the already-written record rather than cancelling twice (#5504).',
   },
   {
     name: 'ci_health_check',
@@ -799,6 +830,10 @@ export const TOOL_MANIFEST = [
         description: 'build/test checks may write build artifacts and coverage output to disk',
       },
     ],
+    idempotencyBasis:
+      'Re-runs the checks and returns the current verdict; writes no record of its '
+      + 'own, and the build artifacts a check produces are overwritten rather '
+      + 'than appended (#5504).',
   },
   {
     name: 'suggest_research_tasks',
