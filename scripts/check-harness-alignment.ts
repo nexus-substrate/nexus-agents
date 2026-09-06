@@ -9,7 +9,7 @@
  * pasted content into a harness file instead of refactoring to a
  * redirect, which is exactly what the federation was meant to prevent.
  *
- * Run from repo root: `npx tsx scripts/check-harness-alignment.ts`
+ * Run from repo root: `pnpm exec tsx scripts/check-harness-alignment.ts`
  *
  * Exits:
  *   0 — AGENTS.md present + every existing harness file references it

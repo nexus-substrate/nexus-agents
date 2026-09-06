@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * curate-pr-review-dataset.ts — the pr_review eval-set curation pipeline (#3847).
  *

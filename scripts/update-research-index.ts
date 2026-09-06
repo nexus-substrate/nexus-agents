@@ -1,13 +1,12 @@
-#!/usr/bin/env npx tsx
 /**
  * Research Index Automation Script
  *
  * Regenerates RESEARCH_INDEX.md from YAML registry files (papers.yaml, techniques.yaml).
  *
  * Usage:
- *   npx tsx scripts/update-research-index.ts            # Regenerate index
- *   npx tsx scripts/update-research-index.ts --check     # Check if index is up to date (CI)
- *   npx tsx scripts/update-research-index.ts --validate  # Validate registry consistency
+ *   pnpm exec tsx scripts/update-research-index.ts            # Regenerate index
+ *   pnpm exec tsx scripts/update-research-index.ts --check     # Check if index is up to date (CI)
+ *   pnpm exec tsx scripts/update-research-index.ts --validate  # Validate registry consistency
  *
  * (Source: Issue #632 - Research Index Automation)
  */
@@ -320,7 +319,7 @@ function printHelp(): void {
 update-research-index.ts - Automate RESEARCH_INDEX.md generation
 
 Usage:
-  npx tsx scripts/update-research-index.ts [options]
+  pnpm exec tsx scripts/update-research-index.ts [options]
 
 Options:
   --check       Check if index is up to date (exit 1 if stale)

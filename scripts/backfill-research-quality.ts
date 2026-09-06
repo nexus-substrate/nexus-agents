@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, max-lines-per-function, complexity */
 /**
  * backfill-research-quality.ts — Enrich existing papers with quality scores.
@@ -9,9 +8,9 @@
  * Rate-limited: 1 request/second. Fails gracefully on API errors.
  *
  * Usage:
- *   npx tsx scripts/backfill-research-quality.ts              # Enrich all
- *   npx tsx scripts/backfill-research-quality.ts --dry-run     # Preview only
- *   npx tsx scripts/backfill-research-quality.ts --limit 10    # First 10 only
+ *   pnpm exec tsx scripts/backfill-research-quality.ts              # Enrich all
+ *   pnpm exec tsx scripts/backfill-research-quality.ts --dry-run     # Preview only
+ *   pnpm exec tsx scripts/backfill-research-quality.ts --limit 10    # First 10 only
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';

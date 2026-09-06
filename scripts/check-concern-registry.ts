@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Concern registry ratchet — one canonical implementation per operation (#5123).
@@ -35,8 +34,8 @@
  *      honest rather than drifting upward forever.
  *
  * Usage:
- *   npx tsx scripts/check-concern-registry.ts            # CI gate
- *   npx tsx scripts/check-concern-registry.ts baseline   # reseed alternates
+ *   pnpm exec tsx scripts/check-concern-registry.ts            # CI gate
+ *   pnpm exec tsx scripts/check-concern-registry.ts baseline   # reseed alternates
  *
  * @module scripts/check-concern-registry
  */

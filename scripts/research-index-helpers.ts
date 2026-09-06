@@ -183,13 +183,13 @@ export function checkFreshness(
 
   if (existing.papers !== currentPapers) {
     console.log('Research index is out of date: papers.yaml has changed.');
-    console.log('Run: npx tsx scripts/update-research-index.ts');
+    console.log('Run: pnpm exec tsx scripts/update-research-index.ts');
     return false;
   }
 
   if (existing.techniques !== currentTechniques) {
     console.log('Research index is out of date: techniques.yaml has changed.');
-    console.log('Run: npx tsx scripts/update-research-index.ts');
+    console.log('Run: pnpm exec tsx scripts/update-research-index.ts');
     return false;
   }
 

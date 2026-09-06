@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Documentation Content Generator
  *
@@ -11,8 +10,8 @@
  *   - docs/ops/docs-inventory.md     → ADR count, MCP tool count, directory scan
  *
  * Usage:
- *   npx tsx scripts/generate-docs-content.ts          # generate all
- *   npx tsx scripts/generate-docs-content.ts --check   # CI validation mode
+ *   pnpm exec tsx scripts/generate-docs-content.ts          # generate all
+ *   pnpm exec tsx scripts/generate-docs-content.ts --check   # CI validation mode
  *
  * @module scripts/generate-docs-content
  * (Source: Issue #1651)
@@ -360,7 +359,7 @@ function main(): void {
   }
 
   if (CHECK_MODE) {
-    console.log('Run "npx tsx scripts/generate-docs-content.ts" to see details');
+    console.log('Run "pnpm exec tsx scripts/generate-docs-content.ts" to see details');
     process.exit(1);
   }
 }

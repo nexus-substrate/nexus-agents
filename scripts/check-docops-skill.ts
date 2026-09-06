@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * check-docops-skill.ts - Enforce DocOps skill synchronization
  *
@@ -6,8 +5,8 @@
  * require corresponding updates to the Documentation Management skill.
  *
  * Usage:
- *   npx tsx scripts/check-docops-skill.ts           # Check for violations
- *   npx tsx scripts/check-docops-skill.ts --verbose # Detailed output
+ *   pnpm exec tsx scripts/check-docops-skill.ts           # Check for violations
+ *   pnpm exec tsx scripts/check-docops-skill.ts --verbose # Detailed output
  *
  * Exit codes:
  *   0 - No violations (pipeline unchanged or skill updated)
@@ -353,7 +352,7 @@ function main(): void {
 check-docops-skill.ts - Enforce DocOps skill synchronization
 
 Usage:
-  npx tsx scripts/check-docops-skill.ts [options]
+  pnpm exec tsx scripts/check-docops-skill.ts [options]
 
 Options:
   --verbose, -v  Show detailed output

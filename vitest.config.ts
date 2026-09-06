@@ -10,7 +10,7 @@
  * Forks pool plus per-test isolation mirror the package config. The timeout is
  * raised above Vitest's 5s default because several script tests dynamically
  * import the package TypeScript schema sources (transform cost) or spawn
- * `npx tsx` subprocesses against the real repo.
+ * `pnpm exec tsx` subprocesses against the real repo.
  *
  * @module vitest.config
  */
@@ -44,7 +44,7 @@ export default defineConfig({
 
     // Forks pool for process isolation (mirrors the package config); each test
     // file runs in its own Node.js process. Several script tests shell out to
-    // npx tsx, so keep concurrency bounded to avoid subprocess contention.
+    // pnpm exec tsx, so keep concurrency bounded to avoid subprocess contention.
     pool: 'forks',
     isolate: true,
     maxWorkers: 4,

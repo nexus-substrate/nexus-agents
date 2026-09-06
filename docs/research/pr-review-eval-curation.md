@@ -112,7 +112,7 @@ Re-running `eval:mine-candidates` is safe:
 # Local only — uses your gh auth. Default: 50 most-recent merged PRs.
 npm run eval:mine-candidates
 # Or with options:
-npx tsx scripts/mine-pr-review-candidates.ts --limit 80 --diff-cap 6000
+pnpm exec tsx scripts/mine-pr-review-candidates.ts --limit 80 --diff-cap 6000
 ```
 
 ### Older-window targeting (`--search` / `--min-age-days`)
@@ -132,10 +132,10 @@ flags target an older window instead:
   `is:merged` into the query yourself, e.g.:
 
   ```bash
-  npx tsx scripts/mine-pr-review-candidates.ts \
+  pnpm exec tsx scripts/mine-pr-review-candidates.ts \
     --search "is:merged merged:<2026-06-06" --limit 50
   # or, without a custom search query:
-  npx tsx scripts/mine-pr-review-candidates.ts --min-age-days 42 --limit 50
+  pnpm exec tsx scripts/mine-pr-review-candidates.ts --min-age-days 42 --limit 50
   ```
 
 ### 406 ("diff too large") fallback
@@ -150,7 +150,7 @@ If the fallback also yields nothing usable, the PR is recorded as **skipped**
 Then adjudicate the populated `testing/datasets/pr-review-candidates.json`
 in-place (set the real class, fill `knownBugs`, flip `adjudicated: true`), and
 promote the adjudicated cases into `pr-review-sample.json`. Run
-`npx tsx scripts/curate-pr-review-dataset.ts validate` and `… stats` to confirm
+`pnpm exec tsx scripts/curate-pr-review-dataset.ts validate` and `… stats` to confirm
 rubric validity and track the n>=50 target.
 
 ## Architecture (pure core, gh at the edges)

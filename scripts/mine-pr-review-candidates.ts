@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * mine-pr-review-candidates.ts — the gh-fetch I/O layer of the pr_review
  * candidate-MINING curation pipeline (#3847).
@@ -33,7 +32,7 @@
  * Usage (owner runs locally with gh auth):
  *   npm run eval:mine-candidates -- [--limit N] [--diff-cap CHARS] [--out PATH]
  *     [--search "<gh search query>"] [--min-age-days N]
- *   npx tsx scripts/mine-pr-review-candidates.ts [--limit N] …
+ *   pnpm exec tsx scripts/mine-pr-review-candidates.ts [--limit N] …
  *
  *   --limit N          Max NEW candidates to mine this run (default 50).
  *   --diff-cap CHARS   Cap on each candidate's diff excerpt (default 6000).

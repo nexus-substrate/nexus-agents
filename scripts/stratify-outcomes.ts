@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Stratified Outcome Report (#2662, Epic E).
@@ -22,9 +21,9 @@
  * the JSON artifact.
  *
  * Usage:
- *   npx tsx scripts/stratify-outcomes.ts            # write docs/research/fitness-stratified-v1.md
- *   npx tsx scripts/stratify-outcomes.ts --json     # emit JSON to stdout (CI artifact)
- *   npx tsx scripts/stratify-outcomes.ts <path>     # read outcomes JSONL from <path>
+ *   pnpm exec tsx scripts/stratify-outcomes.ts            # write docs/research/fitness-stratified-v1.md
+ *   pnpm exec tsx scripts/stratify-outcomes.ts --json     # emit JSON to stdout (CI artifact)
+ *   pnpm exec tsx scripts/stratify-outcomes.ts <path>     # read outcomes JSONL from <path>
  *
  * @module scripts/stratify-outcomes
  * @see Issue #2662

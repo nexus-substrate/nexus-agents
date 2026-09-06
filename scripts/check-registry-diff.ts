@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 /**
  * check-registry-diff — bounded-diff guardrail for the weekly
  * model-registry.generated.json refresh workflow (epic #2174 / issue #2180).
@@ -13,7 +12,7 @@
  * exported for unit tests so CI logic stays testable.
  *
  * Usage:
- *   npx tsx scripts/check-registry-diff.ts <old.json> <new.json> [--json]
+ *   pnpm exec tsx scripts/check-registry-diff.ts <old.json> <new.json> [--json]
  *
  * Exits 0 always — the workflow decides what to do with the verdict via
  * the printed JSON / Markdown.

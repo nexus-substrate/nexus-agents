@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * models.dev sync script (#2547 4b).
  *
@@ -13,8 +12,8 @@
  * unchanged input produces no diff.
  *
  * Usage:
- *   npx tsx scripts/sync-models-dev.ts          # fetch + write
- *   npx tsx scripts/sync-models-dev.ts --check  # fail if drift exists
+ *   pnpm exec tsx scripts/sync-models-dev.ts          # fetch + write
+ *   pnpm exec tsx scripts/sync-models-dev.ts --check  # fail if drift exists
  *
  * Design notes:
  *   - No runtime fetch by design. The runtime reads the committed
@@ -250,7 +249,7 @@ async function main(): Promise<void> {
     const existing = existsSync(SNAPSHOT_PATH) ? readFileSync(SNAPSHOT_PATH, 'utf-8') : '';
     if (existing !== next) {
       console.error('models-dev-snapshot.json is stale.');
-      console.error('Run `npx tsx scripts/sync-models-dev.ts` and commit the result.');
+      console.error('Run `pnpm exec tsx scripts/sync-models-dev.ts` and commit the result.');
       process.exit(1);
     }
     console.log('Snapshot is up to date.');

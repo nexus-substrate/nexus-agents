@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Deploy-staleness detector (#4506).
  *

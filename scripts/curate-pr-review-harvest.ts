@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * curate-pr-review-harvest.ts — the gh-fetch I/O layer of the pr_review
  * eval-set curation pipeline (#3847).
@@ -19,7 +18,7 @@
  * `clean`, an ambiguous fix signal is proposed `borderline` + needsAdjudication.
  *
  * Usage:
- *   npx tsx scripts/curate-pr-review-harvest.ts harvest [--limit N] [--out PATH]
+ *   pnpm exec tsx scripts/curate-pr-review-harvest.ts harvest [--limit N] [--out PATH]
  *
  * @module scripts/curate-pr-review-harvest
  * (Source: Issue #3847, epic #3845; rubric #3846)

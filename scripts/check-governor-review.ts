@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Governor-path pr_review audit gate (#3831, Epic B — governance of the governor).
  *

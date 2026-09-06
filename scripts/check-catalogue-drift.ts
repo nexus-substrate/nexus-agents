@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Catalogue-drift sweep (#4417).

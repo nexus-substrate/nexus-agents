@@ -18,7 +18,7 @@ describe('isReachableFromCi', () => {
   it('does not count a paths: trigger entry as wiring (#5028)', () => {
     // The gate whose job is catching unwired gates used a bare
     // `workflowText.includes(basename)`. Deleting the
-    // `run: npx tsx scripts/check-governor-ratification.ts` step from
+    // `run: pnpm exec tsx scripts/check-governor-ratification.ts` step from
     // governor-review.yml leaves the filename in two `paths:` blocks, so the
     // script reported as reachable while nothing executed it.
     const pathsOnly = [
@@ -35,7 +35,7 @@ describe('isReachableFromCi', () => {
     // The pair: tightening must not report a genuinely wired script as unwired,
     // which is how a gate teaches people to ignore it.
     const withRun =
-      'jobs:\n  x:\n    steps:\n      - run: npx tsx scripts/check-governor-ratification.ts';
+      'jobs:\n  x:\n    steps:\n      - run: pnpm exec tsx scripts/check-governor-ratification.ts';
 
     expect(isReachableFromCi('check-governor-ratification.ts', withRun, {})).toBe(true);
   });
@@ -43,14 +43,16 @@ describe('isReachableFromCi', () => {
   const noNpm = {};
 
   it('counts a direct filename reference in a workflow', () => {
-    expect(isReachableFromCi('check-x.ts', 'run: npx tsx scripts/check-x.ts', noNpm)).toBe(true);
+    expect(isReachableFromCi('check-x.ts', 'run: pnpm exec tsx scripts/check-x.ts', noNpm)).toBe(
+      true
+    );
   });
 
   it('counts an npm-script hop', () => {
     // check-pricing-drift.ts appears in no workflow; `check:pricing-drift` does.
     expect(
       isReachableFromCi('check-x.ts', 'run: pnpm check:x', {
-        'check:x': 'npx tsx scripts/check-x.ts',
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
       })
     ).toBe(true);
   });
@@ -60,7 +62,7 @@ describe('isReachableFromCi', () => {
     // that script as unwired — a false positive found by running the gate.
     expect(
       isReachableFromCi('check-x.ts', 'OUTPUT=$(pnpm --silent check:x 2>&1)', {
-        'check:x': 'npx tsx scripts/check-x.ts',
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
       })
     ).toBe(true);
   });
@@ -69,14 +71,16 @@ describe('isReachableFromCi', () => {
     // The exact state of check-authority-tier-drift before #4562: an npm
     // script existed, nothing ran it.
     expect(
-      isReachableFromCi('check-x.ts', 'run: pnpm lint', { 'check:x': 'npx tsx scripts/check-x.ts' })
+      isReachableFromCi('check-x.ts', 'run: pnpm lint', {
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
+      })
     ).toBe(false);
   });
 
   it('does not count a bare mention of the script name in prose', () => {
     expect(
       isReachableFromCi('check-x.ts', '# see check:x for details', {
-        'check:x': 'npx tsx scripts/check-x.ts',
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
       })
     ).toBe(false);
   });
@@ -109,11 +113,15 @@ describe('isReachableFromCi', () => {
     // string". `echo "…" && pnpm x` is a real run.
     expect(
       isReachableFromCi('check-x.ts', 'run: echo "checking" && pnpm check:x', {
-        'check:x': 'npx tsx scripts/check-x.ts',
+        'check:x': 'pnpm exec tsx scripts/check-x.ts',
       })
     ).toBe(true);
     expect(
-      isReachableFromCi('check-x.ts', 'run: echo "checking" && npx tsx scripts/check-x.ts', noNpm)
+      isReachableFromCi(
+        'check-x.ts',
+        'run: echo "checking" && pnpm exec tsx scripts/check-x.ts',
+        noNpm
+      )
     ).toBe(true);
   });
 });
@@ -213,7 +221,7 @@ describe('assessWiring', () => {
     // that would hide the next real regression under it.
     const verdict = assessWiring({
       inScopeScripts: ['check-a.ts'],
-      workflowText: 'run: npx tsx scripts/check-a.ts',
+      workflowText: 'run: pnpm exec tsx scripts/check-a.ts',
       npmScripts: {},
       allowlist: { 'check-a.ts': 'operator-run' },
     });
@@ -250,7 +258,7 @@ describe('assessWiring', () => {
   it('partitions reachable from unreachable', () => {
     const verdict = assessWiring({
       inScopeScripts: ['check-a.ts', 'check-b.ts'],
-      workflowText: 'npx tsx scripts/check-a.ts',
+      workflowText: 'pnpm exec tsx scripts/check-a.ts',
       npmScripts: {},
     });
 
@@ -261,7 +269,7 @@ describe('assessWiring', () => {
   it('reports nothing unwired when everything is reachable', () => {
     const verdict = assessWiring({
       inScopeScripts: ['check-a.ts'],
-      workflowText: 'npx tsx scripts/check-a.ts',
+      workflowText: 'pnpm exec tsx scripts/check-a.ts',
       npmScripts: {},
     });
 

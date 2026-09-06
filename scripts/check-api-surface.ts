@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Public API surface gate (#4749).
@@ -14,7 +13,7 @@
  * makes a human look.
  *
  * Usage:
- *   npx tsx scripts/check-api-surface.ts          # verify
+ *   pnpm exec tsx scripts/check-api-surface.ts          # verify
  *   pnpm api:surface                              # regenerate the snapshot
  *
  * @module scripts/check-api-surface

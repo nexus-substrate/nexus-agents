@@ -299,7 +299,7 @@ function renderReproSection(n: number): readonly string[] {
     '',
     '```bash',
     'npm run eval:run',
-    '# or: npx tsx scripts/pr-review-eval-run.ts',
+    '# or: pnpm exec tsx scripts/pr-review-eval-run.ts',
     '```',
     '',
     'The default invocation runs the LIVE 5-voter pr_review panel — 5 LLM calls per ' +

@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Detect deploy runs wedged in the queue (#4521).
  *

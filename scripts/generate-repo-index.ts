@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * generate-repo-index.ts - Generate deterministic repository capability index
  *
@@ -6,9 +5,9 @@
  * MCP tools, workflow templates, and entry points.
  *
  * Usage:
- *   npx tsx scripts/generate-repo-index.ts           # Generate index
- *   npx tsx scripts/generate-repo-index.ts --check   # Check if in sync (for CI)
- *   npx tsx scripts/generate-repo-index.ts --verbose # Verbose output
+ *   pnpm exec tsx scripts/generate-repo-index.ts           # Generate index
+ *   pnpm exec tsx scripts/generate-repo-index.ts --check   # Check if in sync (for CI)
+ *   pnpm exec tsx scripts/generate-repo-index.ts --verbose # Verbose output
  *
  * Output:
  *   - artifacts/repo-index.json (machine-readable)
@@ -268,7 +267,7 @@ function generateMarkdown(index: RepoIndex): string {
 **Generator:** \`${index.generator}\`
 
 > This file is auto-generated. Do not edit manually.
-> Run \`npx tsx scripts/generate-repo-index.ts\` to regenerate.
+> Run \`pnpm exec tsx scripts/generate-repo-index.ts\` to regenerate.
 
 ---
 
@@ -382,7 +381,7 @@ function showHelp(): void {
 generate-repo-index.ts - Generate deterministic repository capability index
 
 Usage:
-  npx tsx scripts/generate-repo-index.ts [options]
+  pnpm exec tsx scripts/generate-repo-index.ts [options]
 
 Options:
   --check     Check if index is in sync (exit 1 if not, for CI)
@@ -400,7 +399,7 @@ function runCheckMode(jsonChanged: boolean, mdChanged: boolean): void {
     log('✗ Repository index is out of date.');
     if (jsonChanged) log('  - artifacts/repo-index.json needs update');
     if (mdChanged) log('  - docs/reference/capabilities.md needs update');
-    log('\nRun "npx tsx scripts/generate-repo-index.ts" to update.');
+    log('\nRun "pnpm exec tsx scripts/generate-repo-index.ts" to update.');
     process.exit(1);
   }
   log('✓ Repository index is up to date.');

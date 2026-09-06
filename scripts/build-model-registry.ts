@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 /**
  * build-model-registry — Build-time generator for the T2 bundled model registry
  * (epic #2174, child issue #2175).
@@ -14,9 +13,9 @@
  * `pnpm build:registry`.
  *
  * Usage:
- *   npx tsx scripts/build-model-registry.ts           # write the generated JSON
- *   npx tsx scripts/build-model-registry.ts --dry     # parse + validate, print counts
- *   npx tsx scripts/build-model-registry.ts --offline # use last-committed snapshot, no fetch
+ *   pnpm exec tsx scripts/build-model-registry.ts           # write the generated JSON
+ *   pnpm exec tsx scripts/build-model-registry.ts --dry     # parse + validate, print counts
+ *   pnpm exec tsx scripts/build-model-registry.ts --offline # use last-committed snapshot, no fetch
  */
 /* eslint-disable no-console, max-lines-per-function, complexity */
 

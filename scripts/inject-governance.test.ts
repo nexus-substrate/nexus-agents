@@ -1,7 +1,7 @@
 /**
  * Integration tests for the Governance Injection Script.
  *
- * #3954: these tests previously spawned ~30 `npx tsx scripts/inject-governance.ts`
+ * #3954: these tests previously spawned ~30 `pnpm exec tsx scripts/inject-governance.ts`
  * subprocesses (≈8-12s cold start each, ≈400s total) and mutated SHARED real repo
  * files (`server.json`, `AGENTS.md`, `CLAUDE.md`, …) in place. That made the file
  * unsafe under the forks pool (cross-test interference + subprocess contention),
@@ -15,7 +15,7 @@
  *     helper drift-gate modules that derive their paths from the same `ROOT` —
  *     at that sandbox. No real tracked file is ever mutated.
  *   - SPEED: the exported `checkGovernance` / `injectGovernance` functions run
- *     IN-PROCESS (no `npx tsx` cold starts). Console output is captured to assert
+ *     IN-PROCESS (no `pnpm exec tsx` cold starts). Console output is captured to assert
  *     on the same summaries / error strings the subprocess tests inspected.
  *
  * Coverage is preserved: injection idempotence, every governed section, and the

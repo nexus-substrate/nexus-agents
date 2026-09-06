@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Env-schema coverage gate — the reverse direction of #4722 (#5142).
@@ -38,8 +37,8 @@
  * "not fixed yet", which is the distinction a reader of the baseline needs.
  *
  * Usage:
- *   npx tsx scripts/check-env-schema-coverage.ts            # CI gate
- *   npx tsx scripts/check-env-schema-coverage.ts baseline   # reseed `debt`
+ *   pnpm exec tsx scripts/check-env-schema-coverage.ts            # CI gate
+ *   pnpm exec tsx scripts/check-env-schema-coverage.ts baseline   # reseed `debt`
  *
  * @module scripts/check-env-schema-coverage
  */
@@ -192,7 +191,7 @@ function reportCoverage(cov: Coverage): boolean {
       '\n  Startup validation will report each of these as an unknown variable and\n' +
         '  suggest a different name, even when the user spelled it correctly.\n' +
         '  Register it in env-schema.ts, or add it to the baseline with a reason:\n' +
-        '    npx tsx scripts/check-env-schema-coverage.ts baseline'
+        '    pnpm exec tsx scripts/check-env-schema-coverage.ts baseline'
     );
   }
 

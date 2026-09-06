@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * Strategy Manifest Reference Generator (#3838, Epic C / M2).
  *
@@ -28,8 +27,8 @@
  * cross-module init hazard.
  *
  * Usage:
- *   npx tsx scripts/generate-strategy-reference.ts          # write the reference
- *   npx tsx scripts/generate-strategy-reference.ts --check  # fail if out of date
+ *   pnpm exec tsx scripts/generate-strategy-reference.ts          # write the reference
+ *   pnpm exec tsx scripts/generate-strategy-reference.ts --check  # fail if out of date
  *
  * @module scripts/generate-strategy-reference
  * (Source: Issue #3838)

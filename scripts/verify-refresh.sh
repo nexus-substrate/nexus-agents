@@ -26,7 +26,7 @@ pnpm typecheck
 echo "::endgroup::"
 
 echo "::group::registry-coverage manifest"
-npx tsx scripts/check-registry-coverage.ts
+pnpm exec tsx scripts/check-registry-coverage.ts
 echo "::endgroup::"
 
 echo "::group::full test suite"
@@ -60,7 +60,7 @@ echo "::group::catalogue drift (advisory)"
 # Deliberately non-fatal: drift means an *in-tree* entry is wrong, not that
 # this refresh is bad. Failing the job would block the correct catalogue update
 # because of a pre-existing registry defect, which is backwards.
-npx tsx scripts/check-catalogue-drift.ts || echo "^ drift reported; see #4417 — not blocking this refresh"
+pnpm exec tsx scripts/check-catalogue-drift.ts || echo "^ drift reported; see #4417 — not blocking this refresh"
 echo "::endgroup::"
 
 echo "verify-refresh: all gates passed"

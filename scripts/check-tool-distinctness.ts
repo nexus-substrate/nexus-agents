@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Tool-Description Distinctness Lint (#2650)
@@ -20,10 +19,10 @@
  * past the tolerance. This keeps `main` green while catching regressions.
  *
  * Usage:
- *   npx tsx scripts/check-tool-distinctness.ts            # CI gate (check)
- *   npx tsx scripts/check-tool-distinctness.ts check      # same
- *   npx tsx scripts/check-tool-distinctness.ts report     # regen v1 report
- *   npx tsx scripts/check-tool-distinctness.ts baseline   # reseed baseline
+ *   pnpm exec tsx scripts/check-tool-distinctness.ts            # CI gate (check)
+ *   pnpm exec tsx scripts/check-tool-distinctness.ts check      # same
+ *   pnpm exec tsx scripts/check-tool-distinctness.ts report     # regen v1 report
+ *   pnpm exec tsx scripts/check-tool-distinctness.ts baseline   # reseed baseline
  *
  * @module scripts/check-tool-distinctness
  * (Source: Issue #2650, Epic A #2651)
@@ -200,7 +199,7 @@ const BASELINE_COMMENT =
   'Accepted overlapping MCP tool-description pairs (#2650). `check:tool-distinctness` ' +
   'fails CI on a NEW pair >= threshold or a baseline pair whose similarity rose past ' +
   'tolerance. To accept a new pair, add it here with a tracking issue; to reseed, run ' +
-  '`npx tsx scripts/check-tool-distinctness.ts baseline <threshold>`.';
+  '`pnpm exec tsx scripts/check-tool-distinctness.ts baseline <threshold>`.';
 
 export interface DistinctnessResult {
   ok: boolean;

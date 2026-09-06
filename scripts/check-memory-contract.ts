@@ -176,7 +176,7 @@ async function main(): Promise<void> {
     if (probe !== undefined) console.error(`    ${probe.description}`);
   }
   console.error('\nFix: route the access through `getMemoryRegistry()`, or extend');
-  console.error(`the baseline (\`npx tsx scripts/check-memory-contract.ts baseline\`) if`);
+  console.error(`the baseline (\`pnpm exec tsx scripts/check-memory-contract.ts baseline\`) if`);
   console.error('the direct access is intentional and justified.');
   process.exit(1);
 }

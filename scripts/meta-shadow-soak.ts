@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /**
  * meta-shadow-soak.ts — the gh-fetch + live-execution TRIGGER for the
  * MetaOrchestrator shadow-training soak (#4310, feeder for #3552).
@@ -33,7 +32,7 @@
  *     genuine dispatch outcomes, not synthetic ones.
  *
  * Usage (local, on-demand — see docs/getting-started/CONFIGURATION.md):
- *   NEXUS_META_SHADOW_TRAIN=1 npx tsx scripts/meta-shadow-soak.ts [--count N] [--repo OWNER/NAME]
+ *   NEXUS_META_SHADOW_TRAIN=1 pnpm exec tsx scripts/meta-shadow-soak.ts [--count N] [--repo OWNER/NAME]
  *
  * Requires: `gh` authenticated against the target repo, and model-gateway
  * credentials for whichever strategies the router selects (dev-pipeline /

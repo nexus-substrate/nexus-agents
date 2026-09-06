@@ -63,8 +63,8 @@ In CI's order, fastest-feedback-first. Stop at the first failure, fix, restart.
 | Lint                       | `pnpm lint`                                                     |
 | Test                       | `pnpm test` (CI uses `pnpm test:coverage`)                      |
 | Build                      | `pnpm build`                                                    |
-| Changeset Presence         | `npx tsx scripts/check-changeset.ts origin/main`                |
-| Producer/Consumer (#3024)  | `npx tsx scripts/check-new-unused-exports.ts origin/main`       |
+| Changeset Presence         | `pnpm exec tsx scripts/check-changeset.ts origin/main`          |
+| Producer/Consumer (#3024)  | `pnpm exec tsx scripts/check-new-unused-exports.ts origin/main` |
 | Model String Drift         | `pnpm check:model-drift`                                        |
 | Commit Messages            | `npx commitlint --from origin/main --to HEAD`                   |
 | Working-tree clean (#2872) | `git status --porcelain` (must be empty)                        |
@@ -74,8 +74,8 @@ One-shot (mirrors CI, fails fast):
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test && pnpm build \
-  && npx tsx scripts/check-changeset.ts origin/main \
-  && npx tsx scripts/check-new-unused-exports.ts origin/main \
+  && pnpm exec tsx scripts/check-changeset.ts origin/main \
+  && pnpm exec tsx scripts/check-new-unused-exports.ts origin/main \
   && pnpm check:model-drift \
   && npx commitlint --from origin/main --to HEAD \
   && test -z "$(git status --porcelain)" \

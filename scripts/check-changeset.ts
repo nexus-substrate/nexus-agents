@@ -1,4 +1,3 @@
-#!/usr/bin/env npx tsx
 /* eslint-disable no-console */
 /**
  * Changeset-presence gate.
@@ -15,7 +14,7 @@
  * a real changeset is almost always correct.
  *
  * Usage:
- *   npx tsx scripts/check-changeset.ts [base-ref]   # base defaults to origin/main
+ *   pnpm exec tsx scripts/check-changeset.ts [base-ref]   # base defaults to origin/main
  *
  * @module scripts/check-changeset
  * (Source: release-cycle hardening)
