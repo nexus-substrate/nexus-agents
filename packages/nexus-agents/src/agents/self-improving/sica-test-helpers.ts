@@ -56,6 +56,8 @@ export function createSuccessResult(
     coverageAfter: after,
     coverageGain: after.line - before.line,
     errors: [],
+    // No tests were generated on this path, so nothing was checked. Omitting
+    // the tally is what makes `passRateBasis` resolve to `unmeasured`.
     durationMs,
   };
 }

@@ -152,8 +152,17 @@ export interface ConfigurationChange {
 export interface ImprovementValidation {
   /** Whether validation passed */
   readonly passed: boolean;
-  /** Performance comparison */
-  readonly performanceChange: number;
+  /**
+   * Measured performance delta against the parent version, or `undefined` when
+   * no comparison was run.
+   *
+   * Both writers used to emit a literal `0` here — the success path after
+   * merely creating a derived version that had not executed a single task, and
+   * `createFailedAttempt` on the way out. `0` reads as "measured, no
+   * regression"; the truth in both cases was "not measured", and the field
+   * carried no information in either branch (#5795). Absent means absent.
+   */
+  readonly performanceChange?: number | undefined;
   /** Specific validation checks */
   readonly checks: readonly ValidationCheck[];
 }
