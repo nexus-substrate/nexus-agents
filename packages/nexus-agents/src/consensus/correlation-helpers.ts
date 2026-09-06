@@ -155,7 +155,29 @@ export function computeSubsetIndependenceScore(
   subset: readonly string[],
   correlationMatrix: CorrelationMatrix
 ): number {
-  if (subset.length < 2) return 0;
+  return computeSubsetIndependence(subset, correlationMatrix).score;
+}
+
+/**
+ * The independence score AND how much of the subset it was measured over.
+ *
+ * The score averages only the pairs present in the matrix, so a pair that has
+ * never co-voted is dropped from the average rather than represented. A subset
+ * whose pairs were MEASURED at 0 and one whose pairs were NEVER OBSERVED both
+ * score 0 — and 0 earns the maximum posterior weight in `aggregateSubsets`
+ * (`size * (1 - score)`). The coverage is what lets a consumer tell them apart;
+ * it does not change the score, because changing the weighting changes vote
+ * outcomes and that is a decision for a panel, not a disclosure fix (#5813).
+ *
+ * `total` is C(n,2), so a singleton reports `{ observed: 0, total: 0 }`: no pair
+ * exists to observe, and its score is not a measurement at all.
+ */
+export function computeSubsetIndependence(
+  subset: readonly string[],
+  correlationMatrix: CorrelationMatrix
+): { score: number; observedPairs: number; totalPairs: number } {
+  const totalPairs = (subset.length * (subset.length - 1)) / 2;
+  if (subset.length < 2) return { score: 0, observedPairs: 0, totalPairs };
 
   let totalCorrelation = 0;
   let pairs = 0;
@@ -175,7 +197,11 @@ export function computeSubsetIndependenceScore(
     }
   }
 
-  return pairs > 0 ? totalCorrelation / pairs : 0;
+  return {
+    score: pairs > 0 ? totalCorrelation / pairs : 0,
+    observedPairs: pairs,
+    totalPairs,
+  };
 }
 
 /**
@@ -246,13 +272,14 @@ export function partitionIntoIndependentGroups(
       }
     }
 
-    const independenceScore = computeSubsetIndependenceScore(subset, correlationMatrix);
+    const independence = computeSubsetIndependence(subset, correlationMatrix);
     const observationCount = computeSubsetObservationCount(subset, pairwiseHistory);
 
     subsets.push({
       id: `subset-${String(subsetId++)}`,
       agentIds: subset,
-      independenceScore,
+      independenceScore: independence.score,
+      pairCoverage: { observed: independence.observedPairs, total: independence.totalPairs },
       observationCount,
     });
   }

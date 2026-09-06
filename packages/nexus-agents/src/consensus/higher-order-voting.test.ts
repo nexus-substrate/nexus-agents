@@ -630,12 +630,14 @@ describe('OWVoting', () => {
           id: 'subset-0',
           agentIds: ['alice', 'bob'],
           independenceScore: 0.1,
+          pairCoverage: { observed: 1, total: 1 },
           observationCount: 15,
         },
         {
           id: 'subset-1',
           agentIds: ['charlie', 'dave'],
           independenceScore: 0.1,
+          pairCoverage: { observed: 1, total: 1 },
           observationCount: 15,
         },
       ];
@@ -660,9 +662,16 @@ describe('OWVoting', () => {
           id: 'subset-0',
           agentIds: ['alice', 'bob', 'charlie'],
           independenceScore: 0.1,
+          pairCoverage: { observed: 3, total: 3 },
           observationCount: 15,
         },
-        { id: 'subset-1', agentIds: ['dave'], independenceScore: 0, observationCount: 15 },
+        {
+          id: 'subset-1',
+          agentIds: ['dave'],
+          independenceScore: 0,
+          pairCoverage: { observed: 0, total: 0 },
+          observationCount: 15,
+        },
       ];
 
       const result = voting.computeISP(votes, subsets);

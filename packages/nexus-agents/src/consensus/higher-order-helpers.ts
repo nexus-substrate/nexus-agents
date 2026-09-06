@@ -183,7 +183,15 @@ export function aggregateSubsets(
     const weight = subsetVotes.size * (1 - subset.independenceScore);
     subsetResults.push({ approval, rejection, weight });
 
-    if (subset.agentIds.length === 1) downweightedAgents.push(...subset.agentIds);
+    // `downweightedAgents` is documented as "agents whose votes were
+    // down-weighted DUE TO CORRELATION", and it is surfaced to MCP. This branch
+    // used to push every singleton, which is subset CARDINALITY, not weight: a
+    // singleton whose independence score is 0 gets `1 * (1 - 0) = 1`, the same
+    // per-vote multiplier every other agent receives. There was no input for
+    // which an ISP-reported downweighted agent actually carried less than its
+    // unweighted vote. Measured now, matching what the opinion-wise path does
+    // with the same field.
+    if (weight < subsetVotes.size) downweightedAgents.push(...subset.agentIds);
   }
   return { subsetResults, downweightedAgents };
 }
