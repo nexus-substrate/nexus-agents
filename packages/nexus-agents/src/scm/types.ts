@@ -52,6 +52,17 @@ export interface ScmIssue {
   readonly labels: readonly string[];
   readonly author: string;
   readonly createdAt: string;
+  /**
+   * Web URL of the issue, when the producer has it.
+   *
+   * `createIssue` gets it from `gh issue create`'s stdout and used to discard
+   * it, which left a caller with no way to recover the identity if the number
+   * could not be scraped — and `pipeline/task-tracker.ts` was already reading
+   * `url` through a cast, so `TrackedTask.url` was permanently `undefined` on
+   * the GitHub path. Optional because `mapIssue` builds from a `--json` field
+   * list that does not request it.
+   */
+  readonly url?: string | undefined;
 }
 
 /** SCM pull/merge request representation. */

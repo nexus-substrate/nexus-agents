@@ -96,7 +96,9 @@ class GitHubTaskTracker implements ITaskTracker {
     if (!result.ok) throw new Error('Failed to create issue');
     const id = String(result.value.number);
     logger.info('Created GitHub issue via SCM provider', { id });
-    return { id, title, status: 'open', url: (result.value as { url?: string }).url };
+    // `url` is a real field on ScmIssue now; it was read through a cast for a
+    // field that did not exist, so this was always undefined on this path.
+    return { id, title, status: 'open', url: result.value.url };
   }
 
   async updateStatus(taskId: string, status: TrackedTask['status']): Promise<void> {

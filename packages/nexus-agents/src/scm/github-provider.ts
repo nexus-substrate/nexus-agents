@@ -328,16 +328,34 @@ export class GitHubProvider implements IScmProvider {
     logger.debug('Creating issue', { repo: this.repo, title });
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
-    const url = result.value.trim();
-    const match = /\/(\d+)$/.exec(url);
-    const number = match?.[1] !== undefined ? parseInt(match[1], 10) : 0;
+    // `gh issue create` has no `--json`, so the number can only be scraped from
+    // the URL it prints. The previous form anchored to end-of-string and fell
+    // back to `number: 0` INSIDE an ok(...) — so a trailing gh notice line, a
+    // `?`/`#` suffix, or a build that writes the URL to stderr produced a
+    // "successfully created" issue whose identity was 0, and the caller's very
+    // next action is an API call keyed on it (`gh issue close 0`).
+    const stdout = result.value.trim();
+    const match = /\/issues\/(\d+)/.exec(stdout);
+    if (match?.[1] === undefined) {
+      return err(
+        new ScmError(
+          'gh issue create succeeded but its output carried no issue number; ' +
+            'the issue may exist and its identity is unknown',
+          'github',
+          undefined,
+          { stdout }
+        )
+      );
+    }
+    const urlMatch = /(https?:\/\/\S*\/issues\/\d+)/.exec(stdout);
     return ok({
-      number,
+      number: parseInt(match[1], 10),
       title,
       body,
       labels: labels !== undefined ? [...labels] : [],
       author: 'pipeline',
       createdAt: new Date().toISOString(),
+      ...(urlMatch?.[1] !== undefined ? { url: urlMatch[1] } : {}),
     });
   }
 
