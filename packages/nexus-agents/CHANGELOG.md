@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.31.5
+
+### Patch Changes
+
+- [#5774](https://github.com/nexus-substrate/nexus-agents/pull/5774) [`0ce25e4`](https://github.com/nexus-substrate/nexus-agents/commit/0ce25e448ae95949816554a04d1dc14b013c81cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `sprint plan --vote` no longer records a quorum void as a rejection. Every non-zero exit from the vote command was collapsed into `rejected`, so a panel that could not reach quorum was reported as having rejected the sprint plan — a verdict on the plan that nobody delivered. The command now opts into `onNoQuorum: 'exit2'` and records `no_quorum` distinctly, which is the last of the four consumers [#4135](https://github.com/nexus-substrate/nexus-agents/issues/4135) named.
+
 ## 8.31.4
 
 ### Patch Changes
