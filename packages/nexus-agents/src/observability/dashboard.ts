@@ -243,6 +243,7 @@ export class Dashboard implements IDashboard {
       activeAgents: 0,
       errorAgents: 0,
       totalInteractions: 0,
+      timedInteractions: 0,
       successRate: 0,
       avgLatencyMs: 0,
       bottlenecks: [],

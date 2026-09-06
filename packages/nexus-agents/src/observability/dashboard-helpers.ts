@@ -118,17 +118,24 @@ export function getEventSeverity(event: AgentEvent): 'info' | 'warning' | 'error
  */
 export function buildTopEdges(graph: InteractionGraph): GraphEdgeDisplay[] {
   const edges = graph.getEdges();
-  const edgeMap = new Map<string, { count: number; successes: number; totalLatency: number }>();
+  const edgeMap = new Map<
+    string,
+    { count: number; successes: number; totalLatency: number; timed: number }
+  >();
 
   for (const edge of edges) {
     const key = `${edge.from}|${edge.to}`;
-    const existing = edgeMap.get(key) ?? { count: 0, successes: 0, totalLatency: 0 };
+    const existing = edgeMap.get(key) ?? { count: 0, successes: 0, totalLatency: 0, timed: 0 };
     existing.count++;
     if (edge.outcome === 'success') {
       existing.successes++;
     }
+    // `timed` tracks the latency denominator separately from `count` (#5782):
+    // the sum was guarded on `durationMs !== undefined` while the divisor was
+    // not, so an untimed edge pulled the pair's mean toward zero.
     if (edge.durationMs !== undefined) {
       existing.totalLatency += edge.durationMs;
+      existing.timed++;
     }
     edgeMap.set(key, existing);
   }
@@ -141,7 +148,7 @@ export function buildTopEdges(graph: InteractionGraph): GraphEdgeDisplay[] {
         to: to ?? '',
         count: stats.count,
         successRate: stats.count > 0 ? stats.successes / stats.count : 0,
-        avgLatencyMs: stats.count > 0 ? stats.totalLatency / stats.count : 0,
+        avgLatencyMs: stats.timed > 0 ? stats.totalLatency / stats.timed : 0,
       };
     })
     .sort((a, b) => b.count - a.count)
