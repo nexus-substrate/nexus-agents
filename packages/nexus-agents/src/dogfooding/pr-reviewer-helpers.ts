@@ -88,7 +88,12 @@ export function assessPRReputation(
   // Only `injectionFlags` is consumed here, and injection detection is
   // role-independent — the userRole arg ('unknown') and the sanitizer's own
   // trustTier output are intentionally irrelevant to this call.
-  const sanitizeResult = sanitizeInput(pr.body, 'unknown', pr.author);
+  // TITLE AND BODY. Scanning only the body left the same bypass the issue path
+  // closed in #4681: the identical payload demoted the author to tier 4 from
+  // the body and raised no signal at all from the title, while the title is
+  // interpolated into the expert prompt. The firewall's github-adapter already
+  // concatenates both for exactly this reason.
+  const sanitizeResult = sanitizeInput(`${pr.title}\n\n${pr.body}`, 'unknown', pr.author);
   const metadata: GitHubUserMetadata = {
     username: pr.author,
     ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
