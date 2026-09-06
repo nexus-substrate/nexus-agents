@@ -248,9 +248,13 @@ async function handlePlanSubcommand(options: SprintCommandOptions): Promise<Spri
       proposal: voteProposal,
       threshold: 'supermajority',
       dryRun: options.dryRun === true,
+      // `exit2` is what makes a quorum void distinguishable here. Under the
+      // default `fail` policy `no_quorum` and a genuine rejection both exit 1,
+      // and this command would have to call them the same thing (#5344).
+      onNoQuorum: 'exit2',
     });
 
-    voteOutcome = exitCode === 0 ? 'approved' : 'rejected';
+    voteOutcome = voteOutcomeForExitCode(exitCode);
   }
 
   // Create issue if requested and vote passed (or no vote)
@@ -320,6 +324,29 @@ function handleListSubcommand(): SprintPlanResult {
 // ============================================================================
 // Main Command
 // ============================================================================
+
+/**
+ * Map the vote command's exit code onto the recorded outcome (#5344).
+ *
+ * `no_quorum` is NOT a rejection: the panel could not reach a valid quorum,
+ * which is a fact about the panel, not about the sprint plan. Collapsing every
+ * non-zero exit into `rejected` recorded a verdict nobody delivered — the last
+ * of the four consumers #4135 named that had not been wired.
+ *
+ * Depends on the caller passing `onNoQuorum: 'exit2'`; under the default `fail`
+ * policy a quorum void exits 1, the same as a rejection, and the two are not
+ * separable here.
+ *
+ * Exported for tests: this mapping is the whole behaviour, and reaching it
+ * through `sprintCommand` would mean standing up a panel.
+ */
+export function voteOutcomeForExitCode(
+  exitCode: number
+): NonNullable<SprintPlanResult['voteOutcome']> {
+  if (exitCode === 0) return 'approved';
+  if (exitCode === 2) return 'no_quorum';
+  return 'rejected';
+}
 
 /**
  * Run the sprint command.
