@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.33.0
+
+### Minor Changes
+
+- [#5787](https://github.com/nexus-substrate/nexus-agents/pull/5787) [`d6e9254`](https://github.com/nexus-substrate/nexus-agents/commit/d6e9254bfcb944fc2e4a6e9f67f889e1e75b2aff) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A `routing.topsis` block in nexus-agents.yaml now reaches the ranking stage. `adaptRoutingConfig` returned three of the four stage configs and dropped topsis, and the stage constructed itself with no arguments — so an operator writing `minQualityThreshold: 9` was schema-validated, defaulted, and then ranked with the built-in 5. The adapter for it already existed with no caller. CONFIGURATION.md also documented `qualityWeight`/`costWeight`/`latencyWeight`, which are not in the schema and were stripped by zod before any consumer saw them; the examples now use the real `criteria` shape.
+
+### Patch Changes
+
+- [#5788](https://github.com/nexus-substrate/nexus-agents/pull/5788) [`ee3ac04`](https://github.com/nexus-substrate/nexus-agents/commit/ee3ac049cd34e14a26ad760fbf4b4e2c5b8b5b09) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The input sanitizer no longer hands back a string it failed to clean. Stripping a nested tag splices the surrounding fragments back into a live tag, so nesting depth N needs N passes against a cap of 5 — at depth 6 the result still contained a live `<system>` tag, reported with `wasModified: true` and no detected pattern, which is exactly what a successful strip returns. The result now carries `sanitizationIncomplete`, and the handler refuses such input at every tier. Object keys are also scanned for injection patterns; they were copied verbatim, so relocating a payload from a value into a key raised no signal at all.
+
 ## 8.32.0
 
 ### Minor Changes
