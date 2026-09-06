@@ -34,12 +34,19 @@ describe('Command.goto (#2425 sub-task 1)', () => {
       .addNode('c', (state) => Promise.resolve({ trail: `${(state['trail'] as string) || ''}+c` }))
       .addEdge(START, 'a')
       .addEdge('a', 'b')
+      // b -> c exists only to satisfy static reachability: the builder rejects a
+      // node reachable ONLY through a runtime `Command.goto` as unreachable, and
+      // there is no way to declare a goto target (#5727). b never runs here, so
+      // the edge does not weaken what this test measures.
+      .addEdge('b', 'c')
       .addEdge('b', END)
       .addEdge('c', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const result = await executeGraph(graph.value, {});
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Without goto: trail would be 'a+b'. With goto to c: trail is 'a+c'; b never runs.
     expect(result.value.finalState['trail']).toBe('a+c');
@@ -58,9 +65,11 @@ describe('Command.goto (#2425 sub-task 1)', () => {
       .addEdge('a', 'b')
       .addEdge('b', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const result = await executeGraph(graph.value, {});
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Invalid target ignored — falls back to standard edge resolution: a → b.
     expect(result.value.finalState['trail']).toBe('a+b');
@@ -79,6 +88,7 @@ describe('Multi-interrupt observability (#2425 sub-task 2)', () => {
       .addEdge('one', END)
       .addEdge('two', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -90,6 +100,7 @@ describe('Multi-interrupt observability (#2425 sub-task 2)', () => {
         executionId: 'multi-1',
       }
     );
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     expect(result.value.halted).toBeDefined();
@@ -110,6 +121,7 @@ describe('Multi-interrupt observability (#2425 sub-task 2)', () => {
       .addEdge(START, 'only')
       .addEdge('only', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -121,6 +133,7 @@ describe('Multi-interrupt observability (#2425 sub-task 2)', () => {
         executionId: 'multi-2',
       }
     );
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     const checkpoint = store.latest('multi-2');
@@ -144,6 +157,7 @@ describe('Resume idempotency (#2425 sub-task 3)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -155,6 +169,7 @@ describe('Resume idempotency (#2425 sub-task 3)', () => {
         executionId: 'idem-1',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -195,6 +210,7 @@ describe('Resume idempotency (#2425 sub-task 3)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -206,6 +222,7 @@ describe('Resume idempotency (#2425 sub-task 3)', () => {
         executionId: 'idem-2',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -236,6 +253,7 @@ describe('Resume failure path (#2425 sub-task 4)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -247,6 +265,7 @@ describe('Resume failure path (#2425 sub-task 4)', () => {
         executionId: 'throw-1',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -260,6 +279,7 @@ describe('Resume failure path (#2425 sub-task 4)', () => {
       }
     );
     expect(resumed.ok).toBe(true); // Top-level executeGraph returns ok; failure is per-node.
+    expect(resumed.ok).toBe(true);
     if (!resumed.ok) return;
     // nodeResults is cumulative across original-run + resumed-run; use the
     // last entry for 'ask' to read the post-resume outcome.
@@ -278,6 +298,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -289,6 +310,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
         executionId: 'zod-1',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -308,6 +330,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -319,6 +342,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
         executionId: 'zod-2',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -340,6 +364,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const store = new InMemoryCheckpointStore();
@@ -351,6 +376,7 @@ describe('resumeValues Zod validation (#2425 sub-task 5)', () => {
         executionId: 'zod-3',
       }
     );
+    expect(first.ok).toBe(true);
     if (!first.ok) return;
     const checkpointId = first.value.halted?.checkpointId;
     if (checkpointId === undefined) return;
@@ -378,9 +404,11 @@ describe('Status-leak audit (#2425 sub-task 6)', () => {
       .addEdge(START, 'ask')
       .addEdge('ask', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const result = await executeGraph(graph.value, {});
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const askResult = result.value.nodeResults.find((r) => r.nodeId === 'ask');
     expect(askResult?.status).toBe('interrupted');
@@ -396,9 +424,11 @@ describe('Status-leak audit (#2425 sub-task 6)', () => {
       .addEdge(START, 'gate')
       .addEdge('gate', END)
       .compile();
+    expect(graph.ok).toBe(true);
     if (!graph.ok) return;
 
     const result = await executeGraph(graph.value, {});
+    expect(result.ok).toBe(true);
     if (!result.ok) return;
     const gateResult = result.value.nodeResults.find((r) => r.nodeId === 'gate');
     expect(gateResult?.interrupt?.id).toBe('require-human');
