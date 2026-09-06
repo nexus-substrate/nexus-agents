@@ -10,6 +10,8 @@ import { getTimeProvider } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintCommandOptions,
+  SprintIssueCreation,
+  SprintIssueFailureReason,
   SprintPlanResult,
   SprintProposal,
   SprintIssue,
@@ -195,7 +197,7 @@ export function generateProposal(
  * silently. The title is metacharacter-free by construction (see
  * `generateSprintTitle`), so it stays an inline `--title` argument.
  */
-export function createSprintIssue(proposal: SprintProposal): number | null {
+export function createSprintIssue(proposal: SprintProposal): SprintIssueCreation {
   try {
     const escapedTitle = proposal.title.replace(/'/g, "'\\''");
 
@@ -205,23 +207,55 @@ export function createSprintIssue(proposal: SprintProposal): number | null {
     );
 
     if (output === null) {
-      return null;
+      return { ok: false, reason: 'gh_failed' };
     }
 
     const match = /\/issues\/(\d+)/.exec(output);
     const issueNumStr = match?.[1];
     if (issueNumStr !== undefined && issueNumStr !== '') {
-      return parseInt(issueNumStr, 10);
+      return { ok: true, issueNumber: parseInt(issueNumStr, 10) };
     }
-    return null;
+    return { ok: false, reason: 'no_issue_number' };
   } catch {
-    return null;
+    return { ok: false, reason: 'gh_failed' };
   }
 }
+
+/** Operator-facing explanation for a failed `--create-issue`. */
+const CREATE_ISSUE_FAILURE: Record<SprintIssueFailureReason, string> = {
+  gh_failed:
+    'Failed to create the sprint issue: `gh issue create` did not run. ' +
+    'Check that the GitHub CLI is installed, authenticated (`gh auth status`), and not rate-limited.',
+  no_issue_number:
+    'Failed to create the sprint issue: `gh issue create` ran but printed no issue URL, ' +
+    'so the issue number could not be read. Check `gh issue list` before retrying.',
+};
 
 // ============================================================================
 // Subcommand Handlers
 // ============================================================================
+
+/**
+ * File the sprint issue when `--create-issue` was asked for and the vote (if
+ * any) cleared. Returns `undefined` when no attempt was made — a dry run and a
+ * failed create are different outcomes and must not share a value (#5848).
+ */
+function maybeCreateSprintIssue(
+  options: SprintCommandOptions,
+  proposal: SprintProposal,
+  voteOutcome: SprintPlanResult['voteOutcome']
+): SprintIssueCreation | undefined {
+  if (options.createIssue !== true) return undefined;
+  if (voteOutcome !== 'approved' && voteOutcome !== 'skipped') return undefined;
+
+  if (options.dryRun === true) {
+    writeLine(`${colors.yellow}[DRY RUN]${colors.reset} Would create sprint issue\n`);
+    return undefined;
+  }
+
+  writeLine(`${colors.dim}Creating sprint issue...${colors.reset}`);
+  return createSprintIssue(proposal);
+}
 
 /**
  * Handle the plan subcommand.
@@ -258,26 +292,27 @@ async function handlePlanSubcommand(options: SprintCommandOptions): Promise<Spri
     voteOutcome = voteOutcomeForExitCode(exitCode);
   }
 
-  // Create issue if requested and vote passed (or no vote)
-  let createdIssueNumber: number | null = null;
-  if (options.createIssue === true && (voteOutcome === 'approved' || voteOutcome === 'skipped')) {
-    if (options.dryRun === true) {
-      writeLine(`${colors.yellow}[DRY RUN]${colors.reset} Would create sprint issue\n`);
-    } else {
-      writeLine(`${colors.dim}Creating sprint issue...${colors.reset}`);
-      createdIssueNumber = createSprintIssue(proposal);
-    }
+  const created = maybeCreateSprintIssue(options, proposal, voteOutcome);
+
+  // A requested create that did not happen is a failure of the command, not a
+  // field left off a successful result (#5848). The plan still prints.
+  if (created?.ok === false) {
+    return {
+      success: false,
+      proposal,
+      voteOutcome,
+      error: CREATE_ISSUE_FAILURE[created.reason],
+    };
   }
 
-  // Build result with only defined optional properties
   const result: SprintPlanResult = {
     success: true,
     proposal,
     voteOutcome,
   };
 
-  if (createdIssueNumber !== null) {
-    return { ...result, createdIssueNumber };
+  if (created?.ok === true) {
+    return { ...result, createdIssueNumber: created.issueNumber };
   }
   return result;
 }
