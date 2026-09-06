@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 8.34.1
+
+### Patch Changes
+
+- [#5799](https://github.com/nexus-substrate/nexus-agents/pull/5799) [`af5a138`](https://github.com/nexus-substrate/nexus-agents/commit/af5a1381f643926a0a8fdc44dd91eec1b0c186df) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A security review whose model output could not be parsed is no longer recorded
+  as a clean, complete review. `parseSecurityResult`'s catch branch hard-coded
+  `findingsCoverage: 'complete'`, and `calculateSecurityScore([])` returns 100, so
+  an adapter answering "I could not complete this review." produced
+  `securityScore: 100, findingsCoverage: 'complete'` — and `parseExpertReview`,
+  which maps `unmeasured` to verdict `errored`, never saw it. The branch now
+  routes through the same `scoreFor` the structured path uses: `unmeasured` with a
+  fail-closed zero when the prose heuristic found nothing, `partial` scored on
+  what it found when it did.
+
 ## 8.34.0
 
 ### Minor Changes
