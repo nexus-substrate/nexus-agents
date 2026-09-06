@@ -313,10 +313,15 @@ export class AbTestTracker implements IAbTestTracker {
       control.successes,
       control.n
     );
-    const relativeImprovement =
-      control.successRate > 0
-        ? (treatment.successRate - control.successRate) / control.successRate
-        : 0;
+    // A control of 0 successes is a real measurement; the RATIO over it is the
+    // thing that does not exist. The `0` fallback sits on the same scale as a
+    // genuine result and reads as "no difference", so a change from 0% to 50%
+    // rendered as "0.0% improvement". The number is kept for compatibility and
+    // the marker says whether to believe it.
+    const relativeImprovementMeasured = control.successRate > 0;
+    const relativeImprovement = relativeImprovementMeasured
+      ? (treatment.successRate - control.successRate) / control.successRate
+      : 0;
     const recommendedSampleSize = calculateMinSampleSize(
       control.successRate,
       experiment.minimumDetectableEffect
@@ -330,6 +335,7 @@ export class AbTestTracker implements IAbTestTracker {
       treatment: this.buildVariantSummary(treatment),
       comparison,
       relativeImprovement,
+      relativeImprovementMeasured,
       hasMinimumSampleSize,
       recommendedSampleSize,
     };

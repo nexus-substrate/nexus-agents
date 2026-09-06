@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AbTestTracker, createAbTestTracker } from './ab-test-tracker.js';
 import type { ExperimentDefinition, ExperimentOutcome } from './ab-test-types.js';
+import type { ExperimentResult } from './validation-stats-types.js';
 
 describe('ab-test-tracker', () => {
   let tracker: AbTestTracker;
@@ -460,5 +461,90 @@ describe('ab-test-tracker', () => {
       expect(t).toBeDefined();
       expect(typeof t.createExperiment).toBe('function');
     });
+  });
+});
+
+// ============================================================================
+// A control that never succeeded has no relative improvement to report
+// ============================================================================
+
+describe('relativeImprovement over a zero control rate', () => {
+  // `0` is the value that means "treatment and control performed identically".
+  // A control measuring 0/50 is a real measurement; the RATIO over it is what
+  // does not exist, and it is unbounded rather than zero. So a change from 0%
+  // to 50% was reported as "0.0% improvement" — the literal sits on the same
+  // numeric scale as a genuine result, so no consumer could tell them apart.
+  // `calculateRegret` solved the identical problem with `null` (#5255); this
+  // field is public API typed `number`, so it carries a marker instead of
+  // widening to `number | null`, which is breaking for readers.
+  const experiment = {
+    id: 'exp-zero-control',
+    name: 'Zero control',
+    description: 'Control never succeeds',
+    variants: [
+      {
+        id: 'control',
+        name: 'Control',
+        description: 'c',
+        trafficPercent: 50,
+        isControl: true,
+      },
+      {
+        id: 'treatment',
+        name: 'Treatment',
+        description: 't',
+        trafficPercent: 50,
+        isControl: false,
+      },
+    ],
+    minSampleSize: 10,
+    primaryMetric: 'successRate' as const,
+    minimumDetectableEffect: 0.1,
+    tags: [],
+  };
+
+  function run(controlSuccess: boolean): ExperimentResult | null {
+    const tracker = new AbTestTracker();
+    tracker.createExperiment(experiment);
+    tracker.startExperiment('exp-zero-control');
+    for (let i = 0; i < 20; i++) {
+      tracker.recordOutcome({
+        experimentId: 'exp-zero-control',
+        variantId: 'control',
+        traceId: `c-${String(i)}`,
+        success: controlSuccess,
+        reward: controlSuccess ? 1 : 0,
+        latencyMs: 10,
+        timestamp: new Date().toISOString(),
+      });
+      tracker.recordOutcome({
+        experimentId: 'exp-zero-control',
+        variantId: 'treatment',
+        traceId: `t-${String(i)}`,
+        success: i % 2 === 0,
+        reward: i % 2 === 0 ? 1 : 0,
+        latencyMs: 10,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return tracker.getSummary('exp-zero-control')?.result ?? null;
+  }
+
+  it('marks the ratio unmeasured when the control never succeeded', () => {
+    const result = run(false);
+
+    expect(result).not.toBeNull();
+    expect(result?.relativeImprovementMeasured).toBe(false);
+    // The placeholder is still 0, and that is exactly why the marker exists:
+    // a reader cannot tell it from a measured "no difference" without one.
+    expect(result?.relativeImprovement).toBe(0);
+  });
+
+  it('marks it measured when the control has a non-zero rate', () => {
+    // The pair. Without it the marker could be hard-coded false and the
+    // assertion above would still pass.
+    const result = run(true);
+
+    expect(result?.relativeImprovementMeasured).toBe(true);
   });
 });

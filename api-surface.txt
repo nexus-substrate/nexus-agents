@@ -3359,6 +3359,7 @@ InterfaceDeclaration ExperimentResult
   readonly hasMinimumSampleSize: boolean
   readonly recommendedSampleSize: number
   readonly relativeImprovement: number
+  readonly relativeImprovementMeasured: boolean
   readonly treatment: VariantResultSummary
 TypeAliasDeclaration ExperimentStatus
   = 'draft' | 'running' | 'paused' | 'completed' | 'archived'

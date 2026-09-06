@@ -141,6 +141,21 @@ export interface ExperimentResult {
   readonly comparison: ComparisonResult;
   /** Relative improvement (treatment vs control) */
   readonly relativeImprovement: number;
+  /**
+   * Whether {@link relativeImprovement} was computed from a control rate that
+   * could support a ratio.
+   *
+   * `false` means the control measured 0 successes, so the relative improvement
+   * is unbounded and the accompanying `0` is a placeholder — NOT "treatment and
+   * control performed identically", which is what `0` reads as on that scale. A
+   * control of 0/50 is a real measurement; the ratio over it is the thing that
+   * does not exist.
+   *
+   * `calculateRegret` solved the same problem with `null` (#5255). This field
+   * carries the same information without widening a public `number` to
+   * `number | null`, which is a breaking change for readers.
+   */
+  readonly relativeImprovementMeasured: boolean;
   /** Whether experiment has enough data for valid conclusions */
   readonly hasMinimumSampleSize: boolean;
   /** Minimum recommended sample size per group */
