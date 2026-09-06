@@ -20,6 +20,7 @@ import { describe, it, expect } from 'vitest';
 import {
   analyzeGovernorReview,
   governorPathsFromCodeowners,
+  governorSectionLines,
   matchesCodeownersPattern,
   isGovernorPath,
   parseGenesisExemptions,
@@ -95,6 +96,42 @@ function inputs(overrides: Partial<GovernorReviewInputs> = {}): GovernorReviewIn
     ...overrides,
   };
 }
+
+describe('governor section start marker (#5576)', () => {
+  const NO_START_MARKER = [
+    // Deliberately does NOT contain the section marker text — a fixture that
+    // quotes the marker it claims is missing would start the section anyway.
+    '# Ownership',
+    '/packages/nexus-agents/src/audit/ @owner',
+    '/CODEOWNERS @owner',
+    '# END governor-owned paths',
+  ].join('\n');
+
+  it('reports that the section never started', () => {
+    // Only `terminated` was tracked. With the start marker absent the parser
+    // returned lines: [] and no signal, so the caller derived zero governor
+    // patterns and every gate downstream reported a pass it never measured.
+    expect(governorSectionLines(NO_START_MARKER).started).toBe(false);
+    expect(governorSectionLines(CODEOWNERS_SAMPLE).started).toBe(true);
+  });
+
+  it('fails the review gate when no governor pattern could be parsed', () => {
+    // Deleting or renaming one line in CODEOWNERS — a file the governor owns —
+    // used to turn this gate green for every PR after it.
+    const outcome = analyzeGovernorReview(
+      inputs({ records: [record()], changedFiles: ['CODEOWNERS'], governorPatterns: [] })
+    );
+    expect(outcome.kind).toBe('fail');
+    if (outcome.kind === 'fail') expect(outcome.message).toContain('CODEOWNERS');
+  });
+
+  it('still passes when patterns parsed and none was touched', () => {
+    const outcome = analyzeGovernorReview(
+      inputs({ records: [record()], changedFiles: ['README.md'] })
+    );
+    expect(outcome.kind).toBe('pass');
+  });
+});
 
 describe('governorPathsFromCodeowners — single-source path derivation', () => {
   it('extracts ONLY the governance-of-the-governor section patterns', () => {
