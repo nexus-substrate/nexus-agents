@@ -113,6 +113,18 @@ export interface AgentVoteResult {
    */
   readonly selectedOption?: string | undefined;
   /**
+   * True when this vote came from the per-role retry of an errored seat
+   * (#5578). A first-attempt vote never carries it.
+   *
+   * The panel launches once; a voter that errors is dropped, so under
+   * `reduce_denominator` its seat silently leaves the denominator and under
+   * `absolute_quorum` the whole vote voids and the caller replays all N
+   * voters for a single failure. Retrying just the errored roles recovers the
+   * seat for one extra call — and this flag is what makes the recovery
+   * visible instead of indistinguishable from a clean first attempt.
+   */
+  readonly retried?: boolean | undefined;
+  /**
    * Model id that executed this vote, when known (e.g. 'claude-sonnet'). Carried
    * so per-decision cost aggregation can attribute spend per model (#3855). Absent
    * for error/simulation votes that never reached a model.
