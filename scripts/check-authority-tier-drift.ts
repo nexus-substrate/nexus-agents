@@ -491,9 +491,21 @@ export function ratificationGateFindings(
   evidence: ReadonlyMap<string, PromotionEvidence>,
   voteRecordsJsonl: string | undefined
 ): TierDriftFinding[] {
-  if (evidence.size === 0) return [];
+  // Build the resolver FIRST. Its three integrity findings — unparseable line,
+  // tamper-evidence failure, duplicate record id — are computed from the ledger
+  // text alone and do not depend on the evidence map. Returning early on an
+  // empty map made all three unreachable, and the map IS empty in this tree
+  // (`governance/authority-tier-evidence.yaml` ends `evidence: []`), so a PR
+  // that forged or truncated `governance/vote-records.jsonl` passed this gate
+  // green. The tamper-evidence check that exists to catch exactly that could
+  // not fire.
   const { resolver, conflictSubjects, findings } =
     buildVoteRecordRatificationResolver(voteRecordsJsonl);
+
+  // With no promotion claimed there is nothing to resolve — but a broken ledger
+  // is still a broken ledger. A clean or empty ledger yields no findings here,
+  // so "no promotions yet" still reports nothing.
+  if (evidence.size === 0) return findings;
 
   const out = [...findings];
   for (const [loopId, e] of evidence) {
