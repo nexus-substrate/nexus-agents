@@ -94,8 +94,13 @@ export type VoteRecordOptionCoverage = z.infer<typeof VoteRecordOptionCoverageSc
  * Same shape of fix as `optionCoverage` (#4472) and for the same reason:
  * recording what did NOT arrive is what makes a partial measurement legible AS
  * partial. Absent when every requested voter responded.
+ *
+ * Module-private: only the record schema below and the derived type have a
+ * consumer. Its two siblings, `VoteRecordOptionCountSchema` and
+ * `VoteRecordOptionCoverageSchema`, are exported and the producer/consumer
+ * gate already lists both as dead exports — no reason to add a third.
  */
-export const VoteRecordPanelCoverageSchema = z
+const VoteRecordPanelCoverageSchema = z
   .object({
     /** Voters the panel asked for. */
     requested: z.number().int().nonnegative(),
