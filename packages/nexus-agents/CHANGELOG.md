@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 8.42.0
+
+### Minor Changes
+
+- [#5846](https://github.com/nexus-substrate/nexus-agents/pull/5846) [`8d6921d`](https://github.com/nexus-substrate/nexus-agents/commit/8d6921dd09d6403d514377984ae6402815f1c256) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The security-layer sanitizer no longer returns unconverged content as clean.
+  `stripXmlTags` and `stripDangerousHtml` loop to remove a tag reconstructed by an
+  earlier removal ([#1496](https://github.com/nexus-substrate/nexus-agents/issues/1496)), but the loop is bounded at five passes and never
+  re-tested afterwards — so a six-deep `<sy<sy…<system foo>…stem>` payload came
+  back with a live `<system>` tag, `wasModified: true` and `strippedElements` at
+  the cap, indistinguishable from a clean strip. `SanitizedInput` gains
+  `sanitizationIncomplete`. The detectors also ran on the original text only, so a
+  flag could never see a tag that exists only after stripping; they now run on
+  both and union, which raises `fake_conversation` and demotes the author to tier
+  4 on that payload instead of leaving `injectionFlags` empty.
+
+### Patch Changes
+
+- [#5845](https://github.com/nexus-substrate/nexus-agents/pull/5845) [`28df1ff`](https://github.com/nexus-substrate/nexus-agents/commit/28df1ff813a8c75e76e634dc2f93520e993ae026) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The evaluation harness's `averageScore` is no longer computed over a set
+  selected by the score. `checkSuccess` is
+  `rubricScore.overallScore >= (task.minimumScore ?? 0.5)`, so filtering the score
+  list on `r.success` removed every sub-threshold score from the numerator and the
+  denominator — pinning `averageScore` at or above the pass bar however badly the
+  run went, so a run where 9 of 10 tasks scored 0.1 reported a better average than
+  one where all 10 scored 0.6. All four sites are fixed (aggregate, per-CLI,
+  per-category, per-difficulty). Separately, `TestRunResult.success` was
+  `failureCount === 0 || !stopOnFailure` with `stopOnFailure` defaulting to
+  `false`, so the run-level verdict was `true` for every failure count unless a
+  caller opted in; it now reflects the results.
+
 ## 8.41.1
 
 ### Patch Changes
