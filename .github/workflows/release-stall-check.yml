@@ -68,18 +68,37 @@ jobs:
         run: |
           set -euo pipefail
           # The body was rendered by the assess step into release-stall-body.md.
-          # Dedupe on the exact title so repeated detection updates one issue
-          # rather than filing a new one every 6 hours.
-          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
-            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+          #
+          # Dedupe WITHOUT the search index (#5729). `gh issue list --search`
+          # reads GitHub's search API, which is eventually consistent: on
+          # 2026-09-05 three consecutive runs read it as empty while an issue
+          # with this exact title sat open, and filed #5599 and #5659 as
+          # duplicates of #5553. Plain `gh issue list` reads the repository
+          # issue connection and is strongly consistent.
+          #
+          # `--state all` because the body tells the reader it is safe to close
+          # the report once the stall clears, and promises the detector reopens
+          # it if the condition recurs. A `--state open` lookup cannot keep that
+          # promise. Bounded at 100 issues, newest first: a report older than the
+          # last 100 issues is missed and a fresh one filed, which is the
+          # behaviour before this change, not a new gap.
+          match=$(gh issue list --state all --limit 100 --json number,title,state \
+            --jq "[.[] | select(.title == \"$TITLE\")] | first // empty")
 
-          if [ -n "$existing" ]; then
-            echo "Updating existing issue #$existing"
-            gh issue edit "$existing" --body-file release-stall-body.md
-          else
+          if [ -z "$match" ]; then
             echo "Filing a new stall issue"
             gh issue create --title "$TITLE" --body-file release-stall-body.md
+            exit 0
           fi
+
+          number=$(printf '%s' "$match" | jq -r '.number')
+          state=$(printf '%s' "$match" | jq -r '.state')
+          if [ "$state" = "CLOSED" ]; then
+            echo "Reopening closed stall issue #$number"
+            gh issue reopen "$number"
+          fi
+          echo "Updating stall issue #$number"
+          gh issue edit "$number" --body-file release-stall-body.md
 
       - name: Fail the run when stalled
         if: steps.assess.outcome == 'failure'
