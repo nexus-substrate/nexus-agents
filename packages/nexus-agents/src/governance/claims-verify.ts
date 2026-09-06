@@ -51,7 +51,11 @@ export interface VerifyReport {
  * Count string members of a named `z.enum([...])` or string-literal union in
  * source. Matches `export const Name = z.enum([ ... ])` or `type Name = 'a' | 'b'`.
  */
-export function countEnumMembers(source: string, symbol: string): number | null {
+export function countEnumMembers(rawSource: string, symbol: string): number | null {
+  // Comments are not members (#5580). `stripComments` has been in this module
+  // since #3879 for the needle checks; these two counters were the callers
+  // that never used it, so `// 'retired_role',` counted as live evidence.
+  const source = stripComments(rawSource);
   const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const enumMatch = source.match(new RegExp(`${escaped}\\s*=\\s*z\\.enum\\(\\[([\\s\\S]*?)\\]`));
   if (enumMatch?.[1] !== undefined) {
@@ -68,8 +72,9 @@ export function countEnumMembers(source: string, symbol: string): number | null 
 }
 
 /** Count registered MCP tools (`name:` entries) in a tool-manifest source. */
-export function countManifestTools(source: string): number {
-  return [...source.matchAll(/\bname:\s*['"][a-z0-9_]+['"]/g)].length;
+export function countManifestTools(rawSource: string): number {
+  // A tool deleted by commenting it out is deleted (#5580).
+  return [...stripComments(rawSource).matchAll(/\bname:\s*['"][a-z0-9_]+['"]/g)].length;
 }
 
 function resolvePath(repoRoot: string, p: string): string {

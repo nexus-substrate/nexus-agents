@@ -38,6 +38,41 @@ const DETERMINISM_EXCLUDES: RegExp[] = [
   /time-provider\.ts$/,
 ];
 
+/**
+ * Files that mention `NEXUS_ALLOW_MOCK_ORCHESTRATION` without guarding
+ * anything, on top of the determinism excludes (#5580).
+ *
+ * `fitness-score.ts` is this checker: its own regex, JSDoc and warning text
+ * all contain the name, so scanning the whole tree matched itself and
+ * `mockGuardCount === 0` could never be true — the "no guard found" warning
+ * could not fire even with the guard deleted. `env-schema.ts` registers every
+ * NEXUS_* variable and would keep the count non-zero for the same reason.
+ *
+ * The pattern deliberately stays a name match rather than a `process.env[...]`
+ * match: the real guard reads the name through a `MOCK_ORCHESTRATION_ENV`
+ * constant, so requiring the literal access shape would stop counting the
+ * guard that exists.
+ */
+const MOCK_GUARD_EXCLUDES: RegExp[] = [
+  ...DETERMINISM_EXCLUDES,
+  /^fitness-score\.ts$/,
+  /^env-schema\.ts$/,
+];
+
+/**
+ * Counts the sites that name the mock-orchestration opt-in guard, excluding
+ * the checker itself and the env schema. Exported so the "no guard" branch can
+ * be tested against a fixture tree instead of the live source root (#5580).
+ */
+export function countMockGuardSites(srcRoot: string): number {
+  return countPatternInDir(
+    srcRoot,
+    /\.ts$/,
+    /NEXUS_ALLOW_MOCK_ORCHESTRATION/g,
+    MOCK_GUARD_EXCLUDES
+  );
+}
+
 // =========================================================================
 // Filesystem utility methods (inlined from scripts/fitness-utils.ts)
 // =========================================================================
@@ -446,12 +481,7 @@ export class FitnessScoreCalculator {
     let score = 15;
 
     // Check: mock orchestration requires explicit env var opt-in
-    const mockGuardCount = countPatternInDir(
-      SRC_ROOT,
-      /\.ts$/,
-      /NEXUS_ALLOW_MOCK_ORCHESTRATION/g,
-      DETERMINISM_EXCLUDES
-    );
+    const mockGuardCount = countMockGuardSites(SRC_ROOT);
     if (mockGuardCount === 0) {
       score -= 3;
       findings.push(
