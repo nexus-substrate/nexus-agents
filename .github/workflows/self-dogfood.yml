@@ -32,19 +32,25 @@ env:
   NEXUS_EXPERTS: architect,security,reviewer
 
 jobs:
-  # Job 0: can a review run at all? (#4919)
+  # Job 0: can `orchestrate` run at all? (#4919, widened to triage in #5878)
   #
-  # This has to be its own job so `review-pr` can be SKIPPED rather than run
-  # and pass. A step-level `if` leaves the JOB green, and a green check is what
-  # a human spot-check reads — the mission statement's stated worst case, "it
-  # launders unreviewed work as reviewed". A skipped job renders gray: neither
-  # a pass nor a failure, which is the honest value for "not measured".
+  # This has to be its own job so the downstream jobs can be SKIPPED rather than
+  # run and pass. A step-level `if` leaves the JOB green, and a green check is
+  # what a human spot-check reads — the mission statement's stated worst case,
+  # "it launders unreviewed work as reviewed". A skipped job renders gray:
+  # neither a pass nor a failure, which is the honest value for "not measured".
   #
   # It probes what `orchestrate` ACTUALLY requires. The previous gate checked
   # for an API key, and `ANTHROPIC_API_KEY` is configured on this repo, so it
   # passed — and then `orchestrateCommand` (cli/orchestrate-command.ts:292-300)
   # exited 1 before looking at any key because no CLI binary was on PATH. The
   # gate measured key presence and reported it as reviewability.
+  #
+  # It probes the RUNNER, not the event, so both downstream jobs share it. Its
+  # `if` is therefore the UNION of their triggers — which means each of them
+  # must carry its own event guard again, including review-pr's Rule-of-Two
+  # branch exclusion. #4919 could park that guard here because preflight served
+  # one job; it no longer can.
   preflight:
     name: Review preflight
     runs-on: ubuntu-latest
@@ -54,7 +60,9 @@ jobs:
        github.event.pull_request.draft == false &&
        github.actor != 'dependabot[bot]' &&
        !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+      github.event_name == 'issues' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.pr_number != '' || inputs.issue_number != ''))
     permissions:
       contents: read
     outputs:
@@ -98,8 +106,9 @@ jobs:
             echo ""
             echo "⚪ NOT MEASURED — ${REASON}."
             echo ""
-            echo "The review job is skipped rather than passed, so this check is gray"
-            echo "rather than green: nothing was reviewed and the record says so (#4919)."
+            echo "The review and triage jobs are skipped rather than passed, so their"
+            echo "checks are gray rather than green: nothing ran and the record says"
+            echo "so (#4919, #5878)."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Job 1: PR Review using nexus-agents orchestrate
@@ -112,10 +121,17 @@ jobs:
     # auto-remediation bot branches — keeps secrets off untrusted-signal-derived
     # content. Explicit prefix guard (not just draft-status); kept in sync with
     # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
-    # The event/branch guard moved to `preflight`, which this job needs — so the
-    # Rule-of-Two exclusion still holds (an excluded branch never reaches
-    # `preflight`, so `reviewable` is empty and this stays skipped).
-    if: needs.preflight.outputs.reviewable == 'true'
+    # Both conditions, deliberately (#5878). `preflight` now also serves the
+    # triage job, so its `if` is the union of both triggers and an `issues`
+    # event reaches it — this job must re-state its own event guard, including
+    # the Rule-of-Two branch exclusion, rather than inherit it.
+    if: |
+      needs.preflight.outputs.reviewable == 'true' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.draft == false &&
+        github.actor != 'dependabot[bot]' &&
+        !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.pr_number != ''))
     permissions:
       contents: read
       # Read-only. Nothing in this job writes a comment or a label, and with
@@ -300,9 +316,17 @@ jobs:
     name: Triage Issue
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: preflight
+    # #5878, the review job's twin. This reported `success` on every issue while
+    # triaging nothing — verified on run 34073165122, an `issues` event whose log
+    # reads "orchestrate exited non-zero; triage did not complete. / No CLI tools
+    # available." with the job green. Same three mechanisms as #4919:
+    # continue-on-error, a gate that measured key presence rather than
+    # triageability, and `if: always()` on the summary.
     if: |
-      github.event_name == 'issues' ||
-      (github.event_name == 'workflow_dispatch' && inputs.issue_number != '')
+      needs.preflight.outputs.reviewable == 'true' &&
+      (github.event_name == 'issues' ||
+       (github.event_name == 'workflow_dispatch' && inputs.issue_number != ''))
     permissions:
       contents: read
       # Read-only — see the note on the review job. The issue body is
@@ -325,24 +349,13 @@ jobs:
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Detect model credentials
-        id: creds
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          fi
-
+      # The precondition is `preflight`'s job now — this job does not run unless
+      # it said `orchestrate` can run (#5878).
       - name: Triage Issue
         id: triage
-        if: steps.creds.outputs.available == 'true'
-        continue-on-error: true
+        # No `continue-on-error`. Every branch below writes an outcome and exits
+        # 0 on purpose, so the step does not fail — `Enforce triage outcome`
+        # turns a non-triage into a red check instead of a summary line.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -404,7 +417,6 @@ jobs:
         if: always()
         env:
           OUTCOME: ${{ steps.triage.outputs.outcome }}
-          CREDS: ${{ steps.creds.outputs.available }}
           ISSUE_NUM: ${{ steps.issue.outputs.number }}
         run: |
           {
@@ -429,11 +441,25 @@ jobs:
                 echo "⚠️ NOT TRIAGED — orchestrate returned output this job could not parse."
                 ;;
               *)
-                if [ "${CREDS}" != "true" ]; then
-                  echo "⚠️ NOT TRIAGED — no model API key is configured, so no triage ran."
-                else
-                  echo "⚠️ NOT TRIAGED — the triage step did not report an outcome."
-                fi
+                # The no-credential case cannot land here any more: `preflight`
+                # skips this whole job, so an empty outcome means the step died
+                # before writing one.
+                echo "⚠️ NOT TRIAGED — the triage step did not report an outcome."
                 ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The twin of `Enforce review outcome` (#4919, #5878). Reaching here means
+      # `preflight` said orchestrate could run, so a non-triage is a substrate
+      # failure — a red check, not a summary line nobody reads.
+      - name: Enforce triage outcome
+        if: always()
+        env:
+          OUTCOME: ${{ steps.triage.outputs.outcome }}
+        run: |
+          if [ "${OUTCOME:-}" = "triaged" ]; then
+            echo "Triage completed."
+            exit 0
+          fi
+          echo "::error::No triage was produced (outcome: ${OUTCOME:-none}). Preconditions were met, so this is a substrate failure — see the Triage Issue step log."
+          exit 1
