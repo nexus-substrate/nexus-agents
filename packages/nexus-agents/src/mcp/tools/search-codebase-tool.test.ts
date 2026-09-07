@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => {
   const indexInstance = {
     index: vi.fn().mockResolvedValue(undefined),
     search: vi.fn().mockReturnValue([]),
+    // The tool reads the pre-limit total from here so it can say when a
+    // result set was capped. The mock must carry it or every search test throws
+    // — `tsc` cannot catch that, because the mock is a plain object literal.
+    searchWithTotal: vi.fn().mockReturnValue({ results: [], total: 0 }),
     listFiles: vi.fn().mockReturnValue([]),
     getFileSummary: vi.fn().mockReturnValue(undefined),
     stats: { files: 0, symbols: 0, skippedDirs: 0 },
@@ -67,6 +71,7 @@ describe('search-codebase-tool (#2159)', () => {
     // resets call history, not `mockReturnValue` setups — this keeps the
     // defaults fresh).
     mocks.indexInstance.search.mockReturnValue([]);
+    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
     mocks.indexInstance.listFiles.mockReturnValue([]);
     mocks.indexInstance.getFileSummary.mockReturnValue(undefined);
     mocks.indexInstance.stats = { files: 0, symbols: 0, skippedDirs: 0 };
@@ -151,6 +156,7 @@ describe('search-codebase-tool (#2159)', () => {
   describe('skipped-directory reporting (#4243 — truncation must be visible, not silent)', () => {
     it('appends a note to "no results" output when directories were skipped', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
+    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 2 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -160,18 +166,21 @@ describe('search-codebase-tool (#2159)', () => {
 
     it('appends a note to non-empty search results when directories were skipped', async () => {
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 1 };
-      mocks.indexInstance.search.mockReturnValue([
-        {
-          matchType: 'exact',
-          symbol: {
-            name: 'doThing',
-            kind: 'function',
-            exported: true,
-            filePath: 'src/foo.ts',
-            startLine: 42,
+      mocks.indexInstance.searchWithTotal.mockReturnValue({
+        results: [
+          {
+            matchType: 'exact',
+            symbol: {
+              name: 'doThing',
+              kind: 'function',
+              exported: true,
+              filePath: 'src/foo.ts',
+              startLine: 42,
+            },
           },
-        },
-      ]);
+        ],
+        total: 1,
+      });
       const result = await searchCodebaseHandler({ query: 'doThing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
       expect(text).toMatch(/1 subdirectory was not indexed/);
@@ -187,6 +196,7 @@ describe('search-codebase-tool (#2159)', () => {
 
     it('omits the note entirely when no directories were skipped', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
+    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -329,6 +339,7 @@ describe('search-codebase-tool (#2159)', () => {
   describe('mode dispatch', () => {
     it('search mode: reports zero results cleanly', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
+    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       expect(result.isError).toBeFalsy();
@@ -338,18 +349,21 @@ describe('search-codebase-tool (#2159)', () => {
     });
 
     it('search mode: formats non-empty results with matchType + kind + location', async () => {
-      mocks.indexInstance.search.mockReturnValue([
-        {
-          matchType: 'exact',
-          symbol: {
-            name: 'doThing',
-            kind: 'function',
-            exported: true,
-            filePath: 'src/foo.ts',
-            startLine: 42,
+      mocks.indexInstance.searchWithTotal.mockReturnValue({
+        results: [
+          {
+            matchType: 'exact',
+            symbol: {
+              name: 'doThing',
+              kind: 'function',
+              exported: true,
+              filePath: 'src/foo.ts',
+              startLine: 42,
+            },
           },
-        },
-      ]);
+        ],
+        total: 1,
+      });
       const result = await searchCodebaseHandler({ query: 'doThing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
       expect(text).toMatch(/1 results for "doThing"/);
@@ -391,8 +405,60 @@ describe('search-codebase-tool (#2159)', () => {
   });
 
   describe('error propagation', () => {
+    it('says when the result set was capped by `limit`', async () => {
+      // The header said "20 results" whether 20 or 340 symbols matched, so a
+      // caller searching a common name took a capped set for the complete one.
+      mocks.indexInstance.searchWithTotal.mockReturnValue({
+        results: Array.from({ length: 2 }, (_, i) => ({
+          matchType: 'partial',
+          symbol: {
+            name: `handler${String(i)}`,
+            kind: 'function',
+            exported: true,
+            filePath: 'src/a.ts',
+            startLine: i + 1,
+          },
+        })),
+        total: 340,
+      });
+
+      const result = await searchCodebaseHandler({ query: 'handler', limit: 2 }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+
+      expect(text).toMatch(/top 2 of 340 matches/);
+      expect(text).toMatch(/338 further match\(es\) were omitted/);
+      expect(text).toMatch(/not the complete match set/);
+    });
+
+    it('says nothing about truncation when the whole match set fits', async () => {
+      // The other direction: a note on an untruncated result would be its own
+      // misreport, and would train readers to ignore it.
+      mocks.indexInstance.searchWithTotal.mockReturnValue({
+        results: [
+          {
+            matchType: 'exact',
+            symbol: {
+              name: 'only',
+              kind: 'function',
+              exported: true,
+              filePath: 'src/a.ts',
+              startLine: 1,
+            },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await searchCodebaseHandler({ query: 'only', limit: 20 }, makeCtx());
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+
+      expect(text).toMatch(/1 results for "only"/);
+      expect(text).not.toMatch(/omitted/);
+      expect(text).not.toMatch(/complete match set/);
+    });
+
     it('wraps indexer failures in a toolError', async () => {
-      mocks.indexInstance.search.mockImplementationOnce(() => {
+      mocks.indexInstance.searchWithTotal.mockImplementationOnce(() => {
         throw new Error('index corrupted');
       });
       const result = await searchCodebaseHandler({ query: 'foo' }, makeCtx());

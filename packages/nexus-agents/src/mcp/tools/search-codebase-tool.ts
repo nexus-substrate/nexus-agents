@@ -173,8 +173,27 @@ function skippedDirsNote(index: CodebaseIndex): string {
   return `\n\nNote: ${String(skippedDirs)} subdirector${skippedDirs === 1 ? 'y was' : 'ies were'} not indexed because maxDepth was exhausted. Pass a larger maxDepth (up to ${String(MAX_INDEX_MAX_DEPTH)}) to include them.`;
 }
 
+/**
+ * A note appended whenever `limit` cut the result set short.
+ *
+ * Without it the header read `"20 results for ..."` whether 20 or 340 symbols
+ * matched, so a caller searching a common name took a capped set for the
+ * complete one. The wording mirrors `search_usages`'s `scopeNote`, which has
+ * carried the same disclosure since it was written.
+ */
+function truncationNote(total: number, shown: number, limit: number): string {
+  if (total <= shown) return '';
+  return `\n\nNote: showing the top ${String(shown)} of ${String(total)} matches (limit ${String(limit)}). ${String(total - shown)} further match(es) were omitted — this is not the complete match set. Raise \`limit\` to see more.`;
+}
+
 /** Format default search-mode output — handles both the empty and non-empty cases. */
-function formatSearchOutput(index: CodebaseIndex, query: string, results: SearchResult[]): string {
+function formatSearchOutput(
+  index: CodebaseIndex,
+  query: string,
+  found: { results: SearchResult[]; total: number },
+  limit: number
+): string {
+  const results = found.results;
   if (results.length === 0) {
     return `No symbols matching "${query}" found in ${String(index.stats.files)} indexed files.${skippedDirsNote(index)}`;
   }
@@ -186,7 +205,7 @@ function formatSearchOutput(index: CodebaseIndex, query: string, results: Search
     })
     .join('\n');
 
-  return `${String(results.length)} results for "${query}":\n\n${output}${skippedDirsNote(index)}`;
+  return `${String(results.length)} results for "${query}":\n\n${output}${skippedDirsNote(index)}${truncationNote(found.total, results.length, limit)}`;
 }
 
 /** Format list mode output. */
@@ -238,8 +257,9 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
     }
 
     // Default: search mode
-    const results = index.search(query, limit ?? 20);
-    return toolSuccess(formatSearchOutput(index, query, results));
+    const effectiveLimit = limit ?? 20;
+    const found = index.searchWithTotal(query, effectiveLimit);
+    return toolSuccess(formatSearchOutput(index, query, found, effectiveLimit));
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     ctx.logger.error('Codebase search failed', e);
