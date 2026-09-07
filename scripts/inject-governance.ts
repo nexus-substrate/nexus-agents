@@ -1645,7 +1645,8 @@ function printGovernanceSummary(
     skills: SkillMetadata[];
     models: unknown[];
   },
-  agentCount: number
+  agentCount: number,
+  probeCount: number
 ): void {
   console.log('Governance check passed:');
   console.log(`  MCP Tools: ${String(actual.tools.length)}`);
@@ -1654,6 +1655,9 @@ function printGovernanceSummary(
   console.log(`  Skills: ${String(actual.skills.length)}`);
   console.log(`  Agents: ${String(agentCount)}`);
   console.log(`  Models: ${String(actual.models.length)}`);
+  // #5882: the registry counts above say what the tree holds; this says how
+  // much of the plugin surface was actually probed for drift against them.
+  console.log(`  Count-drift probes run: ${String(probeCount)}`);
 }
 
 /**
@@ -1680,7 +1684,7 @@ export function checkGovernance(): boolean {
   const documented = extractDocumentedCounts(content);
 
   const agents = extractAgents();
-  const ancillaryOk = checkAncillaryCounts({
+  const ancillary = checkAncillaryCounts({
     toolCount: actual.tools.length,
     skillCount: actual.skills.length,
     agentCount: agents.length,
@@ -1694,7 +1698,7 @@ export function checkGovernance(): boolean {
     checkRegistryDrift('Skills', documented.skills, actual.skills.length),
     content.includes(MARKERS.toolIndexStart) ||
       (console.error('Tool index section not found'), false),
-    ancillaryOk,
+    ancillary.ok,
     versionOk,
     checkReadmeToolTable(actual.tools),
     checkEntrypoints(actual.tools, extractCliCommands()),
@@ -1714,7 +1718,7 @@ export function checkGovernance(): boolean {
   ];
 
   const passed = checks.every(Boolean);
-  if (passed) printGovernanceSummary(actual, agents.length);
+  if (passed) printGovernanceSummary(actual, agents.length, ancillary.probeCount);
   return passed;
 }
 
@@ -1947,8 +1951,23 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
   ];
 }
 
+/**
+ * Run one count-drift probe.
+ *
+ * A missing target used to `return true` — a pass, with no output. That made
+ * "the file was read and agreed" indistinguishable from "the file is gone and
+ * nothing was checked", and it was the ONLY silent outcome: a present file
+ * whose pattern had drifted returned `false` and printed. So these probes went
+ * loud when they worked and quiet when they stopped working (#5882).
+ *
+ * `PLUGIN_INSTALL.md` alone carries 6 of them and lives under
+ * `docs/getting-started/`, which this repo reorganises routinely.
+ */
 function runProbe(probe: Probe): boolean {
-  if (!existsSync(probe.path)) return true;
+  if (!existsSync(probe.path)) {
+    console.error(`❌ ${probe.label}: ${probe.path} does not exist — probe not run`);
+    return false;
+  }
   const content = readFileSync(probe.path, 'utf-8');
   const match = probe.pattern.exec(content);
   if (match === null) {
@@ -1965,8 +1984,28 @@ function runProbe(probe: Probe): boolean {
   return true;
 }
 
-function checkAncillaryCounts(counts: AncillaryCounts): boolean {
-  return buildAncillaryProbes(counts).every(runProbe);
+/**
+ * Count-drift probes, and how many ran.
+ *
+ * The count is reported so a future tolerant branch cannot hide behind the
+ * green summary: an operator can see "10 probes" become "4 probes" without
+ * having to notice an absence.
+ */
+function checkAncillaryCounts(counts: AncillaryCounts): { ok: boolean; probeCount: number } {
+  const probes = buildAncillaryProbes(counts);
+  // Not `.every()`: it short-circuits, so the first missing or drifted probe
+  // would suppress the report for every one after it. Run them all, then
+  // aggregate — the operator wants the whole list in one CI log.
+  const results = probes.map(runProbe);
+  // Zero probes is not a pass. `[].every()` reports health over a check that
+  // examined nothing — the same defect this function was just fixed for one
+  // level down, and the repo's own `nexus/no-vacuous-verdict` rule caught it
+  // here (#5882).
+  if (results.length === 0) {
+    console.error('❌ Count-drift probes: none were built — nothing was checked');
+    return { ok: false, probeCount: 0 };
+  }
+  return { ok: results.every(Boolean), probeCount: probes.length };
 }
 
 /**
@@ -2317,7 +2356,14 @@ function injectAncillaryCounts(counts: AncillaryCounts): void {
  * Fails if .claude-plugin/plugin.json `version` !== package.json `version`.
  */
 function checkPluginVersion(): boolean {
-  if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(PLUGIN_JSON_PATH)) return true;
+  // Same shape as `runProbe` had, and the same fix (#5882): a missing manifest
+  // used to return a silent pass, so losing either file disabled the
+  // version-sync check with no output at all.
+  const absent = [PACKAGE_JSON_PATH, PLUGIN_JSON_PATH].filter((p) => !existsSync(p));
+  if (absent.length > 0) {
+    console.error(`❌ Plugin version check: missing ${absent.join(', ')} — check not run`);
+    return false;
+  }
   const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string };
   const plugin = JSON.parse(readFileSync(PLUGIN_JSON_PATH, 'utf-8')) as { version?: string };
   if (pkg.version === plugin.version) return true;
