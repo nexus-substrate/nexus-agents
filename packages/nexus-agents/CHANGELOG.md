@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 8.44.3
+
+### Patch Changes
+
+- [#5938](https://github.com/nexus-substrate/nexus-agents/pull/5938) [`e9c548b`](https://github.com/nexus-substrate/nexus-agents/commit/e9c548b9571a18173cd2de81e2fe8b7cc6077461) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Delete six orphaned barrel files under `src/testing/` (308 lines) that nothing
+  imports — not production code, not tests, not CI, not a script, and not each
+  other except in one closed loop that is itself unreachable. Every module they
+  re-exported keeps its existing importers, which reach it by direct path.
+
+- [#5940](https://github.com/nexus-substrate/nexus-agents/pull/5940) [`9df370a`](https://github.com/nexus-substrate/nexus-agents/commit/9df370a1ec6fd2a83b8bfabf23e8ed3de58d6598) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Replace the ad-hoc `void x;` "intentionally unused" marker with ESLint's own
+  mechanisms: `varsIgnorePattern: '^_'` and `ignoreRestSiblings` on
+  `no-unused-vars`, optional catch binding where a caught error was never read, and
+  deletion of two genuinely dead bindings. The idiom existed only to suppress
+  `no-unused-vars` and became 25 errors under `no-meaningless-void-operator` in
+  typescript-eslint 8.69, which is correct that `void` on a plain identifier
+  discards nothing.
+
 ## 8.44.2
 
 ### Patch Changes
