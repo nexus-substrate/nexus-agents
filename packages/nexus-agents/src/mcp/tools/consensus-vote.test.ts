@@ -1872,6 +1872,117 @@ function decideAq(
   );
 }
 
+describe('respondent floor (#5780)', () => {
+  /** Decide with the DEFAULT policy, so the floor is the only thing in play. */
+  function decideDefault(
+    votes: AgentVoteResult[],
+    opts: { outcome: 'approved' | 'rejected'; strategy?: VotingStrategy; panelSize?: number }
+  ): ConsensusVoteResponse {
+    return buildResponse(
+      { proposal: 'p', simulateVotes: false, quickMode: false },
+      aqResult(votes, opts)
+    );
+  }
+
+  // The two figures the panel named — 7 -> 5 and quick 3 -> 3 — are asserted
+  // through the DECISION rather than against the helper, because the decision
+  // is what callers see. `2 approve + 1 reject of a requested 7` pins the
+  // first (4 respondents would also be below it) and `quick mode requires
+  // every one of its three seats` pins the second, which is the clamp: two
+  // thirds of 3 is 2.
+
+  // The case #5780 was filed for, and the reason `ERROR_FLOOR_FRACTION` alone
+  // is not enough: 3 errors of 7 is 42.9%, under the >50% floor, so nothing
+  // voided it and 2 approvals carried a supermajority at 66.7%.
+  it('2 approve + 1 reject of a requested 7 is no_quorum, not approved', () => {
+    const votes = [
+      aqVote('architect', 'approve'),
+      aqVote('security', 'approve'),
+      aqVote('devex', 'reject'),
+      aqVote('ai_ml', 'abstain'),
+      aqVote('pm', 'abstain', 'error'),
+      aqVote('catfish', 'abstain', 'error'),
+      aqVote('scope_steward', 'abstain', 'error'),
+    ];
+
+    const res = decideDefault(votes, { outcome: 'approved', strategy: 'supermajority' });
+
+    expect(res.decision).toBe('no_quorum');
+    expect(res.policyReason).toContain('3 of 7 voters decided');
+    expect(res.policyReason).toContain('5 required');
+  });
+
+  it('a full panel that answered is unaffected', () => {
+    // The pair. Without it the floor could reject everything and the assertion
+    // above would still pass. This is the shape of every vote in this session.
+    const votes = [
+      ...['architect', 'security', 'devex', 'ai_ml', 'pm', 'scope_steward'].map((r) =>
+        aqVote(r as AgentVoteResult['role'], 'approve')
+      ),
+      aqVote('catfish', 'reject'),
+    ];
+
+    const res = decideDefault(votes, { outcome: 'approved', strategy: 'supermajority' });
+
+    expect(res.decision).toBe('approved');
+  });
+
+  it('a thin REJECT still blocks — the floor guards approvals only', () => {
+    // Mirrors the asymmetry absolute_quorum already encodes. Too few voices
+    // carrying a decision is the harm; too few blocking one is the safe
+    // direction, and voiding it would add a re-run without preventing anything.
+    const votes = [
+      aqVote('architect', 'reject'),
+      aqVote('security', 'reject'),
+      aqVote('devex', 'abstain', 'error'),
+      aqVote('ai_ml', 'abstain', 'error'),
+      aqVote('pm', 'abstain'),
+      aqVote('catfish', 'abstain'),
+      aqVote('scope_steward', 'abstain'),
+    ];
+
+    const res = decideDefault(votes, { outcome: 'rejected', strategy: 'supermajority' });
+
+    expect(res.decision).toBe('rejected');
+  });
+
+  it('quick mode requires every one of its three seats', () => {
+    const votes = [
+      aqVote('architect', 'approve'),
+      aqVote('security', 'approve'),
+      aqVote('scope_steward', 'abstain', 'error'),
+    ];
+
+    const res = decideDefault(votes, {
+      outcome: 'approved',
+      strategy: 'supermajority',
+      panelSize: 3,
+    });
+
+    expect(res.decision).toBe('no_quorum');
+    expect(res.policyReason).toContain('2 of 3 voters decided');
+  });
+
+  it('leaves absolute_quorum its own degrade reason when both would fire', () => {
+    // Ordering check. 4 approve + 3 abstain on a 7-panel is below BOTH bars;
+    // the policy the caller opted into gets to say why.
+    const votes = [
+      aqVote('architect', 'approve'),
+      aqVote('security', 'approve'),
+      aqVote('devex', 'approve'),
+      aqVote('ai_ml', 'approve'),
+      aqVote('pm', 'abstain'),
+      aqVote('catfish', 'abstain'),
+      aqVote('scope_steward', 'abstain'),
+    ];
+
+    const res = decideAq(votes, { outcome: 'approved', strategy: 'supermajority' });
+
+    expect(res.decision).toBe('no_quorum');
+    expect(res.policyReason).toContain('absolute quorum not met');
+  });
+});
+
 describe('absolute_quorum error policy (#4132)', () => {
   describe('the anti-DoS invariant — induced error never→approved, never→rejected', () => {
     it.each([0, 1, 2, 3])(

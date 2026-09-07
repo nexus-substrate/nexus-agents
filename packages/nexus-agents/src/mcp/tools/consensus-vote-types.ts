@@ -619,6 +619,33 @@ function absoluteQuorumFraction(strategy: VotingStrategy): number {
   }
 }
 
+/**
+ * #5780: the smallest number of voters that must have cast approve-or-reject
+ * before any ratio is applied to them.
+ *
+ * The gap this closes: every strategy measures its threshold over
+ * `approve + reject`, and abstentions and errored seats leave that denominator
+ * with no floor under it. `ERROR_FLOOR_FRACTION` voids a panel only when errors
+ * EXCEED half, so one seat under it — 7 requested, 3 errored, 1 abstained —
+ * left three respondents, and 2 approvals carried an architecture or security
+ * vote at 66.7%.
+ *
+ * Two thirds of the requested panel, never fewer than three, never more than
+ * the panel itself. That is one rule satisfying both figures the panel named
+ * (7 → 5, quick 3 → 3); the `3` clamp is what makes quick mode require every
+ * seat, since two thirds of 3 is 2.
+ *
+ * Deliberately about RESPONDENTS, not errors. `absolute_quorum` (#4132) voids
+ * on an errored seat specifically, so an induced error cannot manufacture a
+ * verdict; this is about how few voices decided, whatever silenced them — a
+ * panel of 7 returning four abstentions and three votes has zero errors and
+ * still should not decide. The two compose; neither replaces the other.
+ */
+function minimumRespondents(panelSize: number): number {
+  if (panelSize <= 0) return 0;
+  return Math.min(panelSize, Math.max(Math.ceil((panelSize * 2) / 3), 3));
+}
+
 /** A vote decision plus the (optional) actionable reason a panel degraded. */
 export interface VoteDecisionOutcome {
   readonly decision: VoteDecisionStatus;
@@ -698,6 +725,36 @@ function computeAbsoluteQuorumDecision(
 }
 
 /**
+ * #5780: `no_quorum` when too few voices actually decided, or `undefined` when
+ * the panel met its floor.
+ *
+ * `no_quorum` and not `rejected`: too few respondents is a statement about the
+ * panel, not about the proposal, and it is recoverable by re-running the
+ * missing seats — the same shape `absolute_quorum` uses for an errored voice.
+ * Reporting it as a rejection would be a verdict the panel never reached.
+ *
+ * Applied ONLY to an approval, mirroring the asymmetry `absolute_quorum`
+ * already encodes ("A GENUINE reject still blocks"). The harm in #5780 is that
+ * too few voices can CARRY a decision; a rejection by too few blocks it, which
+ * is the safe direction, and voiding that would add a re-run without
+ * preventing anything. A thin reject is still visible in `panelCoverage`.
+ */
+function respondentFloorOutcome(result: ExtendedVotingResult): VoteDecisionOutcome | undefined {
+  if (result.result.outcome !== 'approved') return undefined;
+  const panel = result.panelSize ?? result.votes.length;
+  const floor = minimumRespondents(panel);
+  const respondents = result.votes.filter(
+    (v) =>
+      v.source !== 'error' && (v.vote.decision === 'approve' || v.vote.decision === 'reject')
+  ).length;
+  if (respondents >= floor) return undefined;
+  return {
+    decision: 'no_quorum',
+    degradeReason: `no_quorum: ${String(respondents)} of ${String(panel)} voters decided; ${String(floor)} required before a ratio is applied (#5780)`,
+  };
+}
+
+/**
  * Resolve the user-facing decision for a tallied vote. Keeps the pre-#4132 path
  * verbatim for every policy except `absolute_quorum`, which routes through
  * {@link computeAbsoluteQuorumDecision}.
@@ -719,10 +776,24 @@ export function resolveVoteDecision(
   if (result.policyReason !== undefined || (!result.result.quorumReached && allErrors)) {
     return { decision: 'no_quorum' };
   }
+  // #5780: the responder floor guards an APPROVAL under every policy and every
+  // strategy — a denominator of three out of a requested seven is equally
+  // unrepresentative whichever bar is measured over it.
+  //
+  // Ordered after `absolute_quorum`, not before, so that policy keeps its own
+  // more specific degrade reason. The two are not redundant: absolute_quorum
+  // guarantees `approveCount >= ceil(frac * panel)`, which subsumes the floor
+  // at `supermajority` (5 approvals of 7) but NOT at `majority`, where 4
+  // approvals over 4 respondents of a requested 7 clears it and still leaves
+  // three voices unheard.
   if (input.errorPolicy === 'absolute_quorum') {
-    return computeAbsoluteQuorumDecision(result, errorCount, allErrors);
+    const quorumOutcome = computeAbsoluteQuorumDecision(result, errorCount, allErrors);
+    if (quorumOutcome.decision !== 'approved') return quorumOutcome;
+    return respondentFloorOutcome(result) ?? quorumOutcome;
   }
-  return { decision: mapOutcomeToDecision(result.result.outcome) };
+  return (
+    respondentFloorOutcome(result) ?? { decision: mapOutcomeToDecision(result.result.outcome) }
+  );
 }
 
 /**
