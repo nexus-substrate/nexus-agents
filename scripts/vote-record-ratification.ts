@@ -47,6 +47,18 @@ export interface VoteRecordResolution {
   readonly conflictSubjects: ReadonlySet<string>;
   /** Fail-closed findings (a malformed/tampered/duplicate ledger). */
   readonly findings: TierDriftFinding[];
+  /**
+   * True when the ledger was EMPTY, so the tamper-evidence check verified
+   * nothing (#5818).
+   *
+   * Deliberately NOT a `TierDriftFinding`: every `TierDriftFinding.code` is a
+   * failure code and the gate treats any finding as fail-closed, so recording
+   * this there would turn an empty ledger into a drift failure — the exact
+   * fail-closed flip the ratifying panel declined to make. An empty ledger is
+   * absence, not tampering. This field exists so the gate's OUTPUT can say so
+   * while its VERDICT is unchanged.
+   */
+  readonly ledgerVerifiedNothing: boolean;
 }
 
 /** A fail-closed resolution: resolve nothing, with one ledger-invalid finding. */
@@ -55,6 +67,9 @@ function ledgerInvalid(message: string): VoteRecordResolution {
     resolver: () => undefined,
     conflictSubjects: new Set<string>(),
     findings: [{ code: 'vote-records-ledger-invalid', message }],
+    // An invalid ledger is a different failure from an empty one; the empty
+    // disclosure would be misleading here.
+    ledgerVerifiedNothing: false,
   };
 }
 
@@ -76,7 +91,14 @@ export function buildVoteRecordRatificationResolver(
   jsonlText: string | undefined
 ): VoteRecordResolution {
   if (jsonlText === undefined) {
-    return { resolver: () => undefined, conflictSubjects: new Set<string>(), findings: [] };
+    return {
+      resolver: () => undefined,
+      conflictSubjects: new Set<string>(),
+      findings: [],
+      // No ledger file at all — the same "verified nothing" as an empty one,
+      // and the gate should say so rather than resolving silently to nothing.
+      ledgerVerifiedNothing: true,
+    };
   }
 
   const { records, invalidLines } = parseVoteRecordsText(jsonlText);
@@ -110,17 +132,12 @@ export function buildVoteRecordRatificationResolver(
   return {
     resolver: (ref) => byId.get(ref),
     conflictSubjects: conflictingRatifiedSubjects(records),
+    findings: [],
     // #5818: an EMPTY ledger passes `verifyVoteRecordSet` — correctly, absence
     // is not tamper evidence — but `ok: true` alone could not distinguish
     // "verified N records" from "verified nothing", and every ratification ref
-    // then resolves to undefined for a reason the output never states. Say it.
-    findings:
-      verification.notVerified === 'empty'
-        ? [
-            'governance/vote-records.jsonl is EMPTY: the tamper-evidence check verified nothing, ' +
-              'so every ratificationVoteRef will resolve to no record. This is absence, not tampering.',
-          ]
-        : [],
+    // then resolves to undefined for a reason the output never states.
+    ledgerVerifiedNothing: verification.notVerified === 'empty',
   };
 }
 

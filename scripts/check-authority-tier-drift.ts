@@ -499,8 +499,21 @@ export function ratificationGateFindings(
   // that forged or truncated `governance/vote-records.jsonl` passed this gate
   // green. The tamper-evidence check that exists to catch exactly that could
   // not fire.
-  const { resolver, conflictSubjects, findings } =
+  const { resolver, conflictSubjects, findings, ledgerVerifiedNothing } =
     buildVoteRecordRatificationResolver(voteRecordsJsonl);
+
+  // #5818: an empty ledger passes tamper-evidence verification because absence
+  // is not tampering — but a silent pass cannot be told from "verified N
+  // records, all hashes held". Say which, WITHOUT adding a finding: every
+  // TierDriftFinding code is a failure code, so recording it there would flip
+  // an empty ledger to fail-closed, which the ratifying panel declined.
+  if (ledgerVerifiedNothing) {
+    console.error(
+      '[authority-tier-drift] NOTE: governance/vote-records.jsonl is empty or absent — ' +
+        'the tamper-evidence check verified NOTHING, so every ratificationVoteRef resolves ' +
+        'to no record. This is absence, not tampering, and is not a finding.'
+    );
+  }
 
   // With no promotion claimed there is nothing to resolve — but a broken ledger
   // is still a broken ledger. A clean or empty ledger yields no findings here,
