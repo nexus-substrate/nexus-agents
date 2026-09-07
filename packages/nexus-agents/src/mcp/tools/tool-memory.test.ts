@@ -24,6 +24,9 @@ const mockSessionMemory = {
   isSessionActive: vi.fn().mockReturnValue(true),
   searchLearnings: vi.fn().mockReturnValue([]),
   getRecentErrorSolutions: vi.fn().mockReturnValue([]),
+  getCurrentSessionLearnings: vi.fn().mockReturnValue([]),
+  getCurrentSessionTasks: vi.fn().mockReturnValue([]),
+  getCurrentSessionErrors: vi.fn().mockReturnValue([]),
 };
 
 vi.mock('../../context/session-memory.js', () => ({
@@ -735,5 +738,40 @@ describe('decay config reaches MemoryDecayManager (#5097 finding 2)', () => {
       await manager.awaitBackendInitialization();
       expect(MemoryDecayManager).toHaveBeenCalledWith({}, logger);
     });
+  });
+});
+
+// ============================================================================
+// getSessionCounts — all three fields read the live session (#5858)
+// ============================================================================
+
+describe('ToolMemoryManager.getSessionCounts (#5858)', () => {
+  it('reads learningsCount from the live session, like its two siblings', () => {
+    // Was: the caller derived this count by asking getRelevantLearnings for a
+    // rendered string and counting its lines, which a relevance slice capped
+    // at 3. Three different lengths so no field can be a copy of another.
+    mockSessionMemory.getCurrentSessionLearnings.mockReturnValue([{}, {}, {}, {}]);
+    mockSessionMemory.getCurrentSessionTasks.mockReturnValue([{}, {}]);
+    mockSessionMemory.getCurrentSessionErrors.mockReturnValue([{}, {}, {}, {}, {}, {}, {}]);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+
+    expect(manager.getSessionCounts()).toEqual({
+      learningsCount: 4,
+      tasksCount: 2,
+      errorsCount: 7,
+    });
+  });
+
+  it('reports zero learnings for a session that recorded none', () => {
+    // Pair test: 0 must still be reachable, and for the right reason.
+    mockSessionMemory.getCurrentSessionLearnings.mockReturnValue([]);
+    mockSessionMemory.getCurrentSessionTasks.mockReturnValue([{}]);
+    mockSessionMemory.getCurrentSessionErrors.mockReturnValue([]);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+
+    expect(manager.getSessionCounts().learningsCount).toBe(0);
+    expect(manager.getSessionCounts().tasksCount).toBe(1);
   });
 });

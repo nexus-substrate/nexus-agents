@@ -730,8 +730,16 @@ export class ToolMemoryManager {
    * assertion corroborating the fabricated zeros. The episode has held both all
    * along; nothing exposed them before `endSession`.
    */
-  getSessionCounts(): { tasksCount: number; errorsCount: number } {
+  getSessionCounts(): { learningsCount: number; tasksCount: number; errorsCount: number } {
     return {
+      // #5858: `learningsCount` used to be derived by asking
+      // `getRelevantLearnings('', 1000)` for a rendered string and counting
+      // its lines. An empty query matches nothing, so that call always fell
+      // through to a hard `.slice(0, 3)` and the count could never exceed 3 —
+      // and it returned `undefined` outright when `pastLearnings` was empty,
+      // leaving 0 for a session that had recorded learnings. This is the same
+      // live accessor its two siblings already use.
+      learningsCount: this.memory.getCurrentSessionLearnings().length,
       tasksCount: this.memory.getCurrentSessionTasks().length,
       errorsCount: this.memory.getCurrentSessionErrors().length,
     };
