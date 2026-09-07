@@ -5,7 +5,7 @@
  * schema validation, version check, and round-trip save→load.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -514,6 +514,64 @@ describe('PersistentStrategyDistiller', () => {
       // Pass an invalid path that resolves through unwritable directories.
       expect(() => loadPersistedRules('/proc/self/nope/rules.json')).not.toThrow();
       expect(loadPersistedRules('/proc/self/nope/rules.json')).toEqual([]);
+    });
+
+    describe('an unreadable file is disclosed, not reported as "no rules" (#5907)', () => {
+      // All four cases below return `[]`. The verdict is deliberately unchanged
+      // — the never-throws contract above is right. What was missing is that a
+      // caller could not tell "nothing was learned" from "what was learned could
+      // not be read", and `ContextRetriever` then assembles a prompt asserting
+      // that nothing is known to fail.
+      function spyLogger(): { warn: ReturnType<typeof vi.fn> } {
+        return { warn: vi.fn() };
+      }
+
+      it('warns when the snapshot fails schema validation', () => {
+        // The realistic path: RulesSnapshotSchema pins `version: z.literal(1)`,
+        // so a file written by a newer build discards EVERY rule in it.
+        writeFileSync(filePath, JSON.stringify({ version: 99, rules: [] }));
+        const logger = spyLogger();
+
+        expect(loadPersistedRules(filePath, logger)).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('failed validation'),
+          expect.objectContaining({ path: filePath })
+        );
+      });
+
+      it('warns when the file cannot be parsed', () => {
+        writeFileSync(filePath, '{not valid');
+        const logger = spyLogger();
+
+        expect(loadPersistedRules(filePath, logger)).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('could not be read'),
+          expect.objectContaining({ path: filePath })
+        );
+      });
+
+      it('stays SILENT when the file simply does not exist', () => {
+        // This is the case the old comment was right about: absence really is
+        // "no signal". Warning here would train readers to ignore the warning.
+        const missing = join(tmpDir, 'never-written.json');
+        const logger = spyLogger();
+
+        expect(loadPersistedRules(missing, logger)).toEqual([]);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      it('stays SILENT on a valid snapshot', () => {
+        writeFileSync(filePath, JSON.stringify(makeSnapshot([makeRule({ id: 'r1' })])));
+        const logger = spyLogger();
+
+        expect(loadPersistedRules(filePath, logger)).toHaveLength(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      it('still returns [] with no logger supplied — the disclosure is optional', () => {
+        writeFileSync(filePath, '{not valid');
+        expect(loadPersistedRules(filePath)).toEqual([]);
+      });
     });
   });
 });
