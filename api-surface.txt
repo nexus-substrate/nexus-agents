@@ -2886,6 +2886,7 @@ InterfaceDeclaration DevPipelineOptions
 InterfaceDeclaration DevPipelineResult
   readonly completed: boolean
   readonly dryRun?: true | undefined
+  readonly harnessMode?: true | undefined
   readonly plan: string
   readonly planStatus?: "empty" | "no_quorum" | "unapproved" | undefined
   readonly planVoteApprovalPercentage?: number | undefined

@@ -315,6 +315,7 @@ function buildStructuredOutput(
     // security rejection from a gate that never ran — which is the whole point
     // of the fields. They were added to DevPipelineResult and then not listed
     // here, so they never reached the MCP surface.
+    ...(result.harnessMode !== undefined ? { harnessMode: result.harnessMode } : {}),
     ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
     ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
     ...(result.planVoteReason !== undefined ? { planVoteReason: result.planVoteReason } : {}),
@@ -395,7 +396,44 @@ async function executeDevPipelineBody(
   const result = await runDevPipeline(taskText, stages, pipelineOptions);
   // Always flush memory session — including dry-run exits (#1716)
   flushPipelineMemory();
-  return toolSuccessStructured(buildStructuredOutput(result, simulated));
+  const output = buildStructuredOutput(result, simulated);
+
+  // #5888. `runAsJob`'s fail-closed check inspects the ToolResult's ROOT keys
+  // only (`isError`/`ok`/`success`), and deliberately so — a deep scan would
+  // read a vote whose DECISION is reject as a failed job. `toolSuccessStructured`
+  // nests everything under `structuredContent`, so `completed: false` never
+  // reached it and a rejected pipeline was recorded `complete`. The contract is
+  // that the caller hoists; `pipeline-tool.ts` and `run-graph-workflow.ts` both
+  // do, and this was the one caller that did neither.
+  //
+  // A dry run and a harness run are `completed: false` BY REQUEST, not by
+  // fault, and each carries its own marker for exactly this reason. Erroring on
+  // them would trade a false success for a false failure.
+  if (!result.completed && result.dryRun !== true && result.harnessMode !== true) {
+    return toolStructuredError({
+      errorCategory: 'business',
+      message: describeIncompleteRun(result),
+      detail: output,
+    });
+  }
+  return toolSuccessStructured(output);
+}
+
+/**
+ * Say WHY the pipeline did not complete, so the job record's `error` is
+ * actionable rather than a bare "failed".
+ */
+function describeIncompleteRun(result: DevPipelineResult): string {
+  if (result.planStatus !== undefined) {
+    return `Pipeline stopped at the planning gate (planStatus: ${result.planStatus})`;
+  }
+  if (result.securityRan === true && !result.securityPassed) {
+    return 'Pipeline did not complete: the security gate rejected the change';
+  }
+  if (result.taskStatus !== undefined && result.taskStatus !== 'all_done') {
+    return `Pipeline did not complete: tasks ${result.taskStatus}`;
+  }
+  return 'Pipeline did not complete';
 }
 
 async function runDevPipelineHandler(
