@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 import { compilePlan } from './plan-compiler.js';
 import { createCorePluginRegistry } from './core-plugins.js';
+import { PluginRegistry } from './plugin-registry.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import {
   PolicyBlockedError,
@@ -18,6 +19,7 @@ import { executeGraph } from '../orchestration/graph/graph-executor.js';
 import { START } from '../orchestration/graph/graph-types.js';
 import type { GraphExecutionResult } from '../orchestration/graph/graph-types.js';
 import type { Result } from '../core/index.js';
+import { ok } from '../core/index.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
 import type { PipelineStateSnapshot } from './policy-engine.js';
 
@@ -203,6 +205,70 @@ describe('compilePlan', () => {
     expect(placeholderResult).toBeDefined();
     expect(placeholderResult?.['placeholder']).toBe(true);
   });
+
+  // #5863: a REGISTERED skeleton got no marker at all, so it recorded a bare
+  // 'completed' — more confidently than the absent plugin above. Every core
+  // plugin is `noopStageResult()`, and the default registry is the only
+  // registration for the analyze/route/execute stages, so this is the ordinary
+  // path for `buildDelegatePlan`, not an edge.
+  it('marks a registered skeleton plugin so its no-op is not a silent success', async () => {
+    const registry = createCorePluginRegistry();
+    const plan = makePlan({
+      stages: [makeStage({ id: 'analyze', pluginId: 'nexus:task-analyzer' })],
+    });
+    const compiled = compilePlan(plan, { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const entry = findStageResult(result.value.finalState, 'analyze');
+    expect(entry?.['status']).toBe('completed');
+    expect(entry?.['stub']).toBe(true);
+  });
+
+  it('leaves a real plugin unmarked', async () => {
+    // The pair. Without it `stub: true` could be stamped unconditionally and
+    // the assertion above would still pass.
+    // NOT createCorePluginRegistry(): that one is frozen, so `register` fails
+    // silently and the stage falls through to the PLACEHOLDER path — where
+    // `stub` is absent for a different reason and the assertion below passes
+    // whatever the production code does. Caught by mutating `stub` to a
+    // literal `true` and watching this test still pass.
+    const registry = new PluginRegistry();
+    const registered = registry.register({
+      manifest: {
+        id: 'test:real',
+        version: '1.0.0',
+        description: 'Does actual work',
+        stages: ['analyze'],
+        requiredCapabilities: [],
+        trustLevel: 'core',
+        experimental: false,
+      },
+      execute: () =>
+        Promise.resolve({ success: true, outputArtifacts: [], metadata: { stub: false } }),
+      validateConfig: () => ok(undefined),
+    });
+    expect(registered.ok).toBe(true);
+
+    const plan = makePlan({
+      stages: [makeStage({ id: 'analyze', pluginId: 'test:real' })],
+    });
+    const compiled = compilePlan(plan, { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const entry = findStageResult(result.value.finalState, 'analyze');
+    expect(entry?.['status']).toBe('completed');
+    expect(entry?.['stub']).toBeUndefined();
+  });
 });
 
 // ============================================================================
@@ -235,6 +301,16 @@ function enforcement(
     pipelineState: {},
     ...overrides,
   };
+}
+
+/** Pull one stage's recorded entry out of the accumulated stageResults. */
+function findStageResult(
+  finalState: Readonly<Record<string, unknown>>,
+  stageId: string
+): Record<string, unknown> | undefined {
+  const results = finalState['stageResults'];
+  if (!Array.isArray(results)) return undefined;
+  return (results as Record<string, unknown>[]).find((r) => r['stageId'] === stageId);
 }
 
 /** Pull one gate's recorded entry out of the accumulated stageResults. */
