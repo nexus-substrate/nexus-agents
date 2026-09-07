@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 8.42.14
+
+### Patch Changes
+
+- [#5913](https://github.com/nexus-substrate/nexus-agents/pull/5913) [`fb512d2`](https://github.com/nexus-substrate/nexus-agents/commit/fb512d2176d55e718ea881d39a17ba34af0fb124) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `runGraphPipeline` now reports how much of the template it covered. A dry run
+  truncates the stage list at `dryRunStopAfter` — for the dev/general/greenfield
+  templates that drops decompose, implement, qa and security — but the result
+  still carried `success: true` and the FULL `templateId`, so a 3-of-7 dry run was
+  byte-identical to a complete run. `GraphPipelineResult` gains `dryRun?: true`
+  (mirroring `DevPipelineResult`, which already had it) plus `stagesPlanned` and
+  `stagesRun`, and `run_pipeline` surfaces all three.
+
+- [#5905](https://github.com/nexus-substrate/nexus-agents/pull/5905) [`6e13d60`](https://github.com/nexus-substrate/nexus-agents/commit/6e13d60d5cdc6d17186323234488878484befef9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Delete the E2E `ValidationHarness`, whose 20 "checks" were `passed: true`
+  literals aggregating to `allPassed: summary.failed === 0` — a system-integrity
+  verdict no code path could make red. It was unpublished (absent from the single
+  `.` export and from `api-surface.txt`) and had no consumer, internal or external.
+  Acceptance criteria for a real replacement, including all 20 behaviours it
+  claimed to validate, are recorded in [#5904](https://github.com/nexus-substrate/nexus-agents/issues/5904).
+
+- [#5906](https://github.com/nexus-substrate/nexus-agents/pull/5906) [`aeb8b1f`](https://github.com/nexus-substrate/nexus-agents/commit/aeb8b1febbec3e3ca0bfbad7a18b6c8e5b339440) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Disclose the destructive verb the fallback access-policy deriver matched. Its
+  refuse branch computed the one non-constant signal in the deriver and wrote it
+  to `allowedOperations`, a field with no reader anywhere, so a "rm -rf the build
+  cache" objective produced a byte-identical `unmeasured` decision to "show me the
+  config". `TaskAccessPolicy` and the `unmeasured` `AccessDecision` now carry an
+  optional `refuseVerbMatched`, the decision's reason names the verb, and the
+  chain-adapter log line carries it as its own field. The verdict is unchanged —
+  this is disclosure, not enforcement — and the comment claiming the enforcer
+  would deny on this branch, which it never did, is corrected ([#5895](https://github.com/nexus-substrate/nexus-agents/issues/5895)).
+
 ## 8.42.13
 
 ### Patch Changes

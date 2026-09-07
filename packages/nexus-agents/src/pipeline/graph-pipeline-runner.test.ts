@@ -245,4 +245,70 @@ describe('stage failure propagation (#4362)', () => {
     expect(result.finalState[K.COMPLETED]).toBeFalsy();
     expect(result.success).toBe(true);
   });
+
+  describe('a truncated dry run says what it covered (#5875-adjacent sweep)', () => {
+    // DEV_PIPELINE_TEMPLATE declares 7 stages and stops after 'vote' in dryRun,
+    // so decompose/implement/qa/security never run. Before this, the result was
+    // `success: true, templateId: 'dev'` — byte-identical to a full run that
+    // actually executed the qa and security stages.
+    it('reports 3 of 7 stages and flags the run as a dry run', async () => {
+      const result = await runGraphPipeline(
+        'Build feature',
+        DEV_PIPELINE_TEMPLATE,
+        createDevStageRegistry(createMockStages()),
+        { dryRun: true }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.dryRun).toBe(true);
+      expect(result.stagesPlanned).toBe(7);
+      expect(result.stagesRun).toBe(3);
+    });
+
+    it('a full run reports every stage and no dryRun flag', async () => {
+      const result = await runGraphPipeline(
+        'Build feature',
+        DEV_PIPELINE_TEMPLATE,
+        createDevStageRegistry(createMockStages())
+      );
+
+      expect(result.dryRun).toBeUndefined();
+      expect(result.stagesPlanned).toBe(7);
+      expect(result.stagesRun).toBe(7);
+    });
+
+    it('makes the two distinguishable — the whole point', async () => {
+      // Both succeed. Before the coverage fields, every field a consumer reads
+      // was equal between them, so no caller could tell 3 stages from 7.
+      const registry = createDevStageRegistry(createMockStages());
+      const dry = await runGraphPipeline('t', DEV_PIPELINE_TEMPLATE, registry, { dryRun: true });
+      const full = await runGraphPipeline('t', DEV_PIPELINE_TEMPLATE, registry);
+
+      expect(dry.success).toBe(true);
+      expect(full.success).toBe(true);
+      expect(dry.templateId).toBe(full.templateId);
+      expect(dry.stagesRun).not.toBe(full.stagesRun);
+    });
+
+    it('a dryRun of a template with no dryRunStopAfter still flags itself', async () => {
+      // Nothing is truncated here, so stagesRun === stagesPlanned. `dryRun` is
+      // stamped from the OPTION, because calling this a normal run would be the
+      // same misreport pointing the other way.
+      const noStop: PipelineTemplate = {
+        id: 'nostop',
+        name: 'No stop',
+        stages: ['research', 'plan'],
+      };
+      const result = await runGraphPipeline(
+        'Build feature',
+        noStop,
+        createDevStageRegistry(createMockStages()),
+        { dryRun: true }
+      );
+
+      expect(result.dryRun).toBe(true);
+      expect(result.stagesRun).toBe(2);
+      expect(result.stagesPlanned).toBe(2);
+    });
+  });
 });
