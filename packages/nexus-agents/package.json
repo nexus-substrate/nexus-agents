@@ -76,11 +76,11 @@
     "@atproto/api": "^0.20.42"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.122.0",
+    "@anthropic-ai/sdk": "^0.123.0",
     "@ast-grep/lang-go": "0.0.6",
     "@ast-grep/lang-python": "0.0.6",
-    "@ast-grep/napi": "0.45.2",
-    "@google/genai": "^2.19.0",
+    "@ast-grep/napi": "0.45.3",
+    "@google/genai": "^2.21.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
@@ -90,15 +90,15 @@
     "ts-morph": "^27.0.2",
     "typescript": "^6.0.3",
     "yaml": "^2.9.0",
-    "zod": "^4.5.2"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.114",
-    "@ai-sdk/google": "^3.0.118",
-    "@ai-sdk/openai": "^3.0.104",
+    "@ai-sdk/anthropic": "^3.0.116",
+    "@ai-sdk/google": "^3.0.121",
+    "@ai-sdk/openai": "^3.0.107",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "4.1.11",
-    "ai": "^6.0.271",
+    "ai": "^6.0.276",
     "fast-check": "^4.9.0",
     "nexus-memory": "workspace:*",
     "tsup": "^8.5.1",
