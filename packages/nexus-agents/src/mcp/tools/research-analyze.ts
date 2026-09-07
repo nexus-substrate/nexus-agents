@@ -80,11 +80,14 @@ export interface ResearchAnalyzeResponse {
 // =============================================================================
 
 /** Creates a failure response for a given focus. */
-function failureResponse(focus: string): ResearchAnalyzeResponse {
+function failureResponse(
+  focus: string,
+  registry: 'techniques' | 'papers' = 'techniques'
+): ResearchAnalyzeResponse {
   return {
     focus,
     success: false,
-    analysis: { error: 'Failed to load techniques registry' },
+    analysis: { error: `Failed to load ${registry} registry` },
     recommendations: [],
   };
 }
@@ -105,9 +108,16 @@ export async function analyzeGaps(topic?: string): Promise<ResearchAnalyzeRespon
   const techResult = await loadTechniquesRegistry();
   const paperResult = await loadPapersRegistry();
   if (!techResult.ok) return failureResponse('gaps');
+  // #5925: gate on BOTH loads. `underResearchedTopics` is derived from the
+  // papers registry — a topic qualifies when it has fewer than 2 papers — so an
+  // unreadable papers file made `topicPaperCount` empty and every topic cleared
+  // the filter, under `success: true`. The tool's whole output is "here are your
+  // under-researched topics", and a failed read made that list MAXIMAL rather
+  // than absent. Only `techResult` gated the failure before.
+  if (!paperResult.ok) return failureResponse('gaps', 'papers');
 
   const techniques = techResult.value.techniques;
-  const papers = paperResult.ok ? paperResult.value.papers : {};
+  const papers = paperResult.value.papers;
 
   const techniquesWithoutPapers = Object.entries(techniques)
     .filter(([, t]) => topic === undefined || t.topic === topic)

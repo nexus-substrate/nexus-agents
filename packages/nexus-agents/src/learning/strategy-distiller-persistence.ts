@@ -258,17 +258,39 @@ registerPersistentDistillerFactory(
  * `DEFAULT_DISTILLER_CONFIG` thresholds: there is no distiller instance here
  * to read a live config from.
  */
-export function loadPersistedRules(filePath: string = getRulesFile()): readonly DistilledRule[] {
+export function loadPersistedRules(
+  filePath: string = getRulesFile(),
+  logger?: Pick<ILogger, 'warn'>
+): readonly DistilledRule[] {
   if (!existsSync(filePath)) return [];
   try {
     const content = readFileSync(filePath, 'utf-8');
     const parsed: unknown = JSON.parse(content);
     const result = RulesSnapshotSchema.safeParse(parsed);
-    if (!result.success) return [];
+    if (!result.success) {
+      // NOT the same as an absent file. `RulesSnapshotSchema` is all-or-nothing
+      // — it pins `version: z.literal(1)` and each rule's `cli` to `CLI_NAMES` —
+      // so one rule written by a newer build discards EVERY rule, including the
+      // valid ones. Returning `[]` silently would tell the consumer "nothing was
+      // learned" when the truth is "what was learned could not be read" (#5907).
+      logger?.warn('Rules file failed validation; treating as no rules', {
+        path: filePath,
+        issues: result.error.issues.length,
+      });
+      return [];
+    }
     return result.data.rules.map((raw) => hydrateRule(raw, DEFAULT_DISTILLER_CONFIG).rule);
-  } catch {
+  } catch (error: unknown) {
     // Disk read / parse failures contribute an empty list — the consumer
-    // contract is "absence means no signal," never an exception.
+    // contract is "absence means no signal," never an exception. That half is
+    // right; conflating unreadable with absent is the half that was not, so the
+    // failure is now disclosed (#5907). The instance loader `hydrate()` has
+    // warned on this same case since it was written; this standalone path is the
+    // one `ContextRetriever` uses cross-process, and it stayed silent.
+    logger?.warn('Rules file could not be read; treating as no rules', {
+      path: filePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

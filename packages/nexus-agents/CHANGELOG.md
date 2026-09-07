@@ -1,5 +1,36 @@
 # nexus-agents
 
+## 8.44.2
+
+### Patch Changes
+
+- [#5934](https://github.com/nexus-substrate/nexus-agents/pull/5934) [`5a25177`](https://github.com/nexus-substrate/nexus-agents/commit/5a25177ed42a05dd988b74e711d3fe263e5dc613) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `research_analyze --focus gaps` now refuses when the papers registry cannot be
+  read, instead of reporting every topic as under-researched. Only the techniques
+  load gated the failure path; a failed papers load fell through to `{}`, so
+  `topicPaperCount` was empty, every topic cleared the "fewer than 2 papers"
+  filter, and the tool returned a maximal under-researched list under
+  `success: true`. `failureResponse` also now names which registry failed rather
+  than always saying "techniques".
+
+- [#5928](https://github.com/nexus-substrate/nexus-agents/pull/5928) [`3b31ccf`](https://github.com/nexus-substrate/nexus-agents/commit/3b31ccf6808b16da043b197c490a4917445d4cbd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `loadPersistedRules` now warns when the distilled-rules snapshot exists but
+  cannot be read — a parse failure, or a schema mismatch such as a file written by
+  a build with a newer `version`. It returned a bare `[]` for that case, identical
+  to "no rules were ever learned", and `ContextRetriever` then assembled a prompt
+  asserting that nothing is known to fail. The verdict is unchanged (it still never
+  throws, and an absent file is still silent); the failure is now visible.
+
+## 8.44.1
+
+### Patch Changes
+
+- [#5926](https://github.com/nexus-substrate/nexus-agents/pull/5926) [`364ab62`](https://github.com/nexus-substrate/nexus-agents/commit/364ab62f169a5be6d60700cd49cfd1c6ec05a07e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `search_codebase` now says when `limit` cut its result set short. The header read
+  `"20 results for ..."` whether 20 or 340 symbols matched, so a caller searching a
+  common name took a capped set for the complete one. `CodebaseIndex` gains
+  `searchWithTotal`, which reports the pre-limit match count, and the tool appends
+  the omitted count with an explicit "this is not the complete match set". The
+  sibling `search_usages` has carried `truncated`/`omittedMatches`/`limit` since it
+  was written; this closes the gap.
+
 ## 8.44.0
 
 ### Minor Changes
