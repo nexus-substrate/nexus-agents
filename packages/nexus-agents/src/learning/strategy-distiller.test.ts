@@ -785,10 +785,13 @@ describe('StrategyDistiller', () => {
       expect(memory.storePreference).not.toHaveBeenCalled();
     });
 
-    it('does not promote tainted rules', () => {
-      // We can't easily create tainted rules from the public API
-      // since tainted is always false from distill(), so this tests
-      // the boundary condition
+    // Was: 'does not promote tainted rules', whose own comment admitted "we
+    // can't easily create tainted rules from the public API since tainted is
+    // always false from distill()" and then asserted the positive case
+    // instead. The gate it named was removed in #5853; what the test actually
+    // exercised — that a distilled rule promotes — is kept and given its real
+    // name.
+    it('promotes a rule distilled from a consistent failure pattern', () => {
       populateStore({
         store,
         cli: 'claude',
@@ -799,9 +802,8 @@ describe('StrategyDistiller', () => {
 
       distiller.distill();
       const memory = createMockRoutingMemory();
-      // Verify that untainted rules DO promote (positive check)
-      const count = distiller.promote(memory);
-      expect(count).toBeGreaterThan(0);
+
+      expect(distiller.promote(memory)).toBeGreaterThan(0);
     });
   });
 

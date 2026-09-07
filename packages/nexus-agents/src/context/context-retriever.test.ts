@@ -288,19 +288,34 @@ describe('getContextForTask', () => {
     expect(matchIds).not.toContain('r-other');
   });
 
-  it('priorStrategies excludes tainted rules (security gate)', async () => {
-    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
-    shutdownToolMemory();
+  // Removed in #5853: 'priorStrategies excludes tainted rules (security gate)'.
+  // It passed only because it wrote `makeRule({ tainted: true })` straight to
+  // the rules file — a record production cannot emit, since `upsertRule` is
+  // the only constructor and writes the literal `false`. The filter it
+  // exercised was unreachable and has been removed; a test that builds an
+  // impossible state to cover a dead branch is what let the gate survive.
+  // `excludes non-active rules` below is the surviving real filter.
 
-    writeRulesFile([
-      makeRule({ id: 'clean', tainted: false }),
-      makeRule({ id: 'tainted', tainted: true }),
-    ]);
+  it('priorStrategies does not discriminate on the vestigial tainted flag (#5853)', () => {
+    // The regression guard for the removal itself. Nothing in production can
+    // set this flag, so a filter on it excludes nothing and only tells a
+    // reader the substrate screens these rules. This test fails the moment
+    // someone re-adds the conjunct without also adding a producer.
+    return (async () => {
+      const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+      shutdownToolMemory();
 
-    const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
-    const ids = ctx.priorStrategies.map((r) => r.id);
-    expect(ids).toContain('clean');
-    expect(ids).not.toContain('tainted');
+      writeRulesFile([
+        makeRule({ id: 'flag-false', tainted: false }),
+        makeRule({ id: 'flag-true', tainted: true }),
+      ]);
+
+      const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
+      const ids = ctx.priorStrategies.map((r) => r.id);
+
+      expect(ids).toContain('flag-false');
+      expect(ids).toContain('flag-true');
+    })();
   });
 
   it('priorStrategies excludes non-active rules', async () => {

@@ -250,9 +250,9 @@ registerPersistentDistillerFactory(
  * router yet).
  *
  * Returns `[]` when the file is missing, corrupt, or unreadable; never
- * throws. The caller is responsible for filtering to status / category /
- * tainted as appropriate — this loader returns the raw rule set so
- * future consumers can apply their own predicates.
+ * throws. The caller is responsible for filtering to status / category as
+ * appropriate — this loader returns the raw rule set so future consumers can
+ * apply their own predicates.
  *
  * Legacy records (no `support`/`effect`, #5004) are lifted under
  * `DEFAULT_DISTILLER_CONFIG` thresholds: there is no distiller instance here
