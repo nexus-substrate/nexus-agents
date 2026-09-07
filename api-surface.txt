@@ -9980,6 +9980,7 @@ InterfaceDeclaration WithRetryOptions
   readonly config?: Partial<RetryConfig> | undefined
   readonly isRetryable?: ((error: unknown) => boolean) | undefined
   readonly onRetry?: ((info: RetryAttemptInfo) => void) | undefined
+  readonly signal?: AbortSignal | undefined
 FunctionDeclaration withRetryWrapper
   : typeof withRetryWrapper
 FunctionDeclaration withTimeout

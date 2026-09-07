@@ -304,6 +304,101 @@ describe('retry', () => {
     });
   });
 
+  describe('withRetry abort-aware backoff (#4293 item 5)', () => {
+    it('does not run the operation at all when the signal is already aborted', async () => {
+      const operation = vi.fn().mockResolvedValue('success');
+      const controller = new AbortController();
+      controller.abort(new Error('cancelled before start'));
+
+      const result = await withRetry(operation, { signal: controller.signal });
+
+      expect(operation).not.toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+    });
+
+    it('cuts the backoff short instead of waiting it out', async () => {
+      // The defect: `await sleep(delayMs)` could not be interrupted, so a
+      // cancelled operation held real wall-clock time. The assertion is that
+      // the loop STOPS, not merely that it eventually finishes — a test that
+      // advanced the timers would pass either way.
+      const operation = vi.fn().mockRejectedValue(new Error('ETIMEDOUT'));
+      const controller = new AbortController();
+
+      const resultPromise = withRetry(operation, {
+        config: { maxRetries: 5, baseDelayMs: 10_000 },
+        isRetryable: () => true,
+        signal: controller.signal,
+      });
+
+      // Let the first attempt fail and the loop enter its backoff.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(operation).toHaveBeenCalledTimes(1);
+
+      controller.abort(new Error('cancelled mid-backoff'));
+      const result = await resultPromise;
+
+      // No timer was advanced past 0, so the 10s delay never elapsed. If the
+      // backoff were still a bare sleep, this promise would not have settled.
+      expect(result.ok).toBe(false);
+      expect(operation).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns an error VALUE on abort rather than throwing', async () => {
+      // `withRetry`'s never-throws contract is what execute_expert relies on
+      // (#4308), so the abort path must not become the first thing that throws.
+      const operation = vi.fn().mockRejectedValue(new Error('ETIMEDOUT'));
+      const controller = new AbortController();
+
+      const resultPromise = withRetry(operation, {
+        config: { maxRetries: 3, baseDelayMs: 5_000 },
+        isRetryable: () => true,
+        signal: controller.signal,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+
+      await expect(resultPromise).resolves.toMatchObject({ ok: false });
+    });
+
+    it('still completes the full backoff when no signal is supplied', async () => {
+      // Guards the regression in the other direction: the no-signal path must
+      // keep waiting and keep retrying exactly as before.
+      const operation = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('ETIMEDOUT'))
+        .mockResolvedValue('recovered');
+
+      const resultPromise = withRetry(operation, {
+        config: { maxRetries: 2, baseDelayMs: 1_000 },
+        isRetryable: () => true,
+      });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.ok).toBe(true);
+      expect(operation).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries normally when a signal is supplied but never aborts', async () => {
+      const operation = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('ETIMEDOUT'))
+        .mockResolvedValue('recovered');
+      const controller = new AbortController();
+
+      const resultPromise = withRetry(operation, {
+        config: { maxRetries: 2, baseDelayMs: 1_000 },
+        isRetryable: () => true,
+        signal: controller.signal,
+      });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.ok).toBe(true);
+      expect(operation).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('withRetry', () => {
     it('returns success on first attempt if operation succeeds', async () => {
       const operation = vi.fn().mockResolvedValue('success');
