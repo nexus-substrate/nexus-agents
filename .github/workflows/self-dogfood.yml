@@ -32,21 +32,90 @@ env:
   NEXUS_EXPERTS: architect,security,reviewer
 
 jobs:
-  # Job 1: PR Review using nexus-agents orchestrate
-  review-pr:
-    name: Self-Review PR
+  # Job 0: can a review run at all? (#4919)
+  #
+  # This has to be its own job so `review-pr` can be SKIPPED rather than run
+  # and pass. A step-level `if` leaves the JOB green, and a green check is what
+  # a human spot-check reads — the mission statement's stated worst case, "it
+  # launders unreviewed work as reviewed". A skipped job renders gray: neither
+  # a pass nor a failure, which is the honest value for "not measured".
+  #
+  # It probes what `orchestrate` ACTUALLY requires. The previous gate checked
+  # for an API key, and `ANTHROPIC_API_KEY` is configured on this repo, so it
+  # passed — and then `orchestrateCommand` (cli/orchestrate-command.ts:292-300)
+  # exited 1 before looking at any key because no CLI binary was on PATH. The
+  # gate measured key presence and reported it as reviewability.
+  preflight:
+    name: Review preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # #3778 (Rule-of-Two CI leg): never run the model-driven review on
-    # auto-remediation bot branches — keeps secrets off untrusted-signal-derived
-    # content. Explicit prefix guard (not just draft-status); kept in sync with
-    # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
+    timeout-minutes: 5
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.draft == false &&
        github.actor != 'dependabot[bot]' &&
        !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')) ||
       (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+    permissions:
+      contents: read
+    outputs:
+      reviewable: ${{ steps.probe.outputs.reviewable }}
+      reason: ${{ steps.probe.outputs.reason }}
+    steps:
+      - name: Probe review preconditions
+        id: probe
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          CLI=""
+          for candidate in claude gemini codex; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              CLI="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$CLI" ]; then
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no CLI adapter on the runner — orchestrate needs one of claude, gemini or codex on PATH and exits before it reads any API key" >> "$GITHUB_OUTPUT"
+          elif [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no model credential configured" >> "$GITHUB_OUTPUT"
+          else
+            echo "reviewable=true" >> "$GITHUB_OUTPUT"
+            echo "reason=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report that no review will run
+        if: steps.probe.outputs.reviewable != 'true'
+        env:
+          REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          {
+            echo "### 🤖 Self-Dogfood Review"
+            echo ""
+            echo "⚪ NOT MEASURED — ${REASON}."
+            echo ""
+            echo "The review job is skipped rather than passed, so this check is gray"
+            echo "rather than green: nothing was reviewed and the record says so (#4919)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Job 1: PR Review using nexus-agents orchestrate
+  review-pr:
+    name: Self-Review PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: preflight
+    # #3778 (Rule-of-Two CI leg): never run the model-driven review on
+    # auto-remediation bot branches — keeps secrets off untrusted-signal-derived
+    # content. Explicit prefix guard (not just draft-status); kept in sync with
+    # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
+    # The event/branch guard moved to `preflight`, which this job needs — so the
+    # Rule-of-Two exclusion still holds (an excluded branch never reaches
+    # `preflight`, so `reviewable` is empty and this stays skipped).
+    if: needs.preflight.outputs.reviewable == 'true'
     permissions:
       contents: read
       # Read-only. Nothing in this job writes a comment or a label, and with
@@ -63,22 +132,8 @@ jobs:
       - name: Build nexus-agents
         run: pnpm build
 
-      # A review needs a model. Without one there is nothing to run, and the
-      # honest report is "not measured" — not a green check (#4919).
-      - name: Detect model credentials
-        id: creds
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          fi
-
+      # The precondition is `preflight`'s job now — this job does not run unless
+      # it said a review can happen (#4919).
       - name: Get PR number
         id: pr
         run: |
@@ -90,8 +145,10 @@ jobs:
 
       - name: Self-Review PR
         id: review
-        if: steps.creds.outputs.available == 'true'
-        continue-on-error: true
+        # No `continue-on-error` (#4919). Every branch below writes an outcome
+        # and exits 0 on purpose, so the step itself does not fail — but
+        # `Enforce review outcome` below turns a non-review into a red check
+        # instead of leaving it to a summary line nobody reads.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -171,7 +228,6 @@ jobs:
         env:
           OUTCOME: ${{ steps.review.outputs.outcome }}
           COVERAGE: ${{ steps.review.outputs.coverage }}
-          CREDS: ${{ steps.creds.outputs.available }}
           PR_NUM: ${{ steps.pr.outputs.number }}
         run: |
           {
@@ -198,17 +254,30 @@ jobs:
                 echo "⚠️ NOT REVIEWED — orchestrate returned output this job could not parse."
                 ;;
               *)
-                if [ "${CREDS}" != "true" ]; then
-                  echo "⚠️ NOT REVIEWED — no model API key is configured, so no review ran."
-                  echo ""
-                  echo "Add one of \`ANTHROPIC_API_KEY\`, \`OPENAI_API_KEY\`, \`GOOGLE_AI_API_KEY\`,"
-                  echo "\`OPENROUTER_API_KEY\` under Settings → Secrets and variables → Actions."
-                else
-                  echo "⚠️ NOT REVIEWED — the review step did not report an outcome."
-                fi
+                # The no-credential case cannot land here any more: `preflight`
+                # skips this whole job, so an empty outcome means the step died
+                # before writing one.
+                echo "⚠️ NOT REVIEWED — the review step did not report an outcome."
                 ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # #4919, the requirement that did not land the first time: "there is no
+      # input that makes this job fail". `preflight` already skipped the job if
+      # a review was impossible, so reaching here means a review was possible
+      # and something in the substrate stopped it. That is a red check, not a
+      # summary line — the check is the part a human spot-check reads.
+      - name: Enforce review outcome
+        if: always()
+        env:
+          OUTCOME: ${{ steps.review.outputs.outcome }}
+        run: |
+          if [ "${OUTCOME:-}" = "reviewed" ]; then
+            echo "Review completed."
+            exit 0
+          fi
+          echo "::error::No review was produced (outcome: ${OUTCOME:-none}). Preconditions were met, so this is a substrate failure — see the Self-Review PR step log."
+          exit 1
 
       # #2662 — the dogfood run exercises the agents and accumulates
       # OutcomeStore data; stratify it into a JSON artifact for trend
