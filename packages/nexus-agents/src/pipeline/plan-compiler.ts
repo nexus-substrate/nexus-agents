@@ -13,7 +13,7 @@ import { START, END } from '../orchestration/graph/graph-types.js';
 import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
-import type { IPluginRegistry } from './plugin-types.js';
+import type { IPluginRegistry, StageResult } from './plugin-types.js';
 import { enforceGatePolicy, type PolicyEvalResult } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
 import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
@@ -98,6 +98,25 @@ function addPipelineState(builder: GraphBuilder): void {
 }
 
 /**
+ * Record what the plugin actually did, not only that it returned.
+ *
+ * Every core plugin is a lazy skeleton: `noopStageResult()` returns
+ * `{ success: true, outputArtifacts: [], metadata: { stub: true } }`, and the
+ * default registry is the only registration for the `analyze`, `route` and
+ * `execute` stages. So `registry.resolve()` succeeds, this branch is taken,
+ * and a stage that did nothing recorded a bare `completed` — more confidently
+ * than an ABSENT plugin, which the placeholder path below marks. `stub` was
+ * the one truthful field the producer emitted and it was dropped here (#5863).
+ */
+function buildStageResult(stageId: string, result: StageResult): Record<string, unknown> {
+  return {
+    stageId,
+    status: result.success ? 'completed' : 'failed',
+    ...(result.metadata['stub'] === true ? { stub: true } : {}),
+  };
+}
+
+/**
  * Creates a handler for a pipeline stage.
  * Resolves from PluginRegistry when available; falls back to placeholder.
  */
@@ -116,7 +135,7 @@ function createStageHandler(
       const result = await plugin.execute(stage, ctx);
       return {
         currentStage: stage.id,
-        stageResults: [{ stageId: stage.id, status: result.success ? 'completed' : 'failed' }],
+        stageResults: [buildStageResult(stage.id, result)],
         ...(result.outputArtifacts.length > 0
           ? { artifacts: result.outputArtifacts.map((a) => a.id) }
           : {}),
