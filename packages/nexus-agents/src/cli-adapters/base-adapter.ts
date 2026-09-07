@@ -86,6 +86,14 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   protected capacityTracker: CapacityTracker | null = null;
   protected initialized = false;
   protected cachedVersion?: string;
+  /**
+   * Epoch ms at which {@link cachedVersion} was read off the binary.
+   *
+   * The cache never expires, so this is what lets `healthCheck` say whether
+   * its `reachable` rests on a probe that just ran or on one from minutes ago
+   * (#5864).
+   */
+  protected cachedVersionAt?: number;
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? createLogger({ component: 'cli-adapter' });
@@ -264,9 +272,13 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         healthy: versionStatus !== 'unsupported' && versionStatus !== 'breaking',
         version,
         versionStatus,
-        // The binary answered `--version`, whatever it said (#5060).
+        // The binary answered `--version`, whatever it said (#5060) — though
+        // not necessarily on THIS call, which is what versionProbedAt says.
         reachable: true,
         lastChecked: new Date(getTimeProvider().now()),
+        ...(this.cachedVersionAt !== undefined && {
+          versionProbedAt: new Date(this.cachedVersionAt),
+        }),
         ...(message !== undefined && { message }),
       };
 
@@ -300,6 +312,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       // Extract version number from output
       const version = this.parseVersion(stdout.trim());
       this.cachedVersion = version;
+      this.cachedVersionAt = getTimeProvider().now();
       return version;
     } catch (cause: unknown) {
       throw new Error(`Failed to get ${this.binaryName} version`, { cause });

@@ -4266,6 +4266,7 @@ InterfaceDeclaration HealthStatus
   readonly message?: string | undefined
   readonly reachable?: boolean | undefined
   readonly version: string
+  readonly versionProbedAt?: Date | undefined
   readonly versionStatus: VersionStatus
 InterfaceDeclaration HierarchicalOptions
   preserveRecentCount: number

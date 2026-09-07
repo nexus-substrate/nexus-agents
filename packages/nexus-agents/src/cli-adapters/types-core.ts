@@ -193,6 +193,21 @@ export interface HealthStatus {
    * unreachable. Consumers should treat `reachable !== false` as "present".
    */
   readonly reachable?: boolean;
+  /**
+   * When the evidence behind {@link reachable} was actually gathered (#5864).
+   *
+   * `BaseCliAdapter` caches the version string forever — no TTL, no reset, not
+   * even on `dispose()` — so every `healthCheck` after the first for a given
+   * instance returns without spawning anything. `reachable: true` then restates
+   * a past observation as a present one, and `lastChecked` is stamped `now`,
+   * which dates a replay as if it were a fresh probe.
+   *
+   * Compare the two: equal (to the probe) means this check ran the binary;
+   * earlier means `reachable` rests on a cached reading and the binary may have
+   * gone away since. Absent means the producer does not probe a binary at all
+   * (an in-process adapter) or predates the distinction — unknown, not stale.
+   */
+  readonly versionProbedAt?: Date;
   /** Last successful health check */
   readonly lastChecked: Date;
 }
