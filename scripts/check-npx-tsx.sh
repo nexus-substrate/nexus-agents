@@ -32,17 +32,52 @@
 #                                          of a diff the test parses).
 #   scripts/check-npx-tsx.sh               this file: the search string appears
 #                                          in its own comment and error message.
+#
+# Two spellings, not one (#5880). The shell form is what a workflow line or a
+# usage comment contains. The ARGV form is what a TypeScript caller writes:
+#
+#   execFileSync('npx', ['tsx', 'scripts/extract-api-surface.ts'], ...)
+#
+# The string `npx tsx` never appears in that, and one was sitting inside the
+# scanned `scripts` directory -- run on every PR by ci.yml -- while this gate
+# printed its all-clear. A detector that matches one spelling and reports "no
+# npx-based tsx invocations" is asserting something it did not check.
+#
+# The gate also refuses to pass over a scan it could not perform. Every root is
+# verified to exist first: relative paths plus `2>/dev/null` on the grep meant
+# an invocation from any other directory also printed OK.
 set -euo pipefail
 
-matches=$(grep -rn 'npx tsx' \
-  .github/workflows \
-  .github/actions \
-  package.json \
-  packages/nexus-agents/package.json \
-  scripts \
-  docs \
-  skills \
-  hooks \
+ROOTS=(
+  .github/workflows
+  .github/actions
+  package.json
+  packages/nexus-agents/package.json
+  scripts
+  docs
+  skills
+  hooks
+)
+
+missing=()
+for root in "${ROOTS[@]}"; do
+  [ -e "$root" ] || missing+=("$root")
+done
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "::error::Cannot scan: ${missing[*]} not found. Run this from the repository root."
+  exit 1
+fi
+
+scanned=$(grep -rl '' "${ROOTS[@]}" 2>/dev/null | wc -l | tr -d ' ')
+if [ "$scanned" -eq 0 ]; then
+  echo "::error::Scanned 0 files. The roots exist but matched nothing -- refusing to report a clean tree."
+  exit 1
+fi
+
+# -E so both spellings are one pass: the literal shell form, or a quoted 'npx'
+# whose argument list carries 'tsx' before the closing paren.
+matches=$(grep -rnE "npx tsx|['\"]npx['\"][^)]*['\"]tsx['\"]" \
+  "${ROOTS[@]}" \
   2>/dev/null \
   | grep -v -F -e '.github/workflows/governor-review.yml:' \
               -e 'packages/nexus-agents/CHANGELOG.md:' \
@@ -51,9 +86,9 @@ matches=$(grep -rn 'npx tsx' \
   || true)
 
 if [ -n "$matches" ]; then
-  echo "::error::Found 'npx tsx'. tsx is a declared devDependency - use 'pnpm exec tsx' (#5411)."
+  echo "::error::Found an npx-based tsx invocation. tsx is a declared devDependency - use 'pnpm exec tsx' (#5411)."
   echo "$matches"
   exit 1
 fi
 
-echo "OK: no npx-based tsx invocations in workflows, actions, package manifests, scripts, docs, skills or hooks"
+echo "OK: no npx-based tsx invocations (either spelling) across ${scanned} files in workflows, actions, package manifests, scripts, docs, skills or hooks"
