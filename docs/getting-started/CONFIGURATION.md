@@ -348,6 +348,14 @@ Timeouts are **runaway-guards, not SLAs** — each MCP tool maps to an operation
 
 Resolution: `clamp(envClassOverride ?? base, 1000, 7200000) * multiplier`, re-clamped to `MCP_TIMEOUTS.maxMs` (`3600000`). Explicit per-call and `security.perToolTimeout` overrides still win over the class guard.
 
+> **Rate limiting, retries and circuit breakers are configured in the config
+> file, not by environment variable.** `NEXUS_RATE_LIMIT_*`, `NEXUS_RETRY_*` and
+> `NEXUS_CIRCUIT_BREAKER_*` were removed in #5903 — they were registered and
+> documented but read by nothing that runs, so setting one changed nothing while
+> `config get` reported it as `Source: (env)`. Use `security.rateLimit` (see the
+> config-file example above); retry and circuit-breaker behaviour is currently
+> code-level, not operator-configurable.
+
 ### Infrastructure Variables
 
 | Variable                          | Description                                                                                                                                                                                                                                         | Default   |

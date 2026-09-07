@@ -530,10 +530,19 @@ describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#51
     // as of #5903 — the whole rate-limit/retry/circuit-breaker family was
     // removed because none of the twelve was read by anything that runs.
     //
-    // The guard is re-pointed rather than deleted: the shape it catches — a
-    // documented name with no reader sitting next to the real one — is not
-    // specific to that pair. NEXUS_DATA_DIR is the live example: documented in
-    // CONFIGURATION.md and read by the runtime data-dir resolver.
+    // What this test guards NOW, stated plainly so the comment does not
+    // describe a pair that no longer exists: CONFIGURATION.md must not name
+    // either removed spelling, and must still name at least one variable that
+    // is genuinely read. NEXUS_DATA_DIR is that example.
+    //
+    // The SHADOW class itself — a documented name with no reader — is covered
+    // structurally now, which it was not when #5159 landed:
+    //   - scripts/check-env-schema-coverage.ts proves registered == read
+    //   - the 'documented NEXUS_* vars ... are all in the schema' describe
+    //     above proves documented ⊆ registered
+    // Those two compose to "documented ⊆ read", for any name, which is what a
+    // fixture-specific pair could never do. This test is the tombstone for the
+    // original pair, not the enforcement.
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
     expect(CONFIG_MD).toMatch(/`NEXUS_DATA_DIR`/);
