@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.44.0
+
+### Minor Changes
+
+- [#5922](https://github.com/nexus-substrate/nexus-agents/pull/5922) [`a5d82bc`](https://github.com/nexus-substrate/nexus-agents/commit/a5d82bcf1f42377fb183a3d57d13ce003de6c71d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `withRetry` accepts an optional `signal`, and its exponential backoff is now
+  interruptible. The wait was a bare `await sleep(delayMs)`, so a cancelled
+  operation still held real wall-clock time before the loop noticed — with the
+  default profile, seconds of delay for work nobody wanted. An abort now cuts the
+  wait short and returns `err(RetryExhaustedError)` (never a throw — the
+  never-throws contract `execute_expert` depends on), and an already-aborted
+  signal skips the operation entirely rather than running it once first.
+
 ## 8.43.0
 
 ### Minor Changes
