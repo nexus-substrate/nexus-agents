@@ -287,6 +287,31 @@ function scoreFor(
     : calculateScore(validVulns);
 }
 
+/**
+ * The coverage and score for a scan that no model performed.
+ *
+ * `detectHeuristicVulnerabilities` is a regex sweep over prose — a task
+ * description, or a model's unparseable answer — never over the code under
+ * review. So a hit is evidence of SOMETHING (`partial`), and no hit is
+ * evidence of NOTHING (`unmeasured`); neither is ever `complete`.
+ *
+ * Shared by both heuristic sites on purpose. #5791 fixed the parse-failure
+ * branch below and left `SecurityExpert.executeHeuristic` — the no-adapter
+ * path — reporting `complete` with `calculateSecurityScore([]) === 100`, i.e.
+ * a fully covered, perfectly clean review of code nothing had read (#5879).
+ * One implementation is what stops the two drifting apart again.
+ */
+export function heuristicSecurityOutcome(
+  vulnerabilities: Vulnerability[],
+  calculateScore: (vulns: Vulnerability[]) => number = calculateSecurityScore
+): { readonly findingsCoverage: FindingsCoverage; readonly securityScore: number } {
+  const findingsCoverage: FindingsCoverage = vulnerabilities.length > 0 ? 'partial' : 'unmeasured';
+  return {
+    findingsCoverage,
+    securityScore: scoreFor(undefined, findingsCoverage, vulnerabilities, calculateScore),
+  };
+}
+
 function buildSecurityCore(
   p: Record<string, unknown>,
   validVulns: Vulnerability[],
@@ -343,12 +368,12 @@ export function parseSecurityResult(
     // A prose hit is evidence of SOMETHING, so it is `partial` rather than
     // `unmeasured`, but it is never `complete`.
     const heuristicVulns = detectHeuristicVulnerabilities(text);
-    const findingsCoverage: FindingsCoverage = heuristicVulns.length > 0 ? 'partial' : 'unmeasured';
+    const outcome = heuristicSecurityOutcome(heuristicVulns, calculateScore);
     return {
       content: text,
       vulnerabilities: heuristicVulns,
-      securityScore: scoreFor(undefined, findingsCoverage, heuristicVulns, calculateScore),
-      findingsCoverage,
+      securityScore: outcome.securityScore,
+      findingsCoverage: outcome.findingsCoverage,
       confidence: heuristicVulns.length > 0 ? 0.5 : 0.3,
     };
   }
