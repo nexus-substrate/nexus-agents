@@ -66,15 +66,6 @@ export {
   type LiveExecutionResult,
 } from './scenario-live-executor.js';
 
-// Validation Harness (Layer 4 - System Integrity)
-export {
-  ValidationHarness,
-  createValidationHarness,
-  runValidation,
-  DEFAULT_HARNESS_CONFIG,
-  type ValidationMode,
-  type ValidationCheck,
-  type ValidationCategory,
-  type ValidationResult,
-  type ValidationHarnessConfig,
-} from './validation-harness.js';
+// Validation Harness removed in #5896 — its 20 checks were `passed: true`
+// literals aggregating to a verdict no code path could make red. Acceptance
+// criteria for a real replacement are recorded in #5904.
