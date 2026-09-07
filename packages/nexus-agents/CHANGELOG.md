@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 8.46.0
+
+### Minor Changes
+
+- [#5948](https://github.com/nexus-substrate/nexus-agents/pull/5948) [`cf24955`](https://github.com/nexus-substrate/nexus-agents/commit/cf24955d6cc75b5201cf95b0e288828c937ce7b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove twelve `NEXUS_*` variables that were registered, documented, and reported
+  by `config get` as `Source: (env)` while nothing that runs read them: the four
+  `NEXUS_RETRY_*`, the six `NEXUS_RATE_LIMIT_*`, and the two
+  `NEXUS_CIRCUIT_BREAKER_*`. The MCP rate limiter takes `enabled` from the config
+  file, `adapters/retry.ts` builds its defaults from the static `DEFAULTS`, and
+  the production circuit breakers carry their own config. Same treatment as the
+  worker knobs in [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977) and the per-complexity CLI timeouts in [#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180). An operator
+  still setting one now gets the existing unrecognized-variable report with a typo
+  suggestion, instead of a CLI claiming the value took effect.
+
 ## 8.45.0
 
 ### Minor Changes
