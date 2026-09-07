@@ -68,8 +68,12 @@ describe('FitnessScoreCalculator', () => {
 
       expect(audit.version).toBe('v2.4.0');
       expect(audit.timestamp).toBeTruthy();
-      // Verify timestamp is valid ISO format
-      expect(() => new Date(audit.timestamp)).not.toThrow();
+      // `new Date(x)` returns `Invalid Date` for junk rather than throwing, so
+      // the previous `expect(() => new Date(...)).not.toThrow()` passed for any
+      // string at all — including 'not-a-date'. Parse the value and check the
+      // result instead.
+      expect(audit.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(Number.isNaN(Date.parse(audit.timestamp))).toBe(false);
     });
 
     it('should include findings array', () => {
