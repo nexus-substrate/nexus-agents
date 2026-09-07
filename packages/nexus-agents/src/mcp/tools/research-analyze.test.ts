@@ -9,9 +9,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   registerResearchAnalyzeTool,
   ResearchAnalyzeInputSchema,
+  analyzeGaps,
   type ResearchAnalyzeDeps,
 } from './research-analyze.js';
+import { loadTechniquesRegistry, loadPapersRegistry } from '../../cli/research-helpers.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
+
+vi.mock('../../cli/research-helpers.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../cli/research-helpers.js')>();
+  return {
+    ...actual,
+    loadTechniquesRegistry: vi.fn(),
+    loadPapersRegistry: vi.fn(),
+  };
+});
 
 // Mock McpServer
 interface MockServer {
@@ -143,6 +154,64 @@ describe('research_analyze tool', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toContain('Rate limit exceeded');
+    });
+  });
+
+  describe('analyzeGaps refuses when a registry could not be read (#5925)', () => {
+    const okTechniques = {
+      ok: true as const,
+      value: {
+        techniques: {
+          t1: { name: 'Chain of thought', topic: 'prompting', source_papers: ['p1'] },
+        },
+      },
+    };
+
+    beforeEach(() => {
+      vi.mocked(loadTechniquesRegistry).mockResolvedValue(
+        okTechniques as unknown as Awaited<ReturnType<typeof loadTechniquesRegistry>>
+      );
+    });
+
+    it('reports failure when the papers registry cannot be read', async () => {
+      // Before this, a failed papers load fell through to `{}`, so
+      // `topicPaperCount` was empty, EVERY topic cleared the `< 2` filter, and
+      // the tool reported a maximal under-researched list under success: true.
+      vi.mocked(loadPapersRegistry).mockResolvedValue({
+        ok: false,
+        error: new Error('papers.yaml is unreadable'),
+      } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
+
+      const result = await analyzeGaps();
+
+      expect(result.success).toBe(false);
+      expect(result.analysis).toMatchObject({ error: expect.stringContaining('papers') });
+    });
+
+    it('names WHICH registry failed, not always techniques', async () => {
+      // `failureResponse` hard-coded 'Failed to load techniques registry', so
+      // gating on papers without parameterising it would have reported the
+      // wrong cause — a second misreport hiding behind the fix for the first.
+      vi.mocked(loadPapersRegistry).mockResolvedValue({
+        ok: false,
+        error: new Error('boom'),
+      } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
+
+      const result = await analyzeGaps();
+
+      expect(result.analysis).toMatchObject({ error: 'Failed to load papers registry' });
+    });
+
+    it('still succeeds when both registries read cleanly', async () => {
+      vi.mocked(loadPapersRegistry).mockResolvedValue({
+        ok: true,
+        value: { papers: { p1: { topics: ['prompting'] } } },
+      } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
+
+      const result = await analyzeGaps();
+
+      expect(result.success).toBe(true);
+      expect(result.analysis).not.toMatchObject({ error: expect.any(String) });
     });
   });
 });
