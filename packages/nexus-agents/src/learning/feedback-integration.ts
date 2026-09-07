@@ -95,31 +95,75 @@ const MAX_DECISION_MAP_SIZE = 10000;
  * @param decision - The routing decision with stage execution info
  * @returns The RouterType that was decisive in the routing decision
  */
-function getDecisiveRouterType(decision: CompositeRoutingDecision): RouterType {
+function getDecisiveRouterType(decision: CompositeRoutingDecision): DecisiveRouter {
   const stages = decision.stagesExecuted;
 
   // LinUCB bandit selection is most decisive when it contributes a UCB score
   if (stages.includes('linucb-selection') && decision.ucbScore !== undefined) {
-    return 'linucb';
+    return { routerType: 'linucb', measured: true };
   }
 
   // Preference routing when it provided a score
   if (stages.includes('preference-routing') && decision.preferenceScore !== undefined) {
-    return 'preference';
+    return { routerType: 'preference', measured: true };
   }
 
   // ZeroRouter cascade-style routing based on difficulty
   if (stages.includes('zero-router') && decision.difficultyTier !== undefined) {
-    return 'cascade';
+    return { routerType: 'cascade', measured: true };
   }
 
   // TOPSIS ranking when it provided a score
   if (stages.includes('topsis-ranking') && decision.topsisScore !== undefined) {
-    return 'topsis';
+    return { routerType: 'topsis', measured: true };
   }
 
-  // Default fallback
-  return 'topsis';
+  // No stage explains this decision. Every routing stage is config-gated
+  // (enableTopsisRanking, enableZeroRouter, …) and applyTopsisRanking can
+  // return an undefined score, so this branch is reachable in production.
+  //
+  // `routerType` stays 'topsis' because RouterType has no member for "no stage
+  // explains this" and widening a published union is a breaking change (#5914).
+  // `measured: false` is what stops the label being read as a measurement —
+  // countDecisionsByRouter excludes these rather than crediting TOPSIS.
+  return { routerType: 'topsis', measured: false };
+}
+
+/** What `getDecisiveRouterType` concluded, and whether it concluded anything. */
+interface DecisiveRouter {
+  readonly routerType: RouterType;
+  readonly measured: boolean;
+}
+
+/**
+ * Build the SQLite row for a routing decision.
+ *
+ * `decisive.measured` is deliberately NOT persisted here. `routing_decisions`
+ * is created with `CREATE TABLE IF NOT EXISTS` and the module has no migration
+ * framework, so adding a column needs a guarded ALTER for databases that
+ * already exist — its own change, tracked in #5915. Until then this row carries
+ * the same unqualified `routerType` it always did, and the in-memory analytics
+ * (`FeedbackLoopStats.decisionsUnattributed`) are the surface that tells the
+ * truth.
+ */
+function buildStoredDecision(
+  id: string,
+  traceId: TraceId,
+  routerType: RouterType,
+  decision: CompositeRoutingDecision
+): StoredRoutingDecision {
+  return {
+    id,
+    traceId,
+    timestamp: getTimeProvider().nowIso(),
+    routerType,
+    // Persisted telemetry is slot-level; collapse the distinct arm (#3422).
+    selectedModel: routingArmDisplaySlot(decision.cliName),
+    alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
+    confidence: decision.confidence,
+    reason: decision.reason,
+    taskProfile: serializeTaskProfile(decision.taskProfile),
+  };
 }
 
 /**
@@ -216,10 +260,15 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       createdAt: now,
     });
 
+    // One classification, used by BOTH sinks. Calling it twice would let the
+    // collector and the persisted row disagree.
+    const decisive = getDecisiveRouterType(decision);
+
     // Create RoutingDecision for collector
     const routingDecision: RoutingDecision = createRoutingDecision({
       traceId: trace,
-      routerType: getDecisiveRouterType(decision),
+      routerType: decisive.routerType,
+      routerTypeMeasured: decisive.measured,
       selectedModel: decision.cliName,
       confidence: decision.confidence,
       query: decision.reason,
@@ -235,18 +284,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
     // Persist to SQLite storage if enabled (Issue #560)
     if (this.outcomeStorage !== undefined) {
-      const storedDecision: StoredRoutingDecision = {
-        id,
-        traceId: trace,
-        timestamp: getTimeProvider().nowIso(),
-        routerType: getDecisiveRouterType(decision),
-        // Persisted telemetry is slot-level; collapse the distinct arm (#3422).
-        selectedModel: routingArmDisplaySlot(decision.cliName),
-        alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
-        confidence: decision.confidence,
-        reason: decision.reason,
-        taskProfile: serializeTaskProfile(decision.taskProfile),
-      };
+      const storedDecision = buildStoredDecision(id, trace, decisive.routerType, decision);
       this.outcomeStorage.storeDecision(storedDecision).catch((error: unknown) => {
         this.logger.warn('Failed to persist routing decision to SQLite', { id, error });
       });

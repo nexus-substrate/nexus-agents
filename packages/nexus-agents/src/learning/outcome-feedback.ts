@@ -226,7 +226,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
 
   getStats(): FeedbackLoopStats {
     const outcomesByClass = countOutcomesByClass(this.outcomes);
-    const decisionsByRouter = countDecisionsByRouter(this.decisionHistory);
+    const routerCounts = countDecisionsByRouter(this.decisionHistory);
     const avgQuality = calculateAverageQuality(this.outcomes);
     const avgReward = this.calculateAverageReward();
 
@@ -237,7 +237,8 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
       outcomesByClass,
       avgQualityScore: avgQuality,
       avgReward,
-      decisionsByRouter,
+      decisionsByRouter: routerCounts.byRouter,
+      decisionsUnattributed: routerCounts.unattributed,
       lastUpdatedAt: getTimeProvider().nowIso(),
     };
   }
