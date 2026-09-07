@@ -85,15 +85,32 @@ export function checkAccess(
   //     `unmeasured` instead, and let the caller allow the call while
   //     recording that the allowlist arm did not evaluate.
   if (policy.allowedTools.length === 0) {
+    // #5895: when the keyword deriver matched a destructive verb, say so. The
+    // verdict stays `unmeasured` — this is disclosure, not enforcement — but a
+    // refuse-verb objective is no longer indistinguishable from an ordinary
+    // read-only fallback, which is what made the signal uncountable.
+    const refuseVerb = policy.refuseVerbMatched;
     return {
       decision: 'unmeasured',
-      reason: `allowlist arm did not run for tool "${toolName}": the derived policy (source "${policy.source}", mode "${policy.mode}") carries an empty allowedTools, and no producer emits tool names (#5022)`,
+      reason: `allowlist arm did not run for tool "${toolName}": the derived policy (source "${policy.source}", mode "${policy.mode}") carries an empty allowedTools, and no producer emits tool names (#5022)${refuseVerbNote(refuseVerb)}`,
+      ...(refuseVerb !== undefined && { refuseVerbMatched: refuseVerb }),
     };
   }
 
   if (policy.allowedTools.includes(toolName)) return { decision: 'allow' };
 
   return decideOnViolation(toolName, policy.mode);
+}
+
+/**
+ * The clause appended to an `unmeasured` reason when the keyword deriver
+ * matched a destructive verb (#5895). Says explicitly that the verdict is not
+ * a denial: a destructive verb named next to a non-denying decision is exactly
+ * where a reader could mistake disclosure for a screen.
+ */
+function refuseVerbNote(refuseVerb: string | undefined): string {
+  if (refuseVerb === undefined) return '';
+  return `; the objective matched the destructive verb "${refuseVerb}", which this verdict does NOT deny (#5895)`;
 }
 
 /**

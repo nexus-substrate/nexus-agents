@@ -68,8 +68,13 @@ const REFUSE_VERBS = [
 
 /** Case-insensitive match of any keyword in the content. */
 function matchesAny(content: string, keywords: readonly string[]): boolean {
+  return firstMatch(content, keywords) !== undefined;
+}
+
+/** The first keyword that occurs in `content`, or `undefined` if none does. */
+function firstMatch(content: string, keywords: readonly string[]): string | undefined {
   const lower = content.toLowerCase();
-  return keywords.some((k) => lower.includes(k));
+  return keywords.find((k) => lower.includes(k));
 }
 
 /**
@@ -88,33 +93,49 @@ export function deriveFallbackPolicy(
   mode: AccessPolicyMode,
   hash: string
 ): TaskAccessPolicy {
-  const allowedOperations = classifyOperations(userObjective);
+  const { operations, refuseVerbMatched } = classifyOperations(userObjective);
 
   return {
     allowedTools: [],
     allowedPathPatterns: [],
-    allowedOperations,
+    allowedOperations: operations,
     objectiveHash: hash,
     derivedAt: new Date().toISOString(),
     source: 'fallback-keyword',
     mode,
+    ...(refuseVerbMatched !== undefined && { refuseVerbMatched }),
   };
 }
 
-function classifyOperations(userObjective: string): readonly AccessOperation[] {
-  if (matchesAny(userObjective, REFUSE_VERBS)) {
-    // Empty operations — the enforcer will deny anything the policy is
-    // consulted for, forcing a human-approval escalation upstream.
-    return [];
+interface OperationClassification {
+  readonly operations: readonly AccessOperation[];
+  /** The matched destructive verb, when the refuse branch fired. */
+  readonly refuseVerbMatched?: string;
+}
+
+function classifyOperations(userObjective: string): OperationClassification {
+  const refuseVerb = firstMatch(userObjective, REFUSE_VERBS);
+  if (refuseVerb !== undefined) {
+    // Empty operations, and the matched verb carried alongside so the decision
+    // can name it (#5895).
+    //
+    // This does NOT deny. The comment here used to claim "the enforcer will
+    // deny anything the policy is consulted for, forcing a human-approval
+    // escalation upstream" — it does not, and never did. `checkAccess` reaches
+    // its empty-`allowedTools` guard first (enforcer.ts, #5022) and returns
+    // `unmeasured`, and no code anywhere reads `allowedOperations`. Until an
+    // operations reader exists, the refuse branch is a disclosure signal, not
+    // a screen; #5895 records the decision and the reasoning.
+    return { operations: [], refuseVerbMatched: refuseVerb };
   }
   if (matchesAny(userObjective, READ_WRITE_VERBS)) {
-    return ['read', 'write'];
+    return { operations: ['read', 'write'] };
   }
   if (matchesAny(userObjective, READ_ONLY_VERBS)) {
-    return ['read'];
+    return { operations: ['read'] };
   }
   // Ambiguous — most restrictive.
-  return ['read'];
+  return { operations: ['read'] };
 }
 
 /** Exposed for tests. */

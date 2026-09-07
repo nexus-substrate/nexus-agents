@@ -75,6 +75,11 @@ export function createAccessPolicyChainMiddleware(toolName: string): Middleware 
         policySource: policy.source,
         mode: policy.mode,
         requestId: ctx.requestContext.requestId,
+        // #5895: a stable field, so a future counter keys on this rather than
+        // parsing `reason`. Absent unless the objective matched a refuse verb.
+        ...(decision.refuseVerbMatched !== undefined && {
+          refuseVerbMatched: decision.refuseVerbMatched,
+        }),
       });
       return next(args, ctx);
     }
