@@ -198,14 +198,44 @@ describe('MetaOrchestrator.select — manifest-driven routing audit (#3836)', ()
 });
 
 describe('MetaOrchestrator.select — force override', () => {
-  it('honors forceStrategy with full confidence and no shaping', () => {
+  it('honors forceStrategy with full confidence', () => {
     const meta = createMetaOrchestrator();
     const d = meta.select({ goal: 'literally anything', forceStrategy: 'spec' });
     expect(d.strategy).toBe('spec');
+    // The CHOICE is the caller's, so confidence in it is total. That is a
+    // different claim from `needsShaping`, which is about the goal (#5897).
     expect(d.confidence).toBe(1);
-    expect(d.needsShaping).toBe(false);
     expect(d.reasoning).toContain('forced');
     expect(d.alternatives).not.toContain('spec');
+  });
+
+  // #5897: this test used to assert `needsShaping: false` here, and its own
+  // fixture is the defect's reproduction — the real router answers
+  // `needsClarification: true` for "literally anything", with two questions.
+  // Forcing a strategy says WHICH PIPELINE runs; it does not make an
+  // unclear goal clear, and the questions the router computed reached nobody.
+  it('still reports the router verdict on an ambiguous goal', () => {
+    const meta = createMetaOrchestrator();
+
+    const d = meta.select({ goal: 'literally anything', forceStrategy: 'spec' });
+
+    expect(d.needsShaping).toBe(true);
+    expect(d.shapingQuestions).toBeDefined();
+    expect(d.shapingQuestions?.length).toBeGreaterThan(0);
+  });
+
+  it('reports no shaping on a concrete goal', () => {
+    // The pair. Without it the fix could hard-code `true` and the assertion
+    // above would still pass.
+    const meta = createMetaOrchestrator();
+
+    const d = meta.select({
+      goal: 'add a null check to src/foo.ts line 20',
+      forceStrategy: 'spec',
+    });
+
+    expect(d.needsShaping).toBe(false);
+    expect(d.shapingQuestions).toBeUndefined();
   });
 });
 

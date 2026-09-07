@@ -34,6 +34,18 @@ function subSignals(
  * Builds a forced decision. The manifest still backs the audit trail: a forced
  * strategy resolves its manifest (and entrypoint tool) through the registry, so
  * even the escape-hatch path is manifest-sourced, not literal.
+ *
+ * `needsShaping` comes from the router, not from the fact that a strategy was
+ * forced (#5897). It used to be the literal `false`, which answered a question
+ * the caller never asked: forcing a strategy says WHICH PIPELINE runs, while
+ * `needsShaping` says whether the GOAL is legible — and `routing` had already
+ * decided the second. A caller who pinned a pipeline still wants to know the
+ * goal was unclear before it runs, and the clarifying questions the router
+ * computed reached nobody, because `run-tool.ts` spreads `shapingQuestions`
+ * only when the decision carries it.
+ *
+ * `confidence: 1.0` stays a literal, and that is not the same defect: the
+ * caller did choose the strategy, so confidence in the CHOICE is total.
  */
 export function buildForcedDecision(
   forced: ExecutionStrategy,
@@ -41,14 +53,18 @@ export function buildForcedDecision(
   classification: TaskClassification
 ): Omit<MetaDecision, 'decisionId'> {
   const manifest = getStrategyManifest(forced);
+  const needsShaping = routing.needsClarification === true;
   return {
     strategy: forced,
     reasoning: `Strategy forced by caller: ${forced} (entrypoint ${entrypointToolFor(forced)})`,
     confidence: 1.0,
     alternatives: buildAlternatives(forced, routing, classification),
-    needsShaping: false,
+    needsShaping,
     manifestId: manifest?.id ?? forced,
     manifestSchemaVersion: manifest?.schemaVersion ?? 0,
+    ...(needsShaping && routing.suggestedQuestions !== undefined
+      ? { shapingQuestions: routing.suggestedQuestions }
+      : {}),
     ...subSignals(routing, classification),
   };
 }
