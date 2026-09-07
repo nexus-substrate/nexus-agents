@@ -313,7 +313,12 @@ function fetchPriorStrategies(
   logger: ILogger
 ): readonly DistilledRule[] {
   try {
-    const all = loadPersistedRules();
+    // Pass the logger: an unreadable or version-mismatched rules file otherwise
+    // reaches this function as an empty array, indistinguishable from "nothing
+    // was ever learned" — and the assembled prompt then asserts that nothing is
+    // known to fail (#5907). The `catch` below never fires for that case,
+    // because `loadPersistedRules` is written not to throw.
+    const all = loadPersistedRules(undefined, logger);
     return all
       .filter((r) => r.status === 'active')
       .filter((r) => r.category === category || r.category === '*')
