@@ -1,5 +1,30 @@
 # nexus-agents
 
+## 8.43.0
+
+### Minor Changes
+
+- [#5916](https://github.com/nexus-substrate/nexus-agents/pull/5916) [`ce6e669`](https://github.com/nexus-substrate/nexus-agents/commit/ce6e669db1a03e3d145dfcf240ef4ca5ffa974bd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Routing analytics no longer credit TOPSIS for decisions it did not make.
+  `getDecisiveRouterType` tests four stage names and, when none explains the
+  decision, returned `'topsis'` — byte-identical to its own measured answer — so
+  every unattributable decision inflated `decisionsByRouter.topsis`, the exact
+  number that metric exists to report. `RoutingDecision` gains an optional
+  `routerTypeMeasured`, `countDecisionsByRouter` excludes unmeasured rows, and
+  `FeedbackLoopStats` gains `decisionsUnattributed` so the excluded population is
+  reported rather than hidden. A row with no flag (written before this change)
+  reads as unmeasured, never as measured.
+
+### Patch Changes
+
+- [#5917](https://github.com/nexus-substrate/nexus-agents/pull/5917) [`00da246`](https://github.com/nexus-substrate/nexus-agents/commit/00da2463eb05707fce32b438c15fb39d41499801) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `verifyPrReviewRecordSet` and `verifyVoteRecordSet` now report
+  `notVerified: 'empty'` when the set they were asked to verify was empty. Both
+  returned a bare `{ ok: true, recordCount: 0 }`, so a green integrity result could
+  not be distinguished from "verified 40 records and every hash held" — the shape
+  `verifyChain` already fixed with the same field name and value. The verdict is
+  unchanged (an empty ledger is absence, not tamper evidence); the governor-review
+  gate and the vote-record ratification resolver now say so in their output
+  instead of staying silent.
+
 ## 8.42.14
 
 ### Patch Changes
