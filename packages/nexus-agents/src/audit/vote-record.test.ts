@@ -48,7 +48,9 @@ function makeRecord(
 
 describe('verifyVoteRecordSet', () => {
   it('verifies an empty set trivially', () => {
-    expect(verifyVoteRecordSet([])).toEqual({ ok: true, recordCount: 0 });
+    // #5818: `ok: true` alone could not distinguish a verified set from an
+    // absent one. `notVerified` says which, matching `verifyChain`.
+    expect(verifyVoteRecordSet([])).toEqual({ ok: true, recordCount: 0, notVerified: 'empty' });
   });
 
   it('verifies a well-formed single record', () => {

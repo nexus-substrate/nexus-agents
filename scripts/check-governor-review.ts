@@ -45,6 +45,7 @@ import {
   readPrReviewRecords,
   ledgerIntegrityFailure,
   verifyPrReviewRecordSet,
+  type PrReviewRecordVerification,
   type PrReviewRecord,
 } from '../packages/nexus-agents/src/audit/index.js';
 import {
@@ -334,10 +335,35 @@ function aggregateVerdict(
   return 'abstain';
 }
 
+/**
+ * WARN when the record's recorded base disagrees with the PR's actual base,
+ * even though the reviewed-diff hash matched. Extracted so
+ * `matchedRecordOutcome` stays inside the line cap.
+ */
+function baseShaMismatchOutcome(
+  match: PrReviewRecord,
+  inputs: GovernorReviewInputs,
+  ciBase: string,
+  comparable: boolean
+): GovernorReviewOutcome | undefined {
+  if (!comparable || match.baseSha.toLowerCase() === ciBase) return undefined;
+  return {
+    kind: 'warn',
+    message:
+      `PR #${String(inputs.prNumber)} has a diff-bound pr_review record whose baseSha ` +
+      `(${match.baseSha.slice(0, 12)}…) does NOT match the PR's actual base ` +
+      `(${ciBase.slice(0, 12)}…). The reviewed diff content matches (hash verified), but the ` +
+      `record's recorded base is inconsistent with the PR — likely a producer ` +
+      `misconfiguration. Re-run pr_review with the PR's base and commit the record. ` +
+      `(Warn-first: not blocking this stage; provenance hygiene for a future enforce flip, #4058.)`,
+  };
+}
+
 function matchedRecordOutcome(
   matches: readonly PrReviewRecord[],
   match: PrReviewRecord,
-  inputs: GovernorReviewInputs
+  inputs: GovernorReviewInputs,
+  verification: PrReviewRecordVerification
 ): GovernorReviewOutcome {
   // A review that HAPPENED is not a review that APPROVED. This returned pass
   // on record existence alone, and interpolated the verdict into the pass
@@ -366,24 +392,15 @@ function matchedRecordOutcome(
   }
   const ciBase = inputs.baseSha.toLowerCase();
   const comparable = /^[0-9a-f]{40}$/.test(ciBase);
-  if (comparable && match.baseSha.toLowerCase() !== ciBase) {
-    return {
-      kind: 'warn',
-      message:
-        `PR #${String(inputs.prNumber)} has a diff-bound pr_review record whose baseSha ` +
-        `(${match.baseSha.slice(0, 12)}…) does NOT match the PR's actual base ` +
-        `(${ciBase.slice(0, 12)}…). The reviewed diff content matches (hash verified), but the ` +
-        `record's recorded base is inconsistent with the PR — likely a producer ` +
-        `misconfiguration. Re-run pr_review with the PR's base and commit the record. ` +
-        `(Warn-first: not blocking this stage; provenance hygiene for a future enforce flip, #4058.)`,
-    };
-  }
+  const baseMismatch = baseShaMismatchOutcome(match, inputs, ciBase, comparable);
+  if (baseMismatch !== undefined) return baseMismatch;
   return {
     kind: 'pass',
     reason:
       `diff-bound pr_review record found for PR #${String(inputs.prNumber)} ` +
       `(reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, ` +
-      `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}`,
+      `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}` +
+      ledgerCoverage(verification),
   };
 }
 
@@ -400,6 +417,23 @@ function truncationCaveat(truncated: boolean): string {
     ` — PARTIAL: the canonical diff exceeded ${String(MAX_REVIEWED_DIFF_BYTES)} bytes, so the ` +
     'hash binds only the first that many bytes; content past the cap is unattested'
   );
+}
+
+/**
+ * What the ledger's integrity check actually covered (#5818).
+ *
+ * `verifyPrReviewRecordSet` returns `ok: true` for an EMPTY set — correctly, an
+ * empty ledger is absence, not tamper evidence — so a bare pass line could not
+ * distinguish "verified 40 records, all hashes held" from "verified nothing".
+ * `governance/pr-review-records.jsonl` is 0 bytes today with no CI producer, so
+ * the second case is the ONLY one that occurs.
+ */
+function ledgerCoverage(verification: PrReviewRecordVerification): string {
+  if (!verification.ok) return '';
+  if (verification.notVerified === 'empty') {
+    return ' Ledger integrity: VERIFIED NOTHING — governance/pr-review-records.jsonl is empty, so the integrity check had no records to check.';
+  }
+  return ` Ledger integrity: verified ${String(verification.recordCount)} record(s).`;
 }
 
 export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorReviewOutcome {
@@ -441,7 +475,7 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
   );
   const match = matches[0];
   if (match !== undefined) {
-    return matchedRecordOutcome(matches, match, inputs);
+    return matchedRecordOutcome(matches, match, inputs, verification);
   }
 
   // (5) Absence → WARN-FIRST (condition 2): actionable, non-blocking this stage.
@@ -456,6 +490,7 @@ export function analyzeGovernorReview(inputs: GovernorReviewInputs): GovernorRev
     message:
       `PR #${String(inputs.prNumber)} touches governor paths ` +
       `(${touched.join(', ')}) but has NO diff-bound pr_review record for its current diff.` +
+      ledgerCoverage(verification) +
       staleNote +
       ` Run pr_review on this PR and commit the resulting record into ` +
       `governance/pr-review-records.jsonl. (Warn-first: not blocking merge in this stage, #3831.)`,

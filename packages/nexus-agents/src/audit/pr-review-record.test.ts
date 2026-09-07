@@ -60,7 +60,9 @@ describe('verifyPrReviewRecordSet (#3831)', () => {
   });
 
   it('verifies an empty set trivially', () => {
-    expect(verifyPrReviewRecordSet([])).toEqual({ ok: true, recordCount: 0 });
+    // #5818: `ok: true` alone could not distinguish a verified set from an
+    // absent one. `notVerified` says which, matching `verifyChain`.
+    expect(verifyPrReviewRecordSet([])).toEqual({ ok: true, recordCount: 0, notVerified: 'empty' });
   });
 
   it('ignores the advisory previousHash in the hash', () => {
