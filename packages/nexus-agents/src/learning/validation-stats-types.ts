@@ -160,6 +160,23 @@ export interface ExperimentResult {
   readonly hasMinimumSampleSize: boolean;
   /** Minimum recommended sample size per group */
   readonly recommendedSampleSize: number;
+  /**
+   * Whether {@link recommendedSampleSize} was computed from a baseline the
+   * control actually measured.
+   *
+   * `false` means the control has **no observations**, so the `0` baseline
+   * `calculateMinSampleSize` was handed is a default, not a rate. The number it
+   * returns is real arithmetic over a fabricated input and comes out several
+   * times too small — in the direction that tells an operator to stop
+   * collecting early, which is exactly the reader this field exists to warn.
+   *
+   * Note the gate is `control.n > 0`, NOT `control.successRate > 0`: a control
+   * of 0/50 is a measured baseline of 0.0 and a legitimate input here. That is
+   * a different question from the one {@link relativeImprovementMeasured}
+   * answers, which is whether a *ratio over* the control rate exists — hence
+   * two markers rather than one shared flag (#5857).
+   */
+  readonly recommendedSampleSizeMeasured: boolean;
 }
 
 /**

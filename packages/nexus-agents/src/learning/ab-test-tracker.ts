@@ -322,6 +322,11 @@ export class AbTestTracker implements IAbTestTracker {
     const relativeImprovement = relativeImprovementMeasured
       ? (treatment.successRate - control.successRate) / control.successRate
       : 0;
+    // The sibling guard above proves `control.successRate` can be a default
+    // rather than a measurement; this line read the same value with no such
+    // check (#5857). The gate here is `n > 0`, not `successRate > 0`: a
+    // control of 0/50 is a measured baseline of 0.0 and a legitimate input.
+    const recommendedSampleSizeMeasured = control.n > 0;
     const recommendedSampleSize = calculateMinSampleSize(
       control.successRate,
       experiment.minimumDetectableEffect
@@ -338,6 +343,7 @@ export class AbTestTracker implements IAbTestTracker {
       relativeImprovementMeasured,
       hasMinimumSampleSize,
       recommendedSampleSize,
+      recommendedSampleSizeMeasured,
     };
   }
 

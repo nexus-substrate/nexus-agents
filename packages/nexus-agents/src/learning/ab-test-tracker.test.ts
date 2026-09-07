@@ -547,4 +547,44 @@ describe('relativeImprovement over a zero control rate', () => {
 
     expect(result?.relativeImprovementMeasured).toBe(true);
   });
+
+  // #5857: `recommendedSampleSize` read the same `control.successRate` two
+  // lines below the guard that exists because it can be a default, with no
+  // check of its own.
+  it('marks the recommendation unmeasured when the control has no observations', () => {
+    const tracker = new AbTestTracker();
+    tracker.createExperiment(experiment);
+    tracker.startExperiment('exp-zero-control');
+
+    // No recordOutcome calls at all: control.n === 0.
+    const result = tracker.getSummary('exp-zero-control')?.result ?? null;
+
+    expect(result).not.toBeNull();
+    expect(result?.control.n).toBe(0);
+    expect(result?.recommendedSampleSizeMeasured).toBe(false);
+    // The number is still emitted, and that is why the marker is needed: it
+    // is real arithmetic over a fabricated 0 baseline, and it comes out
+    // several times smaller than the same experiment reports once the control
+    // has measured a rate — small in the direction that says "stop collecting".
+    expect(result?.recommendedSampleSize).toBeGreaterThan(0);
+  });
+
+  it('marks the recommendation measured for a control of 0 successes over 20 trials', () => {
+    // The discriminating pair, and the reason this is NOT the same flag as
+    // relativeImprovementMeasured: 0/20 is a measured baseline of 0.0 and a
+    // legitimate input to calculateMinSampleSize, while the RATIO over it
+    // still does not exist. The two markers must disagree on this input.
+    const result = run(false);
+
+    expect(result?.control.n).toBe(20);
+    expect(result?.recommendedSampleSizeMeasured).toBe(true);
+    expect(result?.relativeImprovementMeasured).toBe(false);
+  });
+
+  it('marks the recommendation measured when the control has a rate', () => {
+    // The ordinary case, so the marker cannot be hard-coded false.
+    const result = run(true);
+
+    expect(result?.recommendedSampleSizeMeasured).toBe(true);
+  });
 });
