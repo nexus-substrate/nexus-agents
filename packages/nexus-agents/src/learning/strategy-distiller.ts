@@ -305,7 +305,7 @@ export class StrategyDistiller {
 
   /**
    * Promote high-confidence rules to RoutingMemory.
-   * Rules must be active, non-tainted, with sufficient observations and confidence.
+   * Rules must be active, with sufficient observations and confidence.
    *
    * @deprecated No production caller (#5004 finding 4). `DistilledRuleStage`
    * is the single channel by which distilled rules reach routing; this
@@ -318,7 +318,6 @@ export class StrategyDistiller {
     let promoted = 0;
     for (const [id, rule] of this.rules) {
       if (rule.status !== 'active') continue;
-      if (rule.tainted) continue;
       if (rule.observationCount < this.config.minObservationsForActive) continue;
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- deprecated together with this method (#5467)
       if (rule.confidence < this.config.promotionConfidence) continue;

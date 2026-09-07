@@ -67,7 +67,20 @@ export interface DistilledRule {
   readonly createdAt: number;
   /** Epoch ms when rule was last updated */
   readonly updatedAt: number;
-  /** Security: tainted rules never promote to RoutingMemory */
+  /**
+   * Reserved. **No producer sets this to `true`** (#5853).
+   *
+   * It was documented as a security gate — "tainted rules never promote to
+   * RoutingMemory" — but `upsertRule` writes the literal `false` and is the
+   * only constructor of new rules, so both consumer branches that read it
+   * were unreachable and have been removed. `DistilledRuleStage`, the channel
+   * by which distilled rules actually reach routing, never checked it at all.
+   *
+   * The field stays only because removing a required member of a published
+   * interface is breaking; removal is queued for the next major in #5867. Do
+   * not write a filter against it without first adding a producer — a check
+   * that cannot fail is not a check.
+   */
   readonly tainted: boolean;
 }
 
