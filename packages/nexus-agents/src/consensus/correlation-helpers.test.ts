@@ -218,8 +218,12 @@ describe('computeSubsetIndependence score', () => {
     expect(computeSubsetIndependence(['a'], new Map()).score).toBe(0);
   });
 
-  it('returns 0 for no correlation data', () => {
-    expect(computeSubsetIndependence(['a', 'b'], new Map()).score).toBe(0);
+  it('returns 1 for no correlation data — absent evidence is not independence', () => {
+    // Was 0, the score that earns the MAXIMUM posterior weight, so a pair that
+    // had never co-voted was credited as measured independence (#5813, panel
+    // option B). A singleton still returns 0: it has no pair to observe, so
+    // there is nothing to charge for (the test above).
+    expect(computeSubsetIndependence(['a', 'b'], new Map()).score).toBe(1);
   });
 
   it('computes average absolute correlation', () => {
