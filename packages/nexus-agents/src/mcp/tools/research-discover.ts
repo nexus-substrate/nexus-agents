@@ -706,9 +706,15 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
 
 // Permissive shape — handler returns ResearchDiscoverResponse with topic,
 // sourcesQueried, failedSources, items, totalFound, alreadyInRegistry,
-// newItems, filteredByRelevance (#2340 batch 3). Items vary per source so
-// `items` is array-of-unknown. Hoisted out of the registration fn for the
-// max-lines-per-function gate.
+// registryConsulted, newItems, filteredByRelevance (#2340 batch 3). Items vary
+// per source so `items` is array-of-unknown. Hoisted out of the registration fn
+// for the max-lines-per-function gate.
+//
+// This must list EVERY field the handler returns: the #5045 test asserts the
+// returned content satisfies the declared outputSchema, and it caught
+// `registryConsulted` missing here (#5925). A field present in the response but
+// absent from this schema is a tool whose declared contract understates what it
+// actually sends.
 const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
   topic: z.string().optional(),
   sourcesQueried: z.array(z.string()).optional(),
@@ -716,6 +722,7 @@ const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
   items: z.array(z.unknown()).optional(),
   totalFound: z.number().optional(),
   alreadyInRegistry: z.number().optional(),
+  registryConsulted: z.boolean().optional(),
   newItems: z.number().optional(),
   filteredByRelevance: z.number().optional(),
 };
