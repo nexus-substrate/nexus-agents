@@ -82,7 +82,9 @@ import {
   formatFreshnessTable,
   formatFreshnessJson,
 } from '../indexer/index.js';
+import { validateLinks } from './index-command-link-validator.js';
 
+const mockValidateLinks = vi.mocked(validateLinks);
 const mockFs = vi.mocked(fs);
 const mockYaml = vi.mocked(yaml);
 const mockExtractProject = vi.mocked(extractProject);
@@ -622,14 +624,59 @@ src/
   });
 
   describe('links subcommand', () => {
+    /** Shape the validator's answer for one test. */
+    function mockScan(totalFiles: number, totalLinks: number, brokenLinks: number): void {
+      mockValidateLinks.mockResolvedValue({
+        files: [],
+        summary: { totalFiles, totalLinks, brokenLinks, validLinks: totalLinks - brokenLinks },
+        brokenLinks: [],
+      } as unknown as Awaited<ReturnType<typeof validateLinks>>);
+    }
+
     it('should validate documentation links', async () => {
+      mockScan(4, 12, 0);
+
       const result = await indexCommand({ subcommand: 'links' });
 
-      expect(result.success).toBeDefined();
-      expect(result.message).toMatch(/Link validation:/);
-      expect(result.data).toBeDefined();
-      expect(result.data?.totalFiles).toBeGreaterThanOrEqual(0);
-      expect(result.data?.totalLinks).toBeGreaterThanOrEqual(0);
+      expect(result.success).toBe(true);
+      expect(result.message).toMatch(/12 links validated, all OK/);
+      expect(result.data?.totalFiles).toBe(4);
+    });
+
+    // #5849: `brokenLinks > 0` was the whole verdict, and
+    // `findMarkdownFiles` swallows ENOENT. Run outside the source repo,
+    // `baseDir: 'docs'` matched nothing and the command exited 0 saying
+    // "0 links validated, all OK".
+    it('fails when no markdown files were found at all', async () => {
+      mockScan(0, 0, 0);
+
+      const result = await indexCommand({ subcommand: 'links' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('no markdown files found');
+      expect(result.message).toContain('run it from the repo root');
+      expect(result.message).not.toContain('all OK');
+    });
+
+    it('still fails on broken links in a real scan', async () => {
+      // Pair test: the new guard must not swallow the original verdict.
+      mockScan(4, 12, 3);
+
+      const result = await indexCommand({ subcommand: 'links' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('3 broken links found');
+    });
+
+    it('passes on a scan that read files and found nothing broken', async () => {
+      // Pair test: the guard keys on files read, not on links found. A docs
+      // tree of prose with no links at all is a clean pass, not a wrong CWD.
+      mockScan(2, 0, 0);
+
+      const result = await indexCommand({ subcommand: 'links' });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('all OK');
     });
   });
 

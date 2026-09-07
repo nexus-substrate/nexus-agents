@@ -436,6 +436,23 @@ async function freshnessCommand(options: IndexCommandOptions): Promise<IndexComm
 }
 
 /**
+ * Word the link-validation verdict, keeping "found nothing to check" distinct
+ * from "checked everything and it was clean" (#5849).
+ */
+function buildLinkMessage(brokenLinks: number, totalLinks: number, scannedNothing: boolean): string {
+  if (scannedNothing) {
+    return (
+      'Link validation: no markdown files found under `docs/`. ' +
+      '`index links` audits the nexus-agents source repo — run it from the repo root.'
+    );
+  }
+  if (brokenLinks > 0) {
+    return `Link validation: ${String(brokenLinks)} broken links found`;
+  }
+  return `Link validation: ${String(totalLinks)} links validated, all OK`;
+}
+
+/**
  * Validates markdown links.
  * Part of Epic #261 - Automated Documentation System.
  */
@@ -449,6 +466,14 @@ async function linksCommand(options: IndexCommandOptions): Promise<IndexCommandR
 
   const { summary } = result;
   const hasBrokenLinks = summary.brokenLinks > 0;
+
+  // #5849: `brokenLinks > 0` cannot be the whole verdict, because
+  // `findMarkdownFiles` swallows ENOENT and returns []. Run outside the
+  // nexus-agents source repo, `baseDir: 'docs'` resolves to nothing, the
+  // summary is all zeros, and the command reported "all OK" from a scan that
+  // read no files. Same surface-vs-state shape `freshnessCommand` guards
+  // against above (#2720), and #2716 before that.
+  const scannedNothing = summary.totalFiles === 0;
 
   // Format output based on requested format
   const output =
@@ -468,10 +493,8 @@ async function linksCommand(options: IndexCommandOptions): Promise<IndexCommandR
   }
 
   return {
-    success: !hasBrokenLinks,
-    message: hasBrokenLinks
-      ? `Link validation: ${String(summary.brokenLinks)} broken links found`
-      : `Link validation: ${String(summary.totalLinks)} links validated, all OK`,
+    success: !hasBrokenLinks && !scannedNothing,
+    message: buildLinkMessage(summary.brokenLinks, summary.totalLinks, scannedNothing),
     data: {
       totalFiles: summary.totalFiles,
       totalLinks: summary.totalLinks,
