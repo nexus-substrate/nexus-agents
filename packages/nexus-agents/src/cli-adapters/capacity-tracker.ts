@@ -98,7 +98,7 @@ export function getDefaultConfig(cli: CliName): CapacityTrackerConfig {
  *
  * // Get current capacity status
  * const status = tracker.getCapacity();
- * if (status.exhausted) {
+ * if (status.rateLimited) {
  *   // Wait before next request
  * }
  * ```
@@ -213,7 +213,17 @@ export class CapacityTracker {
       rateLimited,
       // #4456: identical value, deprecated name. Kept so the rename is not a
       // breaking change to an exported type; removal is scheduled for the next
-      // major, and `no-restricted-syntax` blocks new reads in the meantime.
+      // major. New reads ARE blocked in production code — by
+      // `@typescript-eslint/no-deprecated`, which fires as an error on the
+      // `@deprecated` tag at `types-core.ts:241`.
+      //
+      // This comment previously credited `no-restricted-syntax`, which does not
+      // and never did carry such a rule (`eslint.config.js`'s only entry matches
+      // a module import, not a property). The distinction matters because a
+      // property-name selector could not do this job: ESLint has no type
+      // information, so `MemberExpression[property.name='exhausted']` would also
+      // flag `outcome.exhausted` in `fallback-chains.ts`, an unrelated field on
+      // an unrelated type. The type-aware rule is what makes the guard possible.
       exhausted: rateLimited,
       quotaExhausted,
       ...(this.quotaExhaustedUntil !== null
