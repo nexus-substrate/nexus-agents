@@ -259,6 +259,58 @@ describe('inject-governance check', () => {
     expect(output).not.toContain('pattern not found');
     expect(output).toContain('Governance check passed');
   });
+
+  // #5882: a missing probe target used to `return true` with no output, so
+  // "the file was read and agreed" was indistinguishable from "the file is
+  // gone and nothing was checked". It was the ONLY silent outcome — a present
+  // file whose pattern had drifted printed and failed. PLUGIN_INSTALL.md alone
+  // carries 6 probes and lives under docs/getting-started/, which this repo
+  // reorganises routinely.
+  it('fails loudly when a probe target is missing', () => {
+    const target = box('docs/getting-started/PLUGIN_INSTALL.md');
+    const saved = readFileSync(target, 'utf-8');
+    rmSync(target);
+    try {
+      const { ok, output } = runCheck();
+
+      expect(ok).toBe(false);
+      expect(output).toContain('probe not run');
+      expect(output).toContain('PLUGIN_INSTALL.md does not exist');
+      // Not `.every()`: every affected probe is reported, not just the first,
+      // so one CI log shows the whole blast radius.
+      expect(output.match(/probe not run/g)?.length).toBeGreaterThan(1);
+      expect(output).not.toContain('Governance check passed');
+    } finally {
+      writeFileSync(target, saved);
+    }
+  });
+
+  it('fails loudly when a plugin manifest is missing', () => {
+    // `checkPluginVersion` had the identical shape and the identical silence.
+    const target = box('.claude-plugin/plugin.json');
+    const saved = readFileSync(target, 'utf-8');
+    rmSync(target);
+    try {
+      const { ok, output } = runCheck();
+
+      expect(ok).toBe(false);
+      expect(output).toContain('Plugin version check: missing');
+      expect(output).toContain('check not run');
+    } finally {
+      writeFileSync(target, saved);
+    }
+  });
+
+  it('reports how many probes ran on a healthy tree', () => {
+    // The pair, and the reason the count is printed at all: a future tolerant
+    // branch cannot hide behind the green summary if the number drops.
+    const { ok, output } = runCheck();
+
+    expect(ok).toBe(true);
+    const match = /Count-drift probes run:\s*(\d+)/.exec(output);
+    expect(match).not.toBeNull();
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(10);
+  });
 });
 
 // ============================================================================
