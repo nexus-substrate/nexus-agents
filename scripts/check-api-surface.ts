@@ -167,7 +167,12 @@ function main(): void {
     process.exit(1);
   }
 
-  const current = execFileSync('npx', ['tsx', 'scripts/extract-api-surface.ts'], {
+  // `pnpm exec`, not `npx` (#5880). tsx is a pinned devDependency, so it is
+  // already in the pnpm store CI caches; `npx` resolves it from the registry on
+  // every cold runner because setup-node caches `pnpm`, never ~/.npm/_npx. This
+  // line is the one live violation `check-npx-tsx.sh` could not see, and it ran
+  // in the same CI job stream as the gate.
+  const current = execFileSync('pnpm', ['exec', 'tsx', 'scripts/extract-api-surface.ts'], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
