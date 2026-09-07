@@ -28,6 +28,7 @@ import { getSecurityKnowledgePrompt } from './knowledge/security/index.js';
 import {
   detectHeuristicVulnerabilities,
   calculateSecurityScore,
+  heuristicSecurityOutcome,
   generateHeuristicRecommendations,
   generateSecurityWarnings,
   parseSecurityResult,
@@ -114,13 +115,18 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       enableCweMapping: this.expertOptions.enableCweMapping,
       minSeverity: this.expertOptions.minSeverity,
     });
-    const securityScore = calculateSecurityScore(vulnerabilities);
+    // #5879: this used to be `findingsCoverage: 'complete'` with
+    // `calculateSecurityScore(vulnerabilities)`, and an empty list scores 100 —
+    // so the no-adapter path recorded a fully covered, perfectly clean security
+    // review of code nothing had read, and `parseExpertReview` counted it as an
+    // approval. The regex ran over `task.description`, not over the change.
+    const { findingsCoverage, securityScore } = heuristicSecurityOutcome(vulnerabilities);
 
     const result: SecurityAnalysisResult = {
       content: 'Heuristic security analysis. Model adapter required for comprehensive review.',
       vulnerabilities,
       securityScore,
-      findingsCoverage: 'complete',
+      findingsCoverage,
       recommendations: generateHeuristicRecommendations(vulnerabilities),
       warnings: generateSecurityWarnings(vulnerabilities),
       confidence: vulnerabilities.length > 0 ? 0.6 : 0.4,

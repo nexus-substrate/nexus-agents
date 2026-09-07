@@ -156,6 +156,48 @@ describe('SecurityExpert', () => {
       }
     });
 
+    // #5879: this path used to report `findingsCoverage: 'complete'` with
+    // `calculateSecurityScore([]) === 100` — a fully covered, perfectly clean
+    // security review of code NOTHING had read. The regex runs over
+    // `task.description`, and no model ran at all. `parseExpertReview` keys
+    // its two fail-closed guards on this field, so 'complete' missed both and
+    // the non-review counted as an approval.
+    it('reports an unmeasured review when no adapter ran and the regex found nothing', async () => {
+      const expert = new SecurityExpert();
+      const task = createTestTask({ description: 'Rename a variable in the changelog' });
+
+      const result = await expert.execute(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const output = result.value.output as SecurityAnalysisResult;
+        expect(output.vulnerabilities).toEqual([]);
+        expect(output.findingsCoverage).toBe('unmeasured');
+        expect(output.securityScore).toBe(0);
+      }
+    });
+
+    it('reports a partial review when the regex did hit, not unmeasured', async () => {
+      // The pair. A hit over the description is evidence of SOMETHING, so it
+      // must stay reportable — without this the new branch could be hard-coded
+      // 'unmeasured' and the assertion above would still pass.
+      const expert = new SecurityExpert();
+      const task = createTestTask({
+        description: 'Review the SQL query function for user input',
+      });
+
+      const result = await expert.execute(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const output = result.value.output as SecurityAnalysisResult;
+        expect(output.vulnerabilities.length).toBeGreaterThan(0);
+        expect(output.findingsCoverage).toBe('partial');
+        expect(output.securityScore).toBeGreaterThan(0);
+        expect(output.securityScore).toBeLessThan(100);
+      }
+    });
+
     it('should detect SQL injection vulnerability from description', async () => {
       const expert = new SecurityExpert();
       const task = createTestTask({
