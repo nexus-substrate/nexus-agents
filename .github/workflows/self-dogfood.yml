@@ -5,6 +5,16 @@ name: Self-Dogfood Review
 
 on:
   pull_request:
+    # The bot's release branch never carries reviewable code — a version PR is
+    # CHANGELOG.md, package.json, server.json, plugin.json and generated
+    # artifacts. Excluding it here means NO RUN IS CREATED, which is the point
+    # (#5887): a run that is created and never authorised to start resolves to
+    # `action_required` and then `failure` with `total_count: 0` jobs, so the
+    # workflow's history showed 7 consecutive red runs for work it was never
+    # allowed to attempt. A job-level `if:` cannot fix that — the run still gets
+    # created and still needs approval.
+    branches-ignore:
+      - 'changeset-release/**'
     # `labeled` is load-bearing, not decorative (#5875). The review is gated on
     # the `dogfood` label; without this event the gate could only ever be
     # evaluated at open/synchronize, so labelling an already-open PR would do
