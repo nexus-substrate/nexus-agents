@@ -24,7 +24,7 @@ const mockIsAdaptiveMemoryAvailable = vi.fn();
 const mockIsMobiMemAvailable = vi.fn();
 const mockIsDecayManagerAvailable = vi.fn();
 const mockGetBeliefCount = vi.fn();
-const mockGetSessionCounts = vi.fn(() => ({ tasksCount: 0, errorsCount: 0 }));
+const mockGetSessionCounts = vi.fn(() => ({ learningsCount: 0, tasksCount: 0, errorsCount: 0 }));
 const mockAwaitBackendInitialization = vi.fn((): Promise<void> => Promise.resolve());
 
 vi.mock('./tool-memory.js', () => ({
@@ -306,7 +306,7 @@ describe('memory-stats', () => {
       // so every prior test passed against a literal. Non-zero, and different
       // from each other, so neither a hardcoded 0 nor a copy of the other
       // survives.
-      mockGetSessionCounts.mockReturnValue({ tasksCount: 7, errorsCount: 3 });
+      mockGetSessionCounts.mockReturnValue({ learningsCount: 5, tasksCount: 7, errorsCount: 3 });
 
       const result = await registeredHandler({}, {});
       const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
@@ -317,14 +317,43 @@ describe('memory-stats', () => {
       expect(parsed.session.errorsCount).toBe(3);
     });
 
-    it('counts learnings from session memory', async () => {
-      mockGetRelevantLearnings.mockReturnValue('- learning 1\n- learning 2\n- learning 3');
+    it('counts learnings from the live session, not a rendered snippet (#5858)', async () => {
+      // The old path counted the lines of `getRelevantLearnings('', 1000)`.
+      // An empty query matches nothing, so it always fell through to a hard
+      // `.slice(0, 3)`: the 1000 was inert and the count could not exceed 3.
+      // Four is the discriminator — three distinct values across the struct so
+      // neither a cap nor a copy of a sibling survives.
+      mockGetSessionCounts.mockReturnValue({ learningsCount: 4, tasksCount: 7, errorsCount: 3 });
 
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content[0]!.text);
-      expect(parsed.session.learningsCount).toBe(3);
+      expect(parsed.session.learningsCount).toBe(4);
+    });
+
+    it('does not consult the retrieval formatter for the count (#5858)', async () => {
+      // Counting records through a retrieval string is the defect itself: it
+      // borrows a relevance slice as if it were a total.
+      mockGetRelevantLearnings.mockClear();
+      mockGetSessionCounts.mockReturnValue({ learningsCount: 9, tasksCount: 0, errorsCount: 0 });
+
+      const result = await registeredHandler({}, {});
+
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.session.learningsCount).toBe(9);
+      expect(mockGetRelevantLearnings).not.toHaveBeenCalled();
+    });
+
+    it('reports zero learnings when the session has none', async () => {
+      // Pair test: the count must still be able to be 0 for the right reason.
+      mockGetSessionCounts.mockReturnValue({ learningsCount: 0, tasksCount: 2, errorsCount: 0 });
+
+      const result = await registeredHandler({}, {});
+
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.session.learningsCount).toBe(0);
+      expect(parsed.session.tasksCount).toBe(2);
     });
 
     // ========================================================================

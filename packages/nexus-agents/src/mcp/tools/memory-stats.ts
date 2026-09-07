@@ -139,20 +139,23 @@ export interface MemoryStatsResponse {
  *
  * The counts were never absent: the session episode has held `tasksCompleted`
  * and `errorsResolved` all along, they were simply not exposed mid-session.
+ *
+ * `learningsCount` was the third field of that same struct and kept the old
+ * shape one round longer (#5858): it counted the lines of the string
+ * `getRelevantLearnings('', 1000)` renders. An empty query matches no
+ * learning, so that call always fell through to a hard `.slice(0, 3)` — the
+ * `1000` was inert and the count could never exceed 3 — and it returned
+ * `undefined` outright whenever `pastLearnings` was empty, reporting 0 for a
+ * fresh session that had recorded learnings. Counting records through a
+ * retrieval formatter was the mistake; all three now read the live session.
  */
 function collectSessionStats(toolMemory: ReturnType<typeof getToolMemory>): SessionStats {
   const counts = toolMemory.getSessionCounts();
-  const stats: SessionStats = {
-    learningsCount: 0,
+  return {
+    learningsCount: counts.learningsCount,
     tasksCount: counts.tasksCount,
     errorsCount: counts.errorsCount,
   };
-
-  const learnings = toolMemory.getRelevantLearnings('', 1000);
-  if (learnings !== undefined) {
-    stats.learningsCount = learnings.split('\n').filter((l) => l.trim() !== '').length;
-  }
-  return stats;
 }
 
 function renderTypedCount(
