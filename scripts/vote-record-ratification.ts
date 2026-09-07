@@ -110,7 +110,17 @@ export function buildVoteRecordRatificationResolver(
   return {
     resolver: (ref) => byId.get(ref),
     conflictSubjects: conflictingRatifiedSubjects(records),
-    findings: [],
+    // #5818: an EMPTY ledger passes `verifyVoteRecordSet` — correctly, absence
+    // is not tamper evidence — but `ok: true` alone could not distinguish
+    // "verified N records" from "verified nothing", and every ratification ref
+    // then resolves to undefined for a reason the output never states. Say it.
+    findings:
+      verification.notVerified === 'empty'
+        ? [
+            'governance/vote-records.jsonl is EMPTY: the tamper-evidence check verified nothing, ' +
+              'so every ratificationVoteRef will resolve to no record. This is absence, not tampering.',
+          ]
+        : [],
   };
 }
 

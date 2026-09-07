@@ -106,6 +106,42 @@ function inputs(overrides: Partial<GovernorReviewInputs> = {}): GovernorReviewIn
   };
 }
 
+describe('the gate says how much of the ledger it verified (#5818)', () => {
+  it('says VERIFIED NOTHING when the ledger is empty', () => {
+    // `governance/pr-review-records.jsonl` is 0 bytes with no CI producer, so
+    // this is not a hypothetical — it is every governor PR today. The verdict
+    // is unchanged (warn-first); what changes is that the WARN no longer stays
+    // silent about the integrity check having had nothing to check.
+    const outcome = analyzeGovernorReview(inputs({ records: [] }));
+
+    expect(outcome.kind).toBe('warn');
+    if (outcome.kind !== 'warn') throw new Error('unreachable');
+    expect(outcome.message).toContain('VERIFIED NOTHING');
+    expect(outcome.message).toContain('empty');
+  });
+
+  it('states the record count when the ledger is not empty', () => {
+    // A record for a DIFFERENT PR: the ledger is non-empty, so the integrity
+    // check covered something, but this PR still has no diff-bound record.
+    const outcome = analyzeGovernorReview(
+      inputs({ records: [record({ prNumber: 4999 })], prNumber: 5000 })
+    );
+
+    expect(outcome.kind).toBe('warn');
+    if (outcome.kind !== 'warn') throw new Error('unreachable');
+    expect(outcome.message).toContain('verified 1 record(s)');
+    expect(outcome.message).not.toContain('VERIFIED NOTHING');
+  });
+
+  it('states the count on the PASS line too', () => {
+    const outcome = analyzeGovernorReview(inputs({ records: [record()] }));
+
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind !== 'pass') throw new Error('unreachable');
+    expect(outcome.reason).toContain('verified 1 record(s)');
+  });
+});
+
 describe('governor section start marker (#5576)', () => {
   const NO_START_MARKER = [
     // Deliberately does NOT contain the section marker text — a fixture that

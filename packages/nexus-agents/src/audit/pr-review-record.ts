@@ -290,7 +290,27 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
  * boundary (author-typed records; signing deferred to #3927 item 4) — module header.
  */
 export type PrReviewRecordVerification =
-  | { ok: true; recordCount: number; forks?: number[] }
+  | {
+      ok: true;
+      recordCount: number;
+      forks?: number[];
+      /**
+       * Set when the verified set was EMPTY, so nothing was checked (#5818).
+       *
+       * `ok: true` alone does not distinguish a verified set from an absent
+       * one — the "default reported as a measurement" shape the mission text
+       * rules out. Same field name, value and meaning as `verifyChain`'s
+       * `notVerified: 'empty'` (`audit-logger.ts`), which was added for exactly
+       * this reason; two of the verifiers in this directory already spoke that
+       * vocabulary and these two did not.
+       *
+       * The verdict is deliberately still `ok: true`: an empty ledger is not
+       * evidence of tampering, and failing on it would block every governor PR
+       * while the ledger has no producer. It is the CALLER's job to say
+       * "verified nothing" rather than printing a bare pass.
+       */
+      notVerified?: 'empty';
+    }
   | {
       ok: false;
       reason: 'hash_mismatch' | 'missing_hash' | 'sequence_gap';
@@ -393,7 +413,7 @@ export function verifyPrReviewRecordSet(
     if (failure !== null) return failure;
   }
 
-  if (records.length === 0) return { ok: true, recordCount: 0 };
+  if (records.length === 0) return { ok: true, recordCount: 0, notVerified: 'empty' };
 
   // 2) Sequence coverage: 0..maxSeq with no gap (omission); forks are benign.
   const census = censusSequences(records);
