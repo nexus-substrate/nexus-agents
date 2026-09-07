@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 8.42.2
+
+### Patch Changes
+
+- [#5855](https://github.com/nexus-substrate/nexus-agents/pull/5855) [`c490f89`](https://github.com/nexus-substrate/nexus-agents/commit/c490f898ae96026ecb11d73302d459a14b5d911b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - sprint: `plan --create-issue` fails when the issue was not created ([#5848](https://github.com/nexus-substrate/nexus-agents/issues/5848))
+
+  `createSprintIssue` returns `null` for every failure — `gh` absent, unauthenticated, rate-limited, sandbox-denied, or output without an issue URL. The caller dropped that `null` on the floor: the command printed "Creating sprint issue...", nothing after it, and exited `0` with `"success": true` and no `error` field, so a CI job consuming the exit code recorded a sprint epic that was never filed.
+
+  - `createSprintIssue` now returns `{ ok: true, issueNumber } | { ok: false, reason }`, separating "the command did not run" from "it ran but printed no issue URL", each with its own operator-facing message.
+  - `sprint plan --create-issue` exits `1` and reports the error when the create failed. Without `--create-issue` nothing changes.
+  - `printSprintResult` prints the error after the plan instead of instead of it, so a sprint whose issue could not be filed still shows the proposal it computed.
+
+- [#5856](https://github.com/nexus-substrate/nexus-agents/pull/5856) [`2f7992c`](https://github.com/nexus-substrate/nexus-agents/commit/2f7992c020e934011bb61c64a5c056c80ee9039d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - index: `links` fails instead of reporting "all OK" when it read no files ([#5849](https://github.com/nexus-substrate/nexus-agents/issues/5849))
+
+  `linksCommand` derived its whole verdict from `brokenLinks > 0`, and `findMarkdownFiles` swallows ENOENT and returns `[]`. Run outside the nexus-agents source repo, the hard-coded relative `baseDir: 'docs'` resolved to nothing, the summary came back all zeros, and the command exited `0` with `Link validation: 0 links validated, all OK` — a clean audit over a scan that opened no files. Verified by running the command from a directory with no `docs/` tree.
+
+  The command now fails with the wrong-CWD hint that `freshnessCommand` has carried since [#2720](https://github.com/nexus-substrate/nexus-agents/issues/2720). The guard keys on files read, not links found, so a docs tree of prose with no links at all is still a clean pass.
+
 ## 8.42.1
 
 ### Patch Changes
