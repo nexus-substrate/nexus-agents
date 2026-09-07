@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 8.42.4
+
+### Patch Changes
+
+- [#5866](https://github.com/nexus-substrate/nexus-agents/pull/5866) [`425753e`](https://github.com/nexus-substrate/nexus-agents/commit/425753e7337dce6e2620f73cd507f9f003cf3be5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - learning: `recommendedSampleSize` now says whether its baseline was measured ([#5857](https://github.com/nexus-substrate/nexus-agents/issues/5857))
+
+  `ExperimentResult.recommendedSampleSize` answers "how much more traffic do I need?" — the question an operator asks exactly when `hasMinimumSampleSize` is false. It was computed from `control.successRate`, which `calculateVariantStats` produces as `n > 0 ? successes / n : 0`, so a control with **no observations** and a control that genuinely measured 0% both hand `calculateMinSampleSize` the same `0`. For a 10% minimum detectable effect the unmeasured case reports **74** where the same experiment with a measured 50% control reports **391**: real arithmetic over a fabricated input, 5.3× too small, in the direction that tells the operator to stop collecting.
+
+  The file already knew this could happen — `relativeImprovementMeasured` was added two lines above for the same value. `ExperimentResult` now also carries `recommendedSampleSizeMeasured`.
+
+  The two markers are deliberately **not** one shared flag, and their gates differ: this one is `control.n > 0`, because a control of 0/50 is a measured baseline of 0.0 and a legitimate input to a power calculation, while the _ratio over_ that same rate still does not exist. A test pins the input where the two disagree.
+
+- [#5868](https://github.com/nexus-substrate/nexus-agents/pull/5868) [`6d2b5b1`](https://github.com/nexus-substrate/nexus-agents/commit/6d2b5b19650c81a15cc7c905f3582790cc092684) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - learning: remove the two dead `tainted` filter branches and the security-gate claim they carried ([#5853](https://github.com/nexus-substrate/nexus-agents/issues/5853))
+
+  `DistilledRule.tainted` was documented in three places as a security gate — "tainted rules never promote to RoutingMemory", "security gate — tainted rules never reach consumers per Phase 5 acceptance". Nothing in production could set it. `upsertRule` writes the literal `false` and is the only constructor of new rules; the only other ingress passes through a persisted file written from those same rules. So both consumer branches were unreachable, and `DistilledRuleStage.findMatchingRules` — the channel by which distilled rules actually reach routing — never checked the flag at all.
+
+  The two branches and the claims are gone. Not a live exploit: the field was inert in the _safe_ direction, so the harm was that a reader of `context-retriever.ts` concluded the substrate screens untrusted-derived rules when it does not.
+
+  The field itself stays for now — removing a required member of a published interface is breaking — relabelled as reserved-with-no-producer, with removal queued in [#5867](https://github.com/nexus-substrate/nexus-agents/issues/5867) alongside [#5467](https://github.com/nexus-substrate/nexus-agents/issues/5467). Two tests that passed only by constructing a record production cannot emit were rewritten; a new test pins that the filter no longer discriminates on the flag, so the dead conjunct cannot quietly return without a producer.
+
+  Remedy chosen by a live 7-voter panel (option E, 6/6 on the option tally, every voter stating that the published-API framing changed their answer).
+
 ## 8.42.3
 
 ### Patch Changes
