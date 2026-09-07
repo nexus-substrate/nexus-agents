@@ -14,7 +14,7 @@ import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
 import type { IPluginRegistry } from './plugin-types.js';
-import { enforceGatePolicy } from './policy-evaluator.js';
+import { enforceGatePolicy, type PolicyEvalResult } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
 import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 import { createLogger } from '../core/index.js';
@@ -155,6 +155,15 @@ function createStageHandler(
  *  - OFF mode → evaluation skipped.
  *
  * When `enforcement` is absent the gate stays a no-op pass (back-compat).
+ *
+ * The status is derived from `verdict.violations`, NOT from `verdict.allowed`
+ * (#5862). `allowed` is `true` on every path the evaluator RETURNS — `off`
+ * short-circuits, `warn` is `mode === 'warn' || violations.length === 0`, and
+ * block-plus-denial throws instead of returning — so it cannot tell a
+ * warn-mode gate that found violations from one that found none, and the
+ * `warned` status this doc promised was unreachable. Every recorded gate now
+ * also carries `policyEvaluated` and `policyMode`, so a gate that never ran a
+ * rule is distinguishable from one that ran them all and passed.
  */
 function createGateHandler(
   gate: PolicyGateSpec,
@@ -166,18 +175,41 @@ function createGateHandler(
     return (_state: Readonly<GraphState>) =>
       Promise.resolve({
         currentStage: gate.id,
-        stageResults: [{ gateId: gate.id, status: 'passed' }],
+        // No engine wired, so no rule ran. The marker is the same courtesy
+        // `placeholder: true` extends to an absent plugin below.
+        stageResults: [{ gateId: gate.id, status: 'passed', policyEvaluated: false }],
       });
   }
   return (_state: Readonly<GraphState>) => {
     // enforceGatePolicy throws PolicyBlockedError on block+denial; the executor
     // catches it and marks the node failed. WARN/OFF return a verdict instead.
     const verdict = enforceGatePolicy(enforcement, { gateId: gate.id, taskId, stageType });
-    const status = verdict.allowed ? 'passed' : 'warned';
     return Promise.resolve({
       currentStage: gate.id,
-      stageResults: [{ gateId: gate.id, status }],
+      stageResults: [buildGateResult(gate.id, verdict)],
     });
+  };
+}
+
+/**
+ * Record what the gate actually established.
+ *
+ * `violations.length` is the discriminator, not `allowed` — see the note on
+ * {@link createGateHandler}. The violations travel with the status because a
+ * `warned` gate with no detail is barely more useful than a `passed` one, and
+ * the evaluator's own event bus is optional (`GatePolicyEnforcement.eventBus`),
+ * so with none wired this record is the only trace (#5862).
+ */
+function buildGateResult(gateId: string, verdict: PolicyEvalResult): Record<string, unknown> {
+  const violated = verdict.violations.length > 0;
+  return {
+    gateId,
+    status: violated ? 'warned' : 'passed',
+    policyEvaluated: verdict.mode !== 'off',
+    policyMode: verdict.mode,
+    ...(violated
+      ? { violations: verdict.violations.map((v) => `${v.ruleId}: ${v.reason}`) }
+      : {}),
   };
 }
 

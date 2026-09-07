@@ -6255,6 +6255,7 @@ InterfaceDeclaration PipelineMetrics
   readonly durationMs: number
   readonly executed: boolean
   readonly policyBlocked?: boolean | undefined
+  readonly policyMode?: PolicyMode | undefined
   readonly policyViolations?: readonly string[] | undefined
   readonly stepsExecuted: number
 TypeAliasDeclaration PipelineMode

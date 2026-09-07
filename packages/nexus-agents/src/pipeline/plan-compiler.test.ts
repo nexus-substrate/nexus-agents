@@ -237,6 +237,16 @@ function enforcement(
   };
 }
 
+/** Pull one gate's recorded entry out of the accumulated stageResults. */
+function findGateResult(
+  finalState: Readonly<Record<string, unknown>>,
+  gateId: string
+): Record<string, unknown> | undefined {
+  const results = finalState['stageResults'];
+  if (!Array.isArray(results)) return undefined;
+  return (results as Record<string, unknown>[]).find((r) => r['gateId'] === gateId);
+}
+
 async function runGatedPlan(opts: {
   mode?: 'off' | 'warn' | 'block';
   pipelineState: PipelineStateSnapshot;
@@ -334,6 +344,41 @@ describe('policy gate enforcement (#3177)', () => {
     expect(executeNode?.status).toBe('success');
     const events = bus.query({}).map((e) => e.type);
     expect(events).toContain('policy.evaluated');
+
+    // #5862: this test's own title promised "gate marked warned" and never
+    // asserted the marking. `verdict.allowed` is true on every returning path,
+    // so the status was the constant 'passed' and the record was byte-identical
+    // to a clean run — see the pair test below.
+    const gate = findGateResult(result.value.finalState, 'gate-trust');
+    expect(gate?.['status']).toBe('warned');
+    expect(gate?.['policyEvaluated']).toBe(true);
+    expect(gate?.['policyMode']).toBe('warn');
+    expect(gate?.['violations']).toEqual([expect.stringContaining('trust-tier')]);
+  });
+
+  it('(d2) warn mode with nothing to report is distinguishable from (d)', async () => {
+    // The pair. Without it the status could be hard-coded 'warned' and the
+    // assertions above would still pass. `listRules: () => []` is a clean
+    // engine: the same mode, the same plan, no violations.
+    const engine = createDefaultPolicyEngine();
+    const clean = {
+      registerRule: engine.registerRule.bind(engine),
+      evaluate: engine.evaluate.bind(engine),
+      listRules: () => [],
+    };
+    const compiled = compilePlan(makeGatedPlan(), {
+      policyEnforcement: enforcement({ mode: 'warn', pipelineState: {}, engine: clean }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const gate = findGateResult(result.value.finalState, 'gate-trust');
+    expect(gate?.['status']).toBe('passed');
+    expect(gate?.['policyEvaluated']).toBe(true);
+    expect(gate?.['violations']).toBeUndefined();
   });
 
   it('(e) off mode → evaluator not called (gate passes regardless of trust)', async () => {

@@ -85,21 +85,31 @@ export async function executeOrchestratePipeline(task: TaskContract): Promise<Pi
   // was authorised. Real trust-tier enforcement over an actual invocation is
   // `dev-pipeline.ts` (`enforceConsensusExecutePolicy`).
   const policyResult = checkPipelinePolicy(task, 'execute');
+  // #5862: `allowed` is `true` on every path the evaluator returns — `off`
+  // short-circuits and `warn` is `mode === 'warn' || violations.length === 0`
+  // — so under `warn` this branch is unreachable and `policyResult.violations`
+  // was dropped on the floor. A run whose trust-tier rule denied logged
+  // identically to one where policy found nothing, and `PipelineMetrics` is
+  // the whole observable output of this path. Carry the violations either way;
+  // only `policyBlocked` turns on whether execution actually stopped.
+  const policyViolations = policyResult.violations.map((v) => `${v.ruleId}: ${v.reason}`);
+  const policyRecord =
+    policyViolations.length > 0 ? { policyViolations, policyMode: policyResult.mode } : {};
+
   if (!policyResult.allowed) {
-    const violations = policyResult.violations.map((v) => `${v.ruleId}: ${v.reason}`);
     return {
       compiled: false,
       executed: false,
       stepsExecuted: 0,
       durationMs: 0,
       policyBlocked: true,
-      policyViolations: violations,
+      ...policyRecord,
     };
   }
 
   const compiled = createDelegatePipeline(task);
   if (!compiled.ok) {
-    return { compiled: false, executed: false, stepsExecuted: 0, durationMs: 0 };
+    return { compiled: false, executed: false, stepsExecuted: 0, durationMs: 0, ...policyRecord };
   }
   const runner = new PipelineRunner();
   const startMs = Date.now();
@@ -108,12 +118,13 @@ export async function executeOrchestratePipeline(task: TaskContract): Promise<Pi
   });
   const durationMs = Date.now() - startMs;
   if (!result.ok) {
-    return { compiled: true, executed: false, stepsExecuted: 0, durationMs };
+    return { compiled: true, executed: false, stepsExecuted: 0, durationMs, ...policyRecord };
   }
   return {
     compiled: true,
     executed: result.value.success,
     stepsExecuted: result.value.stepsExecuted,
     durationMs,
+    ...policyRecord,
   };
 }

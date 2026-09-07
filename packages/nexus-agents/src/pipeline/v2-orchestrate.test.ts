@@ -109,4 +109,33 @@ describe('executeOrchestratePipeline — policy enforcement', () => {
     const metrics = await executeOrchestratePipeline(warned);
     expect(metrics.policyBlocked).toBeUndefined();
   });
+
+  // #5862: under warn mode `policyResult.allowed` is true regardless of
+  // violations, so the branch that mapped them was unreachable and the
+  // violations were dropped. The metrics object is the whole observable
+  // output of this path, so a denied run logged identically to a clean one.
+  it('records the violations it found in warn mode, without blocking', async () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'warn';
+    const tc = orchestrateInputToTaskContract({ task: 'test' });
+    const warned = { ...tc, metadata: { ...tc.metadata, trustTier: '4' } };
+
+    const metrics = await executeOrchestratePipeline(warned);
+
+    expect(metrics.policyBlocked).toBeUndefined();
+    expect(metrics.policyMode).toBe('warn');
+    expect(metrics.policyViolations).toEqual([expect.stringContaining('trust-tier')]);
+  });
+
+  it('records no violations for a trusted task in the same mode', async () => {
+    // The pair. Without it `policyViolations` could be populated
+    // unconditionally and the assertion above would still pass.
+    process.env['NEXUS_V2_POLICY_MODE'] = 'warn';
+    const tc = orchestrateInputToTaskContract({ task: 'test' });
+    const trusted = { ...tc, metadata: { ...tc.metadata, trustTier: '1' } };
+
+    const metrics = await executeOrchestratePipeline(trusted);
+
+    expect(metrics.policyViolations).toBeUndefined();
+    expect(metrics.policyMode).toBeUndefined();
+  });
 });
