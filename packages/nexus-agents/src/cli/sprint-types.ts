@@ -51,6 +51,22 @@ export interface SprintProposal {
 }
 
 /**
+ * Why `gh issue create` produced no issue number.
+ *
+ * - `gh_failed` — `safeExecSandboxed` returned null: `gh` is absent,
+ *   unauthenticated, rate-limited, or the sandbox denied the command.
+ * - `no_issue_number` — `gh` ran but printed no `/issues/<n>` URL.
+ *
+ * Kept distinct because they send an operator to different checks (#5848).
+ */
+export type SprintIssueFailureReason = 'gh_failed' | 'no_issue_number';
+
+/** Outcome of filing the sprint epic. */
+export type SprintIssueCreation =
+  | { readonly ok: true; readonly issueNumber: number }
+  | { readonly ok: false; readonly reason: SprintIssueFailureReason };
+
+/**
  * Sprint planning result.
  * Extends CommandResult with sprint-specific fields.
  */

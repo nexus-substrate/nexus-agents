@@ -223,11 +223,6 @@ export function printSprintResult(result: SprintPlanResult, format: 'text' | 'js
     return;
   }
 
-  if (result.error !== undefined && result.error !== '') {
-    writeLine(`${colors.red}${symbols.cross} Error: ${result.error}${colors.reset}`);
-    return;
-  }
-
   if (result.proposal !== undefined) {
     printProposal(result.proposal);
   }
@@ -246,6 +241,12 @@ export function printSprintResult(result: SprintPlanResult, format: 'text' | 'js
       `${colors.green}${symbols.check} Created issue #${String(result.createdIssueNumber)}${colors.reset}`
     );
     writeLine('');
+  }
+
+  // Printed last, and no longer instead of the plan: a sprint whose issue
+  // could not be filed still computed a proposal worth reading (#5848).
+  if (result.error !== undefined && result.error !== '') {
+    writeLine(`${colors.red}${symbols.cross} Error: ${result.error}${colors.reset}`);
   }
 }
 

@@ -22,6 +22,7 @@ import {
   generateProposal,
   generateProposalBody,
   createSprintIssue,
+  sprintCommand,
 } from './sprint-command.js';
 import { voteOutcomeForExitCode } from './sprint-helpers.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
@@ -395,9 +396,9 @@ describe('createSprintIssue', () => {
   it('pipes the body via --body-file - stdin, not an inline --body arg', () => {
     mockExec.mockReturnValue('https://github.com/o/r/issues/42');
 
-    const num = createSprintIssue(makeProposal());
+    const created = createSprintIssue(makeProposal());
 
-    expect(num).toBe(42);
+    expect(created).toEqual({ ok: true, issueNumber: 42 });
     const call = mockExec.mock.calls[0];
     expect(call?.[0]).toContain('--body-file -');
     expect(call?.[0]).not.toContain("--body '");
@@ -411,6 +412,80 @@ describe('createSprintIssue', () => {
 
     // Title + flags only — the body (with `|`, `(`, `)`) lives in stdin.
     expect(mockExec.mock.calls[0]?.[0]).not.toMatch(/[|()]/);
+  });
+
+  // #5848: both failures used to collapse to `null`, which the caller then
+  // dropped on the floor — the command exited 0 reporting success:true.
+  it('reports gh_failed when the command did not run', () => {
+    mockExec.mockReturnValue(null);
+
+    expect(createSprintIssue(makeProposal())).toEqual({ ok: false, reason: 'gh_failed' });
+  });
+
+  it('reports no_issue_number when gh ran but printed no issue URL', () => {
+    mockExec.mockReturnValue('created something, somewhere');
+
+    expect(createSprintIssue(makeProposal())).toEqual({ ok: false, reason: 'no_issue_number' });
+  });
+});
+
+// ============================================================================
+// sprint plan --create-issue exit code (#5848)
+// ============================================================================
+
+describe('sprintCommand plan --create-issue (#5848)', () => {
+  const mockExec = vi.mocked(safeExecSandboxed);
+
+  /** One open issue, enough for generateProposal to produce a plan. */
+  const ISSUE_LIST = JSON.stringify([
+    {
+      number: 1,
+      title: 'fix: something',
+      body: 'body',
+      state: 'open',
+      labels: [{ name: 'p1' }],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  ]);
+
+  /** Answer the list call, and hand the create call whatever the test wants. */
+  function mockGh(createOutput: string | null): void {
+    mockExec.mockImplementation((command: string) =>
+      command.startsWith('gh issue list') ? ISSUE_LIST : createOutput
+    );
+  }
+
+  beforeEach(() => {
+    mockExec.mockReset();
+  });
+
+  it('exits 1 when the issue could not be created', async () => {
+    // Was: exit 0 and `"success": true`, with the issue never filed.
+    mockGh(null);
+
+    await expect(sprintCommand({ subcommand: 'plan', createIssue: true })).resolves.toBe(1);
+  });
+
+  it('exits 1 when gh printed no issue number', async () => {
+    mockGh('nothing that looks like a URL');
+
+    await expect(sprintCommand({ subcommand: 'plan', createIssue: true })).resolves.toBe(1);
+  });
+
+  it('exits 0 when the issue was created', async () => {
+    // Pair test: the new failure branch must not fire on a successful create.
+    mockGh('https://github.com/o/r/issues/99');
+
+    await expect(sprintCommand({ subcommand: 'plan', createIssue: true })).resolves.toBe(0);
+  });
+
+  it('exits 0 without --create-issue, even though nothing was filed', async () => {
+    // Pair test: the failure is "you asked for an issue and did not get one",
+    // not "no issue exists".
+    mockGh(null);
+
+    await expect(sprintCommand({ subcommand: 'plan' })).resolves.toBe(0);
   });
 });
 

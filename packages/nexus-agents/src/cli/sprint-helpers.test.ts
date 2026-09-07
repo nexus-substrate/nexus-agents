@@ -468,6 +468,32 @@ describe('sprint-helpers', () => {
       expect(output).toContain('Failed to fetch issues');
     });
 
+    it('prints the plan alongside the error, not instead of it (#5848)', () => {
+      // A sprint whose issue could not be filed still computed a proposal
+      // worth reading. The error used to short-circuit the whole render.
+      const result: SprintPlanResult = {
+        success: false,
+        proposal: {
+          title: 'Sprint 2026-W01',
+          goals: ['Goal 1'],
+          p1Issues: [],
+          p2Issues: [],
+          p3Issues: [],
+          p4Issues: [],
+          body: 'Sprint proposal body',
+        },
+        voteOutcome: 'approved',
+        error: 'Failed to create the sprint issue: `gh issue create` did not run.',
+      };
+
+      printSprintResult(result, 'text');
+
+      const output = stdoutWriteMock.mock.calls.map((call: unknown[]) => String(call[0])).join('');
+      expect(output).toContain('Sprint 2026-W01');
+      expect(output).toContain('APPROVED');
+      expect(output).toContain('Failed to create the sprint issue');
+    });
+
     it('should print vote outcome when approved', () => {
       const result: SprintPlanResult = {
         proposal: {
