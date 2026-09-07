@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -522,8 +523,13 @@ describe('PersistentStrategyDistiller', () => {
       // caller could not tell "nothing was learned" from "what was learned could
       // not be read", and `ContextRetriever` then assembles a prompt asserting
       // that nothing is known to fail.
-      function spyLogger(): { warn: ReturnType<typeof vi.fn> } {
-        return { warn: vi.fn() };
+      // Typed as the parameter itself: an untyped `vi.fn()` widens to
+      // `Mock<Procedure | Constructable>`, which is not assignable to
+      // `Pick<ILogger, 'warn'>` and fails `pnpm typecheck` even though vitest
+      // runs it happily.
+      type WarnSpy = Pick<ILogger, 'warn'> & { warn: MockInstance<ILogger['warn']> };
+      function spyLogger(): WarnSpy {
+        return { warn: vi.fn<ILogger['warn']>() };
       }
 
       it('warns when the snapshot fails schema validation', () => {
