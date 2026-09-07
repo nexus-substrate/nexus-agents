@@ -239,9 +239,6 @@ describe('survey_oss_landscape end-to-end (mocked fetch)', () => {
         }),
     });
 
-    const mod = await import('./survey-oss-landscape.js');
-    // The handler is wrapped — call the executor via internal path
-    // by re-importing with the same fetch stub in place.
     const input = SurveyOssLandscapeInputSchema.parse({ query: 'cargo nextest' });
     // Reimplement the executor flow by calling fetchSource indirectly via
     // the public input schema; we don't expose executeSurvey directly, so
@@ -257,7 +254,6 @@ describe('survey_oss_landscape end-to-end (mocked fetch)', () => {
     expect(candidates[0]?.license).toBe('Apache-2.0');
     // Sanity: re-validate the input parses
     expect(input.query).toBe('cargo nextest');
-    void mod; // satisfy unused-var
   });
 
   it('returns empty candidates when GitHub returns no items', async () => {

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-08-31",
+  "fetchedAt": "2026-09-07",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1343,6 +1343,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "claude-fable-5-1",
+      "vendor": "anthropic",
+      "family": "claude-fable",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-anthropic",
+      "source": "models-dev",
+      "displayName": "Claude Fable 5.1",
+      "verifiedAt": "2026-09-01",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 10,
+        "outputPer1M": 50
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "claude-haiku-4-5",
       "vendor": "anthropic",
       "family": "claude-haiku",
@@ -2633,6 +2657,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-3.8-flash",
+      "vendor": "google",
+      "family": "gemini-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemini 3.8 Flash",
+      "verifiedAt": "2026-09-02",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 65536,
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.75,
+        "outputPer1M": 3.75
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "gemini-embedding-001",
       "vendor": "google",
       "family": "gemini",
@@ -2747,30 +2795,6 @@
         "inputPer1M": 1.5,
         "outputPer1M": 17.5
       }
-    },
-    {
-      "id": "gemini-robotics-er-1.6-preview",
-      "vendor": "google",
-      "family": "gemini",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini Robotics-ER 1.6 Preview",
-      "verifiedAt": "2026-04-14",
-      "contextWindow": 131072,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "video", "audio"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 1,
-        "outputPer1M": 5
-      },
-      "toolCapabilities": ["function-calling"]
     },
     {
       "id": "gemma-4-26b-a4b-it",
@@ -2911,6 +2935,30 @@
       "contextWindow": 480,
       "maxOutputTokens": 8192,
       "inputModalities": ["text", "image"]
+    },
+    {
+      "id": "claude-fable-5-1@default",
+      "vendor": "google",
+      "family": "claude-fable",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Claude Fable 5.1",
+      "verifiedAt": "2026-09-01",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 10,
+        "outputPer1M": 50
+      },
+      "toolCapabilities": ["function-calling"]
     },
     {
       "id": "claude-fable-5@default",
@@ -3676,6 +3724,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-3.8-flash",
+      "vendor": "google",
+      "family": "gemini-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemini 3.8 Flash",
+      "verifiedAt": "2026-09-02",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 65536,
+      "inputModalities": ["text", "image", "video", "audio", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.75,
+        "outputPer1M": 3.75
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "gemini-embedding-001",
       "vendor": "google",
       "family": "gemini",
@@ -3952,8 +4024,8 @@
       "source": "models-dev",
       "displayName": "Muse Spark 1.1",
       "verifiedAt": "2026-07-09",
-      "contextWindow": 1000000,
-      "maxOutputTokens": 32000,
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
       "inputModalities": ["text", "image", "pdf", "video"],
       "outputModalities": ["text"],
       "pricing": {
@@ -4000,6 +4072,54 @@
       "source": "models-dev",
       "displayName": "Muse Spark 1.2 Contributor",
       "verifiedAt": "2026-08-05",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "video", "pdf", "audio"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.1,
+        "outputPer1M": 0.2
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "muse-spark-1.3",
+      "vendor": "meta",
+      "family": "muse",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-meta",
+      "source": "models-dev",
+      "displayName": "Muse Spark 1.3",
+      "verifiedAt": "2026-09-02",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "video", "pdf", "audio"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.25,
+        "outputPer1M": 4.25
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "muse-spark-1.3-contributor",
+      "vendor": "meta",
+      "family": "muse",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-meta",
+      "source": "models-dev",
+      "displayName": "Muse Spark 1.3 Contributor",
+      "verifiedAt": "2026-09-02",
       "contextWindow": 1048576,
       "maxOutputTokens": 131072,
       "inputModalities": ["text", "image", "video", "pdf", "audio"],
@@ -8027,6 +8147,30 @@
       "pricing": {
         "inputPer1M": 2,
         "outputPer1M": 12
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-6-astra",
+      "vendor": "openai",
+      "family": "gpt-astra",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-6 Astra",
+      "verifiedAt": "2026-09-04",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 10,
+        "outputPer1M": 50
       },
       "toolCapabilities": ["function-calling"]
     },

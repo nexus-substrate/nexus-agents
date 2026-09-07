@@ -3,11 +3,18 @@
  * (Source: Issue #500 - Add missing MCP tool test files)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ok, type ILogger, type IModelAdapter } from '../../core/index.js';
+import {
+  ok,
+  SeededRandomProvider,
+  setRandomProvider,
+  resetRandomProvider,
+  type ILogger,
+  type IModelAdapter,
+} from '../../core/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   ConsensusVoteInputSchema,
@@ -904,6 +911,22 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
 });
 
 describe('#4135: decision plumbing (executeVoting stamps decision; buildResponse reuses it)', () => {
+  // #5937: this test used `simulateVotes: true` with no seed. `simulateVote`
+  // draws approve/reject/ABSTAIN from a weighted distribution, and #5892's
+  // respondent floor requires all 3 of a quickMode panel to cast approve or
+  // reject before a ratio decides an approval. So a run where any simulated
+  // voter abstained produced `no_quorum` and failed the last assertion —
+  // roughly 1 run in 3, including in CI on unrelated PRs.
+  //
+  // Seeding makes the panel deterministic, so the assertions below test what they
+  // claim instead of sampling a distribution. The seed is arbitrary but fixed.
+  beforeEach(() => {
+    setRandomProvider(new SeededRandomProvider(20260907));
+  });
+  afterEach(() => {
+    resetRandomProvider();
+  });
+
   it('executeVoting stamps result.decision matching the legacy mapping under a default policy', async () => {
     const { executeVoting } = await import('./consensus-vote.js');
     const { mapOutcomeToDecision } = await import('./consensus-vote-types.js');
@@ -911,11 +934,33 @@ describe('#4135: decision plumbing (executeVoting stamps decision; buildResponse
       { proposal: 'Ship the plumbing', simulateVotes: true, quickMode: true },
       createMockLogger()
     );
-    // Under a default policy the decision is the legacy 2-valued mapping — never
-    // no_quorum. This is the inert-by-default guarantee (#4135).
+    // The stamping invariant: whatever the outcome, `decision` is its mapping.
     expect(result.decision).toBeDefined();
     expect(result.decision).toBe(mapOutcomeToDecision(result.result.outcome));
-    expect(result.decision).not.toBe('no_quorum');
+  });
+
+  it('a full-respondent panel under a default policy is NOT degraded to no_quorum', async () => {
+    // The #4135 inert-by-default guarantee, stated in the form that is actually
+    // true after #5892: the floor degrades an approval only when fewer voters
+    // than the floor DECIDED. With every seat casting approve or reject, it
+    // must not fire. Asserted on the measured respondent count rather than
+    // hoping the seed produced one.
+    const { executeVoting } = await import('./consensus-vote.js');
+    const result = await executeVoting(
+      { proposal: 'Ship the plumbing', simulateVotes: true, quickMode: true },
+      createMockLogger()
+    );
+    const respondents = result.votes.filter(
+      (v) => v.vote.decision === 'approve' || v.vote.decision === 'reject'
+    ).length;
+
+    if (respondents === result.votes.length) {
+      expect(result.decision).not.toBe('no_quorum');
+    } else {
+      // The other half of the contract, equally worth pinning: a panel that did
+      // NOT fully respond is exactly the case the floor exists to catch.
+      expect(result.decision === 'no_quorum' || result.result.outcome !== 'approved').toBe(true);
+    }
   });
 
   it('buildResponse REUSES a pre-stamped result.decision (DRY — decision cannot diverge)', () => {

@@ -1396,8 +1396,7 @@ describe('ambient request context (#4981)', () => {
 
     // A 1-arity handler is exactly what createSecureHandler returns, so the
     // chain's arity dispatch drops ctx and this is the only channel left.
-    const wrapped = withMiddleware('probe_tool', (args: unknown) => {
-      void args;
+    const wrapped = withMiddleware('probe_tool', (_args: unknown) => {
       seen = getCurrentRequestContext();
       return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
     });

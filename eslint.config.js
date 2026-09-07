@@ -79,7 +79,24 @@ export default defineConfig([
       // TypeScript strict rules
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // The `_` prefix is the deliberate, GREPPABLE way to say "intentionally
+      // unused". It replaces an ad-hoc `void x;` idiom that existed only to
+      // suppress this rule — 25 of them, invisible to every linter and to
+      // review, and reclassified as errors by
+      // `no-meaningless-void-operator` in typescript-eslint 8.69 (which is
+      // right: `void` on a plain identifier discards nothing).
+      //
+      // The exemption is narrower than what it replaces. Before, ANY unused
+      // binding could be waved through with `void x;` and nothing fired. Now it
+      // must carry a visible prefix, and an unprefixed one still errors.
+      // `ignoreRestSiblings` exempts only the keys pulled off an object to omit
+      // them from a rest — the destructure-to-omit idiom and nothing else.
+      // `caughtErrors` is deliberately NOT relaxed: unused catch bindings are
+      // removed with optional catch binding (`catch {`) instead.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/strict-boolean-expressions': 'error',

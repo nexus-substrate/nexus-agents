@@ -452,9 +452,9 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
 
     try {
       capacity = await adapter.getCapacity();
-    } catch (capErr: unknown) {
-      // Capacity check is optional — some adapters don't support it
-      void capErr; // Logged at debug via adapter internals
+    } catch {
+      // Capacity check is optional — some adapters don't support it.
+      // Optional catch binding: there is no variable to be unused.
     }
 
     return createHealthyResult(name, health, authProbe, capacity);
