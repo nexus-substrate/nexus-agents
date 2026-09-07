@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.42.3
+
+### Patch Changes
+
+- [#5861](https://github.com/nexus-substrate/nexus-agents/pull/5861) [`67e6d08`](https://github.com/nexus-substrate/nexus-agents/commit/67e6d08b855e52182c47145a7d83fc78a4725836) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - memory_stats: `session.learningsCount` reads the live session instead of a rendered retrieval snippet ([#5858](https://github.com/nexus-substrate/nexus-agents/issues/5858))
+
+  The count was derived by calling `getRelevantLearnings('', 1000)` and counting the lines of the string it returns. An empty query matches no learning — `''.split(/\s+/)` is `['']`, filtered out by `k.length > 1`, and `matchesKeywords` returns `false` for an empty keyword list — so the call **always** fell through to the fallback branch's hard `.slice(0, 3)`. The `1000` was inert and the reported count could never exceed 3. Worse, `getRelevantLearnings` returns `undefined` when `pastLearnings` is empty, so a fresh session that had recorded learnings reported 0 while the sibling `backends.session: true` asserted the backend was up.
+
+  `getSessionCounts()` now returns all three counts from the same live accessors, matching the fix [#5269](https://github.com/nexus-substrate/nexus-agents/issues/5269) applied to `tasksCount` and `errorsCount` on the same struct. Counting records through a retrieval formatter — which borrows a relevance slice as if it were a total — was the mistake.
+
+- [#5860](https://github.com/nexus-substrate/nexus-agents/pull/5860) [`bc1a325`](https://github.com/nexus-substrate/nexus-agents/commit/bc1a3250a4df5d708f465c1c324f07faf044e2d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - context: the last two undisclosed prompt sections now state their cut, and the ranked prefix marks what its budget dropped ([#5850](https://github.com/nexus-substrate/nexus-agents/issues/5850), [#5851](https://github.com/nexus-substrate/nexus-agents/issues/5851))
+
+  `summarizeContextForPrompt` renders six sections. Four disclosed how much they cut; `### Similar prior work` and `### Observed patterns` rendered a bare heading over a hard `.slice(0, 3)`. Because the siblings disclose, a heading without counts read as "nothing was dropped" — and both lists are fetched with the default `limit = 5`, so two items went missing on the ordinary path. The cut happens during rendering, before the 2500-token clamp, so the trailing clip notice never covered it. Every legacy section now goes through one `renderDisclosedSection`, which is what keeps them from drifting apart again.
+
+  Under `NEXUS_CONTEXT_RANKED=1`, the ranked block is pre-truncated to a 400-token budget — well under the outer clamp, so `clipped` is never true and the documented "backpressure" notice could not fire. `topRankedWithinBudget` now returns `{ kept, omitted }` and the block renders a `_(+N lower-ranked items omitted …)_` line, the same disclosure shape `renderRepoMap` already uses.
+
 ## 8.42.2
 
 ### Patch Changes
