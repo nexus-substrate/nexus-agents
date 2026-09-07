@@ -44,8 +44,9 @@ import {
   topRankedWithinBudget,
   assembleClampedContext,
   renderLegacyLearningSections,
-  sliceContextLines,
-  disclosedHeading,
+  renderDisclosedSection,
+  type RankedBudgetFit,
+  renderLegacyResearchSection,
   type RankedMemoryItem,
 } from './context-retriever-helpers.js';
 import { createTokenCounter } from './token-counter.js';
@@ -576,33 +577,48 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
   const sections: string[] = [];
 
   if (ctx.beliefs.length > 0) {
-    const slice = sliceContextLines(
-      ctx.beliefs.map(
-        (b) =>
-          `- ${oneLine(b.subject)} ${oneLine(b.predicate)} ${oneLine(b.object)} (confidence: ${b.confidence})`
-      ),
-      contextTokenCounter
+    sections.push(
+      renderDisclosedSection(
+        '### Beliefs',
+        ctx.beliefs.map(
+          (b) =>
+            `- ${oneLine(b.subject)} ${oneLine(b.predicate)} ${oneLine(b.object)} (confidence: ${b.confidence})`
+        ),
+        contextTokenCounter
+      )
     );
-    sections.push(`${disclosedHeading('### Beliefs', slice)}\n${slice.lines.join('\n')}`);
   }
 
+  // #5850: these two were `.slice(0, 3)` under a bare heading while their four
+  // siblings disclosed their cut, so a heading without counts read as "nothing
+  // was dropped" — and the default retrieval limit is 5, so two items went
+  // missing on the ordinary path. The cut happens before the outer clamp, so
+  // the trailing clip notice never covered it either. Every section now goes
+  // through the same renderer, which is what keeps them from drifting apart
+  // again.
   if (ctx.similarMemories.length > 0) {
-    const lines = ctx.similarMemories
-      .slice(0, 3)
-      .map((m) => `- ${oneLine(m.attributes.contextDescription)}`);
-    sections.push(`### Similar prior work\n${lines.join('\n')}`);
+    sections.push(
+      renderDisclosedSection(
+        '### Similar prior work',
+        ctx.similarMemories.map((m) => `- ${oneLine(m.attributes.contextDescription)}`),
+        contextTokenCounter
+      )
+    );
   }
 
   sections.push(...renderLegacyLearningSections(ctx, contextTokenCounter, oneLine));
 
   if (ctx.experiencePatterns.length > 0) {
-    const lines = ctx.experiencePatterns
-      .slice(0, 3)
-      .map(
-        (p) =>
-          `- ${oneLine(p.taskType)}: ${(p.successRate * 100).toFixed(0)}% success over ${String(p.attemptCount)} attempts`
-      );
-    sections.push(`### Observed patterns\n${lines.join('\n')}`);
+    sections.push(
+      renderDisclosedSection(
+        '### Observed patterns',
+        ctx.experiencePatterns.map(
+          (p) =>
+            `- ${oneLine(p.taskType)}: ${(p.successRate * 100).toFixed(0)}% success over ${String(p.attemptCount)} attempts`
+        ),
+        contextTokenCounter
+      )
+    );
   }
 
   if (ctx.outcomes !== null && ctx.outcomes.totalTasks > 0) {
@@ -611,20 +627,7 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
     );
   }
 
-  if (ctx.researchInsights.length > 0) {
-    const lines = ctx.researchInsights.map((r) => {
-      // Evidence tier (#4287) is appended only when the papers.yaml join
-      // resolved; absent ⇒ the line is byte-identical to the pre-#4287 render.
-      // Wrap in oneLine() like every other rendered field so an untrusted
-      // papers.yaml value can't escape the `- ` framing with embedded newlines.
-      const evidence = r.evidenceTier !== undefined ? `, evidence: ${oneLine(r.evidenceTier)}` : '';
-      return `- ${oneLine(r.name)} (${oneLine(r.status)}${evidence}) — ${oneLine(r.topic)}`;
-    });
-    const slice = sliceContextLines(lines, contextTokenCounter);
-    sections.push(
-      `${disclosedHeading('### Prior research on this topic', slice)}\n${slice.lines.join('\n')}`
-    );
-  }
+  sections.push(...renderLegacyResearchSection(ctx, contextTokenCounter, oneLine));
 
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
 }
@@ -656,13 +659,27 @@ const RANKED_SOURCE_LABEL: Readonly<Record<RankedMemoryItem['source'], string>> 
 function summarizeRankedContext(ctx: UnifiedContext): string {
   const ranked =
     ctx.rankedMemories.length > 0 ? ctx.rankedMemories : rankMemories(ctx, deriveRankTask(ctx));
-  const top = topRankedWithinBudget(ranked, RANKED_PREFIX_TOKEN_BUDGET);
-  if (top.length === 0) return '';
-  const lines = top.map(
+  const fit = topRankedWithinBudget(ranked, RANKED_PREFIX_TOKEN_BUDGET);
+  if (fit.kept.length === 0) return '';
+  const lines = fit.kept.map(
     (r) =>
       `- [${RANKED_SOURCE_LABEL[r.source]}] ${oneLine(r.text)} (relevance: ${r.relevanceScore.toFixed(2)})`
   );
-  return `## Prior Context (Nexus Memory)\n### Most relevant prior context\n${lines.join('\n')}`;
+  return `## Prior Context (Nexus Memory)\n### Most relevant prior context\n${lines.join('\n')}${rankedOmissionNotice(fit)}`;
+}
+
+/**
+ * Mark what the prefix budget left behind.
+ *
+ * This cut happens at `RANKED_PREFIX_TOKEN_BUDGET`, well under the outer
+ * clamp, so `assembleClampedContext` never reports it and the block read as
+ * the whole ranked list. Same disclosure shape as `renderRepoMap` (#4254,
+ * #5851). An empty string when nothing was dropped, so a complete block stays
+ * distinguishable from a cut one.
+ */
+function rankedOmissionNotice(fit: RankedBudgetFit): string {
+  if (fit.omitted === 0) return '';
+  return `\n_(+${String(fit.omitted)} lower-ranked items omitted for the ~${String(RANKED_PREFIX_TOKEN_BUDGET)}-token prefix budget — #5851)_`;
 }
 
 /**
