@@ -143,15 +143,27 @@ export function rankMemories(
 }
 
 /**
+ * What a ranked block kept, and how much it had to leave behind.
+ *
+ * The count is the point: this cut happens before the outer clamp and so
+ * never trips its notice, which left the rendered block indistinguishable
+ * from a complete one (#5851).
+ */
+export interface RankedBudgetFit {
+  readonly kept: readonly RankedMemoryItem[];
+  readonly omitted: number;
+}
+
+/**
  * Take items off the front of an already-ranked list until adding the next one
  * would exceed `maxTokens` (estimated). Order-preserving; never throws. A
- * zero/negative budget yields `[]`.
+ * zero/negative budget keeps nothing and reports every item as omitted.
  */
 export function topRankedWithinBudget(
   items: readonly RankedMemoryItem[],
   maxTokens: number
-): readonly RankedMemoryItem[] {
-  if (maxTokens <= 0) return [];
+): RankedBudgetFit {
+  if (maxTokens <= 0) return { kept: [], omitted: items.length };
   const kept: RankedMemoryItem[] = [];
   let used = 0;
   for (const item of items) {
@@ -160,7 +172,7 @@ export function topRankedWithinBudget(
     used += cost;
     kept.push(item);
   }
-  return kept;
+  return { kept, omitted: items.length - kept.length };
 }
 
 /** Disclosure returned beside each fixed legacy context slice. */
@@ -200,13 +212,44 @@ export function disclosedHeading(label: string, slice: ContextSlice): string {
   return `${label} (${String(slice.included)} included, ${String(slice.dropped)} dropped, ${String(slice.droppedTokens)} dropped tokens)`;
 }
 
-function renderDisclosedSection(
+/**
+ * Render one legacy section under a heading that states its own cut.
+ *
+ * Every section in the legacy block goes through here, so a heading without
+ * counts is not a thing the block can emit (#5850).
+ */
+export function renderDisclosedSection(
   heading: string,
   lines: readonly string[],
   counter: { readonly estimate: (text: string) => number }
 ): string {
   const slice = sliceContextLines(lines, counter);
   return `${disclosedHeading(heading, slice)}\n${slice.lines.join('\n')}`;
+}
+
+/**
+ * Render the prior-research section for the legacy prompt path.
+ *
+ * Returns an empty list when there is nothing to say, so the caller can spread
+ * it unconditionally alongside the other section renderers.
+ */
+export function renderLegacyResearchSection(
+  ctx: UnifiedContext,
+  counter: { readonly estimate: (text: string) => number },
+  sanitize: (value: string) => string
+): readonly string[] {
+  if (ctx.researchInsights.length === 0) return [];
+
+  const lines = ctx.researchInsights.map((r) => {
+    // Evidence tier (#4287) is appended only when the papers.yaml join
+    // resolved; absent ⇒ the line is byte-identical to the pre-#4287 render.
+    // Wrap in sanitize() like every other rendered field so an untrusted
+    // papers.yaml value can't escape the `- ` framing with embedded newlines.
+    const evidence = r.evidenceTier !== undefined ? `, evidence: ${sanitize(r.evidenceTier)}` : '';
+    return `- ${sanitize(r.name)} (${sanitize(r.status)}${evidence}) — ${sanitize(r.topic)}`;
+  });
+
+  return [renderDisclosedSection('### Prior research on this topic', lines, counter)];
 }
 
 /** Render adaptive-memory and distilled-strategy sections for the legacy prompt path. */

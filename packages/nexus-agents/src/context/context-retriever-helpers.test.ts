@@ -334,18 +334,35 @@ describe('topRankedWithinBudget — truncation', () => {
     const items = Array.from({ length: 20 }, (_, i) =>
       rankedItem('belief', `item number ${String(i)} with enough words to cost tokens`)
     );
-    const kept = topRankedWithinBudget(items, 20);
-    expect(kept.length).toBeGreaterThan(0);
-    expect(kept.length).toBeLessThan(items.length);
+    const fit = topRankedWithinBudget(items, 20);
+    expect(fit.kept.length).toBeGreaterThan(0);
+    expect(fit.kept.length).toBeLessThan(items.length);
+  });
+
+  // #5851: the cut is well under the outer clamp, so it never trips the clip
+  // notice. Without a count the caller cannot mark it.
+  it('reports how many items the budget left behind', () => {
+    const items = Array.from({ length: 20 }, (_, i) =>
+      rankedItem('belief', `item number ${String(i)} with enough words to cost tokens`)
+    );
+    const fit = topRankedWithinBudget(items, 20);
+    expect(fit.omitted).toBe(items.length - fit.kept.length);
+    expect(fit.omitted).toBeGreaterThan(0);
   });
 
   it('returns all items when the budget is generous', () => {
     const items = [rankedItem('belief', 'one'), rankedItem('agentic', 'two')];
-    expect(topRankedWithinBudget(items, 10_000)).toHaveLength(2);
+    const fit = topRankedWithinBudget(items, 10_000);
+    expect(fit.kept).toHaveLength(2);
+    // Pair case: a block that fits reports nothing omitted, so the caller
+    // renders no notice.
+    expect(fit.omitted).toBe(0);
   });
 
-  it('returns an empty list for a zero budget', () => {
-    expect(topRankedWithinBudget([rankedItem('belief', 'x')], 0)).toEqual([]);
+  it('keeps nothing and reports everything omitted for a zero budget', () => {
+    const fit = topRankedWithinBudget([rankedItem('belief', 'x')], 0);
+    expect(fit.kept).toEqual([]);
+    expect(fit.omitted).toBe(1);
   });
 });
 

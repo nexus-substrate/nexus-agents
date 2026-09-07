@@ -27,6 +27,9 @@ import type { DistilledRule } from '../learning/strategy-distiller-types.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { rankMemories } from './context-retriever-helpers.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
+import { MemoryImportance } from './memory-backend-types.js';
+import type { AgenticMemoryEntry } from './agentic-memory-types.js';
+import type { ExperienceEntry } from './mobimem-types.js';
 import { getTokenLedger, _resetTokenLedgerForTests } from './token-ledger.js';
 import { createTokenCounter } from './token-counter.js';
 import {
@@ -692,6 +695,76 @@ describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () =>
 });
 
 // ============================================================================
+// summarizeContextForPrompt — the last two undisclosed sections (#5850)
+// ============================================================================
+
+describe('summarizeContextForPrompt — similar work and observed patterns (#5850)', () => {
+  function makeSimilarMemory(i: number): AgenticMemoryEntry {
+    return {
+      key: `mem-${String(i)}`,
+      value: `value ${String(i)}`,
+      metadata: { importance: MemoryImportance.MEDIUM },
+      createdAt: new Date('2026-06-01'),
+      accessedAt: new Date('2026-06-01'),
+      attributes: {
+        keywords: [],
+        semanticTags: [],
+        contextDescription: `prior work ${String(i)}`,
+        entities: [],
+        attributesUpdatedAt: new Date('2026-06-01'),
+      },
+    };
+  }
+
+  function makePattern(i: number): ExperienceEntry {
+    return {
+      id: `exp-${String(i)}`,
+      taskType: `task type ${String(i)}`,
+      actionSequence: [],
+      outcome: { success: true, totalDurationMs: 1000, tokensUsed: 10 },
+      contextSignature: 'sig',
+      successCount: 8,
+      attemptCount: 10,
+      successRate: 0.8,
+      createdAt: new Date('2026-06-01'),
+      lastUsedAt: new Date('2026-06-01'),
+    };
+  }
+
+  // Both sections used to render a bare heading over a hard `.slice(0, 3)`,
+  // while their four siblings in the same block disclose their cut. A reader
+  // of the emitted text had to conclude they were complete — and the default
+  // retrieval limit is 5, so two items went missing on the ordinary path.
+  it('discloses the cut on Similar prior work', () => {
+    const similarMemories = Array.from({ length: 7 }, (_, i) => makeSimilarMemory(i));
+
+    const out = summarizeContextForPrompt(emptyContext({ similarMemories }));
+
+    expect(out).toMatch(/### Similar prior work \(5 included, 2 dropped, \d+ dropped tokens\)/);
+  });
+
+  it('discloses the cut on Observed patterns', () => {
+    const experiencePatterns = Array.from({ length: 7 }, (_, i) => makePattern(i));
+
+    const out = summarizeContextForPrompt(emptyContext({ experiencePatterns }));
+
+    expect(out).toMatch(/### Observed patterns \(5 included, 2 dropped, \d+ dropped tokens\)/);
+  });
+
+  it('reports zero dropped when nothing was cut', () => {
+    // Pair test: the disclosure has to be able to say "nothing was dropped",
+    // or it is no more informative than the bare heading it replaced.
+    const similarMemories = [makeSimilarMemory(0), makeSimilarMemory(1)];
+
+    const out = summarizeContextForPrompt(emptyContext({ similarMemories }));
+
+    expect(out).toContain('### Similar prior work (2 included, 0 dropped, 0 dropped tokens)');
+    expect(out).toContain('- prior work 0');
+    expect(out).toContain('- prior work 1');
+  });
+});
+
+// ============================================================================
 // summarizeContextForPrompt — NEXUS_CONTEXT_RANKED cross-ranked rendering (#3236)
 // ============================================================================
 
@@ -740,6 +813,42 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
     expect(out).toContain('[belief]');
     expect(out).toContain('authentication token refresh');
     expect(out).not.toContain('### Beliefs');
+  });
+
+  // #5851: the ranked block is pre-truncated to RANKED_PREFIX_TOKEN_BUDGET
+  // (400), well under the outer 2500-token clamp, so `clipped` is never true
+  // and the trailing clip notice never fires. The rendered block was therefore
+  // indistinguishable from the whole ranked list.
+  it('flag-on marks the items the 400-token prefix budget left behind', () => {
+    process.env[RANKED] = '1';
+    const beliefs = Array.from({ length: 60 }, (_, i) => ({
+      beliefId: `b-${String(i)}`,
+      subject: `authentication token refresh subject number ${String(i)}`,
+      predicate: 'requires',
+      object: `an oauth flow with a reasonably long description ${String(i)}`,
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+    }));
+    const base = emptyContext({ beliefs });
+    const ctx = { ...base, rankedMemories: rankMemories(base, 'authentication token refresh') };
+
+    const out = summarizeContextForPrompt(ctx);
+
+    expect(out).toMatch(/_\(\+\d+ lower-ranked items omitted for the ~400-token prefix budget/);
+  });
+
+  it('flag-on renders no omission notice when everything fit', () => {
+    // Pair test: the marker must distinguish a cut block from a whole one.
+    process.env[RANKED] = '1';
+
+    const out = summarizeContextForPrompt(populated());
+
+    expect(out).toContain('### Most relevant prior context');
+    expect(out).not.toContain('omitted');
   });
 
   it('flag-on still sanitizes a poisoned field via oneLine (#3236 condition 3)', () => {
