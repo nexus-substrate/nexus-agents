@@ -42,6 +42,23 @@ export interface GraphPipelineResult {
   readonly durationMs: number;
   readonly finalState: Readonly<Record<string, unknown>>;
   readonly error?: string | undefined;
+  /**
+   * Set when the run was a dry run. Mirrors `DevPipelineResult.dryRun`: a
+   * consumer reading `success` alone reported a truncated dry run as a full
+   * pipeline. Absent means a normal run.
+   */
+  readonly dryRun?: true;
+  /**
+   * Stages the template declares, and stages this run actually executed.
+   *
+   * `templateId` names the FULL template even when `resolveEffectiveTemplate`
+   * truncated it at `dryRunStopAfter`, so `templateId: 'dev'` with
+   * `success: true` used to be byte-identical whether qa and security ran or
+   * were sliced away. These two numbers are what makes the coverage legible
+   * without the consumer having to know `dryRunStopAfter` and the stage list.
+   */
+  readonly stagesPlanned: number;
+  readonly stagesRun: number;
 }
 
 // ============================================================================
@@ -70,10 +87,22 @@ export async function runGraphPipeline(
 
   const graphResult = compileEffectiveGraph(template, stages, options);
   if (graphResult.error !== undefined) {
-    return buildError(template.id, graphResult.error, startTime);
+    // Compilation failed, so nothing ran. `stagesRun: 0` is the measurement,
+    // not a default — and the compiler required this branch to say so.
+    return {
+      ...buildError(template.id, graphResult.error, startTime),
+      ...stamp({ stagesPlanned: template.stages.length, stagesRun: 0 }, options),
+    };
   }
 
-  return executeAndReport(task, template, graphResult.graph, options, startTime);
+  return executeAndReport({
+    task,
+    template,
+    graph: graphResult.graph,
+    coverage: graphResult.coverage,
+    options,
+    startTime,
+  });
 }
 
 /** Compile the graph, handling dryRun truncation. */
@@ -81,23 +110,38 @@ function compileEffectiveGraph(
   template: PipelineTemplate,
   stages: StageRegistry,
   options: GraphPipelineOptions | undefined
-): { graph: CompiledGraph; error?: undefined } | { graph?: undefined; error: string } {
+):
+  | { graph: CompiledGraph; coverage: StageCoverage; error?: undefined }
+  | { graph?: undefined; coverage?: undefined; error: string } {
   const effective = resolveEffectiveTemplate(template, options);
   const compiled = compilePipelineGraph(effective, stages);
   if (!compiled.ok || compiled.graph === undefined) {
     return { error: compiled.error ?? 'Compilation failed' };
   }
-  return { graph: compiled.graph };
+  return {
+    graph: compiled.graph,
+    coverage: { stagesPlanned: template.stages.length, stagesRun: effective.stages.length },
+  };
+}
+
+/** How much of the template this run covers — see `GraphPipelineResult`. */
+interface StageCoverage {
+  readonly stagesPlanned: number;
+  readonly stagesRun: number;
 }
 
 /** Execute the compiled graph and emit observability events. */
-async function executeAndReport(
-  task: string,
-  template: PipelineTemplate,
-  graph: CompiledGraph,
-  options: GraphPipelineOptions | undefined,
-  startTime: number
-): Promise<GraphPipelineResult> {
+interface ExecuteAndReportArgs {
+  readonly task: string;
+  readonly template: PipelineTemplate;
+  readonly graph: CompiledGraph;
+  readonly coverage: StageCoverage;
+  readonly options: GraphPipelineOptions | undefined;
+  readonly startTime: number;
+}
+
+async function executeAndReport(args: ExecuteAndReportArgs): Promise<GraphPipelineResult> {
+  const { task, template, graph, coverage, options, startTime } = args;
   logger.info('Executing graph pipeline', {
     template: template.id,
     dryRun: options?.dryRun === true,
@@ -120,7 +164,7 @@ async function executeAndReport(
 
   if (!result.ok) {
     emitPipelineStageEvent(template.id, 'pipeline', 'failed', { error: result.error.message });
-    return buildError(template.id, result.error.message, startTime);
+    return { ...buildError(template.id, result.error.message, startTime), ...stamp(coverage, options) };
   }
 
   // #4362: `result.ok` only says the BSP loop returned. The executor absorbs a
@@ -141,6 +185,7 @@ async function executeAndReport(
       // see how far the run got before it failed.
       finalState: result.value.finalState,
       error: failures,
+      ...stamp(coverage, options),
     };
   }
 
@@ -151,7 +196,24 @@ async function executeAndReport(
     stepsExecuted: result.value.stepsExecuted,
     durationMs,
     finalState: result.value.finalState,
+    ...stamp(coverage, options),
   };
+}
+
+/**
+ * The coverage fields every exit path carries.
+ *
+ * `dryRun` is stamped from the OPTION, not from whether truncation happened: a
+ * dry run of a template with no `dryRunStopAfter` executes every stage, and
+ * calling that a normal run would be the same misreport in the other
+ * direction. `stagesPlanned`/`stagesRun` say whether anything was actually
+ * sliced.
+ */
+function stamp(
+  coverage: StageCoverage,
+  options: GraphPipelineOptions | undefined
+): StageCoverage & { dryRun?: true } {
+  return { ...coverage, ...(options?.dryRun === true ? { dryRun: true as const } : {}) };
 }
 
 /**
@@ -188,7 +250,11 @@ function resolveEffectiveTemplate(
   };
 }
 
-function buildError(templateId: string, error: string, startTime: number): GraphPipelineResult {
+function buildError(
+  templateId: string,
+  error: string,
+  startTime: number
+): Omit<GraphPipelineResult, 'stagesPlanned' | 'stagesRun'> {
   return {
     success: false,
     templateId,
