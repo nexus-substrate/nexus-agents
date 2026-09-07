@@ -295,6 +295,67 @@ export interface WithRetryOptions {
   readonly isRetryable?: (error: unknown) => boolean;
   /** Callback invoked before each retry attempt. Useful for logging. */
   readonly onRetry?: (info: RetryAttemptInfo) => void;
+  /**
+   * Aborts the retry loop, including the backoff wait (#4293 item 5).
+   *
+   * Without this the backoff was a bare `await sleep(delayMs)`: a cancelled
+   * operation still held real wall-clock time before the loop noticed, and with
+   * the default profile a caller could wait out the full delay for work nobody
+   * wanted any more.
+   *
+   * On abort the loop returns `err(RetryExhaustedError)` rather than throwing —
+   * `withRetry`'s never-throws contract is what `execute_expert` relies on, so
+   * the abort path must be an error VALUE. `RetryExhaustedError.cause` carries
+   * whichever error the last attempt produced, or the signal's abort reason when
+   * the abort arrived before any attempt failed.
+   */
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * The error to return when `signal` was ALREADY aborted before the first
+ * attempt, or `undefined` when the loop should run.
+ *
+ * `attemptsMade` is 0 because none were: reporting 1 would claim an attempt the
+ * operation never got.
+ */
+function alreadyAborted(signal: AbortSignal | undefined): RetryExhaustedError | undefined {
+  if (signal?.aborted !== true) return undefined;
+  return new RetryExhaustedError(0, signal.reason);
+}
+
+/** Invoke the optional retry callback. Extracted to keep `withRetry` inside the complexity cap. */
+function notifyRetry(
+  onRetry: ((info: RetryAttemptInfo) => void) | undefined,
+  info: RetryAttemptInfo
+): void {
+  if (onRetry !== undefined) onRetry(info);
+}
+
+/**
+ * Sleep for `ms`, resolving early if `signal` aborts.
+ *
+ * Returns `true` when the full delay elapsed and `false` when the wait was cut
+ * short by an abort, so the caller can tell "backoff finished, try again" from
+ * "stop". Always clears the timer and removes the listener, so an aborted retry
+ * leaves nothing pending — a leaked timer would keep the process alive past the
+ * work it belonged to.
+ */
+function sleepUnlessAborted(ms: number, signal: AbortSignal | undefined): Promise<boolean> {
+  if (signal === undefined) return sleep(ms).then(() => true);
+  if (signal.aborted) return Promise.resolve(false);
+
+  return new Promise<boolean>((resolve) => {
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(true);
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 /**
@@ -326,10 +387,15 @@ export async function withRetry<T>(
   const config = mergeConfig(options.config ?? {});
   const isRetryable = options.isRetryable ?? isRetryableError;
   const onRetry = options.onRetry;
+  const signal = options.signal;
 
   const maxAttempts = config.maxRetries + 1; // Initial attempt + retries
   let lastError: unknown;
   let attemptsMade = 0;
+
+  // Already aborted before the first attempt: do not run the operation at all.
+  const preAborted = alreadyAborted(signal);
+  if (preAborted !== undefined) return err(preAborted);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attemptsMade = attempt + 1;
@@ -348,18 +414,11 @@ export async function withRetry<T>(
       // Calculate delay for next retry
       const delayMs = calculateDelay(attempt, config);
 
-      // Notify about retry attempt
-      if (onRetry) {
-        onRetry({
-          attempt: attempt + 1,
-          maxAttempts,
-          delayMs,
-          error,
-        });
-      }
+      notifyRetry(onRetry, { attempt: attempt + 1, maxAttempts, delayMs, error });
 
-      // Wait before next attempt
-      await sleep(delayMs);
+      // Wait before next attempt — interruptible (#4293 item 5).
+      const waited = await sleepUnlessAborted(delayMs, signal);
+      if (!waited) break;
     }
   }
 
