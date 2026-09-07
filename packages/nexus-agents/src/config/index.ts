@@ -99,10 +99,7 @@ export {
   TIMEOUT_PROFILES,
   // Environment override functions
   getTimeout,
-  getRetryConfig,
-  getRateLimitConfig,
   // getWorkerConfig removed in #2977 — see config/defaults.ts.
-  getCircuitBreakerConfig,
   // Convenience accessors
   getTimeoutProfile,
   getTimeoutForCli,

@@ -221,19 +221,11 @@ describe('ConfigManager', () => {
       expect(meta.source).toBe('env');
     });
 
-    it('reads NEXUS_RATE_LIMIT_ENABLED as boolean', () => {
-      vi.stubEnv('NEXUS_RATE_LIMIT_ENABLED', 'false');
-      const config = ConfigManager.getInstance();
-
-      expect(config.get('RATE_LIMIT_DEFAULTS', 'enabled')).toBe(false);
-    });
-
-    it('reads NEXUS_RETRY_JITTER as float', () => {
-      vi.stubEnv('NEXUS_RETRY_JITTER', '0.25');
-      const config = ConfigManager.getInstance();
-
-      expect(config.get('RETRY_DEFAULTS', 'jitterFactor')).toBe(0.25);
-    });
+    // The boolean and float coercion paths were covered by
+    // NEXUS_RATE_LIMIT_ENABLED and NEXUS_RETRY_JITTER, both removed in #5903 —
+    // they resolved through ENV_VAR_MAP and were reported as `Source: (env)`
+    // while nothing that runs read either. `parseEnvValue`'s own coercion is
+    // still covered by the invalid-value test below and by its unit tests.
 
     it('ignores invalid env var values', () => {
       vi.stubEnv('NEXUS_TIMEOUT_CLI', 'not-a-number');

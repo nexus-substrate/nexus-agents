@@ -525,13 +525,18 @@ describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#51
   });
 
   it('does not document a name that no code reads under a real one it shadows', () => {
-    // NEXUS_RATE_LIMIT was documented as "Requests per minute, default 60"
-    // with no reader anywhere, while the variable that actually does that —
-    // NEXUS_RATE_LIMIT_RPM, same description, same default (defaults.ts:153) —
-    // was documented nowhere. A user following the doc set a name that did
-    // nothing and got a warning naming a spelling they had never seen.
+    // #5159's original pair was NEXUS_RATE_LIMIT (documented, read by nothing)
+    // shadowing NEXUS_RATE_LIMIT_RPM (real, documented nowhere). BOTH are gone
+    // as of #5903 — the whole rate-limit/retry/circuit-breaker family was
+    // removed because none of the twelve was read by anything that runs.
+    //
+    // The guard is re-pointed rather than deleted: the shape it catches — a
+    // documented name with no reader sitting next to the real one — is not
+    // specific to that pair. NEXUS_DATA_DIR is the live example: documented in
+    // CONFIGURATION.md and read by the runtime data-dir resolver.
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
-    expect(CONFIG_MD).toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+    expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+    expect(CONFIG_MD).toMatch(/`NEXUS_DATA_DIR`/);
   });
 });
 

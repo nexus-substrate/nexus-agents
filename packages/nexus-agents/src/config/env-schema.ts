@@ -90,20 +90,10 @@ const NexusEnvSchema = z.object({
   NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS: positiveIntStr.optional(),
 
   // --- Retry ---
-  NEXUS_RETRY_MAX_RETRIES: positiveIntStr.optional(),
-  NEXUS_RETRY_BASE_DELAY: positiveIntStr.optional(),
-  NEXUS_RETRY_MAX_DELAY: positiveIntStr.optional(),
-  NEXUS_RETRY_JITTER: floatStr.optional(),
 
   // --- Rate Limit ---
   // Read via parseBoolEnv (config/defaults-env.ts), so `1`/`0` work at runtime;
   // the strict `boolStr` shape reported them invalid. Caught by the #5155 ratchet.
-  NEXUS_RATE_LIMIT_ENABLED: boolLooseStr.optional(),
-  NEXUS_RATE_LIMIT_RPM: positiveIntStr.optional(),
-  NEXUS_RATE_LIMIT_MAX_CONCURRENT: positiveIntStr.optional(),
-  NEXUS_RATE_LIMIT_CAPACITY: positiveIntStr.optional(),
-  NEXUS_RATE_LIMIT_REFILL_RATE: positiveIntStr.optional(),
-  NEXUS_RATE_LIMIT_REFILL_INTERVAL: positiveIntStr.optional(),
 
   // --- Workers & Concurrency ---
   NEXUS_MAX_CONCURRENT_EXPERTS: positiveIntStr.optional(),
@@ -112,8 +102,6 @@ const NexusEnvSchema = z.object({
   // #2977 — these had zero production consumers (silent no-ops).
 
   // --- Circuit Breaker ---
-  NEXUS_CIRCUIT_BREAKER_THRESHOLD: positiveIntStr.optional(),
-  NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT: positiveIntStr.optional(),
 
   // --- V2 Pipeline ---
   NEXUS_V2_MODE: z.enum(['off', 'partial', 'full']).optional(),

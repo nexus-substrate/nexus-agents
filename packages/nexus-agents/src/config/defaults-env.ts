@@ -8,9 +8,6 @@
  */
 
 import type {
-  CircuitBreakerDefaults,
-  RateLimitDefaults,
-  RetryDefaults,
   ToolRateLimitConfig,
 } from './defaults-types.js';
 
@@ -145,64 +142,14 @@ export function createGetTimeout(
   };
 }
 
-/**
- * Creates a retry config getter function bound to the DEFAULTS object.
- */
-export function createGetRetryConfig(retryDefaults: RetryDefaultsConst): () => RetryDefaults {
-  return (): RetryDefaults => {
-    return {
-      maxRetries: parseIntEnv('NEXUS_RETRY_MAX_RETRIES', retryDefaults.maxRetries),
-      baseDelayMs: parseIntEnv('NEXUS_RETRY_BASE_DELAY', retryDefaults.baseDelayMs),
-      maxDelayMs: parseIntEnv('NEXUS_RETRY_MAX_DELAY', retryDefaults.maxDelayMs),
-      jitterFactor: parseFloatEnv('NEXUS_RETRY_JITTER', retryDefaults.jitterFactor),
-    };
-  };
-}
-
-/**
- * Creates a rate limit config getter function bound to the DEFAULTS object.
- */
-export function createGetRateLimitConfig(
-  rateLimitDefaults: RateLimitDefaultsConst
-): () => RateLimitDefaults {
-  return (): RateLimitDefaults => {
-    return {
-      requestsPerMinute: parseIntEnv('NEXUS_RATE_LIMIT_RPM', rateLimitDefaults.requestsPerMinute),
-      enabled: parseBoolEnv('NEXUS_RATE_LIMIT_ENABLED', rateLimitDefaults.enabled),
-      maxConcurrent: parseIntEnv(
-        'NEXUS_RATE_LIMIT_MAX_CONCURRENT',
-        rateLimitDefaults.maxConcurrent
-      ),
-      capacity: parseIntEnv('NEXUS_RATE_LIMIT_CAPACITY', rateLimitDefaults.capacity),
-      refillRate: parseIntEnv('NEXUS_RATE_LIMIT_REFILL_RATE', rateLimitDefaults.refillRate),
-      refillIntervalMs: parseIntEnv(
-        'NEXUS_RATE_LIMIT_REFILL_INTERVAL',
-        rateLimitDefaults.refillIntervalMs
-      ),
-    };
-  };
-}
-
-// createGetWorkerConfig removed in #2977 — see comment in config/defaults.ts.
-
-/**
- * Creates a circuit breaker config getter function bound to the DEFAULTS object.
- */
-export function createGetCircuitBreakerConfig(
-  cbDefaults: CircuitBreakerDefaultsConst
-): () => CircuitBreakerDefaults {
-  return (): CircuitBreakerDefaults => {
-    return {
-      failureThreshold: parseIntEnv('NEXUS_CIRCUIT_BREAKER_THRESHOLD', cbDefaults.failureThreshold),
-      resetTimeoutMs: parseIntEnv('NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT', cbDefaults.resetTimeoutMs),
-      halfOpenSuccessThreshold: cbDefaults.halfOpenSuccessThreshold,
-      countTimeoutsAsFailures: cbDefaults.countTimeoutsAsFailures,
-      countAuthFailuresAsFailures: cbDefaults.countAuthFailuresAsFailures,
-      countRateLimitsAsFailures: cbDefaults.countRateLimitsAsFailures,
-      halfOpenMaxRequests: cbDefaults.halfOpenMaxRequests,
-    };
-  };
-}
+// createGetWorkerConfig removed in #2977. createGetRetryConfig,
+// createGetRateLimitConfig and createGetCircuitBreakerConfig removed in #5903
+// for the same reason: their twelve NEXUS_* variables were registered,
+// documented and echoed back by `config get` as `Source: (env)`, and read by
+// nothing that runs. The rate limiter takes `enabled` from the config file
+// (`cli-server-tools.ts`), retry builds DEFAULT_RETRY_CONFIG from the static
+// DEFAULTS (`adapters/retry.ts`), and the production circuit breakers carry
+// their own config. See the comment in config/defaults.ts.
 
 /**
  * Creates a tool rate limit getter function bound to the DEFAULTS object.
@@ -236,9 +183,6 @@ interface DefaultsForDocs {
 export function createGetEnvVarDocumentation(defaults: DefaultsForDocs): () => string {
   return (): string => {
     const t = defaults.TIMEOUT_DEFAULTS;
-    const r = defaults.RATE_LIMIT_DEFAULTS;
-    const rt = defaults.RETRY_DEFAULTS;
-    const cb = defaults.CIRCUIT_BREAKER_DEFAULTS;
 
     return `# Environment Variable Overrides
 
@@ -253,29 +197,11 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 | NEXUS_TIMEOUT_WORKFLOW | ${String(t.workflowMs)} | Workflow timeout (ms) |
 | NEXUS_TIMEOUT_MCP | ${String(t.mcpMs)} | MCP operation timeout (ms) |
 
-## Rate Limits
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| NEXUS_RATE_LIMIT_RPM | ${String(r.requestsPerMinute)} | Requests per minute |
-| NEXUS_RATE_LIMIT_ENABLED | ${String(r.enabled)} | Enable rate limiting |
-| NEXUS_RATE_LIMIT_CAPACITY | ${String(r.capacity)} | Token bucket capacity |
-
-## Retries
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| NEXUS_RETRY_MAX_RETRIES | ${String(rt.maxRetries)} | Maximum retry attempts |
-| NEXUS_RETRY_BASE_DELAY | ${String(rt.baseDelayMs)} | Base delay (ms) |
-| NEXUS_RETRY_MAX_DELAY | ${String(rt.maxDelayMs)} | Maximum delay (ms) |
-| NEXUS_RETRY_JITTER | ${String(rt.jitterFactor)} | Jitter factor (0-1) |
-
-## Circuit Breaker
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| NEXUS_CIRCUIT_BREAKER_THRESHOLD | ${String(cb.failureThreshold)} | Failure threshold |
-| NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT | ${String(cb.resetTimeoutMs)} | Reset timeout (ms) |
+Rate-limit, retry and circuit-breaker sections removed in #5903: their twelve
+variables were registered and documented but read by nothing that runs, so this
+generator was advertising names an operator could set to no effect. Rate
+limiting is configured through the config file's \`security.rateLimit\`.
 `;
   };
 }
