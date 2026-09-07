@@ -931,7 +931,7 @@ describe('VotingProtocol', () => {
         expect(result?.consolidatedFindings[0]?.agreementRatio).toBe(1);
       });
 
-      it('should calculate 0% agreement when all disagree', async () => {
+      it('excludes a finding that every voter disagreed with', async () => {
         const committee = ['agent-1', 'agent-2', 'agent-3'];
         const session = protocol.createSession('Topic', committee);
         await protocol.startAnalysisRound(session.id);
@@ -970,15 +970,66 @@ describe('VotingProtocol', () => {
 
         const result = await protocol.getResult(session.id);
 
-        // When all disagree, agreementRatio is 0
-        // However, if the finding is filtered out due to low agreement, it may not appear
-        const firstFinding = result?.consolidatedFindings[0];
-        if (firstFinding) {
-          expect(firstFinding.agreementRatio).toBe(0);
-        } else {
-          // Finding was filtered due to low agreement - this is valid behavior
-          expect(result?.consolidatedFindings.length).toBe(0);
-        }
+        // `consolidateFindings` drops everything below 0.5, so a consolidated
+        // finding can NEVER carry agreementRatio 0 — the state this test was
+        // named for is unreachable by construction. Exclusion is the whole
+        // observable outcome, and it is asserted unconditionally: the previous
+        // version wrapped the ratio check in `if (firstFinding)`, which is
+        // always falsy here, so the only assertion that ran was
+        // `expect(0).toBe(0)` and every sub-0.5 ratio — correct or not —
+        // passed. The boundary test below is what pins the ratio itself.
+        expect(result?.consolidatedFindings).toEqual([]);
+      });
+
+      it('includes a finding at exactly the 0.5 boundary and reports the measured ratio', async () => {
+        // One agree, one disagree: ratio is exactly 0.5, which `>= 0.5` keeps.
+        // This is the assertion that makes the exclusion test above meaningful.
+        // Hard-coding agreementRatio below 0.5 fails HERE (the finding would be
+        // dropped); hard-coding it at or above 0.5 fails the exclusion test
+        // above. Neither test alone constrains the formula; together they do.
+        const committee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Topic', committee);
+        await protocol.startAnalysisRound(session.id);
+
+        await protocol.submitFindings(session.id, 'agent-1', [
+          {
+            agentId: 'agent-1',
+            category: 'style',
+            severity: 'minor',
+            description: 'Split-opinion issue',
+            confidence: 0.5,
+          },
+        ]);
+
+        await protocol.startDeliberationRound(session.id);
+
+        const currentSession = protocol.getSession(session.id);
+        const findingId = Array.from(currentSession?.rounds[1]?.findings.keys() ?? [])[0];
+
+        await protocol.voteOnFinding(session.id, {
+          agentId: 'agent-2',
+          findingId: findingId!,
+          agree: true,
+          reasoning: 'Agree',
+        });
+        await protocol.voteOnFinding(session.id, {
+          agentId: 'agent-3',
+          findingId: findingId!,
+          agree: false,
+          reasoning: 'Disagree',
+        });
+
+        await protocol.startConsensusRound(session.id);
+        await submitAllFinalVotes(protocol, session.id, committee, {
+          decision: 'approve',
+          reasoning: 'Split opinion',
+          confidence: 0.5,
+        });
+
+        const result = await protocol.getResult(session.id);
+
+        expect(result?.consolidatedFindings).toHaveLength(1);
+        expect(result?.consolidatedFindings[0]?.agreementRatio).toBe(0.5);
       });
     });
   });
