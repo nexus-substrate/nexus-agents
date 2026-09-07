@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.45.0
+
+### Minor Changes
+
+- [#5945](https://github.com/nexus-substrate/nexus-agents/pull/5945) [`c16a0ae`](https://github.com/nexus-substrate/nexus-agents/commit/c16a0ae09f20e7d1fcc6c1d3d1334fbdf976dfd6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `research_discover` now reports `registryConsulted`, so a caller can tell an
+  empty papers registry from one that could not be read. `getExistingArxivIds`
+  swallowed a failed `loadPapersRegistry` into an empty Set, which made every
+  discovered item look new — `alreadyInRegistry: 0`, `newItems: <all>` —
+  byte-identical to a clean read that matched nothing. A caller feeding those into
+  `research_add` re-added papers that were already catalogued.
+
 ## 8.44.3
 
 ### Patch Changes
