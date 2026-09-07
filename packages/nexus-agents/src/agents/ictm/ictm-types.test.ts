@@ -111,13 +111,11 @@ describe('ContextFilterSchema', () => {
   // -- missing required fields --
   it('rejects missing maxTokens', () => {
     const { maxTokens: _, ...rest } = validContextFilter() as Record<string, unknown>;
-    void _;
     expect(() => ContextFilterSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing pruneStrategy', () => {
     const { pruneStrategy: _, ...rest } = validContextFilter() as Record<string, unknown>;
-    void _;
     expect(() => ContextFilterSchema.parse(rest)).toThrow();
   });
 
@@ -274,25 +272,21 @@ describe('ICTMConfigSchema', () => {
 
   it('rejects missing instructions', () => {
     const { instructions: _, ...rest } = validICTMConfig() as Record<string, unknown>;
-    void _;
     expect(() => ICTMConfigSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing context', () => {
     const { context: _, ...rest } = validICTMConfig() as Record<string, unknown>;
-    void _;
     expect(() => ICTMConfigSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing tools', () => {
     const { tools: _, ...rest } = validICTMConfig() as Record<string, unknown>;
-    void _;
     expect(() => ICTMConfigSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing model', () => {
     const { model: _, ...rest } = validICTMConfig() as Record<string, unknown>;
-    void _;
     expect(() => ICTMConfigSchema.parse(rest)).toThrow();
   });
 
@@ -358,19 +352,16 @@ describe('ICTMInferenceResultSchema', () => {
   // -- required fields --
   it('rejects missing config', () => {
     const { config: _, ...rest } = validResult() as Record<string, unknown>;
-    void _;
     expect(() => ICTMInferenceResultSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing reasoning', () => {
     const { reasoning: _, ...rest } = validResult() as Record<string, unknown>;
-    void _;
     expect(() => ICTMInferenceResultSchema.parse(rest)).toThrow();
   });
 
   it('rejects missing confidence', () => {
     const { confidence: _, ...rest } = validResult() as Record<string, unknown>;
-    void _;
     expect(() => ICTMInferenceResultSchema.parse(rest)).toThrow();
   });
 

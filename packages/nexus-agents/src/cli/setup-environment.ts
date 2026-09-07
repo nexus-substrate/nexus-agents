@@ -158,9 +158,8 @@ export function detectProjectInfo(root: string): ProjectInfo {
       const pkg = JSON.parse(content) as Record<string, unknown>;
       const nameValue = pkg['name'];
       packageName = typeof nameValue === 'string' ? nameValue : undefined;
-    } catch (parseErr: unknown) {
-      // Non-critical: package.json parse failure, fall through to basename
-      void parseErr;
+    } catch {
+      // Non-critical: package.json parse failure, fall through to basename.
     }
   }
 

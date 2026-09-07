@@ -454,7 +454,9 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         });
 
         const onProgress = options.onProgress;
-        const state = this.setupChildProcessHandlers({
+        // Called for its side effects (handlers are attached to `child`);
+        // the returned state is not needed here, so it is not bound.
+        this.setupChildProcessHandlers({
           child,
           startTime,
           timeoutMs: options.timeoutMs,
@@ -472,9 +474,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
           child.stdin.write(cmdConfig.stdin);
         }
         child.stdin.end();
-
-        // Reference state to prevent unused variable warning
-        void state;
       } catch (error: unknown) {
         runCleanupOnce();
         resolveOuter(this.spawnFailure(cmdConfig.command, error));

@@ -33,8 +33,6 @@ import { type ExecutionStrategy } from './meta-orchestrator.js';
  */
 const _assignableToUnion: readonly ExecutionStrategy[] = EXECUTION_STRATEGY_NAMES;
 const _assignableFromUnion = EXECUTION_STRATEGY_NAMES as readonly ExecutionStrategy[];
-void _assignableToUnion;
-void _assignableFromUnion;
 
 const FIXTURE_PATH = join(import.meta.dirname, '__fixtures__/strategy-manifests.example.yaml');
 

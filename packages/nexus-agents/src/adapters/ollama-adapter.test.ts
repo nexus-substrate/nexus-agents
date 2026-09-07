@@ -240,10 +240,10 @@ describe('OllamaAdapter', () => {
         },
       });
       await expect(async () => {
-        for await (const chunk of new OllamaAdapter(validConfig).stream({
+        for await (const _chunk of new OllamaAdapter(validConfig).stream({
           messages: [{ role: 'user', content: 'Hi!' }],
         })) {
-          void chunk; /* consume */
+          // consume the stream; the chunk itself is not asserted here
         }
       }).rejects.toThrow();
     });

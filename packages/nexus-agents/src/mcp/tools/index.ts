@@ -619,7 +619,7 @@ export const REGISTERED_TOOL_NAMES: readonly RegisteredToolName[] = TOOL_MANIFES
 );
 
 export function registerTools(
-  server: McpServer,
+  _server: McpServer,
   options?: ToolRegistrationOptions
 ): ToolRegistrationResult {
   const logger = options?.logger ?? createMcpLogger({ component: 'tools' });
@@ -627,9 +627,8 @@ export function registerTools(
 
   logger.info('Tool registration infrastructure initialized');
 
-  // Reference server to avoid unused parameter warning. Individual tools are
-  // registered separately by their domain-specific `register*Tool` functions.
-  void server;
+  // `_server` is unused here on purpose: individual tools are registered by
+  // their own domain-specific `register*Tool` functions, which take it directly.
 
   return {
     tools: [...REGISTERED_TOOL_NAMES],

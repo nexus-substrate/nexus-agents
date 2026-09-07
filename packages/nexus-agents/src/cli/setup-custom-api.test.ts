@@ -105,7 +105,6 @@ describe('configureCustomApi (#2124)', () => {
     it('falls back to NEXUS_CUSTOM_API_KEY env var', async () => {
       process.env['NEXUS_CUSTOM_API_KEY'] = 'from-env';
       const { apiKey: _apiKey, ...rest } = minimalInput();
-      void _apiKey;
       const result = await configureCustomApi(rest);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -114,7 +113,6 @@ describe('configureCustomApi (#2124)', () => {
 
     it('fails cleanly in non-interactive mode when no key is available', async () => {
       const { apiKey: _apiKey, ...rest } = minimalInput();
-      void _apiKey;
       const result = await configureCustomApi(rest);
       expect(result.ok).toBe(false);
       if (result.ok) return;
