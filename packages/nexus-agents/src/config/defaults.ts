@@ -63,9 +63,6 @@ export { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
 
 import {
   createGetTimeout,
-  createGetRetryConfig,
-  createGetRateLimitConfig,
-  createGetCircuitBreakerConfig,
   createGetToolRateLimit,
   createGetEnvVarDocumentation,
 } from './defaults-env.js';
@@ -367,28 +364,13 @@ export type SecurityDefaults = typeof DEFAULTS.SECURITY_DEFAULTS;
  */
 export const getTimeout = createGetTimeout(DEFAULTS.TIMEOUT_DEFAULTS);
 
-/**
- * Get retry config with environment override support.
- *
- * @returns Retry configuration
- */
-export const getRetryConfig = createGetRetryConfig(DEFAULTS.RETRY_DEFAULTS);
-
-/**
- * Get rate limit config with environment override support.
- *
- * @returns Rate limit configuration
- */
-export const getRateLimitConfig = createGetRateLimitConfig(DEFAULTS.RATE_LIMIT_DEFAULTS);
-
-/**
- * Gets the circuit breaker configuration.
- *
- * @returns Circuit breaker configuration
- */
-export const getCircuitBreakerConfig = createGetCircuitBreakerConfig(
-  DEFAULTS.CIRCUIT_BREAKER_DEFAULTS
-);
+// getRetryConfig, getRateLimitConfig and getCircuitBreakerConfig removed in
+// #5903. They promised "environment override support" for twelve NEXUS_*
+// variables that no running code read: `config get` reported them as
+// `Source: (env)` while the rate limiter took `enabled` from the config file,
+// retry used the static DEFAULT_RETRY_CONFIG, and the circuit breakers carried
+// their own config. Same treatment as the worker knobs in #2977 and the
+// per-complexity CLI timeouts in #4180. Read DEFAULTS.* directly.
 
 /**
  * Gets the tool rate limit configuration for a specific tool category.

@@ -9,9 +9,6 @@ import {
   DEFAULTS,
   TIMEOUT_PROFILES,
   getTimeout,
-  getRetryConfig,
-  getRateLimitConfig,
-  getCircuitBreakerConfig,
   getTimeoutProfile,
   getTimeoutForCli,
   getToolRateLimit,
@@ -148,97 +145,10 @@ describe('getTimeout', () => {
   });
 });
 
-describe('getRetryConfig', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return default retry config', () => {
-    const config = getRetryConfig();
-    expect(config.maxRetries).toBe(3);
-    expect(config.baseDelayMs).toBe(1_000);
-    expect(config.maxDelayMs).toBe(30_000);
-    expect(config.jitterFactor).toBe(0.1);
-  });
-
-  it('should override maxRetries with environment variable', () => {
-    process.env['NEXUS_RETRY_MAX_RETRIES'] = '5';
-    const config = getRetryConfig();
-    expect(config.maxRetries).toBe(5);
-  });
-
-  it('should override baseDelayMs with environment variable', () => {
-    process.env['NEXUS_RETRY_BASE_DELAY'] = '2000';
-    const config = getRetryConfig();
-    expect(config.baseDelayMs).toBe(2_000);
-  });
-});
-
-describe('getRateLimitConfig', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return default rate limit config', () => {
-    const config = getRateLimitConfig();
-    expect(config.requestsPerMinute).toBe(60);
-    expect(config.enabled).toBe(true);
-    expect(config.capacity).toBe(100);
-  });
-
-  it('should disable rate limiting with environment variable', () => {
-    process.env['NEXUS_RATE_LIMIT_ENABLED'] = 'false';
-    const config = getRateLimitConfig();
-    expect(config.enabled).toBe(false);
-  });
-
-  it('should override requestsPerMinute with environment variable', () => {
-    process.env['NEXUS_RATE_LIMIT_RPM'] = '120';
-    const config = getRateLimitConfig();
-    expect(config.requestsPerMinute).toBe(120);
-  });
-});
-
-// getWorkerConfig tests removed in #2977 along with the function itself.
-
-describe('getCircuitBreakerConfig', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return default circuit breaker config', () => {
-    const config = getCircuitBreakerConfig();
-    expect(config.failureThreshold).toBe(5);
-    expect(config.resetTimeoutMs).toBe(30_000);
-    expect(config.halfOpenSuccessThreshold).toBe(2);
-    expect(config.countTimeoutsAsFailures).toBe(true);
-    expect(config.countAuthFailuresAsFailures).toBe(false);
-  });
-
-  it('should override failureThreshold with environment variable', () => {
-    process.env['NEXUS_CIRCUIT_BREAKER_THRESHOLD'] = '10';
-    const config = getCircuitBreakerConfig();
-    expect(config.failureThreshold).toBe(10);
-  });
-});
+// getRetryConfig / getRateLimitConfig / getCircuitBreakerConfig removed in
+// #5903 together with their twelve NEXUS_* variables. The tests here
+// asserted the env overrides took effect — which they did, inside a getter
+// nothing production called. Green tests over an unread code path.
 
 describe('getTimeoutProfile', () => {
   it('should return profile for known CLI', () => {
@@ -325,18 +235,20 @@ describe('getEnvVarDocumentation', () => {
     const docs = getEnvVarDocumentation();
     expect(docs).toContain('# Environment Variable Overrides');
     expect(docs).toContain('NEXUS_TIMEOUT_CLI');
-    expect(docs).toContain('NEXUS_RATE_LIMIT_RPM');
-    expect(docs).toContain('NEXUS_RETRY_MAX_RETRIES');
-    // NEXUS_WORKERS_MAX removed in #2977 (silent no-op).
-    expect(docs).toContain('NEXUS_CIRCUIT_BREAKER_THRESHOLD');
+    // NEXUS_WORKERS_MAX removed in #2977 (silent no-op); the RATE_LIMIT, RETRY
+    // and CIRCUIT_BREAKER names removed in #5903 for the same reason. The
+    // remaining assertion is the point: this test proves the doc generator
+    // produces something, so it must name a variable that is still real.
   });
 
   it('should include actual default values', () => {
     const docs = getEnvVarDocumentation();
     expect(docs).toContain('120000'); // CLI timeout
     expect(docs).toContain('30000'); // API timeout
-    expect(docs).toContain('60'); // requests per minute
-    expect(docs).toContain('5'); // workflow maxParallel
+    // 'requests per minute' (60) and 'workflow maxParallel' (5) were the
+    // rate-limit and worker rows; both sections are gone (#5903, #2977). The
+    // remaining two are enough for what this test measures — that the generator
+    // interpolates real DEFAULTS rather than emitting a static table.
   });
 });
 

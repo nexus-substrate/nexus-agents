@@ -525,13 +525,27 @@ describe('documented NEXUS_* vars in CONFIGURATION.md are all in the schema (#51
   });
 
   it('does not document a name that no code reads under a real one it shadows', () => {
-    // NEXUS_RATE_LIMIT was documented as "Requests per minute, default 60"
-    // with no reader anywhere, while the variable that actually does that —
-    // NEXUS_RATE_LIMIT_RPM, same description, same default (defaults.ts:153) —
-    // was documented nowhere. A user following the doc set a name that did
-    // nothing and got a warning naming a spelling they had never seen.
+    // #5159's original pair was NEXUS_RATE_LIMIT (documented, read by nothing)
+    // shadowing NEXUS_RATE_LIMIT_RPM (real, documented nowhere). BOTH are gone
+    // as of #5903 — the whole rate-limit/retry/circuit-breaker family was
+    // removed because none of the twelve was read by anything that runs.
+    //
+    // What this test guards NOW, stated plainly so the comment does not
+    // describe a pair that no longer exists: CONFIGURATION.md must not name
+    // either removed spelling, and must still name at least one variable that
+    // is genuinely read. NEXUS_DATA_DIR is that example.
+    //
+    // The SHADOW class itself — a documented name with no reader — is covered
+    // structurally now, which it was not when #5159 landed:
+    //   - scripts/check-env-schema-coverage.ts proves registered == read
+    //   - the 'documented NEXUS_* vars ... are all in the schema' describe
+    //     above proves documented ⊆ registered
+    // Those two compose to "documented ⊆ read", for any name, which is what a
+    // fixture-specific pair could never do. This test is the tombstone for the
+    // original pair, not the enforcement.
     expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT`/);
-    expect(CONFIG_MD).toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+    expect(CONFIG_MD).not.toMatch(/`NEXUS_RATE_LIMIT_RPM`/);
+    expect(CONFIG_MD).toMatch(/`NEXUS_DATA_DIR`/);
   });
 });
 

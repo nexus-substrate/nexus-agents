@@ -368,16 +368,6 @@ export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
   { envVar: 'NEXUS_AUTH_ENABLED', defaultValue: 'true', description: 'Server authentication' },
   { envVar: 'NEXUS_EVENTBUS_ENABLED', defaultValue: 'true', description: 'EventBus A2A bridge' },
   {
-    envVar: 'NEXUS_RATE_LIMIT_ENABLED',
-    defaultValue: 'true',
-    description: 'Token-bucket rate limiter',
-  },
-  {
-    envVar: 'NEXUS_CIRCUIT_BREAKER_THRESHOLD',
-    defaultValue: '5',
-    description: 'Circuit breaker failure threshold',
-  },
-  {
     envVar: 'NEXUS_V2_POLICY_MODE',
     defaultValue: 'block',
     description: 'Policy enforcement (off/warn/block)',
