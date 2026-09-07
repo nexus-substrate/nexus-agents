@@ -5,10 +5,33 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// `getVersion` shells out via `promisify(exec)`. A plain callback mock is enough:
+// without `util.promisify.custom` the promise resolves to the first callback
+// value, which is the `{ stdout }` object `getVersion` destructures.
+const execMock = vi.fn(
+  (
+    _cmd: string,
+    _opts: unknown,
+    cb: (err: Error | null, res: { stdout: string; stderr: string }) => void
+  ) => {
+    cb(null, { stdout: '2.1.0', stderr: '' });
+  }
+);
+vi.mock('node:child_process', () => ({
+  exec: (
+    cmd: string,
+    opts: unknown,
+    cb: (err: Error | null, res: { stdout: string; stderr: string }) => void
+  ): void => {
+    execMock(cmd, opts, cb);
+  },
+}));
 import type { CliName, CliTransport, CliTask, ModelInfo } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
+import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from '../core/index.js';
 import type { CliResponse, CliError, ResolvedExecutionOptions } from './types.js';
 
 /**
@@ -472,5 +495,63 @@ describe('version status messages', () => {
   it('should have correct status for supported version', () => {
     const status = adapter.testCheckVersionCompatibility('2.1.0');
     expect(status).toBe('supported');
+  });
+});
+
+// ============================================================================
+// versionProbedAt — a replay is distinguishable from a fresh probe (#5864)
+// ============================================================================
+
+describe('BaseCliAdapter.healthCheck — version-cache disclosure (#5864)', () => {
+  const T0 = 1_700_000_000_000;
+  let clock: FixedTimeProvider;
+
+  beforeEach(() => {
+    execMock.mockClear();
+    clock = new FixedTimeProvider(T0);
+    setTimeProvider(clock);
+  });
+
+  afterEach(() => {
+    resetTimeProvider();
+  });
+
+  it('dates the probe to the moment it ran', async () => {
+    const adapter = new TestCliAdapter();
+
+    const status = await adapter.healthCheck();
+
+    expect(execMock).toHaveBeenCalledTimes(1);
+    expect(status.reachable).toBe(true);
+    expect(status.versionProbedAt?.getTime()).toBe(T0);
+    expect(status.lastChecked.getTime()).toBe(T0);
+  });
+
+  it('shows a later check resting on the earlier probe, not a new one', async () => {
+    // `cachedVersion` has no TTL and is never reset, so this second call spawns
+    // nothing. `reachable: true` and a fresh `lastChecked` used to be the whole
+    // record — a replay dated as if it had just probed the binary.
+    const adapter = new TestCliAdapter();
+    await adapter.healthCheck();
+
+    clock.advance(600_000); // ten minutes; the binary could be gone by now
+    const status = await adapter.healthCheck();
+
+    expect(execMock).toHaveBeenCalledTimes(1); // no second spawn
+    expect(status.lastChecked.getTime()).toBe(T0 + 600_000);
+    expect(status.versionProbedAt?.getTime()).toBe(T0);
+    expect(status.versionProbedAt?.getTime()).toBeLessThan(status.lastChecked.getTime());
+  });
+
+  it('omits the marker when nothing was ever probed', async () => {
+    // The other empty case: absent means "this producer did not read a
+    // binary", which is different from "the reading is stale".
+    const adapter = new TestCliAdapter();
+    adapter.setCachedVersion('2.1.0');
+
+    const status = await adapter.healthCheck();
+
+    expect(execMock).not.toHaveBeenCalled();
+    expect(status.versionProbedAt).toBeUndefined();
   });
 });
