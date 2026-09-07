@@ -7271,6 +7271,7 @@ InterfaceDeclaration ResearchDiscoverResponse
   filteredByRelevance: number
   items: DiscoveredItem[]
   newItems: number
+  registryConsulted: boolean
   sourcesQueried: string[]
   topic: string
   totalFound: number
