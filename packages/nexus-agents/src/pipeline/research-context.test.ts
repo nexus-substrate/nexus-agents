@@ -48,6 +48,7 @@ function discoverResponse(over: Partial<ResearchDiscoverResponse> = {}): Researc
     ],
     totalFound: 5,
     alreadyInRegistry: 1,
+    registryConsulted: true,
     newItems: 2,
     filteredByRelevance: 2,
     ...over,

@@ -181,8 +181,23 @@ export interface ResearchDiscoverResponse {
   items: DiscoveredItem[];
   /** Total items found (before filtering) */
   totalFound: number;
-  /** Items already in registry (filtered out) */
+  /**
+   * Items already in registry (filtered out).
+   *
+   * Meaningful ONLY when `registryConsulted` is true. When the registry could
+   * not be read this is 0 because nothing could be matched, not because nothing
+   * matched.
+   */
   alreadyInRegistry: number;
+  /**
+   * Whether the papers registry was actually read (#5925).
+   *
+   * `false` means the dedup pass did not run: every item is reported as new
+   * regardless of what the registry holds. Required rather than optional so
+   * every construction site has to answer, and so a caller cannot silently
+   * inherit a default.
+   */
+  registryConsulted: boolean;
   /** New items not yet in registry */
   newItems: number;
   /** Items filtered out by relevance threshold */
@@ -193,11 +208,22 @@ export interface ResearchDiscoverResponse {
 // DISCOVERY PROVIDERS
 // =============================================================================
 
-/** Gets existing arXiv IDs from the registry. */
-async function getExistingArxivIds(): Promise<Set<string>> {
+/**
+ * Gets existing arXiv IDs from the registry, and says whether it managed to
+ * read it (#5925).
+ *
+ * `loadPapersRegistry` returns `!ok` on a `validatePath` denial or any
+ * readFile/parseYaml throw — an unscaffolded `docs/`, `NEXUS_NO_SCAFFOLD`, or
+ * malformed YAML. Returning a bare empty Set for that case made every
+ * discovered item look new: `alreadyInRegistry: 0` and `newItems: <all>`,
+ * byte-identical to "the registry was read and nothing matched". A caller
+ * acting on that — the documented next step is `research_add` — re-adds papers
+ * that are already catalogued.
+ */
+async function getExistingArxivIds(): Promise<{ ids: Set<string>; consulted: boolean }> {
   const result = await loadPapersRegistry();
-  if (!result.ok) return new Set();
-  return new Set(Object.keys(result.value.papers));
+  if (!result.ok) return { ids: new Set(), consulted: false };
+  return { ids: new Set(Object.keys(result.value.papers)), consulted: true };
 }
 
 /** Extract arXiv ID from a URL string. */
@@ -457,13 +483,13 @@ export async function executeDiscovery(
     ...rawInput,
     topic: normalizeTopicToCanonical(rawInput.topic),
   };
-  const existingIds = await getExistingArxivIds();
+  const registry = await getExistingArxivIds();
   const {
     sources: sourcesToQuery,
     failedSources,
     items: allItems,
   } = await queryAllSources(input, logger);
-  markExistingItems(allItems, existingIds);
+  markExistingItems(allItems, registry.ids);
 
   const totalFound = allItems.length;
   const inRegistry = allItems.filter((i) => i.alreadyInRegistry).length;
@@ -492,6 +518,7 @@ export async function executeDiscovery(
     items: relevantItems,
     totalFound,
     alreadyInRegistry: inRegistry,
+    registryConsulted: registry.consulted,
     newItems: relevantItems.length,
     filteredByRelevance: filteredOut,
   };
@@ -679,9 +706,15 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
 
 // Permissive shape — handler returns ResearchDiscoverResponse with topic,
 // sourcesQueried, failedSources, items, totalFound, alreadyInRegistry,
-// newItems, filteredByRelevance (#2340 batch 3). Items vary per source so
-// `items` is array-of-unknown. Hoisted out of the registration fn for the
-// max-lines-per-function gate.
+// registryConsulted, newItems, filteredByRelevance (#2340 batch 3). Items vary
+// per source so `items` is array-of-unknown. Hoisted out of the registration fn
+// for the max-lines-per-function gate.
+//
+// This must list EVERY field the handler returns: the #5045 test asserts the
+// returned content satisfies the declared outputSchema, and it caught
+// `registryConsulted` missing here (#5925). A field present in the response but
+// absent from this schema is a tool whose declared contract understates what it
+// actually sends.
 const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
   topic: z.string().optional(),
   sourcesQueried: z.array(z.string()).optional(),
@@ -689,6 +722,7 @@ const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
   items: z.array(z.unknown()).optional(),
   totalFound: z.number().optional(),
   alreadyInRegistry: z.number().optional(),
+  registryConsulted: z.boolean().optional(),
   newItems: z.number().optional(),
   filteredByRelevance: z.number().optional(),
 };
