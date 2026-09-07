@@ -73,7 +73,6 @@ function resolveCliPath(override?: string): string {
  */
 function buildConfig(options?: McpConfigOptions): McpConfigFile {
   const cliPath = resolveCliPath(options?.cliPath);
-  const tools = options?.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
 
   const entry: McpServerEntry = {
     command: 'node',
@@ -87,9 +86,9 @@ function buildConfig(options?: McpConfigOptions): McpConfigFile {
     },
   };
 
-  // Note: tool allowlisting is handled by Claude CLI's --allowedTools flag,
-  // not in the MCP config itself. The caller should pass tools separately.
-  void tools;
+  // Tool allowlisting is handled by Claude CLI's --allowedTools flag, not in
+  // the MCP config itself; the caller passes tools separately. Nothing here
+  // needs the resolved list, so it is no longer computed.
 }
 
 /**

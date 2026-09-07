@@ -104,7 +104,6 @@ describe('usage ledger validation (#5328)', () => {
 
   it('rejects a line with no usdCost at all', () => {
     const { usdCost, ...rest } = JSON.parse(goodLine()) as Record<string, unknown>;
-    void usdCost;
     writeLog(JSON.stringify(rest));
     expect(loadUsageEvents().events).toHaveLength(0);
   });

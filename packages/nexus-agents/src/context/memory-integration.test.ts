@@ -41,7 +41,6 @@ function _createMemoryRow(key: string, value: unknown, metadata: MemoryMetadata)
     expires_at: metadata.ttl !== undefined && metadata.ttl !== 0 ? now + metadata.ttl : null,
   };
 }
-void _createMemoryRow; // Prepared for future use
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Infrastructure for future SQLite tests
 function _createSharedMockDatabase(): ISQLiteDatabase & { store: MockMemoryStore } {

@@ -76,7 +76,6 @@ type _AssertExecutionStrategyLockstep = Expect<
 // If this line errors, EXECUTION_STRATEGY_NAMES has drifted from the router
 // ExecutionStrategy union — reconcile the two (that is the #3881 guarantee).
 const _executionStrategyLockstepHolds: _AssertExecutionStrategyLockstep = true;
-void _executionStrategyLockstepHolds;
 
 /**
  * The execution strategies as a Zod enum, derived from
