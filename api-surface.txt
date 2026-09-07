@@ -3358,6 +3358,7 @@ InterfaceDeclaration ExperimentResult
   readonly experimentId: string
   readonly hasMinimumSampleSize: boolean
   readonly recommendedSampleSize: number
+  readonly recommendedSampleSizeMeasured: boolean
   readonly relativeImprovement: number
   readonly relativeImprovementMeasured: boolean
   readonly treatment: VariantResultSummary
