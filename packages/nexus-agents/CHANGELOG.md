@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.42.7
+
+### Patch Changes
+
+- [#5873](https://github.com/nexus-substrate/nexus-agents/pull/5873) [`4e03012`](https://github.com/nexus-substrate/nexus-agents/commit/4e03012ef8197fcdc6280ada8ff3a1981a5bafac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - pipeline: a registered skeleton plugin is marked in the run record ([#5863](https://github.com/nexus-substrate/nexus-agents/issues/5863))
+
+  Every core plugin is a lazy skeleton — `noopStageResult()` returns `{ success: true, outputArtifacts: [], metadata: { stub: true } }` — and the default registry is the only registration for the `analyze`, `route` and `execute` stage types. So `registry.resolve()` succeeds, the real-plugin branch is taken, and a stage that did nothing recorded a bare `completed`: more confidently than an _absent_ plugin, which the placeholder path already marks with `placeholder: true` "so an inspector can tell a real execution from a skipped one".
+
+  `metadata.stub` was the one truthful field the producer emitted, and it was discarded on the line that built the record. It now travels with the status.
+
+  Not fixed here, and worth naming: a stage that declares `outputArtifacts` and produces none still records `completed` with no reconciliation. That is a separate decision.
+
 ## 8.42.6
 
 ### Patch Changes
