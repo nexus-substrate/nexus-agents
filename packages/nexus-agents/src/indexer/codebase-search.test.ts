@@ -33,6 +33,34 @@ describe('CodebaseIndex', () => {
     });
   });
 
+  describe('searchWithTotal reports the PRE-limit match count', () => {
+    it('total exceeds the returned results when the limit cut the set short', () => {
+      // Measured against the REAL index, not a mock: the tool-level tests use a
+      // stubbed CodebaseIndex, so a `total` computed AFTER the slice would look
+      // correct there and be wrong here. This is the assertion that pins it.
+      const all = index.searchWithTotal('Model', 1000);
+      expect(all.results.length).toBeGreaterThan(1);
+      expect(all.total).toBe(all.results.length);
+
+      const capped = index.searchWithTotal('Model', 1);
+      expect(capped.results).toHaveLength(1);
+      expect(capped.total).toBe(all.total);
+      expect(capped.total).toBeGreaterThan(capped.results.length);
+    });
+
+    it('total is 0 when nothing matches', () => {
+      const found = index.searchWithTotal('xyznonexistent123');
+      expect(found.results).toEqual([]);
+      expect(found.total).toBe(0);
+    });
+
+    it('search() returns exactly searchWithTotal().results', () => {
+      // `search` is now a thin wrapper; if it ever diverges, every existing
+      // caller silently gets a different answer from the one the tool reports.
+      expect(index.search('Model', 3)).toEqual(index.searchWithTotal('Model', 3).results);
+    });
+  });
+
   describe('search', () => {
     it('finds exact symbol name matches', () => {
       const results = index.search('CLI_NAMES');

@@ -182,6 +182,19 @@ export class CodebaseIndex {
 
   /** Search symbols by keyword. Returns top N results sorted by relevance. */
   search(query: string, limit = 20): SearchResult[] {
+    return this.searchWithTotal(query, limit).results;
+  }
+
+  /**
+   * Search symbols, reporting how many matched BEFORE the limit was applied.
+   *
+   * `search` discards that number, so a caller could not tell "20 results" from
+   * "the first 20 of 340" — and `search_codebase` reported the former.
+   * The sibling `search_usages` has carried `truncated`/`omittedMatches`/`limit`
+   * since it was written; this is the seam that lets `search_codebase` say the
+   * same thing.
+   */
+  searchWithTotal(query: string, limit = 20): { results: SearchResult[]; total: number } {
     const results: SearchResult[] = [];
 
     for (const symbol of this.symbols) {
@@ -196,7 +209,8 @@ export class CodebaseIndex {
       });
     }
 
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
+    const sorted = results.sort((a, b) => b.score - a.score);
+    return { results: sorted.slice(0, limit), total: sorted.length };
   }
 
   /** Get a compact summary of a file's symbols. */
