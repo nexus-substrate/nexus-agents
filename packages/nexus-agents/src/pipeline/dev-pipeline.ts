@@ -241,6 +241,17 @@ export interface DevPipelineResult {
    */
   readonly dryRun?: true;
   /**
+   * Present only for `mode: 'harness'` runs. Absent means a normal run.
+   *
+   * The second legitimate `completed: false`, and it had no marker while the
+   * dry run had one (#5888). Harness mode hands the tasks back for external
+   * implementation and stops on purpose — exactly the distinction
+   * {@link DevPipelineResult.dryRun} exists to make, so a consumer reading
+   * `completed` as the verdict reported a successful harness run as an engine
+   * fault. `run_dev_pipeline`'s async job status is that consumer.
+   */
+  readonly harnessMode?: true;
+  /**
    * Aggregate completion status of planned tasks (#5645).
    *
    * `'all_done'` when every planned task was implemented and passed QA;
@@ -956,6 +967,9 @@ async function runPlanningPhase(
 function buildHarnessResult(planResult: PlanVoteResult, tasks: PipelineTask[]): DevPipelineResult {
   return {
     completed: false,
+    // Says WHY completion is false: by request, not by fault (#5888) — the
+    // same role `dryRun` plays for the other deliberate stop.
+    harnessMode: true,
     plan: planResult.plan,
     tasks,
     voteIterations: planResult.iterations,

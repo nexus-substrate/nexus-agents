@@ -66,6 +66,8 @@ type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult
 interface CapturedToolResult {
   isError?: boolean;
   content: Array<{ type: string; text: string }>;
+  /** #5888: a hoisted failure carries its payload here, not in `content`. */
+  _meta?: Record<string, unknown>;
 }
 
 /**
@@ -287,6 +289,64 @@ describe('run_dev_pipeline async dispatch (#3726)', () => {
     expect(record?.status).toBe('complete');
   });
 
+  // #5888: `runAsJob`'s fail-closed check reads the ToolResult's ROOT keys, and
+  // `toolSuccessStructured` nests everything under `structuredContent` — so a
+  // rejected pipeline recorded `complete`, the branch `get_job_result` documents
+  // as "read `result`, not `error`".
+  it('records a rejected pipeline as a FAILED job, not a complete one', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      plan: 'p',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: true,
+    } as never);
+    const handler = captureHandler();
+
+    await handler(
+      { task: 'Build feature X', dispatch: 'async', sessionId: 'sess-rejected' },
+      STDIO_CTX
+    );
+    await new Promise((r) => setImmediate(r));
+
+    const record = readJobResult('sess-rejected');
+    expect(record?.status).toBe('failed');
+    // The record names WHICH root key tripped, so the failure is debuggable.
+    // The pipeline's own reason does NOT reach `record.error`: `runAsJob`'s
+    // DETAIL_KEYS look for a root `error`/`message`, and `toolStructuredError`
+    // carries the message in `_meta`. That gap is shared with the two sibling
+    // callers that already hoist, and is tracked separately — asserting the
+    // reason here would pin a behaviour this PR does not deliver.
+    expect(record?.error).toContain('isError');
+  });
+
+  it('records a harness run as a COMPLETE job — it stopped by request', async () => {
+    // Pair test. Harness mode hands the tasks back for external implementation
+    // and legitimately reports `completed: false`; erroring on it would trade a
+    // false success for a false failure. It is why `harnessMode` exists.
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      harnessMode: true,
+      plan: 'p',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+    } as never);
+    const handler = captureHandler();
+
+    await handler(
+      { task: 'Build feature X', dispatch: 'async', sessionId: 'sess-harness', mode: 'harness' },
+      STDIO_CTX
+    );
+    await new Promise((r) => setImmediate(r));
+
+    expect(readJobResult('sess-harness')?.status).toBe('complete');
+  });
+
   it('surfaces an idempotency collision when a sessionId is reused with different inputs', async () => {
     const handler = captureHandler();
     const first = await handler(
@@ -371,7 +431,13 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['simulated']).toBe(true);
   });
 
-  // #4772: the fields exist on DevPipelineResult and must reach the MCP
+  /** Read the structured payload out of an error envelope's `detail` (#5888). */
+function errorDetail(result: CapturedToolResult): Record<string, unknown> {
+  const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as { detail?: unknown } | undefined;
+  return (envelope?.detail ?? {}) as Record<string, unknown>;
+}
+
+// #4772: the fields exist on DevPipelineResult and must reach the MCP
   // envelope. A live dry run on 4.1.1 showed they did not — the response is
   // built from an explicit field list, so adding them to the result type was
   // not enough. "The field exists" and "a caller sees it" are different claims.
@@ -388,13 +454,17 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     } as never);
     const handler = captureHandler();
 
-    const result = await handler({ task: 'Build feature X', dryRun: true }, STDIO_CTX);
-    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    const result = await handler({ task: 'Build feature X' }, STDIO_CTX);
+    const output = errorDetail(result);
 
     // securityPassed:false alone reads as "security rejected this".
     expect(output['securityPassed']).toBe(false);
     expect(output['securityRan']).toBe(false);
     expect(output['planStatus']).toBe('empty');
+    // #5888: a plan-gate stop is a FAILED run, so the verdict is hoisted to
+    // the ToolResult root where `runAsJob`'s fail-closed check can see it. The
+    // envelope carries the same fields it used to nest under structuredContent.
+    expect(result.isError).toBe(true);
   });
 
   it('surfaces terminal plan-vote evidence in the response envelope', async () => {
@@ -412,10 +482,11 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     } as never);
     const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
 
-    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    const output = errorDetail(result);
     expect(output['planStatus']).toBe('unapproved');
     expect(output['planVoteApprovalPercentage']).toBe(40);
     expect(output['planVoteFeedback']).toBe('Still not right');
+    expect(result.isError).toBe(true);
   });
 
   it('surfaces the dryRun marker too', async () => {
