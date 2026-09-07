@@ -4223,9 +4223,12 @@ InterfaceDeclaration GraphPipelineOptions
   readonly dryRun?: boolean | undefined
   readonly maxSteps?: number | undefined
 InterfaceDeclaration GraphPipelineResult
+  readonly dryRun?: true | undefined
   readonly durationMs: number
   readonly error?: string | undefined
   readonly finalState: Readonly<Record<string, unknown>>
+  readonly stagesPlanned: number
+  readonly stagesRun: number
   readonly stepsExecuted: number
   readonly success: boolean
   readonly templateId: string

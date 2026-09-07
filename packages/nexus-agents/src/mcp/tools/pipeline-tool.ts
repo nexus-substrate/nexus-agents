@@ -143,6 +143,12 @@ function buildOutput(
     stepsExecuted: result.stepsExecuted,
     durationMs: result.durationMs,
     error: result.error ?? null,
+    // #5812-adjacent (pipeline sweep): a dryRun truncates the template at
+    // `dryRunStopAfter`, so `success: true` with `templateId: 'dev'` used to be
+    // byte-identical whether qa and security ran or were sliced away. Say which.
+    ...(result.dryRun === true ? { dryRun: true } : {}),
+    stagesPlanned: result.stagesPlanned,
+    stagesRun: result.stagesRun,
     // #4170: stamped only on an explicit NEXUS_ALLOW_SIMULATE=1 opt-in run so
     // a random demo panel can never pass as a real decision.
     ...(simulated ? { simulated: true } : {}),
