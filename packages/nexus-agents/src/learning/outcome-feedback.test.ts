@@ -350,10 +350,15 @@ describe('OutcomeFeedbackCollector', () => {
       expect(stats.avgReward).toBe(0);
     });
 
-    it('should track decisions by router type', () => {
-      const linucbDecision = createTestDecision({ routerType: 'linucb', traceId: 'trace-1' });
+    it('should track measured decisions by router type', () => {
+      const linucbDecision = createTestDecision({
+        routerType: 'linucb',
+        routerTypeMeasured: true,
+        traceId: 'trace-1',
+      });
       const preferenceDecision = createTestDecision({
         routerType: 'preference',
+        routerTypeMeasured: true,
         traceId: 'trace-2',
       });
 
@@ -363,6 +368,23 @@ describe('OutcomeFeedbackCollector', () => {
       const stats = collector.getStats();
       expect(stats.decisionsByRouter.linucb).toBe(1);
       expect(stats.decisionsByRouter.preference).toBe(1);
+      expect(stats.decisionsUnattributed).toBe(0);
+    });
+
+    it('reports an unattributable decision separately, not as topsis (#5812)', () => {
+      // The classifier labels these 'topsis' because RouterType has no member
+      // for "no stage explains this". Crediting TOPSIS was the misreport.
+      collector.recordRoutingDecision(
+        createTestDecision({ routerType: 'topsis', routerTypeMeasured: false, traceId: 't-1' })
+      );
+      collector.recordRoutingDecision(
+        createTestDecision({ routerType: 'topsis', routerTypeMeasured: true, traceId: 't-2' })
+      );
+
+      const stats = collector.getStats();
+      expect(stats.decisionsByRouter.topsis).toBe(1);
+      expect(stats.decisionsUnattributed).toBe(1);
+      expect(stats.totalDecisions).toBe(2);
     });
 
     it('should calculate average quality score', () => {

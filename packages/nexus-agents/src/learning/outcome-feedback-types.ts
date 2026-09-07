@@ -15,6 +15,17 @@ import type { QueryFeatures } from '../cli-adapters/preference-router-types.js';
 
 /**
  * Router type that made the routing decision.
+ *
+ * NOTE: `'quality'` has no producer — `getDecisiveRouterType` cannot return it,
+ * so `countDecisionsByRouter` reports `quality: 0` forever. It is not being
+ * given a producer to justify its existence (#5812 panel: "do NOT invent a
+ * producer — that is YAGNI backwards"). Removing a member of this union is a
+ * breaking change, so `'quality'` is documented as unreachable here and removed
+ * in the same next-major change that adds an `'unattributed'` member (#5914).
+ *
+ * No `@deprecated` tag: the tag applies to the whole type alias, and
+ * `RouterType` itself is not deprecated — `no-deprecated` would then fire at
+ * every one of its call sites for a defect in one member.
  */
 export type RouterType = 'linucb' | 'preference' | 'quality' | 'cascade' | 'topsis';
 
@@ -68,6 +79,22 @@ export interface RoutingDecision {
   readonly query: string;
   /** Type of router used */
   readonly routerType: RouterType;
+  /**
+   * Whether `routerType` was MEASURED or is a fallback label (#5812).
+   *
+   * `getDecisiveRouterType` tests four stage names and, when none of them
+   * explains the decision, returns `'topsis'` — byte-identical to its own
+   * measured `'topsis'` answer. `routerType` is therefore best-effort, and this
+   * field is what qualifies it.
+   *
+   * Three states, deliberately:
+   * - `true`  — a stage was identified and `routerType` names it.
+   * - `false` — no stage explained the decision; `routerType` is a fallback.
+   * - absent  — a row written before this field existed. Read it as UNMEASURED,
+   *   never as measured: a legacy row carries exactly as much evidence as the
+   *   fallback does.
+   */
+  readonly routerTypeMeasured?: boolean | undefined;
   /** Selected model/adapter name */
   readonly selectedModel: string;
   /** Selected model tier (strong/weak for preference routing) */
@@ -96,6 +123,9 @@ export const RoutingDecisionSchema = z.object({
   timestamp: z.iso.datetime(),
   query: z.string(),
   routerType: z.enum(['linucb', 'preference', 'quality', 'cascade', 'topsis']),
+  // Optional so a row persisted before #5812 still parses. Absence is read as
+  // unmeasured by `isRouterTypeMeasured`, never as measured.
+  routerTypeMeasured: z.boolean().optional(),
   selectedModel: z.string(),
   selectedTier: z.enum(['strong', 'weak']).optional(),
   armIndex: z.number().int().min(0).optional(),
@@ -183,8 +213,21 @@ export interface FeedbackLoopStats {
   readonly avgQualityScore: number;
   /** Average reward computed */
   readonly avgReward: number;
-  /** Decisions by router type */
+  /**
+   * Decisions by router type, counting ONLY decisions whose `routerType` was
+   * measured (#5812). Before this, every unattributable decision was counted as
+   * `topsis`, inflating the exact number this metric exists to report.
+   */
   readonly decisionsByRouter: Record<RouterType, number>;
+  /**
+   * Decisions whose routing stage could not be identified, and which therefore
+   * appear in NO bucket of `decisionsByRouter` (#5812).
+   *
+   * This is the field that makes `routerTypeMeasured` a fix rather than an
+   * annotation: without it the unattributable population would still have to
+   * land somewhere, and "somewhere" was `topsis`.
+   */
+  readonly decisionsUnattributed: number;
   /** Last update timestamp */
   readonly lastUpdatedAt: string;
 }

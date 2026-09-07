@@ -37,24 +37,49 @@ export function countOutcomesByClass(
 }
 
 /**
- * Count decisions by router type.
+ * Was this decision's `routerType` actually measured?
+ *
+ * An absent `routerTypeMeasured` means the row predates #5812, and a legacy row
+ * carries exactly as much evidence as the fallback does — so absence reads as
+ * UNMEASURED. Defaulting it to `true` would re-create the defect for every row
+ * already on disk.
  */
-export function countDecisionsByRouter(
-  decisions: readonly RoutingDecision[]
-): Record<RouterType, number> {
-  const counts: Record<RouterType, number> = {
+export function isRouterTypeMeasured(decision: RoutingDecision): boolean {
+  return decision.routerTypeMeasured === true;
+}
+
+/**
+ * Count decisions by router type, excluding those whose router could not be
+ * identified (#5812).
+ *
+ * `getDecisiveRouterType` labels an unattributable decision `'topsis'`, because
+ * `RouterType` has no member for "no stage explains this". Counting those in
+ * the `topsis` bucket inflated the exact number this function exists to report.
+ * They are returned separately as `unattributed` instead — a decision belongs
+ * to one or the other, never both, so the two always sum to `decisions.length`.
+ */
+export function countDecisionsByRouter(decisions: readonly RoutingDecision[]): {
+  byRouter: Record<RouterType, number>;
+  unattributed: number;
+} {
+  const byRouter: Record<RouterType, number> = {
     linucb: 0,
     preference: 0,
     quality: 0,
     cascade: 0,
     topsis: 0,
   };
+  let unattributed = 0;
 
   for (const decision of decisions) {
-    counts[decision.routerType]++;
+    if (isRouterTypeMeasured(decision)) {
+      byRouter[decision.routerType]++;
+    } else {
+      unattributed++;
+    }
   }
 
-  return counts;
+  return { byRouter, unattributed };
 }
 
 /**

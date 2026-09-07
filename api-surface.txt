@@ -3637,6 +3637,7 @@ InterfaceDeclaration FeedbackLoopStats
   readonly avgQualityScore: number
   readonly avgReward: number
   readonly decisionsByRouter: Record<RouterType, number>
+  readonly decisionsUnattributed: number
   readonly lastUpdatedAt: string
   readonly outcomesByClass: Record<OutcomeClass, number>
   readonly pendingOutcomes: number
@@ -3649,7 +3650,7 @@ InterfaceDeclaration FeedbackMessage
   targetExpertId?: string | undefined
   type: "feedback"
 VariableDeclaration FeedbackRoutingDecisionSchema
-  : z.ZodObject<{ armIndex: z.ZodOptional<z.ZodNumber>; banditContext: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; confidence: z.ZodOptional<z.ZodNumber>; domain: z.ZodOptional<z.ZodString>; id: z.ZodUUID; query: z.ZodString; queryFeatures: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; routerType: z.ZodEnum<{ cascade: "cascade"; linucb: "linucb"; preference: "preference"; quality: "quality"; topsis: "topsis"; }>; selectedModel: z.ZodString; selectedTier: z.ZodOptional<z.ZodEnum<{ strong: "strong"; weak: "weak"; }>>; timestamp: z.ZodISODateTime; traceId: z.ZodString; ucbScore: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ armIndex: z.ZodOptional<z.ZodNumber>; banditContext: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; confidence: z.ZodOptional<z.ZodNumber>; domain: z.ZodOptional<z.ZodString>; id: z.ZodUUID; query: z.ZodString; queryFeatures: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; routerType: z.ZodEnum<{ cascade: "cascade"; linucb: "linucb"; preference: "preference"; quality: "quality"; topsis: "topsis"; }>; routerTypeMeasured: z.ZodOptional<z.ZodBoolean>; selectedModel: z.ZodString; selectedTier: z.ZodOptional<z.ZodEnum<{ strong: "strong"; weak: "weak"; }>>; timestamp: z.ZodISODateTime; traceId: z.ZodString; ucbScore: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 ClassDeclaration FileAuditStorage
   close() => Promise<void>
   createtypeof FileAuditStorage.create
@@ -7569,6 +7570,7 @@ InterfaceDeclaration RoutingDecision @learning/outcome-feedback-types
   readonly query: string
   readonly queryFeatures?: QueryFeatures | undefined
   readonly routerType: RouterType
+  readonly routerTypeMeasured?: boolean | undefined
   readonly selectedModel: string
   readonly selectedTier?: "strong" | "weak" | undefined
   readonly timestamp: string

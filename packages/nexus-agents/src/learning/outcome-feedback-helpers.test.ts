@@ -92,22 +92,65 @@ describe('countOutcomesByClass', () => {
 // ============================================================================
 
 describe('countDecisionsByRouter', () => {
-  it('counts decisions by router type', () => {
+  it('counts measured decisions by router type', () => {
     const decisions = [
-      makeDecision({ routerType: 'linucb' }),
-      makeDecision({ routerType: 'linucb' }),
-      makeDecision({ routerType: 'topsis' }),
+      makeDecision({ routerType: 'linucb', routerTypeMeasured: true }),
+      makeDecision({ routerType: 'linucb', routerTypeMeasured: true }),
+      makeDecision({ routerType: 'topsis', routerTypeMeasured: true }),
     ];
-    const counts = countDecisionsByRouter(decisions);
-    expect(counts.linucb).toBe(2);
-    expect(counts.topsis).toBe(1);
-    expect(counts.preference).toBe(0);
+    const { byRouter, unattributed } = countDecisionsByRouter(decisions);
+    expect(byRouter.linucb).toBe(2);
+    expect(byRouter.topsis).toBe(1);
+    expect(byRouter.preference).toBe(0);
+    expect(unattributed).toBe(0);
   });
 
   it('returns zeros for empty array', () => {
-    const counts = countDecisionsByRouter([]);
-    expect(counts.linucb).toBe(0);
-    expect(counts.topsis).toBe(0);
+    const { byRouter, unattributed } = countDecisionsByRouter([]);
+    expect(byRouter.linucb).toBe(0);
+    expect(byRouter.topsis).toBe(0);
+    expect(unattributed).toBe(0);
+  });
+
+  // #5812: getDecisiveRouterType labels an unattributable decision 'topsis'
+  // because RouterType has no member for "no stage explains this". Counting
+  // those as TOPSIS inflated the exact metric this function produces.
+  it('keeps an unmeasured decision OUT of its labelled bucket', () => {
+    const { byRouter, unattributed } = countDecisionsByRouter([
+      makeDecision({ routerType: 'topsis', routerTypeMeasured: true }),
+      makeDecision({ routerType: 'topsis', routerTypeMeasured: false }),
+      makeDecision({ routerType: 'topsis', routerTypeMeasured: false }),
+    ]);
+
+    expect(byRouter.topsis).toBe(1);
+    expect(unattributed).toBe(2);
+  });
+
+  it('reads a legacy row with no flag as unmeasured, not as measured', () => {
+    // A row written before #5812 carries exactly as much evidence as the
+    // fallback does. Defaulting absence to `true` would re-create the defect
+    // for every row already on disk.
+    const { byRouter, unattributed } = countDecisionsByRouter([
+      makeDecision({ routerType: 'linucb' }),
+    ]);
+
+    expect(byRouter.linucb).toBe(0);
+    expect(unattributed).toBe(1);
+  });
+
+  it('assigns every decision to exactly one of the two, so they sum to the total', () => {
+    const decisions = [
+      makeDecision({ routerType: 'linucb', routerTypeMeasured: true }),
+      makeDecision({ routerType: 'cascade', routerTypeMeasured: true }),
+      makeDecision({ routerType: 'topsis', routerTypeMeasured: false }),
+      makeDecision({ routerType: 'preference' }),
+    ];
+    const { byRouter, unattributed } = countDecisionsByRouter(decisions);
+
+    const bucketed = Object.values(byRouter).reduce((a, b) => a + b, 0);
+    expect(bucketed + unattributed).toBe(decisions.length);
+    expect(bucketed).toBe(2);
+    expect(unattributed).toBe(2);
   });
 });
 

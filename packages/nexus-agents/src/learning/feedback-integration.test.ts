@@ -17,6 +17,7 @@ import type {
   CompositeRoutingDecision,
   ICompositeRouter,
 } from '../cli-adapters/composite-router.js';
+import { OutcomeFeedbackCollector } from './outcome-feedback.js';
 import type { StepResult } from '../core/types/workflow.js';
 import type { TraceId } from '../observability/swarm-observer-types.js';
 
@@ -125,6 +126,80 @@ describe('FeedbackIntegration', () => {
         successQualityThreshold: 0.8,
       });
       expect(customIntegration.getStats().totalDecisions).toBe(0);
+    });
+  });
+
+  describe('router attribution reaches the analytics (#5812)', () => {
+    // The seam is classifier -> RoutingDecision.routerTypeMeasured ->
+    // countDecisionsByRouter -> getStats. Testing the classifier alone would
+    // leave the middle link untested, which is exactly how the original defect
+    // survived: the value was computed and then read by nothing that could
+    // tell it apart from a measurement.
+    function statsFor(overrides: Partial<CompositeRoutingDecision>): {
+      topsis: number;
+      linucb: number;
+      unattributed: number;
+    } {
+      const collector = new OutcomeFeedbackCollector();
+      const withCollector = new FeedbackIntegration(undefined, collector);
+      withCollector.recordRoutingDecision(createMockDecision(overrides));
+      const stats = collector.getStats();
+      return {
+        topsis: stats.decisionsByRouter.topsis,
+        linucb: stats.decisionsByRouter.linucb,
+        unattributed: stats.decisionsUnattributed,
+      };
+    }
+
+    it('credits TOPSIS only when the topsis stage ran AND produced a score', () => {
+      const stats = statsFor({
+        stagesExecuted: ['task-analysis', 'topsis-ranking'],
+        topsisScore: 0.78,
+        ucbScore: undefined,
+      });
+
+      expect(stats.topsis).toBe(1);
+      expect(stats.unattributed).toBe(0);
+    });
+
+    it('does NOT credit TOPSIS when no stage explains the decision', () => {
+      // The ordinary shape when every scoring stage is disabled. The classifier
+      // still labels this 'topsis' — RouterType has no member for "no stage
+      // explains this" — so the count is what has to exclude it.
+      const stats = statsFor({
+        stagesExecuted: ['task-analysis', 'quality-constraint', 'distilled-rule'],
+        topsisScore: undefined,
+        ucbScore: undefined,
+      });
+
+      expect(stats.topsis).toBe(0);
+      expect(stats.unattributed).toBe(1);
+    });
+
+    it('does not credit TOPSIS when the stage ran but produced no score', () => {
+      // applyTopsisRanking returns `score: number | undefined`, so the stage
+      // name alone is not evidence.
+      const stats = statsFor({
+        stagesExecuted: ['task-analysis', 'topsis-ranking'],
+        topsisScore: undefined,
+        ucbScore: undefined,
+      });
+
+      expect(stats.topsis).toBe(0);
+      expect(stats.unattributed).toBe(1);
+    });
+
+    it('still attributes a genuine LinUCB decision', () => {
+      // Guards the correction to the original report: LinUCB attribution was
+      // never broken, and this change must not break it. `feedbackToLinUCB`
+      // gates reward delivery on routerType === 'linucb'.
+      const stats = statsFor({
+        stagesExecuted: ['task-analysis', 'linucb-selection'],
+        ucbScore: 1.2,
+      });
+
+      expect(stats.linucb).toBe(1);
+      expect(stats.unattributed).toBe(0);
     });
   });
 
