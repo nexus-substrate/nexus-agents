@@ -5,9 +5,16 @@ name: Self-Dogfood Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    # `labeled` is load-bearing, not decorative (#5875). The review is gated on
+    # the `dogfood` label; without this event the gate could only ever be
+    # evaluated at open/synchronize, so labelling an already-open PR would do
+    # nothing. Two panel voters caught this independently as a would-be silent
+    # no-op.
+    types: [opened, synchronize, ready_for_review, labeled]
   issues:
-    types: [opened]
+    # Same reason: an issue is triaged when it is LABELLED, which is almost
+    # never at creation.
+    types: [opened, labeled]
   # Manual trigger for testing
   workflow_dispatch:
     inputs:
@@ -76,18 +83,23 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Opt-in, evaluated here so the reason is reported once for both jobs.
+          # `workflow_dispatch` is itself the opt-in — a human asked for it.
+          OPTED_IN: >-
+            ${{ github.event_name == 'workflow_dispatch' ||
+                contains(github.event.pull_request.labels.*.name, 'dogfood') ||
+                contains(github.event.issue.labels.*.name, 'dogfood') }}
         run: |
-          CLI=""
-          for candidate in claude gemini codex; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              CLI="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$CLI" ]; then
+          # The runner has no model CLI; the review and triage jobs install a
+          # pinned one themselves (#5875). What is probed here is the two things
+          # this job CAN decide: did someone opt this PR/issue in, and is there a
+          # credential to spend. Whether the install then works is the review
+          # job's own failure to report — `Enforce review outcome` turns that
+          # into a red check rather than a skip, because at that point the
+          # preconditions were met and the substrate is what failed.
+          if [ "${OPTED_IN}" != "true" ]; then
             echo "reviewable=false" >> "$GITHUB_OUTPUT"
-            echo "reason=no CLI adapter on the runner — orchestrate needs one of claude, gemini or codex on PATH and exits before it reads any API key" >> "$GITHUB_OUTPUT"
+            echo "reason=not opted in — add the 'dogfood' label to run the model review on this one, or dispatch the workflow manually (#5875: the panel bounded this to opt-in rather than running on all ~29 PRs and ~30 issues a day)" >> "$GITHUB_OUTPUT"
           elif [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
             echo "reviewable=false" >> "$GITHUB_OUTPUT"
             echo "reason=no model credential configured" >> "$GITHUB_OUTPUT"
@@ -144,6 +156,18 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+
+      # #5875: the runner has no model CLI, and `orchestrate` exits before it
+      # reads any API key unless one is on PATH (cli/orchestrate-command.ts:294
+      # gates on `getAvailableClis()`, which probes BINARIES). Installing one is
+      # a workaround, not the fix — #5910 tracks making the gate ask whether any
+      # routing arm is available, after which this step should be deleted.
+      #
+      # Pinned, deliberately: this is a third-party agentic binary running on a
+      # runner that holds an untrusted diff and a model secret. `@latest` would
+      # let that surface change without a commit.
+      - name: Install the model CLI (pinned)
+        run: npm install -g @anthropic-ai/claude-code@2.1.263
 
       - name: Build nexus-agents
         run: pnpm build
@@ -336,6 +360,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
+
+      # #5875: the runner has no model CLI, and `orchestrate` exits before it
+      # reads any API key unless one is on PATH (cli/orchestrate-command.ts:294
+      # gates on `getAvailableClis()`, which probes BINARIES). Installing one is
+      # a workaround, not the fix — #5910 tracks making the gate ask whether any
+      # routing arm is available, after which this step should be deleted.
+      #
+      # Pinned, deliberately: this is a third-party agentic binary running on a
+      # runner that holds an untrusted diff and a model secret. `@latest` would
+      # let that surface change without a commit.
+      - name: Install the model CLI (pinned)
+        run: npm install -g @anthropic-ai/claude-code@2.1.263
 
       - name: Build nexus-agents
         run: pnpm build
