@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 8.44.2
+
+### Patch Changes
+
+- [#5934](https://github.com/nexus-substrate/nexus-agents/pull/5934) [`5a25177`](https://github.com/nexus-substrate/nexus-agents/commit/5a25177ed42a05dd988b74e711d3fe263e5dc613) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `research_analyze --focus gaps` now refuses when the papers registry cannot be
+  read, instead of reporting every topic as under-researched. Only the techniques
+  load gated the failure path; a failed papers load fell through to `{}`, so
+  `topicPaperCount` was empty, every topic cleared the "fewer than 2 papers"
+  filter, and the tool returned a maximal under-researched list under
+  `success: true`. `failureResponse` also now names which registry failed rather
+  than always saying "techniques".
+
+- [#5928](https://github.com/nexus-substrate/nexus-agents/pull/5928) [`3b31ccf`](https://github.com/nexus-substrate/nexus-agents/commit/3b31ccf6808b16da043b197c490a4917445d4cbd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `loadPersistedRules` now warns when the distilled-rules snapshot exists but
+  cannot be read — a parse failure, or a schema mismatch such as a file written by
+  a build with a newer `version`. It returned a bare `[]` for that case, identical
+  to "no rules were ever learned", and `ContextRetriever` then assembled a prompt
+  asserting that nothing is known to fail. The verdict is unchanged (it still never
+  throws, and an absent file is still silent); the failure is now visible.
+
 ## 8.44.1
 
 ### Patch Changes
