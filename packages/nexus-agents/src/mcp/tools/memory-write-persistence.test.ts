@@ -140,6 +140,48 @@ describe('memory_write reports persistence, not intent (#4997)', () => {
     expect(memory.recordKnowledge).toHaveBeenCalledTimes(2);
   });
 
+  // #5889: the session backend was the FIFTH one, and the only one #4997 left
+  // unchecked. Its mock here was `recordLearning: vi.fn()` — returning
+  // undefined, which no assertion ever looked at — which is why the sweep that
+  // fixed the other four did not surface it.
+  it('reports failure when the session store did not take the learning', async () => {
+    memory.recordLearning.mockReturnValue({
+      persisted: false,
+      reason: 'No session in progress',
+    });
+
+    const body = await callMemoryWrite({ key: 's1', content: 'c', backend: 'session' });
+
+    expect(body['success']).toBe(false);
+    expect(String(body['error'])).toContain('No session in progress');
+  });
+
+  it('reports success when the session store took it', async () => {
+    // The pair: a hardcoded `success: false` would pass the test above.
+    memory.recordLearning.mockReturnValue({ persisted: true });
+
+    const body = await callMemoryWrite({ key: 's2', content: 'c2', backend: 'session' });
+
+    expect(body['success']).toBe(true);
+  });
+
+  it('does not cache a failed session write for the retry', async () => {
+    // The half #4997 was actually about. `executeMemoryWrite` populates the
+    // dedup cache on `response.success`, so before this the dropped write was
+    // remembered as landed and the retry returned
+    // `{ success: true, deduplicated: true }`.
+    memory.recordLearning.mockReturnValueOnce({ persisted: false, reason: 'no session' });
+    const first = await callMemoryWrite({ key: 's-retry', content: 'c', backend: 'session' });
+    expect(first['success']).toBe(false);
+
+    memory.recordLearning.mockReturnValueOnce({ persisted: true });
+    const second = await callMemoryWrite({ key: 's-retry', content: 'c', backend: 'session' });
+
+    expect(second['success']).toBe(true);
+    expect(second).not.toHaveProperty('deduplicated');
+    expect(memory.recordLearning).toHaveBeenCalledTimes(2);
+  });
+
   it('does not dedup across different backends', async () => {
     // The cache key was `${key}::${content.slice(0, 100)}` — no backend. So
     // writing the same content to `agentic` and then `typed` reported the

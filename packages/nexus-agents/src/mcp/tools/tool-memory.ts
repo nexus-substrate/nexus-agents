@@ -629,19 +629,34 @@ export class ToolMemoryManager {
   /**
    * Record a learning. Safe to call even if session inactive.
    * High-confidence learnings are also stored as beliefs for structured retrieval.
+   *
+   * Returns whether the session store actually took it (#5889). It was `void`,
+   * so `memory_write({ backend: 'session' })` had nothing to check and reported
+   * `success: true` for a write that never landed — the one backend #4997
+   * missed when it established that `memory_write` reports persistence, not
+   * intent. The two failure modes were both already computed here and thrown
+   * away: no active session (the early return), and a store that errored (the
+   * debug log). Every other caller ignores the value, as before.
    */
-  recordLearning(learning: SessionLearning): void {
-    if (!this.memory.isSessionActive()) return;
+  recordLearning(learning: SessionLearning): MemoryStoreOutcome {
+    if (!this.memory.isSessionActive()) {
+      return { persisted: false, reason: 'No session in progress' };
+    }
 
     const result = this.memory.recordLearning(learning);
     if (!result.ok) {
       this.log.debug('Failed to record learning', { error: result.error.message });
     }
 
-    // Auto-create belief for high-confidence learnings (cross-backend sync)
+    // Auto-create belief for high-confidence learnings (cross-backend sync).
+    // Left OUTSIDE the persistence check on purpose: the belief is a separate
+    // backend, and a session-store failure is not a reason to withhold it.
     if (learning.confidence >= 0.8) {
       void this.retainBeliefFromLearning(learning);
     }
+
+    if (!result.ok) return { persisted: false, reason: result.error.message };
+    return { persisted: true };
   }
 
   /**

@@ -94,12 +94,20 @@ function writeToSession(
 ): MemoryWriteResponse {
   const toolMemory = getToolMemory();
   const numericConfidence = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.4;
-  toolMemory.recordLearning({
+  // #5889: this used to discard the outcome and return `success: true`
+  // unconditionally — the one backend the #4997 sweep missed. `executeMemoryWrite`
+  // caches a successful write, so a dropped one was remembered as landed and the
+  // identical retry short-circuited to `{ success: true, deduplicated: true }`:
+  // the tool asserting the content was already stored when nothing ever stored it.
+  const outcome: MemoryStoreOutcome = toolMemory.recordLearning({
     pattern: content,
     context: key,
     confidence: numericConfidence,
     source: 'memory_write_tool',
   });
+  if (!outcome.persisted) {
+    return { success: false, backend: 'session', key, error: outcome.reason };
+  }
   return { success: true, backend: 'session', key };
 }
 

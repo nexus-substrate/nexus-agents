@@ -229,6 +229,45 @@ describe('ToolMemoryManager', () => {
         source: 'test',
       });
     });
+
+    // #5889: this returned `void`, so `memory_write({ backend: 'session' })`
+    // had nothing to check and reported success for a write that never landed.
+    // The MCP-layer tests mock this method, so only a test here can catch the
+    // outcome being wrong at the source.
+    const learning = { pattern: 'p', context: 'c', confidence: 0.5, source: 'test' };
+
+    it('reports not-persisted when no session is active', () => {
+      mockSessionMemory.isSessionActive.mockReturnValue(false);
+      const manager = new ToolMemoryManager(createMockLogger());
+
+      const outcome = manager.recordLearning(learning);
+
+      expect(outcome.persisted).toBe(false);
+      if (outcome.persisted) throw new Error('expected a not-persisted outcome');
+      expect(outcome.reason).toContain('No session');
+      expect(mockSessionMemory.recordLearning).not.toHaveBeenCalled();
+    });
+
+    it('reports not-persisted when the session store rejected it', () => {
+      mockSessionMemory.recordLearning.mockReturnValue({
+        ok: false,
+        error: { message: 'sessions dir is read-only' },
+      });
+      const manager = new ToolMemoryManager(createMockLogger());
+
+      const outcome = manager.recordLearning(learning);
+
+      expect(outcome.persisted).toBe(false);
+      if (outcome.persisted) throw new Error('expected a not-persisted outcome');
+      expect(outcome.reason).toContain('read-only');
+    });
+
+    it('reports persisted when it landed', () => {
+      // The pair: a hardcoded `persisted: false` would pass both tests above.
+      const manager = new ToolMemoryManager(createMockLogger());
+
+      expect(manager.recordLearning(learning).persisted).toBe(true);
+    });
   });
 
   describe('recordError', () => {
