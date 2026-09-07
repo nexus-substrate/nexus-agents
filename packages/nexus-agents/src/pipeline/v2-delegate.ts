@@ -46,7 +46,7 @@ import { buildBaseTaskContract } from './task-contract-builders.js';
 import type { CompiledPipeline } from './pipeline-runner.js';
 import type { TaskContract, PlanContract } from './task-contract.js';
 import type { PolicyContext } from './policy-engine.js';
-import type { PolicyEvalResult } from './policy-evaluator.js';
+import type { PolicyEvalResult, PolicyMode } from './policy-evaluator.js';
 
 const logger = createLogger({ component: 'V2Delegate' });
 
@@ -92,8 +92,21 @@ export interface PipelineMetrics {
   readonly executed: boolean;
   readonly stepsExecuted: number;
   readonly durationMs: number;
+  /** True only when policy actually stopped the run (block mode + denial). */
   readonly policyBlocked?: boolean;
+  /**
+   * Violations the policy evaluator found, present whether or not they
+   * stopped the run.
+   *
+   * Under `warn` mode `PolicyEvalResult.allowed` is `true` regardless of
+   * violations, so a metrics object that only populated this alongside
+   * `policyBlocked` reported a warn-mode denial identically to a clean
+   * evaluation (#5862). Read `policyBlocked` for "did it stop", this for
+   * "what did it find".
+   */
   readonly policyViolations?: readonly string[];
+  /** The mode those violations were evaluated under, when there are any. */
+  readonly policyMode?: PolicyMode;
 }
 
 /** Optional contract-construction options (#2957). */
