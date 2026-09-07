@@ -286,22 +286,57 @@ function formatResult(
 }
 
 /**
+ * What to tell an operator when NO routing arm is usable (#5910).
+ *
+ * Names both routes, because the old message named only one and was wrong for
+ * the other: under `NEXUS_BILLING_MODE=api` a provider key is sufficient and no
+ * CLI need be installed, which is exactly the configuration `#3422` added.
+ */
+function noRoutingArmsMessage(): string {
+  const apiMode = process.env['NEXUS_BILLING_MODE'] === 'api';
+  const lines = [
+    'No routing arms available — nothing can run this task.',
+    '',
+    'Either install and authenticate a CLI (claude, gemini, codex, opencode),',
+    apiMode
+      ? 'or set a provider key: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY.'
+      : 'or set NEXUS_BILLING_MODE=api together with a provider key (ANTHROPIC_API_KEY,' +
+        ' OPENAI_API_KEY, GOOGLE_AI_API_KEY). API arms enter the router only in' +
+        ' explicit api billing mode, so a key alone is not enough (#3422).',
+    '',
+    'Run "nexus-agents doctor" for details.',
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Report the usable routing arms, or explain that there are none (#5910).
+ *
+ * Returns false when the caller should stop. Extracted so `orchestrateCommand`
+ * stays inside the complexity cap.
+ */
+function reportRoutingArms(
+  availableClis: readonly string[],
+  apiArms: readonly string[],
+  verbose: boolean
+): boolean {
+  if (availableClis.length === 0 && apiArms.length === 0) {
+    console.error(noRoutingArmsMessage());
+    return false;
+  }
+  if (verbose) {
+    console.log(`Available routing arms: ${[...availableClis, ...apiArms].join(', ')}`);
+  }
+  return true;
+}
+
+/**
  * Main orchestrate command handler.
  */
 export async function orchestrateCommand(options: OrchestrateOptions): Promise<number> {
   const logger = createLogger({ component: 'orchestrate', verbose: options.verbose });
 
   const availableClis = await getAvailableClis();
-  if (availableClis.length === 0) {
-    console.error('No CLI tools available.');
-    console.error('Install and authenticate at least one of: claude, gemini, codex');
-    console.error('Run "nexus-agents doctor" for details.');
-    return 1;
-  }
-
-  if (options.verbose === true) {
-    console.log(`Available CLIs: ${availableClis.join(', ')}`);
-  }
 
   // Use subprocess for Codex in puppeteer mode (MCP 'execute' tool not available)
   const codexTransport = options.engine === 'puppeteer' ? 'subprocess' : 'mcp';
@@ -309,11 +344,24 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
   // (#5191). This site additionally needs the transport argument above, which
   // selects a different class (`CodexCliAdapter` vs `CodexMcpAdapter`) and which
   // `UnifiedRegistryConfig` cannot express (#5211).
+  //
+  // Built BEFORE the precondition check (#5910). The check used to be
+  // `getAvailableClis().length === 0`, which probes for the BINARIES
+  // claude/gemini/codex/opencode and never consults a credential — so it
+  // refused to start even when `createAllAdapters` would have produced usable
+  // `api:*` arms from a provider key under `NEXUS_BILLING_MODE=api` (#3422).
+  // The gate now asks the question it means to ask: is any routing arm usable?
   const adapters = createAllAdapters(logger, codexTransport);
   if (adapters.size === 0) {
+    // A DIFFERENT failure from "no arms usable" below, and kept separate on
+    // purpose: this one means construction itself failed, which is an engine
+    // fault rather than an operator configuration problem.
     console.error('Failed to create CLI adapters.');
     return 1;
   }
+
+  const apiArms = [...adapters.keys()].filter((id) => id.startsWith('api:'));
+  if (!reportRoutingArms(availableClis, apiArms, options.verbose === true)) return 1;
 
   let result: OrchestrationResult | PuppeteerOrchestrationResult;
 

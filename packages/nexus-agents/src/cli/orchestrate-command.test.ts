@@ -51,15 +51,69 @@ describe('orchestrate-command', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe('when no CLIs are available', () => {
-    it('should return exit code 1 and show error', async () => {
-      mockGetAvailableClis.mockResolvedValue([]);
+  describe('when NO routing arm is usable (#5910)', () => {
+    // The gate used to be `getAvailableClis().length === 0`, which probes for
+    // BINARIES and never consults a credential — so it refused to start even
+    // when createAllAdapters would have produced usable `api:*` arms from a
+    // provider key under NEXUS_BILLING_MODE=api (#3422).
+    const cliOnlyAdapters = (): Map<string, never> => new Map([['claude', {} as never]]);
 
-      const options: OrchestrateOptions = { task: 'test task' };
-      const exitCode = await orchestrateCommand(options);
+    it('returns 1 and names BOTH routes when there are no CLIs and no api arms', async () => {
+      mockGetAvailableClis.mockResolvedValue([]);
+      mockCreateAllAdapters.mockReturnValue(cliOnlyAdapters() as never);
+
+      const exitCode = await orchestrateCommand({ task: 'test task' });
 
       expect(exitCode).toBe(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith('No CLI tools available.');
+      const msg = consoleErrorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(msg).toContain('No routing arms available');
+      expect(msg).toContain('claude, gemini, codex');
+      expect(msg).toContain('ANTHROPIC_API_KEY');
+    });
+
+    it('does NOT refuse when a CLI is absent but an api arm exists', async () => {
+      // The defect, stated as a test: no binary on PATH, but NEXUS_BILLING_MODE=api
+      // plus a provider key produced an `api:anthropic` arm. The old gate
+      // returned 1 here before any adapter was consulted.
+      const apiAdapter = {
+        name: 'api:anthropic',
+        healthCheck: vi.fn().mockResolvedValue(true),
+        execute: vi.fn().mockResolvedValue({ ok: true, value: { text: 'OK' } }),
+        dispose: vi.fn().mockResolvedValue(undefined),
+      };
+      mockGetAvailableClis.mockResolvedValue([]);
+      mockCreateAllAdapters.mockReturnValue(
+        new Map([['api:anthropic', apiAdapter as never]]) as never
+      );
+      mockCreateCompositeRouter.mockReturnValue({
+        route: vi.fn().mockResolvedValue({
+          ok: true,
+          value: {
+            cliName: 'api:anthropic',
+            adapter: apiAdapter,
+            confidence: 0.9,
+            reason: 'only arm',
+          },
+        }),
+      } as never);
+
+      const exitCode = await orchestrateCommand({ task: 'test task' });
+
+      expect(exitCode).not.toBe(1);
+      const msg = consoleErrorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(msg).not.toContain('No routing arms available');
+    });
+
+    it('still refuses when construction itself failed', async () => {
+      // A DIFFERENT failure, deliberately kept distinct: an empty adapter map
+      // is an engine fault, not an operator configuration problem.
+      mockGetAvailableClis.mockResolvedValue(['claude']);
+      mockCreateAllAdapters.mockReturnValue(new Map());
+
+      const exitCode = await orchestrateCommand({ task: 'test task' });
+
+      expect(exitCode).toBe(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to create CLI adapters.');
     });
   });
 
@@ -309,7 +363,7 @@ describe('orchestrate-command', () => {
       const options: OrchestrateOptions = { task: 'test', model: 'claude', verbose: true };
       await orchestrateCommand(options);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('Available CLIs: claude, gemini');
+      expect(consoleLogSpy).toHaveBeenCalledWith('Available routing arms: claude, gemini');
     });
   });
 
