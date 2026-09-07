@@ -56,6 +56,15 @@ export const TaskAccessPolicySchema = z.object({
   derivedAt: z.string(),
   source: AccessPolicySourceSchema,
   mode: AccessPolicyModeSchema,
+  /**
+   * The destructive verb the keyword deriver matched in the objective, when it
+   * matched one. Optional and carried for DISCLOSURE only: no enforcement path
+   * reads it, and `checkAccess` still returns `unmeasured` for such a policy
+   * (#5895). It exists so the decision and its log line can say *why* an
+   * objective was interesting, instead of being indistinguishable from an
+   * ordinary read-only fallback.
+   */
+  refuseVerbMatched: z.string().optional(),
 });
 export type TaskAccessPolicy = z.infer<typeof TaskAccessPolicySchema>;
 
@@ -76,4 +85,14 @@ export type AccessDecision =
   | { readonly decision: 'allow' }
   | { readonly decision: 'deny'; readonly reason: string; readonly matchedRule: string }
   | { readonly decision: 'log-and-allow'; readonly warning: string }
-  | { readonly decision: 'unmeasured'; readonly reason: string };
+  | {
+      readonly decision: 'unmeasured';
+      readonly reason: string;
+      /**
+       * Set when the policy's objective matched a destructive verb (#5895).
+       * A stable field rather than a substring of `reason`, so a counter can
+       * key on it without parsing free text. Its presence does NOT mean the
+       * call was denied — the decision is still `unmeasured`.
+       */
+      readonly refuseVerbMatched?: string;
+    };

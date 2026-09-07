@@ -253,6 +253,37 @@ describe('createAccessPolicyChainMiddleware', () => {
       );
     });
 
+    it('carries the matched refuse verb on the log line as its own field (#5895)', async () => {
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+      const ctx = makeCtx();
+
+      await withAccessPolicy(
+        policy({ mode: 'enforce', ...empty, source: 'fallback-keyword', refuseVerbMatched: 'rm -rf' }),
+        () => mw({}, ctx, makeHandler())
+      );
+
+      // A field, not a substring of `reason`: the point of #5895 is that this
+      // becomes countable, and a counter that regex-matches free text breaks
+      // the first time the wording changes.
+      expect(ctx.logger.info).toHaveBeenCalledWith(
+        'access-policy: allowlist unmeasured',
+        expect.objectContaining({ refuseVerbMatched: 'rm -rf' })
+      );
+    });
+
+    it('omits the field entirely for an ordinary empty-allowlist policy', async () => {
+      const mw = createAccessPolicyChainMiddleware('exec_shell');
+      const ctx = makeCtx();
+
+      await withAccessPolicy(policy({ mode: 'enforce', ...empty }), () =>
+        mw({}, ctx, makeHandler())
+      );
+
+      const logged = vi.mocked(ctx.logger.info).mock.calls[0]?.[1];
+      expect(logged).toBeDefined();
+      expect(logged).not.toHaveProperty('refuseVerbMatched');
+    });
+
     it('does NOT record a violation for a check that never ran', async () => {
       const events: AuditEvent[] = [];
       const trail = { append: (e: AuditEvent) => void events.push(e) } as unknown as AuditTrail;
