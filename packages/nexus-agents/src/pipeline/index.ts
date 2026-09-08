@@ -177,8 +177,6 @@ export type {
   VoteResult,
   QaReviewResult,
 } from './dev-pipeline.js';
-export { runQualityPipeline } from './quality-pipeline.js';
-export type { StageConfig, PipelineRunResult } from './quality-pipeline.js';
 export { checkSecurityScan } from './security-gate.js';
 export { executeExpert } from './expert-bridge.js';
 export type { ExpertBridgeResult } from './expert-bridge.js';
