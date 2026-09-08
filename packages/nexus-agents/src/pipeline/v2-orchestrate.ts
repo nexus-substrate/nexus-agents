@@ -16,7 +16,7 @@
 import { createDelegatePipeline, checkPipelinePolicy } from './v2-delegate.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
-import { buildBaseTaskContract } from './task-contract-builders.js';
+import { analyzeForContract, buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { TaskContract } from './task-contract.js';
 import type { PipelineMetrics } from './v2-delegate.js';
@@ -58,7 +58,9 @@ export function orchestrateInputToTaskContract(
   return buildBaseTaskContract({
     idPrefix: 'orchestrate',
     task: input.task,
-    analysis: { complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 },
+    // Derived, not asserted (#5924). This was a literal — every task through
+    // this entry point recorded `high/orchestration/0.3` whatever it actually was.
+    analysis: analyzeForContract(input.task),
     metadata,
   });
 }
