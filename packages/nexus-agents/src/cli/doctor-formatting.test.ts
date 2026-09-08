@@ -746,6 +746,41 @@ describe('doctor-formatting', () => {
     });
   });
 
+  describe('the summary names the issues it counts (#6011)', () => {
+    it('names each failing term', () => {
+      // `doctor` prints a warning glyph on lines that are NOT counted (the
+      // API-keys note is advisory when CLI auth is present), so a bare count
+      // left the reader unable to tell which warning it meant.
+      const result = createDoctorResult({
+        allHealthy: false,
+        nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+        clis: [createCliCheckResult('gemini', true, false, 'supported')],
+        mcpServerReady: false,
+      });
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('3 issue(s) found');
+      expect(summary).toContain('node version');
+      expect(summary).toContain('MCP server');
+      expect(summary).toContain('CLI gemini');
+    });
+
+    it('adds no dangling separator when the verdict is healthy', () => {
+      // `allHealthy` takes the "Status: Ready" branch, which must not sprout an
+      // empty " — " from a zero-length term list.
+      const result = createDoctorResult({
+        allHealthy: true,
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
+      });
+      printDoctorResults(result);
+
+      const line = getCalls().find((call) => call.includes('Status: Ready'));
+      expect(line).toBeDefined();
+      expect(line).not.toContain('(');
+    });
+  });
+
   describe('the summary count agrees with the verdict (#4851)', () => {
     it('does not report zero issues when a CLI is on an unsupported version', () => {
       // `isAllHealthy` fails a CLI whose `versionStatus === 'unsupported'`, but
