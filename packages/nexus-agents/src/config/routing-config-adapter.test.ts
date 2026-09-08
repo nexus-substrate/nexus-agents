@@ -9,7 +9,7 @@
  * (Source: Issue #475 - Add routing configuration section to nexus-agents.yaml)
  */
 
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-adapter.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import { DEFAULT_TOPSIS_CONFIG } from '../cli-adapters/topsis-types.js';
