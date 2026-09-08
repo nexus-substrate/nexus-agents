@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.46.4
+
+### Patch Changes
+
+- [#5961](https://github.com/nexus-substrate/nexus-agents/pull/5961) [`91396c2`](https://github.com/nexus-substrate/nexus-agents/commit/91396c296e8ada03a2044805939371291d3fb6f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Test-only: a documented default for a `NEXUS_*` boolean must now be the default
+  the code actually applies ([#5955](https://github.com/nexus-substrate/nexus-agents/issues/5955)). The two existing gates checked that every
+  documented name is registered; neither read what the row _said_, so a row could
+  state the opposite of the `parseBoolEnv` fallback and stay green. No runtime
+  change.
+
 ## 8.46.3
 
 ### Patch Changes
