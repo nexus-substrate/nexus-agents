@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 8.46.9
+
+### Patch Changes
+
+- [#5978](https://github.com/nexus-substrate/nexus-agents/pull/5978) [`ecf5ab5`](https://github.com/nexus-substrate/nexus-agents/commit/ecf5ab56b6cb6f9d4f3188f1f67a041fe94845cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `MemoryRegistry.close()` no longer reports success for backends it never closed
+  ([#5776](https://github.com/nexus-substrate/nexus-agents/issues/5776) item 2). It marked itself closed _before_ the loop and awaited each
+  backend in turn, so one rejecting backend left every later backend open and
+  leaked the shared SQLite handle, while the retry a shutdown path would make
+  returned early and resolved. Every backend is now attempted, the owned handle
+  always closes, and the first failure is re-thrown.
+
+  Also pins the three places the two backends genuinely diverge, which the shared
+  contract suite could not see because its only payload is the two shapes JSON
+  preserves exactly.
+
 ## 8.46.8
 
 ### Patch Changes
