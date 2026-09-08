@@ -16,4 +16,4 @@ Behaviour is unchanged. The clamp is already disclosed at startup by
 `findIneffectiveVars`, which names the variable, its requested and effective
 values, and the reason; this comment was the last place still asserting the
 opposite. Whether an MCP _request_ ceiling should bound a job body that by
-construction has no MCP request is recorded as the open half of #5785.
+construction has no MCP request is tracked separately in #5995.

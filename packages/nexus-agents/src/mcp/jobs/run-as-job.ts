@@ -44,7 +44,7 @@ import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.
  * still asserting otherwise.
  *
  * Whether the MCP REQUEST ceiling should bound a body that by construction has
- * no MCP request is the open half of #5785. On expiry the job is recorded as failed
+ * no MCP request is tracked separately in #5995. On expiry the job is recorded as failed
  * with `runaway guard exceeded` and the slot is released by the existing
  * `finally`. This is a runaway-guard, not an SLA — 1h is generous.
  */
