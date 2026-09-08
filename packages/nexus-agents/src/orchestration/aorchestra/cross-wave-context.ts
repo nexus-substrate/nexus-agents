@@ -21,6 +21,9 @@ const logger = createLogger({ component: 'cross-wave-context' });
 /** Maximum characters per individual worker output in prior-wave context. */
 export const MAX_CHARS_PER_WORKER = 1500;
 
+/** How many omitted roles the budget notice names before collapsing to a count (#5956). */
+const MAX_NAMED_OMITTED_ROLES = 8;
+
 /** Maximum total characters for the entire prior-wave context block. */
 export const MAX_PRIOR_CONTEXT_CHARS = 6000;
 
@@ -156,6 +159,8 @@ export function buildPriorWaveContextBlock(results: readonly WorkerResult[]): st
   let totalChars = header.length;
   const entries: string[] = [];
 
+  const omittedRoles: string[] = [];
+
   for (const result of successResults) {
     const sanitized = sanitizeWorkerOutput(result.output);
     const truncated =
@@ -166,7 +171,8 @@ export function buildPriorWaveContextBlock(results: readonly WorkerResult[]): st
     const entry = `### ${result.role} (${result.status})\n${truncated}`;
 
     if (totalChars + entry.length > MAX_PRIOR_CONTEXT_CHARS) {
-      break;
+      omittedRoles.push(result.role);
+      continue;
     }
 
     entries.push(entry);
@@ -175,28 +181,71 @@ export function buildPriorWaveContextBlock(results: readonly WorkerResult[]): st
 
   if (entries.length === 0) return '';
 
-  const failureSummary = buildFailureSummary(results, MAX_PRIOR_CONTEXT_CHARS - totalChars);
-  return header + '\n' + entries.join('\n\n') + failureSummary;
+  const failures = buildFailureSummary(results, MAX_PRIOR_CONTEXT_CHARS - totalChars);
+  const omitted = [...omittedRoles, ...failures.omittedRoles];
+
+  return header + '\n' + entries.join('\n\n') + failures.text + buildOmissionNotice(omitted);
 }
 
 /** Max chars for individual error snippets in failure summary. */
 const MAX_ERROR_SNIPPET_CHARS = 100;
 
 /** Build a brief summary of failed workers for cross-wave context (#1507). */
-function buildFailureSummary(results: readonly WorkerResult[], budget: number): string {
+/**
+ * Discloses what the context budget left out (#5956).
+ *
+ * The budget itself is fine — a worker prompt cannot carry every prior output.
+ * Hiding it is not: the block is headed "The following results were produced
+ * by prior wave workers", which reads as complete, so a downstream worker had
+ * no way to tell that two of its predecessors were dropped. Per-entry
+ * truncation already says `[truncated]`; whole-worker omission said nothing.
+ *
+ * Roles are NAMED rather than counted, so the reader can ask for a specific
+ * one, and the list is capped so the notice cannot itself overrun the budget
+ * it is reporting on.
+ *
+ * @returns The notice, or '' when nothing was omitted — the empty case must
+ *          stay silent or the marker would appear on every complete block.
+ */
+function buildOmissionNotice(omittedRoles: readonly string[]): string {
+  if (omittedRoles.length === 0) return '';
+
+  const shown = omittedRoles.slice(0, MAX_NAMED_OMITTED_ROLES);
+  const rest = omittedRoles.length - shown.length;
+  const names = shown.join(', ') + (rest > 0 ? `, and ${String(rest)} more` : '');
+
+  logger.warn('Prior-wave context truncated — worker results omitted', {
+    omittedCount: omittedRoles.length,
+    omittedRoles,
+  });
+
+  return `\n\n_[Context budget reached: ${String(omittedRoles.length)} prior-wave result(s) omitted — ${names}. This block is PARTIAL.]_`;
+}
+
+function buildFailureSummary(
+  results: readonly WorkerResult[],
+  budget: number
+): { readonly text: string; readonly omittedRoles: readonly string[] } {
   const failures = results.filter((r) => r.status === 'error');
-  if (failures.length === 0 || budget < 50) return '';
+  if (failures.length === 0) return { text: '', omittedRoles: [] };
+  // Below the floor nothing fits, so every failure is omitted — and the
+  // caller has to be told that, not handed an empty section (#5956).
+  if (budget < 50) return { text: '', omittedRoles: failures.map((f) => f.role) };
 
   const lines: string[] = ['\n\n### Failed Workers'];
   let used = lines[0]?.length ?? 0;
+  const omittedRoles: string[] = [];
 
   for (const f of failures) {
     const snippet = (f.error ?? 'unknown error').slice(0, MAX_ERROR_SNIPPET_CHARS);
     const line = `- **${f.role}**: ${snippet}`;
-    if (used + line.length > budget) break;
+    if (used + line.length > budget) {
+      omittedRoles.push(f.role);
+      continue;
+    }
     lines.push(line);
     used += line.length;
   }
 
-  return lines.length > 1 ? lines.join('\n') : '';
+  return { text: lines.length > 1 ? lines.join('\n') : '', omittedRoles };
 }

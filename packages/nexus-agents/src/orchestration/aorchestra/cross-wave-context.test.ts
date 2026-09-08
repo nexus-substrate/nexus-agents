@@ -214,6 +214,59 @@ describe('buildPriorWaveContextBlock', () => {
     expect(block.length).toBeLessThanOrEqual(MAX_PRIOR_CONTEXT_CHARS + 200); // header overhead
   });
 
+  // #5956. The budget is fine; hiding it is not. Six full-length workers is
+  // the ordinary wave-3 shape — `worker-dispatcher` accumulates priorResults
+  // across waves — so the block routinely omits whole predecessors, under a
+  // header that reads as complete. Per-entry truncation already says
+  // `[truncated]`; whole-worker omission said nothing at all.
+  it('names the workers it omitted to stay inside the budget', () => {
+    const results = Array.from({ length: 10 }, (_, i) =>
+      makeResult(`expert_${String(i)}`, 'a'.repeat(1000))
+    );
+    const block = buildPriorWaveContextBlock(results);
+
+    // Precondition: this fixture really does overflow, or the case below
+    // would pass for the wrong reason. Checked on the section heading, not
+    // the bare role name — the whole point is that the name reappears in the
+    // notice, so asserting its absence outright would contradict the fix.
+    expect(block).not.toContain('### expert_9 (success)');
+
+    expect(block).toContain('omitted');
+    // The disclosure has to name a role, not just say "some were dropped".
+    expect(block).toContain('expert_9');
+    expect(block).toContain('PARTIAL');
+  });
+
+  it('says nothing about omission when every result fits', () => {
+    const results = [makeResult('code', 'short'), makeResult('test', 'also short')];
+    const block = buildPriorWaveContextBlock(results);
+    expect(block).not.toContain('omitted');
+  });
+
+  // Same defect, same file: `buildFailureSummary` breaks out of its loop on
+  // the remaining budget with no marker either, so the "Failed Workers"
+  // section can be a partial list presented as the list.
+  it('names the failed workers it could not fit', () => {
+    // Five full successes eat most of the 6000; what is left cannot hold
+    // eight error lines, so the tail of the failure list is dropped.
+    const results: WorkerResult[] = [
+      ...Array.from({ length: 5 }, (_, i) => makeResult(`ok_${String(i)}`, 'a'.repeat(1000))),
+      ...Array.from({ length: 8 }, (_, i) => ({
+        role: `broken_${String(i)}`,
+        subTask: 't',
+        output: '',
+        status: 'error' as const,
+        durationMs: 0,
+        error: 'x'.repeat(200),
+      })),
+    ];
+    const block = buildPriorWaveContextBlock(results);
+    // The bullet is what did not fit; the name still has to surface.
+    expect(block).not.toContain('- **broken_7**');
+    expect(block).toContain('omitted');
+    expect(block).toContain('broken_7');
+  });
+
   it('excludes error results from success section but includes failure summary', () => {
     const results: WorkerResult[] = [
       makeResult('code', 'Good output.'),
