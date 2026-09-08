@@ -125,15 +125,43 @@ export class MemoryRegistry {
   /**
    * Close every registered backend and the shared SQLite handle. After
    * `close()` the registry rejects all further operations.
+   *
+   * Idempotent only once it has actually SUCCEEDED (#5776). It used to set
+   * `this.closed = true` before the loop and `await` each backend in turn, so
+   * one rejecting backend aborted the loop: every backend after it stayed open,
+   * `this.backends` was never cleared, and the shared SQLite handle — the one
+   * thing the registry itself owns — never closed. The retry a shutdown path
+   * would naturally make then hit `if (this.closed) return` and RESOLVED,
+   * reporting success for a close that never happened.
+   *
+   * Now every backend is attempted (`allSettled`), the owned handle closes
+   * regardless, and the registry IS marked closed — because by then everything
+   * it owns really is shut — but the first backend failure is re-thrown so the
+   * caller learns about it. A retry then returns early and resolves, which is
+   * honest: there is genuinely nothing left to close. Marking it open instead
+   * would be worse than the original bug — `assertOpen` would pass and the next
+   * operation would run against a closed SQLite handle.
    */
   async close(): Promise<void> {
     if (this.closed) return;
-    this.closed = true;
-    for (const backend of this.backends.values()) {
-      await backend.close();
-    }
+    const results = await Promise.allSettled(
+      [...this.backends.values()].map((backend) => backend.close())
+    );
+    // The shared handle is ours to close whether or not a backend misbehaved;
+    // leaking it is what turns one bad backend into a stuck process.
     this.backends.clear();
     if (this.db !== undefined) this.db.close();
+
+    // Set BEFORE the throw: everything this registry owns is shut, so any
+    // further operation must reject rather than reach a closed handle.
+    this.closed = true;
+
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failures.length > 0) {
+      throw failures[0]?.reason instanceof Error
+        ? failures[0].reason
+        : new Error(`nexus-memory: ${String(failures.length)} backend(s) failed to close`);
+    }
   }
 
   private assertOpen(): void {

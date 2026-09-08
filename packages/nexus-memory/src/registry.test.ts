@@ -4,13 +4,14 @@
  * @module nexus-memory/registry.test
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MemoryRegistry,
   closeMemoryRegistry,
   getMemoryRegistry,
   setMemoryRegistry,
 } from './registry.js';
+import type { IMemoryBackend } from './types.js';
 import { createInMemoryMemoryRegistry, createSqliteMemoryRegistry } from './factory.js';
 
 describe('MemoryRegistry', () => {
@@ -95,5 +96,65 @@ describe('shared singleton (getMemoryRegistry / setMemoryRegistry)', () => {
     });
     await backend.write('k', { v: 1 });
     expect(await backend.read('k')).toEqual({ v: 1 });
+  });
+});
+
+// ============================================================================
+// close() must not report success for backends it never closed (#5776 item 2)
+// ============================================================================
+
+describe('MemoryRegistry.close() failure handling (#5776)', () => {
+  function stubBackend(
+    overrides: Partial<IMemoryBackend<string, unknown>> = {}
+  ): IMemoryBackend<string, unknown> {
+    return {
+      domain: 'stub',
+      read: () => Promise.resolve(undefined),
+      write: () => Promise.resolve(),
+      query: () => Promise.resolve([]),
+      delete: () => Promise.resolve(false),
+      stats: () =>
+        Promise.resolve({ domain: 'stub', count: 0, oldestTimestamp: null, newestTimestamp: null }),
+      close: () => Promise.resolve(),
+      ...overrides,
+    };
+  }
+
+  it('closes every backend even when one rejects', async () => {
+    const registry = new MemoryRegistry();
+    const later = vi.fn(() => Promise.resolve());
+    registry.attach('a', stubBackend({ close: () => Promise.reject(new Error('boom')) }));
+    registry.attach('b', stubBackend({ close: later }));
+
+    await expect(registry.close()).rejects.toThrow('boom');
+    // Before #5776 the loop aborted on the first rejection, so `b` stayed open
+    // while the registry had already marked itself closed.
+    expect(later).toHaveBeenCalled();
+  });
+
+  it('really is closed after a backend fails, rather than merely claiming to be', async () => {
+    const registry = new MemoryRegistry();
+    registry.attach('a', stubBackend({ close: () => Promise.reject(new Error('boom')) }));
+
+    await expect(registry.close()).rejects.toThrow('boom');
+
+    // The retry resolving is correct once everything the registry OWNS is shut
+    // — there is genuinely nothing left to do. What must not happen is the
+    // registry staying open: before #5776 the shared SQLite handle leaked, and
+    // an early draft of the fix left `closed` false, which would have let the
+    // next operation run against a closed handle. This is the assertion that
+    // separates "reported closed" from "is closed".
+    await expect(registry.close()).resolves.toBeUndefined();
+    expect(() => registry.get('a')).toThrow(/closed/);
+  });
+
+  it('is still idempotent when every backend closes cleanly', async () => {
+    const registry = new MemoryRegistry();
+    const ok = vi.fn(() => Promise.resolve());
+    registry.attach('a', stubBackend({ close: ok }));
+
+    await expect(registry.close()).resolves.toBeUndefined();
+    await expect(registry.close()).resolves.toBeUndefined();
+    expect(ok).toHaveBeenCalledTimes(1);
   });
 });
