@@ -41,7 +41,7 @@ function toPipelineStateSnapshot(metadata: Record<string, unknown>): PipelineSta
   const trustTier = metadata['trustTier'];
   return typeof trustTier === 'string' ? { trustTier } : {};
 }
-import { buildBaseTaskContract } from './task-contract-builders.js';
+import { analyzeForContract, buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
 import type { TaskContract, PlanContract } from './task-contract.js';
@@ -142,7 +142,9 @@ export function delegateInputToTaskContract(
   return buildBaseTaskContract({
     idPrefix: 'delegate',
     task: input.task,
-    analysis: { complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 },
+    // Derived, not asserted (#5924). This was a literal — every task through
+    // this entry point recorded `moderate/routing/0.1` whatever it actually was.
+    analysis: analyzeForContract(input.task),
     metadata,
   });
 }

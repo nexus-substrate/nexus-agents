@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildBaseTaskContract } from './task-contract-builders.js';
+import { analyzeForContract, buildBaseTaskContract } from './task-contract-builders.js';
 import { TaskContractSchema } from './task-contract.js';
 
 describe('buildBaseTaskContract', () => {
@@ -114,5 +114,66 @@ describe('capabilityGaps is not a measurement here (#5919)', () => {
     };
     expect(TaskContractSchema.safeParse(withoutFlag).success).toBe(false);
     expect(TaskContractSchema.safeParse(contract).success).toBe(true);
+  });
+});
+
+// ============================================================================
+// analysis is derived from the task, not asserted (#5924)
+// ============================================================================
+
+describe('analyzeForContract (#5924)', () => {
+  // `v2-orchestrate.ts` recorded EVERY task as
+  // `{ complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 }`
+  // and `v2-delegate.ts` every task as
+  // `{ complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 }`.
+  // A fixed ambiguityScore that no task can move is a constant wearing the
+  // name of a measurement — the shape that inflated the metric it fed in
+  // #5812.
+
+  it('gives different tasks different analyses', () => {
+    // The assertion the old literal could never satisfy.
+    const trivial = analyzeForContract('fix a typo in README.md');
+    const hard = analyzeForContract(
+      'Design and implement a distributed consensus protocol with Byzantine fault tolerance, ' +
+        'formal verification of the safety properties, and a migration path for existing nodes'
+    );
+    expect(trivial).not.toEqual(hard);
+  });
+
+  it('does not report the old orchestrate literal for a trivial task', () => {
+    const analysis = analyzeForContract('fix a typo in README.md');
+    expect(analysis).not.toEqual({
+      complexity: 'high',
+      taskType: 'orchestration',
+      ambiguityScore: 0.3,
+    });
+  });
+
+  it('produces an ambiguityScore the task can actually move', () => {
+    // Not just "different objects" — the specific field that was frozen.
+    const a = analyzeForContract('x');
+    const b = analyzeForContract(
+      'Refactor the authentication middleware to support OAuth2 device flow, keeping the ' +
+        'existing token-file fallback and adding tests for the expiry path'
+    );
+    expect(a.ambiguityScore).not.toBe(b.ambiguityScore);
+  });
+
+  it('stays within the schema the contract declares', () => {
+    // ambiguityScore is z.number().min(0).max(1); complexity/taskType are
+    // z.string().min(1). A derived value has to satisfy what a literal did.
+    for (const task of ['x', 'fix a typo', 'implement a feature with tests and docs']) {
+      const a = analyzeForContract(task);
+      expect(a.ambiguityScore).toBeGreaterThanOrEqual(0);
+      expect(a.ambiguityScore).toBeLessThanOrEqual(1);
+      expect(a.complexity.length).toBeGreaterThan(0);
+      expect(a.taskType.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('is deterministic for the same task', () => {
+    expect(analyzeForContract('implement a feature')).toEqual(
+      analyzeForContract('implement a feature')
+    );
   });
 });
