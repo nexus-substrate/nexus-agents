@@ -150,6 +150,12 @@ export type RunInput = z.infer<typeof RunInputSchema>;
 export interface RunResponse {
   readonly strategy: ExecutionStrategy;
   readonly reasoning: string;
+  /**
+   * A PRIOR, not a measurement of this goal (#5957). Forwarded verbatim from
+   * `MetaDecision.confidence`, which is a routing rule's authored literal in
+   * the structural-match case. Callers rendering it as a percentage are
+   * rendering how much this repo trusts the rule, not how well the goal fits.
+   */
   readonly confidence: number;
   readonly alternatives: readonly ExecutionStrategy[];
   readonly needsShaping: boolean;
