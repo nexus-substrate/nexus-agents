@@ -380,11 +380,20 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
-  const totalIssues = failingVerdictTerms(result).length;
+  const terms = failingVerdictTerms(result);
   const freshnessNote = installFreshness.describeInstallFreshnessSummary(result.installFreshness);
+  // Name the terms, don't just count them (#6011). `doctor` marks several lines
+  // with a warning glyph, and only some of them are counted — the API-keys note
+  // is advisory because CLI auth already satisfies `hasAuthMethod`. A bare count
+  // left the reader to re-derive which warning it referred to, which meant
+  // reading printDoctorSummary to find out.
+  // Parenthesised, not after an em dash: `freshnessNote` already appends its own
+  // ` — stale global install` clause, and two dash-separated clauses on one line
+  // read as a single run-on. Seen in the real output before this was changed.
+  const named = terms.length > 0 ? ` (${terms.join(', ')})` : '';
   const summary = result.allHealthy
     ? `${colors.green}${colors.bold}Status: Ready${colors.reset}${freshnessNote}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}${freshnessNote}`;
+    : `${colors.yellow}${colors.bold}Summary: ${String(terms.length)} issue(s) found${named}${colors.reset}${freshnessNote}`;
   writeLine(`${summary}\n`);
 }
 
