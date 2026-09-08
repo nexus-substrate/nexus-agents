@@ -13,7 +13,6 @@ import type {
 import { OutcomeStorageError } from './outcome-storage-types.js';
 import {
   createDecisionsTable,
-  migrateDecisionsTable,
   createOutcomesTable,
   createRewardsTable,
   createIndexes,
@@ -771,7 +770,7 @@ describe('wrapStorageError', () => {
 // router_type_measured column + migration (#5915)
 // ============================================================================
 
-describe('migrateDecisionsTable (#5915)', () => {
+describe('routing_decisions migration via createDecisionsTable (#5915)', () => {
   // `routing_decisions` is created with CREATE TABLE IF NOT EXISTS and the
   // module has no migration framework, so adding the column to the CREATE
   // helps only a fresh database — an existing one keeps the old shape and the
@@ -780,7 +779,7 @@ describe('migrateDecisionsTable (#5915)', () => {
 
   it('adds the column when it is missing', () => {
     const db = makeMockDb(['id', 'router_type']);
-    migrateDecisionsTable(db);
+    createDecisionsTable(db);
     const statements = (db.exec as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
     expect(
       statements.some((sql) =>
@@ -789,29 +788,21 @@ describe('migrateDecisionsTable (#5915)', () => {
     ).toBe(true);
   });
 
-  it('does nothing when the column is already there', () => {
+  it('does not ALTER when the column is already there', () => {
+    // `createDecisionsTable` always execs the CREATE; what must not happen is
+    // a second, redundant ALTER on a database that has already migrated.
     const db = makeMockDb(['id', 'router_type', 'router_type_measured']);
-    migrateDecisionsTable(db);
-    expect(db.exec).not.toHaveBeenCalled();
+    createDecisionsTable(db);
+    const statements = (db.exec as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+    expect(statements.some((sql) => sql.includes('ALTER TABLE'))).toBe(false);
   });
 
   it('decides by inspection, not by catching a failed ALTER', () => {
     // A try/catch around the ALTER would swallow a REAL failure as "already
     // migrated". The PRAGMA is asked first, so nothing is being suppressed.
     const db = makeMockDb(['id']);
-    migrateDecisionsTable(db);
-    expect(db.prepare).toHaveBeenCalledWith('PRAGMA table_info(routing_decisions)');
-  });
-
-  it('createDecisionsTable RUNS the migration on an existing database', () => {
-    // The seam. Without this, deleting the `migrateDecisionsTable(db)` call
-    // from createDecisionsTable passes every other test in this file — the
-    // migration is tested directly, so nothing notices it stopped being
-    // invoked, and every existing database silently keeps the old shape.
-    const db = makeMockDb(['id', 'router_type']);
     createDecisionsTable(db);
-    const statements = (db.exec as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
-    expect(statements.some((sql) => sql.includes('ADD COLUMN router_type_measured'))).toBe(true);
+    expect(db.prepare).toHaveBeenCalledWith('PRAGMA table_info(routing_decisions)');
   });
 
   it('CREATE TABLE carries the column for a fresh database', () => {

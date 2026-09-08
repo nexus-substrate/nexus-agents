@@ -60,8 +60,13 @@ export function createDecisionsTable(db: ISQLiteDatabase): void {
  * Idempotent by inspection rather than by catching an error: `PRAGMA
  * table_info` is asked whether the column is there, so a genuine ALTER failure
  * still surfaces instead of being swallowed as "already migrated".
+ *
+ * Deliberately NOT exported. `createDecisionsTable` is the entry point every
+ * caller uses, so testing through it tests the seam that matters — an exported
+ * helper would have let the tests pass while the call site quietly stopped
+ * invoking it.
  */
-export function migrateDecisionsTable(db: ISQLiteDatabase): void {
+function migrateDecisionsTable(db: ISQLiteDatabase): void {
   const columns = db.prepare<{ name: string }>('PRAGMA table_info(routing_decisions)').all() as {
     name: string;
   }[];
