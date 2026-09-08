@@ -612,6 +612,13 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
     readonly names: readonly string[];
     /** Call sites whose argument is not a NEXUS_* literal by any known shape. */
     readonly unresolved: readonly UnresolvedBoolRead[];
+    /**
+     * The FALLBACK each resolved call site passes — the value the flag takes
+     * when unset, i.e. the thing the docs call its default (#5955). Only
+     * `true`/`false` literals are recorded; a computed fallback is absent, and
+     * the consumer must treat absence as "cannot check", never as a match.
+     */
+    readonly fallbacks: readonly (readonly [string, boolean])[];
   }
 
   /**
@@ -675,15 +682,57 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
       if (name !== undefined) names.push(name);
       else unresolved.push({ file, line: code.slice(0, m.index).split('\n').length, argument });
     }
-    return { names, unresolved };
+
+    // Second, INDEPENDENT pass for the fallback (#5955). Deliberately not
+    // folded into the loop above: requiring a closing paren narrows what
+    // matches, and a call this stricter pattern misses would have vanished
+    // from `names` too — silently shrinking the #5155 name ratchet instead of
+    // failing it. A fallback the pattern cannot see is simply absent here,
+    // which the consumer must treat as "cannot check", never as a match.
+    const fallbacks: (readonly [string, boolean])[] = [];
+    for (const m of code.matchAll(
+      /parseBool(?:Env|Value)\(\s*([^,)]+?)\s*,\s*(true|false)\s*\)/g
+    )) {
+      const name = resolveBoolFlagArgument(m[1] ?? '', constants);
+      if (name !== undefined) fallbacks.push([name, m[2] === 'true']);
+    }
+    return { names, unresolved, fallbacks };
   }
 
   interface TreeScan {
     readonly sites: Map<string, string[]>;
+    /**
+     * name -> the fallback every call site passes, when they AGREE. A name
+     * whose readers disagree is absent, and `conflictingFallbacks` names it:
+     * two readers of one flag with different defaults means no single
+     * documented default can be right, which is itself the finding (#5955).
+     */
+    readonly fallbacks: Map<string, boolean>;
+    readonly conflictingFallbacks: readonly string[];
     /** Unresolved sites in files NOT tabled — each one fails the gate. */
     readonly untabled: readonly UnresolvedBoolRead[];
     /** Tabled files that no longer have an unresolved site — stale table. */
     readonly staleTable: readonly string[];
+  }
+
+  /**
+   * Collapse each flag's observed fallbacks to the single value its readers
+   * agree on. Disagreement is not resolved to a winner — it is reported, since
+   * two readers of one flag with different defaults means no documented
+   * default can be right for it (#5955).
+   */
+  function reconcileFallbacks(seen: ReadonlyMap<string, ReadonlySet<boolean>>): {
+    readonly fallbacks: Map<string, boolean>;
+    readonly conflictingFallbacks: readonly string[];
+  } {
+    const fallbacks = new Map<string, boolean>();
+    const conflictingFallbacks: string[] = [];
+    for (const [name, values] of seen) {
+      const only = [...values];
+      if (only.length === 1 && only[0] !== undefined) fallbacks.set(name, only[0]);
+      else conflictingFallbacks.push(name);
+    }
+    return { fallbacks, conflictingFallbacks };
   }
 
   function scanTree(): TreeScan {
@@ -693,10 +742,14 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
     };
     const untabled: UnresolvedBoolRead[] = [];
     const filesWithUnresolved = new Set<string>();
+    const seen = new Map<string, Set<boolean>>();
     for (const full of sourceFiles(SRC)) {
       const file = full.replace(`${SRC}/`, '');
       const scan = scanBoolFlagReads(readFileSync(full, 'utf8'), file);
       for (const name of scan.names) add(name, file);
+      for (const [name, value] of scan.fallbacks) {
+        seen.set(name, (seen.get(name) ?? new Set<boolean>()).add(value));
+      }
       if (scan.unresolved.length === 0) continue;
       filesWithUnresolved.add(file);
       const tabled = INDIRECT_BOOL_READERS[file];
@@ -706,7 +759,8 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
     const staleTable = Object.keys(INDIRECT_BOOL_READERS).filter(
       (f) => !filesWithUnresolved.has(f)
     );
-    return { sites, untabled, staleTable };
+    const { fallbacks, conflictingFallbacks } = reconcileFallbacks(seen);
+    return { sites, untabled, staleTable, fallbacks, conflictingFallbacks };
   }
 
   const TREE = scanTree();
@@ -811,5 +865,139 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
 
     expect(unregistered).toEqual([]);
     expect(wrongShape).toEqual([]);
+  });
+
+  // --------------------------------------------------------------------
+  // Nested here because it reuses this block's TREE scan: the same call
+  // sites that must be REGISTERED must also be documented with the
+  // default they actually apply (#5955).
+  // --------------------------------------------------------------------
+  describe('documented defaults match the parseBoolEnv fallback (#5955)', () => {
+    // The two gates above this one (#4722, #5159) check that every NEXUS_* name
+    // in the docs is REGISTERED. Neither reads what the row says about the
+    // variable. Measured on 2026-09-08: changing NEXUS_LLM_CLASSIFICATION's
+    // AGENTS.md row from "default off" to "default ON" — for a flag whose
+    // fallback is false, and which costs one model call per task when on —
+    // passed all 61 tests here and `check-env-schema-coverage.ts` with exit 0.
+    // The env table is the only basis an operator has for what a flag does.
+
+    const AGENTS_MD = readFileSync(join(REPO_ROOT, 'AGENTS.md'), 'utf8');
+    const CONFIG_MD = readFileSync(
+      join(REPO_ROOT, 'docs/getting-started/CONFIGURATION.md'),
+      'utf8'
+    );
+
+    /**
+     * Default cells that are deliberately NOT a boolean spelling, with the
+     * reason. Tabled rather than skipped: an unrecognised cell fails, so a new
+     * one has to be justified here before it can pass.
+     */
+    const NON_BOOLEAN_DEFAULT_CELLS: Readonly<Record<string, string>> = {
+      // "unset" describes the variable's presence, not a value. Consistent with
+      // a false fallback, but it is not a claim about the boolean, so there is
+      // nothing to compare.
+      NEXUS_NO_SCAFFOLD: 'unset',
+    };
+
+    /**
+     * `true`/`1` -> true, `false`/`0` -> false. Failing that, an explicit
+     * `(… on)` / `(… off)` parenthetical — the vocabulary AGENTS.md already
+     * uses, and what lets a cell keep saying something useful in prose
+     * ("unset (allowlist on)") instead of being tabled away as uncheckable.
+     * Anything else -> undefined, which the caller treats as a failure.
+     */
+    function parseDocumentedBool(cell: string): boolean | undefined {
+      const v = cell.trim().replace(/^`|`$/g, '').toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      const phrase = /\((?:[^()]*\s)?(on|off)\)$/.exec(v);
+      if (phrase?.[1] !== undefined) return phrase[1] === 'on';
+      return undefined;
+    }
+
+    /** The Default column of the CONFIGURATION.md row for `name`, if it has one. */
+    function configuredDefaultCell(name: string): string | undefined {
+      const row = new RegExp(`^\\|\\s*\`${name}\`\\s*\\|([^|]*)\\|([^|]*)\\|\\s*$`, 'm').exec(
+        CONFIG_MD
+      );
+      return row?.[2]?.trim();
+    }
+
+    /** The "(default off|ON)" phrase in the AGENTS.md row for `name`, if present. */
+    function agentsDefaultPhrase(name: string): boolean | undefined {
+      const row = new RegExp(`^\\|\\s*\`${name}\`\\s*\\|(.*)\\|\\s*$`, 'm').exec(AGENTS_MD);
+      if (row?.[1] === undefined) return undefined;
+      const phrase = /\(default\s+(on|off)\)/i.exec(row[1]);
+      if (phrase?.[1] === undefined) return undefined;
+      return phrase[1].toLowerCase() === 'on';
+    }
+
+    const FALLBACKS = [...TREE.fallbacks].sort(([a], [b]) => a.localeCompare(b));
+
+    it('finds the parseBoolEnv fallbacks at all', () => {
+      // Guards the whole describe against passing vacuously: if the scanner
+      // stopped resolving fallbacks, every case below would iterate nothing.
+      expect(FALLBACKS.length).toBeGreaterThanOrEqual(10);
+      expect(Object.fromEntries(FALLBACKS)).toMatchObject({
+        NEXUS_PERSIST_LEARNING: true,
+        NEXUS_REPO_PREFERRED: true,
+        NEXUS_LLM_CLASSIFICATION: false,
+      });
+    });
+
+    it('has no flag whose readers disagree about the default', () => {
+      // Two readers of one flag with different fallbacks means no single
+      // documented default can be correct for it.
+      expect(TREE.conflictingFallbacks).toEqual([]);
+    });
+
+    // The case above passes because the tree has no conflict today, so on its
+    // own it is a check that cannot fail — mutating the detector to accept
+    // any value leaves all 95 cases green. This proves the detector on a
+    // synthetic map instead, which is the only input that can exercise it.
+    it('reports a flag whose readers disagree, and keeps the ones that agree', () => {
+      const result = reconcileFallbacks(
+        new Map([
+          ['NEXUS_FIXTURE_AGREED', new Set([true])],
+          ['NEXUS_FIXTURE_SPLIT', new Set([true, false])],
+        ])
+      );
+      expect(result.conflictingFallbacks).toEqual(['NEXUS_FIXTURE_SPLIT']);
+      expect([...result.fallbacks]).toEqual([['NEXUS_FIXTURE_AGREED', true]]);
+    });
+
+    it('treats a flag with no observed fallback as absent, not as false', () => {
+      // An empty set is "the scanner saw nothing", which must not collapse to
+      // a default the docs could then be checked against.
+      const result = reconcileFallbacks(new Map([['NEXUS_FIXTURE_NONE', new Set<boolean>()]]));
+      expect(result.fallbacks.has('NEXUS_FIXTURE_NONE')).toBe(false);
+      expect(result.conflictingFallbacks).toEqual(['NEXUS_FIXTURE_NONE']);
+    });
+
+    it.each(FALLBACKS)('CONFIGURATION.md documents %s as %s', (name, fallback) => {
+      const cell = configuredDefaultCell(name);
+      if (cell === undefined) return; // row has no Default column — #5159 covers presence
+      const documented = parseDocumentedBool(cell);
+      if (documented === undefined) {
+        expect(
+          NON_BOOLEAN_DEFAULT_CELLS[name],
+          `${name}: Default cell ${JSON.stringify(cell)} is not a boolean spelling and is not tabled in NON_BOOLEAN_DEFAULT_CELLS`
+        ).toBe(cell.replace(/^`|`$/g, ''));
+        return;
+      }
+      expect(
+        documented,
+        `${name}: CONFIGURATION.md says ${cell}, code falls back to ${String(fallback)}`
+      ).toBe(fallback);
+    });
+
+    it.each(FALLBACKS)('AGENTS.md documents %s as %s', (name, fallback) => {
+      const documented = agentsDefaultPhrase(name);
+      if (documented === undefined) return; // not in the most-used table, or no phrase
+      expect(
+        documented,
+        `${name}: AGENTS.md says "(default ${documented ? 'on' : 'off'})", code falls back to ${String(fallback)}`
+      ).toBe(fallback);
+    });
   });
 });
