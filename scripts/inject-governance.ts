@@ -21,7 +21,7 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
@@ -1113,7 +1113,13 @@ export const GOVERNANCE_STAMP_SOURCES: readonly string[] = [
 function getGovernanceStamp(): string {
   const hash = createHash('sha256');
   for (const path of GOVERNANCE_STAMP_SOURCES) {
-    hash.update(path);
+    // RELATIVE to the repo root. Hashing the absolute path made the digest
+    // machine-specific — `/home/william/...` locally, `/home/runner/...` in CI
+    // — so the stamp disagreed with itself across environments and the drift
+    // check failed on this change's own first CI run. `extract-api-surface.ts`
+    // documents the identical failure ("a gate that always fails gets switched
+    // off"); this is the third time it has been hit in this repo.
+    hash.update(relative(ROOT, path));
     hash.update('\0');
     let content = '<absent>';
     try {

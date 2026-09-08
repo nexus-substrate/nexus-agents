@@ -1342,6 +1342,25 @@ describe('governance stamp derivation (#5943)', () => {
     });
   });
 
+  it('is identical in a sandbox at a different absolute path', async () => {
+    // The failure this change shipped on its own first CI run: the digest
+    // hashed the ABSOLUTE source paths, so it was `/home/william/...` locally
+    // and `/home/runner/...` in CI and the two disagreed. The sandbox lives at
+    // a different absolute path than the repo, so identical content must still
+    // produce an identical stamp. `extract-api-surface.ts` documents the same
+    // failure — "a gate that always fails gets switched off".
+    const stampIn = (root: string): string | undefined =>
+      readFileSync(join(root, 'CLAUDE.md'), 'utf-8')
+        .split('\n')
+        .find((l) => l.startsWith('_Governance Version:'));
+
+    await withInjectSnapshot(async () => {
+      await runInject();
+      expect(SANDBOX).not.toBe(REAL_ROOT);
+      expect(stampIn(SANDBOX)).toBe(stampIn(REAL_ROOT));
+    });
+  });
+
   it('changes when a stamp source changes, and only then', async () => {
     // The behavioural statement of "derived from content". Deliberately does
     // NOT recompute the sha256 in the test: writing the algorithm twice means
