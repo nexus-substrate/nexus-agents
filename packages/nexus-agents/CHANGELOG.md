@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.46.7
+
+### Patch Changes
+
+- [#5973](https://github.com/nexus-substrate/nexus-agents/pull/5973) [`852f75a`](https://github.com/nexus-substrate/nexus-agents/commit/852f75a5711636025c540e215c610635f13dff47) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removes `pipeline/quality-pipeline.ts` ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 2). `runQualityPipeline` had
+  no production caller since it was added, and its docstring claimed the workflow
+  `dev-pipeline.ts` actually runs — a second orchestrator for one concern. It was
+  barrel-exported but never in the published surface (`pnpm api:check` reports the
+  surface unchanged), so this is not a breaking change.
+
 ## 8.46.6
 
 ### Patch Changes
