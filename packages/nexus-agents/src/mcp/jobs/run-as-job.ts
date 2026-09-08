@@ -32,8 +32,19 @@ import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.
  * Async-job-body runaway-guard (#3734). A backgrounded job body has NO MCP
  * request timeout (that is the point of async mode), so without a ceiling a
  * wedged `run` would hold its concurrency slot and pending record forever.
- * The `async-job-body` operation class (3600s, honoring NEXUS_TIMEOUT_MULTIPLIER
- * + the per-class override) bounds it. On expiry the job is recorded as failed
+ * The `async-job-body` operation class (3600s) bounds it.
+ *
+ * It does NOT honour NEXUS_TIMEOUT_MULTIPLIER or the per-class override
+ * UPWARDS, which this comment used to claim (#5785). The class is declared at
+ * exactly `MCP_TIMEOUTS.maxMs`, and `describeClassGuard` re-clamps to that
+ * ceiling, so for this class alone both knobs can only LOWER the guard —
+ * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` resolves to 3600000. That is
+ * reported at startup by `findIneffectiveVars`, naming the variable and the
+ * reason, so it is disclosed rather than silent; the comment was the last place
+ * still asserting otherwise.
+ *
+ * Whether the MCP REQUEST ceiling should bound a body that by construction has
+ * no MCP request is the open half of #5785. On expiry the job is recorded as failed
  * with `runaway guard exceeded` and the slot is released by the existing
  * `finally`. This is a runaway-guard, not an SLA — 1h is generous.
  */
