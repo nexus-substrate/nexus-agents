@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.46.1
+
+### Patch Changes
+
+- [#5950](https://github.com/nexus-substrate/nexus-agents/pull/5950) [`82eba19`](https://github.com/nexus-substrate/nexus-agents/commit/82eba19833f86ea371bf1e4cc06b73e86410c6ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `orchestrate` no longer refuses to start when a provider key is configured but
+  no CLI binary is installed. The precondition check was
+  `getAvailableClis().length === 0`, which probes for the binaries
+  claude/gemini/codex/opencode and never consults a credential — so it returned 1
+  before `createAllAdapters` could produce the `api:*` routing arms that
+  `NEXUS_BILLING_MODE=api` exists to enable ([#3422](https://github.com/nexus-substrate/nexus-agents/issues/3422)). The gate now asks whether any
+  routing arm is usable, and the error names both routes instead of only the CLI
+  one.
+
 ## 8.46.0
 
 ### Minor Changes
