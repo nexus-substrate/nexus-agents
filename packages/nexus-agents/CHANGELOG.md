@@ -1,5 +1,35 @@
 # nexus-agents
 
+## 8.46.5
+
+### Patch Changes
+
+- [#5966](https://github.com/nexus-substrate/nexus-agents/pull/5966) [`b50adb1`](https://github.com/nexus-substrate/nexus-agents/commit/b50adb15fd2ce0a6e0d8c20687632a7e59be8413) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `routing.linucb.maxDecisionTimeMs` is deprecated ([#5918](https://github.com/nexus-substrate/nexus-agents/issues/5918)). It is declared three
+  times, validated, and copied into the runtime config, and nothing on the
+  routing path ever compares anything to it — setting it does not bound routing.
+  `adaptRoutingConfig` now warns once when an operator actually sets it, all three
+  declarations carry `@deprecated`, and the two conflicting defaults (50 and 100)
+  are one. The field still resolves exactly as before; removing it is a published-
+  API break, queued for the next major as [#5963](https://github.com/nexus-substrate/nexus-agents/issues/5963).
+
+  Also renames `RoutingScorerConfig.maxDecisionTimeMs` to `latencyBudgetMs`. That
+  type is not in the published API surface. It is a genuine after-the-fact
+  grading threshold, and sharing the name made a repo-wide grep for the router's
+  field return it, reading as though routing were bounded.
+
+- [#5967](https://github.com/nexus-substrate/nexus-agents/pull/5967) [`83ae6f9`](https://github.com/nexus-substrate/nexus-agents/commit/83ae6f987b9b5c24c2ee6a9205e2a4ff808c40b0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-memory` telemetry now records operations that FAILED ([#5965](https://github.com/nexus-substrate/nexus-agents/issues/5965)).
+  `recordMemoryEvent` was called only after the work succeeded, so a thrown
+  validation error, SQLite constraint or closed-backend call produced no event
+  and no counter row — a domain rejecting 100% of its writes was
+  indistinguishable from an idle one, while `types.ts` said "emitted on every
+  backend operation" and `telemetry.ts` said "Updates counters always".
+
+  `MemoryEventCounters.count` is now ATTEMPTS (it counted successes), with a new
+  `errorCount` for the failing subset; `MemoryEvent` carries `error` — the
+  message only, never the value that failed validation. Both backends' five
+  operations run through `recordFailedMemoryOp`, which emits before re-throwing,
+  so caller error handling is unchanged.
+
 ## 8.46.4
 
 ### Patch Changes
