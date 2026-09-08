@@ -75,7 +75,7 @@ function fileToSlug(name: string): string {
  * Returns true if the target file has YAML frontmatter with a `title:` field,
  * meaning Astro will publish it as a docs page. Returns false on any error.
  */
-function hasPublishedFrontmatter(docsRoot: string, resolved: string): boolean {
+export function hasPublishedFrontmatter(docsRoot: string, resolved: string): boolean {
   try {
     const absPath = resolve(docsRoot, resolved);
     // Guard against path traversal outside docsRoot.
