@@ -23,11 +23,29 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const GENERATED_GOVERNANCE_FILES: readonly string[] = ['CLAUDE.md', 'AGENTS.md'];
 
 /**
- * The stamp line `scripts/inject-governance.ts` rewrites on every regeneration.
- * Anchored, and the date shape is fixed — a hand-edited or reworded stamp does
- * not match, so it is not exempt.
+ * How many hex characters of the sha256 the stamp carries (#5943). Long enough
+ * that an accidental collision across four source files is not a concern;
+ * short enough to read.
  */
-const GOVERNANCE_STAMP_LINE = /^_Governance Version: \d{4}-\d{2}-\d{2}_$/;
+export const GOVERNANCE_STAMP_DIGEST_LENGTH = 12;
+
+/**
+ * The stamp line `scripts/inject-governance.ts` rewrites on every regeneration.
+ *
+ * THE one definition. Exported so the renderer, the AGENTS.md sync pattern and
+ * this module's exemption predicate all match the same shape — the architect's
+ * condition on the #5943 ratification, because "every site moved" is only
+ * checkable if there is one site to move. `scripts/inject-governance.test.ts`
+ * asserts the rendered line matches this.
+ *
+ * Anchored, and the digest shape is fixed — a hand-edited or reworded stamp
+ * does not match, so it is not exempt.
+ */
+export const GOVERNANCE_STAMP_PATTERN = new RegExp(
+  `^_Governance Version: [0-9a-f]{${String(GOVERNANCE_STAMP_DIGEST_LENGTH)}}_$`
+);
+
+const GOVERNANCE_STAMP_LINE = GOVERNANCE_STAMP_PATTERN;
 
 /** Replaces a well-formed stamp line with a constant, leaving everything else. */
 function normalizeStamp(text: string): string {
