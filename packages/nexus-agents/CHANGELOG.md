@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.46.14
+
+### Patch Changes
+
+- [#5992](https://github.com/nexus-substrate/nexus-agents/pull/5992) [`e4d0897`](https://github.com/nexus-substrate/nexus-agents/commit/e4d0897bc8d455515ebb4dc11c40fb3598ccea63) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `ConfidenceInterval` gains a required `measured` flag ([#5760](https://github.com/nexus-substrate/nexus-agents/issues/5760) item 3).
+  `meanConfidenceInterval([])` returned a ZERO-WIDTH interval — the strongest
+  possible precision claim, over no data. The proportion sibling's `[0, 1]` was
+  honest only by luck (a bounded domain), and `calculateDifferenceCI` divided by
+  `(total1 || 1)` and produced a finite spread from nothing. All three now say so.
+  Infinity and NaN bounds were considered and rejected: both serialise to `null`,
+  turning a loud in-process signal into a silent persisted one.
+
 ## 8.46.13
 
 ### Patch Changes
