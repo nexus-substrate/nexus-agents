@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.46.13
+
+### Patch Changes
+
+- [#5990](https://github.com/nexus-substrate/nexus-agents/pull/5990) [`e654835`](https://github.com/nexus-substrate/nexus-agents/commit/e65483574c7efad0698c127903975de653d94bd5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `routerTypeMeasured` is now persisted on the SQLite `routing_decisions` row
+  ([#5915](https://github.com/nexus-substrate/nexus-agents/issues/5915), closing the third step of [#5812](https://github.com/nexus-substrate/nexus-agents/issues/5812)). Until now the signal existed only in
+  in-memory analytics that do not survive a restart, so any offline read of the
+  store still saw the inflated TOPSIS count the live stats had been fixed to
+  report honestly. Adds a `PRAGMA table_info`-guarded `ALTER TABLE` so existing
+  databases get the column; a NULL, a 0 and an absent column all read as
+  UNMEASURED.
+
 ## 8.46.12
 
 ### Patch Changes
