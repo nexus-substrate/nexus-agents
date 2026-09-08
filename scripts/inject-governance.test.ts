@@ -33,6 +33,7 @@ import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
+import { GOVERNANCE_STAMP_PATTERN } from './governance-stamp-exemption.js';
 import { parseCommandCatalog } from './parse-cli-command-catalog.js';
 
 /** Real repo root (parent of `scripts/`). Source of the pristine fixtures. */
@@ -188,14 +189,15 @@ async function withInjectSnapshot(body: () => Promise<void>): Promise<void> {
 // Check command (validates current state)
 // ============================================================================
 
-
 describe('governance stamp source set (#5491)', () => {
   it('does not include the model registry — model data is not governance content', () => {
     // in-tree-data.ts was a stamp source, so a pricing sync or a dead-slug
     // repoint moved the stamp, forced the regenerated line to be committed into
     // AGENTS.md/CLAUDE.md, and pushed a routine data PR through the governor
     // ratification gate. Panel #5491 chose to drop it (option b, 4/6).
-    expect(core.GOVERNANCE_STAMP_SOURCES.some((p) => p.endsWith('config/in-tree-data.ts'))).toBe(false);
+    expect(core.GOVERNANCE_STAMP_SOURCES.some((p) => p.endsWith('config/in-tree-data.ts'))).toBe(
+      false
+    );
   });
 
   it('still derives the stamp from the governance-content sources', () => {
@@ -339,7 +341,7 @@ describe('inject-governance inject', () => {
     await withInjectSnapshot(async () => {
       await runInject();
       const stampOf = (file: string): string | undefined =>
-        /_Governance Version: (\d{4}-\d{2}-\d{2})_/.exec(readFileSync(box(file), 'utf-8'))?.[1];
+        /_Governance Version: ([0-9a-f]{12})_/.exec(readFileSync(box(file), 'utf-8'))?.[1];
 
       const agents = stampOf('AGENTS.md');
       const claude = stampOf('CLAUDE.md');
@@ -359,8 +361,8 @@ describe('inject-governance inject', () => {
       // check then reported the block stale.
       const agentsPath = box('AGENTS.md');
       const stale = readFileSync(agentsPath, 'utf-8').replace(
-        /_Governance Version: \d{4}-\d{2}-\d{2}_/,
-        '_Governance Version: 2000-01-01_'
+        /_Governance Version: [0-9a-f]{12}_/,
+        '_Governance Version: 000000000000_'
       );
       writeFileSync(agentsPath, stale);
 
@@ -409,7 +411,7 @@ describe('inject-governance inject', () => {
     await withInjectSnapshot(async () => {
       await runInject();
       const content = readFileSync(box('CLAUDE.md'), 'utf-8');
-      expect(/Governance Version:\s*(\d{4}-\d{2}-\d{2})/.exec(content)).not.toBeNull();
+      expect(/Governance Version:\s*([0-9a-f]{12})/.exec(content)).not.toBeNull();
     });
   });
 
@@ -1298,6 +1300,93 @@ describe('inject-governance ENTRYPOINTS CLI command tables (#5458)', () => {
       } finally {
         writeFileSync(box(CATALOG), pristine);
       }
+    });
+  });
+});
+
+// ============================================================================
+// The stamp is a content digest, not a date (#5943)
+// ============================================================================
+
+describe('governance stamp derivation (#5943)', () => {
+  // It used to be `git log -1 --format=%cs` over the four stamp sources — the
+  // committer date, which GitHub's squash button rewrites to the merge moment.
+  // A PR stamped on day 1 and merged on day 2 left main with a stamp the
+  // injector would no longer compute, and the NEXT unrelated PR went red on
+  // docs-check's `inject` + `git diff --exit-code` step. Ratified 6-1 to
+  // replace it with a digest of the sources' content.
+
+  it('renders a line the ONE shared pattern matches', async () => {
+    // The architect's condition on the ratification: renderer, AGENTS.md sync
+    // and #5983's exemption predicate must all agree, and that is only
+    // checkable if there is one definition. This is the check that they do.
+    await withInjectSnapshot(async () => {
+      await runInject();
+      for (const file of ['CLAUDE.md', 'AGENTS.md']) {
+        const line = readFileSync(box(file), 'utf-8')
+          .split('\n')
+          .find((l) => l.startsWith('_Governance Version:'));
+        expect(line, `${file} has no stamp line`).toBeDefined();
+        expect(GOVERNANCE_STAMP_PATTERN.test(line ?? '')).toBe(true);
+      }
+    });
+  });
+
+  it('is byte-identical across two runs', async () => {
+    // Idempotency, which is what #5943 broke.
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const first = readFileSync(box('CLAUDE.md'), 'utf-8');
+      await runInject();
+      expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toBe(first);
+    });
+  });
+
+  it('is identical in a sandbox at a different absolute path', async () => {
+    // The failure this change shipped on its own first CI run: the digest
+    // hashed the ABSOLUTE source paths, so it was `/home/william/...` locally
+    // and `/home/runner/...` in CI and the two disagreed. The sandbox lives at
+    // a different absolute path than the repo, so identical content must still
+    // produce an identical stamp. `extract-api-surface.ts` documents the same
+    // failure — "a gate that always fails gets switched off".
+    const stampIn = (root: string): string | undefined =>
+      readFileSync(join(root, 'CLAUDE.md'), 'utf-8')
+        .split('\n')
+        .find((l) => l.startsWith('_Governance Version:'));
+
+    await withInjectSnapshot(async () => {
+      await runInject();
+      expect(SANDBOX).not.toBe(REAL_ROOT);
+      expect(stampIn(SANDBOX)).toBe(stampIn(REAL_ROOT));
+    });
+  });
+
+  it('changes when a stamp source changes, and only then', async () => {
+    // The behavioural statement of "derived from content". Deliberately does
+    // NOT recompute the sha256 in the test: writing the algorithm twice means
+    // a bug in both cancels, and the assertion would pass for the wrong reason.
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const stampOf = (): string | undefined =>
+        readFileSync(box('CLAUDE.md'), 'utf-8')
+          .split('\n')
+          .find((l) => l.startsWith('_Governance Version:'));
+
+      const before = stampOf();
+      expect(before).toBeDefined();
+
+      // Touching a NON-source leaves it alone.
+      writeFileSync(box('README.md'), '# changed\n');
+      await runInject();
+      expect(stampOf()).toBe(before);
+
+      // Touching a source moves it.
+      // Already absolute, and inside the sandbox because `core` was loaded
+      // from there — joining SANDBOX again would double-join.
+      const source = core.GOVERNANCE_STAMP_SOURCES[0] ?? '';
+      writeFileSync(source, `${readFileSync(source, 'utf-8')}\n// #5943 probe\n`);
+      await runInject();
+      expect(stampOf()).not.toBe(before);
     });
   });
 });

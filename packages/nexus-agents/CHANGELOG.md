@@ -1,5 +1,204 @@
 # nexus-agents
 
+## 8.46.14
+
+### Patch Changes
+
+- [#5992](https://github.com/nexus-substrate/nexus-agents/pull/5992) [`e4d0897`](https://github.com/nexus-substrate/nexus-agents/commit/e4d0897bc8d455515ebb4dc11c40fb3598ccea63) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `ConfidenceInterval` gains a required `measured` flag ([#5760](https://github.com/nexus-substrate/nexus-agents/issues/5760) item 3).
+  `meanConfidenceInterval([])` returned a ZERO-WIDTH interval — the strongest
+  possible precision claim, over no data. The proportion sibling's `[0, 1]` was
+  honest only by luck (a bounded domain), and `calculateDifferenceCI` divided by
+  `(total1 || 1)` and produced a finite spread from nothing. All three now say so.
+  Infinity and NaN bounds were considered and rejected: both serialise to `null`,
+  turning a loud in-process signal into a silent persisted one.
+
+## 8.46.13
+
+### Patch Changes
+
+- [#5990](https://github.com/nexus-substrate/nexus-agents/pull/5990) [`e654835`](https://github.com/nexus-substrate/nexus-agents/commit/e65483574c7efad0698c127903975de653d94bd5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `routerTypeMeasured` is now persisted on the SQLite `routing_decisions` row
+  ([#5915](https://github.com/nexus-substrate/nexus-agents/issues/5915), closing the third step of [#5812](https://github.com/nexus-substrate/nexus-agents/issues/5812)). Until now the signal existed only in
+  in-memory analytics that do not survive a restart, so any offline read of the
+  store still saw the inflated TOPSIS count the live stats had been fixed to
+  report honestly. Adds a `PRAGMA table_info`-guarded `ALTER TABLE` so existing
+  databases get the column; a NULL, a 0 and an absent column all read as
+  UNMEASURED.
+
+## 8.46.12
+
+### Patch Changes
+
+- [#5988](https://github.com/nexus-substrate/nexus-agents/pull/5988) [`2f34d21`](https://github.com/nexus-substrate/nexus-agents/commit/2f34d21865787112bb056f781176c0776146249c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The governance stamp is now a digest of its sources' content instead of a commit
+  date ([#5943](https://github.com/nexus-substrate/nexus-agents/issues/5943), ratified 6-1). A squash-merge rewrites the committer date, so a PR
+  stamped one day and merged the next left main with a stamp the injector would no
+  longer compute — and the NEXT unrelated PR failed the idempotency check. The
+  stamp reads no git history at all now. Also removes the CLAUDE.md
+  governance-staleness warning from `release validate`, which parsed that date and
+  would otherwise have become a check that could never fire.
+
+## 8.46.11
+
+### Patch Changes
+
+- [#5986](https://github.com/nexus-substrate/nexus-agents/pull/5986) [`4c87fad`](https://github.com/nexus-substrate/nexus-agents/commit/4c87fada6d3bcc64a6e456163a2313b15a5e5472) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `TaskContract.analysis` is now derived from the task instead of asserted ([#5924](https://github.com/nexus-substrate/nexus-agents/issues/5924)).
+  `orchestrate` recorded every task as
+  `{ complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 }` and
+  `delegate_to_model` every task as
+  `{ complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 }` — a fixed
+  score no task could move. Both entry points now call `SharedTaskAnalyzer`, which
+  CLAUDE.md already names canonical for this and which produces exactly these three
+  fields synchronously.
+
+## 8.46.10
+
+### Patch Changes
+
+- [#5984](https://github.com/nexus-substrate/nexus-agents/pull/5984) [`f224c95`](https://github.com/nexus-substrate/nexus-agents/commit/f224c95b8267dc35af056fab790ede5aa51a0076) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `TaskContract.capabilityGaps` now carries `gapsMeasured` ([#5919](https://github.com/nexus-substrate/nexus-agents/issues/5919)). Every contract
+  built by `orchestrate` and `delegate_to_model` declared `allSatisfied: true`
+  from a detector that never ran — and `gaps: []` with an empty `available` is
+  byte-identical whether a detector found nothing or was never called. The new
+  required boolean is what tells them apart. Behaviour is otherwise unchanged;
+  wiring the real detector in is tracked separately.
+
+## 8.46.9
+
+### Patch Changes
+
+- [#5978](https://github.com/nexus-substrate/nexus-agents/pull/5978) [`ecf5ab5`](https://github.com/nexus-substrate/nexus-agents/commit/ecf5ab56b6cb6f9d4f3188f1f67a041fe94845cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `MemoryRegistry.close()` no longer reports success for backends it never closed
+  ([#5776](https://github.com/nexus-substrate/nexus-agents/issues/5776) item 2). It marked itself closed _before_ the loop and awaited each
+  backend in turn, so one rejecting backend left every later backend open and
+  leaked the shared SQLite handle, while the retry a shutdown path would make
+  returned early and resolved. Every backend is now attempted, the owned handle
+  always closes, and the first failure is re-thrown.
+
+  Also pins the three places the two backends genuinely diverge, which the shared
+  contract suite could not see because its only payload is the two shapes JSON
+  preserves exactly.
+
+## 8.46.8
+
+### Patch Changes
+
+- [#5975](https://github.com/nexus-substrate/nexus-agents/pull/5975) [`d9a5640`](https://github.com/nexus-substrate/nexus-agents/commit/d9a5640bb00eeec55afeb973edec12c579c46000) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removes `createAutoTaskTracker` ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 3). It had zero callers including
+  tests, and the one production site with adjacent behaviour deliberately does
+  something different — it auto-detects only when the backend choice is the `json`
+  default AND a repo is present, where the helper detected unconditionally.
+  `createTaskTracker` and `detectBackend`, which that site uses directly, are
+  untouched. Not in the published surface, so non-breaking.
+
+## 8.46.7
+
+### Patch Changes
+
+- [#5973](https://github.com/nexus-substrate/nexus-agents/pull/5973) [`852f75a`](https://github.com/nexus-substrate/nexus-agents/commit/852f75a5711636025c540e215c610635f13dff47) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removes `pipeline/quality-pipeline.ts` ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 2). `runQualityPipeline` had
+  no production caller since it was added, and its docstring claimed the workflow
+  `dev-pipeline.ts` actually runs — a second orchestrator for one concern. It was
+  barrel-exported but never in the published surface (`pnpm api:check` reports the
+  surface unchanged), so this is not a breaking change.
+
+## 8.46.6
+
+### Patch Changes
+
+- [#5971](https://github.com/nexus-substrate/nexus-agents/pull/5971) [`e17c1b6`](https://github.com/nexus-substrate/nexus-agents/commit/e17c1b65ae6b1603650bf3ed8c72a2174e89ffbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `extractStateValue` now has tests and a JSDoc that describes it accurately
+  ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 4). It is published API with no consumer anywhere — not even a test
+  — under a section header promising "typed access to well-known state keys",
+  while the function is a bare `state[key]` returning `unknown`. Behaviour
+  unchanged; the signature narrowing that would make the old header true is
+  breaking and stays queued for the next major.
+
+## 8.46.5
+
+### Patch Changes
+
+- [#5966](https://github.com/nexus-substrate/nexus-agents/pull/5966) [`b50adb1`](https://github.com/nexus-substrate/nexus-agents/commit/b50adb15fd2ce0a6e0d8c20687632a7e59be8413) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `routing.linucb.maxDecisionTimeMs` is deprecated ([#5918](https://github.com/nexus-substrate/nexus-agents/issues/5918)). It is declared three
+  times, validated, and copied into the runtime config, and nothing on the
+  routing path ever compares anything to it — setting it does not bound routing.
+  `adaptRoutingConfig` now warns once when an operator actually sets it, all three
+  declarations carry `@deprecated`, and the two conflicting defaults (50 and 100)
+  are one. The field still resolves exactly as before; removing it is a published-
+  API break, queued for the next major as [#5963](https://github.com/nexus-substrate/nexus-agents/issues/5963).
+
+  Also renames `RoutingScorerConfig.maxDecisionTimeMs` to `latencyBudgetMs`. That
+  type is not in the published API surface. It is a genuine after-the-fact
+  grading threshold, and sharing the name made a repo-wide grep for the router's
+  field return it, reading as though routing were bounded.
+
+- [#5967](https://github.com/nexus-substrate/nexus-agents/pull/5967) [`83ae6f9`](https://github.com/nexus-substrate/nexus-agents/commit/83ae6f987b9b5c24c2ee6a9205e2a4ff808c40b0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-memory` telemetry now records operations that FAILED ([#5965](https://github.com/nexus-substrate/nexus-agents/issues/5965)).
+  `recordMemoryEvent` was called only after the work succeeded, so a thrown
+  validation error, SQLite constraint or closed-backend call produced no event
+  and no counter row — a domain rejecting 100% of its writes was
+  indistinguishable from an idle one, while `types.ts` said "emitted on every
+  backend operation" and `telemetry.ts` said "Updates counters always".
+
+  `MemoryEventCounters.count` is now ATTEMPTS (it counted successes), with a new
+  `errorCount` for the failing subset; `MemoryEvent` carries `error` — the
+  message only, never the value that failed validation. Both backends' five
+  operations run through `recordFailedMemoryOp`, which emits before re-throwing,
+  so caller error handling is unchanged.
+
+## 8.46.4
+
+### Patch Changes
+
+- [#5961](https://github.com/nexus-substrate/nexus-agents/pull/5961) [`91396c2`](https://github.com/nexus-substrate/nexus-agents/commit/91396c296e8ada03a2044805939371291d3fb6f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Test-only: a documented default for a `NEXUS_*` boolean must now be the default
+  the code actually applies ([#5955](https://github.com/nexus-substrate/nexus-agents/issues/5955)). The two existing gates checked that every
+  documented name is registered; neither read what the row _said_, so a row could
+  state the opposite of the `parseBoolEnv` fallback and stay green. No runtime
+  change.
+
+## 8.46.3
+
+### Patch Changes
+
+- [#5959](https://github.com/nexus-substrate/nexus-agents/pull/5959) [`9d6f030`](https://github.com/nexus-substrate/nexus-agents/commit/9d6f03070d227712fe6e5b5001bd6608f29a419a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The aorchestra prior-wave context block now says which worker results the
+  context budget left out ([#5956](https://github.com/nexus-substrate/nexus-agents/issues/5956)). Both budget guards in `cross-wave-context.ts`
+  — the per-block cap on successes and the remaining-budget cap on the failed-
+  worker list — used to `break` out of their loop with no marker, no count and no
+  log, under a header reading "The following results were produced by prior wave
+  workers". A downstream worker could not tell its context was partial. The block
+  now ends with a notice naming the omitted roles, and a `logger.warn` records
+  them; a block that omits nothing is unchanged.
+
+- [#5960](https://github.com/nexus-substrate/nexus-agents/pull/5960) [`c8110e5`](https://github.com/nexus-substrate/nexus-agents/commit/c8110e529309a6de7dfec6cf2a00bc3093701446) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Doc-only: `WorkflowRouter`'s `confidence`, and the `MetaDecision` /
+  `RunResponse` fields it flows into, are now documented as what they are — a
+  per-rule source PRIOR, not a measurement of the routed task ([#5957](https://github.com/nexus-substrate/nexus-agents/issues/5957)). Every rule
+  returns an authored literal and nothing the analyzer observes reaches the
+  number, but three declarations described it as "Confidence in the selection
+  (0-1)", which reads as a score. Same call `triangulated-review.ts` made for the
+  identical shape under [#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119). A characterization test pins the constant-ness so
+  that deriving it from an observation fails until the declarations are updated.
+  No behaviour change.
+
+## 8.46.2
+
+### Patch Changes
+
+- [#5954](https://github.com/nexus-substrate/nexus-agents/pull/5954) [`905f594`](https://github.com/nexus-substrate/nexus-agents/commit/905f594677c41381102bd47719db47ba751f729d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - One accept-set for six more `NEXUS_*` boolean flags ([#5464](https://github.com/nexus-substrate/nexus-agents/issues/5464), wave 2 of [#5155](https://github.com/nexus-substrate/nexus-agents/issues/5155)).
+  `NEXUS_ROUTE_MODEL_SHADOW`, `NEXUS_META_SHADOW_TRAIN`, `NEXUS_LLM_CLASSIFICATION`,
+  `NEXUS_REPO_PREFERRED`, `NEXUS_ROUTE_MODEL_SELECTION` and `NEXUS_PERSIST_LEARNING`
+  now read through `parseBoolEnv`, so each accepts `true`/`1`/`false`/`0`
+  case-insensitively instead of the single literal its author happened to pick.
+
+  Two spellings change meaning, both of which the schema previously reported as
+  invalid at startup: `NEXUS_REPO_PREFERRED=false` now opts out of the per-repo
+  data dir (it used to be rejected, then route per-repo anyway), and
+  `NEXUS_PERSIST_LEARNING=0` now disables learning persistence (it used to be
+  rejected, then persist anyway). No previously-valid value changes behaviour.
+
+## 8.46.1
+
+### Patch Changes
+
+- [#5950](https://github.com/nexus-substrate/nexus-agents/pull/5950) [`82eba19`](https://github.com/nexus-substrate/nexus-agents/commit/82eba19833f86ea371bf1e4cc06b73e86410c6ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `orchestrate` no longer refuses to start when a provider key is configured but
+  no CLI binary is installed. The precondition check was
+  `getAvailableClis().length === 0`, which probes for the binaries
+  claude/gemini/codex/opencode and never consults a credential — so it returned 1
+  before `createAllAdapters` could produce the `api:*` routing arms that
+  `NEXUS_BILLING_MODE=api` exists to enable ([#3422](https://github.com/nexus-substrate/nexus-agents/issues/3422)). The gate now asks whether any
+  routing arm is usable, and the error names both routes instead of only the CLI
+  one.
+
 ## 8.46.0
 
 ### Minor Changes

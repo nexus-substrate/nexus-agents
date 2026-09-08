@@ -282,3 +282,70 @@ describe('collidingNames', () => {
     expect(collidingNames([])).toEqual([]);
   });
 });
+
+// ============================================================================
+// Comments inside a type are not surface (#5972)
+// ============================================================================
+
+describe('inline comments are not part of the surface (#5972)', () => {
+  // Third instance of the "gate that cries wolf" problem this file already
+  // documents twice — absolute paths (#4757) and member order (#4784). A
+  // comment-only edit inside a published type failed the gate on PR #5970,
+  // whose entire diff was prose. The correct response to a spurious diff is
+  // the same action as for a real break (regenerate), which is exactly how a
+  // gate teaches people to regenerate without reading.
+
+  it('a changed line comment BETWEEN union members does not change the surface', () => {
+    // Interior trivia — the shape that actually failed on #5970. A comment
+    // before the first member is already stripped as leading trivia; one
+    // between members is not.
+    const before = surfaceOf({
+      '/index.ts': `export type V =
+        | { readonly kind: 'a' }
+        // the old note
+        | { readonly kind: 'b' };`,
+    });
+    const after = surfaceOf({
+      '/index.ts': `export type V =
+        | { readonly kind: 'a' }
+        // a COMPLETELY different note, several words longer
+        | { readonly kind: 'b' };`,
+    });
+    expect(after).toBe(before);
+  });
+
+  it('a block comment between members does not change the surface', () => {
+    const withComment = surfaceOf({
+      '/index.ts': `export type V = | { readonly kind: 'a' } /* why */ | { readonly kind: 'b' };`,
+    });
+    const without = surfaceOf({
+      '/index.ts': `export type V = | { readonly kind: 'a' } | { readonly kind: 'b' };`,
+    });
+    expect(withComment).toBe(without);
+  });
+
+  it('but a real membership change still shows', () => {
+    // The guard against over-stripping: if comment removal ate real text,
+    // every case above would pass for the wrong reason.
+    const two = surfaceOf({
+      '/index.ts': `export type V = | { readonly kind: 'a' } | { readonly kind: 'b' };`,
+    });
+    const three = surfaceOf({
+      '/index.ts': `export type V = | { readonly kind: 'a' } | { readonly kind: 'b' } | { readonly kind: 'c' };`,
+    });
+    expect(three).not.toBe(two);
+  });
+
+  it('does not swallow a union member that follows a line comment', () => {
+    // `//` runs to end of line, and normalizeTypeText collapses newlines to
+    // spaces. Stripping AFTER that collapse would eat the rest of the type —
+    // the whole reason order matters in normalizeTypeText.
+    const commented = surfaceOf({
+      '/index.ts': `export type V =
+        | { readonly kind: 'a' }
+        // note
+        | { readonly kind: 'b' };`,
+    });
+    expect(commented).toContain("'b'");
+  });
+});

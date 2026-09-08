@@ -46,7 +46,9 @@ export interface SecurityGateConfig {
  *
  * @param targetDir - Directory to scan
  * @param rulesets - Semgrep rulesets (default: p/default)
- * @returns GateCheckFn for use in runQualityPipeline
+ * @returns GateCheckFn — a gate predicate. `runQualityPipeline`, the
+ * orchestrator this once pointed at, was deleted in #5771: it never had a
+ * production caller and its docstring claimed dev-pipeline's workflow.
  */
 export function checkSecurityScan(
   targetDir: string,

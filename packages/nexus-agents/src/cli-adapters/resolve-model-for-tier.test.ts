@@ -1,9 +1,13 @@
 /**
  * Tests for tier→model resolution (#3394).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { resolveModelForTier, TIER_QUALITY_DIMENSION } from './resolve-model-for-tier.js';
+import {
+  isRouteModelSelectionEnabled,
+  resolveModelForTier,
+  TIER_QUALITY_DIMENSION,
+} from './resolve-model-for-tier.js';
 import { findInTreeByCli, getDefaultModelForCli } from '../config/model-config-helpers.js';
 import type { ModelCapability } from '../config/model-capabilities-types.js';
 
@@ -80,5 +84,29 @@ describe('resolveModelForTier (#3394)', () => {
     expect(resolveModelForTier('gemini', 'balanced')).toBe(
       resolveModelForTier('gemini', 'balanced')
     );
+  });
+});
+
+// One accept-set for every NEXUS_* boolean (#5464, wave 2 of #5155). This flag
+// used to answer only to the literal `true`, so `=1` — the spelling documented
+// for its neighbours in the same table — read as OFF.
+describe('isRouteModelSelectionEnabled (#5464)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults OFF when the variable is unset', () => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', undefined);
+    expect(isRouteModelSelectionEnabled()).toBe(false);
+  });
+
+  it.each(['true', 'TRUE', '1'])('treats %s as ON', (value) => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', value);
+    expect(isRouteModelSelectionEnabled()).toBe(true);
+  });
+
+  it.each(['false', '0'])('treats %s as OFF', (value) => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', value);
+    expect(isRouteModelSelectionEnabled()).toBe(false);
   });
 });

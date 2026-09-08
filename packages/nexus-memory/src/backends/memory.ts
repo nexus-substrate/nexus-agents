@@ -9,7 +9,7 @@
  */
 
 import type { z } from 'zod';
-import { recordMemoryEvent } from '../telemetry.js';
+import { recordFailedMemoryOp, recordMemoryEvent } from '../telemetry.js';
 import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
 
 interface Row<TValue> {
@@ -92,18 +92,27 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
   }
 
   async read(key: TKey): Promise<TValue | undefined> {
-    this.assertOpen();
     const start = Date.now();
-    const row = this.rows.get(key);
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'read',
-      hit: row !== undefined,
-      durationMs: Date.now() - start,
-      key,
-      result: row?.value,
-    });
-    return Promise.resolve(row?.value);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'read',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const row = this.rows.get(key);
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'read',
+          hit: row !== undefined,
+          durationMs: Date.now() - start,
+          key,
+          result: row?.value,
+        });
+        return Promise.resolve(row?.value);
+      }
+    );
   }
 
   private validate(value: TValue): void {
@@ -123,75 +132,113 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
   }
 
   async write(key: TKey, value: TValue, meta?: WriteMeta): Promise<void> {
-    this.assertOpen();
     const start = Date.now();
-    this.validate(value);
-    this.rows.set(key, buildInMemoryRow(value, meta));
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'write',
-      ...(meta?.cli !== undefined && { cli: meta.cli }),
-      durationMs: Date.now() - start,
-      key,
-      payload: value,
-    });
-    return Promise.resolve();
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'write',
+        ...(meta?.cli !== undefined && { cli: meta.cli }),
+      },
+      start,
+      () => {
+        this.assertOpen();
+        this.validate(value);
+        this.rows.set(key, buildInMemoryRow(value, meta));
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'write',
+          ...(meta?.cli !== undefined && { cli: meta.cli }),
+          durationMs: Date.now() - start,
+          key,
+          payload: value,
+        });
+        return Promise.resolve();
+      }
+    );
   }
 
   async query(filter?: QueryFilter<TValue>): Promise<readonly TValue[]> {
-    this.assertOpen();
     const start = Date.now();
-    let rows = [...this.rows.values()];
-    if (filter?.cli !== undefined) {
-      rows = rows.filter((r) => r.cli === filter.cli);
-    }
-    const values = applyInMemoryFilter(
-      rows.map((r) => r.value),
-      filter
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'query',
+        ...(filter?.cli !== undefined && { cli: filter.cli }),
+      },
+      start,
+      () => {
+        this.assertOpen();
+        let rows = [...this.rows.values()];
+        if (filter?.cli !== undefined) {
+          rows = rows.filter((r) => r.cli === filter.cli);
+        }
+        const values = applyInMemoryFilter(
+          rows.map((r) => r.value),
+          filter
+        );
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'query',
+          hit: values.length > 0,
+          ...(filter?.cli !== undefined && { cli: filter.cli }),
+          durationMs: Date.now() - start,
+          key: filter,
+          result: { count: values.length },
+        });
+        return Promise.resolve(values);
+      }
     );
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'query',
-      hit: values.length > 0,
-      ...(filter?.cli !== undefined && { cli: filter.cli }),
-      durationMs: Date.now() - start,
-      key: filter,
-      result: { count: values.length },
-    });
-    return Promise.resolve(values);
   }
 
   async delete(key: TKey): Promise<boolean> {
-    this.assertOpen();
     const start = Date.now();
-    const removed = this.rows.delete(key);
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'delete',
-      hit: removed,
-      durationMs: Date.now() - start,
-      key,
-    });
-    return Promise.resolve(removed);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'delete',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const removed = this.rows.delete(key);
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'delete',
+          hit: removed,
+          durationMs: Date.now() - start,
+          key,
+        });
+        return Promise.resolve(removed);
+      }
+    );
   }
 
   async stats(): Promise<BackendStats> {
-    this.assertOpen();
     const start = Date.now();
-    const timestamps = [...this.rows.values()].map((r) => r.timestamp);
-    const result: BackendStats = {
-      domain: this.domain,
-      count: this.rows.size,
-      oldestTimestamp: timestamps.length > 0 ? Math.min(...timestamps) : null,
-      newestTimestamp: timestamps.length > 0 ? Math.max(...timestamps) : null,
-    };
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'stats',
-      durationMs: Date.now() - start,
-      result,
-    });
-    return Promise.resolve(result);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'stats',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const timestamps = [...this.rows.values()].map((r) => r.timestamp);
+        const result: BackendStats = {
+          domain: this.domain,
+          count: this.rows.size,
+          oldestTimestamp: timestamps.length > 0 ? Math.min(...timestamps) : null,
+          newestTimestamp: timestamps.length > 0 ? Math.max(...timestamps) : null,
+        };
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'stats',
+          durationMs: Date.now() - start,
+          result,
+        });
+        return Promise.resolve(result);
+      }
+    );
   }
 
   async close(): Promise<void> {

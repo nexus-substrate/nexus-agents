@@ -40,9 +40,38 @@ export function createDecisionsTable(db: ISQLiteDatabase): void {
       confidence REAL NOT NULL,
       reason TEXT NOT NULL,
       task_profile TEXT NOT NULL,
-      request_id TEXT
+      request_id TEXT,
+      router_type_measured INTEGER
     )
   `);
+  migrateDecisionsTable(db);
+}
+
+/**
+ * Adds `router_type_measured` to a `routing_decisions` table created before
+ * #5915.
+ *
+ * The module has no migration framework, and `CREATE TABLE IF NOT EXISTS` is a
+ * no-op against an existing database — so adding the column to the CREATE above
+ * would only ever help a fresh one, and every existing database would fail the
+ * insert on a column-count mismatch. This is the guarded ALTER that makes the
+ * new column real for databases that already exist.
+ *
+ * Idempotent by inspection rather than by catching an error: `PRAGMA
+ * table_info` is asked whether the column is there, so a genuine ALTER failure
+ * still surfaces instead of being swallowed as "already migrated".
+ *
+ * Deliberately NOT exported. `createDecisionsTable` is the entry point every
+ * caller uses, so testing through it tests the seam that matters — an exported
+ * helper would have let the tests pass while the call site quietly stopped
+ * invoking it.
+ */
+function migrateDecisionsTable(db: ISQLiteDatabase): void {
+  const columns = db.prepare<{ name: string }>('PRAGMA table_info(routing_decisions)').all() as {
+    name: string;
+  }[];
+  if (columns.some((c) => c.name === 'router_type_measured')) return;
+  db.exec('ALTER TABLE routing_decisions ADD COLUMN router_type_measured INTEGER');
 }
 
 /**
@@ -124,6 +153,10 @@ export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
     reason: row.reason,
     taskProfile,
     requestId: row.request_id ?? undefined,
+    // NULL (legacy row, pre-#5915) and 0 both mean UNMEASURED. Defaulting a
+    // NULL to measured would re-create the exact inflation #5812 removed, on
+    // the history rather than the live stats.
+    routerTypeMeasured: row.router_type_measured === 1,
   };
 }
 
@@ -166,8 +199,8 @@ export function rowToStats(row: ModelStatsRow): StoredModelStats {
 export const INSERT_DECISION_SQL = `
   INSERT OR REPLACE INTO routing_decisions
   (id, trace_id, timestamp, router_type, selected_model, alternative_models,
-   confidence, reason, task_profile, request_id)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   confidence, reason, task_profile, request_id, router_type_measured)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 /** SQL for inserting/updating task outcomes. */

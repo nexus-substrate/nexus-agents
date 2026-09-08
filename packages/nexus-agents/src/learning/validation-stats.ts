@@ -40,12 +40,16 @@ export function proportionConfidenceInterval(
 
   if (n === 0) {
     return {
+      // [0, 1] is the whole domain — honest for a PROPORTION, but honest by
+      // luck: it is expressible only because the domain is bounded. `measured`
+      // is what says it deliberately (#5760).
       lower: 0,
       upper: 1,
       estimate: 0,
       confidence: opts.confidence,
       n: 0,
       standardError: 0,
+      measured: false,
     };
   }
 
@@ -65,6 +69,7 @@ export function proportionConfidenceInterval(
     lower,
     upper,
     estimate: p,
+    measured: true,
     confidence: opts.confidence,
     n,
     standardError,
@@ -83,12 +88,19 @@ export function meanConfidenceInterval(
 
   if (n === 0) {
     return {
+      // A zero-width interval is the STRONGEST possible precision claim, and
+      // there is no data behind it. Unlike a proportion, a mean is unbounded,
+      // so no finite interval means "I know nothing" — `measured: false` is
+      // the only thing here that can say it (#5760). Bounds are left as they
+      // were: Infinity and NaN both serialise to `null`, which would turn a
+      // loud in-process signal into a silent persisted one.
       lower: 0,
       upper: 0,
       estimate: 0,
       confidence: opts.confidence,
       n: 0,
       standardError: 0,
+      measured: false,
     };
   }
 
@@ -103,6 +115,7 @@ export function meanConfidenceInterval(
     lower: mean - margin,
     upper: mean + margin,
     estimate: mean,
+    measured: true,
     confidence: opts.confidence,
     n,
     standardError,

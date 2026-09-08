@@ -18,7 +18,7 @@ import type {
   SqliteStatement as Statement,
 } from './open-database.js';
 import type { z } from 'zod';
-import { recordMemoryEvent } from '../telemetry.js';
+import { recordFailedMemoryOp, recordMemoryEvent } from '../telemetry.js';
 import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
 import { MemoryValidationError } from './memory.js';
 import { openSqliteDatabase } from './open-database.js';
@@ -180,20 +180,29 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
   }
 
   async read(key: TKey): Promise<TValue | undefined> {
-    this.assertOpen();
     const start = Date.now();
-    const row = this.stmts.read.get(keyToString(key)) as SqliteRow | undefined;
-    const value = row !== undefined ? (JSON.parse(row.value) as TValue) : undefined;
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'read',
-      hit: value !== undefined,
-      ...(row?.cli !== null && row?.cli !== undefined && { cli: row.cli as never }),
-      durationMs: Date.now() - start,
-      key,
-      result: value,
-    });
-    return Promise.resolve(value);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'read',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const row = this.stmts.read.get(keyToString(key)) as SqliteRow | undefined;
+        const value = row !== undefined ? (JSON.parse(row.value) as TValue) : undefined;
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'read',
+          hit: value !== undefined,
+          ...(row?.cli !== null && row?.cli !== undefined && { cli: row.cli as never }),
+          durationMs: Date.now() - start,
+          key,
+          result: value,
+        });
+        return Promise.resolve(value);
+      }
+    );
   }
 
   private validate(value: TValue): void {
@@ -213,77 +222,118 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
   }
 
   async write(key: TKey, value: TValue, meta?: WriteMeta): Promise<void> {
-    this.assertOpen();
     const start = Date.now();
-    this.validate(value);
-    this.stmts.write.run(buildWriteRow(key, value, meta));
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'write',
-      ...(meta?.cli !== undefined && { cli: meta.cli }),
-      durationMs: Date.now() - start,
-      key,
-      payload: value,
-    });
-    return Promise.resolve();
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'write',
+        ...(meta?.cli !== undefined && { cli: meta.cli }),
+      },
+      start,
+      () => {
+        this.assertOpen();
+        this.validate(value);
+        this.stmts.write.run(buildWriteRow(key, value, meta));
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'write',
+          ...(meta?.cli !== undefined && { cli: meta.cli }),
+          durationMs: Date.now() - start,
+          key,
+          payload: value,
+        });
+        return Promise.resolve();
+      }
+    );
   }
 
   async query(filter?: QueryFilter<TValue>): Promise<readonly TValue[]> {
-    this.assertOpen();
     const start = Date.now();
-    // Phase 3 keeps query simple — full table scan with in-process filter.
-    // Hot-path backends will override or extend with indexed columns.
-    let rows = this.stmts.queryAll.all() as SqliteRow[];
-    if (filter?.cli !== undefined) {
-      rows = rows.filter((r) => r.cli === filter.cli);
-    }
-    let values = rows.map((r) => JSON.parse(r.value) as TValue);
-    values = applyQueryFilter(values, filter);
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'query',
-      hit: values.length > 0,
-      ...(filter?.cli !== undefined && { cli: filter.cli }),
-      durationMs: Date.now() - start,
-      key: filter,
-      result: { count: values.length },
-    });
-    return Promise.resolve(values);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'query',
+        ...(filter?.cli !== undefined && { cli: filter.cli }),
+      },
+      start,
+      () => {
+        this.assertOpen();
+        // Phase 3 keeps query simple — full table scan with in-process filter.
+        // Hot-path backends will override or extend with indexed columns.
+        let rows = this.stmts.queryAll.all() as SqliteRow[];
+        if (filter?.cli !== undefined) {
+          rows = rows.filter((r) => r.cli === filter.cli);
+        }
+        let values = rows.map((r) => JSON.parse(r.value) as TValue);
+        values = applyQueryFilter(values, filter);
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'query',
+          hit: values.length > 0,
+          ...(filter?.cli !== undefined && { cli: filter.cli }),
+          durationMs: Date.now() - start,
+          key: filter,
+          result: { count: values.length },
+        });
+        return Promise.resolve(values);
+      }
+    );
   }
 
   async delete(key: TKey): Promise<boolean> {
-    this.assertOpen();
     const start = Date.now();
-    const result = this.stmts.delete.run(keyToString(key));
-    const removed = result.changes > 0;
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'delete',
-      hit: removed,
-      durationMs: Date.now() - start,
-      key,
-    });
-    return Promise.resolve(removed);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'delete',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const result = this.stmts.delete.run(keyToString(key));
+        const removed = result.changes > 0;
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'delete',
+          hit: removed,
+          durationMs: Date.now() - start,
+          key,
+        });
+        return Promise.resolve(removed);
+      }
+    );
   }
 
   async stats(): Promise<BackendStats> {
-    this.assertOpen();
     const start = Date.now();
-    const countRow = this.stmts.count.get() as { count: number };
-    const boundsRow = this.stmts.bounds.get() as { oldest: number | null; newest: number | null };
-    const result: BackendStats = {
-      domain: this.domain,
-      count: countRow.count,
-      oldestTimestamp: boundsRow.oldest,
-      newestTimestamp: boundsRow.newest,
-    };
-    recordMemoryEvent({
-      domain: this.domain,
-      op: 'stats',
-      durationMs: Date.now() - start,
-      result,
-    });
-    return Promise.resolve(result);
+    return recordFailedMemoryOp(
+      {
+        domain: this.domain,
+        op: 'stats',
+      },
+      start,
+      () => {
+        this.assertOpen();
+        const countRow = this.stmts.count.get() as { count: number };
+        const boundsRow = this.stmts.bounds.get() as {
+          oldest: number | null;
+          newest: number | null;
+        };
+        const result: BackendStats = {
+          domain: this.domain,
+          count: countRow.count,
+          oldestTimestamp: boundsRow.oldest,
+          newestTimestamp: boundsRow.newest,
+        };
+        recordMemoryEvent({
+          domain: this.domain,
+          op: 'stats',
+          durationMs: Date.now() - start,
+          result,
+        });
+        return Promise.resolve(result);
+      }
+    );
   }
 
   async close(): Promise<void> {

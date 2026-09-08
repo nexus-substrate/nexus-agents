@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 
+import { analyzeForContract } from './task-contract-builders.js';
 import { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2-orchestrate.js';
 
 // ============================================================================
@@ -18,8 +19,14 @@ describe('orchestrateInputToTaskContract', () => {
     expect(tc.description).toBe('Build a REST API');
     expect(tc.id).toMatch(/^orchestrate-/);
     expect(tc.status).toBe('approved');
-    expect(tc.analysis.taskType).toBe('orchestration');
-    expect(tc.analysis.complexity).toBe('high');
+    // Was `'orchestration'` / `'high'` until #5924 — the entry point's own name
+    // and a fixed complexity, asserted for every task. `analysis` is now
+    // derived from the task text by SharedTaskAnalyzer, so it describes the
+    // TASK rather than the door it came through. 'Build a REST API' analyses
+    // as code implementation, which is the point.
+    expect(tc.analysis.taskType).toBe(analyzeForContract('Build a REST API').taskType);
+    expect(tc.analysis.taskType).not.toBe('orchestration');
+    expect(tc.analysis.complexity.length).toBeGreaterThan(0);
   });
 
   it('includes context in metadata', () => {

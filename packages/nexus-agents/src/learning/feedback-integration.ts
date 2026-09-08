@@ -138,19 +138,19 @@ interface DecisiveRouter {
 /**
  * Build the SQLite row for a routing decision.
  *
- * `decisive.measured` is deliberately NOT persisted here. `routing_decisions`
- * is created with `CREATE TABLE IF NOT EXISTS` and the module has no migration
- * framework, so adding a column needs a guarded ALTER for databases that
- * already exist — its own change, tracked in #5915. Until then this row carries
- * the same unqualified `routerType` it always did, and the in-memory analytics
- * (`FeedbackLoopStats.decisionsUnattributed`) are the surface that tells the
- * truth.
+ * `routerTypeMeasured` is persisted as of #5915, which added the guarded ALTER
+ * this comment used to say was missing. Before that the row carried the same
+ * unqualified `routerType` it always did, so a persisted decision could not
+ * distinguish a measured TOPSIS choice from an unattributable one and any
+ * offline read of the store still saw the inflated count that #5812 removed
+ * from the live stats.
  */
 function buildStoredDecision(
   id: string,
   traceId: TraceId,
   routerType: RouterType,
-  decision: CompositeRoutingDecision
+  decision: CompositeRoutingDecision,
+  routerTypeMeasured: boolean
 ): StoredRoutingDecision {
   return {
     id,
@@ -163,6 +163,7 @@ function buildStoredDecision(
     confidence: decision.confidence,
     reason: decision.reason,
     taskProfile: serializeTaskProfile(decision.taskProfile),
+    routerTypeMeasured,
   };
 }
 
@@ -284,7 +285,13 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
     // Persist to SQLite storage if enabled (Issue #560)
     if (this.outcomeStorage !== undefined) {
-      const storedDecision = buildStoredDecision(id, trace, decisive.routerType, decision);
+      const storedDecision = buildStoredDecision(
+        id,
+        trace,
+        decisive.routerType,
+        decision,
+        decisive.measured
+      );
       this.outcomeStorage.storeDecision(storedDecision).catch((error: unknown) => {
         this.logger.warn('Failed to persist routing decision to SQLite', { id, error });
       });

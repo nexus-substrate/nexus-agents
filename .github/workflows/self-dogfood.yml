@@ -100,10 +100,12 @@ jobs:
                 contains(github.event.pull_request.labels.*.name, 'dogfood') ||
                 contains(github.event.issue.labels.*.name, 'dogfood') }}
         run: |
-          # The runner has no model CLI; the review and triage jobs install a
-          # pinned one themselves (#5875). What is probed here is the two things
-          # this job CAN decide: did someone opt this PR/issue in, and is there a
-          # credential to spend. Whether the install then works is the review
+          # The runner has no model CLI and no longer needs one: since #5910
+          # `orchestrate` starts on an `api:*` routing arm built from a provider
+          # key, and the review/triage jobs set NEXUS_BILLING_MODE=api to admit
+          # it (#3422). So what is probed here is exactly the two things this job
+          # CAN decide: did someone opt this PR/issue in, and is there a
+          # credential to spend. Whether the run then succeeds is the review
           # job's own failure to report — `Enforce review outcome` turns that
           # into a red check rather than a skip, because at that point the
           # preconditions were met and the substrate is what failed.
@@ -167,18 +169,6 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
 
-      # #5875: the runner has no model CLI, and `orchestrate` exits before it
-      # reads any API key unless one is on PATH (cli/orchestrate-command.ts:294
-      # gates on `getAvailableClis()`, which probes BINARIES). Installing one is
-      # a workaround, not the fix — #5910 tracks making the gate ask whether any
-      # routing arm is available, after which this step should be deleted.
-      #
-      # Pinned, deliberately: this is a third-party agentic binary running on a
-      # runner that holds an untrusted diff and a model secret. `@latest` would
-      # let that surface change without a commit.
-      - name: Install the model CLI (pinned)
-        run: npm install -g @anthropic-ai/claude-code@2.1.263
-
       - name: Build nexus-agents
         run: pnpm build
 
@@ -202,6 +192,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # #5910 removed the CLI install: `orchestrate` now starts on an
+          # `api:*` routing arm built from a provider key alone. But #3422 admits
+          # those arms ONLY in explicit api billing mode — "never surprise API
+          # spend" — so a key by itself is not enough and this line is what makes
+          # the key usable. Safe here because the job is already opt-in
+          # (`dogfood` label or manual dispatch) and the CLI it replaces spent
+          # against the same account anyway.
+          NEXUS_BILLING_MODE: api
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -371,18 +369,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
 
-      # #5875: the runner has no model CLI, and `orchestrate` exits before it
-      # reads any API key unless one is on PATH (cli/orchestrate-command.ts:294
-      # gates on `getAvailableClis()`, which probes BINARIES). Installing one is
-      # a workaround, not the fix — #5910 tracks making the gate ask whether any
-      # routing arm is available, after which this step should be deleted.
-      #
-      # Pinned, deliberately: this is a third-party agentic binary running on a
-      # runner that holds an untrusted diff and a model secret. `@latest` would
-      # let that surface change without a commit.
-      - name: Install the model CLI (pinned)
-        run: npm install -g @anthropic-ai/claude-code@2.1.263
-
       - name: Build nexus-agents
         run: pnpm build
 
@@ -405,6 +391,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # #5910 removed the CLI install: `orchestrate` now starts on an
+          # `api:*` routing arm built from a provider key alone. But #3422 admits
+          # those arms ONLY in explicit api billing mode — "never surprise API
+          # spend" — so a key by itself is not enough and this line is what makes
+          # the key usable. Safe here because the job is already opt-in
+          # (`dogfood` label or manual dispatch) and the CLI it replaces spent
+          # against the same account anyway.
+          NEXUS_BILLING_MODE: api
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

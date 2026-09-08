@@ -330,3 +330,44 @@ describe('validation-stats', () => {
     });
   });
 });
+
+// ============================================================================
+// `measured` — absence is representable (#5760 item 3)
+// ============================================================================
+
+describe('ConfidenceInterval.measured (#5760)', () => {
+  // The bounds alone cannot say "no data". `meanConfidenceInterval([])`
+  // returned lower === upper === 0 — the STRONGEST possible precision claim,
+  // over nothing. The proportion sibling's [0, 1] is honest only by luck: a
+  // proportion's domain is bounded so its uninformative interval is
+  // expressible, and a mean's is not. Ratified 5 of 6 approvers.
+
+  it('an empty mean sample is not measured', () => {
+    const ci = meanConfidenceInterval([]);
+    expect(ci.measured).toBe(false);
+    expect(ci.n).toBe(0);
+  });
+
+  it('an empty proportion is not measured either, despite honest-looking bounds', () => {
+    const ci = proportionConfidenceInterval(0, 0);
+    // [0, 1] happens to be the whole domain — right answer, wrong reason.
+    expect(ci.lower).toBe(0);
+    expect(ci.upper).toBe(1);
+    expect(ci.measured).toBe(false);
+  });
+
+  it('a real sample IS measured, so the flag is not a constant', () => {
+    // Without this, `measured: false` everywhere would pass every case above.
+    expect(meanConfidenceInterval([1, 2, 3]).measured).toBe(true);
+    expect(proportionConfidenceInterval(50, 100).measured).toBe(true);
+  });
+
+  it('survives JSON round-trip, unlike Infinity or NaN bounds', () => {
+    // The reason the panel rejected Infinity and NaN: both serialise to null,
+    // turning a loud in-process signal into a silent persisted one.
+    const parsed = JSON.parse(JSON.stringify(meanConfidenceInterval([]))) as {
+      measured: boolean;
+    };
+    expect(parsed.measured).toBe(false);
+  });
+});

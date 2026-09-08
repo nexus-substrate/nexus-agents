@@ -164,7 +164,10 @@ async function executeAndReport(args: ExecuteAndReportArgs): Promise<GraphPipeli
 
   if (!result.ok) {
     emitPipelineStageEvent(template.id, 'pipeline', 'failed', { error: result.error.message });
-    return { ...buildError(template.id, result.error.message, startTime), ...stamp(coverage, options) };
+    return {
+      ...buildError(template.id, result.error.message, startTime),
+      ...stamp(coverage, options),
+    };
   }
 
   // #4362: `result.ok` only says the BSP loop returned. The executor absorbs a
@@ -266,10 +269,29 @@ function buildError(
 }
 
 // ============================================================================
-// State Extractors — typed access to well-known state keys
+// State Extractors
 // ============================================================================
 
-/** Extract a value from the final pipeline state. */
+/**
+ * Reads one key out of the final pipeline state.
+ *
+ * UNTYPED, which the header above used to deny — it promised "typed access to
+ * well-known state keys" (#5771). The well-known keys do exist
+ * (`PIPELINE_STATE_KEYS` in `stage-types.ts`), but this function does not use
+ * them: `key` is a bare `string`, so a typo compiles, and the return is
+ * `unknown`, so every caller narrows it itself. Narrowing the parameter to
+ * `(typeof PIPELINE_STATE_KEYS)[keyof typeof PIPELINE_STATE_KEYS]` would make
+ * the old header true, but this is published API and that is a breaking
+ * change — queued with the next-major batch rather than done here.
+ *
+ * Returns `undefined` for a key the run never set, which is indistinguishable
+ * from a key set to `undefined`; a caller needing to tell those apart must
+ * inspect the state object directly. Falsy values come back as themselves.
+ *
+ * Published (`exports/pipeline.ts`) and, as of #5771, with no consumer at all
+ * — not even a test. These assertions exist so the behaviour is pinned rather
+ * than merely exported.
+ */
 export function extractStateValue(state: Readonly<Record<string, unknown>>, key: string): unknown {
   return state[key];
 }

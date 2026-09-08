@@ -53,7 +53,7 @@ InterfaceDeclaration ActionStep
   readonly parameters: Record<string, unknown>
   readonly success: boolean
 TypeAliasDeclaration ActionValidation
-  = | { /** Why no verdict exists. Absence is attributable, not anonymous. */ readonly reason: 'corroboration-stage-disabled'; readonly evaluated: false; readonly policyMode: FirewallPolicyMode; } | { /** Unmet corroboration requirements; /** Whether `enforce` would have refused this action (see FirewallResult). */ readonly wouldRefuse: boolean; empty when satisfied. */ readonly missing: readonly string[]; readonly corroboratingSources: readonly SourceCitation[]; readonly evaluated: true; readonly policyMode: FirewallPolicyMode; readonly satisfied: boolean; }
+  = | { readonly evaluated: false; readonly policyMode: FirewallPolicyMode; readonly reason: 'corroboration-stage-disabled'; } | { readonly corroboratingSources: readonly SourceCitation[]; readonly evaluated: true; readonly missing: readonly string[]; readonly policyMode: FirewallPolicyMode; readonly satisfied: boolean; readonly wouldRefuse: boolean; }
 TypeAliasDeclaration ActionValidationResult
   = { ok: true; value: AgentAction; } | { error: string; ok: false; }
 InterfaceDeclaration ActivationOptions
@@ -309,7 +309,7 @@ InterfaceDeclaration AgentResponse
   messageId: string
   status: "rejected" | "completed" | "failed" | "accepted"
 TypeAliasDeclaration AgentRole
-  = | 'orchestrator' // Coordinates multi-agent workflows (Issue #759) | 'code_expert' | 'architecture_expert' | 'security_expert' | 'documentation_expert' | 'testing_expert' | 'devops_expert' | 'research_expert' | 'pm_expert' // Product manager: requirements, user stories, acceptance criteria (Issue #902) | 'ux_expert' // UX designer: interaction design, usability, user journeys (Issue #902) | 'infrastructure_expert' // Physical server, bare metal, OOB management (Issue #1082) | 'qa_expert' // Quality assurance: code review, standards compliance, regression (#1684) | 'data_visualization_expert' // Data analysis, chart design, interactive visualizations | 'thinker' // TRINITY: High-level reasoning (arXiv:2512.04695) | 'worker' // TRINITY: Task execution | 'verifier' // TRINITY: Output validation | 'custom'
+  = | 'orchestrator' | 'code_expert' | 'architecture_expert' | 'security_expert' | 'documentation_expert' | 'testing_expert' | 'devops_expert' | 'research_expert' | 'pm_expert' | 'ux_expert' | 'infrastructure_expert' | 'qa_expert' | 'data_visualization_expert' | 'thinker' | 'worker' | 'verifier' | 'custom'
 VariableDeclaration AgentRoleSchema
   : z.ZodEnum<{ architecture_expert: "architecture_expert"; code_expert: "code_expert"; custom: "custom"; devops_expert: "devops_expert"; documentation_expert: "documentation_expert"; infrastructure_expert: "infrastructure_expert"; orchestrator: "orchestrator"; research_expert: "research_expert"; security_expert: "security_expert"; testing_expert: "testing_expert"; thinker: "thinker"; verifier: "verifier"; worker: "worker"; }>
 TypeAliasDeclaration AgentRoleType
@@ -1316,7 +1316,7 @@ InterfaceDeclaration CircuitBreakerConfig
   readonly halfOpenSuccessThreshold: number
   readonly resetTimeoutMs: number
 TypeAliasDeclaration CircuitBreakerFailureCategory
-  = | 'timeout' // CLI didn't respond in time | 'crash' // Process crashed or exited unexpectedly | 'authentication' // OAuth/auth failure | 'rate_limit' // Rate limit exceeded | 'connection' // MCP connection failed | 'unknown'
+  = | 'timeout' | 'crash' | 'authentication' | 'rate_limit' | 'connection' | 'unknown'
 ClassDeclaration CircuitBreakerRegistry
   addGlobalStateChangeListener(listener: CircuitStateChangeListener) => void
   getAllSnapshots() => Map<CliName, CircuitBreakerSnapshot>
@@ -1543,7 +1543,7 @@ InterfaceDeclaration CliError
   readonly retryAfterMs?: number | undefined
   readonly retryable: boolean
 TypeAliasDeclaration CliErrorCode
-  = | 'NOT_FOUND' // CLI not installed | 'NOT_AUTHENTICATED' // OAuth/auth required | 'RATE_LIMITED' // Rate limit exceeded | 'TIMEOUT' // Execution timed out | 'PARSE_ERROR' // Response parsing failed | 'CONNECTION_ERROR' // MCP connection failed | 'EXECUTION_ERROR' // CLI returned error | 'UNSUPPORTED_VERSION' // CLI version not supported | 'BUDGET_EXCEEDED' // Budget limit exceeded | 'UNKNOWN'
+  = | 'NOT_FOUND' | 'NOT_AUTHENTICATED' | 'RATE_LIMITED' | 'TIMEOUT' | 'PARSE_ERROR' | 'CONNECTION_ERROR' | 'EXECUTION_ERROR' | 'UNSUPPORTED_VERSION' | 'BUDGET_EXCEEDED' | 'UNKNOWN'
 InterfaceDeclaration CliHealthResult
   readonly checkedAt: Date
   readonly healthy: boolean
@@ -1884,6 +1884,7 @@ InterfaceDeclaration ConfidenceInterval
   readonly confidence: number
   readonly estimate: number
   readonly lower: number
+  readonly measured: boolean
   readonly n: number
   readonly standardError: number
   readonly upper: number
@@ -2147,7 +2148,7 @@ InterfaceDeclaration ContextStats
   totalTokens: number
   usagePercentage: number
 TypeAliasDeclaration ContextUnavailableEvent
-  = { /** Correlation id when the execution was given one. */ readonly executionId?: string; /** Inferred task category whose context could not be retrieved. */ readonly category: string; /** Sanitized failure message — message string only, no stack/paths/secrets. */ readonly error: string; readonly timestamp: number; readonly type: 'context_unavailable'; }
+  = { readonly category: string; readonly error: string; readonly executionId?: string; readonly timestamp: number; readonly type: 'context_unavailable'; }
 InterfaceDeclaration ContributionScore
   readonly activeTimeMs: number
   readonly agentId: string
@@ -3280,7 +3281,7 @@ TypeAliasDeclaration ExecutionStage
 TypeAliasDeclaration ExecutionStatus
   = | { state: 'pending'; } | { currentStep: string; progress: number; state: 'running'; } | { result: WorkflowResult; state: 'completed'; } | { error: string; failedStep?: string; state: 'failed'; } | { cancelledAt: string; state: 'cancelled'; }
 TypeAliasDeclaration ExecutionStrategy
-  = | 'single-shot' /** Code change with the dev gate (test/lint/typecheck) → `run_dev_pipeline`. */ | 'dev-pipeline' /** Multi-stage templated work (audit/general) → `run_pipeline`. */ | 'pipeline' /** DAG / conditional-edge workflow → `run_graph_workflow`. */ | 'graph-workflow' /** Pattern-based multi-agent orchestration (wave/aflow/puppeteer) → `orchestrate`. */ | 'orchestrate' /** Multi-perspective decision → `consensus_vote`. */ | 'consensus' /** Greenfield project from a spec → `execute_spec`. */ | 'spec' /** Research-heavy work → the research pipeline. */ | 'research'
+  = | 'single-shot' | 'dev-pipeline' | 'pipeline' | 'graph-workflow' | 'orchestrate' | 'consensus' | 'spec' | 'research'
 VariableDeclaration ExpectedOutcome
   : { readonly CAUTION: "caution"; readonly CLARIFY: "clarify"; readonly DETECT: "detect"; readonly ESCALATE: "escalate"; readonly PROCEED: "proceed"; readonly REFUSE: "refuse"; }
 VariableDeclaration ExpectedOutcomeSchema
@@ -3703,7 +3704,7 @@ InterfaceDeclaration FirewallError
   readonly message: string
   readonly stage: string
 TypeAliasDeclaration FirewallErrorCode
-  = | 'EXTRACTION_FAILED' | 'SANITIZATION_FAILED' | 'CLASSIFICATION_FAILED' | 'REPUTATION_FAILED' | 'INVALID_CONFIG' /** * #5382: a blocking policy violation refused the input outright, rather than * being surfaced as a signal on a successful result. Only reachable when the * firewall policy mode is `enforce` — under the default `off` a violation is * still returned via `ruleOfTwoViolation` on an `ok()` result. */ | 'POLICY_REFUSED'
+  = | 'EXTRACTION_FAILED' | 'SANITIZATION_FAILED' | 'CLASSIFICATION_FAILED' | 'REPUTATION_FAILED' | 'INVALID_CONFIG' | 'POLICY_REFUSED'
 TypeAliasDeclaration FirewallPolicyMode
   = z.infer<typeof FirewallPolicyModeSchema>
 VariableDeclaration FirewallPolicyModeSchema
@@ -4179,7 +4180,7 @@ InterfaceDeclaration GraphEdgeDisplay
   readonly successRate: number
   readonly to: string
 TypeAliasDeclaration GraphEvent
-  = | { readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_started'; } | { readonly durationMs: number; readonly nodeId: string; readonly resultKeys: readonly string[]; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_completed'; } | { readonly error: string; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_error'; } | { /** * A node that did not run to completion: it paused for human input * (`interrupted`) or its precondition refused it (`skipped`). * * `NodeResult.status` is four-way, and the emitter's `else` branch used to * fold both of these into `node_completed` — so a node that produced * nothing was published to the hash-chained audit trail as "completed in * 0ms", and a `skipped` result's `error` string was dropped entirely * because the completion event has no slot for it. */ readonly type: 'node_not_completed'; readonly detail?: string; readonly nodeId: string; readonly reason: 'interrupted' | 'skipped'; readonly stepNumber: number; readonly timestamp: number; } | { readonly stepNumber: number; readonly timestamp: number; readonly type: 'state_updated'; readonly updatedKeys: readonly string[]; } | { readonly nodesExecuted: number; readonly stepNumber: number; readonly timestamp: number; readonly type: 'step_completed'; } | { /** * True when the run stopped awaiting human input rather than finishing. * * `runSuperStepLoop` returns `undefined` on the interrupt path, which is * the same "loop ended normally" signal as running out of runnable nodes, * so this event was emitted unconditionally BEFORE the halt check. A * paused run published a completion indistinguishable from a finished * one, and `halted` — the truthful marker — lives on the returned * `Result`, which an `onEvent` consumer such as the audit bridge never * sees. */ readonly halted?: boolean; readonly durationMs: number; readonly timestamp: number; readonly totalNodes: number; readonly totalSteps: number; readonly type: 'execution_complete'; } | { readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_started'; } | { readonly durationMs: number; readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_completed'; } | { readonly error: string; readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_failed'; } | ContextUnavailableEvent
+  = | { readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_started'; } | { readonly durationMs: number; readonly nodeId: string; readonly resultKeys: readonly string[]; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_completed'; } | { readonly error: string; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_error'; } | { readonly detail?: string; readonly nodeId: string; readonly reason: 'interrupted' | 'skipped'; readonly stepNumber: number; readonly timestamp: number; readonly type: 'node_not_completed'; } | { readonly stepNumber: number; readonly timestamp: number; readonly type: 'state_updated'; readonly updatedKeys: readonly string[]; } | { readonly nodesExecuted: number; readonly stepNumber: number; readonly timestamp: number; readonly type: 'step_completed'; } | { readonly durationMs: number; readonly halted?: boolean; readonly timestamp: number; readonly totalNodes: number; readonly totalSteps: number; readonly type: 'execution_complete'; } | { readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_started'; } | { readonly durationMs: number; readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_completed'; } | { readonly error: string; readonly hookName: string; readonly hookPhase: 'precondition' | 'verify'; readonly nodeId: string; readonly stepNumber: number; readonly timestamp: number; readonly type: 'hook_failed'; } | ContextUnavailableEvent
 InterfaceDeclaration GraphEventSummary
   readonly detail?: string | undefined
   readonly nodeId?: string | undefined
@@ -7601,6 +7602,7 @@ InterfaceDeclaration RoutingDecisionRow
   reason: string
   request_id: string | null
   router_type: string
+  router_type_measured?: number | null | undefined
   selected_model: string
   task_profile: string
   timestamp: number
@@ -8173,7 +8175,7 @@ VariableDeclaration SharedInsightSchema
 FunctionDeclaration sigmoidConfidence
   : typeof sigmoidConfidence
 TypeAliasDeclaration SignalCategory
-  = | 'routing' | 'tech-debt' | 'bug' | 'security' | 'consensus' // #3852 (closes the #3692 sequencing): tool-fitness deprecation/consolidation // candidates from the #3851 ledger. SUGGEST-TIER ONLY — never autonomous // removal (Epic F invariant). See improvement-review-tool-fitness.ts. | 'tool-fitness' // #3692 + #3246 (Option A): deterministic benchmark perf regression vs a // STATIC, pinned baseline + fixed tolerance. SURFACED-ONLY — never auto-applies // a fitness/governance penalty. The static baseline keeps this out of the // deferred #3230 adaptive-control scope. See improvement-review-perf-regression.ts. | 'perf-regression'
+  = | 'routing' | 'tech-debt' | 'bug' | 'security' | 'consensus' | 'tool-fitness' | 'perf-regression'
 ClassDeclaration SimpleAgent
 ClassDeclaration SimpleMajorityStrategy
   calculateOutcome(votes: Map<string, Vote>) => VotingOutcome
@@ -8341,7 +8343,7 @@ InterfaceDeclaration SkillParameter
   readonly required: boolean
   readonly type: string
 TypeAliasDeclaration SkillPermission
-  = | 'read' // Read files, data, state | 'write' // Write files, modify state | 'execute' // Execute code, commands | 'network' // Make network requests | 'filesystem' // Access filesystem beyond working directory | 'spawn'
+  = | 'read' | 'write' | 'execute' | 'network' | 'filesystem' | 'spawn'
 VariableDeclaration SkillPermissionSchema
   : z.ZodEnum<{ execute: "execute"; filesystem: "filesystem"; network: "network"; read: "read"; spawn: "spawn"; write: "write"; }>
 TypeAliasDeclaration SkillPromoter
@@ -8463,7 +8465,7 @@ InterfaceDeclaration StageCompletedOptions
 InterfaceDeclaration StageContext
   readonly config: Record<string, unknown>
   readonly signal: AbortSignal
-  readonly task: Readonly<{ analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "intake" | "clarifying" | "planning" | "executing" | "validating" | "failed"; updatedAt: number; }>
+  readonly task: Readonly<{ analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "intake" | "clarifying" | "planning" | "executing" | "validating" | "failed"; updatedAt: number; }>
 InterfaceDeclaration StageDependencies
   budgetRouter: BudgetRouter | undefined
   capabilityMatchStage: CapabilityMatchStage | undefined
@@ -8661,6 +8663,7 @@ InterfaceDeclaration StoredRoutingDecision
   readonly reason: string
   readonly requestId?: string | undefined
   readonly routerType: RouterType
+  readonly routerTypeMeasured?: boolean | undefined
   readonly selectedModel: "claude" | "gemini" | "codex" | "opencode"
   readonly taskProfile: Record<string, unknown>
   readonly timestamp: string
@@ -8931,7 +8934,7 @@ InterfaceDeclaration TaskContext
 TypeAliasDeclaration TaskContract
   = z.infer<typeof TaskContractSchema>
 VariableDeclaration TaskContractSchema
-  : z.ZodObject<{ analysis: z.ZodObject<{ ambiguityScore: z.ZodNumber; complexity: z.ZodString; taskType: z.ZodString; }, z.core.$strip>; artifacts: z.ZodArray<z.ZodObject<{ id: z.ZodString; type: z.ZodEnum<{ analysis: "analysis"; code: "code"; plan: "plan"; report: "report"; review: "review"; spec: "spec"; test: "test"; vote: "vote"; }>; }, z.core.$strip>>; capabilityGaps: z.ZodObject<{ allSatisfied: z.ZodBoolean; available: z.ZodObject<{ experts: z.ZodArray<z.ZodString>; tools: z.ZodArray<z.ZodString>; }, z.core.$strip>; gaps: z.ZodArray<z.ZodUnknown>; }, z.core.$strip>; completedAt: z.ZodOptional<z.ZodNumber>; constraints: z.ZodObject<{ quality: z.ZodOptional<z.ZodString>; scope: z.ZodArray<z.ZodString>; time: z.ZodOptional<z.ZodString>; }, z.core.$strip>; createdAt: z.ZodNumber; description: z.ZodString; error: z.ZodOptional<z.ZodString>; id: z.ZodString; metadata: z.ZodRecord<z.ZodString, z.ZodUnknown>; parentId: z.ZodOptional<z.ZodString>; requiredCapabilities: z.ZodObject<{ experts: z.ZodArray<z.ZodString>; tools: z.ZodArray<z.ZodString>; }, z.core.$strip>; status: z.ZodEnum<{ approved: "approved"; clarifying: "clarifying"; done: "done"; executing: "executing"; failed: "failed"; intake: "intake"; planning: "planning"; validating: "validating"; }>; updatedAt: z.ZodNumber; }, z.core.$strip>
+  : z.ZodObject<{ analysis: z.ZodObject<{ ambiguityScore: z.ZodNumber; complexity: z.ZodString; taskType: z.ZodString; }, z.core.$strip>; artifacts: z.ZodArray<z.ZodObject<{ id: z.ZodString; type: z.ZodEnum<{ analysis: "analysis"; code: "code"; plan: "plan"; report: "report"; review: "review"; spec: "spec"; test: "test"; vote: "vote"; }>; }, z.core.$strip>>; capabilityGaps: z.ZodObject<{ allSatisfied: z.ZodBoolean; available: z.ZodObject<{ experts: z.ZodArray<z.ZodString>; tools: z.ZodArray<z.ZodString>; }, z.core.$strip>; gaps: z.ZodArray<z.ZodUnknown>; gapsMeasured: z.ZodBoolean; }, z.core.$strip>; completedAt: z.ZodOptional<z.ZodNumber>; constraints: z.ZodObject<{ quality: z.ZodOptional<z.ZodString>; scope: z.ZodArray<z.ZodString>; time: z.ZodOptional<z.ZodString>; }, z.core.$strip>; createdAt: z.ZodNumber; description: z.ZodString; error: z.ZodOptional<z.ZodString>; id: z.ZodString; metadata: z.ZodRecord<z.ZodString, z.ZodUnknown>; parentId: z.ZodOptional<z.ZodString>; requiredCapabilities: z.ZodObject<{ experts: z.ZodArray<z.ZodString>; tools: z.ZodArray<z.ZodString>; }, z.core.$strip>; status: z.ZodEnum<{ approved: "approved"; clarifying: "clarifying"; done: "done"; executing: "executing"; failed: "failed"; intake: "intake"; planning: "planning"; validating: "validating"; }>; updatedAt: z.ZodNumber; }, z.core.$strip>
 InterfaceDeclaration TaskCreatedEvent
   readonly taskId: string
   readonly type: "task.created"
@@ -9717,7 +9720,7 @@ InterfaceDeclaration VoteRejectedSignalEvent
   readonly rejectionRules?: readonly string[] | undefined
   readonly type: "signal.vote_rejected"
 TypeAliasDeclaration VoteResult
-  = | { readonly approvalPercentage: number; readonly kind: 'approved'; } | { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; } // NO PRODUCTION PATH PRODUCES THIS TODAY (#5768). The only constructor is // `createVoteResult` below, whose sole caller is dev-pipeline.test.ts; every // production vote producer builds the literal inline and emits only // `approved` / `rejected` (iterative-consensus.ts:243,297,328,345 and // agent-executor.ts:120,122). So three live-looking branches are unreachable // in production: `extractConditionalMeta`'s `conditional_go` check, and the // second disjunct of both `isApproved` here and `isVoteAccepted` in // iterative-consensus.ts — which means `conditions`/`caveats` on a task are // always absent. Documented rather than removed because the variant is // published type surface; wire-or-remove is the decision in #5768. Written // in the shape of the `no_quorum` note below, which records the same kind of // fact for the same reason. | { readonly approvalPercentage: number; readonly caveats: readonly string[]; readonly conditions: readonly string[]; readonly kind: 'conditional_go'; } // #4135: the vote could not reach a valid quorum — a recoverable "re-run the // missing voice" state, DISTINCT from a rejection. Only produced when a caller // opts into the `absolute_quorum` error policy (or an error-policy short-circuit // voids the vote); inert under every default policy. Consumers must NOT feed this // into plan-revision (it carries no reviewer feedback — the plan is fine, a voice // was missing); it terminates/escalates instead. `isApproved` and // `getVoteFeedback` already treat it as not-approved / no-feedback. | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; }
+  = | { readonly approvalPercentage: number; readonly kind: 'approved'; } | { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; } | { readonly approvalPercentage: number; readonly caveats: readonly string[]; readonly conditions: readonly string[]; readonly kind: 'conditional_go'; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; }
 TypeAliasDeclaration VoterExpansionCallback
   = ( proposalId: ProposalId, currentVoterCount: number, requestedCount: number ) => Promise<readonly string[]>
 TypeAliasDeclaration VoterRole

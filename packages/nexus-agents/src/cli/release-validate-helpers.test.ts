@@ -284,7 +284,7 @@ describe('validateDocumentation', () => {
     });
     mockReadFileSync.mockImplementation((p: unknown) => {
       if (p === 'CHANGELOG.md') return '## [2.0.0] - 2026-01-15';
-      if (p === 'CLAUDE.md') return 'Governance Version: 2026-02-01';
+      if (p === 'CLAUDE.md') return 'Governance Version: a1b2c3d4e5f6';
       return '';
     });
     return validateDocumentation(defaultOptions).then((result) => {
@@ -292,7 +292,13 @@ describe('validateDocumentation', () => {
     });
   });
 
-  it('warns about stale governance version', () => {
+  // The governance-staleness warning was REMOVED in #5943, and this test now
+  // asserts its absence rather than being deleted quietly. The stamp is a
+  // content digest, so the date regex behind that warning could never match
+  // again — it would have become a check that cannot fail, silently reporting
+  // "not stale" forever. If a staleness signal returns it needs a different
+  // basis, and this case should fail so whoever adds it sees this note.
+  it('no longer warns about a stale governance version — the stamp is not a date (#5943)', () => {
     mockExistsSync.mockImplementation((p: unknown) => {
       if (p === 'CHANGELOG.md') return true;
       if (p === 'README.md') return true;
@@ -301,12 +307,13 @@ describe('validateDocumentation', () => {
     });
     mockReadFileSync.mockImplementation((p: unknown) => {
       if (p === 'CHANGELOG.md') return '## [2.0.0]';
+      // A very old date, which used to trip the warning.
       if (p === 'CLAUDE.md') return 'Governance Version: 2024-01-01';
       return '';
     });
     return validateDocumentation(defaultOptions).then((result) => {
       const finding = result.findings.find((f) => f.title.includes('governance version stale'));
-      expect(finding).toBeDefined();
+      expect(finding).toBeUndefined();
     });
   });
 

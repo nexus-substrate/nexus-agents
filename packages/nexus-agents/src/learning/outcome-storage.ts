@@ -168,7 +168,12 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         decision.confidence,
         decision.reason,
         JSON.stringify(decision.taskProfile),
-        decision.requestId ?? null
+        decision.requestId ?? null,
+        // Only an explicit `true` is measured. `undefined` writes 0, not NULL:
+        // a decision built today that did not say it was measured is not the
+        // same thing as a row from before the column existed, and conflating
+        // them would make the migration indistinguishable from a live gap.
+        decision.routerTypeMeasured === true ? 1 : 0
       );
       this.logger.debug('Stored routing decision', {
         id: decision.id,

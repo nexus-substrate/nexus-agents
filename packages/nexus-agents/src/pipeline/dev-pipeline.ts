@@ -89,18 +89,32 @@ export interface PipelineTask {
 export type VoteResult =
   | { readonly kind: 'approved'; readonly approvalPercentage: number }
   | { readonly kind: 'rejected'; readonly feedback: string; readonly approvalPercentage: number }
-  // NO PRODUCTION PATH PRODUCES THIS TODAY (#5768). The only constructor is
-  // `createVoteResult` below, whose sole caller is dev-pipeline.test.ts; every
-  // production vote producer builds the literal inline and emits only
-  // `approved` / `rejected` (iterative-consensus.ts:243,297,328,345 and
-  // agent-executor.ts:120,122). So three live-looking branches are unreachable
-  // in production: `extractConditionalMeta`'s `conditional_go` check, and the
-  // second disjunct of both `isApproved` here and `isVoteAccepted` in
-  // iterative-consensus.ts — which means `conditions`/`caveats` on a task are
-  // always absent. Documented rather than removed because the variant is
-  // published type surface; wire-or-remove is the decision in #5768. Written
-  // in the shape of the `no_quorum` note below, which records the same kind of
-  // fact for the same reason.
+  // NO PRODUCTION PATH PRODUCES THIS, UNDER ANY CONFIGURATION (#5768). The only
+  // constructor is `createVoteResult` below, whose sole caller is
+  // dev-pipeline.test.ts; every production vote producer builds the literal
+  // inline and emits only `approved` / `rejected` (iterative-consensus.ts and
+  // agent-executor.ts). FOUR live-looking branches are therefore unreachable:
+  // `extractConditionalMeta`'s check, the plan-loop approval check further
+  // down this file, and the second disjunct of both `isApproved` here and
+  // `isVoteAccepted` in iterative-consensus.ts. `conditions`/`caveats` on a
+  // task are always absent.
+  //
+  // NOT the same kind of inert as `no_quorum` below, and an earlier version of
+  // this note said it was. `no_quorum` is inert under DEFAULT policies but
+  // genuinely reachable when a caller opts into `absolute_quorum` (#4132) — a
+  // real state with a real producer. This one has no producer under any policy.
+  //
+  // The producer side is half-built rather than absent, which is what makes it
+  // look wireable: per-voter `VoteSchema.conditions` exists
+  // (consensus/types-core.ts) and `cli/voter-response.ts` preserves it — but
+  // nothing in `src/consensus/` ever READS it, and 0 of 234 persisted vote
+  // records carry one. Wiring it needs a prompt change plus two governance
+  // decisions (how per-voter conditions aggregate; whether a conditional
+  // approval clears a supermajority bar), not a missing link.
+  //
+  // A 7-voter panel took REMOVE, 5 of 6 approvers (#5768). It is published type
+  // surface, so the deletion is queued for the next major as #5969 and needs a
+  // `unanimous` vote at that point.
   | {
       readonly kind: 'conditional_go';
       readonly conditions: readonly string[];
@@ -140,7 +154,14 @@ export function createVoteResult(
   return { kind: 'approved', approvalPercentage };
 }
 
-/** Check if vote result is approved (either explicit or conditional). */
+/**
+ * Check if vote result is approved (either explicit or conditional).
+ *
+ * The `conditional_go` disjunct cannot be true in production (#5768) — see the
+ * note on `VoteResult`. It stays until the variant is removed in #5969, so that
+ * the union and its readers go in one change rather than leaving a case the
+ * compiler no longer checks.
+ */
 export function isApproved(result: VoteResult): boolean {
   return result.kind === 'approved' || result.kind === 'conditional_go';
 }

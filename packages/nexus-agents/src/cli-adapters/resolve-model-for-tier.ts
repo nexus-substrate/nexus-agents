@@ -18,6 +18,7 @@
  * @module cli-adapters/resolve-model-for-tier
  */
 import { findInTreeByCli, getDefaultModelForCli } from '../config/model-config-helpers.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 
 import type { ModelTier } from './zero-router-types.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
@@ -26,7 +27,7 @@ type QualityDimension = 'reasoning' | 'codeGeneration' | 'speed' | 'cost';
 
 /** Whether route-time concrete-model selection is enabled (opt-in; default OFF). */
 export function isRouteModelSelectionEnabled(): boolean {
-  return process.env['NEXUS_ROUTE_MODEL_SELECTION'] === 'true';
+  return parseBoolEnv('NEXUS_ROUTE_MODEL_SELECTION', false);
 }
 
 /** Which quality dimension each difficulty tier optimizes. Table-driven. */

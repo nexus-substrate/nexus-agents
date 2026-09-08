@@ -19,6 +19,7 @@ import {
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import { evaluatePipelinePolicy } from './policy-evaluator.js';
+import { analyzeForContract } from './task-contract-builders.js';
 import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
 
@@ -42,6 +43,8 @@ function makeTask(overrides: Partial<TaskContract> = {}): TaskContract {
       available: { tools: [], experts: [] },
       gaps: [],
       allSatisfied: true,
+      // No detector ran for this fixture either (#5919).
+      gapsMeasured: false,
     },
     artifacts: [],
     metadata: {},
@@ -112,7 +115,10 @@ describe('delegateInputToTaskContract', () => {
     const contract = delegateInputToTaskContract(input);
     expect(contract.description).toBe('Analyze code');
     expect(contract.status).toBe('approved');
-    expect(contract.analysis.taskType).toBe('routing');
+    // Was `'routing'` until #5924 — the entry point's own name, asserted for
+    // every task. Derived now, so 'Analyze code' analyses as a review task.
+    expect(contract.analysis.taskType).toBe(analyzeForContract('Analyze code').taskType);
+    expect(contract.analysis.taskType).not.toBe('routing');
     expect(contract.id).toMatch(/^delegate-/);
   });
 

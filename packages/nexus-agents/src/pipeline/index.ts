@@ -177,14 +177,12 @@ export type {
   VoteResult,
   QaReviewResult,
 } from './dev-pipeline.js';
-export { runQualityPipeline } from './quality-pipeline.js';
-export type { StageConfig, PipelineRunResult } from './quality-pipeline.js';
 export { checkSecurityScan } from './security-gate.js';
 export { executeExpert } from './expert-bridge.js';
 export type { ExpertBridgeResult } from './expert-bridge.js';
 export { createAgentStages, flushPipelineMemory } from './agent-executor.js';
 export type { AgentExecutorConfig } from './agent-executor.js';
-export { createTaskTracker, createAutoTaskTracker, detectBackend } from './task-tracker.js';
+export { createTaskTracker, detectBackend } from './task-tracker.js';
 export type {
   ITaskTracker,
   TrackerBackend,

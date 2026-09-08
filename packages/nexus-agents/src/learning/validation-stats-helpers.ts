@@ -119,6 +119,11 @@ export function calculateDifferenceCI(
   confidence: number
 ): ConfidenceInterval {
   const difference = p1 - p2;
+  // `|| 1` keeps the arithmetic finite when a total is 0, which means a
+  // zero-total comparison produces a plausible-looking interval out of nothing
+  // (#5760). The interval is still returned — callers may want the difference
+  // of the point estimates — but `measured` says the spread is fabricated.
+  const measured = total1 > 0 && total2 > 0;
   const seDiff = Math.sqrt((p1 * (1 - p1)) / (total1 || 1) + (p2 * (1 - p2)) / (total2 || 1));
   const z = getZScore(confidence);
   return {
@@ -128,5 +133,6 @@ export function calculateDifferenceCI(
     confidence,
     n: total1 + total2,
     standardError: seDiff,
+    measured,
   };
 }

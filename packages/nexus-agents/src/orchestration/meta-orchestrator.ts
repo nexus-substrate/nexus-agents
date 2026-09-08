@@ -109,7 +109,13 @@ export interface MetaDecision {
   readonly strategy: ExecutionStrategy;
   /** Human-readable explanation of why this strategy was selected. */
   readonly reasoning: string;
-  /** Confidence in the selection (0-1). */
+  /**
+   * A PRIOR, not a measurement of this goal (#5957). It is either the matched
+   * routing rule's authored literal or the classifier's confidence
+   * (`meta-orchestrator-routing.ts` picks between them); in the routing-rule
+   * case nothing observed about the goal can move it. `triangulated-review.ts`
+   * annotates the identical shape under #5119.
+   */
   readonly confidence: number;
   /** Other strategies that were plausible, best-first, excluding the chosen one. */
   readonly alternatives: readonly ExecutionStrategy[];
@@ -167,7 +173,13 @@ export interface MetaSelectionRecord {
   readonly goal: string;
   /** The selected strategy. */
   readonly strategy: ExecutionStrategy;
-  /** Confidence in the selection (0-1). */
+  /**
+   * A PRIOR, not a measurement of this goal (#5957). It is either the matched
+   * routing rule's authored literal or the classifier's confidence
+   * (`meta-orchestrator-routing.ts` picks between them); in the routing-rule
+   * case nothing observed about the goal can move it. `triangulated-review.ts`
+   * annotates the identical shape under #5119.
+   */
   readonly confidence: number;
   /** The underlying workflow pattern. */
   readonly pattern: WorkflowPattern;

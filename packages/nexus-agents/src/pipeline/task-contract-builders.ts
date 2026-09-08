@@ -15,6 +15,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TaskContract } from './task-contract.js';
+import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import type { ISharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
 
 /** Inputs needed to build a fresh `'approved'` `TaskContract`. */
 export interface BaseTaskContractInput {
@@ -26,6 +28,44 @@ export interface BaseTaskContractInput {
   readonly analysis: TaskContract['analysis'];
   /** Caller-controlled metadata (source tag + entry-point-specific fields). */
   readonly metadata: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Lazily-built analyzer for {@link analyzeForContract}. One instance per
+ * process — `createSharedTaskAnalyzer` is not free and the analysis is a pure
+ * function of the task text.
+ */
+let sharedAnalyzer: ISharedTaskAnalyzer | undefined;
+
+/**
+ * Derives the `TaskContract.analysis` summary from the task itself (#5924).
+ *
+ * The `orchestrate` and `delegate_to_model` entry points used to pass a
+ * hard-coded literal — every orchestrate task was recorded as
+ * `{ complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 }`,
+ * including a typo fix, and every delegate task as
+ * `{ complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 }`. A
+ * fixed `ambiguityScore` that no task can move is a constant wearing the name
+ * of a measurement, which is the shape that inflated the metric it fed in
+ * #5812.
+ *
+ * `SharedTaskAnalyzer` is what CLAUDE.md names canonical for "analyse /
+ * classify a task", it already produces exactly these three fields, and
+ * `analyze()` is synchronous — so this is calling the analyzer the repo
+ * already has, from the two entry points that skipped it.
+ */
+export function analyzeForContract(task: string): {
+  complexity: string;
+  taskType: string;
+  ambiguityScore: number;
+} {
+  sharedAnalyzer ??= createSharedTaskAnalyzer();
+  const result = sharedAnalyzer.analyze(task);
+  return {
+    complexity: result.complexity,
+    taskType: result.taskType,
+    ambiguityScore: result.ambiguityScore,
+  };
 }
 
 /**
@@ -49,7 +89,13 @@ export function buildBaseTaskContract(input: BaseTaskContractInput): TaskContrac
     capabilityGaps: {
       available: { tools: [], experts: [] },
       gaps: [],
+      // NOT a measurement (#5919). No detector runs here, so `allSatisfied`
+      // carries no information — `gapsMeasured` is what says so. Wiring
+      // `capability-gap-detector.ts` in is the follow-up; its cost on this hot
+      // path has not been measured, and asserting an unmeasured verdict is the
+      // part that had to stop now.
       allSatisfied: true,
+      gapsMeasured: false,
     },
     artifacts: [],
     metadata: { ...input.metadata },

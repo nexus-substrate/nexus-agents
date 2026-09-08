@@ -86,7 +86,13 @@ export interface RoutingDecision {
   readonly pattern: WorkflowPattern;
   /** Human-readable explanation of why this pattern was selected */
   readonly reasoning: string;
-  /** Confidence in the selection (0-1) */
+  /**
+   * The rule's PRIOR for this pattern (0-1) — NOT a measurement of this task
+   * (#5957, same call as #5119). Every rule returns an authored literal, so
+   * two tasks claimed by the same rule report the same number however much
+   * the analyzer's own signals differ. Read it as "how much this repo trusts
+   * this rule", never as "how well this task fits".
+   */
   readonly confidence: number;
   /** Which rules matched during selection */
   readonly matchedRules: readonly string[];

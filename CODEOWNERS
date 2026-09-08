@@ -45,6 +45,9 @@
 /.github/workflows/governor-review.yml @williamzujkowski
 /scripts/check-governor-review.ts @williamzujkowski
 /scripts/check-governor-ratification.ts @williamzujkowski
+# #5944 — decides whether a CLAUDE.md/AGENTS.md diff may SKIP ratification.
+# A module that grants exemptions must itself be governed, or it is a bypass.
+/scripts/governance-stamp-exemption.ts @williamzujkowski
 
 # Project governance
 /CLAUDE.md @williamzujkowski

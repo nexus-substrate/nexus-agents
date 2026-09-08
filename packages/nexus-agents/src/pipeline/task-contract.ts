@@ -88,7 +88,27 @@ const CapabilityGapSummarySchema = z.object({
     experts: z.array(z.string()),
   }),
   gaps: z.array(z.unknown()),
+  /**
+   * Meaningful ONLY when `gapsMeasured` is true. `gaps: []` from a detector
+   * that ran and `gaps: []` from a builder that never called one are
+   * byte-identical on the wire; this field is what tells them apart.
+   */
   allSatisfied: z.boolean(),
+  /**
+   * Whether a capability-gap detector actually ran (#5919).
+   *
+   * `buildBaseTaskContract` writes `allSatisfied: true` with an EMPTY
+   * `available` set — a verdict from a detector that never ran, on the
+   * `orchestrate` and `delegate_to_model` paths. Nothing reads it today, which
+   * is camouflage rather than safety: it is the same shape as #5896's
+   * ValidationHarness, where a missing consumer let a hard-coded verdict sit
+   * until someone eventually trusted it.
+   *
+   * Named for the vocabulary this repo already uses for exactly this —
+   * `tokensMeasured`, `policyEvaluated`, `routerTypeMeasured`. A consumer that
+   * needs a real answer must branch on this, not on `allSatisfied` alone.
+   */
+  gapsMeasured: z.boolean(),
 });
 
 /** Reference to an artifact by ID and type. */

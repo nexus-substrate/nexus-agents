@@ -279,24 +279,17 @@ export async function validateDocumentation(
     });
   }
 
-  // Check for stale CLAUDE.md governance version
-  if (existsSync('CLAUDE.md')) {
-    const claudeMd = readFileSync('CLAUDE.md', 'utf-8');
-    const match = claudeMd.match(/Governance Version: (\d{4}-\d{2}-\d{2})/);
-    if (match?.[1]) {
-      const governanceDate = new Date(match[1]);
-      const daysSinceUpdate = (Date.now() - governanceDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceUpdate > 30) {
-        findings.push({
-          severity: 'warning',
-          category: 'docs',
-          title: 'CLAUDE.md governance version stale',
-          description: `Governance version is ${Math.round(daysSinceUpdate)} days old.`,
-          remediation: 'Review and update CLAUDE.md governance version if needed.',
-        });
-      }
-    }
-  }
+  // The CLAUDE.md governance-staleness warning was REMOVED here in #5943, not
+  // left to rot. It parsed `Governance Version: (\d{4}-\d{2}-\d{2})` out of
+  // CLAUDE.md and warned above 30 days. That stamp is now a content digest, so
+  // the regex would never match, `match?.[1]` would always be undefined, and
+  // the whole check would silently never fire — a check that cannot fail by
+  // construction, which is worse than no check.
+  //
+  // It is deleted rather than re-based on something else because what it
+  // measured is not a defect: governance sources being unchanged for 30 days
+  // is fine. If a staleness signal is wanted, it needs a basis other than a
+  // date parsed out of a generated file.
 
   const hasErrors = findings.some((f) => f.severity === 'error');
 
