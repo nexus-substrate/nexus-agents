@@ -21,8 +21,7 @@ import type {
   StateReducer,
   CompileResult,
   GraphCompileError,
-  PreconditionConfig,
-  NodeHook,
+  NodeOptions,
 } from './graph-types.js';
 import { START, END } from './graph-types.js';
 
@@ -45,16 +44,6 @@ import { START, END } from './graph-types.js';
  *   .compile();
  * ```
  */
-/** Optional per-node settings accepted by {@link GraphBuilder.addNode}. */
-export interface NodeOptions {
-  readonly timeout?: number;
-  readonly retries?: number;
-  readonly preconditions?: readonly PreconditionConfig[];
-  readonly verify?: NodeHook;
-  /** Nodes this node may reach via `Command.goto` (#5727). */
-  readonly gotoTargets?: readonly string[];
-}
-
 /**
  * Keep only the node options that were actually supplied.
  *

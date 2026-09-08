@@ -220,6 +220,20 @@ export interface GraphNode {
   readonly gotoTargets?: readonly string[] | undefined;
 }
 
+/**
+ * Optional per-node settings accepted by `GraphBuilder.addNode`. Mirrors the
+ * optional half of {@link GraphNode}; lives here, beside the node type it
+ * configures, rather than in the builder.
+ */
+export interface NodeOptions {
+  readonly timeout?: number;
+  readonly retries?: number;
+  readonly preconditions?: readonly PreconditionConfig[];
+  readonly verify?: NodeHook;
+  /** Nodes this node may reach via `Command.goto` (#5727). */
+  readonly gotoTargets?: readonly string[];
+}
+
 /** Special sentinel for the graph entry point. */
 export const START = '__START__' as const;
 
