@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.46.6
+
+### Patch Changes
+
+- [#5971](https://github.com/nexus-substrate/nexus-agents/pull/5971) [`e17c1b6`](https://github.com/nexus-substrate/nexus-agents/commit/e17c1b65ae6b1603650bf3ed8c72a2174e89ffbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `extractStateValue` now has tests and a JSDoc that describes it accurately
+  ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 4). It is published API with no consumer anywhere — not even a test
+  — under a section header promising "typed access to well-known state keys",
+  while the function is a bare `state[key]` returning `unknown`. Behaviour
+  unchanged; the signature narrowing that would make the old header true is
+  breaking and stays queued for the next major.
+
 ## 8.46.5
 
 ### Patch Changes
