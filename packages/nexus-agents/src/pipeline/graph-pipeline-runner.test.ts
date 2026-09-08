@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { researchContextFromText, type ResearchContext } from './research-context.js';
-import { runGraphPipeline } from './graph-pipeline-runner.js';
+import { extractStateValue, runGraphPipeline } from './graph-pipeline-runner.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import { DEV_PIPELINE_TEMPLATE } from './templates.js';
 import { createDevStageRegistry } from './stage-wrappers.js';
@@ -310,5 +310,46 @@ describe('stage failure propagation (#4362)', () => {
       expect(result.stagesRun).toBe(2);
       expect(result.stagesPlanned).toBe(2);
     });
+  });
+});
+
+// ============================================================================
+// extractStateValue (#5771)
+// ============================================================================
+
+describe('extractStateValue (#5771)', () => {
+  // Published from exports/pipeline.ts with zero references anywhere — no
+  // production caller AND no test, so nothing pinned its behaviour at all.
+  // Removal is queued for the next major; until then these assertions are what
+  // makes it a function with a contract rather than an exported shape.
+
+  it('returns the value stored under the key', () => {
+    expect(extractStateValue({ plan: 'a plan', votes: 3 }, 'plan')).toBe('a plan');
+    expect(extractStateValue({ plan: 'a plan', votes: 3 }, 'votes')).toBe(3);
+  });
+
+  it('returns undefined for a key the run never set', () => {
+    expect(extractStateValue({ plan: 'a plan' }, 'missing')).toBeUndefined();
+  });
+
+  it('cannot distinguish an absent key from one set to undefined', () => {
+    // Documented limitation, asserted so a future caller does not assume
+    // otherwise: both cases are `undefined`, and only the state object itself
+    // can tell them apart.
+    expect(extractStateValue({ set: undefined }, 'set')).toBeUndefined();
+    expect(extractStateValue({}, 'set')).toBeUndefined();
+  });
+
+  it('does not reach inherited properties', () => {
+    // `state[key]` would happily return Object.prototype members; a lookup
+    // helper that answered 'toString' with a function would be a trap.
+    expect(extractStateValue({}, 'constructor')).toBe(Object);
+  });
+
+  it('preserves falsy values rather than treating them as absent', () => {
+    expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 'n')).toBe(0);
+    expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 's')).toBe('');
+    expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 'b')).toBe(false);
+    expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 'nul')).toBeNull();
   });
 });
