@@ -12,7 +12,7 @@
  * @module nexus-memory/telemetry
  */
 
-import type { MemoryEvent, MemoryEventCounters, MemoryEventListener } from './types.js';
+import type { CliName, MemoryEvent, MemoryEventCounters, MemoryEventListener } from './types.js';
 
 const KEY_SUMMARY_LIMIT = 120;
 const PAYLOAD_SUMMARY_LIMIT = 240;
@@ -58,17 +58,22 @@ interface RecordedEvent extends Omit<
   readonly result?: unknown;
 }
 
+/** The zero row a domain/op starts from — every field named, none defaulted implicitly. */
+function emptyCounter(domain: string, op: MemoryEvent['op']): MemoryEventCounters {
+  return { domain, op, count: 0, errorCount: 0, hitCount: 0, totalDurationMs: 0, maxDurationMs: 0 };
+}
+
 function updateCounter(event: RecordedEvent): void {
   const ck = counterKey(event.domain, event.op);
-  const existing = counters.get(ck);
-  const hitDelta = event.hit === true ? 1 : 0;
+  const prev = counters.get(ck) ?? emptyCounter(event.domain, event.op);
   counters.set(ck, {
-    domain: event.domain,
-    op: event.op,
-    count: (existing?.count ?? 0) + 1,
-    hitCount: (existing?.hitCount ?? 0) + hitDelta,
-    totalDurationMs: (existing?.totalDurationMs ?? 0) + event.durationMs,
-    maxDurationMs: Math.max(existing?.maxDurationMs ?? 0, event.durationMs),
+    domain: prev.domain,
+    op: prev.op,
+    count: prev.count + 1,
+    errorCount: prev.errorCount + (event.error !== undefined ? 1 : 0),
+    hitCount: prev.hitCount + (event.hit === true ? 1 : 0),
+    totalDurationMs: prev.totalDurationMs + event.durationMs,
+    maxDurationMs: Math.max(prev.maxDurationMs, event.durationMs),
   });
 }
 
@@ -77,6 +82,9 @@ function buildPublicEvent(event: RecordedEvent, audit: boolean): MemoryEvent {
     domain: event.domain,
     op: event.op,
     durationMs: event.durationMs,
+    // #5965: without this the counter records a failure the subscriber never
+    // sees — two instruments disagreeing about the same operation.
+    ...(event.error !== undefined && { error: event.error }),
     ...(event.cli !== undefined && { cli: event.cli }),
     ...(event.hit !== undefined && { hit: event.hit }),
     ...(audit &&
@@ -95,9 +103,12 @@ function buildPublicEvent(event: RecordedEvent, audit: boolean): MemoryEvent {
 }
 
 /**
- * Record a memory operation. Updates counters always; emits the event
- * to subscribers always (subscribers get the full event in audit mode,
- * the aggregate-only event otherwise).
+ * Record a memory operation, successful or not. Updates counters always;
+ * emits the event to subscribers always (subscribers get the full event in
+ * audit mode, the aggregate-only event otherwise).
+ *
+ * "Always" is load-bearing and was not true until #5965: every backend called
+ * this AFTER the work, so a throw skipped it entirely.
  *
  * Implementation note: the `op` argument is the typed `MemoryEvent['op']`
  * literal — backends never pass an unknown string here.
@@ -134,4 +145,37 @@ export function subscribeToMemoryEvents(listener: MemoryEventListener): () => vo
 export function resetMemoryTelemetry(): void {
   counters.clear();
   listeners.clear();
+}
+
+/**
+ * Runs one backend operation and records it even when it throws (#5965).
+ *
+ * The record call used to sit after the work, so a `MemoryValidationError`, a
+ * SQLite constraint or disk error, or a call on a closed backend produced no
+ * event and no counter row at all — a domain rejecting every write looked
+ * exactly like a domain nobody was using. The event is emitted BEFORE the
+ * error is re-thrown, so the caller's own error handling is unchanged.
+ *
+ * The success event stays at each call site: only the caller knows the `hit`,
+ * `key`, `payload` and `result` a successful op should carry.
+ */
+export function recordFailedMemoryOp<T>(
+  context: { readonly domain: string; readonly op: MemoryEvent['op']; readonly cli?: CliName },
+  start: number,
+  body: () => T
+): T {
+  try {
+    return body();
+  } catch (error) {
+    recordMemoryEvent({
+      domain: context.domain,
+      op: context.op,
+      ...(context.cli !== undefined && { cli: context.cli }),
+      durationMs: Date.now() - start,
+      // Message only — a validation error's detail can quote the value that
+      // failed, and that value is caller payload.
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
