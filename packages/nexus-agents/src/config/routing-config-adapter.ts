@@ -12,7 +12,6 @@ import type {
   CompositeRouterConfig,
   CompositeRouterConfigWithPreference,
 } from '../cli-adapters/composite-router-types.js';
-import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import type { TopsisConfig as RuntimeTopsisConfig } from '../cli-adapters/topsis-types.js';
@@ -210,25 +209,15 @@ function resolveBillingModeFromEnv(): CompositeRouterConfig['billingMode'] {
  * Builds the base CompositeRouterConfig from YAML config and defaults.
  */
 /**
- * Lazily-built logger for this module. Exposed so a test can spy on the sink
- * the deprecation warning actually writes to, rather than asserting on stderr.
- */
-let moduleLogger: ILogger | undefined;
-export function getRoutingConfigLogger(): ILogger {
-  moduleLogger ??= createLogger({ component: 'routing-config-adapter' });
-  return moduleLogger;
-}
-
-/**
  * `adaptRoutingConfig` runs once per router construction, which can be many
- * times in a process; the operator only needs telling once.
+ * times in a process; the operator only needs telling once. A module-level
+ * latch rather than an exported reset hook — tests reset it with
+ * `vi.resetModules()` + a fresh dynamic import, so this module adds no export
+ * whose only consumer is a test.
  */
-let warnedMaxDecisionTime = false;
+const logger = createLogger({ component: 'routing-config-adapter' });
 
-/** Test hook — the warn-once latch outlives a single test otherwise. */
-export function _resetMaxDecisionTimeWarningForTests(): void {
-  warnedMaxDecisionTime = false;
-}
+let warnedMaxDecisionTime = false;
 
 /**
  * Tells an operator who set `routing.linucb.maxDecisionTimeMs` that it does
@@ -253,7 +242,7 @@ function warnIfMaxDecisionTimeSet(config: DefinedRoutingConfig): void {
   if (config.linucb?.maxDecisionTimeMs === undefined) return;
   if (warnedMaxDecisionTime) return;
   warnedMaxDecisionTime = true;
-  getRoutingConfigLogger().warn(
+  logger.warn(
     'routing.linucb.maxDecisionTimeMs is deprecated and has no effect — routing has never enforced it. ' +
       'It is scheduled for removal in the next major (#5963). For a real bound on a single stage, see capacity-stage probeTimeoutMs.',
     { maxDecisionTimeMs: config.linucb.maxDecisionTimeMs }
