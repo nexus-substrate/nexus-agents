@@ -54,6 +54,7 @@ import {
   governorPathsFromCodeowners,
   governorSectionLines,
 } from './check-governor-review.js';
+import { readAtBase, readAtHead, stampOnlyExemptFiles } from './governance-stamp-exemption.js';
 
 export { GOVERNOR_SECTION_END_LINE };
 
@@ -389,8 +390,20 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     return 1;
   }
 
+  const touched = governorFilesTouched(changed, governorPathsFromCodeowners(codeowners));
+  const exempt = stampOnlyExemptFiles(touched, readAtBase(env['PR_BASE_SHA']), readAtHead);
+  if (exempt.length > 0) {
+    // Recorded, never silent (#5944 ratification condition 3): an exempted
+    // state must be representable, or the gate's output stops describing what
+    // it measured.
+    console.error(
+      `[governor-ratification] stamp-only exemption (#5944): ${exempt.join(', ')} — ` +
+        'the generated governance stamp is the only difference in these files.'
+    );
+  }
+
   const verdict = evaluateRatification({
-    touchedGovernorFiles: governorFilesTouched(changed, governorPathsFromCodeowners(codeowners)),
+    touchedGovernorFiles: touched.filter((f) => !exempt.includes(f)),
     governorPatternCount: governorPathsFromCodeowners(codeowners).length,
     approvals,
     labels,

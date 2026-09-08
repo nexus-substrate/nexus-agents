@@ -37,6 +37,7 @@ on:
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/governance-stamp-exemption.ts'
   push:
     branches: [main]
     paths:
@@ -50,6 +51,7 @@ on:
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/governance-stamp-exemption.ts'
 
 permissions:
   contents: read
@@ -195,6 +197,10 @@ jobs:
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
           HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
+          # #5944: lets the gate read CLAUDE.md / AGENTS.md as of base and
+          # exempt a diff whose only change is the generated stamp. Absent or
+          # malformed, the exemption is simply never granted — it fails closed.
+          PR_BASE_SHA: ${{ steps.changed.outputs.base }}
         run: npx tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------

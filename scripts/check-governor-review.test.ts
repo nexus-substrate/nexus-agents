@@ -32,6 +32,7 @@ import {
   runGovernorReviewGate,
   type GovernorReviewInputs,
 } from './check-governor-review.js';
+import { isStampOnlyChange, stampOnlyExemptFiles } from './governance-stamp-exemption.js';
 import type { PrReviewRecord } from '../packages/nexus-agents/src/audit/index.js';
 import {
   ledgerIntegrityFailure,
@@ -553,5 +554,86 @@ describe('reviewed-diff truncation is stated in the verdict', () => {
     // Deliberate: the gate is warn-first and this is a disclosure fix. Turning
     // a truncated diff into a failure is a separate, behavioural decision.
     expect(analyzeGovernorReview(passingInputs(true)).kind).toBe('pass');
+  });
+});
+
+// ============================================================================
+// Stamp-only exemption (#5944) — ratified 6-1, absolute_quorum
+// ============================================================================
+
+describe('stampOnlyExemptFiles (#5944)', () => {
+  // The gate fired on every PR that touched any of the four
+  // GOVERNANCE_STAMP_SOURCES, because regenerating the derived date stamp puts
+  // CLAUDE.md and AGENTS.md in the diff. #5940 was a parameter rename. The
+  // governed files changed; the governance did not.
+  //
+  // Deliberately NOT a diff parser: the panel's rejecting voter attacked that
+  // surface (.gitattributes overrides, custom diff drivers, unified-diff edge
+  // cases), and proving the ABSENCE of other changes through a parser is the
+  // hard direction. This compares whole file texts with the stamp line
+  // normalised, so "nothing else changed" is a byte equality, not an inference.
+
+  const STAMPED = (date: string): string =>
+    ['# Title', '', 'Body line.', '', `_Governance Version: ${date}_`, ''].join('\n');
+
+  it('exempts a file whose only difference is the stamp date', () => {
+    expect(isStampOnlyChange(STAMPED('2026-09-01'), STAMPED('2026-09-07'))).toBe(true);
+  });
+
+  it('does NOT exempt the stamp line plus any other changed line', () => {
+    // The case that matters. A bypass that cannot fail is worse than no bypass.
+    const before = STAMPED('2026-09-01');
+    const after = STAMPED('2026-09-07').replace('Body line.', 'Body line, quietly edited.');
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('does NOT exempt a hand-edited stamp that misses the generated shape', () => {
+    const before = STAMPED('2026-09-01');
+    const after = before.replace('_Governance Version: 2026-09-01_', '_Governance Version: soon_');
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('does NOT exempt an added or removed stamp line', () => {
+    const before = STAMPED('2026-09-01');
+    expect(
+      isStampOnlyChange(before, before.replace('_Governance Version: 2026-09-01_\n', ''))
+    ).toBe(false);
+  });
+
+  it('does NOT exempt identical files (nothing to exempt)', () => {
+    // A file the changed-list named but whose content is identical means the
+    // gate's two inputs disagree — a rename, a mode change, or a bad read.
+    // Absence of a difference is not evidence of a stamp-only difference.
+    expect(isStampOnlyChange(STAMPED('2026-09-07'), STAMPED('2026-09-07'))).toBe(false);
+  });
+
+  it('fails closed when either side is unreadable', () => {
+    expect(isStampOnlyChange(undefined, STAMPED('2026-09-07'))).toBe(false);
+    expect(isStampOnlyChange(STAMPED('2026-09-01'), undefined)).toBe(false);
+    expect(isStampOnlyChange(undefined, undefined)).toBe(false);
+  });
+
+  it('only ever exempts the two generated files', () => {
+    // Every file here has a difference that WOULD qualify on content alone —
+    // a well-formed stamp date bump and nothing else. So the only thing that
+    // can exclude `.rules/governance.md` is the allowlist, which is the point.
+    // An earlier version of this fixture gave the non-generated file a
+    // different change, so it passed even with the allowlist deleted.
+    const exempt = stampOnlyExemptFiles(
+      ['CLAUDE.md', 'AGENTS.md', '.rules/governance.md', 'src/audit/hash-chain.ts'],
+      () => STAMPED('2026-09-01'),
+      () => STAMPED('2026-09-07')
+    );
+    expect(exempt).toEqual(['CLAUDE.md', 'AGENTS.md']);
+  });
+
+  it('exempts nothing when the changed list has no generated file', () => {
+    expect(
+      stampOnlyExemptFiles(
+        ['src/audit/logger.ts'],
+        () => '',
+        () => ''
+      )
+    ).toEqual([]);
   });
 });
