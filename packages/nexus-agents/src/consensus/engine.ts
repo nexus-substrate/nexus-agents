@@ -1,9 +1,20 @@
-/* eslint-disable max-lines */
-// 711 lines. The suppression's original justification — "426 lines, and
-// governance allows 400-600 if cohesive" — stopped being true as the file grew;
-// it now sits well past the band it invoked. Recorded honestly rather than
-// left asserting a size the file has not had for a long time; splitting it is
-// tracked separately (#5766).
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
+// A BOUNDED ceiling, not `eslint-disable max-lines` (#5766).
+//
+// The file is 499 lines by the measure the rule uses (blanks and comments
+// skipped) and 715 by `wc -l`. Those are different units, and comparing them is
+// what went wrong here: the previous comment read the raw 715 against the
+// "400-600 lines if cohesive" band in .rules/governance.md:67 and concluded the
+// file "sits well past the band it invoked". By the rule's own counting it sits
+// INSIDE that band, so the original justification never stopped holding — only
+// the number quoted against it was measured differently.
+//
+// A blanket disable is why that could go unnoticed for so long: it silenced the
+// one check that knows the real count, leaving a hand-maintained number in a
+// comment as the only record, and hand-maintained numbers rot (this one drifted
+// from 426 to 711 to 715). The ceiling is set at 600 — the TOP of the governance
+// band — so the file is checked against the same band its justification cites,
+// and growing out of it fails the build instead of a comment quietly aging.
 
 /**
  * nexus-agents/consensus - Consensus Engine
