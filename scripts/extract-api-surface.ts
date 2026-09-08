@@ -56,6 +56,39 @@ interface SurfaceEntry {
 }
 
 /**
+ * Removes comments written INSIDE a printed type.
+ *
+ * A comment before a declaration is leading trivia and never reaches the
+ * printed text; one written BETWEEN a union's members does, so editing it
+ * registered as an API-surface change (#5972). PR #5970 was comment-only — it
+ * corrected a note inside `VoteResult` — and the gate reported a REMOVED and
+ * an ADDED declaration whose unions were identical and whose prose differed.
+ *
+ * This is the third instance of the failure this file already documents twice
+ * (absolute paths, member order): a checker crying wolf on untouched code
+ * teaches people to regenerate the snapshot without reading it, and the
+ * correct response to a spurious diff is the same action as for a real break.
+ *
+ * Runs BEFORE the newline collapse in {@link normalizeTypeText}, because `//`
+ * runs to end of line — stripping after the collapse would eat every union
+ * member that followed a comment. There is a test for exactly that.
+ *
+ * Declaration-level JSDoc was never in the snapshot — it is leading trivia, so
+ * `@deprecated` had zero occurrences even after #5966 added one to a published
+ * field. MEMBER-level JSDoc inside a type literal WAS captured, and goes too;
+ * that is deliberate. A doc comment on a member describes it, it does not
+ * change its shape, and a reviewer reading this snapshot is checking shapes.
+ *
+ * Removing them also repairs the member sort, which comments were quietly
+ * defeating: a member written as `/** why *\/ readonly reason: …` sorted under
+ * `/` rather than under `reason`, so its position moved whenever the comment
+ * did. Two normalisations that were fighting each other.
+ */
+function stripInlineComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
+}
+
+/**
  * Strips machine-specific absolute paths out of printed type text.
  *
  * ts-morph prints an imported type as `import("/abs/path/to/module").Thing`.
@@ -66,7 +99,7 @@ interface SurfaceEntry {
  */
 function normalizeTypeText(text: string): string {
   return sortTypeMembers(
-    text
+    stripInlineComments(text)
       .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
       // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
       // format uses "starts at column 0" to mean "new symbol" — a wrapped type
@@ -74,6 +107,13 @@ function normalizeTypeText(text: string): string {
       // symbols. Two were a bare `}`, so they collided and silently swallowed
       // the members that followed.
       .replace(/\s*\n\s*/g, ' ')
+      // Collapse runs of spaces left behind by a removed block comment
+      // (#5972): `} /* why */ |` became `}  |`, a whitespace-only diff that
+      // would defeat the whole point of stripping. Safe because a printed
+      // type's internal spacing carries no meaning — the only thing that could
+      // is a string-literal type containing consecutive spaces, and the
+      // snapshot has zero of those.
+      .replace(/ {2,}/g, ' ')
       .trim()
   );
 }
