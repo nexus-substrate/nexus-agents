@@ -24,6 +24,31 @@ export interface ConfidenceInterval {
   readonly n: number;
   /** Standard error */
   readonly standardError: number;
+  /**
+   * Whether the interval was computed from data (#5760 item 3).
+   *
+   * `false` means the sample was empty and `lower`/`upper`/`estimate` carry no
+   * information — they are whatever the empty branch happened to return, not a
+   * result. Read this before reading the bounds.
+   *
+   * The bounds alone cannot say it. `meanConfidenceInterval([])` returned
+   * `lower === upper === 0` — the strongest possible precision claim, over no
+   * data. `proportionConfidenceInterval(0, 0)` returned `[0, 1]`, which is
+   * honest by luck rather than by construction: a proportion's domain happens
+   * to be bounded, so its uninformative interval is expressible, and a mean's
+   * is not. `calculateDifferenceCI` divided by `(total1 || 1)` and produced a
+   * finite interval from nothing at all.
+   *
+   * Named for the vocabulary this repo already uses for exactly this —
+   * `tokensMeasured`, `policyEvaluated`, `gapsMeasured`, `routerTypeMeasured`.
+   * REQUIRED rather than optional so the compiler names every producer;
+   * optional would let a new one stay silent, which is the state this removes.
+   *
+   * Ratified 5 of 6 approvers at supermajority (#5760). Infinity and NaN
+   * bounds were both rejected for the same reason: each serialises to `null`
+   * in JSON, turning a loud in-process signal into a silent persisted one.
+   */
+  readonly measured: boolean;
 }
 
 /**

@@ -434,3 +434,34 @@ describe('calculateDifferenceCI', () => {
     expect(ci.confidence).toBe(0.99);
   });
 });
+
+// ============================================================================
+// calculateDifferenceCI: a zero-total comparison is not measured (#5760)
+// ============================================================================
+
+describe('calculateDifferenceCI measured (#5760)', () => {
+  // `(total1 || 1)` keeps the arithmetic finite when a total is 0, which means
+  // a comparison over NO observations still produces a plausible-looking
+  // spread. The third producer of ConfidenceInterval, and the one the issue
+  // did not name — found by a voter reading the tree.
+
+  it('is not measured when either total is zero', () => {
+    expect(calculateDifferenceCI(0, 0, 0, 0, 0.95).measured).toBe(false);
+    expect(calculateDifferenceCI(0.5, 0.5, 10, 0, 0.95).measured).toBe(false);
+    expect(calculateDifferenceCI(0.5, 0.5, 0, 10, 0.95).measured).toBe(false);
+  });
+
+  it('is measured when both totals are positive', () => {
+    expect(calculateDifferenceCI(0.5, 0.4, 100, 100, 0.95).measured).toBe(true);
+  });
+
+  it('still returns a finite interval, so the flag is what carries the caveat', () => {
+    // The interval is not withheld — a caller may legitimately want the
+    // difference of the point estimates. What must not happen is the SPREAD
+    // reading as if it were derived from data.
+    const ci = calculateDifferenceCI(0, 0, 0, 0, 0.95);
+    expect(Number.isFinite(ci.lower)).toBe(true);
+    expect(Number.isFinite(ci.upper)).toBe(true);
+    expect(ci.measured).toBe(false);
+  });
+});

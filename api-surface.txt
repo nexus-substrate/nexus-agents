@@ -1884,6 +1884,7 @@ InterfaceDeclaration ConfidenceInterval
   readonly confidence: number
   readonly estimate: number
   readonly lower: number
+  readonly measured: boolean
   readonly n: number
   readonly standardError: number
   readonly upper: number
