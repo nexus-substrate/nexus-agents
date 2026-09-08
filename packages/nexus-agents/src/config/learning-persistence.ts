@@ -11,6 +11,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getNexusDataDir } from './nexus-data-dir.js';
+import { parseBoolEnv } from './defaults-env.js';
 
 // ============================================================================
 // Path resolution (#2316: must read NEXUS_DATA_DIR at call time, not import)
@@ -106,10 +107,11 @@ const DIR_MODE = 0o700;
  * Only routing metadata is stored (model, success, duration, category).
  * No user prompts, API keys, or model outputs are persisted.
  *
- * Set NEXUS_PERSIST_LEARNING=false to disable.
+ * Set NEXUS_PERSIST_LEARNING to `false`/`0` to disable — the one accept-set
+ * every NEXUS_* boolean shares (#5464, wave 2 of #5155).
  */
 export function isPersistenceEnabled(): boolean {
-  return process.env['NEXUS_PERSIST_LEARNING'] !== 'false';
+  return parseBoolEnv('NEXUS_PERSIST_LEARNING', true);
 }
 
 /** Ensure the learning data directory exists. */

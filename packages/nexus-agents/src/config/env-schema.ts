@@ -121,7 +121,7 @@ const NexusEnvSchema = z.object({
     .optional(),
 
   // --- Features ---
-  NEXUS_PERSIST_LEARNING: boolStr.optional(),
+  NEXUS_PERSIST_LEARNING: boolLooseStr.optional(),
   NEXUS_REFLECTIVE_MEMORY: z.enum(['true', 'false', 'shadow']).optional(),
   NEXUS_EVENTBUS_ENABLED: boolStr.optional(),
   // NEXUS_EVENTBUS_MAX_HISTORY removed in #2977 — silent no-op (no production reader).
@@ -133,7 +133,7 @@ const NexusEnvSchema = z.object({
   // report it as an UNKNOWN NEXUS_* var, typo suggestion and all.
   NEXUS_DATA_DIR: z.string().optional(),
   // `0` opts out of the per-repo data dir (epic #2872; default ON).
-  NEXUS_REPO_PREFERRED: z.enum(['0', '1']).optional(),
+  NEXUS_REPO_PREFERRED: boolLooseStr.optional(),
   // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
   // resolves to `<dataDir>/tmp`; set it to relocate scratch off the repo.
   NEXUS_TMPDIR: z.string().optional(),
@@ -174,16 +174,16 @@ const NexusEnvSchema = z.object({
   // evidence (#4677). Off by default: fixing the confidence floor made the
   // enrichment gate reachable for the first time, and measurement put that at
   // ~60% of realistic goals — one LLM call each. Opt in deliberately.
-  NEXUS_LLM_CLASSIFICATION: z.enum(['0', '1']).optional(),
+  NEXUS_LLM_CLASSIFICATION: boolLooseStr.optional(),
   // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
-  NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
+  NEXUS_META_SHADOW_TRAIN: boolLooseStr.optional(),
   // Resolve a concrete model from the difficulty tier at route time (#3394,
   // isRouteModelSelectionEnabled); off by default. Registered here in #4197 —
   // the reader predates this schema entry.
-  NEXUS_ROUTE_MODEL_SELECTION: boolStr.optional(),
+  NEXUS_ROUTE_MODEL_SELECTION: boolLooseStr.optional(),
   // Record would-be tier model selections (shadow) + join them with outcomes for
   // the offline flip eval (#4197, isRouteModelShadowEnabled); off by default.
-  NEXUS_ROUTE_MODEL_SHADOW: z.enum(['0', '1']).optional(),
+  NEXUS_ROUTE_MODEL_SHADOW: boolLooseStr.optional(),
   // Async job-result reader source (#3090/#3693): `task_state` prefers/unions the
   // Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the
   // sidecar→Stage-2 migration (epic #2631).

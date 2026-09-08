@@ -219,7 +219,7 @@ export function _resetActiveWorkspaceRootForTests(): void {
  * `getNexusDataDir()` (homedir).
  */
 export function getNexusRepoDir(): string | null {
-  if (process.env['NEXUS_REPO_PREFERRED'] === '0') return null;
+  if (!parseBoolEnv('NEXUS_REPO_PREFERRED', true)) return null;
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') return null;
   if (detectSandbox().active) return null;

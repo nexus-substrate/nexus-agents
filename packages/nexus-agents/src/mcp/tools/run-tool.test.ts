@@ -320,6 +320,17 @@ describe('shadow-train gating (NEXUS_META_SHADOW_TRAIN, #3593)', () => {
     expect(isShadowTrainEnabled()).toBe(false);
   });
 
+  // One accept-set for every NEXUS_* boolean (#5464, wave 2 of #5155).
+  it.each(['1', 'true', 'TRUE'])('treats %s as ON', (value) => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', value);
+    expect(isShadowTrainEnabled()).toBe(true);
+  });
+
+  it.each(['0', 'false', 'yes'])('treats %s as OFF', (value) => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', value);
+    expect(isShadowTrainEnabled()).toBe(false);
+  });
+
   it('flag-off: a dispatch writes NO meta-outcomes file', async () => {
     vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '');
     const executors: StrategyExecutorMap = {
