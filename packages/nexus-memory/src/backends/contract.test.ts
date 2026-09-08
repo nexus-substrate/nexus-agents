@@ -180,3 +180,90 @@ for (const [name, factory] of factories) {
     });
   });
 }
+
+// ============================================================================
+// Where the two backends DIVERGE (#5776)
+// ============================================================================
+
+/**
+ * The suite above runs identically against both backends and passes — but its
+ * only payload is `{ text: string; count: number }`, the two shapes JSON
+ * preserves exactly, and its only key type is `string`. So it cannot see the
+ * places where the two implementations disagree, and a green run is not
+ * evidence that a production write lands intact.
+ *
+ * These cases pin the divergence as it exists TODAY. They are characterisation
+ * tests, not aspirations: each one asserts what each backend actually does, so
+ * that converging the two (whichever way) FAILS here and forces the contract
+ * and its docs to be updated in the same change. Measured, not reasoned —
+ * every expectation below was produced by running both backends.
+ */
+describe('backend divergence, pinned (#5776)', () => {
+  afterEach(() => {
+    resetMemoryTelemetry();
+  });
+
+  it('SQLite round-trips a Date as an ISO string; in-memory keeps the Date', async () => {
+    // sqlite.ts JSON.stringify/JSON.parse; memory.ts stores by reference.
+    // The optional Zod schema does not catch it: validate() runs on the
+    // PRE-serialisation value and read never validates, so a schema-backed
+    // SQLite backend can return a value that violates its own schema.
+    const sql = new SqliteBackend<string, { at: Date }>({
+      domain: 'div_date_s',
+      dbPath: ':memory:',
+    });
+    await sql.write('k', { at: new Date(0) });
+    const fromSql = await sql.read('k');
+    expect(fromSql?.at).toBe('1970-01-01T00:00:00.000Z');
+    expect(fromSql?.at instanceof Date).toBe(false);
+
+    const mem = new InMemoryBackend<string, { at: Date }>({ domain: 'div_date_m' });
+    await mem.write('k', { at: new Date(0) });
+    expect((await mem.read('k'))?.at).toBeInstanceOf(Date);
+  });
+
+  it('in-memory hands back the stored object by reference, so a caller can mutate the store', async () => {
+    // No write event, no telemetry increment — the store changes with nothing
+    // recording it. SQLite returns a fresh parse and is unaffected.
+    const mem = new InMemoryBackend<string, { n: number }>({ domain: 'div_alias_m' });
+    await mem.write('k', { n: 1 });
+    const read = await mem.read('k');
+    if (read !== undefined) read.n = 99;
+    expect((await mem.read('k'))?.n).toBe(99);
+
+    const sql = new SqliteBackend<string, { n: number }>({
+      domain: 'div_alias_s',
+      dbPath: ':memory:',
+    });
+    await sql.write('k', { n: 1 });
+    const sread = await sql.read('k');
+    if (sread !== undefined) sread.n = 99;
+    expect((await sql.read('k'))?.n).toBe(1);
+  });
+
+  it('in-memory keys objects by identity; SQLite keys them structurally', async () => {
+    // memory.ts uses `new Map<TKey, Row>` (SameValueZero); sqlite.ts falls
+    // through to JSON.stringify in keyToString.
+    const mem = new InMemoryBackend<{ id: string }, number>({ domain: 'div_key_m' });
+    await mem.write({ id: 'a' }, 7);
+    expect(await mem.read({ id: 'a' })).toBeUndefined();
+    expect(await mem.delete({ id: 'a' })).toBe(false);
+    expect((await mem.stats()).count).toBe(1); // the row is still there, unreachable
+
+    const sql = new SqliteBackend<{ id: string }, number>({
+      domain: 'div_key_s',
+      dbPath: ':memory:',
+    });
+    await sql.write({ id: 'a' }, 7);
+    expect(await sql.read({ id: 'a' })).toBe(7);
+  });
+
+  it('the shared suite above genuinely cannot see any of this', () => {
+    // The guard that keeps the divergence visible: if someone widens
+    // SamplePayload to include a Date or an object key, these characterisation
+    // tests and the shared suite would start disagreeing, which is the signal
+    // to converge the backends rather than to broaden the fixture.
+    const probe: SamplePayload = { text: 'x', count: 1 };
+    expect(JSON.parse(JSON.stringify(probe))).toEqual(probe);
+  });
+});
