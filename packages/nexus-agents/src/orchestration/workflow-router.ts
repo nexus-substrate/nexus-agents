@@ -121,6 +121,14 @@ function buildDecision(input: DecisionInput): RoutingDecision {
   const base: RoutingDecision = {
     pattern: input.result.pattern,
     reasoning: input.result.reasoning,
+    // NOT a measurement (#5957, same call as #5119): every rule in this file
+    // returns an authored literal, and this copies it through untouched. No
+    // field of `input.analysis` reaches it, so two tasks claimed by the same
+    // rule always report the same number. It is a source prior on the RULE.
+    // It leaves this module — meta-orchestrator-routing.ts forwards it to
+    // MetaDecision, and run-tool.ts returns it to MCP callers as
+    // RunResponse.confidence — so deriving it from an observation means
+    // updating those declarations too. `workflow-router.test.ts` pins this.
     confidence: input.result.confidence,
     matchedRules: input.matchedRules,
     alternatives: input.alternatives,

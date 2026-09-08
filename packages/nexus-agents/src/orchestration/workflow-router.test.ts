@@ -222,6 +222,31 @@ describe('decision metadata', () => {
     expect(decision.confidence).toBeGreaterThanOrEqual(0);
     expect(decision.confidence).toBeLessThanOrEqual(1);
   });
+
+  // #5957 — characterization, not an aspiration. `confidence` is a per-rule
+  // PRIOR: whichever rule claims the task hands back its authored literal,
+  // and nothing the analyzer observed (ambiguity, matched-rule count,
+  // complexity within the rule's band) can move it. Two tasks that differ in
+  // every way a reader would expect to matter report the same number.
+  //
+  // If someone derives it from an observation, this test SHOULD fail — and
+  // the three declarations that call it "Confidence in the selection (0-1)"
+  // (workflow-router-types.ts, meta-orchestrator.ts x2) plus RunResponse in
+  // mcp/tools/run-tool.ts must be updated in the same change, because MCP
+  // callers read that number as a score.
+  it('confidence is a per-rule prior — no observation moves it', () => {
+    const terse = route({ description: 'do it', requiresConsensus: true });
+    const detailed = route({
+      description:
+        'Refactor the distributed transaction coordinator to use two-phase commit ' +
+        'across the shard router, with a compatibility shim for in-flight sagas',
+      requiresConsensus: true,
+    });
+
+    // Precondition: same rule claimed both, or the comparison proves nothing.
+    expect(terse.pattern).toBe(detailed.pattern);
+    expect(terse.confidence).toBe(detailed.confidence);
+  });
 });
 
 // ============================================================================
