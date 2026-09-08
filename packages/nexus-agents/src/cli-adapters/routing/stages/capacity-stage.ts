@@ -263,6 +263,12 @@ export class CapacityFilterStage implements IRouterStage {
    * `maxDecisionTimeMs` is declared but not enforced anywhere, so without this a
    * single hanging adapter would stall every routing decision. A timed-out probe
    * rejects, which lands in the `unmeasured` branch — never `exhausted`.
+   *
+   * That unenforced field is now deprecated and slated for removal (#5918,
+   * #5963). This race is not a stopgap for it: a per-stage bound on the one
+   * call that can actually hang is the correct scope, and it outlives the
+   * field. When `maxDecisionTimeMs` goes, delete the reference above, not
+   * this timeout.
    */
   private async probeWithTimeout(adapter: ICliAdapter): Promise<CapacityStatus> {
     let timer: ReturnType<typeof setTimeout> | undefined;

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- asserts the schema default for maxDecisionTimeMs, which is deprecated but must keep resolving through the cycle (#5918). */
 /**
  * nexus-agents/cli-adapters - CompositeRouter Tests
  *

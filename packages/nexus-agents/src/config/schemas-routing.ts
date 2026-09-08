@@ -246,7 +246,12 @@ export const RoutingConfigSchema = z.object({
     .object({
       /** Exploration parameter (higher = more exploration) */
       alpha: z.number().positive().default(1.0),
-      /** Maximum routing decision time in milliseconds */
+      /**
+       * @deprecated Declared but NEVER ENFORCED — nothing on the routing path
+       * compares anything to it (#5918). Setting it does not bound routing;
+       * `adaptRoutingConfig` warns once when it is set. Scheduled for removal
+       * in the next major (#5963).
+       */
       maxDecisionTimeMs: z.number().positive().default(50),
     })
     .optional(),

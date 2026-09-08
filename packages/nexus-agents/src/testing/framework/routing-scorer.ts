@@ -19,8 +19,14 @@ import type {
  * Configuration for routing scorer.
  */
 export interface RoutingScorerConfig {
-  /** Maximum acceptable decision time in ms (default: 100) */
-  readonly maxDecisionTimeMs: number;
+  /**
+   * The latency at or above which the decision-time component scores zero
+   * (default: 100). A GRADING threshold applied after the fact — it bounds
+   * nothing at route time. Named `maxDecisionTimeMs` until #5918: sharing the
+   * name with the router's unenforced config field made a repo-wide grep for
+   * that field return this file and read as though routing were bounded.
+   */
+  readonly latencyBudgetMs: number;
   /** Weight for preferred CLI match (default: 0.4) */
   readonly preferredMatchWeight: number;
   /** Weight for reasonable choice (default: 0.3) */
@@ -35,7 +41,7 @@ export interface RoutingScorerConfig {
  * Default routing scorer configuration.
  */
 export const DEFAULT_ROUTING_SCORER_CONFIG: RoutingScorerConfig = {
-  maxDecisionTimeMs: 100,
+  latencyBudgetMs: 100,
   preferredMatchWeight: 0.4,
   reasonableChoiceWeight: 0.3,
   confidenceWeight: 0.2,
@@ -249,12 +255,12 @@ export class RoutingScorer {
       return 1;
     }
 
-    if (decisionTimeMs >= this.config.maxDecisionTimeMs) {
+    if (decisionTimeMs >= this.config.latencyBudgetMs) {
       return 0;
     }
 
     // Linear decay from 1 to 0 as time approaches max
-    return 1 - decisionTimeMs / this.config.maxDecisionTimeMs;
+    return 1 - decisionTimeMs / this.config.latencyBudgetMs;
   }
 
   /**
