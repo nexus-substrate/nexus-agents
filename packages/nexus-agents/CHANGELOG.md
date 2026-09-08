@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.46.8
+
+### Patch Changes
+
+- [#5975](https://github.com/nexus-substrate/nexus-agents/pull/5975) [`d9a5640`](https://github.com/nexus-substrate/nexus-agents/commit/d9a5640bb00eeec55afeb973edec12c579c46000) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removes `createAutoTaskTracker` ([#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771) item 3). It had zero callers including
+  tests, and the one production site with adjacent behaviour deliberately does
+  something different — it auto-detects only when the backend choice is the `json`
+  default AND a repo is present, where the helper detected unconditionally.
+  `createTaskTracker` and `detectBackend`, which that site uses directly, are
+  untouched. Not in the published surface, so non-breaking.
+
 ## 8.46.7
 
 ### Patch Changes
