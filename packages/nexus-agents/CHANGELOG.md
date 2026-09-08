@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.46.11
+
+### Patch Changes
+
+- [#5986](https://github.com/nexus-substrate/nexus-agents/pull/5986) [`4c87fad`](https://github.com/nexus-substrate/nexus-agents/commit/4c87fada6d3bcc64a6e456163a2313b15a5e5472) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `TaskContract.analysis` is now derived from the task instead of asserted ([#5924](https://github.com/nexus-substrate/nexus-agents/issues/5924)).
+  `orchestrate` recorded every task as
+  `{ complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 }` and
+  `delegate_to_model` every task as
+  `{ complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 }` — a fixed
+  score no task could move. Both entry points now call `SharedTaskAnalyzer`, which
+  CLAUDE.md already names canonical for this and which produces exactly these three
+  fields synchronously.
+
 ## 8.46.10
 
 ### Patch Changes
