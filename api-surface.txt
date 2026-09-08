@@ -7601,6 +7601,7 @@ InterfaceDeclaration RoutingDecisionRow
   reason: string
   request_id: string | null
   router_type: string
+  router_type_measured?: number | null | undefined
   selected_model: string
   task_profile: string
   timestamp: number
@@ -8661,6 +8662,7 @@ InterfaceDeclaration StoredRoutingDecision
   readonly reason: string
   readonly requestId?: string | undefined
   readonly routerType: RouterType
+  readonly routerTypeMeasured?: boolean | undefined
   readonly selectedModel: "claude" | "gemini" | "codex" | "opencode"
   readonly taskProfile: Record<string, unknown>
   readonly timestamp: string

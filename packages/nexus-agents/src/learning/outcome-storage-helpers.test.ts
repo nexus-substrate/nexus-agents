@@ -13,6 +13,7 @@ import type {
 import { OutcomeStorageError } from './outcome-storage-types.js';
 import {
   createDecisionsTable,
+  migrateDecisionsTable,
   createOutcomesTable,
   createRewardsTable,
   createIndexes,
@@ -74,10 +75,13 @@ function makeStatsRow(overrides?: Partial<ModelStatsRow>): ModelStatsRow {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeMockDb() {
+function makeMockDb(existingColumns: readonly string[] = ['router_type_measured']) {
+  // `prepare` has to answer the PRAGMA table_info that migrateDecisionsTable
+  // asks (#5915); by default the column is already present, so createDecisions
+  // Table's own tests see no ALTER.
   return {
     exec: vi.fn(),
-    prepare: vi.fn(),
+    prepare: vi.fn(() => ({ all: vi.fn(() => existingColumns.map((name) => ({ name }))) })),
   } as unknown as ISQLiteDatabase;
 }
 
@@ -540,9 +544,13 @@ describe('SQL constants', () => {
       }
     });
 
-    it('has 10 parameter placeholders', () => {
+    it('has 11 parameter placeholders', () => {
+      // 10 until #5915 added router_type_measured. The count is asserted
+      // because the INSERT is POSITIONAL: a column added to the SQL without a
+      // matching argument, or vice versa, fails at runtime on a shape the
+      // types cannot see.
       const matches = INSERT_DECISION_SQL.match(/\?/g);
-      expect(matches).toHaveLength(10);
+      expect(matches).toHaveLength(11);
     });
   });
 
@@ -756,5 +764,86 @@ describe('wrapStorageError', () => {
     if (!result.ok) {
       expect(result.error.cause).toBeInstanceOf(Error);
     }
+  });
+});
+
+// ============================================================================
+// router_type_measured column + migration (#5915)
+// ============================================================================
+
+describe('migrateDecisionsTable (#5915)', () => {
+  // `routing_decisions` is created with CREATE TABLE IF NOT EXISTS and the
+  // module has no migration framework, so adding the column to the CREATE
+  // helps only a fresh database — an existing one keeps the old shape and the
+  // positional INSERT then fails on the column count. This guarded ALTER is
+  // what makes the column real for databases that already exist.
+
+  it('adds the column when it is missing', () => {
+    const db = makeMockDb(['id', 'router_type']);
+    migrateDecisionsTable(db);
+    const statements = (db.exec as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+    expect(
+      statements.some((sql) =>
+        /ALTER TABLE routing_decisions ADD COLUMN router_type_measured/.test(sql)
+      )
+    ).toBe(true);
+  });
+
+  it('does nothing when the column is already there', () => {
+    const db = makeMockDb(['id', 'router_type', 'router_type_measured']);
+    migrateDecisionsTable(db);
+    expect(db.exec).not.toHaveBeenCalled();
+  });
+
+  it('decides by inspection, not by catching a failed ALTER', () => {
+    // A try/catch around the ALTER would swallow a REAL failure as "already
+    // migrated". The PRAGMA is asked first, so nothing is being suppressed.
+    const db = makeMockDb(['id']);
+    migrateDecisionsTable(db);
+    expect(db.prepare).toHaveBeenCalledWith('PRAGMA table_info(routing_decisions)');
+  });
+
+  it('createDecisionsTable RUNS the migration on an existing database', () => {
+    // The seam. Without this, deleting the `migrateDecisionsTable(db)` call
+    // from createDecisionsTable passes every other test in this file — the
+    // migration is tested directly, so nothing notices it stopped being
+    // invoked, and every existing database silently keeps the old shape.
+    const db = makeMockDb(['id', 'router_type']);
+    createDecisionsTable(db);
+    const statements = (db.exec as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+    expect(statements.some((sql) => sql.includes('ADD COLUMN router_type_measured'))).toBe(true);
+  });
+
+  it('CREATE TABLE carries the column for a fresh database', () => {
+    const db = makeMockDb();
+    createDecisionsTable(db);
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
+    expect(sql).toContain('router_type_measured INTEGER');
+  });
+});
+
+describe('rowToDecision router_type_measured mapping (#5915)', () => {
+  it('reads 1 as measured', () => {
+    expect(rowToDecision(makeDecisionRow({ router_type_measured: 1 })).routerTypeMeasured).toBe(
+      true
+    );
+  });
+
+  it.each([
+    ['0 (written unmeasured)', 0],
+    ['NULL (column exists, never written)', null],
+  ])('reads %s as UNMEASURED', (_label, value) => {
+    expect(rowToDecision(makeDecisionRow({ router_type_measured: value })).routerTypeMeasured).toBe(
+      false
+    );
+  });
+
+  it('reads an ABSENT column as unmeasured, not as measured', () => {
+    // The legacy row: written before the column existed, so SQLite returns no
+    // key at all. Defaulting this to measured would re-create the exact
+    // inflation #5812 removed — on the history rather than the live stats.
+    const row = makeDecisionRow();
+    delete (row as { router_type_measured?: number | null }).router_type_measured;
+    expect(rowToDecision(row).routerTypeMeasured).toBe(false);
   });
 });

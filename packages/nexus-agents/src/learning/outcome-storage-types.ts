@@ -56,6 +56,13 @@ export interface StoredRoutingDecision {
   readonly reason: string;
   readonly taskProfile: Record<string, unknown>;
   readonly requestId?: string | undefined; // Integration with #185 RequestContext
+  /**
+   * Whether a router actually attributed this decision (#5915, closing the
+   * third step of #5812). Absent on a decision read back from a row written
+   * before the column existed, and absence reads as UNMEASURED everywhere —
+   * a legacy row carries no more evidence than the fallback does.
+   */
+  readonly routerTypeMeasured?: boolean | undefined;
 }
 
 /**
@@ -117,6 +124,19 @@ export interface RoutingDecisionRow {
   reason: string;
   task_profile: string;
   request_id: string | null;
+  /**
+   * 1 when a router actually attributed the decision, 0 when it did not, NULL
+   * on a row written before #5915 added the column, and ABSENT when the row
+   * came from a database the migration has not touched — SQLite simply does
+   * not return a key for a column that is not there.
+   *
+   * All three of NULL, 0 and absent read as UNMEASURED. A legacy row carries
+   * no more evidence than the fallback does, which is the rule
+   * `isRouterTypeMeasured` already applies (#5812). Optional here because that
+   * is what the database can actually hand back, not to let a writer stay
+   * silent — the INSERT is positional and always supplies it.
+   */
+  router_type_measured?: number | null;
 }
 
 /**
