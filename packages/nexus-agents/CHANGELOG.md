@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.46.10
+
+### Patch Changes
+
+- [#5984](https://github.com/nexus-substrate/nexus-agents/pull/5984) [`f224c95`](https://github.com/nexus-substrate/nexus-agents/commit/f224c95b8267dc35af056fab790ede5aa51a0076) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `TaskContract.capabilityGaps` now carries `gapsMeasured` ([#5919](https://github.com/nexus-substrate/nexus-agents/issues/5919)). Every contract
+  built by `orchestrate` and `delegate_to_model` declared `allSatisfied: true`
+  from a detector that never ran — and `gaps: []` with an empty `available` is
+  byte-identical whether a detector found nothing or was never called. The new
+  required boolean is what tells them apart. Behaviour is otherwise unchanged;
+  wiring the real detector in is tracked separately.
+
 ## 8.46.9
 
 ### Patch Changes
