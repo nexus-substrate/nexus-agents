@@ -607,7 +607,7 @@ function shouldSkipAdapterDetection(config: WorkflowEngineFactoryConfig | undefi
 function tryAutoDetectAdapter(logger: ILogger): IModelAdapter | undefined {
   try {
     logger.info('Auto-detecting model adapter for workflow execution');
-    const registry = getGlobalRegistry({ logger });
+    const registry = getGlobalRegistry();
     const adapter = registry.getDefault();
     logger.info('Using unified registry default adapter');
     return adapter;
