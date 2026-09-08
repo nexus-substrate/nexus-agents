@@ -97,7 +97,11 @@ export interface ColdArchiveSchema<TValue> {
 }
 
 /**
- * Telemetry event emitted on every backend operation.
+ * Telemetry event emitted on every backend operation — including one that
+ * FAILED. Until #5965 the record call sat after the work, so a thrown
+ * validation error, constraint violation or closed-backend call produced no
+ * event and no counter: a domain rejecting 100% of its writes was
+ * indistinguishable from an idle one, while this comment said "every".
  *
  * Counter mode (default): backends increment per-`{domain, op}` counters
  * and emit a single aggregate event per logical operation.
@@ -111,6 +115,12 @@ export interface MemoryEvent {
   readonly op: 'read' | 'write' | 'query' | 'delete' | 'stats';
   readonly cli?: CliName;
   readonly durationMs: number;
+  /**
+   * Present exactly when the operation threw (#5965). The message only —
+   * never a stack, and never the value that failed validation, which could
+   * carry payload content into a log.
+   */
+  readonly error?: string;
   /** True for `read` ops that found a row, `query` ops with non-empty result, `delete` ops that found a target. */
   readonly hit?: boolean;
   /** Populated only in audit mode. Truncated to ~120 chars. */
@@ -131,7 +141,13 @@ export type MemoryEventListener = (event: MemoryEvent) => void;
 export interface MemoryEventCounters {
   readonly domain: string;
   readonly op: MemoryEvent['op'];
+  /**
+   * ATTEMPTS, not successes (#5965). Counted successes only until then, so
+   * `count` and this type's own docs disagreed about what it measured.
+   */
   readonly count: number;
+  /** The subset of `count` that threw. `count - errorCount` is the successes. */
+  readonly errorCount: number;
   readonly hitCount: number;
   readonly totalDurationMs: number;
   readonly maxDurationMs: number;
