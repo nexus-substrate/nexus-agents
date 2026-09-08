@@ -573,30 +573,34 @@ describe('stampOnlyExemptFiles (#5944)', () => {
   // hard direction. This compares whole file texts with the stamp line
   // normalised, so "nothing else changed" is a byte equality, not an inference.
 
-  const STAMPED = (date: string): string =>
-    ['# Title', '', 'Body line.', '', `_Governance Version: ${date}_`, ''].join('\n');
+  // Digest-shaped since #5943 — the stamp is a content digest, not a date.
+  const STAMPED = (digest: string): string =>
+    ['# Title', '', 'Body line.', '', `_Governance Version: ${digest}_`, ''].join('\n');
 
-  it('exempts a file whose only difference is the stamp date', () => {
-    expect(isStampOnlyChange(STAMPED('2026-09-01'), STAMPED('2026-09-07'))).toBe(true);
+  it('exempts a file whose only difference is the stamp digest', () => {
+    expect(isStampOnlyChange(STAMPED('aaaaaaaaaaaa'), STAMPED('bbbbbbbbbbbb'))).toBe(true);
   });
 
   it('does NOT exempt the stamp line plus any other changed line', () => {
     // The case that matters. A bypass that cannot fail is worse than no bypass.
-    const before = STAMPED('2026-09-01');
-    const after = STAMPED('2026-09-07').replace('Body line.', 'Body line, quietly edited.');
+    const before = STAMPED('aaaaaaaaaaaa');
+    const after = STAMPED('bbbbbbbbbbbb').replace('Body line.', 'Body line, quietly edited.');
     expect(isStampOnlyChange(before, after)).toBe(false);
   });
 
   it('does NOT exempt a hand-edited stamp that misses the generated shape', () => {
-    const before = STAMPED('2026-09-01');
-    const after = before.replace('_Governance Version: 2026-09-01_', '_Governance Version: soon_');
+    const before = STAMPED('aaaaaaaaaaaa');
+    const after = before.replace(
+      '_Governance Version: aaaaaaaaaaaa_',
+      '_Governance Version: soon_'
+    );
     expect(isStampOnlyChange(before, after)).toBe(false);
   });
 
   it('does NOT exempt an added or removed stamp line', () => {
-    const before = STAMPED('2026-09-01');
+    const before = STAMPED('aaaaaaaaaaaa');
     expect(
-      isStampOnlyChange(before, before.replace('_Governance Version: 2026-09-01_\n', ''))
+      isStampOnlyChange(before, before.replace('_Governance Version: aaaaaaaaaaaa_\n', ''))
     ).toBe(false);
   });
 
@@ -604,12 +608,12 @@ describe('stampOnlyExemptFiles (#5944)', () => {
     // A file the changed-list named but whose content is identical means the
     // gate's two inputs disagree — a rename, a mode change, or a bad read.
     // Absence of a difference is not evidence of a stamp-only difference.
-    expect(isStampOnlyChange(STAMPED('2026-09-07'), STAMPED('2026-09-07'))).toBe(false);
+    expect(isStampOnlyChange(STAMPED('bbbbbbbbbbbb'), STAMPED('bbbbbbbbbbbb'))).toBe(false);
   });
 
   it('fails closed when either side is unreadable', () => {
-    expect(isStampOnlyChange(undefined, STAMPED('2026-09-07'))).toBe(false);
-    expect(isStampOnlyChange(STAMPED('2026-09-01'), undefined)).toBe(false);
+    expect(isStampOnlyChange(undefined, STAMPED('bbbbbbbbbbbb'))).toBe(false);
+    expect(isStampOnlyChange(STAMPED('aaaaaaaaaaaa'), undefined)).toBe(false);
     expect(isStampOnlyChange(undefined, undefined)).toBe(false);
   });
 
@@ -621,8 +625,8 @@ describe('stampOnlyExemptFiles (#5944)', () => {
     // different change, so it passed even with the allowlist deleted.
     const exempt = stampOnlyExemptFiles(
       ['CLAUDE.md', 'AGENTS.md', '.rules/governance.md', 'src/audit/hash-chain.ts'],
-      () => STAMPED('2026-09-01'),
-      () => STAMPED('2026-09-07')
+      () => STAMPED('aaaaaaaaaaaa'),
+      () => STAMPED('bbbbbbbbbbbb')
     );
     expect(exempt).toEqual(['CLAUDE.md', 'AGENTS.md']);
   });

@@ -19,8 +19,8 @@
 
 /* eslint-disable no-console */
 
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,6 +40,7 @@ import {
 } from './check-memory-contract.js';
 import { checkStrategyManifestRegistry } from './check-strategy-manifest-drift.js';
 import { checkAuthorityTierDeclarations } from './check-authority-tier-drift.js';
+import { GOVERNANCE_STAMP_DIGEST_LENGTH } from './governance-stamp-exemption.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
 // #3334: docs/ENTRYPOINTS.md carries TWO MCP-tool enumerations (a prose
@@ -1086,35 +1087,55 @@ export const GOVERNANCE_STAMP_SOURCES: readonly string[] = [
   SKILLS_INDEX_PATH,
 ];
 
-function getGovernanceSourceDate(): string {
-  const sources = GOVERNANCE_STAMP_SOURCES;
-  let latest = '';
-  for (const path of sources) {
+/**
+ * The governance stamp: a digest of the four sources' CONTENT (#5943).
+ *
+ * It used to be `git log -1 --format=%cs` over those sources — the committer
+ * date, which GitHub's squash button rewrites to the merge moment. A PR stamped
+ * on day 1 and merged on day 2 left main with a stamp the injector would no
+ * longer compute, so `docs-check.yml`'s idempotency step (`inject` then
+ * `git diff --exit-code CLAUDE.md`, a WHOLE-LINE comparison) went red on the
+ * next PR that touched a stamp source — a PR that did not cause it. Author date
+ * (`%as`) is not a fix either; measured, GitHub rewrites that too.
+ *
+ * A digest is what the stamp was always trying to say — "this block corresponds
+ * to this state of its sources". A date only ever approximated that, and the
+ * squash rewrite is the proof the approximation could disagree with the thing it
+ * stood for. Ratified 6-1 at supermajority with `absolute_quorum`, option (a)
+ * taking 5 of 6 approvers.
+ *
+ * Reads NO git history, so no rewrite can move it. Content is normalised
+ * (CRLF and trailing whitespace) so a checkout difference cannot churn the
+ * stamp. A missing source contributes its absence rather than being skipped:
+ * a source that disappears MUST change the digest, or removing one would be
+ * invisible.
+ */
+function getGovernanceStamp(): string {
+  const hash = createHash('sha256');
+  for (const path of GOVERNANCE_STAMP_SOURCES) {
+    hash.update(path);
+    hash.update('\0');
+    let content = '<absent>';
     try {
-      const out = execSync(`git log -1 --format=%cs -- "${path}"`, {
-        encoding: 'utf-8',
-        cwd: ROOT,
-      }).trim();
-      if (out !== '' && out > latest) latest = out;
+      // `path` is ALREADY absolute — the GOVERNANCE_STAMP_SOURCES entries are
+      // built with join(ROOT, …). An earlier version of this joined ROOT again,
+      // which resolved to nothing, sent every source down the catch below, and
+      // produced the SAME digest no matter what any source contained: a
+      // constant wearing the name of a measurement, in the very function
+      // written to stop that. Caught by the "changes when a source changes"
+      // test, which is why that test does not recompute the hash itself.
+      content = readFileSync(path, 'utf-8').replace(/\r\n/g, '\n').trimEnd();
     } catch {
-      // Source missing or git unavailable — skip; another source will fill in.
+      // Absent sources hash as the sentinel above, never as "skip".
     }
+    hash.update(content);
+    hash.update('\0');
   }
-  if (latest === '') {
-    // Fallback (fresh clone, shallow CI, etc.): use today's date in ET.
-    const now = new Date();
-    const etOffset = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const etDate = new Date(etOffset);
-    const y = etDate.getFullYear();
-    const m = String(etDate.getMonth() + 1).padStart(2, '0');
-    const d = String(etDate.getDate()).padStart(2, '0');
-    return `${String(y)}-${m}-${d}`;
-  }
-  return latest;
+  return hash.digest('hex').slice(0, GOVERNANCE_STAMP_DIGEST_LENGTH);
 }
 
 function generateVersionSection(): string {
-  const timestamp = getGovernanceSourceDate();
+  const timestamp = getGovernanceStamp();
 
   return [
     MARKERS.versionStart,
@@ -2276,8 +2297,14 @@ function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
       // AGENTS.md is not one of the five sources `getGovernanceSourceDate()`
       // reads, so stamping it cannot move the stamp.
       path: AGENTS_MD_PATH,
-      pattern: /_Governance Version: \d{4}-\d{2}-\d{2}_/,
-      replacement: `_Governance Version: ${getGovernanceSourceDate()}_`,
+      // Matches ANY stamp body, not just the current one. The replacer's job
+      // is "find the stamp line and rewrite it", and pinning it to the current
+      // shape means it cannot convert a line written in the previous shape —
+      // which, on the #5943 migration itself, left AGENTS.md holding a stale
+      // date while CLAUDE.md moved to a digest. The strict shape belongs to
+      // the exemption predicate, which decides whether a diff is benign.
+      pattern: /_Governance Version: [^_\n]+_/,
+      replacement: `_Governance Version: ${getGovernanceStamp()}_`,
     },
     {
       path: AGENTS_MD_PATH,
