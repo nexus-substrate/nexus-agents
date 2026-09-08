@@ -49,7 +49,13 @@ export function buildBaseTaskContract(input: BaseTaskContractInput): TaskContrac
     capabilityGaps: {
       available: { tools: [], experts: [] },
       gaps: [],
+      // NOT a measurement (#5919). No detector runs here, so `allSatisfied`
+      // carries no information — `gapsMeasured` is what says so. Wiring
+      // `capability-gap-detector.ts` in is the follow-up; its cost on this hot
+      // path has not been measured, and asserting an unmeasured verdict is the
+      // part that had to stop now.
       allSatisfied: true,
+      gapsMeasured: false,
     },
     artifacts: [],
     metadata: { ...input.metadata },

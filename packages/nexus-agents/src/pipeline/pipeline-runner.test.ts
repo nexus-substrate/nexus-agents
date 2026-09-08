@@ -58,7 +58,13 @@ function makeTask(): TaskContract {
     analysis: { complexity: 'simple', taskType: 'general', ambiguityScore: 0 },
     constraints: { scope: [] },
     requiredCapabilities: { tools: [], experts: [] },
-    capabilityGaps: { available: { tools: [], experts: [] }, gaps: [], allSatisfied: true },
+    capabilityGaps: {
+      available: { tools: [], experts: [] },
+      gaps: [],
+      allSatisfied: true,
+      // No detector ran for this fixture either (#5919).
+      gapsMeasured: false,
+    },
     artifacts: [],
     metadata: {},
     createdAt: Date.now(),
