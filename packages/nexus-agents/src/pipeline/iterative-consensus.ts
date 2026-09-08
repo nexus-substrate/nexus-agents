@@ -210,7 +210,13 @@ async function runConsensusLoop(
 // Helpers
 // ============================================================================
 
-/** Check if a vote result is accepted (approved or conditional_go). */
+/**
+ * Check if a vote result is accepted (approved or conditional_go).
+ *
+ * The `conditional_go` disjunct cannot be true in production — nothing
+ * constructs that variant under any configuration (#5768). Removal is queued
+ * as #5969; until then this predicate can only ever answer its first half.
+ */
 function isVoteAccepted(vote: VoteResult): boolean {
   return vote.kind === 'approved' || vote.kind === 'conditional_go';
 }
