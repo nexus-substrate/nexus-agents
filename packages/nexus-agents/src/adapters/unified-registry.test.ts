@@ -12,12 +12,16 @@
  * (Source: Issue #1149, #1151)
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   UnifiedAdapterRegistry,
   createUnifiedRegistry,
   getGlobalRegistry,
   resetGlobalRegistry,
+  claimGlobalRegistry,
 } from './unified-registry.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
@@ -393,5 +397,56 @@ describe('UnifiedAdapterRegistry — routing re-resolves on read (#3185)', () =>
     const planningAfter = registry.getSnapshot().taskRouting.find((r) => r.category === 'planning');
     expect(planningAfter?.primaryModel).toBe('claude-opus-overlay');
     registry.dispose();
+  });
+});
+
+describe('the registry singleton has a designated composition root (#6012)', () => {
+  /** Files allowed to CLAIM the singleton (choose its logger), relative to src/. */
+  const COMPOSITION_ROOTS = ['cli.ts', 'mcp/server.ts'];
+
+  function sourceFiles(dir: string, acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) sourceFiles(full, acc);
+      else if (entry.name.endsWith('.ts') && !entry.name.includes('.test.')) acc.push(full);
+    }
+    return acc;
+  }
+
+  const srcRoot = (): string => join(dirname(fileURLToPath(import.meta.url)), '..');
+
+  it('nothing configures the singleton through getGlobalRegistry', () => {
+    // `getGlobalRegistry(config)` applies the config only on the FIRST call and
+    // warns on every later one. Nine sites passed `{ logger }`, so the logger on
+    // every adapter and circuit-breaker log line was set by whichever ran first,
+    // and the other eight warned on the SUCCESS path of `nexus-agents vote`.
+    // Claiming goes through `claimGlobalRegistry`, which is idempotent; this
+    // ratchet keeps the warning-producing form out of the tree entirely.
+    const offenders = sourceFiles(srcRoot())
+      .filter((f) => /getGlobalRegistry\(\s*\{/.test(readFileSync(f, 'utf-8')))
+      .map((f) => relative(srcRoot(), f));
+    expect(offenders).toEqual([]);
+  });
+
+  it('only the designated roots claim it', () => {
+    const claimers = sourceFiles(srcRoot())
+      .filter((f) => /\bclaimGlobalRegistry\(/.test(readFileSync(f, 'utf-8')))
+      .map((f) => relative(srcRoot(), f))
+      .filter((rel) => rel !== 'adapters/unified-registry.ts'); // the definition
+    expect(claimers.sort()).toEqual([...COMPOSITION_ROOTS].sort());
+  });
+
+  it('claiming twice is silent and keeps the first logger', () => {
+    // The two roots BOTH run in `nexus-agents --mode=server` (cli main, then the
+    // MCP transport). With a warning-on-second-claim helper that combination
+    // reintroduced the exact noise this change removes — measured on the built
+    // binary before this was made idempotent.
+    resetGlobalRegistry();
+    const first = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
+    const second = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
+    const a = claimGlobalRegistry(first);
+    const b = claimGlobalRegistry(second);
+    expect(b).toBe(a);
+    expect(a.getLogger()).toBe(first);
   });
 });
