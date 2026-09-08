@@ -242,11 +242,3 @@ export function createTaskTracker(config: TaskTrackerConfig): ITaskTracker {
   }
 }
 
-/** Auto-detect backend and create tracker. */
-export async function createAutoTaskTracker(
-  config: Omit<TaskTrackerConfig, 'backend'>
-): Promise<ITaskTracker> {
-  const backend = await detectBackend();
-  logger.info('Auto-detected task tracker backend', { backend });
-  return createTaskTracker({ ...config, backend });
-}

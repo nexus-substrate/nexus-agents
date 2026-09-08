@@ -184,7 +184,7 @@ export { executeExpert } from './expert-bridge.js';
 export type { ExpertBridgeResult } from './expert-bridge.js';
 export { createAgentStages, flushPipelineMemory } from './agent-executor.js';
 export type { AgentExecutorConfig } from './agent-executor.js';
-export { createTaskTracker, createAutoTaskTracker, detectBackend } from './task-tracker.js';
+export { createTaskTracker, detectBackend } from './task-tracker.js';
 export type {
   ITaskTracker,
   TrackerBackend,
