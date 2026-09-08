@@ -42,6 +42,8 @@ function makeTask(overrides: Partial<TaskContract> = {}): TaskContract {
       available: { tools: [], experts: [] },
       gaps: [],
       allSatisfied: true,
+      // No detector ran for this fixture either (#5919).
+      gapsMeasured: false,
     },
     artifacts: [],
     metadata: {},

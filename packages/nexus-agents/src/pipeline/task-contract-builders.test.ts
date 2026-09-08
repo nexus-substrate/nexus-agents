@@ -41,8 +41,13 @@ describe('buildBaseTaskContract', () => {
     const contract = buildBaseTaskContract(baseInput);
     expect(contract.constraints.scope).toEqual([]);
     expect(contract.requiredCapabilities).toEqual({ tools: [], experts: [] });
-    expect(contract.capabilityGaps.allSatisfied).toBe(true);
     expect(contract.capabilityGaps.gaps).toEqual([]);
+    // `allSatisfied: true` here is NOT a verdict — no detector ran (#5919).
+    // This test used to assert only the `true`, which read as "the builder
+    // checked and everything was satisfied". `gapsMeasured` is what makes the
+    // difference visible, so it is asserted in the same breath.
+    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
+    expect(contract.capabilityGaps.allSatisfied).toBe(true);
     expect(contract.artifacts).toEqual([]);
   });
 
@@ -61,5 +66,53 @@ describe('buildBaseTaskContract', () => {
       taskType: 'routing',
       ambiguityScore: 0.1,
     });
+  });
+});
+
+// ============================================================================
+// The unmeasured capability-gap verdict is labelled as such (#5919)
+// ============================================================================
+
+describe('capabilityGaps is not a measurement here (#5919)', () => {
+  const baseInput = {
+    idPrefix: 'orchestrate',
+    task: 'Implement feature X',
+    analysis: { complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 },
+    metadata: { source: 'orchestrate', extra: 'value' },
+  } as const;
+
+  it('never claims a gap detector ran', () => {
+    // `gaps: []` with an empty `available` from a detector that ran and one
+    // from a builder that never called one are byte-identical on the wire.
+    // The only thing separating them is this flag, so a consumer branching on
+    // `allSatisfied` alone would be reading a fabricated verdict.
+    const contract = buildBaseTaskContract(baseInput);
+    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
+  });
+
+  it('the empty available set is what makes allSatisfied meaningless', () => {
+    // The precondition that makes the flag necessary rather than decorative:
+    // `allSatisfied` is computed elsewhere as `gaps.length === 0` over a
+    // MEASURED `available` set. Here `available` is empty because nothing
+    // looked, not because nothing is available.
+    const contract = buildBaseTaskContract(baseInput);
+    expect(contract.capabilityGaps.available).toEqual({ tools: [], experts: [] });
+    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
+  });
+
+  it('the schema requires the flag, so a contract cannot omit it', () => {
+    // Optional would let a producer stay silent, which is the state this
+    // change exists to remove.
+    const contract = buildBaseTaskContract(baseInput);
+    const withoutFlag = {
+      ...contract,
+      capabilityGaps: {
+        available: contract.capabilityGaps.available,
+        gaps: contract.capabilityGaps.gaps,
+        allSatisfied: contract.capabilityGaps.allSatisfied,
+      },
+    };
+    expect(TaskContractSchema.safeParse(withoutFlag).success).toBe(false);
+    expect(TaskContractSchema.safeParse(contract).success).toBe(true);
   });
 });

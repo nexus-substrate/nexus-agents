@@ -194,7 +194,13 @@ describe('core plugin execute (no-op stubs)', () => {
         analysis: { complexity: 'low', taskType: 'code', ambiguityScore: 0 },
         constraints: { scope: [] },
         requiredCapabilities: { tools: [], experts: [] },
-        capabilityGaps: { available: { tools: [], experts: [] }, gaps: [], allSatisfied: true },
+        capabilityGaps: {
+          available: { tools: [], experts: [] },
+          gaps: [],
+          allSatisfied: true,
+          // No detector ran for this fixture either (#5919).
+          gapsMeasured: false,
+        },
         artifacts: [],
         metadata: {},
         createdAt: 0,
