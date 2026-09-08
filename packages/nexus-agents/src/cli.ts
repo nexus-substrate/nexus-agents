@@ -22,6 +22,7 @@ import './cli/suppress-sqlite-warning.js';
 
 import { parseArgs } from 'node:util';
 import { createLogger } from './core/index.js';
+import { claimGlobalRegistry } from './adapters/unified-registry.js';
 import { detectMode, isValidServerMode } from './cli/index.js';
 import {
   EXIT_CODES,
@@ -484,6 +485,18 @@ function maybeReportUnknownCommand(parsedArgs: ParsedCliArgs): void {
  * Parses arguments and dispatches to appropriate command handler.
  */
 async function main(): Promise<void> {
+  // Composition root for the adapter registry (#6012). The registry is a
+  // process-wide singleton whose logger is fixed by whoever constructs it
+  // FIRST — before this, that was whichever of nine call sites happened to run
+  // first, so the component on every adapter/circuit-breaker log line was an
+  // accident of call order and eight callers got a "config ignored" warning on
+  // the success path.
+  //
+  // This does NOT give per-caller attribution — a singleton has one logger, and
+  // that would need the logger passed per operation. What it buys is that the
+  // one logger is chosen deliberately here rather than by a race.
+  claimGlobalRegistry(createLogger({ component: 'nexus-cli' }));
+
   let parsedArgs: ParsedCliArgs;
 
   try {

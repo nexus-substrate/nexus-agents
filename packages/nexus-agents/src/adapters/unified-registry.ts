@@ -326,6 +326,27 @@ export function createUnifiedRegistry(config?: UnifiedRegistryConfig): UnifiedAd
 }
 
 /**
+ * Claim the global registry for a process entry point, choosing its logger
+ * (#6012). Idempotent and SILENT when the registry already exists — unlike
+ * {@link getGlobalRegistry} with a config, which warns.
+ *
+ * That difference is the point. There is not exactly one composition root: the
+ * bundled CLI enters through `cli.ts main()`, and an embedder can start the MCP
+ * server directly without it. Both should be able to claim, first-one-wins,
+ * without the second producing a warning an operator cannot act on — which is
+ * what a config-passing `getGlobalRegistry` call does, and is the noise this
+ * whole change removes.
+ *
+ * This does NOT provide per-caller log attribution: the singleton has one
+ * logger. It makes that one logger a deliberate choice rather than a
+ * consequence of which module happened to run first.
+ */
+export function claimGlobalRegistry(logger: ILogger): UnifiedAdapterRegistry {
+  globalRegistry ??= new UnifiedAdapterRegistry({ logger });
+  return globalRegistry;
+}
+
+/**
  * Get the global singleton registry.
  * Creates it on first access with default config.
  *

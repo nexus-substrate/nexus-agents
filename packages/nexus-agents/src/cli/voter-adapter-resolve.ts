@@ -31,8 +31,7 @@ export class NoAdapterError extends Error {
  * Resolves the model adapter, handling errors per Issue #280.
  */
 export function resolveAdapter(
-  options: AdapterResolveOptions,
-  logger: ILogger
+  options: AdapterResolveOptions
 ): { adapter: IModelAdapter } | { error: string } {
   try {
     if (options.adapter !== undefined) return { adapter: options.adapter };
@@ -43,7 +42,7 @@ export function resolveAdapter(
     if (gateway !== undefined && gateway.length > 0 && gateway[0] !== undefined) {
       return { adapter: gateway[0] };
     }
-    const registry = getGlobalRegistry({ logger });
+    const registry = getGlobalRegistry();
     return { adapter: registry.getDefault() };
   } catch (error) {
     return { error: getErrorMessage(error) };
@@ -62,7 +61,7 @@ export function resolveAdapterOrFail(
   logger: ILogger,
   allowSimulation: boolean
 ): { adapter: IModelAdapter } | { simulated: true } {
-  const resolved = resolveAdapter(options, logger);
+  const resolved = resolveAdapter(options);
   if (!('error' in resolved)) return resolved;
 
   logger.error('No adapter available for voting', undefined, { error: resolved.error });

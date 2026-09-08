@@ -340,7 +340,13 @@ export interface DiffReviewPacking {
  * so voters know coverage is partial. Pure — no I/O, no model call, no logging.
  */
 export function packDiffForReview(prDiff: string, budget: number): DiffReviewPacking {
-  if (prDiff.length <= budget) {
+  // UTF-8 BYTES, not UTF-16 code units (#5818). `bytes` is the budgeting unit
+  // everywhere else in this module, and the reviewed-diff hash truncates on
+  // `Buffer.byteLength` too. This fast path used `prDiff.length`, so a diff with
+  // multibyte content could sit under the budget by code units while the hash
+  // bound only a PREFIX of it — the packer reported complete coverage for a
+  // review whose binding was partial, and content past the cap went unattested.
+  if (byteLen(prDiff) <= budget) {
     return { coverage: undefined, packedDiff: prDiff, note: '' };
   }
   const pack = securityFirstPack(splitByFile(prDiff), budget);

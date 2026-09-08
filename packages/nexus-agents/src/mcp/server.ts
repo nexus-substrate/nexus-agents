@@ -22,6 +22,7 @@ import {
 } from '../core/index.js';
 import { VERSION } from '../version.js';
 import { getTaskStore } from './task-store.js';
+import { claimGlobalRegistry } from '../adapters/unified-registry.js';
 import { initDataDirectories } from '../cli/setup-data-dir.js';
 
 /**
@@ -147,6 +148,12 @@ export async function connectTransport(
   logger?: ILogger
 ): Promise<Result<void, ServerError>> {
   const log = logger ?? createLogger({ component: 'mcp-server' });
+
+  // Composition root for the adapter registry in server mode (#6012) — see the
+  // matching call in cli.ts `main()`. Claimed here, before any tool handler
+  // runs, so the registry's logger is chosen deliberately instead of by
+  // whichever tool is invoked first.
+  claimGlobalRegistry(log);
 
   try {
     log.info('Connecting server to transport');

@@ -58,7 +58,7 @@ export function resolveAdapterForModelPreference(
   fallbackAdapter: IModelAdapter | undefined,
   logger: ILogger
 ): IModelAdapter | undefined {
-  const registry = getGlobalRegistry({ logger });
+  const registry = getGlobalRegistry();
   const adapter = registry.getAdapterForModel(modelPreference);
   // If the registry returned its default (model not recognized), use fallback
   if (adapter === registry.getDefault() && fallbackAdapter !== undefined) {
@@ -83,7 +83,7 @@ export function resolveAdapterForRole(
   const category = ROLE_TO_TASK_CATEGORY[role];
   if (category === undefined) return fallbackAdapter;
 
-  const registry = getGlobalRegistry({ logger });
+  const registry = getGlobalRegistry();
   const adapter = registry.getAdapter(category);
   logger.info('Auto-routing expert to specialized CLI', {
     role,

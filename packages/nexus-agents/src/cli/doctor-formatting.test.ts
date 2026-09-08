@@ -746,7 +746,74 @@ describe('doctor-formatting', () => {
     });
   });
 
+  describe('the summary names the issues it counts (#6011)', () => {
+    it('names each failing term', () => {
+      // `doctor` prints a warning glyph on lines that are NOT counted (the
+      // API-keys note is advisory when CLI auth is present), so a bare count
+      // left the reader unable to tell which warning it meant.
+      const result = createDoctorResult({
+        allHealthy: false,
+        nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+        clis: [createCliCheckResult('gemini', true, false, 'supported')],
+        mcpServerReady: false,
+      });
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('3 issue(s) found');
+      expect(summary).toContain('node version');
+      expect(summary).toContain('MCP server');
+      expect(summary).toContain('CLI gemini');
+    });
+
+    it('adds no dangling separator when the verdict is healthy', () => {
+      // `allHealthy` takes the "Status: Ready" branch, which must not sprout an
+      // empty " — " from a zero-length term list.
+      const result = createDoctorResult({
+        allHealthy: true,
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
+      });
+      printDoctorResults(result);
+
+      const line = getCalls().find((call) => call.includes('Status: Ready'));
+      expect(line).toBeDefined();
+      expect(line).not.toContain('(');
+    });
+  });
+
   describe('the summary count agrees with the verdict (#4851)', () => {
+    it('does not report zero issues when a CLI is on an unsupported version', () => {
+      // `isAllHealthy` fails a CLI whose `versionStatus === 'unsupported'`, but
+      // `totalIssues` filtered only on `installed`/`authenticated`. An installed,
+      // authenticated CLI on an unsupported version therefore made the verdict
+      // unhealthy while contributing nothing to the count.
+      const result = createDoctorResult({
+        allHealthy: false,
+        clis: [createCliCheckResult('claude', true, true, 'unsupported')],
+      });
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      expect(calls.some((call) => call.includes('0 issue(s) found'))).toBe(false);
+      expect(calls.some((call) => call.includes('1 issue(s) found'))).toBe(true);
+    });
+
+    it('does not report zero issues when nothing provides an auth method', () => {
+      // `hasAuthMethod` is "some API key configured OR some CLI installed AND
+      // authenticated". With no CLIs detected and no API keys it is false, so the
+      // verdict is unhealthy — but the per-CLI filter counts an EMPTY list as
+      // zero problems. This is the plausible first-run state.
+      const result = createDoctorResult({
+        allHealthy: false,
+        clis: [],
+        apiKeys: [],
+      });
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      expect(calls.some((call) => call.includes('0 issue(s) found'))).toBe(false);
+    });
+
     it('does not report zero issues when the verdict is unhealthy', () => {
       // `totalIssues` counted CLIs, node version and mcpServerReady;
       // `isAllHealthy` ALSO fails on an unacceptable scratch severity. So a
@@ -755,6 +822,9 @@ describe('doctor-formatting', () => {
       // is wrong, saying nothing is wrong.
       const result = createDoctorResult({
         allHealthy: false,
+        // A healthy CLI so this fixture means "only the scratch term fails";
+        // an empty CLI list is itself an unhealthy term (#4581).
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
         scratchSpace: [
           {
             label: 'system' as const,
@@ -796,6 +866,9 @@ describe('doctor-formatting', () => {
     it('counts and names a stale global install (#5613)', () => {
       const result = createDoctorResult({
         allHealthy: false,
+        // A healthy CLI so this fixture means "only the install-freshness term
+        // fails"; an empty CLI list is itself an unhealthy term (#4581).
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
         installFreshness: { state: 'behind', global: '1.0.0', expected: '2.0.0' },
       });
 
@@ -809,6 +882,9 @@ describe('doctor-formatting', () => {
     it('counts and names unmeasured install freshness (#5613)', () => {
       const result = createDoctorResult({
         allHealthy: false,
+        // A healthy CLI so this fixture means "only the install-freshness term
+        // fails"; an empty CLI list is itself an unhealthy term (#4581).
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
         installFreshness: { state: 'unknown', reason: 'not installed' },
       });
 

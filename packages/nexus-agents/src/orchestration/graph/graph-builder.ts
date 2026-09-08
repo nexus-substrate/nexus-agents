@@ -21,8 +21,7 @@ import type {
   StateReducer,
   CompileResult,
   GraphCompileError,
-  PreconditionConfig,
-  NodeHook,
+  NodeOptions,
 } from './graph-types.js';
 import { START, END } from './graph-types.js';
 
@@ -45,6 +44,19 @@ import { START, END } from './graph-types.js';
  *   .compile();
  * ```
  */
+/**
+ * Keep only the node options that were actually supplied.
+ *
+ * Absent ⇒ the key is OMITTED, never emitted as `undefined`:
+ * `exactOptionalPropertyTypes` distinguishes the two, so a node built with an
+ * explicit `verify: undefined` is not the same shape as one built without it.
+ * Written as a filter rather than a ternary per field so adding an option does
+ * not raise the function's cyclomatic complexity (#5727).
+ */
+function definedNodeOptions(opts?: NodeOptions): Partial<GraphNode> {
+  return Object.fromEntries(Object.entries(opts ?? {}).filter(([, value]) => value !== undefined));
+}
+
 export class GraphBuilder {
   private readonly nodes = new Map<string, GraphNode>();
   private readonly edges: GraphEdge[] = [];
@@ -62,24 +74,8 @@ export class GraphBuilder {
    * Adds a node to the graph.
    * Supports optional precondition hooks (Issue #997) and verify hook (Issue #994).
    */
-  addNode(
-    id: string,
-    handler: NodeHandler,
-    opts?: {
-      timeout?: number;
-      retries?: number;
-      preconditions?: readonly PreconditionConfig[];
-      verify?: NodeHook;
-    }
-  ): this {
-    const node: GraphNode = {
-      id,
-      handler,
-      ...(opts?.timeout !== undefined ? { timeout: opts.timeout } : {}),
-      ...(opts?.retries !== undefined ? { retries: opts.retries } : {}),
-      ...(opts?.preconditions !== undefined ? { preconditions: opts.preconditions } : {}),
-      ...(opts?.verify !== undefined ? { verify: opts.verify } : {}),
-    };
+  addNode(id: string, handler: NodeHandler, opts?: NodeOptions): this {
+    const node: GraphNode = { id, handler, ...definedNodeOptions(opts) };
     this.nodes.set(id, node);
     return this;
   }
@@ -131,6 +127,12 @@ export class GraphBuilder {
 
     const cycleError = this.checkCycles();
     if (cycleError !== undefined) return err(cycleError);
+
+    // Before reachability: a declared target that is not a node would otherwise
+    // silently widen nothing and leave the executor's runtime warn as the only
+    // signal (#5727).
+    const gotoError = this.checkGotoTargets();
+    if (gotoError !== undefined) return err(gotoError);
 
     const reachError = this.checkReachability();
     if (reachError !== undefined) return err(reachError);
@@ -264,7 +266,40 @@ export class GraphBuilder {
     return undefined;
   }
 
-  /** BFS from START to find all reachable node IDs. */
+  /**
+   * Every declared `gotoTargets` entry must name a real node (#5727). Checked
+   * before reachability so the error names the DECLARING node, rather than
+   * surfacing later as a confusing `unreachable_node` about something else.
+   *
+   * Reports the EXISTING `missing_node` rather than a new error variant: a
+   * declared goto target is an edge reference, so `missing_node`'s own message
+   * ("Edge references non-existent node 'x' (from 'y')") already reads correctly.
+   * Adding a variant would widen a union the library RETURNS, which breaks any
+   * consumer switching exhaustively over `GraphCompileError` — a breaking change
+   * needing a unanimous panel, for a diagnostic distinction nothing consumes.
+   */
+  private checkGotoTargets(): GraphCompileError | undefined {
+    for (const [nodeId, node] of this.nodes) {
+      for (const target of node.gotoTargets ?? []) {
+        if (target === END) continue;
+        if (!this.nodes.has(target)) {
+          return { type: 'missing_node', nodeId: target, referencedBy: nodeId };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * BFS from START over static edges PLUS declared `Command.goto` targets
+   * (#5727).
+   *
+   * Goto targets are followed from the DECLARING node, exactly like an edge —
+   * not seeded from START. That distinction is load-bearing: seeding would make
+   * a target declared on an itself-unreachable node read as reachable, so a
+   * whole orphaned subgraph could bless itself and `unreachable_node` would stop
+   * being able to fail for the graphs that use goto.
+   */
   private findReachableNodes(): Set<string> {
     const reachable = new Set<string>();
     const queue = this.getStartTargets();
@@ -274,6 +309,7 @@ export class GraphBuilder {
       if (current === undefined || current === END || reachable.has(current)) continue;
       reachable.add(current);
       queue.push(...this.getEdgeTargets(current, reachable));
+      queue.push(...(this.nodes.get(current)?.gotoTargets ?? []));
     }
 
     return reachable;

@@ -268,7 +268,7 @@ function resolveAltAdapter(
   if (first === undefined) return null;
   const altCli = first;
   try {
-    const registry = getGlobalRegistry({ logger: log });
+    const registry = getGlobalRegistry();
     return { adapter: registry.getAdapterForCli(altCli), cliName: altCli };
   } catch {
     log.debug('Alt CLI adapter unavailable', { altCli });

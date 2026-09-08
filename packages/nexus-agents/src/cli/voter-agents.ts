@@ -30,10 +30,7 @@ import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
-import {
-  DEFAULT_ERRORED_ROLE_BACKOFF_MS,
-  retryErroredRoles,
-} from './voter-retry.js';
+import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import { NoAdapterError, resolveAdapterOrFail } from './voter-adapter-resolve.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
@@ -115,7 +112,6 @@ export function computeOverallConsensusDeadlineMs(
  */
 /** Default inter-agent delay to prevent rate limiting (ms). Raised from 1s to 2s (#1802). */
 export const DEFAULT_INTER_AGENT_DELAY_MS = 2000;
-
 
 export interface VoterAgentOptions {
   /** Logger instance */
@@ -310,11 +306,8 @@ function assignUniformAdapter(
 }
 
 /** Creates CLI-specific adapters for available CLIs via the unified registry. */
-function createCliAdapterMap(
-  clis: readonly CliName[],
-  logger: ILogger
-): Map<CliName, IModelAdapter> {
-  const registry = getGlobalRegistry({ logger });
+function createCliAdapterMap(clis: readonly CliName[]): Map<CliName, IModelAdapter> {
+  const registry = getGlobalRegistry();
   const result = new Map<CliName, IModelAdapter>();
   for (const cli of clis) {
     result.set(cli, registry.getAdapterForCli(cli));
@@ -436,7 +429,7 @@ async function resolveDiverseAdapters(
     return assignUniformAdapter(roles, fallbackAdapter);
   }
 
-  const cliAdapters = createCliAdapterMap(availableClis, logger);
+  const cliAdapters = createCliAdapterMap(availableClis);
   if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
 
   // #4390: distinct CLIs do NOT imply distinct models. Two arms can front the
@@ -552,7 +545,8 @@ export async function collectRealVotes(
   }
 
   const adapterResult = resolveAdapterOrFail(options, logger, allowSimulation === true);
-  if ('simulated' in adapterResult) return createSimulatedVotes(roles, proposal, 'No adapter available');
+  if ('simulated' in adapterResult)
+    return createSimulatedVotes(roles, proposal, 'No adapter available');
 
   // Per Issue #845: Use diverse adapters when no explicit adapter is provided
   const roleAdapters =

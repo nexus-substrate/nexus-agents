@@ -161,7 +161,7 @@ function getReflectiveRetriever(logger: ILogger): ReflectiveRetriever | undefine
 
   if (reflectionAdapter === undefined) {
     try {
-      const registry = getGlobalRegistry({ logger });
+      const registry = getGlobalRegistry();
       reflectionAdapter = registry.getDefault();
     } catch {
       logger.warn('No adapter for reflection, using keyword retrieval');

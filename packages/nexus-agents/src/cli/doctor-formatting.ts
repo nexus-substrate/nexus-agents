@@ -8,11 +8,7 @@
  */
 
 import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
-import {
-  formatScratchFilesystems,
-  scratchSeverityIsAcceptable,
-  worstSeverity,
-} from './doctor-scratch-space.js';
+import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import type { CapacityStatus } from '../cli-adapters/types.js';
 import type {
   CliCheckResult,
@@ -29,6 +25,7 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import * as installFreshness from './doctor-install-freshness.js';
+import { failingVerdictTerms } from './doctor-verdict-terms.js';
 import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
@@ -383,18 +380,20 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
-  const unhealthyCount =
-    result.clis.filter((c) => !c.installed || !c.authenticated).length +
-    (installFreshness.installFreshnessIsHealthy(result.installFreshness) ? 0 : 1);
-  const nodeIssue = result.nodeVersion.supported ? 0 : 1;
-  // #4851: every term the verdict reads must be a term the count reads;
-  // otherwise a lone failing diagnostic renders "Summary: 0 issue(s) found".
-  const scratchIssue = scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace)) ? 0 : 1;
-  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1) + scratchIssue;
+  const terms = failingVerdictTerms(result);
   const freshnessNote = installFreshness.describeInstallFreshnessSummary(result.installFreshness);
+  // Name the terms, don't just count them (#6011). `doctor` marks several lines
+  // with a warning glyph, and only some of them are counted — the API-keys note
+  // is advisory because CLI auth already satisfies `hasAuthMethod`. A bare count
+  // left the reader to re-derive which warning it referred to, which meant
+  // reading printDoctorSummary to find out.
+  // Parenthesised, not after an em dash: `freshnessNote` already appends its own
+  // ` — stale global install` clause, and two dash-separated clauses on one line
+  // read as a single run-on. Seen in the real output before this was changed.
+  const named = terms.length > 0 ? ` (${terms.join(', ')})` : '';
   const summary = result.allHealthy
     ? `${colors.green}${colors.bold}Status: Ready${colors.reset}${freshnessNote}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}${freshnessNote}`;
+    : `${colors.yellow}${colors.bold}Summary: ${String(terms.length)} issue(s) found${named}${colors.reset}${freshnessNote}`;
   writeLine(`${summary}\n`);
 }
 

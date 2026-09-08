@@ -78,7 +78,7 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
  */
 function resolveAdapter(): IModelAdapter | null {
   try {
-    return getGlobalRegistry({ logger }).getDefault();
+    return getGlobalRegistry().getDefault();
   } catch (error) {
     // Report only our own guidance plus the registry's message — never the
     // adapter configuration itself, which can carry credentials.

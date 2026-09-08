@@ -503,7 +503,7 @@ async function tryExpertFallback(
   const category = ROLE_TO_TASK_CATEGORY[roleKey];
   if (category === undefined) return undefined;
   const effectiveLogger = logger ?? createLogger({ tool: 'execute_expert' });
-  const registry = getGlobalRegistry({ logger: effectiveLogger });
+  const registry = getGlobalRegistry();
   const routing = registry.getRouting(category);
   const primaryCli = routing?.primaryCli ?? 'unknown';
   const chain = getExpertFallbackChain(roleKey, primaryCli, effectiveLogger);

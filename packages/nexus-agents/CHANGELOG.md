@@ -1,5 +1,199 @@
 # nexus-agents
 
+## 8.47.4
+
+### Patch Changes
+
+- [#6016](https://github.com/nexus-substrate/nexus-agents/pull/6016) [`a60f07e`](https://github.com/nexus-substrate/nexus-agents/commit/a60f07efe84476eab045f76b8a0b779bb1eddb3a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `doctor` names the issues it counts ([#6011](https://github.com/nexus-substrate/nexus-agents/issues/6011))
+
+  The summary reported a count with no names, while several lines in the output
+  carry a warning glyph and only some of them are counted — the "API keys
+  configured: 0 of 3" note is advisory when CLI auth already satisfies
+  `hasAuthMethod`. A reader seeing two warnings and "1 issue(s) found" had to know
+  the counting rules to tell which was which; I hit this while validating [#6010](https://github.com/nexus-substrate/nexus-agents/issues/6010)
+  and ended up reading `printDoctorSummary` to find out.
+
+  `failingVerdictTerms` ([#6010](https://github.com/nexus-substrate/nexus-agents/issues/6010)) already returns the terms by name, so the summary
+  now says them:
+
+  ```
+  Summary: 2 issue(s) found (install freshness, CLI gemini) — stale global install
+  ```
+
+  Parenthesised rather than appended after an em dash, because the install-
+  freshness note already contributes its own ` — …` clause and two dash-separated
+  clauses on one line read as a run-on. That was visible only in the real output,
+  not in the unit test that preceded it.
+
+## 8.47.3
+
+### Patch Changes
+
+- [#6014](https://github.com/nexus-substrate/nexus-agents/pull/6014) [`ebe9bd1`](https://github.com/nexus-substrate/nexus-agents/commit/ebe9bd14c1b1748d23c97bc939af6b63c878ed38) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Give the adapter registry a designated composition root ([#6012](https://github.com/nexus-substrate/nexus-agents/issues/6012))
+
+  `getGlobalRegistry(config)` applies its config only on the FIRST call and warns
+  on every later one — correctly, since it did discard the input. But nine call
+  sites passed `{ logger }` and nothing claimed the registry deliberately, so the
+  registry's logger was fixed by whichever of the nine ran first, and the other
+  eight emitted a "provided config ignored" warning on the SUCCESS path of
+  `nexus-agents vote`.
+
+  The nine sites now call `getGlobalRegistry()` bare, and the registry is claimed
+  once per process at `cli.ts` `main()` and `mcp/server.ts` `connectTransport()`
+  via a new internal `claimGlobalRegistry(logger)` — idempotent and silent when
+  already claimed. Idempotence is load-bearing: both roots run in
+  `nexus-agents --mode=server`, and a warn-on-second-claim helper reintroduced the
+  exact noise this removes (measured on the built binary before it was fixed).
+
+  This does NOT provide per-caller log attribution — the singleton has one logger,
+  and per-caller attribution would require passing one per operation. What it buys
+  is that the one logger is a deliberate choice rather than a consequence of call
+  order, and that successful runs stop emitting a warning nobody can act on.
+
+  Measured on the built binary, each with a positive control so a zero is not
+  vacuous: `vote --quick` 1 warning → 0 (vote completed, audit record written);
+  `--mode=server` 1 → 0 (server started successfully).
+
+  `claimGlobalRegistry` is internal — it does not appear in the published API
+  surface, and `getGlobalRegistry` is unchanged. Also drops two parameters the
+  change left unused (`resolveAdapter`'s and `createCliAdapterMap`'s `logger`),
+  neither published.
+
+  Ratified by a 7-voter panel at supermajority (6 approve / 1 reject, option C
+  unanimous among approvers).
+
+## 8.47.2
+
+### Patch Changes
+
+- [#6010](https://github.com/nexus-substrate/nexus-agents/pull/6010) [`0a44f89`](https://github.com/nexus-substrate/nexus-agents/commit/0a44f89f40303d4eb105a62844e1715a9c491edd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `doctor` can no longer print "Summary: 0 issue(s) found" while reporting itself unhealthy
+
+  The summary count and the health verdict were two hand-maintained lists of the
+  same terms, and they had drifted apart again. `isAllHealthy` fails on
+  `hasAuthMethod` and on a CLI whose `versionStatus === 'unsupported'`;
+  `totalIssues` counted neither. So either condition alone produced a summary line
+  that appears _only because something is wrong_ and says nothing is wrong:
+
+  - an installed, authenticated CLI on an unsupported version
+  - no CLIs detected (the `whenEmpty = false` case from [#4581](https://github.com/nexus-substrate/nexus-agents/issues/4581)), including when an
+    API key is configured
+
+  This is the same defect [#4851](https://github.com/nexus-substrate/nexus-agents/issues/4851) fixed once, by adding the terms that were missing
+  then. The count is now derived from a named list of failing terms rather than a
+  parallel arithmetic expression, so a term cannot be added to the verdict and
+  forgotten in the total. `hasAuthMethod` deliberately gets no row of its own —
+  whenever it fails with CLIs present, the per-CLI rows already count it.
+
+  Extracted to `cli/doctor-verdict-terms.ts`, since deciding what counts as a
+  problem is a different question from how a result is rendered.
+
+## 8.47.1
+
+### Patch Changes
+
+- [#6007](https://github.com/nexus-substrate/nexus-agents/pull/6007) [`70b7295`](https://github.com/nexus-substrate/nexus-agents/commit/70b729597af4e676e696f659af19edc72dc03e59) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Replace `eslint-disable max-lines` in the consensus engine with an enforceable ceiling ([#5766](https://github.com/nexus-substrate/nexus-agents/issues/5766))
+
+  `consensus/engine.ts` opened with a blanket `/* eslint-disable max-lines */` and
+  a hand-written note about how long the file was. The note said 711 lines and
+  concluded the file "sits well past" the "400-600 lines if cohesive" band in
+  `.rules/governance.md:67`.
+
+  It does not. 711 was `wc -l`; the rule counts with `skipBlankLines` and
+  `skipComments`, and by that measure the file is **499** — inside the band its
+  own justification cites. Two numbers in different units, compared as if they
+  were the same.
+
+  The blanket disable is why that went unnoticed: it silenced the one check that
+  knows the real count, leaving a hand-maintained comment as the only record, and
+  that number drifted 426 → 711 → 715 without anything failing.
+
+  Now bounded at 600 — the top of the governance band — so the file is measured
+  against the same band it invokes, and growing out of it fails the build. No
+  behaviour change; the engine is untouched.
+
+## 8.47.0
+
+### Minor Changes
+
+- [#6005](https://github.com/nexus-substrate/nexus-agents/pull/6005) [`5b13801`](https://github.com/nexus-substrate/nexus-agents/commit/5b13801a86ac774fa9fbba61f46e95d3c53b717c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `GraphBuilder.addNode` accepts `gotoTargets`, so `Command.goto` can reach a node that has no static edge ([#5727](https://github.com/nexus-substrate/nexus-agents/issues/5727))
+
+  `Command.goto` lets a node redirect the next runnable set to a target instead of
+  resolving its static edges. But `compile()` rejected the graph first whenever the
+  target was reachable only through the goto: `checkReachability` walks a BFS over
+  the static edge set, and a node with no inbound edge is not in it. So the feature
+  only ever worked among nodes that were already statically reachable — much
+  narrower than it reads.
+
+  The executor half already handled dynamic targets (it looks the target up and
+  warns-and-drops an unknown one); the builder had no way to declare one. Now it
+  does, mirroring LangGraph's `ends`:
+
+  ```ts
+  builder.addNode('classify', handler, { gotoTargets: ['escalate'] });
+  ```
+
+  Declared targets are traversed from the DECLARING node, exactly like an edge —
+  not seeded from START. That keeps `unreachable_node` able to fail: an orphaned
+  subgraph whose nodes name each other as goto targets is still rejected, where
+  seeding would have let it mark itself reachable. An undeclared orphan still
+  fails, and a declared target that is not a node fails as `missing_node`.
+
+  Additive: `gotoTargets` is optional, and the existing per-node options are now
+  the named `NodeOptions` interface (structurally unchanged). `GraphCompileError`
+  is deliberately NOT widened, so consumers switching exhaustively over it are
+  unaffected.
+
+  Ratified by a 7-voter panel at supermajority (6 approve / 1 reject, option 1
+  unanimous among approvers).
+
+## 8.46.16
+
+### Patch Changes
+
+- [#5996](https://github.com/nexus-substrate/nexus-agents/pull/5996) [`b99af84`](https://github.com/nexus-substrate/nexus-agents/commit/b99af84606eda9229215b8bcf415e53aa950c644) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix the pr_review budget/hash unit mismatch that let a partial review record as complete ([#5818](https://github.com/nexus-substrate/nexus-agents/issues/5818))
+
+  `packDiffForReview`'s fast path compared `prDiff.length` — UTF-16 code units —
+  against a budget the rest of the module spends in UTF-8 bytes (`DiffFile.bytes`
+  is documented as "the budgeting unit", and `securityFirstPack` packs "into
+  `budget` UTF-8 bytes"). The reviewed-diff hash truncates on
+  `Buffer.byteLength` too.
+
+  So a diff carrying multibyte content could sit under the budget by code units
+  while `reviewedDiffHash` bound only a prefix of it. The packer returned
+  `coverage: undefined`, meaning the record asserted a COMPLETE review over
+  content the binding never attested. Measured: a 20,068-character diff
+  (60,068 bytes) reported complete coverage, and appending an entire extra file
+  past the cap left the hash byte-identical.
+
+  The fast path now measures UTF-8 bytes, so the existing partial-coverage
+  disclosure — a voter-visible NOTE plus a hash-covered stamp in the record
+  summary — fires on exactly the diffs whose hash is truncated. Byte-measuring is
+  never looser than code-unit measuring, so no diff that packed before stops
+  packing; only non-ASCII diffs near the cap newly (and correctly) report partial.
+
+  Ratified by a 7-voter panel at supermajority (6 approve / 1 reject, option A
+  unanimous among approvers).
+
+## 8.46.15
+
+### Patch Changes
+
+- [#5994](https://github.com/nexus-substrate/nexus-agents/pull/5994) [`ba75c73`](https://github.com/nexus-substrate/nexus-agents/commit/ba75c732681a2e5db0d0330dcee4d1db9ef38062) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the `async-job-body` runaway-guard comment, which claimed a knob the class cannot honour ([#5785](https://github.com/nexus-substrate/nexus-agents/issues/5785))
+
+  `run-as-job.ts` documented the `async-job-body` operation class as "3600s,
+  honoring NEXUS_TIMEOUT_MULTIPLIER + the per-class override". It does not, and
+  cannot: the class is declared at exactly `MCP_TIMEOUTS.maxMs` (3_600_000), and
+  `describeClassGuard` re-clamps the resolved value to that same ceiling. For this
+  one class both knobs can therefore only lower the guard —
+  `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` resolves to 3600000, and every
+  multiplier at or above 1.0 is a no-op.
+
+  Behaviour is unchanged. The clamp is already disclosed at startup by
+  `findIneffectiveVars`, which names the variable, its requested and effective
+  values, and the reason; this comment was the last place still asserting the
+  opposite. Whether an MCP _request_ ceiling should bound a job body that by
+  construction has no MCP request is tracked separately in [#5995](https://github.com/nexus-substrate/nexus-agents/issues/5995).
+
 ## 8.46.14
 
 ### Patch Changes
