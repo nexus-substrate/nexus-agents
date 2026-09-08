@@ -23,22 +23,23 @@ describe('Command.goto (#2425 sub-task 1)', () => {
   it('redirects the next runnable set to the goto target instead of resolving edges', async () => {
     const graph = new GraphBuilder()
       .addState('trail', overwrite<string>(''))
-      .addNode('a', () =>
-        Promise.resolve({
-          type: 'command' as const,
-          update: { trail: 'a' },
-          goto: 'c',
-        })
+      .addNode(
+        'a',
+        () =>
+          Promise.resolve({
+            type: 'command' as const,
+            update: { trail: 'a' },
+            goto: 'c',
+          }),
+        // Declares the dynamic edge a -> c (#5727). This replaces an artificial
+        // `b -> c` static edge that existed only to satisfy reachability; the
+        // fixture now exercises the real feature instead of routing around it.
+        { gotoTargets: ['c'] }
       )
       .addNode('b', (state) => Promise.resolve({ trail: `${(state['trail'] as string) || ''}+b` }))
       .addNode('c', (state) => Promise.resolve({ trail: `${(state['trail'] as string) || ''}+c` }))
       .addEdge(START, 'a')
       .addEdge('a', 'b')
-      // b -> c exists only to satisfy static reachability: the builder rejects a
-      // node reachable ONLY through a runtime `Command.goto` as unreachable, and
-      // there is no way to declare a goto target (#5727). b never runs here, so
-      // the edge does not weaken what this test measures.
-      .addEdge('b', 'c')
       .addEdge('b', END)
       .addEdge('c', END)
       .compile();

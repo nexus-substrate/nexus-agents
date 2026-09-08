@@ -206,6 +206,18 @@ export interface GraphNode {
   readonly preconditions?: readonly PreconditionConfig[] | undefined;
   /** Post-step verification hook run after node execution (Issue #994). */
   readonly verify?: NodeHook | undefined;
+  /**
+   * Nodes this node may jump to with `Command.goto` (#5727), mirroring
+   * LangGraph's `ends`. A dynamic jump is an EDGE the static edge set cannot
+   * see, so without declaring it a target reachable only via goto fails
+   * `checkReachability` and the graph will not compile at all.
+   *
+   * Declaring is not the same as scheduling: the handler still decides at run
+   * time whether to jump, and to which of these. The declaration exists so the
+   * builder can validate the topology and so a reader (or a visualizer) can see
+   * the dynamic edge.
+   */
+  readonly gotoTargets?: readonly string[] | undefined;
 }
 
 /** Special sentinel for the graph entry point. */
@@ -499,7 +511,10 @@ export function formatCompileError(error: GraphCompileError): string {
     case 'no_entry':
       return `No entry point: ${error.message}`;
     case 'unreachable_node':
-      return `Node '${error.nodeId}' is unreachable from START`;
+      return (
+        `Node '${error.nodeId}' is unreachable from START. If it is entered by ` +
+        `Command.goto, declare it: addNode(source, fn, { gotoTargets: ['${error.nodeId}'] })`
+      );
     case 'missing_reducer':
       return `State field '${error.field}' has no reducer defined`;
   }
