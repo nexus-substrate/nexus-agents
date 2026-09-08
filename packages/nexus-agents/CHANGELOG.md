@@ -1,5 +1,30 @@
 # nexus-agents
 
+## 8.47.2
+
+### Patch Changes
+
+- [#6010](https://github.com/nexus-substrate/nexus-agents/pull/6010) [`0a44f89`](https://github.com/nexus-substrate/nexus-agents/commit/0a44f89f40303d4eb105a62844e1715a9c491edd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `doctor` can no longer print "Summary: 0 issue(s) found" while reporting itself unhealthy
+
+  The summary count and the health verdict were two hand-maintained lists of the
+  same terms, and they had drifted apart again. `isAllHealthy` fails on
+  `hasAuthMethod` and on a CLI whose `versionStatus === 'unsupported'`;
+  `totalIssues` counted neither. So either condition alone produced a summary line
+  that appears _only because something is wrong_ and says nothing is wrong:
+
+  - an installed, authenticated CLI on an unsupported version
+  - no CLIs detected (the `whenEmpty = false` case from [#4581](https://github.com/nexus-substrate/nexus-agents/issues/4581)), including when an
+    API key is configured
+
+  This is the same defect [#4851](https://github.com/nexus-substrate/nexus-agents/issues/4851) fixed once, by adding the terms that were missing
+  then. The count is now derived from a named list of failing terms rather than a
+  parallel arithmetic expression, so a term cannot be added to the verdict and
+  forgotten in the total. `hasAuthMethod` deliberately gets no row of its own —
+  whenever it fails with CLIs present, the per-CLI rows already count it.
+
+  Extracted to `cli/doctor-verdict-terms.ts`, since deciding what counts as a
+  problem is a different question from how a result is rendered.
+
 ## 8.47.1
 
 ### Patch Changes
