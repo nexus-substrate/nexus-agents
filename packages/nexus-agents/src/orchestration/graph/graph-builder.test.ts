@@ -324,3 +324,108 @@ describe('GraphBuilder', () => {
     });
   });
 });
+
+describe('Command.goto targets (#5727)', () => {
+  const noop = (): Promise<Record<string, unknown>> => Promise.resolve({});
+
+  /** a -> b statically; `a` jumps to `c`, which nothing else references. */
+  function gotoGraph(declare: boolean): GraphBuilder {
+    const b = new GraphBuilder();
+    if (declare) b.addNode('a', noop, { gotoTargets: ['c'] });
+    else b.addNode('a', noop);
+    return b
+      .addNode('b', noop)
+      .addNode('c', noop)
+      .addEdge(START, 'a')
+      .addEdge('a', 'b')
+      .addEdge('b', END)
+      .addEdge('c', END);
+  }
+
+  it('compiles when the goto target is declared', () => {
+    // Before #5727 this returned unreachable_node, so Command.goto could only
+    // redirect among nodes that were already statically reachable.
+    expect(gotoGraph(true).compile().ok).toBe(true);
+  });
+
+  it('still rejects the same graph when the target is NOT declared', () => {
+    // The point of declaring: reachability must remain able to FAIL. If this
+    // ever passes, the check has stopped checking.
+    const result = gotoGraph(false).compile();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toEqual({ type: 'unreachable_node', nodeId: 'c' });
+  });
+
+  it('rejects a declared target that is not a node, naming the declarer', () => {
+    const result = new GraphBuilder()
+      .addNode('a', noop, { gotoTargets: ['nope'] })
+      .addEdge(START, 'a')
+      .addEdge('a', END)
+      .compile();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // Without this the declaration would be unvalidated documentation and the
+    // executor's runtime warn would be the only signal.
+    // Reuses the existing `missing_node` rather than widening the returned
+    // union: a declared goto target IS an edge reference, and widening would
+    // break consumers switching exhaustively over GraphCompileError.
+    expect(result.error).toEqual({
+      type: 'missing_node',
+      nodeId: 'nope',
+      referencedBy: 'a',
+    });
+  });
+
+  it('rejects an orphaned subgraph whose nodes declare each other', () => {
+    // THE case that pins the seeding choice. `x` and `y` are unreachable from
+    // START and name each other as goto targets. Because targets are followed
+    // from the DECLARING node, neither is reachable and compile fails. Had the
+    // targets been seeded into the BFS queue up front, both would be marked
+    // reachable and this graph would compile — an orphaned subgraph blessing
+    // itself, with `unreachable_node` no longer able to fail for it.
+    const result = new GraphBuilder()
+      .addNode('a', noop)
+      .addNode('x', noop, { gotoTargets: ['y'] })
+      .addNode('y', noop, { gotoTargets: ['x'] })
+      .addEdge(START, 'a')
+      .addEdge('a', END)
+      .addEdge('x', END)
+      .addEdge('y', END)
+      .compile();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toEqual({ type: 'unreachable_node', nodeId: 'x' });
+  });
+
+  it('does not let an unreachable node bless its own goto target', () => {
+    // Goto targets are followed from the DECLARING node, like an edge — not
+    // seeded from START. Seeding would let an orphaned subgraph mark itself
+    // reachable, which is how this check would quietly stop failing.
+    const result = new GraphBuilder()
+      .addNode('a', noop)
+      .addNode('orphan', noop, { gotoTargets: ['victim'] })
+      .addNode('victim', noop)
+      .addEdge(START, 'a')
+      .addEdge('a', END)
+      .addEdge('orphan', END)
+      .addEdge('victim', END)
+      .compile();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toEqual({ type: 'unreachable_node', nodeId: 'orphan' });
+  });
+
+  it('reaches a node that is ONLY reachable through a chain of gotos', () => {
+    const result = new GraphBuilder()
+      .addNode('a', noop, { gotoTargets: ['mid'] })
+      .addNode('mid', noop, { gotoTargets: ['deep'] })
+      .addNode('deep', noop)
+      .addEdge(START, 'a')
+      .addEdge('a', END)
+      .addEdge('mid', END)
+      .addEdge('deep', END)
+      .compile();
+    expect(result.ok).toBe(true);
+  });
+});
