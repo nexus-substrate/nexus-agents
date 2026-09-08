@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.46.2
+
+### Patch Changes
+
+- [#5954](https://github.com/nexus-substrate/nexus-agents/pull/5954) [`905f594`](https://github.com/nexus-substrate/nexus-agents/commit/905f594677c41381102bd47719db47ba751f729d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - One accept-set for six more `NEXUS_*` boolean flags ([#5464](https://github.com/nexus-substrate/nexus-agents/issues/5464), wave 2 of [#5155](https://github.com/nexus-substrate/nexus-agents/issues/5155)).
+  `NEXUS_ROUTE_MODEL_SHADOW`, `NEXUS_META_SHADOW_TRAIN`, `NEXUS_LLM_CLASSIFICATION`,
+  `NEXUS_REPO_PREFERRED`, `NEXUS_ROUTE_MODEL_SELECTION` and `NEXUS_PERSIST_LEARNING`
+  now read through `parseBoolEnv`, so each accepts `true`/`1`/`false`/`0`
+  case-insensitively instead of the single literal its author happened to pick.
+
+  Two spellings change meaning, both of which the schema previously reported as
+  invalid at startup: `NEXUS_REPO_PREFERRED=false` now opts out of the per-repo
+  data dir (it used to be rejected, then route per-repo anyway), and
+  `NEXUS_PERSIST_LEARNING=0` now disables learning persistence (it used to be
+  rejected, then persist anyway). No previously-valid value changes behaviour.
+
 ## 8.46.1
 
 ### Patch Changes
