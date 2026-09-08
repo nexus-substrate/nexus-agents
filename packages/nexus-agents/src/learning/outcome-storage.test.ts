@@ -297,7 +297,12 @@ describe('SQLiteOutcomeStorage', () => {
         0.85,
         'Best match',
         '{"complexity":"high"}',
-        'req-1'
+        'req-1',
+        // #5915: 0, not NULL. This fixture does not set routerTypeMeasured, and
+        // "built today without saying it was measured" is a different fact from
+        // "written before the column existed" — conflating them would make the
+        // migration indistinguishable from a live gap.
+        0
       );
     });
 
@@ -317,9 +322,21 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error result when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // Throws on the WRITE only. Since #5915, initialization also prepares
+        // `PRAGMA table_info` for the guarded migration; a mock that threw on
+        // every prepare would fail at init and never reach the path this test
+        // is about. It is also the more faithful scenario — "the database
+        // throws on write" was always the intent.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('DB write failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -391,9 +408,21 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error result when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // Throws on the WRITE only. Since #5915, initialization also prepares
+        // `PRAGMA table_info` for the guarded migration; a mock that threw on
+        // every prepare would fail at init and never reach the path this test
+        // is about. It is also the more faithful scenario — "the database
+        // throws on write" was always the intent.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('DB write failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -432,9 +461,21 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error result when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // Throws on the WRITE only. Since #5915, initialization also prepares
+        // `PRAGMA table_info` for the guarded migration; a mock that threw on
+        // every prepare would fail at init and never reach the path this test
+        // is about. It is also the more faithful scenario — "the database
+        // throws on write" was always the intent.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('DB write failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -483,9 +524,18 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error result when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // See the note on the write-throwing mocks above: since #5915 init
+        // prepares a PRAGMA, so only the query itself throws here.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Query failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -531,9 +581,18 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // See the note on the write-throwing mocks above: since #5915 init
+        // prepares a PRAGMA, so only the query itself throws here.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Query failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -579,9 +638,18 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // See the note on the write-throwing mocks above: since #5915 init
+        // prepares a PRAGMA, so only the query itself throws here.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Query failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -626,9 +694,18 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // See the note on the write-throwing mocks above: since #5915 init
+        // prepares a PRAGMA, so only the query itself throws here.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Query failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -673,9 +750,18 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // See the note on the write-throwing mocks above: since #5915 init
+        // prepares a PRAGMA, so only the query itself throws here.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Query failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
@@ -707,8 +793,15 @@ describe('SQLiteOutcomeStorage', () => {
         // 3 DELETE statements, each returning changes: 3
         expect(result.value).toBe(9);
       }
-      // prepare called 3 times: rewards, outcomes, decisions
-      expect(mockDb.prepare).toHaveBeenCalledTimes(3);
+      // Three DELETEs: rewards, outcomes, decisions. Counted by SHAPE rather
+      // than by total calls — since #5915 initialization also prepares a
+      // `PRAGMA table_info` for the guarded migration, and a raw call count
+      // would make this test fail for a reason that has nothing to do with
+      // pruning.
+      const deletes = (mockDb.prepare as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => c[0] as string)
+        .filter((sql) => sql.trim().toUpperCase().startsWith('DELETE'));
+      expect(deletes).toHaveLength(3);
     });
 
     it('should return 0 when no records pruned', async () => {
@@ -730,7 +823,11 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // Only the DELETE throws; the #5915 migration PRAGMA must still answer.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return createMockStatement({ all: vi.fn(() => [{ name: 'router_type_measured' }]) });
+          }
           throw new Error('Delete failed');
         }),
       });
@@ -790,9 +887,17 @@ describe('SQLiteOutcomeStorage', () => {
 
     it('should return error when database throws', async () => {
       const mockDb = createMockDatabase({
-        prepare: vi.fn(() => {
+        // Only the count query throws; the #5915 migration PRAGMA must answer.
+        prepare: vi.fn((sql: string) => {
+          if (sql.startsWith('PRAGMA')) {
+            return {
+              run: vi.fn(),
+              get: vi.fn(),
+              all: vi.fn(() => [{ name: 'router_type_measured' }]),
+            };
+          }
           throw new Error('Count failed');
-        }),
+        }) as unknown as ISQLiteDatabase['prepare'],
       });
       const { storage } = createInitializedStorage(mockDb);
 
