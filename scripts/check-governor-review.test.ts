@@ -16,9 +16,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   analyzeGovernorReview,
@@ -77,6 +78,9 @@ const CODEOWNERS_SAMPLE = [
 ].join('\n');
 
 const GOVERNOR_PATTERNS = governorPathsFromCodeowners(CODEOWNERS_SAMPLE);
+
+/** Repo root, so the #5997 tests read the COMMITTED files rather than a fixture. */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function record(overrides: Partial<BuildPrReviewRecordInput> = {}): PrReviewRecord {
   return buildPrReviewRecord({
@@ -639,5 +643,81 @@ describe('stampOnlyExemptFiles (#5944)', () => {
         () => ''
       )
     ).toEqual([]);
+  });
+});
+
+/**
+ * #5997. These read the REAL CODEOWNERS and the REAL workflow, not a fixture.
+ * The defect they exist to catch was a reorder of the committed file: `/.rules/`
+ * sat above the section marker, so the parser classified the file that defines
+ * the voting thresholds as an ordinary review-request while CLAUDE.md claimed it
+ * required ratification. A fixture-based test cannot see that.
+ */
+describe('the governor path set matches what the docs claim (#5997)', () => {
+  const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+  const REAL_PATTERNS = governorPathsFromCodeowners(REAL_CODEOWNERS);
+
+  it('parses a non-empty set (a zero-length parse fails closed elsewhere)', () => {
+    expect(REAL_PATTERNS.length).toBeGreaterThan(0);
+  });
+
+  it('includes /.rules/ — it holds the voting thresholds', () => {
+    expect(REAL_PATTERNS).toContain('/.rules/');
+  });
+
+  it('excludes /packages/nexus-agents/src/consensus/ — deliberately, per the #5997 panel', () => {
+    // Not an oversight: routing an actively developed module through a human
+    // gate is how gates come to be bypassed. If this is ever reversed, it must
+    // be a ratified decision, so pin it rather than leave it implicit.
+    expect(REAL_PATTERNS).not.toContain('/packages/nexus-agents/src/consensus/');
+  });
+});
+
+describe('CODEOWNERS governor section and the workflow paths filters stay in lockstep (#5997)', () => {
+  const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+  const REAL_PATTERNS = governorPathsFromCodeowners(REAL_CODEOWNERS);
+  const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+
+  /** Every `- 'x'` entry inside a `paths:` block, one array per block. */
+  function pathsFilters(yaml: string): string[][] {
+    const blocks: string[][] = [];
+    let current: string[] | undefined;
+    for (const raw of yaml.split('\n')) {
+      if (/^\s*paths:\s*$/.test(raw)) {
+        current = [];
+        blocks.push(current);
+        continue;
+      }
+      if (current === undefined) continue;
+      const entry = /^\s*-\s*'([^']+)'\s*$/.exec(raw);
+      if (entry?.[1] !== undefined) current.push(entry[1]);
+      else if (raw.trim() !== '') current = undefined; // block ended
+    }
+    return blocks;
+  }
+
+  /** Does some workflow glob cause the gate to run for this governor pattern? */
+  function isCovered(pattern: string, globs: string[]): boolean {
+    const normalized = pattern.replace(/^\//, '');
+    return globs.some((glob) => {
+      if (glob === normalized) return true;
+      if (glob.endsWith('/**')) return normalized.startsWith(glob.slice(0, -2));
+      return false;
+    });
+  }
+
+  const filters = pathsFilters(WORKFLOW);
+
+  it('finds both trigger blocks (pull_request and push)', () => {
+    // If this drops to one, the loop below would silently stop checking a filter.
+    expect(filters).toHaveLength(2);
+  });
+
+  it.each([0, 1])('covers every governor path in paths filter #%i', (index) => {
+    const globs = filters[index] as string[];
+    const uncovered = REAL_PATTERNS.filter((p) => !isCovered(p, globs));
+    // A governor path the workflow does not list is a path whose gate never
+    // runs — the second half of the #5997 defect, independent of the parser.
+    expect(uncovered).toEqual([]);
   });
 });
