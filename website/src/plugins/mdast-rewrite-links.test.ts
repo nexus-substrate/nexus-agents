@@ -16,8 +16,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import mdastRewriteLinks, { rewriteHref, deriveDocsContext } from './mdast-rewrite-links.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import mdastRewriteLinks, {
+  rewriteHref,
+  deriveDocsContext,
+  hasPublishedFrontmatter,
+} from './mdast-rewrite-links.js';
 
 const DOCS_PREFIX = '/nexus-agents/docs';
 const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
@@ -197,9 +202,7 @@ describe('remarkRewriteLinks', () => {
 
     it('serves an index.md as its directory (#5750)', () => {
       // docs/reference/tools/index.md publishes at /docs/reference/tools/.
-      expect(rewrite('../reference/tools/index.md')).toBe(
-        `${DOCS_PREFIX}/reference/tools/`
-      );
+      expect(rewrite('../reference/tools/index.md')).toBe(`${DOCS_PREFIX}/reference/tools/`);
     });
 
     it('sends an unpublished page (no frontmatter) to the GitHub blob URL', () => {
@@ -337,5 +340,19 @@ describe('remarkRewriteLinks', () => {
     it('is a no-op for a document outside a docs/ tree', () => {
       expect(visit('./ROUTING_SYSTEM.md', new URL('file:///somewhere/else/README.md'))).toEqual([]);
     });
+  });
+});
+
+describe('generated docs that must be publishable (#5752)', () => {
+  const DOCS_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../docs');
+
+  it('publishes the generated research index', () => {
+    // RESEARCH_INDEX.md is emitted by scripts/update-research-index.ts. It opened
+    // with an HTML provenance comment and no YAML frontmatter, so the docs
+    // collection skipped it and every link to /docs/research/research_index/
+    // 404'd — 135 of the site's broken links. This asserts the real predicate
+    // against the real committed file, so regenerating without frontmatter fails
+    // here rather than silently unpublishing the page again.
+    expect(hasPublishedFrontmatter(DOCS_ROOT, 'research/RESEARCH_INDEX.md')).toBe(true);
   });
 });
