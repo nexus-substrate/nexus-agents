@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.46.12
+
+### Patch Changes
+
+- [#5988](https://github.com/nexus-substrate/nexus-agents/pull/5988) [`2f34d21`](https://github.com/nexus-substrate/nexus-agents/commit/2f34d21865787112bb056f781176c0776146249c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The governance stamp is now a digest of its sources' content instead of a commit
+  date ([#5943](https://github.com/nexus-substrate/nexus-agents/issues/5943), ratified 6-1). A squash-merge rewrites the committer date, so a PR
+  stamped one day and merged the next left main with a stamp the injector would no
+  longer compute — and the NEXT unrelated PR failed the idempotency check. The
+  stamp reads no git history at all now. Also removes the CLAUDE.md
+  governance-staleness warning from `release validate`, which parsed that date and
+  would otherwise have become a check that could never fire.
+
 ## 8.46.11
 
 ### Patch Changes
