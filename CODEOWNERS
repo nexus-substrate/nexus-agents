@@ -19,9 +19,6 @@
 # Consensus / voter configuration — the loop's own judge (#3653 self-mod guard)
 /packages/nexus-agents/src/consensus/ @williamzujkowski
 
-# Governance rules — Rule-of-Two, untrusted-input, etc. (#3653 self-mod guard)
-/.rules/ @williamzujkowski
-
 # Governor's own core — the governance-of-the-governor paths (#3830, Epic #3829).
 # These are NEVER auto-merged: human ratification is required. Admin-merge
 # discipline applies to them too — an agent-authored PR must not modify the
@@ -48,6 +45,13 @@
 # #5944 — decides whether a CLAUDE.md/AGENTS.md diff may SKIP ratification.
 # A module that grants exemptions must itself be governed, or it is a bypass.
 /scripts/governance-stamp-exemption.ts @williamzujkowski
+
+# Governance rules — the review bar's own definition (#5997). `.rules/governance.md`
+# holds the voting thresholds and refactor gates, so a change here can lower the bar
+# every other governor path is measured against. It sat ABOVE the section marker
+# until #5997, so the parser read it as an ordinary review-request while CLAUDE.md
+# claimed it required ratification. Keep it below the marker.
+/.rules/ @williamzujkowski
 
 # Project governance
 /CLAUDE.md @williamzujkowski
