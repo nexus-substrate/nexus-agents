@@ -20,6 +20,39 @@ vi.mock('../../cli/research-helpers.js', async (importOriginal) => {
   return { ...actual, loadPapersRegistry: vi.fn() };
 });
 
+// Every discovery provider is stubbed to an empty success. Without this the
+// tests below reach the REAL arXiv/GitHub/OpenAlex endpoints: `source` defaults
+// to 'all' (research-discover.ts:127) and `queryAllSources` is module-private,
+// so there is no seam inside the module to intercept. That made them fail
+// offline and flake in CI on unrelated PRs — the network is the fixture.
+// The factory is HOISTED above any top-level const, so the stub is inlined
+// rather than shared — `vi.mock` cannot close over a module-scope helper.
+vi.mock('../../cli/research-helpers-sources.js', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../cli/research-helpers-sources.js')
+  >();
+  return {
+    ...actual,
+    discoverArxiv: vi.fn(() => ({ ok: true, value: [] })),
+    discoverGitHubRepos: vi.fn(() => ({ ok: true, value: [] })),
+    discoverGoogleAI: vi.fn(() => ({ ok: true, value: [] })),
+    discoverMetaFAIR: vi.fn(() => ({ ok: true, value: [] })),
+    discoverMicrosoftResearch: vi.fn(() => ({ ok: true, value: [] })),
+    discoverDeepMind: vi.fn(() => ({ ok: true, value: [] })),
+  };
+});
+vi.mock('../../cli/research-helpers-sources-academic.js', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../cli/research-helpers-sources-academic.js')
+  >();
+  return {
+    ...actual,
+    discoverSemanticScholar: vi.fn(() => ({ ok: true, value: [] })),
+    discoverPapersWithCode: vi.fn(() => ({ ok: true, value: [] })),
+    discoverOpenAlex: vi.fn(() => ({ ok: true, value: [] })),
+  };
+});
+
 // Mock McpServer
 interface MockServer {
   tool: ReturnType<typeof vi.fn>;
@@ -177,7 +210,7 @@ describe('research_discover tool', () => {
       } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
 
       const result = await executeDiscovery(
-        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', sources: [] }),
+        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', source: 'arxiv' }),
         logger
       );
 
@@ -191,7 +224,7 @@ describe('research_discover tool', () => {
       } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
 
       const result = await executeDiscovery(
-        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', sources: [] }),
+        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', source: 'arxiv' }),
         logger
       );
 
@@ -206,7 +239,7 @@ describe('research_discover tool', () => {
         value: { papers: {} },
       } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
       const readOk = await executeDiscovery(
-        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', sources: [] }),
+        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', source: 'arxiv' }),
         logger
       );
 
@@ -215,7 +248,7 @@ describe('research_discover tool', () => {
         error: new Error('boom'),
       } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
       const unread = await executeDiscovery(
-        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', sources: [] }),
+        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', source: 'arxiv' }),
         logger
       );
 
@@ -233,7 +266,7 @@ describe('research_discover tool', () => {
       } as unknown as Awaited<ReturnType<typeof loadPapersRegistry>>);
 
       const result = await executeDiscovery(
-        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', sources: [] }),
+        ResearchDiscoverInputSchema.parse({ topic: 'memory systems', source: 'arxiv' }),
         logger
       );
 
