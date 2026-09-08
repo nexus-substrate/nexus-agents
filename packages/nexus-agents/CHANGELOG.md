@@ -1,5 +1,28 @@
 # nexus-agents
 
+## 8.46.3
+
+### Patch Changes
+
+- [#5959](https://github.com/nexus-substrate/nexus-agents/pull/5959) [`9d6f030`](https://github.com/nexus-substrate/nexus-agents/commit/9d6f03070d227712fe6e5b5001bd6608f29a419a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The aorchestra prior-wave context block now says which worker results the
+  context budget left out ([#5956](https://github.com/nexus-substrate/nexus-agents/issues/5956)). Both budget guards in `cross-wave-context.ts`
+  — the per-block cap on successes and the remaining-budget cap on the failed-
+  worker list — used to `break` out of their loop with no marker, no count and no
+  log, under a header reading "The following results were produced by prior wave
+  workers". A downstream worker could not tell its context was partial. The block
+  now ends with a notice naming the omitted roles, and a `logger.warn` records
+  them; a block that omits nothing is unchanged.
+
+- [#5960](https://github.com/nexus-substrate/nexus-agents/pull/5960) [`c8110e5`](https://github.com/nexus-substrate/nexus-agents/commit/c8110e529309a6de7dfec6cf2a00bc3093701446) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Doc-only: `WorkflowRouter`'s `confidence`, and the `MetaDecision` /
+  `RunResponse` fields it flows into, are now documented as what they are — a
+  per-rule source PRIOR, not a measurement of the routed task ([#5957](https://github.com/nexus-substrate/nexus-agents/issues/5957)). Every rule
+  returns an authored literal and nothing the analyzer observes reaches the
+  number, but three declarations described it as "Confidence in the selection
+  (0-1)", which reads as a score. Same call `triangulated-review.ts` made for the
+  identical shape under [#5119](https://github.com/nexus-substrate/nexus-agents/issues/5119). A characterization test pins the constant-ness so
+  that deriving it from an observation fails until the declarations are updated.
+  No behaviour change.
+
 ## 8.46.2
 
 ### Patch Changes
