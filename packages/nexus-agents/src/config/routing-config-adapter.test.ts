@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- these tests exercise
+   `maxDecisionTimeMs` on purpose: its existing adaptation must keep working
+   through the deprecation cycle, and the new cases assert the warning (#5918). */
 /**
  * nexus-agents/config - Routing Config Adapter Tests
  *
@@ -6,8 +9,13 @@
  * (Source: Issue #475 - Add routing configuration section to nexus-agents.yaml)
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-adapter.js';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import {
+  _resetMaxDecisionTimeWarningForTests,
+  adaptRoutingConfig,
+  getRoutingConfigLogger,
+  getTopsisConfigFromYaml,
+} from './routing-config-adapter.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import { DEFAULT_TOPSIS_CONFIG } from '../cli-adapters/topsis-types.js';
 import type { RoutingConfig } from './schemas-routing.js';
@@ -369,5 +377,56 @@ describe('adaptRoutingConfig billing mode (#4196)', () => {
   it('treats unknown values as plan (fail-safe default)', () => {
     process.env['NEXUS_BILLING_MODE'] = 'weird';
     expect(adaptRoutingConfig(undefined).billingMode).toBe('plan');
+  });
+});
+
+// ============================================================================
+// maxDecisionTimeMs deprecation (#5918)
+// ============================================================================
+
+describe('maxDecisionTimeMs is deprecated and says so (#5918)', () => {
+  // The field is declared three times, validated, and copied into the runtime
+  // config — and nothing on the routing path compares anything to it. Removing
+  // it is published-API breaking, so it is queued for the next major (#5963);
+  // what ships now is that an operator who sets it is TOLD it does nothing,
+  // instead of believing they have bounded routing.
+
+  beforeEach(() => {
+    _resetMaxDecisionTimeWarningForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('warns once when the operator actually sets it', () => {
+    const warn = vi.spyOn(getRoutingConfigLogger(), 'warn').mockImplementation(() => undefined);
+    adaptRoutingConfig({ linucb: { alpha: 1.0, maxDecisionTimeMs: 25 } } as RoutingConfig);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/no longer|never enforced|no effect/i);
+  });
+
+  it('does not warn again on a second adaptation in the same process', () => {
+    const warn = vi.spyOn(getRoutingConfigLogger(), 'warn').mockImplementation(() => undefined);
+    const cfg = { linucb: { alpha: 1.0, maxDecisionTimeMs: 25 } } as RoutingConfig;
+    adaptRoutingConfig(cfg);
+    adaptRoutingConfig(cfg);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays silent when the operator did not set it', () => {
+    const warn = vi.spyOn(getRoutingConfigLogger(), 'warn').mockImplementation(() => undefined);
+    adaptRoutingConfig({ linucb: { alpha: 1.0 } } as unknown as RoutingConfig);
+    adaptRoutingConfig(undefined);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('still resolves the value, so nothing downstream changes shape', () => {
+    // The deprecation must not alter behaviour: the field stays in
+    // CompositeRouterConfig for the cycle, and is still populated.
+    const result = adaptRoutingConfig({
+      linucb: { alpha: 1.0, maxDecisionTimeMs: 25 },
+    } as RoutingConfig);
+    expect(result.maxDecisionTimeMs).toBe(25);
   });
 });

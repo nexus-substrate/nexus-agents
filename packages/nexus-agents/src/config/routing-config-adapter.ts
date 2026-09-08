@@ -12,6 +12,8 @@ import type {
   CompositeRouterConfig,
   CompositeRouterConfigWithPreference,
 } from '../cli-adapters/composite-router-types.js';
+import type { ILogger } from '../core/index.js';
+import { createLogger } from '../core/index.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import type { TopsisConfig as RuntimeTopsisConfig } from '../cli-adapters/topsis-types.js';
 import { DEFAULT_TOPSIS_CONFIG, DEFAULT_TOPSIS_CRITERIA } from '../cli-adapters/topsis-types.js';
@@ -207,11 +209,64 @@ function resolveBillingModeFromEnv(): CompositeRouterConfig['billingMode'] {
 /**
  * Builds the base CompositeRouterConfig from YAML config and defaults.
  */
+/**
+ * Lazily-built logger for this module. Exposed so a test can spy on the sink
+ * the deprecation warning actually writes to, rather than asserting on stderr.
+ */
+let moduleLogger: ILogger | undefined;
+export function getRoutingConfigLogger(): ILogger {
+  moduleLogger ??= createLogger({ component: 'routing-config-adapter' });
+  return moduleLogger;
+}
+
+/**
+ * `adaptRoutingConfig` runs once per router construction, which can be many
+ * times in a process; the operator only needs telling once.
+ */
+let warnedMaxDecisionTime = false;
+
+/** Test hook — the warn-once latch outlives a single test otherwise. */
+export function _resetMaxDecisionTimeWarningForTests(): void {
+  warnedMaxDecisionTime = false;
+}
+
+/**
+ * Tells an operator who set `routing.linucb.maxDecisionTimeMs` that it does
+ * nothing (#5918).
+ *
+ * The field is declared in three places, validated, and copied into the
+ * runtime config — and NOTHING on the routing path compares anything to it.
+ * `capacity-stage.ts` had to build its own probe race for exactly this reason.
+ * An operator who sets it to protect an interactive path has not bounded
+ * anything, and the JSDoc was the entire basis for believing otherwise.
+ *
+ * Deleting it is a published-API break (it is in `NexusConfigSchema` and the
+ * exported `CompositeRouterConfig`), so it is queued for the next major
+ * (#5963) and this is the deprecation cycle. The warning reads the PARSED
+ * value while the declaration still exists — after removal, Zod's `$strip`
+ * would discard the key before any code could see it, and detecting it would
+ * need a raw-key scan built solely for that purpose.
+ */
+/* eslint-disable @typescript-eslint/no-deprecated -- warning about the
+   deprecated field requires reading it; that is the point of this function. */
+function warnIfMaxDecisionTimeSet(config: DefinedRoutingConfig): void {
+  if (config.linucb?.maxDecisionTimeMs === undefined) return;
+  if (warnedMaxDecisionTime) return;
+  warnedMaxDecisionTime = true;
+  getRoutingConfigLogger().warn(
+    'routing.linucb.maxDecisionTimeMs is deprecated and has no effect — routing has never enforced it. ' +
+      'It is scheduled for removal in the next major (#5963). For a real bound on a single stage, see capacity-stage probeTimeoutMs.',
+    { maxDecisionTimeMs: config.linucb.maxDecisionTimeMs }
+  );
+}
+/* eslint-enable @typescript-eslint/no-deprecated */
+
 function buildBaseConfig(
   config: DefinedRoutingConfig,
   stagesConfig: Partial<CompositeRouterConfig>
 ): CompositeRouterConfig {
   const stageFlags = resolveStageFlags(stagesConfig);
+  warnIfMaxDecisionTimeSet(config);
 
   return {
     ...stageFlags,
@@ -219,7 +274,9 @@ function buildBaseConfig(
     latencyScoreWeight: config.latencyScoreWeight,
     budgetConstraints: config.budget,
     linucbAlpha: config.linucb?.alpha ?? DEFAULT_COMPOSITE_CONFIG.linucbAlpha,
+    // Kept populated for the deprecation cycle (#5918); goes with the field in #5963.
     maxDecisionTimeMs:
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       config.linucb?.maxDecisionTimeMs ?? DEFAULT_COMPOSITE_CONFIG.maxDecisionTimeMs,
     preferenceMinDataPoints:
       config.preference?.minDataPoints ?? DEFAULT_COMPOSITE_CONFIG.preferenceMinDataPoints,

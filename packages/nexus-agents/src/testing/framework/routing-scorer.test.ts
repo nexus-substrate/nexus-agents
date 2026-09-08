@@ -234,7 +234,7 @@ describe('createRoutingScorer', () => {
   });
 
   it('creates scorer with custom config', () => {
-    const scorer = createRoutingScorer({ maxDecisionTimeMs: 50 });
+    const scorer = createRoutingScorer({ latencyBudgetMs: 50 });
     expect(scorer).toBeInstanceOf(RoutingScorer);
   });
 });
