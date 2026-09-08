@@ -9,10 +9,16 @@ import {
   SENSITIVE_PATH_PATTERNS,
   hasFileBoundaries,
   looksLikeUnifiedDiff,
+  packDiffForReview,
   securityFirstPack,
   splitByFile,
   type DiffFile,
 } from './pr-review-diff-budget.js';
+import {
+  MAX_REVIEWED_DIFF_BYTES,
+  computeReviewedDiffHash,
+  reviewedDiffWasTruncated,
+} from '../../audit/reviewed-diff-hash.js';
 
 /** Build a normal file diff segment with `bodyLines` added lines. */
 function fileDiff(path: string, bodyLines: number): string {
@@ -311,5 +317,74 @@ describe('hasFileBoundaries (#4459)', () => {
     expect(hasFileBoundaries(diff)).toBe(
       splitByFile(diff).every((f) => f.path !== '(unstructured)')
     );
+  });
+});
+
+describe('the review budget and the hash cap measure the same unit (#5818)', () => {
+  // A diff whose UTF-16 length is far UNDER the budget while its UTF-8 byte
+  // length is far OVER it. Multibyte content is ordinary in this repo (56 of 60
+  // recent diffs contain non-ASCII), and a PR author controls these bytes.
+  const overCapByBytesOnly =
+    'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,1 +1,1 @@\n' +
+    `+// ${'→'.repeat(20_000)}\n`;
+
+  it('pins the premise: under the budget by UTF-16 units, over it by UTF-8 bytes', () => {
+    expect(overCapByBytesOnly.length).toBeLessThan(MAX_REVIEWED_DIFF_BYTES);
+    expect(Buffer.byteLength(overCapByBytesOnly, 'utf-8')).toBeGreaterThan(MAX_REVIEWED_DIFF_BYTES);
+    // The hash therefore binds only a PREFIX of this diff.
+    expect(reviewedDiffWasTruncated(overCapByBytesOnly)).toBe(true);
+  });
+
+  it('reports partial coverage whenever the hash would truncate', () => {
+    // Before #5818 this returned `undefined`: the packer compared UTF-16 units
+    // against a budget the rest of the module spends in UTF-8 bytes, so the
+    // review was recorded as COMPLETE while content past the cap went unbound.
+    const { coverage } = packDiffForReview(overCapByBytesOnly, MAX_REVIEWED_DIFF_BYTES);
+    expect(coverage).toBeDefined();
+    expect(coverage?.partial).toBe(true);
+  });
+
+  it('leaves content past the cap unbound, which is why coverage must fire', () => {
+    // The observable failure the disclosure exists to catch: a whole extra file
+    // appended past the byte cap does not change the binding at all.
+    const withAppendedFile = `${overCapByBytesOnly}diff --git a/evil.ts b/evil.ts\n+process.exit(0)\n`;
+    expect(computeReviewedDiffHash(withAppendedFile)).toBe(
+      computeReviewedDiffHash(overCapByBytesOnly)
+    );
+    // ...so the packer must flag BOTH as partial rather than silently complete.
+    expect(packDiffForReview(withAppendedFile, MAX_REVIEWED_DIFF_BYTES).coverage?.partial).toBe(
+      true
+    );
+  });
+
+  it('still returns a byte-identical proposal for a genuinely within-budget diff', () => {
+    // Guards the benign population: an ASCII diff under the cap must be
+    // untouched (no pack, no note), exactly as before.
+    const small = 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n+const a = 1;\n';
+    const packing = packDiffForReview(small, MAX_REVIEWED_DIFF_BYTES);
+    expect(packing.coverage).toBeUndefined();
+    expect(packing.packedDiff).toBe(small);
+    expect(packing.note).toBe('');
+  });
+  // Drift guard: the packer's budget and the hash's cap must stay the SAME unit.
+  // If they diverge again, one of these boundary cases reports a review as
+  // complete while the binding is partial — the #5818 window.
+  it.each([
+    ['one byte under the cap', MAX_REVIEWED_DIFF_BYTES - 1],
+    ['exactly at the cap', MAX_REVIEWED_DIFF_BYTES],
+    ['one byte over the cap', MAX_REVIEWED_DIFF_BYTES + 1],
+  ])('agrees with reviewedDiffWasTruncated: %s', (_label, targetBytes) => {
+    // Build a multibyte diff of EXACTLY targetBytes (3-byte chars + ASCII pad).
+    const header = 'diff --git a/x.ts b/x.ts\n@@ -1 +1 @@\n+// ';
+    const tail = '\n';
+    const budgetForBody = targetBytes - Buffer.byteLength(header + tail, 'utf-8');
+    const multibyteCount = Math.floor(budgetForBody / 3);
+    const padding = '.'.repeat(budgetForBody - multibyteCount * 3);
+    const diff = `${header}${'→'.repeat(multibyteCount)}${padding}${tail}`;
+    expect(Buffer.byteLength(diff, 'utf-8')).toBe(targetBytes);
+
+    const truncated = reviewedDiffWasTruncated(diff);
+    const partial = packDiffForReview(diff, MAX_REVIEWED_DIFF_BYTES).coverage !== undefined;
+    expect(partial).toBe(truncated);
   });
 });
