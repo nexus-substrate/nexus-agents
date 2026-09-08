@@ -26,6 +26,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
+import { parseBoolEnv } from '../../config/defaults-env.js';
 import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run.js';
 import { describeIncompletePipeline } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -343,7 +344,7 @@ export interface RunExecuteResponse {
  * whose choice is logged for offline comparison.
  */
 export function isShadowTrainEnabled(): boolean {
-  return process.env['NEXUS_META_SHADOW_TRAIN'] === '1' && isPersistenceEnabled();
+  return parseBoolEnv('NEXUS_META_SHADOW_TRAIN', false) && isPersistenceEnabled();
 }
 
 /**

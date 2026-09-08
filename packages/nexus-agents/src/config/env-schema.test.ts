@@ -133,14 +133,36 @@ describe('env-schema', () => {
       expect(result.invalidVars).toHaveLength(0);
     });
 
+    // `1` and `true` until #5464. Those two values were the split itself —
+    // `NEXUS_ROUTE_MODEL_SELECTION` took `true` while its neighbour took `1`,
+    // and this test asserted each one's rejection of the other's spelling as
+    // intended behaviour. Both are now valid; `on` and `yes` are outside the
+    // accept-set every NEXUS_* boolean shares, which is what this case tests.
     it('rejects invalid NEXUS_ROUTE_MODEL_SELECTION / NEXUS_ROUTE_MODEL_SHADOW values (#4197)', () => {
-      vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', '1');
-      vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', 'true');
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SELECTION', 'on');
+      vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', 'yes');
       const result = validateNexusEnv();
       expect(result.invalidVars.map((v) => v.name).sort()).toEqual([
         'NEXUS_ROUTE_MODEL_SELECTION',
         'NEXUS_ROUTE_MODEL_SHADOW',
       ]);
+    });
+
+    // The migration's own acceptance: each of the six now takes all four
+    // spellings, which is the whole point of one accept-set (#5464).
+    it.each([
+      'NEXUS_ROUTE_MODEL_SELECTION',
+      'NEXUS_ROUTE_MODEL_SHADOW',
+      'NEXUS_META_SHADOW_TRAIN',
+      'NEXUS_LLM_CLASSIFICATION',
+      'NEXUS_REPO_PREFERRED',
+      'NEXUS_PERSIST_LEARNING',
+    ])('accepts the full boolean set for %s (#5464)', (name) => {
+      for (const value of ['true', 'false', '1', '0', 'TRUE', 'False']) {
+        vi.stubEnv(name, value);
+        const result = validateNexusEnv();
+        expect(result.invalidVars.map((v) => v.name)).not.toContain(name);
+      }
     });
 
     it('rejects invalid NEXUS_AUTO_REMEDIATE / NEXUS_POLICY_GATE_MODE values (#3713)', () => {

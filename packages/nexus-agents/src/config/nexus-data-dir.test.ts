@@ -211,6 +211,26 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
     expect(getNexusRepoDir()).toBe(null);
   });
 
+  // One accept-set for every NEXUS_* boolean (#5464, wave 2 of #5155). Before
+  // the migration only the literal `0` opted out: `false` was reported as an
+  // invalid value at startup and then routed per-repo anyway, so an operator
+  // who wrote the spelling their neighbouring flags use got the opposite of
+  // what they asked for.
+  it.each(['0', 'false', 'FALSE'])('returns null when NEXUS_REPO_PREFERRED=%s', async (value) => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = value;
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it.each(['1', 'true'])('still routes per-repo when NEXUS_REPO_PREFERRED=%s', async (value) => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    process.env['NEXUS_REPO_PREFERRED'] = value;
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).toBe(join(realpathSync(tempRepo), '.nexus-agents'));
+  });
+
   it('returns null when cwd is not in a repo (homedir fallback)', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
     const { rmSync } = await import('node:fs');

@@ -40,6 +40,7 @@ import {
   isPersistenceEnabled,
 } from '../config/learning-persistence.js';
 import { getDefaultModelForCli } from '../config/model-config-helpers.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 import { resolveModelForTier } from './resolve-model-for-tier.js';
 
 import type { ModelTier } from './zero-router-types.js';
@@ -50,7 +51,7 @@ import type { CliNameLiteral } from '../config/model-capabilities-types.js';
  * Default OFF; requires learning persistence (mirrors `isShadowTrainEnabled`).
  */
 export function isRouteModelShadowEnabled(): boolean {
-  return process.env['NEXUS_ROUTE_MODEL_SHADOW'] === '1' && isPersistenceEnabled();
+  return parseBoolEnv('NEXUS_ROUTE_MODEL_SHADOW', false) && isPersistenceEnabled();
 }
 
 /**

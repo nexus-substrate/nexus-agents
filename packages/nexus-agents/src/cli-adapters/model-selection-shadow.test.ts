@@ -4,7 +4,7 @@
  * corrupt-line skipping, lookback filter), and the failure counter.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -59,8 +59,12 @@ describe('isRouteModelShadowEnabled (#4197)', () => {
     expect(isRouteModelShadowEnabled()).toBe(false);
   });
 
-  it('treats values other than "1" as OFF', () => {
-    process.env['NEXUS_ROUTE_MODEL_SHADOW'] = 'true';
+  // Was `'true'` until #5464. That value asserted the pre-migration split —
+  // `1` here beside `true` on its neighbour — as intended behaviour, so the
+  // test would have had to fail for the migration to land. `yes` is outside
+  // the shared accept-set for every flag, which is what this case is for.
+  it('treats a value outside the accept-set as OFF', () => {
+    process.env['NEXUS_ROUTE_MODEL_SHADOW'] = 'yes';
     expect(isRouteModelShadowEnabled()).toBe(false);
   });
 });
@@ -188,5 +192,40 @@ describe('shadow failure counter (#4197)', () => {
     expect(recordModelSelectionShadowFailure()).toBe(1);
     expect(recordModelSelectionShadowFailure()).toBe(2);
     expect(getModelSelectionShadowFailureCount()).toBe(2);
+  });
+});
+
+// One accept-set for every NEXUS_* boolean (#5464, wave 2 of #5155). The gate
+// used to answer only to the literal `1`; `=true` was reported invalid at
+// startup and read as OFF.
+describe('isRouteModelShadowEnabled (#5464)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults OFF when the variable is unset', () => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', undefined);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    expect(isRouteModelShadowEnabled()).toBe(false);
+  });
+
+  it.each(['1', 'true', 'TRUE'])('treats %s as ON when persistence is on', (value) => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', value);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    expect(isRouteModelShadowEnabled()).toBe(true);
+  });
+
+  it.each(['0', 'false'])('treats %s as OFF', (value) => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', value);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    expect(isRouteModelShadowEnabled()).toBe(false);
+  });
+
+  // The AND with persistence is the other half of the gate — widening the
+  // accept-set must not turn the shadow on where nothing can record it.
+  it('stays OFF when persistence is disabled, whatever spelling turns it on', () => {
+    vi.stubEnv('NEXUS_ROUTE_MODEL_SHADOW', 'true');
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'false');
+    expect(isRouteModelShadowEnabled()).toBe(false);
   });
 });

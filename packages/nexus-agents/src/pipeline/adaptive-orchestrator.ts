@@ -22,6 +22,7 @@
 
 import { createLogger } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 import { runGraphPipeline } from './graph-pipeline-runner.js';
 import type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline-runner.js';
 import { getTemplate, PIPELINE_TEMPLATES } from './templates.js';
@@ -237,7 +238,7 @@ const TRIAGE_CATEGORY_MAP: Record<string, PipelineType> = {
  * it on is a new behaviour with a real per-task cost, not a restoration.
  */
 function llmClassificationEnabled(): boolean {
-  return process.env['NEXUS_LLM_CLASSIFICATION'] === '1';
+  return parseBoolEnv('NEXUS_LLM_CLASSIFICATION', false);
 }
 
 /** Try using issue_triage for richer classification when confidence is low. */
