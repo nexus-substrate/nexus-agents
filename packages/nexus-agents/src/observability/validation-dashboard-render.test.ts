@@ -28,7 +28,7 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function makeCI(lower: number, estimate: number, upper: number) {
-  return { lower, estimate, upper, n: 100, confidence: 0.95, standardError: 0.05 };
+  return { lower, estimate, upper, n: 100, confidence: 0.95, standardError: 0.05, measured: true };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
