@@ -139,11 +139,68 @@ export function detectFramework(entries: readonly string[]): string | null {
   return null;
 }
 
+/**
+ * A LICENSE file under any conventional name (#6018).
+ *
+ * The previous check was `entries.includes('LICENSE') || includes('LICENSE.md')`,
+ * which misses the Rust/Go convention of dual-licensing as `LICENSE-APACHE` +
+ * `LICENSE-MIT`. `repo_analyze` therefore reported "No LICENSE file" for a repo
+ * whose own `topLevelEntries` — in the same response — listed both.
+ */
+function hasLicenseFileIn(entries: readonly string[]): boolean {
+  return entries.some((e) => /^licen[cs]e/i.test(e));
+}
+
+/**
+ * CODEOWNERS in any location GitHub honours (#6018).
+ *
+ * GitHub reads it from the repo root, `.github/`, or `docs/`. Checking only the
+ * root reported "No CODEOWNERS file" against a repo carrying a 31-line
+ * `.github/CODEOWNERS`, which is where most projects put it.
+ *
+ * `dotGithubEntries` is the listing of `.github/` when it could be fetched;
+ * pass an empty array when it could not, in which case a root-only miss is
+ * UNMEASURED rather than a gap — see {@link identifyGaps}.
+ */
+function hasCodeownersFile(
+  entries: readonly string[],
+  dotGithubEntries: readonly string[],
+  docsEntries: readonly string[] = []
+): boolean {
+  return (
+    entries.includes('CODEOWNERS') ||
+    dotGithubEntries.includes('CODEOWNERS') ||
+    docsEntries.includes('CODEOWNERS')
+  );
+}
+
+/** What was learned about `.github/` when looking for CODEOWNERS (#6018). */
+export interface CodeownersLookup {
+  /** Names inside `.github/`, when it could be listed. */
+  readonly entries?: readonly string[];
+  /** Whether `.github/` was actually listed. False ⇒ a root miss is unmeasured. */
+  readonly listed?: boolean;
+}
+
+/**
+ * Whether CODEOWNERS is genuinely absent, as opposed to merely unlooked-at.
+ *
+ * Returns false — no gap — when `.github/` exists but could not be listed. An
+ * absence nobody checked is not a finding, and reporting it as one is the
+ * defect this whole change is about (#6018).
+ */
+function codeownersIsMissing(entries: readonly string[], lookup: CodeownersLookup): boolean {
+  if (hasCodeownersFile(entries, lookup.entries ?? [])) return false;
+  const unlooked = entries.includes('.github') && lookup.listed !== true;
+  return !unlooked;
+}
+
 /** Gap detection rules: [files-any-present, gap message]. */
 const GAP_RULES: ReadonlyArray<readonly [readonly string[], string]> = [
   [['SECURITY.md'], 'No SECURITY.md policy'],
-  [['CODEOWNERS'], 'No CODEOWNERS file'],
-  [['LICENSE', 'LICENSE.md'], 'No LICENSE file'],
+  // CODEOWNERS and LICENSE are matched by predicate, not exact name — see
+  // hasCodeownersFile / hasLicenseFile. GitHub honours CODEOWNERS in three
+  // locations and Rust/Go dual-license as LICENSE-APACHE + LICENSE-MIT (#6018).
   [
     ['.semgrep.yml', '.semgrep', '.grype.yaml', '.snyk'],
     'No SAST/SCA security scanning configured',
@@ -256,20 +313,44 @@ function removeSastGapIfToolDetected(gaps: string[], secTools: readonly string[]
   }
 }
 
+/**
+ * The three gaps that cannot be judged from an exact-filename table (#6018).
+ *
+ * Each needs either a glob (LICENSE-APACHE), a second directory listing
+ * (.github/CODEOWNERS), or the repo's language (Rust keeps tests where a
+ * top-level listing cannot see them). Extracted from {@link identifyGaps} to
+ * keep that function under the complexity cap, and because these three share a
+ * property the table-driven rules do not: each can be UNMEASURABLE, and must
+ * stay silent rather than assert an absence nobody checked.
+ */
+function judgedGaps(
+  entries: readonly string[],
+  language: string | null | undefined,
+  codeowners: CodeownersLookup
+): string[] {
+  const gaps: string[] = [];
+  if (!hasLicenseFileIn(entries)) gaps.push('No LICENSE file');
+  if (codeownersIsMissing(entries, codeowners)) gaps.push('No CODEOWNERS file');
+  const tests = detectTestInfraMeasured(entries, language ?? null);
+  if (tests.measured && !tests.hasTests) gaps.push('No test directory detected');
+  return gaps;
+}
+
 /** Identify gaps in repository best practices. */
 export function identifyGaps(
   entries: readonly string[],
   ciProvider: string | null,
   language?: string | null,
-  securityTooling?: readonly string[]
+  securityTooling?: readonly string[],
+  codeowners: CodeownersLookup = {}
 ): readonly string[] {
   const gaps: string[] = [];
   if (ciProvider === null) gaps.push('No CI/CD configuration detected');
   for (const [files, message] of GAP_RULES) {
     if (!files.some((f) => entries.includes(f))) gaps.push(message);
   }
-  // Test detection: uses detectTestInfra for monorepo + co-located pattern support (#1130)
-  if (!detectTestInfra(entries)) gaps.push('No test directory detected');
+
+  gaps.push(...judgedGaps(entries, language, codeowners));
 
   // Remove SAST/SCA gap if workflow-level security was detected (#1674)
   removeSastGapIfToolDetected(gaps, securityTooling ?? []);
@@ -308,11 +389,13 @@ export interface GhRepoMetadata {
 export function analyzeRepo(
   metadata: GhRepoMetadata,
   topLevelEntries: readonly string[],
-  workflowEntries?: readonly string[]
+  workflowEntries?: readonly string[],
+  dotGithubEntries: readonly string[] = [],
+  dotGithubListed = false
 ): RepoAnalysis {
   const ciProvider = detectCiProvider(topLevelEntries);
   const secTooling = detectSecurityTooling(topLevelEntries, workflowEntries);
-  const hasTests = detectTestInfra(topLevelEntries);
+  const tests = detectTestInfraMeasured(topLevelEntries, metadata.language);
 
   return {
     name: metadata.full_name,
@@ -333,13 +416,17 @@ export function analyzeRepo(
       topLevelEntries.includes('charts') ||
       topLevelEntries.includes('helm'),
     hasMakefile: topLevelEntries.includes('Makefile'),
-    hasTests,
+    hasTests: tests.hasTests,
+    testsMeasured: tests.measured,
     license: metadata.license?.spdx_id ?? null,
     description: metadata.description,
     defaultBranch: metadata.default_branch,
     stars: metadata.stargazers_count,
     topLevelEntries: [...topLevelEntries],
-    gaps: identifyGaps(topLevelEntries, ciProvider, metadata.language, secTooling),
+    gaps: identifyGaps(topLevelEntries, ciProvider, metadata.language, secTooling, {
+      entries: dotGithubEntries,
+      listed: dotGithubListed,
+    }),
   };
 }
 
@@ -394,6 +481,53 @@ function detectTestInfra(entries: readonly string[]): boolean {
   if (testConfigs.some((c) => entries.includes(c))) return true;
   // Monorepo: packages/ dir + package.json implies co-located tests
   return entries.includes('packages') && entries.includes('package.json');
+}
+
+/**
+ * Languages whose test layout the probes above actually understand.
+ *
+ * The list is the honest boundary of {@link detectTestInfra}: every rule in it
+ * looks for a JS/TS-shaped root `tests/` directory or a JS test-runner config.
+ * A language absent from this list is not "a repo without tests" — it is a repo
+ * this function cannot measure, and #6018 is what happens when the two are
+ * conflated (a 9-crate Rust workspace with 1385 `#[test]` functions reported
+ * `hasTests: false` and "No test directory detected").
+ *
+ * Adding a language here is a promise that the probes below recognise its
+ * conventions. Rust is deliberately ABSENT: its tests live in `#[cfg(test)]`
+ * modules inside source files and in per-crate `tests/` directories, neither of
+ * which a top-level listing can see.
+ */
+const TEST_DETECTABLE_LANGUAGES: ReadonlySet<string> = new Set([
+  'TypeScript',
+  'JavaScript',
+  'Python',
+  'Ruby',
+  'PHP',
+]);
+
+/** Test detection plus whether it was measurable at all (#6018). */
+interface TestInfraVerdict {
+  readonly hasTests: boolean;
+  readonly measured: boolean;
+}
+
+/**
+ * Detect tests, reporting `measured: false` when the repo's language has no
+ * probe rather than reporting a JS-shaped absence as a finding (#6018).
+ *
+ * A positive detection is trusted regardless of language: a root `tests/`
+ * directory means tests whoever wrote it. Only the NEGATIVE needs the
+ * language guard, because that is the direction that fabricates a gap.
+ */
+function detectTestInfraMeasured(
+  entries: readonly string[],
+  language: string | null
+): TestInfraVerdict {
+  const detected = detectTestInfra(entries);
+  if (detected) return { hasTests: true, measured: true };
+  const measured = language !== null && TEST_DETECTABLE_LANGUAGES.has(language);
+  return { hasTests: false, measured };
 }
 
 /** Infer code language from project files when GitHub reports markup. */
@@ -527,6 +661,30 @@ async function fetchWorkflowEntries(repoId: string, exec: ExecFileFn): Promise<r
   }
 }
 
+/**
+ * Fetch the `.github/` listing so CODEOWNERS can be found where GitHub actually
+ * honours it (#6018). Returns `listed: false` when the directory could not be
+ * read, so a miss stays unmeasured instead of becoming a false gap.
+ */
+async function fetchDotGithubEntries(
+  repoId: string,
+  exec: ExecFileFn
+): Promise<{ entries: readonly string[]; listed: boolean }> {
+  try {
+    const { stdout } = await exec(
+      'gh',
+      ['api', `repos/${repoId}/contents/.github`, '--jq', '[.[].name]'],
+      { timeout: 15_000 }
+    );
+    const parsed: unknown = JSON.parse(stdout.trim());
+    return Array.isArray(parsed)
+      ? { entries: parsed.filter((e): e is string => typeof e === 'string'), listed: true }
+      : { entries: [], listed: false };
+  } catch {
+    return { entries: [], listed: false };
+  }
+}
+
 /** Fetch repo data from GitHub and produce analysis. */
 export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
   const repoId = normalizeRepoId(input.repo);
@@ -537,7 +695,7 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
   const enhanced = { ...metadata, language: primaryLang };
 
   // Resolve null or NOASSERTION license when LICENSE file exists
-  const hasLicenseFile = entries.includes('LICENSE') || entries.includes('LICENSE.md');
+  const hasLicenseFile = hasLicenseFileIn(entries);
   const licenseUnresolved = enhanced.license === null || enhanced.license.spdx_id === 'NOASSERTION';
   if (licenseUnresolved && hasLicenseFile) {
     const resolved = await resolveLicense(repoId, exec);
@@ -548,6 +706,9 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
   const workflowEntries = entries.includes('.github')
     ? await fetchWorkflowEntries(repoId, exec)
     : [];
+  const dotGithub = entries.includes('.github')
+    ? await fetchDotGithubEntries(repoId, exec)
+    : { entries: [] as readonly string[], listed: true }; // no .github/ at all = measured absence
 
-  return analyzeRepo(enhanced, entries, workflowEntries);
+  return analyzeRepo(enhanced, entries, workflowEntries, dotGithub.entries, dotGithub.listed);
 }

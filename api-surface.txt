@@ -7138,6 +7138,7 @@ InterfaceDeclaration RepoAnalysis
   readonly packageManager: string | null
   readonly securityTooling: readonly string[]
   readonly stars: number
+  readonly testsMeasured: boolean
   readonly topLevelEntries: readonly string[]
 TypeAliasDeclaration RepoAnalyzeDeps
   = BaseMcpToolDeps

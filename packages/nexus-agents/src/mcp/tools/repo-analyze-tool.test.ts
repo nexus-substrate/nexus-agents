@@ -178,7 +178,9 @@ describe('identifyGaps', () => {
   });
 
   it('identifies missing tests', () => {
-    const gaps = identifyGaps(['src', 'README.md'], 'github-actions');
+    // Language is required for a NEGATIVE test finding: without it the answer
+    // is unmeasured, not absent (#6018).
+    const gaps = identifyGaps(['src', 'README.md'], 'github-actions', 'TypeScript');
     expect(gaps).toContain('No test directory detected');
   });
 
