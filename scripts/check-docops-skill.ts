@@ -12,7 +12,8 @@
  *   0 - No violations (pipeline unchanged or skill updated)
  *   1 - Violation (pipeline changed without skill update)
  *
- * Escape hatch: Include [skip-docops] in commit message
+ * Escape hatch: put [skip-docops] at the START or the END of a line in a
+ * commit message. Mid-sentence it is a mention, not an invocation (#6026).
  *
  * (Source: Issue #626, Epic #625)
  */
@@ -22,6 +23,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
+import { DOCOPS_SKIP_TOKEN, scanEscapeHatch } from './docops-escape-hatch.js';
 
 // ============================================================================
 // Configuration
@@ -36,13 +38,19 @@ interface DocOpsManifest {
   skill_file: string;
 }
 
-interface CheckResult {
+export interface CheckResult {
   success: boolean;
   manifest: DocOpsManifest | null;
   changedFiles: string[];
   changedPipelineFiles: string[];
   skillUpdated: boolean;
   escapeHatchUsed: boolean;
+  /**
+   * Lines that NAME the token without invoking it (#6026). Reported so an
+   * author who meant to bypass and wrote it mid-sentence is told, instead of
+   * the gate silently treating their intent as prose.
+   */
+  escapeHatchMentions: readonly string[];
 }
 
 // ============================================================================
@@ -235,7 +243,9 @@ function printViolation(skillFile: string, changedPipelineFiles: string[]): void
   console.log('manual stays in sync with the actual pipeline.\n');
   console.log('Options:');
   console.log('  1. Update the skill file to reflect the pipeline changes');
-  console.log('  2. Use [skip-docops] in commit message for emergency bypasses\n');
+  console.log(
+    '  2. For an emergency bypass, put [skip-docops] at the start or end of a commit-message line\n'
+  );
   console.log('See: docs/ops/docops-spec.md for enforcement rules');
 }
 
@@ -243,7 +253,27 @@ function printViolation(skillFile: string, changedPipelineFiles: string[]): void
 // Main Logic
 // ============================================================================
 
-function performCheck(_verbose: boolean): CheckResult {
+/**
+ * The world-reads `performCheck` needs, injectable so the DECISION can be
+ * tested (#6026).
+ *
+ * Before this, every input came from module-level git calls against the real
+ * repo, so nothing tested that `performCheck` actually consults the
+ * recogniser — replacing its condition with the old any-occurrence test kept
+ * all ten tests green. The recogniser was well covered; the wire from it to the
+ * verdict was not, which is the half that decides whether CI passes.
+ */
+export interface CheckInputs {
+  readonly readCommitMessages: () => string;
+  readonly readChangedFiles: () => string[];
+}
+
+const REAL_INPUTS: CheckInputs = {
+  readCommitMessages: () => getCommitMessagesForEscapeHatch(),
+  readChangedFiles: getChangedFiles,
+};
+
+export function performCheck(_verbose: boolean, inputs: CheckInputs = REAL_INPUTS): CheckResult {
   const result: CheckResult = {
     success: false,
     manifest: null,
@@ -251,6 +281,7 @@ function performCheck(_verbose: boolean): CheckResult {
     changedPipelineFiles: [],
     skillUpdated: false,
     escapeHatchUsed: false,
+    escapeHatchMentions: [],
   };
 
   // Load manifest
@@ -259,16 +290,20 @@ function performCheck(_verbose: boolean): CheckResult {
     return result;
   }
 
-  // Check for escape hatch — walks PR commit range when GITHUB_BASE_REF is set (#2411)
-  const commitMessage = getCommitMessagesForEscapeHatch();
-  if (commitMessage.includes('[skip-docops]')) {
+  // Check for escape hatch — walks PR commit range when GITHUB_BASE_REF is set (#2411).
+  // #6026: an INVOCATION, not any occurrence. `includes()` here meant a commit
+  // that merely named the token disabled the gate; all four commits that ever
+  // changed this gate did exactly that.
+  const scan = scanEscapeHatch(inputs.readCommitMessages());
+  result.escapeHatchMentions = scan.mentionLines;
+  if (scan.invoked) {
     result.escapeHatchUsed = true;
     result.success = true;
     return result;
   }
 
   // Get changed files
-  result.changedFiles = getChangedFiles();
+  result.changedFiles = inputs.readChangedFiles();
   result.changedPipelineFiles = result.changedFiles.filter(
     (f) => result.manifest?.pipeline_files.includes(f) ?? false
   );
@@ -335,8 +370,30 @@ function checkDocOpsSkillSync(verbose: boolean): boolean {
     return true;
   }
 
+  printMentionHint(result.escapeHatchMentions);
   printViolation(result.manifest.skill_file, result.changedPipelineFiles);
   return false;
+}
+
+/**
+ * Explain a near-miss (#6026): the token is present but positioned as prose.
+ *
+ * Silence here would be the old bug wearing the other face — the author asked
+ * for a bypass in a shape the gate does not honour, and would otherwise see
+ * only a violation with no hint that their spelling was the problem.
+ */
+function printMentionHint(mentions: readonly string[]): void {
+  if (mentions.length === 0) return;
+  console.log(
+    `Note: found ${String(mentions.length)} mention(s) of ${DOCOPS_SKIP_TOKEN} that do NOT invoke it (#6026):`
+  );
+  mentions.forEach((m) => {
+    console.log(`  ${m}`);
+  });
+  console.log(
+    `  A mention mid-sentence does not bypass the gate. To invoke it, put ${DOCOPS_SKIP_TOKEN} at the`
+  );
+  console.log('  start or the end of a line.\n');
 }
 
 // ============================================================================
@@ -363,7 +420,8 @@ Exit codes:
   1 - Violation detected
 
 Escape hatch:
-  Include [skip-docops] in commit message to bypass this check.
+  To bypass this check, put [skip-docops] at the start or the end of a line in a
+  commit message. Naming it mid-sentence is a mention, not an invocation (#6026).
   Use sparingly for emergency fixes only.
 `);
     process.exit(0);
