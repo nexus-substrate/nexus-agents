@@ -397,7 +397,7 @@ export function toJobSummary(record: JobResult): JobSummary {
  * `{"count":0,"truncated":false}` over both, and an operator or the autonomous
  * loop concludes nothing is pending and re-dispatches work already running.
  */
-export interface JobListDiagnostics {
+interface JobListDiagnostics {
   /** True when the jobs directory exists but could not be enumerated. */
   readonly dirUnreadable: boolean;
   /** Sidecar files that matched the naming pattern but failed to parse or validate. */
