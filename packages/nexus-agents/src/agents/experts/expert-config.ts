@@ -1,4 +1,9 @@
-/* eslint-disable max-lines */
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
+// 475 lines as eslint counts them (blanks and comments skipped), inside the
+// 400-600 band .rules/governance.md preserves for a cohesive file — one declarative block per built-in expert; grows with the expert count, not with complexity.
+// A bounded ceiling rather than a blanket disable (#6008): the number above is
+// enforced, so growing out of the band fails the build instead of a comment
+// quietly aging. `wc -l` reads higher; that unit confusion is what #5766 was.
 /**
  * nexus-agents/agents - Expert Configuration
  *
