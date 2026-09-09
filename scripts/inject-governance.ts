@@ -20,6 +20,7 @@
 /* eslint-disable no-console */
 
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createRequire } from 'node:module';
@@ -42,6 +43,7 @@ import { checkStrategyManifestRegistry } from './check-strategy-manifest-drift.j
 import { checkAuthorityTierDeclarations } from './check-authority-tier-drift.js';
 import { GOVERNANCE_STAMP_DIGEST_LENGTH } from './governance-stamp-exemption.js';
 import { MARKERS } from './governance-markers.js';
+import { governorPathsFromCodeowners, unresolvedGovernorPatterns } from './governor-section.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
 // #3334: docs/ENTRYPOINTS.md carries TWO MCP-tool enumerations (a prose
@@ -1592,6 +1594,73 @@ function canonicalPathCandidates(line: string): string[] {
  * Canonical path |`; only file paths are existence-checked (see
  * `canonicalPathCandidate`).
  */
+/**
+ * Every CODEOWNERS governor pattern must match at least one tracked file (#6034).
+ *
+ * `governorPathsFromCodeowners` returns the first token of each governor-section
+ * line. A pattern that matches nothing on disk is indistinguishable from one
+ * that matches everything it should: the count is unchanged, `started` and
+ * `terminated` stay healthy, #6030's non-empty guard is satisfied — and the path
+ * is silently ungoverned. Fail-OPEN.
+ *
+ * Three panel conditions shaped this, and each is load-bearing:
+ *
+ * 1. It matches with `matchesCodeownersPattern` — the SAME matcher both governor
+ *    gates use — against `git ls-files`. A separate glob engine or a bare
+ *    `existsSync` could pass a pattern the gates cannot match, which is this
+ *    very defect one layer over.
+ * 2. It runs under `governance:check` on EVERY PR, not gated on CODEOWNERS
+ *    edits. The likelier drift is not a typo but a RENAME: a PR moves
+ *    `src/audit/` and never touches CODEOWNERS, so a CODEOWNERS-filtered check
+ *    would not run on the PR that breaks it.
+ * 3. It names the pattern and its line, because "some pattern is stale" is not
+ *    actionable on a 14-entry list.
+ *
+ * Deliberately NOT inside the parser (the option the first panel preferred, on a
+ * premise I had got wrong — see #6034). Two reasons survived the correction:
+ * the parser is a pure text function with 10 hermetic test sites, and a stale
+ * pattern reaching `main` would make it throw, rendering every governor gate
+ * `indeterminate` and blocking every PR in the repo until CODEOWNERS is fixed.
+ * A check fails only the PR that introduces or exposes the drift.
+ */
+function checkGovernorPatternsResolve(): boolean {
+  const codeownersPath = join(ROOT, 'CODEOWNERS');
+  if (!existsSync(codeownersPath)) return true;
+  const text = readFileSync(codeownersPath, 'utf-8');
+
+  // The authoritative set, from the same parse both gates use — never a
+  // second, divergent scan of the file.
+  const patterns = governorPathsFromCodeowners(text);
+  if (patterns.length === 0) return true; // #6030's guard owns the empty case.
+
+  let tracked: string[];
+  try {
+    tracked = execFileSync('git', ['ls-files'], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .split('\n')
+      .filter((f: string) => f !== '');
+  } catch {
+    // Refuse to report a clean result over a scan that did not happen.
+    console.error('[governor-patterns] could not list tracked files; cannot verify patterns');
+    return false;
+  }
+
+  const unresolved = unresolvedGovernorPatterns(patterns, tracked, text.split('\n'));
+
+  if (unresolved.length > 0) {
+    console.error(
+      `Governor pattern(s) match no tracked file — those paths are NOT governed:\n` +
+        unresolved.map((u) => `  ${u}`).join('\n') +
+        `\nA renamed or deleted path needs its CODEOWNERS entry updated in the same PR.`
+    );
+    return false;
+  }
+  return true;
+}
+
 function checkCanonicalPaths(): boolean {
   if (!existsSync(AGENTS_MD_PATH)) return true;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
@@ -1661,6 +1730,26 @@ function printGovernanceSummary(
  * against an isolated sandbox root (via `NEXUS_SCRIPT_ROOT`) instead of
  * spawning `pnpm exec tsx` and mutating the real working tree.
  */
+/**
+ * The cross-adapter documentation gates, grouped so `checkGovernance` stays
+ * under its line cap (#6034).
+ *
+ * Same device as {@link checkStrategyRegistryGates}, and the same reason: a
+ * function at its ceiling answers the next check with a cap bump instead of a
+ * decision (#6008). These four are one concern — whether the surface that
+ * Codex, Gemini CLI and OpenCode read still says what CLAUDE.md says: the
+ * harness-agnostic block, the per-adapter precedence doc, `.rules/` frontmatter,
+ * and the generated rules index built from it.
+ */
+function checkCrossAdapterDocGates(): boolean[] {
+  return [
+    checkClaudeAgnosticBlock(),
+    checkAdapterPrecedenceDocs(),
+    checkRuleFrontmatter(),
+    checkRulesIndex(),
+  ];
+}
+
 export function checkGovernance(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) {
     console.error('CLAUDE.md not found');
@@ -1697,10 +1786,8 @@ export function checkGovernance(): boolean {
     checkReadmeToolTable(actual.tools),
     checkEntrypoints(actual.tools, extractCliCommands()),
     checkCanonicalPaths(),
-    checkClaudeAgnosticBlock(),
-    checkAdapterPrecedenceDocs(),
-    checkRuleFrontmatter(),
-    checkRulesIndex(),
+    checkGovernorPatternsResolve(),
+    ...checkCrossAdapterDocGates(),
     checkToolAnnotations(actual.tools),
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),

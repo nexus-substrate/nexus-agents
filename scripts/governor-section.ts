@@ -203,3 +203,32 @@ export function matchesCodeownersPattern(file: string, pattern: string): boolean
 export function isGovernorPath(file: string, patterns: readonly string[]): boolean {
   return patterns.some((p) => matchesCodeownersPattern(file, p));
 }
+
+/**
+ * Governor patterns that match no tracked file (#6034).
+ *
+ * Pure: the caller supplies the pattern set, the tracked-file listing and the
+ * CODEOWNERS lines, so the decision is testable without a working tree. The
+ * I/O half lives in `checkGovernorPatternsResolve` (inject-governance.ts).
+ *
+ * Matching uses {@link matchesCodeownersPattern} — the same matcher both
+ * governor gates use. A separate glob engine could pass a pattern the gates
+ * cannot match, which would be this defect one layer over.
+ *
+ * Returns `"CODEOWNERS:<line>  <pattern>"` per unresolved entry. The line
+ * number matters: "some pattern is stale" is not actionable on a 14-entry list.
+ */
+export function unresolvedGovernorPatterns(
+  patterns: readonly string[],
+  trackedFiles: readonly string[],
+  codeownersLines: readonly string[]
+): string[] {
+  const unresolved: string[] = [];
+  for (const pattern of patterns) {
+    if (trackedFiles.some((file) => matchesCodeownersPattern(file, pattern))) continue;
+    const idx = codeownersLines.findIndex((l) => l.trim().split(/\s+/)[0] === pattern);
+    const where = idx === -1 ? 'CODEOWNERS' : `CODEOWNERS:${String(idx + 1)}`;
+    unresolved.push(`${where}  ${pattern}`);
+  }
+  return unresolved;
+}

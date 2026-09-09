@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +32,7 @@ import {
 import {
   governorPathsFromCodeowners,
   governorSectionLines,
+  unresolvedGovernorPatterns,
   matchesCodeownersPattern,
   isGovernorPath,
   GOVERNOR_SECTION_MARKER,
@@ -1007,6 +1009,88 @@ describe('both ratification jobs are handed a base sha (#6029)', () => {
     const body = jobBody('governor-ratification-backstop');
     expect(body).toContain('git diff --name-only "${SHA}~1" "${SHA}"');
     expect(body).toContain('git rev-parse "${SHA}~1"');
+  });
+});
+
+describe('a governor pattern that matches nothing is not a governed path (#6034)', () => {
+  // governorPathsFromCodeowners returns the first token of each governor-section
+  // line. A pattern matching nothing on disk is indistinguishable from one
+  // matching everything it should: the count is unchanged, `started` and
+  // `terminated` stay healthy, #6030's non-empty guard is satisfied — and the
+  // path is silently ungoverned. Fail-OPEN.
+  const LINES = [
+    "# Governor's own core",
+    '/packages/nexus-agents/src/audit/ @owner',
+    '/scripts/inject-governance.ts @owner',
+    '/governance/claims-registry.* @owner',
+    '# END governor-owned paths',
+  ];
+  const TRACKED = [
+    'packages/nexus-agents/src/audit/logger.ts',
+    'scripts/inject-governance.ts',
+    'governance/claims-registry.json',
+    'README.md',
+  ];
+
+  it('reports nothing when every pattern matches a tracked file', () => {
+    const patterns = [
+      '/packages/nexus-agents/src/audit/',
+      '/scripts/inject-governance.ts',
+      '/governance/claims-registry.*',
+    ];
+    expect(unresolvedGovernorPatterns(patterns, TRACKED, LINES)).toEqual([]);
+  });
+
+  it('reports a typo, naming the pattern AND its line', () => {
+    // "some pattern is stale" is not actionable on a 14-entry list.
+    const result = unresolvedGovernorPatterns(['/pakages/nexus-agents/src/audit/'], TRACKED, [
+      "# Governor's own core",
+      '/pakages/nexus-agents/src/audit/ @owner',
+      '# END governor-owned paths',
+    ]);
+    expect(result).toEqual(['CODEOWNERS:2  /pakages/nexus-agents/src/audit/']);
+  });
+
+  it('catches the RENAME case, which never touches CODEOWNERS', () => {
+    // The likelier drift: a PR moves src/audit/ and leaves the entry alone.
+    // This is why the check runs on every PR rather than on CODEOWNERS edits.
+    const renamedTree = TRACKED.filter((f) => !f.startsWith('packages/nexus-agents/src/audit/'));
+    const result = unresolvedGovernorPatterns(
+      ['/packages/nexus-agents/src/audit/'],
+      renamedTree,
+      LINES
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('/packages/nexus-agents/src/audit/');
+  });
+
+  it('a glob matching at least one tracked file passes', () => {
+    expect(unresolvedGovernorPatterns(['/governance/claims-registry.*'], TRACKED, LINES)).toEqual(
+      []
+    );
+  });
+
+  it('a glob matching nothing fails — the pair', () => {
+    // Without this, treating every glob as resolved would pass the test above.
+    const result = unresolvedGovernorPatterns(['/governance/no-such-thing.*'], TRACKED, LINES);
+    expect(result).toHaveLength(1);
+  });
+
+  it('the REAL CODEOWNERS resolves against the REAL tracked tree', () => {
+    // The regression that matters: this is the assertion that fires if someone
+    // renames a governed directory without updating its entry.
+    const real = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+    const tracked = execFileSync('git', ['ls-files'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .split('\n')
+      .filter((f) => f !== '');
+    expect(tracked.length).toBeGreaterThan(100);
+    expect(
+      unresolvedGovernorPatterns(governorPathsFromCodeowners(real), tracked, real.split('\n'))
+    ).toEqual([]);
   });
 });
 
