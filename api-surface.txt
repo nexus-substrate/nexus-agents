@@ -393,6 +393,7 @@ InterfaceDeclaration AgentVoteSummary
   modelUsed?: string | undefined
   reasoning: string
   rejectionCategories?: readonly string[] | undefined
+  retried?: boolean | undefined
   role: string
   selectedOption?: string | undefined
   simulated: boolean

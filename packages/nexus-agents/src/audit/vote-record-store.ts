@@ -157,6 +157,10 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       decision: vote.decision,
       confidence: vote.confidence,
       ...reasoningFields(vote.reasoning),
+      // #6050: carried, not dropped. `voter-retry.ts` has set this on every
+      // recovered seat since it was written and nothing read it, so the record
+      // said "7 of 7 answered cleanly" for a panel that needed a retry.
+      ...(v.retried === true ? { retried: true as const } : {}),
     });
   }
   return summaries;
@@ -300,7 +304,8 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.4 carries coverage, 1.3 a bare tally (historical only — a tally now always
+ * 1.7 carries a retried voter seat, 1.6 voter reasoning, 1.5 panel coverage,
+ * 1.4 option coverage, 1.3 a bare tally (historical only — a tally now always
  * travels with coverage), 1.2 neither.
  */
 function recordVersion(
@@ -308,7 +313,12 @@ function recordVersion(
   optionCoverage: VoteRecordOptionCoverage | undefined,
   panelCoverage: VoteRecordPanelCoverage | undefined,
   voters: readonly VoterSummary[]
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' {
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' {
+  // 1.7 first: `retried` is ORTHOGONAL to the tiers below it, not a refinement
+  // of one. A retried seat implies an errored seat, so it usually co-occurs
+  // with 1.5's panelCoverage — but a reader needs to know from the version
+  // alone whether voter entries may carry the field (#6050).
+  if (voters.some((v) => v.retried === true)) return '1.7';
   if (voters.some((v) => v.reasoning !== undefined)) return '1.6';
   if (panelCoverage !== undefined) return '1.5';
   if (optionCoverage !== undefined) return '1.4';
