@@ -23,7 +23,9 @@ const SWARM_HEALTH = {
   routingAccuracy: 0.74,
   weeklyRegret: 0.08,
   adaptationSpeed: 25,
+  adaptationSpeedCategories: 6,
   observedCategories: 6,
+  analyzedCategories: 6,
   observedRoles: 4,
 } as const;
 
@@ -162,5 +164,53 @@ describe('health-command', () => {
       expect(output).toContain('No swarm metrics available');
       writeSpy.mockRestore();
     });
+  });
+});
+
+describe('lower-is-better metrics print their absence, not their best score (#6036)', () => {
+  // weeklyRegret and adaptationSpeed both target LOW values, so the value they
+  // take when nothing was measured (0) renders as the BEST possible result.
+  // routingAccuracy and the rest are higher-is-better, so their unmeasured 0
+  // reads as unhealthy — the safe direction, deliberately left alone.
+  function renderWith(overrides: Record<string, number>): string {
+    mockGenerate.mockReturnValue({
+      ...makeBaseReport(),
+      swarmHealth: { ...SWARM_HEALTH, ...overrides },
+    });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    handleHealthCommand({ command: 'health', options: {} } as unknown as ParsedCliArgs);
+    const out = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+    writeSpy.mockRestore();
+    return out;
+  }
+
+  it('prints unmeasured for regret when no category could be analysed', () => {
+    const out = renderWith({ weeklyRegret: 0, analyzedCategories: 0 });
+    expect(out).toContain('Weekly Regret:           unmeasured');
+    expect(out).not.toContain('Weekly Regret:           0.000');
+  });
+
+  it('prints unmeasured for adaptation speed when no category reached confidence', () => {
+    const out = renderWith({ adaptationSpeed: 0, adaptationSpeedCategories: 0 });
+    expect(out).toContain('Adaptation Speed:        unmeasured');
+    expect(out).not.toContain('Adaptation Speed:        0 tasks');
+  });
+
+  it('a MEASURED zero is still shown as a number — the point is not to hide zeros', () => {
+    const out = renderWith({ weeklyRegret: 0, analyzedCategories: 6 });
+    expect(out).toContain('Weekly Regret:           0.000');
+    expect(out).not.toContain('Weekly Regret:           unmeasured');
+  });
+
+  it('shows how many observed categories were actually analysed', () => {
+    // The gap between the two numbers is what was invisible before.
+    const out = renderWith({ observedCategories: 6, analyzedCategories: 2 });
+    expect(out).toContain('Observed Categories:     6 (2 analysed)');
+  });
+
+  it('prints real values unchanged when everything was measured', () => {
+    const out = renderWith({});
+    expect(out).toContain('Weekly Regret:           0.080');
+    expect(out).toContain('Adaptation Speed:        25 tasks');
   });
 });

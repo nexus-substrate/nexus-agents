@@ -234,12 +234,33 @@ export interface SwarmHealthMetrics {
   readonly collaborationEfficiency: number;
   /** % of tasks routed to the empirically best CLI for their category. Target: > 80%. */
   readonly routingAccuracy: number;
-  /** Avg gap between actual success rate and best-possible rate per category. Target: decreasing. */
+  /**
+   * Avg gap between actual success rate and best-possible rate per category.
+   * Target: decreasing. Only meaningful when {@link analyzedCategories} > 0 —
+   * with no analysable category this is 0, which on a lower-is-better metric is
+   * the BEST possible value rather than an absent one (#6036).
+   */
   readonly weeklyRegret: number;
-  /** Avg samples to reach 'high' confidence per category. Target: < 50. */
+  /**
+   * Avg samples to reach 'high' confidence per category. Target: < 50.
+   * Only meaningful when {@link adaptationSpeedCategories} > 0 — with no
+   * category ever reaching confidence this is 0, i.e. the best achievable score
+   * for a workspace that has learned nothing (#6036).
+   */
   readonly adaptationSpeed: number;
+  /** How many categories contributed to {@link adaptationSpeed}. 0 ⇒ unmeasured. */
+  readonly adaptationSpeedCategories: number;
   /** Number of observed categories with sufficient data. */
   readonly observedCategories: number;
+  /**
+   * Of {@link observedCategories}, how many produced a routing verdict — the
+   * denominator {@link weeklyRegret} is actually averaged over. 0 ⇒ unmeasured.
+   *
+   * Distinct from `observedCategories` on purpose: a category can clear
+   * ROUTING_MIN_SAMPLES and still be unanalysable, and counting it here
+   * inflated the denominator and understated regret (#6036).
+   */
+  readonly analyzedCategories: number;
   /** Number of expert roles observed. */
   readonly observedRoles: number;
 }

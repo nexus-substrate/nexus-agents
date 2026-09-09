@@ -106,9 +106,23 @@ function renderSwarmMetrics(w: (s: string) => boolean, health: SwarmHealthMetric
   w(
     `  Routing Accuracy:        ${renderMetricBar(health.routingAccuracy, 1)} ${pct(health.routingAccuracy)}\n`
   );
-  w(`  Weekly Regret:           ${health.weeklyRegret.toFixed(3)}\n`);
-  w(`  Adaptation Speed:        ${String(health.adaptationSpeed)} tasks\n`);
-  w(`  Observed Categories:     ${String(health.observedCategories)}\n`);
+  // Both of these are lower-is-better, so their unmeasured value (0) renders as
+  // the BEST possible score. Print the absence instead (#6036).
+  w(
+    `  Weekly Regret:           ${
+      health.analyzedCategories > 0 ? health.weeklyRegret.toFixed(3) : 'unmeasured'
+    }\n`
+  );
+  w(
+    `  Adaptation Speed:        ${
+      health.adaptationSpeedCategories > 0
+        ? `${String(health.adaptationSpeed)} tasks`
+        : 'unmeasured'
+    }\n`
+  );
+  w(
+    `  Observed Categories:     ${String(health.observedCategories)} (${String(health.analyzedCategories)} analysed)\n`
+  );
   w(`  Observed Roles:          ${String(health.observedRoles)}\n`);
   w('\n');
 }

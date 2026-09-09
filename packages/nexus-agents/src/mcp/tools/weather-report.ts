@@ -685,7 +685,17 @@ function analyzeCategoryRouting(
 }
 
 /** Computes avg samples for the best CLI per category to reach high confidence. */
-function computeAdaptationSpeed(): number {
+/**
+ * Average samples needed to reach high confidence, plus HOW MANY categories
+ * contributed to that average (#6036).
+ *
+ * The count is not decoration. This returned a bare number, and `0` meant "no
+ * category ever reached ADAPTATION_CONFIDENCE_THRESHOLD" — while the field is
+ * documented "Target: < 50", so lower is better and 0 is the best achievable
+ * score. A workspace that had learned nothing rendered as maximally fast.
+ * `categories === 0` is the only thing that distinguishes the two.
+ */
+function computeAdaptationSpeed(): { average: number; categories: number } {
   const store = getOutcomeStore();
   let speedSum = 0;
   let speedCount = 0;
@@ -707,7 +717,7 @@ function computeAdaptationSpeed(): number {
       speedCount++;
     }
   }
-  return speedCount > 0 ? speedSum / speedCount : 0;
+  return { average: speedCount > 0 ? speedSum / speedCount : 0, categories: speedCount };
 }
 
 /** Builds swarm health metrics from outcome + expert data (Issue #1403). */
@@ -725,10 +735,24 @@ function buildSwarmHealth(
   const collaborationEfficiency =
     delegateOutcomes.length > 0 ? delegateSuccesses / delegateOutcomes.length : 0;
 
+  const adaptation = computeAdaptationSpeed();
   let accurateCount = 0;
   let totalRouted = 0;
   let regretSum = 0;
   let observedCategories = 0;
+  // Categories that had enough samples AND could actually be analysed (#6036).
+  // `observedCategories` answers "how much data was there"; this answers "how
+  // much of it produced a routing verdict". They were the same variable, so a
+  // category counted toward the regret denominator even when its routing could
+  // not be analysed at all — which inflates the denominator and systematically
+  // UNDERSTATES regret against a metric whose target is "decreasing".
+  //
+  // Reachable, not theoretical: analyzeCategoryRouting returns null when
+  // cliRates is empty, and OutcomeCliSchema admits `api:anthropic`,
+  // `api:openai`, `api:google`, `api:custom-openai` and `unknown` — none of
+  // which appear in this file's CLI_NAMES. A workspace routing through API
+  // arms rather than CLI adapters hits it on every category.
+  let analyzedCategories = 0;
 
   for (const category of TASK_CATEGORIES) {
     const catOutcomes = allOutcomes.filter((o) => o.category === category);
@@ -736,19 +760,20 @@ function buildSwarmHealth(
     observedCategories++;
     const stats = analyzeCategoryRouting(catOutcomes);
     if (stats === null) continue;
+    analyzedCategories++;
     accurateCount += stats.accurateCount;
     totalRouted += stats.totalRouted;
     regretSum += stats.regret;
   }
-
-  const regretCategories = totalRouted > 0 ? observedCategories : 0;
   return {
     agentUtilization: round3(agentUtilization),
     collaborationEfficiency: round3(collaborationEfficiency),
     routingAccuracy: round3(totalRouted > 0 ? accurateCount / totalRouted : 0),
-    weeklyRegret: round3(regretCategories > 0 ? regretSum / regretCategories : 0),
-    adaptationSpeed: Math.round(computeAdaptationSpeed()),
+    weeklyRegret: round3(analyzedCategories > 0 ? regretSum / analyzedCategories : 0),
+    adaptationSpeed: Math.round(adaptation.average),
+    adaptationSpeedCategories: adaptation.categories,
     observedCategories,
+    analyzedCategories,
     observedRoles: expertPerf.length,
   };
 }
