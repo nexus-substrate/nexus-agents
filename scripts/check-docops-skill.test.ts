@@ -19,8 +19,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 import {
+  type CheckResult,
   getCommitMessagesForEscapeHatch,
   isMechanicalActionBumpDiff,
+  performCheck,
 } from './check-docops-skill.js';
 
 interface RepoCtx {
@@ -196,5 +198,56 @@ describe('isMechanicalActionBumpDiff (#3363)', () => {
 
   it('returns false for an empty diff (no detectable change)', () => {
     expect(isMechanicalActionBumpDiff('')).toBe(false);
+  });
+});
+
+describe('performCheck consumes the escape-hatch recogniser (#6026, the seam)', () => {
+  // The recogniser had 25 tests and the gate had 10, and NONE of the 35 broke
+  // when performCheck was reverted to bypassing on any occurrence. Both parts
+  // were covered; the wire between them was not. These drive the real decision
+  // path with a real manifest and only the world-reads faked.
+  const PIPELINE_FILE = 'scripts/inject-governance.ts';
+
+  function check(commitMessage: string, changed: string[]): CheckResult {
+    return performCheck(false, {
+      readCommitMessages: () => commitMessage,
+      readChangedFiles: () => changed,
+    });
+  }
+
+  it('a prose MENTION does not bypass — the violation still fires', () => {
+    const result = check('fix(ci): stop the gate inheriting [skip-docops] from the base branch', [
+      PIPELINE_FILE,
+    ]);
+    expect(result.escapeHatchUsed).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.changedPipelineFiles).toContain(PIPELINE_FILE);
+    expect(result.escapeHatchMentions).toHaveLength(1);
+  });
+
+  it('a trailing INVOCATION does bypass', () => {
+    const result = check('chore: regenerate artifacts [skip-docops]', [PIPELINE_FILE]);
+    expect(result.escapeHatchUsed).toBe(true);
+    expect(result.success).toBe(true);
+  });
+
+  it('a standalone INVOCATION on its own line does bypass', () => {
+    const result = check('chore: regenerate artifacts\n\n[skip-docops] generated output only', [
+      PIPELINE_FILE,
+    ]);
+    expect(result.escapeHatchUsed).toBe(true);
+  });
+
+  it('reports absence and mention-only differently', () => {
+    const absent = check('fix: unrelated', [PIPELINE_FILE]);
+    expect(absent.escapeHatchUsed).toBe(false);
+    expect(absent.escapeHatchMentions).toHaveLength(0);
+  });
+
+  it('no pipeline file changed is a pass, not a bypass', () => {
+    const result = check('fix: touch nothing relevant', ['README.md']);
+    expect(result.success).toBe(true);
+    expect(result.escapeHatchUsed).toBe(false);
+    expect(result.changedPipelineFiles).toHaveLength(0);
   });
 });
