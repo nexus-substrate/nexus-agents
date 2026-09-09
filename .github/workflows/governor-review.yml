@@ -191,6 +191,7 @@ jobs:
             echo "label_actor=${LABEL_ACTOR}"
             echo "label_time=${LABEL_TIME}"
             echo "head_time=${HEAD_TIME}"
+            echo "base=${BASE_SHA}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate
@@ -202,9 +203,20 @@ jobs:
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
           HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
           # #5944: lets the gate read CLAUDE.md / AGENTS.md as of base and
-          # exempt a diff whose only change is the generated stamp. Absent or
-          # malformed, the exemption is simply never granted — it fails closed.
-          PR_BASE_SHA: ${{ steps.changed.outputs.base }}
+          # exempt a diff whose only change is inside a generated span. Absent
+          # or malformed, the exemption is simply never granted — fail-closed.
+          #
+          # #6029: this read `steps.changed.outputs.base`, but `id: changed` is
+          # in the SIBLING `governor-review` job and step outputs are JOB-SCOPED,
+          # so it resolved to the empty string on every run and the exemption
+          # never fired. The merge-base is already computed in THIS job's
+          # `evidence` step; it simply was not emitted.
+          #
+          # The merge-base, not `pull_request.base.sha`: the base-branch TIP
+          # would fold in whatever else landed on main since the branch
+          # diverged, so an unrelated PR touching a governed file could revoke
+          # this PR's exemption.
+          PR_BASE_SHA: ${{ steps.evidence.outputs.base }}
         run: npx tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------
@@ -243,6 +255,12 @@ jobs:
           # than vote "no approvals" (#5685).
           set -o pipefail
           FILES=$(git diff --name-only "${SHA}~1" "${SHA}")
+          # #6029: the same before/after pair FILES is derived from, so the
+          # exemption reads exactly the commit that landed. Without this the
+          # backstop had NO base at all, and fixing only the pre-merge job would
+          # have made a stamp-only PR pass pre-merge then fail here — a
+          # self-inflicted red main on the very PRs the exemption waves through.
+          BASE_SHA=$(git rev-parse "${SHA}~1")
           PR_NUMBER=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/pulls" \
             --jq '.[0].number // empty')
           if [ -z "${PR_NUMBER}" ]; then
@@ -293,6 +311,7 @@ jobs:
             echo "label_actor=${LABEL_ACTOR}"
             echo "label_time=${LABEL_TIME}"
             echo "head_time=${HEAD_TIME}"
+            echo "base=${BASE_SHA}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
@@ -303,4 +322,8 @@ jobs:
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
           HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
+          # #6029: the backstop set NO base at all, so its exemption was
+          # unreachable by a second mechanism. Both jobs must grant the same
+          # exemption or a stamp-only PR turns main red after merging green.
+          PR_BASE_SHA: ${{ steps.evidence.outputs.base }}
         run: npx tsx scripts/check-governor-ratification.ts
