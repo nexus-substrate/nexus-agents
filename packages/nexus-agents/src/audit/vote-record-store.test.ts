@@ -36,6 +36,7 @@ import {
   VOTE_RECORDS_PATH_ENV,
   buildVoteRecord,
   persistVoteRecord,
+  parseVoteRecordsText,
   readVoteRecords,
   resolveVoteRecordsPath,
 } from './vote-record-store.js';
@@ -806,5 +807,75 @@ describe('declared options survive into the record even when nothing was selecte
       previousHash: undefined,
     });
     expect(record.optionCoverage).toBeUndefined();
+  });
+});
+
+describe('every record the builder writes must read back and verify (#6049, the seam)', () => {
+  // The seam that let #6049's first attempt ship a regression: the new tests
+  // asserted on the IN-MEMORY return of buildVoteRecord, and none round-tripped
+  // through the schema. `optionTally: []` appended to the ledger fine and then
+  // failed `parseVoteRecordsText` with `too_small, minimum 1` -- so the case the
+  // fix exists to preserve became the one no reader could see. Parsing alone is
+  // not enough either: optionTally is appended to the CANONICAL HASH payload
+  // when defined, so the hash path needs exercising too.
+  function roundTrip(record: VoteRecord): {
+    parsed: number;
+    invalid: number;
+    verified: boolean;
+  } {
+    const line = JSON.stringify(record);
+    const { records, invalidLines } = parseVoteRecordsText(line + '\n');
+    return {
+      parsed: records.length,
+      invalid: invalidLines.length,
+      verified: verifyVoteRecordSet(records).ok,
+    };
+  }
+
+  function build(
+    declaredOptions: readonly string[] | undefined,
+    v: readonly AgentVoteResult[]
+  ): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-1',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions,
+      resolvedDecision: 'rejected',
+      // Sequence 0: verifyVoteRecordSet requires 0..maxSeq with no gap, so a
+      // lone record at sequence 1 fails as a `sequence_gap` -- an omission
+      // signal, not a hash one. The fixture must model a real ledger tip.
+      sequence: 0,
+      previousHash: undefined,
+    });
+  }
+
+  it('declared options with NO parseable selection round-trips and verifies', () => {
+    // The exact record the first attempt made unreadable.
+    const record = build(
+      ['A - do it', 'B - do not'],
+      [agentVote('architect', 'approve'), agentVote('security', 'approve')]
+    );
+    expect(record.optionTally).toEqual([]);
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
+  });
+
+  it('a normal multi-option vote round-trips and verifies', () => {
+    const record = build(
+      ['A', 'B'],
+      [
+        { ...agentVote('architect', 'approve'), selectedOption: 'A' },
+        { ...agentVote('security', 'approve'), selectedOption: 'A' },
+      ]
+    );
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
+  });
+
+  it('an ordinary yes/no vote round-trips and verifies', () => {
+    const record = build(undefined, votes);
+    expect(record.optionTally).toBeUndefined();
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
   });
 });

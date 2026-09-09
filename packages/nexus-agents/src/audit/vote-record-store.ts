@@ -378,8 +378,11 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
       : input.proposal;
   // #4452: derive the per-option distribution from the votes themselves, so a
   // multi-option split is recoverable from the structured record instead of by
-  // parsing seven free-text `reasoning` fields. Absent when no voter declared an
-  // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
+  // parsing seven free-text `reasoning` fields. Absent when the PROPOSAL
+  // declared no options, which keeps an ordinary yes/no record on the pre-1.3
+  // projection. (#6049 corrected this: the rule was "no voter selected one",
+  // which is a different question and is why a declared-options vote with no
+  // parseable selection lost its option fields entirely.)
   const { optionTally, optionCoverage } = deriveOptionFields(input.votes, input.declaredOptions);
   const panelCoverage = panelCoverageOf(input.votes);
   const voters = toVoterSummaries(input.votes);
