@@ -454,6 +454,66 @@ Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELIS
 - **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
 - **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
 - **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).
+- **Turn-level communication** — how a turn READS is governed separately from how documentation reads; see the section below.
+
+---
+
+## Turn-level communication
+
+_Adapted from [i-have-adhd](https://github.com/ayghri/i-have-adhd) (MIT), which
+targets the same failure: an answer that exists in the reply but is buried._
+
+**Documentation style** above governs the ARTIFACTS produced. This governs the
+TURN — what a person reads when an agent reports back. Working memory is small,
+and anything not on screen is forgotten, so a turn that makes the reader
+reconstruct the answer has failed even when the answer is technically present.
+
+1. **Lead with the action.** First line is the thing to run, the file to open, or
+   the decision made — `Run \`pnpm test\`, then edit \`src/auth.ts:42\``, not a
+   restatement of the question. If a turn changed nothing, the first line says
+   that.
+2. **Number multi-step work.** One action per step, no compound conjunctions. A
+   step containing "and then" is two steps.
+3. **Restate state.** Say where the work is — `Step 3 of 5`, or `gates green, panel pending`.
+   The reader should not have to scroll to find out.
+4. **Say what now works.** Report the observable capability, not the file count —
+   `the gate now matches on governance PRs`, not `changed 8 files`.
+5. **Errors, matter-of-fact.** Raw error, cause, one corrective action — the
+   shape **Error handling** already requires. No apology, no self-criticism, no
+   tallying past mistakes.
+6. **No preamble, no closers.** Delete "Great question", "Let me…", "Hope this
+   helps", and offers to do something the reader did not ask for.
+
+### Where these rules yield
+
+Three of the upstream rules collide with rules this repo already enforces. The
+collisions are resolved HERE, deliberately, because an unreconciled style rule
+gets applied to the case it was never meant for.
+
+- **"Cap lists at five" applies to CHOICES, not to EVIDENCE.** Five is right for
+  options put to a reader. It is wrong for findings, dropped candidates,
+  affected call sites, or failing assertions. Truncating evidence to fit a style
+  rule produces a partial result presented as complete — the p1 failure the
+  Mission section names. A review that drops its sixth finding to look tidy has
+  misreported. Say `9 findings` and list nine.
+- **"Suppress tangents" is executed by FILING, not by silence.** The
+  Discovered-Issues protocol requires capturing an out-of-scope bug. Do that,
+  cite the number in one line, and move on. The issue IS the tangent-suppression
+  mechanism; suppressing the finding itself is the opposite of the rule.
+- **"No recap" does not repeal the autonomous End-of-turn protocol.**
+  `Done this turn: … / Up next: …` is required by
+  [`.rules/autonomous.md`](./.rules/autonomous.md) and is not a recap — it is
+  rules 3 and 4 above in their fixed form. Keep it.
+
+### One upstream rule is deliberately NOT adopted
+
+**Wall-clock time estimates.** The upstream skill asks for "15 minutes", not "a
+bit". An agent has no clock and no calibration, so a number in minutes is
+invented, and this repo treats an invented measurement as worse than an absent
+one. Give the estimate in units that are actually checkable — files touched,
+gates still to run, whether the tests already exist, whether a panel is needed —
+or say the size is unknown. `An afternoon if the fixtures need rewriting` is
+fine because the condition is checkable; `about 15 minutes` is not.
 
 ---
 
