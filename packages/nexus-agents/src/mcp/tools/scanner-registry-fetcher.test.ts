@@ -21,7 +21,6 @@ import {
   clearRegistryCache,
   getRegistryManifest,
   getRegistryManifestWithProvenance,
-  type ExecFileAsync,
 } from './scanner-registry-fetcher.js';
 
 // ============================================================================
@@ -218,8 +217,14 @@ describe('manifest provenance distinguishes a stale cache from a live read (#603
   let now = 0;
   const realProvider = getTimeProvider();
 
+  // Name the runner type from the function's own signature rather than
+  // exporting it. The producer/consumer gate is right that an export whose
+  // only importer is a test has no production consumer; `Parameters<>` gets
+  // the test the type it needs without inventing one.
+  type GhRunner = NonNullable<Parameters<typeof getRegistryManifestWithProvenance>[0]>;
+
   /** A `gh` stub: `release view` yields a tag, the asset download yields JSON. */
-  function ghStub(outcome: 'ok' | 'fail'): ExecFileAsync {
+  function ghStub(outcome: 'ok' | 'fail'): GhRunner {
     return (_file, args) => {
       if (outcome === 'fail') return Promise.reject(new Error('gh unavailable'));
       if (args.includes('view')) return Promise.resolve({ stdout: 'v1.0.0\n', stderr: '' });

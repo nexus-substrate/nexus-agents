@@ -116,7 +116,7 @@ const REGISTRY_REPO = 'williamzujkowski/vulnerability-scanner-registry';
 const FETCH_TIMEOUT_MS = 10_000;
 
 /** Promisified execFile signature used by fetcher helpers. */
-export type ExecFileAsync = (
+type ExecFileAsync = (
   file: string,
   args: readonly string[],
   options: { timeout?: number; maxBuffer?: number }
@@ -249,7 +249,7 @@ export async function getRegistryManifest(): Promise<ScannerRegistryManifest | n
  * the only test was `manifest !== null`. `ageMs` makes "stale" a quantity
  * rather than an adjective.
  */
-export interface ManifestProvenance {
+interface ManifestProvenance {
   readonly manifest: ScannerRegistryManifest | null;
   readonly source: 'registry' | 'cache' | 'fallback';
   /** Age of the cached entry when `source` is 'cache'. */
