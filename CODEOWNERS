@@ -45,6 +45,7 @@
 # #5944 — decides whether a CLAUDE.md/AGENTS.md diff may SKIP ratification.
 # A module that grants exemptions must itself be governed, or it is a bypass.
 /scripts/governance-stamp-exemption.ts @williamzujkowski
+/scripts/governor-section.ts @williamzujkowski
 
 # Governance rules — the review bar's own definition (#5997). `.rules/governance.md`
 # holds the voting thresholds and refactor gates, so a change here can lower the bar

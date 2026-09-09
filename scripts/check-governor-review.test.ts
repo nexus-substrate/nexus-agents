@@ -20,19 +20,22 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
 import {
   analyzeGovernorReview,
-  governorPathsFromCodeowners,
-  governorSectionLines,
-  matchesCodeownersPattern,
-  isGovernorPath,
   parseGenesisExemptions,
   resolvePrContext,
   resolveChangedFiles,
   runGovernorReviewGate,
   type GovernorReviewInputs,
 } from './check-governor-review.js';
+import {
+  governorPathsFromCodeowners,
+  governorSectionLines,
+  matchesCodeownersPattern,
+  isGovernorPath,
+  GOVERNOR_SECTION_MARKER,
+  GOVERNOR_SECTION_END_LINE,
+} from './governor-section.js';
 import {
   isStampOnlyChange,
   stampOnlyExemptFiles,
@@ -888,5 +891,65 @@ describe('CODEOWNERS governor section and the workflow paths filters stay in loc
     // A governor path the workflow does not list is a path whose gate never
     // runs — the second half of the #5997 defect, independent of the parser.
     expect(uncovered).toEqual([]);
+  });
+});
+
+describe('the governor section terminates on the sentinel LINE, not a mention (#6030)', () => {
+  const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+  const REAL_COUNT = governorPathsFromCodeowners(REAL_CODEOWNERS).length;
+
+  it('the real file still parses to a non-trivial set', () => {
+    // Anchors every assertion below. If this drifts to 0 the other tests would
+    // pass vacuously, which is the failure this whole issue is about.
+    expect(REAL_COUNT).toBeGreaterThan(5);
+  });
+
+  it('an explanatory comment naming the sentinel does NOT end the section', () => {
+    // The measured trigger. Under `includes()` this took the real file from 13
+    // patterns to 0 with started AND terminated both still reporting success,
+    // so neither existing guard could fire. No adversary needed: this is the
+    // comment a maintainer writes while documenting the section.
+    const withComment = REAL_CODEOWNERS.replace(
+      GOVERNOR_SECTION_MARKER,
+      `${GOVERNOR_SECTION_MARKER}\n# Everything below, up to END governor-owned paths, needs ratification.`
+    );
+    expect(withComment).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(withComment)).toHaveLength(REAL_COUNT);
+  });
+
+  it('the real sentinel line still ends the section', () => {
+    const section = governorSectionLines(REAL_CODEOWNERS);
+    expect(section.terminated).toBe(true);
+    expect(section.lines).toHaveLength(REAL_COUNT);
+  });
+
+  it('a sentinel whose text drifted leaves the section unterminated, not collapsed', () => {
+    // #4683's fallback: unterminated runs to end-of-file, governing MORE paths
+    // rather than fewer. Exact matching routes a drifted sentinel there.
+    const drifted = REAL_CODEOWNERS.replace(
+      GOVERNOR_SECTION_END_LINE,
+      `${GOVERNOR_SECTION_END_LINE} (do not move)`
+    );
+    const section = governorSectionLines(drifted);
+    expect(section.terminated).toBe(false);
+    expect(section.lines.length).toBeGreaterThanOrEqual(REAL_COUNT);
+  });
+});
+
+describe('a started governor section that yields nothing is a failure, not an empty set (#6030)', () => {
+  it('throws when the markers are present but no pattern survives', () => {
+    const collapsed = [
+      '/some/other/path @someone',
+      GOVERNOR_SECTION_MARKER,
+      '# only commentary in here',
+      GOVERNOR_SECTION_END_LINE,
+    ].join('\n');
+    expect(() => governorPathsFromCodeowners(collapsed)).toThrow(/ZERO path patterns/);
+  });
+
+  it('does NOT throw when the section is simply absent — that is #5576, reported there', () => {
+    const noSection = ['/some/other/path @someone', '# nothing governor-ish here'].join('\n');
+    expect(governorPathsFromCodeowners(noSection)).toEqual([]);
+    expect(governorSectionLines(noSection).started).toBe(false);
   });
 });

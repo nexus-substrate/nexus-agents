@@ -47,13 +47,12 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
+import { governorFilesTouched } from './check-governor-review.js';
 import {
   GOVERNOR_SECTION_END_LINE,
-  governorFilesTouched,
   governorPathsFromCodeowners,
   governorSectionLines,
-} from './check-governor-review.js';
+} from './governor-section.js';
 import {
   readAtBase,
   readAtHead,
@@ -375,6 +374,29 @@ function reportExemption(exempt: readonly string[]): void {
   );
 }
 
+/**
+ * Parse the governor path set, or report why it could not be measured (#6030).
+ *
+ * The parser now REFUSES to return an empty set as a measurement, because both
+ * gates read `[]` as "nothing to assert". Rendering that refusal through this
+ * gate's own `indeterminate` verdict keeps the failure in the existing
+ * vocabulary rather than surfacing an uncaught stack trace; `indeterminate`
+ * already returns 1, so the direction is unchanged and only legibility improves.
+ *
+ * Returns null when the set could not be determined — never an empty array,
+ * which is exactly the value the caller must not confuse with a real one.
+ */
+function parseGovernorPatternsOrReport(codeowners: string): string[] | null {
+  try {
+    return governorPathsFromCodeowners(codeowners);
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : 'CODEOWNERS governor section unparseable';
+    console.error(formatVerdict({ kind: 'indeterminate', reason }));
+    return null;
+  }
+}
+
 export function runRatificationGate(env: NodeJS.ProcessEnv): number {
   // #5444: distinguish "no file list was supplied" from "the file list is
   // empty". The workflow always supplies CHANGED_FILES (governor-review.yml);
@@ -412,7 +434,10 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     return 1;
   }
 
-  const touched = governorFilesTouched(changed, governorPathsFromCodeowners(codeowners));
+  const governorPatterns = parseGovernorPatternsOrReport(codeowners);
+  if (governorPatterns === null) return 1;
+
+  const touched = governorFilesTouched(changed, governorPatterns);
   const exempt = stampOnlyExemptFiles(
     touched,
     readAtBase(env['PR_BASE_SHA']),
@@ -423,7 +448,7 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
 
   const verdict = evaluateRatification({
     touchedGovernorFiles: touched.filter((f) => !exempt.includes(f)),
-    governorPatternCount: governorPathsFromCodeowners(codeowners).length,
+    governorPatternCount: governorPatterns.length,
     approvals,
     labels,
     owners: governorOwnersFromCodeowners(codeowners),
