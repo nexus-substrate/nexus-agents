@@ -164,7 +164,7 @@ export function stampOnlyExemptFiles(
  * whole exemption rests on this.
  */
 export function injectorIsClean(): boolean {
-  const result = spawnSync('npx', ['tsx', 'scripts/inject-governance.ts', 'check'], {
+  const result = spawnSync('pnpm', ['exec', 'tsx', 'scripts/inject-governance.ts', 'check'], {
     cwd: ROOT,
     encoding: 'utf-8',
     timeout: 120_000,
