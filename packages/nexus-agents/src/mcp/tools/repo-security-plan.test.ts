@@ -25,6 +25,7 @@ function makeAnalysis(overrides: Partial<RepoAnalysis> = {}): RepoAnalysis {
     hasMakefile: false,
     hasTests: true,
     testsMeasured: true,
+    workflowsMeasured: true,
     license: 'MIT',
     description: 'Test repo',
     defaultBranch: 'main',

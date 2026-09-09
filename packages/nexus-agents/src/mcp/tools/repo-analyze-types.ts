@@ -80,6 +80,16 @@ export interface RepoAnalysis {
    * asserting an absence nobody checked.
    */
   readonly testsMeasured: boolean;
+
+  /**
+   * Whether `.github/workflows/` was actually listed (#6035).
+   *
+   * REQUIRED, not optional: an optional flag lets a construction site omit it
+   * and inherit the confident default, which is the shape that produced the
+   * bug. False ⇒ CI-level security tooling is unmeasured, and the SAST gap is
+   * reported as unverified rather than asserted.
+   */
+  readonly workflowsMeasured: boolean;
   /** License type (e.g., "MIT", "Apache-2.0"). */
   readonly license: string | null;
   /** Repository description. */

@@ -18,6 +18,8 @@ import {
   detectFramework,
   getLanguageRecommendations,
   identifyGaps,
+  analyzeGitHubRepo,
+  type ExecFileFn,
   analyzeRepo,
   type GhRepoMetadata,
 } from './repo-analyze.js';
@@ -351,8 +353,7 @@ describe('identifyGaps', () => {
     // .github/ and it was not there. Without it the answer is unmeasured, not
     // absent — see the sibling test below (#6018).
     const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
-      entries: [],
-      listed: true,
+      codeowners: { entries: [], listed: true },
     });
     expect(gaps).toContain('No CODEOWNERS file');
   });
@@ -360,8 +361,7 @@ describe('identifyGaps', () => {
   it('does NOT flag CODEOWNERS when .github/ exists but could not be listed (#6018)', () => {
     const entries = [...fullEntries.filter((e) => e !== 'CODEOWNERS'), '.github'];
     const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
-      entries: [],
-      listed: false,
+      codeowners: { entries: [], listed: false },
     });
     expect(gaps).not.toContain('No CODEOWNERS file');
   });
@@ -369,8 +369,7 @@ describe('identifyGaps', () => {
   it('finds CODEOWNERS in .github/, where most repos put it (#6018)', () => {
     const entries = [...fullEntries.filter((e) => e !== 'CODEOWNERS'), '.github'];
     const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
-      entries: ['CODEOWNERS'],
-      listed: true,
+      codeowners: { entries: ['CODEOWNERS'], listed: true },
     });
     expect(gaps).not.toContain('No CODEOWNERS file');
   });
@@ -563,5 +562,131 @@ describe('analyzeRepo', () => {
   it('detects Helm charts via helm directory', () => {
     const result = analyzeRepo(baseMetadata, ['helm']);
     expect(result.hasHelmCharts).toBe(true);
+  });
+});
+
+describe('an unlistable .github/workflows stays unmeasured (#6035)', () => {
+  const SAST_GAP = 'No SAST/SCA security scanning configured';
+  const SAST_UNVERIFIED = 'SAST/SCA scanning unverified — .github/workflows could not be listed';
+  // A repo with CI configured, so the SAST gap is the only thing under test.
+  const ENTRIES = ['README.md', 'package.json', 'LICENSE', '.github'];
+
+  it('asserts the gap when the listing SUCCEEDED and found no scanner', () => {
+    const gaps = identifyGaps(ENTRIES, 'github-actions', 'TypeScript', [], {
+      workflowsMeasured: true,
+    });
+    expect(gaps).toContain(SAST_GAP);
+    expect(gaps).not.toContain(SAST_UNVERIFIED);
+  });
+
+  it('states it as unverified when the listing FAILED', () => {
+    // The measured consequence: a 403 from a secondary rate limit, or a token
+    // without `contents` scope, used to render as a confident "no scanning
+    // configured" for a repo that may well run CodeQL.
+    const gaps = identifyGaps(ENTRIES, 'github-actions', 'TypeScript', [], {
+      workflowsMeasured: false,
+    });
+    expect(gaps).not.toContain(SAST_GAP);
+    expect(gaps).toContain(SAST_UNVERIFIED);
+  });
+
+  it('still removes the gap outright when a scanner WAS detected', () => {
+    // Detection beats unmeasured: if a tool is visible we know the answer.
+    const gaps = identifyGaps(ENTRIES, 'github-actions', 'TypeScript', ['codeql'], {
+      workflowsMeasured: false,
+    });
+    expect(gaps).not.toContain(SAST_GAP);
+    expect(gaps).not.toContain(SAST_UNVERIFIED);
+  });
+
+  it('reports workflowsMeasured on the analysis, defaulting to measured', () => {
+    const metadata = {
+      full_name: 'o/r',
+      language: 'TypeScript',
+      default_branch: 'main',
+      stargazers_count: 1,
+    } as Parameters<typeof analyzeRepo>[0];
+    expect(analyzeRepo(metadata, ENTRIES, [], { workflowsMeasured: true }).workflowsMeasured).toBe(
+      true
+    );
+    expect(analyzeRepo(metadata, ENTRIES, [], { workflowsMeasured: false }).workflowsMeasured).toBe(
+      false
+    );
+  });
+
+  it('an omitted listings object means measured, and the gap stays asserted', () => {
+    // Pins resolveListings' default. Flipping it to false broke no test until
+    // this existed -- an unpinned default is how this whole class starts.
+    // TRUE is right here: an omitted flag comes from a caller that ran no
+    // listing step at all, not from one whose listing FAILED. A failed listing
+    // passes false explicitly.
+    const metadata = {
+      full_name: 'o/r',
+      language: 'TypeScript',
+      default_branch: 'main',
+      stargazers_count: 1,
+    } as Parameters<typeof analyzeRepo>[0];
+    const analysis = analyzeRepo(metadata, ENTRIES);
+    expect(analysis.workflowsMeasured).toBe(true);
+    expect(analysis.gaps).toContain(SAST_GAP);
+    expect(analysis.gaps).not.toContain(SAST_UNVERIFIED);
+  });
+
+  it('an unmeasured listing does not silently drop the gap entirely', () => {
+    // The lazy fix would be to remove the gap when unmeasured, which reads as
+    // "scanning is configured" -- the same misreport pointed the other way.
+    const gaps = identifyGaps(ENTRIES, 'github-actions', 'TypeScript', [], {
+      workflowsMeasured: false,
+    });
+    expect(gaps.some((g) => g.includes('SAST'))).toBe(true);
+  });
+});
+
+describe('the workflows fetch itself reports listed:false (#6035, the seam)', () => {
+  // Reverting fetchWorkflowEntries to report listed:true on error broke NONE of
+  // the tests above -- they inject the flag into identifyGaps rather than
+  // deriving it. These drive the real fetch through the tool entry point.
+  const SAST_GAP = 'No SAST/SCA security scanning configured';
+  const SAST_UNVERIFIED = 'SAST/SCA scanning unverified — .github/workflows could not be listed';
+
+  const METADATA = JSON.stringify({
+    name: 'r',
+    full_name: 'o/r',
+    description: null,
+    language: 'TypeScript',
+    default_branch: 'main',
+    stargazers_count: 1,
+    license: { spdx_id: 'MIT' },
+  });
+
+  /** A `gh` stub whose `.github/workflows` listing behaves as `workflows` says. */
+  function ghStub(workflows: 'ok' | 'throws'): ExecFileFn {
+    return (_cmd, args) => {
+      const target = (args ?? []).join(' ');
+      if (target.includes('contents/.github/workflows')) {
+        if (workflows === 'throws') throw new Error('HTTP 403: rate limit exceeded');
+        return Promise.resolve({ stdout: '[]' });
+      }
+      if (target.includes('contents/.github')) return Promise.resolve({ stdout: '[]' });
+      if (target.includes('/languages')) return Promise.resolve({ stdout: '{"TypeScript":100}' });
+      if (target.includes('contents')) {
+        return Promise.resolve({ stdout: '["README.md","package.json",".github"]' });
+      }
+      return Promise.resolve({ stdout: METADATA });
+    };
+  }
+
+  it('a 403 on the workflows listing yields workflowsMeasured:false and no asserted gap', async () => {
+    const analysis = await analyzeGitHubRepo({ repo: 'o/r', depth: 'shallow' }, ghStub('throws'));
+    expect(analysis.workflowsMeasured).toBe(false);
+    expect(analysis.gaps).not.toContain(SAST_GAP);
+    expect(analysis.gaps).toContain(SAST_UNVERIFIED);
+  });
+
+  it('a successful empty listing yields workflowsMeasured:true and keeps the gap', async () => {
+    const analysis = await analyzeGitHubRepo({ repo: 'o/r', depth: 'shallow' }, ghStub('ok'));
+    expect(analysis.workflowsMeasured).toBe(true);
+    expect(analysis.gaps).toContain(SAST_GAP);
+    expect(analysis.gaps).not.toContain(SAST_UNVERIFIED);
   });
 });
