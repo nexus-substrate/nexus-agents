@@ -28,6 +28,47 @@ monotonic counter. Read the residual-risk lines, not just the design.
 
 ---
 
+## 0. Precondition: the chain is OFF by default
+
+Everything below describes a chain that exists. **In a default installation it does not.**
+
+`cli-server-audit.ts:30` gates the whole subsystem:
+
+```ts
+if (securityConfig?.audit?.enabled !== true) {
+  logger.debug('Audit logging disabled (set security.audit.enabled: true to enable)');
+```
+
+No shipped config sets `security.audit.enabled`, so unless an operator opts in, no
+events are written and every threat in section 3 is vacuous — not mitigated, not
+unmitigated, simply not applicable. `verify_audit_chain` against such an
+installation returns `ok: true` with `notVerified: 'empty'` (#4768): honest, but a
+reader who checks only `.ok` learns nothing.
+
+The server does warn at startup
+(`cli-server-audit.ts:162` `warnIfAuditDisabled`):
+
+> Audit logging is disabled — no tamper-evident event chain is being written.
+> Set `security.audit.enabled: true` to enable it.
+
+Stated here because this document previously described the chain's guarantees in
+full — `enableHashChain` defaulting to `true`, pruning behaviour, the T-numbered
+threats — while never saying whether a chain is being written at all. Those two
+facts read as one: a default `enableHashChain: true` describes how events link
+_if_ events are logged, not whether they are. `CLAUDE.md` compounds it by calling
+the record load-bearing ("everything is logged and a human can review it later"),
+which describes a **capability**, not the default state (#4579).
+
+Two distinct claims, and only the first is true out of the box:
+
+| Claim                                         | Default                              |
+| --------------------------------------------- | ------------------------------------ |
+| "if events are logged, they are hash-chained" | **true** (`enableHashChain`)         |
+| "events are logged"                           | **false** (`security.audit.enabled`) |
+
+An operator relying on the audit chain for any governance claim must enable it
+explicitly and verify with `verify_audit_chain` that `notVerified` is absent.
+
 ## 1. Design
 
 ### 1.1 What an entry is
@@ -39,7 +80,7 @@ by `FileAuditStorage` (`audit-storage.ts:268` `write`, `:201` `generateFileName`
 ### 1.2 How entries link (`prevHash` → `hash`)
 
 Hash chaining is controlled by `enableHashChain`, which **defaults to `true`**
-(`audit-types.ts:182`).
+(`audit-types.ts:305`).
 
 When an event is created (`audit-logger.ts:224` `createEvent`):
 
@@ -314,7 +355,7 @@ specifically; the general case remains open.
 ### T8: Chain-disable / downgrade
 
 **Vector.** Two sub-cases. (a) Operator/config sets `enableHashChain: false`
-(`audit-types.ts:182`) so no hashes are ever written. (b) Adversary makes the
+(`audit-types.ts:305`) so no hashes are ever written. (b) Adversary makes the
 **first** retained event un-hashed (delete the leading hashed file, or strip the
 first line's `hash`).
 
