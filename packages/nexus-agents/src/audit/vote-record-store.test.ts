@@ -31,6 +31,7 @@ vi.mock('../config/nexus-data-dir.js', () => ({
 }));
 
 import type { VoteRecord } from './vote-record.js';
+import { computeVoteRecordHash } from './vote-record.js';
 import { verifyVoteRecordSet } from './vote-record.js';
 import {
   VOTE_RECORDS_PATH_ENV,
@@ -877,5 +878,81 @@ describe('every record the builder writes must read back and verify (#6049, the 
     const record = build(undefined, votes);
     expect(record.optionTally).toBeUndefined();
     expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
+  });
+});
+
+describe('a retried voter seat is visible in the record (#6050)', () => {
+  // `voter-retry.ts:58` has set `retried: true` on every recovered seat since it
+  // was written, and `vote-types.ts:126` states why: the flag is "what makes the
+  // recovery visible instead of indistinguishable from a clean first attempt".
+  // It had ONE producer and ZERO consumers -- both summarizers and the record
+  // dropped it -- so the record said "answered cleanly" for a panel that needed
+  // a retry to reach quorum.
+  function retriedVote(role: VoterRole): AgentVoteResult {
+    return { ...agentVote(role, 'approve'), retried: true };
+  }
+
+  function build(v: readonly AgentVoteResult[]): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-1',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+    });
+  }
+
+  it('carries retried on the recovered seat and NOT on the others', () => {
+    const record = build([retriedVote('security'), agentVote('architect', 'approve')]);
+    const security = record.voters.find((v) => v.role === 'security');
+    const architect = record.voters.find((v) => v.role === 'architect');
+    expect(security?.retried).toBe(true);
+    expect(architect?.retried).toBeUndefined();
+  });
+
+  it('a clean panel carries no retried key anywhere — the pair', () => {
+    // Without this, setting it unconditionally would pass the test above while
+    // making every clean record claim a retry that never happened.
+    const record = build([agentVote('architect', 'approve'), agentVote('security', 'approve')]);
+    expect(record.voters.every((v) => v.retried === undefined)).toBe(true);
+  });
+
+  it('the record round-trips and VERIFIES with a retried seat', () => {
+    // #6049's lesson: parsing is not enough. VoterSummarySchema is .strict(),
+    // so an unknown key makes the line unreadable; and the voter entries are
+    // rebuilt field-by-field for the canonical hash, so a field the hash does
+    // not carry is attested-but-unstored.
+    const record = build([retriedVote('security'), agentVote('architect', 'approve')]);
+    const { records, invalidLines } = parseVoteRecordsText(JSON.stringify(record) + '\n');
+    expect(invalidLines).toHaveLength(0);
+    expect(records).toHaveLength(1);
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+    expect(records[0]?.voters.find((v) => v.role === 'security')?.retried).toBe(true);
+  });
+
+  it('editing a retried seat to a clean one MOVES the hash', () => {
+    // The property that makes the flag evidence rather than decoration: without
+    // it, a retried seat could be edited to a clean one and the chain would
+    // still verify.
+    //
+    // Hashed DIRECTLY, holding everything else constant. Comparing two records
+    // built by `build()` passed even with the hash coverage removed, because
+    // those records also differ in `version` (1.7 vs 1.2) and version is itself
+    // hashed -- the assertion was satisfied by the wrong field.
+    const withRetry = build([retriedVote('security')]);
+    const { hash: _ignored, ...payload } = withRetry;
+    const cleaned = {
+      ...payload,
+      voters: payload.voters.map(({ retried: _dropped, ...rest }) => rest),
+    };
+    expect(computeVoteRecordHash(payload)).not.toBe(computeVoteRecordHash(cleaned));
+  });
+
+  it('reports schema 1.7 when a seat was retried', () => {
+    expect(build([retriedVote('security')]).version).toBe('1.7');
   });
 });

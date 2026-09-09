@@ -320,6 +320,15 @@ export interface AgentVoteSummary {
   modelUsed?: string;
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories?: readonly string[];
+  /**
+   * True when this seat was recovered by the per-role retry (#6050).
+   *
+   * Present only when true. A retried seat is weaker evidence than a first-pass
+   * one — the model was unavailable or timed out — so a caller reading a panel
+   * result should be able to see that "7 of 7 answered" and "6 answered, 1
+   * recovered" are different facts.
+   */
+  retried?: boolean;
   /** Which declared option this voter chose (#4472). Absent when the proposal
    * declared none, or the voter's selection matched none of them. */
   selectedOption?: string;
@@ -545,6 +554,9 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     ...(result.vote.rejectionCategories !== undefined
       ? { rejectionCategories: result.vote.rejectionCategories }
       : {}),
+    // #6050: a caller acting on the live result sees what the ledger will.
+    // Present only when true, so a clean panel's response is unchanged.
+    ...(result.retried === true ? { retried: true } : {}),
   };
 }
 
@@ -744,8 +756,7 @@ function respondentFloorOutcome(result: ExtendedVotingResult): VoteDecisionOutco
   const panel = result.panelSize ?? result.votes.length;
   const floor = minimumRespondents(panel);
   const respondents = result.votes.filter(
-    (v) =>
-      v.source !== 'error' && (v.vote.decision === 'approve' || v.vote.decision === 'reject')
+    (v) => v.source !== 'error' && (v.vote.decision === 'approve' || v.vote.decision === 'reject')
   ).length;
   if (respondents >= floor) return undefined;
   return {

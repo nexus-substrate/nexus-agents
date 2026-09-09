@@ -149,6 +149,27 @@ export const VoterSummarySchema = z
     reasoning: z.string().max(MAX_VOTER_REASONING_CHARS).optional(),
     /** True when `reasoning` was clipped to {@link MAX_VOTER_REASONING_CHARS}. */
     reasoningTruncated: z.literal(true).optional(),
+    /**
+     * True when this seat was recovered by the per-role retry (#6050, schema 1.7).
+     *
+     * `voter-retry.ts` has set `retried: true` on recovered results since it was
+     * written, and `vote-types.ts` states the reason: the flag is "what makes the
+     * recovery visible instead of indistinguishable from a clean first attempt".
+     * It had one producer and ZERO consumers — both summarizers and the record
+     * dropped it — so the field existed, was documented, and never reached
+     * anything that could act on it.
+     *
+     * A retried seat is weaker evidence than a first-pass one: the model was
+     * unavailable or timed out, and the recovery ran under different conditions.
+     * For a ratification vote on a governor-path change, "7 of 7 answered" and
+     * "6 answered, 1 recovered on retry" are different facts about the scrutiny
+     * the change received, and the record stated the first for both.
+     *
+     * `literal(true)` and optional, on the `reasoningTruncated` rule: a clean
+     * seat carries no key, so its entry re-hashes byte-identical and every
+     * historical record still verifies.
+     */
+    retried: z.literal(true).optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -197,7 +218,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -410,6 +431,11 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
       confidence: v.confidence,
       ...(v.reasoning !== undefined ? { reasoning: v.reasoning } : {}),
       ...(v.reasoningTruncated === true ? { reasoningTruncated: true } : {}),
+      // #6050: hash-covered on the same append-when-present rule. Omitting it
+      // here would let a retried seat be edited to a clean one without moving
+      // the hash -- attesting to a claim about panel quality the chain does not
+      // actually cover.
+      ...(v.retried === true ? { retried: true } : {}),
     })),
     correlationId: payload.correlationId ?? null,
   };
