@@ -175,15 +175,23 @@ async function collectUsages(
   scope: FileScope,
   limit: number,
   ctx: HandlerContext
-): Promise<{ results: FileUsage[]; total: number }> {
+): Promise<{ results: FileUsage[]; total: number; unreadable: number }> {
   const results: FileUsage[] = [];
   let total = 0;
+  // #6038: a file we could not open is not a file with no matches. The skip was
+  // logged and then vanished from the payload, so `search_usages({ symbol, path
+  // })` on a typo'd path returned `{"filesScanned":1,"totalMatches":0,
+  // "results":[]}` -- byte-identical to "I read it and the symbol is unused".
+  // For a tool asked "is this still used?" before a deletion, those two answers
+  // must never render the same.
+  let unreadable = 0;
   for (const file of scope.files) {
     let src: string;
     try {
       src = await readFile(file, 'utf8');
     } catch {
       ctx.logger.warn(`search_usages: skipped unreadable file ${file}`);
+      unreadable += 1;
       continue;
     }
     const lang = input.lang ?? inferLang(file);
@@ -193,7 +201,7 @@ async function collectUsages(
       if (results.length < limit) results.push({ file: rel, ...match });
     }
   }
-  return { results, total };
+  return { results, total, unreadable };
 }
 
 /**
@@ -206,10 +214,18 @@ async function collectUsages(
  * walk's `skippedDirs` (#4243); this tool shares that walk precisely so their
  * scopes stay comparable, and consumed only half the signal.
  */
-function applyScopeTruncation(payload: Record<string, unknown>, scope: FileScope): void {
-  if (scope.skippedDirs === 0 && scope.omittedFiles === 0) return;
+function applyScopeTruncation(
+  payload: Record<string, unknown>,
+  scope: FileScope,
+  unreadable: number
+): void {
+  if (scope.skippedDirs === 0 && scope.omittedFiles === 0 && unreadable === 0) return;
 
   const reasons: string[] = [];
+  if (unreadable > 0) {
+    payload['filesUnreadable'] = unreadable;
+    reasons.push(`${String(unreadable)} file(s) could not be read and were not searched`);
+  }
   if (scope.skippedDirs > 0) {
     payload['skippedDirs'] = scope.skippedDirs;
     const plural = scope.skippedDirs === 1 ? 'y was' : 'ies were';
@@ -234,13 +250,16 @@ function buildOutput(
   input: SearchUsagesInput,
   scope: FileScope,
   limit: number,
-  collected: { results: FileUsage[]; total: number }
+  collected: { results: FileUsage[]; total: number; unreadable: number }
 ): string {
   const payload: Record<string, unknown> = {
     symbol: input.symbol,
     scope: input.path !== undefined ? { path: input.path } : { dir: input.dir ?? '.' },
     lang: input.lang ?? 'inferred',
-    filesScanned: scope.files.length,
+    // Files actually READ, not files intended to be read (#6038). The old
+    // value was the size of the candidate set, so it corroborated a zero-match
+    // answer that came from never opening anything.
+    filesScanned: scope.files.length - collected.unreadable,
     totalMatches: collected.total,
     results: collected.results,
   };
@@ -249,7 +268,7 @@ function buildOutput(
     payload['omittedMatches'] = collected.total - collected.results.length;
     payload['limit'] = limit;
   }
-  applyScopeTruncation(payload, scope);
+  applyScopeTruncation(payload, scope, collected.unreadable);
   return JSON.stringify(payload, null, 2);
 }
 
