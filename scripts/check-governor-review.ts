@@ -39,6 +39,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { governorPathsFromCodeowners, isGovernorPath } from './governor-section.js';
 
 import { ROOT } from './script-paths.js';
 import {
@@ -58,71 +59,6 @@ import {
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
 const PR_REVIEW_RECORDS_FILE = join(ROOT, 'governance/pr-review-records.jsonl');
 const GENESIS_FILE = join(ROOT, 'governance/governor-review-genesis.txt');
-
-/**
- * The GOVERNANCE-OF-THE-GOVERNOR section of /CODEOWNERS. Only the path patterns
- * BELOW this marker comment are treated as governor paths; the rest of CODEOWNERS
- * (security, pipeline, mcp, …) carries its own review requirements but is out of
- * scope for THIS gate. The marker is the section heading committed in CODEOWNERS.
- */
-const GOVERNOR_SECTION_MARKER = "Governor's own core";
-
-/**
- * Sentinel that ends the governor section (#4683).
- *
- * The section previously ran from its heading to end of file, and `#` lines are
- * skipped as comments, so a later section heading could not end it either. Any
- * CODEOWNERS entry appended below therefore became a governor path AND — far
- * worse — its owners became ratifiers of governor changes. That was latent only
- * because the governor section happens to be last today; appending one ordinary
- * section would have silently handed ratification rights to its owners.
- */
-export const GOVERNOR_SECTION_END_MARKER = 'END governor-owned paths';
-
-/** The literal CODEOWNERS line that terminates the governor section. */
-export const GOVERNOR_SECTION_END_LINE = `# ${GOVERNOR_SECTION_END_MARKER}`;
-
-/**
- * The governor section's owner-rule lines, plus whether the section was
- * explicitly terminated.
- *
- * Shared by the path and owner parsers so the two cannot disagree about where
- * the section ends. `terminated` is reported rather than assumed, because the
- * two callers fail closed in OPPOSITE directions: an unterminated section must
- * yield MORE protected paths (protect everything below) but NO ratifiers (we
- * cannot say who is authorised).
- */
-export function governorSectionLines(codeownersText: string): {
-  lines: string[];
-  terminated: boolean;
-  /**
-   * Whether the START marker was found (#5576). Only `terminated` was tracked,
-   * so a missing or renamed start marker returned `lines: []` with no signal —
-   * indistinguishable from a section that exists and is empty, and both derive
-   * zero governor patterns, which every gate downstream read as "nothing to
-   * assert". The end-marker case was #5137; this is the same shape one line
-   * earlier.
-   */
-  started: boolean;
-} {
-  const lines: string[] = [];
-  let inSection = false;
-  let terminated = false;
-  for (const raw of codeownersText.split('\n')) {
-    if (!inSection) {
-      if (raw.includes(GOVERNOR_SECTION_MARKER)) inSection = true;
-      continue;
-    }
-    if (raw.includes(GOVERNOR_SECTION_END_MARKER)) {
-      terminated = true;
-      break;
-    }
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    lines.push(line);
-  }
-  return { lines, terminated, started: inSection };
-}
 
 /**
  * Genesis allowlist (condition 5): PR numbers that pre-date the pr_review record
@@ -149,67 +85,6 @@ export function parseGenesisExemptions(text: string): Set<number> {
 function readGenesisExemptions(filePath: string): Set<number> {
   if (!existsSync(filePath)) return new Set();
   return parseGenesisExemptions(readFileSync(filePath, 'utf-8'));
-}
-
-/**
- * Extract the governor path PATTERNS from CODEOWNERS text — the patterns in the
- * governance-of-the-governor section only (everything from the
- * {@link GOVERNOR_SECTION_MARKER} heading to end of file). Each owner-rule line's
- * FIRST token is the path pattern; comment/blank lines are skipped. This is the
- * SINGLE SOURCE — the gate never hardcodes a divergent copy.
- */
-export function governorPathsFromCodeowners(codeownersText: string): string[] {
-  // An UNterminated section falls back to end-of-file (#4683). For paths that
-  // is the fail-closed direction: more paths treated as governor-owned, not
-  // fewer. The owner parser fails closed the other way.
-  const patterns: string[] = [];
-  for (const line of governorSectionLines(codeownersText).lines) {
-    const pattern = line.split(/\s+/)[0];
-    if (pattern !== undefined && pattern !== '') patterns.push(pattern);
-  }
-  return patterns;
-}
-
-/**
- * Match a repo-relative changed file against a single CODEOWNERS path pattern.
- * Supports the subset CODEOWNERS uses in this repo:
- *  - a leading `/` anchors the pattern at the repo root (all our patterns do);
- *  - a trailing `/` matches that directory and everything under it (recursive);
- *  - `*` matches any run of characters within a path segment;
- *  - an exact file path matches that file.
- * The file path is normalized to forward slashes with no leading `./`.
- */
-export function matchesCodeownersPattern(file: string, pattern: string): boolean {
-  const f = file.replace(/\\/g, '/').replace(/^\.\//, '');
-  // Anchor: CODEOWNERS patterns here are all root-anchored ('/...'). Strip the
-  // leading slash for comparison against the (root-relative) changed file.
-  const pat = pattern.startsWith('/') ? pattern.slice(1) : pattern;
-
-  // Directory pattern: 'foo/bar/' matches 'foo/bar/anything/under/here'.
-  if (pat.endsWith('/')) {
-    return f === pat.slice(0, -1) || f.startsWith(pat);
-  }
-
-  // Glob with '*': translate to a regex anchored over the whole path.
-  if (pat.includes('*')) {
-    const re = new RegExp(
-      '^' +
-        pat
-          .split('*')
-          .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-          .join('[^/]*') +
-        '$'
-    );
-    return re.test(f);
-  }
-
-  // Exact file match.
-  return f === pat;
-}
-
-/** True when `file` is under any governor path pattern. */
-export function isGovernorPath(file: string, patterns: readonly string[]): boolean {
-  return patterns.some((p) => matchesCodeownersPattern(file, p));
 }
 
 /** The subset of changed files that touch a governor path. */

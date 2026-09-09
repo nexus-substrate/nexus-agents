@@ -9,9 +9,8 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { governorPathsFromCodeowners } from './check-governor-review.js';
+import { governorPathsFromCodeowners, GOVERNOR_SECTION_END_LINE } from './governor-section.js';
 import {
-  GOVERNOR_SECTION_END_LINE,
   evaluateRatification,
   governorOwnersFromCodeowners,
   RATIFICATION_LABEL,

@@ -38,6 +38,7 @@ on:
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
       - 'scripts/governance-stamp-exemption.ts'
+      - 'scripts/governor-section.ts'
       - '.rules/**'
   push:
     branches: [main]
@@ -53,6 +54,7 @@ on:
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
       - 'scripts/governance-stamp-exemption.ts'
+      - 'scripts/governor-section.ts'
       - '.rules/**'
 
 permissions:
