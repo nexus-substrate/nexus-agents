@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { mkdtempOutsideRepo } from '../../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
@@ -50,7 +50,11 @@ import {
   readPrReviewRecords,
 } from '../../audit/pr-review-record-store.js';
 import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
-import { verifyPrReviewRecordSet } from '../../audit/pr-review-record.js';
+import {
+  PrReviewRecordSchema,
+  verifyPrReviewRecordSet,
+  type PrReviewRecord,
+} from '../../audit/pr-review-record.js';
 
 /**
  * Smallest input satisfying the #4451 unified-diff shape gate. Tests whose
@@ -714,7 +718,7 @@ interface CapturedToolResult {
 
 const TEST_CTX: HandlerCtx = {
   logger: createLogger({ tool: 'pr_review.test' }),
-  sanitization: { wasModified: false, commentsRemoved: 0 },
+  sanitization: { wasModified: false, commentsRemoved: 0, fieldsModified: 0, rawFieldHashes: {} },
 };
 
 /** Registers the tool against a mock server and returns the captured callback. */
@@ -892,10 +896,141 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     });
   }
 
+  /** The persisted record for a PR — the artifact an auditor actually reads. */
+  function readRecords(prNumber: number): PrReviewRecord {
+    const lines = readFileSync(process.env[PR_REVIEW_RECORDS_PATH_ENV]!, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim() !== '');
+    const found = lines
+      .map((l) => PrReviewRecordSchema.parse(JSON.parse(l)))
+      .find((r) => r.prNumber === prNumber);
+    if (found === undefined) throw new Error(`no record for PR #${String(prNumber)}`);
+    return found;
+  }
+
+  it('binds the RAW hash when the middleware supplied one (#5385)', () => {
+    // The seam. `reviewedDiffHash` must bind bytes the governor gate can
+    // recompute from git, and `input.prDiff` is NOT those bytes -- the
+    // middleware sanitized it before the handler saw it. Without this, dropping
+    // `args.rawDiffHash` in the producer broke no test.
+    const parsed = input({ prNumber: 99, baseSha: BASE_SHA });
+    const rawDiffHash = computeReviewedDiffHash(
+      `${parsed.prDiff}\n<!-- stripped before review -->`
+    );
+    const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
+      sanitization: { rawDiffHash, commentsRemoved: 1, fieldsModified: 1 },
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    expect(outcome.persisted).toBe(true);
+    if (!outcome.persisted) throw new Error('expected persisted');
+    // The RAW hash, not the sanitized one.
+    expect(outcome.reviewedDiffHash).toBe(rawDiffHash);
+    expect(outcome.reviewedDiffHash).not.toBe(computeReviewedDiffHash(parsed.prDiff));
+  });
+
+  it('persists the sanitization DISCLOSURE alongside the raw binding (#5385)', () => {
+    // The binding covers raw bytes; the voters read `input.prDiff`. Without the
+    // disclosure the record asserts "these bytes were reviewed" about bytes no
+    // voter saw. Read the LEDGER, not the outcome envelope, because the record
+    // is the artifact an auditor inspects.
+    const parsed = input({ prNumber: 101, baseSha: BASE_SHA });
+    const rawDiffHash = computeReviewedDiffHash(
+      `${parsed.prDiff}\n<!-- stripped before review -->`
+    );
+    persistReviewRecord({
+      diffSource: 'caller-supplied',
+      sanitization: { rawDiffHash, commentsRemoved: 2, fieldsModified: 2 },
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    const written = readRecords(101);
+    expect(written.sanitization).toEqual({
+      sanitizedDiffHash: computeReviewedDiffHash(parsed.prDiff),
+      commentsRemoved: 2,
+      fieldsModified: 2,
+    });
+    // The two hashes must genuinely differ here, else the assertion above could
+    // hold while the producer hashed the wrong side.
+    expect(written.sanitization?.sanitizedDiffHash).not.toBe(written.reviewedDiffHash);
+    expect(written.reviewedDiffHash).toBe(rawDiffHash);
+  });
+
+  it('REFUSES to persist when a sanitizer ran but supplied no raw hash (#5385)', () => {
+    // The one state where the fallback would write a self-contradicting record:
+    // the binding would cover SANITIZED bytes the gate can never reproduce from
+    // git, while the disclosure — comparing that hash against itself — would
+    // report the sanitizer as having left the bound bytes alone. Unreachable
+    // today (the middleware hashes any string prDiff, and the schema rejects a
+    // non-string one), guarded because an audit sink must fail closed.
+    const parsed = input({ prNumber: 103, baseSha: BASE_SHA });
+    const outcome = persistReviewRecord({
+      diffSource: 'caller-supplied',
+      sanitization: { rawDiffHash: undefined, commentsRemoved: 1, fieldsModified: 1 },
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    expect(outcome.persisted).toBe(false);
+    if (outcome.persisted) throw new Error('expected refusal');
+    expect(outcome.reason).toBe('raw-hash-absent');
+    // No record at all — not a record with a misleading disclosure.
+    expect(() => readRecords(103)).toThrow();
+  });
+
+  it('omits the disclosure entirely when no sanitizer was in the path — the pair', () => {
+    // Absence must stay distinguishable from "a sanitizer ran and removed
+    // nothing"; a zero-filled block would assert the latter.
+    const parsed = input({ prNumber: 102, baseSha: BASE_SHA });
+    persistReviewRecord({
+      diffSource: 'canonical-git',
+      sanitization: undefined,
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+    expect(readRecords(102).sanitization).toBeUndefined();
+  });
+
+  it('falls back to hashing prDiff when no raw hash was supplied — the pair', () => {
+    // The canonical-git door (scripts/pr-review-local-ledger.ts) never passes
+    // through the sanitizer, so its prDiff already IS the canonical bytes.
+    // Without this, always requiring a raw hash would break that door.
+    const parsed = input({ prNumber: 100, baseSha: BASE_SHA });
+    const outcome = persistReviewRecord({
+      diffSource: 'canonical-git',
+      sanitization: undefined,
+      input: parsed,
+      aggregate: APPROVE_AGG,
+      counts: COUNTS,
+      reviewCount: 5,
+      logger,
+    });
+
+    expect(outcome.persisted).toBe(true);
+    if (!outcome.persisted) throw new Error('expected persisted');
+    expect(outcome.reviewedDiffHash).toBe(computeReviewedDiffHash(parsed.prDiff));
+  });
+
   it('persists a record bound to {prNumber, baseSha, reviewedDiffHash} when both inputs + live review', () => {
     const parsed = input({ prNumber: 99, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -928,6 +1063,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     // the check covers one of two doors into the thing it protects.
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       // Bypass the schema exactly as the script does.
       input: {
         ...input({ prNumber: 101, baseSha: BASE_SHA }),
@@ -949,6 +1085,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
   it('skips with binding-inputs-absent when prNumber or baseSha is missing', () => {
     const onlyPr = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: input({ prNumber: 99 }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -960,6 +1097,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     );
     const onlySha = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: input({ baseSha: BASE_SHA }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -977,6 +1115,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
   it('skips with reason=simulated even when the binding is present (no governance from non-live output)', () => {
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: input({ prNumber: 99, baseSha: BASE_SHA, simulate: true }),
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -992,6 +1131,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     const parsed = input({ prNumber: 77, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: parsed,
       // A partial review degrades to abstain/verified:false per the C1 gate.
       aggregate: {
@@ -1024,6 +1164,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     const parsed = input({ prNumber: 4459, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -1052,6 +1193,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     };
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -1076,6 +1218,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     };
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
+      sanitization: undefined,
       input: input({ prNumber: 99, baseSha: BASE_SHA }),
       aggregate: APPROVE_AGG,
       counts: allErrored,
@@ -1159,6 +1302,7 @@ describe('pr_review repoPath input (#4278)', () => {
 
       const outcome = persistReviewRecord({
         diffSource: 'caller-supplied',
+        sanitization: undefined,
         input: parsed,
         aggregate: APPROVE_AGG,
         counts: COUNTS,
@@ -1185,6 +1329,7 @@ describe('pr_review repoPath input (#4278)', () => {
 
       const outcome = persistReviewRecord({
         diffSource: 'caller-supplied',
+        sanitization: undefined,
         input: parsed,
         aggregate: APPROVE_AGG,
         counts: COUNTS,
@@ -1211,6 +1356,7 @@ describe('pr_review repoPath input (#4278)', () => {
 
         const outcome = persistReviewRecord({
           diffSource: 'caller-supplied',
+          sanitization: undefined,
           input: parsed,
           aggregate: APPROVE_AGG,
           counts: COUNTS,
@@ -1253,19 +1399,21 @@ describe('pr_review repoPath input (#4278)', () => {
       // on the ONE path that persists a governance record. The count now comes
       // from the middleware via HandlerContext.
       const alreadyClean = { ...withComment, prDescription: 'body  more' };
-      const out = buildPrReviewProposal(alreadyClean, 1);
+      const out = buildPrReviewProposal(alreadyClean, { comments: 1, fields: 1 });
       expect(out).toContain('HTML comment(s) were removed');
       expect(out).toContain('1 HTML comment(s)');
     });
 
     it('sums removals from both stages rather than reporting only one', () => {
-      const out = buildPrReviewProposal(withComment, 2);
+      const out = buildPrReviewProposal(withComment, { comments: 2, fields: 2 });
       expect(out).toContain('3 HTML comment(s)');
     });
 
     it('does not annotate when nothing was removed at either stage', () => {
       const clean = { ...withComment, prDescription: 'nothing to strip' };
-      expect(buildPrReviewProposal(clean, 0)).not.toContain('HTML comment(s) were removed');
+      expect(buildPrReviewProposal(clean, { comments: 0, fields: 0 })).not.toContain(
+        'HTML comment(s) were removed'
+      );
       // Omitting the argument must behave exactly as passing 0 — the CI and
       // script callers rely on it.
       expect(buildPrReviewProposal(clean)).not.toContain('HTML comment(s) were removed');

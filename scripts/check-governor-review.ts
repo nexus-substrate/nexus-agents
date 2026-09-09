@@ -275,6 +275,7 @@ function matchedRecordOutcome(
       `diff-bound pr_review record found for PR #${String(inputs.prNumber)} ` +
       `(reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, ` +
       `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}` +
+      sanitizationCaveat(match) +
       ledgerCoverage(verification),
   };
 }
@@ -291,6 +292,63 @@ function truncationCaveat(truncated: boolean): string {
   return (
     ` — PARTIAL: the canonical diff exceeded ${String(MAX_REVIEWED_DIFF_BYTES)} bytes, so the ` +
     'hash binds only the first that many bytes; content past the cap is unattested'
+  );
+}
+
+/**
+ * Names the gap between the bytes this gate just bound and the text the voters
+ * actually read (#5385).
+ *
+ * The hash match above proves the record is bound to THIS PR's canonical diff.
+ * It does not prove the panel read that diff: the MCP middleware strips HTML
+ * comments and XML-like tags from tool input before the handler sees it, and
+ * this repo's own governance PRs carry `<!-- GENERATED:… -->` markers. A pass
+ * that does not say so is a partial verification recorded as complete — the
+ * failure CLAUDE.md names on the governor path, and the same shape
+ * {@link truncationCaveat} exists to prevent.
+ *
+ * Four distinguishable states, deliberately: no disclosure at all (the producer
+ * had no sanitizer in its path); a matching hash with BOTH counters zero (a
+ * sanitizer ran and was a genuine no-op); a matching hash with either counter
+ * non-zero (it removed something, but nothing inside the bytes this hash binds
+ * — a sibling field, or a span past the truncation cap); and a DIFFERING hash
+ * (the voters read a stripped rendering of the bound bytes).
+ *
+ * The two counters are BOTH consulted because they measure different removals:
+ * `commentsRemoved` is HTML comments (#5258), while an XML-like injection tag
+ * goes through `fieldsModified`. Reading only the first made a tag strip
+ * indistinguishable from a no-op (#5385, found by adversarial review).
+ */
+function sanitizationCaveat(match: PrReviewRecord): string {
+  const disclosure = match.sanitization;
+  if (disclosure === undefined) return '';
+  // What the sanitizer took out, in the record's own terms. `commentsRemoved`
+  // counts HTML comments ONLY — an XML-like injection tag is stripped through a
+  // different counter — so `fieldsModified` is what separates a genuine no-op
+  // from a tag strip. Naming both keeps the sentence from contradicting itself.
+  const removals =
+    disclosure.commentsRemoved > 0
+      ? `${String(disclosure.commentsRemoved)} comment(s)`
+      : `${String(disclosure.fieldsModified)} field(s), non-comment (injection-tag strip)`;
+
+  if (disclosure.sanitizedDiffHash === match.reviewedDiffHash) {
+    // Equal hashes mean the BOUND BYTES are untouched — not that the sanitizer
+    // was a no-op. Both counters span the whole args object while the hash covers
+    // only the truncated `prDiff`, so a strip from a sibling field, or one
+    // starting past MAX_REVIEWED_DIFF_BYTES, leaves the hashes equal with a
+    // non-zero count. Only `fieldsModified === 0` licenses "removed nothing";
+    // saying it on a tag strip would assert a no-op about an input a
+    // prompt-injection tag was just taken out of.
+    if (disclosure.fieldsModified === 0 && disclosure.commentsRemoved === 0) {
+      return ' — sanitizer ran and removed nothing';
+    }
+    return ` — sanitizer removed ${removals}, none inside the bytes this hash binds`;
+  }
+  return (
+    ' — PARTIAL: the voters read a SANITIZED rendering of these bytes ' +
+    `(sanitizedDiffHash=${disclosure.sanitizedDiffHash.slice(0, 12)}…, ` +
+    `${removals} stripped before dispatch); ` +
+    'the hash binds the raw diff, so content the sanitizer removed was bound but unread'
   );
 }
 

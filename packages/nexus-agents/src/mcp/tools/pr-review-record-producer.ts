@@ -20,7 +20,11 @@ import {
   reviewedDiffWasTruncated,
 } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
-import type { PrReviewDiffProvenance, PrReviewDiffSource } from '../../audit/pr-review-record.js';
+import type {
+  PrReviewDiffProvenance,
+  PrReviewDiffSource,
+  PrReviewSanitization,
+} from '../../audit/pr-review-record.js';
 import { hasFileBoundaries, looksLikeUnifiedDiff } from './pr-review-diff-budget.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
@@ -38,6 +42,11 @@ import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
  *    review that never actually happened (the governor-review analogue of the
  *    consensus_vote `no_quorum` void, #4053). Skipped so a failed review cannot
  *    silently flip the #3831 gate from warn to a false pass.
+ *  - `raw-hash-absent` — a sanitizer WAS in the path but supplied no
+ *    pre-sanitization hash, so the only binding available is over sanitized
+ *    bytes the gate can never reproduce from git. Refused rather than written:
+ *    the record would carry a binding that cannot match plus a disclosure
+ *    asserting the sanitizer left those bytes alone (#5385, panel condition).
  *  - `write-failed` — the binding was present but the ledger path was unresolved
  *    or the append failed (the producer already logged the underlying cause).
  */
@@ -56,6 +65,7 @@ export type PrReviewRecordOutcome =
         | 'simulated'
         | 'no-live-votes'
         | 'diff-not-unified'
+        | 'raw-hash-absent'
         | 'write-failed';
       readonly detail: string;
     };
@@ -82,9 +92,45 @@ export interface PrReviewCoverageStamp {
   readonly partial: boolean;
 }
 
+/**
+ * The middleware's pre-sanitization view, handed to the producer by a caller
+ * that sits behind {@link createSecureHandler} (#5385).
+ */
+export interface ReviewSanitizationInput {
+  /**
+   * `reviewedDiffHash` over the RAW `prDiff` bytes, before sanitization. Its own
+   * `undefined` case is retained: the middleware only hashes a field it finds as
+   * a string, so a caller must be able to say "a sanitizer ran but I have no
+   * pre-sanitization hash" rather than pass a hash of the wrong artifact.
+   */
+  readonly rawDiffHash: string | undefined;
+  /** HTML comments the middleware stripped from the args before dispatch. */
+  readonly commentsRemoved: number;
+  /**
+   * How many FIELDS the middleware changed at all. Carried separately because
+   * `commentsRemoved` counts HTML comments only — an XML-like injection tag is
+   * stripped through a different counter, and without this a tag-only strip is
+   * indistinguishable from a no-op.
+   */
+  readonly fieldsModified: number;
+}
+
 /** Inputs for {@link persistReviewRecord} — bundled to stay within max-params. */
 export interface PersistReviewRecordArgs {
   readonly input: PrReviewInput;
+  /**
+   * What the SANITIZER in this producer's path did, or `undefined` when there
+   * was no sanitizer (#5385).
+   *
+   * REQUIRED including its `undefined` case, and grouped rather than flattened
+   * into two fields, because presence is itself the signal. `input.prDiff` is
+   * NOT the bytes the governor gate recomputes from git — the MCP middleware
+   * sanitized it before the handler saw it — so a caller that sits behind the
+   * middleware must hand over the raw hash and the counters. Flattened, the
+   * local-ledger door (`undefined`, `0`) would be indistinguishable from a
+   * sanitizer that ran and removed nothing.
+   */
+  readonly sanitization: ReviewSanitizationInput | undefined;
   readonly aggregate: PrReviewAggregate;
   readonly counts: PrReviewCounts;
   readonly reviewCount: number;
@@ -128,6 +174,37 @@ function diffProvenanceOf(source: PrReviewDiffSource, diff: string): PrReviewDif
 }
 
 /**
+ * The record's sanitization disclosure (#5385): the hash of the once-sanitized
+ * full diff, plus the middleware's counter.
+ *
+ * The `reviewedDiffHash` binding covers RAW bytes, because those are the only
+ * ones the governor gate can recompute from git. What reached the panel was
+ * `prDiff`, which the middleware had already stripped. Recording the binding
+ * WITHOUT this would assert "these bytes were reviewed" about bytes no voter
+ * saw.
+ *
+ * This names the SANITIZATION gap only. Coverage packing (#4140) reduces the
+ * prompt further on an over-budget diff, and is disclosed separately in the
+ * hash-covered `summary` — see `PrReviewSanitizationSchema.sanitizedDiffHash`
+ * for why the two reductions are kept apart rather than folded into one hash.
+ *
+ * Returns `undefined` — not a zero-filled block — when no sanitizer was in the
+ * path, because "no sanitizer" and "a sanitizer ran and removed nothing" are
+ * different claims and the record must not collapse them.
+ */
+function sanitizationDisclosureOf(
+  sanitization: ReviewSanitizationInput | undefined,
+  prDiff: string
+): PrReviewSanitization | undefined {
+  if (sanitization === undefined) return undefined;
+  return {
+    sanitizedDiffHash: computeReviewedDiffHash(prDiff),
+    commentsRemoved: sanitization.commentsRemoved,
+    fieldsModified: sanitization.fieldsModified,
+  };
+}
+
+/**
  * Build + append the Option-C record for a review whose binding is present and
  * live (the guards in {@link persistReviewRecord} already passed). Hashes the
  * EXACT reviewed diff via the same canonical {@link computeReviewedDiffHash} the
@@ -138,7 +215,8 @@ function buildAndPersist(
   baseSha: string,
   args: PersistReviewRecordArgs
 ): PrReviewRecordOutcome {
-  const { input, aggregate, counts, reviewCount, logger, coverage, diffSource } = args;
+  const { input, aggregate, counts, reviewCount, logger, coverage, diffSource, sanitization } =
+    args;
   // #4140: honest completeness — stamp partial coverage into the (hash-covered)
   // summary so an auditor reading the ledger sees the review was partial. Does NOT
   // touch reviewedDiffHash (the gate's binding), so gate parity is preserved.
@@ -146,12 +224,19 @@ function buildAndPersist(
     coverage?.partial === true
       ? ` [partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}]`
       : '';
+  const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(input.prDiff, prNumber, logger);
   const record = persistPrReviewRecord({
     prNumber,
     baseSha,
-    reviewedDiffHash: computeReviewedDiffHash(input.prDiff),
+    // #5385: the RAW hash when the caller had one, so producer and gate agree by
+    // construction. After the `raw-hash-absent` guard above, the fallback has
+    // exactly ONE way to fire — `sanitization === undefined`, the local-ledger
+    // door, whose diff comes straight from git and was never sanitized, so
+    // `input.prDiff` already IS the canonical bytes.
+    reviewedDiffHash: sanitization?.rawDiffHash ?? computeReviewedDiffHash(input.prDiff),
     diffProvenance: diffProvenanceOf(diffSource, input.prDiff),
+    ...(disclosure !== undefined ? { sanitization: disclosure } : {}),
     verdict: aggregate.decision,
     verified: aggregate.verified,
     voteCounts: {
@@ -208,13 +293,41 @@ type PersistGate =
  * pushing that function over the max-lines budget. Each guard fails CLOSED: a
  * ledger record is evidence, and a wrong record is worse than a missing one.
  */
+/** The refusal reasons {@link refuseToPersist} can return. */
+type RefusalReason =
+  'binding-inputs-absent' | 'diff-not-unified' | 'simulated' | 'no-live-votes' | 'raw-hash-absent';
+
+/** Wraps a refusal so every guard in {@link refuseToPersist} reads the same way. */
+function refuse(reason: RefusalReason, detail: string): PersistGate {
+  return { ok: false, outcome: { persisted: false, reason, detail } };
+}
+
+/**
+ * #5385 panel condition: a sanitizer in the path that supplied no raw hash.
+ *
+ * The one state where the binding fallback would produce a self-contradicting
+ * record — a binding over SANITIZED bytes (which the gate, hashing raw git
+ * output, can never reproduce) carrying a disclosure that compares that same
+ * hash against itself and so reports the bound bytes as untouched. Unreachable
+ * today: the middleware hashes any string `prDiff`, and the schema rejects a
+ * non-string one. Guarded anyway, because an audit sink must fail closed — "no
+ * record" is honest where "a record that cannot match, claiming it was
+ * untouched" is not.
+ */
+function rawHashMissing(args: PersistReviewRecordArgs): boolean {
+  return args.sanitization !== undefined && args.sanitization.rawDiffHash === undefined;
+}
+
 function refuseToPersist(args: PersistReviewRecordArgs): PersistGate {
   const { input, counts } = args;
-  /** Wraps a refusal so every guard reads the same way. */
-  const refuse = (
-    reason: 'binding-inputs-absent' | 'diff-not-unified' | 'simulated' | 'no-live-votes',
-    detail: string
-  ): PersistGate => ({ ok: false, outcome: { persisted: false, reason, detail } });
+  if (rawHashMissing(args)) {
+    return refuse(
+      'raw-hash-absent',
+      'No audit record written: a sanitizer processed this input but supplied no ' +
+        'pre-sanitization hash, so the only available binding is over sanitized ' +
+        'bytes the governor gate cannot recompute from git (#5385).'
+    );
+  }
 
   if (input.prNumber === undefined || input.baseSha === undefined) {
     return refuse(

@@ -6699,7 +6699,7 @@ TypeAliasDeclaration PrReviewInput
 VariableDeclaration PrReviewInputSchema
   : z.ZodObject<{ baseRef: z.ZodOptional<z.ZodString>; baseSha: z.ZodOptional<z.ZodString>; dispatch: z.ZodDefault<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; errorPolicy: z.ZodDefault<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; standard: "standard"; }>>; headRef: z.ZodOptional<z.ZodString>; prDescription: z.ZodOptional<z.ZodString>; prDiff: z.ZodString; prNumber: z.ZodOptional<z.ZodNumber>; prTitle: z.ZodString; repoContext: z.ZodOptional<z.ZodString>; repoPath: z.ZodOptional<z.ZodString>; simulate: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>
 TypeAliasDeclaration PrReviewRecordOutcome
-  = | { readonly baseSha: string; readonly persisted: true; readonly prNumber: number; readonly reviewedDiffHash: string; readonly sequence: number; } | { readonly detail: string; readonly persisted: false; readonly reason: | 'binding-inputs-absent' | 'simulated' | 'no-live-votes' | 'diff-not-unified' | 'write-failed'; }
+  = | { readonly baseSha: string; readonly persisted: true; readonly prNumber: number; readonly reviewedDiffHash: string; readonly sequence: number; } | { readonly detail: string; readonly persisted: false; readonly reason: | 'binding-inputs-absent' | 'simulated' | 'no-live-votes' | 'diff-not-unified' | 'raw-hash-absent' | 'write-failed'; }
 InterfaceDeclaration PrReviewResponse
   readonly abstainCount: number
   readonly approveCount: number

@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as crypto from 'node:crypto';
 
 import type { PrReviewDiffProvenance, PrReviewRecord } from './pr-review-record.js';
 import {
@@ -19,6 +20,11 @@ import {
   verifyPrReviewRecordSet,
 } from './pr-review-record.js';
 import { buildPrReviewRecord } from './pr-review-record-store.js';
+
+/** sha256 hex of a canonical string — the projection's own final step. */
+function sha256Hex(canonical: string): string {
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
@@ -35,7 +41,7 @@ function makeRecord(
   overrides: Partial<Omit<PrReviewRecord, 'hash'>> = {}
 ): PrReviewRecord {
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.2',
+    version: '1.3',
     sequence,
     prNumber,
     baseSha: SHA_A,
@@ -200,17 +206,21 @@ describe('diffProvenance (#4459)', () => {
   });
 
   /**
-   * BACKWARD COMPATIBILITY PIN. A record written WITHOUT `diffProvenance` must
-   * hash exactly as it did before the field existed — otherwise every previously
-   * written record flips to `hash_mismatch` on the next verification. The golden
-   * hex below was computed with the pre-#4459 projection; it must never change.
-   * (This is why the projection OMITS the key when absent rather than emitting
-   * `null`: `JSON.stringify` drops `undefined` values, so the canonical string is
-   * byte-identical to the pre-field one.)
+   * The invariant an absent optional must satisfy: the projection OMITS the key
+   * rather than emitting `null`. `JSON.stringify` drops `undefined` values, so a
+   * record written before the field existed produces a canonical string
+   * byte-identical to one written after — which is what keeps every previously
+   * written record from flipping to `hash_mismatch` on the next verification.
+   *
+   * Stated as a COMPARISON, not a golden hex. The hex form claimed to be
+   * "the pre-#4459 hash, which must never change", but `version` is inside the
+   * projection, so the golden necessarily moves on every version bump — and it
+   * did, silently, at '1.2'→'1.3' (#5385). A pin that must be edited whenever an
+   * unrelated field changes does not pin the property it names.
    */
-  it('hashes a record with NO diffProvenance identically to the pre-#4459 projection', () => {
-    const payload: Omit<PrReviewRecord, 'hash'> = {
-      version: '1.2',
+  function noProvenancePayload(): Omit<PrReviewRecord, 'hash'> {
+    return {
+      version: '1.3',
       sequence: 7,
       prNumber: 4459,
       baseSha: SHA_A,
@@ -221,8 +231,39 @@ describe('diffProvenance (#4459)', () => {
       voteCounts: { approve: 5, request_changes: 0, abstain: 0, error: 0, total: 5 },
       summary: 'looks good',
     };
-    expect(computePrReviewRecordHash(payload)).toBe(
-      'ca8f09d59e628b2b9f7bf7be988dc796efe6b641df3f0b12fce49bfc76cb75a8'
+  }
+
+  it('omits an absent diffProvenance from the canonical string rather than emitting null', () => {
+    // The two renderings a projection could choose. Omission is the one that
+    // preserves pre-field hashes; `null` would move every one of them. Building
+    // the expected string here rather than pinning a digest keeps the assertion
+    // true across version bumps, which is the property that actually matters.
+    const payload = noProvenancePayload();
+    const omitted = JSON.stringify({
+      version: payload.version,
+      sequence: payload.sequence,
+      prNumber: payload.prNumber,
+      baseSha: payload.baseSha,
+      reviewedDiffHash: payload.reviewedDiffHash,
+      recordedAt: payload.recordedAt,
+      verdict: payload.verdict,
+      verified: payload.verified,
+      voteCounts: payload.voteCounts,
+      summary: payload.summary,
+      correlationId: null,
+    });
+    const asNull = JSON.stringify({ ...JSON.parse(omitted), diffProvenance: null });
+
+    expect(computePrReviewRecordHash(payload)).toBe(sha256Hex(omitted));
+    expect(computePrReviewRecordHash(payload)).not.toBe(sha256Hex(asNull));
+  });
+
+  it('a present diffProvenance hashes differently from an absent one', () => {
+    // Guards the row above: if the projection dropped the field entirely, the
+    // omission assertion would still hold while provenance left tamper-evidence.
+    const payload = noProvenancePayload();
+    expect(computePrReviewRecordHash(payload)).not.toBe(
+      computePrReviewRecordHash({ ...payload, diffProvenance: CALLER_SUPPLIED })
     );
   });
 
@@ -248,9 +289,9 @@ describe('diffProvenance (#4459)', () => {
   });
 });
 
-describe('record version (#4459)', () => {
-  it('pins the schema version at 1.2 — the pre/post diffProvenance boundary', () => {
-    expect(makeRecord(1, 0).version).toBe('1.2');
+describe('record version (#4459, #5385)', () => {
+  it('pins the schema version at 1.3 — the pre/post sanitization-disclosure boundary', () => {
+    expect(makeRecord(1, 0).version).toBe('1.3');
     const stale = { ...makeRecord(1, 0), version: '1.1' };
     expect(PrReviewRecordSchema.safeParse(stale).success).toBe(false);
   });
