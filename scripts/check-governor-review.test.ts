@@ -953,3 +953,55 @@ describe('a started governor section that yields nothing is a failure, not an em
     expect(governorSectionLines(noSection).started).toBe(false);
   });
 });
+
+describe('both ratification jobs are handed a base sha (#6029)', () => {
+  // The generic wiring gate cannot see this half: the backstop referenced NO
+  // step output at all, so there was nothing for it to resolve. An absent env
+  // var is invisible to a check that validates references it can find.
+  const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+
+  /**
+   * The body of one top-level job, up to the next job key, with `#` comments
+   * removed.
+   *
+   * The comment strip is not incidental. Writing these assertions, the
+   * "derives it from a merge-base, not the base-branch tip" check failed on the
+   * workflow COMMENT that explains exactly that — prose naming the thing it
+   * forbids. That is the third time in this one change (the others: the
+   * step-scope scanner, and #6029's own wiring comment tripping the #4698
+   * gate), and the same class as #6030 and #6026. A detector must decide what
+   * counts as a real occurrence before it counts.
+   */
+  function jobBody(name: string): string {
+    const after = WORKFLOW.split(`\n  ${name}:\n`)[1] ?? '';
+    const body = after.split(/\n {2}[A-Za-z0-9_-]+:\n/)[0] ?? '';
+    return body
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('#'))
+      .join('\n');
+  }
+
+  it.each(['governor-ratification', 'governor-ratification-backstop'])(
+    '%s supplies PR_BASE_SHA to the gate',
+    (name) => {
+      const body = jobBody(name);
+      expect(body).not.toEqual('');
+      expect(body).toContain('PR_BASE_SHA:');
+    }
+  );
+
+  it('the pre-merge job derives it from a MERGE-BASE, not the base-branch tip', () => {
+    // pull_request.base.sha would fold in whatever landed on main since the
+    // branch diverged, so an unrelated PR touching a governed file could revoke
+    // this PR's exemption. The merge-base makes the diff the PR's own changes.
+    const body = jobBody('governor-ratification');
+    expect(body).toContain('git merge-base');
+    expect(body).not.toContain('pull_request.base.sha');
+  });
+
+  it('the backstop derives it from the same commit pair as its file list', () => {
+    const body = jobBody('governor-ratification-backstop');
+    expect(body).toContain('git diff --name-only "${SHA}~1" "${SHA}"');
+    expect(body).toContain('git rev-parse "${SHA}~1"');
+  });
+});
