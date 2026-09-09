@@ -45,14 +45,57 @@ export const GOVERNANCE_STAMP_PATTERN = new RegExp(
   `^_Governance Version: [0-9a-f]{${String(GOVERNANCE_STAMP_DIGEST_LENGTH)}}_$`
 );
 
-const GOVERNANCE_STAMP_LINE = GOVERNANCE_STAMP_PATTERN;
+/**
+ * The generated spans a regeneration may move without ratification (#6022,
+ * ratified 6-1 at `supermajority` with `errorPolicy: absolute_quorum`).
+ *
+ * A NAMED SUBSET, not every span. The panel weighed exempting all of them and
+ * chose not to: `RULES_INDEX` is the cross-adapter bridge telling Codex, Gemini
+ * and OpenCode which rules exist, so its content decides what non-Claude
+ * harnesses obey. Its source `.rules/` is itself governor-gated (#5999), so
+ * leaving it out costs nothing — a PR that moves it already needs ratification
+ * at the source.
+ *
+ * `MODEL_LIST` is deliberately ABSENT pending its own decision (#6024). It has
+ * the strongest case for inclusion — model additions are the most frequent
+ * change here, and #5491 already held that model data is not governance content
+ * — but widening a governance exemption past what a panel approved is the thing
+ * these gates exist to prevent.
+ *
+ * Every name here must exist in `GOVERNANCE_SPAN_NAMES` (scripts/governance-markers.ts);
+ * a test pins the subset relation so this list cannot name a span that is gone.
+ */
+export const EXEMPT_SPAN_NAMES: readonly string[] = ['VERSION', 'TOOL_INDEX', 'WORKFLOW_INDEX'];
 
-/** Replaces a well-formed stamp line with a constant, leaving everything else. */
-function normalizeStamp(text: string): string {
-  return text
+/**
+ * Blank the CONTENT of each exempt span, keeping its markers.
+ *
+ * Unbalanced or missing markers simply do not match, so the raw text survives
+ * into the comparison and the diff is not exempt — removing a span cannot be
+ * laundered as a regeneration.
+ */
+function normalizeGenerated(text: string): string {
+  // The stamp LINE is still normalised wherever it appears, not only inside the
+  // VERSION span. In a real generated file it lives inside that span, so this is
+  // belt-and-braces — but the predicate is fed whole texts, including fixtures
+  // and any future layout, and losing the line-level case would narrow the
+  // exemption that #5944 ratified.
+  //
+  // Safe against camouflage: a stamp-shaped line ADDED on one side only leaves
+  // the two texts different lengths, so they still compare unequal. Only a line
+  // matching the anchored pattern on BOTH sides collapses.
+  let out = text
     .split('\n')
-    .map((line) => (GOVERNANCE_STAMP_LINE.test(line) ? '_Governance Version: <stamp>_' : line))
+    .map((line) => (GOVERNANCE_STAMP_PATTERN.test(line) ? '_Governance Version: <stamp>_' : line))
     .join('\n');
+  for (const name of EXEMPT_SPAN_NAMES) {
+    const span = new RegExp(
+      `(<!-- GOVERNANCE:${name}:START -->)[\\s\\S]*?(<!-- GOVERNANCE:${name}:END -->)`,
+      'g'
+    );
+    out = out.replace(span, `$1<exempt:${name}>$2`);
+  }
+  return out;
 }
 
 /**
@@ -80,7 +123,7 @@ function normalizeStamp(text: string): string {
 export function isStampOnlyChange(before: string | undefined, after: string | undefined): boolean {
   if (before === undefined || after === undefined) return false;
   if (before === after) return false;
-  return normalizeStamp(before) === normalizeStamp(after);
+  return normalizeGenerated(before) === normalizeGenerated(after);
 }
 
 /**
@@ -94,11 +137,41 @@ export function isStampOnlyChange(before: string | undefined, after: string | un
 export function stampOnlyExemptFiles(
   changedFiles: readonly string[],
   readAtBase: (path: string) => string | undefined,
-  readAtHead: (path: string) => string | undefined
+  readAtHead: (path: string) => string | undefined,
+  injectorIsClean: () => boolean
 ): string[] {
+  // THE precondition, and the half that makes widening the normalizer safe
+  // (#6022). Blanking span content without it would make everything between the
+  // markers free-form text that skips ratification. Requiring head to be
+  // injector-clean means each span equals what the deterministic renderer
+  // produces from in-repo sources, so "regenerated" is verified rather than
+  // asserted by whoever opened the PR.
+  //
+  // Required, not defaulted: a caller that forgets it would silently get the
+  // widened exemption with no guard, so the compiler names every call site.
+  if (!injectorIsClean()) return [];
   return changedFiles
     .filter((f) => GENERATED_GOVERNANCE_FILES.includes(f))
     .filter((f) => isStampOnlyChange(readAtBase(f), readAtHead(f)));
+}
+
+/**
+ * Whether the checkout matches what the injector would generate (#6022).
+ *
+ * FAILS CLOSED on anything that is not an unambiguous success: a non-zero exit,
+ * a spawn error, a timeout, or a missing status all return false. "Could not
+ * determine" and "clean" must never collapse into the same answer here — the
+ * whole exemption rests on this.
+ */
+export function injectorIsClean(): boolean {
+  const result = spawnSync('pnpm', ['exec', 'tsx', 'scripts/inject-governance.ts', 'check'], {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    timeout: 120_000,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.error !== undefined) return false;
+  return result.status === 0;
 }
 
 /**

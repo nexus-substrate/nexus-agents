@@ -54,7 +54,13 @@ import {
   governorPathsFromCodeowners,
   governorSectionLines,
 } from './check-governor-review.js';
-import { readAtBase, readAtHead, stampOnlyExemptFiles } from './governance-stamp-exemption.js';
+import {
+  readAtBase,
+  readAtHead,
+  stampOnlyExemptFiles,
+  injectorIsClean,
+  EXEMPT_SPAN_NAMES,
+} from './governance-stamp-exemption.js';
 
 export { GOVERNOR_SECTION_END_LINE };
 
@@ -353,6 +359,22 @@ function labelEvidenceFromEnv(
 }
 
 /** Reads evidence from the environment and returns a process exit code. */
+/**
+ * Record an exemption, never silently (#5944 ratification condition 3).
+ *
+ * An exempted state must be representable in the gate's output, or the gate
+ * stops describing what it measured. Extracted so `runRatificationGate` stays
+ * under its line cap.
+ */
+function reportExemption(exempt: readonly string[]): void {
+  if (exempt.length === 0) return;
+  console.error(
+    `[governor-ratification] generated-span exemption (#5944, widened #6022): ` +
+      `${exempt.join(', ')} — the only differences are inside ` +
+      `${EXEMPT_SPAN_NAMES.join('/')}, and the checkout matches what the injector generates.`
+  );
+}
+
 export function runRatificationGate(env: NodeJS.ProcessEnv): number {
   // #5444: distinguish "no file list was supplied" from "the file list is
   // empty". The workflow always supplies CHANGED_FILES (governor-review.yml);
@@ -391,16 +413,13 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
   }
 
   const touched = governorFilesTouched(changed, governorPathsFromCodeowners(codeowners));
-  const exempt = stampOnlyExemptFiles(touched, readAtBase(env['PR_BASE_SHA']), readAtHead);
-  if (exempt.length > 0) {
-    // Recorded, never silent (#5944 ratification condition 3): an exempted
-    // state must be representable, or the gate's output stops describing what
-    // it measured.
-    console.error(
-      `[governor-ratification] stamp-only exemption (#5944): ${exempt.join(', ')} — ` +
-        'the generated governance stamp is the only difference in these files.'
-    );
-  }
+  const exempt = stampOnlyExemptFiles(
+    touched,
+    readAtBase(env['PR_BASE_SHA']),
+    readAtHead,
+    injectorIsClean
+  );
+  reportExemption(exempt);
 
   const verdict = evaluateRatification({
     touchedGovernorFiles: touched.filter((f) => !exempt.includes(f)),
