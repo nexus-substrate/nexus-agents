@@ -74,4 +74,19 @@ export interface RepoSecurityPlan {
   readonly conflicts: readonly ConflictWarning[];
   readonly coverage: readonly CoverageAnalysis[];
   readonly gapsSummary: readonly string[];
+  /**
+   * Where the scanner data behind this plan came from (#6037).
+   *
+   * REQUIRED, because the whole defect was that it could be absent: the value
+   * was computed in `resolveScannerData` and discarded at this boundary, so a
+   * plan built from `FALLBACK_SCANNER_DATA` — or from a cache with no age bound
+   * — read exactly like one built against the live registry, under a tool
+   * description promising "provenance-tracked metrics".
+   *
+   * `cache` is deliberately distinct from `registry`: `CACHE_TTL_MS` gates only
+   * whether to REFETCH, so the stale-cache path returns an entry of any age.
+   */
+  readonly scannerDataSource: 'registry' | 'cache' | 'fallback';
+  /** Age of the cached scanner data when `scannerDataSource` is 'cache'. */
+  readonly scannerDataAgeMs?: number;
 }

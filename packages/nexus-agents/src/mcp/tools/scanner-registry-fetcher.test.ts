@@ -8,7 +8,8 @@
  * (Issue #1340)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getTimeProvider, setTimeProvider } from '../../core/index.js';
 import type {
   ScannerRegistryManifest,
   RegistryScanner,
@@ -19,6 +20,7 @@ import {
   extractLanguageMatrix,
   clearRegistryCache,
   getRegistryManifest,
+  getRegistryManifestWithProvenance,
 } from './scanner-registry-fetcher.js';
 
 // ============================================================================
@@ -202,5 +204,80 @@ describe('getRegistryManifest', () => {
 
     // Only 2 subprocess calls (1 tag check + 1 download), not 6
     expect(callCount).toBe(2);
+  });
+});
+
+describe('manifest provenance distinguishes a stale cache from a live read (#6037)', () => {
+  // The mislabelling lived HERE, not in the plan builder: `manifest !== null`
+  // was the only test, so an unbounded-age cache was stamped 'registry'.
+  // CACHE_TTL_MS gates only whether to REFETCH — it never bounds the age of
+  // what the stale path returns.
+  const HOUR_MS = 60 * 60 * 1000;
+
+  let now = 0;
+  const realProvider = getTimeProvider();
+
+  // Name the runner type from the function's own signature rather than
+  // exporting it. The producer/consumer gate is right that an export whose
+  // only importer is a test has no production consumer; `Parameters<>` gets
+  // the test the type it needs without inventing one.
+  type GhRunner = NonNullable<Parameters<typeof getRegistryManifestWithProvenance>[0]>;
+
+  /** A `gh` stub: `release view` yields a tag, the asset download yields JSON. */
+  function ghStub(outcome: 'ok' | 'fail'): GhRunner {
+    return (_file, args) => {
+      if (outcome === 'fail') return Promise.reject(new Error('gh unavailable'));
+      if (args.includes('view')) return Promise.resolve({ stdout: 'v1.0.0\n', stderr: '' });
+      return Promise.resolve({ stdout: JSON.stringify(createManifest()), stderr: '' });
+    };
+  }
+
+  beforeEach(() => {
+    clearRegistryCache();
+    now = 0;
+    setTimeProvider({ now: () => now } as unknown as Parameters<typeof setTimeProvider>[0]);
+  });
+
+  afterEach(() => {
+    setTimeProvider(realProvider);
+    clearRegistryCache();
+  });
+
+  it('a successful fetch is registry, with no age', async () => {
+    const result = await getRegistryManifestWithProvenance(ghStub('ok'));
+    expect(result.manifest).not.toBeNull();
+    expect(result.source).toBe('registry');
+    expect(result.ageMs).toBeUndefined();
+  });
+
+  it('a failed fetch with NO cache is fallback, not a null registry read', async () => {
+    const result = await getRegistryManifestWithProvenance(ghStub('fail'));
+    expect(result.manifest).toBeNull();
+    expect(result.source).toBe('fallback');
+  });
+
+  it('a failed fetch past the TTL serves the cache AS cache, with its age', async () => {
+    // Populate through the REAL caching path, then fail a day later.
+    const seeded = await getRegistryManifestWithProvenance(ghStub('ok'));
+    expect(seeded.manifest).not.toBeNull();
+
+    now = 24 * HOUR_MS;
+    const result = await getRegistryManifestWithProvenance(ghStub('fail'));
+    expect(result.manifest).not.toBeNull();
+    expect(result.source).toBe('cache');
+    expect(result.ageMs).toBe(24 * HOUR_MS);
+  });
+
+  it('within the TTL the cache is the ordinary path, reported as registry', async () => {
+    await getRegistryManifestWithProvenance(ghStub('ok'));
+    now = HOUR_MS / 2;
+
+    let refetched = false;
+    const result = await getRegistryManifestWithProvenance((file, args, opts) => {
+      refetched = true;
+      return ghStub('ok')(file, args, opts);
+    });
+    expect(refetched).toBe(false);
+    expect(result.source).toBe('registry');
   });
 });
