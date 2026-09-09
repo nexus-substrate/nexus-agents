@@ -10,7 +10,14 @@
  */
 
 import { z } from 'zod';
-import type { RepoAnalyzeInput, RepoAnalysis, CodeownersLookup } from './repo-analyze-types.js';
+import type {
+  RepoAnalyzeInput,
+  RepoAnalysis,
+  CodeownersLookup,
+  ExecFileFn,
+  GapObservations,
+  RepoListings,
+} from './repo-analyze-types.js';
 
 /**
  * Zod schema for the `gh api repos/{repoId}` payload (#2962). Pre-fix the
@@ -297,12 +304,30 @@ export function getLanguageRecommendations(
 const SAST_TOOLS = new Set(['semgrep', 'codeql', 'snyk']);
 const SAST_GAP_MSG = 'No SAST/SCA security scanning configured';
 
-/** Remove the SAST/SCA gap if any SAST tool was detected (#1674). */
-function removeSastGapIfToolDetected(gaps: string[], secTools: readonly string[]): void {
+/** What the SAST gap says when the workflows listing failed (#6035). */
+const SAST_UNVERIFIED_MSG = 'SAST/SCA scanning unverified — .github/workflows could not be listed';
+
+/**
+ * Resolve the SAST/SCA gap against what was actually observed (#1674, #6035).
+ *
+ * Three outcomes, not two. A detected tool removes the gap. An unmeasured
+ * workflows listing REPLACES the assertion with an unverified statement,
+ * because CI-level SAST detection is exactly what that listing provides — with
+ * it absent, "no scanning is configured" is a claim the analysis cannot make.
+ * Only a successful listing that found nothing leaves the gap asserted.
+ */
+function removeSastGapIfToolDetected(
+  gaps: string[],
+  secTools: readonly string[],
+  workflowsMeasured: boolean
+): void {
+  const idx = gaps.indexOf(SAST_GAP_MSG);
+  if (idx === -1) return;
   if (secTools.some((t) => SAST_TOOLS.has(t))) {
-    const idx = gaps.indexOf(SAST_GAP_MSG);
-    if (idx !== -1) gaps.splice(idx, 1);
+    gaps.splice(idx, 1);
+    return;
   }
+  if (!workflowsMeasured) gaps[idx] = SAST_UNVERIFIED_MSG;
 }
 
 /**
@@ -328,14 +353,52 @@ function judgedGaps(
   return gaps;
 }
 
+/**
+ * Apply the listing defaults in ONE place.
+ *
+ * Inline `??` chains at each use site put the defaults inside the functions
+ * that consume them, which tipped both past the complexity cap and — more to
+ * the point — scattered the decision about what an omitted listing means.
+ * `workflowsMeasured` defaults TRUE because an omitted flag comes from a caller
+ * that did no listing at all (the unit-test callers), not from a failed one;
+ * a failed listing passes false explicitly.
+ */
+function resolveListings(listings: RepoListings): Required<RepoListings> {
+  return {
+    dotGithubEntries: listings.dotGithubEntries ?? [],
+    dotGithubListed: listings.dotGithubListed ?? false,
+    workflowsMeasured: listings.workflowsMeasured ?? true,
+  };
+}
+
+/**
+ * Apply the observation defaults in one place, for the same reason
+ * {@link resolveListings} exists: inline `??`/destructuring defaults inside
+ * `identifyGaps` pushed it past the complexity cap, and scattered the decision
+ * about what an omitted observation means.
+ */
+function resolveObserved(observed: GapObservations): Required<GapObservations> {
+  return {
+    codeowners: observed.codeowners ?? {},
+    workflowsMeasured: observed.workflowsMeasured ?? true,
+  };
+}
+
 /** Identify gaps in repository best practices. */
 export function identifyGaps(
   entries: readonly string[],
   ciProvider: string | null,
   language?: string | null,
   securityTooling?: readonly string[],
-  codeowners: CodeownersLookup = {}
+  /**
+   * What the listings actually observed. Bundled rather than two more
+   * positional params: they travel together, they are both "what did we manage
+   * to measure" rather than "what did we find", and two more defaults tipped
+   * this function past the complexity cap.
+   */
+  observed: GapObservations = {}
 ): readonly string[] {
+  const { codeowners, workflowsMeasured } = resolveObserved(observed);
   const gaps: string[] = [];
   if (ciProvider === null) gaps.push('No CI/CD configuration detected');
   for (const [files, message] of GAP_RULES) {
@@ -344,8 +407,8 @@ export function identifyGaps(
 
   gaps.push(...judgedGaps(entries, language, codeowners));
 
-  // Remove SAST/SCA gap if workflow-level security was detected (#1674)
-  removeSastGapIfToolDetected(gaps, securityTooling ?? []);
+  // Resolve the SAST/SCA gap against what was observed (#1674, #6035)
+  removeSastGapIfToolDetected(gaps, securityTooling ?? [], workflowsMeasured);
 
   // Language-specific recommendations when generic SAST/SCA gap detected
   const hasGenericSecGap = gaps.includes('No SAST/SCA security scanning configured');
@@ -382,9 +445,10 @@ export function analyzeRepo(
   metadata: GhRepoMetadata,
   topLevelEntries: readonly string[],
   workflowEntries?: readonly string[],
-  dotGithubEntries: readonly string[] = [],
-  dotGithubListed = false
+  /** What each secondary listing observed — grouped, not four positional flags. */
+  listings: RepoListings = {}
 ): RepoAnalysis {
+  const { dotGithubEntries, dotGithubListed, workflowsMeasured } = resolveListings(listings);
   const ciProvider = detectCiProvider(topLevelEntries);
   const secTooling = detectSecurityTooling(topLevelEntries, workflowEntries);
   const tests = detectTestInfraMeasured(topLevelEntries, metadata.language);
@@ -416,9 +480,10 @@ export function analyzeRepo(
     stars: metadata.stargazers_count,
     topLevelEntries: [...topLevelEntries],
     gaps: identifyGaps(topLevelEntries, ciProvider, metadata.language, secTooling, {
-      entries: dotGithubEntries,
-      listed: dotGithubListed,
+      codeowners: { entries: dotGithubEntries, listed: dotGithubListed },
+      workflowsMeasured,
     }),
+    workflowsMeasured,
   };
 }
 
@@ -537,12 +602,6 @@ function inferLanguageFromEntries(
   return fallback;
 }
 
-type ExecFileFn = (
-  cmd: string,
-  args: string[],
-  options?: { timeout?: number }
-) => Promise<{ stdout: string }>;
-
 /** Lazy-load promisified execFile. */
 async function getExecFile(): Promise<ExecFileFn> {
   const { execFile } = await import('node:child_process');
@@ -638,8 +697,21 @@ async function resolveLanguage(
   return primary;
 }
 
-/** Fetch workflow filenames from .github/workflows/ (#1674). Best-effort. */
-async function fetchWorkflowEntries(repoId: string, exec: ExecFileFn): Promise<readonly string[]> {
+/**
+ * Fetch workflow filenames from `.github/workflows/` (#1674).
+ *
+ * Returns `listed: false` when the directory could not be read (#6035), so a
+ * miss stays unmeasured instead of becoming a false gap — the same discipline
+ * {@link fetchDotGithubEntries} got in #6018. This one returned a bare `[]` on
+ * any error, which is indistinguishable from a repo with no workflows, and
+ * `removeSastGapIfToolDetected` then left "No SAST/SCA security scanning
+ * configured" standing for a repo running CodeQL. A 403 from a secondary rate
+ * limit or a token without `contents` scope was enough.
+ */
+async function fetchWorkflowEntries(
+  repoId: string,
+  exec: ExecFileFn
+): Promise<{ entries: readonly string[]; listed: boolean }> {
   try {
     const { stdout } = await exec(
       'gh',
@@ -647,9 +719,16 @@ async function fetchWorkflowEntries(repoId: string, exec: ExecFileFn): Promise<r
       { timeout: 15_000 }
     );
     const parsed: unknown = JSON.parse(stdout.trim());
-    return Array.isArray(parsed) ? parsed.filter((e): e is string => typeof e === 'string') : [];
+    const entries = Array.isArray(parsed)
+      ? parsed.filter((e): e is string => typeof e === 'string')
+      : [];
+    return { entries, listed: true };
   } catch {
-    return []; // No workflows directory or API error — graceful fallback
+    // Cannot distinguish "no workflows directory" from "the API call failed",
+    // so report the weaker claim. A 404 for a repo with no workflows is
+    // therefore also unmeasured here; the SAST gap is then stated as unverified
+    // rather than asserted, which is the honest reading of both.
+    return { entries: [], listed: false };
   }
 }
 
@@ -678,9 +757,22 @@ async function fetchDotGithubEntries(
 }
 
 /** Fetch repo data from GitHub and produce analysis. */
-export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
+export async function analyzeGitHubRepo(
+  input: RepoAnalyzeInput,
+  /**
+   * Injected `gh` runner, so the FETCH path is testable and not only the
+   * pure functions downstream of it (#6035).
+   *
+   * Without this, reverting `fetchWorkflowEntries` to report `listed: true`
+   * on error broke no test: the flag was exercised by injecting it into
+   * `identifyGaps` directly, while the producer that derives it had no
+   * coverage at all. Every other fetch in this module already takes an
+   * `ExecFileFn`; the entry point was the one place that did not.
+   */
+  execOverride?: ExecFileFn
+): Promise<RepoAnalysis> {
   const repoId = normalizeRepoId(input.repo);
-  const exec = await getExecFile();
+  const exec = execOverride ?? (await getExecFile());
   const { metadata, entries } = await fetchRepoData(repoId, exec);
 
   const primaryLang = await resolveLanguage(repoId, entries, metadata, exec);
@@ -695,12 +787,16 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
   }
 
   // Fetch workflow filenames for CI-level security detection (#1674)
-  const workflowEntries = entries.includes('.github')
+  const workflows = entries.includes('.github')
     ? await fetchWorkflowEntries(repoId, exec)
-    : [];
+    : { entries: [] as readonly string[], listed: true }; // no .github/ at all = measured absence
   const dotGithub = entries.includes('.github')
     ? await fetchDotGithubEntries(repoId, exec)
     : { entries: [] as readonly string[], listed: true }; // no .github/ at all = measured absence
 
-  return analyzeRepo(enhanced, entries, workflowEntries, dotGithub.entries, dotGithub.listed);
+  return analyzeRepo(enhanced, entries, workflows.entries, {
+    dotGithubEntries: dotGithub.entries,
+    dotGithubListed: dotGithub.listed,
+    workflowsMeasured: workflows.listed,
+  });
 }
