@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 8.47.8
+
+### Patch Changes
+
+- [#6042](https://github.com/nexus-substrate/nexus-agents/pull/6042) [`6dcb1cd`](https://github.com/nexus-substrate/nexus-agents/commit/6dcb1cde38809addb94f3b9354a2cc5dcdb8b657) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - repo_security_plan: carry scanner-data provenance onto the plan, and stop labelling a stale cache as a live registry read
+
+  The tool describes itself as producing "provenance-tracked metrics". `resolveScannerData` computed a `source` discriminant and `RepoSecurityPlan` had nowhere to put it, so a plan built from the embedded `FALLBACK_SCANNER_DATA` snapshot was indistinguishable from one built against the live registry. Only the server log knew.
+
+  Worse, one state was mislabelled even internally. `CACHE_TTL_MS` gates only _whether to refetch_, so the stale-cache return in `getRegistryManifest` had no age bound at all — and because the only test was `manifest !== null`, an entry of any age was stamped `source: 'registry'`.
+
+  Adds a required `scannerDataSource` (`registry` | `cache` | `fallback`) plus `scannerDataAgeMs`, so "stale" is a quantity rather than an adjective. `getRegistryManifestWithProvenance` reports which path served the manifest; `getRegistryManifest` keeps its old signature for existing callers.
+
+- [#6040](https://github.com/nexus-substrate/nexus-agents/pull/6040) [`e60d299`](https://github.com/nexus-substrate/nexus-agents/commit/e60d2994ce94c882c70feb8c1a896ab66a44e3f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - weather_report: distinguish an unmeasured routing metric from a perfect one
+
+  `weeklyRegret` and `adaptationSpeed` are both lower-is-better, so the value they took when nothing was measured — `0` — rendered as the _best possible_ score. `nexus-agents health` printed `Adaptation Speed: 0 tasks` for a workspace whose learning loop had produced zero confident thresholds.
+
+  `observedCategories` was also the regret denominator, so a category that cleared `ROUTING_MIN_SAMPLES` but could not be analysed still counted, inflating the denominator and systematically understating regret. That is reachable rather than theoretical: `OutcomeCliSchema` admits `api:anthropic`, `api:openai`, `api:google`, `api:custom-openai` and `unknown`, none of which appear in weather-report's local `CLI_NAMES`, so a workspace routing through API arms hits it on every category.
+
+  Adds `analyzedCategories` (the real regret denominator) and `adaptationSpeedCategories`, both required. The CLI prints `unmeasured` instead of a number when the corresponding count is zero, and shows `Observed Categories: N (M analysed)` so the gap is visible. A _measured_ zero still prints as `0.000` — the point is not to hide zeros.
+
+  The higher-is-better metrics are deliberately unchanged: their unmeasured `0` reads as unhealthy, which is the safe direction.
+
 ## 8.47.7
 
 ### Patch Changes

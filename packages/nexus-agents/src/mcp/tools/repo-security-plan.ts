@@ -19,7 +19,7 @@ import type {
   CoverageAnalysis,
 } from './repo-security-plan-types.js';
 import { analyzeGitHubRepo } from './repo-analyze.js';
-import { getRegistryManifest } from './scanner-registry-fetcher.js';
+import { getRegistryManifestWithProvenance } from './scanner-registry-fetcher.js';
 import type { RegistryScanner, LanguageMatrixEntry } from './scanner-registry-fetcher.js';
 import { FALLBACK_SCANNER_DATA } from './repo-security-plan-fallback.js';
 import { createLogger } from '../../core/index.js';
@@ -51,7 +51,14 @@ interface LanguageMapping {
 export interface ScannerData {
   readonly scanners: readonly ScannerEntry[];
   readonly languageMap: Readonly<Record<string, LanguageMapping>>;
-  readonly source: 'registry' | 'fallback';
+  /**
+   * Where the scanner data came from (#6037). THREE states, not two: a stale
+   * cache is not a live registry read, and it used to be stamped 'registry'
+   * because the only test was `manifest !== null`.
+   */
+  readonly source: 'registry' | 'cache' | 'fallback';
+  /** Age of the cached data when `source` is 'cache'. */
+  readonly ageMs?: number;
 }
 
 // Re-export for consumers
@@ -118,16 +125,21 @@ function convertLanguageMatrix(
 
 /** Resolve scanner data: fetch from registry, fall back to embedded. */
 export async function resolveScannerData(): Promise<ScannerData> {
-  const manifest = await getRegistryManifest();
+  const { manifest, source, ageMs } = await getRegistryManifestWithProvenance();
   if (manifest !== null) {
-    logger.info('Using live scanner registry', {
+    logger.info('Using scanner registry', {
       version: manifest.version,
       scanners: manifest.scanners.length,
+      source,
+      ageMs,
     });
     return {
       scanners: manifest.scanners.map(convertRegistryScanner),
       languageMap: convertLanguageMatrix(manifest.languageMatrix),
-      source: 'registry',
+      source,
+      // exactOptionalPropertyTypes: an explicit `undefined` is not the same as
+      // an absent key, and "absent" is the honest encoding for "not cached".
+      ...(ageMs !== undefined ? { ageMs } : {}),
     };
   }
 
@@ -485,5 +497,12 @@ export function buildPlanFromAnalysis(
       ...analysis.gaps,
       ...(uncovered.length > 0 ? [`Uncovered categories: ${uncovered.join(', ')}`] : []),
     ],
+    // #6037: the tool describes itself as producing "provenance-tracked
+    // metrics" and resolveScannerData computed this all along -- it was simply
+    // dropped here, so a plan built from the embedded snapshot or an
+    // unbounded-age cache was indistinguishable from one built against the
+    // live registry. Only the server log knew.
+    scannerDataSource: resolved.source,
+    ...(resolved.ageMs !== undefined ? { scannerDataAgeMs: resolved.ageMs } : {}),
   };
 }

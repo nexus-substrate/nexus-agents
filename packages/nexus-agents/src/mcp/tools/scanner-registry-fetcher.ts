@@ -180,16 +180,29 @@ async function downloadManifest(
   return parsed.data;
 }
 
+/** Lazily promisified `execFile`, the production runner. */
+async function defaultExecFileAsync(): Promise<ExecFileAsync> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  return promisify(execFile);
+}
+
 /**
  * Fetch the scanner registry manifest from GitHub Releases.
  * If we have a cached version and the release tag hasn't changed,
  * just refreshes the cache timer (no download).
  */
-async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null> {
+async function fetchManifestFromGitHub(
+  /**
+   * Injected `gh` runner (#6037). The cache is written HERE, not in
+   * `getRegistryManifestWithProvenance`, so injecting one level up bypasses the
+   * very caching the stale-path provenance describes — the test would then
+   * assert a labelling that never runs against a real cache entry.
+   */
+  execOverride?: ExecFileAsync
+): Promise<ScannerRegistryManifest | null> {
   try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execFileAsync = promisify(execFile);
+    const execFileAsync = execOverride ?? (await defaultExecFileAsync());
 
     const tag = await getLatestReleaseTag(execFileAsync);
     if (tag === null) {
@@ -222,30 +235,64 @@ async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null
  * Returns null if no cached data and fetch fails.
  */
 export async function getRegistryManifest(): Promise<ScannerRegistryManifest | null> {
-  // Check cache
+  return (await getRegistryManifestWithProvenance()).manifest;
+}
+
+/**
+ * How a manifest was obtained, so callers can say so (#6037).
+ *
+ * `cache` is NOT a flavour of `registry`. `CACHE_TTL_MS` gates only WHETHER TO
+ * REFETCH — it appears exactly twice in this file, its definition and that
+ * check — so the stale-cache return below has no age bound whatsoever. An entry
+ * fetched once and never refreshable again is returned indefinitely, and it
+ * used to reach the plan builder indistinguishable from a live fetch because
+ * the only test was `manifest !== null`. `ageMs` makes "stale" a quantity
+ * rather than an adjective.
+ */
+interface ManifestProvenance {
+  readonly manifest: ScannerRegistryManifest | null;
+  readonly source: 'registry' | 'cache' | 'fallback';
+  /** Age of the cached entry when `source` is 'cache'. */
+  readonly ageMs?: number;
+}
+
+/**
+ * Get the registry manifest AND how it was obtained (#6037).
+ *
+ * `execOverride` is injectable so the DECISION is testable and not only the
+ * shape it returns. Without it, tests could assert that a `source: 'cache'`
+ * value flows through to the plan while nothing checked that the stale path
+ * ever PRODUCES 'cache' — which is where the original mislabelling lived.
+ */
+export async function getRegistryManifestWithProvenance(
+  execOverride?: ExecFileAsync
+): Promise<ManifestProvenance> {
+  // A cache entry inside the TTL is the ordinary path, not a degraded one:
+  // the fetcher deliberately does not re-hit GitHub within the window.
   if (cachedEntry !== null) {
     const age = getTimeProvider().now() - cachedEntry.fetchedAt;
     if (age < CACHE_TTL_MS) {
-      return cachedEntry.manifest;
+      return { manifest: cachedEntry.manifest, source: 'registry' };
     }
   }
 
   // Coalesce concurrent fetches — only one inflight request at a time (#1448)
-  inflightFetch ??= fetchManifestFromGitHub().finally(() => {
+  inflightFetch ??= fetchManifestFromGitHub(execOverride).finally(() => {
     inflightFetch = undefined;
   });
   const manifest = await inflightFetch;
   if (manifest !== null) {
-    return manifest;
+    return { manifest, source: 'registry' };
   }
 
-  // Return stale cache if available
+  // Fetch failed and the cache is past its TTL — usable, but say so.
   if (cachedEntry !== null) {
-    logger.warn('Using stale cached registry manifest');
-    return cachedEntry.manifest;
+    const ageMs = getTimeProvider().now() - cachedEntry.fetchedAt;
+    logger.warn('Using stale cached registry manifest', { ageMs });
+    return { manifest: cachedEntry.manifest, source: 'cache', ageMs };
   }
 
-  return null;
+  return { manifest: null, source: 'fallback' };
 }
 
 /**
