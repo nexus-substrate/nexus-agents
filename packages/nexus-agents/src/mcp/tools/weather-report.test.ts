@@ -907,3 +907,87 @@ describe('weather report cost section (#3856)', () => {
     expect(report.costSection?.decisionCosts.totalDecisions).toBe(3);
   });
 });
+
+describe('the regret denominator counts only ANALYSABLE categories (#6036)', () => {
+  // observedCategories answers "how much data was there"; analyzedCategories
+  // answers "how much of it produced a routing verdict". They were one variable,
+  // so a category counted toward the regret denominator even when its routing
+  // could not be analysed — inflating the denominator and systematically
+  // UNDERSTATING regret against a metric whose target is "decreasing".
+  it('a category routed entirely through api:* arms is observed but not analysed', () => {
+    // Reachable, not theoretical: OutcomeCliSchema admits `api:anthropic` and
+    // friends, none of which appear in this file's CLI_NAMES, so
+    // analyzeCategoryRouting finds no cliRates and returns null.
+    seedOutcomes(8, {
+      cli: 'api:anthropic' as TaskOutcome['cli'],
+      category: 'code_generation',
+      success: true,
+    });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health).toBeDefined();
+    expect(health?.observedCategories).toBeGreaterThan(0);
+    expect(health?.analyzedCategories).toBe(0);
+  });
+
+  it('a CLI-routed category is both observed and analysed', () => {
+    seedOutcomes(8, { cli: 'claude', category: 'code_generation', success: true });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health?.observedCategories).toBeGreaterThan(0);
+    expect(health?.analyzedCategories).toBe(health?.observedCategories);
+  });
+
+  it('the MIXED case is the one that silently understated regret', () => {
+    // One analysable category, one not. The denominator must be 1, not 2.
+    seedOutcomes(8, { cli: 'claude', category: 'code_generation', success: true });
+    seedOutcomes(8, {
+      cli: 'api:openai' as TaskOutcome['cli'],
+      category: 'code_review',
+      success: true,
+    });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health?.observedCategories).toBe(2);
+    expect(health?.analyzedCategories).toBe(1);
+  });
+
+  it('an unanalysable category does not dilute weeklyRegret', () => {
+    // The assertion that pins the DENOMINATOR rather than just the count.
+    // Reverting to `regretSum / observedCategories` halves the answer here,
+    // which is exactly the silent understatement this fixes.
+    const seedRegretfulCategory = (): void => {
+      // claude is best for code_generation; gemini routed there too and fails.
+      seedOutcomes(6, { cli: 'claude', category: 'code_generation', success: true });
+      seedOutcomes(6, { cli: 'gemini', category: 'code_generation', success: false });
+    };
+
+    seedRegretfulCategory();
+    const alone = generateWeatherReport({}).swarmHealth;
+    expect(alone?.weeklyRegret).toBeGreaterThan(0);
+
+    resetOutcomeStore();
+    seedRegretfulCategory();
+    seedOutcomes(8, {
+      cli: 'api:openai' as TaskOutcome['cli'],
+      category: 'code_review',
+      success: true,
+    });
+    const withUnanalysable = generateWeatherReport({}).swarmHealth;
+
+    // One more OBSERVED category, no more ANALYSED ones -> regret unchanged.
+    expect(withUnanalysable?.observedCategories).toBe(2);
+    expect(withUnanalysable?.analyzedCategories).toBe(1);
+    expect(withUnanalysable?.weeklyRegret).toBe(alone?.weeklyRegret);
+  });
+
+  it('adaptationSpeedCategories is 0 when no category reached confidence', () => {
+    seedOutcomes(3, { cli: 'claude', category: 'code_generation', success: true });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health).toBeDefined();
+    expect(health?.adaptationSpeedCategories).toBe(0);
+    // The value itself is still 0 — that is precisely why the count must exist.
+    expect(health?.adaptationSpeed).toBe(0);
+  });
+});

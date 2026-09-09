@@ -8783,7 +8783,9 @@ VariableDeclaration SuspiciousSignalSchema
   : z.ZodEnum<{ injection_patterns_detected: "injection_patterns_detected"; mismatched_authority_claim: "mismatched_authority_claim"; new_account: "new_account"; no_prior_contributions: "no_prior_contributions"; rapid_comments: "rapid_comments"; }>
 InterfaceDeclaration SwarmHealthMetrics @mcp/tools/weather-report-types
   readonly adaptationSpeed: number
+  readonly adaptationSpeedCategories: number
   readonly agentUtilization: number
+  readonly analyzedCategories: number
   readonly collaborationEfficiency: number
   readonly observedCategories: number
   readonly observedRoles: number
