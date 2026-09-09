@@ -386,9 +386,42 @@ export function toJobSummary(record: JobResult): JobSummary {
   };
 }
 
+/**
+ * What a job listing could NOT read (#6038).
+ *
+ * `listJobs` returned a bare array, so two very different worlds produced `[]`:
+ * "there are no jobs" and "the jobs directory would not open". And a sidecar
+ * that failed `JobResultSchema` — a record written by a newer nexus-agents, or
+ * half-written by a concurrent job — was skipped by deliberate policy in
+ * `readJobResult` and then left no trace at all. `list_jobs` reported
+ * `{"count":0,"truncated":false}` over both, and an operator or the autonomous
+ * loop concludes nothing is pending and re-dispatches work already running.
+ */
+interface JobListDiagnostics {
+  /** True when the jobs directory exists but could not be enumerated. */
+  readonly dirUnreadable: boolean;
+  /** Sidecar files that matched the naming pattern but failed to parse or validate. */
+  readonly unparseableRecords: number;
+}
+
+/** Job summaries plus what the listing could not read. */
+export interface JobListing {
+  readonly jobs: JobSummary[];
+  readonly diagnostics: JobListDiagnostics;
+}
+
 export function listJobs(): JobSummary[] {
+  return listJobsWithDiagnostics().jobs;
+}
+
+/** List jobs AND report what the listing could not read (#6038). */
+export function listJobsWithDiagnostics(): JobListing {
   const dir = nexusDataPath('jobs');
-  if (!existsSync(dir)) return [];
+  // An ABSENT directory is a measured absence: no jobs have ever been written.
+  // That is different from a directory that exists and will not open.
+  if (!existsSync(dir)) {
+    return { jobs: [], diagnostics: { dirUnreadable: false, unparseableRecords: 0 } };
+  }
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -397,18 +430,25 @@ export function listJobs(): JobSummary[] {
       dir,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return { jobs: [], diagnostics: { dirUnreadable: true, unparseableRecords: 0 } };
   }
   const summaries: JobSummary[] = [];
+  let unparseableRecords = 0;
   for (const entry of entries) {
     const match = /^result-(.+)\.json$/.exec(entry);
     if (match === null) continue;
     const jobId = match[1];
     if (jobId === undefined) continue;
     const record = readJobResult(jobId);
-    if (record === null) continue;
+    if (record === null) {
+      unparseableRecords += 1;
+      continue;
+    }
     summaries.push(toJobSummary(record));
   }
   // Newest first — matches typical "what just happened" discovery flow.
-  return summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return {
+    jobs: summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    diagnostics: { dirUnreadable: false, unparseableRecords },
+  };
 }

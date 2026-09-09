@@ -194,3 +194,53 @@ describe('scope truncation disclosure', () => {
     expect(payload['scopeTruncated']).toBe(true);
   });
 });
+
+describe('an unreadable file is not a file with no matches (#6038)', () => {
+  // The reported failure: `search_usages({ symbol, path: 'src/typoed.ts' })`
+  // returned {"filesScanned":1,"totalMatches":0,"results":[]} — byte-identical
+  // to "I read it and the symbol is unused". The `path` branch resolves without
+  // ever stat-ing the file, so a typo was enough. For a tool asked "is this
+  // still used?" before a deletion, those two answers must never look alike.
+  async function run(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const result = await searchUsagesHandler(input, makeCtx());
+    const text = result.content[0]?.type === 'text' ? result.content[0].text : '{}';
+    return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  it('a nonexistent path is disclosed, not reported as zero matches', async () => {
+    const payload = await run({
+      symbol: 'thisSymbolDoesNotExistAnywhere',
+      path: 'src/definitely-not-a-real-file.ts',
+    });
+
+    expect(payload['filesUnreadable']).toBe(1);
+    expect(payload['scopeTruncated']).toBe(true);
+    expect(String(payload['scopeNote'])).toContain('could not be read');
+    expect(String(payload['scopeNote'])).toContain('not absence of usages');
+  });
+
+  it('filesScanned counts files READ, not files intended to be read', async () => {
+    // The old value was the candidate-set size, so it corroborated a zero-match
+    // answer produced by never opening anything.
+    const payload = await run({
+      symbol: 'thisSymbolDoesNotExistAnywhere',
+      path: 'src/definitely-not-a-real-file.ts',
+    });
+
+    expect(payload['filesScanned']).toBe(0);
+    expect(payload['totalMatches']).toBe(0);
+  });
+
+  it('a readable file with no matches is NOT flagged — the pair', async () => {
+    // Without this, disclosing unconditionally would pass while making every
+    // honest zero-match answer carry a warning that means nothing.
+    const payload = await run({
+      symbol: 'thisSymbolDoesNotExistAnywhere',
+      path: 'package.json',
+    });
+
+    expect(payload['filesScanned']).toBe(1);
+    expect(payload['filesUnreadable']).toBeUndefined();
+    expect(payload['scopeTruncated']).toBeUndefined();
+  });
+});

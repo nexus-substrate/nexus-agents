@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,7 @@ import {
   writeJobComplete,
   writeJobFailed,
   listJobs,
+  listJobsWithDiagnostics,
 } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
@@ -138,5 +139,71 @@ describe('listJobs (store integration)', () => {
     const jobs = listJobs();
     expect(jobs.length).toBe(1);
     expect(jobs[0]?.jobId).toBe('job-real');
+  });
+});
+
+describe('a listing that could not read everything says so (#6038)', () => {
+  // `truncated` describes the LIMIT CAP only, so it positively asserted
+  // completeness over a silently lossy read: listJobs returned [] for an
+  // unreadable directory and skipped every sidecar failing JobResultSchema.
+  // `{"count":0,"truncated":false,"jobs":[]}` was returned for all of it, and
+  // a caller without the jobId has nothing to cross-check against.
+  const jobsDir = (): string => join(tmpDir, 'jobs');
+
+  it('a sidecar that fails validation is counted, not silently dropped', () => {
+    writeJobPending('job-good', 'orchestrate');
+    // Same naming pattern the reader globs, contents it cannot validate --
+    // e.g. written by a newer nexus-agents, or half-written by a live job.
+    writeFileSync(join(jobsDir(), 'result-job-corrupt.json'), '{"not":"a job record"}');
+
+    const listing = listJobsWithDiagnostics();
+    expect(listing.jobs.map((j) => j.jobId)).toEqual(['job-good']);
+    expect(listing.diagnostics.unparseableRecords).toBe(1);
+    expect(listing.diagnostics.dirUnreadable).toBe(false);
+  });
+
+  it('unparseable and absent are different: a clean listing reports zero', () => {
+    // The pair. Without it, hardcoding a non-zero count would pass.
+    writeJobPending('job-good', 'orchestrate');
+    const listing = listJobsWithDiagnostics();
+    expect(listing.jobs).toHaveLength(1);
+    expect(listing.diagnostics.unparseableRecords).toBe(0);
+  });
+
+  it('an ABSENT jobs directory is a measured absence, not an unreadable one', () => {
+    // Deliberately NOT flagged: no jobs have ever been written, which is a real
+    // answer. Only a directory that exists and will not open is a failure.
+    const listing = listJobsWithDiagnostics();
+    expect(listing.jobs).toEqual([]);
+    expect(listing.diagnostics.dirUnreadable).toBe(false);
+    expect(listing.diagnostics.unparseableRecords).toBe(0);
+  });
+
+  it('listJobs keeps its array signature for existing callers', () => {
+    writeJobPending('job-good', 'orchestrate');
+    writeFileSync(join(jobsDir(), 'result-job-corrupt.json'), '{"not":"a job record"}');
+    expect(listJobs().map((j) => j.jobId)).toEqual(['job-good']);
+  });
+
+  it('an unreadable jobs directory is reported, not rendered as no jobs', () => {
+    writeJobPending('job-good', 'orchestrate');
+    chmodSync(jobsDir(), 0o000);
+    try {
+      let threw = false;
+      try {
+        readdirSync(jobsDir());
+      } catch {
+        threw = true;
+      }
+      // Running as root defeats the permission bit; assert nothing rather than
+      // pass vacuously on a check the environment cannot perform.
+      if (!threw) return;
+
+      const listing = listJobsWithDiagnostics();
+      expect(listing.jobs).toEqual([]);
+      expect(listing.diagnostics.dirUnreadable).toBe(true);
+    } finally {
+      chmodSync(jobsDir(), 0o755);
+    }
   });
 });

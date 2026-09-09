@@ -25,7 +25,12 @@ import { createLogger } from '../../core/index.js';
 import { readTaskState, listTaskStateIds } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import type { JobResult, JobStatus, JobSummary } from './job-result-store.js';
-import { readJobResult, listJobs, toJobSummary } from './job-result-store.js';
+import {
+  readJobResult,
+  listJobsWithDiagnostics,
+  toJobSummary,
+  type JobListing,
+} from './job-result-store.js';
 
 const logger = createLogger({ component: 'task-state-source' });
 
@@ -237,10 +242,18 @@ export function listJobsFromTaskState(customDir?: string): JobSummary[] {
  * ordering matches `listJobs()`. `customDir` steers ONLY the task-state read.
  */
 export function resolveJobList(customDir?: string): JobSummary[] {
-  const sidecar = listJobs();
+  return resolveJobListing(customDir).jobs;
+}
+
+/** Resolve the job list AND what the sidecar listing could not read (#6038). */
+export function resolveJobListing(customDir?: string): JobListing {
+  const sidecar = listJobsWithDiagnostics();
   if (!isTaskStateJobSource()) return sidecar;
   const byId = new Map<string, JobSummary>();
-  for (const summary of sidecar) byId.set(summary.jobId, summary);
+  for (const summary of sidecar.jobs) byId.set(summary.jobId, summary);
   for (const summary of listJobsFromTaskState(customDir)) byId.set(summary.jobId, summary);
-  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return {
+    jobs: [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    diagnostics: sidecar.diagnostics,
+  };
 }

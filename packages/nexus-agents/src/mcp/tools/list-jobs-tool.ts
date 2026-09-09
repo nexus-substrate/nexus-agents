@@ -33,7 +33,7 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { JobStatusSchema, type JobSummary } from '../jobs/job-result-store.js';
-import { resolveJobList } from '../jobs/task-state-source.js';
+import { resolveJobListing } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 /** Hard cap on returned summaries — prevents huge directory walks blocking the response. */
@@ -69,8 +69,18 @@ export type ListJobsInput = z.infer<typeof ListJobsInputSchema>;
 
 export interface ListJobsResponse {
   readonly count: number;
+  /**
+   * Whether the LIMIT CAP dropped entries. Deliberately narrow: it says nothing
+   * about whether the underlying read was complete, which is what
+   * {@link ListJobsResponse.jobsDirUnreadable} and
+   * {@link ListJobsResponse.unparseableRecords} are for (#6038).
+   */
   readonly truncated: boolean;
   readonly jobs: readonly JobSummary[];
+  /** Present only when the jobs directory exists but could not be enumerated. */
+  readonly jobsDirUnreadable?: boolean;
+  /** Present only when sidecar files were found but failed to parse or validate. */
+  readonly unparseableRecords?: number;
 }
 
 export type ListJobsDeps = BaseMcpToolDeps;
@@ -90,7 +100,8 @@ function listJobsHandler(args: unknown): Promise<ToolResult> {
   // because tools change shape but the store doesn't. #3693: dual-read — with
   // NEXUS_JOB_RESULT_SOURCE=task_state this unions the Stage-2 task-state log;
   // sidecar-only by default (unchanged).
-  const all = resolveJobList();
+  const listing = resolveJobListing();
+  const all = listing.jobs;
   const filtered = all.filter((j) => {
     if (toolName !== undefined && j.toolName !== toolName) return false;
     if (status !== undefined && j.status !== status) return false;
@@ -98,10 +109,19 @@ function listJobsHandler(args: unknown): Promise<ToolResult> {
   });
   const cap = limit ?? MAX_LIST_JOBS_RESULTS;
   const trimmed = filtered.slice(0, cap);
+  const { dirUnreadable, unparseableRecords } = listing.diagnostics;
   const response: ListJobsResponse = {
     count: trimmed.length,
     truncated: filtered.length > trimmed.length,
     jobs: trimmed,
+    // #6038: `truncated` describes the LIMIT CAP only, so it positively
+    // asserted completeness over a silently lossy read. `count: 0,
+    // truncated: false` was returned for an unreadable jobs directory and for
+    // sidecars that failed schema validation alike, and a caller without the
+    // jobId has nothing to cross-check against. get_job_result already hardens
+    // the single-job path with `found: false`; this is its list-shaped twin.
+    ...(dirUnreadable ? { jobsDirUnreadable: true } : {}),
+    ...(unparseableRecords > 0 ? { unparseableRecords } : {}),
   };
   return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
 }
