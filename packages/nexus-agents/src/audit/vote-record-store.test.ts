@@ -36,6 +36,7 @@ import {
   VOTE_RECORDS_PATH_ENV,
   buildVoteRecord,
   persistVoteRecord,
+  parseVoteRecordsText,
   readVoteRecords,
   resolveVoteRecordsPath,
 } from './vote-record-store.js';
@@ -79,6 +80,7 @@ describe('buildVoteRecord', () => {
   it('carries the proposal hash, decision, counts, per-voter summary, and a sequence', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
@@ -110,6 +112,7 @@ describe('buildVoteRecord', () => {
     // so `errorVoided` is false. Deriving from the outcome recorded a genuine
     // approval for a vote the tool reported as no_quorum.
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: 'no_quorum',
       id: 'vote-void',
       proposal: 'p',
@@ -125,6 +128,7 @@ describe('buildVoteRecord', () => {
     // The fallback's own asymmetry: the `errorVoided` check used to sit BELOW
     // the approved short-circuit, so it could only ever rescue a `rejected`.
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-voided-approved',
       proposal: 'p',
@@ -142,6 +146,7 @@ describe('buildVoteRecord', () => {
     // everything-else-is-rejected default attributed a verdict to voters who
     // never gave one.
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-timeout',
       proposal: 'p',
@@ -156,6 +161,7 @@ describe('buildVoteRecord', () => {
   it('still records a genuine rejection as rejected', () => {
     // The pair that keeps the change above from swallowing real rejections.
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-rejected',
       proposal: 'p',
@@ -170,6 +176,7 @@ describe('buildVoteRecord', () => {
   it('omits optionTally and stays on 1.2 when no voter declared an option (#4452)', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-noopt',
       proposal: 'p',
@@ -191,6 +198,7 @@ describe('buildVoteRecord', () => {
     }));
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-opt',
       proposal: 'p',
@@ -220,6 +228,7 @@ describe('buildVoteRecord', () => {
     ];
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-mixed',
       proposal: 'p',
@@ -246,6 +255,7 @@ describe('buildVoteRecord', () => {
     }));
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-coverage',
       proposal: 'p',
@@ -269,6 +279,7 @@ describe('buildVoteRecord', () => {
     const mk = (opts: readonly string[]): VoteRecord =>
       buildVoteRecord({
         // #4986: these fixtures exercise the fallback derivation.
+        declaredOptions: undefined,
         resolvedDecision: undefined,
         id: 'vote-ord',
         recordedAt: '2026-06-15T00:00:00.000Z',
@@ -283,6 +294,7 @@ describe('buildVoteRecord', () => {
   it('excludes error-source voters from the per-voter summary', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
@@ -296,6 +308,7 @@ describe('buildVoteRecord', () => {
   it('persists no_quorum (not rejected) for an error-policy short-circuit, matching the response (#4053)', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-sc',
       proposal: 'p',
@@ -319,6 +332,7 @@ describe('buildVoteRecord', () => {
   it('keeps rejected for a genuine quorum-reached rejection (#4053)', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-rej',
       proposal: 'p',
@@ -346,6 +360,7 @@ describe('persistVoteRecord', () => {
   it('persists a self-hashed record that round-trips through read', () => {
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
@@ -365,6 +380,7 @@ describe('persistVoteRecord', () => {
   it('assigns an incrementing sequence and an advisory previousHash on append', () => {
     const first = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'first',
@@ -375,6 +391,7 @@ describe('persistVoteRecord', () => {
     });
     const second = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-2',
       proposal: 'second',
@@ -398,6 +415,7 @@ describe('persistVoteRecord', () => {
   it('detects tampering with a persisted line (decision flip) via set verification', () => {
     persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
@@ -423,6 +441,7 @@ describe('persistVoteRecord', () => {
     // Branch base: one record at sequence 0.
     persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-base',
       proposal: 'base proposal',
@@ -437,6 +456,7 @@ describe('persistVoteRecord', () => {
     // record (each computed the same max sequence = 0 → next = 1).
     const branchA = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-A',
       proposal: 'branch A proposal',
@@ -447,6 +467,7 @@ describe('persistVoteRecord', () => {
     });
     const branchB = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-B',
       proposal: 'branch B proposal',
@@ -476,6 +497,7 @@ describe('persistVoteRecord', () => {
   it("skips persistence when every vote is simulated is the caller's job; store itself writes given real votes", () => {
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-1',
       proposal: 'p',
@@ -518,6 +540,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
 
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-env',
       proposal: 'p',
@@ -582,6 +605,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
 
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-opts',
       proposal: 'p',
@@ -609,6 +633,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
 
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-global',
       proposal: 'p',
@@ -637,6 +662,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
 
     const written = persistVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-repo',
       proposal: 'p',
@@ -660,6 +686,7 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
     let written: ReturnType<typeof persistVoteRecord>;
     expect(() => {
       written = persistVoteRecord({
+        declaredOptions: undefined,
         resolvedDecision: undefined,
         id: 'vote-none',
         proposal: 'p',
@@ -669,5 +696,186 @@ describe('vote-record path resolution via nexusDataPath (#3991, design vote 7-0)
       });
     }).not.toThrow();
     expect(written!).toBeUndefined();
+  });
+});
+
+describe('declared options survive into the record even when nothing was selected (#6049)', () => {
+  // The record used to infer "were there options?" from "did anyone pick one?".
+  // So a panel that unanimously APPROVED while every selection failed
+  // matchDeclaredOption persisted as `decision: rejected, approvalPercentage:
+  // 100` with NO option fields at all -- and an auditor filtering
+  // `optionTally !== undefined` to find multi-option votes skipped the very case
+  // most worth reviewing.
+  const OPTIONS = ['A - do it', 'B - do not'];
+
+  function approversWithNoSelection(): readonly AgentVoteResult[] {
+    return [agentVote('architect', 'approve'), agentVote('security', 'approve')];
+  }
+
+  function withSelection(role: VoterRole, option: string): AgentVoteResult {
+    return { ...agentVote(role, 'approve'), selectedOption: option };
+  }
+
+  it('records coverage when options were declared and NOTHING was selected', () => {
+    const record = buildVoteRecord({
+      id: 'v-1',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: approversWithNoSelection(),
+      declaredOptions: OPTIONS,
+      resolvedDecision: 'rejected',
+      sequence: 1,
+      previousHash: undefined,
+    });
+
+    expect(record.optionCoverage).toEqual({
+      approverCount: 2,
+      selectedCount: 0,
+      unattributedApprovals: 2,
+    });
+    // An EMPTY tally, not an absent one: "declared, nothing attributable" is a
+    // measurement. An absent field is what made the case invisible.
+    expect(record.optionTally).toEqual([]);
+  });
+
+  it('an auditor filtering for multi-option votes now finds that case', () => {
+    // The consequence that made this worth fixing, asserted directly.
+    const record = buildVoteRecord({
+      id: 'v-2',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: approversWithNoSelection(),
+      declaredOptions: OPTIONS,
+      resolvedDecision: 'rejected',
+      sequence: 1,
+      previousHash: undefined,
+    });
+    expect(record.optionTally).toBeDefined();
+  });
+
+  it('an ordinary yes/no vote still carries NEITHER field — the pair', () => {
+    // Without this, emitting coverage unconditionally would pass the tests above
+    // while pushing every plain vote off the pre-1.3 hash projection.
+    const record = buildVoteRecord({
+      id: 'v-3',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 1,
+      previousHash: undefined,
+    });
+    expect(record.optionTally).toBeUndefined();
+    expect(record.optionCoverage).toBeUndefined();
+    // Not asserting version '1.2' here: this fixture's voters carry reasoning,
+    // which is 1.6 by the ladder in `recordVersion` and has nothing to do with
+    // options. The claim under test is that NEITHER option field appears.
+  });
+
+  it('a normal multi-option vote is unchanged', () => {
+    const record = buildVoteRecord({
+      id: 'v-4',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: [withSelection('architect', 'A - do it'), withSelection('security', 'A - do it')],
+      declaredOptions: OPTIONS,
+      resolvedDecision: 'approved',
+      sequence: 1,
+      previousHash: undefined,
+    });
+    expect(record.optionTally).toEqual([{ option: 'A - do it', count: 2 }]);
+    expect(record.optionCoverage?.selectedCount).toBe(2);
+    expect(record.optionCoverage?.unattributedApprovals).toBe(0);
+  });
+
+  it('an empty declared-options array is treated as no options', () => {
+    // `options: []` cannot produce a selection, so it is not a multi-option vote.
+    const record = buildVoteRecord({
+      id: 'v-5',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      declaredOptions: [],
+      resolvedDecision: 'approved',
+      sequence: 1,
+      previousHash: undefined,
+    });
+    expect(record.optionCoverage).toBeUndefined();
+  });
+});
+
+describe('every record the builder writes must read back and verify (#6049, the seam)', () => {
+  // The seam that let #6049's first attempt ship a regression: the new tests
+  // asserted on the IN-MEMORY return of buildVoteRecord, and none round-tripped
+  // through the schema. `optionTally: []` appended to the ledger fine and then
+  // failed `parseVoteRecordsText` with `too_small, minimum 1` -- so the case the
+  // fix exists to preserve became the one no reader could see. Parsing alone is
+  // not enough either: optionTally is appended to the CANONICAL HASH payload
+  // when defined, so the hash path needs exercising too.
+  function roundTrip(record: VoteRecord): {
+    parsed: number;
+    invalid: number;
+    verified: boolean;
+  } {
+    const line = JSON.stringify(record);
+    const { records, invalidLines } = parseVoteRecordsText(line + '\n');
+    return {
+      parsed: records.length,
+      invalid: invalidLines.length,
+      verified: verifyVoteRecordSet(records).ok,
+    };
+  }
+
+  function build(
+    declaredOptions: readonly string[] | undefined,
+    v: readonly AgentVoteResult[]
+  ): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-1',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions,
+      resolvedDecision: 'rejected',
+      // Sequence 0: verifyVoteRecordSet requires 0..maxSeq with no gap, so a
+      // lone record at sequence 1 fails as a `sequence_gap` -- an omission
+      // signal, not a hash one. The fixture must model a real ledger tip.
+      sequence: 0,
+      previousHash: undefined,
+    });
+  }
+
+  it('declared options with NO parseable selection round-trips and verifies', () => {
+    // The exact record the first attempt made unreadable.
+    const record = build(
+      ['A - do it', 'B - do not'],
+      [agentVote('architect', 'approve'), agentVote('security', 'approve')]
+    );
+    expect(record.optionTally).toEqual([]);
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
+  });
+
+  it('a normal multi-option vote round-trips and verifies', () => {
+    const record = build(
+      ['A', 'B'],
+      [
+        { ...agentVote('architect', 'approve'), selectedOption: 'A' },
+        { ...agentVote('security', 'approve'), selectedOption: 'A' },
+      ]
+    );
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
+  });
+
+  it('an ordinary yes/no vote round-trips and verifies', () => {
+    const record = build(undefined, votes);
+    expect(record.optionTally).toBeUndefined();
+    expect(roundTrip(record)).toEqual({ parsed: 1, invalid: 0, verified: true });
   });
 });

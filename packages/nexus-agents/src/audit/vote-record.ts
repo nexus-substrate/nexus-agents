@@ -250,7 +250,18 @@ export const VoteRecordSchema = z
      * the EASIEST bar to clear, because every engaged voter approves while
      * choosing different things.
      */
-    optionTally: z.array(VoteRecordOptionCountSchema).min(1).optional(),
+    // No `.min(1)` (#6049). The rule this field's own docstring states is
+    // "present only when the vote declared `options`" -- keyed on DECLARATION,
+    // not on whether anyone picked one. `.min(1)` encoded the older, narrower
+    // rule, so once the builder started emitting `[]` for "declared, nothing
+    // attributable" the record appended fine and then failed to parse on read:
+    // `too_small, minimum 1`. The write path does not validate, so the line
+    // landed in the ledger and `parseVoteRecordsText` silently dropped it --
+    // the case most worth auditing became the one no reader could see.
+    //
+    // Relaxing is a pure widening: no previously-valid record changes meaning
+    // or hash, and no persisted record can currently hold an empty tally.
+    optionTally: z.array(VoteRecordOptionCountSchema).optional(),
     /**
      * Selection coverage for a multi-option vote (#4472, schema 1.4).
      *

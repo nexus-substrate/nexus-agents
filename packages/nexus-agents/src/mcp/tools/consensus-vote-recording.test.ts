@@ -189,6 +189,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
 
   it('reports all-simulated when every vote is simulated', () => {
     const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
@@ -218,6 +219,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.mocked(nexusDataPath).mockReturnValue(unwritable);
 
     const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
@@ -236,6 +238,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
     const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
@@ -258,6 +261,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
     const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       proposal: 'Promote auto-remediation to enforce',
       strategy: 'higher_order',
@@ -279,6 +283,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
 
     const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
@@ -293,5 +298,59 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
       'utf-8'
     ).trim();
     expect(written.length).toBeGreaterThan(0);
+  });
+});
+
+describe('declared options reach the persisted record (#6049, the seam)', () => {
+  // buildVoteRecord's own tests inject `declaredOptions` directly, so passing
+  // `undefined` from either production path broke NOTHING. This drives the
+  // recording layer for real and reads back what landed on disk.
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vote-options-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('persists coverage when options were declared and no selection was parseable', () => {
+    const outcome = recordAuthenticVote({
+      declaredOptions: ['A - do it', 'B - do not'],
+      resolvedDecision: 'rejected',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: [agentVote('architect', 'approve'), agentVote('security', 'approve')],
+    });
+
+    expect(outcome.persisted).toBe(true);
+    if (!outcome.persisted) return;
+    expect(outcome.record.optionCoverage).toEqual({
+      approverCount: 2,
+      selectedCount: 0,
+      unattributedApprovals: 2,
+    });
+    expect(outcome.record.optionTally).toEqual([]);
+  });
+
+  it('persists NEITHER field for an ordinary yes/no vote — the pair', () => {
+    const outcome = recordAuthenticVote({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: [agentVote('architect', 'approve'), agentVote('security', 'approve')],
+    });
+
+    expect(outcome.persisted).toBe(true);
+    if (!outcome.persisted) return;
+    expect(outcome.record.optionCoverage).toBeUndefined();
+    expect(outcome.record.optionTally).toBeUndefined();
   });
 });

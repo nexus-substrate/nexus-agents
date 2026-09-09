@@ -169,9 +169,7 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
  * field exists to fix — on #5228 a contrarian rejection was clipped
  * mid-sentence and its grounds were unrecoverable.
  */
-function reasoningFields(
-  reasoning: string
-): { reasoning: string; reasoningTruncated?: true } {
+function reasoningFields(reasoning: string): { reasoning: string; reasoningTruncated?: true } {
   if (reasoning.length <= MAX_VOTER_REASONING_CHARS) return { reasoning };
   return {
     reasoning: reasoning.slice(0, MAX_VOTER_REASONING_CHARS),
@@ -197,6 +195,15 @@ export interface BuildVoteRecordInput {
   readonly strategy: VoteRecord['strategy'];
   readonly result: ConsensusResult;
   readonly votes: readonly AgentVoteResult[];
+  /**
+   * The options the proposal DECLARED, if any (#6049).
+   *
+   * Required rather than optional — including its `undefined` case — for the
+   * same reason `resolvedDecision` below is: a new call site that omits it
+   * would silently inherit "no options were declared", which is the exact
+   * confusion this field exists to remove. The compiler names every caller.
+   */
+  readonly declaredOptions: readonly string[] | undefined;
   /** #4053: vote voided by an error-policy short-circuit → record `no_quorum`. */
   readonly errorVoided?: boolean | undefined;
   /**
@@ -251,20 +258,43 @@ export interface BuildVoteRecordInput {
  * produce two different hashes.
  */
 /**
- * Derive the option tally and its coverage together (#4472).
+ * Derive the option tally and its coverage together (#4472, #6049).
  *
  * They travel as a pair: coverage without a tally says nothing, and a tally
- * without coverage is the ambiguity this fixes.
+ * without coverage is the ambiguity #4472 fixed.
+ *
+ * #6049: the pair is now keyed on whether options were DECLARED, not on whether
+ * anyone picked one. `tallySelectedOptions` returns undefined when no approver
+ * has a usable selection, and coverage used to be nulled along with it — so the
+ * fields vanished at exactly the coverage extreme they exist to record. A panel
+ * that unanimously approved while every selection failed `matchDeclaredOption`
+ * persisted as `decision: rejected, approvalPercentage: 100` with NO option
+ * fields at all, and an auditor filtering `optionTally !== undefined` to find
+ * multi-option votes skipped the very case most worth reviewing.
+ *
+ * The builder could not tell "no options declared" from "options declared,
+ * nothing selected" because it only saw the votes. It is told now.
+ *
+ * An ordinary yes/no vote still emits neither field, keeping it on the pre-1.3
+ * hash projection so every historical record keeps verifying.
  */
-function deriveOptionFields(votes: readonly AgentVoteResult[]): {
+function deriveOptionFields(
+  votes: readonly AgentVoteResult[],
+  declaredOptions: readonly string[] | undefined
+): {
   optionTally: VoteRecordOptionCount[] | undefined;
   optionCoverage: VoteRecordOptionCoverage | undefined;
 } {
-  const optionTally = tallySelectedOptions(votes);
-  return {
-    optionTally,
-    optionCoverage: optionTally === undefined ? undefined : coverageOf(votes),
-  };
+  const tallied = tallySelectedOptions(votes);
+  const hadOptions = declaredOptions !== undefined && declaredOptions.length > 0;
+  if (!hadOptions && tallied === undefined) {
+    // A genuine yes/no vote: neither field, pre-1.3 projection.
+    return { optionTally: undefined, optionCoverage: undefined };
+  }
+  // Declared options always produce both, even when the tally is empty. An
+  // empty tally beside `selectedCount: 0` is the honest encoding of "declared,
+  // nothing attributable" — which is a measurement, not an absence.
+  return { optionTally: tallied ?? [], optionCoverage: coverageOf(votes) };
 }
 
 /**
@@ -348,9 +378,12 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
       : input.proposal;
   // #4452: derive the per-option distribution from the votes themselves, so a
   // multi-option split is recoverable from the structured record instead of by
-  // parsing seven free-text `reasoning` fields. Absent when no voter declared an
-  // option, which keeps an ordinary yes/no record on the pre-1.3 projection.
-  const { optionTally, optionCoverage } = deriveOptionFields(input.votes);
+  // parsing seven free-text `reasoning` fields. Absent when the PROPOSAL
+  // declared no options, which keeps an ordinary yes/no record on the pre-1.3
+  // projection. (#6049 corrected this: the rule was "no voter selected one",
+  // which is a different question and is why a declared-options vote with no
+  // parseable selection lost its option fields entirely.)
+  const { optionTally, optionCoverage } = deriveOptionFields(input.votes, input.declaredOptions);
   const panelCoverage = panelCoverageOf(input.votes);
   const voters = toVoterSummaries(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
