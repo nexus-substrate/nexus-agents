@@ -2,13 +2,19 @@
 'nexus-agents': patch
 ---
 
-Replace four blanket `eslint-disable max-lines` with enforceable ceilings (#6008)
+Replace three blanket `eslint-disable max-lines` with enforceable ceilings (#6008)
 
-`belief-memory.ts`, `expert-config.ts`, `run-graph-workflow-security-setup.ts`
-and `cli/index.ts` each silenced the line cap outright, with no recorded reason.
-Measured by the rule's own counting (blanks and comments skipped) they are 492,
-475, 458 and 451 — all inside the 400-600 band `.rules/governance.md` preserves
-for a cohesive file. None needed a blanket disable; they needed a ceiling.
+`belief-memory.ts`, `run-graph-workflow-security-setup.ts` and `cli/index.ts`
+each silenced the line cap outright, with no recorded reason. Measured by the
+rule's own counting (blanks and comments skipped) they are 492, 458 and 451 —
+all inside the 400-600 band `.rules/governance.md` preserves for a cohesive
+file. None needed a blanket disable; they needed a ceiling.
+
+`expert-config.ts` (475) is deliberately held back: it is one of the four
+`GOVERNANCE_STAMP_SOURCES`, so editing it — even a comment — moves the
+`_Governance Version:_` digest and forces a CLAUDE.md/AGENTS.md regeneration,
+which turns a lint cleanup into a governor-path PR requiring ratification.
+Filed separately rather than paying that toll here.
 
 Each now carries `max-lines: ["error", { max: 600, ... }]` — the top of the
 governance band — plus the measured size and why the file is cohesive. Growing
