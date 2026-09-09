@@ -13,7 +13,12 @@
  * (Source: Issue #1075 — Security Scan Setup graph workflow templates)
  */
 
-/* eslint-disable max-lines */
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
+// 458 lines as eslint counts them (blanks and comments skipped), inside the
+// 400-600 band .rules/governance.md preserves for a cohesive file — cohesive security wiring for one tool: trust tier, firewall, policy, audit sink.
+// A bounded ceiling rather than a blanket disable (#6008): the number above is
+// enforced, so growing out of the band fails the build instead of a comment
+// quietly aging. `wc -l` reads higher; that unit confusion is what #5766 was.
 import { GraphBuilder, overwrite, START, END } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphState } from '../../orchestration/graph/index.js';
 import type { GraphWorkflowInfo } from './run-graph-workflow-templates.js';

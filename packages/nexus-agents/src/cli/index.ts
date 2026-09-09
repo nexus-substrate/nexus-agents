@@ -1,4 +1,9 @@
-/* eslint-disable max-lines */
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
+// 451 lines as eslint counts them (blanks and comments skipped), inside the
+// 400-600 band .rules/governance.md preserves for a cohesive file — command surface barrel: one line per registered CLI command.
+// A bounded ceiling rather than a blanket disable (#6008): the number above is
+// enforced, so growing out of the band fails the build instead of a comment
+// quietly aging. `wc -l` reads higher; that unit confusion is what #5766 was.
 /**
  * nexus-agents/cli - CLI utilities
  *
