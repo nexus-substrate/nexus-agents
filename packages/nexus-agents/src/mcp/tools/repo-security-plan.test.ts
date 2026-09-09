@@ -309,3 +309,54 @@ describe('buildPlanFromAnalysis', () => {
     expect(missingByScanner).toEqual([]);
   });
 });
+
+describe('scanner-data provenance reaches the plan (#6037)', () => {
+  // The tool describes itself as producing "provenance-tracked metrics".
+  // resolveScannerData computed `source` all along; buildPlanFromAnalysis
+  // dropped it, so a plan built from the embedded snapshot -- or from a cache
+  // with no age bound -- read exactly like one built against the live registry.
+  const ANALYSIS = makeAnalysis();
+
+  it('reports the fallback snapshot as fallback, not as a registry read', () => {
+    const plan = buildPlanFromAnalysis(ANALYSIS, { repo: 'o/r' }, FALLBACK_SCANNER_DATA);
+    expect(plan.scannerDataSource).toBe('fallback');
+  });
+
+  it('reports a stale cache as cache, with its age, not as registry', () => {
+    // The state that was mislabelled even internally: `manifest !== null` was
+    // the only test, so an unbounded-age cache was stamped 'registry'.
+    const plan = buildPlanFromAnalysis(
+      ANALYSIS,
+      { repo: 'o/r' },
+      {
+        ...FALLBACK_SCANNER_DATA,
+        source: 'cache',
+        ageMs: 86_400_000,
+      }
+    );
+    expect(plan.scannerDataSource).toBe('cache');
+    expect(plan.scannerDataAgeMs).toBe(86_400_000);
+  });
+
+  it('reports a live registry read as registry, with no age', () => {
+    const plan = buildPlanFromAnalysis(
+      ANALYSIS,
+      { repo: 'o/r' },
+      {
+        ...FALLBACK_SCANNER_DATA,
+        source: 'registry',
+      }
+    );
+    expect(plan.scannerDataSource).toBe('registry');
+    expect(plan.scannerDataAgeMs).toBeUndefined();
+  });
+
+  it('the three sources are distinguishable — not collapsed to two', () => {
+    const sources = (['registry', 'cache', 'fallback'] as const).map(
+      (source) =>
+        buildPlanFromAnalysis(ANALYSIS, { repo: 'o/r' }, { ...FALLBACK_SCANNER_DATA, source })
+          .scannerDataSource
+    );
+    expect(new Set(sources).size).toBe(3);
+  });
+});

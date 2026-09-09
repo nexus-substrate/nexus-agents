@@ -7168,6 +7168,8 @@ InterfaceDeclaration RepoSecurityPlan
   readonly language: string | null
   readonly recommendations: readonly ScannerRecommendation[]
   readonly repo: string
+  readonly scannerDataAgeMs?: number | undefined
+  readonly scannerDataSource: "registry" | "cache" | "fallback"
 TypeAliasDeclaration RepoSecurityPlanDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration RepoSecurityPlanInput
@@ -7876,9 +7878,10 @@ VariableDeclaration SanitizerConfigSchema
 FunctionDeclaration saveStageCheckpoint
   : typeof saveStageCheckpoint
 InterfaceDeclaration ScannerData
+  readonly ageMs?: number | undefined
   readonly languageMap: Readonly<Record<string, LanguageMapping>>
   readonly scanners: readonly ScannerEntry[]
-  readonly source: "registry" | "fallback"
+  readonly source: "registry" | "cache" | "fallback"
 InterfaceDeclaration ScannerEntry
   readonly categories: readonly string[]
   readonly displayName: string

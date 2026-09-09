@@ -65,6 +65,7 @@ const SAMPLE_PLAN: RepoSecurityPlan = {
   conflicts: [],
   coverage: [{ category: 'sast', covered: true, scanners: ['semgrep'] }],
   gapsSummary: [],
+  scannerDataSource: 'registry',
 };
 
 describe('repo-security-plan-tool', () => {
