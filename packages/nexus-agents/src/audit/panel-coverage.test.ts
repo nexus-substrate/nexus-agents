@@ -66,6 +66,7 @@ const sixOfSeven: readonly AgentVoteResult[] = [
 describe('panelCoverage (#5738)', () => {
   it('names the errored role and counts it', () => {
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-degraded',
       proposal: 'Ratify PR #5465',
@@ -98,6 +99,7 @@ describe('panelCoverage (#5738)', () => {
       agentVote('scope_steward', 'abstain', 'error'),
     ];
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: 'no_quorum',
       id: 'vote-no-quorum',
       proposal: 'Ratify PR #5722',
@@ -123,6 +125,7 @@ describe('panelCoverage (#5738)', () => {
     // Absence is the pre-1.5 projection: a clean panel must re-hash exactly as
     // it did before, so every historical record still verifies.
     const record = buildVoteRecord({
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vote-clean',
       proposal: 'Ratify something uneventful',

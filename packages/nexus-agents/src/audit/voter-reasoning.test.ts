@@ -48,6 +48,7 @@ function consensusResult(): ConsensusResult {
 
 function record(votes: readonly AgentVoteResult[]): ReturnType<typeof buildVoteRecord> {
   return buildVoteRecord({
+    declaredOptions: undefined,
     resolvedDecision: undefined,
     id: 'vote-reasoning',
     proposal: 'Ratify something contested',

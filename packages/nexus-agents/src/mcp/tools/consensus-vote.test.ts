@@ -2360,6 +2360,7 @@ describe('#4529: an option-split veto is a rejection, not a void', () => {
     // a test that recomputes the thing it checks cannot fail for the bug.
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
+      declaredOptions: undefined,
       resolvedDecision: undefined,
       id: 'vr-4529',
       proposal: result.proposal,

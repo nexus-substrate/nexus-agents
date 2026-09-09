@@ -154,7 +154,12 @@ export type VoteRecordPersistOutcome =
  *  - `write-failed` — the data dir was unwritable (or a fail-closed traversal
  *    rejection); `detail` carries the actionable unwritable-data-dir guidance.
  */
-export function recordAuthenticVote(args: {
+/**
+ * Everything {@link recordAuthenticVote} needs. Named rather than inline: the
+ * doc comments the required fields deserve pushed the function past its
+ * line cap, and the cap is there to be answered with a decision (#6008).
+ */
+interface RecordAuthenticVoteArgs {
   proposal: string;
   strategy: string;
   result: ConsensusResult;
@@ -164,6 +169,8 @@ export function recordAuthenticVote(args: {
   ratifies?: string | undefined;
   /** #4053: vote voided by an error-policy short-circuit → persist `no_quorum`. */
   errorVoided?: boolean | undefined;
+  /** Declared options; see `BuildVoteRecordInput.declaredOptions` (#6049). */
+  declaredOptions: readonly string[] | undefined;
   /**
    * The decision `resolveVoteDecision` already produced for the response.
    *
@@ -173,7 +180,9 @@ export function recordAuthenticVote(args: {
    * resolved decision must hand it over rather than let the store guess.
    */
   resolvedDecision: VoteRecord['decision'] | undefined;
-}): VoteRecordPersistOutcome {
+}
+
+export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPersistOutcome {
   const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
     logger.debug('Skipping authentic vote record — all votes simulated');
@@ -204,6 +213,7 @@ export function recordAuthenticVote(args: {
     strategy: toRecordStrategy(args.strategy),
     result: args.result,
     votes: args.votes,
+    declaredOptions: args.declaredOptions,
     resolvedDecision: args.resolvedDecision,
     ...(args.errorVoided !== undefined ? { errorVoided: args.errorVoided } : {}),
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),

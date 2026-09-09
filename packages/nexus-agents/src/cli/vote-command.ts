@@ -579,6 +579,10 @@ function persistToAuditChain(
         strategy: result.strategy,
         result: result.result,
         votes: result.votes,
+        // #6049: the CLI path had the declared options all along and did not
+        // pass them, so its records lost the option fields whenever no
+        // selection was parseable -- the same defect as the MCP path.
+        declaredOptions: options.options,
         // A vote an error policy voided is not a rejection. Without this the
         // chain records `rejected` while the CLI exits `no_quorum` (#4953).
         errorVoided: result.policyReason !== undefined,

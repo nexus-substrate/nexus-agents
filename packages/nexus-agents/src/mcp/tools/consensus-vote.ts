@@ -917,7 +917,13 @@ function recordVoteSideEffects(
   strategy: string,
   result: ExtendedVotingResult,
   logger: ILogger,
-  ratifies?: string
+  /**
+   * Context from the tool input the record needs but the voting result does
+   * not carry. Grouped rather than two more positional params: both answer
+   * "what did the caller declare", and the sixth positional argument tipped
+   * this past the max-params cap.
+   */
+  declared: { options: readonly string[] | undefined; ratifies?: string }
 ): {
   costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   voteRecord: VoteRecordPersistOutcome;
@@ -932,6 +938,7 @@ function recordVoteSideEffects(
     strategy,
     result: result.result,
     votes: result.votes,
+    declaredOptions: declared.options,
     // #4053: an error-policy short-circuit voided the vote → the PERSISTED record
     // must record `no_quorum`, matching the MCP response (not a stale `rejected`).
     errorVoided: result.policyReason !== undefined,
@@ -942,7 +949,7 @@ function recordVoteSideEffects(
     // this tool reports as `no_quorum`.
     resolvedDecision: toRecordDecision(result.decision),
     correlationId: decisionId,
-    ...(ratifies !== undefined ? { ratifies } : {}),
+    ...(declared.ratifies !== undefined ? { ratifies: declared.ratifies } : {}),
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
@@ -997,7 +1004,7 @@ async function handleConsensusVote(
       result.strategy,
       result,
       logger,
-      args.ratifies
+      { options: args.options, ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}) }
     );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
