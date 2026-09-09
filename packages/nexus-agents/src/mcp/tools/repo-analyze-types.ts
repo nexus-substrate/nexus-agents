@@ -93,3 +93,18 @@ export interface RepoAnalysis {
   /** Identified gaps or missing best practices. */
   readonly gaps: readonly string[];
 }
+
+/**
+ * What was learned about `.github/` when looking for CODEOWNERS (#6018).
+ *
+ * Lives here rather than beside its only caller so the type has a real
+ * cross-module consumer: the producer/consumer gate reads a same-file caller as
+ * no consumer at all, and suppressing that with a marker would be claiming the
+ * export is unused-for-now when it is simply in the wrong file.
+ */
+export interface CodeownersLookup {
+  /** Names inside `.github/`, when it could be listed. */
+  readonly entries?: readonly string[];
+  /** Whether `.github/` was actually listed. False ⇒ a root miss is unmeasured. */
+  readonly listed?: boolean;
+}

@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import type { RepoAnalyzeInput, RepoAnalysis } from './repo-analyze-types.js';
+import type { RepoAnalyzeInput, RepoAnalysis, CodeownersLookup } from './repo-analyze-types.js';
 
 /**
  * Zod schema for the `gh api repos/{repoId}` payload (#2962). Pre-fix the
@@ -172,14 +172,6 @@ function hasCodeownersFile(
     dotGithubEntries.includes('CODEOWNERS') ||
     docsEntries.includes('CODEOWNERS')
   );
-}
-
-/** What was learned about `.github/` when looking for CODEOWNERS (#6018). */
-export interface CodeownersLookup {
-  /** Names inside `.github/`, when it could be listed. */
-  readonly entries?: readonly string[];
-  /** Whether `.github/` was actually listed. False ⇒ a root miss is unmeasured. */
-  readonly listed?: boolean;
 }
 
 /**
