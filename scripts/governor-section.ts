@@ -26,6 +26,34 @@
 export const GOVERNOR_SECTION_MARKER = "Governor's own core";
 
 /**
+ * The prefix a line must START with to open the governor section (#6032).
+ *
+ * Anchored, not a substring. `raw.includes(GOVERNOR_SECTION_MARKER)` opened the
+ * section on any line NAMING the phrase — a comment documenting the section, a
+ * reference to it from a neighbouring one. Measured against the real file, one
+ * such comment above the heading took the governor set from 14 patterns to 19,
+ * sweeping in five entries that are not governor-owned. Fail-CLOSED (more paths
+ * governed, not fewer), which is why this ranked below #6030 and #6034 — but
+ * `governance-stamp-exemption.ts` names the cost precisely: a gate that blocks
+ * ordinary work is a gate that gets bypassed.
+ *
+ * The comment sigil is part of the prefix on purpose. Matching the bare phrase
+ * would not distinguish a heading from an owner-rule line that happened to
+ * begin with it.
+ *
+ * A PREFIX rather than the whole heading, which reads:
+ *
+ *   # Governor's own core — the governance-of-the-governor paths (#3830, Epic #3829).
+ *
+ * That tail carries prose and issue references that get edited. Pinning the
+ * full line would turn every such edit into a red governor gate — the same
+ * blocks-ordinary-work cost, self-inflicted. Drift past this prefix is still
+ * fail-closed: the section never opens, `started` stays false, and #5576's
+ * guard reports it loudly instead of yielding a silently wrong set.
+ */
+export const GOVERNOR_SECTION_START_PREFIX = `# ${GOVERNOR_SECTION_MARKER}`;
+
+/**
  * Sentinel that ends the governor section (#4683).
  *
  * The section previously ran from its heading to end of file, and `#` lines are
@@ -68,7 +96,7 @@ export function governorSectionLines(codeownersText: string): {
   let terminated = false;
   for (const raw of codeownersText.split('\n')) {
     if (!inSection) {
-      if (raw.includes(GOVERNOR_SECTION_MARKER)) inSection = true;
+      if (raw.trim().startsWith(GOVERNOR_SECTION_START_PREFIX)) inSection = true;
       continue;
     }
     // EXACT LINE, not a substring (#6030). `includes` here ended the section on

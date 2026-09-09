@@ -34,6 +34,7 @@ import {
   matchesCodeownersPattern,
   isGovernorPath,
   GOVERNOR_SECTION_MARKER,
+  GOVERNOR_SECTION_START_PREFIX,
   GOVERNOR_SECTION_END_LINE,
 } from './governor-section.js';
 import {
@@ -940,7 +941,10 @@ describe('a started governor section that yields nothing is a failure, not an em
   it('throws when the markers are present but no pattern survives', () => {
     const collapsed = [
       '/some/other/path @someone',
-      GOVERNOR_SECTION_MARKER,
+      // The real heading is a COMMENT, so the fixture must be one too (#6032).
+      // Using the bare marker made this fixture unrealistic, and the anchored
+      // start matcher surfaced that rather than being weakened to accommodate it.
+      GOVERNOR_SECTION_START_PREFIX,
       '# only commentary in here',
       GOVERNOR_SECTION_END_LINE,
     ].join('\n');
@@ -1003,5 +1007,61 @@ describe('both ratification jobs are handed a base sha (#6029)', () => {
     const body = jobBody('governor-ratification-backstop');
     expect(body).toContain('git diff --name-only "${SHA}~1" "${SHA}"');
     expect(body).toContain('git rev-parse "${SHA}~1"');
+  });
+});
+
+describe('the governor section opens on the heading, not a mention (#6032)', () => {
+  // The same defect as #6030 one line earlier, and the fourth in this ~20-line
+  // parser (#5137, #5576, #6030, this). Measured: one comment naming the phrase
+  // above the real heading took the set from 14 patterns to 19, sweeping in five
+  // entries that are not governor-owned.
+  const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+  const REAL_COUNT = governorPathsFromCodeowners(REAL_CODEOWNERS).length;
+
+  it('the real file parses to a non-trivial set', () => {
+    expect(REAL_COUNT).toBeGreaterThan(5);
+  });
+
+  it('a comment NAMING the marker above the heading does not open the section', () => {
+    const withMention = REAL_CODEOWNERS.replace(
+      '# Security modules',
+      `# See ${GOVERNOR_SECTION_MARKER} below for the governed set.\n# Security modules`
+    );
+    expect(withMention).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(withMention)).toHaveLength(REAL_COUNT);
+  });
+
+  it('the real heading still opens it, tail and all', () => {
+    // The prefix deliberately stops before the em-dash and issue references, so
+    // editing that tail cannot break the parse.
+    const section = governorSectionLines(REAL_CODEOWNERS);
+    expect(section.started).toBe(true);
+    expect(section.lines).toHaveLength(REAL_COUNT);
+  });
+
+  it('a heading whose PREFIX drifts leaves started false — #5576 reports it', () => {
+    // Fail-closed: the section never opens rather than opening somewhere wrong.
+    const drifted = REAL_CODEOWNERS.replace(GOVERNOR_SECTION_START_PREFIX, '# Governors own core');
+    expect(drifted).not.toEqual(REAL_CODEOWNERS);
+    expect(governorSectionLines(drifted).started).toBe(false);
+  });
+
+  it('editing the heading TAIL does not break the parse — the point of a prefix', () => {
+    // The reason option A (pin the whole line) was rejected: this edit is
+    // ordinary, and under A it would redden the governor gate.
+    const retitled = REAL_CODEOWNERS.replace(
+      /^# Governor's own core.*$/m,
+      `${GOVERNOR_SECTION_START_PREFIX} — reworded tail (#9999).`
+    );
+    expect(retitled).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(retitled)).toHaveLength(REAL_COUNT);
+  });
+
+  it('an owner-rule line beginning with the phrase is not a heading', () => {
+    // Why the comment sigil is part of the prefix.
+    const section = governorSectionLines(
+      [`${GOVERNOR_SECTION_MARKER}/path @owner`, '/a/b @owner'].join('\n')
+    );
+    expect(section.started).toBe(false);
   });
 });
