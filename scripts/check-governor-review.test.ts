@@ -33,7 +33,12 @@ import {
   runGovernorReviewGate,
   type GovernorReviewInputs,
 } from './check-governor-review.js';
-import { isStampOnlyChange, stampOnlyExemptFiles } from './governance-stamp-exemption.js';
+import {
+  isStampOnlyChange,
+  stampOnlyExemptFiles,
+  EXEMPT_SPAN_NAMES,
+} from './governance-stamp-exemption.js';
+import { GOVERNANCE_SPAN_NAMES } from './governance-markers.js';
 import type { PrReviewRecord } from '../packages/nexus-agents/src/audit/index.js';
 import {
   ledgerIntegrityFailure,
@@ -630,9 +635,117 @@ describe('stampOnlyExemptFiles (#5944)', () => {
     const exempt = stampOnlyExemptFiles(
       ['CLAUDE.md', 'AGENTS.md', '.rules/governance.md', 'src/audit/hash-chain.ts'],
       () => STAMPED('aaaaaaaaaaaa'),
-      () => STAMPED('bbbbbbbbbbbb')
+      () => STAMPED('bbbbbbbbbbbb'),
+      () => true
     );
     expect(exempt).toEqual(['CLAUDE.md', 'AGENTS.md']);
+  });
+
+  // ---- #6022: the widened, span-aware exemption -------------------------
+
+  /** A generated file with real marker spans, the shape the injector emits. */
+  const GENERATED = (opts: {
+    digest: string;
+    tools: string;
+    count: number;
+    rules?: string;
+    prose?: string;
+  }): string =>
+    [
+      '# Title',
+      '',
+      opts.prose ?? 'Hand-written prose.',
+      '',
+      '<!-- GOVERNANCE:TOOL_INDEX:START -->',
+      `**${String(opts.count)} MCP tools registered.**`,
+      opts.tools,
+      '<!-- GOVERNANCE:TOOL_INDEX:END -->',
+      '',
+      '<!-- GOVERNANCE:RULES_INDEX:START -->',
+      opts.rules ?? '| `.rules/git.md` | commits |',
+      '<!-- GOVERNANCE:RULES_INDEX:END -->',
+      '',
+      '<!-- GOVERNANCE:VERSION:START -->',
+      `_Governance Version: ${opts.digest}_`,
+      '<!-- GOVERNANCE:VERSION:END -->',
+      '',
+    ].join('\n');
+
+  it('exempts an MCP-tool registration — the case #6022 was filed for', () => {
+    // Digest, tool list AND count all move. Before #6022 the normalizer blanked
+    // only the stamp line, so two changed regions remained and registering a
+    // tool demanded owner ratification.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`, `orchestrate`', count: 47 });
+    const after = GENERATED({
+      digest: 'bbbbbbbbbbbb',
+      tools: '`run`, `orchestrate`, `new_tool`',
+      count: 48,
+    });
+    expect(isStampOnlyChange(before, after)).toBe(true);
+  });
+
+  it('does NOT exempt a RULES_INDEX regeneration — it is outside the subset', () => {
+    // RULES_INDEX is the cross-adapter bridge telling Codex/Gemini/OpenCode
+    // which rules exist. The panel kept it OUT of the subset deliberately.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({
+      digest: 'bbbbbbbbbbbb',
+      tools: '`run`',
+      count: 1,
+      rules: '| `.rules/git.md` | commits | AND A SMUGGLED ROW |',
+    });
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('does NOT exempt hand-written prose outside every span', () => {
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({
+      digest: 'bbbbbbbbbbbb',
+      tools: '`run`',
+      count: 1,
+      prose: 'Hand-written prose, quietly altered.',
+    });
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('does NOT exempt a diff that removes a span marker', () => {
+    // An unbalanced span simply fails to match, so the raw text survives into
+    // the comparison — removing a span cannot be laundered as a regeneration.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = before.replace('<!-- GOVERNANCE:TOOL_INDEX:END -->', '');
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('exempts NOTHING when the injector reports drift at head', () => {
+    // THE precondition. Without it, blanking span content would make everything
+    // between the markers free-form text that skips ratification.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({ digest: 'bbbbbbbbbbbb', tools: '`run`', count: 1 });
+    expect(
+      stampOnlyExemptFiles(
+        ['CLAUDE.md'],
+        () => before,
+        () => after,
+        () => false
+      )
+    ).toEqual([]);
+    // Same inputs, clean injector -> exempt. Proves the guard is what differs.
+    expect(
+      stampOnlyExemptFiles(
+        ['CLAUDE.md'],
+        () => before,
+        () => after,
+        () => true
+      )
+    ).toEqual(['CLAUDE.md']);
+  });
+
+  it('names only spans that actually exist in the injector', () => {
+    // The subset is policy; the marker set is fact. A hand-copied list is the
+    // shape that drifts, and this one decides what skips ratification.
+    for (const name of EXEMPT_SPAN_NAMES) {
+      expect(GOVERNANCE_SPAN_NAMES).toContain(name);
+    }
   });
 
   it('exempts nothing when the changed list has no generated file', () => {
@@ -640,7 +753,8 @@ describe('stampOnlyExemptFiles (#5944)', () => {
       stampOnlyExemptFiles(
         ['src/audit/logger.ts'],
         () => '',
-        () => ''
+        () => '',
+        () => true
       )
     ).toEqual([]);
   });
