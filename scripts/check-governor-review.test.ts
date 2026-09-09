@@ -650,11 +650,16 @@ describe('stampOnlyExemptFiles (#5944)', () => {
     count: number;
     rules?: string;
     prose?: string;
+    models?: string;
   }): string =>
     [
       '# Title',
       '',
       opts.prose ?? 'Hand-written prose.',
+      '',
+      '<!-- GOVERNANCE:MODEL_LIST:START -->',
+      `Supported models: ${opts.models ?? 'claude-opus, claude-sonnet'}.`,
+      '<!-- GOVERNANCE:MODEL_LIST:END -->',
       '',
       '<!-- GOVERNANCE:TOOL_INDEX:START -->',
       `**${String(opts.count)} MCP tools registered.**`,
@@ -706,6 +711,56 @@ describe('stampOnlyExemptFiles (#5944)', () => {
       prose: 'Hand-written prose, quietly altered.',
     });
     expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('exempts a model-registry addition WITHOUT the stamp moving (#6024)', () => {
+    // The distinguishing fact for MODEL_LIST: in-tree-data.ts is NOT one of the
+    // four GOVERNANCE_STAMP_SOURCES, so adding a model moves the span and
+    // leaves the digest alone. #5944's stamp-line exemption could never have
+    // covered this shape -- same digest, one changed span -- which is why the
+    // span exemption is the only mechanism that reaches it.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({
+      digest: 'aaaaaaaaaaaa',
+      tools: '`run`',
+      count: 1,
+      models: 'claude-opus, claude-sonnet, claude-fable-5',
+    });
+    expect(before).not.toEqual(after);
+    expect(isStampOnlyChange(before, after)).toBe(true);
+  });
+
+  it('does NOT exempt a model-list change smuggled alongside altered prose', () => {
+    // The span being exempt must not launder the rest of the file.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({
+      digest: 'aaaaaaaaaaaa',
+      tools: '`run`',
+      count: 1,
+      models: 'claude-opus, claude-sonnet, claude-fable-5',
+      prose: 'Hand-written prose, quietly altered.',
+    });
+    expect(isStampOnlyChange(before, after)).toBe(false);
+  });
+
+  it('does NOT exempt a model-list change when the injector reports drift', () => {
+    // MODEL_LIST is subject to the same precondition as every other exempt
+    // span: without an injector-clean checkout the region is free-form text.
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({
+      digest: 'aaaaaaaaaaaa',
+      tools: '`run`',
+      count: 1,
+      models: 'claude-opus, claude-sonnet, attacker-controlled-endpoint',
+    });
+    expect(
+      stampOnlyExemptFiles(
+        ['CLAUDE.md'],
+        () => before,
+        () => after,
+        () => false
+      )
+    ).toEqual([]);
   });
 
   it('does NOT exempt a diff that removes a span marker', () => {

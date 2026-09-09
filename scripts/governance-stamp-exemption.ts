@@ -64,8 +64,29 @@ export const GOVERNANCE_STAMP_PATTERN = new RegExp(
  *
  * Every name here must exist in `GOVERNANCE_SPAN_NAMES` (scripts/governance-markers.ts);
  * a test pins the subset relation so this list cannot name a span that is gone.
+ *
+ * MODEL_LIST joined in #6024, by its own 6-1 vote rather than on #6022's
+ * mandate. Three measurements decided it. The span renders IDENTIFIERS ONLY —
+ * one comma-separated sentence, no capability rows, no pricing — which is the
+ * same shape as TOOL_INDEX, already in the subset with the same ungated source.
+ * Nothing at runtime reads that sentence: routing and voter pinning go through
+ * `getDefaultRegistry()`, so the span is a mirror of `in-tree-data.ts`, never a
+ * consumption point, and withholding the exemption gated the shadow rather than
+ * the object. And `in-tree-data.ts` is NOT a GOVERNANCE_STAMP_SOURCE, so a model
+ * addition moves the span WITHOUT moving the stamp — #5944's stamp-line
+ * exemption neither did nor ever could cover it.
+ *
+ * The #6024 issue's frequency argument was measured and found WRONG (the span
+ * took 5 distinct values in six months, not the high-churn path it claimed);
+ * that weakened the urgency, not the case. RULES_INDEX stays out: its `.rules/`
+ * source is governor-gated since #5999, so excluding it costs nothing.
  */
-export const EXEMPT_SPAN_NAMES: readonly string[] = ['VERSION', 'TOOL_INDEX', 'WORKFLOW_INDEX'];
+export const EXEMPT_SPAN_NAMES: readonly string[] = [
+  'VERSION',
+  'TOOL_INDEX',
+  'WORKFLOW_INDEX',
+  'MODEL_LIST',
+];
 
 /**
  * Blank the CONTENT of each exempt span, keeping its markers.
