@@ -5260,7 +5260,9 @@ VariableDeclaration ListJobsInputSchema
 InterfaceDeclaration ListJobsResponse
   readonly count: number
   readonly jobs: readonly JobSummary[]
+  readonly jobsDirUnreadable?: boolean | undefined
   readonly truncated: boolean
+  readonly unparseableRecords?: number | undefined
 FunctionDeclaration listTemplateIds
   : typeof listTemplateIds
 InterfaceDeclaration ListWorkflowsDeps
