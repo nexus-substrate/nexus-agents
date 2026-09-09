@@ -19,10 +19,10 @@ import {
   getLanguageRecommendations,
   identifyGaps,
   analyzeGitHubRepo,
-  type ExecFileFn,
   analyzeRepo,
   type GhRepoMetadata,
 } from './repo-analyze.js';
+import type { ExecFileFn } from './repo-analyze-types.js';
 
 // ============================================================================
 // normalizeRepoId

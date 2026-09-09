@@ -10,7 +10,14 @@
  */
 
 import { z } from 'zod';
-import type { RepoAnalyzeInput, RepoAnalysis, CodeownersLookup } from './repo-analyze-types.js';
+import type {
+  RepoAnalyzeInput,
+  RepoAnalysis,
+  CodeownersLookup,
+  ExecFileFn,
+  GapObservations,
+  RepoListings,
+} from './repo-analyze-types.js';
 
 /**
  * Zod schema for the `gh api repos/{repoId}` payload (#2962). Pre-fix the
@@ -346,13 +353,6 @@ function judgedGaps(
   return gaps;
 }
 
-/** What each secondary listing observed. Optional at the boundary, resolved once. */
-export interface RepoListings {
-  readonly dotGithubEntries?: readonly string[];
-  readonly dotGithubListed?: boolean;
-  readonly workflowsMeasured?: boolean;
-}
-
 /**
  * Apply the listing defaults in ONE place.
  *
@@ -369,12 +369,6 @@ function resolveListings(listings: RepoListings): Required<RepoListings> {
     dotGithubListed: listings.dotGithubListed ?? false,
     workflowsMeasured: listings.workflowsMeasured ?? true,
   };
-}
-
-/** What the listings observed, as `identifyGaps` needs it. */
-export interface GapObservations {
-  readonly codeowners?: CodeownersLookup;
-  readonly workflowsMeasured?: boolean;
 }
 
 /**
@@ -607,12 +601,6 @@ function inferLanguageFromEntries(
   if (entries.includes('package.json')) return 'JavaScript';
   return fallback;
 }
-
-export type ExecFileFn = (
-  cmd: string,
-  args: string[],
-  options?: { timeout?: number }
-) => Promise<{ stdout: string }>;
 
 /** Lazy-load promisified execFile. */
 async function getExecFile(): Promise<ExecFileFn> {

@@ -118,3 +118,32 @@ export interface CodeownersLookup {
   /** Whether `.github/` was actually listed. False ⇒ a root miss is unmeasured. */
   readonly listed?: boolean;
 }
+
+/* ---------------------------------------------------------------------------
+ * Moved here from repo-analyze.ts in #6035.
+ *
+ * Not cosmetic: the producer/consumer gate reads a same-file caller as NO
+ * consumer, so a type declared and used only inside repo-analyze.ts is flagged
+ * as a dead export however heavily that file uses it. Living in the sibling
+ * types module its consumer already imports makes the relationship real rather
+ * than asserted -- the same move CodeownersLookup needed in #6019.
+ * ------------------------------------------------------------------------- */
+
+/** What each secondary listing observed. Optional at the boundary, resolved once. */
+export interface RepoListings {
+  readonly dotGithubEntries?: readonly string[];
+  readonly dotGithubListed?: boolean;
+  readonly workflowsMeasured?: boolean;
+}
+
+/** What the listings observed, as `identifyGaps` needs it. */
+export interface GapObservations {
+  readonly codeowners?: CodeownersLookup;
+  readonly workflowsMeasured?: boolean;
+}
+
+export type ExecFileFn = (
+  cmd: string,
+  args: string[],
+  options?: { timeout?: number }
+) => Promise<{ stdout: string }>;
