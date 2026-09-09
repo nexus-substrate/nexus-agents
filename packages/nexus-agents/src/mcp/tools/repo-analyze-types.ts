@@ -32,7 +32,9 @@ export const RepoAnalyzeInputSchema = z.object({
     .enum(['shallow', 'deep'])
     .optional()
     .default('shallow')
-    .describe('Currently a no-op — the handler always runs the full analysis (both values identical)'),
+    .describe(
+      'Currently a no-op — the handler always runs the full analysis (both values identical)'
+    ),
 });
 
 export type RepoAnalyzeInput = z.infer<typeof RepoAnalyzeInputSchema>;
@@ -61,8 +63,23 @@ export interface RepoAnalysis {
   readonly hasHelmCharts: boolean;
   /** Whether the repo has a Makefile. */
   readonly hasMakefile: boolean;
-  /** Whether the repo has tests. */
+  /**
+   * Whether the repo has tests. Only meaningful when {@link testsMeasured} is
+   * true — `false` alone cannot distinguish "no tests" from "no probe for this
+   * language" (#6018).
+   */
   readonly hasTests: boolean;
+  /**
+   * Whether test detection had a rule for this repo's language (#6018).
+   *
+   * REQUIRED, not optional, so the compiler names every producer. Before this,
+   * `hasTests: false` was emitted for any language the JS-shaped probes did not
+   * cover, and a Rust workspace with 1385 `#[test]` functions reported
+   * "No test directory detected" — a default wearing the costume of a
+   * measurement. When this is false the gap list stays silent rather than
+   * asserting an absence nobody checked.
+   */
+  readonly testsMeasured: boolean;
   /** License type (e.g., "MIT", "Apache-2.0"). */
   readonly license: string | null;
   /** Repository description. */
@@ -75,4 +92,19 @@ export interface RepoAnalysis {
   readonly topLevelEntries: readonly string[];
   /** Identified gaps or missing best practices. */
   readonly gaps: readonly string[];
+}
+
+/**
+ * What was learned about `.github/` when looking for CODEOWNERS (#6018).
+ *
+ * Lives here rather than beside its only caller so the type has a real
+ * cross-module consumer: the producer/consumer gate reads a same-file caller as
+ * no consumer at all, and suppressing that with a marker would be claiming the
+ * export is unused-for-now when it is simply in the wrong file.
+ */
+export interface CodeownersLookup {
+  /** Names inside `.github/`, when it could be listed. */
+  readonly entries?: readonly string[];
+  /** Whether `.github/` was actually listed. False ⇒ a root miss is unmeasured. */
+  readonly listed?: boolean;
 }

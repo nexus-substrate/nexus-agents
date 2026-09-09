@@ -345,10 +345,34 @@ describe('identifyGaps', () => {
     expect(gaps).toContain('No SECURITY.md policy');
   });
 
-  it('flags missing CODEOWNERS', () => {
+  it('flags missing CODEOWNERS when every location GitHub honours was checked', () => {
     const entries = fullEntries.filter((e) => e !== 'CODEOWNERS');
-    const gaps = identifyGaps(entries, 'github-actions');
+    // `listed: true` with an empty listing is the faithful fixture: we looked in
+    // .github/ and it was not there. Without it the answer is unmeasured, not
+    // absent — see the sibling test below (#6018).
+    const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
+      entries: [],
+      listed: true,
+    });
     expect(gaps).toContain('No CODEOWNERS file');
+  });
+
+  it('does NOT flag CODEOWNERS when .github/ exists but could not be listed (#6018)', () => {
+    const entries = [...fullEntries.filter((e) => e !== 'CODEOWNERS'), '.github'];
+    const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
+      entries: [],
+      listed: false,
+    });
+    expect(gaps).not.toContain('No CODEOWNERS file');
+  });
+
+  it('finds CODEOWNERS in .github/, where most repos put it (#6018)', () => {
+    const entries = [...fullEntries.filter((e) => e !== 'CODEOWNERS'), '.github'];
+    const gaps = identifyGaps(entries, 'github-actions', 'TypeScript', undefined, {
+      entries: ['CODEOWNERS'],
+      listed: true,
+    });
+    expect(gaps).not.toContain('No CODEOWNERS file');
   });
 
   it('flags missing LICENSE', () => {
@@ -375,12 +399,39 @@ describe('identifyGaps', () => {
     expect(gaps).not.toContain('No SAST/SCA security scanning configured');
   });
 
-  it('flags missing tests — no test dir or config', () => {
+  it('flags missing tests for a language the probes understand', () => {
     const entries = fullEntries.filter((e) => e !== 'tests');
     // Also remove package.json to prevent monorepo detection
     const noTests = entries.filter((e) => e !== 'package.json');
-    const gaps = identifyGaps(noTests, 'github-actions');
+    const gaps = identifyGaps(noTests, 'github-actions', 'TypeScript');
     expect(gaps).toContain('No test directory detected');
+  });
+
+  it('does NOT flag missing tests for a language with no probe (#6018)', () => {
+    // Rust keeps tests in `#[cfg(test)]` modules and per-crate tests/ dirs,
+    // neither visible in a top-level listing. Reporting their absence was a
+    // default wearing the costume of a measurement: a 9-crate workspace with
+    // 1385 #[test] functions was told it had no tests.
+    const rustEntries = ['Cargo.toml', 'crates', 'src', 'README.md', '.github'];
+    const gaps = identifyGaps(rustEntries, 'github-actions', 'Rust');
+    expect(gaps).not.toContain('No test directory detected');
+  });
+
+  it('still flags a Rust repo with a real root tests/ dir as HAVING tests', () => {
+    // A positive detection is trusted regardless of language — only the
+    // negative needs the language guard.
+    const rustEntries = ['Cargo.toml', 'crates', 'tests'];
+    const gaps = identifyGaps(rustEntries, 'github-actions', 'Rust');
+    expect(gaps).not.toContain('No test directory detected');
+  });
+
+  it('does NOT flag a dual-licensed repo as having no LICENSE (#6018)', () => {
+    // LICENSE-APACHE + LICENSE-MIT is the Rust/Go convention. The old exact-name
+    // check reported "No LICENSE file" for a repo whose own topLevelEntries
+    // listed both, in the same response.
+    const entries = ['Cargo.toml', 'LICENSE-APACHE', 'LICENSE-MIT', 'SECURITY.md', '.gitignore'];
+    const gaps = identifyGaps(entries, 'github-actions', 'Rust');
+    expect(gaps).not.toContain('No LICENSE file');
   });
 
   it('vitest.config.ts satisfies test detection', () => {
