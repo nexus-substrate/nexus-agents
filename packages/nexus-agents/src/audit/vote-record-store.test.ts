@@ -453,6 +453,37 @@ describe('persistVoteRecord', () => {
     expect(statSync(tracked).size).toBe(bytesBefore);
   });
 
+  it('the refusal names a throwaway path, not the env var that reached the ledger (#6081)', () => {
+    // `NEXUS_VOTE_RECORDS_PATH` is the very variable that pointed at the
+    // tracked file, and `persistVoteRecord` has no `repoPath` option. A remedy
+    // of "set NEXUS_VOTE_RECORDS_PATH" sends the reader back into the same
+    // refusal; the message has to say WHERE to point it instead.
+    const root = findRepoRoot(process.cwd());
+    if (root === null) throw new Error('test must run inside the source checkout');
+    process.env[VOTE_RECORDS_PATH_ENV] = join(root, VOTE_RECORDS_REL_PATH);
+    let message = '';
+    try {
+      persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: undefined,
+        id: 'vote-guard-remedy',
+        proposal: 'guard fixture — must never reach the tracked ledger',
+        strategy: 'higher_order',
+        result: consensusResult(),
+        votes,
+      });
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    } finally {
+      delete process.env['NEXUS_VOTE_RECORDS_PATH'];
+    }
+    expect(message).toMatch(/#4415/);
+    expect(message).toMatch(/throwaway path such as a temp directory/);
+    expect(message).toMatch(/Point NEXUS_VOTE_RECORDS_PATH \(or the explicit filePath\)/);
+    expect(message).not.toMatch(/or set NEXUS_VOTE_RECORDS_PATH/);
+    expect(message).not.toMatch(/repoPath/);
+  });
+
   it('still writes to any other absolute path from the env override (#6070)', () => {
     process.env[VOTE_RECORDS_PATH_ENV] = filePath;
     try {

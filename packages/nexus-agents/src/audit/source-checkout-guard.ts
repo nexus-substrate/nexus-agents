@@ -61,7 +61,10 @@ export function isUnderTestRunner(): boolean {
  * @param trackedRelPath - the ledger's path relative to the repo root, e.g.
  *   `governance/vote-records.jsonl`.
  * @param overrideEnvVar - the per-ledger env var named in the refusal so the
- *   reader knows which escape hatch to use.
+ *   reader knows which escape hatch to use. The remedy says where to POINT it
+ *   (a throwaway path), not merely to set it: for the vote store the env var
+ *   is usually the very thing that reached the tracked file, and neither
+ *   store's persist function takes a `repoPath` option (#6081).
  */
 export function assertNotSourceCheckoutWrite(
   filePath: string,
@@ -75,7 +78,8 @@ export function assertNotSourceCheckoutWrite(
   throw new Error(
     `Refusing to write ${filePath} from a test run (#4415): this is the source ` +
       "checkout's tracked, hash-chained audit file, and a fabricated record that " +
-      'chains cleanly is indistinguishable from a real verdict. Pass repoPath to a ' +
-      `throwaway repo, or set ${overrideEnvVar}.`
+      'chains cleanly is indistinguishable from a real verdict. ' +
+      `Point ${overrideEnvVar} (or the explicit filePath) at a throwaway path such ` +
+      'as a temp directory.'
   );
 }
