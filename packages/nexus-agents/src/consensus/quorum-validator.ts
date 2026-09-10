@@ -124,6 +124,18 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   weighted_byzantine: SUPERMAJORITY_THRESHOLD,
 };
 
+/**
+ * Tolerance under which approve and reject tallies are an exact tie (#6051).
+ *
+ * Weighted tallies are sums of voter weights (optionally scaled by vote
+ * confidence), so two panels that tie in exact arithmetic can differ at the
+ * 1e-16 level in IEEE-754 (`0.1 + 0.2 + 1.0 !== 1.3`). A strict `===` would
+ * call that a 2e-16 majority; this tolerance is far above float noise and far
+ * below the smallest weight difference a caller could intend (weights are
+ * conventionally in [0, 1] with a handful of decimals).
+ */
+const TIE_TOLERANCE = 1e-9;
+
 /** Inputs to the quorum-status calculation, grouped to stay within max-params. */
 interface QuorumStatusInput {
   readonly voteCounts: VoteCounts;
@@ -170,6 +182,14 @@ export class QuorumValidator implements IQuorumValidator {
     // Check if quorum reached
     if (!breakdown.quorumReached) {
       return this.buildNotReachedResult(breakdown, config);
+    }
+
+    // A tie is not a decision (#6051). At the schema-minimum threshold (0.5)
+    // both sides clear the bar, and the old `>=` tie-break reported a 3-3
+    // panel as `approve` with the only tie signal (confidence 0) left for the
+    // caller to notice. Keep the tie out of the reached path entirely.
+    if (this.isTie(breakdown)) {
+      return this.buildTieResult(breakdown);
     }
 
     // Determine decision
@@ -446,15 +466,47 @@ export class QuorumValidator implements IQuorumValidator {
     };
   }
 
-  private buildReachedResult(breakdown: QuorumBreakdown): QuorumValidationResult {
+  /** The tallies a decision is drawn from: weighted when weights apply, else headcount. */
+  private decisiveTallies(breakdown: QuorumBreakdown): {
+    approves: number;
+    rejects: number;
+    total: number;
+  } {
     const { voteCounts, weightedCounts } = breakdown;
+    return {
+      approves: weightedCounts?.approve ?? voteCounts.approve,
+      rejects: weightedCounts?.reject ?? voteCounts.reject,
+      total: weightedCounts?.totalWeight ?? voteCounts.total,
+    };
+  }
 
-    // Determine winning decision
-    const approves = weightedCounts?.approve ?? voteCounts.approve;
-    const rejects = weightedCounts?.reject ?? voteCounts.reject;
-    const total = weightedCounts?.totalWeight ?? voteCounts.total;
+  private isTie(breakdown: QuorumBreakdown): boolean {
+    const { approves, rejects } = this.decisiveTallies(breakdown);
+    return Math.abs(approves - rejects) < TIE_TOLERANCE;
+  }
 
-    const decision: 'approve' | 'reject' = approves >= rejects ? 'approve' : 'reject';
+  /**
+   * A tie reuses the existing `no_consensus` variant rather than a new status
+   * member (a new member is breaking for exhaustive switches downstream). The
+   * tie survives in `details`, which is the only place it can be read from.
+   */
+  private buildTieResult(breakdown: QuorumBreakdown): QuorumValidationResult {
+    const { approves, rejects } = this.decisiveTallies(breakdown);
+    const kind = breakdown.weightedCounts === undefined ? '' : ' (weighted)';
+    return {
+      status: 'not_reached',
+      reason: 'no_consensus',
+      details: `tie: ${formatTally(approves)} approve vs ${formatTally(rejects)} reject${kind}; consensus not reached`,
+    };
+  }
+
+  private buildReachedResult(breakdown: QuorumBreakdown): QuorumValidationResult {
+    const { approves, rejects, total } = this.decisiveTallies(breakdown);
+
+    // Determine winning decision. A tie never reaches here (`isTie` guards
+    // the call), so the comparison is strict: `>=` would silently re-open the
+    // tie-as-approval defect if the guard were ever removed (#6051).
+    const decision: 'approve' | 'reject' = approves > rejects ? 'approve' : 'reject';
     const confidence = total > 0 ? Math.abs(approves - rejects) / total : 0;
 
     return {
@@ -464,6 +516,11 @@ export class QuorumValidator implements IQuorumValidator {
       reasoning: breakdown.reasoning,
     };
   }
+}
+
+/** Integers print as counts (`3`); weighted sums keep two decimals (`1.30`). */
+function formatTally(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 /**

@@ -255,6 +255,32 @@ describe('determineOutcome', () => {
     const result = determineOutcome(votes, makeConfig());
     expect(['needs_revision', 'no_consensus', 'approved', 'rejected']).toContain(result);
   });
+
+  // #6051: at the schema-minimum threshold (0.5) a 3-3 split used to be
+  // reported as `approved` because the validator broke the tie with `>=`.
+  it('returns needs_revision for a 3-3 tie at the 0.5 threshold, not approved', () => {
+    const votes = [
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'reject' }),
+      makeVote({ decision: 'reject' }),
+      makeVote({ decision: 'reject' }),
+    ];
+    expect(determineOutcome(votes, makeConfig({ agreementThreshold: 0.5 }))).toBe('needs_revision');
+  });
+
+  it('still returns approved for a 4-2 split at the 0.5 threshold', () => {
+    const votes = [
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'approve' }),
+      makeVote({ decision: 'reject' }),
+      makeVote({ decision: 'reject' }),
+    ];
+    expect(determineOutcome(votes, makeConfig({ agreementThreshold: 0.5 }))).toBe('approved');
+  });
 });
 
 // ============================================================================
