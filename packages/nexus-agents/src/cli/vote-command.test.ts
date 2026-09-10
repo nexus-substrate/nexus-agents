@@ -641,6 +641,19 @@ describe('voteCommand persists to the audit chain (#4924)', () => {
     expect(firstCall?.[0]).toMatchObject({ strategy: 'higher_order' });
   });
 
+  it('records the options the caller declared (#6053)', async () => {
+    // The entry hop `declaredOptions: options.options` at vote-command.ts had no
+    // test; mutating it to `undefined` left the suite green. That is the #6049
+    // defect in its CLI location. The recorder is mocked here, so the assertion
+    // is on what the CLI HANDS it — the hop this file owns.
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+
+    await voteCommand({ proposal: 'p', options: ['A', 'B'] });
+
+    const firstCall = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({ declaredOptions: ['A', 'B'] });
+  });
+
   it('records a rejection too', async () => {
     // A rejected vote is a decision. Recording only approvals would make the
     // chain a record of what passed rather than of what was decided.
