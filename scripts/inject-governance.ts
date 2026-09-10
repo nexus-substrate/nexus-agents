@@ -25,10 +25,10 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as prettier from 'prettier';
 import { Node, Project, SyntaxKind, SourceFile } from 'ts-morph';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
+import { formatWithPrettier, firstDifferingLine, END_OF_FILE } from './generated-file-drift.js';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { parseCommandCatalog, type ParsedCatalogEntry } from './parse-cli-command-catalog.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
@@ -90,20 +90,10 @@ async function writeFormatted(path: string, content: string): Promise<void> {
   writeFileSync(path, await formatWithPrettier(path, content));
 }
 
-/**
- * The ONE formatting authority for generated files (#6062): prettier, with the
- * config resolved for `path` and `path`'s parser. Both the writer
- * ({@link writeFormatted}) and the staleness check
- * ({@link checkClaudeAgnosticBlock}) go through here, so what `inject` writes
- * and what `check` expects are normalized by the same pass. When they were
- * not, any AGENTS.md prose prettier reshapes (an inline code span wrapped
- * across a line break is enough) made `check` fail forever while prescribing
- * an `inject` that changed nothing.
- */
-export async function formatWithPrettier(path: string, content: string): Promise<string> {
-  const config = await prettier.resolveConfig(path);
-  return prettier.format(content, { ...(config ?? {}), filepath: path });
-}
+// `formatWithPrettier` (#6062) — the ONE formatting authority both the writer
+// ({@link writeFormatted}) and the staleness check ({@link checkClaudeAgnosticBlock})
+// go through — lives in `generated-file-drift.ts` since #6002, shared with the
+// research-index generator.
 
 // Markers for governance sections
 
@@ -1025,30 +1015,6 @@ function sliceBetween(content: string, startMarker: string, endMarker: string): 
   const end = content.indexOf(endMarker, start);
   if (start === -1 || end === -1) return undefined;
   return content.slice(start, end + endMarker.length);
-}
-
-/** Marker for a side that ran out of lines before the other did. */
-const END_OF_BLOCK = '<end of block>';
-/** The same, for the whole-file comparison (#6087). */
-const END_OF_FILE = '<end of file>';
-
-/**
- * The first line at which two texts differ: its 0-based index plus the
- * `expected` and `onDisk` text at that index (or `exhausted` for a side that
- * ran out of lines first). The caller guarantees the texts are not equal, so a
- * line is always found.
- */
-function firstDifferingLine(
-  expected: string,
-  onDisk: string,
-  exhausted: string = END_OF_BLOCK
-): { index: number; expected: string; onDisk: string } {
-  const a = expected.split('\n');
-  const b = onDisk.split('\n');
-  const limit = Math.max(a.length, b.length);
-  let index = 0;
-  while (index < limit && a[index] === b[index]) index += 1;
-  return { index, expected: a[index] ?? exhausted, onDisk: b[index] ?? exhausted };
 }
 
 /**
