@@ -436,6 +436,95 @@ Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELIS
 - **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
 - **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
 - **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).
+- **Artifact communication** — commit/PR/issue/comment/changeset bodies each have ONE job; see the section below. Constrains the report, never the work.
+
+---
+
+## Artifact communication
+
+_Rules for the ARTIFACTS below adapted from [i-have-adhd](https://github.com/ayghri/i-have-adhd)
+(MIT). Most of that skill's voice rules are deliberately NOT adopted — see the
+end of this section for the measurement that says why._
+
+**Documentation style** above governs docs. This governs the artifacts an agent
+writes for a human to read later: **commit body, PR body, issue body,
+issue/PR comment, changeset**.
+
+**It constrains the REPORT, never the WORK.** Nothing here limits how many files
+to read, how much evidence to gather, how many mutations to run, or how deep a
+review goes. A concise report of a thorough investigation is the goal; a long
+report of a shallow one is the failure. Where brevity and completeness conflict,
+completeness wins — see the pointers below.
+
+### One job per artifact
+
+The measured problem is not verbose artifacts, it is the SAME change narrated
+independently three times. One patch (#6052) carried a 647-word PR body, a
+707-word commit body and a 187-word changeset with near-zero verbatim overlap —
+re-derived, not copy-pasted. Give each artifact its one job:
+
+| Artifact        | Its one job                                                          | Audience                      |
+| --------------- | -------------------------------------------------------------------- | ----------------------------- |
+| **Commit body** | Why this change exists, for someone reading `git log`                | A future bisecter             |
+| **PR body**     | What a reviewer needs to DECIDE: the defect, the evidence, the risks | The reviewer, before merge    |
+| **Changeset**   | What a CONSUMER of the package needs to know                         | Someone reading the CHANGELOG |
+| **Issue body**  | What the problem is and what would unblock it                        | Whoever picks it up           |
+| **Comment**     | The one thing that moved since the last comment                      | Thread participants           |
+
+Two consequences that are easy to get backwards:
+
+- **The changeset is never a pointer.** It becomes a CHANGELOG entry read by
+  people who never open GitHub, so it must stand alone. If any artifact shrinks
+  to a link, it is the commit body.
+- **A squash merge writes the commit body for you.** GitHub concatenates the
+  branch commit messages into it, so on a squashed PR that body is DERIVED, not
+  authored. Keep branch commit messages tight, or author the squash body
+  deliberately — do not treat the result as a third place to re-argue the change.
+
+### Where completeness wins — existing authorities, not new rules
+
+There is no list cap here on purpose. Two calibrated caps already exist where
+they bind ([`skills/docs-review`](./skills/docs-review/SKILL.md) surfaces the top
+10; [`skills/context-engineering`](./skills/context-engineering/SKILL.md) caps
+subagent output at 2000 characters), and a third number in this file would be the
+sprawl **Anti-sprawl** forbids. Agent PR bodies carry a median of 11 list rows
+and in some findings the correlation ACROSS the rows is the finding, so a cap
+would delete the evidence.
+
+When brevity would cost coverage, these already decide it:
+
+- [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md) — "Compressed
+  summaries that hide coverage gaps are the worst-case output: they look complete
+  but silently miss scope. Always prefer 'honestly partial' over 'dishonestly whole.'"
+- The Mission section above — a review must state which portion was reviewed.
+- [`.rules/discovered-issues.md`](./.rules/discovered-issues.md) — an out-of-scope
+  bug is captured as an ISSUE, not omitted and not narrated inline. Cite the
+  number in one line and move on.
+- [`.rules/autonomous.md`](./.rules/autonomous.md) — the `Done this turn: / Up next:`
+  block is required and is not padding.
+
+### No invented measurements
+
+Do not put a wall-clock estimate in an artifact. Reading a clock and estimating a
+duration are different capabilities: **Time authority** above supplies the first,
+and nothing supplies the second — an agent gets no feedback on how long its own
+past work actually took, so a number in minutes is invented rather than measured,
+and this repo treats an invented measurement as worse than an absent one. Give
+the size in checkable units — files touched, gates still to run, whether the
+tests already exist — or say it is unknown.
+
+### What was measured, and what was not
+
+Recorded so a later sweep can tell whether this section changed anything. Over
+the 10 most recent agent-authored PRs, 25 issues, 20 commits and 25 changesets:
+preamble openings **0 of 10** PR bodies and **0 of 25** issues; changeset median
+**159 words**; agent PR bodies median **644 words**; commit bodies median **272
+words**; agent PR list rows median **11**.
+
+Because the hit rate for "no preamble / lead with the action" was ZERO, those
+voice rules are NOT adopted — a rule that cannot fire is the defect the Mission
+section names, not a style improvement. TURN summaries were not measured and are
+not governed here; they are covered by `.rules/autonomous.md`.
 
 ---
 
