@@ -125,6 +125,16 @@ Set `NEXUS_PORTABLE_MODE=0` in CI's environment. The opt-out wins over every heu
 
 It only fires when `<cwd>` is a git repository (has a `.git/` directory). nexus-agents doesn't ancestor-walk for `.git` discovery — see [#2301](https://github.com/nexus-substrate/nexus-agents/issues/2301) for the deferred design pass on safe ancestor walking. If you're in a subdirectory of a git repo, run nexus-agents from the repo root or add `.nexus-agents/` to `.gitignore` manually.
 
+### Codex seats fail with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`
+
+**Cause.** The host has `kernel.apparmor_restrict_unprivileged_userns=1` (the Ubuntu 24.04+ default; check with `sysctl kernel.apparmor_restrict_unprivileged_userns`). Codex's Linux sandbox is bwrap, which unshares a network namespace and then cannot bring up loopback because the unprivileged namespace gets no `CAP_NET_ADMIN`. Every bwrap-backed mode fails the same way — `read-only`, `workspace-write`, network off — before codex reads a single file, so the two codex voter seats (`devex`, `scope_steward`) either abstained with "repository inspection failed" or voted on the proposal text alone. Deterministic, not intermittent.
+
+**What nexus-agents does.** On Linux only, both codex spawn paths (`codex mcp-server` for the voter seats, `codex exec` for the subprocess adapter) pass `-c features.use_legacy_landlock=true`, which selects codex's landlock backend instead of bwrap ([#6093](https://github.com/nexus-substrate/nexus-agents/issues/6093)). Measured on codex-cli 0.153.4: reads work and writes are still refused with `Permission denied`. Codex lists the feature as deprecated, so a future codex release may drop it; if the loopback error returns after a codex upgrade, that is the first thing to check.
+
+**Read-scope caveat.** Legacy landlock is read-only-all-disk. That is the same read scope the `read-only` bwrap profile already granted, so this changes nothing about what a seat can see — a voter has always been able to read dotfiles under the cwd or home and echo them into its recorded reasoning. Run the voter panel from a checkout that does not sit next to secrets you would not paste into a vote record.
+
+**Host-level alternative.** If you would rather keep bwrap, either set `kernel.apparmor_restrict_unprivileged_userns=0` (`sysctl -w`, and persist it under `/etc/sysctl.d/`) or install an AppArmor profile that grants bwrap `userns` — Ubuntu ships such profiles for its own bwrap consumers under `/etc/apparmor.d/`. The flag is still passed either way; it is harmless when bwrap would have worked.
+
 ## What's NOT touched by portable mode
 
 - `~/.claude/` (Claude Code CLI's own data)

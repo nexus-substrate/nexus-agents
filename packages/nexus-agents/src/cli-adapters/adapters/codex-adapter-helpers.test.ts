@@ -12,6 +12,7 @@ import type { ILogger } from '../../core/logger.js';
 import type {} from '../types.js';
 import {
   CODEX_LEGACY_DEFAULTS,
+  codexPlatformSandboxArgs,
   createCodexError,
   normalizeCodexResponse,
   toCodexModelSlug,
@@ -140,5 +141,23 @@ describe('toCodexModelSlug', () => {
       expect.stringContaining('not in the model registry'),
       expect.objectContaining({ model: 'codex-unknown-xyz' })
     );
+  });
+});
+
+// ============================================================================
+// codexPlatformSandboxArgs (#6093)
+// ============================================================================
+
+describe('codexPlatformSandboxArgs (#6093)', () => {
+  it('passes the legacy-landlock config on linux', () => {
+    expect(codexPlatformSandboxArgs('linux')).toEqual(['-c', 'features.use_legacy_landlock=true']);
+  });
+
+  it.each(['darwin', 'win32', 'freebsd'] as const)('passes nothing on %s', (platform) => {
+    expect(codexPlatformSandboxArgs(platform)).toEqual([]);
+  });
+
+  it('defaults the platform to process.platform', () => {
+    expect(codexPlatformSandboxArgs()).toEqual(codexPlatformSandboxArgs(process.platform));
   });
 });

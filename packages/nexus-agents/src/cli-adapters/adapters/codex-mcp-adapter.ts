@@ -20,7 +20,6 @@ import type {
   CliError,
   ModelInfo,
   ResolvedExecutionOptions,
-  BaseAdapterOptions,
 } from '../types.js';
 import type { Result } from '../../core/index.js';
 import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../core/index.js';
@@ -28,7 +27,11 @@ import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
 
-import { toCodexModelSlug } from './codex-adapter-helpers.js';
+import {
+  type CodexAdapterOptions,
+  codexPlatformSandboxArgs,
+  toCodexModelSlug,
+} from './codex-adapter-helpers.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   type McpToolResult,
@@ -58,13 +61,15 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   readonly transport: CliTransport = 'mcp';
 
   private readonly model: string;
+  private readonly platform: NodeJS.Platform;
   private client: Client | undefined;
   private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
 
-  constructor(options?: BaseAdapterOptions) {
+  constructor(options?: CodexAdapterOptions) {
     super(options?.logger ?? createLogger({ component: 'codex-mcp-adapter' }));
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
+    this.platform = options?.platform ?? process.platform;
   }
 
   /**
@@ -119,9 +124,12 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     const childDepth = nextCodexMcpDepthOrThrow();
 
     try {
+      // The `sandbox: 'read-only'` tool call below runs inside codex's Linux
+      // sandbox; on Linux, select the legacy landlock backend so it starts
+      // under AppArmor's userns restriction (#6093, codexPlatformSandboxArgs).
       this.mcpTransport = new StdioClientTransport({
         command: 'codex',
-        args: ['mcp-server'],
+        args: ['mcp-server', ...codexPlatformSandboxArgs(this.platform)],
         stderr: 'pipe',
         env: { [NEXUS_MCP_DEPTH_ENV]: childDepth },
       });
