@@ -19,6 +19,7 @@ import {
   COLLISION_HEADER,
   collidingNames,
   extractSurface,
+  normalizeTypeText,
   renderSurface,
 } from './extract-api-surface.js';
 
@@ -552,6 +553,57 @@ describe('union members are recorded in declared-set order, not resolution order
     // prefix into the normaliser; a split that ignored the colon would sort
     // `[key: string]: 'n'` as a member.
     expect(out).toContain("  [key: string]: 'm' | 'n' | unknown");
+  });
+
+  it('an index signature is sorted without its trailing semicolon', () => {
+    // `getIndexSignatures()[i].getText()` includes the `;` that ends the
+    // declaration, so `unknown;` was a member text and the semicolon landed
+    // mid-line whenever the last-declared member did not sort last:
+    // `[key: string]: 'a'; | unknown`.
+    const out = surfaceOf({ '/index.ts': "export interface I { [key: string]: unknown | 'a'; }" });
+    expect(out).toContain("  [key: string]: 'a' | unknown\n");
+    expect(out).not.toContain('; |');
+  });
+
+  it('reordering the PROPERTIES inside one union member renders the same text', () => {
+    // The union sort key must be the canonical member text. Sorting unions
+    // before the object-member sort keyed on the checker's property order —
+    // the source declaration order — so this pair rendered differently, the
+    // class the union sort exists to close.
+    const a = surfaceOf({
+      '/index.ts':
+        "export type F = { type: 'json_object' } | { schema: number; type: 'json_schema' };",
+    });
+    const b = surfaceOf({
+      '/index.ts':
+        "export type F = { type: 'json_object' } | { type: 'json_schema'; schema: number };",
+    });
+    expect(b).toBe(a);
+  });
+
+  it('every line of the committed snapshot is a fixed point of normalizeTypeText', () => {
+    // A normaliser that is not idempotent leaves lines that will move on the
+    // next regeneration for no reason. The only tolerated exception is the
+    // pre-existing #6080 class, where `sortTypeMembers` counts the `>` of
+    // `=>` as a closer and appends a `;` on every pass — so a second pass may
+    // differ from the first ONLY by semicolons. Nothing else may join it.
+    const snapshot = readFileSync(join(import.meta.dirname, '..', 'api-surface.txt'), 'utf-8');
+    // A method line is `name` + type with no separator (`m(a: A) => B`, or
+    // `m((a: A) => B) | undefined` for an optional method), so the name has
+    // to come off before the type can be re-normalised.
+    const memberText = (line: string): string => {
+      if (line.startsWith('  = ') || line.startsWith('  : ')) return line.slice(4);
+      const method = /^ {2}(?:[A-Za-z_$][\w$]*|\[[^\]]+\])(?=[(<])/.exec(line);
+      return method === null ? line.slice(2) : line.slice(method[0].length);
+    };
+    const lines = snapshot.split('\n').filter((l) => l.startsWith('  '));
+    const unstable = lines.filter((l) => normalizeTypeText(memberText(l)) !== memberText(l));
+    const semicolonsOnly = (l: string): boolean =>
+      normalizeTypeText(memberText(l)).replace(/;/g, '') === memberText(l).replace(/;/g, '');
+    expect(unstable.filter((l) => !semicolonsOnly(l))).toEqual([]);
+    // The tolerated class is bounded, not open-ended: 18 lines today. A
+    // growing count means a new instance of #6080 shipped.
+    expect(unstable.length).toBeLessThanOrEqual(18);
   });
 
   it('renders boolean as boolean', () => {

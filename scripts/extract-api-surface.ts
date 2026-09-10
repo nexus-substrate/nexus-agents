@@ -97,13 +97,16 @@ function stripInlineComments(text: string): string {
  * failed on every PR forever. A gate that always fails gets switched off,
  * which is no better than one that never fires.
  */
-function normalizeTypeText(text: string): string {
-  // Unions are canonicalised BEFORE object members are sorted: two overloads
-  // of one method differ only in their parameter types, so their relative
-  // order in the member sort would otherwise depend on the union order the
-  // checker happened to print.
-  return sortTypeMembers(
-    canonicalSegment(
+export function normalizeTypeText(text: string): string {
+  // Object members are sorted BEFORE unions are: the union sort key must be
+  // the canonical member text, or `{ a; b } | { c }` and `{ b; a } | { c }`
+  // — the same declared set — sort by the checker's property order, which is
+  // the source declaration order. The first cut ran the two the other way
+  // round and 18 lines of the regenerated snapshot were not fixed points of
+  // this function. `sortTypeMembers` recurses into every `{}` group, so by
+  // the time a union member is compared its objects are already canonical.
+  return canonicalSegment(
+    sortTypeMembers(
       stripInlineComments(text)
         .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
         // A dependency's type can be printed as an `import("<abs path>")` into
@@ -417,7 +420,12 @@ function propertyLines(node: Node): string[] {
   // An interface whose only member is `[key: string]: unknown` recorded NOTHING,
   // so its shape could change with no diff. Same for accessors.
   const indexes = Node.isInterfaceDeclaration(node)
-    ? node.getIndexSignatures().map((i) => `  ${normalizeTypeText(i.getText())}`)
+    ? // The declaration text ends in `;`, which is not part of the type; left
+      // in, it became the last union member's text and moved mid-line when
+      // that member did not sort last (`'a'; | unknown`).
+      node
+        .getIndexSignatures()
+        .map((i) => `  ${normalizeTypeText(i.getText().replace(/;\s*$/, ''))}`)
     : [];
   const accessors = [
     ...node
