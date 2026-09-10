@@ -17,14 +17,28 @@
  * leak into the existing suite.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const captured: { proposal: string | undefined } = { proposal: undefined };
+/** When set, the mock returns one live approve so a record can be persisted. */
+const liveVote = { on: false };
 
 vi.mock('../../cli/voter-agents.js', () => ({
   collectRealVotes: (opts: { proposal: string }) => {
     captured.proposal = opts.proposal;
-    return Promise.resolve([]);
+    if (!liveVote.on) return Promise.resolve([]);
+    return Promise.resolve([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'ok' },
+        source: 'cli',
+        cli: 'claude',
+        processingTimeMs: 1,
+      },
+    ]);
   },
 }));
 vi.mock('../middleware/tool-wrapper.js', () => ({
@@ -39,6 +53,8 @@ vi.mock('../middleware/secure-handler.js', () => ({
 import { registerPrReviewTool } from './pr-review-tool.js';
 import { createLogger } from '../../core/index.js';
 import type { HandlerContext } from '../middleware/secure-handler.js';
+import { PrReviewRecordSchema } from '../../audit/pr-review-record.js';
+import { PR_REVIEW_RECORDS_PATH_ENV } from '../../audit/pr-review-record-store.js';
 
 type Ctx = Pick<HandlerContext, 'logger' | 'sanitization'>;
 type Handler = (args: unknown, ctx: Ctx) => Promise<unknown>;
@@ -68,7 +84,13 @@ const ARGS = {
 function ctx(commentsRemoved: number): Ctx {
   return {
     logger: createLogger({ tool: 'pr-review-disclosure.test' }),
-    sanitization: { wasModified: commentsRemoved > 0, commentsRemoved },
+    sanitization: {
+      wasModified: commentsRemoved > 0,
+      commentsRemoved,
+      fieldsModified: commentsRemoved,
+      tagsRemoved: 0,
+      rawFieldHashes: {},
+    },
   };
 }
 
@@ -92,5 +114,89 @@ describe('the middleware disclosure reaches the voter proposal (#5385)', () => {
 
     expect(captured.proposal).toBeDefined();
     expect(captured.proposal).not.toContain('HTML comment(s) were removed');
+  });
+});
+
+describe('the middleware disclosure reaches the persisted RECORD (#5385)', () => {
+  // The other seam. `sanitizationViewOf` builds the producer's input from
+  // `ctx.sanitization`, and nothing downstream of it was covered: hardcoding
+  // `fieldsModified: 0` at that call site left every other suite green, which is
+  // precisely how the tag-strip blind spot could have been reintroduced.
+  //
+  // `commentsRemoved` and `fieldsModified` are given DIFFERENT values on
+  // purpose. Equal ones would let a handler that forwarded the wrong field pass.
+  let dir: string;
+  let prev: string | undefined;
+
+  beforeEach(() => {
+    liveVote.on = true;
+    dir = mkdtempSync(join(tmpdir(), 'pr-review-disclosure-'));
+    prev = process.env[PR_REVIEW_RECORDS_PATH_ENV];
+    process.env[PR_REVIEW_RECORDS_PATH_ENV] = join(dir, 'records.jsonl');
+  });
+
+  afterEach(() => {
+    liveVote.on = false;
+    if (prev === undefined) Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+    else process.env[PR_REVIEW_RECORDS_PATH_ENV] = prev;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('carries a MASKED tag strip onto the record and into the note (#5385)', async () => {
+    // The state six ratification seats executed. A comment alongside a tag made
+    // every consumer report the removal as a routine comment strip, because both
+    // renderers branched on `commentsRemoved` first. The record must carry the tag
+    // count and the panel must be warned, WITH the comment present.
+    //
+    // Drives the REAL handler so the whole wire is covered: ctx -> view ->
+    // producer -> record, and ctx -> note -> proposal.
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 5386, baseSha: 'e'.repeat(40) },
+      {
+        logger: createLogger({ tool: 'pr-review-disclosure.test' }),
+        sanitization: {
+          wasModified: true,
+          commentsRemoved: 1,
+          fieldsModified: 1,
+          tagsRemoved: 3,
+          rawFieldHashes: { prDiff: 'b'.repeat(64) },
+        },
+      }
+    );
+
+    const line = readFileSync(process.env[PR_REVIEW_RECORDS_PATH_ENV]!, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')[0];
+    const record = PrReviewRecordSchema.parse(JSON.parse(line!));
+    expect(record.sanitization?.tagsRemoved).toBe(3);
+    expect(record.sanitization?.commentsRemoved).toBe(1);
+    // The panel was told about the tag, not only the comment.
+    expect(captured.proposal).toContain('POSSIBLE PROMPT-INJECTION');
+    expect(captured.proposal).toContain('HTML comment(s) were removed');
+  });
+
+  it('carries BOTH counters from ctx.sanitization onto the record', async () => {
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 5385, baseSha: 'f'.repeat(40) },
+      {
+        logger: createLogger({ tool: 'pr-review-disclosure.test' }),
+        sanitization: {
+          wasModified: true,
+          commentsRemoved: 2,
+          fieldsModified: 5,
+          tagsRemoved: 0,
+          rawFieldHashes: { prDiff: 'a'.repeat(64) },
+        },
+      }
+    );
+
+    const line = readFileSync(process.env[PR_REVIEW_RECORDS_PATH_ENV]!, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')[0];
+    const record = PrReviewRecordSchema.parse(JSON.parse(line!));
+    expect(record.sanitization?.commentsRemoved).toBe(2);
+    expect(record.sanitization?.fieldsModified).toBe(5);
+    // And the binding used the RAW hash the middleware supplied, not prDiff's.
+    expect(record.reviewedDiffHash).toBe('a'.repeat(64));
   });
 });

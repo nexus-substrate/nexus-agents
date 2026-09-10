@@ -23,6 +23,7 @@ describe('tool-input-sanitizer', () => {
           detectedPatterns: [],
           sanitizationIncomplete: false,
           commentsRemoved: 0,
+          tagsRemoved: 0,
         });
         expect(sanitizeToolInput(undefined)).toEqual({
           sanitized: undefined,
@@ -31,6 +32,7 @@ describe('tool-input-sanitizer', () => {
           detectedPatterns: [],
           sanitizationIncomplete: false,
           commentsRemoved: 0,
+          tagsRemoved: 0,
         });
       });
 
@@ -266,6 +268,7 @@ describe('tool-input-sanitizer', () => {
         detectedPatterns: [],
         sanitizationIncomplete: false,
         commentsRemoved: 0,
+        tagsRemoved: 0,
       };
       logSanitizationResult(result, logger, 'orchestrate');
       expect(logger.warn).toHaveBeenCalledWith(
@@ -283,6 +286,7 @@ describe('tool-input-sanitizer', () => {
         detectedPatterns: ['system_prompt_override'],
         sanitizationIncomplete: false,
         commentsRemoved: 0,
+        tagsRemoved: 0,
       };
       logSanitizationResult(result, logger, 'run_workflow');
       expect(logger.warn).toHaveBeenCalledWith('Injection patterns detected in tool input', {
@@ -300,6 +304,7 @@ describe('tool-input-sanitizer', () => {
         detectedPatterns: [],
         sanitizationIncomplete: false,
         commentsRemoved: 0,
+        tagsRemoved: 0,
       };
       logSanitizationResult(result, logger, 'test_tool');
       expect(logger.warn).not.toHaveBeenCalled();
@@ -314,6 +319,7 @@ describe('tool-input-sanitizer', () => {
         detectedPatterns: ['role_impersonation'],
         sanitizationIncomplete: false,
         commentsRemoved: 0,
+        tagsRemoved: 0,
       };
       logSanitizationResult(result, logger, 'execute_expert');
       expect(logger.warn).toHaveBeenCalledTimes(2);
@@ -547,6 +553,7 @@ describe('HTML comments are removed from untrusted input (#5258)', () => {
           detectedPatterns: [],
           sanitizationIncomplete: false,
           commentsRemoved: 2,
+          tagsRemoved: 0,
         },
         logger,
         'pr_review'
@@ -567,6 +574,7 @@ describe('HTML comments are removed from untrusted input (#5258)', () => {
           detectedPatterns: [],
           sanitizationIncomplete: false,
           commentsRemoved: 0,
+          tagsRemoved: 0,
         },
         logger,
         'pr_review'

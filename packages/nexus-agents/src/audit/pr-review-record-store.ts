@@ -32,6 +32,7 @@ import { createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
   PrReviewDiffProvenance,
+  PrReviewSanitization,
   PrReviewRecord,
   PrReviewVerdict,
   PrReviewVoteCounts,
@@ -74,6 +75,14 @@ export interface BuildPrReviewRecordInput {
    */
   readonly diffProvenance?: PrReviewDiffProvenance | undefined;
   /**
+   * What a sanitizer removed between the bound bytes and the reviewed text
+   * (#5385). Optional here because the schema field is optional — a producer
+   * whose diff never passed a sanitizer must be able to say nothing rather than
+   * assert "nothing was removed". Producers that DO sit behind the MCP
+   * middleware must pass it.
+   */
+  readonly sanitization?: PrReviewSanitization | undefined;
+  /**
    * Monotonic sequence number for this record. Defaults to 0 (first record)
    * when omitted; the future producer supplies (max existing sequence)+1.
    */
@@ -98,7 +107,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       ? input.summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
       : input.summary;
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.2',
+    version: '1.3',
     sequence: input.sequence ?? 0,
     prNumber: input.prNumber,
     baseSha: input.baseSha,
@@ -115,6 +124,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
     },
     summary: summaryTruncated,
     ...(input.diffProvenance !== undefined ? { diffProvenance: input.diffProvenance } : {}),
+    ...(input.sanitization !== undefined ? { sanitization: input.sanitization } : {}),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };

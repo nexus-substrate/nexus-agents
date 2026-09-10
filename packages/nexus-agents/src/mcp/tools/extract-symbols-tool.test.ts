@@ -50,7 +50,13 @@ function makeCtx(): Parameters<typeof extractSymbolsHandler>[1] {
     } as unknown as Parameters<typeof extractSymbolsHandler>[1]['requestContext'],
     logger: createLogger({ component: 'test' }),
     // #5385: the middleware always discloses what it removed; nothing here.
-    sanitization: { wasModified: false, commentsRemoved: 0 },
+    sanitization: {
+      wasModified: false,
+      commentsRemoved: 0,
+      fieldsModified: 0,
+      tagsRemoved: 0,
+      rawFieldHashes: {},
+    },
   };
 }
 

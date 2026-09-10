@@ -27,6 +27,7 @@ import {
 } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -42,7 +43,12 @@ import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
 import type { Finding } from './pr-review-findings.js';
-import { persistReviewRecord, type PrReviewRecordOutcome } from './pr-review-record-producer.js';
+import {
+  persistReviewRecord,
+  type PrReviewRecordOutcome,
+  type ReviewSanitizationInput,
+} from './pr-review-record-producer.js';
+import { removalsBefore, sanitizationViewOf } from './pr-review-sanitization-view.js';
 // prettier-ignore
 import {
   applyPartialCoverageGate,
@@ -460,7 +466,11 @@ function resolveAggregate(
 function preparePanelProposal(
   input: PrReviewInput,
   logger: ILogger,
-  removedBeforeThisCall = 0
+  removedBefore: { comments: number; fields: number; tags: number } = {
+    comments: 0,
+    fields: 0,
+    tags: 0,
+  }
 ): { proposal: string; coverage: PrReviewCoverage | undefined } {
   const { coverage, packedDiff, note } = packDiffForReview(input.prDiff, MAX_DIFF_LENGTH);
   const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
@@ -469,7 +479,7 @@ function preparePanelProposal(
       `pr_review diff over budget — reviewed ${String(coverage.reviewedFiles)} of ${String(coverage.totalFiles)} files, dropped ${String(coverage.droppedFiles.length)}`
     );
   }
-  return { proposal: note + buildPrReviewProposal(body, removedBeforeThisCall), coverage };
+  return { proposal: note + buildPrReviewProposal(body, removedBefore), coverage };
 }
 
 /**
@@ -501,11 +511,21 @@ function rollUpDecisionCost(
 async function executePrReviewBody(
   input: PrReviewInput,
   logger: ILogger,
-  opts: { gatewayAdapters?: readonly IModelAdapter[]; removedBeforeThisCall?: number } = {}
+  opts: {
+    gatewayAdapters?: readonly IModelAdapter[];
+    /**
+     * The middleware's pre-sanitization view (#5385). Grouped, and absent rather
+     * than zero-filled when this call did not come through the secure handler:
+     * a `{rawDiffHash: undefined, commentsRemoved: 0}` default would put a
+     * disclosure on the record asserting a sanitizer ran and removed nothing.
+     */
+    sanitization?: ReviewSanitizationInput;
+  } = {}
 ): Promise<ToolResult> {
   const start = Date.now();
-  const { gatewayAdapters: adapters, removedBeforeThisCall: removed = 0 } = opts;
-  const { proposal, coverage } = preparePanelProposal(input, logger, removed);
+  const { gatewayAdapters: adapters, sanitization } = opts;
+  const removedBefore = removalsBefore(sanitization);
+  const { proposal, coverage } = preparePanelProposal(input, logger, removedBefore);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
     proposal,
@@ -528,6 +548,10 @@ async function executePrReviewBody(
     // #4459: `input.prDiff` is opaque MCP input — it passed the unified-diff
     // shape gate (#4451), but nothing here establishes it is the PR's real diff.
     diffSource: 'caller-supplied',
+    // #5385: the middleware's pre-sanitization view, so the binding matches what
+    // the gate recomputes from git AND the record discloses what the voters
+    // actually read. `undefined` => no sanitizer was in this path.
+    sanitization,
     input,
     aggregate,
     counts,
@@ -555,9 +579,10 @@ async function executePrReviewBody(
  * when one is configured.
  */
 function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
-  // #5385: `removedBeforeThisCall` carries what the middleware stripped BEFORE
-  // dispatch; without it the proposal's own count is 0 and the disclosure is
-  // absent from the one path that persists a governance record.
+  // #5385: the middleware's view carries what it stripped BEFORE dispatch and a
+  // hash of the RAW diff; without it the proposal's own count is 0, the record
+  // binds bytes no voter saw, and the disclosure is absent from the one path
+  // that persists a governance record.
   const adapterOpt = gatewayAdapters !== undefined ? { gatewayAdapters } : {};
   return async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
     const parsed = PrReviewInputSchema.safeParse(args);
@@ -590,14 +615,14 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           run: () =>
             executePrReviewBody(input, ctx.logger, {
               ...adapterOpt,
-              removedBeforeThisCall: ctx.sanitization.commentsRemoved,
+              sanitization: sanitizationViewOf(ctx),
             }),
           logger: ctx.logger,
         });
       }
       return await executePrReviewBody(input, ctx.logger, {
         ...adapterOpt,
-        removedBeforeThisCall: ctx.sanitization.commentsRemoved,
+        sanitization: sanitizationViewOf(ctx),
       });
     } catch (error) {
       // #3731 discoverability: a sync run that times out (or otherwise fails)
@@ -633,6 +658,16 @@ export function registerPrReviewTool(server: McpServer, deps: PrReviewDeps): voi
     // bodies as Tier 2/3; without this the handler took the permissive
     // 'standard' default and `checkSecurityTier` never ran.
     securityTier: 'external',
+    // #5385: bind `reviewedDiffHash` to the bytes the governor gate can
+    // recompute from git, not to the sanitized text the voters read. Those
+    // diverge whenever the sanitizer fires -- HTML comments (#5258) and
+    // XML-like conversation tags -- which is routine, not rare: this repo's own
+    // governance-regeneration PRs carry `<!-- GENERATED:FROM_AGENTS:START -->`,
+    // so the gate could never match on exactly the PRs it exists for.
+    //
+    // The handler receives the HASH, never the raw diff, so restoring gate
+    // parity does not walk the unsanitized text back into prompt construction.
+    rawHashFields: { prDiff: computeReviewedDiffHash },
     rateLimiter: deps.rateLimiter,
     logger,
   });

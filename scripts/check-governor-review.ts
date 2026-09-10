@@ -275,6 +275,7 @@ function matchedRecordOutcome(
       `diff-bound pr_review record found for PR #${String(inputs.prNumber)} ` +
       `(reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, ` +
       `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}` +
+      sanitizationCaveat(match) +
       ledgerCoverage(verification),
   };
 }
@@ -291,6 +292,83 @@ function truncationCaveat(truncated: boolean): string {
   return (
     ` — PARTIAL: the canonical diff exceeded ${String(MAX_REVIEWED_DIFF_BYTES)} bytes, so the ` +
     'hash binds only the first that many bytes; content past the cap is unattested'
+  );
+}
+
+/**
+ * Names the gap between the bytes this gate just bound and the text the voters
+ * actually read (#5385).
+ *
+ * The hash match above proves the record is bound to THIS PR's canonical diff.
+ * It does not prove the panel read that diff: the MCP middleware strips HTML
+ * comments and XML-like tags from tool input before the handler sees it, and
+ * this repo's own governance PRs carry `<!-- GENERATED:… -->` markers. A pass
+ * that does not say so is a partial verification recorded as complete — the
+ * failure CLAUDE.md names on the governor path, and the same shape
+ * {@link truncationCaveat} exists to prevent.
+ *
+ * Four distinguishable states, deliberately: no disclosure at all (the producer
+ * had no sanitizer in its path); a matching hash with BOTH counters zero (a
+ * sanitizer ran and was a genuine no-op); a matching hash with either counter
+ * non-zero (it removed something, but nothing inside the bytes this hash binds
+ * — a sibling field, or a span past the truncation cap); and a DIFFERING hash
+ * (the voters read a stripped rendering of the bound bytes).
+ *
+ * THREE counters, because they measure different things and none derives from
+ * the others: `commentsRemoved` is HTML comments (#5258), `tagsRemoved` is
+ * XML-like conversation-structure tags, and `fieldsModified` counts FIELDS. A
+ * comment and a tag in the SAME field is one modified field, so no arithmetic
+ * over the other two recovers the tag (#5385). The tag clause is therefore
+ * rendered independently of comments — an `else if` between them let a comment
+ * mask a tag, which is the state six ratification seats reproduced.
+ */
+function sanitizationCaveat(match: PrReviewRecord): string {
+  const disclosure = match.sanitization;
+  if (disclosure === undefined) return '';
+
+  // The TAG clause is unconditional on comments. The first version rendered a
+  // single string that reported comments whenever `commentsRemoved > 0`, so a
+  // record carrying BOTH read "sanitizer removed 1 comment(s)" and never
+  // mentioned the tag. Six ratification seats executed that (#5385): an attacker
+  // masks a stripped injection tag behind any HTML comment, and GitHub's default
+  // PR template supplies one, so the masked case was the DEFAULT shape.
+  const clauses: string[] = [];
+  if (disclosure.tagsRemoved > 0) {
+    clauses.push(
+      `${String(disclosure.tagsRemoved)} conversation-structure tag(s) — POSSIBLE PROMPT INJECTION`
+    );
+  }
+  if (disclosure.commentsRemoved > 0) {
+    clauses.push(`${String(disclosure.commentsRemoved)} HTML comment(s)`);
+  }
+  // Independent of the two above, not `clauses.length === 0`: that guard is an
+  // `else if` in disguise, and one routine comment would suppress it —
+  // reproducing the masking pattern this function exists to fix (5th panel).
+  const unattributed =
+    disclosure.fieldsModified - disclosure.commentsRemoved - disclosure.tagsRemoved;
+  if (unattributed > 0) {
+    clauses.push(`${String(unattributed)} field(s), cause unattributed`);
+  }
+
+  if (disclosure.sanitizedDiffHash === match.reviewedDiffHash) {
+    // Equal hashes mean the BOUND BYTES are untouched — not that the sanitizer
+    // was a no-op. The counters span the whole args object while the hash covers
+    // only the truncated `prDiff`, so a strip from a sibling field, or one past
+    // MAX_REVIEWED_DIFF_BYTES, leaves the hashes equal with non-zero counters.
+    // Only ALL counters zero licenses "removed nothing".
+    if (clauses.length === 0) return ' — sanitizer ran and removed nothing';
+    return ` — sanitizer removed ${clauses.join(' and ')}, none inside the bytes this hash binds`;
+  }
+  // A differing hash with NO clause means the sanitizer changed the bound bytes
+  // while reporting no cause. Unreachable today, and rendered as a named state
+  // rather than an empty fragment — `… , stripped before dispatch` reads as a
+  // formatting bug and tells a reader nothing (5th panel, architect residual).
+  const removed = clauses.length > 0 ? clauses.join(' and ') : 'content, cause unreported';
+  return (
+    ' — PARTIAL: the voters read a SANITIZED rendering of these bytes ' +
+    `(sanitizedDiffHash=${disclosure.sanitizedDiffHash.slice(0, 12)}…, ` +
+    `${removed} stripped before dispatch); ` +
+    'the hash binds the raw diff, so content the sanitizer removed was bound but unread'
   );
 }
 

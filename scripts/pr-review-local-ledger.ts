@@ -293,6 +293,11 @@ export async function feedLedgerFromReview(
       : {}),
   };
   return persistReviewRecord({
+    // #5385: no sanitizer is in this path at all — the diff comes straight from
+    // `git diff`, so `input.prDiff` IS the bound bytes. `undefined` says exactly
+    // that; a zero-filled disclosure would instead claim a sanitizer ran and
+    // removed nothing, which is a different (and false) claim.
+    sanitization: undefined,
     // #4459: this feeder ALWAYS hashes the pinned `git diff base..head` output —
     // either passed in from the review it just ran, or regenerated above by
     // `generateCanonicalReviewDiff`. There is no path here that writes a record

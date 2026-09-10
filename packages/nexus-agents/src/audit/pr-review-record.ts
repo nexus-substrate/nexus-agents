@@ -135,6 +135,83 @@ export const PrReviewDiffProvenanceSchema = z
 export type PrReviewDiffProvenance = z.infer<typeof PrReviewDiffProvenanceSchema>;
 
 /**
+ * What the SANITIZER did to the diff between the raw bytes the binding covers
+ * and the text the reviewers actually read (#5385).
+ *
+ * `reviewedDiffHash` binds the RAW diff, because that is the only artifact the
+ * governor gate can recompute from git. But the MCP middleware sanitizes tool
+ * input before the handler sees it — it strips HTML comments and XML-like tags
+ * — so on a repo whose governance PRs carry `<!-- GENERATED:… -->` markers, the
+ * voters demonstrably read different bytes than the record binds.
+ *
+ * That difference is legitimate. Recording the raw hash WITHOUT saying so would
+ * not be: the record would assert "these bytes were reviewed" about bytes no
+ * voter saw. So the disclosure travels with the binding, hash-covered, and a
+ * consumer can tell "the bound bytes survived sanitization" from "a stripped
+ * rendering of them did" by comparing the two hashes.
+ *
+ * ABSENT vs `commentsRemoved: 0`: absence means NO sanitizer was in this
+ * producer's path at all (the local-ledger script reads git directly), which is
+ * a different claim from "a sanitizer ran and removed nothing". Both are honest;
+ * collapsing them would not be.
+ */
+export const PrReviewSanitizationSchema = z
+  .object({
+    /**
+     * The canonical hash (same {@link computeReviewedDiffHash} form) of the
+     * once-sanitized FULL diff. Equal to the record's `reviewedDiffHash` exactly
+     * when the sanitizer changed nothing in `prDiff`.
+     *
+     * NOT "the bytes the voters read", and deliberately not named that. Under
+     * #4140 an over-budget diff is packed to a security-prioritized SUBSET
+     * before the panel prompt is built, so on that path the voters read less
+     * than this hash covers. That reduction is a DIFFERENT one, disclosed
+     * separately in the hash-covered `summary` (`[partial coverage: n/m files
+     * reviewed, dropped: …]`) and enforced by `applyPartialCoverageGate`.
+     *
+     * Keeping them apart is the point: one hash covering both reductions could
+     * not tell an auditor WHICH one moved it. This field isolates the
+     * sanitization gap, which is the one `reviewedDiffHash` alone cannot show.
+     */
+    sanitizedDiffHash: z.string().length(64),
+    /**
+     * HTML comments the middleware stripped before dispatch. Non-zero with an
+     * EQUAL `sanitizedDiffHash` is not a contradiction: the counter is over the
+     * whole args object, the hash only over `prDiff`, so a comment stripped from
+     * a sibling field increments one without moving the other.
+     */
+    commentsRemoved: z.number().int().nonnegative(),
+    /**
+     * How many FIELDS the sanitizer changed at all.
+     *
+     * Required alongside the comment counter because the sanitizer removes TWO
+     * things and `commentsRemoved` counts one: XML-like injection tags
+     * (`<system>`, `<context>`, …) are stripped through a separate counter.
+     * Without this, `commentsRemoved: 0` with equal hashes is ambiguous between
+     * a genuine no-op and a tag stripped from a sibling field — and a consumer
+     * reporting the former would be asserting "nothing was removed" about an
+     * input a prompt-injection tag had just been taken out of.
+     *
+     * `fieldsModified === 0` is therefore the ONLY state that licenses "the
+     * sanitizer removed nothing".
+     */
+    fieldsModified: z.number().int().nonnegative(),
+    /**
+     * XML-like conversation-structure tags the sanitizer removed.
+     *
+     * Recorded separately because it CANNOT be derived from the other two.
+     * `fieldsModified` counts FIELDS, so a comment and a tag in one field is a
+     * single modified field, byte-identical to a lone comment — the record could
+     * not represent a masked tag strip at all, and a reader would be told the
+     * removal was routine. That is the reassurance an attacker wants, and it
+     * costs them only an HTML comment.
+     */
+    tagsRemoved: z.number().int().nonnegative(),
+  })
+  .strict();
+export type PrReviewSanitization = z.infer<typeof PrReviewSanitizationSchema>;
+
+/**
  * One authentic, self-hashed pr-review record. The `hash` covers every
  * authenticity field INCLUDING `prNumber`, `baseSha`, `reviewedDiffHash`, `verdict`,
  * `diffProvenance`, and `sequence`
@@ -155,8 +232,15 @@ export const PrReviewRecordSchema = z
      * `governance/pr-review-records.jsonl` ledger is EMPTY on every install (0
      * records at the time of this bump), so there is no data to migrate and no
      * reason to keep a tolerant version union.
+     * '1.3' (#5385) marks the boundary at which {@link reviewedDiffHash} began
+     * binding the PRE-sanitization diff (so it can agree with the gate's git
+     * recompute) and records began carrying {@link sanitization}. Same clean
+     * break for the same reason: the committed ledger is still EMPTY (0 records
+     * at this bump), so no record exists whose hash a version literal would
+     * invalidate. Reading a '1.2' record as if it were '1.3' would be the unsafe
+     * move — its hash may bind SANITIZED bytes the gate can never reproduce.
      */
-    version: z.literal('1.2'),
+    version: z.literal('1.3'),
     /**
      * Monotonic sequence number (integer ≥ 0). Assigned as (max existing
      * sequence)+1 at write time. Sorted, the set of sequences must cover
@@ -206,6 +290,14 @@ export const PrReviewRecordSchema = z
      * provenance; a consumer must NOT read that as `canonical-git`.
      */
     diffProvenance: PrReviewDiffProvenanceSchema.optional(),
+    /**
+     * What a sanitizer removed between the bound bytes and the reviewed text
+     * (#5385). OPTIONAL for the same reason {@link diffProvenance} is: the
+     * schema is `.strict()`, and a producer with no sanitizer in its path must
+     * be able to decline to say. Absent ⇒ the producer stated nothing; a
+     * consumer must NOT read that as "nothing was removed".
+     */
+    sanitization: PrReviewSanitizationSchema.optional(),
     /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
@@ -270,6 +362,23 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
           diffProvenance: {
             source: payload.diffProvenance.source,
             fileBoundaries: payload.diffProvenance.fileBoundaries,
+          },
+        }
+      : {}),
+    // #5385 sanitization disclosure, INSIDE the hash. Outside it, an editor
+    // could delete the block from a persisted line and turn "the voters read a
+    // stripped rendering of these bytes" into "no sanitizer was in the path"
+    // with no `hash_mismatch` — the record would then claim a cleaner
+    // derivation than it has. Present-only, for the same reason
+    // `diffProvenance` is: omitting the key keeps a record written without a
+    // disclosure byte-identical to its pre-#5385 canonical string.
+    ...(payload.sanitization !== undefined
+      ? {
+          sanitization: {
+            sanitizedDiffHash: payload.sanitization.sanitizedDiffHash,
+            commentsRemoved: payload.sanitization.commentsRemoved,
+            fieldsModified: payload.sanitization.fieldsModified,
+            tagsRemoved: payload.sanitization.tagsRemoved,
           },
         }
       : {}),

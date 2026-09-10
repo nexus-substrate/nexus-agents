@@ -52,6 +52,18 @@ export interface SecureHandlerConfig {
   toolName: string;
   /** Security tier controlling input validation strictness (default: 'standard') */
   securityTier?: SecurityTier;
+  /**
+   * Fields whose PRE-sanitization value must be hashed for a persisted record
+   * (#5385), keyed by arg name, valued by the canonical hasher for that field.
+   *
+   * The handler receives only the resulting HASHES, never the raw text. That is
+   * the point: `reviewedDiffHash` has to bind bytes the governor gate can
+   * recompute from git, but handing a handler the raw args would partly defeat
+   * sanitizing before dispatch — a careless handler could put unsanitized
+   * untrusted content into a prompt. A 64-hex digest cannot be injected into
+   * anything, so the seam is safe by construction rather than by discipline.
+   */
+  rawHashFields?: Readonly<Record<string, (raw: string) => string>>;
   /** Policy firewall instance (optional - if not provided, policy checks are skipped) */
   policyFirewall?: IPolicyFirewall;
   /** Execution mode for policy evaluation */
@@ -103,6 +115,28 @@ interface SanitizationContext {
   readonly wasModified: boolean;
   /** HTML comments removed from untrusted fields (#5258). */
   readonly commentsRemoved: number;
+  /** How many FIELDS the sanitizer changed at all (#5385). */
+  readonly fieldsModified: number;
+  /**
+   * XML-like conversation-structure tags removed (#5385).
+   *
+   * Its own counter, not inferred from the two above. `fieldsModified` counts
+   * FIELDS, so a comment and a tag in the same field is ONE modified field —
+   * arithmetic over the other counters cannot recover the tag, and every
+   * consumer then reports a stripped injection attempt as a routine comment
+   * strip. An attacker only has to include an HTML comment to get that
+   * reassurance, and GitHub's default PR template already supplies one.
+   */
+  readonly tagsRemoved: number;
+  /**
+   * Pre-sanitization hashes of the fields named in
+   * {@link SecureHandlerConfig.rawHashFields} (#5385).
+   *
+   * Empty when the tool declared none — which is distinguishable from "declared
+   * and the field was absent", because a declared-but-absent field simply has
+   * no key here and the handler can tell the two apart by what it asked for.
+   */
+  readonly rawFieldHashes: Readonly<Record<string, string>>;
 }
 
 export interface HandlerContext {
@@ -407,6 +441,48 @@ function emitToolAudit({
   });
 }
 
+/**
+ * Hash the declared raw fields before sanitization (#5385).
+ *
+ * Only string values are hashed; a missing or non-string field contributes no
+ * key rather than an empty-string hash, so "absent" cannot be mistaken for
+ * "present and empty" — the two have different digests and only one is a
+ * measurement.
+ */
+function hashRawFields(
+  fields: Readonly<Record<string, (raw: string) => string>> | undefined,
+  args: unknown
+): Readonly<Record<string, string>> {
+  if (fields === undefined) return {};
+  if (typeof args !== 'object' || args === null) return {};
+  const source = args as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const [field, hash] of Object.entries(fields)) {
+    const value = source[field];
+    if (typeof value === 'string') out[field] = hash(value);
+  }
+  return out;
+}
+
+/**
+ * The context reported on an early-exit path, where sanitization never ran.
+ *
+ * Reported anyway, so a caller never has to distinguish "not sanitized" from
+ * "sanitized, nothing removed". #5385: the raw hashes are computed here too. An
+ * early exit means the tool never ran, but a caller that asked for a hash still
+ * learns whether the field was present — absence of the key means absent, not
+ * "hash of nothing".
+ */
+function unsanitizedContext(config: SecureHandlerConfig, args: unknown): SanitizationContext {
+  return {
+    wasModified: false,
+    commentsRemoved: 0,
+    fieldsModified: 0,
+    tagsRemoved: 0,
+    rawFieldHashes: hashRawFields(config.rawHashFields, args),
+  };
+}
+
 /** Emits an audit event for a policy denial. */
 /** Pre-execution checks: input size, input sanitization, rate limit, policy. */
 function runPreChecks(
@@ -421,16 +497,13 @@ function runPreChecks(
   nearMiss: boolean;
   sanitization: SanitizationContext;
 } {
-  // Reported even on the early-exit paths below, so a caller never has to
-  // distinguish "not sanitized" from "sanitized, nothing removed".
-  const noSanitization: SanitizationContext = { wasModified: false, commentsRemoved: 0 };
   const sizeResult = checkInputSize(args, logger, requestContext.requestId);
   if (sizeResult) {
     return {
       error: sizeResult,
       sanitizedArgs: args,
       nearMiss: false,
-      sanitization: noSanitization,
+      sanitization: unsanitizedContext(config, args),
     };
   }
 
@@ -441,6 +514,10 @@ function runPreChecks(
   const sanitization: SanitizationContext = {
     wasModified: sanitizeResult.wasModified,
     commentsRemoved: sanitizeResult.commentsRemoved,
+    fieldsModified: sanitizeResult.modifiedCount,
+    tagsRemoved: sanitizeResult.tagsRemoved,
+    // #5385: hashed from `args`, the RAW input, before sanitization touched it.
+    rawFieldHashes: hashRawFields(config.rawHashFields, args),
   };
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)

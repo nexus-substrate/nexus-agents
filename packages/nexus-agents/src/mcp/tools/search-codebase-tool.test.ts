@@ -59,7 +59,13 @@ function makeCtx(): Parameters<typeof searchCodebaseHandler>[1] {
     } as unknown as Parameters<typeof searchCodebaseHandler>[1]['requestContext'],
     logger: createLogger({ component: 'test' }),
     // #5385: the middleware always discloses what it removed; nothing here.
-    sanitization: { wasModified: false, commentsRemoved: 0 },
+    sanitization: {
+      wasModified: false,
+      commentsRemoved: 0,
+      fieldsModified: 0,
+      tagsRemoved: 0,
+      rawFieldHashes: {},
+    },
   };
 }
 
@@ -156,7 +162,7 @@ describe('search-codebase-tool (#2159)', () => {
   describe('skipped-directory reporting (#4243 — truncation must be visible, not silent)', () => {
     it('appends a note to "no results" output when directories were skipped', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
-    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
+      mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 2 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -196,7 +202,7 @@ describe('search-codebase-tool (#2159)', () => {
 
     it('omits the note entirely when no directories were skipped', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
-    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
+      mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -339,7 +345,7 @@ describe('search-codebase-tool (#2159)', () => {
   describe('mode dispatch', () => {
     it('search mode: reports zero results cleanly', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
-    mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
+      mocks.indexInstance.searchWithTotal.mockReturnValue({ results: [], total: 0 });
       mocks.indexInstance.stats = { files: 3, symbols: 17, skippedDirs: 0 };
       const result = await searchCodebaseHandler({ query: 'missing' }, makeCtx());
       expect(result.isError).toBeFalsy();
