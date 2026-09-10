@@ -1,5 +1,28 @@
 # nexus-agents
 
+## 8.48.1
+
+### Patch Changes
+
+- [#6071](https://github.com/nexus-substrate/nexus-agents/pull/6071) [`c0235c9`](https://github.com/nexus-substrate/nexus-agents/commit/c0235c99ffba9d4bc7100574b730b42cc12dd98e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): validate a ledger record against the read schema before appending it ([#6054](https://github.com/nexus-substrate/nexus-agents/issues/6054))
+
+  Both hash-chained JSONL ledgers (`vote-records`, `pr-review-records`) appended
+  `JSON.stringify(record)` with no schema check; the only `safeParse` was on the
+  read path. A builder could emit a record the schema rejects, the append
+  succeeded, and the line surfaced later as an `invalidLines` entry that no
+  non-test consumer reads. [#6049](https://github.com/nexus-substrate/nexus-agents/issues/6049) shipped exactly that shape.
+
+  For an append-only chain that direction is wrong: an unreadable line cannot be
+  repaired in place because the chain has already moved past it. Both stores now
+  serialize through one shared `serializeValidatedRecord(schema, record, ledger)`
+  guard — one definition of "valid at write", so the two ledgers cannot drift.
+
+  Behaviour for a valid record is unchanged, including its hash. A record the
+  read schema would reject is refused before it is durable: the store's existing
+  `try` turns the throw into `logger.warn` + `undefined`, the same outcome a
+  failed write already has, and the warning names the failing field rather than
+  only "write failed". Persistence still never throws into the vote path.
+
 ## 8.48.0
 
 ### Minor Changes
