@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CodexCliAdapter } from './codex-adapter.js';
+import { CODEX_LEGACY_LANDLOCK_CONFIG } from './codex-adapter-helpers.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
@@ -410,10 +411,11 @@ describe('CodexCliAdapter (Subprocess)', () => {
       await adapter.execute(task);
 
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      const cIdx = args.indexOf('-c');
-      expect(cIdx).toBeGreaterThanOrEqual(0);
-      const cVal = args[cIdx + 1];
+      const cVal = args.find((a) => a.startsWith('model_instructions_file='));
       expect(cVal).toMatch(/^model_instructions_file=.+instructions\.md$/);
+      // It is a `-c` override, not a bare positional (#6093 added a second
+      // `-c` on linux, so locate it by value rather than by first `-c`).
+      expect(args[args.indexOf(cVal as string) - 1]).toBe('-c');
     });
 
     it('cleans up tempdir parent after systemPrompt run (#2824 — file + dir, not just file)', async () => {
@@ -438,8 +440,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       // file AND the parent dir are gone post-cleanup. Pre-fix the file
       // was unlinked but the empty parent dir was leaked.
       const args = vi.mocked(spawn).mock.calls.at(-1)?.[1] as string[];
-      const cIdx = args.indexOf('-c');
-      const cVal = args[cIdx + 1] as string;
+      const cVal = args.find((a) => a.startsWith('model_instructions_file=')) as string;
       const match = cVal.match(/^model_instructions_file=(.+\/instructions\.md)$/);
       expect(match).not.toBeNull();
       const file = match![1] as string;
@@ -465,7 +466,56 @@ describe('CodexCliAdapter (Subprocess)', () => {
       await adapter.execute(task);
 
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      expect(args).not.toContain('-c');
+      expect(args.some((a) => a.startsWith('model_instructions_file='))).toBe(false);
+    });
+  });
+
+  // #6093: on hosts with `kernel.apparmor_restrict_unprivileged_userns=1`
+  // every bwrap-backed codex sandbox fails before the model sees the tree.
+  // The legacy landlock backend reads and still refuses writes; it is only
+  // meaningful on Linux, so the token must be absent everywhere else.
+  describe('legacy landlock on linux (#6093)', () => {
+    const argvFor = async (platform: NodeJS.Platform): Promise<string[]> => {
+      vi.mocked(spawn).mockReturnValue(createMockProcess(COMPLETED_NDJSON));
+      const platformAdapter = new CodexCliAdapter({ platform });
+      await platformAdapter.execute({ content: 'Say hello' });
+      await platformAdapter.dispose();
+      return vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+    };
+
+    it('passes -c features.use_legacy_landlock=true after the sandbox flag on linux', async () => {
+      expect(await argvFor('linux')).toEqual([
+        'exec',
+        '--json',
+        '-m',
+        EXPECTED_DEFAULT_ID,
+        '-s',
+        'read-only',
+        '-c',
+        CODEX_LEGACY_LANDLOCK_CONFIG,
+        '--skip-git-repo-check',
+        'Say hello',
+      ]);
+    });
+
+    it.each(['darwin', 'win32'] as const)('passes no landlock override on %s', async (platform) => {
+      expect(await argvFor(platform)).toEqual([
+        'exec',
+        '--json',
+        '-m',
+        EXPECTED_DEFAULT_ID,
+        '-s',
+        'read-only',
+        '--skip-git-repo-check',
+        'Say hello',
+      ]);
+    });
+
+    it('defaults the platform gate to process.platform', async () => {
+      vi.mocked(spawn).mockReturnValue(createMockProcess(COMPLETED_NDJSON));
+      await adapter.execute({ content: 'Say hello' });
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args.includes(CODEX_LEGACY_LANDLOCK_CONFIG)).toBe(process.platform === 'linux');
     });
   });
 

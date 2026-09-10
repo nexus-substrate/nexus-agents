@@ -38,6 +38,7 @@ vi.mock('node:util', () => ({
 const Client = mocks.mockClient;
 
 import { CodexMcpAdapter } from './codex-mcp-adapter.js';
+import { CODEX_LEGACY_LANDLOCK_CONFIG } from './codex-adapter-helpers.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
@@ -163,7 +164,7 @@ describe('CodexMcpAdapter', () => {
         expect(mocks.mockTransport).toHaveBeenCalledWith(
           expect.objectContaining({
             command: 'codex',
-            args: ['mcp-server'],
+            args: expect.arrayContaining(['mcp-server']),
             env: { NEXUS_MCP_DEPTH: '1' },
           })
         );
@@ -179,6 +180,51 @@ describe('CodexMcpAdapter', () => {
         // No transport spawned — the cycle is cut before any `codex mcp-server`.
         expect(mocks.mockTransport).not.toHaveBeenCalled();
         await nested.dispose();
+      });
+    });
+
+    // #6093: the voter seats run through this spawn. On hosts with
+    // `kernel.apparmor_restrict_unprivileged_userns=1` bwrap cannot bring up
+    // loopback, so the `sandbox: 'read-only'` tool call below fails before
+    // codex reads a file; the legacy landlock backend reads and still refuses
+    // writes. Linux-only, so the argv must be exactly `['mcp-server']` elsewhere.
+    describe('legacy landlock on linux (#6093)', () => {
+      const prev = process.env.NEXUS_MCP_DEPTH;
+      beforeEach(() => {
+        delete process.env.NEXUS_MCP_DEPTH;
+      });
+      afterEach(() => {
+        if (prev === undefined) delete process.env.NEXUS_MCP_DEPTH;
+        else process.env.NEXUS_MCP_DEPTH = prev;
+      });
+
+      const spawnArgsFor = async (platform: NodeJS.Platform): Promise<unknown> => {
+        const platformAdapter = new CodexMcpAdapter({ platform });
+        await platformAdapter.initialize();
+        await platformAdapter.dispose();
+        const call = mocks.mockTransport.mock.calls[0]?.[0] as { args: unknown };
+        return call.args;
+      };
+
+      it('spawns `codex mcp-server -c features.use_legacy_landlock=true` on linux', async () => {
+        expect(await spawnArgsFor('linux')).toEqual([
+          'mcp-server',
+          '-c',
+          CODEX_LEGACY_LANDLOCK_CONFIG,
+        ]);
+      });
+
+      it.each(['darwin', 'win32'] as const)(
+        'spawns a bare `codex mcp-server` on %s',
+        async (platform) => {
+          expect(await spawnArgsFor(platform)).toEqual(['mcp-server']);
+        }
+      );
+
+      it('defaults the platform gate to process.platform', async () => {
+        await adapter.initialize();
+        const call = mocks.mockTransport.mock.calls[0]?.[0] as { args: string[] };
+        expect(call.args.includes(CODEX_LEGACY_LANDLOCK_CONFIG)).toBe(process.platform === 'linux');
       });
     });
   });

@@ -15,18 +15,17 @@
 import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
-import type {
-  ICliResponseParser,
-  CliTask,
-  ModelInfo,
-  CliName,
-  BaseAdapterOptions,
-} from '../types.js';
+import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
-import { CODEX_LEGACY_DEFAULTS, toCodexModelSlug } from './codex-adapter-helpers.js';
+import {
+  CODEX_LEGACY_DEFAULTS,
+  type CodexAdapterOptions,
+  codexPlatformSandboxArgs,
+  toCodexModelSlug,
+} from './codex-adapter-helpers.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -50,10 +49,12 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
   protected readonly parser: ICliResponseParser = new CodexResponseParser();
 
   private readonly model: string;
+  private readonly platform: NodeJS.Platform;
 
-  constructor(options?: BaseAdapterOptions) {
+  constructor(options?: CodexAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
+    this.platform = options?.platform ?? process.platform;
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */
@@ -97,8 +98,10 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
       args.push('-m', toCodexModelSlug(model, this.logger));
     }
 
-    // Add sandbox mode for safety (read-only by default)
-    args.push('-s', 'read-only');
+    // Add sandbox mode for safety (read-only by default). On Linux, back it
+    // with legacy landlock so the read-only sandbox actually starts under
+    // AppArmor's userns restriction (#6093, see codexPlatformSandboxArgs).
+    args.push('-s', 'read-only', ...codexPlatformSandboxArgs(this.platform));
 
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');

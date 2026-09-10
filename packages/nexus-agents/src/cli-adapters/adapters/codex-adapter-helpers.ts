@@ -5,7 +5,7 @@
  * Model info lookups consolidated into config/model-config-helpers.ts (#886).
  */
 
-import type { CliError, CliName, TokenUsage, CliResponse } from '../types.js';
+import type { BaseAdapterOptions, CliError, CliName, TokenUsage, CliResponse } from '../types.js';
 import { createCliError as sharedCreateCliError } from '../cli-error-helpers.js';
 import type { ILogger } from '../../core/logger.js';
 import { resolveCliModelName } from '../../config/model-config-helpers.js';
@@ -36,6 +36,57 @@ export const CODEX_LEGACY_DEFAULTS = {
   inputCost: 1.1,
   outputCost: 4.4,
 } as const;
+
+// -----------------------------------------------------------------------------
+// Sandbox backend selection (#6093)
+// -----------------------------------------------------------------------------
+
+/** Options accepted by both codex transports (subprocess and MCP). */
+export interface CodexAdapterOptions extends BaseAdapterOptions {
+  /**
+   * Host platform the sandbox arguments are chosen for. Defaults to
+   * `process.platform`; injectable so a test can exercise the Linux and
+   * non-Linux branches without mocking a global (#6093).
+   */
+  readonly platform?: NodeJS.Platform;
+}
+
+/**
+ * The `-c key=value` override that switches codex's Linux sandbox from bwrap
+ * to the legacy landlock backend. Spelled exactly as `codex features list`
+ * names it (`use_legacy_landlock`, flagged deprecated on codex-cli 0.153.4):
+ * `-c` accepts any key, so a misspelling would be silently ignored.
+ */
+export const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
+
+/**
+ * Extra codex argv for the host platform: `['-c', CODEX_LEGACY_LANDLOCK_CONFIG]`
+ * on Linux, nothing elsewhere.
+ *
+ * Why (#6093, measured on codex-cli 0.153.4 / bwrap 0.9.0): on hosts with
+ * `kernel.apparmor_restrict_unprivileged_userns=1` (the Ubuntu 24.04+ default)
+ * every bwrap-backed sandbox mode — `read-only`, `workspace-write`, network
+ * off — dies with `bwrap: loopback: Failed RTM_NEWADDR: Operation not
+ * permitted` before codex reads a single file, so the two codex voter seats
+ * abstained with "repository inspection failed" or voted on the proposal
+ * text alone. With the legacy landlock backend reads work and writes are
+ * still refused (`Permission denied`). The read scope is read-only-all-disk,
+ * the same scope the read-only bwrap profile already granted, so this widens
+ * nothing: a seat could always read dotfiles and echo them into its
+ * reasoning. The host-level alternative is
+ * `kernel.apparmor_restrict_unprivileged_userns=0` or an AppArmor profile for
+ * bwrap; this flag makes the seats work without host changes.
+ *
+ * Shared by `CodexCliAdapter` (`codex exec`) and `CodexMcpAdapter`
+ * (`codex mcp-server`) so the platform gate exists once. Both subcommands
+ * accept `-c` after the subcommand name (verified with `--help`, which rejects
+ * an unknown flag in that position with exit 2).
+ */
+export function codexPlatformSandboxArgs(
+  platform: NodeJS.Platform = process.platform
+): readonly string[] {
+  return platform === 'linux' ? ['-c', CODEX_LEGACY_LANDLOCK_CONFIG] : [];
+}
 
 // -----------------------------------------------------------------------------
 // Error Handling
