@@ -45,6 +45,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 import { serializeValidatedRecord } from './ledger-append.js';
+import { assertNotSourceCheckoutWrite } from './source-checkout-guard.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
@@ -579,6 +580,12 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
     logger.warn(voteRecordWriteFailedMessage('<unresolved>'), { id: opts.id });
     return undefined;
   }
+  // Before the try (#6070, same shape as the pr-review store): a swallowed
+  // guard would silently skip the write and hide the very mistake it exists to
+  // surface. The tracked `<repo>/governance/vote-records.jsonl` is reachable
+  // via the env override, and the promotion gate trusts whatever is in it.
+  assertNotSourceCheckoutWrite(filePath, VOTE_RECORDS_REL_PATH, VOTE_RECORDS_PATH_ENV);
+
   try {
     mkdirSync(dirname(filePath), { recursive: true });
     const { maxSequence, lastHash } = readLedgerTip(filePath, logger);

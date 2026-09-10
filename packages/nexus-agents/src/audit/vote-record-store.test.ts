@@ -15,6 +15,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +26,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
+import { findRepoRoot } from '../config/repo-root-detection.js';
 
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../cli/vote-types.js';
@@ -48,6 +50,7 @@ import {
 } from './vote-record.js';
 import {
   VOTE_RECORDS_PATH_ENV,
+  VOTE_RECORDS_REL_PATH,
   buildVoteRecord,
   persistVoteRecord,
   parseVoteRecordsText,
@@ -419,6 +422,54 @@ describe('persistVoteRecord', () => {
     });
     expect(written).toBeDefined();
     expect(readFileSync(filePath, 'utf-8')).toBe(JSON.stringify(written) + '\n');
+  });
+
+  it("REFUSES to write the source checkout's tracked ledger from a test run (#6070)", () => {
+    // `governance/vote-records.jsonl` is tracked and read by the authority-tier
+    // promotion gate as its ratification evidence. A fabricated line that
+    // self-hashes correctly would pass that gate, so the write THROWS (not
+    // `undefined` — the guard runs before the try, or a swallowed guard would
+    // hide the mistake it exists to surface) and the file's bytes are untouched.
+    const root = findRepoRoot(process.cwd());
+    if (root === null) throw new Error('test must run inside the source checkout');
+    const tracked = join(root, VOTE_RECORDS_REL_PATH);
+    const bytesBefore = statSync(tracked).size;
+    process.env[VOTE_RECORDS_PATH_ENV] = tracked;
+    try {
+      expect(() =>
+        persistVoteRecord({
+          declaredOptions: undefined,
+          resolvedDecision: undefined,
+          id: 'vote-guard',
+          proposal: 'guard fixture — must never reach the tracked ledger',
+          strategy: 'higher_order',
+          result: consensusResult(),
+          votes,
+        })
+      ).toThrow(/#4415/);
+    } finally {
+      delete process.env['NEXUS_VOTE_RECORDS_PATH'];
+    }
+    expect(statSync(tracked).size).toBe(bytesBefore);
+  });
+
+  it('still writes to any other absolute path from the env override (#6070)', () => {
+    process.env[VOTE_RECORDS_PATH_ENV] = filePath;
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: undefined,
+        id: 'vote-elsewhere',
+        proposal: 'p',
+        strategy: 'higher_order',
+        result: consensusResult(),
+        votes,
+      });
+      expect(written).toBeDefined();
+      expect(readFileSync(filePath, 'utf-8')).toBe(JSON.stringify(written) + '\n');
+    } finally {
+      delete process.env['NEXUS_VOTE_RECORDS_PATH'];
+    }
   });
 
   it('REFUSES to append a record the read schema would reject (#6054)', () => {
