@@ -473,3 +473,103 @@ describe('the committed snapshot is machine-independent (#6061)', () => {
     expect(snapshot).toContain('import("zod/');
   });
 });
+
+describe('union members are recorded in declared-set order, not resolution order (#6065)', () => {
+  // TypeScript prints a union's members in the order the checker interned
+  // them, which is a function of what got resolved first — not of the source.
+  // Resolving more types during extraction (#6061) shuffled four snapshot
+  // lines whose declared type had not changed. Fourth instance of the
+  // gate-that-cries-wolf class this file documents (paths, member order,
+  // comments): a reviewer who sees four unexplained union lines learns to
+  // regenerate, and the next real change hides in that habit.
+
+  it('reordering the members in the SOURCE renders the same text', () => {
+    // Property (checker-printed) AND alias (syntactic text) — the two paths a
+    // union reaches the snapshot through.
+    const declared = surfaceOf({
+      '/index.ts': [
+        "export type U = 'a' | 'b' | 'c';",
+        "export interface I { readonly u: 'a' | 'b' | 'c'; }",
+      ].join('\n'),
+    });
+    const reordered = surfaceOf({
+      '/index.ts': [
+        "export type U = 'c' | 'a' | 'b';",
+        "export interface I { readonly u: 'c' | 'a' | 'b'; }",
+      ].join('\n'),
+    });
+    expect(reordered).toBe(declared);
+  });
+
+  it('a leading bar in the source is not a member', () => {
+    const bare = surfaceOf({ '/index.ts': "export type U = 'a' | 'b';" });
+    const led = surfaceOf({ '/index.ts': "export type U =\n  | 'a'\n  | 'b';" });
+    expect(led).toBe(bare);
+  });
+
+  it('ADDING a member changes the snapshot', () => {
+    // The guard against the normalisation becoming a blind spot of its own.
+    const two = surfaceOf({ '/index.ts': "export interface I { readonly u: 'a' | 'b'; }" });
+    const three = surfaceOf({
+      '/index.ts': "export interface I { readonly u: 'a' | 'b' | 'c'; }",
+    });
+    expect(three).not.toBe(two);
+  });
+
+  it('REMOVING a member changes the snapshot', () => {
+    const three = surfaceOf({
+      '/index.ts': "export interface I { readonly u: 'a' | 'b' | 'c'; }",
+    });
+    const two = surfaceOf({ '/index.ts': "export interface I { readonly u: 'a' | 'c'; }" });
+    expect(two).not.toBe(three);
+  });
+
+  it('a string-literal member containing | survives intact', () => {
+    // The reason a naive split('|') was never an option.
+    const out = surfaceOf({
+      '/index.ts': [
+        "export type U = 'c' | 'a|b';",
+        "export interface I { readonly u: 'c' | 'a|b'; }",
+      ].join('\n'),
+    });
+    expect(out).toContain("  = 'a|b' | 'c'");
+    expect(out).toContain('  readonly u: "a|b" | "c"');
+  });
+
+  it('sorts a nested union at each level: object member, function parameter, index signature', () => {
+    const out = surfaceOf({
+      '/index.ts': [
+        'export interface I {',
+        "  readonly o: { readonly k: 'b' | 'a'; readonly z: 'y' | 'x' };",
+        "  readonly f: (x: 'b' | 'a', y: 'd' | 'c') => 'q' | 'p';",
+        "  [key: string]: 'n' | 'm' | unknown;",
+        '}',
+      ].join('\n'),
+    });
+    expect(out).toContain('  readonly o: { readonly k: "a" | "b"; readonly z: "x" | "y"; }');
+    expect(out).toContain('  readonly f: (x: "a" | "b", y: "c" | "d") => "p" | "q"');
+    // The index signature is the one line whose text carries a `name: type`
+    // prefix into the normaliser; a split that ignored the colon would sort
+    // `[key: string]: 'n'` as a member.
+    expect(out).toContain("  [key: string]: 'm' | 'n' | unknown");
+  });
+
+  it('renders boolean as boolean', () => {
+    // ts-morph exposes `boolean` as the union `true | false`; a structural
+    // walk that did not collapse the pair would rewrite every boolean field.
+    const out = surfaceOf({
+      '/index.ts': 'export interface I { readonly b: boolean; readonly m: boolean | undefined; }',
+    });
+    expect(out).toContain('  readonly b: boolean');
+    expect(out).toContain('  readonly m: boolean | undefined');
+  });
+
+  it('leaves the depth-0 text of a conditional type alone', () => {
+    // A union inside a conditional's branches is NOT sorted: `A | B : C` has a
+    // depth-0 `|` that is not a union separator across the whole text, so the
+    // normaliser declines rather than guessing. Recorded so the limitation is
+    // a documented choice, not a surprise.
+    const src = "export type C<T> = T extends string ? 'b' | 'a' : never;";
+    expect(surfaceOf({ '/index.ts': src })).toContain("  = T extends string ? 'b' | 'a' : never");
+  });
+});
