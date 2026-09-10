@@ -341,8 +341,13 @@ function sanitizationCaveat(match: PrReviewRecord): string {
   if (disclosure.commentsRemoved > 0) {
     clauses.push(`${String(disclosure.commentsRemoved)} HTML comment(s)`);
   }
-  if (clauses.length === 0 && disclosure.fieldsModified > 0) {
-    clauses.push(`${String(disclosure.fieldsModified)} field(s), cause unattributed`);
+  // Independent of the two above, not `clauses.length === 0`: that guard is an
+  // `else if` in disguise, and one routine comment would suppress it —
+  // reproducing the masking pattern this function exists to fix (5th panel).
+  const unattributed =
+    disclosure.fieldsModified - disclosure.commentsRemoved - disclosure.tagsRemoved;
+  if (unattributed > 0) {
+    clauses.push(`${String(unattributed)} field(s), cause unattributed`);
   }
 
   if (disclosure.sanitizedDiffHash === match.reviewedDiffHash) {
@@ -354,10 +359,15 @@ function sanitizationCaveat(match: PrReviewRecord): string {
     if (clauses.length === 0) return ' — sanitizer ran and removed nothing';
     return ` — sanitizer removed ${clauses.join(' and ')}, none inside the bytes this hash binds`;
   }
+  // A differing hash with NO clause means the sanitizer changed the bound bytes
+  // while reporting no cause. Unreachable today, and rendered as a named state
+  // rather than an empty fragment — `… , stripped before dispatch` reads as a
+  // formatting bug and tells a reader nothing (5th panel, architect residual).
+  const removed = clauses.length > 0 ? clauses.join(' and ') : 'content, cause unreported';
   return (
     ' — PARTIAL: the voters read a SANITIZED rendering of these bytes ' +
     `(sanitizedDiffHash=${disclosure.sanitizedDiffHash.slice(0, 12)}…, ` +
-    `${clauses.join(' and ')} stripped before dispatch); ` +
+    `${removed} stripped before dispatch); ` +
     'the hash binds the raw diff, so content the sanitizer removed was bound but unread'
   );
 }

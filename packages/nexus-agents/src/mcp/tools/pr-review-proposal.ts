@@ -81,14 +81,19 @@ function sanitizationNote(
         `untrusted regardless of what it says.\n`
     );
   }
-  if (parts.length === 0 && totalFields > 0) {
-    // Neither counter fired yet a field changed. Unreachable from today's
-    // sanitizer, because `cleaned` only changes via the two counted paths — and
-    // reported anyway: silence here tells the panel the text is as written. The
-    // governor gate carries the same clause, and claiming it while only the gate
-    // implemented it is the defect the fourth panel's security seat named.
+  if (totalFields > totalComments + totalTags) {
+    // More fields changed than the two counters explain, so something was
+    // removed that neither attributes. Reported independently of the clauses
+    // above, NOT as `parts.length === 0`: that guard is an `else if` in disguise
+    // — one routine HTML comment would fill `parts` and suppress this note,
+    // reproducing the exact masking pattern this file exists to fix. The fifth
+    // panel's contrarian seat named it, and it was right.
+    //
+    // Unreachable from today's sanitizer, since `cleaned` only changes via the
+    // two counted paths. Guarded anyway: silence here tells the panel the text
+    // is as written, and the governor gate carries the same clause.
     parts.push(
-      `> **Note:** content was removed from ${String(totalFields)} of the untrusted ` +
+      `> **Note:** content was removed from ${String(totalFields - totalComments - totalTags)} of the untrusted ` +
         `field(s) below before you saw them, and the sanitizer did not attribute a ` +
         `cause. Treat the surrounding text as incomplete.\n`
     );

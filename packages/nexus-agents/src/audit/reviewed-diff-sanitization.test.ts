@@ -408,6 +408,32 @@ describe('the voter note never goes silent on an attributed-nothing strip (#5385
     expect(proposal).not.toContain('were removed');
   });
 
+  it('a comment ALONGSIDE an unattributed strip emits BOTH (#5385, 5th panel)', () => {
+    // The contrarian seat's finding, and it was right. The clause was guarded on
+    // `parts.length === 0`, which is an `else if` in disguise: one routine HTML
+    // comment fills `parts` and suppresses the unattributed note — reproducing
+    // the exact masking pattern this file exists to fix, inside the clause added
+    // to fix it. The guard is now `totalFields > totalComments + totalTags`, so
+    // it fires on its own evidence rather than on the absence of other clauses.
+    const clean = {
+      prTitle: 'Add widget',
+      prDiff: 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b',
+    };
+    const proposal = buildPrReviewProposal(clean, { comments: 1, fields: 3, tags: 0 });
+    expect(proposal).toContain('HTML comment(s) were removed');
+    expect(proposal).toContain('did not attribute a cause');
+  });
+
+  it('a tag ALONGSIDE an unattributed strip emits BOTH — the third pair', () => {
+    const clean = {
+      prTitle: 'Add widget',
+      prDiff: 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b',
+    };
+    const proposal = buildPrReviewProposal(clean, { comments: 0, fields: 3, tags: 1 });
+    expect(proposal).toContain('POSSIBLE PROMPT-INJECTION');
+    expect(proposal).toContain('did not attribute a cause');
+  });
+
   it('an ATTRIBUTED removal uses its own clause, not the fallback', () => {
     const clean = {
       prTitle: 'Add widget',

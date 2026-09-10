@@ -1365,3 +1365,61 @@ describe('the gate cannot call a TAG strip "removed nothing" (#5385, adversarial
     }
   });
 });
+
+describe('the gate caveat clauses are independent (#5385, 5th panel)', () => {
+  function passingInputs(sanitization: PrReviewSanitization): GovernorReviewInputs {
+    return inputs({
+      records: [
+        record({ prNumber: 5000, reviewedDiffHash: DIFF_HASH, verdict: 'approve', sanitization }),
+      ],
+    });
+  }
+
+  it('an unattributed strip is reported ALONGSIDE a comment, not suppressed by it', () => {
+    // `clauses.length === 0` was an `else if` in disguise: one routine comment
+    // filled the list and suppressed the unattributed clause, reproducing the
+    // masking pattern this function exists to fix.
+    const outcome = analyzeGovernorReview(
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 1,
+        fieldsModified: 4,
+        tagsRemoved: 0,
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('HTML comment(s)');
+      expect(outcome.reason).toContain('cause unattributed');
+    }
+  });
+
+  it('a fully attributed removal reports NO unattributed clause — the pair', () => {
+    const outcome = analyzeGovernorReview(
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 1,
+        fieldsModified: 1,
+        tagsRemoved: 0,
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') expect(outcome.reason).not.toContain('cause unattributed');
+  });
+
+  it('a differing hash with no attributed cause names the state, not an empty fragment', () => {
+    const outcome = analyzeGovernorReview(
+      passingInputs({
+        sanitizedDiffHash: 'f'.repeat(64),
+        commentsRemoved: 0,
+        fieldsModified: 0,
+        tagsRemoved: 0,
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('cause unreported');
+      expect(outcome.reason).not.toContain(', stripped before dispatch');
+    }
+  });
+});
