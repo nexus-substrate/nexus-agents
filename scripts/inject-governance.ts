@@ -87,12 +87,22 @@ const SERVER_JSON_PATH = join(ROOT, 'packages/nexus-agents/server.json');
  * idempotency` step on every tool/expert/workflow add.
  */
 async function writeFormatted(path: string, content: string): Promise<void> {
+  writeFileSync(path, await formatWithPrettier(path, content));
+}
+
+/**
+ * The ONE formatting authority for generated files (#6062): prettier, with the
+ * config resolved for `path` and `path`'s parser. Both the writer
+ * ({@link writeFormatted}) and the staleness check
+ * ({@link checkClaudeAgnosticBlock}) go through here, so what `inject` writes
+ * and what `check` expects are normalized by the same pass. When they were
+ * not, any AGENTS.md prose prettier reshapes (an inline code span wrapped
+ * across a line break is enough) made `check` fail forever while prescribing
+ * an `inject` that changed nothing.
+ */
+export async function formatWithPrettier(path: string, content: string): Promise<string> {
   const config = await prettier.resolveConfig(path);
-  const formatted = await prettier.format(content, {
-    ...(config ?? {}),
-    filepath: path,
-  });
-  writeFileSync(path, formatted);
+  return prettier.format(content, { ...(config ?? {}), filepath: path });
 }
 
 // Markers for governance sections
@@ -1006,25 +1016,85 @@ function injectClaudeAgnosticBlock(content: string): string {
 }
 
 /**
+ * The text from `startMarker` through the end of `endMarker`, or `undefined`
+ * when either marker is absent. Marker-inclusive so a block whose END marker
+ * was lost reads as a difference, not as an empty-equals-empty pass.
+ */
+function sliceBetween(content: string, startMarker: string, endMarker: string): string | undefined {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker, start);
+  if (start === -1 || end === -1) return undefined;
+  return content.slice(start, end + endMarker.length);
+}
+
+/** Marker for a side that ran out of lines before the other did. */
+const END_OF_BLOCK = '<end of block>';
+
+/**
+ * The first line at which two blocks differ: its 0-based index plus the
+ * `expected` and `onDisk` text at that index (or {@link END_OF_BLOCK}). The
+ * caller guarantees the blocks are not equal, so a line is always found.
+ */
+function firstDifferingLine(
+  expected: string,
+  onDisk: string
+): { index: number; expected: string; onDisk: string } {
+  const a = expected.split('\n');
+  const b = onDisk.split('\n');
+  const limit = Math.max(a.length, b.length);
+  let index = 0;
+  while (index < limit && a[index] === b[index]) index += 1;
+  return { index, expected: a[index] ?? END_OF_BLOCK, onDisk: b[index] ?? END_OF_BLOCK };
+}
+
+/**
+ * The staleness message for {@link checkClaudeAgnosticBlock}: what is stale,
+ * WHERE (1-based CLAUDE.md line of the first difference), both versions of
+ * that line, and the remedy. "Stale" with no location is what turned a one-
+ * cycle fix into two (#6062).
+ */
+function describeAgnosticDrift(content: string, expected: string, onDisk: string): string {
+  const blockStart = content.indexOf(MARKERS.claudeAgnosticStart);
+  const linesBefore = content.slice(0, blockStart).split('\n').length - 1;
+  const diff = firstDifferingLine(expected, onDisk);
+  return [
+    `CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — first difference at ` +
+      `CLAUDE.md:${String(linesBefore + diff.index + 1)}`,
+    `  expected: ${diff.expected}`,
+    `  on disk:  ${diff.onDisk}`,
+    'Edit the agnostic prose in AGENTS.md, then run: pnpm governance:inject',
+  ].join('\n');
+}
+
+/**
  * Verify the CLAUDE.md agnostic block is in sync with AGENTS.md's
  * `AGNOSTIC:BODY` slice (#3446). Soft-skip when CLAUDE.md is absent or has no
  * markers; otherwise fail (with a structured error) when regeneration would
  * produce a diff — i.e. someone edited the agnostic prose in CLAUDE.md instead
  * of AGENTS.md, or edited AGENTS.md without re-running the injector.
+ *
+ * The regeneration is run through {@link formatWithPrettier} — the same pass
+ * `inject` writes through — before the comparison, so the expected block is
+ * what `inject` would actually put on disk, not the raw AGENTS.md slice
+ * (#6062). Only the marker-bounded block is compared: prettier's view of the
+ * rest of the file (its end-of-file newline, say) is not agnostic-body drift.
+ *
+ * Exported so the #6062 tests can drive it directly against a sandbox root.
  */
-function checkClaudeAgnosticBlock(): boolean {
+export async function checkClaudeAgnosticBlock(): Promise<boolean> {
   if (!existsSync(CLAUDE_MD_PATH)) return true;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
   if (!content.includes(MARKERS.claudeAgnosticStart)) return true;
-  const updated = injectClaudeAgnosticBlock(content);
-  if (updated !== content) {
-    console.error(
-      'CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — edit the agnostic ' +
-        'prose in AGENTS.md, then run: pnpm governance:inject'
-    );
-    return false;
-  }
-  return true;
+  const regenerated = await formatWithPrettier(CLAUDE_MD_PATH, injectClaudeAgnosticBlock(content));
+  const { claudeAgnosticStart: start, claudeAgnosticEnd: end } = MARKERS;
+  // The regeneration always carries both markers (the generator emits them), so
+  // an undefined on-disk slice can only mean the END marker is gone — a
+  // difference, reported as such rather than silently passed.
+  const expected = sliceBetween(regenerated, start, end) ?? regenerated;
+  const onDisk = sliceBetween(content, start, end) ?? content.slice(content.indexOf(start));
+  if (expected === onDisk) return true;
+  console.error(describeAgnosticDrift(content, expected, onDisk));
+  return false;
 }
 
 /**
@@ -1741,16 +1811,16 @@ function printGovernanceSummary(
  * harness-agnostic block, the per-adapter precedence doc, `.rules/` frontmatter,
  * and the generated rules index built from it.
  */
-function checkCrossAdapterDocGates(): boolean[] {
+async function checkCrossAdapterDocGates(): Promise<boolean[]> {
   return [
-    checkClaudeAgnosticBlock(),
+    await checkClaudeAgnosticBlock(),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
     checkRulesIndex(),
   ];
 }
 
-export function checkGovernance(): boolean {
+export async function checkGovernance(): Promise<boolean> {
   if (!existsSync(CLAUDE_MD_PATH)) {
     console.error('CLAUDE.md not found');
     return false;
@@ -1787,7 +1857,7 @@ export function checkGovernance(): boolean {
     checkEntrypoints(actual.tools, extractCliCommands()),
     checkCanonicalPaths(),
     checkGovernorPatternsResolve(),
-    ...checkCrossAdapterDocGates(),
+    ...(await checkCrossAdapterDocGates()),
     checkToolAnnotations(actual.tools),
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),
@@ -1874,8 +1944,8 @@ function readToolchain(): Toolchain {
   if (node === undefined || node === '') {
     throw new Error(`cannot read engines.node out of ${PACKAGE_JSON_PATH}`);
   }
-  // CJS build, so this is synchronous — `checkGovernance()` is sync and the
-  // CLI does `process.exit(checkGovernance() ? 0 : 1)`.
+  // CJS build, so this is a synchronous `require` — the only async step in
+  // `checkGovernance()` is the prettier pass in `checkClaudeAgnosticBlock` (#6062).
   const sdk = createRequire(INSTALLED_PACKAGE_JSON)('@modelcontextprotocol/sdk/types.js') as {
     LATEST_PROTOCOL_VERSION?: unknown;
   };
@@ -2650,7 +2720,7 @@ if (isMain) {
 
   switch (command) {
     case 'check':
-      process.exit(checkGovernance() ? 0 : 1);
+      process.exit((await checkGovernance()) ? 0 : 1);
       break;
     case 'inject':
     default:

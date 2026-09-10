@@ -67,7 +67,7 @@ const SANDBOX_PATHS: readonly string[] = [
 
 let SANDBOX = '';
 let core: {
-  checkGovernance: () => boolean;
+  checkGovernance: () => Promise<boolean>;
   injectGovernance: () => Promise<void>;
   GOVERNANCE_STAMP_SOURCES: readonly string[];
 };
@@ -119,7 +119,7 @@ afterAll(() => {
 });
 
 /** Run `checkGovernance()` in-process, capturing console output. */
-function runCheck(): { ok: boolean; output: string } {
+async function runCheck(): Promise<{ ok: boolean; output: string }> {
   const lines: string[] = [];
   const push = (...a: unknown[]): void => void lines.push(a.map(String).join(' '));
   const log = vi.spyOn(console, 'log').mockImplementation(push);
@@ -127,7 +127,7 @@ function runCheck(): { ok: boolean; output: string } {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   let ok = false;
   try {
-    ok = core.checkGovernance();
+    ok = await core.checkGovernance();
   } catch (e) {
     // A gate that THROWS (e.g. the rule-frontmatter parser on a malformed file)
     // is a check failure: the CLI surfaces it as a non-zero exit + stderr. Mirror
@@ -164,11 +164,14 @@ async function runInject(): Promise<string> {
  * Snapshot one sandbox file, run `body` (which may corrupt it), then restore it.
  * Keeps the sandbox pristine across the sequentially-run tests in this file.
  */
-function withSandboxFile(rel: string, body: (original: string) => void): void {
+async function withSandboxFile(
+  rel: string,
+  body: (original: string) => void | Promise<void>
+): Promise<void> {
   const path = box(rel);
   const original = readFileSync(path, 'utf-8');
   try {
-    body(original);
+    await body(original);
   } finally {
     writeFileSync(path, original);
   }
@@ -210,8 +213,8 @@ describe('governance stamp source set (#5491)', () => {
 });
 
 describe('inject-governance check', () => {
-  it('passes on the sandbox CLAUDE.md', () => {
-    const { ok, output } = runCheck();
+  it('passes on the sandbox CLAUDE.md', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).toContain('Governance check passed');
     expect(output).toContain('MCP Tools:');
@@ -220,43 +223,43 @@ describe('inject-governance check', () => {
     expect(output).toContain('Skills:');
   });
 
-  it('reports correct tool count', () => {
-    const { output } = runCheck();
+  it('reports correct tool count', async () => {
+    const { output } = await runCheck();
     const match = /MCP Tools:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
     expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(15);
   });
 
-  it('reports correct expert count', () => {
-    const { output } = runCheck();
+  it('reports correct expert count', async () => {
+    const { output } = await runCheck();
     const match = /Expert Types:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
     expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(7);
   });
 
-  it('reports correct workflow count', () => {
-    const { output } = runCheck();
+  it('reports correct workflow count', async () => {
+    const { output } = await runCheck();
     const match = /Workflow Templates:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
     expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(9);
   });
 
-  it('reports correct skill count', () => {
-    const { output } = runCheck();
+  it('reports correct skill count', async () => {
+    const { output } = await runCheck();
     const match = /Skills:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
     expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(12);
   });
 
-  it('reports agent count from agents/*.md', () => {
-    const { output } = runCheck();
+  it('reports agent count from agents/*.md', async () => {
+    const { output } = await runCheck();
     const match = /Agents:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
     expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(5);
   });
 
-  it('ancillary count probes pass for plugin manifests + install doc', () => {
-    const { ok, output } = runCheck();
+  it('ancillary count probes pass for plugin manifests + install doc', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('pattern not found');
     expect(output).toContain('Governance check passed');
@@ -268,12 +271,12 @@ describe('inject-governance check', () => {
   // file whose pattern had drifted printed and failed. PLUGIN_INSTALL.md alone
   // carries 6 probes and lives under docs/getting-started/, which this repo
   // reorganises routinely.
-  it('fails loudly when a probe target is missing', () => {
+  it('fails loudly when a probe target is missing', async () => {
     const target = box('docs/getting-started/PLUGIN_INSTALL.md');
     const saved = readFileSync(target, 'utf-8');
     rmSync(target);
     try {
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
 
       expect(ok).toBe(false);
       expect(output).toContain('probe not run');
@@ -287,13 +290,13 @@ describe('inject-governance check', () => {
     }
   });
 
-  it('fails loudly when a plugin manifest is missing', () => {
+  it('fails loudly when a plugin manifest is missing', async () => {
     // `checkPluginVersion` had the identical shape and the identical silence.
     const target = box('.claude-plugin/plugin.json');
     const saved = readFileSync(target, 'utf-8');
     rmSync(target);
     try {
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
 
       expect(ok).toBe(false);
       expect(output).toContain('Plugin version check: missing');
@@ -303,10 +306,10 @@ describe('inject-governance check', () => {
     }
   });
 
-  it('reports how many probes ran on a healthy tree', () => {
+  it('reports how many probes ran on a healthy tree', async () => {
     // The pair, and the reason the count is printed at all: a future tolerant
     // branch cannot hide behind the green summary if the number drops.
-    const { ok, output } = runCheck();
+    const { ok, output } = await runCheck();
 
     expect(ok).toBe(true);
     const match = /Count-drift probes run:\s*(\d+)/.exec(output);
@@ -367,7 +370,7 @@ describe('inject-governance inject', () => {
       writeFileSync(agentsPath, stale);
 
       await runInject();
-      const { ok } = runCheck();
+      const { ok } = await runCheck();
       expect(ok).toBe(true);
     });
   });
@@ -464,7 +467,7 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
           expect(footer(file, 'MCP Protocol')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         }
         expect(footer('AGENTS.md', 'MCP Protocol')).toBe(footer('CLAUDE.md', 'MCP Protocol'));
-        expect(runCheck().ok).toBe(true);
+        expect((await runCheck()).ok).toBe(true);
       } finally {
         writeFileSync(pkgPath, originalPkg);
       }
@@ -480,7 +483,7 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
         readFileSync(agentsPath, 'utf-8').replace(/_TypeScript: [^_\n]+_/, '_TypeScript: 5.9+_')
       );
 
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
 
       expect(ok).toBe(false);
       expect(output).toContain('AGENTS.md TypeScript footer');
@@ -502,7 +505,7 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
         )
       );
 
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
 
       expect(ok).toBe(false);
       expect(output).toContain('AGENTS.md MCP Protocol footer');
@@ -527,7 +530,7 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
 
       expect(footer('AGENTS.md', 'TypeScript')).toBe(footer('CLAUDE.md', 'TypeScript'));
       expect(footer('CLAUDE.md', 'TypeScript')).not.toBe('5.9+');
-      expect(runCheck().ok).toBe(true);
+      expect((await runCheck()).ok).toBe(true);
     });
   });
 });
@@ -586,14 +589,14 @@ describe('section injection behavior', () => {
 // ============================================================================
 
 describe('inject-governance README tool table (#2269)', () => {
-  it('check fails when the README tool table drifts', () => {
-    withSandboxFile('README.md', (original) => {
+  it('check fails when the README tool table drifts', async () => {
+    await withSandboxFile('README.md', async (original) => {
       // Drop a generated table row so the README table no longer matches the
       // registry — the gate must catch it.
       const broken = original.replace(/\| `orchestrate`[^\n]*\n/, '');
       expect(broken).not.toBe(original);
       writeFileSync(box('README.md'), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('README MCP tools table is stale');
     });
@@ -621,14 +624,14 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
     });
   });
 
-  it('canonical paths validator passes on the current CLAUDE.md', () => {
-    const { ok, output } = runCheck();
+  it('canonical paths validator passes on the current CLAUDE.md', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('Canonical Paths drift');
   });
 
-  it('canonical paths validator fails when a row points at a missing file', () => {
-    withSandboxFile('AGENTS.md', (original) => {
+  it('canonical paths validator fails when a row points at a missing file', async () => {
+    await withSandboxFile('AGENTS.md', async (original) => {
       // #3446: the canonical-paths table is authored in AGENTS.md; AGENTS uses
       // the `src/...` shorthand for the nexus-agents package.
       const broken = original.replace(
@@ -637,7 +640,7 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
       );
       expect(broken).not.toBe(original);
       writeFileSync(box('AGENTS.md'), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('Canonical Paths drift');
       expect(output).toContain('THIS_FILE_DOES_NOT_EXIST.ts');
@@ -652,29 +655,29 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
 describe('inject-governance adapter-precedence-docs (#2655)', () => {
   const PRECEDENCE_DOC = 'docs/guides/RULE_PRECEDENCE.md';
 
-  it('passes when RULE_PRECEDENCE.md has all four adapter sections', () => {
-    const { ok, output } = runCheck();
+  it('passes when RULE_PRECEDENCE.md has all four adapter sections', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('RULE_PRECEDENCE.md missing');
   });
 
-  it('fails when an adapter section header is missing', () => {
-    withSandboxFile(PRECEDENCE_DOC, (original) => {
+  it('fails when an adapter section header is missing', async () => {
+    await withSandboxFile(PRECEDENCE_DOC, async (original) => {
       // Exact-line matching in the validator means `## OpenCodeXXX` still trips
       // the gate even though `includes('## OpenCode')` would have passed.
       const broken = original.replace(/^## OpenCode$/m, '## OpenCodeXXX');
       expect(broken).not.toBe(original);
       writeFileSync(box(PRECEDENCE_DOC), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('## OpenCode');
     });
   });
 
-  it('fails when RULE_PRECEDENCE.md is missing entirely', () => {
-    withSandboxFile(PRECEDENCE_DOC, () => {
+  it('fails when RULE_PRECEDENCE.md is missing entirely', async () => {
+    await withSandboxFile(PRECEDENCE_DOC, async () => {
       rmSync(box(PRECEDENCE_DOC));
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('Missing docs/guides/RULE_PRECEDENCE.md');
     });
@@ -686,8 +689,8 @@ describe('inject-governance adapter-precedence-docs (#2655)', () => {
 // ============================================================================
 
 describe('inject-governance rules-index (#2657)', () => {
-  it('passes when the AGENTS.md Rules index matches .rules/*.md frontmatter', () => {
-    const { ok, output } = runCheck();
+  it('passes when the AGENTS.md Rules index matches .rules/*.md frontmatter', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('AGENTS.md Rules index is stale');
   });
@@ -704,12 +707,12 @@ describe('inject-governance rules-index (#2657)', () => {
     expect(section).toMatch(/_Auto-generated from `\.rules\/\*\.md` frontmatter.*\d+ rules\._/);
   });
 
-  it('fails when the AGENTS.md Rules index drifts from frontmatter', () => {
-    withSandboxFile('AGENTS.md', (original) => {
+  it('fails when the AGENTS.md Rules index drifts from frontmatter', async () => {
+    await withSandboxFile('AGENTS.md', async (original) => {
       const broken = original.replace(/\| \[`\.rules\/typescript\.md`\][^\n]*\n/, '');
       expect(broken).not.toBe(original);
       writeFileSync(box('AGENTS.md'), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('AGENTS.md Rules index is stale');
     });
@@ -721,8 +724,8 @@ describe('inject-governance rules-index (#2657)', () => {
 // ============================================================================
 
 describe('inject-governance claude-from-agents (#3446)', () => {
-  it('passes when the CLAUDE.md generated block matches AGENTS.md AGNOSTIC:BODY', () => {
-    const { ok, output } = runCheck();
+  it('passes when the CLAUDE.md generated block matches AGENTS.md AGNOSTIC:BODY', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
   });
@@ -744,33 +747,33 @@ describe('inject-governance claude-from-agents (#3446)', () => {
     expect(block).not.toContain('AGNOSTIC:BODY:END');
   });
 
-  it('fails when the CLAUDE.md generated block is hand-edited (drifts from AGENTS.md)', () => {
-    withSandboxFile('CLAUDE.md', (original) => {
+  it('fails when the CLAUDE.md generated block is hand-edited (drifts from AGENTS.md)', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
       const broken = original.replace('## Prime directive', '## Prime directive (hand-edited)');
       expect(broken).not.toBe(original);
       writeFileSync(box('CLAUDE.md'), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('GENERATED:FROM_AGENTS block is stale');
     });
   });
 
-  it('fails when AGENTS.md AGNOSTIC:BODY is edited without re-running inject', () => {
-    withSandboxFile('AGENTS.md', (original) => {
+  it('fails when AGENTS.md AGNOSTIC:BODY is edited without re-running inject', async () => {
+    await withSandboxFile('AGENTS.md', async (original) => {
       const broken = original.replace(
         'Clever code is maintenance debt.',
         'Clever code is maintenance debt. (edited but not injected)'
       );
       expect(broken).not.toBe(original);
       writeFileSync(box('AGENTS.md'), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('GENERATED:FROM_AGENTS block is stale');
     });
   });
 
-  it('fails LOUD on reordered AGNOSTIC:BODY markers instead of silently erasing the body', () => {
-    withSandboxFile('AGENTS.md', (original) => {
+  it('fails LOUD on reordered AGNOSTIC:BODY markers instead of silently erasing the body', async () => {
+    await withSandboxFile('AGENTS.md', async (original) => {
       const broken = original
         .replace('<!-- AGNOSTIC:BODY:START -->', '<!-- AGNOSTIC:BODY:TMP -->')
         .replace('<!-- AGNOSTIC:BODY:END -->', '<!-- AGNOSTIC:BODY:START -->')
@@ -779,7 +782,7 @@ describe('inject-governance claude-from-agents (#3446)', () => {
       writeFileSync(box('AGENTS.md'), broken);
       // The generator THROWS on malformed markers rather than silently erasing
       // the body; runCheck() surfaces that throw as a failed check.
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toMatch(/reordered|malformed/i);
     });
@@ -798,27 +801,110 @@ describe('inject-governance claude-from-agents (#3446)', () => {
 });
 
 // ============================================================================
+// Generated-block comparison is formatter-normalized (#6062)
+// ============================================================================
+
+describe('inject-governance claude-from-agents normalization (#6062)', () => {
+  /** The one agnostic-body line every fixture below edits; present verbatim in both files. */
+  const ANCHOR = '- **Cleverness**: Never. Clever code is maintenance debt.';
+
+  it('check passes after inject when the AGENTS.md body has an inline code span split across lines', async () => {
+    // The #6062 repro: prettier normalizes a code span that wraps at 80 columns,
+    // so the block `inject` writes is legitimately NOT byte-equal to the raw
+    // AGENTS.md slice. The old check compared raw-vs-formatted and failed
+    // forever while telling the user to run `inject`, which was a no-op.
+    await withInjectSnapshot(async () => {
+      const agentsPath = box('AGENTS.md');
+      const original = readFileSync(agentsPath, 'utf-8');
+      const edited = original.replace(
+        ANCHOR,
+        `${ANCHOR} Say where the work is: \`Step 3 of 5\`, \`gates green, panel\n   pending\`. The reader should not have to scroll to find out.`
+      );
+      expect(edited).not.toBe(original);
+      writeFileSync(agentsPath, edited);
+
+      await runInject();
+      // The edit really travelled into the generated block — the assertion below
+      // is about THIS text, not about a block that silently kept the old prose.
+      expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toContain('`gates green, panel');
+
+      const { ok, output } = await runCheck();
+      expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
+      expect(ok).toBe(true);
+    });
+  });
+
+  it('a genuinely stale block still fails, naming the CLAUDE.md line and showing both versions', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const lines = original.split('\n');
+      const idx = lines.indexOf(ANCHOR);
+      expect(idx).toBeGreaterThan(-1);
+      const edited = ANCHOR.replace('maintenance debt', 'maintenance DEBT');
+      lines[idx] = edited;
+      writeFileSync(box('CLAUDE.md'), lines.join('\n'));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('GENERATED:FROM_AGENTS block is stale');
+      // 1-based line number of the first differing line, in the file the user opens.
+      expect(output).toContain(`CLAUDE.md:${String(idx + 1)}`);
+      expect(output).toContain(`expected: ${ANCHOR}`);
+      expect(output).toContain(`on disk:  ${edited}`);
+      // Inject WOULD rewrite this block, so prescribing it is correct here.
+      expect(output).toContain('pnpm governance:inject');
+    });
+  });
+
+  it('trailing-newline differences on either side do not produce a false failure', async () => {
+    // The issue names the slice's `\ No newline at end of file` mismatch as the
+    // other formatter-sensitive edge. Pad the AGENTS.md slice with blank lines
+    // before the END marker, and strip CLAUDE.md's end-of-file newline (which
+    // prettier would put back) — neither is agnostic-body drift, so the block
+    // comparison must stay clean.
+    await withInjectSnapshot(async () => {
+      const agentsPath = box('AGENTS.md');
+      const padded = readFileSync(agentsPath, 'utf-8').replace(
+        '\n<!-- AGNOSTIC:BODY:END -->',
+        '\n\n\n<!-- AGNOSTIC:BODY:END -->'
+      );
+      expect(padded).toContain('\n\n\n<!-- AGNOSTIC:BODY:END -->');
+      writeFileSync(agentsPath, padded);
+      await runInject();
+
+      const claudePath = box('CLAUDE.md');
+      const injected = readFileSync(claudePath, 'utf-8');
+      expect(injected.endsWith('\n')).toBe(true);
+      writeFileSync(claudePath, injected.replace(/\n$/, ''));
+
+      const { ok, output } = await runCheck();
+      expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
+      expect(ok).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
 // Tool-annotations validator (#2648)
 // ============================================================================
 
 describe('inject-governance tool-annotations (#2648)', () => {
   const MANIFEST = 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts';
 
-  it('passes when every registered tool has an entry in TOOL_ANNOTATIONS', () => {
-    const { ok, output } = runCheck();
+  it('passes when every registered tool has an entry in TOOL_ANNOTATIONS', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('Registered tools missing annotations');
   });
 
-  it('fails when a registered tool is missing its manifest annotations block', () => {
-    withSandboxFile(MANIFEST, (original) => {
+  it('fails when a registered tool is missing its manifest annotations block', async () => {
+    await withSandboxFile(MANIFEST, async (original) => {
       const broken = original.replace(
         /(name: 'weather_report',\s*)annotations:\s*\{[\s\S]*?\},\s*/m,
         '$1'
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(MANIFEST), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('missing annotations');
       expect(output).toContain('weather_report');
@@ -833,14 +919,14 @@ describe('inject-governance tool-annotations (#2648)', () => {
 describe('inject-governance mcp-error-envelope (#2649)', () => {
   const TOOL = 'packages/nexus-agents/src/mcp/tools/memory-stats.ts';
 
-  it('passes when no tool file has a raw `isError: true` literal', () => {
-    const { ok, output } = runCheck();
+  it('passes when no tool file has a raw `isError: true` literal', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('raw `isError: true` literal');
   });
 
-  it('fails when a tool file builds a raw `isError: true` literal', () => {
-    withSandboxFile(TOOL, (original) => {
+  it('fails when a tool file builds a raw `isError: true` literal', async () => {
+    await withSandboxFile(TOOL, async (original) => {
       // String-pattern replace already targets only the first occurrence.
       const broken = original.replace(
         'export ',
@@ -848,7 +934,7 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(TOOL), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('raw `isError: true` literal');
       expect(output).toContain('memory-stats.ts');
@@ -858,8 +944,8 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
   // #5062: the gate matches the AST, not the text, so a doc comment or a
   // string that NAMES the convention is not an offender. The old regex
   // flagged both of these.
-  it('passes when `isError: true` appears only in a comment and a string literal (#5062)', () => {
-    withSandboxFile(TOOL, (original) => {
+  it('passes when `isError: true` appears only in a comment and a string literal (#5062)', async () => {
+    await withSandboxFile(TOOL, async (original) => {
       const mentioned = original.replace(
         'export ',
         '/** Errors return `{ isError: true }` from toolStructuredError. */\n' +
@@ -868,7 +954,7 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
       );
       expect(mentioned).not.toBe(original);
       writeFileSync(box(TOOL), mentioned);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(true);
       expect(output).not.toContain('raw `isError: true` literal');
     });
@@ -876,30 +962,30 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
 
   // #5062: the old `[{,]\s*` anchor could not see past a comment line, so a
   // property that follows one inside a multi-line literal slipped through.
-  it('fails when `isError: true` follows a comment line inside a multi-line object (#5062)', () => {
-    withSandboxFile(TOOL, (original) => {
+  it('fails when `isError: true` follows a comment line inside a multi-line object (#5062)', async () => {
+    await withSandboxFile(TOOL, async (original) => {
       const broken = original.replace(
         'export ',
         'const _raw = {\n  // deliberately raw\n  isError: true,\n  content: [],\n};\nexport '
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(TOOL), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('raw `isError: true` literal');
       expect(output).toContain('memory-stats.ts');
     });
   });
 
-  it('fails on `isError: true as const` (#5062)', () => {
-    withSandboxFile(TOOL, (original) => {
+  it('fails on `isError: true as const` (#5062)', async () => {
+    await withSandboxFile(TOOL, async (original) => {
       const broken = original.replace(
         'export ',
         'const _raw = { isError: true as const, content: [] };\nexport '
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(TOOL), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('raw `isError: true` literal');
       expect(output).toContain('memory-stats.ts');
@@ -914,18 +1000,18 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
 describe('inject-governance tool-distinctness (#2650)', () => {
   const BASELINE = 'docs/ops/tool-distinctness-baseline.json';
 
-  it('passes when every flagged tool pair is in the baseline', () => {
-    const { ok, output } = runCheck();
+  it('passes when every flagged tool pair is in the baseline', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('distinctness');
   });
 
-  it('fails when a flagged pair is dropped from the baseline', () => {
-    withSandboxFile(BASELINE, (original) => {
+  it('fails when a flagged pair is dropped from the baseline', async () => {
+    await withSandboxFile(BASELINE, async (original) => {
       const parsed = JSON.parse(original) as { pairs: unknown[] };
       const dropped = { ...parsed, pairs: parsed.pairs.slice(1) };
       writeFileSync(box(BASELINE), JSON.stringify(dropped, null, 2) + '\n');
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('NEW overlapping pair');
     });
@@ -939,20 +1025,20 @@ describe('inject-governance tool-distinctness (#2650)', () => {
 describe('inject-governance tool-prerequisites (#2652)', () => {
   const PREREQ = 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts';
 
-  it('passes when every non-read-only tool has a prerequisite decision', () => {
-    const { ok, output } = runCheck();
+  it('passes when every non-read-only tool has a prerequisite decision', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('no prerequisite decision');
   });
 
-  it('fails when a non-read-only tool is dropped from both prerequisite maps', () => {
-    withSandboxFile(PREREQ, (original) => {
+  it('fails when a non-read-only tool is dropped from both prerequisite maps', async () => {
+    await withSandboxFile(PREREQ, async (original) => {
       // `orchestrate` executes tasks (never read-only), so dropping its
       // NO_PREREQUISITE entry must trip the gate (#3444).
       const broken = original.replace(/^ {2}orchestrate:[\s\S]*?',\n/m, '');
       expect(broken).not.toBe(original);
       writeFileSync(box(PREREQ), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('no prerequisite decision');
       expect(output).toContain('orchestrate');
@@ -967,21 +1053,21 @@ describe('inject-governance tool-prerequisites (#2652)', () => {
 describe('inject-governance tool-output-consistency (#2653)', () => {
   const TOOL = 'packages/nexus-agents/src/mcp/tools/memory-write.ts';
 
-  it('passes when no tool output types a timestamp as a bare number', () => {
-    const { ok, output } = runCheck();
+  it('passes when no tool output types a timestamp as a bare number', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('timestamp-named field');
   });
 
-  it('fails when a tool output schema types a timestamp field as a number', () => {
-    withSandboxFile(TOOL, (original) => {
+  it('fails when a tool output schema types a timestamp field as a number', async () => {
+    await withSandboxFile(TOOL, async (original) => {
       const broken = original.replace(
         'const outputSchema = {',
         'const outputSchema = {\n    createdAt: z.number(),'
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(TOOL), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('timestamp-named field');
       expect(output).toContain('memory-write.ts');
@@ -994,30 +1080,30 @@ describe('inject-governance tool-output-consistency (#2653)', () => {
 // ============================================================================
 
 describe('inject-governance rule-frontmatter (#2656)', () => {
-  it('passes when every .rules/*.md has paths + description frontmatter', () => {
-    const { ok, output } = runCheck();
+  it('passes when every .rules/*.md has paths + description frontmatter', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('frontmatter drift');
   });
 
-  it('fails when a rule file loses its frontmatter delimiter', () => {
-    withSandboxFile('.rules/typescript.md', (original) => {
+  it('fails when a rule file loses its frontmatter delimiter', async () => {
+    await withSandboxFile('.rules/typescript.md', async (original) => {
       const stripped = original.replace(/^---\n[\s\S]*?\n---\n/, '');
       expect(stripped).not.toBe(original);
       writeFileSync(box('.rules/typescript.md'), stripped);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('frontmatter drift');
       expect(output).toContain('typescript.md');
     });
   });
 
-  it('fails when a rule file is missing its description field', () => {
-    withSandboxFile('.rules/security.md', (original) => {
+  it('fails when a rule file is missing its description field', async () => {
+    await withSandboxFile('.rules/security.md', async (original) => {
       const stripped = original.replace(/^description:.*\n/m, '');
       expect(stripped).not.toBe(original);
       writeFileSync(box('.rules/security.md'), stripped);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('missing `description:`');
     });
@@ -1047,24 +1133,24 @@ describe('inject-governance server.json sync (#2327)', () => {
     });
   });
 
-  it('check command fails when server.json version drifts', () => {
-    withSandboxFile(SERVER_JSON, (original) => {
+  it('check command fails when server.json version drifts', async () => {
+    await withSandboxFile(SERVER_JSON, async (original) => {
       const broken = original.replace(/"version": "[^"]+"/, '"version": "0.0.0-broken"');
       expect(broken).not.toBe(original);
       writeFileSync(box(SERVER_JSON), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('server.json version');
       expect(output).toContain('0.0.0-broken');
     });
   });
 
-  it('check command fails when server.json description tool count drifts', () => {
-    withSandboxFile(SERVER_JSON, (original) => {
+  it('check command fails when server.json description tool count drifts', async () => {
+    await withSandboxFile(SERVER_JSON, async (original) => {
       const broken = original.replace(/(\d+) MCP tools/, '999 MCP tools');
       expect(broken).not.toBe(original);
       writeFileSync(box(SERVER_JSON), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('server.json description');
       expect(output).toContain('999');
@@ -1173,8 +1259,8 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
     return names;
   }
 
-  it('passes check on the current ENTRYPOINTS.md (no drift)', () => {
-    const { ok, output } = runCheck();
+  it('passes check on the current ENTRYPOINTS.md (no drift)', async () => {
+    const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
   });
@@ -1201,12 +1287,12 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
     });
   });
 
-  it('check fails when an ENTRYPOINTS enumeration drifts', () => {
-    withSandboxFile(ENTRYPOINTS, (original) => {
+  it('check fails when an ENTRYPOINTS enumeration drifts', async () => {
+    await withSandboxFile(ENTRYPOINTS, async (original) => {
       const broken = original.replace(/ {4}- name: orchestrate\n {6}auth: none\n/, '');
       expect(broken).not.toBe(original);
       writeFileSync(box(ENTRYPOINTS), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
     });
@@ -1263,12 +1349,12 @@ describe('inject-governance ENTRYPOINTS CLI command tables (#5458)', () => {
     });
   });
 
-  it('check fails when a CLI command row is removed', () => {
-    withSandboxFile(ENTRYPOINTS, (original) => {
+  it('check fails when a CLI command row is removed', async () => {
+    await withSandboxFile(ENTRYPOINTS, async (original) => {
       const broken = original.replace(/^\| `orchestrate` +\|[^\n]*\n/m, '');
       expect(broken).not.toBe(original);
       writeFileSync(box(ENTRYPOINTS), broken);
-      const { ok, output } = runCheck();
+      const { ok, output } = await runCheck();
       expect(ok).toBe(false);
       expect(output).toContain('ENTRYPOINTS.md CLI command tables are stale');
     });
