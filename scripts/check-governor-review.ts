@@ -314,10 +314,13 @@ function truncationCaveat(truncated: boolean): string {
  * — a sibling field, or a span past the truncation cap); and a DIFFERING hash
  * (the voters read a stripped rendering of the bound bytes).
  *
- * The two counters are BOTH consulted because they measure different removals:
- * `commentsRemoved` is HTML comments (#5258), while an XML-like injection tag
- * goes through `fieldsModified`. Reading only the first made a tag strip
- * indistinguishable from a no-op (#5385, found by adversarial review).
+ * THREE counters, because they measure different things and none derives from
+ * the others: `commentsRemoved` is HTML comments (#5258), `tagsRemoved` is
+ * XML-like conversation-structure tags, and `fieldsModified` counts FIELDS. A
+ * comment and a tag in the SAME field is one modified field, so no arithmetic
+ * over the other two recovers the tag (#5385). The tag clause is therefore
+ * rendered independently of comments — an `else if` between them let a comment
+ * mask a tag, which is the state six ratification seats reproduced.
  */
 function sanitizationCaveat(match: PrReviewRecord): string {
   const disclosure = match.sanitization;

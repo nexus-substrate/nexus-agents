@@ -375,3 +375,46 @@ describe('the tag-strip NOTE must not reintroduce the tag (#5385)', () => {
     expect(commentOnly.tagsRemoved).toBe(0);
   });
 });
+
+describe('the voter note never goes silent on an attributed-nothing strip (#5385)', () => {
+  // The fourth panel's security seat: I implemented the "cause unattributed"
+  // clause in the governor gate, then claimed it for BOTH renderers. The voter
+  // note accepted a `fields` count and never read it, so a field changed with
+  // neither counter set produced an empty string — silence, which tells the panel
+  // the text is as written.
+  //
+  // The state is unreachable from today's sanitizer (`cleaned` only changes via
+  // the two counted paths), which is why the tests below drive the note directly.
+  // A claim in a ratification record has to be true of the code either way.
+  it('reports an unattributed removal rather than returning nothing', () => {
+    const clean = {
+      prTitle: 'Add widget',
+      prDiff: 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b',
+    };
+    const proposal = buildPrReviewProposal(clean, { comments: 0, fields: 2, tags: 0 });
+    expect(proposal).toContain('did not attribute a cause');
+    expect(proposal).toContain('2 of the untrusted');
+  });
+
+  it('stays silent when nothing at all was removed — the pair', () => {
+    // Without this, always emitting the clause would pass the row above while
+    // annotating every clean PR with a removal that never happened.
+    const clean = {
+      prTitle: 'Add widget',
+      prDiff: 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b',
+    };
+    const proposal = buildPrReviewProposal(clean, { comments: 0, fields: 0, tags: 0 });
+    expect(proposal).not.toContain('did not attribute a cause');
+    expect(proposal).not.toContain('were removed');
+  });
+
+  it('an ATTRIBUTED removal uses its own clause, not the fallback', () => {
+    const clean = {
+      prTitle: 'Add widget',
+      prDiff: 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b',
+    };
+    const proposal = buildPrReviewProposal(clean, { comments: 1, fields: 1, tags: 0 });
+    expect(proposal).toContain('HTML comment(s) were removed');
+    expect(proposal).not.toContain('did not attribute a cause');
+  });
+});
