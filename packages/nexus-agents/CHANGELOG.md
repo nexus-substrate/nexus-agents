@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.49.1
+
+### Patch Changes
+
+- [#6084](https://github.com/nexus-substrate/nexus-agents/pull/6084) [`36736ee`](https://github.com/nexus-substrate/nexus-agents/commit/36736eeb985b7d8faac4e04cc4f33ee6292cc929) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `pnpm governance:check` no longer fails permanently on AGENTS.md prose that prettier reshapes. The injector writes CLAUDE.md through prettier, but the staleness check regenerated the `GENERATED:FROM_AGENTS` block from the raw AGENTS.md slice and compared bytes, so an inline code span wrapped across a line break made `check` report the block stale forever while prescribing an `inject` that changed nothing. Both sides now go through the one prettier pass the writer uses, and a genuine mismatch reports the first differing CLAUDE.md line number with the expected and on-disk text. `checkGovernance()` is now async.
+
 ## 8.49.0
 
 ### Minor Changes
