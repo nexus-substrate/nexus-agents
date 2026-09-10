@@ -1076,11 +1076,27 @@ function describeOutOfBlockDrift(expected: string, content: string): string {
  * markers (#6087). Index-spliced rather than `String.replace`, whose
  * replacement-pattern syntax (`$&`, `$'`) would corrupt a block that contains
  * a dollar sign — CLAUDE.md does.
+ *
+ * Returns `undefined` when `expected` is not a substring of `regenerated`. The
+ * caller derives `expected` FROM `regenerated`, so that cannot happen today; a
+ * future change that computes it differently would otherwise splice at -1 and
+ * print a nonsensical out-of-block diff (#6097 panel). Reported, not thrown:
+ * a throw would reach the CLI dispatch uncaught — the stack-trace shape #6087
+ * removed for prettier. Exported so the test can drive the guard directly.
  */
-function withOnDiskBlock(regenerated: string, expected: string, onDisk: string): string {
+export function withOnDiskBlock(
+  regenerated: string,
+  expected: string,
+  onDisk: string
+): string | undefined {
   const at = regenerated.indexOf(expected);
+  if (at === -1) return undefined;
   return regenerated.slice(0, at) + onDisk + regenerated.slice(at + expected.length);
 }
+
+/** The {@link withOnDiskBlock} invariant message: fail-closed, no stack trace. */
+const BLOCK_NOT_IN_REGENERATION =
+  'governance:check: generated block not found in its own regeneration — internal invariant broken';
 
 /**
  * {@link formatWithPrettier} for the check path (#6087). A prettier failure —
@@ -1158,6 +1174,10 @@ export async function checkClaudeAgnosticBlock(): Promise<boolean> {
   const blockOk = expected === onDisk;
   if (!blockOk) console.error(describeAgnosticDrift(content, expected, onDisk));
   const outsideBlock = withOnDiskBlock(regenerated, expected, onDisk);
+  if (outsideBlock === undefined) {
+    console.error(BLOCK_NOT_IN_REGENERATION);
+    return false;
+  }
   const outsideOk = outsideBlock === content;
   if (!outsideOk) console.error(describeOutOfBlockDrift(outsideBlock, content));
   return blockOk && outsideOk;

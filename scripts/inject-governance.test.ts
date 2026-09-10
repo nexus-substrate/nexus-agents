@@ -71,6 +71,7 @@ let core: {
   checkGovernance: () => Promise<boolean>;
   injectGovernance: () => Promise<void>;
   GOVERNANCE_STAMP_SOURCES: readonly string[];
+  withOnDiskBlock: (regenerated: string, expected: string, onDisk: string) => string | undefined;
 };
 
 /** Absolute path inside the sandbox for a repo-relative path. */
@@ -993,6 +994,15 @@ describe('inject-governance whole-file parity + formatter errors (#6087)', () =>
         await prettier.clearConfigCache();
       }
     });
+  });
+
+  it('(e) withOnDiskBlock refuses to splice a block that is not in its own regeneration', () => {
+    // The caller derives `expected` from `regenerated`, so this cannot happen
+    // today; the guard is for a future change that computes it differently.
+    // Unguarded, indexOf(-1) splices at -1 and yields a nonsensical diff — the
+    // splice below would return 'nspliced' rather than a refusal.
+    expect(core.withOnDiskBlock('before block after', 'block', 'BLOCK')).toBe('before BLOCK after');
+    expect(core.withOnDiskBlock('unspliced', 'absent', 'BLOCK')).toBeUndefined();
   });
 });
 
