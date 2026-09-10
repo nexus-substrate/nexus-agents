@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.48.2
+
+### Patch Changes
+
+- [#6076](https://github.com/nexus-substrate/nexus-agents/pull/6076) [`1afa287`](https://github.com/nexus-substrate/nexus-agents/commit/1afa287dcb22b7b5cc342615c8f674e0bc8dc15f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): one canonical voter-field order for the vote-record hash ([#6057](https://github.com/nexus-substrate/nexus-agents/issues/6057))
+
+  The per-voter hash projection listed each `VoterSummary` field by hand, so a field added to the schema and the builder but not to the projection was silently unhashed (`retried` was, until [#6050](https://github.com/nexus-substrate/nexus-agents/issues/6050)). The projection now walks a single module-private tuple whose exhaustiveness is checked at compile time in both directions (`satisfies` + `Exclude<keyof VoterSummary, …> extends never`), and a builder test pins that a maximal seat carries every schema key. Byte-identical for every existing record: the order is the one the projection already used, and absent optionals are still omitted, never emitted as `null`.
+
 ## 8.48.1
 
 ### Patch Changes
