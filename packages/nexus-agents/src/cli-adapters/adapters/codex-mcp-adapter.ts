@@ -66,6 +66,15 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   private client: Client | undefined;
   private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
+  /**
+   * Stderr attribution state (#6094). The registry caches one adapter per CLI
+   * and voter roles run under `Promise.all`, so the mcp-server's stderr pipe is
+   * shared by every in-flight call. `inFlight` is the current overlap;
+   * `overlapEpoch` advances whenever a call starts while another is in flight,
+   * so a capture that began alone can still see that it was later overlapped.
+   */
+  private inFlight = 0;
+  private overlapEpoch = 0;
 
   constructor(options?: CodexAdapterOptions) {
     super(options?.logger ?? createLogger({ component: 'codex-mcp-adapter' }));
@@ -190,22 +199,39 @@ export class CodexMcpAdapter extends BaseCliAdapter {
    * and returns what was written meanwhile (capped like the subprocess path).
    * A transport without a readable stderr (tests, or `stderr: 'inherit'`)
    * yields an empty capture, which the caller records as absent.
+   *
+   * ATTRIBUTION (#6094 review): the pipe is process-wide, so a line written
+   * while two calls overlap cannot be assigned to either. If another call was
+   * in flight at ANY point during this capture, the capture is discarded
+   * (debug-logged) and the seat falls through to the reasoning fallback.
+   * Attributing it to both would classify a seat that read the artifact as
+   * unverifiable.
    */
   private captureTransportStderr(): { stop: () => string } {
+    this.inFlight++;
+    if (this.inFlight > 1) this.overlapEpoch++;
+    const epochAtStart = this.overlapEpoch;
+    const overlappedAtStart = this.inFlight > 1;
     const stream = (this.mcpTransport as { stderr?: NodeJS.ReadableStream | null } | undefined)
       ?.stderr;
-    if (stream === undefined || stream === null) return { stop: () => '' };
     let captured = '';
     const onData = (chunk: Buffer | string): void => {
       if (captured.length < MAX_RESPONSE_STDERR_CHARS) captured += chunk.toString();
     };
-    stream.on('data', onData);
+    stream?.on('data', onData);
     let stopped = false;
     return {
       stop: (): string => {
-        if (!stopped) {
-          stopped = true;
-          stream.off('data', onData);
+        if (stopped) return '';
+        stopped = true;
+        stream?.off('data', onData);
+        this.inFlight--;
+        const overlapped = overlappedAtStart || this.overlapEpoch !== epochAtStart;
+        if (overlapped && captured !== '') {
+          this.logger.debug('Codex MCP stderr not attributed: another call was in flight', {
+            capturedChars: captured.length,
+          });
+          return '';
         }
         return captured.slice(0, MAX_RESPONSE_STDERR_CHARS);
       },

@@ -290,6 +290,49 @@ describe('CodexMcpAdapter', () => {
       if (result.ok) expect(result.value.stderr).not.toContain('later noise');
     });
 
+    it('two overlapping calls share one pipe, so NEITHER is attributed the stderr (#6094)', async () => {
+      // The registry caches one adapter per CLI and roles run under
+      // Promise.all, so the pipe is process-wide. Attributing a line written
+      // during two overlapping calls to both of them would classify a seat that
+      // read the artifact as unverifiable. Ambiguous attribution is dropped;
+      // classification then falls through to the reasoning fallback.
+      const transportStderr = new PassThrough();
+      mocks.mockTransport.mockImplementationOnce(function () {
+        return { close: vi.fn().mockResolvedValue(undefined), stderr: transportStderr };
+      });
+      let calls = 0;
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockImplementation(async () => {
+          calls++;
+          if (calls === 1) {
+            transportStderr.write('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n');
+          }
+          await new Promise((r) => setImmediate(r));
+          await new Promise((r) => setImmediate(r));
+          return { content: [{ type: 'text', text: `{"call":${String(calls)}}` }], isError: false };
+        }),
+      };
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
+
+      const newAdapter = new CodexMcpAdapter();
+      await newAdapter.initialize();
+      const [a, b] = await Promise.all([
+        newAdapter.execute({ content: 'vote 1' }),
+        newAdapter.execute({ content: 'vote 2' }),
+      ]);
+
+      expect(a.ok && b.ok).toBe(true);
+      if (a.ok) expect('stderr' in a.value).toBe(false);
+      if (b.ok) expect('stderr' in b.value).toBe(false);
+
+      // A later, un-overlapped call on the same adapter is attributed again.
+      const c = await newAdapter.execute({ content: 'vote 3' });
+      expect(c.ok).toBe(true);
+    });
+
     it('a call with a silent stderr pipe carries no stderr key', async () => {
       mocks.mockTransport.mockImplementationOnce(function () {
         return { close: vi.fn().mockResolvedValue(undefined), stderr: new PassThrough() };

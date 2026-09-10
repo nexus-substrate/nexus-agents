@@ -30,6 +30,7 @@ import {
 } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
@@ -164,6 +165,11 @@ export interface SupplyChainTradeoffPanelResponse {
   readonly recommendation: string;
   readonly votes: readonly PanelVote[];
   readonly voterErrors: number;
+  /**
+   * Seats that answered without reading the artifact (#6094). Always present,
+   * explicit 0 included; those seats carry no axis verdicts.
+   */
+  readonly voterUnverifiable: number;
   readonly durationMs: number;
 }
 
@@ -293,7 +299,10 @@ export function parseAxisVerdicts(
 
 /** Aggregates a single axis across all voters into one verdict. */
 export function aggregateAxis(axis: string, votes: readonly PanelVote[]): AxisVerdict {
-  const valid = votes.filter((v) => v.source !== 'error' && axis in v.axisVotes);
+  // #6094: an unverifiable seat is an absence like an errored one. Its
+  // reasoning is kept for the record, and the per-axis parse reads reasoning,
+  // so without this the discarded verdict resurfaced per axis.
+  const valid = votes.filter((v) => !isAbsentSeat(v) && axis in v.axisVotes);
   let approveCount = 0;
   let rejectCount = 0;
   let abstainCount = 0;
@@ -373,7 +382,10 @@ export function buildRecommendation(
 // ============================================================================
 
 function toPanelVote(result: AgentVoteResult, axes: readonly string[]): PanelVote {
-  const axisVotes = parseAxisVerdicts(result.vote.reasoning, axes);
+  // #6094: a seat that could not read the artifact has no per-axis verdicts,
+  // whatever its reasoning text would parse into.
+  const axisVotes =
+    result.source === 'unverifiable' ? {} : parseAxisVerdicts(result.vote.reasoning, axes);
   return {
     role: result.role,
     overallDecision: result.vote.decision,
@@ -416,6 +428,7 @@ async function executeTradeoffPanelBody(
   const decision = aggregatePanel(axisVerdicts);
   const recommendation = buildRecommendation(decision, axisVerdicts);
   const voterErrors = votes.filter((v) => v.source === 'error').length;
+  const voterUnverifiable = votes.filter((v) => v.source === 'unverifiable').length;
 
   const response: SupplyChainTradeoffPanelResponse = {
     proposal: input.proposal,
@@ -425,6 +438,7 @@ async function executeTradeoffPanelBody(
     recommendation,
     votes,
     voterErrors,
+    voterUnverifiable,
     durationMs: Date.now() - start,
   };
   return toolSuccess(JSON.stringify(response, null, 2));

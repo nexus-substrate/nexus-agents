@@ -23,6 +23,7 @@
  * (Source: #4311, epic #3845, unblocks #3849; scorer from #3848; rubric #3846)
  */
 
+import type { AgentVoteResult } from '../packages/nexus-agents/src/cli/vote-types.js';
 import { scoreVoterCase } from '../packages/nexus-agents/src/mcp/tools/pr-review-eval-scoring.js';
 import { PR_REVIEW_EVAL_ROLES } from '../packages/nexus-agents/src/mcp/tools/pr-review-eval-types.js';
 import type {
@@ -56,10 +57,10 @@ export interface PanelVoterOutcome {
   readonly role: PrReviewEvalRole;
   readonly decision: 'approve' | 'request_changes' | 'abstain';
   readonly findings: readonly PanelFinding[];
-  /** Mirrors `AgentVoteResult.source` — 'error' outcomes are excluded from
-   * scoring by {@link scoreCaseVoters} (a transport/auth failure is not a
-   * scored miss). */
-  readonly source: 'llm' | 'simulation' | 'error';
+  /** Derived from `AgentVoteResult.source` so a new member (#6094) cannot
+   * break this script — 'error' outcomes are excluded from scoring by
+   * {@link scoreCaseVoters} (a transport/auth failure is not a scored miss). */
+  readonly source: AgentVoteResult['source'];
 }
 
 /** The input one case resolves to before it reaches the panel. */

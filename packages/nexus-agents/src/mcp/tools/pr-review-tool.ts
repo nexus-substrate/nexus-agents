@@ -35,6 +35,7 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
+import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -263,6 +264,8 @@ export interface PrReviewResponse {
   readonly requestChangesCount: number;
   readonly abstainCount: number;
   readonly errorCount: number;
+  /** Seats that could not read the diff (#6094). Always present; not inside `abstainCount`. */
+  readonly unverifiableCount: number;
   readonly reviews: readonly PrReviewVote[];
   readonly totalDurationMs: number;
   /**
@@ -339,7 +342,9 @@ export function aggregatePrDecisions(
   reviews: readonly PrReviewVote[],
   errorPolicy: 'standard' | 'absolute_quorum' = 'standard'
 ): PrReviewAggregate {
-  const valid = reviews.filter((r) => r.source !== 'error');
+  // #6094: an unverifiable seat is an absence like an errored one — it never
+  // read the diff, so it neither approves nor completes the panel.
+  const valid = reviews.filter((r) => !isAbsentSeat(r));
   // #5017: `verified` is a claim about the PANEL, not about the decision, and
   // it is the field a reader of a governance record trusts. An outcome reached
   // over a denominator that excludes voters who could have disagreed cannot
@@ -398,8 +403,9 @@ function absoluteQuorumApprove(
   reviews: readonly PrReviewVote[],
   valid: readonly PrReviewVote[]
 ): PrReviewAggregate {
+  // Absent seats: errored OR unverifiable (#6094) — both void the quorum.
   const errorCount = reviews.length - valid.length;
-  const erroredRoles = reviews.filter((r) => r.source === 'error').map((r) => r.role);
+  const erroredRoles = reviews.filter(isAbsentSeat).map((r) => r.role);
   const catfish = valid.find((r) => r.role === 'catfish');
   const catfishApproved = catfish?.decision === 'approve';
   const panelComplete = valid.length === PR_REVIEW_ROLES.length;
@@ -438,15 +444,20 @@ import { buildPrReviewProposal } from './pr-review-proposal.js';
 function resolveAggregate(
   reviews: readonly PrReviewVote[],
   input: PrReviewInput,
-  errorCount: number,
+  absent: { readonly errorCount: number; readonly unverifiableCount: number },
   coverage: PrReviewCoverage | undefined,
   logger: ILogger
 ): PrReviewAggregate {
   const preGate = aggregatePrDecisions(reviews, input.errorPolicy);
   if (preGate.reason !== undefined) {
+    // #6094: the degraded-panel warning counts every absent seat, and names
+    // the two kinds separately so a reader can tell a dead adapter from a
+    // seat that answered blind.
     logger.warn('pr_review degraded to no_quorum under absolute_quorum (#4132)', {
       reason: preGate.reason,
-      errorCount,
+      absentCount: absent.errorCount + absent.unverifiableCount,
+      errorCount: absent.errorCount,
+      unverifiableCount: absent.unverifiableCount,
     });
   }
   const aggregate = applyPartialCoverageGate(preGate, coverage);
@@ -537,7 +548,7 @@ async function executePrReviewBody(
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
-  const aggregate = resolveAggregate(reviews, input, counts.errorCount, coverage, logger);
+  const aggregate = resolveAggregate(reviews, input, counts, coverage, logger);
 
   const costSummary = rollUpDecisionCost(voteResults, logger);
 

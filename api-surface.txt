@@ -6717,6 +6717,7 @@ InterfaceDeclaration PrReviewResponse
   readonly reviews: readonly PrReviewVote[]
   readonly summary: PrReviewDecision
   readonly totalDurationMs: number
+  readonly unverifiableCount: number
   readonly verified: boolean
 InterfaceDeclaration PrReviewVote
   readonly cli?: string | undefined
