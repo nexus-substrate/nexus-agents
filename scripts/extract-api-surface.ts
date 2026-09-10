@@ -97,37 +97,241 @@ function stripInlineComments(text: string): string {
  * failed on every PR forever. A gate that always fails gets switched off,
  * which is no better than one that never fires.
  */
-function normalizeTypeText(text: string): string {
-  return sortTypeMembers(
-    stripInlineComments(text)
-      .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
-      // A dependency's type can be printed as an `import("<abs path>")` into
-      // node_modules. The greedy prefix consumes up to the LAST `/node_modules/`,
-      // which strips both the machine path and pnpm's versioned store segment
-      // (`.pnpm/zod@4.5.4/node_modules/`), leaving `zod/v4/core/schemas`.
-      //
-      // This file's own tests already warned about the class: "printed types must
-      // not carry machine-specific absolute paths (the gate failed on its own
-      // first CI run because /home/runner is not the author's home directory — a
-      // gate that always fails gets switched off)". The pre-existing rewrite
-      // above covered only in-package paths; rendering real call signatures
-      // (#6061) started printing dependency types too, which reintroduced it.
-      .replace(/import\("[^"]*\/node_modules\/([^"]*)"\)/g, 'import("$1")')
-      // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
-      // format uses "starts at column 0" to mean "new symbol" — a wrapped type
-      // put 7 continuation lines at column 0, which the checker read as phantom
-      // symbols. Two were a bare `}`, so they collided and silently swallowed
-      // the members that followed.
-      .replace(/\s*\n\s*/g, ' ')
-      // Collapse runs of spaces left behind by a removed block comment
-      // (#5972): `} /* why */ |` became `}  |`, a whitespace-only diff that
-      // would defeat the whole point of stripping. Safe because a printed
-      // type's internal spacing carries no meaning — the only thing that could
-      // is a string-literal type containing consecutive spaces, and the
-      // snapshot has zero of those.
-      .replace(/ {2,}/g, ' ')
-      .trim()
+export function normalizeTypeText(text: string): string {
+  // Object members are sorted BEFORE unions are: the union sort key must be
+  // the canonical member text, or `{ a; b } | { c }` and `{ b; a } | { c }`
+  // — the same declared set — sort by the checker's property order, which is
+  // the source declaration order. The first cut ran the two the other way
+  // round and 18 lines of the regenerated snapshot were not fixed points of
+  // this function. `sortTypeMembers` recurses into every `{}` group, so by
+  // the time a union member is compared its objects are already canonical.
+  return canonicalSegment(
+    sortTypeMembers(
+      stripInlineComments(text)
+        .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
+        // A dependency's type can be printed as an `import("<abs path>")` into
+        // node_modules. The greedy prefix consumes up to the LAST `/node_modules/`,
+        // which strips both the machine path and pnpm's versioned store segment
+        // (`.pnpm/zod@4.5.4/node_modules/`), leaving `zod/v4/core/schemas`.
+        //
+        // This file's own tests already warned about the class: "printed types must
+        // not carry machine-specific absolute paths (the gate failed on its own
+        // first CI run because /home/runner is not the author's home directory — a
+        // gate that always fails gets switched off)". The pre-existing rewrite
+        // above covered only in-package paths; rendering real call signatures
+        // (#6061) started printing dependency types too, which reintroduced it.
+        .replace(/import\("[^"]*\/node_modules\/([^"]*)"\)/g, 'import("$1")')
+        // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
+        // format uses "starts at column 0" to mean "new symbol" — a wrapped type
+        // put 7 continuation lines at column 0, which the checker read as phantom
+        // symbols. Two were a bare `}`, so they collided and silently swallowed
+        // the members that followed.
+        .replace(/\s*\n\s*/g, ' ')
+        // Collapse runs of spaces left behind by a removed block comment
+        // (#5972): `} /* why */ |` became `}  |`, a whitespace-only diff that
+        // would defeat the whole point of stripping. Safe because a printed
+        // type's internal spacing carries no meaning — the only thing that could
+        // is a string-literal type containing consecutive spaces, and the
+        // snapshot has zero of those.
+        .replace(/ {2,}/g, ' ')
+        .trim()
+    )
   );
+}
+
+// ---------------------------------------------------------------------------
+// Union member order (#6065)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sorts the members of every union in a printed type, at every nesting level.
+ *
+ * TypeScript prints a union's members in the order the checker interned them,
+ * which is a function of what got resolved FIRST during extraction — not of
+ * the source. Rendering real call signatures (#6061) resolved more types, and
+ * four snapshot lines reordered with no change to their declared type:
+ *
+ *   -  readonly type: "review" | "plan" | "vote" | "code" | "test" | "report" | ...
+ *   +  readonly type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | ...
+ *
+ * Fourth instance of the class this file documents three times already
+ * (absolute paths, object-member order, inline comments): a spurious diff on
+ * untouched code trains people to regenerate the snapshot without reading it.
+ *
+ * WHY TEXT AND NOT `Type.getUnionTypes()`: the structural route cannot keep
+ * the rest of the rendering byte-identical. The checker prints a union
+ * THROUGH its alias when it has one (`Status | undefined`), while
+ * `getUnionTypes()` hands back the flattened members (`"a" | "b" |
+ * undefined`) with the alias gone — TypeScript tracks the alias origin in a
+ * field ts-morph does not expose. It also splits `boolean` into `true | false`
+ * and an enum into its members. Each of those rewrites lines whose member set
+ * has not changed, which is the defect being fixed. A type-alias line is not
+ * even a `Type`: `aliasLines` records `getTypeNode().getText()`, the
+ * syntactic text, so a source reorder reached the snapshot through a path
+ * that never had a `Type` in hand.
+ *
+ * So this is a small parser over the printed text. `|` is a union separator
+ * only at bracket depth 0 of a TYPE context, and the scanner knows where it
+ * is not one:
+ *
+ * - inside a `{}` `()` `<>` `[]` group — each group is split into its own
+ *   segments (`;` members, `,` items) and every segment is its own context;
+ * - inside a string or template literal (`"a|b"`);
+ * - left of a depth-0 `:`, ` in `, ` extends `, ` is `, ` = ` or `=>` — that
+ *   side is a member name, a constraint subject, a parameter list; only the
+ *   right side is a type. `=>` splits at its LAST occurrence, the others at
+ *   their first;
+ * - anywhere in a conditional type (`X ? A | B : C`): a depth-0 `|` there
+ *   belongs to one branch, so that level is left as printed and only its
+ *   groups are descended into. Four snapshot lines, all zod signatures.
+ *
+ * `=>` is opaque to the bracket count, or the `>` of every arrow would close
+ * a generic that was never opened. The existing `splitTopLevel` above has
+ * exactly that bug (#6080) and is left alone here so that this change's
+ * snapshot churn stays one kind of line.
+ */
+const OPENERS = '{(<[';
+const CLOSERS = '})>]';
+
+/** Index just past a string literal or `=>` starting at `i`; -1 if neither. */
+function pastOpaque(text: string, i: number): number {
+  const ch = text.charAt(i);
+  if (ch === '=' && text.charAt(i + 1) === '>') return i + 2;
+  if (ch !== '"' && ch !== "'" && ch !== '`') return -1;
+  for (let j = i + 1; j < text.length; j++) {
+    if (text.charAt(j) === '\\') j++;
+    else if (text.charAt(j) === ch) return j + 1;
+  }
+  return text.length;
+}
+
+/** Splits on `sep` wherever it occurs at bracket depth 0, outside literals. */
+function splitAtDepthZero(text: string, sep: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (depth === 0 && text.startsWith(sep, i)) {
+      out.push(text.slice(start, i));
+      i += sep.length;
+      start = i;
+      continue;
+    }
+    const past = pastOpaque(text, i);
+    if (past !== -1) {
+      i = past;
+      continue;
+    }
+    const ch = text.charAt(i);
+    if (OPENERS.includes(ch)) depth++;
+    else if (CLOSERS.includes(ch)) depth--;
+    i++;
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+/** Index of the closer matching the opener at `open`; -1 if unbalanced. */
+function closerOf(text: string, open: number): number {
+  let depth = 0;
+  let i = open;
+  while (i < text.length) {
+    const past = pastOpaque(text, i);
+    if (past !== -1) {
+      i = past;
+      continue;
+    }
+    const ch = text.charAt(i);
+    if (OPENERS.includes(ch)) depth++;
+    else if (CLOSERS.includes(ch) && --depth === 0) return i;
+    i++;
+  }
+  return -1;
+}
+
+/** Copies `text` byte for byte, canonicalising the inside of every group. */
+function descendIntoGroups(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const past = pastOpaque(text, i);
+    if (past !== -1) {
+      out += text.slice(i, past);
+      i = past;
+      continue;
+    }
+    const ch = text.charAt(i);
+    const close = OPENERS.includes(ch) ? closerOf(text, i) : -1;
+    if (close === -1) {
+      out += ch;
+      i++;
+      continue;
+    }
+    out += `${ch}${canonicalGroup(text.slice(i + 1, close))}${text.charAt(close)}`;
+    i = close + 1;
+  }
+  return out;
+}
+
+/** A group's inside: `;`-separated members, `,`-separated items, each a segment. */
+function canonicalGroup(inner: string): string {
+  return splitAtDepthZero(inner, ';')
+    .map((member) => splitAtDepthZero(member, ',').map(canonicalSegment).join(','))
+    .join(';');
+}
+
+/** `X ? A : B` — a depth-0 `|` here belongs to one branch, not the whole. */
+function isConditional(text: string): boolean {
+  return splitAtDepthZero(text, '? ').length > 1;
+}
+
+/** `name: type` (member, parameter, named tuple) or `K in type`; else a bare type. */
+function canonicalSegment(text: string): string {
+  if (isConditional(text)) return descendIntoGroups(text);
+  for (const sep of [':', ' in ']) {
+    const parts = splitAtDepthZero(text, sep);
+    if (parts.length < 2) continue;
+    return `${descendIntoGroups(parts[0] ?? '')}${sep}${canonicalType(parts.slice(1).join(sep))}`;
+  }
+  return canonicalType(text);
+}
+
+/**
+ * Operators whose left side is not (or not only) the type being sorted. A
+ * type-parameter default has a type on BOTH sides; the rest have a subject or
+ * a parameter list on the left. `=>` splits at its last occurrence: the return
+ * type of a curried function is the text after the final arrow.
+ */
+const TYPE_PREFIXES: ReadonlyArray<{ sep: string; last: boolean; headIsType: boolean }> = [
+  { sep: ' = ', last: false, headIsType: true },
+  { sep: '=>', last: true, headIsType: false },
+  { sep: ' extends ', last: false, headIsType: false },
+  { sep: ' is ', last: false, headIsType: false },
+];
+
+function canonicalType(text: string): string {
+  if (isConditional(text)) return descendIntoGroups(text);
+  for (const { sep, last, headIsType } of TYPE_PREFIXES) {
+    const parts = splitAtDepthZero(text, sep);
+    if (parts.length < 2) continue;
+    const at = last ? parts.length - 1 : 1;
+    const head = parts.slice(0, at).join(sep);
+    const tail = parts.slice(at).join(sep);
+    return `${headIsType ? canonicalType(head) : descendIntoGroups(head)}${sep}${canonicalType(tail)}`;
+  }
+  return sortUnionMembers(text);
+}
+
+/** Splits a type at its depth-0 `|`, sorts the members by text, rejoins with ` | `. */
+function sortUnionMembers(text: string): string {
+  const parts = splitAtDepthZero(text, '|');
+  const members = parts.map((m) => m.trim()).filter((m) => m !== '');
+  // Not a union — one member and no leading bar: copy the bytes as printed.
+  if (parts.length < 2 && members.length < 2) return descendIntoGroups(text);
+  const lead = text.slice(0, text.length - text.trimStart().length);
+  const trail = text.slice(text.trimEnd().length);
+  return `${lead}${members.map(descendIntoGroups).sort().join(' | ')}${trail}`;
 }
 
 /**
@@ -216,7 +420,12 @@ function propertyLines(node: Node): string[] {
   // An interface whose only member is `[key: string]: unknown` recorded NOTHING,
   // so its shape could change with no diff. Same for accessors.
   const indexes = Node.isInterfaceDeclaration(node)
-    ? node.getIndexSignatures().map((i) => `  ${normalizeTypeText(i.getText())}`)
+    ? // The declaration text ends in `;`, which is not part of the type; left
+      // in, it became the last union member's text and moved mid-line when
+      // that member did not sort last (`'a'; | unknown`).
+      node
+        .getIndexSignatures()
+        .map((i) => `  ${normalizeTypeText(i.getText().replace(/;\s*$/, ''))}`)
     : [];
   const accessors = [
     ...node
