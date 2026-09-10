@@ -44,6 +44,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
+import { serializeValidatedRecord } from './ledger-append.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
@@ -103,10 +104,16 @@ const MAX_PROPOSAL_RECORD_CHARS = 500;
  */
 export function voteRecordWriteFailedMessage(path: string): string {
   return (
-    'Authentic vote record NOT persisted: the resolved data directory is not ' +
-    `writable (${path}). Check filesystem permissions on the .nexus-agents data ` +
-    `dir, or set ${VOTE_RECORDS_PATH_ENV} to a writable absolute file path. See ` +
-    'server logs for the underlying filesystem error.'
+    // #6054: `undefined` from the store now has TWO causes — an unwritable path,
+    // or a record the read schema would reject (refused before it became
+    // durable). This text reaches the MCP caller, so it must not assert the
+    // filesystem cause it cannot distinguish; the server log names which.
+    `Authentic vote record NOT persisted (${path}). Either the resolved data ` +
+    'directory is not writable, or the record was refused because the read ' +
+    'schema would reject it. The server log line "Failed to persist authentic ' +
+    'vote record" carries the cause — a filesystem error, or the offending field. ' +
+    `For the path case, check permissions on the .nexus-agents data dir or set ` +
+    `${VOTE_RECORDS_PATH_ENV} to a writable absolute file path.`
   );
 }
 
@@ -580,7 +587,11 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
       sequence: maxSequence + 1,
       previousHash: lastHash,
     });
-    appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf-8');
+    // #6054: validate against the schema the READ path uses before anything is
+    // durable. A throw here lands in the catch below as warn + undefined — the
+    // contract a failed write already has — instead of an unreadable line the
+    // chain has moved past and no consumer of `invalidLines` will ever surface.
+    appendFileSync(filePath, serializeValidatedRecord(VoteRecordSchema, record, 'vote'), 'utf-8');
     logger.info('Persisted authentic vote record', {
       id: record.id,
       decision: record.decision,

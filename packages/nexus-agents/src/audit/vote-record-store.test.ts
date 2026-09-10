@@ -9,8 +9,17 @@
  * @module audit/vote-record-store.test
  */
 
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
+import type { ILogger } from '../core/index.js';
+import { UNREADABLE_RECORD_PREFIX } from './ledger-append.js';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -356,6 +365,58 @@ describe('persistVoteRecord', () => {
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('the returned record and the line on disk serialize IDENTICALLY (#6054)', () => {
+    // The guard's first version re-emitted Zod's rebuilt object, which reorders
+    // keys to schema order; the builder emits `ratifies` BEFORE the option
+    // fields while the schema declares it after `panelCoverage`, so a record
+    // carrying both diverged on disk while the hash (a projection) stayed green.
+    // Assert the bytes, not the hash — and with a fixture Zod would really
+    // reorder: a minimal one matched schema order by accident and let the
+    // mutation survive.
+    const written = persistVoteRecord({
+      declaredOptions: ['A', 'B'],
+      resolvedDecision: 'approved',
+      ratifies: 'loop-x',
+      id: 'vote-bytes',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+      filePath,
+    });
+    expect(written).toBeDefined();
+    expect(readFileSync(filePath, 'utf-8')).toBe(JSON.stringify(written) + '\n');
+  });
+
+  it('REFUSES to append a record the read schema would reject (#6054)', () => {
+    // `id: ''` violates `VoteRecordSchema`'s `id: z.string().min(1)`. Before the
+    // guard this was APPENDED, reported as written, and then invisible on read —
+    // a line in `invalidLines` that no non-test consumer reads. The chain moved
+    // past it, so it could never be repaired. The #6049 shape, structurally.
+    const warn = vi.fn();
+    const logger = { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as ILogger;
+    const written = persistVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: undefined,
+      id: '',
+      proposal: 'Promote loop X to enforce',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+      filePath,
+      logger,
+    });
+
+    expect(written).toBeUndefined();
+    // Nothing durable: not even an unreadable line.
+    expect(existsSync(filePath) ? readFileSync(filePath, 'utf-8') : '').toBe('');
+    // The caller's log names the field, not merely "write failed".
+    const messages = warn.mock.calls.map((c) => JSON.stringify(c));
+    expect(messages.some((m) => m.includes(UNREADABLE_RECORD_PREFIX) && m.includes('id'))).toBe(
+      true
+    );
   });
 
   it('persists a self-hashed record that round-trips through read', () => {

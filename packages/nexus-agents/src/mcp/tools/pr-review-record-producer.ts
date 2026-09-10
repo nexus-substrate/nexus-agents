@@ -208,6 +208,26 @@ function sanitizationDisclosureOf(
 }
 
 /**
+ * The outcome for a store that returned `undefined` (#6054). Kept out of
+ * {@link buildAndPersist} for the line cap; the text is load-bearing, because
+ * `undefined` now has TWO causes — an unwritable path, or a record the read
+ * schema would reject — and the caller must not be told a filesystem cause it
+ * cannot distinguish.
+ */
+function writeFailedOutcome(): PrReviewRecordOutcome {
+  return {
+    persisted: false,
+    reason: 'write-failed',
+    detail:
+      'Audit record NOT written: either the records path was unresolved / the ' +
+      'append failed, or the record was refused because the read schema would ' +
+      'reject it (#6054). The server log line "Failed to persist authentic ' +
+      'pr-review record" carries the cause — a filesystem error, or the ' +
+      'offending field.',
+  };
+}
+
+/**
  * Build + append the Option-C record for a review whose binding is present and
  * live (the guards in {@link persistReviewRecord} already passed). Hashes the
  * EXACT reviewed diff via the same canonical {@link computeReviewedDiffHash} the
@@ -256,13 +276,7 @@ function buildAndPersist(
     logger,
   });
   if (record === undefined) {
-    return {
-      persisted: false,
-      reason: 'write-failed',
-      detail:
-        'Audit record could not be written: the records path was unresolved or the ' +
-        'append failed (see server logs for the underlying cause).',
-    };
+    return writeFailedOutcome();
   }
   return {
     persisted: true,

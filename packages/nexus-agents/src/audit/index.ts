@@ -120,6 +120,9 @@ export {
 } from './pr-review-record-store.js';
 export type { BuildPrReviewRecordInput } from './pr-review-record-store.js';
 
+// Validate-before-append shared by both hash-chained ledgers (#6054).
+export { UNREADABLE_RECORD_PREFIX, serializeValidatedRecord } from './ledger-append.js';
+
 // SecureHandler Integration
 export {
   actorFromContext,
