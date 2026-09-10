@@ -122,6 +122,12 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
  */
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
+/**
+ * The declared field ORDER here is not load-bearing (#6057): canonical hash order
+ * comes from `VOTER_SUMMARY_KEYS` below, which is compile-checked against this
+ * schema in both directions. Adding a field here without adding it there is a
+ * build error, not a silently unhashed field.
+ */
 export const VoterSummarySchema = z
   .object({
     role: z.string().min(1).max(100),
@@ -173,6 +179,52 @@ export const VoterSummarySchema = z
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
+
+/**
+ * THE canonical voter-entry field order (#6057). One source, three consumers:
+ * the hash projection iterates it, the schema is checked against it at compile
+ * time in both directions, and the builder's output is asserted against it.
+ *
+ * An EXPLICIT tuple, not `Object.keys(VoterSummarySchema.shape)`, on the
+ * ratification panel's refinement: canonical hash order must not depend on the
+ * order someone declared keys in a schema, because a formatter or a readability
+ * reorder would then silently move every historical hash. Reordering the SCHEMA
+ * changes nothing; reordering THIS tuple fails the pinned maximal golden.
+ *
+ * `satisfies` catches a key the schema lacks (direction 1); `_Missing` catches a
+ * schema key this tuple lacks (direction 2). Both are compile errors, so the
+ * "schema-only field" failure mode is closed at build time.
+ *
+ * DO NOT REORDER. The pinned literal in vote-record.test.ts is the guard.
+ */
+const VOTER_SUMMARY_KEYS = [
+  'role',
+  'decision',
+  'confidence',
+  'reasoning',
+  'reasoningTruncated',
+  'retried',
+] as const satisfies readonly (keyof VoterSummary)[];
+
+type _MissingVoterKey = Exclude<keyof VoterSummary, (typeof VOTER_SUMMARY_KEYS)[number]>;
+// If a field is added to VoterSummarySchema and not to VOTER_SUMMARY_KEYS, this
+// line fails to compile: the hash projection would otherwise silently omit it.
+const _voterKeysExhaustive: _MissingVoterKey extends never ? true : never = true;
+
+/**
+ * Project one voter entry for the canonical hash: every key in
+ * {@link VOTER_SUMMARY_KEYS}, in that order, PRESENT-ONLY. An absent optional is
+ * omitted, never emitted as `null` — that is what keeps every pre-1.7 record's
+ * canonical string byte-identical. The two optional flags are `literal(true)`,
+ * so `!== undefined` is exactly the old `=== true`.
+ */
+function projectVoterSummary(v: VoterSummary): Partial<VoterSummary> {
+  const out: Record<string, unknown> = {};
+  for (const key of VOTER_SUMMARY_KEYS) {
+    if (v[key] !== undefined) out[key] = v[key];
+  }
+  return out;
+}
 
 /** The vote-count breakdown mirrored from the consensus engine result. */
 export const VoteRecordCountsSchema = z
@@ -425,18 +477,7 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     // fields: a pre-1.6 voter entry re-hashes byte-identical, so every
     // historical record still verifies, while editing or removing a stored
     // reasoning flips the hash.
-    voters: payload.voters.map((v) => ({
-      role: v.role,
-      decision: v.decision,
-      confidence: v.confidence,
-      ...(v.reasoning !== undefined ? { reasoning: v.reasoning } : {}),
-      ...(v.reasoningTruncated === true ? { reasoningTruncated: true } : {}),
-      // #6050: hash-covered on the same append-when-present rule. Omitting it
-      // here would let a retried seat be edited to a clean one without moving
-      // the hash -- attesting to a claim about panel quality the chain does not
-      // actually cover.
-      ...(v.retried === true ? { retried: true } : {}),
-    })),
+    voters: payload.voters.map(projectVoterSummary),
     correlationId: payload.correlationId ?? null,
   };
   const canonical = JSON.stringify(foldOptionalFields(base, payload));

@@ -40,8 +40,12 @@ vi.mock('../config/nexus-data-dir.js', () => ({
 }));
 
 import type { VoteRecord } from './vote-record.js';
-import { computeVoteRecordHash } from './vote-record.js';
-import { verifyVoteRecordSet } from './vote-record.js';
+import {
+  MAX_VOTER_REASONING_CHARS,
+  VoterSummarySchema,
+  computeVoteRecordHash,
+  verifyVoteRecordSet,
+} from './vote-record.js';
 import {
   VOTE_RECORDS_PATH_ENV,
   buildVoteRecord,
@@ -365,6 +369,33 @@ describe('persistVoteRecord', () => {
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a maximal built voter entry carries EVERY schema field — the builder is not a fourth source (#6057)', () => {
+    // The schema-only failure mode is a compile error now; this pins the
+    // builder side: a vote that is retried AND clipped produces an entry whose
+    // key set equals the schema's. Adding a field to the schema without teaching
+    // the builder to emit it fails here.
+    // One past the cap, derived from the constant: a literal that happened to
+    // sit under it produced a fixture that was not clipped at all.
+    const clipped = 'x'.repeat(MAX_VOTER_REASONING_CHARS + 1);
+    const written = persistVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: undefined,
+      id: 'vote-maximal',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes: [{ ...votes[0]!, retried: true, vote: { ...votes[0]!.vote, reasoning: clipped } }],
+      filePath,
+    });
+    expect(written).toBeDefined();
+    const entry = written!.voters[0]!;
+    // Pin the two optional flags individually so a fixture that stops
+    // exercising one is named, not just "key sets differ".
+    expect(entry.retried).toBe(true);
+    expect(entry.reasoningTruncated).toBe(true);
+    expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
 
   it('the returned record and the line on disk serialize IDENTICALLY (#6054)', () => {
