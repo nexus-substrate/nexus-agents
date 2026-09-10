@@ -48,6 +48,7 @@ import {
   type PrReviewRecordOutcome,
   type ReviewSanitizationInput,
 } from './pr-review-record-producer.js';
+import { removalsBefore, sanitizationViewOf } from './pr-review-sanitization-view.js';
 // prettier-ignore
 import {
   applyPartialCoverageGate,
@@ -465,7 +466,11 @@ function resolveAggregate(
 function preparePanelProposal(
   input: PrReviewInput,
   logger: ILogger,
-  removedBefore: { comments: number; fields: number } = { comments: 0, fields: 0 }
+  removedBefore: { comments: number; fields: number; tags: number } = {
+    comments: 0,
+    fields: 0,
+    tags: 0,
+  }
 ): { proposal: string; coverage: PrReviewCoverage | undefined } {
   const { coverage, packedDiff, note } = packDiffForReview(input.prDiff, MAX_DIFF_LENGTH);
   const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
@@ -519,15 +524,7 @@ async function executePrReviewBody(
 ): Promise<ToolResult> {
   const start = Date.now();
   const { gatewayAdapters: adapters, sanitization } = opts;
-  // Display only: the proposal note says what was stripped BEFORE this call, and
-  // `buildPrReviewProposal` sums it with what it strips itself. No caller ⇒
-  // nothing was stripped upstream, which is true of the CI and script paths.
-  // BOTH counters travel: comments alone cannot represent a tag strip, so a
-  // panel reading a title an injection tag was cut out of would be told nothing.
-  const removedBefore = {
-    comments: sanitization?.commentsRemoved ?? 0,
-    fields: sanitization?.fieldsModified ?? 0,
-  };
+  const removedBefore = removalsBefore(sanitization);
   const { proposal, coverage } = preparePanelProposal(input, logger, removedBefore);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
@@ -581,25 +578,6 @@ async function executePrReviewBody(
  * so the review panel routes through the gateway instead of a CLI subprocess
  * when one is configured.
  */
-/**
- * The pr_review handler's view of what the middleware did (#5385).
- *
- * `rawFieldHashes['prDiff']` is `undefined` only when the middleware found no
- * string there, which validation then rejects — so in practice the hash is
- * present. It is forwarded as `undefined` rather than dropped so the producer
- * distinguishes "a sanitizer ran but gave me no raw hash" from "no sanitizer".
- */
-function sanitizationViewOf(ctx: HandlerContext): ReviewSanitizationInput {
-  return {
-    rawDiffHash: ctx.sanitization.rawFieldHashes['prDiff'],
-    commentsRemoved: ctx.sanitization.commentsRemoved,
-    // #5385: forwarded, not dropped. The middleware measures tag-stripping
-    // separately from comment-stripping, and discarding this made a tag strip
-    // indistinguishable from a no-op in the persisted record.
-    fieldsModified: ctx.sanitization.fieldsModified,
-  };
-}
-
 function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
   // #5385: the middleware's view carries what it stripped BEFORE dispatch and a
   // hash of the RAW diff; without it the proposal's own count is 0, the record

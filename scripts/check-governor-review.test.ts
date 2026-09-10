@@ -1172,20 +1172,30 @@ describe('the gate says whether the voters read the bytes it bound (#5385)', () 
 
   it('labels a pass whose reviewed TEXT differs from the bound bytes as partial', () => {
     const outcome = analyzeGovernorReview(
-      passingInputs({ sanitizedDiffHash: 'd'.repeat(64), commentsRemoved: 2, fieldsModified: 2 })
+      passingInputs({
+        sanitizedDiffHash: 'd'.repeat(64),
+        commentsRemoved: 2,
+        fieldsModified: 2,
+        tagsRemoved: 0,
+      })
     );
 
     expect(outcome.kind).toBe('pass');
     if (outcome.kind === 'pass') {
       expect(outcome.reason).toContain('PARTIAL');
       expect(outcome.reason).toContain('SANITIZED');
-      expect(outcome.reason).toContain('2 comment(s)');
+      expect(outcome.reason).toContain('2 HTML comment(s)');
     }
   });
 
   it('says so when a sanitizer ran and removed nothing at all', () => {
     const outcome = analyzeGovernorReview(
-      passingInputs({ sanitizedDiffHash: DIFF_HASH, commentsRemoved: 0, fieldsModified: 0 })
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 0,
+        fieldsModified: 0,
+        tagsRemoved: 0,
+      })
     );
 
     expect(outcome.kind).toBe('pass');
@@ -1205,7 +1215,12 @@ describe('the gate says whether the voters read the bytes it bound (#5385)', () 
     // Saying "removed nothing" here would be a default reported as a
     // measurement: the record's own counter says otherwise.
     const outcome = analyzeGovernorReview(
-      passingInputs({ sanitizedDiffHash: DIFF_HASH, commentsRemoved: 3, fieldsModified: 3 })
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 3,
+        fieldsModified: 3,
+        tagsRemoved: 0,
+      })
     );
 
     expect(outcome.kind).toBe('pass');
@@ -1233,7 +1248,12 @@ describe('the gate says whether the voters read the bytes it bound (#5385)', () 
     // Warn-first, and this is a disclosure fix. Turning a sanitized review into
     // a failure is a separate, behavioural decision (#3831 enforce flip).
     const outcome = analyzeGovernorReview(
-      passingInputs({ sanitizedDiffHash: 'd'.repeat(64), commentsRemoved: 9, fieldsModified: 9 })
+      passingInputs({
+        sanitizedDiffHash: 'd'.repeat(64),
+        commentsRemoved: 9,
+        fieldsModified: 9,
+        tagsRemoved: 0,
+      })
     );
     expect(outcome.kind).toBe('pass');
   });
@@ -1255,25 +1275,71 @@ describe('the gate cannot call a TAG strip "removed nothing" (#5385, adversarial
     });
   }
 
-  it('does NOT say "removed nothing" when a non-comment strip happened', () => {
+  it('names a TAG strip as possible prompt injection, not a routine removal', () => {
     const outcome = analyzeGovernorReview(
       passingInputs({
         sanitizedDiffHash: DIFF_HASH,
         commentsRemoved: 0,
         fieldsModified: 1,
+        tagsRemoved: 1,
       })
     );
 
     expect(outcome.kind).toBe('pass');
     if (outcome.kind === 'pass') {
       expect(outcome.reason).not.toContain('removed nothing');
-      expect(outcome.reason).toContain('non-comment');
+      expect(outcome.reason).toContain('POSSIBLE PROMPT INJECTION');
+    }
+  });
+
+  it('reports a tag EVEN WHEN a comment was also removed (#5385, six seats)', () => {
+    // The masking defect. The caveat rendered one string that reported comments
+    // whenever commentsRemoved > 0, so a record carrying BOTH said only
+    // "removed 1 comment(s)". An attacker masks a stripped injection tag behind
+    // any HTML comment, and GitHub's default PR template supplies one.
+    const outcome = analyzeGovernorReview(
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 1,
+        fieldsModified: 1,
+        tagsRemoved: 1,
+      })
+    );
+
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('POSSIBLE PROMPT INJECTION');
+      expect(outcome.reason).toContain('1 HTML comment(s)');
+    }
+  });
+
+  it('a field changed with NEITHER counter set is reported as unattributed', () => {
+    // Neither a comment nor a tag, yet a field changed — the honest report is
+    // that something was removed and the cause is unknown, not silence.
+    const outcome = analyzeGovernorReview(
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 0,
+        fieldsModified: 1,
+        tagsRemoved: 0,
+      })
+    );
+
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).not.toContain('removed nothing');
+      expect(outcome.reason).toContain('unattributed');
     }
   });
 
   it('still says "removed nothing" for a genuine no-op — the pair', () => {
     const outcome = analyzeGovernorReview(
-      passingInputs({ sanitizedDiffHash: DIFF_HASH, commentsRemoved: 0, fieldsModified: 0 })
+      passingInputs({
+        sanitizedDiffHash: DIFF_HASH,
+        commentsRemoved: 0,
+        fieldsModified: 0,
+        tagsRemoved: 0,
+      })
     );
 
     expect(outcome.kind).toBe('pass');
@@ -1288,6 +1354,7 @@ describe('the gate cannot call a TAG strip "removed nothing" (#5385, adversarial
         sanitizedDiffHash: 'e'.repeat(64),
         commentsRemoved: 0,
         fieldsModified: 1,
+        tagsRemoved: 0,
       })
     );
 

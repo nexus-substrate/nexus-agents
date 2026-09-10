@@ -113,6 +113,8 @@ export interface ReviewSanitizationInput {
    * indistinguishable from a no-op.
    */
   readonly fieldsModified: number;
+  /** XML-like tags removed. Its own counter — see PrReviewSanitizationSchema. */
+  readonly tagsRemoved: number;
 }
 
 /** Inputs for {@link persistReviewRecord} — bundled to stay within max-params. */
@@ -201,6 +203,7 @@ function sanitizationDisclosureOf(
     sanitizedDiffHash: computeReviewedDiffHash(prDiff),
     commentsRemoved: sanitization.commentsRemoved,
     fieldsModified: sanitization.fieldsModified,
+    tagsRemoved: sanitization.tagsRemoved,
   };
 }
 

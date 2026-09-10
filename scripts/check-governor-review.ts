@@ -322,32 +322,39 @@ function truncationCaveat(truncated: boolean): string {
 function sanitizationCaveat(match: PrReviewRecord): string {
   const disclosure = match.sanitization;
   if (disclosure === undefined) return '';
-  // What the sanitizer took out, in the record's own terms. `commentsRemoved`
-  // counts HTML comments ONLY — an XML-like injection tag is stripped through a
-  // different counter — so `fieldsModified` is what separates a genuine no-op
-  // from a tag strip. Naming both keeps the sentence from contradicting itself.
-  const removals =
-    disclosure.commentsRemoved > 0
-      ? `${String(disclosure.commentsRemoved)} comment(s)`
-      : `${String(disclosure.fieldsModified)} field(s), non-comment (injection-tag strip)`;
+
+  // The TAG clause is unconditional on comments. The first version rendered a
+  // single string that reported comments whenever `commentsRemoved > 0`, so a
+  // record carrying BOTH read "sanitizer removed 1 comment(s)" and never
+  // mentioned the tag. Six ratification seats executed that (#5385): an attacker
+  // masks a stripped injection tag behind any HTML comment, and GitHub's default
+  // PR template supplies one, so the masked case was the DEFAULT shape.
+  const clauses: string[] = [];
+  if (disclosure.tagsRemoved > 0) {
+    clauses.push(
+      `${String(disclosure.tagsRemoved)} conversation-structure tag(s) — POSSIBLE PROMPT INJECTION`
+    );
+  }
+  if (disclosure.commentsRemoved > 0) {
+    clauses.push(`${String(disclosure.commentsRemoved)} HTML comment(s)`);
+  }
+  if (clauses.length === 0 && disclosure.fieldsModified > 0) {
+    clauses.push(`${String(disclosure.fieldsModified)} field(s), cause unattributed`);
+  }
 
   if (disclosure.sanitizedDiffHash === match.reviewedDiffHash) {
     // Equal hashes mean the BOUND BYTES are untouched — not that the sanitizer
-    // was a no-op. Both counters span the whole args object while the hash covers
-    // only the truncated `prDiff`, so a strip from a sibling field, or one
-    // starting past MAX_REVIEWED_DIFF_BYTES, leaves the hashes equal with a
-    // non-zero count. Only `fieldsModified === 0` licenses "removed nothing";
-    // saying it on a tag strip would assert a no-op about an input a
-    // prompt-injection tag was just taken out of.
-    if (disclosure.fieldsModified === 0 && disclosure.commentsRemoved === 0) {
-      return ' — sanitizer ran and removed nothing';
-    }
-    return ` — sanitizer removed ${removals}, none inside the bytes this hash binds`;
+    // was a no-op. The counters span the whole args object while the hash covers
+    // only the truncated `prDiff`, so a strip from a sibling field, or one past
+    // MAX_REVIEWED_DIFF_BYTES, leaves the hashes equal with non-zero counters.
+    // Only ALL counters zero licenses "removed nothing".
+    if (clauses.length === 0) return ' — sanitizer ran and removed nothing';
+    return ` — sanitizer removed ${clauses.join(' and ')}, none inside the bytes this hash binds`;
   }
   return (
     ' — PARTIAL: the voters read a SANITIZED rendering of these bytes ' +
     `(sanitizedDiffHash=${disclosure.sanitizedDiffHash.slice(0, 12)}…, ` +
-    `${removals} stripped before dispatch); ` +
+    `${clauses.join(' and ')} stripped before dispatch); ` +
     'the hash binds the raw diff, so content the sanitizer removed was bound but unread'
   );
 }

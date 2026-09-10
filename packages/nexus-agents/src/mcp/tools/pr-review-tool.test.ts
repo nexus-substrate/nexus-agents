@@ -718,7 +718,13 @@ interface CapturedToolResult {
 
 const TEST_CTX: HandlerCtx = {
   logger: createLogger({ tool: 'pr_review.test' }),
-  sanitization: { wasModified: false, commentsRemoved: 0, fieldsModified: 0, rawFieldHashes: {} },
+  sanitization: {
+    wasModified: false,
+    commentsRemoved: 0,
+    fieldsModified: 0,
+    tagsRemoved: 0,
+    rawFieldHashes: {},
+  },
 };
 
 /** Registers the tool against a mock server and returns the captured callback. */
@@ -919,7 +925,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     );
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
-      sanitization: { rawDiffHash, commentsRemoved: 1, fieldsModified: 1 },
+      sanitization: { rawDiffHash, commentsRemoved: 1, fieldsModified: 1, tagsRemoved: 0 },
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -945,7 +951,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     );
     persistReviewRecord({
       diffSource: 'caller-supplied',
-      sanitization: { rawDiffHash, commentsRemoved: 2, fieldsModified: 2 },
+      sanitization: { rawDiffHash, commentsRemoved: 2, fieldsModified: 2, tagsRemoved: 0 },
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -958,6 +964,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       sanitizedDiffHash: computeReviewedDiffHash(parsed.prDiff),
       commentsRemoved: 2,
       fieldsModified: 2,
+      tagsRemoved: 0,
     });
     // The two hashes must genuinely differ here, else the assertion above could
     // hold while the producer hashed the wrong side.
@@ -975,7 +982,12 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     const parsed = input({ prNumber: 103, baseSha: BASE_SHA });
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
-      sanitization: { rawDiffHash: undefined, commentsRemoved: 1, fieldsModified: 1 },
+      sanitization: {
+        rawDiffHash: undefined,
+        commentsRemoved: 1,
+        fieldsModified: 1,
+        tagsRemoved: 0,
+      },
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -1399,19 +1411,19 @@ describe('pr_review repoPath input (#4278)', () => {
       // on the ONE path that persists a governance record. The count now comes
       // from the middleware via HandlerContext.
       const alreadyClean = { ...withComment, prDescription: 'body  more' };
-      const out = buildPrReviewProposal(alreadyClean, { comments: 1, fields: 1 });
+      const out = buildPrReviewProposal(alreadyClean, { comments: 1, fields: 1, tags: 0 });
       expect(out).toContain('HTML comment(s) were removed');
       expect(out).toContain('1 HTML comment(s)');
     });
 
     it('sums removals from both stages rather than reporting only one', () => {
-      const out = buildPrReviewProposal(withComment, { comments: 2, fields: 2 });
+      const out = buildPrReviewProposal(withComment, { comments: 2, fields: 2, tags: 0 });
       expect(out).toContain('3 HTML comment(s)');
     });
 
     it('does not annotate when nothing was removed at either stage', () => {
       const clean = { ...withComment, prDescription: 'nothing to strip' };
-      expect(buildPrReviewProposal(clean, { comments: 0, fields: 0 })).not.toContain(
+      expect(buildPrReviewProposal(clean, { comments: 0, fields: 0, tags: 0 })).not.toContain(
         'HTML comment(s) were removed'
       );
       // Omitting the argument must behave exactly as passing 0 — the CI and

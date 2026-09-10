@@ -196,6 +196,17 @@ export const PrReviewSanitizationSchema = z
      * sanitizer removed nothing".
      */
     fieldsModified: z.number().int().nonnegative(),
+    /**
+     * XML-like conversation-structure tags the sanitizer removed.
+     *
+     * Recorded separately because it CANNOT be derived from the other two.
+     * `fieldsModified` counts FIELDS, so a comment and a tag in one field is a
+     * single modified field, byte-identical to a lone comment — the record could
+     * not represent a masked tag strip at all, and a reader would be told the
+     * removal was routine. That is the reassurance an attacker wants, and it
+     * costs them only an HTML comment.
+     */
+    tagsRemoved: z.number().int().nonnegative(),
   })
   .strict();
 export type PrReviewSanitization = z.infer<typeof PrReviewSanitizationSchema>;
@@ -367,6 +378,7 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
             sanitizedDiffHash: payload.sanitization.sanitizedDiffHash,
             commentsRemoved: payload.sanitization.commentsRemoved,
             fieldsModified: payload.sanitization.fieldsModified,
+            tagsRemoved: payload.sanitization.tagsRemoved,
           },
         }
       : {}),

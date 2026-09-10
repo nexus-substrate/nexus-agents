@@ -88,6 +88,7 @@ function ctx(commentsRemoved: number): Ctx {
       wasModified: commentsRemoved > 0,
       commentsRemoved,
       fieldsModified: commentsRemoved,
+      tagsRemoved: 0,
       rawFieldHashes: {},
     },
   };
@@ -141,6 +142,39 @@ describe('the middleware disclosure reaches the persisted RECORD (#5385)', () =>
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('carries a MASKED tag strip onto the record and into the note (#5385)', async () => {
+    // The state six ratification seats executed. A comment alongside a tag made
+    // every consumer report the removal as a routine comment strip, because both
+    // renderers branched on `commentsRemoved` first. The record must carry the tag
+    // count and the panel must be warned, WITH the comment present.
+    //
+    // Drives the REAL handler so the whole wire is covered: ctx -> view ->
+    // producer -> record, and ctx -> note -> proposal.
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 5386, baseSha: 'e'.repeat(40) },
+      {
+        logger: createLogger({ tool: 'pr-review-disclosure.test' }),
+        sanitization: {
+          wasModified: true,
+          commentsRemoved: 1,
+          fieldsModified: 1,
+          tagsRemoved: 3,
+          rawFieldHashes: { prDiff: 'b'.repeat(64) },
+        },
+      }
+    );
+
+    const line = readFileSync(process.env[PR_REVIEW_RECORDS_PATH_ENV]!, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')[0];
+    const record = PrReviewRecordSchema.parse(JSON.parse(line!));
+    expect(record.sanitization?.tagsRemoved).toBe(3);
+    expect(record.sanitization?.commentsRemoved).toBe(1);
+    // The panel was told about the tag, not only the comment.
+    expect(captured.proposal).toContain('POSSIBLE PROMPT-INJECTION');
+    expect(captured.proposal).toContain('HTML comment(s) were removed');
+  });
+
   it('carries BOTH counters from ctx.sanitization onto the record', async () => {
     await captureHandler()(
       { ...ARGS, simulate: false, prNumber: 5385, baseSha: 'f'.repeat(40) },
@@ -150,6 +184,7 @@ describe('the middleware disclosure reaches the persisted RECORD (#5385)', () =>
           wasModified: true,
           commentsRemoved: 2,
           fieldsModified: 5,
+          tagsRemoved: 0,
           rawFieldHashes: { prDiff: 'a'.repeat(64) },
         },
       }

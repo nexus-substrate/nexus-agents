@@ -48,6 +48,21 @@ export interface SanitizeToolInputResult {
    * truncated PR description with no indication anything was removed.
    */
   readonly commentsRemoved: number;
+  /**
+   * Number of XML-like conversation-structure tags removed (#5385).
+   *
+   * Separate from {@link commentsRemoved} and from {@link modifiedCount} because
+   * neither can represent a tag strip on its own. `modifiedCount` counts FIELDS,
+   * so a comment and a tag in the same field is one modified field —
+   * indistinguishable from a lone comment. Every consumer that reported the
+   * removal from `commentsRemoved` alone therefore called a stripped injection
+   * attempt "routine", and an attacker only had to add an HTML comment (which
+   * GitHub's default PR template already supplies) to guarantee it.
+   *
+   * A stripped tag is the removal a reviewer most needs told, so it gets its own
+   * counter rather than being inferred.
+   */
+  readonly tagsRemoved: number;
 }
 
 /**
@@ -140,6 +155,7 @@ function sanitizeString(value: string): {
   /** True when the pass budget ran out with the value still reducible. */
   incomplete: boolean;
   commentsRemoved: number;
+  tagsRemoved: number;
 } {
   // Loop to a fixed point over BOTH strips together. Each one can reconstruct
   // what the other removes, in both directions, so neither is safe alone:
@@ -172,9 +188,18 @@ function sanitizeString(value: string): {
   const MAX_PASSES = 5;
   let cleaned = value;
   let commentsRemoved = 0;
+  let tagsRemoved = 0;
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     XML_INJECTION_PATTERN.lastIndex = 0;
-    const afterTags = cleaned.replace(XML_INJECTION_PATTERN, '');
+    // #5385: counted HERE, at the only place that knows a TAG was the thing
+    // removed. A field-level "was modified" flag cannot substitute: a comment
+    // and a tag in the SAME field produce one modified field, so the tag
+    // becomes unrepresentable and every consumer reports the removal as a
+    // routine comment strip — which is the reassurance an attacker wants.
+    const afterTags = cleaned.replace(XML_INJECTION_PATTERN, () => {
+      tagsRemoved += 1;
+      return '';
+    });
     const { cleaned: afterComments, removed } = stripHtmlComments(afterTags);
     // Counted per pass and accumulated: a comment removed on pass 2 was really
     // removed, and under-reporting it would hide content from the reader for
@@ -193,6 +218,7 @@ function sanitizeString(value: string): {
     modified: cleaned !== value,
     incomplete: probe !== cleaned,
     commentsRemoved,
+    tagsRemoved,
   };
 }
 
@@ -214,17 +240,24 @@ function detectPatterns(value: string): string[] {
  */
 function sanitizeValue(
   value: unknown,
-  stats: { count: number; patterns: string[]; commentsRemoved: number; incomplete: boolean }
+  stats: {
+    count: number;
+    patterns: string[];
+    commentsRemoved: number;
+    tagsRemoved: number;
+    incomplete: boolean;
+  }
 ): unknown {
   if (typeof value === 'string') {
     const patterns = detectPatterns(value);
     if (patterns.length > 0) {
       stats.patterns.push(...patterns);
     }
-    const { cleaned, modified, incomplete, commentsRemoved } = sanitizeString(value);
+    const { cleaned, modified, incomplete, commentsRemoved, tagsRemoved } = sanitizeString(value);
     if (modified) stats.count++;
     if (incomplete) stats.incomplete = true;
     stats.commentsRemoved += commentsRemoved;
+    stats.tagsRemoved += tagsRemoved;
     return cleaned;
   }
 
@@ -263,13 +296,20 @@ export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
       sanitized: args,
       wasModified: false,
       modifiedCount: 0,
+      tagsRemoved: 0,
       detectedPatterns: [],
       sanitizationIncomplete: false,
       commentsRemoved: 0,
     };
   }
 
-  const stats = { count: 0, patterns: [] as string[], commentsRemoved: 0, incomplete: false };
+  const stats = {
+    count: 0,
+    patterns: [] as string[],
+    commentsRemoved: 0,
+    tagsRemoved: 0,
+    incomplete: false,
+  };
   const sanitized = sanitizeValue(args, stats);
   const uniquePatterns = [...new Set(stats.patterns)];
 
@@ -280,6 +320,7 @@ export function sanitizeToolInput(args: unknown): SanitizeToolInputResult {
     detectedPatterns: uniquePatterns,
     sanitizationIncomplete: stats.incomplete,
     commentsRemoved: stats.commentsRemoved,
+    tagsRemoved: stats.tagsRemoved,
   };
 }
 
@@ -305,6 +346,16 @@ export function logSanitizationResult(
     logger.warn('Tool input sanitized — HTML comments removed', {
       tool: toolName,
       commentsRemoved: result.commentsRemoved,
+    });
+  }
+  if (result.tagsRemoved > 0) {
+    // Its own line, and NOT folded into the comment warning above (#5385). That
+    // warning says the removal is routine; a stripped conversation-structure tag
+    // is not, and reporting the two together let a comment mask a tag in every
+    // consumer that read only `commentsRemoved`.
+    logger.warn('Tool input sanitized — conversation-structure tags stripped', {
+      tool: toolName,
+      tagsRemoved: result.tagsRemoved,
     });
   }
   if (result.detectedPatterns.length > 0) {

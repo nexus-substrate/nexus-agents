@@ -115,17 +115,19 @@ interface SanitizationContext {
   readonly wasModified: boolean;
   /** HTML comments removed from untrusted fields (#5258). */
   readonly commentsRemoved: number;
-  /**
-   * How many FIELDS the sanitizer changed at all (#5385).
-   *
-   * The sanitizer removes two different things and `commentsRemoved` counts one
-   * of them: XML-like injection tags (`<system>`, `<context>`, …) are stripped
-   * through a separate counter. Without this, a consumer seeing
-   * `commentsRemoved: 0` cannot tell a genuine no-op from a tag strip — and
-   * would report "nothing was removed" about an input a prompt-injection tag was
-   * just taken out of.
-   */
+  /** How many FIELDS the sanitizer changed at all (#5385). */
   readonly fieldsModified: number;
+  /**
+   * XML-like conversation-structure tags removed (#5385).
+   *
+   * Its own counter, not inferred from the two above. `fieldsModified` counts
+   * FIELDS, so a comment and a tag in the same field is ONE modified field —
+   * arithmetic over the other counters cannot recover the tag, and every
+   * consumer then reports a stripped injection attempt as a routine comment
+   * strip. An attacker only has to include an HTML comment to get that
+   * reassurance, and GitHub's default PR template already supplies one.
+   */
+  readonly tagsRemoved: number;
   /**
    * Pre-sanitization hashes of the fields named in
    * {@link SecureHandlerConfig.rawHashFields} (#5385).
@@ -476,6 +478,7 @@ function unsanitizedContext(config: SecureHandlerConfig, args: unknown): Sanitiz
     wasModified: false,
     commentsRemoved: 0,
     fieldsModified: 0,
+    tagsRemoved: 0,
     rawFieldHashes: hashRawFields(config.rawHashFields, args),
   };
 }
@@ -512,6 +515,7 @@ function runPreChecks(
     wasModified: sanitizeResult.wasModified,
     commentsRemoved: sanitizeResult.commentsRemoved,
     fieldsModified: sanitizeResult.modifiedCount,
+    tagsRemoved: sanitizeResult.tagsRemoved,
     // #5385: hashed from `args`, the RAW input, before sanitization touched it.
     rawFieldHashes: hashRawFields(config.rawHashFields, args),
   };

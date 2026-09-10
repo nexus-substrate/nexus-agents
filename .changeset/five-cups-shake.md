@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 fix(audit): bind pr_review records to the RAW diff and disclose what the sanitizer removed (#5385)
@@ -44,12 +44,19 @@ flip.
   model's prompt unsanitized, reintroducing the exact token just stripped
   through the text warning about it.
 
-`buildPrReviewProposal`'s second parameter changes from a positional
-`removedBeforeThisCall: number` to `removedBefore: { comments, fields }`. Both
-counts are needed, and a union-typed parameter would let an old numeric caller
-silently report `fields: 0` — the same under-count, reintroduced. Note that the
-api-surface gate does NOT see this: it records `: typeof <name>` for every
-exported function, so no function signature change is visible to it (#6061).
+## Breaking for a direct caller of `buildPrReviewProposal`
+
+Its second parameter changes from a positional `removedBeforeThisCall: number`
+to `removedBefore: { comments, fields, tags }`. A caller passing a bare number
+now fails to typecheck. Three counts are needed and a union-typed parameter
+would let an old numeric caller silently report `tags: 0` — the same under-count
+this change exists to remove.
+
+This is released as `minor` rather than `patch` on the ratification panel's
+finding: six of seven seats judged `patch` wrong for a signature break. Note that
+the api-surface gate does NOT see it — the extractor records `: typeof <name>`
+for every exported function, so no signature change on any of the 461 exported
+functions is visible to it (#6061).
 
 - The producer REFUSES (`raw-hash-absent`) when a sanitizer was in the path but
   supplied no pre-sanitization hash. That is the one state where the fallback
