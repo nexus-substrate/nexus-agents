@@ -337,7 +337,8 @@ async function runVoteCompletion({
   withResponseFormat,
   options,
 }: VoteCompletionArgs): Promise<
-  { ok: true; output: string; usage: VoteUsage } | { ok: false; error: string }
+  | { ok: true; output: string; usage: VoteUsage; cliStderr: string | undefined }
+  | { ok: false; error: string }
 > {
   const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat, options);
   const timeoutResult = await withTimeout(
@@ -369,7 +370,25 @@ async function runVoteCompletion({
     cachedInputTokens: readTokenCount(reported?.cachedInputTokens),
     cacheCreationInputTokens: readTokenCount(reported?.cacheCreationInputTokens),
   };
-  return { ok: true, output: extractTextFromResponse(response.value.content), usage };
+  return {
+    ok: true,
+    output: extractTextFromResponse(response.value.content),
+    usage,
+    // #6094: the transport's captured stderr rides up with the vote so the
+    // caller can classify a seat that could not read the artifact from the
+    // structured signal rather than from its prose.
+    cliStderr: response.value.cliStderr,
+  };
+}
+
+/** A parsed vote plus what the transport reported alongside it. Module-private: its only consumer is the return type below. */
+interface VoteAttemptSuccess {
+  readonly ok: true;
+  readonly vote: Vote;
+  readonly output: string;
+  readonly usage: VoteUsage;
+  /** Stderr the CLI transport captured for this completion, when any (#6094). */
+  readonly cliStderr: string | undefined;
 }
 
 export async function executeSingleVoteAttempt(
@@ -378,9 +397,7 @@ export async function executeSingleVoteAttempt(
   adapter: IModelAdapter,
   timeoutMs: number,
   options?: readonly string[]
-): Promise<
-  { ok: true; vote: Vote; output: string; usage: VoteUsage } | { ok: false; error: string }
-> {
+): Promise<VoteAttemptSuccess | { ok: false; error: string }> {
   const completionArgs = { role, proposal, adapter, timeoutMs, options };
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
@@ -394,7 +411,13 @@ export async function executeSingleVoteAttempt(
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
     // accept real LLM votes, not synthetic fallbacks.
     const vote = parseVoteResponse(completion.output, role, options);
-    return { ok: true, vote, output: completion.output, usage: completion.usage };
+    return {
+      ok: true,
+      vote,
+      output: completion.output,
+      usage: completion.usage,
+      cliStderr: completion.cliStderr,
+    };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
       return { ok: false, error: `Vote parsing failed: ${error.message}` };
@@ -445,7 +468,10 @@ function logAbandonedRetries(
 
 export async function executeWithRetries(
   opts: RetryOptions
-): Promise<{ vote: Vote; usage: VoteUsage; ok: true } | { error: string; ok: false }> {
+): Promise<
+  | { vote: Vote; usage: VoteUsage; cliStderr: string | undefined; ok: true }
+  | { error: string; ok: false }
+> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries, options } = opts;
   let lastError = '';
 
@@ -471,33 +497,52 @@ export async function executeWithRetries(
         attemptMs,
         succeeded: true,
       });
-      return { vote: result.vote, usage: result.usage, ok: true };
+      return { vote: result.vote, usage: result.usage, cliStderr: result.cliStderr, ok: true };
     }
 
     lastError = result.error;
-    const rateLimited = isRateLimitError(lastError);
-    const durableCap = isDurableCapacityText(lastError);
-    logger.info('Vote attempt timing', {
-      role,
-      attempt: attempt + 1,
-      attemptMs,
-      succeeded: false,
-      rateLimited,
-    });
-    logger.warn('Vote attempt failed', {
-      role,
-      attempt: attempt + 1,
-      maxRetries: maxRetries + 1,
-      error: lastError,
-      ...(rateLimited ? { rateLimited: true } : {}),
-      ...(durableCap ? { durableCap: true } : {}),
-    });
-
-    if (durableCap) {
+    if (logFailedAttempt(logger, { role, attempt, maxRetries, attemptMs, error: lastError })) {
       logAbandonedRetries(logger, role, attempt, maxRetries);
       break;
     }
   }
 
   return { error: lastError !== '' ? lastError : 'Unknown error after all retries', ok: false };
+}
+
+/** One failed attempt, as {@link logFailedAttempt} reports it. */
+interface FailedAttempt {
+  readonly role: VoterRole;
+  readonly attempt: number;
+  readonly maxRetries: number;
+  readonly attemptMs: number;
+  readonly error: string;
+}
+
+/**
+ * Log one failed attempt's timing and classification. Returns true when the
+ * error is a DURABLE capacity cap, so the caller abandons the remaining
+ * attempts (#5359). Extracted from {@link executeWithRetries} for the
+ * per-function line cap.
+ */
+function logFailedAttempt(logger: ILogger, failed: FailedAttempt): boolean {
+  const { role, attempt, maxRetries, attemptMs, error } = failed;
+  const rateLimited = isRateLimitError(error);
+  const durableCap = isDurableCapacityText(error);
+  logger.info('Vote attempt timing', {
+    role,
+    attempt: attempt + 1,
+    attemptMs,
+    succeeded: false,
+    rateLimited,
+  });
+  logger.warn('Vote attempt failed', {
+    role,
+    attempt: attempt + 1,
+    maxRetries: maxRetries + 1,
+    error,
+    ...(rateLimited ? { rateLimited: true } : {}),
+    ...(durableCap ? { durableCap: true } : {}),
+  });
+  return durableCap;
 }

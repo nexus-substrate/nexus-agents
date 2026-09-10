@@ -9,6 +9,7 @@
  */
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
+import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { isFindingVerified, parseFindings, type Finding } from './pr-review-findings.js';
 import { mapVoteDecisionToPrDecision, type PrReviewVote } from './pr-review-tool.js';
 
@@ -51,13 +52,15 @@ export function summarizeReviews(reviews: readonly PrReviewVote[]): {
   requestChangesCount: number;
   abstainCount: number;
   errorCount: number;
+  /** Seats that could not read the diff (#6094). Always present; NOT inside `abstainCount`. */
+  unverifiableCount: number;
 } {
+  const judged = reviews.filter((r) => !isAbsentSeat(r));
   return {
-    approveCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'approve').length,
-    requestChangesCount: reviews.filter(
-      (r) => r.source !== 'error' && r.decision === 'request_changes'
-    ).length,
-    abstainCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'abstain').length,
+    approveCount: judged.filter((r) => r.decision === 'approve').length,
+    requestChangesCount: judged.filter((r) => r.decision === 'request_changes').length,
+    abstainCount: judged.filter((r) => r.decision === 'abstain').length,
     errorCount: reviews.filter((r) => r.source === 'error').length,
+    unverifiableCount: reviews.filter((r) => r.source === 'unverifiable').length,
   };
 }

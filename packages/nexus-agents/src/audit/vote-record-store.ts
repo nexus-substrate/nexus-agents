@@ -49,6 +49,7 @@ import { assertNotSourceCheckoutWrite } from './source-checkout-guard.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
+import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
 import type {
   VoteRecord,
@@ -169,6 +170,13 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       // recovered seat since it was written and nothing read it, so the record
       // said "7 of 7 answered cleanly" for a panel that needed a retry.
       ...(v.retried === true ? { retried: true as const } : {}),
+      // #6091: the seat's model, so the ledger can say which model answered.
+      // The pending-detection placeholder is not a model and is not recorded.
+      ...(v.model !== undefined && v.model !== UNRESOLVED_MODEL_ID ? { model: v.model } : {}),
+      // #6094: a seat that answered without reading the artifact. Its
+      // `decision` is abstain; this flag is what keeps it from reading as a
+      // considered abstention.
+      ...(v.source === 'unverifiable' ? { unverifiable: true as const } : {}),
     });
   }
   return summaries;
@@ -312,17 +320,22 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.7 carries a retried voter seat, 1.6 voter reasoning, 1.5 panel coverage,
- * 1.4 option coverage, 1.3 a bare tally (historical only — a tally now always
- * travels with coverage), 1.2 neither.
+ * 1.8 carries a voter `model` or an `unverifiable` seat, 1.7 a retried voter
+ * seat, 1.6 voter reasoning, 1.5 panel coverage, 1.4 option coverage, 1.3 a
+ * bare tally (historical only — a tally now always travels with coverage),
+ * 1.2 neither.
  */
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
   optionCoverage: VoteRecordOptionCoverage | undefined,
   panelCoverage: VoteRecordPanelCoverage | undefined,
   voters: readonly VoterSummary[]
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' {
-  // 1.7 first: `retried` is ORTHOGONAL to the tiers below it, not a refinement
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' {
+  // 1.8 first, on the same tier logic as 1.7: both new fields are orthogonal
+  // to the tiers below, and a reader needs to know from the version alone
+  // whether voter entries may carry them (#6091, #6094).
+  if (voters.some((v) => v.model !== undefined || v.unverifiable === true)) return '1.8';
+  // 1.7: `retried` is ORTHOGONAL to the tiers below it, not a refinement
   // of one. A retried seat implies an errored seat, so it usually co-occurs
   // with 1.5's panelCoverage — but a reader needs to know from the version
   // alone whether voter entries may carry the field (#6050).

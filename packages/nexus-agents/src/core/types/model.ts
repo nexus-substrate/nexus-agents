@@ -179,6 +179,15 @@ export interface CompletionResponse {
   /** Model that generated the response */
   model: string;
   /**
+   * Stderr the CLI transport captured while serving this completion, when the
+   * adapter is a CLI bridge and the pipe was non-empty (#6094). A sandboxed
+   * shell failure inside the CLI's own tool loop lands here while the model
+   * still returns a parsed answer; the voter classifier reads it as the
+   * structured "could not read the artifact" signal. Absent for API adapters
+   * and for a clean run — never an empty string.
+   */
+  cliStderr?: string;
+  /**
    * Request params the adapter dropped before sending (#4069, epic #4066 layer 3).
    * Present (and non-empty) only when a param was silently unsupported — e.g. a
    * post-Opus-4.6 Claude or OpenAI reasoning model that rejects `temperature`. The

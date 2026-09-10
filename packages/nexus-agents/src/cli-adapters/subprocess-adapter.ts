@@ -111,6 +111,24 @@ function classifyStderrError(stderr: string): CliErrorCode {
 
 const subprocessLogger = createLogger({ component: 'subprocess-adapter' });
 
+/**
+ * Longest stderr carried on a SUCCESSFUL response (#6094). The buffer above
+ * caps capture at 10 MB; the response field exists so a classifier can read a
+ * failure line, not to ship a log. Kept from the head: the sandbox failure is
+ * written when the CLI's tool loop first tries the shell.
+ */
+export const MAX_RESPONSE_STDERR_CHARS = 8_000;
+
+/**
+ * The `stderr` field of a SUCCESSFUL response (#6094). A run's stderr was
+ * captured and dropped here: a sandboxed shell failure inside the CLI's tool
+ * loop is written to it while stdout still carries a parsed answer, and that
+ * is the voter classifier's structured signal. Present only when non-empty.
+ */
+function successStderrField(stderr: string): { stderr?: string } {
+  return stderr === '' ? {} : { stderr: stderr.slice(0, MAX_RESPONSE_STDERR_CHARS) };
+}
+
 /** Maximum buffer size for stdout/stderr (10 MB). */
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
@@ -705,6 +723,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
         ...(costUsd !== null && { costUsd }),
+        ...successStderrField(stderr),
       })
     );
   }

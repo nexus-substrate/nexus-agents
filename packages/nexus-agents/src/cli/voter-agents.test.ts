@@ -353,6 +353,102 @@ That's my vote.`;
       expect(result.error).toBeUndefined();
     });
 
+    describe('a seat that could not read the artifact is unverifiable (#6094)', () => {
+      // A spy logger: the discarded decision must be LOGGED, and the shared
+      // silent logger above cannot assert that.
+      const logger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      } as unknown as ILogger;
+      const BLIND_APPROVE = JSON.stringify({
+        decision: 'approve',
+        reasoning:
+          "This is a proposal assessment, not an independently verified diff review. My attempted repository inspection failed with 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted', so I could not confirm caller coverage.",
+        confidence: 0.8,
+        selectedOption: 'C',
+      });
+
+      it('classifies from the reasoning text and discards the approve, logging it', async () => {
+        const adapter = createMockAdapter({
+          response: {
+            ok: true,
+            value: {
+              content: BLIND_APPROVE as unknown as CompletionResponse['content'],
+              stopReason: 'end_turn' as const,
+              model: 'test',
+            },
+          },
+        });
+        const result = await executeAgentVote('scope_steward', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+          declaredOptions: ['A', 'C'],
+        });
+        expect(result.source).toBe('unverifiable');
+        expect(result.unverifiableSignal).toBe('reasoning');
+        expect(result.vote.decision).toBe('abstain');
+        expect(result.selectedOption).toBeUndefined();
+        expect(result.model).toBe('test-model');
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('unverifiable'),
+          expect.objectContaining({ role: 'scope_steward', discardedDecision: 'approve' })
+        );
+      });
+
+      it('classifies from the structured stderr signal before the reasoning text', async () => {
+        const adapter = createMockAdapter({
+          response: {
+            ok: true,
+            value: {
+              content: JSON.stringify({
+                decision: 'approve',
+                reasoning: 'Approve. The diff is small and the tests name the empty case.',
+                confidence: 0.9,
+              }) as unknown as CompletionResponse['content'],
+              stopReason: 'end_turn' as const,
+              model: 'test',
+              cliStderr: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n',
+            },
+          },
+        });
+        const result = await executeAgentVote('devex', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.source).toBe('unverifiable');
+        expect(result.unverifiableSignal).toBe('stderr');
+        expect(result.vote.decision).toBe('abstain');
+      });
+
+      it('a genuine abstention stays an llm abstain', async () => {
+        const adapter = createMockAdapter({
+          response: {
+            ok: true,
+            value: {
+              content: JSON.stringify({
+                decision: 'abstain',
+                reasoning: 'I abstain: this proposal is outside my expertise.',
+                confidence: 0.3,
+              }) as unknown as CompletionResponse['content'],
+              stopReason: 'end_turn' as const,
+              model: 'test',
+            },
+          },
+        });
+        const result = await executeAgentVote('pm', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.source).toBe('llm');
+        expect(result.vote.decision).toBe('abstain');
+        expect(result.unverifiableSignal).toBeUndefined();
+      });
+    });
+
     it('should retry on failure and succeed', async () => {
       const adapter = createMockAdapter({});
       (adapter.complete as ReturnType<typeof vi.fn>)

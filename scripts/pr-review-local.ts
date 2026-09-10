@@ -40,7 +40,7 @@ import {
   isFindingVerified,
   type Finding,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
-import type { VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
+import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import {
   ensurePrCommitsLocal,
   generateCanonicalReviewDiff,
@@ -182,7 +182,8 @@ interface VoterResult {
   readonly confidence: number;
   readonly reasoning: string;
   readonly findings: readonly Finding[];
-  readonly source: 'llm' | 'simulation' | 'error';
+  /** Derived from the canonical union so a new member (#6094) cannot break this script. */
+  readonly source: AgentVoteResult['source'];
   readonly cli?: string | undefined;
 }
 

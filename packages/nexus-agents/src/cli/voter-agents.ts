@@ -32,6 +32,7 @@ import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import { NoAdapterError, resolveAdapterOrFail } from './voter-adapter-resolve.js';
+import { classifyUnverifiable, markUnverifiable } from './voter-unverifiable.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError };
@@ -169,6 +170,36 @@ function buildLlmVoteResult(
 }
 
 /**
+ * The parsed vote, or — when the seat could not read the artifact — the same
+ * seat re-recorded as `unverifiable` with its returned decision discarded and
+ * logged (#6094). Classification prefers the transport's stderr (structured)
+ * over the reasoning text (fallback); the log names which one fired.
+ */
+function finalizeParsedVote(
+  built: AgentVoteResult,
+  cliStderr: string | undefined,
+  logger: ILogger
+): AgentVoteResult {
+  const signal = classifyUnverifiable({ cliStderr, reasoning: built.vote.reasoning });
+  if (signal === undefined) {
+    logger.info('Vote completed', {
+      role: built.role,
+      model: built.model,
+      decision: built.vote.decision,
+    });
+    return built;
+  }
+  logger.warn('Seat could not read the artifact — recorded as unverifiable, decision discarded', {
+    role: built.role,
+    model: built.model,
+    signal,
+    discardedDecision: built.vote.decision,
+    ...(built.selectedOption !== undefined ? { discardedOption: built.selectedOption } : {}),
+  });
+  return markUnverifiable(built, signal);
+}
+
+/**
  * Executes a real LLM vote for a single role with timeout and retry support.
  *
  * Per Issue #280: No simulation fallback by default. Returns error result
@@ -214,8 +245,8 @@ export async function executeAgentVote(
   const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
-    logger.info('Vote completed', { role, model: adapter.modelId, decision: result.vote.decision });
-    return buildLlmVoteResult(role, result.vote, result.usage, adapter, processingTimeMs);
+    const built = buildLlmVoteResult(role, result.vote, result.usage, adapter, processingTimeMs);
+    return finalizeParsedVote(built, result.cliStderr, logger);
   }
 
   // All retries exhausted

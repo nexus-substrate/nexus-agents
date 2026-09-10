@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 
 import type { VoteRecord } from './vote-record.js';
-import { computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
+import { VoteRecordSchema, computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
 
 /**
  * Build a self-hashed record at `sequence`. `previousHash` is advisory (NOT
@@ -449,5 +449,100 @@ describe('one canonical voter-field order (#6057)', () => {
     expect(computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [withoutRetried] })).not.toBe(
       computeVoteRecordHash(MAXIMAL_1_7 as never)
     );
+  });
+
+  it('a 1.7 entry with the 1.8 keys explicitly undefined still hashes to the 1.7 golden (#6091, #6094)', () => {
+    // The back-compat property stated directly: the SAME voter, with only the
+    // pre-1.8 keys carrying values, projects to the same canonical string
+    // whether or not the code knows about 1.8. Compared to the pinned 1.7
+    // golden, not to a self-computed value.
+    const v = MAXIMAL_1_7.voters[0]!;
+    const asIf18 = { ...v, model: undefined, unverifiable: undefined };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [asIf18] })).toBe(
+      '954c1f7aa2a4097a8e8964597791487f3d732f309469afb87c869bbed1e3b422'
+    );
+  });
+});
+
+describe('schema 1.8: `model` and `unverifiable` per seat (#6091, #6094)', () => {
+  // Same tier logic as 1.7: both fields are appended PRESENT-ONLY after
+  // `retried`, so every 1.7-and-earlier entry projects byte-identically. The
+  // 1.7 golden above and PRE_4452 are the guard for that; this block pins the
+  // new maximal form.
+  const MAXIMAL_1_8 = {
+    version: '1.8' as const,
+    id: 'vote-max-18',
+    sequence: 0,
+    recordedAt: '2026-09-10T00:00:00.000Z',
+    proposalHash: 'd'.repeat(64),
+    proposal: 'max',
+    strategy: 'supermajority' as const,
+    decision: 'no_quorum' as const,
+    approvalPercentage: 0,
+    voteCounts: { approve: 0, reject: 0, abstain: 1, total: 1 },
+    voters: [
+      {
+        role: 'scope_steward' as const,
+        decision: 'abstain' as const,
+        confidence: 0,
+        reasoning: "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'",
+        reasoningTruncated: true as const,
+        retried: true as const,
+        model: 'codex-5.3',
+        unverifiable: true as const,
+      },
+    ],
+  };
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    const parsed = VoteRecordSchema.safeParse({
+      ...MAXIMAL_1_8,
+      hash: computeVoteRecordHash(MAXIMAL_1_8),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('pins the MAXIMAL 1.8 entry to a golden captured by execution', () => {
+    // Captured by running `computeVoteRecordHash` on this exact fixture once
+    // the projection carried both fields, then pinned. If it moves, the
+    // canonical voter order or the present-only rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_8)).toBe(
+      'eaba3ce41c8dd4208b126bc907cd7978bc305b38c361766495edcd8ad4864fcd'
+    );
+  });
+
+  it("reordering a 1.8 voter entry's keys does not change the hash", () => {
+    const v = MAXIMAL_1_8.voters[0]!;
+    const reordered = {
+      unverifiable: v.unverifiable,
+      model: v.model,
+      retried: v.retried,
+      reasoning: v.reasoning,
+      confidence: v.confidence,
+      reasoningTruncated: v.reasoningTruncated,
+      decision: v.decision,
+      role: v.role,
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [reordered] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_8)
+    );
+  });
+
+  it('an explicitly-undefined model or flag hashes identically to an absent one', () => {
+    const v = MAXIMAL_1_8.voters[0]!;
+    const { model: _m, unverifiable: _u, ...bare } = v;
+    const explicit = { ...bare, model: undefined, unverifiable: undefined };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [explicit] })).toBe(
+      computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [bare] })
+    );
+  });
+
+  it('dropping `model` alone moves the hash; dropping `unverifiable` alone moves it too', () => {
+    const v = MAXIMAL_1_8.voters[0]!;
+    const { model: _m, ...withoutModel } = v;
+    const { unverifiable: _u, ...withoutFlag } = v;
+    const full = computeVoteRecordHash(MAXIMAL_1_8);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutModel] })).not.toBe(full);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutFlag] })).not.toBe(full);
   });
 });

@@ -26,6 +26,15 @@ describe('voter-prompts', () => {
       expect(Object.keys(VOTER_SYSTEM_PROMPTS).sort()).toEqual(allRoles.sort());
     });
 
+    it('tells every seat that cannot read the artifact to abstain and say so (#6094)', () => {
+      // The ledger holds a seat that APPROVED on the proposal text after its
+      // repository reads failed. The instruction has to reach every role.
+      for (const role of allRoles) {
+        expect(VOTER_SYSTEM_PROMPTS[role]).toContain('UNVERIFIABLE: could not read the artifact');
+        expect(VOTER_SYSTEM_PROMPTS[role]).toContain('never vote on the description');
+      }
+    });
+
     it('should have non-empty prompts for all roles', () => {
       for (const role of allRoles) {
         expect(VOTER_SYSTEM_PROMPTS[role]).toBeTruthy();

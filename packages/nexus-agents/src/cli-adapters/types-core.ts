@@ -121,6 +121,14 @@ export interface CliResponse {
   readonly durationMs?: number;
   /** Raw response (for debugging) */
   readonly raw?: unknown;
+  /**
+   * Stderr the transport captured during a SUCCESSFUL call, when non-empty
+   * (#6094). On the subprocess path this is the CLI's stderr; on the codex MCP
+   * path it is what `codex mcp-server` wrote to its piped stderr while the tool
+   * call was in flight. A sandbox failure inside the CLI's tool loop surfaces
+   * here while `text` still carries a parsed answer. Absent on a clean run.
+   */
+  readonly stderr?: string;
 }
 
 /**

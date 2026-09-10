@@ -197,6 +197,28 @@ function stripAnsi(s: string): string {
   return s.replace(/\[[0-9;]*m/g, '');
 }
 
+describe('formatVoteRow unverifiable seat (#6094)', () => {
+  it('renders UNVERIFIABLE, not ABSTAIN, so a blind seat is never read as a considered one', () => {
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          role: 'devex',
+          source: 'unverifiable',
+          unverifiableSignal: 'reasoning',
+          vote: {
+            decision: 'abstain',
+            confidence: 0,
+            reasoning: "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'",
+          },
+        })
+      )
+    );
+    expect(row).toContain('UNVERIFIABLE');
+    expect(row).not.toContain('ABSTAIN');
+    expect(row).toContain('could not read the artifact');
+  });
+});
+
 describe('formatVoteRow reasoning (#5339)', () => {
   const dissent = makeVoteRow({
     role: 'catfish',

@@ -87,6 +87,16 @@ export const VOTER_ROLES: Record<VoterRole, string> = {
 };
 
 /**
+ * Which evidence classified a seat as `unverifiable` (#6094).
+ *
+ * - `stderr`: the structured signal — the CLI transport captured a sandbox /
+ *   shell failure on stderr while serving the completion.
+ * - `reasoning`: the fallback — the seat's own reasoning text said it could
+ *   not read the artifact (`UNVERIFIABLE_REASONING_RE`).
+ */
+export type UnverifiableSignal = 'stderr' | 'reasoning';
+
+/**
  * Individual agent vote with metadata.
  */
 export interface AgentVoteResult {
@@ -98,8 +108,19 @@ export interface AgentVoteResult {
    * - 'llm': Real LLM execution
    * - 'simulation': Fallback simulation (opt-in only)
    * - 'error': Error during execution (Issue #523)
+   * - 'unverifiable': the seat answered but could not read the artifact
+   *   (#6094). A DISTINCT value, not a flag on `abstain`, so no aggregation
+   *   over `vote.decision` can fold it back into the abstain bucket. The
+   *   `vote.decision` is always `abstain` — an unverifiable seat never carries
+   *   approve/reject, whatever the model returned.
    */
-  readonly source: 'llm' | 'simulation' | 'error';
+  readonly source: 'llm' | 'simulation' | 'error' | 'unverifiable';
+  /**
+   * Present only when `source === 'unverifiable'`: which evidence classified
+   * the seat (#6094). Lets an auditor tell a structured stderr signal from the
+   * reasoning-text heuristic.
+   */
+  readonly unverifiableSignal?: UnverifiableSignal | undefined;
   /** CLI that executed this vote (for adaptive routing feedback). */
   readonly cli?: string | undefined;
   /**
