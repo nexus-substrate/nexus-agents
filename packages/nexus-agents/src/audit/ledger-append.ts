@@ -54,5 +54,22 @@ export function serializeValidatedRecord<T>(
     const paths = parsed.error.issues.map(formatZodIssueWithRoot).join('; ');
     throw new Error(`${UNREADABLE_RECORD_PREFIX} ${ledgerName} record: ${paths}`);
   }
-  return JSON.stringify(record) + '\n';
+  const line = JSON.stringify(record);
+  // Validate what will be READ, not only what was handed in. A ratification
+  // seat named the gap and a probe confirmed it: `.strict()` checks own keys, so
+  // an object whose prototype carries `toJSON()` passes validation while
+  // `JSON.stringify` writes something else entirely. The builders never hand
+  // the guard such an object, but the guard is an exported helper and the
+  // property has to hold for any caller. The same check closes every
+  // JSON-lossy value at once (a non-finite number becoming `null`, a Date
+  // becoming a string) rather than enumerating them. Bytes are unchanged: the
+  // line written is still the caller's own serialization.
+  const roundTrip = schema.safeParse(JSON.parse(line) as unknown);
+  if (!roundTrip.success) {
+    const paths = roundTrip.error.issues.map(formatZodIssueWithRoot).join('; ');
+    throw new Error(
+      `${UNREADABLE_RECORD_PREFIX} ${ledgerName} record: JSON round-trip changed it — ${paths}`
+    );
+  }
+  return line + '\n';
 }
