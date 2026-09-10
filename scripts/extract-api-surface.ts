@@ -101,6 +101,18 @@ function normalizeTypeText(text: string): string {
   return sortTypeMembers(
     stripInlineComments(text)
       .replace(/import\("[^"]*\/packages\/nexus-agents\/src\/([^"]*)"\)/g, 'import("src/$1")')
+      // A dependency's type can be printed as an `import("<abs path>")` into
+      // node_modules. The greedy prefix consumes up to the LAST `/node_modules/`,
+      // which strips both the machine path and pnpm's versioned store segment
+      // (`.pnpm/zod@4.5.4/node_modules/`), leaving `zod/v4/core/schemas`.
+      //
+      // This file's own tests already warned about the class: "printed types must
+      // not carry machine-specific absolute paths (the gate failed on its own
+      // first CI run because /home/runner is not the author's home directory — a
+      // gate that always fails gets switched off)". The pre-existing rewrite
+      // above covered only in-package paths; rendering real call signatures
+      // (#6061) started printing dependency types too, which reintroduced it.
+      .replace(/import\("[^"]*\/node_modules\/([^"]*)"\)/g, 'import("$1")')
       // Collapse to ONE line. ts-morph wraps long signatures, and the snapshot
       // format uses "starts at column 0" to mean "new symbol" — a wrapped type
       // put 7 continuation lines at column 0, which the checker read as phantom

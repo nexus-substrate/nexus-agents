@@ -13,6 +13,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Project } from 'ts-morph';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   COLLISION_HEADER,
   collidingNames,
@@ -439,5 +441,35 @@ describe('exported function SIGNATURES are recorded (#6061)', () => {
     // The pre-existing stability property, re-asserted over the new renderer.
     const src = { '/index.ts': 'export function f(a: string, b?: number): void {}' };
     expect(surfaceOf(src)).toBe(surfaceOf(src));
+  });
+});
+
+describe('the committed snapshot is machine-independent (#6061)', () => {
+  // This file's header already warned about the class: the gate failed on its own
+  // first CI run because `/home/runner` is not the author's home directory, and a
+  // gate that always fails gets switched off. The pre-existing normalisation
+  // covered in-package `import()` paths only. Rendering real call signatures
+  // started printing DEPENDENCY types too, which reintroduced it — CI caught a
+  // committed `/home/william/...` on the first push of this branch.
+  //
+  // Asserted over the real committed artifact rather than an in-memory fixture,
+  // because the defect is a property of what actually ships.
+  const snapshot = readFileSync(join(import.meta.dirname, '..', 'api-surface.txt'), 'utf-8');
+
+  it('contains no absolute filesystem path', () => {
+    const offenders = snapshot.split('\n').filter((l) => /\/home\/|\/Users\/|\/root\//.test(l));
+    expect(offenders).toEqual([]);
+  });
+
+  it('contains no node_modules segment', () => {
+    // pnpm's store path embeds a version (`.pnpm/zod@4.5.4/`), so leaving it in
+    // would also churn the snapshot on every dependency bump.
+    expect(snapshot.split('\n').filter((l) => l.includes('node_modules'))).toEqual([]);
+  });
+
+  it('still records the dependency module it came from', () => {
+    // The pair. Stripping the path must not strip the module identity, or the
+    // normalisation becomes a blind spot of its own.
+    expect(snapshot).toContain('import("zod/');
   });
 });

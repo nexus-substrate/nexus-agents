@@ -2520,7 +2520,7 @@ FunctionDeclaration createUnifiedRegistry
 FunctionDeclaration createValidationDashboard
   : () => ValidationDashboard
 FunctionDeclaration createValidator
-  : (schema: ZodType<T, unknown, import("/home/william/git/nexus-substrate/nexus-agents/node_modules/.pnpm/zod@4.5.4/node_modules/zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>) => (args: unknown) => Result<T, ValidationError>
+  : (schema: ZodType<T, unknown, import("zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>) => (args: unknown) => Result<T, ValidationError>
 FunctionDeclaration createVotingProtocol
   : (customLogger?: ILogger | undefined) => VotingProtocol
 FunctionDeclaration createWaveScheduler
@@ -9622,7 +9622,7 @@ FunctionDeclaration validateSkillRBAC
 FunctionDeclaration validateTestCase
   : (testCase: unknown) => z.ZodSafeParseResult<{ context?: string | undefined; description: string; expectedOutcome: "refuse" | "caution" | "clarify" | "escalate" | "proceed" | "detect"; id: string; input: string; name: string; riskLevel: "critical" | "high" | "medium" | "low"; tags: readonly string[]; }>
 FunctionDeclaration validateToolInput
-  : (schema: ZodType<T, unknown, import("/home/william/git/nexus-substrate/nexus-agents/node_modules/.pnpm/zod@4.5.4/node_modules/zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>, args: unknown) => Result<T, ValidationError>
+  : (schema: ZodType<T, unknown, import("zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>, args: unknown) => Result<T, ValidationError>
 FunctionDeclaration validateWorkflow
   : (workflow: WorkflowDefinition) => Result<void, ParseError>
 FunctionDeclaration validateWorkflowDependencies
