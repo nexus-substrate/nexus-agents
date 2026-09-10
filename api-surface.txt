@@ -1050,7 +1050,7 @@ InterfaceDeclaration BuildPlanOptions
   readonly maxScanners?: number | undefined
   readonly repo: string
 FunctionDeclaration buildPrReviewProposal
-  : (input: Pick<{ baseRef?: string | undefined; baseSha?: string | undefined; dispatch: "sync" | "async"; errorPolicy: "absolute_quorum" | "standard"; headRef?: string | undefined; prDescription?: string | undefined; prDiff: string; prNumber?: number | undefined; prTitle: string; repoContext?: string | undefined; repoPath?: string | undefined; simulate: boolean; }, "prTitle" | "prDescription" | "prDiff" | "repoContext" | "baseRef" | "headRef">, removedBeforeThisCall?: number) => string
+  : (input: Pick<{ baseRef?: string | undefined; baseSha?: string | undefined; dispatch: "sync" | "async"; errorPolicy: "absolute_quorum" | "standard"; headRef?: string | undefined; prDescription?: string | undefined; prDiff: string; prNumber?: number | undefined; prTitle: string; repoContext?: string | undefined; repoPath?: string | undefined; simulate: boolean; }, "prTitle" | "prDescription" | "prDiff" | "repoContext" | "baseRef" | "headRef">, removedBefore?: { comments: number; fields: number; tags: number; }) => string
 FunctionDeclaration buildSkillDependencyGraph
   : (skills: readonly Skill[]) => ISkillDependencyGraph
 FunctionDeclaration buildTimeoutResult
