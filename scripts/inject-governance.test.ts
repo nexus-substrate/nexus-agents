@@ -32,6 +32,7 @@ import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync } f
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import * as prettier from 'prettier';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { GOVERNANCE_STAMP_PATTERN } from './governance-stamp-exemption.js';
 import { parseCommandCatalog } from './parse-cli-command-catalog.js';
@@ -804,6 +805,11 @@ describe('inject-governance claude-from-agents (#3446)', () => {
 // Generated-block comparison is formatter-normalized (#6062)
 // ============================================================================
 
+/** The #6087 out-of-block message; the block message keeps its #3446/#6062 text. */
+const OUT_OF_BLOCK = 'CLAUDE.md differs outside the generated block';
+const BLOCK_STALE = 'GENERATED:FROM_AGENTS block is stale';
+const COULD_NOT_FORMAT = 'governance:check: could not format';
+
 describe('inject-governance claude-from-agents normalization (#6062)', () => {
   /** The one agnostic-body line every fixture below edits; present verbatim in both files. */
   const ANCHOR = '- **Cleverness**: Never. Clever code is maintenance debt.';
@@ -855,12 +861,13 @@ describe('inject-governance claude-from-agents normalization (#6062)', () => {
     });
   });
 
-  it('trailing-newline differences on either side do not produce a false failure', async () => {
+  it('blank-line padding of the AGENTS.md slice does not produce a false failure', async () => {
     // The issue names the slice's `\ No newline at end of file` mismatch as the
     // other formatter-sensitive edge. Pad the AGENTS.md slice with blank lines
-    // before the END marker, and strip CLAUDE.md's end-of-file newline (which
-    // prettier would put back) — neither is agnostic-body drift, so the block
-    // comparison must stay clean.
+    // before the END marker — not agnostic-body drift, so the block comparison
+    // must stay clean. (A stripped CLAUDE.md end-of-file newline used to be the
+    // other half of this test; since #6087 that IS drift — outside the block —
+    // because CI's idempotency step fails on it. See the #6087 suite below.)
     await withInjectSnapshot(async () => {
       const agentsPath = box('AGENTS.md');
       const padded = readFileSync(agentsPath, 'utf-8').replace(
@@ -870,15 +877,121 @@ describe('inject-governance claude-from-agents normalization (#6062)', () => {
       expect(padded).toContain('\n\n\n<!-- AGNOSTIC:BODY:END -->');
       writeFileSync(agentsPath, padded);
       await runInject();
-
-      const claudePath = box('CLAUDE.md');
-      const injected = readFileSync(claudePath, 'utf-8');
-      expect(injected.endsWith('\n')).toBe(true);
-      writeFileSync(claudePath, injected.replace(/\n$/, ''));
+      expect(readFileSync(box('CLAUDE.md'), 'utf-8').endsWith('\n')).toBe(true);
 
       const { ok, output } = await runCheck();
       expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
+      expect(output).not.toContain(OUT_OF_BLOCK);
       expect(ok).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
+// Whole-file parity with CI's idempotency step + actionable formatter errors (#6087)
+// ============================================================================
+
+describe('inject-governance whole-file parity + formatter errors (#6087)', () => {
+  const ANCHOR = '- **Cleverness**: Never. Clever code is maintenance debt.';
+  /** Prettier rewrites `*x*` emphasis to `_x_`, so this line is out-of-block drift. */
+  const STAR_EMPHASIS = '*Prettier rewrites this emphasis to underscores.*';
+
+  /** CLAUDE.md with the ANCHOR line inside the generated block edited. */
+  function withStaleBlock(original: string): { edited: string; line: number } {
+    const lines = original.split('\n');
+    const idx = lines.indexOf(ANCHOR);
+    expect(idx).toBeGreaterThan(-1);
+    lines[idx] = ANCHOR.replace('maintenance debt', 'maintenance DEBT');
+    return { edited: lines.join('\n'), line: idx + 1 };
+  }
+
+  it('(a) a stripped end-of-file newline is out-of-block drift: named by line, block message absent', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      // CI runs `inject` then `git diff --exit-code CLAUDE.md`; prettier puts the
+      // newline back, so this file fails CI. Local check must agree.
+      expect(original.endsWith('\n')).toBe(true);
+      writeFileSync(box('CLAUDE.md'), original.replace(/\n$/, ''));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(OUT_OF_BLOCK);
+      // The difference is where the newline was: one past the last on-disk line.
+      expect(output).toContain(`CLAUDE.md:${String(original.split('\n').length)}`);
+      expect(output).toContain('on disk:  <end of file>');
+      expect(output).toContain('pnpm governance:inject');
+      expect(output).not.toContain(BLOCK_STALE);
+    });
+  });
+
+  it('(a) prose outside the markers that prettier reshapes is out-of-block drift at its own line', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const lines = original.split('\n');
+      // After the H1 (line 9, below the front matter) and its blank line, so the
+      // inserted paragraph stands alone at line 11.
+      expect(lines[8]).toBe('# Nexus Agents - Claude Code Instructions');
+      expect(lines[9]).toBe('');
+      lines.splice(10, 0, STAR_EMPHASIS, '');
+      writeFileSync(box('CLAUDE.md'), lines.join('\n'));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(`${OUT_OF_BLOCK} — first difference at CLAUDE.md:11`);
+      expect(output).toContain(`expected: ${STAR_EMPHASIS.replace(/\*/g, '_')}`);
+      expect(output).toContain(`on disk:  ${STAR_EMPHASIS}`);
+      expect(output).not.toContain(BLOCK_STALE);
+    });
+  });
+
+  it('(b) block drift alone prints the block message and NOT the out-of-block message', async () => {
+    // The regeneration replaces only the block; the rest of the on-disk file is
+    // already formatter-clean, so substituting the on-disk block back into the
+    // regeneration reproduces the file byte-for-byte — no out-of-block cause.
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const { edited, line } = withStaleBlock(original);
+      writeFileSync(box('CLAUDE.md'), edited);
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(
+        `${BLOCK_STALE} (#3446) — first difference at CLAUDE.md:${String(line)}`
+      );
+      expect(output).not.toContain(OUT_OF_BLOCK);
+    });
+  });
+
+  it('(c) block drift AND out-of-block drift are both reported, each by its own message', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const { edited, line } = withStaleBlock(original);
+      expect(edited.endsWith('\n')).toBe(true);
+      writeFileSync(box('CLAUDE.md'), edited.replace(/\n$/, ''));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(
+        `${BLOCK_STALE} (#3446) — first difference at CLAUDE.md:${String(line)}`
+      );
+      expect(output).toContain(
+        `${OUT_OF_BLOCK} — first difference at CLAUDE.md:${String(edited.split('\n').length)}`
+      );
+    });
+  });
+
+  it('(d) a prettier failure is an actionable message and a failed check, not an unhandled rejection', async () => {
+    // A malformed .prettierrc makes `resolveConfig` reject inside
+    // `formatWithPrettier` — a real formatter error, not a stub. Prettier caches
+    // resolved config per path, so the cache is cleared on both sides.
+    await withSandboxFile('.prettierrc', async () => {
+      writeFileSync(box('.prettierrc'), '{ "semi": true,');
+      await prettier.clearConfigCache();
+      try {
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain(`${COULD_NOT_FORMAT} ${box('CLAUDE.md')}: `);
+        // The prettier message travels with it, naming the offending config file.
+        expect(output).toContain('.prettierrc');
+      } finally {
+        await prettier.clearConfigCache();
+      }
     });
   });
 });

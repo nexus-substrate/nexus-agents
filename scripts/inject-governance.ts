@@ -1029,22 +1029,75 @@ function sliceBetween(content: string, startMarker: string, endMarker: string): 
 
 /** Marker for a side that ran out of lines before the other did. */
 const END_OF_BLOCK = '<end of block>';
+/** The same, for the whole-file comparison (#6087). */
+const END_OF_FILE = '<end of file>';
 
 /**
- * The first line at which two blocks differ: its 0-based index plus the
- * `expected` and `onDisk` text at that index (or {@link END_OF_BLOCK}). The
- * caller guarantees the blocks are not equal, so a line is always found.
+ * The first line at which two texts differ: its 0-based index plus the
+ * `expected` and `onDisk` text at that index (or `exhausted` for a side that
+ * ran out of lines first). The caller guarantees the texts are not equal, so a
+ * line is always found.
  */
 function firstDifferingLine(
   expected: string,
-  onDisk: string
+  onDisk: string,
+  exhausted: string = END_OF_BLOCK
 ): { index: number; expected: string; onDisk: string } {
   const a = expected.split('\n');
   const b = onDisk.split('\n');
   const limit = Math.max(a.length, b.length);
   let index = 0;
   while (index < limit && a[index] === b[index]) index += 1;
-  return { index, expected: a[index] ?? END_OF_BLOCK, onDisk: b[index] ?? END_OF_BLOCK };
+  return { index, expected: a[index] ?? exhausted, onDisk: b[index] ?? exhausted };
+}
+
+/**
+ * The out-of-block drift message (#6087): CI's idempotency step diffs the WHOLE
+ * file after `inject`, so an end-of-file newline or prose outside the markers
+ * that prettier reshapes fails there. Reported as its own cause, with the
+ * 1-based CLAUDE.md line of the first difference, so it is never mistaken for
+ * (or hidden behind) block drift. `expected` is the formatted regeneration with
+ * the on-disk block spliced in, so line numbers are the on-disk file's.
+ */
+function describeOutOfBlockDrift(expected: string, content: string): string {
+  const diff = firstDifferingLine(expected, content, END_OF_FILE);
+  return [
+    `CLAUDE.md differs outside the generated block — first difference at ` +
+      `CLAUDE.md:${String(diff.index + 1)}`,
+    `  expected: ${diff.expected}`,
+    `  on disk:  ${diff.onDisk}`,
+    'Run: pnpm governance:inject',
+  ].join('\n');
+}
+
+/**
+ * `regenerated` with its block (`expected`) replaced by the on-disk block, so a
+ * comparison against the on-disk file measures ONLY what lies outside the
+ * markers (#6087). Index-spliced rather than `String.replace`, whose
+ * replacement-pattern syntax (`$&`, `$'`) would corrupt a block that contains
+ * a dollar sign — CLAUDE.md does.
+ */
+function withOnDiskBlock(regenerated: string, expected: string, onDisk: string): string {
+  const at = regenerated.indexOf(expected);
+  return regenerated.slice(0, at) + onDisk + regenerated.slice(at + expected.length);
+}
+
+/**
+ * {@link formatWithPrettier} for the check path (#6087). A prettier failure —
+ * a malformed `.prettierrc`, a construct its parser rejects — is reported as
+ * `governance:check: could not format <path>: <prettier message>` and the
+ * caller gets `undefined`, so the check fails with an actionable line and exit 1
+ * instead of the CLI dying on an unhandled rejection with a stack trace as the
+ * only output.
+ */
+async function formatForCheck(path: string, content: string): Promise<string | undefined> {
+  try {
+    return await formatWithPrettier(path, content);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`governance:check: could not format ${path}: ${message}`);
+    return undefined;
+  }
 }
 
 /**
@@ -1076,8 +1129,17 @@ function describeAgnosticDrift(content: string, expected: string, onDisk: string
  * The regeneration is run through {@link formatWithPrettier} — the same pass
  * `inject` writes through — before the comparison, so the expected block is
  * what `inject` would actually put on disk, not the raw AGENTS.md slice
- * (#6062). Only the marker-bounded block is compared: prettier's view of the
- * rest of the file (its end-of-file newline, say) is not agnostic-body drift.
+ * (#6062).
+ *
+ * Two causes, measured and rendered independently (#6087) — they co-occur, and
+ * an if/else-if or a combined message would hide one:
+ * - BLOCK drift: the marker-bounded block differs from the regeneration.
+ * - OUT-OF-BLOCK drift: with the on-disk block spliced into the regeneration,
+ *   the whole file still differs — an end-of-file newline, prose outside the
+ *   markers that prettier reshapes. Not agnostic-body drift, but CI's
+ *   idempotency step (`inject` then `git diff --exit-code CLAUDE.md`) diffs the
+ *   whole file, so without this comparison `check` passed locally on a tree CI
+ *   rejected.
  *
  * Exported so the #6062 tests can drive it directly against a sandbox root.
  */
@@ -1085,16 +1147,20 @@ export async function checkClaudeAgnosticBlock(): Promise<boolean> {
   if (!existsSync(CLAUDE_MD_PATH)) return true;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
   if (!content.includes(MARKERS.claudeAgnosticStart)) return true;
-  const regenerated = await formatWithPrettier(CLAUDE_MD_PATH, injectClaudeAgnosticBlock(content));
+  const regenerated = await formatForCheck(CLAUDE_MD_PATH, injectClaudeAgnosticBlock(content));
+  if (regenerated === undefined) return false;
   const { claudeAgnosticStart: start, claudeAgnosticEnd: end } = MARKERS;
   // The regeneration always carries both markers (the generator emits them), so
   // an undefined on-disk slice can only mean the END marker is gone — a
   // difference, reported as such rather than silently passed.
   const expected = sliceBetween(regenerated, start, end) ?? regenerated;
   const onDisk = sliceBetween(content, start, end) ?? content.slice(content.indexOf(start));
-  if (expected === onDisk) return true;
-  console.error(describeAgnosticDrift(content, expected, onDisk));
-  return false;
+  const blockOk = expected === onDisk;
+  if (!blockOk) console.error(describeAgnosticDrift(content, expected, onDisk));
+  const outsideBlock = withOnDiskBlock(regenerated, expected, onDisk);
+  const outsideOk = outsideBlock === content;
+  if (!outsideOk) console.error(describeOutOfBlockDrift(outsideBlock, content));
+  return blockOk && outsideOk;
 }
 
 /**
