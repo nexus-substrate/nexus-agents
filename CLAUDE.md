@@ -454,66 +454,95 @@ Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELIS
 - **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
 - **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
 - **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).
-- **Turn-level communication** — how a turn READS is governed separately from how documentation reads; see the section below.
+- **Artifact communication** — commit/PR/issue/comment/changeset bodies each have ONE job; see the section below. Constrains the report, never the work.
 
 ---
 
-## Turn-level communication
+## Artifact communication
 
-_Adapted from [i-have-adhd](https://github.com/ayghri/i-have-adhd) (MIT), which
-targets the same failure: an answer that exists in the reply but is buried._
+_Rules for the ARTIFACTS below adapted from [i-have-adhd](https://github.com/ayghri/i-have-adhd)
+(MIT). Most of that skill's voice rules are deliberately NOT adopted — see the
+end of this section for the measurement that says why._
 
-**Documentation style** above governs the ARTIFACTS produced. This governs the
-TURN — what a person reads when an agent reports back. Working memory is small,
-and anything not on screen is forgotten, so a turn that makes the reader
-reconstruct the answer has failed even when the answer is technically present.
+**Documentation style** above governs docs. This governs the artifacts an agent
+writes for a human to read later: **commit body, PR body, issue body,
+issue/PR comment, changeset**.
 
-1. **Lead with the action.** First line is the thing to run, the file to open, or
-   the decision made — `Run \`pnpm test\`, then edit \`src/auth.ts:42\``, not a
-   restatement of the question. If a turn changed nothing, the first line says
-   that.
-2. **Number multi-step work.** One action per step, no compound conjunctions. A
-   step containing "and then" is two steps.
-3. **Restate state.** Say where the work is — `Step 3 of 5`, or `gates green, panel pending`.
-   The reader should not have to scroll to find out.
-4. **Say what now works.** Report the observable capability, not the file count —
-   `the gate now matches on governance PRs`, not `changed 8 files`.
-5. **Errors, matter-of-fact.** Raw error, cause, one corrective action — the
-   shape **Error handling** already requires. No apology, no self-criticism, no
-   tallying past mistakes.
-6. **No preamble, no closers.** Delete "Great question", "Let me…", "Hope this
-   helps", and offers to do something the reader did not ask for.
+**It constrains the REPORT, never the WORK.** Nothing here limits how many files
+to read, how much evidence to gather, how many mutations to run, or how deep a
+review goes. A concise report of a thorough investigation is the goal; a long
+report of a shallow one is the failure. Where brevity and completeness conflict,
+completeness wins — see the pointers below.
 
-### Where these rules yield
+### One job per artifact
 
-Three of the upstream rules collide with rules this repo already enforces. The
-collisions are resolved HERE, deliberately, because an unreconciled style rule
-gets applied to the case it was never meant for.
+The measured problem is not verbose artifacts, it is the SAME change narrated
+independently three times. One patch (#6052) carried a 647-word PR body, a
+707-word commit body and a 187-word changeset with near-zero verbatim overlap —
+re-derived, not copy-pasted. Give each artifact its one job:
 
-- **"Cap lists at five" applies to CHOICES, not to EVIDENCE.** Five is right for
-  options put to a reader. It is wrong for findings, dropped candidates,
-  affected call sites, or failing assertions. Truncating evidence to fit a style
-  rule produces a partial result presented as complete — the p1 failure the
-  Mission section names. A review that drops its sixth finding to look tidy has
-  misreported. Say `9 findings` and list nine.
-- **"Suppress tangents" is executed by FILING, not by silence.** The
-  Discovered-Issues protocol requires capturing an out-of-scope bug. Do that,
-  cite the number in one line, and move on. The issue IS the tangent-suppression
-  mechanism; suppressing the finding itself is the opposite of the rule.
-- **"No recap" does not repeal the autonomous End-of-turn protocol.**
-  `Done this turn: … / Up next: …` is required by
-  [`.rules/autonomous.md`](./.rules/autonomous.md) and is not a recap — it is
-  rules 3 and 4 above in their fixed form. Keep it.
+| Artifact        | Its one job                                                          | Audience                      |
+| --------------- | -------------------------------------------------------------------- | ----------------------------- |
+| **Commit body** | Why this change exists, for someone reading `git log`                | A future bisecter             |
+| **PR body**     | What a reviewer needs to DECIDE: the defect, the evidence, the risks | The reviewer, before merge    |
+| **Changeset**   | What a CONSUMER of the package needs to know                         | Someone reading the CHANGELOG |
+| **Issue body**  | What the problem is and what would unblock it                        | Whoever picks it up           |
+| **Comment**     | The one thing that moved since the last comment                      | Thread participants           |
 
-### One upstream rule is deliberately NOT adopted
+Two consequences that are easy to get backwards:
 
-**Wall-clock time estimates.** The upstream skill asks for "15 minutes", not "a
-bit". An agent has no clock and no calibration, so a number in minutes is
-invented, and this repo treats an invented measurement as worse than an absent
-one. Give the estimate in units that are actually checkable — files touched,
-gates still to run, whether the tests already exist, whether a panel is needed —
-or say the size is unknown. `An afternoon if the fixtures need rewriting` is
-fine because the condition is checkable; `about 15 minutes` is not.
+- **The changeset is never a pointer.** It becomes a CHANGELOG entry read by
+  people who never open GitHub, so it must stand alone. If any artifact shrinks
+  to a link, it is the commit body.
+- **A squash merge writes the commit body for you.** GitHub concatenates the
+  branch commit messages into it, so on a squashed PR that body is DERIVED, not
+  authored. Keep branch commit messages tight, or author the squash body
+  deliberately — do not treat the result as a third place to re-argue the change.
+
+### Where completeness wins — existing authorities, not new rules
+
+There is no list cap here on purpose. Two calibrated caps already exist where
+they bind ([`skills/docs-review`](./skills/docs-review/SKILL.md) surfaces the top
+10; [`skills/context-engineering`](./skills/context-engineering/SKILL.md) caps
+subagent output at 2000 characters), and a third number in this file would be the
+sprawl **Anti-sprawl** forbids. Agent PR bodies carry a median of 11 list rows
+and in some findings the correlation ACROSS the rows is the finding, so a cap
+would delete the evidence.
+
+When brevity would cost coverage, these already decide it:
+
+- [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md) — "Compressed
+  summaries that hide coverage gaps are the worst-case output: they look complete
+  but silently miss scope. Always prefer 'honestly partial' over 'dishonestly whole.'"
+- The Mission section above — a review must state which portion was reviewed.
+- [`.rules/discovered-issues.md`](./.rules/discovered-issues.md) — an out-of-scope
+  bug is captured as an ISSUE, not omitted and not narrated inline. Cite the
+  number in one line and move on.
+- [`.rules/autonomous.md`](./.rules/autonomous.md) — the `Done this turn: / Up next:`
+  block is required and is not padding.
+
+### No invented measurements
+
+Do not put a wall-clock estimate in an artifact. Reading a clock and estimating a
+duration are different capabilities: **Time authority** above supplies the first,
+and nothing supplies the second — an agent gets no feedback on how long its own
+past work actually took, so a number in minutes is invented rather than measured,
+and this repo treats an invented measurement as worse than an absent one. Give
+the size in checkable units — files touched, gates still to run, whether the
+tests already exist — or say it is unknown.
+
+### What was measured, and what was not
+
+Recorded so a later sweep can tell whether this section changed anything. Over
+the 10 most recent agent-authored PRs, 25 issues, 20 commits and 25 changesets:
+preamble openings **0 of 10** PR bodies and **0 of 25** issues; changeset median
+**159 words**; agent PR bodies median **644 words**; commit bodies median **272
+words**; agent PR list rows median **11**.
+
+Because the hit rate for "no preamble / lead with the action" was ZERO, those
+voice rules are NOT adopted — a rule that cannot fire is the defect the Mission
+section names, not a style improvement. TURN summaries were not measured and are
+not governed here; they are covered by `.rules/autonomous.md`.
 
 ---
 
