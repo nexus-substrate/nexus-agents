@@ -381,8 +381,8 @@ async function runVoteCompletion({
   };
 }
 
-/** A parsed vote plus what the transport reported alongside it. */
-export interface VoteAttemptSuccess {
+/** A parsed vote plus what the transport reported alongside it. Module-private: its only consumer is the return type below. */
+interface VoteAttemptSuccess {
   readonly ok: true;
   readonly vote: Vote;
   readonly output: string;
