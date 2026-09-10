@@ -181,6 +181,28 @@ export const VoterSummarySchema = z
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
 
 /**
+ * Identity at runtime; an exhaustiveness constraint at compile time (#6077).
+ *
+ * The tuple literal only type-checks when every `keyof VoterSummary` appears
+ * in it: `[keyof VoterSummary] extends [T[number]]` is `unknown` (no-op
+ * intersection) when the tuple is complete and `never` when a schema key is
+ * missing, so the argument becomes unassignable. Drop `retried` from the tuple
+ * below and this call is a `tsc` error, not a silently unhashed field.
+ *
+ * This exists INSTEAD of a standalone sentinel const because a sentinel
+ * survives lint only through the `^_` unused-vars ignore pattern and can be
+ * deleted by a dead-code pass with no test failing — the "check that can vanish
+ * without a failing test" class. Bound to the tuple's initialization, the check
+ * cannot be removed separately from the thing it checks. The `satisfies` on the
+ * literal still catches the other direction (a key the schema lacks).
+ */
+function defineVoterKeys<T extends readonly (keyof VoterSummary)[]>(
+  keys: T & ([keyof VoterSummary] extends [T[number]] ? unknown : never)
+): T {
+  return keys;
+}
+
+/**
  * THE canonical voter-entry field order (#6057). One source, three consumers:
  * the hash projection iterates it, the schema is checked against it at compile
  * time in both directions, and the builder's output is asserted against it.
@@ -191,25 +213,21 @@ export type VoterSummary = z.infer<typeof VoterSummarySchema>;
  * reorder would then silently move every historical hash. Reordering the SCHEMA
  * changes nothing; reordering THIS tuple fails the pinned maximal golden.
  *
- * `satisfies` catches a key the schema lacks (direction 1); `_Missing` catches a
- * schema key this tuple lacks (direction 2). Both are compile errors, so the
- * "schema-only field" failure mode is closed at build time.
+ * `satisfies` catches a key the schema lacks (direction 1); the
+ * {@link defineVoterKeys} constraint catches a schema key this tuple lacks
+ * (direction 2). Both are compile errors, so the "schema-only field" failure
+ * mode is closed at build time.
  *
  * DO NOT REORDER. The pinned literal in vote-record.test.ts is the guard.
  */
-const VOTER_SUMMARY_KEYS = [
+const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'role',
   'decision',
   'confidence',
   'reasoning',
   'reasoningTruncated',
   'retried',
-] as const satisfies readonly (keyof VoterSummary)[];
-
-type _MissingVoterKey = Exclude<keyof VoterSummary, (typeof VOTER_SUMMARY_KEYS)[number]>;
-// If a field is added to VoterSummarySchema and not to VOTER_SUMMARY_KEYS, this
-// line fails to compile: the hash projection would otherwise silently omit it.
-const _voterKeysExhaustive: _MissingVoterKey extends never ? true : never = true;
+] as const satisfies readonly (keyof VoterSummary)[]);
 
 /**
  * Project one voter entry for the canonical hash: every key in
