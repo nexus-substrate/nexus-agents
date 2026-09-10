@@ -500,7 +500,7 @@ describe('QuorumValidator weighted quorum scenarios', () => {
     }
   });
 
-  it('handles weighted tie (approve wins by default)', () => {
+  it('reports a weighted tie as no consensus, not as approval (#6051)', () => {
     const weights = new Map([
       ['a1', 1.0],
       ['a2', 1.0],
@@ -513,10 +513,11 @@ describe('QuorumValidator weighted quorum scenarios', () => {
       agentWeights: weights,
       config: makeConfig({ algorithm: 'proof_of_learning', threshold: 0.5 }),
     });
-    // Equal weights -> approve >= reject, so approve wins
-    expect(result.status).toBe('reached');
-    if (result.status === 'reached') {
-      expect(result.decision).toBe('approve');
+    // Equal weights -> nobody won; this used to read `approve` via `>=`.
+    expect(result.status).toBe('not_reached');
+    if (result.status === 'not_reached') {
+      expect(result.reason).toBe('no_consensus');
+      expect(result.details).toMatch(/tie/i);
     }
   });
 
@@ -633,6 +634,120 @@ describe('QuorumValidator edge cases', () => {
 
     if (narrowResult.status === 'reached' && wideResult.status === 'reached') {
       expect(wideResult.confidence).toBeGreaterThan(narrowResult.confidence);
+    }
+  });
+});
+
+// ============================================================================
+// Tie handling (#6051) — a tie is not an approval
+// ============================================================================
+
+describe('QuorumValidator tie handling (#6051)', () => {
+  const validator = new QuorumValidator();
+
+  const simpleCases: Array<{
+    name: string;
+    approve: number;
+    reject: number;
+    threshold: number;
+    expected: { status: 'reached'; decision: 'approve' | 'reject' } | { status: 'not_reached' };
+  }> = [
+    {
+      name: '3-3 at 0.5 is a tie',
+      approve: 3,
+      reject: 3,
+      threshold: 0.5,
+      expected: { status: 'not_reached' },
+    },
+    {
+      name: '4-2 at 0.5 approves',
+      approve: 4,
+      reject: 2,
+      threshold: 0.5,
+      expected: { status: 'reached', decision: 'approve' },
+    },
+    {
+      name: '2-4 at 0.5 rejects',
+      approve: 2,
+      reject: 4,
+      threshold: 0.5,
+      expected: { status: 'reached', decision: 'reject' },
+    },
+    {
+      name: '3-3 at supermajority stays not_reached',
+      approve: 3,
+      reject: 3,
+      threshold: SUPERMAJORITY_THRESHOLD,
+      expected: { status: 'not_reached' },
+    },
+  ];
+
+  it.each(simpleCases)('$name', ({ approve, reject, threshold, expected }) => {
+    const result = validator.validateQuorum({
+      votes: makeCountedVotes(approve, reject),
+      config: makeConfig({ algorithm: 'simple_majority', threshold, minVoters: 1 }),
+    });
+    expect(result.status).toBe(expected.status);
+    if (result.status === 'reached' && expected.status === 'reached') {
+      expect(result.decision).toBe(expected.decision);
+    }
+  });
+
+  it('names the tie in the not_reached details for a 3-3 split at 0.5', () => {
+    const result = validator.validateQuorum({
+      votes: makeCountedVotes(3, 3),
+      config: makeConfig({ algorithm: 'simple_majority', threshold: 0.5, minVoters: 1 }),
+    });
+    expect(result.status).toBe('not_reached');
+    if (result.status === 'not_reached') {
+      expect(result.reason).toBe('no_consensus');
+      expect(result.details).toMatch(/tie: 3 approve vs 3 reject/);
+      expect(result.details).toMatch(/consensus not reached/);
+    }
+  });
+
+  it('treats weighted sums that differ only by float rounding as a tie', () => {
+    // 0.1 + 0.7 === 0.7999999999999999 in IEEE-754 (1.1e-16 short of 0.8),
+    // so an exact comparison would call this a rejection by 1.1e-16.
+    const weights = new Map([
+      ['a1', 0.1],
+      ['a2', 0.7],
+      ['r1', 0.8],
+    ]);
+    const approveSum = 0 + 0.1 + 0.7;
+    expect(approveSum).not.toBe(0.8);
+    const result = validator.validateQuorum({
+      votes: makeVotes([
+        ['a1', 'approve'],
+        ['a2', 'approve'],
+        ['r1', 'reject'],
+      ]),
+      agentWeights: weights,
+      config: makeConfig({ algorithm: 'supermajority', threshold: SUPERMAJORITY_THRESHOLD }),
+    });
+    expect(result.status).toBe('not_reached');
+    if (result.status === 'not_reached') {
+      expect(result.reason).toBe('no_consensus');
+      expect(result.details).toMatch(/tie/i);
+    }
+  });
+
+  it('does not treat a weighted near-tie above the tolerance as a tie', () => {
+    const weights = new Map([
+      ['a1', 0.8000001],
+      ['r1', 0.8],
+    ]);
+    const result = validator.validateQuorum({
+      votes: makeVotes([
+        ['a1', 'approve'],
+        ['r1', 'reject'],
+      ]),
+      agentWeights: weights,
+      config: makeConfig({ algorithm: 'supermajority', threshold: SUPERMAJORITY_THRESHOLD }),
+    });
+    expect(result.status).toBe('reached');
+    if (result.status === 'reached') {
+      expect(result.decision).toBe('approve');
     }
   });
 });

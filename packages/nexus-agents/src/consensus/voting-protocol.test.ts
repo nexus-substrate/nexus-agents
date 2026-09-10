@@ -305,6 +305,32 @@ describe('VotingProtocol', () => {
       expect(result?.outcome).toBe('needs_revision');
     });
 
+    // #6051: public-path reproduction of the executed 3-3 case at the
+    // schema-minimum agreementThreshold (0.5).
+    it('should return needs_revision, not approved, for a 3-3 tie at threshold 0.5', async () => {
+      const six = ['agent-1', 'agent-2', 'agent-3', 'agent-4', 'agent-5', 'agent-6'];
+      const session = protocol.createSession(topic, six, {
+        committeeSize: 6,
+        agreementThreshold: 0.5,
+      });
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      for (const [index, agentId] of six.entries()) {
+        await protocol.submitFinalVote(session.id, agentId, {
+          decision: index < 3 ? 'approve' : 'reject',
+          reasoning: index < 3 ? 'Fine' : 'Not fine',
+          confidence: 0.9,
+        });
+      }
+
+      const result = await protocol.getResult(session.id);
+
+      expect(result).not.toBeNull();
+      expect(result?.outcome).toBe('needs_revision');
+    });
+
     it('should consolidate findings with agreement', async () => {
       const session = protocol.createSession(topic, committee);
       await protocol.startAnalysisRound(session.id);
