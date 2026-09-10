@@ -8,11 +8,14 @@
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync as _rfs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import type { ILogger } from '../core/index.js';
+import { UNREADABLE_RECORD_PREFIX } from './ledger-append.js';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { verifyPrReviewRecordSet } from './pr-review-record.js';
 import type { PrReviewVoteCounts } from './pr-review-record.js';
@@ -77,6 +80,22 @@ describe('persistPrReviewRecord (#4031)', () => {
     expect(invalidLines).toEqual([]);
     expect(records).toHaveLength(1);
     expect(verifyPrReviewRecordSet(records).ok).toBe(true);
+  });
+
+  it('REFUSES to append a record the read schema would reject (#6054)', () => {
+    // `baseSha` must match /^[0-9a-f]{40}$/. An uppercase sha reaches the
+    // builder unchecked; before the guard it was appended and then dropped on
+    // read. Same guard as the vote ledger — one definition of "valid at write".
+    const warn = vi.fn();
+    const logger = { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as ILogger;
+    const record = persistPrReviewRecord(baseOpts({ filePath, baseSha: 'A'.repeat(40), logger }));
+
+    expect(record).toBeUndefined();
+    expect(existsSync(filePath) ? readFileSync(filePath, 'utf-8') : '').toBe('');
+    const messages = warn.mock.calls.map((c) => JSON.stringify(c));
+    expect(
+      messages.some((m) => m.includes(UNREADABLE_RECORD_PREFIX) && m.includes('baseSha'))
+    ).toBe(true);
   });
 
   it('assigns monotonic sequences and chains previousHash to the prior tip', () => {

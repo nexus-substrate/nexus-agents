@@ -38,6 +38,7 @@ import type {
   PrReviewVoteCounts,
 } from './pr-review-record.js';
 import { PrReviewRecordSchema, computePrReviewRecordHash } from './pr-review-record.js';
+import { serializeValidatedRecord } from './ledger-append.js';
 
 /** Repo-relative committable artifact path (read by the gate/CI). */
 export const PR_REVIEW_RECORDS_REL_PATH = 'governance/pr-review-records.jsonl';
@@ -364,7 +365,12 @@ export function persistPrReviewRecord(
       sequence: maxSequence + 1,
       previousHash: lastHash,
     });
-    appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf-8');
+    // #6054: same guard as the vote ledger — one definition of "valid at write".
+    appendFileSync(
+      filePath,
+      serializeValidatedRecord(PrReviewRecordSchema, record, 'pr-review'),
+      'utf-8'
+    );
     logger.info('Persisted authentic pr-review record', {
       prNumber: record.prNumber,
       verdict: record.verdict,
