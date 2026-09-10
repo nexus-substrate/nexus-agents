@@ -95,16 +95,31 @@ function formatReasoning(reasoning: string): string {
 }
 
 /**
+ * The row for a seat that did not judge: errored, or unverifiable (#6094 — a
+ * seat that never saw the artifact is not an ABSTAIN; rendering it as one is
+ * how a blind seat reads as a considered one). Undefined for a seat that
+ * returned a judgment.
+ */
+function formatAbsentSeatRow(v: AgentVoteResult, label: string): string | undefined {
+  if (v.source === 'error') {
+    const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
+    return `  ${colors.red}✗${colors.reset} ${label}: ${colors.red}ERROR${colors.reset} — ${reason}`;
+  }
+  if (v.source === 'unverifiable') {
+    return `  ${colors.yellow}?${colors.reset} ${label}: ${colors.yellow}UNVERIFIABLE${colors.reset} — could not read the artifact (${v.unverifiableSignal ?? 'unknown'} signal)`;
+  }
+  return undefined;
+}
+
+/**
  * Pure formatter for a single voter row. Errors render distinct from
  * simulations so operators don't mistake an auth failure for a successful
  * (if questionable) vote (#2441). @internal — exported for tests only.
  */
 export function formatVoteRow(v: AgentVoteResult, opts?: { verbose?: boolean }): string {
   const label = VOTER_ROLES[v.role].split(' - ')[0] ?? v.role;
-  if (v.source === 'error') {
-    const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
-    return `  ${colors.red}✗${colors.reset} ${label}: ${colors.red}ERROR${colors.reset} — ${reason}`;
-  }
+  const absent = formatAbsentSeatRow(v, label);
+  if (absent !== undefined) return absent;
   const icon =
     v.vote.decision === 'approve'
       ? colors.green + symbols.check
@@ -144,11 +159,18 @@ function printSummary(ctx: SummaryContext): void {
   const { voteCounts, approvalPercentage, quorumReached } = result;
   const errored = votes.filter((v) => v.source === 'error').length;
   const simulated = votes.filter((v) => v.source === 'simulation').length;
+  const unverifiable = votes.filter((v) => v.source === 'unverifiable').length;
 
   writeLine(`${colors.cyan}Summary${colors.reset}\n`);
   writeLine(`  Approve:  ${String(voteCounts.approve)}`);
   writeLine(`  Reject:   ${String(voteCounts.reject)}`);
   writeLine(`  Abstain:  ${String(voteCounts.abstain)}`);
+  // #6094: always printed, explicit 0 included — an omitted line would read as
+  // health. Counted inside Abstain above; this says how many of those never
+  // read the artifact.
+  writeLine(
+    `  ${unverifiable > 0 ? colors.yellow : ''}Unverifiable: ${String(unverifiable)} (of the abstentions; could not read the artifact)${colors.reset}`
+  );
   if (errored > 0) writeLine(`  ${colors.red}Errored:  ${String(errored)}${colors.reset}`);
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
@@ -343,20 +365,28 @@ export function formatVoteComment(result: VotingResult, decision?: VoteDecisionS
       // confidence: 0`. Dropping `source` published a timed-out or auth-failed
       // voter as a genuine ABSTAIN — indistinguishable, in the durable
       // governance artifact, from a voter that convened and declined.
-      const decision = source === 'error' ? 'ERRORED' : vote.decision.toUpperCase();
-      const confidence = source === 'error' ? '—' : formatPercentage(vote.confidence);
+      const decision =
+        source === 'error'
+          ? 'ERRORED'
+          : source === 'unverifiable'
+            ? 'UNVERIFIABLE'
+            : vote.decision.toUpperCase();
+      const confidence =
+        source === 'error' || source === 'unverifiable' ? '—' : formatPercentage(vote.confidence);
       return `| ${roleLabel} | ${decision} | ${confidence} |`;
     })
     .join('\n');
 
   const errored = result.votes.filter((v) => v.source === 'error').length;
+  const unverifiable = result.votes.filter((v) => v.source === 'unverifiable').length;
   const { voteCounts, approvalPercentage } = result.result;
   // Under the default `reduce_denominator` the counts EXCLUDE errored seats, so
   // a 7-row table sat above a 6-voter tally with nothing reconciling them. The
-  // errored count is what closes that gap.
+  // errored count is what closes that gap. The unverifiable count (#6094) is
+  // always present, explicit 0 included: those seats sit inside Abstain.
   const summary =
     `Approve: ${String(voteCounts.approve)}, Reject: ${String(voteCounts.reject)}, ` +
-    `Abstain: ${String(voteCounts.abstain)}` +
+    `Abstain: ${String(voteCounts.abstain)}, Unverifiable: ${String(unverifiable)}` +
     (errored > 0 ? `, Errored: ${String(errored)}` : '') +
     ` (${approvalPercentage.toFixed(1)}% approval` +
     (errored > 0

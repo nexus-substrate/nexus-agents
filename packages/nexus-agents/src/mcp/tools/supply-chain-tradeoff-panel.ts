@@ -150,7 +150,8 @@ export interface PanelVote {
     { decision: 'approve' | 'reject' | 'abstain'; reason: string }
   >;
   readonly reasoning: string;
-  readonly source: 'llm' | 'simulation' | 'error';
+  /** Derived from the canonical union so a new seat kind (#6094) cannot be dropped here. */
+  readonly source: AgentVoteResult['source'];
   readonly cli?: string | undefined;
   readonly errorMessage?: string;
 }

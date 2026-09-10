@@ -176,6 +176,29 @@ export const VoterSummarySchema = z
      * historical record still verifies.
      */
     retried: z.literal(true).optional(),
+    /**
+     * Registry model id the seat ran on (#6091, schema 1.8).
+     *
+     * The seat→model mapping is round-robin over the available CLIs plus
+     * `NEXUS_VOTER_MODEL_<ROLE>` pins, so it is not recoverable from the
+     * ledger after the fact: 1844 voter entries across 278 records carried no
+     * model. "When an agent's output becomes evidence, its provenance travels
+     * with it" — a tally that says `scope_steward: approve` without saying
+     * which model answered cannot be audited for the #6068 failure class.
+     * Present-only, on the `retried` rule; absent when the result carried no
+     * model or only the pending-detection placeholder.
+     */
+    model: z.string().min(1).max(200).optional(),
+    /**
+     * True when the seat could not read the artifact (#6094, schema 1.8).
+     *
+     * `decision` is `abstain` for such a seat, so without this flag the record
+     * could not tell "read it and abstained" from "never saw it" — and one
+     * ledger entry (`vote-1789058788915-6lfrbuq`) shows a seat that APPROVED
+     * on the proposal text after failing to read. `literal(true)` and
+     * present-only, so every pre-1.8 entry re-hashes byte-identical.
+     */
+    unverifiable: z.literal(true).optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -227,6 +250,10 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'reasoning',
   'reasoningTruncated',
   'retried',
+  // 1.8 (#6091, #6094): appended after `retried`, present-only, so a 1.7
+  // entry projects byte-identically.
+  'model',
+  'unverifiable',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /**
@@ -288,7 +315,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**

@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { PassThrough } from 'node:stream';
 
 // Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
 const mocks = vi.hoisted(() => {
@@ -252,6 +253,59 @@ describe('CodexMcpAdapter', () => {
         expect(result.value.text).toBe('Hello from Codex!');
         expect(result.value.durationMs).toBeGreaterThanOrEqual(0);
       }
+    });
+
+    it('captures the mcp-server stderr written during the call as response.stderr (#6094)', async () => {
+      // `codex mcp-server` is spawned with `stderr: 'pipe'` and the pipe was
+      // never read. A sandbox failure inside the codex tool loop (bwrap on a
+      // userns-restricted host) is written there while the tool result still
+      // carries the model's parsed answer.
+      const transportStderr = new PassThrough();
+      mocks.mockTransport.mockImplementationOnce(function () {
+        return { close: vi.fn().mockResolvedValue(undefined), stderr: transportStderr };
+      });
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockImplementation(async () => {
+          transportStderr.write('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n');
+          await new Promise((r) => setImmediate(r));
+          return { content: [{ type: 'text', text: '{"decision":"approve"}' }], isError: false };
+        }),
+      };
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
+
+      const newAdapter = new CodexMcpAdapter();
+      const result = await newAdapter.execute({ content: 'vote' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.text).toBe('{"decision":"approve"}');
+        expect(result.value.stderr).toContain('bwrap: loopback: Failed RTM_NEWADDR');
+      }
+      // Nothing written after the call is attributed to it.
+      transportStderr.write('later noise\n');
+      await new Promise((r) => setImmediate(r));
+      if (result.ok) expect(result.value.stderr).not.toContain('later noise');
+    });
+
+    it('a call with a silent stderr pipe carries no stderr key', async () => {
+      mocks.mockTransport.mockImplementationOnce(function () {
+        return { close: vi.fn().mockResolvedValue(undefined), stderr: new PassThrough() };
+      });
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi
+          .fn()
+          .mockResolvedValue({ content: [{ type: 'text', text: 'ok' }], isError: false }),
+      };
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
+      const result = await new CodexMcpAdapter().execute({ content: 'vote' });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect('stderr' in result.value).toBe(false);
     });
 
     it('should handle tool execution errors', async () => {

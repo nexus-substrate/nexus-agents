@@ -26,6 +26,7 @@ import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../c
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
+import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 
 import {
   type CodexAdapterOptions,
@@ -161,6 +162,11 @@ export class CodexMcpAdapter extends BaseCliAdapter {
       return err(this.createError('CONNECTION_ERROR', 'MCP client not initialized'));
     }
 
+    // #6094: read the mcp-server's piped stderr for the duration of THIS call.
+    // A sandbox failure inside the codex tool loop (bwrap on a userns-
+    // restricted host) is written there while the tool result still carries
+    // the model's parsed answer; without this the pipe was never read.
+    const stderrCapture = this.captureTransportStderr();
     try {
       const result = await Promise.race([
         this.callCodexTool(_task),
@@ -171,10 +177,39 @@ export class CodexMcpAdapter extends BaseCliAdapter {
         return err(this.createError('TIMEOUT', 'Execution timed out'));
       }
 
-      return this.parseToolResult(result, startTime);
+      return this.parseToolResult(result, startTime, stderrCapture.stop());
     } catch (error) {
       return this.handleExecutionError(error);
+    } finally {
+      stderrCapture.stop();
     }
+  }
+
+  /**
+   * Attach a listener to the transport's stderr pipe; `stop()` detaches it
+   * and returns what was written meanwhile (capped like the subprocess path).
+   * A transport without a readable stderr (tests, or `stderr: 'inherit'`)
+   * yields an empty capture, which the caller records as absent.
+   */
+  private captureTransportStderr(): { stop: () => string } {
+    const stream = (this.mcpTransport as { stderr?: NodeJS.ReadableStream | null } | undefined)
+      ?.stderr;
+    if (stream === undefined || stream === null) return { stop: () => '' };
+    let captured = '';
+    const onData = (chunk: Buffer | string): void => {
+      if (captured.length < MAX_RESPONSE_STDERR_CHARS) captured += chunk.toString();
+    };
+    stream.on('data', onData);
+    let stopped = false;
+    return {
+      stop: (): string => {
+        if (!stopped) {
+          stopped = true;
+          stream.off('data', onData);
+        }
+        return captured.slice(0, MAX_RESPONSE_STDERR_CHARS);
+      },
+    };
   }
 
   /**
@@ -215,7 +250,11 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   /**
    * Parses MCP tool result to CLI response.
    */
-  private parseToolResult(result: McpToolResult, startTime: number): Result<CliResponse, CliError> {
+  private parseToolResult(
+    result: McpToolResult,
+    startTime: number,
+    stderr: string
+  ): Result<CliResponse, CliError> {
     if (result.isError === true) {
       const errorText = extractTextFromContent(result.content);
       // #4373: this hardcoded EXECUTION_ERROR and never looked at the message,
@@ -236,6 +275,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
       text,
       durationMs: getTimeProvider().now() - startTime,
       raw: result,
+      ...(stderr !== '' ? { stderr } : {}),
     });
   }
 

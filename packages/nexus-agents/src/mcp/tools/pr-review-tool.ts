@@ -34,7 +34,7 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import type { VoterRole } from '../../cli/vote-types.js';
+import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -227,7 +227,8 @@ export interface PrReviewVote {
    * derived `verified` boolean. Only verified findings can trigger
    * request_changes — see aggregatePrDecisions. */
   readonly findings: readonly Finding[];
-  readonly source: 'llm' | 'simulation' | 'error';
+  /** Derived from the canonical union so a new seat kind (#6094) cannot be dropped here. */
+  readonly source: AgentVoteResult['source'];
   readonly cli?: string | undefined;
   readonly processingTimeMs: number;
   readonly errorMessage?: string;
