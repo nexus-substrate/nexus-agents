@@ -57,7 +57,7 @@ export interface CodexAdapterOptions extends BaseAdapterOptions {
  * names it (`use_legacy_landlock`, flagged deprecated on codex-cli 0.153.4):
  * `-c` accepts any key, so a misspelling would be silently ignored.
  */
-export const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
+const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
 
 /**
  * Extra codex argv for the host platform: `['-c', CODEX_LEGACY_LANDLOCK_CONFIG]`

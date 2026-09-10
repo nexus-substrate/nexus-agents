@@ -12,7 +12,6 @@ import type { ILogger } from '../../core/logger.js';
 import type {} from '../types.js';
 import {
   CODEX_LEGACY_DEFAULTS,
-  CODEX_LEGACY_LANDLOCK_CONFIG,
   codexPlatformSandboxArgs,
   createCodexError,
   normalizeCodexResponse,
@@ -151,16 +150,14 @@ describe('toCodexModelSlug', () => {
 
 describe('codexPlatformSandboxArgs (#6093)', () => {
   it('passes the legacy-landlock config on linux', () => {
-    expect(codexPlatformSandboxArgs('linux')).toEqual(['-c', CODEX_LEGACY_LANDLOCK_CONFIG]);
+    expect(codexPlatformSandboxArgs('linux')).toEqual(['-c', 'features.use_legacy_landlock=true']);
   });
 
   it.each(['darwin', 'win32', 'freebsd'] as const)('passes nothing on %s', (platform) => {
     expect(codexPlatformSandboxArgs(platform)).toEqual([]);
   });
 
-  it('spells the token as the codex `-c key=value` override', () => {
-    // The literal is what `codex features list` calls the feature; a rename
-    // there would be silently accepted by `-c` and silently do nothing.
-    expect(CODEX_LEGACY_LANDLOCK_CONFIG).toBe('features.use_legacy_landlock=true');
+  it('defaults the platform to process.platform', () => {
+    expect(codexPlatformSandboxArgs()).toEqual(codexPlatformSandboxArgs(process.platform));
   });
 });

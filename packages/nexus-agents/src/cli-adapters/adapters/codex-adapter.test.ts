@@ -7,7 +7,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CodexCliAdapter } from './codex-adapter.js';
-import { CODEX_LEGACY_LANDLOCK_CONFIG } from './codex-adapter-helpers.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
@@ -492,7 +491,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
         '-s',
         'read-only',
         '-c',
-        CODEX_LEGACY_LANDLOCK_CONFIG,
+        'features.use_legacy_landlock=true',
         '--skip-git-repo-check',
         'Say hello',
       ]);
@@ -515,7 +514,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       vi.mocked(spawn).mockReturnValue(createMockProcess(COMPLETED_NDJSON));
       await adapter.execute({ content: 'Say hello' });
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      expect(args.includes(CODEX_LEGACY_LANDLOCK_CONFIG)).toBe(process.platform === 'linux');
+      expect(args.includes('features.use_legacy_landlock=true')).toBe(process.platform === 'linux');
     });
   });
 

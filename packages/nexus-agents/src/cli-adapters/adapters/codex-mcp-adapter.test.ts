@@ -38,7 +38,6 @@ vi.mock('node:util', () => ({
 const Client = mocks.mockClient;
 
 import { CodexMcpAdapter } from './codex-mcp-adapter.js';
-import { CODEX_LEGACY_LANDLOCK_CONFIG } from './codex-adapter-helpers.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
@@ -210,7 +209,7 @@ describe('CodexMcpAdapter', () => {
         expect(await spawnArgsFor('linux')).toEqual([
           'mcp-server',
           '-c',
-          CODEX_LEGACY_LANDLOCK_CONFIG,
+          'features.use_legacy_landlock=true',
         ]);
       });
 
@@ -224,7 +223,9 @@ describe('CodexMcpAdapter', () => {
       it('defaults the platform gate to process.platform', async () => {
         await adapter.initialize();
         const call = mocks.mockTransport.mock.calls[0]?.[0] as { args: string[] };
-        expect(call.args.includes(CODEX_LEGACY_LANDLOCK_CONFIG)).toBe(process.platform === 'linux');
+        expect(call.args.includes('features.use_legacy_landlock=true')).toBe(
+          process.platform === 'linux'
+        );
       });
     });
   });
