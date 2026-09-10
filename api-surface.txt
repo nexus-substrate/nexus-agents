@@ -73,7 +73,7 @@ InterfaceDeclaration ActivityItem
   readonly timestamp: string
   readonly traceId: string
 FunctionDeclaration actorFromContext
-  : typeof actorFromContext
+  : (ctx: RequestContext, fallback?: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; } | undefined) => { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
 InterfaceDeclaration AdapterAttemptStats
   readonly adapterAttemptSuccessRate: number
   readonly adapterUnavailableCount: number
@@ -404,9 +404,9 @@ InterfaceDeclaration AggregatedResult
   qualityScore: number
   strategy: "merge" | "consensus" | "select_best" | "sequential_chain"
 FunctionDeclaration aggregatePrDecisions
-  : typeof aggregatePrDecisions
+  : (reviews: readonly PrReviewVote[], errorPolicy?: "absolute_quorum" | "standard") => PrReviewAggregate
 FunctionDeclaration aggregateResults
-  : typeof aggregateResults
+  : (input: AggregatorInput, options?: AggregatorOptions | undefined) => Result<AggregatedResult, AgentError>
 InterfaceDeclaration AggregationMetadata
   aggregatedAt: string
   averageConfidence: number
@@ -440,13 +440,13 @@ TypeAliasDeclaration AiSdkSchema
 VariableDeclaration ALLOWED_COMMANDS
   : readonly string[]
 FunctionDeclaration analyzeDelegateTask
-  : typeof analyzeTask
+  : (task: string) => TaskRequirements
 FunctionDeclaration analyzeFailures
-  : typeof analyzeFailures
+  : (executionResult: SpecExecutionResult) => Result<FailureAnalysis, never>
 FunctionDeclaration analyzeGitHubRepo
-  : typeof analyzeGitHubRepo
+  : (input: { depth: "shallow" | "deep"; repo: string; }, execOverride?: ExecFileFn | undefined) => Promise<RepoAnalysis>
 FunctionDeclaration analyzeRepo
-  : typeof analyzeRepo
+  : (metadata: GhRepoMetadata, topLevelEntries: readonly string[], workflowEntries?: readonly string[] | undefined, listings?: RepoListings) => RepoAnalysis
 TypeAliasDeclaration ApiArmId
   = `api:${ ApiVendor; }`
 InterfaceDeclaration ApiDocumentation
@@ -477,7 +477,7 @@ TypeAliasDeclaration AppConfig
 VariableDeclaration AppConfigSchema
   : z.ZodObject<{ experts: z.ZodOptional<z.ZodObject<{ builtin: z.ZodDefault<z.ZodBoolean>; custom: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{ available: z.ZodDefault<z.ZodBoolean>; capabilities: z.ZodDefault<z.ZodArray<z.ZodString>>; description: z.ZodOptional<z.ZodString>; domain: z.ZodDefault<z.ZodEnum<{ architecture: "architecture"; code: "code"; documentation: "documentation"; general: "general"; security: "security"; testing: "testing"; }>>; secondaryDomains: z.ZodOptional<z.ZodArray<z.ZodEnum<{ architecture: "architecture"; code: "code"; documentation: "documentation"; general: "general"; security: "security"; testing: "testing"; }>>>; systemPrompt: z.ZodString; temperature: z.ZodDefault<z.ZodNumber>; tier: z.ZodDefault<z.ZodEnum<{ balanced: "balanced"; fast: "fast"; powerful: "powerful"; }>>; tools: z.ZodOptional<z.ZodArray<z.ZodString>>; weight: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>>; }, z.core.$strip>>; gateway: z.ZodOptional<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; tierOverrides: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodEnum<{ ANALYZED: "ANALYZED"; DIRECT: "DIRECT"; ORCHESTRATED: "ORCHESTRATED"; }>>>; upstreamServers: z.ZodOptional<z.ZodArray<z.ZodObject<{ args: z.ZodDefault<z.ZodArray<z.ZodString>>; command: z.ZodEnum<{ docker: "docker"; node: "node"; npx: "npx"; python: "python"; python3: "python3"; uvx: "uvx"; }>; env: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>; lazy: z.ZodDefault<z.ZodBoolean>; name: z.ZodString; timeoutMs: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>>; }, z.core.$strip>>; logging: z.ZodOptional<z.ZodObject<{ destination: z.ZodDefault<z.ZodEnum<{ file: "file"; stderr: "stderr"; stdout: "stdout"; }>>; filePath: z.ZodOptional<z.ZodString>; format: z.ZodDefault<z.ZodEnum<{ json: "json"; pretty: "pretty"; }>>; level: z.ZodDefault<z.ZodEnum<{ debug: "debug"; error: "error"; info: "info"; warn: "warn"; }>>; }, z.core.$strip>>; memory: z.ZodOptional<z.ZodObject<{ decay: z.ZodOptional<z.ZodObject<{ adaptivePriorityThreshold: z.ZodOptional<z.ZodNumber>; agenticImportanceThreshold: z.ZodOptional<z.ZodNumber>; agenticMaxEntries: z.ZodOptional<z.ZodNumber>; beliefMaxAgeDays: z.ZodOptional<z.ZodNumber>; checkCrossReferences: z.ZodOptional<z.ZodBoolean>; crossReferenceGracePeriodMs: z.ZodOptional<z.ZodNumber>; decayIntervalMs: z.ZodOptional<z.ZodNumber>; enabled: z.ZodOptional<z.ZodBoolean>; mobimemEvictOnDecay: z.ZodOptional<z.ZodBoolean>; }, z.core.$strip>>; }, z.core.$strip>>; models: z.ZodObject<{ default: z.ZodString; providers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{ apiKey: z.ZodOptional<z.ZodString>; baseUrl: z.ZodOptional<z.ZodURL>; maxRetries: z.ZodDefault<z.ZodNumber>; timeout: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>>; tiers: z.ZodObject<{ balanced: z.ZodArray<z.ZodString>; fast: z.ZodArray<z.ZodString>; powerful: z.ZodArray<z.ZodString>; }, z.core.$strip>; }, z.core.$strip>; observability: z.ZodOptional<z.ZodObject<{ eventBus: z.ZodOptional<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; logging: z.ZodDefault<z.ZodObject<{ frequentEventLevel: z.ZodDefault<z.ZodEnum<{ debug: "debug"; info: "info"; }>>; importantEventLevel: z.ZodDefault<z.ZodEnum<{ debug: "debug"; info: "info"; }>>; }, z.core.$strip>>; maxHistorySize: z.ZodDefault<z.ZodNumber>; subscriptions: z.ZodDefault<z.ZodObject<{ agent: z.ZodDefault<z.ZodBoolean>; byzantine: z.ZodDefault<z.ZodBoolean>; consensus: z.ZodDefault<z.ZodBoolean>; message: z.ZodDefault<z.ZodBoolean>; protocol: z.ZodDefault<z.ZodBoolean>; session: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; }, z.core.$strip>>; swarmObserverMaxEvents: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; routing: z.ZodOptional<z.ZodObject<{ budget: z.ZodOptional<z.ZodObject<{ maxCostUsd: z.ZodOptional<z.ZodNumber>; maxLatencyMs: z.ZodOptional<z.ZodNumber>; maxTokens: z.ZodOptional<z.ZodNumber>; taskClassMaxCostUsd: z.ZodOptional<z.ZodRecord<z.ZodEnum<{ architecture: "architecture"; code_generation: "code_generation"; code_review: "code_review"; devops: "devops"; documentation: "documentation"; exploration: "exploration"; planning: "planning"; research: "research"; security_review: "security_review"; testing: "testing"; }> & z.core.$partial, z.ZodNumber>>; }, z.core.$strip>>; latencyScoreWeight: z.ZodDefault<z.ZodNumber>; latencyTracker: z.ZodOptional<z.ZodObject<{ decayFactor: z.ZodDefault<z.ZodNumber>; maxSampleAgeMs: z.ZodDefault<z.ZodNumber>; percentiles: z.ZodDefault<z.ZodArray<z.ZodNumber>>; windowSize: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; linucb: z.ZodOptional<z.ZodObject<{ alpha: z.ZodDefault<z.ZodNumber>; maxDecisionTimeMs: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; preference: z.ZodOptional<z.ZodObject<{ minDataPoints: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; routingMemory: z.ZodOptional<z.ZodObject<{ actionCacheMaxAgeMs: z.ZodDefault<z.ZodNumber>; confidenceThreshold: z.ZodDefault<z.ZodNumber>; minObservations: z.ZodDefault<z.ZodNumber>; successRateThreshold: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; stages: z.ZodOptional<z.ZodObject<{ budgetFilter: z.ZodDefault<z.ZodBoolean>; capabilityMatch: z.ZodDefault<z.ZodBoolean>; confidenceCascade: z.ZodDefault<z.ZodBoolean>; latencyTracking: z.ZodDefault<z.ZodBoolean>; linucbSelection: z.ZodDefault<z.ZodBoolean>; preferenceRouting: z.ZodDefault<z.ZodBoolean>; qualityConstraint: z.ZodDefault<z.ZodBoolean>; resourceStrategy: z.ZodDefault<z.ZodBoolean>; routingMemory: z.ZodDefault<z.ZodBoolean>; strategyDistillation: z.ZodDefault<z.ZodBoolean>; topsisRanking: z.ZodDefault<z.ZodBoolean>; zeroRouter: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; topsis: z.ZodOptional<z.ZodObject<{ criteria: z.ZodOptional<z.ZodArray<z.ZodObject<{ beneficial: z.ZodBoolean; name: z.ZodString; weight: z.ZodNumber; }, z.core.$strip>>>; maxCostPerRequest: z.ZodOptional<z.ZodNumber>; maxLatencyMs: z.ZodOptional<z.ZodNumber>; minQualityThreshold: z.ZodDefault<z.ZodNumber>; verbose: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; zeroRouter: z.ZodOptional<z.ZodObject<{ difficultyToTier: z.ZodOptional<z.ZodRecord<z.ZodEnum<{ easy: "easy"; hard: "hard"; medium: "medium"; }>, z.ZodEnum<{ balanced: "balanced"; fast: "fast"; powerful: "powerful"; }>>>; enableCalibration: z.ZodDefault<z.ZodBoolean>; maxCalibrationOutcomes: z.ZodDefault<z.ZodNumber>; minCalibrationOutcomes: z.ZodDefault<z.ZodNumber>; thresholds: z.ZodOptional<z.ZodObject<{ easyUpperBound: z.ZodDefault<z.ZodNumber>; hardLowerBound: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; tierToClis: z.ZodOptional<z.ZodRecord<z.ZodEnum<{ balanced: "balanced"; fast: "fast"; powerful: "powerful"; }>, z.ZodArray<z.ZodEnum<{ claude: "claude"; codex: "codex"; gemini: "gemini"; opencode: "opencode"; }>>>>; verbose: z.ZodDefault<z.ZodBoolean>; weights: z.ZodOptional<z.ZodObject<{ context_length: z.ZodDefault<z.ZodNumber>; creativity: z.ZodDefault<z.ZodNumber>; knowledge: z.ZodDefault<z.ZodNumber>; precision: z.ZodDefault<z.ZodNumber>; reasoning: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; }, z.core.$strip>>; }, z.core.$strip>>; security: z.ZodOptional<z.ZodObject<{ allowedPaths: z.ZodDefault<z.ZodArray<z.ZodString>>; audit: z.ZodOptional<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; enableHashChain: z.ZodDefault<z.ZodBoolean>; logDir: z.ZodOptional<z.ZodString>; maxFiles: z.ZodDefault<z.ZodNumber>; maxFileSizeBytes: z.ZodDefault<z.ZodNumber>; minSeverity: z.ZodDefault<z.ZodEnum<{ critical: "critical"; info: "info"; warning: "warning"; }>>; }, z.core.$strip>>; auth: z.ZodOptional<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; method: z.ZodDefault<z.ZodEnum<{ oauth2: "oauth2"; token: "token"; }>>; tokenFile: z.ZodOptional<z.ZodString>; tokenHeader: z.ZodDefault<z.ZodString>; }, z.core.$strip>>; blockedPatterns: z.ZodDefault<z.ZodArray<z.ZodString>>; policy: z.ZodOptional<z.ZodObject<{ defaultMode: z.ZodDefault<z.ZodEnum<{ "read-only": "read-only"; "read-write": "read-write"; }>>; policyMode: z.ZodDefault<z.ZodEnum<{ enforce: "enforce"; warn: "warn"; }>>; }, z.core.$strip>>; rateLimit: z.ZodDefault<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; perTool: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{ capacity: z.ZodDefault<z.ZodNumber>; refillIntervalMs: z.ZodDefault<z.ZodNumber>; refillRate: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>>; requestsPerMinute: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; sandbox: z.ZodOptional<z.ZodObject<{ dockerImage: z.ZodOptional<z.ZodString>; fallbackToPolicy: z.ZodDefault<z.ZodBoolean>; mode: z.ZodDefault<z.ZodEnum<{ container: "container"; none: "none"; policy: "policy"; }>>; networkEnabled: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; secretsFile: z.ZodOptional<z.ZodString>; timeout: z.ZodOptional<z.ZodObject<{ defaultTimeoutMs: z.ZodDefault<z.ZodNumber>; enableLogging: z.ZodDefault<z.ZodBoolean>; maxTimeoutMs: z.ZodDefault<z.ZodNumber>; perToolTimeout: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>; uriValidation: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; toolAllowlist: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strip>>; sica: z.ZodOptional<z.ZodObject<{ autoSelectBest: z.ZodDefault<z.ZodBoolean>; enabled: z.ZodDefault<z.ZodBoolean>; enableObservability: z.ZodDefault<z.ZodBoolean>; improvementCooldownMs: z.ZodDefault<z.ZodNumber>; improvementThreshold: z.ZodDefault<z.ZodNumber>; maxActiveVersions: z.ZodDefault<z.ZodNumber>; minExecutionsForImprovement: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; skills: z.ZodOptional<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; enablePruning: z.ZodDefault<z.ZodBoolean>; executionsBeforeEvaluation: z.ZodDefault<z.ZodNumber>; externalPacks: z.ZodOptional<z.ZodArray<z.ZodObject<{ enabled: z.ZodDefault<z.ZodBoolean>; name: z.ZodString; source: z.ZodString; }, z.core.$strip>>>; maxHistoryPerSkill: z.ZodDefault<z.ZodNumber>; maxSkills: z.ZodDefault<z.ZodNumber>; minSuccessRateForRetention: z.ZodDefault<z.ZodNumber>; trackExecutionHistory: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>>; workflows: z.ZodOptional<z.ZodObject<{ maxParallel: z.ZodDefault<z.ZodNumber>; templatesDir: z.ZodDefault<z.ZodString>; timeout: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>>; }, z.core.$strip>
 FunctionDeclaration append
-  : typeof append
+  : (defaultValue?: T[]) => StateFieldSchema<T[]>
 InterfaceDeclaration ArchitectureAnalysisResult
   analysisType: "review" | "design" | "pattern_selection"
   components?: SystemComponent[] | undefined
@@ -505,7 +505,7 @@ InterfaceDeclaration ArchitecturePattern
 TypeAliasDeclaration ArchitectureStyle
   = 'layered' | 'microservices' | 'event_driven' | 'hexagonal' | 'clean' | 'cqrs' | 'ddd'
 FunctionDeclaration areStepsCompleted
-  : typeof areStepsCompleted
+  : (context: WorkflowExecutionContext, stepIds: string[]) => boolean
 InterfaceDeclaration ArmState
   A: number[][]
   AInv: number[][]
@@ -522,9 +522,9 @@ InterfaceDeclaration Artifact @pipeline/artifact-store
   readonly createdAt: number
   readonly createdBy: string
   readonly id: string
-  readonly inputRefs: readonly { id: string; type: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis"; }[]
+  readonly inputRefs: readonly { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]
   readonly metadata: Record<string, unknown>
-  readonly type: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis"
+  readonly type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"
 VariableDeclaration ARTIFACT_TYPES
   : readonly ["code", "review", "plan", "test", "report", "vote", "spec", "analysis"]
 InterfaceDeclaration ArtifactCreatedEvent
@@ -534,7 +534,7 @@ InterfaceDeclaration ArtifactCreatedEvent
   readonly type: "artifact.created"
 InterfaceDeclaration ArtifactFilter
   readonly createdBy?: string | undefined
-  readonly type?: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis" | undefined
+  readonly type?: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec" | undefined
 TypeAliasDeclaration ArtifactRef
   = z.infer<typeof ArtifactRefSchema>
 VariableDeclaration ArtifactRefSchema
@@ -553,7 +553,7 @@ TypeAliasDeclaration ArtifactType
 TypeAliasDeclaration Assessment
   = 'exhausted' | 'throttled' | 'healthy' | 'unmeasured'
 FunctionDeclaration assessReputation
-  : typeof assessReputation
+  : (metadata: GitHubUserMetadata, cache?: ReputationCache | undefined) => ReputationAssessment
 VariableDeclaration AST_RULE_LANGUAGES
   : readonly ["python", "go"]
 VariableDeclaration AST_RULE_SEVERITIES
@@ -1021,7 +1021,7 @@ InterfaceDeclaration BufferState
   stdoutBytes: number
   stdoutTruncated: boolean
 FunctionDeclaration bufferStream
-  : typeof bufferStream
+  : (stream: AsyncIterable<T>, size: number, options?: { signal?: AbortSignal; }) => AsyncIterable<T[]>
 InterfaceDeclaration BuildDecisionParams
   candidates: RoutingArmId[]
   difficultyEstimate: DifficultyEstimate | undefined
@@ -1038,23 +1038,23 @@ InterfaceDeclaration BuildDecisionParams
   ucbScore: number | undefined
   withinBudget: boolean | undefined
 FunctionDeclaration buildDependencyGraph
-  : typeof buildDependencyGraph
+  : (workflow: WorkflowDefinition) => DependencyGraph
 FunctionDeclaration buildFinalResult
-  : typeof buildFinalResult
+  : (state: ProposalState, proposalId: string, outcome: VotingOutcome, config: ConsensusEngineConfig) => ConsensusResult
 FunctionDeclaration buildPendingResult
-  : typeof buildPendingResult
+  : (state: ProposalState, proposalId: string, outcome: VotingOutcome, config: ConsensusEngineConfig) => ConsensusResult
 FunctionDeclaration buildPlanFromAnalysis
-  : typeof buildPlanFromAnalysis
+  : (analysis: RepoAnalysis, input: BuildPlanOptions, data?: ScannerData | undefined) => RepoSecurityPlan
 InterfaceDeclaration BuildPlanOptions
   readonly categories?: readonly string[] | undefined
   readonly maxScanners?: number | undefined
   readonly repo: string
 FunctionDeclaration buildPrReviewProposal
-  : typeof buildPrReviewProposal
+  : (input: Pick<{ baseRef?: string | undefined; baseSha?: string | undefined; dispatch: "sync" | "async"; errorPolicy: "absolute_quorum" | "standard"; headRef?: string | undefined; prDescription?: string | undefined; prDiff: string; prNumber?: number | undefined; prTitle: string; repoContext?: string | undefined; repoPath?: string | undefined; simulate: boolean; }, "prTitle" | "prDescription" | "prDiff" | "repoContext" | "baseRef" | "headRef">, removedBeforeThisCall?: number) => string
 FunctionDeclaration buildSkillDependencyGraph
-  : typeof buildDependencyGraph
+  : (skills: readonly Skill[]) => ISkillDependencyGraph
 FunctionDeclaration buildTimeoutResult
-  : typeof buildTimeoutResult
+  : (state: ProposalState, proposalId: string, outcome: VotingOutcome, config: ConsensusEngineConfig) => ConsensusResult
 VariableDeclaration BUILT_IN_EXPERTS
   : Readonly<Record<BuiltInExpertType, ExpertConfig>>
 VariableDeclaration BUILT_IN_RULES
@@ -1084,25 +1084,25 @@ InterfaceDeclaration CacheEntry @security/reputation-model
   assessment: ReputationAssessment
   expiresAt: number
 FunctionDeclaration calculateDelay
-  : typeof calculateDelay
+  : (attempt: number, config: RetryConfig) => number
 FunctionDeclaration calculateDistributionStats
-  : typeof calculateDistributionStats
+  : (values: readonly number[]) => DistributionStats
 FunctionDeclaration calculateMetricsTotals
-  : typeof calculateMetricsTotals
+  : (sessionMetrics: Iterable<SessionMetrics>) => { totalCost: number; totalTokens: number; }
 FunctionDeclaration calculateMinSampleSize
-  : typeof calculateMinSampleSize
+  : (baselineRate: number, minimumDetectableEffect: number, options?: { alpha?: number; power?: number; }) => number
 FunctionDeclaration calculateRegret
-  : typeof calculateRegret
+  : (decisions: readonly { readonly actualReward: number; readonly chosenModel: string; readonly rewards: Record<string, number>; }[]) => RegretAnalysis
 FunctionDeclaration calculateRoutingDistribution
-  : typeof calculateRoutingDistribution
+  : (routingHistory: readonly RoutingDecision[]) => Record<"claude" | "gemini" | "codex" | "opencode", number>
 FunctionDeclaration calculateTokenCost
-  : typeof calculateTokenCost
+  : (tokens: SessionTokenTotals, ratePerThousand: number) => number
 FunctionDeclaration calculateTokenMetrics
-  : typeof calculateTokenMetrics
+  : (entries: readonly { content: string; }[], queryCount: number) => TokenMetrics
 FunctionDeclaration calculateVoteWeight
-  : typeof calculateVoteWeight
+  : (performance: AgentPerformance | undefined) => number
 FunctionDeclaration calculateWinLoss
-  : typeof calculateWinLoss
+  : (model: string, decisions: readonly { readonly actualReward: number; readonly chosenModel: string; readonly rewards: Record<string, number>; }[], options?: StatisticalOptions) => WinLossAnalysis
 InterfaceDeclaration CalibrationStats
   readonly avgQualityByLevel: Readonly<Record<DifficultyLevel, number>>
   readonly calibrationBias: number
@@ -1118,7 +1118,7 @@ InterfaceDeclaration CallerInfo
   readonly transport?: string | undefined
   readonly userAgent?: string | undefined
 FunctionDeclaration cancelExecution
-  : typeof cancelExecution
+  : (context: WorkflowExecutionContext) => void
 TypeAliasDeclaration CancelJobDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration CancelJobInput
@@ -1131,11 +1131,11 @@ InterfaceDeclaration CancelJobResponse
   readonly outcome: "cancelled" | "already_complete" | "already_cancelled" | "unknown_job"
   readonly status?: "pending" | "failed" | "cancelled" | "complete" | undefined
 FunctionDeclaration canExecuteSkill
-  : typeof canExecuteSkill
+  : (agentRole: AgentRole, rbac: SkillRBAC) => boolean
 FunctionDeclaration canInfluenceDecisions
-  : typeof canInfluenceDecisions
+  : (tier: "1" | "2" | "3" | "4") => boolean
 FunctionDeclaration canProceed
-  : typeof canProceed
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage", inputTrustTier: "1" | "2" | "3" | "4") => boolean
 InterfaceDeclaration CapabilityGap
   readonly name: string
   readonly suggestion: string
@@ -1209,9 +1209,9 @@ InterfaceDeclaration CapacityTrackerConfig
   readonly tokenLimit: number
   readonly windowMs: number
 FunctionDeclaration categorizeOutcomeError
-  : typeof categorizeOutcomeError
+  : (error: unknown) => "unknown" | "authentication" | "timeout" | "rate_limit" | "connection" | "crash" | "adapter_unavailable" | "validation" | "parse" | "execution" | "generic"
 FunctionDeclaration categorizeOutcomeErrorMessage
-  : typeof categorizeOutcomeErrorMessage
+  : (msg: string) => "unknown" | "authentication" | "timeout" | "rate_limit" | "connection" | "crash" | "adapter_unavailable" | "validation" | "parse" | "execution" | "generic"
 InterfaceDeclaration ChatCompletion
   choices: ChatCompletionsAPI.ChatCompletion.Choice[]
   created: number
@@ -1249,11 +1249,11 @@ InterfaceDeclaration ChatResponse
   prompt_eval_duration: number
   total_duration: number
 FunctionDeclaration checkForResearchTriggers
-  : typeof checkForResearchTriggers
+  : (config?: ResearchTriggerConfig) => Promise<PipelineTask[]>
 FunctionDeclaration checkPermissionBoundary
-  : typeof checkPermissionBoundary
+  : (capabilities: SkillCapabilities, requestedPermissions: readonly SkillPermission[]) => boolean
 FunctionDeclaration checkPipelinePolicy
-  : typeof checkPipelinePolicy
+  : (task: { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }, stageType: string) => PolicyEvalResult
 InterfaceDeclaration Checkpoint
   readonly completedResults: readonly NodeResult[]
   readonly createdAt: string
@@ -1284,7 +1284,7 @@ InterfaceDeclaration CheckpointSummary
   readonly pendingNodeCount: number
   readonly stepNumber: number
 FunctionDeclaration checkpointToResult
-  : typeof checkpointToResult
+  : (state: PipelineCheckpointState) => Partial<DevPipelineResult>
 ClassDeclaration ChildProcess
   [Symbol.dispose]() => void
   disconnect() => void
@@ -1307,7 +1307,7 @@ ClassDeclaration ChildProcess
   stdout: Readable | null
   unref() => void
 FunctionDeclaration chunkByDirectory
-  : typeof chunkByDirectory
+  : (files: readonly string[], basePath: string) => WorkChunk[]
 InterfaceDeclaration CircuitBreakerConfig
   readonly countAuthFailuresAsFailures: boolean
   readonly countRateLimitsAsFailures: boolean
@@ -1380,7 +1380,7 @@ InterfaceDeclaration ClassificationResult
   readonly confidence: number
   readonly type: ReasoningKnowledgeType
 FunctionDeclaration classifyExpertFailure
-  : typeof classifyExpertFailure
+  : (error: unknown, detector: FailureDetector, taskDescription?: string | undefined, signal?: AbortSignal | undefined) => FailureClassification
 InterfaceDeclaration ClassifyInput
   readonly authorAssociation: string
   readonly config?: Partial<{ allowlistedMaintainers: string[]; failOpen: boolean; maxInputLength: number; }> | undefined
@@ -1393,9 +1393,9 @@ InterfaceDeclaration ClassifyResult
   readonly userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"
   readonly wasDowngraded: boolean
 FunctionDeclaration classifyTask
-  : typeof classifyTask
+  : (task: string) => TaskClassification
 FunctionDeclaration classifyTrust
-  : typeof classifyTrust
+  : (input: ClassifyInput) => ClassifyResult
 VariableDeclaration CLAUDE_MODEL_ALIASES
   : Record<string, string>
 VariableDeclaration CLAUDE_MODELS
@@ -1443,11 +1443,11 @@ InterfaceDeclaration ClawGuardViolationEvent
   readonly type: "clawguard_violation"
   readonly warning: string
 FunctionDeclaration cleanupCheckpoint
-  : typeof cleanupCheckpoint
+  : (sessionId: string, customDir?: string | undefined) => boolean
 FunctionDeclaration clearRegistryCache
-  : typeof clearRegistryCache
+  : () => void
 FunctionDeclaration clearTemplateCache
-  : typeof clearTemplateCache
+  : () => void
 VariableDeclaration CLI_DEFAULT_CACHE_CONFIG
   : CliDetectionCacheConfig
 VariableDeclaration CLI_DEFAULT_CAPABILITIES
@@ -1470,9 +1470,9 @@ InterfaceDeclaration CliCacheStats
   readonly misses: number
   readonly size: number
 FunctionDeclaration cliCalculateBackoffDelay
-  : typeof calculateBackoffDelay
+  : (attempt: number, baseDelayMs: number, maxDelayMs: number) => number
 FunctionDeclaration cliCategorizeError
-  : typeof categorizeError
+  : (error: CliError) => FailureCategory
 ClassDeclaration CliCircuitBreaker
   addStateChangeListener(listener: CircuitStateChangeListener) => void
   execute<T>(fn: () => Promise<T>) => Promise<Result<T, CircuitError>>
@@ -1598,7 +1598,7 @@ InterfaceDeclaration CliWeather
   readonly successRate: number
   readonly totalTasks: number
 FunctionDeclaration closeServer
-  : typeof closeServer
+  : (server: McpServer, logger?: ILogger | undefined) => Promise<Result<void, ServerError>>
 InterfaceDeclaration CodeAnalysisResult
   affectedFiles?: string[] | undefined
   codeChanges?: CodeChange[] | undefined
@@ -1692,9 +1692,9 @@ InterfaceDeclaration CollaborationSessionOptions
   onStatusChange?: ((status: SessionStatus) => void) | undefined
   roleResolver?: ((expertId: string) => AgentRole) | undefined
 FunctionDeclaration collectAstQaFindings
-  : typeof collectAstQaFindings
+  : (opts: RunAstQaRulesOptions) => Promise<AstQaCollectResult>
 FunctionDeclaration collectRealVotes
-  : typeof collectRealVotes
+  : (options: CollectRealVotesOptions) => Promise<readonly AgentVoteResult[]>
 InterfaceDeclaration CollectRealVotesOptions
   readonly declaredOptions?: readonly string[] | undefined
   readonly erroredRoleBackoffMs?: number | undefined
@@ -1704,7 +1704,7 @@ InterfaceDeclaration CollectRealVotesOptions
   readonly signal?: AbortSignal | undefined
   readonly simulate?: boolean | undefined
 FunctionDeclaration collectStream
-  : typeof collectStream
+  : (stream: AsyncIterable<T>, options?: { maxChunks?: number; signal?: AbortSignal; }) => Promise<Result<T[], StreamError>>
 InterfaceDeclaration Command
   readonly goto?: string | undefined
   readonly type: "command"
@@ -1723,9 +1723,9 @@ ClassDeclaration CompactDashboardRenderer
   renderGraph(graph: GraphSummary) => string
   renderHealth(health: SwarmHealthMetrics) => string
 FunctionDeclaration compareBenchmarks
-  : typeof compareBenchmarks
+  : (baseline: BenchmarkSuiteResult, current: BenchmarkSuiteResult) => BenchmarkComparison
 FunctionDeclaration compareProportions
-  : typeof compareProportions
+  : (successes1: number, total1: number, successes2: number, total2: number, options?: StatisticalOptions) => ComparisonResult
 InterfaceDeclaration ComparisonResult
   readonly alpha: number
   readonly difference: number
@@ -1746,9 +1746,9 @@ InterfaceDeclaration CompiledPipeline
 InterfaceDeclaration CompileOptions
   readonly handlerFactory?: NodeHandlerFactory | undefined
 FunctionDeclaration compilePipelineGraph
-  : typeof compilePipelineGraph
+  : (template: PipelineTemplate, stages: StageRegistry) => PipelineGraphResult
 FunctionDeclaration compilePlan
-  : typeof compilePlan
+  : (plan: { approvalRequired: boolean; estimatedCost: { estimatedCostUsd: number; modelCalls: number; totalTokensIn: number; totalTokensOut: number; }; maxIterations: number; policyGates: { afterStage: string; beforeStage: string; id: string; rules: string[]; }[]; stages: { config: Record<string, unknown>; dependencies: string[]; id: string; inputArtifacts: string[]; maxRetries?: number | undefined; outputArtifacts: string[]; pluginId: string; preferredCli?: string | undefined; timeoutMs?: number | undefined; type: "analyze" | "route" | "execute" | "validate" | "aggregate" | "gate"; }[]; taskId: string; timeoutMs: number; }, options?: PlanCompileOptions | undefined) => CompileResult
 TypeAliasDeclaration CompileResult @orchestration/graph/graph-types
   = Result<CompiledGraph, GraphCompileError>
 TypeAliasDeclaration CompileResult @pipeline/pipeline-runner
@@ -1756,7 +1756,7 @@ TypeAliasDeclaration CompileResult @pipeline/pipeline-runner
 TypeAliasDeclaration CompileResult @pipeline/plan-compiler
   = | { readonly ok: true; readonly value: CompiledGraph; } | { readonly error: string; readonly ok: false; }
 FunctionDeclaration compileSpecToGraph
-  : typeof compileSpecToGraph
+  : (markdown: string, options?: CompileOptions | undefined) => Result<CompiledGraph & { readonly executed: boolean; }, PipelineError>
 InterfaceDeclaration CompletionRequest
   maxTokens?: number | undefined
   messages: Message[]
@@ -1861,15 +1861,15 @@ InterfaceDeclaration CompositionValidation
   readonly valid: boolean
   readonly warnings: readonly string[]
 FunctionDeclaration computeAdaptiveThresholds
-  : typeof computeAdaptiveThresholds
+  : (store: OutcomeStore, cli: "claude" | "gemini" | "codex" | "opencode", category: "research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration") => AdaptiveThresholdResult
 InterfaceDeclaration ComputedReward
   readonly components: { readonly baseReward: number; readonly efficiencyBonus: number; readonly qualityBonus: number; readonly retryPenalty: number; readonly speedBonus: number; }
   readonly explanation: string
   readonly reward: number
 FunctionDeclaration computeOutcomeReward
-  : typeof computeOutcomeReward
+  : (collector: IOutcomeFeedback, outcome: TaskOutcome) => ComputedReward
 FunctionDeclaration concatStreams
-  : typeof concatStreams
+  : (streams: AsyncIterable<T>[], options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 InterfaceDeclaration ConfidenceCascadeConfig
   readonly complexityWeight: number
   readonly debug: boolean
@@ -1913,7 +1913,7 @@ InterfaceDeclaration ConflictWarning
   readonly scanners: readonly string[]
   readonly type: "superseded" | "redundant"
 FunctionDeclaration connectTransport
-  : typeof connectTransport
+  : (server: McpServer, transport: Transport, logger?: ILogger | undefined) => Promise<Result<void, ServerError>>
 TypeAliasDeclaration ConsensusAlgorithm
   = z.infer<typeof ConsensusAlgorithmSchema>
 VariableDeclaration ConsensusAlgorithmSchema
@@ -2047,7 +2047,7 @@ InterfaceDeclaration ConsolidationOperation
   readonly name: string
   readonly run: () => Promise<void>
 FunctionDeclaration containsExpressions
-  : typeof containsExpressions
+  : (value: unknown) => boolean
 InterfaceDeclaration Content
   parts?: Part[] | undefined
   role?: string | undefined
@@ -2231,7 +2231,7 @@ InterfaceDeclaration CostSection
   readonly decisionCosts: DecisionCostReport
   readonly strategyCostProfiles: readonly StrategyCostProfileEntry[]
 FunctionDeclaration countActiveSessions
-  : typeof countActiveSessions
+  : (sessionMetrics: Iterable<SessionMetrics>) => number
 InterfaceDeclaration Counterfactual
   readonly actualOutcomes?: readonly string[] | undefined
   readonly affectedBeliefs: readonly string[]
@@ -2254,91 +2254,91 @@ InterfaceDeclaration CoverageMetrics
 VariableDeclaration CoverageMetricsSchema
   : z.ZodObject<{ branch: z.ZodNumber; function: z.ZodNumber; line: z.ZodNumber; statement: z.ZodNumber; uncoveredAreas: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strip>
 FunctionDeclaration createAbTestTracker
-  : typeof createAbTestTracker
+  : () => IAbTestTracker
 FunctionDeclaration createAgenticAdapter
-  : typeof createAgenticAdapter
+  : (modelAdapter: IModelAdapter, options?: AgenticAdapterOptions) => IAgenticAdapter
 FunctionDeclaration createAgentPairKey
-  : typeof createAgentPairKey
+  : (agentA: string, agentB: string) => `${ string; }:${ string; }`
 FunctionDeclaration createAgentStages
-  : typeof createAgentStages
+  : (config?: AgentExecutorConfig) => DevPipelineStages
 FunctionDeclaration createAgentStepExecutor
-  : typeof createStepExecutor
+  : (deps: StepExecutorDeps) => StepExecutor
 FunctionDeclaration createAllAdapters
-  : typeof createAllAdapters
+  : (logger?: ILogger | undefined, codexTransport?: CliTransport) => Map<RoutingArmId, ICliAdapter>
 FunctionDeclaration createArchitectureExpert
-  : typeof createArchitectureExpert
+  : (options?: (Partial<BaseAgentOptions> & { expertOptions?: ArchitectureExpertOptions; }) | undefined) => ArchitectureExpert
 FunctionDeclaration createAttestation
-  : typeof createAttestation
+  : (skillId: string, executorId: string, input: unknown, authorized: boolean, method: AuthorizationMethod) => SkillAttestation
 FunctionDeclaration createAuditLogger
-  : typeof createAuditLogger
+  : (config: { categories?: ("security" | "authentication" | "authorization" | "tool_invocation" | "data_access" | "data_modification" | "configuration" | "system" | "governance")[] | undefined; enableCompression: boolean; enableHashChain: boolean; filePrefix: string; flushIntervalMs: number; logDir: string; maxFiles: number; maxFileSizeBytes: number; maxQueueDepth: number; minSeverity: "info" | "warning" | "critical"; }, storage?: IAuditStorage | undefined, logger?: ILogger | undefined, onPersistFailure?: ((error: Error) => void) | undefined) => AuditLogger
 FunctionDeclaration createAuditTrail
-  : typeof createAuditTrail
+  : (durableSink?: DurableAuditSink | undefined) => AuditTrail
 FunctionDeclaration createBenchmarkSummary
-  : typeof createBenchmarkSummary
+  : (operations: readonly OperationBenchmark[], config?: Partial<BenchmarkConfig>) => BenchmarkSummary
 FunctionDeclaration createCheckpoint
-  : typeof createCheckpoint
+  : (opts: { completedResults: readonly NodeResult[]; executionId: string; interrupt?: CheckpointInterrupt; metadata?: Record<string, unknown>; pendingNodeIds: readonly string[]; state: Readonly<GraphState>; stepNumber: number; }) => Checkpoint
 FunctionDeclaration createCheckpointStore
-  : typeof createCheckpointStore
+  : () => ICheckpointStore
 FunctionDeclaration createClaudeAdapter
-  : typeof createClaudeAdapter
+  : (config: ClaudeAdapterConfig) => ClaudeAdapter
 FunctionDeclaration createCliAdapter
-  : typeof createCliAdapter
+  : (config: CliAdapterConfig) => ICliAdapter
 FunctionDeclaration createCliCircuitBreakerIntegration
-  : typeof createCliCircuitBreakerIntegration
+  : (adapters: readonly ICliAdapter[], config?: CliCircuitBreakerConfig | undefined, logger?: ILogger | undefined) => CliCircuitBreakerIntegration
 FunctionDeclaration createCliDetectionCache
-  : typeof createCliDetectionCache
+  : (config?: Partial<CliDetectionCacheConfig> | undefined) => ICliDetectionCache
 FunctionDeclaration createCodeExpert
-  : typeof createCodeExpert
+  : (options?: (Partial<BaseAgentOptions> & { expertOptions?: CodeExpertOptions; }) | undefined) => CodeExpert
 FunctionDeclaration createCollaborationSession
-  : typeof createCollaborationSession
+  : (options?: CollaborationSessionOptions | undefined) => CollaborationSession
 FunctionDeclaration createCompositeRouter
-  : typeof createCompositeRouter
+  : (adapters: Map<RoutingArmId, ICliAdapter>, config?: Partial<CompositeRouterConfigWithPreference> | undefined, logger?: ILogger | undefined) => ICompositeRouter
 FunctionDeclaration createConsensusEngine
-  : typeof createConsensusEngine
+  : (config?: Partial<ConsensusEngineConfig> | undefined, logger?: ILogger | undefined) => ConsensusEngine
 FunctionDeclaration createConsensusGateNode
-  : typeof createConsensusGateNode
+  : (options: ConsensusGateNodeOptions) => NodeHandler
 FunctionDeclaration createContextItem
-  : typeof createContextItem
+  : (id: string, content: string, source: "task" | "knowledge" | "result" | "history", relevance: number, timestamp?: number | undefined) => CuratedContextItem
 FunctionDeclaration createCorePluginRegistry
-  : typeof createCorePluginRegistry
+  : () => PluginRegistry
 FunctionDeclaration createCorrelationTracker
-  : typeof createCorrelationTracker
+  : (config?: Partial<HigherOrderVotingConfig> | undefined) => ICorrelationTracker
 FunctionDeclaration createDashboard
-  : typeof createDashboard
+  : (observer: ISwarmObserver, config?: Partial<DashboardConfig> | undefined) => Dashboard
 FunctionDeclaration createDashboardRenderer
-  : typeof createDashboardRenderer
+  : (config: DashboardConfig) => IDashboardRenderer
 FunctionDeclaration createDecayOp
-  : typeof createDecayOp
+  : (name: string, decayFn: () => Promise<void>) => ConsolidationOperation
 FunctionDeclaration createDefaultDeps
-  : typeof createDefaultDeps
+  : (rateLimiter: RateLimiter, logger?: ILogger | undefined) => CreateExpertDeps
 FunctionDeclaration createDefaultPolicyEngine
-  : typeof createDefaultPolicyEngine
+  : () => PolicyEngine
 FunctionDeclaration createDefaultPolicyFirewall
-  : typeof createDefaultPolicyFirewall
+  : (config?: PolicyFirewallConfig | undefined) => PolicyFirewall
 FunctionDeclaration createDefaultRateLimiter
-  : typeof createDefaultRateLimiter
+  : (name?: string | undefined, logger?: ILogger | undefined) => RateLimiter
 FunctionDeclaration createDefaultRegistry
-  : typeof createDefaultRegistry
+  : () => ExpertRegistry
 FunctionDeclaration createDelegatePipeline
-  : typeof createDelegatePipeline
+  : (task: { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }) => DelegatePipelineResult
 FunctionDeclaration createDependencyError
-  : typeof createDependencyError
+  : (code: DependencyErrorCode, message: string, context?: Record<string, unknown> | undefined) => DependencyError
 FunctionDeclaration createDevStageRegistry
-  : typeof createDevStageRegistry
+  : (stages: DevPipelineStages) => Map<string, IPipelineStage>
 FunctionDeclaration createDocumentationExpert
-  : typeof createDocumentationExpert
+  : (options?: (Partial<BaseAgentOptions> & { expertOptions?: DocumentationExpertOptions; }) | undefined) => DocumentationExpert
 FunctionDeclaration createDryRunHandler
-  : typeof createDryRunHandler
+  : (node: { capabilities: string[]; complexity: "simple" | "moderate" | "complex" | "expert"; dependsOn: string[]; description: string; id: string; sourceRequirement?: string | undefined; type: "config" | "code" | "test" | "docs" | "refactor"; }) => (state: Readonly<GraphState>) => Promise<Partial<GraphState>>
 FunctionDeclaration createEventBusBridge
-  : typeof createEventBusBridge
+  : (options: EventBusBridgeOptions) => PipelineBridgeResult
 FunctionDeclaration createExecutionContext
-  : typeof createExecutionContext
+  : (options: CreateExecutionContextOptions) => WorkflowExecutionContext
 InterfaceDeclaration CreateExecutionContextOptions
   executionId?: string | undefined
   inputs: Record<string, unknown>
   workflowId: string
 FunctionDeclaration createExecutionPlan
-  : typeof createExecutionPlan
+  : (workflow: WorkflowDefinition) => Result<ExecutionPlan, WorkflowError>
 InterfaceDeclaration CreateExpertDeps
   cliCache?: ICliDetectionCache | undefined
   expertFactory: IExpertFactory
@@ -2360,45 +2360,45 @@ InterfaceDeclaration CreateExpertResponse
   role: string
   status: "ready"
 FunctionDeclaration createFeedbackIntegration
-  : typeof createFeedbackIntegration
+  : (config?: Partial<FeedbackIntegrationConfig> | undefined, collector?: OutcomeFeedbackCollector | undefined) => IFeedbackIntegration
 FunctionDeclaration createFeedbackSubscriber
-  : typeof createFeedbackSubscriber
+  : (bus: IEventBus, store: OutcomeStore) => Unsubscribe
 InterfaceDeclaration CreateForestInput
   readonly config?: Partial<ForestConfig> | undefined
   readonly initialHypotheses?: readonly string[] | undefined
   readonly problem: string
 FunctionDeclaration createFullGitHubProvider
-  : typeof createFullGitHubProvider
+  : (repo: string) => GitHubProvider & IScmReviewer & IScmUserInfo
 FunctionDeclaration createGeminiAdapter
-  : typeof createGeminiAdapter
+  : (config: GeminiAdapterConfig) => GeminiAdapter
 FunctionDeclaration createGitHubAdapter
-  : typeof createGitHubAdapter
+  : () => ISourceAdapter
 FunctionDeclaration createGitHubProvider
-  : typeof createGitHubProvider
+  : (repo: string) => IScmProvider
 FunctionDeclaration createGraphAuditBridge
-  : typeof createGraphAuditBridge
+  : (trail: AuditTrail) => (event: { readonly [key: string]: unknown; readonly type: string; }) => void
 FunctionDeclaration createHigherOrderVotingStrategy
-  : typeof createHigherOrderVotingStrategy
+  : (options?: OWVotingOptions | undefined) => HigherOrderVotingStrategy
 FunctionDeclaration createInitialCostMetrics
-  : typeof createInitialCostMetrics
+  : () => CostMetrics
 FunctionDeclaration createInitializedWorkflowEngine
-  : typeof createInitializedWorkflowEngine
+  : (config?: WorkflowEngineFactoryConfig | undefined) => Promise<IWorkflowEngine>
 FunctionDeclaration createInitialSessionMetrics
-  : typeof createInitialSessionMetrics
+  : (sessionId: string) => SessionMetrics
 FunctionDeclaration createInitialTokenUsage
-  : typeof createInitialTokenUsage
+  : () => SessionTokenTotals
 FunctionDeclaration createInteractionGraph
-  : typeof createInteractionGraph
+  : () => IInteractionGraph
 FunctionDeclaration createInteractionSwarmObserver
-  : typeof createSwarmObserver
+  : (config?: Partial<SwarmObserverConfig> | undefined) => ISwarmObserver
 FunctionDeclaration createIsolatedRegistry
-  : typeof createIsolatedRegistry
+  : () => TemplateRegistry
 FunctionDeclaration createLogger
-  : typeof createLogger
+  : (baseContext?: LogContext | undefined) => ILogger
 FunctionDeclaration createMcpLogger
-  : typeof createMcpLogger
+  : (baseContext?: McpLogContext | undefined) => ILogger
 FunctionDeclaration createMcpNotifier
-  : typeof createMcpNotifier
+  : (server: McpServer) => IMcpNotifier
 InterfaceDeclaration CreateNodeInput
   readonly confidence: number
   readonly content: string
@@ -2407,66 +2407,66 @@ InterfaceDeclaration CreateNodeInput
   readonly stepType: ReasoningStepType
   readonly treeId: string
 FunctionDeclaration createOllamaAdapter
-  : typeof createOllamaAdapter
+  : (config: OllamaAdapterConfig) => OllamaAdapter
 FunctionDeclaration createOpenAIAdapter
-  : typeof createOpenAIAdapter
+  : (config: OpenAIAdapterConfig) => OpenAIAdapter
 FunctionDeclaration createOrchestrator
-  : typeof createOrchestrator
+  : (options?: (Partial<BaseAgentOptions> & { orchestratorOptions?: OrchestratorOptions; }) | undefined) => Orchestrator
 FunctionDeclaration createOrchestratorFactory
-  : typeof createOrchestratorFactory
+  : (config?: OrchestratorFactoryConfig | undefined) => Promise<IOrchestratorFactory>
 FunctionDeclaration createOutcomeFeedbackCollector
-  : typeof createOutcomeFeedbackCollector
+  : (config?: Partial<FeedbackCollectorConfig> | undefined) => OutcomeFeedbackCollector
 FunctionDeclaration createOutcomeStorage
-  : typeof createOutcomeStorage
+  : (config: OutcomeStorageConfig) => SQLiteOutcomeStorage
 FunctionDeclaration createOWVoting
-  : typeof createOWVoting
+  : (options?: OWVotingOptions | undefined) => IHigherOrderVoting
 FunctionDeclaration createPolicyContext
-  : typeof createPolicyContext
+  : (toolName: string, args: unknown, options?: { allowedPaths?: readonly string[]; artifacts?: Map<string, Artifact>; mode?: ExecutionMode; workflowId?: string; } | undefined) => PolicyContext
 FunctionDeclaration createPreferenceRouter
-  : typeof createPreferenceRouter
+  : (config?: Partial<PreferenceRouterConfig> | undefined, dataStore?: IPreferenceDataStore | undefined) => PreferenceRouter
 FunctionDeclaration createProductionWorkflowEngine
-  : typeof createProductionWorkflowEngine
+  : (config?: WorkflowEngineFactoryConfig | undefined) => Promise<IWorkflowEngine>
 FunctionDeclaration createPromotionOp
-  : typeof createPromotionOp
+  : (name: string, promoteFn: () => Promise<void>) => ConsolidationOperation
 InterfaceDeclaration CreatePROptions
   readonly base: string
   readonly body: string
   readonly head: string
   readonly title: string
 FunctionDeclaration createProtocolFactory
-  : typeof createProtocolFactory
+  : (options?: ProtocolOptions | undefined) => ProtocolFactory
 FunctionDeclaration createRateLimiter
-  : typeof createRateLimiter
+  : (config: RateLimiterConfig) => RateLimiter
 FunctionDeclaration createRealWorkflowEngine
-  : typeof createRealWorkflowEngine
+  : (config?: WorkflowEngineFactoryConfig | undefined) => IWorkflowEngine
 FunctionDeclaration createResultAggregator
-  : typeof createResultAggregator
+  : (options?: AggregatorOptions | undefined) => ResultAggregator
 FunctionDeclaration createRoutingDecision
-  : typeof createRoutingDecision
+  : (params: Omit<RoutingDecision, "id" | "timestamp">) => RoutingDecision
 FunctionDeclaration createRoutingMetricsCollector
-  : typeof createRoutingMetricsCollector
+  : (config?: Partial<RoutingMetricsConfig> | undefined) => RoutingMetricsCollector
 FunctionDeclaration createSandboxExecutor
-  : typeof createSandboxExecutor
+  : (config?: Partial<SandboxConfig> | undefined) => ISandboxExecutor
 FunctionDeclaration createScmProvider
-  : typeof createScmProvider
+  : (config: CreateScmProviderConfig) => Promise<Result<IScmProvider, ScmError>>
 InterfaceDeclaration CreateScmProviderConfig
   readonly platform?: ScmPlatform | undefined
   readonly repo: string
   readonly token?: TokenResolverConfig | undefined
 FunctionDeclaration createSecurityError
-  : typeof createSecurityError
+  : (code: SecurityErrorCode, message: string, context?: Record<string, unknown> | undefined) => SkillSecurityError
 FunctionDeclaration createSecurityExpert
-  : typeof createSecurityExpert
+  : (options?: (Partial<BaseAgentOptions> & { expertOptions?: SecurityExpertOptions; }) | undefined) => SecurityExpert
 FunctionDeclaration createServer
-  : typeof createServer
+  : (config?: ServerConfig | undefined) => Result<ServerInstance, ServerError>
 FunctionDeclaration createSkillComposer
-  : typeof createSkillComposer
+  : (library: SkillLibrary, config?: Partial<SkillComposerConfig> | undefined, logger?: ILogger | undefined) => SkillComposer
 FunctionDeclaration createSkillDependencyGraph
-  : typeof createSkillDependencyGraph
+  : () => ISkillDependencyGraph
 FunctionDeclaration createSkillLibrary
-  : typeof createSkillLibrary
+  : (config?: Partial<SkillLibraryConfig> | undefined, logger?: ILogger | undefined) => SkillLibrary
 FunctionDeclaration createSkillLoader
-  : typeof createSkillLoader
+  : (library: SkillLibrary, config?: Partial<SkillLoaderConfig> | undefined, logger?: ILogger | undefined) => ISkillLoader
 InterfaceDeclaration CreateSkillOptions
   readonly category: SkillCategory
   readonly code: string
@@ -2479,60 +2479,60 @@ InterfaceDeclaration CreateSkillOptions
   readonly parameters: readonly SkillParameter[]
   readonly tags?: readonly string[] | undefined
 FunctionDeclaration createStateComparisonVerifier
-  : typeof createStateComparisonVerifier
+  : (fields: readonly string[]) => (preState: Readonly<GraphState>) => PreconditionConfig["hook"]
 FunctionDeclaration createStateGuard
-  : typeof createStateGuard
+  : (name: string, predicate: (state: Readonly<GraphState>) => boolean, errorMessage: string) => PreconditionConfig
 FunctionDeclaration createStateMachine
-  : typeof createStateMachine
+  : (options?: StateMachineOptions | undefined) => AgentStateMachine
 FunctionDeclaration createStrategyDistiller
-  : typeof createStrategyDistiller
+  : (outcomeStore: OutcomeStore, logger?: ILogger | undefined, config?: Partial<DistillerConfig> | undefined) => StrategyDistiller
 FunctionDeclaration createStrategyFactory
-  : typeof createStrategyFactory
+  : () => VotingStrategyFactory
 FunctionDeclaration createStream
-  : typeof createStream
+  : (options?: CreateStreamOptions) => [StreamController<T>, AsyncIterable<T>]
 InterfaceDeclaration CreateStreamOptions
   maxBufferSize?: number | undefined
   signal?: AbortSignal | undefined
 FunctionDeclaration createTaskOutcome
-  : typeof createTaskOutcome
+  : (params: Omit<TaskOutcome, "timestamp">) => TaskOutcome
 FunctionDeclaration createTaskQueue
-  : typeof createTaskQueue
+  : (concurrency?: number) => TaskQueue<T>
 FunctionDeclaration createTemplateRegistry
-  : typeof createTemplateRegistry
+  : () => ITemplateRegistry
 FunctionDeclaration createTestingExpert
-  : typeof createTestingExpert
+  : (options?: (Partial<BaseAgentOptions> & { expertOptions?: TestingExpertOptions; }) | undefined) => TestingExpert
 FunctionDeclaration createTimer
-  : typeof createTimer
+  : () => { elapsed: () => number;; }
 FunctionDeclaration createTokenCounter
-  : typeof createTokenCounter
+  : (config?: TokenCounterConfig) => TokenCounter
 FunctionDeclaration createToolLogger
-  : typeof createToolLogger
+  : (parentLogger: ILogger, toolName: string, requestId?: string | undefined) => ILogger
 FunctionDeclaration createTrackedAgent
-  : typeof createTrackedAgent
+  : (agentId: string, state: "error" | "executing" | "idle" | "thinking" | "waiting", role?: string, currentTask?: string | undefined) => TrackedAgent
 InterfaceDeclaration CreateTreeInput
   readonly explorationPriority?: number | undefined
   readonly forestId: string
   readonly hypothesis: string
 FunctionDeclaration createTrinityCoordinator
-  : typeof createTrinityCoordinator
+  : (config?: TrinityConfig | undefined) => TrinityCoordinator
 FunctionDeclaration createUnifiedRegistry
-  : typeof createUnifiedRegistry
+  : (config?: UnifiedRegistryConfig | undefined) => UnifiedAdapterRegistry
 FunctionDeclaration createValidationDashboard
-  : typeof createValidationDashboard
+  : () => ValidationDashboard
 FunctionDeclaration createValidator
-  : typeof createValidator
+  : (schema: ZodType<T, unknown, import("/home/william/git/nexus-substrate/nexus-agents/node_modules/.pnpm/zod@4.5.4/node_modules/zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>) => (args: unknown) => Result<T, ValidationError>
 FunctionDeclaration createVotingProtocol
-  : typeof createVotingProtocol
+  : (customLogger?: ILogger | undefined) => VotingProtocol
 FunctionDeclaration createWaveScheduler
-  : typeof createWaveScheduler
+  : (config?: Partial<WaveSchedulerConfig>, logger?: ILogger | undefined) => WaveScheduler
 FunctionDeclaration createWeightedVoting
-  : typeof createWeightedVoting
+  : (options?: WeightedVotingOptions | undefined) => IWeightedVoting
 FunctionDeclaration createWorkflowEngineDeps
-  : typeof createWorkflowEngineDeps
+  : (config?: WorkflowEngineFactoryConfig | undefined) => WorkflowEngineDeps
 FunctionDeclaration createWorkflowEngineDepsAsync
-  : typeof createWorkflowEngineDepsAsync
+  : (config?: WorkflowEngineFactoryConfig | undefined) => Promise<WorkflowEngineDeps>
 FunctionDeclaration createWorkflowRouter
-  : typeof createWorkflowRouter
+  : (options?: { readonly analyzer?: ISharedTaskAnalyzer | undefined; readonly logger?: ILogger | undefined; } | undefined) => IWorkflowRouter
 InterfaceDeclaration CriterionFailure
   readonly criterion: string
   readonly explanation: string
@@ -2558,7 +2558,7 @@ TypeAliasDeclaration CrossTreeStrategy
 VariableDeclaration CrossTreeStrategySchema
   : z.ZodEnum<{ conclusions: "conclusions"; full: "full"; insights: "insights"; none: "none"; }>
 FunctionDeclaration curateContext
-  : typeof curateContext
+  : (items: readonly CuratedContextItem[], filter: ContextFilter, nowMs?: number | undefined) => CurationResult
 InterfaceDeclaration CuratedContextItem
   content: string
   id: string
@@ -2572,7 +2572,7 @@ InterfaceDeclaration CurationResult
   totalTokens: number
   trimmedCount: number
 FunctionDeclaration customReducer
-  : typeof customReducer
+  : (defaultValue: T, merge: (existing: T, incoming: T) => T) => StateFieldSchema<T>
 InterfaceDeclaration CycleDetectionNode
   readonly dependencies: ReadonlyMap<string, SkillDependency>
   readonly id: string
@@ -2701,7 +2701,7 @@ InterfaceDeclaration DecomposeError
   readonly message: string
   readonly subtaskId?: string | undefined
 FunctionDeclaration decomposeSpec
-  : typeof decomposeSpec
+  : (spec: { acceptanceCriteria: string[]; constraints: string[]; fileReferences: { line?: number | undefined; path: string; }[]; issueReferences: { number: number; raw: string; }[]; missingSections: string[]; overview: string; rawMarkdown: string; requirements: string[]; techStack?: { framework?: string | undefined; language?: string | undefined; packageManager?: string | undefined; } | undefined; title: string; }) => Result<{ edges: { from: string; to: string; }[]; nodes: { capabilities: string[]; complexity: "simple" | "moderate" | "complex" | "expert"; dependsOn: string[]; description: string; id: string; sourceRequirement?: string | undefined; type: "config" | "code" | "test" | "docs" | "refactor"; }[]; roots: string[]; specTitle: string; totalComplexity: "simple" | "moderate" | "complex" | "expert"; }, DecomposeError>
 VariableDeclaration DEFAULT_ACTIVATION_OPTIONS
   : ActivationOptions
 VariableDeclaration DEFAULT_ADAPTER_LATENCY_CONFIG
@@ -2800,7 +2800,7 @@ InterfaceDeclaration DelegateInputLike
 VariableDeclaration DelegateInputSchema
   : z.ZodObject<{ billing_mode: z.ZodOptional<z.ZodEnum<{ api: "api"; plan: "plan"; }>>; model_hint: z.ZodOptional<z.ZodString>; preferred_capability: z.ZodOptional<z.ZodEnum<{ code: "code"; context: "context"; reasoning: "reasoning"; speed: "speed"; }>>; task: z.ZodString; }, z.core.$strip>
 FunctionDeclaration delegateInputToTaskContract
-  : typeof delegateInputToTaskContract
+  : (input: DelegateInputLike, opts?: DelegateContractOpts) => { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }
 TypeAliasDeclaration DelegateOutput
   = z.infer<typeof DelegateOutputSchema>
 VariableDeclaration DelegateOutputSchema
@@ -2831,7 +2831,7 @@ ClassDeclaration DependencyGraph
 TypeAliasDeclaration DependencyStructure
   = 'linear' | 'dag' | 'independent' | 'unknown'
 FunctionDeclaration deriveEntry
-  : typeof deriveEntry
+  : (modelId: string, identity: ResolvedModelIdentity) => ModelEntry
 InterfaceDeclaration DetectedFailure
   readonly archetype: FailureArchetype
   readonly confidence: number
@@ -2848,7 +2848,7 @@ InterfaceDeclaration DetectedPattern
   readonly observationCount: number
   readonly patternType: PatternType
 FunctionDeclaration detectFailurePatterns
-  : typeof detectFailurePatterns
+  : (groups: readonly OutcomeGroup[], threshold: number) => DetectedPattern[]
 InterfaceDeclaration DetectionInput
   readonly messages: readonly Message[]
   readonly output?: unknown
@@ -2859,18 +2859,18 @@ InterfaceDeclaration DetectionResult
   readonly failures: readonly DetectedFailure[]
   readonly hasFailure: boolean
 FunctionDeclaration detectLatencyPatterns
-  : typeof detectLatencyPatterns
+  : (groups: readonly OutcomeGroup[], threshold: number) => DetectedPattern[]
 InterfaceDeclaration DetectorConfig
   readonly confidenceThreshold: number
   readonly enableHeuristics: boolean
   readonly enabledArchetypes: readonly FailureArchetype[]
   readonly maxHistoryItems: number
 FunctionDeclaration detectSuccessPatterns
-  : typeof detectSuccessPatterns
+  : (groups: readonly OutcomeGroup[], threshold: number) => DetectedPattern[]
 FunctionDeclaration detectTrend
-  : typeof detectTrend
+  : (outcomes: readonly { baselineId?: string | undefined; category: "research" | "architecture" | "documentation" | "testing" | "devops" | "planning" | "code_generation" | "code_review" | "security_review" | "exploration"; cli: "unknown" | "claude" | "gemini" | "codex" | "opencode" | "api:anthropic" | "api:openai" | "api:google" | "api:custom-openai"; cliSource?: "executed" | "category-default" | undefined; durationMs: number; errorMessage?: string | undefined; failureCategory?: "unknown" | "authentication" | "timeout" | "rate_limit" | "connection" | "crash" | "adapter_unavailable" | "validation" | "parse" | "execution" | "generic" | undefined; family?: string | undefined; id: string; model: string; qualitySignals?: string[] | undefined; requestId?: string | undefined; retryCount?: number | undefined; routingStage?: string | undefined; source: "delegate" | "consensus" | "manual"; success: boolean; timestamp: string; traceId?: string | undefined; triageAction?: string | undefined; vendor?: string | undefined; voterRole?: string | undefined; wasRetried?: boolean | undefined; }[], windowSize?: number) => Trend
 FunctionDeclaration determineFinalStatus
-  : typeof determineFinalStatus
+  : (quorumReached: boolean, approved: boolean) => "pending" | "approved" | "closed" | "rejected" | "timeout" | "voting"
 VariableDeclaration DEV_PIPELINE_TEMPLATE
   : PipelineTemplate
 InterfaceDeclaration DevPipelineOptions
@@ -3041,43 +3041,43 @@ InterfaceDeclaration DryRunResult
 TypeAliasDeclaration DurableAuditSink
   = (event: AuditEvent) => void
 FunctionDeclaration effectFor
-  : typeof effectFor
+  : (patternType: PatternType, metric: number, thresholds: EffectThresholds) => number
 TypeAliasDeclaration EffectThresholds
   = Pick< DistillerConfig, 'failureRateThreshold' | 'successRateThreshold' | 'latencyRatioThreshold' >
 FunctionDeclaration emitCorroborationEvent
-  : typeof emitCorroborationEvent
+  : (trail: AuditTrail, data: Omit<CorroborationEvent, "type" | "id" | "timestamp" | "component">) => string
 FunctionDeclaration emitExecutionComplete
-  : typeof emitExecutionComplete
+  : (totalSteps: number, totalNodes: number, durationMs: number, options?: GraphExecuteOptions | undefined, halted?: boolean | undefined) => void
 FunctionDeclaration emitGraphExecutionEvent
-  : typeof emitGraphExecutionEvent
+  : (trail: AuditTrail, data: Omit<GraphExecutionAuditEvent, "type" | "id" | "timestamp" | "component">) => string
 FunctionDeclaration emitNodeResults
-  : typeof emitNodeResults
+  : (ctx: StepContext, results: readonly NodeResult[], options?: GraphExecuteOptions | undefined) => void
 FunctionDeclaration emitNodeStarted
-  : typeof emitNodeStarted
+  : (ctx: StepContext, options?: GraphExecuteOptions | undefined) => void
 FunctionDeclaration emitPipelineStageEvent
-  : typeof emitPipelineStageEvent
+  : (prefix: string, stage: string, status: "completed" | "started" | "failed", details?: Record<string, unknown> | undefined) => void
 FunctionDeclaration emitPolicyEvent
-  : typeof emitPolicyEvent
+  : (trail: AuditTrail, data: Omit<PolicyGateEvent, "type" | "id" | "timestamp" | "component">) => string
 FunctionDeclaration emitReputationEvent
-  : typeof emitReputationEvent
+  : (trail: AuditTrail, data: Omit<ReputationEvent, "type" | "id" | "timestamp" | "component">) => string
 FunctionDeclaration emitSanitizationEvent
-  : typeof emitSanitizationEvent
+  : (trail: AuditTrail, data: Omit<SanitizationEvent, "type" | "id" | "timestamp" | "component">) => string
 FunctionDeclaration emitStageCompleted
-  : typeof emitStageCompleted
+  : (options: StageCompletedOptions) => void
 FunctionDeclaration emitStageFailed
-  : typeof emitStageFailed
+  : (options: StageFailedOptions) => void
 FunctionDeclaration emitStageStarted
-  : typeof emitStageStarted
+  : (options: StageStartedOptions) => void
 FunctionDeclaration emitStateUpdated
-  : typeof emitStateUpdated
+  : (ctx: StepContext, results: readonly NodeResult[], options?: GraphExecuteOptions | undefined) => void
 FunctionDeclaration emitStepCompleted
-  : typeof emitStepCompleted
+  : (ctx: StepContext, nodesExecuted: number, options?: GraphExecuteOptions | undefined) => void
 FunctionDeclaration emitTrustEvent
-  : typeof emitTrustEvent
+  : (trail: AuditTrail, data: Omit<TrustClassificationEvent, "type" | "id" | "timestamp" | "component">) => string
 VariableDeclaration END
   : "__END__"
 FunctionDeclaration ensurePolyglotLangs
-  : typeof ensurePolyglotLangs
+  : () => void
 TypeAliasDeclaration EntrySource
   = 'in-tree' | 'models-dev' | 'manifest' | 'derived' | 'generated'
 InterfaceDeclaration EnvValidationResult
@@ -3095,7 +3095,7 @@ InterfaceDeclaration EpisodeData
   readonly taskId: string
   readonly timestamp: Date
 FunctionDeclaration err
-  : typeof err
+  : (error: E) => Result<never, E>
 TypeAliasDeclaration ErrorCategory
   = z.infer<typeof ErrorCategorySchema>
 VariableDeclaration|TypeAliasDeclaration ErrorCode
@@ -3115,17 +3115,17 @@ InterfaceDeclaration ErrorResolution
   resolvedAt: Date
   successful: boolean
 FunctionDeclaration estimateBenchmarkTokens
-  : typeof estimateTokens
+  : (text: string) => number
 FunctionDeclaration estimateTaskComplexity
-  : typeof estimateTaskComplexity
+  : (taskDescription: string) => TaskComplexity
 FunctionDeclaration estimateTokens
-  : typeof estimateTokens
+  : (text: string) => number
 FunctionDeclaration evaluatePipelinePolicy
-  : typeof evaluatePipelinePolicy
+  : (options: PolicyEvaluatorOptions, context: PolicyContext) => PolicyEvalResult
 FunctionDeclaration evaluatePolicy
-  : typeof evaluatePolicy
+  : (firewall: IPolicyFirewall, ctx: PolicyContext) => Result<void, PolicyError>
 FunctionDeclaration evaluateSecurityPolicy
-  : typeof evaluatePolicy
+  : (action: { sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; summary: string; type: "SummarizeIssue"; } | { labels: string[]; reason: string; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "ProposeLabels"; } | { body: string; requiresApproval: true; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "DraftReply"; } | { context: string; reason: string; type: "RequestHumanApproval"; } | { files: { description: string; operation: "modify" | "create" | "delete"; path: string; }[]; rationale: string; requiresApproval: true; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "GeneratePatchPlan"; } | { category: "security" | "documentation" | "bug" | "feature" | "question" | "performance"; confidence: number; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "ClassifyIssue"; } | { candidates: number[]; similarity: number[]; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "IdentifyDuplicates"; } | { escalateTo: "security" | "maintainer"; reason: string; type: "RefuseAction"; } | { inputTrustTier: "1" | "2" | "3" | "4"; reason: string; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; targetCapability: string; type: "HandoffMessage"; }, context: ActionContext, auditTrail?: AuditTrail | undefined) => PolicyDecision
 InterfaceDeclaration EvaluationCriterion
   readonly categories?: readonly string[] | undefined
   readonly description: string
@@ -3183,11 +3183,11 @@ TypeAliasDeclaration EventType
 TypeAliasDeclaration ExecFileFn
   = ( cmd: string, args: string[], options?: { timeout?: number; } ) => Promise<{ stdout: string; }>
 FunctionDeclaration executeCliRetryLoop
-  : typeof executeCliRetryLoop
+  : (executeFn: () => Promise<Result<CliResponse, CliError>>, config: CliRetryLoopConfig) => Promise<Result<CliRetryResult, CliError>>
 FunctionDeclaration executeDelegatePipeline
-  : typeof executeDelegatePipeline
+  : (task: { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }) => Promise<PipelineMetrics>
 FunctionDeclaration executeExpert
-  : typeof executeExpert
+  : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
 InterfaceDeclaration ExecuteExpertDeps
   auditLogger?: IAuditLogger | undefined
   cliCache?: ICliDetectionCache | undefined
@@ -3209,15 +3209,15 @@ InterfaceDeclaration ExecuteExpertResponse
   tokensMeasured?: boolean | undefined
   tokensUsed: number
 FunctionDeclaration executeGraph
-  : typeof executeGraph
+  : (graph: CompiledGraph, initialInputs: Readonly<GraphState>, options?: GraphExecuteOptions | undefined) => Promise<Result<GraphExecutionResult, Error>>
 FunctionDeclaration executeOrchestratePipeline
-  : typeof executeOrchestratePipeline
+  : (task: { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }) => Promise<PipelineMetrics>
 FunctionDeclaration executeParallel
-  : typeof executeParallel
+  : (steps: WorkflowStep[], context: ExecutionContext, stepExecutor: StepExecutor, options?: ParallelOptions | undefined) => Promise<Result<StepResult[], WorkflowError>>
 TypeAliasDeclaration ExecuteResult
   = | { readonly ok: true; readonly value: PipelineResult; } | { readonly error: string; readonly ok: false; }
 FunctionDeclaration executeSpec
-  : typeof executeSpec
+  : (markdown: string, options?: import("src/index").CompileOptions | undefined) => Promise<Result<SpecExecutionResult, SpecExecutionError>>
 TypeAliasDeclaration ExecuteSpecDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration ExecuteSpecInput
@@ -3551,21 +3551,21 @@ VariableDeclaration ExplorationEventTypeSchema
 TypeAliasDeclaration ExpressionType
   = 'inputs' | 'steps' | 'variables'
 FunctionDeclaration extractBooleanField
-  : typeof extractBooleanField
+  : (payload: Record<string, unknown>, field: string) => boolean
 FunctionDeclaration extractExpressions
-  : typeof extractExpressions
+  : (input: unknown) => ParsedExpression[]
 FunctionDeclaration extractNonErrorMessage
-  : typeof extractNonErrorMessage
+  : (error: unknown) => string | undefined
 FunctionDeclaration extractNumberField
-  : typeof extractNumberField
+  : (payload: Record<string, unknown>, field: string, defaultValue?: number) => number
 FunctionDeclaration extractSessionId
-  : typeof extractSessionId
+  : (event: DomainEvent, payload: Record<string, unknown>) => string
 FunctionDeclaration extractStateValue
-  : typeof extractStateValue
+  : (state: Readonly<Record<string, unknown>>, key: string) => unknown
 FunctionDeclaration extractStringArrayField
-  : typeof extractStringArrayField
+  : (payload: Record<string, unknown>, field: string) => string[]
 FunctionDeclaration extractStringField
-  : typeof extractStringField
+  : (payload: Record<string, unknown>, field: string) => string
 TypeAliasDeclaration ExtractSymbolsDeps
   = BaseMcpToolDeps
 VariableDeclaration ExtractSymbolsInputSchema
@@ -3668,11 +3668,11 @@ TypeAliasDeclaration FileReference
 VariableDeclaration FileReferenceSchema
   : z.ZodObject<{ line: z.ZodOptional<z.ZodNumber>; path: z.ZodString; }, z.core.$strip>
 FunctionDeclaration filterAvailableModels
-  : typeof filterAvailableModels
+  : (modelIds: readonly string[], cache: AvailabilityCache) => { available: string[]; removed: string[]; }
 FunctionDeclaration filterStream
-  : typeof filterStream
+  : (stream: AsyncIterable<T>, predicate: (chunk: T, index: number) => boolean | Promise<boolean>, options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 FunctionDeclaration findActiveSession
-  : typeof findActiveSession
+  : (sessionMetrics: Iterable<SessionMetrics>) => SessionMetrics | undefined
 InterfaceDeclaration Finding
   readonly claim: string
   readonly gate: VerificationGate
@@ -3687,7 +3687,7 @@ TypeAliasDeclaration FindingVote
 VariableDeclaration FindingVoteSchema
   : z.ZodObject<{ agentId: z.ZodString; agree: z.ZodBoolean; amendedSeverity: z.ZodOptional<z.ZodEnum<{ critical: "critical"; major: "major"; minor: "minor"; suggestion: "suggestion"; }>>; findingId: z.ZodString; reasoning: z.ZodOptional<z.ZodString>; }, z.core.$strip>
 FunctionDeclaration findMissingDependencies
-  : typeof findMissingDependencies
+  : (graph: ISkillDependencyGraph, skillIds: readonly string[], available: ReadonlySet<string>) => readonly string[]
 VariableDeclaration FIREWALL_POLICY_ENV_VAR
   : "NEXUS_FIREWALL_POLICY"
 InterfaceDeclaration FirewallConfig
@@ -3738,7 +3738,7 @@ InterfaceDeclaration FitnessDeclinedSignalEvent
   readonly score: number
   readonly type: "signal.fitness_declined"
 FunctionDeclaration flushPipelineMemory
-  : typeof flushPipelineMemory
+  : () => void
 InterfaceDeclaration Forest
   readonly activationBudget: number
   readonly activeTreeIds: readonly string[]
@@ -3813,17 +3813,17 @@ InterfaceDeclaration ForestStatistics
 VariableDeclaration ForestStatisticsSchema
   : z.ZodObject<{ activationRatio: z.ZodNumber; activeTrees: z.ZodNumber; avgTreeScore: z.ZodNumber; bestPathScore: z.ZodNumber; maxDepth: z.ZodNumber; totalActiveNodes: z.ZodNumber; totalExplorationTimeMs: z.ZodNumber; totalNodes: z.ZodNumber; totalTokensUsed: z.ZodNumber; totalTrees: z.ZodNumber; }, z.core.$strip>
 FunctionDeclaration formatAdapterLatencyReport
-  : typeof formatAdapterLatencyReport
+  : (result: AdapterLatencyResult) => string
 FunctionDeclaration formatBenchmarkReport
-  : typeof formatBenchmarkReport
+  : (report: BenchmarkReport) => string
 FunctionDeclaration formatBenchmarkResults
-  : typeof formatBenchmarkResults
+  : (result: BenchmarkSuiteResult) => string
 FunctionDeclaration formatComparisonResults
-  : typeof formatComparisonResults
+  : (comparison: BenchmarkComparison) => string
 FunctionDeclaration formatCompileError
-  : typeof formatCompileError
+  : (error: GraphCompileError) => string
 FunctionDeclaration fromArray
-  : typeof fromArray
+  : (values: T[], options?: { delayMs?: number; signal?: AbortSignal; }) => AsyncIterable<T>
 TypeAliasDeclaration FullCapableProvider
   = IScmProvider & IScmReviewer & IScmUserInfo
 InterfaceDeclaration FunctionDeclaration
@@ -3914,9 +3914,9 @@ ClassDeclaration GeminiResponseParser
 VariableDeclaration GENERAL_PIPELINE_TEMPLATE
   : PipelineTemplate
 FunctionDeclaration generateATL
-  : typeof generateATL
+  : (data: { rep?: number | undefined; sanitized: boolean; source: string; tier: "1" | "2" | "3" | "4"; user: string; }) => string
 FunctionDeclaration generateBenchmarkReport
-  : typeof generateBenchmarkReport
+  : (options: ReportOptions) => BenchmarkReport
 ClassDeclaration GenerateContentResponse
   automaticFunctionCallingHistory?: Content[] | undefined
   candidates?: Candidate[] | undefined
@@ -3946,64 +3946,64 @@ InterfaceDeclaration GenerateObjectResult
   response: { modelId: string; }
   usage: { inputTokens: number | undefined; outputTokens: number | undefined; totalTokens: number | undefined; }
 FunctionDeclaration generateProposalId
-  : typeof generateProposalId
+  : () => string
 FunctionDeclaration generateSecurityPlan
-  : typeof generateSecurityPlan
+  : (input: { categories?: string[] | undefined; maxScanners: number; repo: string; }) => Promise<RepoSecurityPlan>
 InterfaceDeclaration GenerateTextResult
   finishReason: string
   response: { modelId: string; }
   text: string
   usage: { inputTokens: number | undefined; outputTokens: number | undefined; totalTokens: number | undefined; }
 FunctionDeclaration generateWeatherReport
-  : typeof generateWeatherReport
+  : (input: WeatherReportOptions, config?: Partial<{ coldStartThreshold: number; explorationRate: number; maxBonusAdjustment: number; outcomeLookbackMs: number; }> | undefined, deps?: WeatherReportDeps | undefined) => WeatherReportResponse
 FunctionDeclaration getAllTestCases
-  : typeof getAllTestCases
+  : () => readonly (SafetyTestCase & { categoryId: SafetyCategoryIdType; })[]
 FunctionDeclaration getAvailabilityCache
-  : typeof getAvailabilityCache
+  : () => AvailabilityCache
 FunctionDeclaration getAvailableClis
-  : typeof getAvailableClis
+  : (cache?: ICliDetectionCache | undefined) => Promise<("claude" | "gemini" | "codex" | "opencode")[]>
 FunctionDeclaration getAvailableRoles
-  : typeof getAvailableRoles
+  : () => string[]
 FunctionDeclaration getBenchmarkEnvironment
-  : typeof getBenchmarkEnvironment
+  : () => BenchmarkEnvironment
 FunctionDeclaration getBuiltInAstRulesPath
-  : typeof getBuiltInAstRulesPath
+  : () => string
 FunctionDeclaration getBuiltInTemplates
-  : typeof getBuiltInTemplates
+  : () => Promise<Map<string, WorkflowDefinition>>
 FunctionDeclaration getBuiltInTemplatesPath
-  : typeof getBuiltInTemplatesPath
+  : () => string
 FunctionDeclaration getBuiltInTemplatesWithMetadata
-  : typeof getBuiltInTemplatesWithMetadata
+  : () => Promise<ParsedTemplate[]>
 FunctionDeclaration getCapabilitiesForRole
-  : typeof getCapabilitiesForRole
+  : (role: string) => readonly AgentCapability[] | undefined
 FunctionDeclaration getCategoriesByMinRiskLevel
-  : typeof getCategoriesByMinRiskLevel
+  : (minLevel: RiskLevelType) => readonly SafetyCategory[]
 FunctionDeclaration getCliForModelId
-  : typeof getCliForModelId
+  : (modelId: "claude-fable-5" | "claude-opus" | "claude-sonnet" | "claude-haiku" | "gemini-3-pro" | "gemini-pro" | "gemini-3.5-flash" | "gemini-3-flash" | "gemini-flash" | "gpt-5.5" | "codex-5.3" | "codex-5.2" | "codex-5.1-mini" | "opencode-default" | "opencode-custom-opus" | "opencode-custom-sonnet" | "openrouter-nemotron-super" | "openrouter-qwen-coder") => "claude" | "gemini" | "codex" | "opencode" | undefined
 FunctionDeclaration getCompletedSteps
-  : typeof getCompletedSteps
+  : (context: WorkflowExecutionContext) => string[]
 FunctionDeclaration getCorroborationRules
-  : typeof getCorroborationRules
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage") => readonly CorroborationRule[]
 FunctionDeclaration getDefaultAvailableModelsCache
-  : typeof getDefaultAvailableModelsCache
+  : () => AvailableModelsCache
 FunctionDeclaration getDefaultRegistry
-  : typeof getDefaultRegistry
+  : () => ModelRegistry
 FunctionDeclaration getEventBusStats
-  : typeof getEventBusStats
+  : () => { activeSubscriptions: number; errorCount: number; eventsEmitted: number; historySize: number; }
 FunctionDeclaration getExecutionDuration
-  : typeof getExecutionDuration
+  : (context: WorkflowExecutionContext) => number
 FunctionDeclaration getExecutionOrder
-  : typeof getExecutionOrder
+  : (plan: ExecutionPlan) => string[]
 FunctionDeclaration getExpertRegistry
-  : typeof getExpertRegistry
+  : () => ExpertRegistry
 FunctionDeclaration getFallbackChain
-  : typeof getFallbackChain
+  : (cli: "claude" | "gemini" | "codex" | "opencode") => readonly ("claude-fable-5" | "claude-opus" | "claude-sonnet" | "claude-haiku" | "gemini-3-pro" | "gemini-pro" | "gemini-3.5-flash" | "gemini-3-flash" | "gemini-flash" | "gpt-5.5" | "codex-5.3" | "codex-5.2" | "codex-5.1-mini" | "opencode-default" | "opencode-custom-opus" | "opencode-custom-sonnet" | "openrouter-nemotron-super" | "openrouter-qwen-coder")[]
 FunctionDeclaration getGlobalRegistry
-  : typeof getGlobalRegistry
+  : (config?: UnifiedRegistryConfig | undefined) => UnifiedAdapterRegistry
 FunctionDeclaration getGraphRegistry
-  : typeof getGraphRegistry
+  : () => ReadonlyMap<string, GraphFactory>
 FunctionDeclaration getGraphWorkflowList
-  : typeof getGraphWorkflowList
+  : () => readonly GraphWorkflowInfo[]
 TypeAliasDeclaration GetJobResultDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration GetJobResultInput
@@ -4019,51 +4019,51 @@ InterfaceDeclaration GetJobResultResponse
   readonly producerVersionSource?: JobResultSource | undefined
   readonly record?: { completedAt?: string | undefined; createdAt: string; error?: string | undefined; jobId: string; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "pending" | "failed" | "cancelled" | "complete"; toolName: string; v: 1; } | undefined
 FunctionDeclaration getKnownNexusVarNames
-  : typeof getKnownNexusVarNames
+  : () => readonly string[]
 FunctionDeclaration getOutcomeStore
-  : typeof getOutcomeStore
+  : () => OutcomeStore
 FunctionDeclaration getPipelineArtifactStore
-  : typeof getPipelineArtifactStore
+  : () => IArtifactStore
 FunctionDeclaration getPipelinePluginRegistry
-  : typeof getPipelinePluginRegistry
+  : () => PluginRegistry
 FunctionDeclaration getPolicy
-  : typeof getPolicy
+  : (id: string) => SandboxPolicy | undefined
 FunctionDeclaration getPolicyMode
-  : typeof getPolicyMode
+  : () => PolicyMode
 FunctionDeclaration getRecommendedRole
-  : typeof getRecommendedRole
+  : (taskType: string) => string
 FunctionDeclaration getReferencedSteps
-  : typeof getReferencedSteps
+  : (input: unknown) => string[]
 FunctionDeclaration getRegistryManifest
-  : typeof getRegistryManifest
+  : () => Promise<ScannerRegistryManifest | null>
 FunctionDeclaration getRequiredTrustTier
-  : typeof getRequiredTrustTier
+  : (actionType: string) => "1" | "2" | "3" | "4"
 FunctionDeclaration getSafetyCategory
-  : typeof getSafetyCategory
+  : (id: SafetyCategoryIdType) => SafetyCategory | undefined
 FunctionDeclaration getSafetyTaxonomySummary
-  : typeof getSafetyTaxonomySummary
+  : () => SafetyTaxonomySummary
 FunctionDeclaration getSkillSetForTask
-  : typeof getSkillSetForTask
+  : (agent: IAgent, task: Task, loader: ISkillLoader) => Result<LoadedSkillSet, SkillLoaderError>
 FunctionDeclaration getSkillsForTask
-  : typeof getSkillsForTask
+  : (agent: IAgent, task: Task, loader: ISkillLoader) => Result<readonly Skill[], SkillLoaderError>
 FunctionDeclaration getStepResult
-  : typeof getStepResult
+  : (context: WorkflowExecutionContext, stepId: string) => StepResult | undefined
 FunctionDeclaration getSwarmObserver
-  : typeof getSwarmObserver
+  : (config?: Partial<SwarmObserverConfig> | undefined) => SwarmObserver
 FunctionDeclaration getTemplate
-  : typeof getTemplate
+  : (id: string) => PipelineTemplate | undefined
 FunctionDeclaration getTestCasesByTags
-  : typeof getTestCasesByTags
+  : (tags: readonly string[]) => readonly (SafetyTestCase & { categoryId: SafetyCategoryIdType; })[]
 FunctionDeclaration getTimeoutForTask
-  : typeof getTimeoutForTask
+  : (cli: string, complexity: TaskComplexity) => number
 FunctionDeclaration getTimeoutForTaskAuto
-  : typeof getTimeoutForTaskAuto
+  : (cli: string, taskDescription: string) => number
 FunctionDeclaration getTokenEnvVars
-  : typeof getTokenEnvVars
+  : (platform?: ScmPlatform) => readonly string[]
 FunctionDeclaration getTopologicalOrder
-  : typeof getTopologicalOrder
+  : (workflow: WorkflowDefinition) => Result<string[], ParseError>
 FunctionDeclaration getVariable
-  : typeof getVariable
+  : (context: WorkflowExecutionContext, name: string) => unknown
 InterfaceDeclaration GhApiCommentJson
   author_association: string
   body: string
@@ -4269,7 +4269,7 @@ VariableDeclaration HARM_FINANCIAL_CATEGORY
 VariableDeclaration HARM_PHYSICAL_CATEGORY
   : SafetyCategory
 FunctionDeclaration hasToken
-  : typeof hasToken
+  : (platform?: ScmPlatform) => boolean
 InterfaceDeclaration HealthStatus
   readonly healthy: boolean
   readonly lastChecked: Date
@@ -4501,7 +4501,7 @@ InterfaceDeclaration ICTMInferenceResult
 VariableDeclaration ICTMInferenceResultSchema
   : z.ZodObject<{ confidence: z.ZodNumber; config: z.ZodObject<{ context: z.ZodObject<{ includeHistory: z.ZodBoolean; maxTokens: z.ZodNumber; pruneStrategy: z.ZodEnum<{ hybrid: "hybrid"; importance: "importance"; recency: "recency"; }>; relevanceThreshold: z.ZodNumber; }, z.core.$strip>; instructions: z.ZodString; metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; model: z.ZodObject<{ maxTokens: z.ZodOptional<z.ZodNumber>; modelId: z.ZodOptional<z.ZodString>; provider: z.ZodOptional<z.ZodString>; reasoning: z.ZodOptional<z.ZodEnum<{ extended: "extended"; minimal: "minimal"; standard: "standard"; }>>; temperature: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>; tools: z.ZodObject<{ capabilities: z.ZodArray<z.ZodString>; restrictions: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strip>; }, z.core.$strip>; reasoning: z.ZodObject<{ context: z.ZodString; instructions: z.ZodString; model: z.ZodString; tools: z.ZodString; }, z.core.$strip>; }, z.core.$strip>
 FunctionDeclaration ictmToExpertConfig
-  : typeof ictmToExpertConfig
+  : (ictm: ICTMConfig, subtaskId: string) => ExpertConfig
 InterfaceDeclaration IDashboard
   getConfig() => DashboardConfig
   getSnapshot(options?: DashboardUpdateOptions) => DashboardSnapshot
@@ -4517,7 +4517,7 @@ InterfaceDeclaration IDashboardRenderer
   renderGraph(graph: GraphSummary) => string
   renderHealth(health: SwarmHealthMetrics) => string
 FunctionDeclaration identifySessionsToRemove
-  : typeof identifySessionsToRemove
+  : (sessions: [string, SessionMetrics][], maxSessions: number) => string[]
 TypeAliasDeclaration IdentitySource
   = 'modelHints' | 'probe' | 'modelIdParse' | 'default'
 InterfaceDeclaration IEpisodicMemory
@@ -4654,13 +4654,13 @@ InterfaceDeclaration IneffectiveVar
   readonly reason: string
   readonly requestedMs: number
 FunctionDeclaration inferICTM
-  : typeof inferICTM
+  : (subtask: SubTask, analysis: TaskAnalysis) => ICTMInferenceResult
 FunctionDeclaration initializeAgentSkills
-  : typeof initializeAgentSkills
+  : (agent: IAgent, loader: ISkillLoader) => Result<void, SkillLoaderError>
 FunctionDeclaration initializeBuiltInTemplates
-  : typeof initializeBuiltInTemplates
+  : () => Promise<Map<string, WorkflowDefinition>>
 FunctionDeclaration initializeEventBusBridge
-  : typeof initializeEventBusBridge
+  : (observer: SwarmObserver, logger: ILogger, config?: Partial<{ enabled: boolean; logging: { frequentEventLevel: "debug" | "info"; importantEventLevel: "debug" | "info"; }; maxHistorySize: number; subscriptions: { agent: boolean; byzantine: boolean; consensus: boolean; message: boolean; protocol: boolean; session: boolean; }; }> | undefined) => EventBusBridgeResult
 TypeAliasDeclaration InjectionFlag
   = z.infer<typeof InjectionFlagSchema>
 VariableDeclaration InjectionFlagSchema
@@ -4878,11 +4878,11 @@ InterfaceDeclaration ISandboxExecutor
   readonly name: string
   validate(command: string, args: readonly string[], options: SandboxExecutionOptions) => PolicyEvaluation
 FunctionDeclaration isCancelled
-  : typeof isCancelled
+  : (context: WorkflowExecutionContext) => boolean
 FunctionDeclaration isCliAvailable
-  : typeof isCliAvailable
+  : (cli: "claude" | "gemini" | "codex" | "opencode", cache?: ICliDetectionCache | undefined) => Promise<boolean>
 FunctionDeclaration isCliRetryableError
-  : typeof isRetryableError
+  : (code: CliErrorCode) => boolean
 InterfaceDeclaration IScmProvider
   addComment(issueNumber: number, body: string) => Promise<Result<void, ScmError>>
   addLabels(issueNumber: number, labels: readonly string[]) => Promise<Result<void, ScmError>>
@@ -4911,7 +4911,7 @@ InterfaceDeclaration ISemanticMemory
   searchFacts(query: string, limit?: number) => Promise<Result<readonly SemanticFact[], MemoryError>>
   storeFact(fact: SemanticFact) => Promise<Result<void, MemoryError>>
 FunctionDeclaration isErr
-  : typeof isErr
+  : (result: Result<T, E>) => boolean
 InterfaceDeclaration ISharedTaskAnalyzer
   analyze(task: Task | string) => TaskAnalysisResult
   estimateTokens(task: Task | string) => number
@@ -4936,9 +4936,9 @@ InterfaceDeclaration ISkillLoader
   loadForTask(agentId: string, role: AgentRole, taskDescription: string) => import("../../core/result.js").Result<LoadedSkillSet, SkillLoaderError>
   validateLoadedSet(set: LoadedSkillSet) => import("../../core/result.js").Result<void, SkillLoaderError>
 FunctionDeclaration isMutatingAction
-  : typeof isMutatingAction
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage") => boolean
 FunctionDeclaration isOk
-  : typeof isOk
+  : (result: Result<T, E>) => boolean
 InterfaceDeclaration ISourceAdapter
   extractMetadata(input: unknown) => SourceMetadata
   readonly platform: string
@@ -4954,11 +4954,11 @@ InterfaceDeclaration ISQLiteStatement
   get(...params: unknown[]) => T | undefined
   run(...params: unknown[]) => ISQLiteRunResult
 FunctionDeclaration isReadOnlyAction
-  : typeof isReadOnlyAction
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage") => boolean
 FunctionDeclaration isRetryableError
-  : typeof isRetryableError
+  : (error: unknown) => boolean
 FunctionDeclaration isStepCompleted
-  : typeof isStepCompleted
+  : (context: WorkflowExecutionContext, stepId: string) => boolean
 InterfaceDeclaration IssueFilters
   readonly labels?: readonly string[] | undefined
   readonly limit?: number | undefined
@@ -4993,7 +4993,7 @@ InterfaceDeclaration ISwarmObserver
   recordEvent(event: AgentEvent) => void
   recordInteraction(options: RecordInteractionOptions) => void
 FunctionDeclaration isZodError
-  : typeof isZodError
+  : (error: unknown) => boolean
 InterfaceDeclaration ITaskTracker
   createTask(title: string, body: string) => Promise<TrackedTask>
   postComment(taskId: string, comment: string) => Promise<void>
@@ -5265,7 +5265,7 @@ InterfaceDeclaration ListJobsResponse
   readonly truncated: boolean
   readonly unparseableRecords?: number | undefined
 FunctionDeclaration listTemplateIds
-  : typeof listTemplateIds
+  : () => readonly string[]
 InterfaceDeclaration ListWorkflowsDeps
   workflowEngine: IWorkflowEngine
 TypeAliasDeclaration ListWorkflowsInput
@@ -5277,7 +5277,7 @@ InterfaceDeclaration ListWorkflowsResponse
   count: number
   workflows: WorkflowInfo[]
 FunctionDeclaration loadCheckpointState
-  : typeof loadCheckpointState
+  : (sessionId: string, customDir?: string | undefined) => PipelineCheckpointState | null
 InterfaceDeclaration LoadedSkillSet
   readonly agentId: string
   readonly agentRole: AgentRole
@@ -5288,13 +5288,13 @@ InterfaceDeclaration LoadedSkillSet
 VariableDeclaration LoadedSkillSetSchema
   : z.ZodObject<{ agentId: z.ZodString; agentRole: z.ZodEnum<{ architecture_expert: "architecture_expert"; code_expert: "code_expert"; custom: "custom"; devops_expert: "devops_expert"; documentation_expert: "documentation_expert"; orchestrator: "orchestrator"; security_expert: "security_expert"; testing_expert: "testing_expert"; thinker: "thinker"; verifier: "verifier"; worker: "worker"; }>; executionOrder: z.ZodReadonly<z.ZodArray<z.ZodString>>; loadedAt: z.ZodDate; missingRequired: z.ZodReadonly<z.ZodArray<z.ZodString>>; skills: z.ZodReadonly<z.ZodArray<z.ZodAny>>; }, z.core.$strip>
 FunctionDeclaration loadRules
-  : typeof loadRules
+  : (dir: string) => Promise<{ id: string; language: "python" | "go"; message: string; rule: Record<string, unknown>; severity: "info" | "error" | "warning"; }[]>
 FunctionDeclaration loadTemplateFile
-  : typeof loadTemplateFile
+  : (filePath: string, allowedRoot?: string | undefined) => Promise<Result<ParsedTemplate, ParseError | SecurityError>>
 FunctionDeclaration loadTemplatesFromDirectory
-  : typeof loadTemplatesFromDirectory
+  : (directoryPath: string) => Promise<{ errors: Array<ParseError | SecurityError>; templates: ParsedTemplate[]; }>
 FunctionDeclaration loadWorkflowFile
-  : typeof loadWorkflowFile
+  : (filePath: string, allowedRoot?: string) => Promise<Result<WorkflowDefinition, ParseError | SecurityError>>
 InterfaceDeclaration LogContext
   [key: string]: unknown;
 TypeAliasDeclaration LogDestination
@@ -5316,7 +5316,7 @@ VariableDeclaration LoggingConfigSchema
 TypeAliasDeclaration LogLevel
   = 'debug' | 'info' | 'warn' | 'error'
 FunctionDeclaration logPolicyAudit
-  : typeof logPolicyAudit
+  : (opts: LogPolicyAuditOpts) => void
 InterfaceDeclaration LogPolicyAuditOpts
   actor: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
   auditLogger: IAuditLogger
@@ -5326,7 +5326,7 @@ InterfaceDeclaration LogPolicyAuditOpts
   requestId: string
   toolName: string
 FunctionDeclaration logRateLimitAudit
-  : typeof logRateLimitAudit
+  : (opts: LogRateLimitAuditOpts) => void
 InterfaceDeclaration LogRateLimitAuditOpts
   actor: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
   auditLogger: IAuditLogger
@@ -5335,9 +5335,9 @@ InterfaceDeclaration LogRateLimitAuditOpts
   requestId: string
   toolName: string
 FunctionDeclaration logToolError
-  : typeof logToolError
+  : (logger: ILogger, toolName: string, error: Error, durationMs: number) => void
 FunctionDeclaration logToolInvocationAudit
-  : typeof logToolInvocationAudit
+  : (opts: LogToolInvocationOpts) => void
 InterfaceDeclaration LogToolInvocationOpts
   actor: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
   auditLogger: IAuditLogger
@@ -5347,9 +5347,9 @@ InterfaceDeclaration LogToolInvocationOpts
   requestId: string
   toolName: string
 FunctionDeclaration logToolStart
-  : typeof logToolStart
+  : (logger: ILogger, toolName: string, args?: Record<string, unknown> | undefined) => void
 FunctionDeclaration logToolSuccess
-  : typeof logToolSuccess
+  : (logger: ILogger, toolName: string, durationMs: number, resultInfo?: Record<string, unknown> | undefined) => void
 InterfaceDeclaration LoopState
   finalContent: string
   messages: Message[]
@@ -5359,13 +5359,13 @@ InterfaceDeclaration LoopState
 VariableDeclaration MANIPULATION_CATEGORY
   : SafetyCategory
 FunctionDeclaration map
-  : typeof map
+  : (result: Result<T, E>, fn: (value: T) => U) => Result<U, E>
 FunctionDeclaration mapAuthorAssociation
-  : typeof mapAuthorAssociation
+  : (association: string) => "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"
 FunctionDeclaration mapErr
-  : typeof mapErr
+  : (result: Result<T, E>, fn: (error: E) => F) => Result<T, F>
 FunctionDeclaration mapVoteDecisionToPrDecision
-  : typeof mapVoteDecisionToPrDecision
+  : (voteDecision: "approve" | "reject" | "abstain") => PrReviewDecision
 TypeAliasDeclaration MatchedVia
   = 'normalized' | 'identity'
 VariableDeclaration MAX_AST_QA_LIMIT
@@ -5418,7 +5418,7 @@ InterfaceDeclaration McpToolResult
   content?: { text?: string; type: string; }[] | undefined
   isError?: boolean | undefined
 FunctionDeclaration meanConfidenceInterval
-  : typeof meanConfidenceInterval
+  : (values: readonly number[], options?: StatisticalOptions) => ConfidenceInterval
 VariableDeclaration MEM0_TARGETS
   : { readonly latencyReductionPercent: 91; readonly qualityImprovementPercent: 26; readonly tokenSavingsPercent: 90; }
 InterfaceDeclaration MemoryBenchmarkConfig
@@ -5497,7 +5497,7 @@ InterfaceDeclaration MergePROptions
   readonly deleteBranch?: boolean | undefined
   readonly method?: "merge" | "squash" | "rebase" | undefined
 FunctionDeclaration mergeStreams
-  : typeof mergeStreams
+  : (streams: AsyncIterable<T>[], options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 InterfaceDeclaration Message
   content: string | ContentBlock[]
   role: MessageRole
@@ -5793,7 +5793,7 @@ VariableDeclaration NOOP_NOTIFIER
 VariableDeclaration NOOP_PROGRESS
   : ((completed: number, total: number, label?: string) => void) | undefined
 FunctionDeclaration normalizeRepoId
-  : typeof normalizeRepoId
+  : (input: string) => string
 TypeAliasDeclaration ObserverAgentState
   = z.infer<typeof AgentStateSchema>
 InterfaceDeclaration ObserverCostMetrics
@@ -5824,7 +5824,7 @@ InterfaceDeclaration ObserverTrackedAgent
   state: "error" | "executing" | "idle" | "thinking" | "waiting"
   taskCount: number
 FunctionDeclaration ok
-  : typeof ok
+  : (value: T) => Result<T, never>
 ClassDeclaration Ollama
   create{ (request: CreateRequest & { stream: true; }): Promise<AbortableAsyncIterator<ProgressResponse>>; (request: CreateRequest & { stream?: false; }): Promise<ProgressResponse>; }
   create{ (request: CreateRequest & { stream: true; }): Promise<AbortableAsyncIterator<ProgressResponse>>; (request: CreateRequest & { stream?: false; }): Promise<ProgressResponse>; }
@@ -5899,7 +5899,7 @@ InterfaceDeclaration OrchestrateInputLike
 VariableDeclaration OrchestrateInputSchema
   : z.ZodObject<{ context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; idempotencyKey: z.ZodOptional<z.ZodString>; maxIterations: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; task: z.ZodString; timeout: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 FunctionDeclaration orchestrateInputToTaskContract
-  : typeof orchestrateInputToTaskContract
+  : (input: OrchestrateInputLike, opts?: OrchestrateContractOpts) => { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }
 TypeAliasDeclaration OrchestrateOutput
   = z.infer<typeof OrchestrateOutputSchema>
 VariableDeclaration OrchestrateOutputSchema
@@ -6069,7 +6069,7 @@ VariableDeclaration OutcomeTaskSchema
 TypeAliasDeclaration OutputModality
   = (typeof OUTPUT_MODALITIES)[number]
 FunctionDeclaration overwrite
-  : typeof overwrite
+  : (defaultValue: T) => StateFieldSchema<T>
 ClassDeclaration OWVoting
   aggregate(votes: ReadonlyMap<string, Vote>, tracker?: ICorrelationTracker) => HigherOrderVotingResult
   aggregateWithCorrelation(votes: ReadonlyMap<string, Vote>, correlationMatrix: CorrelationMatrix) => HigherOrderVotingResult
@@ -6111,9 +6111,9 @@ TypeAliasDeclaration ParallelToolOutcome
 TypeAliasDeclaration ParamSeverity
   = 'behavioral' | 'cosmetic'
 FunctionDeclaration parseAgentPairKey
-  : typeof parseAgentPairKey
+  : (key: `${ string; }:${ string; }`) => [string, string]
 FunctionDeclaration parseATL
-  : typeof parseATL
+  : (atl: string) => { rep?: number | undefined; sanitized: boolean; source: string; tier: "1" | "2" | "3" | "4"; user: string; } | undefined
 InterfaceDeclaration ParsedExpression
   original: string
   path: string[]
@@ -6129,15 +6129,15 @@ ClassDeclaration ParseError
   readonly column: number | undefined
   readonly line: number | undefined
 FunctionDeclaration parseExpression
-  : typeof parseExpression
+  : (expression: string) => ParsedExpression | null
 FunctionDeclaration parseSpec
-  : typeof parseSpec
+  : (markdown: string) => Result<{ acceptanceCriteria: string[]; constraints: string[]; fileReferences: { line?: number | undefined; path: string; }[]; issueReferences: { number: number; raw: string; }[]; missingSections: string[]; overview: string; rawMarkdown: string; requirements: string[]; techStack?: { framework?: string | undefined; language?: string | undefined; packageManager?: string | undefined; } | undefined; title: string; }, SpecParseError>
 FunctionDeclaration parseTemplateContent
-  : typeof parseTemplateContent
+  : (content: string, filePath: string) => Result<WorkflowDefinition, ParseError>
 FunctionDeclaration parseWorkflowJson
-  : typeof parseWorkflowJson
+  : (content: string) => Result<WorkflowDefinition, ParseError>
 FunctionDeclaration parseWorkflowYaml
-  : typeof parseWorkflowYaml
+  : (content: string) => Result<WorkflowDefinition, ParseError>
 TypeAliasDeclaration PartialContextBudget
   = Partial<ContextBudget>
 InterfaceDeclaration PathAccessRule
@@ -6635,7 +6635,7 @@ ClassDeclaration ProofOfLearningStrategy
   calculateOutcome(votes: Map<string, Vote>, weights?: Map<string, number>) => VotingOutcome
   readonly algorithm: "simple_majority" | "supermajority" | "unanimous" | "proof_of_learning" | "higher_order" | "opinion_wise"
 FunctionDeclaration proportionConfidenceInterval
-  : typeof proportionConfidenceInterval
+  : (successes: number, total: number, options?: StatisticalOptions) => ConfidenceInterval
 TypeAliasDeclaration Proposal
   = z.infer<typeof ProposalSchema>
 InterfaceDeclaration ProposalCacheConfig
@@ -6821,7 +6821,7 @@ InterfaceDeclaration QueuedTask
   resolve: (value: T) => void
   task: Task<T>
 FunctionDeclaration quickSelect
-  : typeof quickSelect
+  : (task: Task, options?: SelectionOptions | undefined) => Result<SelectionResult, SelectionError>
 InterfaceDeclaration RateLimitAuditOpts
   actor: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
   currentRate: number
@@ -6996,89 +6996,89 @@ InterfaceDeclaration RecoveryStrategy
   readonly instructions: string
   readonly maxRetries: number
 FunctionDeclaration reduceStream
-  : typeof reduceStream
+  : (stream: AsyncIterable<T>, reducer: (accumulator: U, chunk: T, index: number) => U | Promise<U>, initialValue: U, options?: { signal?: AbortSignal; }) => Promise<Result<U, StreamError>>
 FunctionDeclaration registerCancelJobTool
-  : typeof registerCancelJobTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerConsensusVoteTool
-  : typeof registerConsensusVoteTool
+  : (server: McpServer, deps: ConsensusVoteDeps) => void
 FunctionDeclaration registerCorePlugins
-  : typeof registerCorePlugins
+  : (registry?: PluginRegistry | undefined) => CorePluginRegistrationResult
 FunctionDeclaration registerCreateExpertTool
-  : typeof registerCreateExpertTool
+  : (server: McpServer, deps: CreateExpertDeps) => void
 FunctionDeclaration registerDelegateToModelTool
-  : typeof registerDelegateToModelTool
+  : (server: McpServer, deps: DelegateDeps) => void
 FunctionDeclaration registerExecuteExpertTool
-  : typeof registerExecuteExpertTool
+  : (server: McpServer, deps: ExecuteExpertDeps) => void
 FunctionDeclaration registerExecuteSpecTool
-  : typeof registerExecuteSpecTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerExpertsResource
-  : typeof registerExpertsResource
+  : (server: McpServer, logger: ILogger) => void
 FunctionDeclaration registerExtractSymbolsTool
-  : typeof registerExtractSymbolsTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerGetJobResultTool
-  : typeof registerGetJobResultTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerImprovementReviewTool
-  : typeof registerImprovementReviewTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerIssueTriageTool
-  : typeof registerIssueTriageTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerListExpertsTool
-  : typeof registerListExpertsTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerListJobsTool
-  : typeof registerListJobsTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerListWorkflowsTool
-  : typeof registerListWorkflowsTool
+  : (server: McpServer, deps: ListWorkflowsDeps) => void
 FunctionDeclaration registerMemoryQueryTool
-  : typeof registerMemoryQueryTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerMemoryStatsTool
-  : typeof registerMemoryStatsTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerMemoryWriteTool
-  : typeof registerMemoryWriteTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerModelsResource
-  : typeof registerModelsResource
+  : (server: McpServer, logger: ILogger) => void
 FunctionDeclaration registerOrchestrateTool
-  : typeof registerOrchestrateTool
+  : (server: McpServer, deps: OrchestrateDeps) => void
 FunctionDeclaration registerPrompts
-  : typeof registerPrompts
+  : (server: McpServer, logger: ILogger) => PromptRegistrationResult
 FunctionDeclaration registerPrReviewTool
-  : typeof registerPrReviewTool
+  : (server: McpServer, deps: PrReviewDeps) => void
 FunctionDeclaration registerQueryTraceTool
-  : typeof registerQueryTraceTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerRegistryImportTool
-  : typeof registerRegistryImportTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerRepoAnalyzeTool
-  : typeof registerRepoAnalyzeTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerRepoSecurityPlanTool
-  : typeof registerRepoSecurityPlanTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchAddSourceTool
-  : typeof registerResearchAddSourceTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchAddTool
-  : typeof registerResearchAddTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchAnalyzeTool
-  : typeof registerResearchAnalyzeTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchCatalogReviewTool
-  : typeof registerResearchCatalogReviewTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchDiscoverTool
-  : typeof registerResearchDiscoverTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchQueryTool
-  : typeof registerResearchQueryTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResearchResource
-  : typeof registerResearchResource
+  : (server: McpServer, logger: ILogger) => void
 FunctionDeclaration registerResearchSynthesizeTool
-  : typeof registerResearchSynthesizeTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerResources
-  : typeof registerResources
+  : (server: McpServer, logger?: ILogger | undefined) => void
 FunctionDeclaration registerRunGraphWorkflowTool
-  : typeof registerRunGraphWorkflowTool
+  : (server: McpServer, deps: RunGraphWorkflowDeps) => void
 FunctionDeclaration registerRunWorkflowTool
-  : typeof registerRunWorkflowTool
+  : (server: McpServer, deps: RunWorkflowDeps) => void
 FunctionDeclaration registerSearchCodebaseTool
-  : typeof registerSearchCodebaseTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerSearchUsagesTool
-  : typeof registerSearchUsagesTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 FunctionDeclaration registerTools
-  : typeof registerTools
+  : (_server: McpServer, options?: ToolRegistrationOptions | undefined) => ToolRegistrationResult
 FunctionDeclaration registerWeatherReportTool
-  : typeof registerWeatherReportTool
+  : (server: McpServer, deps: BaseMcpToolDeps) => void
 TypeAliasDeclaration RegistrationError
   = | { readonly pluginId: string; readonly type: 'duplicate_id'; } | { readonly message: string; readonly type: 'invalid_manifest'; } | { readonly capability: string; readonly type: 'missing_capability'; } | { readonly message: string; readonly type: 'validation_failed'; } | { readonly type: 'registry_frozen'; }
 InterfaceDeclaration RegistryDomainStats
@@ -7220,11 +7220,11 @@ InterfaceDeclaration RequiredCapabilities
   readonly experts: readonly string[]
   readonly tools: readonly string[]
 FunctionDeclaration requiresCitation
-  : typeof requiresCitation
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage") => boolean
 FunctionDeclaration requiresCorroboration
-  : typeof requiresCorroboration
+  : (tier: "1" | "2" | "3" | "4") => boolean
 FunctionDeclaration requiresHumanApproval
-  : typeof requiresHumanApproval
+  : (actionType: "SummarizeIssue" | "ProposeLabels" | "DraftReply" | "RequestHumanApproval" | "GeneratePatchPlan" | "ClassifyIssue" | "IdentifyDuplicates" | "RefuseAction" | "HandoffMessage") => boolean
 TypeAliasDeclaration ResearchAddDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration ResearchAddInput
@@ -7334,15 +7334,15 @@ InterfaceDeclaration ResearchTriggerConfig
   readonly qualityThreshold?: number | undefined
   readonly topic?: string | undefined
 FunctionDeclaration resetAvailabilityCache
-  : typeof resetAvailabilityCache
+  : () => void
 FunctionDeclaration resetGlobalRegistry
-  : typeof resetGlobalRegistry
+  : () => void
 FunctionDeclaration resetPipelineArtifactStore
-  : typeof resetPipelineArtifactStore
+  : () => void
 FunctionDeclaration resetPipelinePluginRegistry
-  : typeof resetPipelinePluginRegistry
+  : () => void
 FunctionDeclaration resetRegistry
-  : typeof resetRegistry
+  : () => void
 InterfaceDeclaration ResolvedConfig
   readonly includeHistory: boolean
   readonly maxIterations: number
@@ -7375,31 +7375,31 @@ InterfaceDeclaration ResolvedPruningConfig
 InterfaceDeclaration ResolvedRunAgentArgs
   readonly turnBudget: number
 FunctionDeclaration resolveExpression
-  : typeof resolveExpression
+  : (parsed: ParsedExpression, context: WorkflowExecutionContext) => ResolveResult
 FunctionDeclaration resolveFallback
-  : typeof resolveFallback
+  : (modelId: "claude-fable-5" | "claude-opus" | "claude-sonnet" | "claude-haiku" | "gemini-3-pro" | "gemini-pro" | "gemini-3.5-flash" | "gemini-3-flash" | "gemini-flash" | "gpt-5.5" | "codex-5.3" | "codex-5.2" | "codex-5.1-mini" | "opencode-default" | "opencode-custom-opus" | "opencode-custom-sonnet" | "openrouter-nemotron-super" | "openrouter-qwen-coder", cache: AvailabilityCache) => FallbackEntry | null
 FunctionDeclaration resolveFirewallPolicyMode
-  : typeof resolveFirewallPolicyMode
+  : (env?: NodeJS.ProcessEnv, logger?: ILogger | undefined) => "audit" | "off" | "enforce"
 FunctionDeclaration resolveInput
-  : typeof resolveInput
+  : (input: unknown, context: WorkflowExecutionContext) => unknown
 FunctionDeclaration resolvePipelineDeps
-  : typeof resolvePipelineDeps
+  : (deps?: PipelineDeps | undefined) => ResolvedPipelineDeps
 FunctionDeclaration resolveReputationGatingMode
-  : typeof resolveReputationGatingMode
+  : (env?: NodeJS.ProcessEnv) => "audit" | "off" | "enforce"
 InterfaceDeclaration ResolveResult
   error?: string | undefined
   success: boolean
   value?: unknown
 FunctionDeclaration resolveScannerData
-  : typeof resolveScannerData
+  : () => Promise<ScannerData>
 FunctionDeclaration resolveStringExpressions
-  : typeof resolveStringExpressions
+  : (value: string, context: WorkflowExecutionContext) => unknown
 FunctionDeclaration resolveToken
-  : typeof resolveToken
+  : (config?: TokenResolverConfig | undefined) => Promise<Result<ScmToken, Error>>
 FunctionDeclaration resolveV2Config
-  : typeof resolveV2Config
+  : () => V2Config
 FunctionDeclaration resolveWithFallbacks
-  : typeof resolveWithFallbacks
+  : (graph: ISkillDependencyGraph, skillIds: readonly string[], available: ReadonlySet<string>) => Result<readonly string[], DependencyError>
 InterfaceDeclaration ResourceLimits
   readonly maxCpuTimeMs?: number | undefined
   readonly maxMemoryBytes?: number | undefined
@@ -7484,7 +7484,7 @@ InterfaceDeclaration ResultSummary
   subtaskId: string
   summary: string
 FunctionDeclaration resultToOutcome
-  : typeof resultToOutcome
+  : (isError: boolean | undefined, isPolicyDenied: boolean) => "success" | "failure" | "error" | "denied"
 InterfaceDeclaration RetryAttemptInfo
   readonly attempt: number
   readonly delayMs: number
@@ -7709,9 +7709,9 @@ VariableDeclaration RulesSnapshotSchema
 TypeAliasDeclaration RuleStatus
   = 'draft' | 'active' | 'promoted' | 'expired'
 FunctionDeclaration runAdapterLatencyBenchmark
-  : typeof runAdapterLatencyBenchmark
+  : (adapters: readonly ICliAdapter[], scenarios?: readonly LatencyScenario[], config?: Partial<AdapterLatencyConfig>) => Promise<AdapterLatencyResult>
 FunctionDeclaration runAdaptiveOrchestrator
-  : typeof runAdaptiveOrchestrator
+  : (task: string, options: AdaptiveOrchestratorOptions) => Promise<AdaptiveOrchestratorResult>
 InterfaceDeclaration RunAgentArgs
   readonly maxTokens?: number | undefined
   readonly onToolCall: (call: ToolCall) => Promise<ToolResult>
@@ -7723,23 +7723,23 @@ InterfaceDeclaration RunAgentArgs
   readonly turnBudget?: number | undefined
   readonly userPrompt: string
 FunctionDeclaration runAstQaRules
-  : typeof runAstQaRules
+  : (opts: RunAstQaRulesOptions) => Promise<AstRuleFinding[]>
 InterfaceDeclaration RunAstQaRulesOptions
   limit?: number | undefined
   rulesDir?: string | undefined
   targetDir: string
 FunctionDeclaration runBenchmark
-  : typeof runBenchmark
+  : (adapter: BenchmarkAdapter<TInstance, TPrediction, TEvalResult>, config: Record<string, unknown>, options?: BenchmarkOrchestratorOptions) => Promise<BenchmarkRunSummary>
 FunctionDeclaration runConsensusGate
-  : typeof runConsensusGate
+  : (voter: ConsensusVoter, input: ConsensusProposalInput) => Promise<ConsensusVerdict>
 FunctionDeclaration runConsolidationBenchmark
-  : typeof runConsolidationBenchmark
+  : (operations: readonly ConsolidationOperation[], config?: Partial<MemoryBenchmarkConfig>) => Promise<ConsolidationBenchmarkResult>
 FunctionDeclaration runDevPipeline
-  : typeof runDevPipeline
+  : (task: string, stages: DevPipelineStages, options?: DevPipelineOptions | undefined) => Promise<DevPipelineResult>
 FunctionDeclaration runGraphPipeline
-  : typeof runGraphPipeline
+  : (task: string, template: PipelineTemplate, stages: StageRegistry, options?: GraphPipelineOptions | undefined) => Promise<GraphPipelineResult>
 FunctionDeclaration runGraphWithConsensus
-  : typeof runGraphWithConsensus
+  : (options: RunGraphWithConsensusOptions) => Promise<Result<{ execution: GraphExecutionResult; verdict: ConsensusVerdict | undefined; }, Error>>
 InterfaceDeclaration RunGraphWithConsensusOptions
   readonly initialState?: GraphState | undefined
   readonly produce: NodeHandler
@@ -7764,21 +7764,21 @@ InterfaceDeclaration RunGraphWorkflowResponse
   readonly stepsExecuted: number
   readonly workflow: string
 FunctionDeclaration runIterativeConsensus
-  : typeof runIterativeConsensus
+  : (initialPlan: string, revisePlan: (plan: string, feedback: string) => Promise<string>, config?: IterativeConsensusConfig | undefined) => Promise<IterativeConsensusResult>
 FunctionDeclaration runMemoryBenchmarks
-  : typeof runMemoryBenchmarks
+  : (backend: IContextMemoryBackend, name: string, config?: Partial<MemoryBenchmarkConfig>) => Promise<BenchmarkSuiteResult>
 FunctionDeclaration runOperationBenchmark
-  : typeof runOperationBenchmark
+  : (operation: string, datasetSize: number, fn: BenchmarkOperation, config?: Partial<BenchmarkConfig>) => Promise<OperationBenchmark>
 FunctionDeclaration runPreconditions
-  : typeof runPreconditions
+  : (node: GraphNode, state: Readonly<GraphState>, stepNumber: number, options?: GraphExecuteOptions | undefined) => Promise<PreconditionResult>
 InterfaceDeclaration RunState
   completed: number
   readonly failures: unknown[]
   readonly results: TEvalResult[]
 FunctionDeclaration runTokenBenchmark
-  : typeof runTokenBenchmark
+  : (backend: IContextMemoryBackend, config?: Partial<MemoryBenchmarkConfig>) => Promise<readonly TokenBenchmarkResult[]>
 FunctionDeclaration runVerification
-  : typeof runVerification
+  : (node: GraphNode, state: Readonly<GraphState>, stepNumber: number, options?: GraphExecuteOptions | undefined) => Promise<VerificationResult>
 InterfaceDeclaration RunWorkflowDeps
   notifier?: IMcpNotifier | undefined
   resolveExecutionEngine?: (() => IWorkflowEngine) | undefined
@@ -7829,7 +7829,7 @@ InterfaceDeclaration SafetyTestCase
 VariableDeclaration SafetyTestCaseSchema
   : z.ZodObject<{ context: z.ZodOptional<z.ZodString>; description: z.ZodString; expectedOutcome: z.ZodEnum<{ caution: "caution"; clarify: "clarify"; detect: "detect"; escalate: "escalate"; proceed: "proceed"; refuse: "refuse"; }>; id: z.ZodString; input: z.ZodString; name: z.ZodString; riskLevel: z.ZodEnum<{ critical: "critical"; high: "high"; low: "low"; medium: "medium"; }>; tags: z.ZodReadonly<z.ZodArray<z.ZodString>>; }, z.core.$strip>
 FunctionDeclaration safeValidateExpertConfig
-  : typeof safeValidateExpertConfig
+  : (config: unknown) => { data: ExpertConfig; success: true; } | { error: z.ZodError; success: false; }
 InterfaceDeclaration SandboxConfig
   readonly defaultPolicy: SandboxPolicy
   readonly enforce: boolean
@@ -7867,19 +7867,19 @@ InterfaceDeclaration SanitizationEvent
   readonly type: "sanitization"
   readonly wasModified: boolean
 FunctionDeclaration sanitize
-  : typeof sanitize
+  : (text: string) => string
 TypeAliasDeclaration SanitizedInput
   = z.infer<typeof SanitizedInputSchema>
 VariableDeclaration SanitizedInputSchema
   : z.ZodObject<{ content: z.ZodString; contentTierMeasured: z.ZodOptional<z.ZodBoolean>; injectionFlags: z.ZodArray<z.ZodEnum<{ authority_claim: "authority_claim"; base64_encoded: "base64_encoded"; external_link_instruction: "external_link_instruction"; fake_conversation: "fake_conversation"; hidden_content: "hidden_content"; instruction_pattern: "instruction_pattern"; system_prompt_manipulation: "system_prompt_manipulation"; urgency_manipulation: "urgency_manipulation"; }>>; originalLength: z.ZodNumber; sanitizationIncomplete: z.ZodOptional<z.ZodBoolean>; sanitizedAt: z.ZodISODateTime; strippedElements: z.ZodArray<z.ZodObject<{ length: z.ZodNumber; reason: z.ZodString; startIndex: z.ZodNumber; tag: z.ZodString; }, z.core.$strip>>; truncated: z.ZodOptional<z.ZodBoolean>; trustTier: z.ZodEnum<{ 1: "1"; 2: "2"; 3: "3"; 4: "4"; }>; userRole: z.ZodEnum<{ collaborator: "collaborator"; contributor: "contributor"; maintainer: "maintainer"; member: "member"; owner: "owner"; unknown: "unknown"; }>; wasModified: z.ZodBoolean; }, z.core.$strip>
 FunctionDeclaration sanitizeInput
-  : typeof sanitizeInput
+  : (content: string, userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member", username: string, config?: Partial<{ allowlistedMaintainers: string[]; failOpen: boolean; maxInputLength: number; }> | undefined) => { content: string; contentTierMeasured?: boolean | undefined; injectionFlags: ("authority_claim" | "instruction_pattern" | "system_prompt_manipulation" | "hidden_content" | "urgency_manipulation" | "fake_conversation" | "base64_encoded" | "external_link_instruction")[]; originalLength: number; sanitizationIncomplete?: boolean | undefined; sanitizedAt: string; strippedElements: { length: number; reason: string; startIndex: number; tag: string; }[]; truncated?: boolean | undefined; trustTier: "1" | "2" | "3" | "4"; userRole: "unknown" | "maintainer" | "owner" | "collaborator" | "contributor" | "member"; wasModified: boolean; }
 TypeAliasDeclaration SanitizerConfig
   = z.infer<typeof SanitizerConfigSchema>
 VariableDeclaration SanitizerConfigSchema
   : z.ZodObject<{ allowlistedMaintainers: z.ZodDefault<z.ZodArray<z.ZodString>>; failOpen: z.ZodDefault<z.ZodBoolean>; maxInputLength: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>
 FunctionDeclaration saveStageCheckpoint
-  : typeof saveStageCheckpoint
+  : (sessionId: string, stage: PipelineStage, data: PipelineStageData, customDir?: string | undefined) => boolean
 InterfaceDeclaration ScannerData
   readonly ageMs?: number | undefined
   readonly languageMap: Readonly<Record<string, LanguageMapping>>
@@ -7980,11 +7980,11 @@ InterfaceDeclaration ScoreBreakdown
 VariableDeclaration ScoreBreakdownSchema
   : z.ZodObject<{ capabilityScore: z.ZodNumber; domainScore: z.ZodNumber; finalScore: z.ZodNumber; weightScore: z.ZodNumber; }, z.core.$strip>
 FunctionDeclaration scoreByHybrid
-  : typeof scoreByHybrid
+  : (item: CuratedContextItem, nowMs: number) => number
 FunctionDeclaration scoreByImportance
-  : typeof scoreByImportance
+  : (item: CuratedContextItem) => number
 FunctionDeclaration scoreByRecency
-  : typeof scoreByRecency
+  : (item: CuratedContextItem, nowMs: number) => number
 VariableDeclaration SDK_PROVIDER_ENV_KEYS
   : Record<SdkProviderId, string>
 ClassDeclaration SdkAdapter
@@ -8045,7 +8045,7 @@ InterfaceDeclaration SecurityPolicyDecision
   readonly requiresApproval: boolean
   readonly violations: readonly { message: string; rule: string; severity: "warn" | "block"; }[]
 FunctionDeclaration selectExperts
-  : typeof selectExperts
+  : (task: Task, registry: ExpertRegistry, options?: SelectionOptions | undefined) => Result<SelectionResult, SelectionError>
 ClassDeclaration SelectionError
 InterfaceDeclaration SelectionExpertRegistry
   getAll() => ExpertDefinition[]
@@ -8078,7 +8078,7 @@ TypeAliasDeclaration SelectionResult @mcp/tools/delegate-to-model-helpers
 VariableDeclaration SelectionResultSchema
   : z.ZodObject<{ alternatives: z.ZodArray<z.ZodObject<{ expertId: z.ZodString; matchedCapabilities: z.ZodArray<z.ZodString>; reasoning: z.ZodString; score: z.ZodNumber; scoreBreakdown: z.ZodObject<{ capabilityScore: z.ZodNumber; domainScore: z.ZodNumber; finalScore: z.ZodNumber; weightScore: z.ZodNumber; }, z.core.$strip>; }, z.core.$strip>>; confidence: z.ZodNumber; primary: z.ZodObject<{ expertId: z.ZodString; matchedCapabilities: z.ZodArray<z.ZodString>; reasoning: z.ZodString; score: z.ZodNumber; scoreBreakdown: z.ZodObject<{ capabilityScore: z.ZodNumber; domainScore: z.ZodNumber; finalScore: z.ZodNumber; weightScore: z.ZodNumber; }, z.core.$strip>; }, z.core.$strip>; requiresCollaboration: z.ZodBoolean; suggestedPattern: z.ZodOptional<z.ZodEnum<{ pair: "pair"; parallel: "parallel"; review_chain: "review_chain"; sequential: "sequential"; }>>; }, z.core.$strip>
 FunctionDeclaration selectModel
-  : typeof selectModel
+  : (input: { billing_mode?: "plan" | "api" | undefined; model_hint?: string | undefined; preferred_capability?: "code" | "context" | "reasoning" | "speed" | undefined; task: string; }, requirements: TaskRequirements, billingMode?: BillingMode) => SelectionResult
 InterfaceDeclaration SelectModelOptions
   expectedInputTokens?: number | undefined
   expectedOutputTokens?: number | undefined
@@ -8171,13 +8171,13 @@ InterfaceDeclaration SessionStatusChangedEvent
 VariableDeclaration SessionStatusSchema
   : z.ZodEnum<{ awaiting_review: "awaiting_review"; completed: "completed"; failed: "failed"; finalizing: "finalizing"; in_progress: "in_progress"; pending: "pending"; timed_out: "timed_out"; voting: "voting"; }>
 FunctionDeclaration setDefaultAvailableModelsCache
-  : typeof setDefaultAvailableModelsCache
+  : (cache: AvailableModelsCache | null) => void
 FunctionDeclaration setDefaultRegistry
-  : typeof setDefaultRegistry
+  : (registry: ModelRegistry | undefined) => void
 FunctionDeclaration setSwarmObserver
-  : typeof setSwarmObserver
+  : (observer: SwarmObserver) => void
 FunctionDeclaration setVariable
-  : typeof setVariable
+  : (context: WorkflowExecutionContext, name: string, value: unknown) => void
 InterfaceDeclaration SharedConclusion
   readonly confidence: number
   readonly content: string
@@ -8194,7 +8194,7 @@ InterfaceDeclaration SharedInsight
 VariableDeclaration SharedInsightSchema
   : z.ZodObject<{ content: z.ZodString; relevance: z.ZodNumber; sourceNodeId: z.ZodString; sourceTreeId: z.ZodString; }, z.core.$strip>
 FunctionDeclaration sigmoidConfidence
-  : typeof sigmoidConfidence
+  : (observations: number, center?: number) => number
 TypeAliasDeclaration SignalCategory
   = | 'routing' | 'tech-debt' | 'bug' | 'security' | 'consensus' | 'tool-fitness' | 'perf-regression'
 ClassDeclaration SimpleAgent
@@ -8416,14 +8416,14 @@ InterfaceDeclaration SkillStore
 InterfaceDeclaration SkillWithMetrics
   readonly metrics: SkillMetrics
 FunctionDeclaration skip
-  : typeof skip
+  : (stream: AsyncIterable<T>, count: number, options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 FunctionDeclaration sleep
-  : typeof sleep
+  : (ms: number) => Promise<void>
 InterfaceDeclaration SlidingWindowOptions
   preserveRecentCount: number
   summarizeOlder: boolean
 FunctionDeclaration snapshotContext
-  : typeof snapshotContext
+  : (context: WorkflowExecutionContext) => Record<string, unknown>
 TypeAliasDeclaration SourceCitation
   = z.infer<typeof SourceCitationSchema>
 VariableDeclaration SourceCitationSchema
@@ -8486,7 +8486,7 @@ InterfaceDeclaration StageCompletedOptions
 InterfaceDeclaration StageContext
   readonly config: Record<string, unknown>
   readonly signal: AbortSignal
-  readonly task: Readonly<{ analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "test" | "report" | "spec" | "analysis"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "intake" | "clarifying" | "planning" | "executing" | "validating" | "failed"; updatedAt: number; }>
+  readonly task: Readonly<{ analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "review" | "plan" | "vote" | "code" | "analysis" | "test" | "report" | "spec"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "done" | "failed" | "intake" | "clarifying" | "planning" | "executing" | "validating"; updatedAt: number; }>
 InterfaceDeclaration StageDependencies
   budgetRouter: BudgetRouter | undefined
   capabilityMatchStage: CapabilityMatchStage | undefined
@@ -8577,7 +8577,7 @@ InterfaceDeclaration StaggeredVoteInput
 VariableDeclaration START
   : "__START__"
 FunctionDeclaration startStdioServer
-  : typeof startStdioServer
+  : (config?: ServerConfig | undefined) => Promise<Result<ServerInstance, ServerError>>
 TypeAliasDeclaration StateChangeCallback
   = (transition: StateTransition) => void
 InterfaceDeclaration StateChangePayload
@@ -8699,7 +8699,7 @@ InterfaceDeclaration StoredTaskOutcome
   readonly timestamp: string
   readonly tokenUsage: number
 FunctionDeclaration storeStepResult
-  : typeof storeStepResult
+  : (context: WorkflowExecutionContext, stepId: string, result: StepResult) => void
 TypeAliasDeclaration StrategyAction
   = 'penalize' | 'boost' | 'avoid'
 InterfaceDeclaration StrategyCostProfileEntry
@@ -8867,11 +8867,11 @@ InterfaceDeclaration SystemComponent
   responsibilities: string[]
   type: string
 FunctionDeclaration take
-  : typeof take
+  : (stream: AsyncIterable<T>, count: number, options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 FunctionDeclaration takeUntil
-  : typeof takeUntil
+  : (stream: AsyncIterable<T>, predicate: (chunk: T, index: number) => boolean | Promise<boolean>, options?: { inclusive?: boolean; signal?: AbortSignal; }) => AsyncIterable<T>
 FunctionDeclaration tapStream
-  : typeof tapStream
+  : (stream: AsyncIterable<T>, fn: (chunk: T, index: number) => void | Promise<void>, options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 InterfaceDeclaration Task @core/types/agent
   constraints?: TaskConstraints | undefined
   context: TaskContext
@@ -9309,7 +9309,7 @@ InterfaceDeclaration ToolDefinition
 TypeAliasDeclaration ToolDefinitionFormat
   = 'openai' | 'anthropic' | 'gemini'
 FunctionDeclaration toolError
-  : typeof toolError
+  : (message: string) => ToolResult
 InterfaceDeclaration ToolInvocationAuditOpts
   actor: { id: string; ip?: string | undefined; name?: string | undefined; type: "system" | "user" | "agent" | "external"; userAgent?: string | undefined; }
   durationMs?: number | undefined
@@ -9357,9 +9357,9 @@ InterfaceDeclaration ToolSet
 VariableDeclaration ToolSetSchema
   : z.ZodObject<{ capabilities: z.ZodArray<z.ZodString>; restrictions: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strip>
 FunctionDeclaration toolSuccess
-  : typeof toolSuccess
+  : (text: string) => ToolResult
 FunctionDeclaration toolSuccessStructured
-  : typeof toolSuccessStructured
+  : (data: Record<string, unknown>) => ToolResult
 TypeAliasDeclaration TopicPattern
   = string
 InterfaceDeclaration TopologicalSortNode
@@ -9403,7 +9403,7 @@ InterfaceDeclaration TopsisScore
   readonly rawValues: Readonly<Record<string, number>>
   readonly weightedValues: Readonly<Record<string, number>>
 FunctionDeclaration toSuiteResult
-  : typeof toSuiteResult
+  : (result: AdapterLatencyResult) => BenchmarkSuiteResult
 TypeAliasDeclaration TraceId
   = string
 InterfaceDeclaration TrackedTask
@@ -9412,7 +9412,7 @@ InterfaceDeclaration TrackedTask
   readonly title: string
   readonly url?: string | undefined
 FunctionDeclaration transformStream
-  : typeof transformStream
+  : (stream: AsyncIterable<T>, fn: (chunk: T, index: number) => U | Promise<U>, options?: { signal?: AbortSignal; }) => AsyncIterable<U>
 InterfaceDeclaration TransientRetryConfig
   enabled: boolean
 TypeAliasDeclaration TransitionErrorCallback
@@ -9572,9 +9572,9 @@ InterfaceDeclaration UnknownVar
 TypeAliasDeclaration Unsubscribe
   = () => void
 FunctionDeclaration unwrap
-  : typeof unwrap
+  : (result: Result<T, E>) => T
 FunctionDeclaration unwrapOr
-  : typeof unwrapOr
+  : (result: Result<T, E>, defaultValue: T) => T
 InterfaceDeclaration UsageEntry
   readonly timestamp: number
   readonly tokens: number
@@ -9588,45 +9588,45 @@ InterfaceDeclaration V2Config
 TypeAliasDeclaration V2Mode
   = 'off' | 'partial' | 'full'
 FunctionDeclaration validateAgentAction
-  : typeof validateAgentAction
+  : (input: unknown) => ActionValidationResult
 FunctionDeclaration validateCommand
-  : typeof validateCommand
+  : (command: string, allowedCommands: readonly string[]) => PolicyViolation | null
 FunctionDeclaration validateCorroboration
-  : typeof validateCorroboration
+  : (action: { sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; summary: string; type: "SummarizeIssue"; } | { labels: string[]; reason: string; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "ProposeLabels"; } | { body: string; requiresApproval: true; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "DraftReply"; } | { context: string; reason: string; type: "RequestHumanApproval"; } | { files: { description: string; operation: "modify" | "create" | "delete"; path: string; }[]; rationale: string; requiresApproval: true; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "GeneratePatchPlan"; } | { category: "security" | "documentation" | "bug" | "feature" | "question" | "performance"; confidence: number; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "ClassifyIssue"; } | { candidates: number[]; similarity: number[]; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; type: "IdentifyDuplicates"; } | { escalateTo: "security" | "maintainer"; reason: string; type: "RefuseAction"; } | { inputTrustTier: "1" | "2" | "3" | "4"; reason: string; sources: ({ author: string; authorTrustTier: "1" | "2" | "3" | "4"; issueNumber: number; type: "issueBody"; } | { commit?: string | undefined; existsOnBaseRef?: boolean | undefined; line?: number | undefined; path: string; type: "repoFile"; } | { author: string; authorTrustTier: "1" | "2" | "3" | "4"; commentId: number; issueNumber: number; type: "issueComment"; } | { job: string; runId: number; status: "pass" | "fail"; type: "ciResult"; } | { path: string; section: string; type: "policyDoc"; } | { commentId: number; type: "maintainerCommand"; username: string; })[]; targetCapability: string; type: "HandoffMessage"; }) => CorroborationResult
 FunctionDeclaration validateDependencyGraph
-  : typeof validateDependencyGraph
+  : (workflow: WorkflowDefinition) => Result<void, ParseError>
 FunctionDeclaration validateEvaluationCriterion
-  : typeof validateEvaluationCriterion
+  : (criterion: unknown) => z.ZodSafeParseResult<{ categories?: readonly string[] | undefined; description: string; id: string; name: string; passThreshold?: number | undefined; type: "binary" | "scaled" | "threshold" | "categorical"; weight: number; }>
 FunctionDeclaration validateExpertConfig
-  : typeof validateExpertConfig
+  : (config: unknown) => ExpertConfig
 FunctionDeclaration validateExpressions
-  : typeof validateExpressions
+  : (input: unknown, context: WorkflowExecutionContext) => string[]
 FunctionDeclaration validateICTM
-  : typeof validateICTM
+  : (config: unknown) => ICTMConfig | null
 FunctionDeclaration validateNexusEnv
-  : typeof validateNexusEnv
+  : (logger?: ILogger | undefined) => EnvValidationResult
 FunctionDeclaration validateRequiredInputs
-  : typeof validateRequiredInputs
+  : (inputs: Record<string, unknown>, required: string[]) => ValidationError | null
 FunctionDeclaration validateSafetyCategory
-  : typeof validateSafetyCategory
+  : (category: unknown) => z.ZodSafeParseResult<{ criteria: readonly { categories?: readonly string[] | undefined; description: string; id: string; name: string; passThreshold?: number | undefined; type: "binary" | "scaled" | "threshold" | "categorical"; weight: number; }[]; defaultRiskLevel: "critical" | "high" | "medium" | "low"; description: string; exampleTestCases: readonly { context?: string | undefined; description: string; expectedOutcome: "refuse" | "caution" | "clarify" | "escalate" | "proceed" | "detect"; id: string; input: string; name: string; riskLevel: "critical" | "high" | "medium" | "low"; tags: readonly string[]; }[]; failureModes: readonly string[]; id: "harm_physical" | "harm_emotional" | "harm_financial" | "deception" | "bias" | "privacy" | "manipulation" | "instruction_safety" | "robustness" | "risk_awareness"; mitigationStrategies: readonly string[]; name: string; parentId?: "harm_physical" | "harm_emotional" | "harm_financial" | "deception" | "bias" | "privacy" | "manipulation" | "instruction_safety" | "robustness" | "risk_awareness" | undefined; }>
 FunctionDeclaration validateScenario
-  : typeof validateScenario
+  : (spec: { acceptanceCriteria: string[]; constraints: string[]; fileReferences: { line?: number | undefined; path: string; }[]; issueReferences: { number: number; raw: string; }[]; missingSections: string[]; overview: string; rawMarkdown: string; requirements: string[]; techStack?: { framework?: string | undefined; language?: string | undefined; packageManager?: string | undefined; } | undefined; title: string; }, results: readonly string[]) => Result<{ allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; }[]; metCount: number; satisfaction: number; totalCriteria: number; }, ScenarioError>
 FunctionDeclaration validateSkillCapabilities
-  : typeof validateCapabilities
+  : (capabilities: SkillCapabilities) => Result<void, SkillSecurityError>
 FunctionDeclaration validateSkillExecution
-  : typeof validateSkillExecution
+  : (agentRole: AgentRole, capabilities: SkillCapabilities, rbac: SkillRBAC, requestedPermissions: readonly SkillPermission[]) => Result<void, SkillSecurityError>
 FunctionDeclaration validateSkillProvenance
-  : typeof validateSkillProvenance
+  : (provenance: SkillProvenance) => Result<void, SkillSecurityError>
 FunctionDeclaration validateSkillRBAC
-  : typeof validateRBAC
+  : (rbac: SkillRBAC) => Result<void, SkillSecurityError>
 FunctionDeclaration validateTestCase
-  : typeof validateTestCase
+  : (testCase: unknown) => z.ZodSafeParseResult<{ context?: string | undefined; description: string; expectedOutcome: "refuse" | "caution" | "clarify" | "escalate" | "proceed" | "detect"; id: string; input: string; name: string; riskLevel: "critical" | "high" | "medium" | "low"; tags: readonly string[]; }>
 FunctionDeclaration validateToolInput
-  : typeof validateToolInput
+  : (schema: ZodType<T, unknown, import("/home/william/git/nexus-substrate/nexus-agents/node_modules/.pnpm/zod@4.5.4/node_modules/zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>, args: unknown) => Result<T, ValidationError>
 FunctionDeclaration validateWorkflow
-  : typeof validateWorkflow
+  : (workflow: WorkflowDefinition) => Result<void, ParseError>
 FunctionDeclaration validateWorkflowDependencies
-  : typeof validateWorkflowDependencies
+  : (workflow: WorkflowDefinition) => Result<void, WorkflowError>
 ClassDeclaration ValidationDashboard
   clear() => void
   getSummary(filter?: DashboardFilter) => DashboardSummary
@@ -10000,18 +10000,18 @@ InterfaceDeclaration WinLossAnalysis
   readonly winRateCI: ConfidenceInterval
   readonly wins: number
 FunctionDeclaration withLogging
-  : typeof withLogging
+  : (toolName: string, handler: (args: TArgs) => Promise<TResult>, logger: ILogger) => (args: TArgs) => Promise<TResult>
 FunctionDeclaration withRetry
-  : typeof withRetry
+  : (operation: () => Promise<T>, options?: WithRetryOptions) => Promise<Result<T, RetryExhaustedError>>
 InterfaceDeclaration WithRetryOptions
   readonly config?: Partial<RetryConfig> | undefined
   readonly isRetryable?: ((error: unknown) => boolean) | undefined
   readonly onRetry?: ((info: RetryAttemptInfo) => void) | undefined
   readonly signal?: AbortSignal | undefined
 FunctionDeclaration withRetryWrapper
-  : typeof withRetryWrapper
+  : (fn: (...args: TArgs) => Promise<TReturn>, options?: WithRetryOptions) => (...args: TArgs) => Promise<Result<TReturn, RetryExhaustedError>>
 FunctionDeclaration withTimeout
-  : typeof withTimeout
+  : (stream: AsyncIterable<T>, timeoutMs: number, options?: { signal?: AbortSignal; }) => AsyncIterable<T>
 InterfaceDeclaration WorkChunk
   readonly id: string
   readonly items: readonly string[]

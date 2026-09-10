@@ -28,7 +28,14 @@ const SRC = '/packages/nexus-agents/src';
 
 /** Builds an in-memory entry point so the test never touches the real package. */
 function surfaceOf(files: Record<string, string>): string {
-  const project = new Project({ useInMemoryFileSystem: true });
+  // `strict` mirrors the real tsconfig. Without it `strictNullChecks` is OFF, so
+  // `string | undefined` renders as plain `string` and any test about nullability
+  // silently exercises a different type system than production — a harness that
+  // cannot observe the change it is asserting (#6061).
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    compilerOptions: { strict: true },
+  });
   for (const [path, text] of Object.entries(files)) project.createSourceFile(SRC + path, text);
   const entry = project.getSourceFileOrThrow(`${SRC}/index.ts`);
   return renderSurface(extractSurface(entry));
@@ -347,5 +354,90 @@ describe('inline comments are not part of the surface (#5972)', () => {
         | { readonly kind: 'b' };`,
     });
     expect(commented).toContain("'b'");
+  });
+});
+
+describe('exported function SIGNATURES are recorded (#6061)', () => {
+  // A FunctionDeclaration's own type resolves to `typeof <its own name>` — the
+  // shortest valid rendering when the name is in scope — so recording
+  // `node.getType().getText(node)` produced a string CONSTANT with respect to the
+  // signature. Parameters, arity and return type were invisible for all 461
+  // exported functions, and the gate could report no signature change on any of
+  // them. Found by accident: a positional-number to object parameter change on a
+  // published function produced zero snapshot diff (#5385).
+
+  it('records parameters and the return type, not a self-referential placeholder', () => {
+    const out = surfaceOf({
+      '/index.ts': 'export function f(a: string, b: number): boolean { return true; }',
+    });
+    expect(out).not.toContain('typeof f');
+    expect(out).toContain('(a: string, b: number) => boolean');
+  });
+
+  it('a widened RETURN TYPE changes the snapshot', () => {
+    // The exact mutation proven invisible before this fix.
+    const before = surfaceOf({ '/index.ts': 'export function f(a: string): string { return a; }' });
+    const after = surfaceOf({
+      '/index.ts': 'export function f(a: string): string | undefined { return a; }',
+    });
+    expect(after).not.toBe(before);
+  });
+
+  it('a REMOVED parameter changes the snapshot', () => {
+    const before = surfaceOf({ '/index.ts': 'export function f(a: string, b: number): void {}' });
+    const after = surfaceOf({ '/index.ts': 'export function f(a: string): void {}' });
+    expect(after).not.toBe(before);
+  });
+
+  it('a RENAMED parameter changes the snapshot — callers using named args break', () => {
+    const before = surfaceOf({ '/index.ts': 'export function f(from: string): void {}' });
+    const after = surfaceOf({ '/index.ts': 'export function f(to: string): void {}' });
+    expect(after).not.toBe(before);
+  });
+
+  it('marks an optional parameter, and a DEFAULTED one as optional too', () => {
+    // A default makes the parameter optional to a CALLER even with no question
+    // token, so both forms record the same way: removing the default is not a
+    // break, removing the parameter is.
+    const q = surfaceOf({ '/index.ts': 'export function f(a?: string): void {}' });
+    const d = surfaceOf({ '/index.ts': "export function f(a: string = 'x'): void {}" });
+    expect(q).toContain('a?:');
+    expect(d).toContain('a?:');
+  });
+
+  it('marks a rest parameter', () => {
+    const out = surfaceOf({ '/index.ts': 'export function f(...xs: string[]): void {}' });
+    expect(out).toContain('...xs');
+  });
+
+  it('records EVERY overload, not just the first', () => {
+    // Recording one would trade a total blind spot for a narrower one.
+    const out = surfaceOf({
+      '/index.ts': [
+        'export function f(a: string): string;',
+        'export function f(a: number): number;',
+        'export function f(a: unknown): unknown { return a; }',
+      ].join('\n'),
+    });
+    expect(out).toContain('(a: string) => string');
+    expect(out).toContain('(a: number) => number');
+  });
+
+  it('an exported non-callable const still records its type', () => {
+    // The `getCallSignatures().length === 0` branch — a const's type text was
+    // already meaningful and must not regress to nothing.
+    const out = surfaceOf({ '/index.ts': 'export const LIMIT = 50 as const;' });
+    expect(out).toContain('50');
+  });
+
+  it('an exported arrow const records its signature too', () => {
+    const out = surfaceOf({ '/index.ts': 'export const f = (a: string): boolean => a === "x";' });
+    expect(out).toContain('(a: string) => boolean');
+  });
+
+  it('output stays byte-stable across two runs of the same input', () => {
+    // The pre-existing stability property, re-asserted over the new renderer.
+    const src = { '/index.ts': 'export function f(a: string, b?: number): void {}' };
+    expect(surfaceOf(src)).toBe(surfaceOf(src));
   });
 });

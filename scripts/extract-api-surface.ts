@@ -32,7 +32,7 @@
  *
  * @module scripts/extract-api-surface
  */
-import { Project, Node, Scope, SyntaxKind, type SourceFile } from 'ts-morph';
+import { Project, Node, Scope, SyntaxKind, type Signature, type SourceFile } from 'ts-morph';
 import { join } from 'node:path';
 
 const PKG = join(process.cwd(), 'packages', 'nexus-agents');
@@ -232,11 +232,49 @@ function aliasLines(node: Node): string[] {
   return [];
 }
 
+/**
+ * Render ONE call signature as `(param: Type, …) => Return`.
+ *
+ * Parameters come from the DECLARATION (which knows `?` and `...`), the return
+ * type from the SIGNATURE (which knows the inferred type when there is no
+ * annotation). Neither source alone is sufficient.
+ */
+function callSignatureText(sig: Signature, node: Node): string {
+  const params = sig.getParameters().map((p) => {
+    const decl = p.getDeclarations()[0];
+    const isParam = decl !== undefined && Node.isParameterDeclaration(decl);
+    const rest = isParam && decl.isRestParameter() ? '...' : '';
+    // A parameter with a default is optional to a CALLER even though it carries
+    // no question token, so both forms are recorded as optional.
+    const optional = isParam && (decl.isOptional() || decl.hasInitializer()) ? '?' : '';
+    const type = normalizeTypeText(p.getTypeAtLocation(node).getText(node));
+    return `${rest}${p.getName()}${optional}: ${type}`;
+  });
+  const ret = normalizeTypeText(sig.getReturnType().getText(node));
+  return `(${params.join(', ')}) => ${ret}`;
+}
+
+/**
+ * The recorded shape of an exported function or const.
+ *
+ * A FunctionDeclaration's own type resolves to `typeof <its own name>` — the
+ * shortest valid rendering when the name is in scope — so the previous
+ * `node.getType().getText(node)` recorded a string that was CONSTANT with
+ * respect to the signature. Parameters, arity and return type were invisible for
+ * all 461 exported functions, and the gate could not report any signature
+ * change on any of them (#6061). Interface METHODS never had this problem: a
+ * method's type has no name to collapse to, which is why the gate has caught
+ * real changes elsewhere and this stayed hidden.
+ *
+ * Overloads are ALL recorded, in declaration order. Recording only the first
+ * would trade one blind spot for a narrower one.
+ */
 function signatureLines(node: Node): string[] {
-  if (Node.isFunctionDeclaration(node) || Node.isVariableDeclaration(node)) {
-    return [`  : ${normalizeTypeText(node.getType().getText(node))}`];
-  }
-  return [];
+  if (!Node.isFunctionDeclaration(node) && !Node.isVariableDeclaration(node)) return [];
+  const sigs = node.getType().getCallSignatures();
+  // Not callable — an exported const whose type text is already meaningful.
+  if (sigs.length === 0) return [`  : ${normalizeTypeText(node.getType().getText(node))}`];
+  return sigs.map((sig) => `  : ${callSignatureText(sig, node)}`);
 }
 
 function memberLines(node: Node): string[] {
