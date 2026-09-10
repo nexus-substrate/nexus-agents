@@ -375,3 +375,79 @@ describe('optionTally (#4452)', () => {
     expect(split).not.toBe(unanimous);
   });
 });
+
+describe('one canonical voter-field order (#6057)', () => {
+  // The voter-entry field list was enumerated in three places with nothing
+  // linking them: the schema (what can be READ), the hash projection (what is
+  // ATTESTED), and the builder (what is WRITTEN). #6049 and #6050 were both
+  // that drift. Now one explicit tuple drives the projection and is compile-
+  // checked against the schema in both directions.
+  const MAXIMAL_1_7 = {
+    version: '1.7' as const,
+    id: 'vote-max',
+    sequence: 0,
+    recordedAt: '2026-06-15T00:00:00.000Z',
+    proposalHash: 'c'.repeat(64),
+    proposal: 'max',
+    strategy: 'higher_order' as const,
+    decision: 'approved' as const,
+    approvalPercentage: 100,
+    voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+    voters: [
+      {
+        role: 'security' as const,
+        decision: 'approve' as const,
+        confidence: 0.9,
+        reasoning: 'grounds',
+        reasoningTruncated: true as const,
+        retried: true as const,
+      },
+    ],
+  };
+
+  it('pins the MAXIMAL 1.7 entry — every voter field present — to a golden captured by execution', () => {
+    // Captured on the pre-refactor projection BEFORE the tuple existed, and it
+    // matched the plan's hand derivation. If this moves, a historical hash moved.
+    expect(computeVoteRecordHash(MAXIMAL_1_7 as never)).toBe(
+      '954c1f7aa2a4097a8e8964597791487f3d732f309469afb87c869bbed1e3b422'
+    );
+  });
+
+  it("reordering a voter entry's keys does not change the hash", () => {
+    // The projection rebuilds in canonical order, so a formatter or merge tool
+    // that reorders object keys must not flip a legitimate record to
+    // hash_mismatch. No voter-level test asserted this before.
+    const v = MAXIMAL_1_7.voters[0]!;
+    const reordered = {
+      retried: v.retried,
+      reasoning: v.reasoning,
+      confidence: v.confidence,
+      reasoningTruncated: v.reasoningTruncated,
+      decision: v.decision,
+      role: v.role,
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [reordered] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_7 as never)
+    );
+  });
+
+  it('an explicitly-undefined optional hashes identically to an absent one', () => {
+    // Present-only means "has a value", not "has a key".
+    const v = MAXIMAL_1_7.voters[0]!;
+    const { retried: _r, ...withoutRetried } = v;
+    const explicitUndefined = { ...withoutRetried, retried: undefined };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [explicitUndefined] })).toBe(
+      computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [withoutRetried] })
+    );
+  });
+
+  it('the pair: dropping a present flag DOES move the hash', () => {
+    // Without this, a projection that ignored `retried` entirely would pass the
+    // two tests above.
+    const v = MAXIMAL_1_7.voters[0]!;
+    const { retried: _r, ...withoutRetried } = v;
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_7, voters: [withoutRetried] })).not.toBe(
+      computeVoteRecordHash(MAXIMAL_1_7 as never)
+    );
+  });
+});
