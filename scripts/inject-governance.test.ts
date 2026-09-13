@@ -1293,10 +1293,20 @@ describe('inject-governance AGENTS.md generated tables (#6105)', () => {
       end: MARKERS.rulesIndexEnd,
       from: '`**/*.ts`, ',
     },
+    {
+      // #6130: the stamp is rendered into AGENTS.md by the same
+      // `generateVersionSection` the CLAUDE.md render uses, so it is measured
+      // like the tables — before, only a replacer wrote it and nothing read it.
+      name: 'governance stamp',
+      issue: '#6130',
+      start: MARKERS.versionStart,
+      end: MARKERS.versionEnd,
+      from: 'Governance Version: ',
+    },
   ] as const;
 
   it.each(SECTIONS)(
-    '$name: a perturbation of the AGENTS.md copy alone is named by check, repaired by inject, and both files then carry the generated table',
+    '$name: a perturbation of the AGENTS.md copy alone is named by check, repaired by inject, and both files then carry the generated section',
     async ({ name, issue, start, end, from }) => {
       await withInjectSnapshot(async () => {
         const original = readFileSync(box('AGENTS.md'), 'utf-8');
@@ -1406,7 +1416,7 @@ describe('inject-governance AGENTS.md generated tables (#6105)', () => {
     });
   });
 
-  it('all three marker pairs present: no missing-section report', async () => {
+  it('all marker pairs present: no missing-section report', async () => {
     const { ok, output } = await runCheck();
     expect(ok).toBe(true);
     expect(output).not.toContain(MISSING);
@@ -1436,6 +1446,125 @@ describe('inject-governance AGENTS.md generated tables (#6105)', () => {
       );
       const after = await runCheck();
       expect(after.ok).toBe(true);
+    });
+  });
+
+  // #6130: `check` did not measure AGENTS.md's copy of the governance stamp,
+  // nor the two count phrases. `inject` wrote them through the ancillary
+  // replacer, `renderClaudeMd` copied the stale value into CLAUDE.md and then
+  // overwrote it with the computed one, so CLAUDE.md was a fixed point and a
+  // hand-edited `_Governance Version:_` in AGENTS.md passed `check` on the
+  // real tree. Now the AGENTS.md render is the one writer of all three, and
+  // `check` compares the render to the file.
+  describe('governance stamp and count phrases (#6130)', () => {
+    const STAMP = /_Governance Version: [0-9a-f]{12}_/;
+    const BOGUS = '_Governance Version: stale000000_';
+    const STAMP_STALE = 'AGENTS.md governance stamp is stale (#6130)';
+    const OUTSIDE = 'AGENTS.md differs outside its generated sections';
+
+    /** `content` with its stamp replaced by the bogus one; asserts a stamp was there. */
+    function withBogusStamp(content: string): string {
+      expect(STAMP.test(content)).toBe(true);
+      return content.replace(STAMP, BOGUS);
+    }
+
+    it('a bogus AGENTS.md stamp alone fails check naming the stamp with both values; inject repairs it', async () => {
+      await withInjectSnapshot(async () => {
+        const original = readFileSync(box('AGENTS.md'), 'utf-8');
+        const claudeOriginal = readFileSync(box('CLAUDE.md'), 'utf-8');
+        const expectedLine = STAMP.exec(original)?.[0] ?? '';
+        const perturbed = withBogusStamp(original);
+        writeFileSync(box('AGENTS.md'), perturbed);
+
+        const before = await runCheck();
+        expect(before.ok).toBe(false);
+        const line = String(firstDiffLine(original, perturbed));
+        expect(before.output).toContain(`${STAMP_STALE} — first difference at AGENTS.md:${line}`);
+        expect(before.output).toContain(`  expected: ${expectedLine}`);
+        expect(before.output).toContain(`  on disk:  ${BOGUS}`);
+        // Its own cause, not prose drift; and CLAUDE.md is a fixed point.
+        expect(before.output).not.toContain(OUTSIDE);
+        expect(before.output).not.toContain(BLOCK_STALE);
+        expect(before.output).toContain('pnpm governance:inject');
+
+        await runInject();
+        expect(readFileSync(box('AGENTS.md'), 'utf-8')).toBe(original);
+        expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toBe(claudeOriginal);
+        const after = await runCheck();
+        expect(after.output).not.toContain(STAMP_STALE);
+        expect(after.ok).toBe(true);
+      });
+    });
+
+    const COUNT_PHRASES = [
+      { label: 'skills count', pattern: /for all \d+ skills\./, bogus: 'for all 1 skills.' },
+      {
+        label: 'MCP tools count',
+        pattern: /Nexus-agents exposes \d+ MCP tools/,
+        bogus: 'Nexus-agents exposes 1 MCP tools',
+      },
+    ] as const;
+
+    it.each(COUNT_PHRASES)(
+      '$label: a stale AGENTS.md count phrase is named with both values; inject repairs it',
+      async ({ label, pattern, bogus }) => {
+        await withInjectSnapshot(async () => {
+          const original = readFileSync(box('AGENTS.md'), 'utf-8');
+          const expected = pattern.exec(original)?.[0] ?? '';
+          expect(expected).not.toBe('');
+          expect(expected).not.toBe(bogus);
+          writeFileSync(box('AGENTS.md'), original.replace(pattern, bogus));
+
+          const before = await runCheck();
+          expect(before.ok).toBe(false);
+          expect(before.output).toContain(
+            `AGENTS.md ${label} is stale (#6130): ${bogus} → ${expected}`
+          );
+          // A generated value, not prose drift.
+          expect(before.output).not.toContain(OUTSIDE);
+
+          await runInject();
+          expect(readFileSync(box('AGENTS.md'), 'utf-8')).toBe(original);
+          const after = await runCheck();
+          expect(after.output).not.toContain(`AGENTS.md ${label} is stale`);
+          expect(after.ok).toBe(true);
+        });
+      }
+    );
+
+    it('a stale stamp, a stale table and a stale count phrase are each named — measured independently, not first-only', async () => {
+      await withSandboxFile('AGENTS.md', async (original) => {
+        const [tools] = SECTIONS;
+        const [skills] = COUNT_PHRASES;
+        const expectedCount = skills.pattern.exec(original)?.[0] ?? '';
+        const edited = withBogusStamp(
+          dropInSection(original, tools.start, tools.end, tools.from)
+        ).replace(skills.pattern, skills.bogus);
+        writeFileSync(box('AGENTS.md'), edited);
+
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('AGENTS.md MCP Tools Reference is stale (#6105)');
+        expect(output).toContain(STAMP_STALE);
+        expect(output).toContain(
+          `AGENTS.md skills count is stale (#6130): ${skills.bogus} → ${expectedCount}`
+        );
+        expect(output).toContain('pnpm governance:inject');
+      });
+    });
+
+    it('a bogus stamp alongside deleted table markers: both the missing section and the stale stamp are named', async () => {
+      await withSandboxFile('AGENTS.md', async (original) => {
+        const [tools] = SECTIONS;
+        writeFileSync(
+          box('AGENTS.md'),
+          withBogusStamp(withoutMarkers(original, tools.start, tools.end))
+        );
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain(`${MISSING} ${tools.name} section`);
+        expect(output).toContain(STAMP_STALE);
+      });
     });
   });
 });
