@@ -468,6 +468,23 @@ function generateToolIndex(tools: ToolMetadata[]): string {
 }
 
 /**
+ * Inject the MCP tools reference between its markers. Soft-skips when the
+ * markers are absent, like {@link injectWorkflowIndex} and
+ * {@link injectRulesIndex}: the same injector writes AGENTS.md's copy (#6105)
+ * and CLAUDE.md's, so a file without the markers is left alone rather than
+ * having the section appended to it.
+ */
+function injectToolIndex(content: string, tools: ToolMetadata[]): string {
+  if (!content.includes(MARKERS.toolIndexStart)) return content;
+  return injectSection(
+    content,
+    MARKERS.toolIndexStart,
+    MARKERS.toolIndexEnd,
+    generateToolIndex(tools)
+  );
+}
+
+/**
  * Generate the README MCP tools table. Uses short descriptions from
  * `README_TOOL_DESCRIPTIONS`, falling back to the long `TOOL_DESCRIPTIONS`
  * entry when no short variant exists (with a warning so the maintainer
@@ -931,21 +948,142 @@ function injectRulesIndex(content: string, rules: readonly RuleMetadata[]): stri
   );
 }
 
+// ============================================================================
+// AGENTS.md generated sections (#2657, #6105) — one render, like CLAUDE.md's
+// ============================================================================
+
+/** What the AGENTS.md generated sections are rendered from. */
+interface AgentsMdSources {
+  tools: ToolMetadata[];
+  workflowRows: readonly WorkflowRow[];
+  rules: readonly RuleMetadata[];
+}
+
+function loadAgentsMdSources(tools: ToolMetadata[]): AgentsMdSources {
+  return { tools, workflowRows: extractWorkflowRows(), rules: extractRules() };
+}
+
+/** One generated section of AGENTS.md: its markers and the injector that writes it. */
+interface AgentsMdSection {
+  /** Named in the drift message, e.g. `AGENTS.md Rules index is stale`. */
+  readonly label: string;
+  /** The issue the message cites. */
+  readonly issue: string;
+  readonly start: string;
+  readonly end: string;
+  readonly apply: (content: string, sources: AgentsMdSources) => string;
+}
+
 /**
- * Verify the AGENTS.md Rules index is in sync with `.rules/*.md` frontmatter
- * (#2657). Soft-skip when AGENTS.md is absent or has no markers; otherwise
- * fail (with a structured error) when regeneration would produce a diff.
+ * The sections `inject` generates INTO AGENTS.md (#6105). Each injector is the
+ * one the CLAUDE.md render uses for the same section, so there is one
+ * generator per table and AGENTS.md is written from it rather than by hand.
+ *
+ * Before this, only the rules index was regenerated here; the workflow and tool
+ * tables inside the AGNOSTIC:BODY slice were hand-held. `renderClaudeMd` copied
+ * the stale table into CLAUDE.md and then overwrote it with the generated one,
+ * so CLAUDE.md was a fixed point: `check` could not see the stale AGENTS.md
+ * table, and `inject` did not repair it. Now the copy into CLAUDE.md carries
+ * the generated text already, and `check` measures AGENTS.md's copy in its own
+ * right ({@link checkAgentsMd}).
+ *
+ * The VERSION section is not listed: the stamp replacer in
+ * `buildAncillaryReplacements` writes it (#5218), and `check` does not yet
+ * measure AGENTS.md's copy of it (#6130).
  */
-function checkRulesIndex(): boolean {
+const AGENTS_MD_SECTIONS: readonly AgentsMdSection[] = [
+  {
+    label: 'Rules index',
+    issue: '#2657',
+    start: MARKERS.rulesIndexStart,
+    end: MARKERS.rulesIndexEnd,
+    apply: (content, sources) => injectRulesIndex(content, sources.rules),
+  },
+  {
+    label: 'Workflows table',
+    issue: '#6105',
+    start: MARKERS.workflowIndexStart,
+    end: MARKERS.workflowIndexEnd,
+    apply: (content, sources) => injectWorkflowIndex(content, sources.workflowRows),
+  },
+  {
+    label: 'MCP Tools Reference',
+    issue: '#6105',
+    start: MARKERS.toolIndexStart,
+    end: MARKERS.toolIndexEnd,
+    apply: (content, sources) => injectToolIndex(content, sources.tools),
+  },
+];
+
+function applyAgentsMdSections(content: string, sources: AgentsMdSources): string {
+  return AGENTS_MD_SECTIONS.reduce((next, section) => section.apply(next, sources), content);
+}
+
+/**
+ * The ONE render of AGENTS.md's generated sections, the same shape as
+ * {@link renderClaudeMd} (#6099): every section injector, then the shared
+ * prettier pass. `inject` writes this string; `check` compares it to the file.
+ * Pure with respect to AGENTS.md — reads the sources, writes nothing.
+ */
+async function renderAgentsMd(current: string, sources: AgentsMdSources): Promise<string> {
+  return formatWithPrettier(AGENTS_MD_PATH, applyAgentsMdSections(current, sources));
+}
+
+/**
+ * The drift message for {@link checkAgentsMd}: every generated section that
+ * differs, EACH named with its first differing AGENTS.md line and both versions
+ * of it — measured independently, never behind the first difference — plus,
+ * when the first difference of the whole file falls outside every generated
+ * section (prose prettier reshapes), that line named as such. One `inject`
+ * repairs all of them, so the remedy is stated once.
+ */
+function describeAgentsMdDrift(expected: string, content: string): string {
+  const lines: string[] = [];
+  for (const section of AGENTS_MD_SECTIONS) {
+    const diff = firstInSpanDifference(expected, content, section.start, section.end);
+    if (diff === undefined) continue;
+    lines.push(
+      `AGENTS.md ${section.label} is stale (${section.issue}) — first difference at AGENTS.md:${String(diff.line)}`,
+      `  expected: ${diff.expected}`,
+      `  on disk:  ${diff.onDisk}`
+    );
+  }
+  const first = firstDifferingLine(expected, content);
+  const inSection = AGENTS_MD_SECTIONS.some((s) =>
+    isInsideSpan(content, first.index, s.start, s.end)
+  );
+  if (!inSection) {
+    lines.push(
+      `AGENTS.md differs outside its generated sections — first difference at AGENTS.md:${String(first.index + 1)}`,
+      `  expected: ${first.expected}`,
+      `  on disk:  ${first.onDisk}`
+    );
+  }
+  lines.push('Run: pnpm governance:inject');
+  return lines.join('\n');
+}
+
+/**
+ * `renderAgentsMd(content) === content`: the AGENTS.md sibling of
+ * {@link checkClaudeMd} (#6105). Soft-skips when AGENTS.md is absent (the
+ * CLAUDE.md render already fails loudly on that). A formatter failure is an
+ * actionable line and a failed check; a malformed `.rules/*.md` frontmatter
+ * still throws out of `extractRules`, as it did from `checkRulesIndex`.
+ */
+async function checkAgentsMd(tools: ToolMetadata[]): Promise<boolean> {
   if (!existsSync(AGENTS_MD_PATH)) return true;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
-  if (!content.includes(MARKERS.rulesIndexStart)) return true;
-  const updated = injectRulesIndex(content, extractRules());
-  if (updated !== content) {
-    console.error('AGENTS.md Rules index is stale (#2657). Run: pnpm governance:inject');
+  let expected: string;
+  try {
+    expected = await renderAgentsMd(content, loadAgentsMdSources(tools));
+  } catch (error: unknown) {
+    if (!(error instanceof FormatError)) throw error;
+    console.error(`governance:check: ${error.message}`);
     return false;
   }
-  return true;
+  if (expected === content) return true;
+  console.error(describeAgentsMdDrift(expected, content));
+  return false;
 }
 
 // ============================================================================
@@ -1065,46 +1203,67 @@ function lineOf(content: string, marker: string, from = 0): number {
 
 /**
  * Whether 0-based line `index` — the first line where the render and the
- * on-disk file disagree — lies inside the on-disk GENERATED:FROM_AGENTS block.
+ * on-disk file disagree — lies inside the on-disk `[start, end]` marker span.
  * The two texts agree before `index`, so a marker that precedes it sits on the
- * same line in both. A missing END marker reads as inside: the block lost its
- * end, which is block drift, not prose outside it.
+ * same line in both. A missing END marker reads as inside: the span lost its
+ * end, which is drift of that span, not prose outside it.
  */
-function isInsideAgnosticBlock(content: string, index: number): boolean {
-  const start = lineOf(content, MARKERS.claudeAgnosticStart);
-  if (start === -1 || index < start) return false;
-  const end = lineOf(
-    content,
-    MARKERS.claudeAgnosticEnd,
-    content.indexOf(MARKERS.claudeAgnosticStart)
-  );
-  return end === -1 || index <= end;
+function isInsideSpan(content: string, index: number, start: string, end: string): boolean {
+  const startLine = lineOf(content, start);
+  if (startLine === -1 || index < startLine) return false;
+  const endLine = lineOf(content, end, content.indexOf(start));
+  return endLine === -1 || index <= endLine;
 }
 
-/** The marker-inclusive GENERATED:FROM_AGENTS block of `text`, or `undefined` without both markers. */
-function agnosticBlockOf(text: string): string | undefined {
-  const start = text.indexOf(MARKERS.claudeAgnosticStart);
-  const end = text.indexOf(MARKERS.claudeAgnosticEnd, start);
-  if (start === -1 || end === -1) return undefined;
-  return text.slice(start, end + MARKERS.claudeAgnosticEnd.length);
+/** Whether line `index` lies inside the on-disk GENERATED:FROM_AGENTS block. */
+function isInsideAgnosticBlock(content: string, index: number): boolean {
+  return isInsideSpan(content, index, MARKERS.claudeAgnosticStart, MARKERS.claudeAgnosticEnd);
+}
+
+/** The marker-inclusive `[start, end]` span of `text`, or `undefined` without both markers. */
+function markedSpanOf(text: string, start: string, end: string): string | undefined {
+  const a = text.indexOf(start);
+  const b = text.indexOf(end, a);
+  if (a === -1 || b === -1) return undefined;
+  return text.slice(a, b + end.length);
 }
 
 /**
- * The 1-based on-disk line of the first difference INSIDE the generated block,
- * or `undefined` when the two blocks agree (#6113 panel). Same single
- * `expected` vs `content` measurement, aligned on the block's START marker in
- * each text rather than on absolute line numbers, so an out-of-block edit that
- * inserts or removes lines above the block does not make every block line read
- * as different. A file with no complete on-disk block has no in-block line to
- * name: that case is already reported as block drift by the first difference.
+ * The first difference INSIDE the `[start, end]` span — its 1-based on-disk
+ * line and both versions of it — or `undefined` when the two spans agree
+ * (#6113 panel). Same single `expected` vs `content` measurement, aligned on
+ * the span's START marker in each text rather than on absolute line numbers,
+ * so an edit that inserts or removes lines above the span does not make every
+ * line of it read as different. A file with no complete on-disk span has no
+ * in-span line to name: that case is already reported by the first difference
+ * of the whole file.
  */
+function firstInSpanDifference(
+  expected: string,
+  content: string,
+  start: string,
+  end: string
+): { line: number; expected: string; onDisk: string } | undefined {
+  const expectedSpan = markedSpanOf(expected, start, end);
+  const onDiskSpan = markedSpanOf(content, start, end);
+  if (expectedSpan === undefined || onDiskSpan === undefined) return undefined;
+  if (expectedSpan === onDiskSpan) return undefined;
+  const diff = firstDifferingLine(expectedSpan, onDiskSpan);
+  return {
+    line: lineOf(content, start) + diff.index + 1,
+    expected: diff.expected,
+    onDisk: diff.onDisk,
+  };
+}
+
+/** The 1-based on-disk line of the first difference inside the GENERATED:FROM_AGENTS block. */
 function firstInBlockDifference(expected: string, content: string): number | undefined {
-  const expectedBlock = agnosticBlockOf(expected);
-  const onDiskBlock = agnosticBlockOf(content);
-  if (expectedBlock === undefined || onDiskBlock === undefined) return undefined;
-  if (expectedBlock === onDiskBlock) return undefined;
-  const blockStart = lineOf(content, MARKERS.claudeAgnosticStart);
-  return blockStart + firstDifferingLine(expectedBlock, onDiskBlock).index + 1;
+  return firstInSpanDifference(
+    expected,
+    content,
+    MARKERS.claudeAgnosticStart,
+    MARKERS.claudeAgnosticEnd
+  )?.line;
 }
 
 /**
@@ -1871,7 +2030,8 @@ function printGovernanceSummary(
  * decision (#6008). These four are one concern — whether the surface that
  * Codex, Gemini CLI and OpenCode read still says what CLAUDE.md says: the
  * harness-agnostic block, the per-adapter precedence doc, `.rules/` frontmatter,
- * and the generated rules index built from it.
+ * and AGENTS.md's generated sections — the rules index built from that
+ * frontmatter and the workflow and tool tables (#6105).
  */
 async function checkCrossAdapterDocGates(
   claudeMd: string,
@@ -1881,7 +2041,7 @@ async function checkCrossAdapterDocGates(
     await checkClaudeMd(claudeMd, registries),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
-    checkRulesIndex(),
+    await checkAgentsMd(registries.tools),
   ];
 }
 
@@ -2289,12 +2449,11 @@ function applyAllSectionInjections(content: string, r: GovernanceRegistries): st
   // injections target the authored header / Claude-specific overlay markers,
   // which live in disjoint regions of the file.
   let next = injectClaudeAgnosticBlock(content);
-  next = injectSection(
-    next,
-    MARKERS.toolIndexStart,
-    MARKERS.toolIndexEnd,
-    generateToolIndex(r.tools)
-  );
+  // #6105: the slice now arrives with these two tables already generated (the
+  // AGENTS.md render runs first), so on a freshly injected AGENTS.md the two
+  // injections below are no-ops. They stay because CLAUDE.md's copy is still
+  // a hand-editable surface that `check` measures against this render.
+  next = injectToolIndex(next, r.tools);
   next = injectWorkflowIndex(next, extractWorkflowRows());
   next = injectSection(
     next,
@@ -2377,9 +2536,9 @@ export async function injectGovernance(): Promise<void> {
   // was masked while the only inline values were counts that rarely move; the
   // toolchain footer surfaced it on its first run.
 
-  // Inject the AGENTS.md Rules index (#2657) from `.rules/*.md` frontmatter —
-  // the cross-adapter bridge. Soft-skip if AGENTS.md has no markers yet.
-  await injectAgentsRulesIndex();
+  // Render AGENTS.md's generated sections (#2657 rules index; #6105 workflow
+  // and tool tables) from the same generators the CLAUDE.md render uses.
+  await injectAgentsMd(tools);
 
   // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
   // install docs) aligned with canonical registries — and (#5142) the
@@ -2479,18 +2638,16 @@ async function injectReadmeToolTable(tools: ToolMetadata[]): Promise<void> {
 }
 
 /**
- * Write the AGENTS.md Rules index between governance markers (#2657).
- * Soft-skip when AGENTS.md is missing or markers are absent so this script
- * stays drop-in compatible with checkouts that have not been marker-prepped.
+ * Write AGENTS.md's generated sections (#2657, #6105) — the render `check`
+ * compares against the file ({@link renderAgentsMd}). Soft-skips when
+ * AGENTS.md is missing; each injector soft-skips its own absent markers, so
+ * the script stays drop-in compatible with un-prepped checkouts.
  */
-async function injectAgentsRulesIndex(): Promise<void> {
+async function injectAgentsMd(tools: ToolMetadata[]): Promise<void> {
   if (!existsSync(AGENTS_MD_PATH)) return;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
-  if (!content.includes(MARKERS.rulesIndexStart)) return;
-  const updated = injectRulesIndex(content, extractRules());
-  if (updated !== content) {
-    await writeFormatted(AGENTS_MD_PATH, updated);
-  }
+  const rendered = await renderAgentsMd(content, loadAgentsMdSources(tools));
+  if (rendered !== content) writeFileSync(AGENTS_MD_PATH, rendered);
 }
 
 /**
