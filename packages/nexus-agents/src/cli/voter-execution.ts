@@ -338,10 +338,14 @@ interface VoteCompletionArgs {
   readonly project: string | undefined;
 }
 
-async function runVoteCompletion(
-  args: VoteCompletionArgs
-): Promise<
-  | { ok: true; output: string; usage: VoteUsage; cliStderr: string | undefined }
+async function runVoteCompletion(args: VoteCompletionArgs): Promise<
+  | {
+      ok: true;
+      output: string;
+      usage: VoteUsage;
+      cliStderr: string | undefined;
+      fallbackFrom: string | undefined;
+    }
   | { ok: false; error: string }
 > {
   const { role, adapter, timeoutMs } = args;
@@ -383,6 +387,9 @@ async function runVoteCompletion(
     // caller can classify a seat that could not read the artifact from the
     // structured signal rather than from its prose.
     cliStderr: response.value.cliStderr,
+    // #6115: the alias the seat asked for, when the CLI answered on another
+    // one of its family (#6120) — the seat's result discloses it as a fallback.
+    fallbackFrom: response.value.fallbackFrom,
   };
 }
 
@@ -394,6 +401,8 @@ interface VoteAttemptSuccess {
   readonly usage: VoteUsage;
   /** Stderr the CLI transport captured for this completion, when any (#6094). */
   readonly cliStderr: string | undefined;
+  /** The requested model alias when the CLI answered on another of its family (#6120). */
+  readonly fallbackFrom: string | undefined;
 }
 
 /** What the prompt carries beyond the proposal: declared options (#4472) and the target project (#6110). */
@@ -430,6 +439,7 @@ export async function executeSingleVoteAttempt(
       output: completion.output,
       usage: completion.usage,
       cliStderr: completion.cliStderr,
+      fallbackFrom: completion.fallbackFrom,
     };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
@@ -481,12 +491,21 @@ function logAbandonedRetries(
   });
 }
 
+/**
+ * What a successful vote attempt hands the result builder: the parsed vote,
+ * its usage, the transport's stderr (#6094) and any in-family model
+ * substitution (#6120, disclosed as a fallback by #6115).
+ */
+export interface VoteOutcome {
+  readonly vote: Vote;
+  readonly usage: VoteUsage;
+  readonly cliStderr: string | undefined;
+  readonly fallbackFrom: string | undefined;
+}
+
 export async function executeWithRetries(
   opts: RetryOptions
-): Promise<
-  | { vote: Vote; usage: VoteUsage; cliStderr: string | undefined; ok: true }
-  | { error: string; ok: false }
-> {
+): Promise<(VoteOutcome & { ok: true }) | { error: string; ok: false }> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries, options, project } = opts;
   let lastError = '';
 
@@ -515,7 +534,8 @@ export async function executeWithRetries(
         attemptMs,
         succeeded: true,
       });
-      return { vote: result.vote, usage: result.usage, cliStderr: result.cliStderr, ok: true };
+      const { vote, usage, cliStderr, fallbackFrom } = result;
+      return { vote, usage, cliStderr, fallbackFrom, ok: true };
     }
 
     lastError = result.error;

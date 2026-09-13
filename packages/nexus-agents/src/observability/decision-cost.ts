@@ -68,6 +68,12 @@ export interface VoterCostInput {
   readonly role: string;
   /** Model id the voter call used, when known (e.g. 'claude-sonnet'). */
   readonly model?: string | undefined;
+  /**
+   * The CLI the panel assigned this seat, when known (#6115). Carried beside
+   * `model` so a row reading `model: gemini-…` under `assignedCli: claude`
+   * shows the seat fell over without the reader knowing the round-robin.
+   */
+  readonly assignedCli?: string | undefined;
   /** Input tokens for the voter call, when the adapter reported them. */
   readonly inputTokens?: number | undefined;
   /** Output tokens for the voter call, when the adapter reported them. */
@@ -107,6 +113,12 @@ export interface VoterCostInput {
 export interface VoterCostBreakdown {
   readonly role: string;
   readonly model: string;
+  /**
+   * The CLI the panel assigned this seat (#6115), when the caller knew it.
+   * Omitted otherwise — absent is not a claim, the same rule as the cache
+   * counters (#4439).
+   */
+  readonly assignedCli?: string | undefined;
   /** Uncached input tokens. See {@link cachedInputTokens} for the rest. */
   readonly inputTokens: number;
   readonly outputTokens: number;
@@ -225,6 +237,7 @@ export const DecisionCostSummarySchema = z.object({
     z.object({
       role: z.string(),
       model: z.string(),
+      assignedCli: z.string().optional(),
       inputTokens: z.number(),
       outputTokens: z.number(),
       totalTokens: z.number(),
@@ -304,6 +317,7 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
   return {
     role: v.role,
     model: v.model ?? UNKNOWN_MODEL,
+    ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,

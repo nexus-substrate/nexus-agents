@@ -144,6 +144,9 @@ export class CliToModelAdapter implements IModelAdapter {
       ...(response.stderr !== undefined && response.stderr !== ''
         ? { cliStderr: response.stderr }
         : {}),
+      // #6120/#6115: an in-family model substitution rides up the same way, so
+      // the seat can say which alias it asked for and which one answered.
+      ...(response.fallbackFrom !== undefined ? { fallbackFrom: response.fallbackFrom } : {}),
     };
   }
 

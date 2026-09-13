@@ -416,3 +416,104 @@ describe('cancellation stops launching further voters (#5393)', () => {
     expect(called).toHaveLength(ROLES.length);
   });
 });
+
+describe('fallover disclosure (#6115)', () => {
+  // Fixture from the #6115 investigation: three claude seats fell over to the
+  // gemini fallback during a claude capacity window, and the result said
+  // nothing about the assignment or the cause. Uses the #3587 harness.
+  function erroredOn(role: VoterRole, name: string, error: string): AgentVoteResult {
+    return {
+      role,
+      vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+      error,
+      processingTimeMs: 5,
+      source: 'error',
+      cli: name,
+    };
+  }
+
+  async function launchOne(
+    role: VoterRole,
+    seat: IModelAdapter,
+    fallback: IModelAdapter,
+    error: string
+  ): Promise<AgentVoteResult | undefined> {
+    const results = await launchVotesWithOverallDeadline({
+      roles: [role],
+      proposal: 'test',
+      roleAdapters: new Map([[role, seat]]),
+      fallbackAdapter: fallback,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn: (r, _p, adapter) => {
+        const name = (adapter as { name?: string }).name ?? adapter.providerId;
+        return Promise.resolve(
+          adapter === seat
+            ? erroredOn(r, name, error)
+            : { ...makeOkVote(r), cli: name, model: 'gemini-3.1-pro' }
+        );
+      },
+    });
+    return results[0];
+  }
+
+  it('a seat that fell over carries assignedCli and fallback { fromCli, fromModel, reason }', async () => {
+    const result = await launchOne(
+      'devex',
+      makeCliAdapter('cli-claude'),
+      makeCliAdapter('cli-gemini'),
+      "You're out of usage credits. Switch to another model, or manage usage credits."
+    );
+    expect(result?.source).toBe('llm');
+    expect(result?.assignedCli).toBe('claude');
+    expect(result?.fallback).toEqual({
+      fromCli: 'claude',
+      fromModel: 'cli-claude',
+      reason: 'capacity',
+    });
+  });
+
+  it('classifies a rate-limit fallover as rate-limit and an auth one as auth', async () => {
+    const rateLimited = await launchOne(
+      'architect',
+      makeCliAdapter('codex'),
+      makeCliAdapter('gemini'),
+      'HTTP 429 Too Many Requests: rate limit exceeded'
+    );
+    expect(rateLimited?.fallback?.reason).toBe('rate-limit');
+    const auth = await launchOne(
+      'architect',
+      makeCliAdapter('codex'),
+      makeCliAdapter('gemini'),
+      'Not logged in. Please run /login'
+    );
+    expect(auth?.fallback?.reason).toBe('auth');
+  });
+
+  it('a seat that answered where it was assigned carries assignedCli and no fallback', async () => {
+    const seat = makeCliAdapter('gemini');
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['security'],
+      proposal: 'test',
+      roleAdapters: new Map([['security', seat]]),
+      fallbackAdapter: makeCliAdapter('claude'),
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn: (r) => Promise.resolve(makeOkVote(r)),
+    });
+    expect(results[0]?.assignedCli).toBe('gemini');
+    expect(results[0]?.fallback).toBeUndefined();
+  });
+
+  it('an undetected seat (pending-detection) discloses no fromModel', async () => {
+    const seat = new ResilientAdapter({ preferredCli: 'codex', logger: silentLogger });
+    const fallback = new ResilientAdapter({ logger: silentLogger });
+    const result = await launchOne('scope_steward', seat, fallback, 'No model adapter available');
+    expect(result?.assignedCli).toBe('codex');
+    expect(result?.fallback).toEqual({ fromCli: 'codex', reason: 'unknown' });
+  });
+});

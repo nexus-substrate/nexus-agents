@@ -104,6 +104,34 @@ export const VOTER_ROLES: Record<VoterRole, string> = {
 export type UnverifiableSignal = 'stderr' | 'reasoning';
 
 /**
+ * Why a seat answered somewhere other than where it was assigned (#6115).
+ *
+ * The adapter error class that triggered the fallover, named with the
+ * predicates the adapters already classify by (`rate-limit-detector`,
+ * `cli-error-envelope`, the subprocess timeout patterns, the #6094 sandbox
+ * signal). `capacity` is a DURABLE cap (out of usage credits, a spend
+ * ceiling); `rate-limit` a transient throttle. `unknown` is the named empty
+ * case — the message matched no class — never a default standing in for one.
+ */
+export type FallbackReason = 'rate-limit' | 'capacity' | 'auth' | 'timeout' | 'sandbox' | 'unknown';
+
+/**
+ * A seat that answered on a different CLI or model than assigned (#6115).
+ *
+ * Present only when it happened. Two producers: the #3587 cross-CLI fallover
+ * (`fromCli` is the assigned CLI, the answer's `cli` is where it went) and
+ * the #6120 in-family model substitution (`fromCli` equals the answer's
+ * `cli`; `fromModel` is the alias the seat asked for). `fromModel` is absent
+ * when the assigned adapter never detected a model — the placeholder is not
+ * a model and is not disclosed as one.
+ */
+export interface SeatFallback {
+  readonly fromCli: string;
+  readonly fromModel?: string | undefined;
+  readonly reason: FallbackReason;
+}
+
+/**
  * Individual agent vote with metadata.
  */
 export interface AgentVoteResult {
@@ -163,6 +191,23 @@ export interface AgentVoteResult {
    * the primary assignment when router failover serves the vote elsewhere.
    */
   readonly pinnedModel?: string | undefined;
+  /**
+   * The CLI the round-robin or `NEXUS_VOTER_MODEL_<ROLE>` pin chose for this
+   * seat (#6115), as a bare name (`claude`, not `cli-claude`). Unlike
+   * {@link pinnedModel} it is known BEFORE detection, so it survives the
+   * `pending-detection` placeholder and says where a seat was meant to
+   * answer. Compare with `cli` to see where it did. Absent on results built
+   * outside the panel launcher (simulation, direct `executeAgentVote` calls).
+   */
+  readonly assignedCli?: string | undefined;
+  /**
+   * Present only when the seat answered on a different CLI or model than
+   * assigned (#6115). Three consecutive 7-seat panels ran every seat on one
+   * model because claude was out of credits and codex could not spawn, and
+   * nothing in the result said so — a single-model panel is a weaker
+   * independence claim than the assignment, and the tally read identically.
+   */
+  readonly fallback?: SeatFallback | undefined;
   /**
    * Input tokens the adapter reported for this voter's LLM call, when known
    * (#3910). Propagated from `CompletionResponse.usage` so per-decision cost

@@ -28,6 +28,7 @@ import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import { parseCliErrorEnvelope, classifyExtractedError } from './cli-error-envelope.js';
+import { isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 
 /** Minimum length for plaintext fallback to kick in.
@@ -90,9 +91,6 @@ const STDERR_CONNECTION_PATTERNS = [
   'address already in use',
 ];
 
-/** Stderr patterns indicating timeout (retryable). */
-const STDERR_TIMEOUT_PATTERNS = ['timeout', 'timed out', 'etimedout'];
-
 /**
  * Classifies a stderr error message into the most specific CliErrorCode.
  * Checks for transient patterns (connection, rate-limit, timeout) before
@@ -105,7 +103,7 @@ function classifyStderrError(stderr: string): CliErrorCode {
   const lower = stderr.toLowerCase();
   if (STDERR_CONNECTION_PATTERNS.some((p) => lower.includes(p))) return 'CONNECTION_ERROR';
   if (isRateLimitText(stderr)) return 'RATE_LIMITED';
-  if (STDERR_TIMEOUT_PATTERNS.some((p) => lower.includes(p))) return 'TIMEOUT';
+  if (isTimeoutText(stderr)) return 'TIMEOUT';
   return 'EXECUTION_ERROR';
 }
 
