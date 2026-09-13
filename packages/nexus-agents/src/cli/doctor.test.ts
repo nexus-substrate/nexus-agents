@@ -37,6 +37,23 @@ vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
   return { ...actual, codexMcpServerAvailable: vi.fn(() => true) };
 });
 
+// The pinned-model probe (#6120) spends a real claude call; stub it here and
+// keep the formatter real. doctor.ts imports the probe directly, so the spread
+// form intercepts it (no internal sibling indirection).
+vi.mock('./doctor-claude-model.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./doctor-claude-model.js')>();
+  return {
+    ...actual,
+    probeClaudePinnedModel: vi.fn((deps: { installed: boolean }) =>
+      Promise.resolve({
+        alias: 'fable',
+        status: deps.installed ? ('available' as const) : ('not-probed' as const),
+        reason: deps.installed ? null : 'claude CLI not installed',
+      })
+    ),
+  };
+});
+
 // Mock the MCP server module
 vi.mock('../mcp/server.js', () => ({
   createServer: vi.fn(() => ({ ok: true })),
@@ -71,6 +88,7 @@ vi.mock('./cli-auth-probe.js', () => ({
 
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
+import { probeClaudePinnedModel } from './doctor-claude-model.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -167,6 +185,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       missingCount: 0,
     },
     voterTransport: { configured: false },
+    claudeModel: { alias: 'fable', status: 'available' as const, reason: null },
     scratchSpace: [
       {
         label: 'nexus' as const,
@@ -254,6 +273,37 @@ describe('Doctor Command', () => {
       expect(result.nodeVersion.version).toBe(process.version);
       expect(typeof result.nodeVersion.major).toBe('number');
       expect(typeof result.nodeVersion.supported).toBe('boolean');
+    });
+
+    it('probes the pinned claude model with the claude install state and reports it (#6120)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+      const probe = vi.fn((installed: boolean) =>
+        Promise.resolve({
+          alias: 'fable',
+          status: installed ? ('available' as const) : ('not-probed' as const),
+          reason: installed ? null : 'claude CLI not installed',
+        })
+      );
+
+      const result = await runDoctor({ probeClaudeModel: probe });
+
+      // No adapters → claude is not installed → the probe is told so, and its
+      // verdict (not an inferred one) is what the report carries.
+      expect(probe).toHaveBeenCalledWith(false);
+      expect(result.claudeModel).toEqual({
+        alias: 'fable',
+        status: 'not-probed',
+        reason: 'claude CLI not installed',
+      });
+    });
+
+    it('reaches the real probe when no override is supplied (#6120)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+
+      const result = await runDoctor();
+
+      expect(probeClaudePinnedModel).toHaveBeenCalledWith({ installed: false });
+      expect(result.claudeModel.status).toBe('not-probed');
     });
 
     it('should include API key checks without exposing values', async () => {

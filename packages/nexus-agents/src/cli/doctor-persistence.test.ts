@@ -12,6 +12,17 @@ vi.mock('../cli-adapters/factory.js', () => ({
   createAllAdapters: vi.fn(() => new Map()),
 }));
 
+// The pinned-model probe (#6120) would spawn the real claude CLI.
+vi.mock('./doctor-claude-model.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./doctor-claude-model.js')>();
+  return {
+    ...actual,
+    probeClaudePinnedModel: vi.fn(() =>
+      Promise.resolve({ alias: 'fable', status: 'not-probed' as const, reason: 'stubbed' })
+    ),
+  };
+});
+
 // We test the behavior indirectly through runDoctor since checkLearningPersistence is private.
 // For unit tests, we verify the DoctorResult shape includes learningPersistence.
 

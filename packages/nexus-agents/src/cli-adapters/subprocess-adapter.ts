@@ -26,7 +26,7 @@ import type {
 import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
-import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import { parseCliErrorEnvelope, classifyExtractedError } from './cli-error-envelope.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 
@@ -171,6 +171,18 @@ export const SIGKILL_GRACE_MS = 5_000;
  */
 export function isTransientError(code: CliErrorCode): boolean {
   return TRANSIENT_ERROR_CODES.has(code);
+}
+
+/**
+ * Whether a failed spawn is worth spawning again (#6120).
+ *
+ * A transient CODE is not the whole answer: a durable capacity cap arrives as
+ * RATE_LIMITED too, and re-running the same model against a spend ceiling is
+ * the futile work #5359 named. The claude out-of-credits envelope cost two
+ * extra spawns and 1.5 s per call this way, then still failed.
+ */
+function shouldRetryInPlace(error: CliError): boolean {
+  return isTransientError(error.code) && !isDurableCapacityText(error.message);
 }
 
 /**
@@ -350,7 +362,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
     if (result.ok || !this.transientRetry.enabled) return result;
-    if (!isTransientError(result.error.code)) return result;
+    if (!shouldRetryInPlace(result.error)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
   }
@@ -388,7 +400,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       : options;
     const result = await this.spawnSubprocess(task, retryOptions, requestId);
     if (result.ok) return result;
-    if (!isTransientError(result.error.code)) return result;
+    if (!shouldRetryInPlace(result.error)) return result;
 
     return this.retryTransient(task, retryOptions, result, attempt + 1, requestId);
   }

@@ -22,6 +22,8 @@ export interface ClaudeCliResponse {
   readonly type: 'result';
   readonly subtype?: 'success' | 'error';
   readonly is_error: boolean;
+  /** Why generation stopped — `end_turn` on an answer, `stop_sequence` on the measured error envelope (#6120). */
+  readonly stop_reason?: string;
   readonly duration_ms?: number;
   readonly result: string;
   readonly session_id?: string;
@@ -121,6 +123,41 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
       }
 
       return null;
+    } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
+      return null;
+    }
+  }
+
+  /**
+   * The error text of an `is_error: true` envelope, with its `stop_reason`
+   * (#6120).
+   *
+   * Before this the envelope reached the adapter only through the generic
+   * unparseable-output path, whose first step scans the WHOLE stdout for
+   * rate-limit text. The out-of-credits envelope carries `api_error_status:
+   * 429`, so that scan matched and the error message became the first 500
+   * characters of the envelope — `{"duration_api_ms":0,…` — while the one
+   * field that names the cause, `result`, never reached anyone. Surfacing it
+   * here routes the envelope through `classifyErrorOnlyStream`, which
+   * classifies the message text rather than the envelope bytes.
+   *
+   * `null` when the envelope is not an error, or when `result` is empty: an
+   * empty error text is not a message, and the caller's recovery order handles
+   * it as before.
+   */
+  extractErrorMessage(raw: string): string | null {
+    try {
+      const record = asRecord(JSON.parse(raw));
+      if (record?.is_error !== true) return null;
+
+      const result = record.result;
+      if (typeof result !== 'string' || result === '') return null;
+
+      const stopReason = record.stop_reason;
+      return typeof stopReason === 'string' && stopReason !== ''
+        ? `${result} (stop_reason: ${stopReason})`
+        : result;
     } catch {
       logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;

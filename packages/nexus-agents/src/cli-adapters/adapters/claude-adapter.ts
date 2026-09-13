@@ -11,14 +11,21 @@
 import type {
   ICliResponseParser,
   CliTask,
+  CliResponse,
+  CliError,
   ModelInfo,
   CliName,
   BaseAdapterOptions,
+  ResolvedExecutionOptions,
 } from '../types.js';
+import type { Result } from '../../core/index.js';
+import { ok } from '../../core/index.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
+import { isDurableCapacityText } from '../../adapters/rate-limit-detector.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -58,6 +65,35 @@ function buildClaudeAliasMap(): Record<string, string> {
  */
 const UNKNOWN_MODEL_DEFAULT_INPUT_COST = 5.0;
 const UNKNOWN_MODEL_DEFAULT_OUTPUT_COST = 25.0;
+
+/**
+ * Task option that disables the in-family fallback (#6120). A probe that
+ * wants to know whether ONE model answers — doctor's pinned-model line —
+ * must not be answered by its sibling.
+ */
+export const IN_FAMILY_FALLBACK_OPTION = 'inFamilyFallback';
+
+/** Resolve an internal model name, legacy name or alias to the CLI alias. */
+function toCliAlias(internalModel: string): string {
+  return MODEL_TO_CLI_ALIAS[internalModel] ?? internalModel;
+}
+
+/**
+ * The claude alias the registry lists after `alias`, or undefined when
+ * `alias` is the last one (or not a registry alias at all — no basis for a
+ * "next"). Read from the registry at call time rather than a module-load
+ * constant so an operator overlay is honoured; the order is the registry's
+ * (in-tree: fable → opus → sonnet → haiku), not a hard-coded list.
+ */
+function nextClaudeAlias(alias: string): string | undefined {
+  const aliases = getDefaultRegistry()
+    .allEntries()
+    .flatMap((entry) =>
+      entry.cliName === 'claude' && entry.cliAlias !== undefined ? [entry.cliAlias] : []
+    );
+  const at = aliases.indexOf(alias);
+  return at === -1 ? undefined : aliases[at + 1];
+}
 
 /**
  * Claude CLI adapter using subprocess transport.
@@ -107,6 +143,43 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     };
   }
 
+  /**
+   * Run the task, and on an out-of-credits envelope for the requested model
+   * retry ONCE with the next claude alias the registry lists (#6120).
+   *
+   * The credit exhaustion the claude CLI reports is per MODEL — `fable`
+   * answered "You're out of usage credits" while `sonnet` answered the same
+   * prompt — so it is not evidence against the CLI, and it must not reach the
+   * per-CLI circuit breaker as one. The breaker records what leaves this
+   * method: a substituted success records nothing, and a second capacity
+   * error propagates as the typed error and counts once, because by then the
+   * family, not one model, has failed. A non-capacity `is_error` (auth, a
+   * server error) is returned as-is; another model would not fix it.
+   *
+   * The substitution is stamped on the response as `fallbackFrom` so a vote
+   * record can say which model actually answered (#6115).
+   */
+  override async executeTask(
+    task: CliTask,
+    options: ResolvedExecutionOptions
+  ): Promise<Result<CliResponse, CliError>> {
+    const first = await super.executeTask(task, options);
+    if (first.ok || !isDurableCapacityText(first.error.message)) return first;
+    if (task.options?.[IN_FAMILY_FALLBACK_OPTION] === false) return first;
+
+    const requested = toCliAlias(task.model ?? this.model);
+    const next = nextClaudeAlias(requested);
+    if (next === undefined) return first;
+
+    this.logger.warn('Claude model out of usage credits; retrying once with the next alias', {
+      requested,
+      next,
+    });
+    const second = await super.executeTask({ ...task, model: next }, options);
+    if (!second.ok) return second;
+    return ok({ ...second.value, model: next, fallbackFrom: requested });
+  }
+
   /** Appends optional string-type task options to CLI args. */
   private appendTaskOptions(args: string[], task: CliTask): void {
     const workDir = task.options?.['workDir'];
@@ -133,7 +206,7 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
     // Add model - convert internal names to CLI aliases
     const internalModel = task.model ?? this.model;
-    const cliModel = MODEL_TO_CLI_ALIAS[internalModel] ?? internalModel;
+    const cliModel = toCliAlias(internalModel);
     args.push('--model', cliModel);
 
     // Add system prompt if provided

@@ -235,6 +235,7 @@ describe('doctor-formatting', () => {
         missingCount: 0,
       },
       voterTransport: options.voterTransport ?? { configured: false },
+      claudeModel: { alias: 'fable', status: 'available', reason: null },
       scratchSpace: DEFAULT_SCRATCH_SPACE,
       timestamp: new Date('2024-01-01T00:00:00Z'),
     });
@@ -673,6 +674,25 @@ describe('doctor-formatting', () => {
           expect(calls.some((call) => call.includes('NEXUS_OPENAI_COMPAT_URL'))).toBe(true);
         }
       }
+    });
+
+    it('renders the pinned claude model line from the probe, not from CLI presence (#6120)', () => {
+      const result: DoctorResult = {
+        ...createDoctorResult({
+          clis: [createCliCheckResult('claude', true, true, 'supported', { version: '2.0.76' })],
+        }),
+        claudeModel: {
+          alias: 'fable',
+          status: 'out-of-credits',
+          reason: "You're out of usage credits. Switch to another model, to continue.",
+        },
+      };
+      printDoctorResults(result);
+
+      const calls = getCalls();
+      const line = calls.find((call) => call.includes('Claude model fable: out of credits'));
+      expect(line).toBeDefined();
+      expect(line).toContain('out of usage credits');
     });
 
     it('should print capabilities for multiple installed CLIs', () => {

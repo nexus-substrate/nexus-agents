@@ -41,7 +41,7 @@ import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
-import { parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
+import { createCliError } from './cli-error-helpers.js';
 
 const execAsync = promisify(exec);
 
@@ -420,21 +420,11 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * Creates a CLI error.
    */
   protected createError(code: CliErrorCode, message: string, cause?: Error): CliError {
-    const retryable = ['RATE_LIMITED', 'TIMEOUT', 'CONNECTION_ERROR'].includes(code);
-    // #4373: `parseRetryAfterMs` existed with regexes for "retry after Xs" /
-    // "try again in Xs" and was called from nowhere under cli-adapters, so a
-    // provider telling us exactly how long to wait was ignored in favour of our
-    // own exponential backoff. Only meaningful on a retryable error.
-    const retryAfterMs = retryable ? parseRetryAfterMs(message) : undefined;
-
-    return {
-      code,
-      message,
-      cli: this.name,
-      retryable,
-      ...(retryAfterMs !== undefined && { retryAfterMs }),
-      ...(cause !== undefined && { cause }),
-    };
+    // One construction path (#6120): this carried its own copy of the
+    // retryable-code list and its own `parseRetryAfterMs` call (#4373), so the
+    // durable-capacity rule added to `createCliError` would otherwise have
+    // applied only to adapters that happened to use the helper.
+    return createCliError(code, message, this.name, cause);
   }
 
   /**

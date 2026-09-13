@@ -106,6 +106,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       missingCount: 0,
     },
     voterTransport: { configured: false },
+    claudeModel: { alias: 'fable', status: 'available' as const, reason: null },
     scratchSpace: [
       {
         label: 'nexus' as const,

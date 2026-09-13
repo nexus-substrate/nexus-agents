@@ -384,7 +384,12 @@ describe('durable capacity caps are distinguished from transient throttles', () 
     expect(isRateLimitText(msg)).toBe(true);
   });
 
-  it.each(['quota exceeded', 'usage limit reached'])('classifies %s as durable', (msg) => {
+  it.each([
+    'quota exceeded',
+    'usage limit reached',
+    // The claude CLI's per-model exhaustion text, measured 2026-09-13 (#6120).
+    "You're out of usage credits. Switch to another model, or manage usage credits at claude.ai/settings/usage, to continue.",
+  ])('classifies %s as durable', (msg) => {
     expect(isDurableCapacityText(msg)).toBe(true);
   });
 

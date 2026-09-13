@@ -233,4 +233,42 @@ describe('ClaudeResponseParser', () => {
       expect(parser.extractResponse(raw)).toBe('line1\nline2\ttab\r\nwindows');
     });
   });
+
+  describe('extractErrorMessage() (#6120)', () => {
+    it('carries the result text and stop_reason of an is_error envelope', () => {
+      const raw = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        stop_reason: 'stop_sequence',
+        api_error_status: 429,
+        result: "You're out of usage credits. Switch to another model, to continue.",
+      });
+
+      expect(parser.extractErrorMessage(raw)).toBe(
+        "You're out of usage credits. Switch to another model, to continue. (stop_reason: stop_sequence)"
+      );
+    });
+
+    it('returns the bare result text when the envelope names no stop_reason', () => {
+      const raw = JSON.stringify({ type: 'result', is_error: true, result: 'Not logged in' });
+
+      expect(parser.extractErrorMessage(raw)).toBe('Not logged in');
+    });
+
+    it('returns null for a successful envelope, so an answer is never read as an error', () => {
+      const raw = JSON.stringify({ type: 'result', is_error: false, result: 'ok' });
+
+      expect(parser.extractErrorMessage(raw)).toBeNull();
+    });
+
+    it('returns null when the error envelope carries no text', () => {
+      expect(parser.extractErrorMessage(JSON.stringify({ is_error: true, result: '' }))).toBeNull();
+      expect(parser.extractErrorMessage(JSON.stringify({ is_error: true }))).toBeNull();
+    });
+
+    it('returns null for malformed output', () => {
+      expect(parser.extractErrorMessage('not json')).toBeNull();
+    });
+  });
 });
