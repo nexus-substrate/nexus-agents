@@ -472,6 +472,7 @@ describe('ConsensusVoteResponse structure', () => {
           error: false,
         },
       ],
+      contrarianCheck: 'skipped',
       durationMs: 5000,
       simulateVotes: false,
       voteRecordPersisted: true,
@@ -501,6 +502,7 @@ describe('ConsensusVoteResponse structure', () => {
         unverifiable: 0,
       },
       votes: [],
+      contrarianCheck: 'skipped',
       durationMs: 4500,
       simulateVotes: false,
       voteRecordPersisted: false,
@@ -1712,6 +1714,8 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     decision: 'approved',
     approvalPercentage: 66.7,
     voteCounts: { approve: 2, reject: 0, abstain: 0, error: 1, unverifiable: 0 },
+    // #6111: always present on a completed vote.
+    contrarianCheck: 'ok',
     votes: [
       {
         role: 'architect',
@@ -2235,6 +2239,8 @@ describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)'
     expect(out.escalated).toBeUndefined();
     expect(out.degradeReason).toContain('no_quorum');
     expect(out.degradeReason).toContain('contrarian');
+    // #6111: the failed voice is named as its own field, not only as prose.
+    expect(out.contrarianCheck).toBe('errored');
   });
 
   it('non-absolute_quorum + contrarian check errors → no degrade (pre-#4132 behavior preserved)', async () => {
@@ -2246,6 +2252,18 @@ describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)'
     );
     expect(out.escalated).toBeUndefined();
     expect(out.degradeReason).toBeUndefined();
+    // #6111: the verdict is kept, but the check still errored and says so.
+    expect(out.contrarianCheck).toBe('errored');
+  });
+
+  it('full-panel mode does not run the check → contrarianCheck skipped (#6111)', async () => {
+    const out = await maybeEscalateContrarian(
+      { proposal: 'ship it', simulateVotes: false, quickMode: false },
+      'approved',
+      { strategy: 'simple_majority', posteriorApproval: undefined },
+      logger
+    );
+    expect(out.contrarianCheck).toBe('skipped');
   });
 });
 

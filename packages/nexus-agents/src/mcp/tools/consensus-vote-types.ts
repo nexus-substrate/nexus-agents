@@ -362,6 +362,23 @@ export const VoteDecisionStatusSchema = z.enum([
 export type VoteDecisionStatus = z.infer<typeof VoteDecisionStatusSchema>;
 
 /**
+ * Outcome of the quick-mode contrarian check (#6111).
+ *
+ * In quick mode the contrarian is a separate `executeExpert` call, not a seat
+ * in `votes`, so `voteCounts.error` cannot count it: an errored check under
+ * `absolute_quorum` yields `no_quorum` with `error: 0`. This names that voice.
+ *
+ * - `ok` — the check ran and returned a verdict (escalating or not).
+ * - `errored` — the check ran and the contrarian voice was NOT obtained.
+ * - `skipped` — the check did not run: full-panel mode (catfish is a seat),
+ *   simulated votes, a non-approved quick verdict, a posterior-confidence
+ *   escalation that pre-empted it, or an error-policy short-circuit.
+ */
+export const ContrarianCheckStatusSchema = z.enum(['ok', 'errored', 'skipped']);
+
+export type ContrarianCheckStatus = z.infer<typeof ContrarianCheckStatusSchema>;
+
+/**
  * Narrows a response decision to the three-value vocabulary the audit record
  * uses (#4986).
  *
@@ -450,6 +467,12 @@ export interface ConsensusVoteResponse {
     error: number;
     unverifiable: number;
   };
+  /**
+   * #6111: the quick-mode contrarian check, reported beside the tally because
+   * `voteCounts.error` counts seats and the check is not one. Always present;
+   * `skipped` is the named empty case (see {@link ContrarianCheckStatus}).
+   */
+  contrarianCheck: ContrarianCheckStatus;
   votes: AgentVoteSummary[];
   durationMs: number;
   simulateVotes: boolean;
@@ -544,6 +567,14 @@ export interface ExtendedVotingResult extends VotingResult {
    * carve-out). True on the full 7-role panel.
    */
   contrarianRequested?: boolean;
+  /**
+   * #6111: outcome of the quick-mode contrarian check. Stamped by `executeVoting`
+   * on every path (`skipped` when the check did not run). Absent only on results
+   * built by paths that never ran `executeVoting` (direct unit calls to
+   * `buildResponse`), which `buildResponse` reports as `skipped` — the check
+   * genuinely did not run there.
+   */
+  contrarianCheck?: ContrarianCheckStatus;
   /**
    * #4135: the response-layer decision (incl. `no_quorum`) for this vote, computed
    * by {@link resolveVoteDecision}. Set by `executeVoting` right before it returns
@@ -921,6 +952,16 @@ function appliedThresholdFor(strategy: VotingStrategy | undefined): VoteThreshol
   return 'majority';
 }
 
+/**
+ * #6111: the contrarian-check status the response reports. `executeVoting`
+ * stamps one on every path; a result that never went through it never ran the
+ * check, so `skipped` is the truthful name for that absence — not a default
+ * standing in for a measurement.
+ */
+function contrarianCheckFor(result: ExtendedVotingResult): ContrarianCheckStatus {
+  return result.contrarianCheck ?? 'skipped';
+}
+
 export function buildResponse(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
@@ -947,7 +988,6 @@ export function buildResponse(
   // and for direct unit calls that bypass `executeVoting` (where `decision` is absent).
   const resolved = resolveVoteDecision(input, result, errorCount);
   const decision = result.decision ?? resolved.decision;
-  const { degradeReason } = resolved;
 
   const response: ConsensusVoteResponse = {
     proposal: proposalTruncated,
@@ -961,6 +1001,7 @@ export function buildResponse(
       error: errorCount,
       unverifiable: unverifiableCount,
     },
+    contrarianCheck: contrarianCheckFor(result),
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
@@ -987,7 +1028,7 @@ export function buildResponse(
   }
 
   applyOptionalResponseFields(response, input, result, errorCount, costSummary);
-  applyAbsoluteQuorumTelemetry(response, input, decision, degradeReason);
+  applyAbsoluteQuorumTelemetry(response, input, decision, resolved.degradeReason);
   return response;
 }
 

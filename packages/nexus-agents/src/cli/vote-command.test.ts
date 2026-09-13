@@ -3,7 +3,7 @@
  * (Source: Issue #227)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from './voter-agents.js';
@@ -880,5 +880,86 @@ describe('formatVoteComment with an errored voter', () => {
     expect(comment).not.toContain('Errored:');
     expect(comment).not.toContain('ERRORED');
     expect(comment).not.toContain('responding voter(s)');
+  });
+});
+
+// =============================================================================
+// The quick-mode contrarian check is rendered as its own line (#6111)
+// =============================================================================
+
+describe('contrarian check line (#6111)', () => {
+  // In quick mode the contrarian is a separate expert call, not a seat, so a
+  // failed check leaves `Errored:` at 0 while the decision reads no_quorum.
+  // The line is printed for every status, explicit `ok` included — an absent
+  // line would read as health.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function extendedResult(contrarianCheck: string, decision: string) {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision,
+      contrarianCheck,
+    };
+  }
+
+  let written: string[];
+  let restoreStdout: () => void;
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    safeExecSandboxedMock.mockReset();
+    safeExecSandboxedMock.mockReturnValue('ok');
+    written = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    });
+    restoreStdout = (): void => {
+      spy.mockRestore();
+    };
+  });
+
+  afterEach(() => {
+    restoreStdout();
+  });
+
+  it('the summary names an errored contrarian check next to the vote counts', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('errored', 'no_quorum'));
+
+    await voteCommand({ proposal: 'p', quick: true, errorPolicy: 'absolute_quorum' });
+
+    const out = written.join('');
+    expect(out).toContain('Contrarian check: errored');
+    expect(out).not.toContain('Errored:');
+  });
+
+  it('the summary prints the line explicitly when the check passed', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('ok', 'approved'));
+
+    await voteCommand({ proposal: 'p', quick: true });
+
+    expect(written.join('')).toContain('Contrarian check: ok');
+  });
+
+  it('the GitHub comment carries the same line', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('errored', 'no_quorum'));
+
+    await voteCommand({ proposal: 'p', quick: true, issueNumber: 42 });
+
+    const stdin = safeExecSandboxedMock.mock.calls
+      .map((call) => (call[1] as { stdin?: string } | undefined)?.stdin)
+      .filter((body): body is string => typeof body === 'string')
+      .find((body) => body.includes('## Consensus Vote Result'));
+    expect(stdin).toContain('Contrarian check: errored');
+  });
+
+  it('formatVoteComment renders skipped when told the check did not run', () => {
+    const comment = formatVoteComment(createMockVotingResult(), 'approved', 'skipped');
+    expect(comment).toContain('Contrarian check: skipped');
   });
 });
