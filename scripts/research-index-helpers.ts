@@ -193,7 +193,9 @@ export function checkFreshness(
     return false;
   }
 
-  console.log('Research index is up to date.');
+  // No "up to date" here: this answers only "is the index derived from the
+  // current registries?". The body comparison (#6002) is the other cause, and
+  // the caller prints the verdict once both have been measured.
   return true;
 }
 

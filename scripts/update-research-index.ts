@@ -8,13 +8,19 @@
  *   pnpm exec tsx scripts/update-research-index.ts --check     # Check if index is up to date (CI)
  *   pnpm exec tsx scripts/update-research-index.ts --validate  # Validate registry consistency
  *
+ * Output is written through prettier (the same pass lint-staged applies), and
+ * `--check` compares the committed BODY against a regeneration as well as the
+ * registry checksums — a hand-edit to the generated body is drift (#6002).
+ *
  * (Source: Issue #632 - Research Index Automation)
  */
 
 /* eslint-disable no-console */
 
-import { writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { formatWithPrettier, firstDifferingLine, END_OF_FILE } from './generated-file-drift.js';
 import {
   type PaperEntry,
   type TechniqueEntry,
@@ -281,10 +287,14 @@ function generateFooter(dateStr: string, totalPapers: number, totalTechniques: n
 // Generate Mode
 // ============================================================================
 
-function generateIndex(): string {
+/**
+ * The raw (unformatted) index for the current registries, stamped `dateStr`.
+ * The date is a parameter so `--check` can regenerate with the committed
+ * file's own stamp and compare bodies date-insensitively (#6002).
+ */
+export function generateIndex(dateStr: string): string {
   const { registry: papers, checksum: pCS } = loadPapers(PAPERS_PATH);
   const { registry: techniques, checksum: tCS } = loadTechniques(TECHNIQUES_PATH);
-  const dateStr = getETDate();
   const totalP = Object.keys(papers.papers).length;
   const totalT = Object.keys(techniques.techniques).length;
 
@@ -372,11 +382,43 @@ function verifyRegistryFiles(): boolean {
   return true;
 }
 
-function runGenerate(): void {
+/**
+ * The index exactly as `generate` writes it: {@link generateIndex} run through
+ * the same prettier pass lint-staged applies to the committed file (#6002).
+ * Before this, the generator emitted unpadded table columns, so generate →
+ * commit was a ~180-line padding diff that prettier then reverted.
+ */
+export async function renderIndex(dateStr: string): Promise<string> {
+  return formatWithPrettier(INDEX_PATH, generateIndex(dateStr));
+}
+
+/** The `**Generated:** YYYY-MM-DD (ET)` stamp of an index, if it carries one. */
+function extractDateStamp(content: string): string | undefined {
+  return /\*\*Generated:\*\* (\d{4}-\d{2}-\d{2}) \(ET\)/.exec(content)?.[1];
+}
+
+/** The committed index, or `undefined` when there is none yet. */
+function readOnDiskIndex(): string | undefined {
+  return existsSync(INDEX_PATH) ? readFileSync(INDEX_PATH, 'utf-8') : undefined;
+}
+
+/**
+ * Regenerate the index. When the on-disk file is byte-identical to a
+ * regeneration under ITS OWN date stamp, nothing is written and the stamp is
+ * kept: the stamp then means "when the content last changed", and generate →
+ * commit is a genuine no-op instead of a daily date bump.
+ */
+export async function runGenerate(): Promise<boolean> {
   console.log('Research Index Generator');
   console.log('=======================\n');
   try {
-    const content = generateIndex();
+    const onDisk = readOnDiskIndex();
+    const onDiskDate = onDisk === undefined ? undefined : extractDateStamp(onDisk);
+    if (onDiskDate !== undefined && (await renderIndex(onDiskDate)) === onDisk) {
+      console.log(`Research index unchanged; keeping the ${onDiskDate} stamp: ${INDEX_PATH}`);
+      return true;
+    }
+    const content = await renderIndex(getETDate());
     writeFileSync(INDEX_PATH, content);
     const paperCount = content.match(/Total Papers:\*\* (\d+)/)?.[1] ?? '?';
     const techCount = content.match(/Techniques:\*\* (\d+)/)?.[1] ?? '?';
@@ -384,14 +426,56 @@ function runGenerate(): void {
     console.log(`Papers: ${paperCount}`);
     console.log(`Techniques: ${techCount}`);
     console.log('\nResearch index updated successfully.');
+    return true;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('Error generating research index:', msg);
-    process.exit(1);
+    return false;
   }
 }
 
-function main(): void {
+/**
+ * Does the committed body match what the generator emits for the current
+ * registries? Regenerates in memory (formatted, under the committed file's own
+ * date stamp so a different generation day is not drift) and reports the first
+ * differing line with both texts. This is the question the checksum comparison
+ * cannot answer: a hand-edit to the generated body leaves the checksums intact
+ * (#6002).
+ */
+async function checkBody(onDisk: string): Promise<boolean> {
+  const expected = await renderIndex(extractDateStamp(onDisk) ?? getETDate());
+  if (expected === onDisk) {
+    return true;
+  }
+  const diff = firstDifferingLine(expected, onDisk, END_OF_FILE);
+  const where = `${relative(ROOT, INDEX_PATH)}:${String(diff.index + 1)}`;
+  console.log(
+    `Research index body differs from its regeneration (#6002) — first difference at ${where}`
+  );
+  console.log(`  expected: ${diff.expected}`);
+  console.log(`  on disk:  ${diff.onDisk}`);
+  console.log('Run: pnpm research:generate');
+  return false;
+}
+
+/**
+ * `--check`: two causes, measured and rendered independently — never
+ * if/else-if, because they co-occur and the second would hide behind the first:
+ * - CHECKSUM stale: the provenance comment's registry checksums are not the
+ *   current registries' (the pre-#6002 check).
+ * - BODY differs: the committed body is not the generator's output.
+ */
+export async function checkIndex(): Promise<boolean> {
+  const checksumsCurrent = checkFreshness(INDEX_PATH, PAPERS_PATH, TECHNIQUES_PATH);
+  const onDisk = readOnDiskIndex();
+  const bodyMatches = onDisk === undefined ? false : await checkBody(onDisk);
+  if (checksumsCurrent && bodyMatches) {
+    console.log('Research index is up to date.');
+  }
+  return checksumsCurrent && bodyMatches;
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -404,14 +488,21 @@ function main(): void {
   }
 
   if (args.includes('--check')) {
-    process.exit(checkFreshness(INDEX_PATH, PAPERS_PATH, TECHNIQUES_PATH) ? 0 : 1);
+    process.exit((await checkIndex()) ? 0 : 1);
   }
 
   if (args.includes('--validate')) {
     process.exit(validateRegistry(PAPERS_PATH, TECHNIQUES_PATH) ? 0 : 1);
   }
 
-  runGenerate();
+  process.exit((await runGenerate()) ? 0 : 1);
 }
 
-main();
+// Guarded so importing this module (the #6002 in-process tests import
+// `runGenerate` / `checkIndex` directly) does NOT run a command or call
+// `process.exit`. Only fires when the file is the process entrypoint.
+const invokedPath = process.argv[1];
+const isMain = invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href;
+if (isMain) {
+  await main();
+}
