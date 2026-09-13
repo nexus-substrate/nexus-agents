@@ -275,6 +275,8 @@ export {
   ImprovementReviewInputSchema,
   type ImprovementReviewInput,
   type ImprovementReviewResponse,
+  type FiledIssue,
+  type IssueTarget,
   type ImprovementSignal,
   type SignalCategory,
 } from './improvement-review.js';

@@ -21,3 +21,4 @@ Periodic threshold-gated observability-driven improvement loop (#2402). Reads Ou
 | `minSampleSize` | integer | no | min 1; max 1000; default 5 | Minimum sample size before a CLI/category signal can fire. |
 | `fitnessFloor` | integer | no | min 0; max 100; default 90 | Fitness score below this threshold triggers a tech-debt signal. |
 | `selfEvalReportPath` | string | no | — | Optional path to a self-eval JSON report (from `self-eval --json`). When set, high-confidence unanimous deprecate/refactor findings are surfaced as tech-debt signals through the same deduped/rate-limited issue path (#3224). Unreadable/malformed reports are skipped (no signal). Absent → no self-eval signals. |
+| `targetRepo` | string | no | pattern `^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$` | Repository (`owner/repo`) to file issues against when fileIssues=true. Absent → the cwd remote (via `gh repo view`); the resolved target is reported as `issueTarget` (#6112). |

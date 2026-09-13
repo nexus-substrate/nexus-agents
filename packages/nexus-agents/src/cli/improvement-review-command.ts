@@ -121,17 +121,30 @@ function printTextReport(response: ImprovementReviewResponse, opts: CliOptions):
     printSignal(signal);
   }
 
-  if (response.issuesFiled.length > 0) {
-    console.log(`\nFiled ${String(response.issuesFiled.length)} issue(s):`);
-    for (const f of response.issuesFiled) {
-      console.log(`  - ${f.signalKey} → ${f.issueUrl}`);
-    }
-  }
+  if (response.issuesFiled.length > 0) printFiledIssues(response);
   if (response.issuesSkipped.length > 0) {
     console.log(`\nSkipped ${String(response.issuesSkipped.length)} signal(s):`);
     for (const s of response.issuesSkipped) {
       console.log(`  - ${s.signalKey} (${s.reason})`);
     }
+  }
+}
+
+/** Filed issues with their target and the labels the target lacked (#6112). */
+function printFiledIssues(response: ImprovementReviewResponse): void {
+  const target = response.issueTarget;
+  const where = target.repo === null ? `(target ${target.source})` : `in ${target.repo}`;
+  console.log(`\nFiled ${String(response.issuesFiled.length)} issue(s) ${where}:`);
+  for (const f of response.issuesFiled) {
+    const dropped =
+      f.labelCheck === 'unavailable'
+        ? ' [label check unavailable — filed without labels]'
+        : f.labelCheck === 'truncated'
+          ? ' [label list truncated — filed unfiltered]'
+          : f.labelsDropped.length > 0
+            ? ` [labels dropped: ${f.labelsDropped.join(', ')}]`
+            : '';
+    console.log(`  - ${f.signalKey} → ${f.issueUrl}${dropped}`);
   }
 }
 

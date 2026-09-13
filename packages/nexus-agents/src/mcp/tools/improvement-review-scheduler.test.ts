@@ -50,6 +50,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
+      issueTarget: { repo: null, source: 'not-filing' },
     });
 
     startImprovementReviewScheduler({ intervalMs: 1000, logger: spyLogger() });
@@ -71,6 +72,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
+      issueTarget: { repo: null, source: 'not-filing' },
     });
 
     startImprovementReviewScheduler({ intervalMs: 1000, fileIssues: true, logger: spyLogger() });
@@ -91,6 +93,7 @@ describe('improvement-review-scheduler (#3229)', () => {
               remediationTasks: [],
               issuesFiled: [],
               issuesSkipped: [],
+              issueTarget: { repo: null, source: 'not-filing' },
             });
           };
         })
@@ -115,6 +118,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
+      issueTarget: { repo: null, source: 'not-filing' },
     });
 
     startImprovementReviewScheduler({ intervalMs: 1000, logger: spyLogger() });

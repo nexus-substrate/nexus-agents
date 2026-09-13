@@ -274,6 +274,8 @@ export {
   ImprovementReviewInputSchema,
   type ImprovementReviewInput,
   type ImprovementReviewResponse,
+  type FiledIssue,
+  type IssueTarget,
   type ImprovementSignal,
   type SignalCategory,
   // Supply-chain tradeoff panel (#2294)

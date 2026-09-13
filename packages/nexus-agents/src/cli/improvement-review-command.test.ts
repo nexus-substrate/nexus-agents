@@ -36,6 +36,7 @@ const emptyResponse: ImprovementReviewResponse = {
   remediationTasks: [],
   issuesFiled: [],
   issuesSkipped: [],
+  issueTarget: { repo: null, source: 'not-filing' },
 };
 
 import type { MockInstance } from 'vitest';
@@ -150,14 +151,19 @@ describe('handleImprovementReviewCommand', () => {
         {
           signalKey: 'routing:cli-floor:claude:research',
           issueUrl: 'https://github.com/owner/repo/issues/9999',
+          labelsDropped: ['p2'],
+          labelCheck: 'ok',
         },
       ],
+      issueTarget: { repo: 'owner/repo', source: 'cwd-remote' },
     });
 
     await handleImprovementReviewCommand(makeArgs({ 'file-issues': true }));
     const text = stdout.join('\n');
-    expect(text).toContain('Filed 1 issue');
+    expect(text).toContain('Filed 1 issue(s) in owner/repo');
     expect(text).toContain('issues/9999');
+    // The labels the target lacked are stated, not silently dropped (#6112).
+    expect(text).toContain('labels dropped: p2');
   });
 
   it('rejects out-of-range lookback (101 days) via Zod schema', async () => {
