@@ -32,6 +32,7 @@ import {
   type ParsedCliArgs,
 } from './cli-types.js';
 import { dispatchCommand } from './cli-commands.js';
+import { isDirectRun } from './cli-direct-run.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
 import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
@@ -527,29 +528,13 @@ async function main(): Promise<void> {
   await dispatchCommand(parsedArgs);
 }
 
-// Run main only if this is the direct entry point (not imported as module)
-// Check if script URL matches the process execution path
-const isDirectRun = (): boolean => {
-  try {
-    const execPath = process.argv[1];
-    if (execPath === undefined) return false;
-
-    // When running via npx or as installed global, execPath may be:
-    // - The actual cli.js file: /path/to/dist/cli.js
-    // - A symlink named nexus-agents: /path/to/.bin/nexus-agents
-    // - The package binary: /path/to/node_modules/nexus-agents/dist/cli.js
-    // When imported as a module in tests, execPath points to vitest/jest runner
-    return (
-      execPath.endsWith('cli.js') ||
-      execPath.endsWith('nexus-agents') ||
-      execPath.endsWith('.bin/nexus-agents')
-    );
-  } catch {
-    return false;
-  }
-};
-
-if (isDirectRun()) {
+// Run main only if this is the direct entry point (not imported as module).
+// The decision is a pure function of process.argv[1] in cli-direct-run.ts
+// (#6102): it accepts the built cli.js, the nexus-agents bin, and the source
+// entry under tsx. When it declines — a test runner or another entry imported
+// this module — do nothing, but say so at debug level so the no-op is
+// traceable. Never print to stderr or exit here: that would break importers.
+if (isDirectRun(process.argv[1])) {
   main().catch((error: unknown) => {
     const logger = createLogger({ component: 'cli' });
     logger.error(
@@ -557,5 +542,9 @@ if (isDirectRun()) {
       error instanceof Error ? error : new Error(String(error))
     );
     process.exit(EXIT_CODES.SERVER_START_FAILED);
+  });
+} else {
+  createLogger({ component: 'cli' }).debug('Not the direct CLI entry; main() not run', {
+    argv1: process.argv[1] ?? '<undefined>',
   });
 }
