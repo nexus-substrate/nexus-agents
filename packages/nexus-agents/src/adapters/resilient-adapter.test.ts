@@ -146,6 +146,15 @@ describe('ResilientAdapter', () => {
       expect(adapter.capabilities).toEqual([]);
     });
 
+    // #6119: a seat pinned to a CLI must be identifiable by that CLI BEFORE
+    // detection, or an undetected seat keys equal to the undetected default
+    // and the voter fallover (#3587) skips it as "already on the fallback".
+    it('reports the requested CLI as provider before detection', () => {
+      const pinned = new ResilientAdapter({ preferredCli: 'codex' });
+      expect(pinned.providerId).toBe('cli-codex');
+      expect(pinned.modelId).toBe('pending-detection');
+    });
+
     it('forwards properties after detection', async () => {
       await adapter.complete({ messages: [] });
       expect(adapter.providerId).toBe('mock-provider');

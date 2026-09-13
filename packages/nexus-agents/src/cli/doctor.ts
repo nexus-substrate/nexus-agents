@@ -38,6 +38,7 @@ import {
   getRulesFile,
 } from '../config/learning-persistence.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
@@ -253,6 +254,12 @@ export interface DoctorResult {
   readonly apiKeys: ApiKeyCheck[];
   readonly configFile: ConfigFileCheck;
   readonly mcpServerReady: boolean;
+  /**
+   * MEASURED (#6119): codex is installed AND `codex mcp-server --help` names
+   * the subcommand. Inferring this from the install alone printed "Ready" on
+   * codex-cli 0.154, which has no `mcp-server`. `false` with codex installed
+   * means the subprocess transport (`codex exec`) is in use.
+   */
   readonly mcpClientReady: boolean;
   /** Model registry advisory — which models are available (#890). */
   readonly registryAdvisory: RegistryAdvisory;
@@ -875,7 +882,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const configFile = checkConfigFile();
   const mcpServerReady = checkMcpServerReady();
   const codexCheck = clis.find((c) => c.name === 'codex');
-  const mcpClientReady = codexCheck?.installed ?? false;
+  const mcpClientReady = (codexCheck?.installed ?? false) && codexMcpServerAvailable();
   const registryAdvisory = buildRegistryAdvisory(clis);
   const learningPersistence = checkLearningPersistence();
   const sqliteCheck = await checkSqlite();

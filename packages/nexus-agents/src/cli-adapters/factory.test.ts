@@ -4,8 +4,21 @@
  * Verifies factory functions create correct adapter types.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+
+// #6119: the codex transport default is MEASURED (`codex mcp-server --help`),
+// not assumed. Pin the probe so these tests describe the factory's choice, not
+// the codex binary on the test host.
+vi.mock('./codex-mcp-server-probe.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./codex-mcp-server-probe.js')>();
+  return { ...actual, codexMcpServerAvailable: vi.fn(() => true) };
+});
+
 import { createCliAdapter, createAllAdapters } from './factory.js';
+import {
+  codexMcpServerAvailable,
+  CodexMcpServerUnavailableError,
+} from './codex-mcp-server-probe.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
@@ -28,6 +41,10 @@ function expectedDisplayName(cliName: string, cliModelName: string): string {
 }
 
 describe('createCliAdapter', () => {
+  beforeEach(() => {
+    vi.mocked(codexMcpServerAvailable).mockReturnValue(true);
+  });
+
   it('should create ClaudeCliAdapter for claude', () => {
     const adapter = createCliAdapter({ cli: 'claude' });
 
@@ -44,12 +61,46 @@ describe('createCliAdapter', () => {
     expect(adapter.transport).toBe('subprocess');
   });
 
-  it('should create CodexMcpAdapter for codex by default', () => {
+  it('should create CodexMcpAdapter for codex by default when codex serves mcp-server', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
 
     expect(adapter).toBeInstanceOf(CodexMcpAdapter);
     expect(adapter.name).toBe('codex');
     expect(adapter.transport).toBe('mcp');
+  });
+
+  // #6119: codex-cli >=0.154 removed `mcp-server`; the unconfigured default
+  // must follow the probe, not the historical preference.
+  it('should create CodexCliAdapter (codex exec) by default when mcp-server is unavailable', () => {
+    vi.mocked(codexMcpServerAvailable).mockReturnValue(false);
+
+    const adapter = createCliAdapter({ cli: 'codex' });
+
+    expect(adapter).toBeInstanceOf(CodexCliAdapter);
+    expect(adapter.transport).toBe('subprocess');
+  });
+
+  it('should throw a typed error when mcp is demanded but codex has no mcp-server', () => {
+    vi.mocked(codexMcpServerAvailable).mockReturnValue(false);
+
+    expect(() => createCliAdapter({ cli: 'codex', transport: 'mcp' })).toThrow(
+      CodexMcpServerUnavailableError
+    );
+    expect(() => createCliAdapter({ cli: 'codex', transport: 'mcp' })).toThrow(/mcp-server/);
+  });
+
+  it('should honour an explicit mcp transport when the probe passes', () => {
+    const adapter = createCliAdapter({ cli: 'codex', transport: 'mcp' });
+
+    expect(adapter).toBeInstanceOf(CodexMcpAdapter);
+  });
+
+  it('should not probe when subprocess is requested explicitly', () => {
+    vi.mocked(codexMcpServerAvailable).mockClear();
+
+    createCliAdapter({ cli: 'codex', transport: 'subprocess' });
+
+    expect(codexMcpServerAvailable).not.toHaveBeenCalled();
   });
 
   it('should create CodexCliAdapter when subprocess transport specified', () => {
@@ -104,6 +155,10 @@ describe('createCliAdapter', () => {
 });
 
 describe('createAllAdapters', () => {
+  beforeEach(() => {
+    vi.mocked(codexMcpServerAvailable).mockReturnValue(true);
+  });
+
   it('should create all adapters', () => {
     const adapters = createAllAdapters();
 
@@ -119,6 +174,15 @@ describe('createAllAdapters', () => {
     expect(adapters.get('claude')).toBeInstanceOf(ClaudeCliAdapter);
     expect(adapters.get('gemini')).toBeInstanceOf(GeminiCliAdapter);
     expect(adapters.get('codex')).toBeInstanceOf(CodexMcpAdapter);
+  });
+
+  it('should fall back to CodexCliAdapter by default when mcp-server is unavailable (#6119)', () => {
+    vi.mocked(codexMcpServerAvailable).mockReturnValue(false);
+
+    const adapters = createAllAdapters();
+
+    expect(adapters.get('codex')).toBeInstanceOf(CodexCliAdapter);
+    expect(adapters.size).toBe(CLI_NAMES.length);
   });
 
   it('should create CodexCliAdapter when subprocess transport specified', () => {

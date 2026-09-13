@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+import { ResilientAdapter } from '../adapters/resilient-adapter.js';
 
 const silentLogger: ILogger = {
   debug: () => undefined,
@@ -256,6 +257,80 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
 
     expect(results[0]?.source).toBe('error');
     expect(seen).toEqual(['only']); // exactly one attempt — no fallback loop
+  });
+});
+
+describe('undetected seat still falls over (#6119)', () => {
+  // Fixture from the #6115 investigation: scope_steward was pinned to codex via
+  // the registry, codex never detected (codex-cli 0.154 has no `mcp-server`),
+  // and the seat errored "No model adapter available". Both the seat and the
+  // fallback were undetected ResilientAdapters, so both keyed as
+  // `resilient-proxy` — equal keys read as "already on the fallback", and the
+  // #3587 fallover never ran. The seat must be keyed by the CLI it REQUESTED.
+  it('retries an undetected codex seat on the fallback adapter exactly once', async () => {
+    const seat = new ResilientAdapter({ preferredCli: 'codex', logger: silentLogger });
+    const fallback = new ResilientAdapter({ logger: silentLogger });
+    const seen: string[] = [];
+    const voteFn = (
+      role: VoterRole,
+      _p: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      seen.push(adapter.providerId);
+      if (adapter === seat) {
+        return Promise.resolve({
+          role,
+          error: 'No model adapter available',
+          processingTimeMs: 5,
+          source: 'error',
+        } as AgentVoteResult);
+      }
+      return Promise.resolve(makeOkVote(role));
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['scope_steward'],
+      proposal: 'test',
+      roleAdapters: new Map([['scope_steward', seat]]),
+      fallbackAdapter: fallback,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results[0]?.source).toBe('llm');
+    expect(seen).toEqual(['cli-codex', 'resilient-proxy']);
+  });
+
+  it('still does not fall over from the fallback to itself', async () => {
+    const fallback = new ResilientAdapter({ logger: silentLogger });
+    let calls = 0;
+    const voteFn = (role: VoterRole): Promise<AgentVoteResult> => {
+      calls++;
+      return Promise.resolve({
+        role,
+        error: 'No model adapter available',
+        processingTimeMs: 5,
+        source: 'error',
+      } as AgentVoteResult);
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['scope_steward'],
+      proposal: 'test',
+      roleAdapters: new Map([['scope_steward', fallback]]),
+      fallbackAdapter: fallback,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results[0]?.source).toBe('error');
+    expect(calls).toBe(1);
   });
 });
 

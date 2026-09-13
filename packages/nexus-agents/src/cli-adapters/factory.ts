@@ -22,6 +22,11 @@ import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
+import {
+  codexMcpServerAvailable,
+  CodexMcpServerUnavailableError,
+  CODEX_MCP_SERVER_UNAVAILABLE_REASON,
+} from './codex-mcp-server-probe.js';
 
 const factoryLogger = createLogger({ component: 'cli-adapter-factory' });
 
@@ -35,7 +40,12 @@ export interface CliAdapterConfig {
   readonly model?: string;
   /** Optional logger */
   readonly logger?: ILogger;
-  /** Preferred transport (for Codex: 'mcp' or 'subprocess') */
+  /**
+   * Transport for Codex: `'mcp'` or `'subprocess'`. Unset selects by probe
+   * (#6119): `mcp` when the installed codex serves `mcp-server`, otherwise
+   * `subprocess` (`codex exec`). An explicit `'mcp'` on a codex without the
+   * subcommand throws {@link CodexMcpServerUnavailableError} at construction.
+   */
   readonly transport?: CliTransport;
 }
 
@@ -79,27 +89,43 @@ export function createCliAdapter(config: CliAdapterConfig): ICliAdapter {
 }
 
 /**
- * Creates a Codex adapter with preferred transport.
- * Defaults to MCP transport (most stable).
+ * Creates a Codex adapter for the requested transport.
  *
- * @param transport - Preferred transport ('mcp' or 'subprocess')
+ * The MCP transport was the default since #90. codex-cli 0.154 removed the
+ * `mcp-server` subcommand it spawns (#6119), so an unset transport now follows
+ * the probe: `mcp` only when the installed codex serves it, otherwise the
+ * subprocess transport, which already carries the #6093 landlock flag and the
+ * #6101 stderr capture. An explicit `'mcp'` that the probe refuses throws a
+ * typed error naming the cause rather than spawning a process that dies with
+ * `stdin is not a terminal`.
+ *
+ * @param transport - `'mcp'`, `'subprocess'`, or `undefined` to select by probe
  * @param options - Adapter options
  * @returns Codex CLI adapter
+ * @throws CodexMcpServerUnavailableError when `'mcp'` is demanded but unavailable
  */
 function createCodexAdapter(
   transport: CliTransport | undefined,
   options: { model?: string; logger?: ILogger }
 ): ICliAdapter {
-  // Default to MCP transport (preferred per Issue #90)
   if (transport === 'subprocess') {
     return new CodexCliAdapter(options);
   }
-  return new CodexMcpAdapter(options);
+  const mcpServerAvailable = codexMcpServerAvailable();
+  if (transport === 'mcp') {
+    if (!mcpServerAvailable) throw new CodexMcpServerUnavailableError();
+    return new CodexMcpAdapter(options);
+  }
+  if (mcpServerAvailable) return new CodexMcpAdapter(options);
+  (options.logger ?? factoryLogger).debug('Codex transport selected by probe: subprocess', {
+    reason: CODEX_MCP_SERVER_UNAVAILABLE_REASON,
+  });
+  return new CodexCliAdapter(options);
 }
 
 /**
  * Creates all available routing-arm adapters.
- * Uses MCP transport for Codex by default (preferred).
+ * Codex transport is selected by probe unless one is passed (#6119).
  *
  * The four CLI slots are always registered under their slot key. When
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
@@ -109,12 +135,12 @@ function createCodexAdapter(
  * deterministic; keys are never validated by calling out.
  *
  * @param logger - Optional shared logger
- * @param codexTransport - Transport for Codex (default: 'mcp')
+ * @param codexTransport - Transport for Codex; unset selects by probe
  * @returns Map of routing arm id to adapter
  */
 export function createAllAdapters(
   logger?: ILogger,
-  codexTransport: CliTransport = 'mcp'
+  codexTransport?: CliTransport
 ): Map<RoutingArmId, ICliAdapter> {
   const adapters = new Map<RoutingArmId, ICliAdapter>();
   const options = logger !== undefined ? { logger } : undefined;

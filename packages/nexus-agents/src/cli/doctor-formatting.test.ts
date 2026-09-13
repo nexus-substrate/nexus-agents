@@ -636,6 +636,27 @@ describe('doctor-formatting', () => {
       }
     });
 
+    // #6119: the client-mode line is MEASURED. codex installed without the
+    // `mcp-server` subcommand (codex-cli >=0.154) must say so and name the
+    // transport actually in use — not print "Ready" off the install alone.
+    it('should print the mcp-server-unavailable line when codex is installed without it (#6119)', () => {
+      const result = createDoctorResult({
+        clis: [createCliCheckResult('codex', true, true, 'supported', { version: '0.154.0' })],
+        mcpClientReady: false,
+      });
+      printDoctorResults(result);
+      const calls = getCalls();
+      expect(
+        calls.some((call) =>
+          call.includes(
+            'MCP Client mode: unavailable — codex-cli ≥0.154 has no mcp-server subcommand; using codex exec'
+          )
+        )
+      ).toBe(true);
+      expect(calls.some((call) => call.includes('MCP Client mode: Ready'))).toBe(false);
+      expect(calls.some((call) => call.includes('Codex not installed'))).toBe(false);
+    });
+
     it('should print voter transport status (#4255)', () => {
       const testCases = [
         { configured: true, expected: 'Voter transport: In-process gateway' },

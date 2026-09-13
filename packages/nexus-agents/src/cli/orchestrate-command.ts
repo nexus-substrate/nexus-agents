@@ -338,8 +338,10 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
 
   const availableClis = await getAvailableClis();
 
-  // Use subprocess for Codex in puppeteer mode (MCP 'execute' tool not available)
-  const codexTransport = options.engine === 'puppeteer' ? 'subprocess' : 'mcp';
+  // Use subprocess for Codex in puppeteer mode (MCP 'execute' tool not
+  // available); otherwise leave the transport unset so the factory selects it
+  // by probing for `codex mcp-server` (#6119) instead of demanding `mcp`.
+  const codexTransport = options.engine === 'puppeteer' ? 'subprocess' : undefined;
   // ROUTER CONSTRUCTION — see `pipeline/expert-bridge.ts` for the full reasoning
   // (#5191). This site additionally needs the transport argument above, which
   // selects a different class (`CodexCliAdapter` vs `CodexMcpAdapter`) and which

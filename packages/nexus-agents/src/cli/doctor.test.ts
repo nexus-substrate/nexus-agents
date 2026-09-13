@@ -30,6 +30,13 @@ vi.mock('../cli-adapters/factory.js', () => ({
   createAllAdapters: vi.fn(),
 }));
 
+// #6119: the client-mode verdict is measured by `codex mcp-server --help`.
+// Default to a codex that still serves it; the unavailable case is a test.
+vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/codex-mcp-server-probe.js')>();
+  return { ...actual, codexMcpServerAvailable: vi.fn(() => true) };
+});
+
 // Mock the MCP server module
 vi.mock('../mcp/server.js', () => ({
   createServer: vi.fn(() => ({ ok: true })),
@@ -63,6 +70,7 @@ vi.mock('./cli-auth-probe.js', () => ({
 }));
 
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -591,6 +599,32 @@ describe('Doctor Command', () => {
 
       const result = await runDoctor();
 
+      expect(result.mcpClientReady).toBe(false);
+    });
+
+    it('should report mcpClientReady=false when codex is installed but has no mcp-server (#6119)', async () => {
+      const healthy = {
+        healthy: true,
+        version: '0.154.0',
+        versionStatus: 'supported',
+        lastChecked: new Date(),
+      };
+      const mockAdapters = new Map([
+        [
+          'codex',
+          {
+            name: 'codex',
+            healthCheck: vi.fn().mockResolvedValue(healthy),
+            getCapacity: vi.fn().mockRejectedValue(new Error('n/a')),
+          },
+        ],
+      ]);
+      vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
+      vi.mocked(codexMcpServerAvailable).mockReturnValueOnce(false);
+
+      const result = await runDoctor();
+
+      expect(result.clis.find((c) => c.name === 'codex')?.installed).toBe(true);
       expect(result.mcpClientReady).toBe(false);
     });
 
