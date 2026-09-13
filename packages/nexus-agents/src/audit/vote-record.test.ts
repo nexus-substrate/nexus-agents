@@ -13,6 +13,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { VoteRecord } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
@@ -544,5 +547,48 @@ describe('schema 1.8: `model` and `unverifiable` per seat (#6091, #6094)', () =>
     const full = computeVoteRecordHash(MAXIMAL_1_8);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutModel] })).not.toBe(full);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutFlag] })).not.toBe(full);
+  });
+});
+
+describe('voter-key exhaustiveness negative probe (#6092)', () => {
+  // The probe is a `@ts-expect-error` call inside vote-record.ts that `pnpm
+  // typecheck` evaluates; it cannot be imported (the helper is private by
+  // design). What a runtime test CAN guard is the probe's presence and shape,
+  // so a dead-code pass that removes the never-called `_`-prefixed function
+  // fails here instead of nowhere. Read the source, not this file.
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'vote-record.ts'),
+    'utf-8'
+  );
+  const start = source.indexOf('function _voterKeysNegativeProbe');
+  const stop = source.indexOf('/* v8 ignore stop */', start);
+  const block = start >= 0 && stop > start ? source.slice(start, stop) : '';
+
+  it('is present in vote-record.ts', () => {
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(stop).toBeGreaterThan(start);
+  });
+
+  it('asserts via @ts-expect-error on a real defineVoterKeys call', () => {
+    expect(block).toContain('// @ts-expect-error');
+    expect(block).toContain('defineVoterKeys(missingRetried)');
+  });
+
+  it('omits exactly `retried`, so the directive has a TS2345 to consume', () => {
+    // If someone "fixed" the probe by completing the tuple, the directive would
+    // be unused and tsc would fail — but this names the intent at the vitest
+    // layer too, where the diff reviewer looks first.
+    expect(block).not.toContain("'retried'");
+    for (const key of [
+      'role',
+      'decision',
+      'confidence',
+      'reasoning',
+      'reasoningTruncated',
+      'model',
+      'unverifiable',
+    ]) {
+      expect(block).toContain(`'${key}'`);
+    }
   });
 });

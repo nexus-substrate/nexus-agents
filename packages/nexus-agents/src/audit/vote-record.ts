@@ -210,7 +210,8 @@ export type VoterSummary = z.infer<typeof VoterSummarySchema>;
  * in it: `[keyof VoterSummary] extends [T[number]]` is `unknown` (no-op
  * intersection) when the tuple is complete and `never` when a schema key is
  * missing, so the argument becomes unassignable. Drop `retried` from the tuple
- * below and this call is a `tsc` error, not a silently unhashed field.
+ * below and this call is a `tsc` error, not a silently unhashed field. The
+ * constraint is itself pinned by {@link _voterKeysNegativeProbe} (#6092).
  *
  * This exists INSTEAD of a standalone sentinel const because a sentinel
  * survives lint only through the `^_` unused-vars ignore pattern and can be
@@ -255,6 +256,43 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'model',
   'unverifiable',
 ] as const satisfies readonly (keyof VoterSummary)[]);
+
+/**
+ * Compile-time NEGATIVE probe for {@link defineVoterKeys} (#6092).
+ *
+ * {@link VOTER_SUMMARY_KEYS} above proves the constraint ACCEPTS a complete
+ * tuple. Nothing until this proved it still REJECTS an incomplete one: that was
+ * verified only by a one-off mutation on #6077, so a TypeScript release that
+ * changed inference on `T & (conditional)` could have silenced the constraint
+ * with no gate noticing. Here the `@ts-expect-error` is the assertion: while
+ * the constraint fires, the call is TS2345 and the directive consumes it; if
+ * the constraint ever weakens, the call compiles, the directive is unused, and
+ * `pnpm typecheck` fails with TS2578. A real call, not an instantiation
+ * expression, because the risk named is call-site inference.
+ *
+ * Never called and emitted as dead code — `defineVoterKeys` is module-private
+ * on purpose (a test-only export is what the producer/consumer gate blocks),
+ * so the probe lives beside it. The `_` prefix is the lint exemption; the
+ * source-presence test in vote-record.test.ts is what stops a dead-code pass
+ * from deleting this block with no test failing.
+ */
+/* v8 ignore start -- never called; the type-check is the test (#6092) */
+function _voterKeysNegativeProbe(): void {
+  // Everything except `retried`. `satisfies` on its own line so a renamed key
+  // fails HERE, visibly, instead of being swallowed by the directive below.
+  const missingRetried = [
+    'role',
+    'decision',
+    'confidence',
+    'reasoning',
+    'reasoningTruncated',
+    'model',
+    'unverifiable',
+  ] as const satisfies readonly (keyof VoterSummary)[];
+  // @ts-expect-error — an incomplete tuple must not type-check (#6077)
+  defineVoterKeys(missingRetried);
+}
+/* v8 ignore stop */
 
 /**
  * Project one voter entry for the canonical hash: every key in
