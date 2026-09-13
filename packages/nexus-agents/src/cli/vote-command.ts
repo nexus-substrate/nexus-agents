@@ -31,8 +31,18 @@ import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/typ
 import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
 import { validateTimeout } from '../config/timeouts.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
-import type { ConsensusVoteInput, VoteDecisionStatus } from '../mcp/tools/consensus-vote-types.js';
+import type {
+  ConsensusVoteInput,
+  ContrarianCheckStatus,
+  ExtendedVotingResult,
+  VoteDecisionStatus,
+} from '../mcp/tools/consensus-vote-types.js';
 import { toRecordDecision } from '../mcp/tools/consensus-vote-types.js';
+import {
+  contrarianCheckLine,
+  contrarianCheckSummaryLine,
+  tallySummaryLine,
+} from './vote-summary-lines.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
@@ -152,6 +162,8 @@ interface SummaryContext {
   readonly decision: VoteDecisionStatus;
   /** #5362: present when the option gate drove the rejection. */
   readonly optionGate?: OptionGateExplain;
+  /** #6111: the quick-mode contrarian check, which no seat count can carry. */
+  readonly contrarianCheck: ContrarianCheckStatus;
 }
 
 function printSummary(ctx: SummaryContext): void {
@@ -172,6 +184,9 @@ function printSummary(ctx: SummaryContext): void {
     `  ${unverifiable > 0 ? colors.yellow : ''}Unverifiable: ${String(unverifiable)} (of the abstentions; could not read the artifact)${colors.reset}`
   );
   if (errored > 0) writeLine(`  ${colors.red}Errored:  ${String(errored)}${colors.reset}`);
+  // #6111: always printed, `ok` included — the check is not a seat, so no
+  // count above can carry it.
+  writeLine(contrarianCheckSummaryLine(ctx.contrarianCheck));
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
 
@@ -346,8 +361,16 @@ function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; tex
  * `decision` (#4135) is the response-layer decision (incl. `no_quorum`). When
  * omitted, it falls back to mapping the 2-valued engine outcome — so pre-#4135
  * callers get the identical `APPROVED`/`REJECTED` label.
+ *
+ * `contrarianCheck` (#6111) is the quick-mode contrarian check. A caller that
+ * formats a result without having run the vote never ran the check either, so
+ * omission renders as `skipped` — the named empty case, not a default health.
  */
-export function formatVoteComment(result: VotingResult, decision?: VoteDecisionStatus): string {
+export function formatVoteComment(
+  result: VotingResult,
+  decision?: VoteDecisionStatus,
+  contrarianCheck: ContrarianCheckStatus = 'skipped'
+): string {
   const now = new Date(getTimeProvider().now()).toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -377,23 +400,6 @@ export function formatVoteComment(result: VotingResult, decision?: VoteDecisionS
     })
     .join('\n');
 
-  const errored = result.votes.filter((v) => v.source === 'error').length;
-  const unverifiable = result.votes.filter((v) => v.source === 'unverifiable').length;
-  const { voteCounts, approvalPercentage } = result.result;
-  // Under the default `reduce_denominator` the counts EXCLUDE errored seats, so
-  // a 7-row table sat above a 6-voter tally with nothing reconciling them. The
-  // errored count is what closes that gap. The unverifiable count (#6094) is
-  // always present, explicit 0 included: those seats sit inside Abstain.
-  const summary =
-    `Approve: ${String(voteCounts.approve)}, Reject: ${String(voteCounts.reject)}, ` +
-    `Abstain: ${String(voteCounts.abstain)}, Unverifiable: ${String(unverifiable)}` +
-    (errored > 0 ? `, Errored: ${String(errored)}` : '') +
-    ` (${approvalPercentage.toFixed(1)}% approval` +
-    (errored > 0
-      ? `, measured over ${String(result.votes.length - errored)} responding voter(s)`
-      : '') +
-    ')';
-
   return `## Consensus Vote Result
 
 **Date:** ${now} (ET)
@@ -406,7 +412,8 @@ export function formatVoteComment(result: VotingResult, decision?: VoteDecisionS
 | ----- | -------- | ---------- |
 ${voteRows}
 
-**Summary:** ${summary}
+**Summary:** ${tallySummaryLine(result)}
+**${contrarianCheckLine(contrarianCheck)}**
 
 ---
 *Vote conducted per CLAUDE.md Consensus Voting Protocol*`;
@@ -426,9 +433,10 @@ ${voteRows}
 export function recordVoteToGitHub(
   issueNumber: number,
   result: VotingResult,
-  decision?: VoteDecisionStatus
+  decision?: VoteDecisionStatus,
+  contrarianCheck?: ContrarianCheckStatus
 ): void {
-  const comment = formatVoteComment(result, decision);
+  const comment = formatVoteComment(result, decision, contrarianCheck);
 
   const output = safeExecSandboxed(`gh issue comment ${String(issueNumber)} --body-file -`, {
     context: 'gh',
@@ -454,19 +462,7 @@ export function recordVoteToGitHub(
  * CLI-specific concerns (timeout clamping + diagnostic line) remain here
  * because they belong to the operator UX, not the voting flow itself.
  */
-async function runVote(options: VoteCommandOptions): Promise<
-  VotingResult & {
-    readonly decision: VoteDecisionStatus;
-    readonly strategy: string;
-    readonly policyReason?: string;
-    /**
-     * #5362: `executeVoting` has always returned this; the CLI's narrower
-     * return type dropped it, so the summary line could not say that an option
-     * veto — not the approval bar — caused a rejection.
-     */
-    readonly optionGate?: OptionGateExplain;
-  }
-> {
+async function runVote(options: VoteCommandOptions): Promise<CliVoteResult> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -495,13 +491,32 @@ async function runVote(options: VoteCommandOptions): Promise<
   };
 
   const logger = createLogger({ component: 'cli-vote' });
-  const result = await executeVoting(input, logger, { voteTimeoutMs: timeoutMs });
+  return toCliVoteResult(await executeVoting(input, logger, { voteTimeoutMs: timeoutMs }));
+}
 
-  // `ExtendedVotingResult` is a superset of `VotingResult` — return the
-  // narrower view since the CLI pretty-printers only consume the base
-  // fields and don't render `strategy` / `higherOrderResult`. #4135: also carry
-  // the response-layer `decision` (incl. `no_quorum`) so the command can honor a
-  // quorum void; fall back to mapping the engine outcome when it's absent.
+/** The view of a vote the CLI printers and recorders consume. */
+type CliVoteResult = VotingResult & {
+  readonly decision: VoteDecisionStatus;
+  readonly strategy: string;
+  readonly policyReason?: string;
+  /**
+   * #5362: `executeVoting` has always returned this; the CLI's narrower
+   * return type dropped it, so the summary line could not say that an option
+   * veto — not the approval bar — caused a rejection.
+   */
+  readonly optionGate?: OptionGateExplain;
+  /** #6111: the quick-mode contrarian check; `skipped` when it did not run. */
+  readonly contrarianCheck: ContrarianCheckStatus;
+};
+
+/**
+ * `ExtendedVotingResult` is a superset of `VotingResult` — return the
+ * narrower view since the CLI pretty-printers only consume the base
+ * fields and don't render `higherOrderResult`. #4135: also carry
+ * the response-layer `decision` (incl. `no_quorum`) so the command can honor a
+ * quorum void; fall back to mapping the engine outcome when it's absent.
+ */
+function toCliVoteResult(result: ExtendedVotingResult): CliVoteResult {
   return {
     proposal: result.proposal,
     threshold: result.threshold,
@@ -522,6 +537,10 @@ async function runVote(options: VoteCommandOptions): Promise<
     // blaming an approval bar the vote had cleared. TypeScript stayed silent
     // because the field is optional.
     ...(result.optionGate !== undefined ? { optionGate: result.optionGate } : {}),
+    // #6111: `executeVoting` stamps this on every path; the field is optional
+    // on its result type only for direct unit constructions, where the check
+    // genuinely did not run.
+    contrarianCheck: result.contrarianCheck ?? 'skipped',
   };
 }
 
@@ -558,7 +577,8 @@ function validateIssueIfNeeded(issueNumber: number | undefined): boolean {
 function handleRecording(
   options: VoteCommandOptions,
   result: VotingResult,
-  decision?: VoteDecisionStatus
+  decision: VoteDecisionStatus,
+  contrarianCheck: ContrarianCheckStatus
 ): void {
   if (options.issueNumber === undefined) return;
 
@@ -567,7 +587,7 @@ function handleRecording(
       `${colors.yellow}[DRY RUN]${colors.reset} Would record to issue #${String(options.issueNumber)}\n`
     );
   } else {
-    recordVoteToGitHub(options.issueNumber, result, decision);
+    recordVoteToGitHub(options.issueNumber, result, decision, contrarianCheck);
   }
 }
 
@@ -653,12 +673,13 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       threshold: result.threshold,
       decision: result.decision,
       ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
+      contrarianCheck: result.contrarianCheck,
     });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
     persistToAuditChain(options, result);
-    handleRecording(options, result, result.decision);
+    handleRecording(options, result, result.decision, result.contrarianCheck);
 
     return exitCodeForDecision(result.decision, onNoQuorum);
   } catch (error) {

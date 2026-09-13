@@ -50,6 +50,7 @@ import {
 import {
   VotingStrategySchema,
   VoteDecisionStatusSchema,
+  ContrarianCheckStatusSchema,
   VoteThresholdSchema,
   ConsensusVoteInputSchema,
   buildResponse,
@@ -86,6 +87,7 @@ import type {
   VotingStrategy,
   ConsensusVoteInput,
   ConsensusVoteResponse,
+  ContrarianCheckStatus,
   ExtendedVotingResult,
 } from './consensus-vote-types.js';
 
@@ -93,6 +95,7 @@ export type {
   VotingStrategy,
   ConsensusVoteInput,
   ConsensusVoteResponse,
+  ContrarianCheckStatus,
   AgentVoteSummary,
   VoteDecisionStatus,
   HigherOrderMetadata,
@@ -586,6 +589,9 @@ function buildPolicyShortCircuitResult(args: {
     // in buildResponse has PANEL_SIZE + contrarian-presence even on a short-circuit.
     panelSize: args.roles.length,
     contrarianRequested: args.roles.includes('catfish'),
+    // #6111: the short-circuit returns before the escalation gate, so the
+    // quick-mode contrarian check never ran.
+    contrarianCheck: 'skipped',
     // #3124: surface WHY a high-approval result is still 'rejected' so callers
     // don't mistake a fail-closed policy short-circuit for a genuine rejection.
     policyReason: args.reason,
@@ -609,6 +615,12 @@ function buildPolicyShortCircuitResult(args: {
  *  - `{ degradeReason }` — (#4132, absolute_quorum only) the contrarian check
  *    ERRORED, so the quickMode verdict must degrade to `no_quorum`;
  *  - `{}` — no escalation, continue with the quickMode result.
+ *
+ * Every shape also carries `contrarianCheck` (#6111): what became of the
+ * contrarian call itself — `skipped` when this gate returned before making it,
+ * `errored` when it was made and the voice was not obtained (under every
+ * policy, not only absolute_quorum — the policy decides the verdict, the field
+ * reports the check), `ok` when it answered.
  */
 export async function maybeEscalateContrarian(
   input: ConsensusVoteInput,
@@ -624,18 +636,28 @@ export async function maybeEscalateContrarian(
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
   }
-): Promise<{ escalated?: ExtendedVotingResult; degradeReason?: string }> {
-  if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return {};
+): Promise<{
+  escalated?: ExtendedVotingResult;
+  degradeReason?: string;
+  contrarianCheck: ContrarianCheckStatus;
+}> {
+  if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) {
+    return { contrarianCheck: 'skipped' };
+  }
 
   if (shouldEscalateLowPosterior(ctx.strategy, outcome, input.quickMode, ctx.posteriorApproval)) {
     logger.warn('Posterior-confidence escalation: re-running with full vote (#3174)', {
       strategy: ctx.strategy,
       posteriorApproval: ctx.posteriorApproval,
     });
-    return { escalated: await executeVoting({ ...input, quickMode: false }, logger, opts) };
+    return {
+      escalated: await executeVoting({ ...input, quickMode: false }, logger, opts),
+      contrarianCheck: 'skipped',
+    };
   }
 
   const escalation = await runContrarianCheck(input.proposal, logger);
+  const contrarianCheck: ContrarianCheckStatus = escalation.errored ? 'errored' : 'ok';
   // #4132: under absolute_quorum, a contrarian check that ERRORED means the
   // contrarian voice was never heard — that voids the quorum (no_quorum), it is
   // not silently skipped. Only under absolute_quorum; every other policy keeps
@@ -644,14 +666,18 @@ export async function maybeEscalateContrarian(
     logger.warn('Contrarian check errored under absolute_quorum — degrading to no_quorum (#4132)');
     return {
       degradeReason: 'no_quorum: re-run — contrarian check errored (absolute_quorum quick-mode)',
+      contrarianCheck,
     };
   }
-  if (!escalation.shouldEscalate) return {};
+  if (!escalation.shouldEscalate) return { contrarianCheck };
   logger.warn('Contrarian escalation: re-running with full vote', {
     reason: escalation.reason,
     confidence: escalation.confidence,
   });
-  return { escalated: await executeVoting({ ...input, quickMode: false }, logger, opts) };
+  return {
+    escalated: await executeVoting({ ...input, quickMode: false }, logger, opts),
+    contrarianCheck,
+  };
 }
 
 /*
@@ -810,7 +836,12 @@ async function executeVotingInner(
     logger,
     opts
   );
-  if (escalation.escalated !== undefined) return escalation.escalated;
+  // #6111: an escalated full-panel result reports the quick-mode check that
+  // produced it (`ok` when the contrarian triggered the re-vote, `skipped` when
+  // the posterior floor pre-empted the call), not the inner frame's `skipped`.
+  if (escalation.escalated !== undefined) {
+    return { ...escalation.escalated, contrarianCheck: escalation.contrarianCheck };
+  }
 
   const finalized = finalizeVotingResult({
     input,
@@ -829,7 +860,10 @@ async function executeVotingInner(
   // — stamp policyReason so buildResponse's existing ternary downgrades to
   // no_quorum, matching the errored-voter path. (Kept out of finalizeVotingResult
   // to hold executeVoting within its cyclomatic budget.)
-  return applyContrarianDegrade(finalized, escalation.degradeReason);
+  return applyContrarianDegrade(
+    { ...finalized, contrarianCheck: escalation.contrarianCheck },
+    escalation.degradeReason
+  );
 }
 
 /**
@@ -1238,6 +1272,10 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       unverifiable: z.number(),
     })
     .optional(),
+  // #6111: the quick-mode contrarian check is not a seat, so `voteCounts.error`
+  // cannot count it. Present on every completed vote (`skipped` when it did not
+  // run); optional here only because the async envelope shares this schema.
+  contrarianCheck: ContrarianCheckStatusSchema.optional(),
   votes: z
     .array(
       z.object({
