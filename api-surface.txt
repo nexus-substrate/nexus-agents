@@ -2273,7 +2273,7 @@ FunctionDeclaration createAgentStages
 FunctionDeclaration createAgentStepExecutor
   : (deps: StepExecutorDeps) => StepExecutor
 FunctionDeclaration createAllAdapters
-  : (logger?: ILogger | undefined, codexTransport?: CliTransport) => Map<RoutingArmId, ICliAdapter>
+  : (logger?: ILogger | undefined, codexTransport?: CliTransport | undefined) => Map<RoutingArmId, ICliAdapter>
 FunctionDeclaration createArchitectureExpert
   : (options?: (Partial<BaseAgentOptions> & { expertOptions?: ArchitectureExpertOptions; }) | undefined) => ArchitectureExpert
 FunctionDeclaration createAttestation

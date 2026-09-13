@@ -100,8 +100,19 @@ export class ResilientAdapter implements IResilientAdapter {
 
   // --- IModelAdapter properties (forwarded) ---
 
+  /**
+   * Before detection a CLI-pinned proxy identifies as the CLI it was asked
+   * for (`cli-<name>`, the id its detected `CliToModelAdapter` will carry);
+   * an unpinned proxy stays `resilient-proxy`.
+   *
+   * #6119: the voter fallover (#3587) keys seats by this id and skips a seat
+   * whose key equals the fallback's. When codex never detected, the pinned
+   * seat and the unpinned default were BOTH `resilient-proxy`, so the seat was
+   * read as "already on the fallback" and errored instead of falling over.
+   */
   get providerId(): string {
-    return this.currentAdapter?.providerId ?? 'resilient-proxy';
+    if (this.currentAdapter !== undefined) return this.currentAdapter.providerId;
+    return this.preferredCli === undefined ? 'resilient-proxy' : `cli-${this.preferredCli}`;
   }
 
   get modelId(): string {

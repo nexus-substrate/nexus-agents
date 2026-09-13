@@ -51,6 +51,12 @@ vi.mock('../cli/cli-auth-probe.js', () => ({
   probeCli: mocks.probeCli,
 }));
 
+// #6119: the factory probes `codex mcp-server --help` to pick the codex
+// transport; this test is about the serving gate, not the codex binary.
+vi.mock('./codex-mcp-server-probe.js', () => ({
+  codexMcpServerAvailable: () => true,
+}));
+
 vi.mock('./cli-circuit-breaker.js', () => ({
   getCliCircuitBreakerSnapshot: mocks.getCliCircuitBreakerSnapshot,
 }));

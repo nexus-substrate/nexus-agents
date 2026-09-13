@@ -8,6 +8,7 @@
  */
 
 import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
+import { CODEX_MCP_SERVER_UNAVAILABLE_REASON } from '../cli-adapters/codex-mcp-server-probe.js';
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import type { CapacityStatus } from '../cli-adapters/types.js';
 import type {
@@ -413,6 +414,26 @@ function printVoterTransportCheck(check: DoctorResult['voterTransport']): void {
   );
 }
 
+const MCP_CLIENT_UNAVAILABLE = `unavailable — ${CODEX_MCP_SERVER_UNAVAILABLE_REASON}; using codex exec`;
+
+/**
+ * MCP server mode, then client mode three ways (#6119). `mcpClientReady` is measured by the
+ * `codex mcp-server --help` probe, so codex installed without the subcommand
+ * (codex-cli >=0.154) is a warning that names the transport in use — not
+ * "Ready" off the install, and not "not installed".
+ */
+function printMcpModes(result: DoctorResult): void {
+  const server = result.mcpServerReady ? 'Ready' : 'Not ready';
+  writeLine(`${formatStatus(result.mcpServerReady)} MCP Server mode: ${server}`);
+  const codexInstalled = result.clis.some((cli) => cli.name === 'codex' && cli.installed);
+  const [status, text] = result.mcpClientReady
+    ? [formatStatus(true), 'Ready (Codex mcp-server)']
+    : codexInstalled
+      ? [formatStatus(false, true), MCP_CLIENT_UNAVAILABLE]
+      : [formatStatus(false), 'Not ready (Codex not installed)'];
+  writeLine(`${status} MCP Client mode: ${text}`);
+}
+
 /**
  * Prints the doctor results to stdout.
  */
@@ -437,12 +458,7 @@ export function printDoctorResults(result: DoctorResult): void {
 
   writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);
   writeLine('');
-  writeLine(
-    `${formatStatus(result.mcpServerReady)} MCP Server mode: ${result.mcpServerReady ? 'Ready' : 'Not ready'}`
-  );
-  writeLine(
-    `${formatStatus(result.mcpClientReady)} MCP Client mode: ${result.mcpClientReady ? 'Ready (Codex mcp-server)' : 'Not ready (Codex not installed)'}`
-  );
+  printMcpModes(result);
   printVoterTransportCheck(result.voterTransport);
   writeLine('');
 
