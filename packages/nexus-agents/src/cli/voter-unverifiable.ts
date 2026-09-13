@@ -49,7 +49,7 @@ export const UNVERIFIABLE_REASONING_RE =
  * Anchored at the start: a seat that mentions the word mid-sentence is quoting
  * the instruction, not obeying it.
  */
-export const UNVERIFIABLE_PREFIX_RE = /^\s*UNVERIFIABLE:/i;
+const UNVERIFIABLE_PREFIX_RE = /^\s*UNVERIFIABLE:/i;
 
 /**
  * A `path/file.ext:LINE` citation — the location form the PR-review addendum
@@ -57,14 +57,16 @@ export const UNVERIFIABLE_PREFIX_RE = /^\s*UNVERIFIABLE:/i;
  * the file. Requires a dotted extension before the colon so a clock time, a
  * ratio or a bare SHA does not count.
  */
-export const FILE_LINE_CITATION_RE = /(?:^|[\s(`'"])[\w./-]*[\w-]+\.[a-z][a-z\d]{0,5}:\d+\b/i;
+const FILE_LINE_CITATION_RE = /(?:^|[\s(`'"])[\w./-]*[\w-]+\.[a-z][a-z\d]{0,5}:\d+\b/i;
 
 /**
  * The recovery phrases a seat writes when a first read failed and a later one
  * did not (#6104). ONE named list: extend it here, never inline. The two
  * strings the #6101 adversarial review executed are the first two rows.
+ * Module-private, like the other two guards: behaviour is asserted through
+ * `classifyUnverifiable`, so the regexes can change without a consumer.
  */
-export const RECOVERY_PHRASE_RE =
+const RECOVERY_PHRASE_RE =
   /\b(?:retry|second attempt|subsequent attempt|re-?run) succeeded\b|\bthen read\b|\bwas able to read\b/i;
 
 /** Which sub-rule of the reasoning fallback fired; reported for the debug log. */

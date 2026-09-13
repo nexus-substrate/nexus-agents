@@ -12,9 +12,6 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  FILE_LINE_CITATION_RE,
-  RECOVERY_PHRASE_RE,
-  UNVERIFIABLE_PREFIX_RE,
   UNVERIFIABLE_REASONING_RE,
   UNVERIFIABLE_STDERR_RE,
   classifyUnverifiable,
@@ -102,32 +99,33 @@ describe('UNVERIFIABLE_REASONING_RE — the fallback (#6094)', () => {
 });
 
 describe('the recovery guard (#6104)', () => {
-  it('UNVERIFIABLE_PREFIX_RE is anchored at the start of the reasoning', () => {
-    expect(UNVERIFIABLE_PREFIX_RE.test(PREFIX_ONLY)).toBe(true);
-    expect(UNVERIFIABLE_PREFIX_RE.test('  UNVERIFIABLE: could not read the artifact')).toBe(true);
-    expect(UNVERIFIABLE_PREFIX_RE.test('Approve. Not UNVERIFIABLE: I read it.')).toBe(false);
+  /** The verdict for a reasoning with no stderr — the guards are module-private, so this is the probe. */
+  const classify = (reasoning: string): string | undefined => classifyUnverifiable({ reasoning });
+
+  it('the prefix rule is anchored at the start of the reasoning', () => {
+    expect(classify(PREFIX_ONLY)).toBe('reasoning');
+    expect(classify('  UNVERIFIABLE: could not read the artifact')).toBe('reasoning');
+    expect(classify('Approve. Not UNVERIFIABLE: I read it.')).toBeUndefined();
   });
 
-  it('FILE_LINE_CITATION_RE matches path/file.ext:LINE and nothing looser', () => {
-    expect(FILE_LINE_CITATION_RE.test('the guard at src/x.ts:12 names the empty case')).toBe(true);
+  it('a citation is path/file.ext:LINE and nothing looser', () => {
+    const quoted = "shell execution failed with 'bwrap: loopback: Failed RTM_NEWADDR'; ";
+    expect(classify(`${quoted}the guard at src/x.ts:12 names the empty case`)).toBeUndefined();
     expect(
-      FILE_LINE_CITATION_RE.test('see packages/nexus-agents/src/audit/vote-record.ts:200')
-    ).toBe(true);
-    // A bare time, a version, a ratio: none is a citation.
-    expect(FILE_LINE_CITATION_RE.test('at 12:30 the run took 3:1 on v2.9')).toBe(false);
-    expect(FILE_LINE_CITATION_RE.test('HEAD 461ee61468 against the tree')).toBe(false);
+      classify(`${quoted}see packages/nexus-agents/src/audit/vote-record.ts:200`)
+    ).toBeUndefined();
+    // A bare time, a version, a ratio, a SHA: none is a citation, so the seat is still blind.
+    expect(classify(`${quoted}at 12:30 the run took 3:1 on v2.9`)).toBe('reasoning');
+    expect(classify(`${quoted}HEAD 461ee61468 against the tree`)).toBe('reasoning');
   });
 
-  it('RECOVERY_PHRASE_RE names the recovery phrases and nothing in the ledger set', () => {
-    expect(RECOVERY_PHRASE_RE.test('but the retry succeeded and I read all three files')).toBe(
-      true
-    );
-    expect(RECOVERY_PHRASE_RE.test('the second attempt succeeded')).toBe(true);
-    expect(RECOVERY_PHRASE_RE.test('the shell failed, then read the file through the tool')).toBe(
-      true
-    );
-    expect(RECOVERY_PHRASE_RE.test('I was able to read the diff after a retry')).toBe(true);
-    for (const fixture of LEDGER_FIXTURES) expect(RECOVERY_PHRASE_RE.test(fixture)).toBe(false);
+  it('the recovery phrases are each recognised, and none appears in the ledger set', () => {
+    const quoted = "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'; ";
+    expect(classify(`${quoted}but the retry succeeded and I read all three files`)).toBeUndefined();
+    expect(classify(`${quoted}the second attempt succeeded`)).toBeUndefined();
+    expect(classify(`${quoted}then read the file through the tool`)).toBeUndefined();
+    expect(classify(`${quoted}I was able to read the diff after a retry`)).toBeUndefined();
+    for (const fixture of LEDGER_FIXTURES) expect(classify(fixture)).toBe('reasoning');
   });
 
   it.each(RECOVERED_REASONING.map((r) => [r.slice(0, 50), r] as const))(
