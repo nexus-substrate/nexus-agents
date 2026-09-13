@@ -30,16 +30,45 @@ export const UNVERIFIABLE_STDERR_RE =
   /\bbwrap: |RTM_NEWADDR|\bsandbox\b[^\n]*\b(?:denied|failed|not permitted)\b/i;
 
 /**
- * The fallback: the seat's own reasoning says it could not read the artifact.
+ * The fallback's error strings: the seat's own reasoning quotes a failed read.
  *
- * Anchored on the concrete phrases the six real ledger entries used, plus the
- * `UNVERIFIABLE:` prefix the voter prompt now asks a blind seat to write. It
+ * Anchored on the concrete phrases the six real ledger entries used. It
  * deliberately does NOT match a bare "could not read" — a seat that read the
  * artifact may say a comment "could not be read easily" and still have judged
- * the code.
+ * the code. Since #6104 a match here is necessary but not sufficient: a seat
+ * that quotes the error and then asserts a successful read (`RECOVERY_PHRASE_RE`
+ * or `FILE_LINE_CITATION_RE`) keeps its vote. The `UNVERIFIABLE:` prefix the
+ * voter prompt asks for is its own rule, `UNVERIFIABLE_PREFIX_RE`, and needs
+ * no error string.
  */
 export const UNVERIFIABLE_REASONING_RE =
-  /\bUNVERIFIABLE:|\bbwrap: |RTM_NEWADDR|\b(?:repository|source|shell) (?:reads?|access|execution|inspection) failed\b|\bcould not (?:read|inspect) the artifact\b/i;
+  /\bbwrap: |RTM_NEWADDR|\b(?:repository|source|shell) (?:reads?|access|execution|inspection) failed\b|\bcould not (?:read|inspect) the artifact\b/i;
+
+/**
+ * The prefix `voter-prompts.ts` asks a blind seat to BEGIN its reasoning with.
+ * Anchored at the start: a seat that mentions the word mid-sentence is quoting
+ * the instruction, not obeying it.
+ */
+export const UNVERIFIABLE_PREFIX_RE = /^\s*UNVERIFIABLE:/i;
+
+/**
+ * A `path/file.ext:LINE` citation — the location form the PR-review addendum
+ * in `voter-prompts.ts` asks findings to use. A seat that cites a line read
+ * the file. Requires a dotted extension before the colon so a clock time, a
+ * ratio or a bare SHA does not count.
+ */
+export const FILE_LINE_CITATION_RE = /(?:^|[\s(`'"])[\w./-]*[\w-]+\.[a-z][a-z\d]{0,5}:\d+\b/i;
+
+/**
+ * The recovery phrases a seat writes when a first read failed and a later one
+ * did not (#6104). ONE named list: extend it here, never inline. The two
+ * strings the #6101 adversarial review executed are the first two rows.
+ */
+export const RECOVERY_PHRASE_RE =
+  /\b(?:retry|second attempt|subsequent attempt|re-?run) succeeded\b|\bthen read\b|\bwas able to read\b/i;
+
+/** Which sub-rule of the reasoning fallback fired; reported for the debug log. */
+export type UnverifiableReasoningRule = 'prefix' | 'error_without_recovery';
 
 /** Evidence available after one completion: the transport's stderr, the parsed reasoning. */
 export interface UnverifiableEvidence {
@@ -47,19 +76,40 @@ export interface UnverifiableEvidence {
   readonly reasoning: string;
 }
 
+/** True when the reasoning asserts a successful read: a recovery phrase or a file:line citation. */
+function assertsSuccessfulRead(reasoning: string): boolean {
+  return RECOVERY_PHRASE_RE.test(reasoning) || FILE_LINE_CITATION_RE.test(reasoning);
+}
+
 /**
  * Classify a parsed vote as unverifiable, naming which evidence did it, or
  * `undefined` when the seat gave no sign of having failed to read.
+ *
+ * The stderr signal is primary and unconditional. The reasoning fallback
+ * fires on the `UNVERIFIABLE:` prefix, or on an error string only when the
+ * reasoning does not also assert a successful read (#6104) — a seat that
+ * quotes `bwrap:` and then says the retry succeeded read the artifact, and
+ * discarding it was a measured false-positive class. `onReasoningRule`
+ * receives the sub-rule that fired so the caller can log it.
  *
  * The empty case is named: no stderr and clean reasoning is a seat that read
  * the artifact, and its decision stands.
  */
 export function classifyUnverifiable(
-  evidence: UnverifiableEvidence
+  evidence: UnverifiableEvidence,
+  onReasoningRule?: (rule: UnverifiableReasoningRule) => void
 ): UnverifiableSignal | undefined {
   const stderr = evidence.cliStderr ?? '';
   if (stderr !== '' && UNVERIFIABLE_STDERR_RE.test(stderr)) return 'stderr';
-  if (UNVERIFIABLE_REASONING_RE.test(evidence.reasoning)) return 'reasoning';
+  const { reasoning } = evidence;
+  if (UNVERIFIABLE_PREFIX_RE.test(reasoning)) {
+    onReasoningRule?.('prefix');
+    return 'reasoning';
+  }
+  if (UNVERIFIABLE_REASONING_RE.test(reasoning) && !assertsSuccessfulRead(reasoning)) {
+    onReasoningRule?.('error_without_recovery');
+    return 'reasoning';
+  }
   return undefined;
 }
 

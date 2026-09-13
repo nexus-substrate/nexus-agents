@@ -98,7 +98,8 @@ export const VOTER_ROLES: Record<VoterRole, string> = {
  * - `stderr`: the structured signal — the CLI transport captured a sandbox /
  *   shell failure on stderr while serving the completion.
  * - `reasoning`: the fallback — the seat's own reasoning text said it could
- *   not read the artifact (`UNVERIFIABLE_REASONING_RE`).
+ *   not read the artifact: the `UNVERIFIABLE:` prefix, or an error string
+ *   with no recovery asserted (`UNVERIFIABLE_REASONING_RE`, #6104).
  */
 export type UnverifiableSignal = 'stderr' | 'reasoning';
 

@@ -180,7 +180,9 @@ function finalizeParsedVote(
   cliStderr: string | undefined,
   logger: ILogger
 ): AgentVoteResult {
-  const signal = classifyUnverifiable({ cliStderr, reasoning: built.vote.reasoning });
+  const signal = classifyUnverifiable({ cliStderr, reasoning: built.vote.reasoning }, (rule) => {
+    logger.debug('Unverifiable reasoning fallback fired', { role: built.role, rule });
+  });
   if (signal === undefined) {
     logger.info('Vote completed', {
       role: built.role,
