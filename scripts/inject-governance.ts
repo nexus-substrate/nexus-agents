@@ -1064,15 +1064,38 @@ function describeAgentsMdDrift(expected: string, content: string): string {
 }
 
 /**
- * `renderAgentsMd(content) === content`: the AGENTS.md sibling of
- * {@link checkClaudeMd} (#6105). Soft-skips when AGENTS.md is absent (the
- * CLAUDE.md render already fails loudly on that). A formatter failure is an
- * actionable line and a failed check; a malformed `.rules/*.md` frontmatter
- * still throws out of `extractRules`, as it did from `checkRulesIndex`.
+ * One line per generated section whose marker pair is absent on disk (#6133
+ * panel, rejecting seat). The injectors soft-skip a missing pair so the WRITE
+ * path never fabricates a section into a document that never had one — but
+ * that makes a deleted pair render as a fixed point, and AGENTS.md has no
+ * whole-file CI idempotency step to catch it. The check names the empty case
+ * instead of treating absence as health: every entry of
+ * {@link AGENTS_MD_SECTIONS} is required.
+ */
+function describeMissingAgentsMdSections(content: string): string[] {
+  return AGENTS_MD_SECTIONS.filter(
+    (s) => !content.includes(s.start) || !content.includes(s.end)
+  ).map(
+    (s) =>
+      `AGENTS.md is missing its generated ${s.label} section (markers ${s.start}/${s.end} not found); ` +
+      'restore the markers, then run: pnpm governance:inject'
+  );
+}
+
+/**
+ * `renderAgentsMd(content) === content` AND every generated section present:
+ * the AGENTS.md sibling of {@link checkClaudeMd} (#6105). The two are measured
+ * and reported independently — a missing section and a stale one can co-occur.
+ * Soft-skips when AGENTS.md is absent (the CLAUDE.md render already fails
+ * loudly on that). A formatter failure is an actionable line and a failed
+ * check; a malformed `.rules/*.md` frontmatter still throws out of
+ * `extractRules`, as it did from `checkRulesIndex`.
  */
 async function checkAgentsMd(tools: ToolMetadata[]): Promise<boolean> {
   if (!existsSync(AGENTS_MD_PATH)) return true;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  const missing = describeMissingAgentsMdSections(content);
+  for (const line of missing) console.error(line);
   let expected: string;
   try {
     expected = await renderAgentsMd(content, loadAgentsMdSources(tools));
@@ -1081,9 +1104,9 @@ async function checkAgentsMd(tools: ToolMetadata[]): Promise<boolean> {
     console.error(`governance:check: ${error.message}`);
     return false;
   }
-  if (expected === content) return true;
-  console.error(describeAgentsMdDrift(expected, content));
-  return false;
+  const stale = expected !== content;
+  if (stale) console.error(describeAgentsMdDrift(expected, content));
+  return missing.length === 0 && !stale;
 }
 
 // ============================================================================

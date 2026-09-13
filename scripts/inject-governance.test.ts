@@ -1360,6 +1360,58 @@ describe('inject-governance AGENTS.md generated tables (#6105)', () => {
     });
   });
 
+  /** `content` with both marker lines of the section removed — the section's body stays. */
+  function withoutMarkers(content: string, start: string, end: string): string {
+    const lines = content.split('\n');
+    const kept = lines.filter((l) => l !== start && l !== end);
+    expect(kept.length).toBe(lines.length - 2);
+    return kept.join('\n');
+  }
+
+  const MISSING = 'is missing its generated';
+
+  it.each(SECTIONS)(
+    '$name: deleted markers are reported as a missing section, not as health (#6133 panel)',
+    async ({ name, start, end }) => {
+      await withSandboxFile('AGENTS.md', async (original) => {
+        writeFileSync(box('AGENTS.md'), withoutMarkers(original, start, end));
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain(
+          `AGENTS.md is missing its generated ${name} section (markers ${start}/${end} not found); restore the markers, then run: pnpm governance:inject`
+        );
+      });
+    }
+  );
+
+  it('two deleted marker pairs are both named, and a stale third section is still reported', async () => {
+    await withSandboxFile('AGENTS.md', async (original) => {
+      const [tools, workflows, rules] = SECTIONS;
+      const edited = dropInSection(
+        withoutMarkers(
+          withoutMarkers(original, tools.start, tools.end),
+          workflows.start,
+          workflows.end
+        ),
+        rules.start,
+        rules.end,
+        rules.from
+      );
+      writeFileSync(box('AGENTS.md'), edited);
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(`${MISSING} ${tools.name} section`);
+      expect(output).toContain(`${MISSING} ${workflows.name} section`);
+      expect(output).toContain('AGENTS.md Rules index is stale (#2657)');
+    });
+  });
+
+  it('all three marker pairs present: no missing-section report', async () => {
+    const { ok, output } = await runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain(MISSING);
+  });
+
   it('prose outside the generated sections that prettier reshapes is named as such, and inject repairs it', async () => {
     await withInjectSnapshot(async () => {
       const original = readFileSync(box('AGENTS.md'), 'utf-8');
