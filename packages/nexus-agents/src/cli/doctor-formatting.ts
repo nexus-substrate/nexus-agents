@@ -7,10 +7,10 @@
  * (Source: Issue #422 - Doctor command validations)
  */
 
-import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
+import { DEFAULT_CAPABILITIES, type CapacityStatus } from '../cli-adapters/types.js';
 import { CODEX_MCP_SERVER_UNAVAILABLE_REASON } from '../cli-adapters/codex-mcp-server-probe.js';
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
-import type { CapacityStatus } from '../cli-adapters/types.js';
+import { formatClaudeModelLine } from './doctor-claude-model.js';
 import type {
   CliCheckResult,
   NodeVersionCheck,
@@ -452,9 +452,10 @@ export function printDoctorResults(result: DoctorResult): void {
 
   writeLine(`${colors.cyan}Checking CLI installations...${colors.reset}`);
   writeLine('');
-  for (const cli of result.clis) {
-    printCliResult(cli);
-  }
+  for (const cli of result.clis) printCliResult(cli);
+  // #6120: the pinned voter model, MEASURED with one call, not inferred.
+  writeLine(formatClaudeModelLine(result.claudeModel));
+  writeLine('');
 
   writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);
   writeLine('');

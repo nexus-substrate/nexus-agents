@@ -17,7 +17,7 @@
  * @module cli-adapters/cli-error-helpers
  */
 
-import { parseRetryAfterMs } from '../adapters/rate-limit-detector.js';
+import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
 
 /** Error codes the retry machinery treats as transient. */
@@ -37,6 +37,11 @@ export function isRetryableErrorCode(code: CliErrorCode): boolean {
  * Every adapter that needs to surface a CliError should prefer this
  * helper (or the `createError` method on `BaseCliAdapter`, which calls
  * into the same logic) rather than building the shape inline.
+ *
+ * A durable capacity cap is `retryable: false` even under a retryable code
+ * (#6120): it arrives as RATE_LIMITED, but a spend ceiling does not clear on
+ * a retry (#5359), and a flag that says otherwise sends every retry layer
+ * back at the same dead model.
  */
 export function createCliError(
   code: CliErrorCode,
@@ -44,7 +49,7 @@ export function createCliError(
   cli: CliName,
   cause?: Error
 ): CliError {
-  const retryable = isRetryableErrorCode(code);
+  const retryable = isRetryableErrorCode(code) && !isDurableCapacityText(message);
   // #4373: honor a provider-stated retry window here too, so the shared helper
   // and BaseCliAdapter.createError produce the same shape — otherwise which
   // construction path an adapter happened to use would decide whether the hint

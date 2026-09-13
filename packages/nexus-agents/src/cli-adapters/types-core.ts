@@ -117,6 +117,15 @@ export interface CliResponse {
   readonly costUsd?: number;
   /** Model used for generation */
   readonly model?: string;
+  /**
+   * The model the caller asked for, when the adapter answered with a
+   * different one from the same CLI family (#6120). Present only on a
+   * substituted response — the claude adapter sets it after an
+   * out-of-credits envelope for the requested model made it retry the next
+   * registry alias — so a record consumer (#6115) can say which model
+   * actually voted. Absent means the requested model answered.
+   */
+  readonly fallbackFrom?: string;
   /** Duration in milliseconds */
   readonly durationMs?: number;
   /** Raw response (for debugging) */

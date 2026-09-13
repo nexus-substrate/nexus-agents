@@ -45,6 +45,7 @@ import { createServer } from '../mcp/server.js';
 import { readOpenAICompatEnv } from '../adapters/openai-compat-adapter.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
+import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
@@ -282,6 +283,14 @@ export interface DoctorResult {
   readonly installFreshness: InstallFreshness;
   /** Voter transport: in-process gateway vs CLI subprocess fallback (#4255). */
   readonly voterTransport: VoterTransportCheck;
+  /**
+   * Whether the pinned claude voter model answers a one-line request (#6120).
+   *
+   * Measured, not inferred from the CLI's presence: a host whose pinned model
+   * was out of usage credits passed every other check here while every claude
+   * voter seat failed.
+   */
+  readonly claudeModel: ClaudeModelProbe;
   /**
    * Headroom on every distinct filesystem backing a scratch root (#4488).
    *
@@ -868,15 +877,33 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
 }
 
 /**
- * Runs the complete doctor check.
+ * Probe the pinned claude model, telling the probe whether the CLI was found
+ * (#6120). A missing claude entry among `clis` is "not installed": nothing
+ * was detected, so nothing can be probed.
  */
-export async function runDoctor(): Promise<DoctorResult> {
+function probeClaudeModelFor(
+  clis: readonly CliCheckResult[],
+  probe: (installed: boolean) => Promise<ClaudeModelProbe> = (installed) =>
+    probeClaudePinnedModel({ installed })
+): Promise<ClaudeModelProbe> {
+  const claudeCheck = clis.find((c) => c.name === 'claude');
+  return probe(claudeCheck?.installed === true);
+}
+
+/**
+ * Runs the complete doctor check. `probeClaudeModel` is the pinned-model probe
+ * seam (#6120), injectable so the suite spends no quota.
+ */
+export async function runDoctor(
+  deps: { readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe> } = {}
+): Promise<DoctorResult> {
   const clis = await Promise.all([
     checkCli('claude'),
     checkCli('gemini'),
     checkCli('codex'),
     checkCli('opencode'),
   ]);
+  const claudeModel = await probeClaudeModelFor(clis, deps.probeClaudeModel);
   const nodeVersion = checkNodeVersion();
   const apiKeys = checkApiKeys();
   const configFile = checkConfigFile();
@@ -916,6 +943,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     dataDirectory,
     sandbox,
     ...env,
+    claudeModel,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

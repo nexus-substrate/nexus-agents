@@ -48,8 +48,20 @@ const TRANSIENT_RATE_LIMIT_PATTERNS = [
  * a rolling window that does clear. It is grouped here because the observed
  * failures were spend caps; revisit against real per-provider message text
  * rather than wording alone if a false durable classification shows up.
+ *
+ * `out of usage credits` is the claude CLI's per-model exhaustion text (#6120),
+ * measured 2026-09-13: `claude -p --output-format json --model fable` returned
+ * `is_error: true` with "You're out of usage credits. Switch to another
+ * model…" while `--model sonnet` answered. It is durable for THAT model —
+ * the claude adapter falls back within the family before the failure counts
+ * against the CLI.
  */
-const DURABLE_CAPACITY_PATTERNS = ['quota exceeded', 'key limit', 'usage limit'] as const;
+const DURABLE_CAPACITY_PATTERNS = [
+  'quota exceeded',
+  'key limit',
+  'usage limit',
+  'out of usage credits',
+] as const;
 
 /**
  * Canonical rate-limit detection patterns — the union.
