@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.53.4
+
+### Patch Changes
+
+- [#6142](https://github.com/nexus-substrate/nexus-agents/pull/6142) [`0052e16`](https://github.com/nexus-substrate/nexus-agents/commit/0052e1673a8bab0c6b8b1bf1c3f03759a2d201c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `scripts/check-new-unused-exports.ts` now scans the working tree, not just commits. It used to diff `<merge-base>...HEAD`, so a run before `git commit` examined nothing and exited 0 — a pass for the wrong reason, which is how four PRs on 2026-09-13 passed the gate locally and failed it in CI ([#6139](https://github.com/nexus-substrate/nexus-agents/issues/6139)). The file set is now `git diff <merge-base>` (committed, staged and unstaged changes) plus untracked files under `packages/nexus-agents/src`; on a clean tree the two views list the same files, so CI behaviour is unchanged. Every run prints one `scanned N added, M modified source files since <ref> (working tree included)` line, and a run with nothing to scan says `no source files changed since <ref>` instead of exiting silently.
+
 ## 8.53.3
 
 ### Patch Changes
