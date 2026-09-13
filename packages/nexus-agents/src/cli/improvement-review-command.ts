@@ -139,9 +139,11 @@ function printFiledIssues(response: ImprovementReviewResponse): void {
     const dropped =
       f.labelCheck === 'unavailable'
         ? ' [label check unavailable — filed without labels]'
-        : f.labelsDropped.length > 0
-          ? ` [labels dropped: ${f.labelsDropped.join(', ')}]`
-          : '';
+        : f.labelCheck === 'truncated'
+          ? ' [label list truncated — filed unfiltered]'
+          : f.labelsDropped.length > 0
+            ? ` [labels dropped: ${f.labelsDropped.join(', ')}]`
+            : '';
     console.log(`  - ${f.signalKey} → ${f.issueUrl}${dropped}`);
   }
 }

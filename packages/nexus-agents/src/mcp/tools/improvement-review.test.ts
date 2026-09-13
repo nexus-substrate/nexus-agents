@@ -746,25 +746,31 @@ describe('runImprovementReview — label check against the target repo (#6112)',
 
   /**
    * A `gh` double keyed on the sub-command. `labelListResult` is what
-   * `gh label list --json name` returns (or `'fail'` for a non-zero exit);
-   * every `gh issue list` search finds nothing and every `gh issue create`
+   * `gh label list --json name` returns — a fixed list, `'fail'` for a
+   * non-zero exit, or a function of the `--limit` the tool asked for (so a
+   * test can return exactly one page without knowing the page size); every
+   * `gh issue list` search finds nothing and every `gh issue create`
    * succeeds with a numbered URL.
    */
-  function ghDouble(labelListResult: readonly string[] | 'fail'): {
+  function ghDouble(
+    labelListResult: readonly string[] | 'fail' | ((limit: number) => readonly string[])
+  ): {
     ghExec: GhExec;
     calls: string[][];
   } {
     const calls: string[][] = [];
     let created = 0;
+    const labelList = (args: readonly string[]): Promise<{ stdout: string }> => {
+      if (labelListResult === 'fail') return Promise.reject(new Error('gh: HTTP 404'));
+      const limit = Number(args[args.indexOf('--limit') + 1]);
+      const names =
+        typeof labelListResult === 'function' ? labelListResult(limit) : labelListResult;
+      return Promise.resolve({ stdout: JSON.stringify(names.map((name) => ({ name }))) });
+    };
     const ghExec: GhExec = (args) => {
       calls.push([...args]);
       const [group, verb] = args;
-      if (group === 'label' && verb === 'list') {
-        if (labelListResult === 'fail') return Promise.reject(new Error('gh: HTTP 404'));
-        return Promise.resolve({
-          stdout: JSON.stringify(labelListResult.map((name) => ({ name }))),
-        });
-      }
+      if (group === 'label' && verb === 'list') return labelList(args);
       if (group === 'issue' && verb === 'list') return Promise.resolve({ stdout: '[]' });
       if (group === 'issue' && verb === 'create') {
         created += 1;
@@ -847,6 +853,40 @@ describe('runImprovementReview — label check against the target repo (#6112)',
     expect(create).not.toContain('--label');
   });
 
+  const labelPage = (n: number): readonly string[] =>
+    Array.from({ length: n }, (_, i) => `label-${String(i)}`);
+
+  it('does not filter against a page-limited list: exactly `limit` labels → truncated, all labels passed', async () => {
+    // The repo may have more labels than one page shows; a label past the
+    // page must not be read as nonexistent and silently stripped.
+    const gh = ghDouble((limit) => labelPage(limit));
+    const result = await review(gh.ghExec, perfSignals('search'), 'acme/widgets');
+
+    expect(result.issuesFiled).toEqual([
+      {
+        signalKey: signalKey('search'),
+        issueUrl: `${ISSUE_URL}1`,
+        labelsDropped: [],
+        labelCheck: 'truncated',
+      },
+    ]);
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(labelArg(create ?? [])).toBe('p2,perf-regression');
+    // The page is large enough that a 200-label repo is not read as truncated.
+    const list = gh.calls.find((c) => c[0] === 'label' && c[1] === 'list');
+    expect(Number(list?.[list.indexOf('--limit') + 1])).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('filters as usual when the list is one short of the page limit', async () => {
+    const gh = ghDouble((limit) => [...labelPage(limit - 2), 'perf-regression']);
+    const result = await review(gh.ghExec, perfSignals('search'), 'acme/widgets');
+
+    expect(result.issuesFiled[0]?.labelCheck).toBe('ok');
+    expect(result.issuesFiled[0]?.labelsDropped).toEqual(['p2']);
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(labelArg(create ?? [])).toBe('perf-regression');
+  });
+
   it('(4) fetches the label list once for a run that files three issues', async () => {
     const gh = ghDouble(['p2', 'perf-regression']);
     const result = await review(gh.ghExec, perfSignals('a', 'b', 'c'), 'acme/widgets');
@@ -859,7 +899,7 @@ describe('runImprovementReview — label check against the target repo (#6112)',
     const listCalls = gh.calls.filter((c) => c[0] === 'label' && c[1] === 'list');
     expect(listCalls).toHaveLength(1);
     expect(listCalls[0]).toEqual(
-      expect.arrayContaining(['label', 'list', '--json', 'name', '--limit', '200'])
+      expect.arrayContaining(['label', 'list', '--json', 'name', '--limit'])
     );
   });
 

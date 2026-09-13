@@ -818,10 +818,27 @@ export interface FiledIssue {
   /**
    * `ok` — `gh label list` answered and the filter above is real;
    * `unavailable` — the list failed, so the issue was filed with NO labels and
-   * every requested label is in `labelsDropped`. The lookup never blocks the signal.
+   * every requested label is in `labelsDropped`;
+   * `truncated` — the list filled its page ({@link LABEL_LIST_LIMIT}), so a
+   * label past it cannot be told from a missing one: no filtering was done,
+   * every requested label was passed and `labelsDropped` is `[]`.
+   * The lookup never blocks the signal.
    */
-  readonly labelCheck: 'ok' | 'unavailable';
+  readonly labelCheck: 'ok' | 'unavailable' | 'truncated';
 }
+
+/**
+ * Page size for `gh label list`. A repo with at least this many labels fills
+ * the page, and the check reports `truncated` rather than treating every label
+ * past the page as nonexistent (a 200-label page silently stripped them).
+ */
+const LABEL_LIST_LIMIT = 1000;
+
+/** What `gh label list` told us about the target repo's labels. */
+type RepoLabels =
+  | { readonly status: 'ok'; readonly names: ReadonlySet<string> }
+  | { readonly status: 'unavailable' }
+  | { readonly status: 'truncated' };
 
 interface IssueFilingDeps {
   readonly logger: ILogger;
@@ -878,14 +895,12 @@ async function resolveIssueTarget(deps: IssueFilingDeps): Promise<IssueTarget> {
 
 /**
  * The label names the target repo has, fetched once per run via
- * `gh label list --json name`. `null` means the lookup failed — callers file
- * with no labels and say so (`labelCheck: 'unavailable'`) instead of letting a
- * missing label turn the signal into an `issuesSkipped` error (#6112).
+ * `gh label list --json name`. `unavailable` means the lookup failed — callers
+ * file with no labels and say so instead of letting a missing label turn the
+ * signal into an `issuesSkipped` error (#6112). `truncated` means the page
+ * filled, so the list cannot prove any label absent — callers skip filtering.
  */
-async function fetchRepoLabels(
-  deps: IssueFilingDeps,
-  target: IssueTarget
-): Promise<ReadonlySet<string> | null> {
+async function fetchRepoLabels(deps: IssueFilingDeps, target: IssueTarget): Promise<RepoLabels> {
   try {
     const { stdout } = await deps.ghExec([
       'label',
@@ -893,16 +908,26 @@ async function fetchRepoLabels(
       '--json',
       'name',
       '--limit',
-      '200',
+      String(LABEL_LIST_LIMIT),
       ...repoArgs(target),
     ]);
     const parsed = JSON.parse(stdout) as readonly { name?: unknown }[];
-    return new Set(parsed.flatMap((l) => (typeof l.name === 'string' ? [l.name] : [])));
+    if (parsed.length >= LABEL_LIST_LIMIT) {
+      deps.logger.warn('improvement_review: gh label list filled its page; filing unfiltered', {
+        returned: parsed.length,
+        limit: LABEL_LIST_LIMIT,
+      });
+      return { status: 'truncated' };
+    }
+    return {
+      status: 'ok',
+      names: new Set(parsed.flatMap((l) => (typeof l.name === 'string' ? [l.name] : []))),
+    };
   } catch (caught) {
     deps.logger.warn('improvement_review: gh label list failed; filing without labels', {
       error: getErrorMessage(caught),
     });
-    return null;
+    return { status: 'unavailable' };
   }
 }
 
@@ -956,18 +981,26 @@ export function issueLabelsForSignal(signal: ImprovementSignal): readonly string
   return [priorityLabel(classifySignalPriority(signal)), signal.category];
 }
 
-/** Split the requested labels into the ones the repo has and the ones it lacks. */
+/**
+ * Split the requested labels into the ones to pass and the ones to drop. Only
+ * an `ok` list filters; `unavailable` passes none and `truncated` passes all.
+ */
 function partitionLabels(
   requested: readonly string[],
-  existing: ReadonlySet<string> | null
+  labels: RepoLabels
 ): Pick<FiledIssue, 'labelsDropped' | 'labelCheck'> & { readonly kept: readonly string[] } {
-  if (existing === null)
-    return { kept: [], labelsDropped: [...requested], labelCheck: 'unavailable' };
-  return {
-    kept: requested.filter((l) => existing.has(l)),
-    labelsDropped: requested.filter((l) => !existing.has(l)),
-    labelCheck: 'ok',
-  };
+  switch (labels.status) {
+    case 'unavailable':
+      return { kept: [], labelsDropped: [...requested], labelCheck: 'unavailable' };
+    case 'truncated':
+      return { kept: [...requested], labelsDropped: [], labelCheck: 'truncated' };
+    case 'ok':
+      return {
+        kept: requested.filter((l) => labels.names.has(l)),
+        labelsDropped: requested.filter((l) => !labels.names.has(l)),
+        labelCheck: 'ok',
+      };
+  }
 }
 
 /**
@@ -1050,9 +1083,8 @@ async function fileSignalsAsIssues(
   const issuesFiled: FiledIssue[] = [];
   const issuesSkipped: { signalKey: string; reason: string }[] = [];
   const target = await resolveIssueTarget(deps);
-  let labelsOnce: Promise<ReadonlySet<string> | null> | undefined;
-  const repoLabels = (): Promise<ReadonlySet<string> | null> =>
-    (labelsOnce ??= fetchRepoLabels(deps, target));
+  let labelsOnce: Promise<RepoLabels> | undefined;
+  const repoLabels = (): Promise<RepoLabels> => (labelsOnce ??= fetchRepoLabels(deps, target));
 
   for (const signal of signals) {
     if (issuesFiled.length >= MAX_ISSUES_PER_RUN) {

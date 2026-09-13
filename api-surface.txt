@@ -3674,7 +3674,7 @@ InterfaceDeclaration FileAuditStorageConfig
   allowedRoot?: string | undefined
 InterfaceDeclaration FiledIssue
   readonly issueUrl: string
-  readonly labelCheck: "ok" | "unavailable"
+  readonly labelCheck: "ok" | "truncated" | "unavailable"
   readonly labelsDropped: readonly string[]
   readonly signalKey: string
 TypeAliasDeclaration FileReference
