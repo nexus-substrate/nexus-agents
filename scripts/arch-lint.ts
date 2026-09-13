@@ -9,6 +9,7 @@
  * 3. Governance - CLAUDE.md compliance
  * 4. Test Hygiene - Mocks outside tests
  * 5. Security - No secrets, no silent ignores
+ * 6. Suppression Hygiene - A `max-lines` disable states its reason (#6008)
  *
  * @module scripts/arch-lint
  * (Source: Issue #570)
@@ -17,6 +18,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
+import { checkSuppressionReason } from './arch-lint-suppression.js';
 
 export interface Violation {
   readonly file: string;
@@ -472,7 +474,7 @@ export function collectLintTargets(): string[] {
 }
 
 /** Package source — subject to every rule. */
-function collectSrcTargets(): string[] {
+export function collectSrcTargets(): string[] {
   return getAllTsFiles(SRC_ROOT).filter((f) => !f.includes('.test.'));
 }
 
@@ -504,6 +506,7 @@ function lint(): LintResult {
       violations.push(...checkSecurity(filePath, content));
       violations.push(...checkTestHygiene(filePath, content));
       violations.push(...checkTempDirCleanup(filePath, content));
+      violations.push(...checkSuppressionReason(filePath, content));
     } catch {
       // Skip files that can't be read
     }

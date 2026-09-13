@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 678 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the dashboard section builders and the per-model lens share one set of outcome-store query helpers; split tracked in #6148 */
 /**
  * nexus-agents/mcp - Weather Report
  *

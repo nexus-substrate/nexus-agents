@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */ // Pipeline orchestration — cohesive single module (governance: 400-600 OK)
+/* eslint-disable max-lines -- 889 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); one orchestrator over the seven dev-pipeline stages with checkpoint/resume and hindsight recall; split tracked in #6148 */
 /**
  * Multi-Agent Development Pipeline (#1684)
  *
