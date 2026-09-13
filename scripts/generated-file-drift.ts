@@ -8,6 +8,8 @@
  * whose module graph (ts-morph, every drift gate) is far more than a
  * formatter.
  *
+ * The injector still carries the original pair (governor path, untouched); #6099 unifies them.
+ *
  * @module scripts/generated-file-drift
  */
 
@@ -29,7 +31,7 @@ export async function formatWithPrettier(path: string, content: string): Promise
 }
 
 /** Marker for a side that ran out of lines before the other did. */
-export const END_OF_BLOCK = '<end of block>';
+const END_OF_BLOCK = '<end of block>';
 /** The same, for a whole-file comparison (#6087). */
 export const END_OF_FILE = '<end of file>';
 
