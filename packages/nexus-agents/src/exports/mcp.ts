@@ -301,4 +301,6 @@ export {
   type ImprovementReviewDeps,
   type ImprovementReviewInput,
   type ImprovementReviewResponse,
+  type FiledIssue,
+  type IssueTarget,
 } from '../mcp/index.js';

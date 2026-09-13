@@ -64,6 +64,9 @@ const execFileAsync = promisify(execFile);
 // Schemas
 // ============================================================================
 
+/** `owner/repo` — rejects anything that could read as a flag or a path (#6112). */
+const TARGET_REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
 export const ImprovementReviewInputSchema = z.object({
   lookbackDays: z
     .number()
@@ -104,6 +107,14 @@ export const ImprovementReviewInputSchema = z.object({
         'high-confidence unanimous deprecate/refactor findings are surfaced as tech-debt ' +
         'signals through the same deduped/rate-limited issue path (#3224). Unreadable/malformed ' +
         'reports are skipped (no signal). Absent → no self-eval signals.'
+    ),
+  targetRepo: z
+    .string()
+    .regex(TARGET_REPO_PATTERN, 'targetRepo must be `owner/repo`')
+    .optional()
+    .describe(
+      'Repository (`owner/repo`) to file issues against when fileIssues=true. Absent → the ' +
+        'cwd remote (via `gh repo view`); the resolved target is reported as `issueTarget` (#6112).'
     ),
 });
 
@@ -154,8 +165,11 @@ export interface ImprovementReviewResponse {
    * routing through the dev-pipeline. Nothing here is executed or auto-invoked.
    */
   readonly remediationTasks: readonly PipelineTask[];
-  readonly issuesFiled: readonly { readonly signalKey: string; readonly issueUrl: string }[];
+  /** Filed issues, each with the labels the target repo lacked (#6112). */
+  readonly issuesFiled: readonly FiledIssue[];
   readonly issuesSkipped: readonly { readonly signalKey: string; readonly reason: string }[];
+  /** Where the issues went and how the target was chosen; `not-filing` when fileIssues=false. */
+  readonly issueTarget: IssueTarget;
 }
 
 // ============================================================================
@@ -774,17 +788,140 @@ export async function loadSelfEvalSignals(
 // ============================================================================
 
 /**
+ * Runs `gh` with the given argv — no shell, so title/body/label content cannot
+ * inject. Injected so tests drive every `gh` call (label list, dedup search,
+ * create, target lookup) through one seam (#6112).
+ */
+export type GhExec = (args: readonly string[]) => Promise<{ readonly stdout: string }>;
+
+const defaultGhExec: GhExec = async (args) => execFileAsync('gh', [...args]);
+
+/** Where the filed issues went, and how that target was chosen (#6112). */
+export interface IssueTarget {
+  /** `owner/repo`, or null when neither the caller nor the cwd remote named one. */
+  readonly repo: string | null;
+  /**
+   * `input` — the caller passed `targetRepo`; `cwd-remote` — resolved via
+   * `gh repo view` from the working directory; `unresolved` — the lookup
+   * failed, so `gh` was left to its own cwd resolution (no `--repo` flag);
+   * `not-filing` — `fileIssues` was false, nothing was resolved.
+   */
+  readonly source: 'input' | 'cwd-remote' | 'unresolved' | 'not-filing';
+}
+
+/** One filed issue plus what happened to its requested labels (#6112). */
+export interface FiledIssue {
+  readonly signalKey: string;
+  readonly issueUrl: string;
+  /** Requested labels the target repo does not have; explicit `[]` when none. */
+  readonly labelsDropped: readonly string[];
+  /**
+   * `ok` — `gh label list` answered and the filter above is real;
+   * `unavailable` — the list failed, so the issue was filed with NO labels and
+   * every requested label is in `labelsDropped`. The lookup never blocks the signal.
+   */
+  readonly labelCheck: 'ok' | 'unavailable';
+}
+
+export interface IssueFilingDeps {
+  readonly logger: ILogger;
+  readonly ghExec: GhExec;
+  /** `owner/repo` named by the caller. Absent → resolved from the cwd remote. */
+  readonly targetRepo?: string;
+}
+
+const NOT_FILING: IssueTarget = { repo: null, source: 'not-filing' };
+
+/** The filing step of a review run: a no-op with an explicit `not-filing` target when off. */
+async function maybeFileIssues(
+  signals: readonly ImprovementSignal[],
+  opts: Omit<IssueFilingDeps, 'targetRepo'> & {
+    readonly fileIssues: boolean;
+    readonly targetRepo: string | undefined;
+  }
+): Promise<Awaited<ReturnType<typeof fileSignalsAsIssues>>> {
+  if (!opts.fileIssues) return { issuesFiled: [], issuesSkipped: [], issueTarget: NOT_FILING };
+  return fileSignalsAsIssues(signals, {
+    logger: opts.logger,
+    ghExec: opts.ghExec,
+    ...(opts.targetRepo === undefined ? {} : { targetRepo: opts.targetRepo }),
+  });
+}
+
+/** `--repo <target>` when a target is known, else nothing (gh resolves from cwd). */
+function repoArgs(target: IssueTarget): readonly string[] {
+  return target.repo === null ? [] : ['--repo', target.repo];
+}
+
+/**
+ * Resolve the repository the issues will be filed against. The caller's
+ * `targetRepo` wins; otherwise `gh repo view` names the cwd remote. A failed
+ * lookup is reported as `unresolved` rather than guessed — `gh` then falls
+ * back to its own cwd resolution, exactly as it did before #6112.
+ */
+async function resolveIssueTarget(deps: IssueFilingDeps): Promise<IssueTarget> {
+  if (deps.targetRepo !== undefined) return { repo: deps.targetRepo, source: 'input' };
+  try {
+    const { stdout } = await deps.ghExec(['repo', 'view', '--json', 'nameWithOwner']);
+    const parsed = JSON.parse(stdout) as { nameWithOwner?: unknown };
+    if (typeof parsed.nameWithOwner === 'string' && parsed.nameWithOwner.length > 0) {
+      return { repo: parsed.nameWithOwner, source: 'cwd-remote' };
+    }
+    return { repo: null, source: 'unresolved' };
+  } catch (caught) {
+    deps.logger.warn('improvement_review: target repo lookup failed; gh will resolve from cwd', {
+      error: getErrorMessage(caught),
+    });
+    return { repo: null, source: 'unresolved' };
+  }
+}
+
+/**
+ * The label names the target repo has, fetched once per run via
+ * `gh label list --json name`. `null` means the lookup failed — callers file
+ * with no labels and say so (`labelCheck: 'unavailable'`) instead of letting a
+ * missing label turn the signal into an `issuesSkipped` error (#6112).
+ */
+async function fetchRepoLabels(
+  deps: IssueFilingDeps,
+  target: IssueTarget
+): Promise<ReadonlySet<string> | null> {
+  try {
+    const { stdout } = await deps.ghExec([
+      'label',
+      'list',
+      '--json',
+      'name',
+      '--limit',
+      '200',
+      ...repoArgs(target),
+    ]);
+    const parsed = JSON.parse(stdout) as readonly { name?: unknown }[];
+    return new Set(parsed.flatMap((l) => (typeof l.name === 'string' ? [l.name] : [])));
+  } catch (caught) {
+    deps.logger.warn('improvement_review: gh label list failed; filing without labels', {
+      error: getErrorMessage(caught),
+    });
+    return null;
+  }
+}
+
+/**
  * Check whether an existing OPEN issue already covers this signal key.
  * Uses `gh issue list --search` with the signal key as a literal phrase.
  * The signal key appears in our filed-issue body so this dedup is reliable.
  */
-async function existingIssueForSignal(signalKey: string): Promise<string | null> {
+async function existingIssueForSignal(
+  signalKey: string,
+  ghExec: GhExec,
+  target: IssueTarget
+): Promise<string | null> {
   try {
     // Strip double-quotes from the search term so a quote in the signalKey
     // (e.g. an oddly-named self-eval component path, #3224) can't break the
     // `"..." in:body` phrase query and silently defeat dedup → refiling.
     const searchTerm = signalKey.replace(/"/g, '');
-    const { stdout } = await execFileAsync('gh', [
+    const { stdout } = await ghExec([
       'issue',
       'list',
       '--state',
@@ -795,6 +932,7 @@ async function existingIssueForSignal(signalKey: string): Promise<string | null>
       'number,url',
       '--limit',
       '5',
+      ...repoArgs(target),
     ]);
     const parsed = JSON.parse(stdout) as readonly { url?: string }[];
     if (parsed.length > 0 && typeof parsed[0]?.url === 'string') {
@@ -818,26 +956,44 @@ export function issueLabelsForSignal(signal: ImprovementSignal): readonly string
   return [priorityLabel(classifySignalPriority(signal)), signal.category];
 }
 
+/** Split the requested labels into the ones the repo has and the ones it lacks. */
+function partitionLabels(
+  requested: readonly string[],
+  existing: ReadonlySet<string> | null
+): Pick<FiledIssue, 'labelsDropped' | 'labelCheck'> & { readonly kept: readonly string[] } {
+  if (existing === null)
+    return { kept: [], labelsDropped: [...requested], labelCheck: 'unavailable' };
+  return {
+    kept: requested.filter((l) => existing.has(l)),
+    labelsDropped: requested.filter((l) => !existing.has(l)),
+    labelCheck: 'ok',
+  };
+}
+
 /**
  * File an issue via `gh issue create` using execFile (no shell, no
- * command-injection risk on errorMessage / title / body content).
+ * command-injection risk on errorMessage / title / body content). Only the
+ * labels in `kept` are passed; an empty `kept` files with no `--label` at all.
  */
 async function fileIssueForSignal(
-  signal: ImprovementSignal
+  signal: ImprovementSignal,
+  kept: readonly string[],
+  ghExec: GhExec,
+  target: IssueTarget
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   // Embed the signal key in the body so dedup is reliable on subsequent runs.
   const body = `${signal.body}\n\n---\n\n_Signal key (do not edit): \`${signal.signalKey}\` · Generated by \`improvement_review\` (#2402) · Severity: ${signal.severity}_`;
 
   try {
-    const { stdout } = await execFileAsync('gh', [
+    const { stdout } = await ghExec([
       'issue',
       'create',
       '--title',
       signal.title,
       '--body',
       body,
-      '--label',
-      issueLabelsForSignal(signal).join(','),
+      ...(kept.length > 0 ? ['--label', kept.join(',')] : []),
+      ...repoArgs(target),
     ]);
     const url = stdout.trim();
     if (!url.startsWith('https://')) {
@@ -877,39 +1033,61 @@ const SEVERITY_ORDER: Record<ImprovementSignal['severity'], number> = {
   info: 2,
 };
 
-async function fileSignalsAsIssues(
+/**
+ * File one issue per signal (rate-limited, deduped) against the resolved
+ * target, with only the labels that repo has (#6112). The label list is
+ * fetched lazily and at most once per run — a run whose signals are all dups
+ * never asks for it.
+ */
+export async function fileSignalsAsIssues(
   signals: readonly ImprovementSignal[],
-  ctx: HandlerContext
+  deps: IssueFilingDeps
 ): Promise<{
-  issuesFiled: { signalKey: string; issueUrl: string }[];
+  issuesFiled: FiledIssue[];
   issuesSkipped: { signalKey: string; reason: string }[];
+  issueTarget: IssueTarget;
 }> {
-  const issuesFiled: { signalKey: string; issueUrl: string }[] = [];
+  const issuesFiled: FiledIssue[] = [];
   const issuesSkipped: { signalKey: string; reason: string }[] = [];
+  const target = await resolveIssueTarget(deps);
+  let labelsOnce: Promise<ReadonlySet<string> | null> | undefined;
+  const repoLabels = (): Promise<ReadonlySet<string> | null> =>
+    (labelsOnce ??= fetchRepoLabels(deps, target));
 
   for (const signal of signals) {
     if (issuesFiled.length >= MAX_ISSUES_PER_RUN) {
       issuesSkipped.push({ signalKey: signal.signalKey, reason: 'rate-limit' });
       continue;
     }
-    const existing = await existingIssueForSignal(signal.signalKey);
+    const existing = await existingIssueForSignal(signal.signalKey, deps.ghExec, target);
     if (existing !== null) {
       issuesSkipped.push({ signalKey: signal.signalKey, reason: `dup:${existing}` });
       continue;
     }
-    const result = await fileIssueForSignal(signal);
+    const { kept, labelsDropped, labelCheck } = partitionLabels(
+      issueLabelsForSignal(signal),
+      await repoLabels()
+    );
+    const result = await fileIssueForSignal(signal, kept, deps.ghExec, target);
     if (result.ok) {
-      issuesFiled.push({ signalKey: signal.signalKey, issueUrl: result.url });
-      ctx.logger.info('improvement signal filed', {
+      issuesFiled.push({
+        signalKey: signal.signalKey,
+        issueUrl: result.url,
+        labelsDropped,
+        labelCheck,
+      });
+      deps.logger.info('improvement signal filed', {
         signalKey: signal.signalKey,
         url: result.url,
+        labelsDropped,
+        labelCheck,
       });
     } else {
       issuesSkipped.push({ signalKey: signal.signalKey, reason: `error:${result.error}` });
     }
   }
 
-  return { issuesFiled, issuesSkipped };
+  return { issuesFiled, issuesSkipped, issueTarget: target };
 }
 
 /**
@@ -976,6 +1154,8 @@ export async function runImprovementReview(
      * never mutates a fitness/governance score. Absent → detector is a no-op.
      */
     readonly perfRegression?: PerfRegressionInput;
+    /** `gh` runner for issue filing; defaults to execFile. Tests inject a double (#6112). */
+    readonly ghExec?: GhExec;
   } = {}
 ): Promise<ImprovementReviewResponse> {
   const logger = deps.logger ?? createLogger({ component: 'improvement_review' });
@@ -1034,9 +1214,12 @@ export async function runImprovementReview(
   // would-auto-remediate decision per signal. Logs only — executes nothing.
   shadowRecordRemediations(signals, logger);
 
-  const { issuesFiled, issuesSkipped } = fileIssues
-    ? await fileSignalsAsIssues(signals, { logger } as HandlerContext)
-    : { issuesFiled: [], issuesSkipped: [] };
+  const { issuesFiled, issuesSkipped, issueTarget } = await maybeFileIssues(signals, {
+    fileIssues,
+    logger,
+    ghExec: deps.ghExec ?? defaultGhExec,
+    targetRepo: input.targetRepo,
+  });
 
   return {
     window: windowLabel,
@@ -1047,6 +1230,7 @@ export async function runImprovementReview(
     remediationTasks: improvementSignalsToTasks(signals),
     issuesFiled,
     issuesSkipped,
+    issueTarget,
   };
 }
 
@@ -1130,6 +1314,14 @@ const TOOL_INPUT_SCHEMA = {
     .describe(
       'Optional path to a self-eval JSON report. High-confidence unanimous ' +
         'deprecate/refactor findings surface as tech-debt signals (#3224).'
+    ),
+  targetRepo: z
+    .string()
+    .regex(TARGET_REPO_PATTERN, 'targetRepo must be `owner/repo`')
+    .optional()
+    .describe(
+      'Repository (`owner/repo`) to file issues against. Absent → the cwd remote; ' +
+        'the resolved target is reported as `issueTarget` (#6112).'
     ),
 };
 

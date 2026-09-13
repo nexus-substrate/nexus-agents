@@ -3,10 +3,11 @@
  *
  * (Source: Issue #2402)
  *
- * Pure-function tests for the threshold logic — no fs, no gh CLI calls.
+ * Pure-function tests for the threshold logic — no fs, no gh CLI calls. The
+ * issue-filing tests (#6112) drive `gh` through the injected `GhExec` seam.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ImprovementReviewInputSchema,
   filterByLookback,
@@ -16,6 +17,8 @@ import {
   detectFitnessDimensionSignals,
   detectConsensusRejectionSignals,
   issueLabelsForSignal,
+  fileSignalsAsIssues,
+  type GhExec,
 } from './improvement-review.js';
 import { FITNESS_DIMENSION_MAX } from '../../governance/fitness-score.js';
 import type { FitnessFinding } from '../../governance/fitness-score.js';
@@ -392,7 +395,9 @@ describe('detectFitnessDimensionSignals (#3227)', () => {
     };
   }
 
-  const finding = (over: Partial<FitnessFinding> & Pick<FitnessFinding, 'dimension'>): FitnessFinding => ({
+  const finding = (
+    over: Partial<FitnessFinding> & Pick<FitnessFinding, 'dimension'>
+  ): FitnessFinding => ({
     severity: 'warning',
     description: 'desc',
     pointsDeducted: 1,
@@ -642,6 +647,192 @@ describe('issueLabelsForSignal', () => {
     expect(issueLabelsForSignal(sig({ severity: 'info', category: 'tech-debt' }))).toEqual([
       'p3',
       'tech-debt',
+    ]);
+  });
+});
+
+// ============================================================================
+// fileSignalsAsIssues — file with only the labels the target repo has (#6112)
+// ============================================================================
+
+describe('fileSignalsAsIssues — label check against the target repo (#6112)', () => {
+  const ISSUE_URL = 'https://github.com/acme/widgets/issues/';
+
+  function sig(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
+    return {
+      category: 'routing',
+      signalKey: `routing:cli-floor:codex:${over.title ?? 'docs'}`,
+      severity: 'warning',
+      title: 'routing: codex 30% on docs',
+      body: 'floor breach',
+      evidence: {},
+      ...over,
+    };
+  }
+
+  const silentLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(),
+  } as unknown as Parameters<typeof fileSignalsAsIssues>[1]['logger'];
+
+  /**
+   * A `gh` double keyed on the sub-command. `labelListResult` is what
+   * `gh label list --json name` returns (or `'fail'` for a non-zero exit);
+   * every `gh issue list` search finds nothing and every `gh issue create`
+   * succeeds with a numbered URL.
+   */
+  function ghDouble(labelListResult: readonly string[] | 'fail'): {
+    ghExec: GhExec;
+    calls: string[][];
+  } {
+    const calls: string[][] = [];
+    let created = 0;
+    const ghExec: GhExec = (args) => {
+      calls.push([...args]);
+      const [group, verb] = args;
+      if (group === 'label' && verb === 'list') {
+        if (labelListResult === 'fail') return Promise.reject(new Error('gh: HTTP 404'));
+        return Promise.resolve({
+          stdout: JSON.stringify(labelListResult.map((name) => ({ name }))),
+        });
+      }
+      if (group === 'issue' && verb === 'list') return Promise.resolve({ stdout: '[]' });
+      if (group === 'issue' && verb === 'create') {
+        created += 1;
+        return Promise.resolve({ stdout: `${ISSUE_URL}${String(created)}\n` });
+      }
+      if (group === 'repo' && verb === 'view') {
+        return Promise.resolve({ stdout: JSON.stringify({ nameWithOwner: 'acme/widgets' }) });
+      }
+      return Promise.reject(new Error(`unexpected gh call: ${args.join(' ')}`));
+    };
+    return { ghExec, calls };
+  }
+
+  function labelArg(createCall: readonly string[]): string | undefined {
+    const i = createCall.indexOf('--label');
+    return i === -1 ? undefined : createCall[i + 1];
+  }
+
+  it('(1) drops a label the target repo lacks and files with the rest, reporting the drop', async () => {
+    const gh = ghDouble(['routing', 'bug']);
+    const result = await fileSignalsAsIssues([sig()], {
+      logger: silentLogger,
+      ghExec: gh.ghExec,
+      targetRepo: 'acme/widgets',
+    });
+
+    expect(result.issuesSkipped).toEqual([]);
+    expect(result.issuesFiled).toEqual([
+      {
+        signalKey: 'routing:cli-floor:codex:docs',
+        issueUrl: `${ISSUE_URL}1`,
+        labelsDropped: ['p2'],
+        labelCheck: 'ok',
+      },
+    ]);
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(labelArg(create ?? [])).toBe('routing');
+    // The explicit target reaches every gh call.
+    for (const call of gh.calls) {
+      expect(call).toContain('--repo');
+      expect(call[call.indexOf('--repo') + 1]).toBe('acme/widgets');
+    }
+    expect(result.issueTarget).toEqual({ repo: 'acme/widgets', source: 'input' });
+  });
+
+  it('(2) files with every requested label when the repo has them all — labelsDropped is []', async () => {
+    const gh = ghDouble(['p2', 'routing', 'p0']);
+    const result = await fileSignalsAsIssues([sig()], {
+      logger: silentLogger,
+      ghExec: gh.ghExec,
+      targetRepo: 'acme/widgets',
+    });
+
+    expect(result.issuesFiled).toHaveLength(1);
+    expect(result.issuesFiled[0]?.labelsDropped).toEqual([]);
+    expect(result.issuesFiled[0]?.labelCheck).toBe('ok');
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(labelArg(create ?? [])).toBe('p2,routing');
+  });
+
+  it('(3) files with NO labels when the label list fails, and says the check was unavailable', async () => {
+    const gh = ghDouble('fail');
+    const result = await fileSignalsAsIssues([sig()], {
+      logger: silentLogger,
+      ghExec: gh.ghExec,
+      targetRepo: 'acme/widgets',
+    });
+
+    expect(result.issuesSkipped).toEqual([]);
+    expect(result.issuesFiled).toEqual([
+      {
+        signalKey: 'routing:cli-floor:codex:docs',
+        issueUrl: `${ISSUE_URL}1`,
+        labelsDropped: ['p2', 'routing'],
+        labelCheck: 'unavailable',
+      },
+    ]);
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(create).toBeDefined();
+    expect(create).not.toContain('--label');
+  });
+
+  it('(4) fetches the label list once for a run that files three issues', async () => {
+    const gh = ghDouble(['p2', 'routing']);
+    const signals = [sig({ title: 'a' }), sig({ title: 'b' }), sig({ title: 'c' })];
+    const result = await fileSignalsAsIssues(signals, {
+      logger: silentLogger,
+      ghExec: gh.ghExec,
+      targetRepo: 'acme/widgets',
+    });
+
+    expect(result.issuesFiled).toHaveLength(3);
+    const listCalls = gh.calls.filter((c) => c[0] === 'label' && c[1] === 'list');
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toEqual(
+      expect.arrayContaining(['label', 'list', '--json', 'name', '--limit', '200'])
+    );
+  });
+
+  it('resolves the target from the cwd remote when the caller names none, and says so', async () => {
+    const gh = ghDouble(['p2', 'routing']);
+    const result = await fileSignalsAsIssues([sig()], { logger: silentLogger, ghExec: gh.ghExec });
+
+    expect(result.issueTarget).toEqual({ repo: 'acme/widgets', source: 'cwd-remote' });
+    const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+    expect(create?.[create.indexOf('--repo') + 1]).toBe('acme/widgets');
+  });
+
+  it('files without --repo and reports the target as unresolved when the remote lookup fails', async () => {
+    const base = ghDouble(['p2', 'routing']);
+    const ghExec: GhExec = (args) =>
+      args[0] === 'repo' ? Promise.reject(new Error('not a git repository')) : base.ghExec(args);
+    const result = await fileSignalsAsIssues([sig()], { logger: silentLogger, ghExec });
+
+    expect(result.issueTarget).toEqual({ repo: null, source: 'unresolved' });
+    expect(result.issuesFiled).toHaveLength(1);
+    for (const call of base.calls) expect(call).not.toContain('--repo');
+  });
+
+  it('keeps issuesSkipped for a genuine create failure', async () => {
+    const base = ghDouble(['p2', 'routing']);
+    const ghExec: GhExec = (args) =>
+      args[0] === 'issue' && args[1] === 'create'
+        ? Promise.reject(new Error('gh: HTTP 403'))
+        : base.ghExec(args);
+    const result = await fileSignalsAsIssues([sig()], {
+      logger: silentLogger,
+      ghExec,
+      targetRepo: 'acme/widgets',
+    });
+
+    expect(result.issuesFiled).toEqual([]);
+    expect(result.issuesSkipped).toEqual([
+      { signalKey: 'routing:cli-floor:codex:docs', reason: 'error:gh: HTTP 403' },
     ]);
   });
 });
