@@ -20,7 +20,7 @@ import { VOTER_ROLES } from '../../cli/vote-types.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import {
   resolveVoterProject,
-  VOTER_PROJECT_PATTERN,
+  VoterProjectInputSchema,
   type ResolvedVoterProject,
 } from '../../cli/voter-project.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
@@ -229,18 +229,7 @@ export const ConsensusVoteInputSchema = z.object({
         'denominator and credits no option, so a degraded response can only lower the leading ' +
         'share, never raise it. Omit for an ordinary yes/no vote — behaviour is then unchanged.'
     ),
-  project: z
-    .string()
-    .regex(VOTER_PROJECT_PATTERN)
-    .optional()
-    .describe(
-      'The project the panel is judging (#6110), e.g. `acme/widgets` — it replaces `nexus-agents` ' +
-        "in every voter's system prompt, so a consuming repository is not judged against this " +
-        "one's mission and governance files. When omitted the name is DERIVED from the server's " +
-        'working directory (the `origin` remote as `owner/repo`, else the nearest `package.json` ' +
-        'name) and falls back to `nexus-agents`; the response discloses which on `project.source`. ' +
-        'Letters, digits and `._/@-` only, at most 200 characters.'
-    ),
+  project: VoterProjectInputSchema,
   threshold: VoteThresholdSchema.optional().describe(
     'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
   ),

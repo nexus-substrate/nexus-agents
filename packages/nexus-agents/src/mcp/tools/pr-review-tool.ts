@@ -37,6 +37,11 @@ import {
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import {
+  resolveAndLogVoterProject,
+  VoterProjectInputSchema,
+  type ResolvedVoterProject,
+} from '../../cli/voter-project.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
@@ -197,6 +202,8 @@ export const PrReviewInputSchema = z.object({
     .describe(
       "Error policy (#4132). 'standard' (default): errored voters excluded. 'absolute_quorum': any errored voter — esp. the contrarian — degrades a would-be approve to a recoverable abstain (verified:false); never manufactures a verified approve from an induced error."
     ),
+  // #6123: same field as consensus_vote — the panel judges the caller's project.
+  project: VoterProjectInputSchema,
   /**
    * Dispatch mode (#3731). `sync` (default) runs the 5-voter panel inline and
    * returns the result — but a live fan-out can exceed the MCP request timeout.
@@ -268,6 +275,12 @@ export interface PrReviewResponse {
   readonly unverifiableCount: number;
   readonly reviews: readonly PrReviewVote[];
   readonly totalDurationMs: number;
+  /**
+   * The project the panel judged and how the name was decided (#6123): the
+   * caller's `project` input, else derived from the server's working
+   * directory, else `nexus-agents`. Always present.
+   */
+  readonly project: ResolvedVoterProject;
   /**
    * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
    * for this governed review. Rides the existing response — no new MCP tool.
@@ -538,11 +551,14 @@ async function executePrReviewBody(
   const { gatewayAdapters: adapters, sanitization } = opts;
   const removedBefore = removalsBefore(sanitization);
   const { proposal, coverage } = preparePanelProposal(input, logger, removedBefore);
+  // #6123: resolved ONCE per review; every seat's system prompt names it.
+  const project = resolveAndLogVoterProject(input.project, logger);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
     proposal,
     simulate: input.simulate,
     logger,
+    project: project.name,
     ...(adapters !== undefined && { gatewayAdapters: adapters }),
   });
 
@@ -578,6 +594,7 @@ async function executePrReviewBody(
     ...counts,
     reviews,
     totalDurationMs: Date.now() - start,
+    project,
     ...(costSummary !== undefined ? { costSummary } : {}),
     recordOutcome,
     ...(coverage !== undefined ? { coverage } : {}),
