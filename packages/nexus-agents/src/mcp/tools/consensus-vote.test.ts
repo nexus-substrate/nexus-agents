@@ -460,6 +460,7 @@ describe('ConsensusVoteResponse structure', () => {
         reject: 1,
         abstain: 0,
         error: 0,
+        unverifiable: 0,
       },
       votes: [
         {
@@ -497,6 +498,7 @@ describe('ConsensusVoteResponse structure', () => {
         reject: 2,
         abstain: 0,
         error: 0,
+        unverifiable: 0,
       },
       votes: [],
       durationMs: 4500,
@@ -1709,7 +1711,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     strategy: 'higher_order',
     decision: 'approved',
     approvalPercentage: 66.7,
-    voteCounts: { approve: 2, reject: 0, abstain: 0, error: 1 },
+    voteCounts: { approve: 2, reject: 0, abstain: 0, error: 1, unverifiable: 0 },
     votes: [
       {
         role: 'architect',

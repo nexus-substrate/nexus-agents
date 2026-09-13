@@ -81,6 +81,40 @@ describe('CliToModelAdapter', () => {
 // ============================================================================
 
 describe('CliToModelAdapter.complete', () => {
+  it('surfaces the CLI stderr on the completion when the transport captured one (#6094)', async () => {
+    const cli = makeMockCliAdapter({
+      execute: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          text: '{"decision":"approve"}',
+          stderr: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n',
+        } satisfies CliResponse,
+      }),
+    });
+    const adapter = new CliToModelAdapter(cli);
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'vote' }] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cliStderr).toBe(
+        'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n'
+      );
+    }
+  });
+
+  it('absent or empty stderr stays absent — never an empty-string signal', async () => {
+    const adapter = new CliToModelAdapter(
+      makeMockCliAdapter({
+        execute: vi.fn().mockResolvedValue({
+          ok: true,
+          value: { text: 'ok', stderr: '' } satisfies CliResponse,
+        }),
+      })
+    );
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'vote' }] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect('cliStderr' in result.value).toBe(false);
+  });
+
   it('delegates to CLI adapter execute', async () => {
     const cli = makeMockCliAdapter();
     const adapter = new CliToModelAdapter(cli);
@@ -315,7 +349,6 @@ describe('CliToModelAdapter.stream', () => {
     const adapter = new CliToModelAdapter(cli);
 
     await expect(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _chunk of adapter.stream({
         messages: [{ role: 'user', content: 'Hello' }],
       })) {

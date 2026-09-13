@@ -112,6 +112,61 @@ describe('retryErroredRoles (#5578)', () => {
     expect(merged.find((v) => v.role === 'catfish')?.source).toBe('error');
   });
 
+  describe('an unverifiable seat is retried exactly once (#6094)', () => {
+    function unverifiable(role: VoterRole): AgentVoteResult {
+      return {
+        role,
+        vote: {
+          decision: 'abstain',
+          confidence: 0,
+          reasoning: "Shell reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'",
+        },
+        processingTimeMs: 900,
+        source: 'unverifiable',
+        unverifiableSignal: 'reasoning',
+      };
+    }
+
+    it('relaunches the unverifiable role alongside the errored ones', async () => {
+      const first = [ok('architect'), unverifiable('devex'), errored('pm')];
+      const relaunch = vi.fn(() => Promise.resolve([ok('devex'), ok('pm')]));
+
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+      expect(relaunch).toHaveBeenCalledTimes(1);
+      expect(relaunch).toHaveBeenCalledWith(['devex', 'pm']);
+      const devex = merged.find((v) => v.role === 'devex');
+      expect(devex?.source).toBe('llm');
+      expect(devex?.retried).toBe(true);
+    });
+
+    it('a second unverifiable result is recorded ONCE, marked retried', async () => {
+      // The retry is bounded to one call: a deterministic host failure makes a
+      // second attempt futile, so the panel keeps the retried unverifiable
+      // seat rather than looping or keeping two entries for one role.
+      const first = [ok('architect'), unverifiable('scope_steward')];
+      const relaunch = vi.fn(() => Promise.resolve([unverifiable('scope_steward')]));
+
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+      expect(relaunch).toHaveBeenCalledTimes(1);
+      expect(merged).toHaveLength(2);
+      const seat = merged.filter((v) => v.role === 'scope_steward');
+      expect(seat).toHaveLength(1);
+      expect(seat[0]?.source).toBe('unverifiable');
+      expect(seat[0]?.retried).toBe(true);
+      expect(seat[0]?.vote.decision).toBe('abstain');
+    });
+
+    it('a retry that errors keeps the first unverifiable result', async () => {
+      const first = [unverifiable('devex')];
+      const relaunch = vi.fn(() => Promise.resolve([errored('devex')]));
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+      expect(merged[0]?.source).toBe('unverifiable');
+      expect(merged[0]?.retried).toBeUndefined();
+    });
+  });
+
   it('waits the backoff before relaunching', async () => {
     const first = [errored('pm')];
     const order: string[] = [];

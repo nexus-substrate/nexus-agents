@@ -200,6 +200,62 @@ describe('SubprocessCliAdapter', () => {
       });
     });
 
+    it('surfaces non-empty stderr on a SUCCESSFUL run as response.stderr (#6094)', async () => {
+      // A sandboxed shell failure inside the CLI's own tool loop lands on the
+      // CLI's stderr while the model still returns a parsed answer on stdout.
+      // The bytes were captured and discarded here; the voter classifier needs
+      // them as its structured signal.
+      adapter.setCommandConfig({ command: 'echo', args: ['hello'] });
+      const task: CliTask = { content: 'test' };
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+      const { mockChild, stdout, stderr } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+      setImmediate(() => {
+        stderr.emit(
+          'data',
+          Buffer.from('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n')
+        );
+        stdout.emit('data', Buffer.from('{"decision":"approve"}\n'));
+        mockChild.emit('close', 0);
+      });
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.text).toBe('{"decision":"approve"}');
+        expect(result.value.stderr).toContain('bwrap: loopback: Failed RTM_NEWADDR');
+      }
+    });
+
+    it('a clean run carries no stderr key at all', async () => {
+      adapter.setCommandConfig({ command: 'echo', args: ['hello'] });
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+      const promise = adapter.executeTask({ content: 'test' }, options);
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('hello\n'));
+        mockChild.emit('close', 0);
+      });
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      if (result.ok) expect('stderr' in result.value).toBe(false);
+    });
+
     it('should handle multiple stdout chunks', async () => {
       adapter.setCommandConfig({ command: 'cat', args: [] });
       const task: CliTask = { content: 'test' };

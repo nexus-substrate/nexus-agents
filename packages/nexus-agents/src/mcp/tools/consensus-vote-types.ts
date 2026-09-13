@@ -17,6 +17,7 @@
 import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
+import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
 import type { OptionGateVerdict } from './consensus-vote-option-gate.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
@@ -332,6 +333,13 @@ export interface AgentVoteSummary {
   /** Which declared option this voter chose (#4472). Absent when the proposal
    * declared none, or the voter's selection matched none of them. */
   selectedOption?: string;
+  /**
+   * True when this seat could not read the artifact (#6094). Present only
+   * when true. Its `decision` is always `abstain`; `voteCounts.unverifiable`
+   * counts these seats separately so a blind seat is never read as a
+   * considered abstention.
+   */
+  unverifiable?: true;
 }
 
 /**
@@ -429,7 +437,19 @@ export interface ConsensusVoteResponse {
   strategy: VotingStrategy;
   decision: VoteDecisionStatus;
   approvalPercentage: number;
-  voteCounts: { approve: number; reject: number; abstain: number; error: number };
+  /**
+   * `unverifiable` (#6094) counts seats that answered without reading the
+   * artifact. Those seats are ALSO inside `abstain` (their legacy decision);
+   * the bucket is always present, explicit 0 included — an absent key would
+   * read as health.
+   */
+  voteCounts: {
+    approve: number;
+    reject: number;
+    abstain: number;
+    error: number;
+    unverifiable: number;
+  };
   votes: AgentVoteSummary[];
   durationMs: number;
   simulateVotes: boolean;
@@ -557,6 +577,8 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     // #6050: a caller acting on the live result sees what the ledger will.
     // Present only when true, so a clean panel's response is unchanged.
     ...(result.retried === true ? { retried: true } : {}),
+    // #6094: same rule for a seat that could not read the artifact.
+    ...(result.source === 'unverifiable' ? { unverifiable: true as const } : {}),
   };
 }
 
@@ -585,6 +607,31 @@ function panelDegradationWarning(errorCount: number, total: number): string | un
   return (
     `Panel degraded: ${String(errorCount)} of ${String(total)} voters errored; ` +
     `decision rests on ${String(total - errorCount)} voter(s).`
+  );
+}
+
+/**
+ * Append to `panelWarning` rather than assign: it has several writers and an
+ * assignment would silently drop whichever fired first. A `undefined` text is
+ * a no-op.
+ */
+function appendPanelWarning(response: ConsensusVoteResponse, text: string | undefined): void {
+  if (text === undefined) return;
+  response.panelWarning =
+    response.panelWarning === undefined ? text : `${response.panelWarning} ${text}`;
+}
+
+/**
+ * #6094: seats that answered without reading the artifact. Their abstention
+ * is already inside `voteCounts.abstain`; this says how many of those never
+ * saw the thing they were asked to judge. Undefined when there are none —
+ * the count itself is still rendered as an explicit 0 in `voteCounts`.
+ */
+function unverifiableSeatsWarning(unverifiableCount: number, total: number): string | undefined {
+  if (unverifiableCount <= 0) return undefined;
+  return (
+    `${String(unverifiableCount)} of ${String(total)} seat(s) could not read the artifact and ` +
+    'are recorded as unverifiable (counted as abstain in voteCounts; any decision they returned was discarded).'
   );
 }
 
@@ -693,17 +740,37 @@ function absoluteQuorumDegradeReason(
   errorCount: number
 ): string | undefined {
   const contrarianVote = result.votes.find((v) => v.role === 'catfish');
-  const contrarianOk = contrarianVote !== undefined && contrarianVote.source !== 'error';
+  const contrarianOk = contrarianVote !== undefined && !isAbsentSeat(contrarianVote);
   const contrarianDegraded = result.contrarianRequested === true && !contrarianOk;
-  if (errorCount === 0 && !contrarianDegraded) return undefined;
+  // #6094: a seat that could not read the artifact is an absence, not a
+  // judgment, and degrades the quorum exactly as an errored seat does.
+  const unverifiableRoles = result.votes
+    .filter((v) => v.source === 'unverifiable')
+    .map((v) => v.role);
+  if (errorCount === 0 && unverifiableRoles.length === 0 && !contrarianDegraded) return undefined;
 
   const erroredRoles = result.votes.filter((v) => v.source === 'error').map((v) => v.role);
-  const named =
-    contrarianDegraded && !erroredRoles.includes('catfish')
-      ? [...erroredRoles, 'catfish']
-      : erroredRoles;
-  const list = named.length > 0 ? named.join(', ') : 'contrarian';
-  return `no_quorum: re-run — voter(s) [${list}] errored (absolute_quorum)`;
+  const missingContrarian = contrarianDegraded && contrarianVote === undefined;
+  const named = missingContrarian ? [...erroredRoles, 'catfish'] : erroredRoles;
+  return `no_quorum: re-run — ${absentSeatClauses(named, unverifiableRoles).join('; ')} (absolute_quorum)`;
+}
+
+/** The "[roles] errored" and "[roles] unverifiable" clauses of the re-run reason. */
+function absentSeatClauses(
+  erroredNames: readonly string[],
+  unverifiable: readonly string[]
+): string[] {
+  const clauses: string[] = [];
+  if (erroredNames.length > 0 || unverifiable.length === 0) {
+    const list = erroredNames.length > 0 ? erroredNames.join(', ') : 'contrarian';
+    clauses.push(`voter(s) [${list}] errored`);
+  }
+  if (unverifiable.length > 0) {
+    clauses.push(
+      `voter(s) [${unverifiable.join(', ')}] unverifiable — could not read the artifact`
+    );
+  }
+  return clauses;
 }
 
 function computeAbsoluteQuorumDecision(
@@ -864,6 +931,7 @@ export function buildResponse(
     input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
 
   const errorCount = result.votes.filter((v) => v.source === 'error').length;
+  const unverifiableCount = result.votes.filter((v) => v.source === 'unverifiable').length;
 
   // #4053 / #4132: the user-facing decision. An error-policy short-circuit (the
   // >50% hard floor, or fail_closed) VOIDED the vote — that is no_quorum, NOT the
@@ -891,6 +959,7 @@ export function buildResponse(
       reject: result.result.voteCounts.reject,
       abstain: result.result.voteCounts.abstain,
       error: errorCount,
+      unverifiable: unverifiableCount,
     },
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
@@ -953,6 +1022,12 @@ function applyOptionalResponseFields(
   if (panelWarning !== undefined) {
     response.panelWarning = panelWarning;
   }
+  // #6094: APPENDED, like the undeclared-options warning below — a third
+  // writer that assigned would clobber whichever fired first.
+  appendPanelWarning(
+    response,
+    unverifiableSeatsWarning(response.voteCounts.unverifiable, result.votes.length)
+  );
   // #5360: a proposal that names alternatives while `options` is undefined
   // records a split as uniform approval — every voter approves the ACT of
   // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.
@@ -969,12 +1044,7 @@ function applyOptionalResponseFields(
     input.options,
     engaged > 0 && response.voteCounts.reject === 0 && response.voteCounts.abstain === 0
   );
-  if (undeclared.flagged) {
-    response.panelWarning =
-      response.panelWarning === undefined
-        ? undeclared.warning
-        : `${response.panelWarning} ${undeclared.warning}`;
-  }
+  if (undeclared.flagged) appendPanelWarning(response, undeclared.warning);
   if (isHigherOrderStrategy(result.strategy) && result.higherOrderResult) {
     response.higherOrderMetadata = toHigherOrderMetadata(result.higherOrderResult);
   }

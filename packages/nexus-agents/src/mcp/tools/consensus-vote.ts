@@ -1234,6 +1234,8 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       reject: z.number(),
       abstain: z.number(),
       error: z.number(),
+      /** #6094: seats that could not read the artifact; always present. */
+      unverifiable: z.number(),
     })
     .optional(),
   votes: z
@@ -1245,6 +1247,8 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         reasoning: z.string().max(4000),
         simulated: z.boolean(),
         error: z.boolean(),
+        /** #6094: present only when the seat could not read the artifact. */
+        unverifiable: z.literal(true).optional(),
         modelUsed: z.string().max(100).optional(),
         rejectionCategories: z
           .array(

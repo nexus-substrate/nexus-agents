@@ -184,13 +184,36 @@ describe('supply_chain_tradeoff_panel', () => {
     const makeVote = (
       role: VoterRole,
       axisDecision: 'approve' | 'reject' | 'abstain',
-      source: 'llm' | 'simulation' | 'error' = 'llm'
+      source: PanelVote['source'] = 'llm'
     ): PanelVote => ({
       role,
       overallDecision: axisDecision,
       axisVotes: { test_axis: { decision: axisDecision, reason: `${role}-reason` } },
       reasoning: '',
       source,
+    });
+
+    it('an unverifiable seat cannot resurrect its discarded verdict per axis (#6094)', () => {
+      // `markUnverifiable` discards `vote.decision` but keeps `reasoning`, and the
+      // per-axis parse reads the reasoning. A blind seat that still carried an
+      // axis approve made `[blind, cleanReject]` a 1-1 "mixed" instead of a reject.
+      const blindSeat: PanelVote = {
+        role: 'devex',
+        overallDecision: 'abstain',
+        axisVotes: { security: { decision: 'approve', reason: 'looked fine' } },
+        reasoning: "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'",
+        source: 'unverifiable',
+      };
+      const cleanReject: PanelVote = {
+        role: 'security',
+        overallDecision: 'reject',
+        axisVotes: { security: { decision: 'reject', reason: 'unpinned transitive dep' } },
+        reasoning: '',
+        source: 'llm',
+      };
+      const verdict = aggregateAxis('security', [blindSeat, cleanReject]);
+      expect(verdict).toMatchObject({ approveCount: 0, rejectCount: 1, decision: 'reject' });
+      expect(verdict.supportingVoters).toEqual([]);
     });
 
     it('returns approve when majority approve', () => {

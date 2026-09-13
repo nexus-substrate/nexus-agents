@@ -138,6 +138,12 @@ export class CliToModelAdapter implements IModelAdapter {
         : {}),
       stopReason: 'end_turn',
       model: response.model ?? this.modelId,
+      // #6094: carry the transport's captured stderr up to the model boundary
+      // so the voter path can read the structured "could not read" signal.
+      // Absent stays absent; an empty string is not a signal.
+      ...(response.stderr !== undefined && response.stderr !== ''
+        ? { cliStderr: response.stderr }
+        : {}),
     };
   }
 

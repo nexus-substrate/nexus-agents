@@ -8,6 +8,7 @@
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { ILogger } from '../core/index.js';
 import { sleep } from '../utils/async-utils.js';
+import { isAbsentSeat } from './voter-unverifiable.js';
 
 /**
  * Backoff before retrying an errored voter role (#5578).
@@ -35,6 +36,12 @@ export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
  * A role that errors again keeps its first-attempt result, so the existing
  * error policy still sees an errored seat and decides unchanged. This recovers
  * seats; it never manufactures one.
+ *
+ * An UNVERIFIABLE seat (#6094) is relaunched by the same call: it is an
+ * absence, not a judgment. Exactly once — on the deterministic host failure a
+ * second attempt is futile, so a retry that comes back unverifiable again
+ * REPLACES the first result (marked `retried: true`) rather than looping, and
+ * the panel records one entry for the role.
  */
 export async function retryErroredRoles(
   first: readonly AgentVoteResult[],
@@ -42,11 +49,12 @@ export async function retryErroredRoles(
   logger: ILogger,
   backoffMs: number
 ): Promise<readonly AgentVoteResult[]> {
-  const erroredRoles = first.filter((v) => v.source === 'error').map((v) => v.role);
+  const erroredRoles = first.filter(isAbsentSeat).map((v) => v.role);
   if (erroredRoles.length === 0) return first;
 
-  logger.warn('Retrying errored voter roles before aggregating (#5578)', {
+  logger.warn('Retrying errored or unverifiable voter roles before aggregating (#5578, #6094)', {
     erroredRoles,
+    unverifiableRoles: first.filter((v) => v.source === 'unverifiable').map((v) => v.role),
     of: first.length,
   });
   if (backoffMs > 0) await sleep(backoffMs);
@@ -62,7 +70,10 @@ export async function retryErroredRoles(
     return first;
   }
   logger.info('Per-role retry recovered voters', {
-    recoveredRoles: [...recovered.keys()],
+    recoveredRoles: [...recovered.values()].filter((v) => v.source === 'llm').map((v) => v.role),
+    stillUnverifiable: [...recovered.values()]
+      .filter((v) => v.source === 'unverifiable')
+      .map((v) => v.role),
     stillErrored: erroredRoles.filter((r) => !recovered.has(r)),
   });
   return first.map((v) => recovered.get(v.role) ?? v);

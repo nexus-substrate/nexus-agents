@@ -65,6 +65,8 @@ Workflow-test assessment (include in your reasoning):
 - Incremental verifiability: Can progress be measured at each step?
 
 When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
+
+If you cannot read the artifact under review — a shell, sandbox, or repository read fails — answer "abstain" and begin your reasoning with "UNVERIFIABLE: could not read the artifact"; never vote on the description alone.
 ${prReviewModeAddendum()}`;
 }
 
@@ -166,6 +168,8 @@ Workflow-test assessment (include in your reasoning):
 - Incremental verifiability: Can we tell if it's working at each stage?
 
 When rejecting, you MUST classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
+
+If you cannot read the artifact under review — a shell, sandbox, or repository read fails — answer "abstain" and begin your reasoning with "UNVERIFIABLE: could not read the artifact"; never vote on the description alone.
 
 IMPORTANT: Your job is to find legitimate concerns, not to reject everything.
 If after genuine scrutiny you find no significant issues, you MAY approve.

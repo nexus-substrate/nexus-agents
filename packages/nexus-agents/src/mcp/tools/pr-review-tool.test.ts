@@ -38,6 +38,7 @@ import {
   type PrReviewVote,
 } from './pr-review-tool.js';
 import { applyPartialCoverageGate, type PrReviewCoverage } from './pr-review-diff-budget.js';
+import { summarizeReviews } from './pr-review-result-mapping.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { persistReviewRecord } from './pr-review-record-producer.js';
 import { readJobResult } from '../jobs/job-result-store.js';
@@ -287,12 +288,36 @@ describe('pr_review tool', () => {
       expect(aggregatePrDecisions([])).toEqual({ decision: 'abstain', verified: true });
     });
 
+    it('summarizeReviews keeps an unverifiable seat OUT of abstainCount (#6094)', () => {
+      // A blind seat's legacy decision is abstain; folding it into abstainCount
+      // is the same laundering the vote tally fixed. The bucket is always
+      // present, explicit 0 included.
+      const counts = summarizeReviews([
+        makeReview('architect', 'approve'),
+        makeReview('security', 'approve'),
+        makeReview('scope_steward', 'abstain', { source: 'unverifiable' }),
+      ]);
+      expect(counts).toEqual({
+        approveCount: 2,
+        requestChangesCount: 0,
+        abstainCount: 0,
+        errorCount: 0,
+        unverifiableCount: 1,
+      });
+      expect(summarizeReviews([makeReview('architect', 'approve')]).unverifiableCount).toBe(0);
+    });
+
     describe('absolute_quorum (#4132)', () => {
       const fullPanel = (
-        over: Partial<Record<PrReviewVote['role'], Parameters<typeof makeReview>[2]>> = {}
+        over: Partial<
+          Record<
+            PrReviewVote['role'],
+            Parameters<typeof makeReview>[2] & { decision?: PrReviewVote['decision'] }
+          >
+        > = {}
       ): PrReviewVote[] =>
         (['architect', 'security', 'devex', 'catfish', 'scope_steward'] as const).map((role) =>
-          makeReview(role, 'approve', over[role])
+          makeReview(role, over[role]?.decision ?? 'approve', over[role])
         );
 
       it('all 5 approve, 0 errors, catfish present → verified approve', () => {
@@ -309,6 +334,16 @@ describe('pr_review tool', () => {
         expect(out.verified).toBe(false);
         expect(out.reason).toContain('scope_steward');
         expect(out.reason).toContain('absolute_quorum');
+      });
+
+      it('an unverifiable seat degrades exactly as an errored one and is named (#6094)', () => {
+        const reviews = fullPanel({
+          scope_steward: { source: 'unverifiable', decision: 'abstain' },
+        });
+        const out = aggregatePrDecisions(reviews, 'absolute_quorum');
+        expect(out.decision).toBe('abstain');
+        expect(out.verified).toBe(false);
+        expect(out.reason).toContain('scope_steward');
       });
 
       it('errored contrarian (catfish) → not verified (never rubber-stamps the merge)', () => {

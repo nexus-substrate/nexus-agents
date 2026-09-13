@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { ILogger } from '../core/index.js';
-import { UNREADABLE_RECORD_PREFIX } from './ledger-append.js';
+import { UNREADABLE_RECORD_PREFIX, serializeValidatedRecord } from './ledger-append.js';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,6 +44,7 @@ vi.mock('../config/nexus-data-dir.js', () => ({
 import type { VoteRecord } from './vote-record.js';
 import {
   MAX_VOTER_REASONING_CHARS,
+  VoteRecordSchema,
   VoterSummarySchema,
   computeVoteRecordHash,
   verifyVoteRecordSet,
@@ -389,15 +390,27 @@ describe('persistVoteRecord', () => {
       proposal: 'p',
       strategy: 'higher_order',
       result: consensusResult(),
-      votes: [{ ...votes[0]!, retried: true, vote: { ...votes[0]!.vote, reasoning: clipped } }],
+      votes: [
+        {
+          ...votes[0]!,
+          retried: true,
+          // #6091/#6094: the seat's model and the unverifiable marker.
+          model: 'codex-5.3',
+          source: 'unverifiable',
+          unverifiableSignal: 'stderr',
+          vote: { ...votes[0]!.vote, decision: 'abstain', reasoning: clipped },
+        },
+      ],
       filePath,
     });
     expect(written).toBeDefined();
     const entry = written!.voters[0]!;
-    // Pin the two optional flags individually so a fixture that stops
+    // Pin the optional fields individually so a fixture that stops
     // exercising one is named, not just "key sets differ".
     expect(entry.retried).toBe(true);
     expect(entry.reasoningTruncated).toBe(true);
+    expect(entry.model).toBe('codex-5.3');
+    expect(entry.unverifiable).toBe(true);
     expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
 
@@ -1128,5 +1141,99 @@ describe('a retried voter seat is visible in the record (#6050)', () => {
 
   it('reports schema 1.7 when a seat was retried', () => {
     expect(build([retriedVote('security')]).version).toBe('1.7');
+  });
+});
+
+describe('schema 1.8: the seat carries its model and an unverifiable marker (#6091, #6094)', () => {
+  function build(v: readonly AgentVoteResult[]): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-18',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+    });
+  }
+
+  function withModel(role: VoterRole, model: string): AgentVoteResult {
+    return { ...agentVote(role, 'approve'), model };
+  }
+
+  function unverifiableVote(role: VoterRole): AgentVoteResult {
+    return {
+      ...agentVote(role, 'abstain', 'unverifiable'),
+      model: 'codex-5.3',
+      unverifiableSignal: 'reasoning',
+    };
+  }
+
+  it('records the registry model id the seat ran on', () => {
+    const record = build([
+      withModel('architect', 'claude-sonnet'),
+      agentVote('security', 'approve'),
+    ]);
+    expect(record.voters.find((v) => v.role === 'architect')?.model).toBe('claude-sonnet');
+    // A seat whose result carried no model records none — absence stays absent.
+    expect(record.voters.find((v) => v.role === 'security')?.model).toBeUndefined();
+    expect(record.version).toBe('1.8');
+  });
+
+  it('never records the pending-detection placeholder as a model', () => {
+    const record = build([withModel('architect', 'pending-detection')]);
+    expect(record.voters[0]?.model).toBeUndefined();
+    expect(record.version).toBe('1.6');
+  });
+
+  it('marks an unverifiable seat, keeps its entry, and records it as abstain', () => {
+    const record = build([unverifiableVote('devex'), agentVote('architect', 'approve')]);
+    const devex = record.voters.find((v) => v.role === 'devex');
+    expect(devex?.unverifiable).toBe(true);
+    expect(devex?.decision).toBe('abstain');
+    expect(devex?.model).toBe('codex-5.3');
+    expect(record.voters.find((v) => v.role === 'architect')?.unverifiable).toBeUndefined();
+    expect(record.version).toBe('1.8');
+  });
+
+  it('an unverifiable seat is NOT an errored seat: panelCoverage stays absent', () => {
+    // It answered and has a voter entry; the flag on that entry is what says
+    // what kind of answer it was. `panelCoverage` names seats that never
+    // returned one.
+    expect(build([unverifiableVote('devex')]).panelCoverage).toBeUndefined();
+  });
+
+  it('a record with a model hashes differently from the same record without it', () => {
+    const withIt = build([withModel('architect', 'claude-sonnet')]);
+    const { hash: _h, ...payload } = withIt;
+    const stripped = {
+      ...payload,
+      voters: payload.voters.map(({ model: _m, ...rest }) => rest),
+    };
+    expect(computeVoteRecordHash(payload)).not.toBe(computeVoteRecordHash(stripped));
+  });
+
+  it('a 1.8 record round-trips through serializeValidatedRecord and verifies', () => {
+    const record = build([unverifiableVote('devex'), withModel('architect', 'claude-sonnet')]);
+    const line = serializeValidatedRecord(VoteRecordSchema, record, 'vote');
+    expect(line).toBe(JSON.stringify(record) + '\n');
+    const { records, invalidLines } = parseVoteRecordsText(line);
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.version).toBe('1.8');
+    expect(records[0]?.voters.find((v) => v.role === 'devex')?.unverifiable).toBe(true);
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+
+  it('a 1.7 record (retried, no model) still round-trips and verifies under the 1.8 schema', () => {
+    const record = build([{ ...agentVote('security', 'approve'), retried: true }]);
+    expect(record.version).toBe('1.7');
+    const { records, invalidLines } = parseVoteRecordsText(
+      serializeValidatedRecord(VoteRecordSchema, record, 'vote')
+    );
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.voters[0]?.model).toBeUndefined();
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
   });
 });
