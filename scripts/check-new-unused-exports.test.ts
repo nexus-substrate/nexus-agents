@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync, execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
   classifyAddedFiles,
@@ -365,6 +365,128 @@ describe('export ratchet end to end (#5671)', () => {
       expect(stdout).not.toMatch(/Exports added by this PR with no production consumer/);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('working tree is part of the scan (#6139)', () => {
+  const SCRIPT = resolve(__dirname, 'check-new-unused-exports.ts');
+  const TSX = resolve(__dirname, '..', 'node_modules', '.bin', 'tsx');
+  const SRC = join('packages', 'nexus-agents', 'src');
+
+  interface Fixture {
+    root: string;
+    git: (...args: string[]) => string;
+    write: (rel: string, body: string) => void;
+  }
+
+  /** A repo at M0 with one consumed module; every case builds on it. */
+  function buildFixture(): Fixture {
+    const root = mkdtempSync(join(tmpdir(), 'ratchet-wt-'));
+    const git = (...args: string[]): string =>
+      execFileSync('git', args, { cwd: root, encoding: 'utf-8' });
+    const write = (rel: string, body: string): void => {
+      mkdirSync(join(root, dirname(rel)), { recursive: true });
+      writeFileSync(join(root, rel), body);
+    };
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'ratchet@test.local');
+    git('config', 'user.name', 'ratchet');
+    write(join(SRC, 'foo.ts'), 'export const keep = 2;\n');
+    write(join(SRC, 'use.ts'), "import { keep } from './foo.js';\nconsole.log(keep);\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'M0');
+    return { root, git, write };
+  }
+
+  function runGate(root: string): { status: number; output: string } {
+    try {
+      const stdout = execSync(`${TSX} ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
+      return { status: 0, output: stdout };
+    } catch (err) {
+      const e = err as { status?: number; stdout?: string; stderr?: string };
+      return { status: e.status ?? 1, output: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+    }
+  }
+
+  const DEAD = join(SRC, 'dead.ts');
+
+  it('detects a dead export in a staged, UNCOMMITTED new file', () => {
+    // The #6139 reproduction: four PRs on 2026-09-13 ran the gate before
+    // committing, saw nothing, and failed it in CI. `base...HEAD` cannot see
+    // the working tree, so the pre-commit run passed for the wrong reason.
+    const fx = buildFixture();
+    try {
+      fx.write(DEAD, 'export const dead = 1;\n');
+      fx.git('add', DEAD);
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(1);
+      expect(output).toMatch(/dead\.ts/);
+      expect(output).toMatch(/scanned 1 added, 0 modified source files since main/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('detects a dead export in an UNTRACKED new file', () => {
+    const fx = buildFixture();
+    try {
+      fx.write(DEAD, 'export const dead = 1;\n');
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(1);
+      expect(output).toMatch(/dead\.ts/);
+      expect(output).toMatch(/scanned 1 added, 0 modified source files since main/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('detects a dead export added by an UNCOMMITTED edit to an existing file', () => {
+    const fx = buildFixture();
+    try {
+      fx.write(join(SRC, 'foo.ts'), 'export const keep = 2;\nexport const orphan = 3;\n');
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(1);
+      expect(output).toMatch(/Exports added by this PR with no production consumer \(1\)/);
+      expect(output).toMatch(/foo\.ts :: orphan/);
+      expect(output).toMatch(/scanned 0 added, 1 modified source files since main/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('still detects the same dead export once the file is committed (CI shape)', () => {
+    const fx = buildFixture();
+    try {
+      fx.git('checkout', '-q', '-b', 'pr');
+      fx.write(DEAD, 'export const dead = 1;\n');
+      fx.git('add', DEAD);
+      fx.git('commit', '-q', '-m', 'pr: add dead');
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(1);
+      expect(output).toMatch(/dead\.ts/);
+      // On a clean tree the working-tree diff and the committed diff agree:
+      // the count the gate reports is the count `base...HEAD` reports.
+      const committed = fx
+        .git('diff', '--name-status', '--diff-filter=A', 'main...HEAD')
+        .split('\n')
+        .filter((l) => l.length > 0);
+      expect(committed).toHaveLength(1);
+      expect(output).toMatch(/scanned 1 added, 0 modified source files since main/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('names the empty case on a clean tree instead of exiting silently', () => {
+    const fx = buildFixture();
+    try {
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(0);
+      expect(output).toMatch(/scanned 0 added, 0 modified source files since main/);
+      expect(output).toMatch(/no source files changed since main/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
     }
   }, 60_000);
 });

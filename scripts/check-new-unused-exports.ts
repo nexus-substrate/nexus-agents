@@ -29,6 +29,12 @@
  * Failure to file the tracking issue forces the deletion-by-default
  * outcome the audit sweep just established.
  *
+ * **Scope:** everything changed since the merge-base with `base-ref` —
+ * committed, staged, unstaged, and untracked (#6139). A pre-commit run sees
+ * the same files CI will, and a clean tree makes the two views identical.
+ * Every run prints one `scanned N added, M modified` line; a run with nothing
+ * to scan says so instead of exiting silently.
+ *
  * Usage:
  *   pnpm exec tsx scripts/check-new-unused-exports.ts [base-ref]
  *   (base defaults to origin/main)
@@ -82,9 +88,17 @@ export function classifyAddedFiles(files: string[]): NewFilesClassification {
   return { newSourceFiles, skipped };
 }
 
-/** List ADDED files since `base` (status A in `git diff --name-status`). */
-function addedFiles(base: string): string[] {
-  const out = execSync(`git diff --name-status --diff-filter=A ${base}...HEAD`, {
+/**
+ * Paths from `git diff --name-status` output, status column dropped.
+ *
+ * `base` is a merge-base SHA ({@link resolveComparisonBase}), so the two-dot
+ * form compares that commit to the WORKING TREE. The former `base...HEAD`
+ * stopped at the last commit: run pre-commit, it examined nothing and exited 0,
+ * and four PRs on 2026-09-13 passed locally then failed in CI (#6139). On a
+ * clean tree the two forms list the same files, so CI sees no change.
+ */
+function diffNames(base: string, filter: 'A' | 'M'): string[] {
+  const out = execSync(`git diff --name-status --diff-filter=${filter} ${base}`, {
     encoding: 'utf-8',
   });
   return out
@@ -92,6 +106,25 @@ function addedFiles(base: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .map((line) => line.split(/\s+/).slice(1).join(' '));
+}
+
+/**
+ * Untracked source files. `git diff` cannot see a file git has never been told
+ * about, and a brand-new module is exactly the file most likely to be dead.
+ */
+function untrackedSourceFiles(): string[] {
+  const out = execSync(`git ls-files --others --exclude-standard -- ${SRC_DIR}`, {
+    encoding: 'utf-8',
+  });
+  return out
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/** List ADDED files since `base`: committed, staged, or untracked. */
+function addedFiles(base: string): string[] {
+  return [...new Set([...diffNames(base, 'A'), ...untrackedSourceFiles()])];
 }
 
 /** Read a file's contents (returns empty string on missing file). */
@@ -458,24 +491,16 @@ function logFailure(unconsumed: string[]): void {
   console.error('  3. Delete the file if the consumer is no longer needed.');
 }
 
-/** Files MODIFIED (not added) since `base`, filtered to production source. */
+/** Files MODIFIED (not added) since `base`, working tree included, filtered to production source. */
 function modifiedSourceFiles(base: string): string[] {
-  const out = execSync(`git diff --name-status --diff-filter=M ${base}...HEAD`, {
-    encoding: 'utf-8',
-  });
-  return out
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    .map((l) => l.split(/\s+/).slice(1).join(' '))
-    .filter(
-      (f) =>
-        f.startsWith('packages/nexus-agents/src/') &&
-        /\.tsx?$/.test(f) &&
-        !isTestSupportFile(f) &&
-        !/\/index\.tsx?$/.test(f) &&
-        !f.endsWith('.d.ts')
-    );
+  return diffNames(base, 'M').filter(
+    (f) =>
+      f.startsWith('packages/nexus-agents/src/') &&
+      /\.tsx?$/.test(f) &&
+      !isTestSupportFile(f) &&
+      !/\/index\.tsx?$/.test(f) &&
+      !f.endsWith('.d.ts')
+  );
 }
 
 /** Every production source file, used as the haystack for name references. */
@@ -496,11 +521,13 @@ function productionSourceFiles(): string[] {
  * pre-existing dead exports flagged 14 on a real two-file merge, and a gate
  * that bills an unrelated PR for old debt gets routed around.
  */
-function checkModifiedFiles(base: string): {
+function checkModifiedFiles(
+  base: string,
+  modified: readonly string[]
+): {
   newDead: DeadExport[];
   preexisting: DeadExport[];
 } {
-  const modified = modifiedSourceFiles(base);
   if (modified.length === 0) return { newDead: [], preexisting: [] };
 
   const production = productionSourceFiles();
@@ -578,13 +605,32 @@ function run(cmd: string): string {
   return execSync(cmd, { encoding: 'utf-8' });
 }
 
+/**
+ * The one line every run prints, so a run can never be mistaken for a no-op
+ * (#6139): what was scanned, against what, and that the working tree counted.
+ * Returns true when there was nothing to scan, which is named rather than
+ * left to a silent exit 0.
+ */
+function logScanScope(ref: string, base: string, added: number, modified: number): boolean {
+  const since = `${ref} (merge-base ${base.slice(0, 12)})`;
+  console.log(
+    `check-new-unused-exports: scanned ${String(added)} added, ${String(modified)} modified ` +
+      `source files since ${since} (working tree included)`
+  );
+  if (added > 0 || modified > 0) return false;
+  console.log(`check-new-unused-exports: no source files changed since ${since}`);
+  return true;
+}
+
 function main(): number {
   const ref = process.argv[2] ?? 'origin/main';
   let base: string;
   let files: string[];
+  let modified: string[];
   try {
     base = resolveComparisonBase(ref);
     files = addedFiles(base);
+    modified = modifiedSourceFiles(base);
   } catch (err) {
     // A git-diff failure (shallow clone, missing ref) must not block CI —
     // the gate is advisory infrastructure, not a correctness check.
@@ -596,11 +642,13 @@ function main(): number {
   }
 
   const result = checkAddedFiles(files);
+  const addedInSrc = result.consumed.length + result.unconsumed.length + result.optedOut.length;
+  if (logScanScope(ref, base, addedInSrc + result.skipped.length, modified.length)) return 0;
   logSummary(result);
 
   let exportRatchet = { newDead: [] as DeadExport[], preexisting: [] as DeadExport[] };
   try {
-    exportRatchet = checkModifiedFiles(base);
+    exportRatchet = checkModifiedFiles(base, modified);
   } catch (err) {
     console.warn(
       'check-new-unused-exports: export ratchet skipped — ' +
