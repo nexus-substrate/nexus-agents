@@ -91,18 +91,38 @@ async function writeFormatted(path: string, content: string): Promise<void> {
 }
 
 /**
+ * A prettier failure — a malformed `.prettierrc`, a construct its parser
+ * rejects — named by the file it was formatting (#6087). `check` reports it as
+ * `governance:check: could not format <path>: <prettier message>` and fails
+ * with exit 1, instead of the CLI dying on an unhandled rejection with a stack
+ * trace as the only output. Typed so the check path can catch exactly this and
+ * let generator invariants (malformed AGNOSTIC:BODY markers) keep throwing.
+ */
+export class FormatError extends Error {
+  constructor(path: string, cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(`could not format ${path}: ${message}`, { cause });
+    this.name = 'FormatError';
+  }
+}
+
+/**
  * The ONE formatting authority for generated files (#6062): prettier, with the
- * config resolved for `path` and `path`'s parser. Both the writer
- * ({@link writeFormatted}) and the staleness check
- * ({@link checkClaudeAgnosticBlock}) go through here, so what `inject` writes
- * and what `check` expects are normalized by the same pass. When they were
- * not, any AGENTS.md prose prettier reshapes (an inline code span wrapped
- * across a line break is enough) made `check` fail forever while prescribing
- * an `inject` that changed nothing.
+ * config resolved for `path` and `path`'s parser. Every writer
+ * ({@link writeFormatted}) and the CLAUDE.md render ({@link renderClaudeMd})
+ * that `check` compares go through here, so what `inject` writes and what
+ * `check` expects are normalized by the same pass. When they were not, any
+ * AGENTS.md prose prettier reshapes (an inline code span wrapped across a line
+ * break is enough) made `check` fail forever while prescribing an `inject`
+ * that changed nothing.
  */
 export async function formatWithPrettier(path: string, content: string): Promise<string> {
-  const config = await prettier.resolveConfig(path);
-  return prettier.format(content, { ...(config ?? {}), filepath: path });
+  try {
+    const config = await prettier.resolveConfig(path);
+    return await prettier.format(content, { ...(config ?? {}), filepath: path });
+  } catch (error: unknown) {
+    throw new FormatError(path, error);
+  }
 }
 
 // Markers for governance sections
@@ -1015,172 +1035,76 @@ function injectClaudeAgnosticBlock(content: string): string {
   );
 }
 
-/**
- * The text from `startMarker` through the end of `endMarker`, or `undefined`
- * when either marker is absent. Marker-inclusive so a block whose END marker
- * was lost reads as a difference, not as an empty-equals-empty pass.
- */
-function sliceBetween(content: string, startMarker: string, endMarker: string): string | undefined {
-  const start = content.indexOf(startMarker);
-  const end = content.indexOf(endMarker, start);
-  if (start === -1 || end === -1) return undefined;
-  return content.slice(start, end + endMarker.length);
-}
-
-/** Marker for a side that ran out of lines before the other did. */
-const END_OF_BLOCK = '<end of block>';
-/** The same, for the whole-file comparison (#6087). */
+/** Marker for the side that ran out of lines before the other did. */
 const END_OF_FILE = '<end of file>';
 
 /**
  * The first line at which two texts differ: its 0-based index plus the
- * `expected` and `onDisk` text at that index (or `exhausted` for a side that
- * ran out of lines first). The caller guarantees the texts are not equal, so a
- * line is always found.
+ * `expected` and `onDisk` text at that index (or `<end of file>` for a side
+ * that ran out of lines first). The caller guarantees the texts are not equal,
+ * so a line is always found. Both texts are identical before the index, so it
+ * is a valid line number in either.
  */
 function firstDifferingLine(
   expected: string,
-  onDisk: string,
-  exhausted: string = END_OF_BLOCK
+  onDisk: string
 ): { index: number; expected: string; onDisk: string } {
   const a = expected.split('\n');
   const b = onDisk.split('\n');
   const limit = Math.max(a.length, b.length);
   let index = 0;
   while (index < limit && a[index] === b[index]) index += 1;
-  return { index, expected: a[index] ?? exhausted, onDisk: b[index] ?? exhausted };
+  return { index, expected: a[index] ?? END_OF_FILE, onDisk: b[index] ?? END_OF_FILE };
+}
+
+/** 0-based line of the first `marker` in `content` at or after `from`, or -1. */
+function lineOf(content: string, marker: string, from = 0): number {
+  const at = content.indexOf(marker, from);
+  return at === -1 ? -1 : content.slice(0, at).split('\n').length - 1;
 }
 
 /**
- * The out-of-block drift message (#6087): CI's idempotency step diffs the WHOLE
- * file after `inject`, so an end-of-file newline or prose outside the markers
- * that prettier reshapes fails there. Reported as its own cause, with the
- * 1-based CLAUDE.md line of the first difference, so it is never mistaken for
- * (or hidden behind) block drift. `expected` is the formatted regeneration with
- * the on-disk block spliced in, so line numbers are the on-disk file's.
+ * Whether 0-based line `index` — the first line where the render and the
+ * on-disk file disagree — lies inside the on-disk GENERATED:FROM_AGENTS block.
+ * The two texts agree before `index`, so a marker that precedes it sits on the
+ * same line in both. A missing END marker reads as inside: the block lost its
+ * end, which is block drift, not prose outside it.
  */
-function describeOutOfBlockDrift(expected: string, content: string): string {
-  const diff = firstDifferingLine(expected, content, END_OF_FILE);
-  return [
-    `CLAUDE.md differs outside the generated block — first difference at ` +
-      `CLAUDE.md:${String(diff.index + 1)}`,
-    `  expected: ${diff.expected}`,
-    `  on disk:  ${diff.onDisk}`,
-    'Run: pnpm governance:inject',
-  ].join('\n');
+function isInsideAgnosticBlock(content: string, index: number): boolean {
+  const start = lineOf(content, MARKERS.claudeAgnosticStart);
+  if (start === -1 || index < start) return false;
+  const end = lineOf(
+    content,
+    MARKERS.claudeAgnosticEnd,
+    content.indexOf(MARKERS.claudeAgnosticStart)
+  );
+  return end === -1 || index <= end;
 }
 
 /**
- * `regenerated` with its block (`expected`) replaced by the on-disk block, so a
- * comparison against the on-disk file measures ONLY what lies outside the
- * markers (#6087). Index-spliced rather than `String.replace`, whose
- * replacement-pattern syntax (`$&`, `$'`) would corrupt a block that contains
- * a dollar sign — CLAUDE.md does.
+ * The drift message for {@link checkClaudeMd}: WHERE (1-based CLAUDE.md line
+ * of the first difference), both versions of that line, and the remedy.
+ * "Stale" with no location is what turned a one-cycle fix into two (#6062).
  *
- * Returns `undefined` when `expected` is not a substring of `regenerated`. The
- * caller derives `expected` FROM `regenerated`, so that cannot happen today; a
- * future change that computes it differently would otherwise splice at -1 and
- * print a nonsensical out-of-block diff (#6097 panel). Reported, not thrown:
- * a throw would reach the CLI dispatch uncaught — the stack-trace shape #6087
- * removed for prettier. Exported so the test can drive the guard directly.
+ * The cause is derived from where that line falls (#6099) — the two remedies
+ * differ, which is why the distinction is kept:
+ * - inside the GENERATED:FROM_AGENTS markers: the prose is owned by AGENTS.md,
+ *   so a hand edit here is reverted by `inject`; a wanted change goes there.
+ * - outside them (the model list, the end-of-file newline, prose prettier
+ *   reshapes): `inject` alone puts the file right. CI's idempotency step
+ *   (`inject`, then `git diff --exit-code CLAUDE.md`) diffs the whole file, so
+ *   this is drift there too (#6087).
  */
-export function withOnDiskBlock(
-  regenerated: string,
-  expected: string,
-  onDisk: string
-): string | undefined {
-  const at = regenerated.indexOf(expected);
-  if (at === -1) return undefined;
-  return regenerated.slice(0, at) + onDisk + regenerated.slice(at + expected.length);
-}
-
-/** The {@link withOnDiskBlock} invariant message: fail-closed, no stack trace. */
-const BLOCK_NOT_IN_REGENERATION =
-  'governance:check: generated block not found in its own regeneration — internal invariant broken';
-
-/**
- * {@link formatWithPrettier} for the check path (#6087). A prettier failure —
- * a malformed `.prettierrc`, a construct its parser rejects — is reported as
- * `governance:check: could not format <path>: <prettier message>` and the
- * caller gets `undefined`, so the check fails with an actionable line and exit 1
- * instead of the CLI dying on an unhandled rejection with a stack trace as the
- * only output.
- */
-async function formatForCheck(path: string, content: string): Promise<string | undefined> {
-  try {
-    return await formatWithPrettier(path, content);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`governance:check: could not format ${path}: ${message}`);
-    return undefined;
-  }
-}
-
-/**
- * The staleness message for {@link checkClaudeAgnosticBlock}: what is stale,
- * WHERE (1-based CLAUDE.md line of the first difference), both versions of
- * that line, and the remedy. "Stale" with no location is what turned a one-
- * cycle fix into two (#6062).
- */
-function describeAgnosticDrift(content: string, expected: string, onDisk: string): string {
-  const blockStart = content.indexOf(MARKERS.claudeAgnosticStart);
-  const linesBefore = content.slice(0, blockStart).split('\n').length - 1;
-  const diff = firstDifferingLine(expected, onDisk);
-  return [
-    `CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — first difference at ` +
-      `CLAUDE.md:${String(linesBefore + diff.index + 1)}`,
-    `  expected: ${diff.expected}`,
-    `  on disk:  ${diff.onDisk}`,
-    'Edit the agnostic prose in AGENTS.md, then run: pnpm governance:inject',
-  ].join('\n');
-}
-
-/**
- * Verify the CLAUDE.md agnostic block is in sync with AGENTS.md's
- * `AGNOSTIC:BODY` slice (#3446). Soft-skip when CLAUDE.md is absent or has no
- * markers; otherwise fail (with a structured error) when regeneration would
- * produce a diff — i.e. someone edited the agnostic prose in CLAUDE.md instead
- * of AGENTS.md, or edited AGENTS.md without re-running the injector.
- *
- * The regeneration is run through {@link formatWithPrettier} — the same pass
- * `inject` writes through — before the comparison, so the expected block is
- * what `inject` would actually put on disk, not the raw AGENTS.md slice
- * (#6062).
- *
- * Two causes, measured and rendered independently (#6087) — they co-occur, and
- * an if/else-if or a combined message would hide one:
- * - BLOCK drift: the marker-bounded block differs from the regeneration.
- * - OUT-OF-BLOCK drift: with the on-disk block spliced into the regeneration,
- *   the whole file still differs — an end-of-file newline, prose outside the
- *   markers that prettier reshapes. Not agnostic-body drift, but CI's
- *   idempotency step (`inject` then `git diff --exit-code CLAUDE.md`) diffs the
- *   whole file, so without this comparison `check` passed locally on a tree CI
- *   rejected.
- *
- * Exported so the #6062 tests can drive it directly against a sandbox root.
- */
-export async function checkClaudeAgnosticBlock(): Promise<boolean> {
-  if (!existsSync(CLAUDE_MD_PATH)) return true;
-  const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
-  if (!content.includes(MARKERS.claudeAgnosticStart)) return true;
-  const regenerated = await formatForCheck(CLAUDE_MD_PATH, injectClaudeAgnosticBlock(content));
-  if (regenerated === undefined) return false;
-  const { claudeAgnosticStart: start, claudeAgnosticEnd: end } = MARKERS;
-  // The regeneration always carries both markers (the generator emits them), so
-  // an undefined on-disk slice can only mean the END marker is gone — a
-  // difference, reported as such rather than silently passed.
-  const expected = sliceBetween(regenerated, start, end) ?? regenerated;
-  const onDisk = sliceBetween(content, start, end) ?? content.slice(content.indexOf(start));
-  const blockOk = expected === onDisk;
-  if (!blockOk) console.error(describeAgnosticDrift(content, expected, onDisk));
-  const outsideBlock = withOnDiskBlock(regenerated, expected, onDisk);
-  if (outsideBlock === undefined) {
-    console.error(BLOCK_NOT_IN_REGENERATION);
-    return false;
-  }
-  const outsideOk = outsideBlock === content;
-  if (!outsideOk) console.error(describeOutOfBlockDrift(outsideBlock, content));
-  return blockOk && outsideOk;
+function describeClaudeMdDrift(expected: string, content: string): string {
+  const diff = firstDifferingLine(expected, content);
+  const at = `first difference at CLAUDE.md:${String(diff.index + 1)}`;
+  const [cause, remedy] = isInsideAgnosticBlock(content, diff.index)
+    ? [
+        `CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — ${at}`,
+        'Edit the agnostic prose in AGENTS.md, then run: pnpm governance:inject',
+      ]
+    : [`CLAUDE.md differs outside the generated block — ${at}`, 'Run: pnpm governance:inject'];
+  return [cause, `  expected: ${diff.expected}`, `  on disk:  ${diff.onDisk}`, remedy].join('\n');
 }
 
 /**
@@ -1897,9 +1821,12 @@ function printGovernanceSummary(
  * harness-agnostic block, the per-adapter precedence doc, `.rules/` frontmatter,
  * and the generated rules index built from it.
  */
-async function checkCrossAdapterDocGates(): Promise<boolean[]> {
+async function checkCrossAdapterDocGates(
+  claudeMd: string,
+  registries: GovernanceRegistries
+): Promise<boolean[]> {
   return [
-    await checkClaudeAgnosticBlock(),
+    await checkClaudeMd(claudeMd, registries),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
     checkRulesIndex(),
@@ -1913,13 +1840,7 @@ export async function checkGovernance(): Promise<boolean> {
   }
 
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
-  const actual = {
-    tools: extractMcpTools(),
-    experts: extractExpertTypes(),
-    workflows: extractWorkflowTemplates(),
-    skills: extractSkills(),
-    models: extractModels(),
-  };
+  const actual = loadAllRegistries();
   const documented = extractDocumentedCounts(content);
 
   const agents = extractAgents();
@@ -1943,7 +1864,7 @@ export async function checkGovernance(): Promise<boolean> {
     checkEntrypoints(actual.tools, extractCliCommands()),
     checkCanonicalPaths(),
     checkGovernorPatternsResolve(),
-    ...(await checkCrossAdapterDocGates()),
+    ...(await checkCrossAdapterDocGates(content, actual)),
     checkToolAnnotations(actual.tools),
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),
@@ -2031,7 +1952,7 @@ function readToolchain(): Toolchain {
     throw new Error(`cannot read engines.node out of ${PACKAGE_JSON_PATH}`);
   }
   // CJS build, so this is a synchronous `require` — the only async step in
-  // `checkGovernance()` is the prettier pass in `checkClaudeAgnosticBlock` (#6062).
+  // `checkGovernance()` is the prettier pass in `renderClaudeMd` (#6062, #6099).
   const sdk = createRequire(INSTALLED_PACKAGE_JSON)('@modelcontextprotocol/sdk/types.js') as {
     LATEST_PROTOCOL_VERSION?: unknown;
   };
@@ -2339,6 +2260,49 @@ function applyAllSectionInjections(content: string, r: GovernanceRegistries): st
 }
 
 /**
+ * The ONE render of CLAUDE.md (#6099): every generated section, in the order
+ * `inject` applies them ({@link applyAllSectionInjections}), then the shared
+ * prettier pass ({@link formatWithPrettier}). `inject` writes this string;
+ * `check` compares it to the file. Because there is no second regeneration,
+ * the two cannot drift: before this, `check` re-rendered only the agnostic
+ * block and simulated the rest by splicing the on-disk block back in, and
+ * its parity with CI's "inject, then `git diff --exit-code CLAUDE.md`" was
+ * closer but not total.
+ *
+ * Pure with respect to CLAUDE.md: reads AGENTS.md's AGNOSTIC:BODY slice and
+ * the registries, writes nothing. Exported so the test can assert that.
+ */
+export async function renderClaudeMd(
+  currentClaudeMd: string,
+  registries: GovernanceRegistries = loadAllRegistries()
+): Promise<string> {
+  return formatWithPrettier(CLAUDE_MD_PATH, applyAllSectionInjections(currentClaudeMd, registries));
+}
+
+/**
+ * `renderClaudeMd(content) === content` (#6099): what CI's idempotency step
+ * measures on disk, measured in memory. Fails with the first differing line
+ * and the cause derived from where it falls ({@link describeClaudeMdDrift}).
+ *
+ * A formatter failure ({@link FormatError}) is an actionable line and a failed
+ * check (#6087); a generator invariant (malformed AGNOSTIC:BODY markers) still
+ * throws, as it did before, so it cannot be mistaken for a formatter error.
+ */
+async function checkClaudeMd(content: string, registries: GovernanceRegistries): Promise<boolean> {
+  let expected: string;
+  try {
+    expected = await renderClaudeMd(content, registries);
+  } catch (error: unknown) {
+    if (!(error instanceof FormatError)) throw error;
+    console.error(`governance:check: ${error.message}`);
+    return false;
+  }
+  if (expected === content) return true;
+  console.error(describeClaudeMdDrift(expected, content));
+  return false;
+}
+
+/**
  * Inject all governance sections (CLI default mode).
  *
  * Exported so the test suite (#3954) can drive injection in-process against an
@@ -2374,9 +2338,9 @@ export async function injectGovernance(): Promise<void> {
     agentCount: agents.length,
   });
 
+  // #6099: the same render `check` compares against the file.
   const original = readFileSync(CLAUDE_MD_PATH, 'utf-8');
-  const updated = applyAllSectionInjections(original, registries);
-  await writeFormatted(CLAUDE_MD_PATH, updated);
+  writeFileSync(CLAUDE_MD_PATH, await renderClaudeMd(original, registries));
 
   // Inject README MCP tools table (#2269) — same registry, scannable
   // descriptions. Soft-skip if README has no markers yet so this script

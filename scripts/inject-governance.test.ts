@@ -36,6 +36,7 @@ import * as prettier from 'prettier';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { GOVERNANCE_STAMP_PATTERN } from './governance-stamp-exemption.js';
 import { parseCommandCatalog } from './parse-cli-command-catalog.js';
+import { MARKERS } from './governance-markers.js';
 
 /** Real repo root (parent of `scripts/`). Source of the pristine fixtures. */
 const REAL_ROOT = join(import.meta.dirname, '..');
@@ -71,7 +72,7 @@ let core: {
   checkGovernance: () => Promise<boolean>;
   injectGovernance: () => Promise<void>;
   GOVERNANCE_STAMP_SOURCES: readonly string[];
-  withOnDiskBlock: (regenerated: string, expected: string, onDisk: string) => string | undefined;
+  renderClaudeMd: (currentClaudeMd: string) => Promise<string>;
 };
 
 /** Absolute path inside the sandbox for a repo-relative path. */
@@ -832,8 +833,13 @@ describe('inject-governance claude-from-agents normalization (#6062)', () => {
 
       await runInject();
       // The edit really travelled into the generated block — the assertion below
-      // is about THIS text, not about a block that silently kept the old prose.
-      expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toContain('`gates green, panel');
+      // is about THIS text, not about a block that silently kept the old prose —
+      // and it arrived through the prettier pass: the three-space continuation
+      // is reshaped to one space (#6099: a render without that pass writes the
+      // raw slice and then agrees with itself, so the text alone proves nothing).
+      const written = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(written).toContain('`gates green, panel\n pending`');
+      expect(written).not.toContain('`gates green, panel\n   pending`');
 
       const { ok, output } = await runCheck();
       expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
@@ -960,20 +966,32 @@ describe('inject-governance whole-file parity + formatter errors (#6087)', () =>
     });
   });
 
-  it('(c) block drift AND out-of-block drift are both reported, each by its own message', async () => {
-    await withSandboxFile('CLAUDE.md', async (original) => {
+  it('(c) block drift AND out-of-block drift: the first difference is reported, one inject repairs both', async () => {
+    // One render, one comparison (#6099): the report names the FIRST line where
+    // the render and the file disagree. Block drift comes first in the file, so
+    // it is the line named; the stripped newline is not hidden — `inject`
+    // writes the same render, so both are repaired in one cycle and `check`
+    // then passes. (Before #6099 the two were measured separately; the second
+    // measurement needed the on-disk block spliced into the regeneration.)
+    await withInjectSnapshot(async () => {
+      const original = readFileSync(box('CLAUDE.md'), 'utf-8');
       const { edited, line } = withStaleBlock(original);
       expect(edited.endsWith('\n')).toBe(true);
       writeFileSync(box('CLAUDE.md'), edited.replace(/\n$/, ''));
 
-      const { ok, output } = await runCheck();
-      expect(ok).toBe(false);
-      expect(output).toContain(
+      const first = await runCheck();
+      expect(first.ok).toBe(false);
+      expect(first.output).toContain(
         `${BLOCK_STALE} (#3446) — first difference at CLAUDE.md:${String(line)}`
       );
-      expect(output).toContain(
-        `${OUT_OF_BLOCK} — first difference at CLAUDE.md:${String(edited.split('\n').length)}`
-      );
+      expect(first.output).not.toContain(OUT_OF_BLOCK);
+
+      await runInject();
+      expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toBe(original);
+      const second = await runCheck();
+      expect(second.output).not.toContain(BLOCK_STALE);
+      expect(second.output).not.toContain(OUT_OF_BLOCK);
+      expect(second.ok).toBe(true);
     });
   });
 
@@ -996,13 +1014,156 @@ describe('inject-governance whole-file parity + formatter errors (#6087)', () =>
     });
   });
 
-  it('(e) withOnDiskBlock refuses to splice a block that is not in its own regeneration', () => {
-    // The caller derives `expected` from `regenerated`, so this cannot happen
-    // today; the guard is for a future change that computes it differently.
-    // Unguarded, indexOf(-1) splices at -1 and yields a nonsensical diff — the
-    // splice below would return 'nspliced' rather than a refusal.
-    expect(core.withOnDiskBlock('before block after', 'block', 'BLOCK')).toBe('before BLOCK after');
-    expect(core.withOnDiskBlock('unspliced', 'absent', 'BLOCK')).toBeUndefined();
+  it('(e) renderClaudeMd is the render inject writes: pure, and a fixed point of the on-disk file', async () => {
+    // `check` compares this render to the file and `inject` writes it (#6099),
+    // so the render of the pristine sandbox file must BE that file — and
+    // rendering must not touch the disk, or `check` would be an `inject`.
+    const path = box('CLAUDE.md');
+    const original = readFileSync(path, 'utf-8');
+    const stale = original.replace(ANCHOR, ANCHOR.replace('maintenance debt', 'maintenance DEBT'));
+    expect(stale).not.toBe(original);
+
+    expect(await core.renderClaudeMd(original)).toBe(original);
+    expect(await core.renderClaudeMd(stale)).toBe(original);
+    expect(readFileSync(path, 'utf-8')).toBe(original);
+  });
+});
+
+// ============================================================================
+// One render shared by inject and check (#6099)
+// ============================================================================
+
+describe('inject-governance one render for inject and check (#6099)', () => {
+  /** 1-based line of the first difference between two texts, computed independently of the script. */
+  function firstDiffLine(a: string, b: string): number {
+    const x = a.split('\n');
+    const y = b.split('\n');
+    let i = 0;
+    while (i < Math.max(x.length, y.length) && x[i] === y[i]) i += 1;
+    return i + 1;
+  }
+
+  /** `content` with `from` replaced by `to` INSIDE the `[start, end]` marker span only. */
+  function perturbSection(
+    content: string,
+    start: string,
+    end: string,
+    from: string,
+    to: string
+  ): string {
+    const a = content.indexOf(start);
+    const b = content.indexOf(end, a);
+    expect(a).toBeGreaterThan(-1);
+    expect(b).toBeGreaterThan(a);
+    const section = content.slice(a, b);
+    expect(section).toContain(from);
+    return content.slice(0, a) + section.replace(from, to) + content.slice(b);
+  }
+
+  /**
+   * Every section `inject` regenerates into CLAUDE.md, with a perturbation that
+   * lands inside it. `inside` says where the section sits relative to the
+   * GENERATED:FROM_AGENTS markers, which decides the message `check` prints.
+   *
+   * The perturbations are made to CLAUDE.md only. AGENTS.md carries its own
+   * copies of the rules / workflow / tool tables inside the AGNOSTIC:BODY slice
+   * and `inject` does NOT regenerate those there (#6105) — a perturbation of
+   * AGENTS.md's copy is neither repaired by `inject` nor, after #6099, reported
+   * by `check`. That is #6105's defect, not this suite's claim: this suite
+   * asserts the round-trip `inject` DOES make, from a pristine AGENTS.md.
+   */
+  const SECTIONS = [
+    {
+      name: 'agnostic prose',
+      start: MARKERS.claudeAgnosticStart,
+      end: MARKERS.claudeAgnosticEnd,
+      from: 'Clever code is maintenance debt.',
+      to: 'Clever code is maintenance DEBT.',
+      inside: true,
+    },
+    {
+      name: 'rules index table',
+      start: MARKERS.rulesIndexStart,
+      end: MARKERS.rulesIndexEnd,
+      from: '`.rules/typescript.md`',
+      to: '`.rules/typescript-renamed.md`',
+      inside: true,
+    },
+    {
+      name: 'workflow (skills) list',
+      start: MARKERS.workflowIndexStart,
+      end: MARKERS.workflowIndexEnd,
+      from: '`api-and-interface-design`, ',
+      to: '',
+      inside: true,
+    },
+    {
+      name: 'tool index',
+      start: MARKERS.toolIndexStart,
+      end: MARKERS.toolIndexEnd,
+      from: '`orchestrate`, ',
+      to: '',
+      inside: true,
+    },
+    {
+      name: 'governance version stamp',
+      start: MARKERS.versionStart,
+      end: MARKERS.versionEnd,
+      from: '_Governance Version: ',
+      to: '_Governance Version: stale',
+      inside: true,
+    },
+    {
+      name: 'model list',
+      start: MARKERS.modelListStart,
+      end: MARKERS.modelListEnd,
+      from: 'claude-opus, ',
+      to: '',
+      inside: false,
+    },
+  ] as const;
+
+  it.each(SECTIONS)(
+    '(f) $name: check reports the perturbed line, inject restores it, check passes',
+    async ({ start, end, from, to, inside }) => {
+      await withInjectSnapshot(async () => {
+        // AGENTS.md is the sandbox's pristine copy here (see SECTIONS): the
+        // round-trip below is the one `inject` makes from it, not a repair of
+        // AGENTS.md's own hand-held tables (#6105).
+        const original = readFileSync(box('CLAUDE.md'), 'utf-8');
+        const perturbed = perturbSection(original, start, end, from, to);
+        expect(perturbed).not.toBe(original);
+        writeFileSync(box('CLAUDE.md'), perturbed);
+
+        const before = await runCheck();
+        expect(before.ok).toBe(false);
+        const line = String(firstDiffLine(original, perturbed));
+        expect(before.output).toContain(
+          inside
+            ? `${BLOCK_STALE} (#3446) — first difference at CLAUDE.md:${line}`
+            : `${OUT_OF_BLOCK} — first difference at CLAUDE.md:${line}`
+        );
+        expect(before.output).toContain('pnpm governance:inject');
+
+        await runInject();
+        expect(readFileSync(box('CLAUDE.md'), 'utf-8')).toBe(original);
+        const after = await runCheck();
+        expect(after.output).not.toContain(BLOCK_STALE);
+        expect(after.output).not.toContain(OUT_OF_BLOCK);
+        expect(after.ok).toBe(true);
+      });
+    }
+  );
+
+  it('(g) inject twice is byte-identical for every file inject writes', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const first = new Map(INJECT_WRITES.map((rel) => [rel, readFileSync(box(rel), 'utf-8')]));
+      await runInject();
+      for (const [rel, content] of first) {
+        expect(readFileSync(box(rel), 'utf-8'), rel).toBe(content);
+      }
+    });
   });
 });
 
