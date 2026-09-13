@@ -32,7 +32,11 @@ import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import { NoAdapterError, resolveAdapterOrFail } from './voter-adapter-resolve.js';
-import { classifyUnverifiable, markUnverifiable } from './voter-unverifiable.js';
+import {
+  classifyUnverifiable,
+  markUnverifiable,
+  type UnverifiableReasoningRule,
+} from './voter-unverifiable.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError };
@@ -180,18 +184,20 @@ function finalizeParsedVote(
   cliStderr: string | undefined,
   logger: ILogger
 ): AgentVoteResult {
-  const signal = classifyUnverifiable({ cliStderr, reasoning: built.vote.reasoning });
+  const { role, model } = built;
+  const signal = classifyUnverifiable(
+    { cliStderr, reasoning: built.vote.reasoning },
+    (rule: UnverifiableReasoningRule) => {
+      logger.debug('Unverifiable reasoning fallback fired', { role, rule });
+    }
+  );
   if (signal === undefined) {
-    logger.info('Vote completed', {
-      role: built.role,
-      model: built.model,
-      decision: built.vote.decision,
-    });
+    logger.info('Vote completed', { role, model, decision: built.vote.decision });
     return built;
   }
   logger.warn('Seat could not read the artifact — recorded as unverifiable, decision discarded', {
-    role: built.role,
-    model: built.model,
+    role,
+    model,
     signal,
     discardedDecision: built.vote.decision,
     ...(built.selectedOption !== undefined ? { discardedOption: built.selectedOption } : {}),

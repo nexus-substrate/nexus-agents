@@ -44,6 +44,26 @@ const GENUINE_REASONING: readonly string[] = [
   '',
 ];
 
+/**
+ * Seats that quote the error but report they RECOVERED (#6104). The #6101
+ * adversarial review executed the first two; each lost its vote. Must NOT
+ * classify as unverifiable: the error string is present, but the reasoning
+ * asserts a successful read — a recovery phrase, or a `path/file.ext:LINE`
+ * citation.
+ */
+const RECOVERED_REASONING: readonly string[] = [
+  "first shell attempt printed 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted', but the retry succeeded and I read all three files",
+  'repository reads failed with a transient EAGAIN; the second attempt succeeded',
+  "shell execution failed with 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted' on the first call; the guard at src/x.ts:12 is what the diff changes, and it names the empty case. Approve.",
+];
+
+/** Quotes the error and cites nothing — no recovery asserted, so the fallback fires. */
+const ERROR_WITHOUT_RECOVERY =
+  "shell execution failed with 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted'; I am judging the proposal text.";
+
+/** Begins with the prefix the prompt asks for; matches no error string, and even cites a line. */
+const PREFIX_ONLY = 'UNVERIFIABLE: the sandbox refused every read of src/x.ts:12.';
+
 function llm(overrides: Partial<AgentVoteResult> = {}): AgentVoteResult {
   return {
     role: 'scope_steward',
@@ -78,6 +98,75 @@ describe('UNVERIFIABLE_REASONING_RE — the fallback (#6094)', () => {
   });
 });
 
+describe('the recovery guard (#6104)', () => {
+  /** The verdict for a reasoning with no stderr — the guards are module-private, so this is the probe. */
+  const classify = (reasoning: string): string | undefined => classifyUnverifiable({ reasoning });
+
+  it('the prefix rule is anchored at the start of the reasoning', () => {
+    expect(classify(PREFIX_ONLY)).toBe('reasoning');
+    expect(classify('  UNVERIFIABLE: could not read the artifact')).toBe('reasoning');
+    expect(classify('Approve. Not UNVERIFIABLE: I read it.')).toBeUndefined();
+  });
+
+  it('a citation is path/file.ext:LINE and nothing looser', () => {
+    const quoted = "shell execution failed with 'bwrap: loopback: Failed RTM_NEWADDR'; ";
+    expect(classify(`${quoted}the guard at src/x.ts:12 names the empty case`)).toBeUndefined();
+    expect(
+      classify(`${quoted}see packages/nexus-agents/src/audit/vote-record.ts:200`)
+    ).toBeUndefined();
+    // A bare time, a version, a ratio, a SHA: none is a citation, so the seat is still blind.
+    expect(classify(`${quoted}at 12:30 the run took 3:1 on v2.9`)).toBe('reasoning');
+    expect(classify(`${quoted}HEAD 461ee61468 against the tree`)).toBe('reasoning');
+  });
+
+  it('the recovery phrases are each recognised, and none appears in the ledger set', () => {
+    const quoted = "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'; ";
+    expect(classify(`${quoted}but the retry succeeded and I read all three files`)).toBeUndefined();
+    expect(classify(`${quoted}the second attempt succeeded`)).toBeUndefined();
+    expect(classify(`${quoted}then read the file through the tool`)).toBeUndefined();
+    expect(classify(`${quoted}I was able to read the diff after a retry`)).toBeUndefined();
+    for (const fixture of LEDGER_FIXTURES) expect(classify(fixture)).toBe('reasoning');
+  });
+
+  it.each(RECOVERED_REASONING.map((r) => [r.slice(0, 50), r] as const))(
+    'does not discard a seat that quotes the error but reports it recovered: %s',
+    (_label, reasoning) => {
+      // The error string IS present — only the recovery guard keeps the seat.
+      expect(UNVERIFIABLE_REASONING_RE.test(reasoning)).toBe(true);
+      expect(classifyUnverifiable({ reasoning })).toBeUndefined();
+    }
+  );
+
+  it('the error string with no recovery asserted still fires', () => {
+    expect(classifyUnverifiable({ reasoning: ERROR_WITHOUT_RECOVERY })).toBe('reasoning');
+  });
+
+  it('the prefix fires on its own, even when the rest cites a line', () => {
+    expect(UNVERIFIABLE_REASONING_RE.test(PREFIX_ONLY)).toBe(false);
+    expect(classifyUnverifiable({ reasoning: PREFIX_ONLY })).toBe('reasoning');
+  });
+
+  it('stderr still wins over a reasoning that reports recovery', () => {
+    expect(
+      classifyUnverifiable({
+        cliStderr: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n',
+        reasoning: RECOVERED_REASONING[0] as string,
+      })
+    ).toBe('stderr');
+  });
+
+  it('names which sub-rule fired', () => {
+    const fired: string[] = [];
+    const onRule = (rule: string): void => {
+      fired.push(rule);
+    };
+    classifyUnverifiable({ reasoning: PREFIX_ONLY }, onRule);
+    classifyUnverifiable({ reasoning: ERROR_WITHOUT_RECOVERY }, onRule);
+    classifyUnverifiable({ reasoning: RECOVERED_REASONING[0] as string }, onRule);
+    expect(fired).toEqual(['prefix', 'error_without_recovery']);
+  });
+});
+
 describe('classifyUnverifiable', () => {
   it('names the structured signal first: stderr wins even when reasoning is clean', () => {
     expect(
@@ -94,6 +183,13 @@ describe('classifyUnverifiable', () => {
       'reasoning'
     );
   });
+
+  it.each(LEDGER_FIXTURES.map((r, i) => [i, r] as const))(
+    'still classifies ledger fixture %i through the recovery guard (#6104)',
+    (_i, reasoning) => {
+      expect(classifyUnverifiable({ reasoning })).toBe('reasoning');
+    }
+  );
 
   it('ordinary stderr chatter is not a signal', () => {
     expect(
