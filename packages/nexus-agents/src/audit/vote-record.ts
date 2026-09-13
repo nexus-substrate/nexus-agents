@@ -59,6 +59,8 @@ import * as crypto from 'node:crypto';
 
 import { z } from 'zod';
 
+import type { CompleteKeys } from './voter-keys-constraint.js';
+
 /** Decision an `approved`/`rejected`/`no_quorum` consensus vote resolves to. */
 export const VoteRecordDecisionSchema = z.enum(['approved', 'rejected', 'no_quorum']);
 export type VoteRecordDecision = z.infer<typeof VoteRecordDecisionSchema>;
@@ -207,10 +209,10 @@ export type VoterSummary = z.infer<typeof VoterSummarySchema>;
  * Identity at runtime; an exhaustiveness constraint at compile time (#6077).
  *
  * The tuple literal only type-checks when every `keyof VoterSummary` appears
- * in it: `[keyof VoterSummary] extends [T[number]]` is `unknown` (no-op
- * intersection) when the tuple is complete and `never` when a schema key is
- * missing, so the argument becomes unassignable. Drop `retried` from the tuple
- * below and this call is a `tsc` error, not a silently unhashed field.
+ * in it: {@link CompleteKeys} is `unknown` (no-op intersection) when the tuple
+ * is complete and `never` when a schema key is missing, so the argument becomes
+ * unassignable. Drop `retried` from the tuple below and this call is a `tsc`
+ * error, not a silently unhashed field.
  *
  * This exists INSTEAD of a standalone sentinel const because a sentinel
  * survives lint only through the `^_` unused-vars ignore pattern and can be
@@ -218,9 +220,13 @@ export type VoterSummary = z.infer<typeof VoterSummarySchema>;
  * without a failing test" class. Bound to the tuple's initialization, the check
  * cannot be removed separately from the thing it checks. The `satisfies` on the
  * literal still catches the other direction (a key the schema lacks).
+ *
+ * The constraint itself lives in `voter-keys-constraint.ts` so that a type test
+ * can probe it (#6092): if a TypeScript release stopped resolving it to `never`
+ * for an incomplete tuple, `pnpm typecheck` fails there, not silently here.
  */
 function defineVoterKeys<T extends readonly (keyof VoterSummary)[]>(
-  keys: T & ([keyof VoterSummary] extends [T[number]] ? unknown : never)
+  keys: T & CompleteKeys<keyof VoterSummary, T>
 ): T {
   return keys;
 }
