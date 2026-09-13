@@ -4,7 +4,8 @@
  * (Source: Issue #2402)
  *
  * Pure-function tests for the threshold logic — no fs, no gh CLI calls. The
- * issue-filing tests (#6112) drive `gh` through the injected `GhExec` seam.
+ * issue-filing tests (#6112) drive `gh` through `runImprovementReview`'s
+ * injected `ghExec` seam, with the environment-reading detectors silenced.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -17,8 +18,8 @@ import {
   detectFitnessDimensionSignals,
   detectConsensusRejectionSignals,
   issueLabelsForSignal,
-  fileSignalsAsIssues,
-  type GhExec,
+  runImprovementReview,
+  type PerfRegressionInput,
 } from './improvement-review.js';
 import { FITNESS_DIMENSION_MAX } from '../../governance/fitness-score.js';
 import type { FitnessFinding } from '../../governance/fitness-score.js';
@@ -26,6 +27,29 @@ import type { ImprovementSignal } from './improvement-review.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
 import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
+import type { createLogger } from '../../core/index.js';
+import type {
+  BenchmarkSuiteResult,
+  LatencyMetrics,
+  OperationBenchmark,
+} from '../../benchmarks/benchmark-types.js';
+
+// Silence the detectors that read the real environment so the #6112 filing
+// tests below see exactly the signals they inject. The pure detector tests
+// above never touch these modules.
+vi.mock('../../orchestration/outcomes/outcome-store.js', () => ({
+  getOutcomeStore: () => ({ query: () => [] }),
+}));
+vi.mock('../../governance/fitness-score.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../governance/fitness-score.js')>()),
+  // The review's safeFitnessAudit turns a throw into a 100/100 no-finding audit.
+  calculateFitnessScore: () => {
+    throw new Error('fitness audit disabled in this test');
+  },
+}));
+vi.mock('./improvement-review-tool-fitness.js', () => ({
+  loadToolFitnessSignals: () => [],
+}));
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -652,31 +676,73 @@ describe('issueLabelsForSignal', () => {
 });
 
 // ============================================================================
-// fileSignalsAsIssues — file with only the labels the target repo has (#6112)
+// Issue filing — only the labels the target repo has (#6112), driven through
+// runImprovementReview's `ghExec` seam. The detectors that read the real
+// environment are silenced above (empty outcome store, no fitness audit, no
+// tool-fitness ledger) so the injected perf-regression signals are the only
+// ones that file.
 // ============================================================================
 
-describe('fileSignalsAsIssues — label check against the target repo (#6112)', () => {
+type GhExec = NonNullable<NonNullable<Parameters<typeof runImprovementReview>[1]>['ghExec']>;
+
+describe('runImprovementReview — label check against the target repo (#6112)', () => {
   const ISSUE_URL = 'https://github.com/acme/widgets/issues/';
-
-  function sig(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
-    return {
-      category: 'routing',
-      signalKey: `routing:cli-floor:codex:${over.title ?? 'docs'}`,
-      severity: 'warning',
-      title: 'routing: codex 30% on docs',
-      body: 'floor breach',
-      evidence: {},
-      ...over,
-    };
-  }
-
   const silentLogger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
     child: vi.fn(),
-  } as unknown as Parameters<typeof fileSignalsAsIssues>[1]['logger'];
+  } as unknown as ReturnType<typeof createLogger>;
+
+  /** One regressed benchmark operation per name → one `warning` perf-regression signal each. */
+  function perfSignals(...ops: readonly string[]): PerfRegressionInput {
+    const latency = (p95: number): LatencyMetrics => ({
+      min: 0,
+      max: p95,
+      mean: p95,
+      p50: p95,
+      p75: p95,
+      p90: p95,
+      p95,
+      p99: p95,
+      stdDev: 0,
+      sampleCount: 100,
+    });
+    const operations: OperationBenchmark[] = ops.map((name) => ({
+      operation: name,
+      datasetSize: 1000,
+      latency: latency(300),
+      throughput: { opsPerSecond: 1000, totalOps: 1000, durationMs: 1000 },
+      resources: { peakMemoryBytes: 0, avgMemoryBytes: 0, cpuTimeMs: 0 },
+      timestamp: '2026-06-19T00:00:00.000Z',
+    }));
+    const result: BenchmarkSuiteResult = {
+      name: 'store-suite',
+      component: 'store',
+      version: '1.0.0',
+      operations,
+      environment: {
+        nodeVersion: 'v22.0.0',
+        platform: 'linux',
+        arch: 'x64',
+        cpuModel: 'test',
+        cpuCores: 8,
+        totalMemory: 0,
+      },
+      summary: {
+        totalDurationMs: 0,
+        totalOperations: operations.length,
+        overallThroughput: 0,
+        avgP95Latency: 0,
+        passed: true,
+        failures: [],
+      },
+    };
+    return { result, baselines: new Map(ops.map((o) => [`store::${o}`, { baselineP95Ms: 100 }])) };
+  }
+
+  const signalKey = (op: string): string => `perf-regression:latency:store:${op}`;
 
   /**
    * A `gh` double keyed on the sub-command. `labelListResult` is what
@@ -712,30 +778,38 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
     return { ghExec, calls };
   }
 
+  function review(
+    ghExec: GhExec,
+    perfRegression: PerfRegressionInput,
+    targetRepo?: string
+  ): ReturnType<typeof runImprovementReview> {
+    const input = ImprovementReviewInputSchema.parse({
+      fileIssues: true,
+      ...(targetRepo === undefined ? {} : { targetRepo }),
+    });
+    return runImprovementReview(input, { logger: silentLogger, ghExec, perfRegression });
+  }
+
   function labelArg(createCall: readonly string[]): string | undefined {
     const i = createCall.indexOf('--label');
     return i === -1 ? undefined : createCall[i + 1];
   }
 
   it('(1) drops a label the target repo lacks and files with the rest, reporting the drop', async () => {
-    const gh = ghDouble(['routing', 'bug']);
-    const result = await fileSignalsAsIssues([sig()], {
-      logger: silentLogger,
-      ghExec: gh.ghExec,
-      targetRepo: 'acme/widgets',
-    });
+    const gh = ghDouble(['perf-regression', 'bug']);
+    const result = await review(gh.ghExec, perfSignals('search'), 'acme/widgets');
 
     expect(result.issuesSkipped).toEqual([]);
     expect(result.issuesFiled).toEqual([
       {
-        signalKey: 'routing:cli-floor:codex:docs',
+        signalKey: signalKey('search'),
         issueUrl: `${ISSUE_URL}1`,
         labelsDropped: ['p2'],
         labelCheck: 'ok',
       },
     ]);
     const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
-    expect(labelArg(create ?? [])).toBe('routing');
+    expect(labelArg(create ?? [])).toBe('perf-regression');
     // The explicit target reaches every gh call.
     for (const call of gh.calls) {
       expect(call).toContain('--repo');
@@ -745,34 +819,26 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
   });
 
   it('(2) files with every requested label when the repo has them all — labelsDropped is []', async () => {
-    const gh = ghDouble(['p2', 'routing', 'p0']);
-    const result = await fileSignalsAsIssues([sig()], {
-      logger: silentLogger,
-      ghExec: gh.ghExec,
-      targetRepo: 'acme/widgets',
-    });
+    const gh = ghDouble(['p2', 'perf-regression', 'p0']);
+    const result = await review(gh.ghExec, perfSignals('search'), 'acme/widgets');
 
     expect(result.issuesFiled).toHaveLength(1);
     expect(result.issuesFiled[0]?.labelsDropped).toEqual([]);
     expect(result.issuesFiled[0]?.labelCheck).toBe('ok');
     const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
-    expect(labelArg(create ?? [])).toBe('p2,routing');
+    expect(labelArg(create ?? [])).toBe('p2,perf-regression');
   });
 
   it('(3) files with NO labels when the label list fails, and says the check was unavailable', async () => {
     const gh = ghDouble('fail');
-    const result = await fileSignalsAsIssues([sig()], {
-      logger: silentLogger,
-      ghExec: gh.ghExec,
-      targetRepo: 'acme/widgets',
-    });
+    const result = await review(gh.ghExec, perfSignals('search'), 'acme/widgets');
 
     expect(result.issuesSkipped).toEqual([]);
     expect(result.issuesFiled).toEqual([
       {
-        signalKey: 'routing:cli-floor:codex:docs',
+        signalKey: signalKey('search'),
         issueUrl: `${ISSUE_URL}1`,
-        labelsDropped: ['p2', 'routing'],
+        labelsDropped: ['p2', 'perf-regression'],
         labelCheck: 'unavailable',
       },
     ]);
@@ -782,15 +848,14 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
   });
 
   it('(4) fetches the label list once for a run that files three issues', async () => {
-    const gh = ghDouble(['p2', 'routing']);
-    const signals = [sig({ title: 'a' }), sig({ title: 'b' }), sig({ title: 'c' })];
-    const result = await fileSignalsAsIssues(signals, {
-      logger: silentLogger,
-      ghExec: gh.ghExec,
-      targetRepo: 'acme/widgets',
-    });
+    const gh = ghDouble(['p2', 'perf-regression']);
+    const result = await review(gh.ghExec, perfSignals('a', 'b', 'c'), 'acme/widgets');
 
-    expect(result.issuesFiled).toHaveLength(3);
+    expect(result.issuesFiled.map((f) => f.signalKey)).toEqual([
+      signalKey('a'),
+      signalKey('b'),
+      signalKey('c'),
+    ]);
     const listCalls = gh.calls.filter((c) => c[0] === 'label' && c[1] === 'list');
     expect(listCalls).toHaveLength(1);
     expect(listCalls[0]).toEqual(
@@ -799,8 +864,8 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
   });
 
   it('resolves the target from the cwd remote when the caller names none, and says so', async () => {
-    const gh = ghDouble(['p2', 'routing']);
-    const result = await fileSignalsAsIssues([sig()], { logger: silentLogger, ghExec: gh.ghExec });
+    const gh = ghDouble(['p2', 'perf-regression']);
+    const result = await review(gh.ghExec, perfSignals('search'));
 
     expect(result.issueTarget).toEqual({ repo: 'acme/widgets', source: 'cwd-remote' });
     const create = gh.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
@@ -808,10 +873,10 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
   });
 
   it('files without --repo and reports the target as unresolved when the remote lookup fails', async () => {
-    const base = ghDouble(['p2', 'routing']);
+    const base = ghDouble(['p2', 'perf-regression']);
     const ghExec: GhExec = (args) =>
       args[0] === 'repo' ? Promise.reject(new Error('not a git repository')) : base.ghExec(args);
-    const result = await fileSignalsAsIssues([sig()], { logger: silentLogger, ghExec });
+    const result = await review(ghExec, perfSignals('search'));
 
     expect(result.issueTarget).toEqual({ repo: null, source: 'unresolved' });
     expect(result.issuesFiled).toHaveLength(1);
@@ -819,20 +884,30 @@ describe('fileSignalsAsIssues — label check against the target repo (#6112)', 
   });
 
   it('keeps issuesSkipped for a genuine create failure', async () => {
-    const base = ghDouble(['p2', 'routing']);
+    const base = ghDouble(['p2', 'perf-regression']);
     const ghExec: GhExec = (args) =>
       args[0] === 'issue' && args[1] === 'create'
         ? Promise.reject(new Error('gh: HTTP 403'))
         : base.ghExec(args);
-    const result = await fileSignalsAsIssues([sig()], {
-      logger: silentLogger,
-      ghExec,
-      targetRepo: 'acme/widgets',
-    });
+    const result = await review(ghExec, perfSignals('search'), 'acme/widgets');
 
     expect(result.issuesFiled).toEqual([]);
     expect(result.issuesSkipped).toEqual([
-      { signalKey: 'routing:cli-floor:codex:docs', reason: 'error:gh: HTTP 403' },
+      { signalKey: signalKey('search'), reason: 'error:gh: HTTP 403' },
     ]);
+  });
+
+  it('reports the target as not-filing and touches gh not at all when fileIssues is false', async () => {
+    const gh = ghDouble(['p2', 'perf-regression']);
+    const input = ImprovementReviewInputSchema.parse({ fileIssues: false });
+    const result = await runImprovementReview(input, {
+      logger: silentLogger,
+      ghExec: gh.ghExec,
+      perfRegression: perfSignals('search'),
+    });
+
+    expect(result.issueTarget).toEqual({ repo: null, source: 'not-filing' });
+    expect(result.issuesFiled).toEqual([]);
+    expect(gh.calls).toEqual([]);
   });
 });

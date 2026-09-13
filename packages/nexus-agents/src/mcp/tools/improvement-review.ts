@@ -792,7 +792,7 @@ export async function loadSelfEvalSignals(
  * inject. Injected so tests drive every `gh` call (label list, dedup search,
  * create, target lookup) through one seam (#6112).
  */
-export type GhExec = (args: readonly string[]) => Promise<{ readonly stdout: string }>;
+type GhExec = (args: readonly string[]) => Promise<{ readonly stdout: string }>;
 
 const defaultGhExec: GhExec = async (args) => execFileAsync('gh', [...args]);
 
@@ -823,7 +823,7 @@ export interface FiledIssue {
   readonly labelCheck: 'ok' | 'unavailable';
 }
 
-export interface IssueFilingDeps {
+interface IssueFilingDeps {
   readonly logger: ILogger;
   readonly ghExec: GhExec;
   /** `owner/repo` named by the caller. Absent → resolved from the cwd remote. */
@@ -1039,7 +1039,7 @@ const SEVERITY_ORDER: Record<ImprovementSignal['severity'], number> = {
  * fetched lazily and at most once per run — a run whose signals are all dups
  * never asks for it.
  */
-export async function fileSignalsAsIssues(
+async function fileSignalsAsIssues(
   signals: readonly ImprovementSignal[],
   deps: IssueFilingDeps
 ): Promise<{
