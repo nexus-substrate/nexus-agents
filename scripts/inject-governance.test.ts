@@ -1030,6 +1030,75 @@ describe('inject-governance whole-file parity + formatter errors (#6087)', () =>
 });
 
 // ============================================================================
+// In-block data-loss warning when the first difference is outside (#6113 panel)
+// ============================================================================
+
+describe('inject-governance in-block loss warning (#6113)', () => {
+  const ANCHOR = '- **Cleverness**: Never. Clever code is maintenance debt.';
+  const STAR_EMPHASIS = '*Prettier rewrites this emphasis to underscores.*';
+  const ALSO_DIFFERS = 'the generated block also differs at CLAUDE.md:';
+  const MOVE_FIRST = 'edits inside it are overwritten by inject; move them to AGENTS.md first';
+
+  /** Two lines inserted at line 11 (outside the block), shifting the block down by two. */
+  function withOutsideEdit(lines: string[]): void {
+    expect(lines[8]).toBe('# Nexus Agents - Claude Code Instructions');
+    expect(lines[9]).toBe('');
+    lines.splice(10, 0, STAR_EMPHASIS, '');
+  }
+
+  it('both drifts: the outside line is reported AND the in-block line is warned about, each with its own number', async () => {
+    // The scenario the rejecting seat raised: a bare "run inject" remedy for
+    // the outside edit would regenerate the block and silently destroy the
+    // inside edit. The warning names the on-disk line of that inside edit —
+    // AFTER the two-line shift the outside edit introduced above it.
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const lines = original.split('\n');
+      const anchorIdx = lines.indexOf(ANCHOR);
+      expect(anchorIdx).toBeGreaterThan(-1);
+      lines[anchorIdx] = ANCHOR.replace('maintenance debt', 'maintenance DEBT');
+      withOutsideEdit(lines);
+      writeFileSync(box('CLAUDE.md'), lines.join('\n'));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(`${OUT_OF_BLOCK} — first difference at CLAUDE.md:11`);
+      expect(output).toContain(`${ALSO_DIFFERS}${String(anchorIdx + 2 + 1)} — ${MOVE_FIRST}`);
+      expect(output).not.toContain(BLOCK_STALE);
+    });
+  });
+
+  it('outside-only drift prints no in-block warning', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const lines = original.split('\n');
+      withOutsideEdit(lines);
+      writeFileSync(box('CLAUDE.md'), lines.join('\n'));
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(`${OUT_OF_BLOCK} — first difference at CLAUDE.md:11`);
+      expect(output).not.toContain(ALSO_DIFFERS);
+    });
+  });
+
+  it('inside-only drift prints no in-block warning: the block remedy already names AGENTS.md', async () => {
+    await withSandboxFile('CLAUDE.md', async (original) => {
+      const edited = original.replace(
+        ANCHOR,
+        ANCHOR.replace('maintenance debt', 'maintenance DEBT')
+      );
+      expect(edited).not.toBe(original);
+      writeFileSync(box('CLAUDE.md'), edited);
+
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain(BLOCK_STALE);
+      expect(output).toContain('Edit the agnostic prose in AGENTS.md');
+      expect(output).not.toContain(ALSO_DIFFERS);
+    });
+  });
+});
+
+// ============================================================================
 // One render shared by inject and check (#6099)
 // ============================================================================
 

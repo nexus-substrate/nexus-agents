@@ -1081,6 +1081,49 @@ function isInsideAgnosticBlock(content: string, index: number): boolean {
   return end === -1 || index <= end;
 }
 
+/** The marker-inclusive GENERATED:FROM_AGENTS block of `text`, or `undefined` without both markers. */
+function agnosticBlockOf(text: string): string | undefined {
+  const start = text.indexOf(MARKERS.claudeAgnosticStart);
+  const end = text.indexOf(MARKERS.claudeAgnosticEnd, start);
+  if (start === -1 || end === -1) return undefined;
+  return text.slice(start, end + MARKERS.claudeAgnosticEnd.length);
+}
+
+/**
+ * The 1-based on-disk line of the first difference INSIDE the generated block,
+ * or `undefined` when the two blocks agree (#6113 panel). Same single
+ * `expected` vs `content` measurement, aligned on the block's START marker in
+ * each text rather than on absolute line numbers, so an out-of-block edit that
+ * inserts or removes lines above the block does not make every block line read
+ * as different. A file with no complete on-disk block has no in-block line to
+ * name: that case is already reported as block drift by the first difference.
+ */
+function firstInBlockDifference(expected: string, content: string): number | undefined {
+  const expectedBlock = agnosticBlockOf(expected);
+  const onDiskBlock = agnosticBlockOf(content);
+  if (expectedBlock === undefined || onDiskBlock === undefined) return undefined;
+  if (expectedBlock === onDiskBlock) return undefined;
+  const blockStart = lineOf(content, MARKERS.claudeAgnosticStart);
+  return blockStart + firstDifferingLine(expectedBlock, onDiskBlock).index + 1;
+}
+
+/**
+ * The data-loss warning (#6113 panel, rejecting seat): when the first
+ * difference is OUTSIDE the block, its remedy is a bare `inject` — which
+ * regenerates the block from AGENTS.md and silently overwrites any hand edit
+ * inside it. So the in-block scan runs regardless, and when the first
+ * difference was outside and an in-block difference also exists, the warning
+ * names that line. When the first difference is already inside the block the
+ * remedy already says AGENTS.md, so no extra line.
+ */
+function describeInBlockLoss(firstIsInside: boolean, inBlockLine: number | undefined): string[] {
+  if (firstIsInside || inBlockLine === undefined) return [];
+  return [
+    `the generated block also differs at CLAUDE.md:${String(inBlockLine)} — edits inside it are ` +
+      'overwritten by inject; move them to AGENTS.md first',
+  ];
+}
+
 /**
  * The drift message for {@link checkClaudeMd}: WHERE (1-based CLAUDE.md line
  * of the first difference), both versions of that line, and the remedy.
@@ -1098,13 +1141,22 @@ function isInsideAgnosticBlock(content: string, index: number): boolean {
 function describeClaudeMdDrift(expected: string, content: string): string {
   const diff = firstDifferingLine(expected, content);
   const at = `first difference at CLAUDE.md:${String(diff.index + 1)}`;
-  const [cause, remedy] = isInsideAgnosticBlock(content, diff.index)
+  const firstIsInside = isInsideAgnosticBlock(content, diff.index);
+  const [cause, remedy] = firstIsInside
     ? [
         `CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — ${at}`,
         'Edit the agnostic prose in AGENTS.md, then run: pnpm governance:inject',
       ]
     : [`CLAUDE.md differs outside the generated block — ${at}`, 'Run: pnpm governance:inject'];
-  return [cause, `  expected: ${diff.expected}`, `  on disk:  ${diff.onDisk}`, remedy].join('\n');
+  // Measured independently of the first difference, never behind it (#6113).
+  const inBlockLine = firstInBlockDifference(expected, content);
+  return [
+    cause,
+    `  expected: ${diff.expected}`,
+    `  on disk:  ${diff.onDisk}`,
+    remedy,
+    ...describeInBlockLoss(firstIsInside, inBlockLine),
+  ].join('\n');
 }
 
 /**
