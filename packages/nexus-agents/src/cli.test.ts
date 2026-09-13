@@ -464,3 +464,33 @@ describe('parseCliArgs carries --option through to vote options (#4941)', () => 
     expect(parsed.options).not.toHaveProperty('options');
   });
 });
+
+// =============================================================================
+// --project reaches the vote command's options (#6110)
+// =============================================================================
+
+describe('parseCliArgs carries --project through to vote options (#6110)', () => {
+  // Same middle link as --option above: `buildVoteOptions` is the hop that
+  // dropped `--option` and `--timeout` before (#4963, #4965).
+  it('maps --project onto options.project', () => {
+    const parsed = parseCliArgs([
+      'vote',
+      '-p',
+      'ship it',
+      '--project',
+      'acme/widgets',
+    ]) as ParsedCliArgs & { options?: { project?: string } };
+
+    expect(parsed.options?.project).toBe('acme/widgets');
+  });
+
+  it('leaves project absent when the flag was not given', () => {
+    // Absence is what lets the resolver derive the name from the cwd and
+    // report `derived`/`default`; an always-set literal would report `input`.
+    const parsed = parseCliArgs(['vote', '-p', 'ship it']) as ParsedCliArgs & {
+      options?: Record<string, unknown>;
+    };
+
+    expect(parsed.options).not.toHaveProperty('project');
+  });
+});

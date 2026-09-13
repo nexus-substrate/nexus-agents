@@ -34,6 +34,7 @@ import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../
 import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { resolveVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
@@ -635,6 +636,8 @@ export async function maybeEscalateContrarian(
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
+    /** #6110: already resolved by the outer frame; the re-vote reuses it. */
+    project?: ResolvedVoterProject | undefined;
   }
 ): Promise<{
   escalated?: ExtendedVotingResult;
@@ -680,6 +683,27 @@ export async function maybeEscalateContrarian(
   };
 }
 
+/**
+ * Resolve the project the panel judges (#6110) and log it once per vote: the
+ * chosen name and source at info, and every candidate the pattern refused at
+ * warn with its reason, so a `default` next to a verdict is explained.
+ */
+function resolveAndLogVoterProject(
+  input: string | undefined,
+  logger: ILogger
+): ResolvedVoterProject {
+  const { name, source, rejected } = resolveVoterProject({ input, cwd: process.cwd() });
+  for (const r of rejected) {
+    logger.warn('Voter project candidate rejected', {
+      origin: r.origin,
+      candidate: r.candidate,
+      reason: r.reason,
+    });
+  }
+  logger.info('Voter project resolved', { project: name, source });
+  return { name, source };
+}
+
 /*
  * Top-level voting flow: vote collection → error-policy gate → engine +
  * cascade → contrarian escalation → finalize. Further extraction
@@ -695,9 +719,15 @@ export async function executeVoting(
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
+    /** #6110: set only by the escalation re-vote, which reuses the outer resolution. */
+    project?: ResolvedVoterProject | undefined;
   }
 ): Promise<ExtendedVotingResult> {
-  const result = await executeVotingInner(input, logger, opts ?? {});
+  // #6110: resolve the target project ONCE per vote (the escalation re-vote
+  // inherits it through opts) and stamp it on the result next to `decision`.
+  const project = opts?.project ?? resolveAndLogVoterProject(input.project, logger);
+  const result = await executeVotingInner(input, logger, { ...opts, project });
+  result.project = project;
   // An escalated full-panel result was finalized (and recorded) by its recursive
   // executeVoting call. Remember that state so this outer quick-mode frame does
   // not persist the same full-panel proposal twice.
@@ -776,6 +806,8 @@ async function executeVotingInner(
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
+    /** #6110: the target project, resolved once by `executeVoting`. */
+    project: ResolvedVoterProject;
   }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
@@ -797,6 +829,8 @@ async function executeVotingInner(
     ...(opts.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
     ...(opts.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
     declaredOptions: input.options,
+    // #6110: every seat's system prompt names the caller's project.
+    project: opts.project.name,
     signal: opts.signal,
   });
 
@@ -1307,6 +1341,15 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   threshold: VoteThresholdSchema.optional(),
   durationMs: z.number().optional(),
   simulateVotes: z.boolean().optional(),
+  // #6110: the project the panel judged and how the name was decided. Always
+  // on the response; optional here like every field, because the async
+  // `pending` envelope shares this schema.
+  project: z
+    .object({
+      name: z.string().max(200),
+      source: z.enum(['input', 'derived', 'default']),
+    })
+    .optional(),
   higherOrderMetadata: z
     .object({
       posteriorApproval: z.number(),

@@ -29,6 +29,7 @@ import type {
 import { VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/types.js';
 import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
+import type { ResolvedVoterProject } from './voter-project.js';
 import { validateTimeout } from '../config/timeouts.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type {
@@ -41,7 +42,9 @@ import { toRecordDecision } from '../mcp/tools/consensus-vote-types.js';
 import {
   contrarianCheckLine,
   contrarianCheckSummaryLine,
+  projectLine,
   tallySummaryLine,
+  type VotingResultWithProject,
 } from './vote-summary-lines.js';
 import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
@@ -164,6 +167,8 @@ interface SummaryContext {
   readonly optionGate?: OptionGateExplain;
   /** #6111: the quick-mode contrarian check, which no seat count can carry. */
   readonly contrarianCheck: ContrarianCheckStatus;
+  /** #6110: the project the panel judged; `executeVoting` always stamps it. */
+  readonly project?: ResolvedVoterProject | undefined;
 }
 
 function printSummary(ctx: SummaryContext): void {
@@ -189,6 +194,7 @@ function printSummary(ctx: SummaryContext): void {
   writeLine(contrarianCheckSummaryLine(ctx.contrarianCheck));
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
+  writeLine(`  ${projectLine(ctx.project)}`);
 
   // Yellow for a void: it is neither an approval nor the panel rejecting, and
   // the colour is the first thing a human reads.
@@ -332,10 +338,8 @@ function printHashes(votes: readonly AgentVoteResult[]): void {
  * Validates that a GitHub issue exists and is accessible.
  */
 function validateGitHubIssue(issueNumber: number): boolean {
-  const output = safeExecSandboxed(`gh issue view ${String(issueNumber)} --json number`, {
-    context: 'gh',
-  });
-  return output !== null;
+  const command = `gh issue view ${String(issueNumber)} --json number`;
+  return safeExecSandboxed(command, { context: 'gh' }) !== null;
 }
 
 /**
@@ -344,15 +348,10 @@ function validateGitHubIssue(issueNumber: number): boolean {
  * voice"), NOT the panel rejecting the proposal.
  */
 function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; text: string } {
-  switch (decision) {
-    case 'approved':
-      return { emoji: '✅', text: 'APPROVED' };
-    case 'no_quorum':
-      return { emoji: '⚠️', text: 'NO QUORUM' };
-    default:
-      // rejected / timeout / pending — the same ❌ the pre-#4135 formatter used.
-      return { emoji: '❌', text: decision.toUpperCase() };
-  }
+  if (decision === 'approved') return { emoji: '✅', text: 'APPROVED' };
+  if (decision === 'no_quorum') return { emoji: '⚠️', text: 'NO QUORUM' };
+  // rejected / timeout / pending — the same ❌ the pre-#4135 formatter used.
+  return { emoji: '❌', text: decision.toUpperCase() };
 }
 
 /**
@@ -367,7 +366,7 @@ function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; tex
  * omission renders as `skipped` — the named empty case, not a default health.
  */
 export function formatVoteComment(
-  result: VotingResult,
+  result: VotingResultWithProject,
   decision?: VoteDecisionStatus,
   contrarianCheck: ContrarianCheckStatus = 'skipped'
 ): string {
@@ -380,31 +379,14 @@ export function formatVoteComment(
 
   const effectiveDecision = decision ?? mapOutcomeToDecision(result.result.outcome);
   const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
-
-  const voteRows = result.votes
-    .map(({ role, vote, source }) => {
-      const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
-      // `createErrorVoteResult` gives a failed seat `decision: 'abstain',
-      // confidence: 0`. Dropping `source` published a timed-out or auth-failed
-      // voter as a genuine ABSTAIN — indistinguishable, in the durable
-      // governance artifact, from a voter that convened and declined.
-      const decision =
-        source === 'error'
-          ? 'ERRORED'
-          : source === 'unverifiable'
-            ? 'UNVERIFIABLE'
-            : vote.decision.toUpperCase();
-      const confidence =
-        source === 'error' || source === 'unverifiable' ? '—' : formatPercentage(vote.confidence);
-      return `| ${roleLabel} | ${decision} | ${confidence} |`;
-    })
-    .join('\n');
+  const voteRows = result.votes.map(formatCommentRow).join('\n');
 
   return `## Consensus Vote Result
 
 **Date:** ${now} (ET)
 **Proposal:** ${result.proposal.slice(0, 200)}${result.proposal.length > 200 ? '...' : ''}
 **Threshold:** ${result.threshold}
+**${projectLine(result.project)}**
 **Result:** ${outcomeEmoji} **${outcomeText}**
 
 ### Vote Details
@@ -420,6 +402,24 @@ ${voteRows}
 }
 
 /**
+ * One `| Agent | Decision | Confidence |` row of the GitHub comment.
+ *
+ * `createErrorVoteResult` gives a failed seat `decision: 'abstain',
+ * confidence: 0`. Dropping `source` published a timed-out or auth-failed
+ * voter as a genuine ABSTAIN — indistinguishable, in the durable
+ * governance artifact, from a voter that convened and declined.
+ */
+const ABSENT_SEAT_LABEL = { error: 'ERRORED', unverifiable: 'UNVERIFIABLE' } as const;
+
+function formatCommentRow({ role, vote, source }: AgentVoteResult): string {
+  const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
+  const absent = source === 'error' || source === 'unverifiable';
+  const decision = absent ? ABSENT_SEAT_LABEL[source] : vote.decision.toUpperCase();
+  const confidence = absent ? '—' : formatPercentage(vote.confidence);
+  return `| ${roleLabel} | ${decision} | ${confidence} |`;
+}
+
+/**
  * Records vote result to GitHub issue.
  *
  * The comment body is piped to `gh` via stdin (`--body-file -`) rather
@@ -432,7 +432,7 @@ ${voteRows}
  */
 export function recordVoteToGitHub(
   issueNumber: number,
-  result: VotingResult,
+  result: VotingResultWithProject,
   decision?: VoteDecisionStatus,
   contrarianCheck?: ContrarianCheckStatus
 ): void {
@@ -450,6 +450,20 @@ export function recordVoteToGitHub(
   } else {
     writeLine(`${colors.red}Failed to record vote: command denied or failed${colors.reset}\n`);
   }
+}
+
+/** The tool input the CLI hands `executeVoting`; each optional flag is present only when given. */
+function toVoteInput(options: VoteCommandOptions, quickMode: boolean): ConsensusVoteInput {
+  return {
+    proposal: options.proposal,
+    ...(options.options !== undefined ? { options: [...options.options] } : {}),
+    // #6110: `--project`; the resolver validates it and falls through when invalid.
+    ...(options.project !== undefined ? { project: options.project } : {}),
+    quickMode,
+    simulateVotes: options.dryRun === true,
+    ...(options.threshold !== undefined && { threshold: options.threshold }),
+    ...(options.errorPolicy !== undefined && { errorPolicy: options.errorPolicy }),
+  };
 }
 
 /**
@@ -481,16 +495,8 @@ async function runVote(options: VoteCommandOptions): Promise<CliVoteResult> {
     `${colors.dim}Collecting votes from ${String(roleCount)} agents (timeout: ${String(timeoutSec)}s each)...${colors.reset}\n`
   );
 
-  const input: ConsensusVoteInput = {
-    proposal: options.proposal,
-    ...(options.options !== undefined ? { options: [...options.options] } : {}),
-    quickMode: useQuick,
-    simulateVotes: options.dryRun === true,
-    ...(options.threshold !== undefined && { threshold: options.threshold }),
-    ...(options.errorPolicy !== undefined && { errorPolicy: options.errorPolicy }),
-  };
-
   const logger = createLogger({ component: 'cli-vote' });
+  const input = toVoteInput(options, useQuick);
   return toCliVoteResult(await executeVoting(input, logger, { voteTimeoutMs: timeoutMs }));
 }
 
@@ -507,6 +513,8 @@ type CliVoteResult = VotingResult & {
   readonly optionGate?: OptionGateExplain;
   /** #6111: the quick-mode contrarian check; `skipped` when it did not run. */
   readonly contrarianCheck: ContrarianCheckStatus;
+  /** #6110: the project the panel judged, for the summary and the comment. */
+  readonly project?: ResolvedVoterProject | undefined;
 };
 
 /**
@@ -541,6 +549,7 @@ function toCliVoteResult(result: ExtendedVotingResult): CliVoteResult {
     // on its result type only for direct unit constructions, where the check
     // genuinely did not run.
     contrarianCheck: result.contrarianCheck ?? 'skipped',
+    ...(result.project !== undefined ? { project: result.project } : {}),
   };
 }
 
@@ -674,6 +683,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       decision: result.decision,
       ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
       contrarianCheck: result.contrarianCheck,
+      project: result.project,
     });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);

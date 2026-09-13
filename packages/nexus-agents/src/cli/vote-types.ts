@@ -56,6 +56,12 @@ export interface VoteCommandOptions {
    * {@link NoQuorumPolicy}.
    */
   readonly onNoQuorum?: NoQuorumPolicy;
+  /**
+   * #6110: the project the panel judges (maps from `--project`). Replaces
+   * `nexus-agents` in every voter's system prompt; derived from the working
+   * directory when absent, and the summary discloses which source answered.
+   */
+  readonly project?: string;
 }
 
 /**

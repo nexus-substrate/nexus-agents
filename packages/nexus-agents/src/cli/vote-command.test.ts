@@ -963,3 +963,83 @@ describe('contrarian check line (#6111)', () => {
     expect(comment).toContain('Contrarian check: skipped');
   });
 });
+
+describe('voteCommand — target project (#6110)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function extendedResult(project?: { name: string; source: 'input' | 'derived' | 'default' }) {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+      ...(project === undefined ? {} : { project }),
+    };
+  }
+
+  let stdout: string[];
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+    stdout = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('--project reaches executeVoting as the tool input `project`', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult({ name: 'acme/widgets', source: 'input' }));
+    await voteCommand({ proposal: 'p', project: 'acme/widgets' });
+    const firstCall = executeVotingMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({ project: 'acme/widgets' });
+  });
+
+  it('omits `project` from the input when the flag was not given — the pair', async () => {
+    // An always-set literal would pass the row above; the resolver must see
+    // ABSENCE so it can derive from the working directory.
+    executeVotingMock.mockResolvedValue(
+      extendedResult({ name: 'nexus-agents', source: 'default' })
+    );
+    await voteCommand({ proposal: 'p' });
+    const firstCall = executeVotingMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).not.toHaveProperty('project');
+  });
+
+  it('prints the project and its source on one summary line', async () => {
+    executeVotingMock.mockResolvedValue(
+      extendedResult({ name: 'acme/widgets', source: 'derived' })
+    );
+    await voteCommand({ proposal: 'p' });
+    expect(stdout.join('')).toContain('Project: acme/widgets (derived)');
+  });
+
+  it('renders an unstamped project as unresolved rather than omitting the line', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult());
+    await voteCommand({ proposal: 'p' });
+    expect(stdout.join('')).toContain('Project: unresolved');
+  });
+
+  it('the GitHub comment carries the same disclosure', () => {
+    const comment = formatVoteComment(
+      { ...createMockVotingResult(), project: { name: 'acme/widgets', source: 'input' } },
+      'approved'
+    );
+    expect(comment).toContain('**Project: acme/widgets (input)**');
+    expect(formatVoteComment(createMockVotingResult())).toContain('**Project: unresolved**');
+  });
+});

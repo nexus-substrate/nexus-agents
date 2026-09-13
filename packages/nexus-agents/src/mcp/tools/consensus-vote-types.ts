@@ -18,6 +18,11 @@ import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
+import {
+  resolveVoterProject,
+  VOTER_PROJECT_PATTERN,
+  type ResolvedVoterProject,
+} from '../../cli/voter-project.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
 import type { OptionGateVerdict } from './consensus-vote-option-gate.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
@@ -223,6 +228,18 @@ export const ConsensusVoteInputSchema = z.object({
         'approving voter whose selection is absent or matches no declared option stays in the ' +
         'denominator and credits no option, so a degraded response can only lower the leading ' +
         'share, never raise it. Omit for an ordinary yes/no vote — behaviour is then unchanged.'
+    ),
+  project: z
+    .string()
+    .regex(VOTER_PROJECT_PATTERN)
+    .optional()
+    .describe(
+      'The project the panel is judging (#6110), e.g. `acme/widgets` — it replaces `nexus-agents` ' +
+        "in every voter's system prompt, so a consuming repository is not judged against this " +
+        "one's mission and governance files. When omitted the name is DERIVED from the server's " +
+        'working directory (the `origin` remote as `owner/repo`, else the nearest `package.json` ' +
+        'name) and falls back to `nexus-agents`; the response discloses which on `project.source`. ' +
+        'Letters, digits and `._/@-` only, at most 200 characters.'
     ),
   threshold: VoteThresholdSchema.optional().describe(
     'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
@@ -476,6 +493,14 @@ export interface ConsensusVoteResponse {
   votes: AgentVoteSummary[];
   durationMs: number;
   simulateVotes: boolean;
+  /**
+   * #6110: the project every voter was told it is judging, and how that name
+   * was decided — `input` (the caller's `project`), `derived` (the working
+   * directory's `origin` remote or `package.json`), or `default`
+   * (`nexus-agents`). Always present: a consuming repository that forgot the
+   * input sees `default` next to the verdict instead of a silent mis-scope.
+   */
+  project: ResolvedVoterProject;
   higherOrderMetadata?: HigherOrderMetadata;
   /**
    * Set when an error policy short-circuited the vote (#2630/#3124). Explains a
@@ -586,6 +611,12 @@ export interface ExtendedVotingResult extends VotingResult {
    * `buildResponse`), where consumers fall back to mapping the engine outcome.
    */
   decision?: VoteDecisionStatus;
+  /**
+   * #6110: the resolved target project, stamped by `executeVoting` alongside
+   * `decision` so the CLI and the response disclose the same name and source.
+   * Absent only on results built by paths that never ran `executeVoting`.
+   */
+  project?: ResolvedVoterProject;
 }
 
 // ============================================================================
@@ -962,6 +993,21 @@ function contrarianCheckFor(result: ExtendedVotingResult): ContrarianCheckStatus
   return result.contrarianCheck ?? 'skipped';
 }
 
+/**
+ * The project disclosure for the response (#6110). `executeVoting` stamps the
+ * resolution on the result; a direct call that bypassed it (unit tests) gets
+ * the SAME resolution recomputed from the input — mirroring how `decision` is
+ * handled above — so the field is always present and never a fabricated source.
+ */
+function disclosedProject(
+  input: ConsensusVoteInput,
+  result: ExtendedVotingResult
+): ResolvedVoterProject {
+  const { name, source } =
+    result.project ?? resolveVoterProject({ input: input.project, cwd: process.cwd() });
+  return { name, source };
+}
+
 export function buildResponse(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
@@ -1005,6 +1051,7 @@ export function buildResponse(
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
+    project: disclosedProject(input, result),
     // #3991: surface the authentic-vote-record persistence outcome so a skipped
     // or failed persist is visible to the MCP caller (was WARN-only).
     voteRecordPersisted: voteRecord?.persisted ?? false,
@@ -1014,22 +1061,28 @@ export function buildResponse(
   }
 
   if (result.optionGate !== undefined) {
-    const g = result.optionGate;
-    response.optionOutcome = {
-      tally: g.tally.map((t) => ({ option: t.option, count: t.count })),
-      ...(g.leadingOption !== undefined ? { leadingOption: g.leadingOption } : {}),
-      leadingShare: g.leadingShare,
-      approverCount: g.approverCount,
-      selectedCount: g.selectedCount,
-      unattributedApprovals: g.unattributedApprovals,
-      thresholdMet: g.approved,
-      ...(g.reason !== undefined ? { vetoReason: g.reason } : {}),
-    };
+    response.optionOutcome = toOptionOutcome(result.optionGate);
   }
 
   applyOptionalResponseFields(response, input, result, errorCount, costSummary);
   applyAbsoluteQuorumTelemetry(response, input, decision, resolved.degradeReason);
   return response;
+}
+
+/** The #4472 declared-option block of the response, from the gate's verdict. */
+function toOptionOutcome(
+  g: OptionGateVerdict
+): NonNullable<ConsensusVoteResponse['optionOutcome']> {
+  return {
+    tally: g.tally.map((t) => ({ option: t.option, count: t.count })),
+    ...(g.leadingOption !== undefined ? { leadingOption: g.leadingOption } : {}),
+    leadingShare: g.leadingShare,
+    approverCount: g.approverCount,
+    selectedCount: g.selectedCount,
+    unattributedApprovals: g.unattributedApprovals,
+    thresholdMet: g.approved,
+    ...(g.reason !== undefined ? { vetoReason: g.reason } : {}),
+  };
 }
 
 /**

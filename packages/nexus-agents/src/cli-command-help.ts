@@ -97,6 +97,11 @@ const VOTE_HELP: CommandHelpEntry = {
       description:
         'How to map a no_quorum decision (#4135): fail (exit 1, default) | exit2 (distinct exit 2) | retry (re-run once, then fail)',
     },
+    {
+      flag: '--project <name>',
+      description:
+        'The project the panel judges (#6110), e.g. acme/widgets — replaces nexus-agents in every voter prompt. Derived from the cwd origin remote or package.json when omitted; the summary says which',
+    },
     { flag: '--verbose', description: 'Show vote verification hashes' },
   ],
   requiresApiKey: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'],

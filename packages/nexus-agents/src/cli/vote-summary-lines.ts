@@ -8,7 +8,23 @@
  */
 import { colors } from './ansi-output.js';
 import type { VotingResult } from './vote-types.js';
+import type { ResolvedVoterProject } from './voter-project.js';
 import type { ContrarianCheckStatus } from '../mcp/tools/consensus-vote-types.js';
+
+/** A CLI voting result plus the #6110 project disclosure `executeVoting` stamps on it. */
+export type VotingResultWithProject = VotingResult & { readonly project?: ResolvedVoterProject };
+
+/**
+ * The one-line rendering of the project the panel judged and how the name was
+ * decided (#6110) — `Project: acme/widgets (derived)`. `executeVoting` always
+ * resolves one; an absent value renders as `unresolved` rather than being
+ * omitted, so a reader can never mistake a missing disclosure for the default.
+ * Plain text — the terminal summary indents it, the GitHub comment bolds it.
+ */
+export function projectLine(project: ResolvedVoterProject | undefined): string {
+  const detail = project === undefined ? 'unresolved' : `${project.name} (${project.source})`;
+  return `Project: ${detail}`;
+}
 
 /**
  * The one-line rendering of the quick-mode contrarian check (#6111).
