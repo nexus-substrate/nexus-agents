@@ -952,15 +952,22 @@ function injectRulesIndex(content: string, rules: readonly RuleMetadata[]): stri
 // AGENTS.md generated sections (#2657, #6105) — one render, like CLAUDE.md's
 // ============================================================================
 
-/** What the AGENTS.md generated sections are rendered from. */
+/** What the AGENTS.md generated sections and inline values are rendered from. */
 interface AgentsMdSources {
   tools: ToolMetadata[];
   workflowRows: readonly WorkflowRow[];
   rules: readonly RuleMetadata[];
+  /** For the `for all N skills.` phrase (#6130). */
+  skillCount: number;
 }
 
-function loadAgentsMdSources(tools: ToolMetadata[]): AgentsMdSources {
-  return { tools, workflowRows: extractWorkflowRows(), rules: extractRules() };
+function loadAgentsMdSources(r: Pick<GovernanceRegistries, 'tools' | 'skills'>): AgentsMdSources {
+  return {
+    tools: r.tools,
+    workflowRows: extractWorkflowRows(),
+    rules: extractRules(),
+    skillCount: r.skills.length,
+  };
 }
 
 /** One generated section of AGENTS.md: its markers and the injector that writes it. */
@@ -987,9 +994,13 @@ interface AgentsMdSection {
  * the generated text already, and `check` measures AGENTS.md's copy in its own
  * right ({@link checkAgentsMd}).
  *
- * The VERSION section is not listed: the stamp replacer in
- * `buildAncillaryReplacements` writes it (#5218), and `check` does not yet
- * measure AGENTS.md's copy of it (#6130).
+ * The VERSION section (#6130) is rendered by the same `generateVersionSection`
+ * as CLAUDE.md's. Before, a replacer row in `buildAncillaryReplacements` wrote
+ * AGENTS.md's stamp (#5218) and nothing read it back: `renderClaudeMd` copied
+ * a stale stamp into CLAUDE.md and overwrote it with the computed one, so a
+ * hand-edited `_Governance Version:_` in AGENTS.md passed `check` on the real
+ * tree. The stamp now has one writer per file, and this render is the one
+ * `check` compares.
  */
 const AGENTS_MD_SECTIONS: readonly AgentsMdSection[] = [
   {
@@ -1013,31 +1024,108 @@ const AGENTS_MD_SECTIONS: readonly AgentsMdSection[] = [
     end: MARKERS.toolIndexEnd,
     apply: (content, sources) => injectToolIndex(content, sources.tools),
   },
+  {
+    label: 'governance stamp',
+    issue: '#6130',
+    start: MARKERS.versionStart,
+    end: MARKERS.versionEnd,
+    apply: (content) => injectVersionSection(content),
+  },
 ];
+
+/**
+ * The VERSION section for AGENTS.md (#6130): {@link generateVersionSection}
+ * between its markers, soft-skipping an absent pair like the other AGENTS.md
+ * injectors — `injectSection` would append one, and the write path must not
+ * fabricate a section into a document that never had one. Absence is named
+ * by {@link describeMissingAgentsMdSections} instead.
+ */
+function injectVersionSection(content: string): string {
+  if (!content.includes(MARKERS.versionStart)) return content;
+  return injectSection(content, MARKERS.versionStart, MARKERS.versionEnd, generateVersionSection());
+}
 
 function applyAgentsMdSections(content: string, sources: AgentsMdSources): string {
   return AGENTS_MD_SECTIONS.reduce((next, section) => section.apply(next, sources), content);
 }
 
-/**
- * The ONE render of AGENTS.md's generated sections, the same shape as
- * {@link renderClaudeMd} (#6099): every section injector, then the shared
- * prettier pass. `inject` writes this string; `check` compares it to the file.
- * Pure with respect to AGENTS.md — reads the sources, writes nothing.
- */
-async function renderAgentsMd(current: string, sources: AgentsMdSources): Promise<string> {
-  return formatWithPrettier(AGENTS_MD_PATH, applyAgentsMdSections(current, sources));
+/** One inline generated value of AGENTS.md: a phrase pattern and what it renders to. */
+interface AgentsMdInlineValue {
+  /** Named in the drift message, e.g. `AGENTS.md skills count is stale`. */
+  readonly label: string;
+  /** Matches the phrase whatever value it currently carries. */
+  readonly pattern: RegExp;
+  readonly render: (sources: AgentsMdSources) => string;
 }
 
 /**
- * The drift message for {@link checkAgentsMd}: every generated section that
- * differs, EACH named with its first differing AGENTS.md line and both versions
- * of it — measured independently, never behind the first difference — plus,
- * when the first difference of the whole file falls outside every generated
- * section (prose prettier reshapes), that line named as such. One `inject`
- * repairs all of them, so the remedy is stated once.
+ * The count phrases `inject` rewrites inside AGENTS.md's prose (#1837, #6130).
+ * They used to be rows of `buildAncillaryReplacements`, applied after the
+ * AGENTS.md render; now the render carries them, so `renderAgentsMd` is the
+ * one write path for AGENTS.md's generated text and `check` measures each
+ * phrase against it. The count probes (`buildAgentsMdProbes`) still measure
+ * the same phrases against the registries — a different question, kept.
  */
-function describeAgentsMdDrift(expected: string, content: string): string {
+const AGENTS_MD_INLINE_VALUES: readonly AgentsMdInlineValue[] = [
+  {
+    label: 'skills count',
+    pattern: /for all \d+ skills\./,
+    render: (sources) => `for all ${String(sources.skillCount)} skills.`,
+  },
+  {
+    label: 'MCP tools count',
+    pattern: /Nexus-agents exposes \d+ MCP tools/,
+    render: (sources) => `Nexus-agents exposes ${String(sources.tools.length)} MCP tools`,
+  },
+];
+
+function applyAgentsMdInlineValues(content: string, sources: AgentsMdSources): string {
+  return AGENTS_MD_INLINE_VALUES.reduce(
+    (next, value) => next.replace(value.pattern, value.render(sources)),
+    content
+  );
+}
+
+/**
+ * The ONE render of AGENTS.md's generated text, the same shape as
+ * {@link renderClaudeMd} (#6099): every section injector, every inline value,
+ * then the shared prettier pass. `inject` writes this string; `check` compares
+ * it to the file. Pure with respect to AGENTS.md — reads the sources, writes
+ * nothing.
+ */
+async function renderAgentsMd(current: string, sources: AgentsMdSources): Promise<string> {
+  return formatWithPrettier(
+    AGENTS_MD_PATH,
+    applyAgentsMdInlineValues(applyAgentsMdSections(current, sources), sources)
+  );
+}
+
+/**
+ * One line per inline value whose on-disk phrase differs from the rendered
+ * one (#6130): `AGENTS.md skills count is stale (#6130): <on disk> → <expected>`.
+ * A phrase absent from both is not drift of the value — the count probe names
+ * a missing phrase, loudly (#5882).
+ */
+function describeStaleAgentsMdInlineValues(expected: string, content: string): string[] {
+  const lines: string[] = [];
+  for (const value of AGENTS_MD_INLINE_VALUES) {
+    const onDisk = value.pattern.exec(content)?.[0] ?? '<absent>';
+    const rendered = value.pattern.exec(expected)?.[0] ?? '<absent>';
+    if (onDisk === rendered) continue;
+    lines.push(`AGENTS.md ${value.label} is stale (#6130): ${onDisk} → ${rendered}`);
+  }
+  return lines;
+}
+
+/** Whether either side of the first differing line is an inline generated value. */
+function isInlineValueLine(first: { expected: string; onDisk: string }): boolean {
+  return AGENTS_MD_INLINE_VALUES.some(
+    (v) => v.pattern.test(first.onDisk) || v.pattern.test(first.expected)
+  );
+}
+
+/** One block per generated section that differs: its first differing AGENTS.md line and both versions. */
+function describeStaleAgentsMdSections(expected: string, content: string): string[] {
   const lines: string[] = [];
   for (const section of AGENTS_MD_SECTIONS) {
     const diff = firstInSpanDifference(expected, content, section.start, section.end);
@@ -1048,11 +1136,29 @@ function describeAgentsMdDrift(expected: string, content: string): string {
       `  on disk:  ${diff.onDisk}`
     );
   }
+  return lines;
+}
+
+/**
+ * The drift message for {@link checkAgentsMd}: every generated section that
+ * differs, EACH named with its first differing AGENTS.md line and both versions
+ * of it (the governance stamp among them, #6130); every inline count phrase
+ * that differs, each with both values; and, when the first difference of the
+ * whole file falls outside every generated section and value (prose prettier
+ * reshapes), that line named as such. Each cause is measured independently,
+ * never behind the first difference. One `inject` repairs all of them, so the
+ * remedy is stated once.
+ */
+function describeAgentsMdDrift(expected: string, content: string): string {
+  const lines = [
+    ...describeStaleAgentsMdSections(expected, content),
+    ...describeStaleAgentsMdInlineValues(expected, content),
+  ];
   const first = firstDifferingLine(expected, content);
   const inSection = AGENTS_MD_SECTIONS.some((s) =>
     isInsideSpan(content, first.index, s.start, s.end)
   );
-  if (!inSection) {
+  if (!inSection && !isInlineValueLine(first)) {
     lines.push(
       `AGENTS.md differs outside its generated sections — first difference at AGENTS.md:${String(first.index + 1)}`,
       `  expected: ${first.expected}`,
@@ -1091,14 +1197,16 @@ function describeMissingAgentsMdSections(content: string): string[] {
  * check; a malformed `.rules/*.md` frontmatter still throws out of
  * `extractRules`, as it did from `checkRulesIndex`.
  */
-async function checkAgentsMd(tools: ToolMetadata[]): Promise<boolean> {
+async function checkAgentsMd(
+  registries: Pick<GovernanceRegistries, 'tools' | 'skills'>
+): Promise<boolean> {
   if (!existsSync(AGENTS_MD_PATH)) return true;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
   const missing = describeMissingAgentsMdSections(content);
   for (const line of missing) console.error(line);
   let expected: string;
   try {
-    expected = await renderAgentsMd(content, loadAgentsMdSources(tools));
+    expected = await renderAgentsMd(content, loadAgentsMdSources(registries));
   } catch (error: unknown) {
     if (!(error instanceof FormatError)) throw error;
     console.error(`governance:check: ${error.message}`);
@@ -2064,7 +2172,7 @@ async function checkCrossAdapterDocGates(
     await checkClaudeMd(claudeMd, registries),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
-    await checkAgentsMd(registries.tools),
+    await checkAgentsMd(registries),
   ];
 }
 
@@ -2559,13 +2667,14 @@ export async function injectGovernance(): Promise<void> {
   // was masked while the only inline values were counts that rarely move; the
   // toolchain footer surfaced it on its first run.
 
-  // Render AGENTS.md's generated sections (#2657 rules index; #6105 workflow
-  // and tool tables) from the same generators the CLAUDE.md render uses.
-  await injectAgentsMd(tools);
+  // Render AGENTS.md's generated text (#2657 rules index; #6105 workflow and
+  // tool tables; #6130 governance stamp and count phrases) from the same
+  // generators the CLAUDE.md render uses.
+  await injectAgentsMd(registries);
 
-  // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
-  // install docs) aligned with canonical registries — and (#5142) the
-  // AGENTS.md toolchain footer with package.json and the installed SDK.
+  // #1837: keep ancillary count surfaces (plugin manifests, install docs)
+  // aligned with canonical registries — and (#5142) the AGENTS.md toolchain
+  // footer with package.json and the installed SDK.
   injectAncillaryCounts({
     toolCount: tools.length,
     skillCount: skills.length,
@@ -2661,15 +2770,17 @@ async function injectReadmeToolTable(tools: ToolMetadata[]): Promise<void> {
 }
 
 /**
- * Write AGENTS.md's generated sections (#2657, #6105) — the render `check`
+ * Write AGENTS.md's generated text (#2657, #6105, #6130) — the render `check`
  * compares against the file ({@link renderAgentsMd}). Soft-skips when
  * AGENTS.md is missing; each injector soft-skips its own absent markers, so
  * the script stays drop-in compatible with un-prepped checkouts.
  */
-async function injectAgentsMd(tools: ToolMetadata[]): Promise<void> {
+async function injectAgentsMd(
+  registries: Pick<GovernanceRegistries, 'tools' | 'skills'>
+): Promise<void> {
   if (!existsSync(AGENTS_MD_PATH)) return;
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
-  const rendered = await renderAgentsMd(content, loadAgentsMdSources(tools));
+  const rendered = await renderAgentsMd(content, loadAgentsMdSources(registries));
   if (rendered !== content) writeFileSync(AGENTS_MD_PATH, rendered);
 }
 
@@ -2690,44 +2801,15 @@ interface Replacement {
   replacement: string;
 }
 
-// eslint-disable-next-line max-lines-per-function -- declarative probe table, splitting would just add cosmetic helpers
+/**
+ * Count replacements for the plugin manifests and the install doc. AGENTS.md's
+ * rows — the governance stamp (#5218) and the two count phrases — moved into
+ * the AGENTS.md render (#6130): `check` compares that render to the file, and
+ * a value written here instead would be one the check cannot see.
+ */
 function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
   const { toolCount: t, skillCount: s, agentCount: a } = c;
   return [
-    {
-      // #5218: the governance stamp had TWO writers. `generateVersionSection`
-      // computes it into CLAUDE.md's own markers, while AGENTS.md carried a
-      // hand-held copy INSIDE the `AGNOSTIC:BODY` slice that
-      // `injectClaudeAgnosticBlock` copies verbatim into CLAUDE.md. Editing any
-      // of the five governance sources moved the computed date, CLAUDE.md got
-      // the new one, AGENTS.md kept the old one — and the #3446 staleness check
-      // then failed on an unrelated PR, telling the author to "edit the
-      // agnostic prose in AGENTS.md" when nothing about the prose was wrong.
-      //
-      // Writing both from the SAME computed value removes the disagreement at
-      // its source rather than reconciling it afterwards. Safe from feedback:
-      // AGENTS.md is not one of the five sources `getGovernanceSourceDate()`
-      // reads, so stamping it cannot move the stamp.
-      path: AGENTS_MD_PATH,
-      // Matches ANY stamp body, not just the current one. The replacer's job
-      // is "find the stamp line and rewrite it", and pinning it to the current
-      // shape means it cannot convert a line written in the previous shape —
-      // which, on the #5943 migration itself, left AGENTS.md holding a stale
-      // date while CLAUDE.md moved to a digest. The strict shape belongs to
-      // the exemption predicate, which decides whether a diff is benign.
-      pattern: /_Governance Version: [^_\n]+_/,
-      replacement: `_Governance Version: ${getGovernanceStamp()}_`,
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: /for all \d+ skills\./,
-      replacement: `for all ${String(s)} skills.`,
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: /Nexus-agents exposes \d+ MCP tools/,
-      replacement: `Nexus-agents exposes ${String(t)} MCP tools`,
-    },
     {
       path: PLUGIN_JSON_PATH,
       pattern: /\d+ MCP tools for agent management/,
@@ -2739,6 +2821,13 @@ function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
         /\d+ MCP tools \(orchestrate, consensus voting, research, pipelines\), \d+ skills, \d+ expert agents/,
       replacement: `${String(t)} MCP tools (orchestrate, consensus voting, research, pipelines), ${String(s)} skills, ${String(a)} expert agents`,
     },
+    ...buildPluginInstallReplacements(t, s, a),
+  ];
+}
+
+/** The install-doc rows, the write side of {@link buildPluginInstallProbes}. */
+function buildPluginInstallReplacements(t: number, s: number, a: number): Replacement[] {
+  return [
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /- \d+ MCP tools \(/,
