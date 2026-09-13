@@ -25,6 +25,8 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { z } from 'zod';
+import type { ILogger } from '../core/index.js';
 import { findRepoRoot } from '../config/repo-root-detection.js';
 import { DEFAULT_VOTER_PROJECT } from './voter-prompts.js';
 
@@ -34,6 +36,24 @@ import { DEFAULT_VOTER_PROJECT } from './voter-prompts.js';
  * package names; refuses whitespace, quotes and every shell metacharacter.
  */
 export const VOTER_PROJECT_PATTERN = /^[A-Za-z0-9._/@-]{1,200}$/;
+
+/**
+ * The optional `project` input every panel tool accepts (#6110, #6123):
+ * `consensus_vote`, `pr_review` and `supply_chain_tradeoff_panel` share this
+ * one field so the pattern and its description are stated once.
+ */
+export const VoterProjectInputSchema = z
+  .string()
+  .regex(VOTER_PROJECT_PATTERN)
+  .optional()
+  .describe(
+    'The project the panel is judging (#6110), e.g. `acme/widgets` — it replaces `nexus-agents` ' +
+      "in every voter's system prompt, so a consuming repository is not judged against this " +
+      "one's mission and governance files. When omitted the name is DERIVED from the server's " +
+      'working directory (the `origin` remote as `owner/repo`, else the nearest `package.json` ' +
+      'name) and falls back to `nexus-agents`; the response discloses which on `project.source`. ' +
+      'Letters, digits and `._/@-` only, at most 200 characters.'
+  );
 
 /** Which of the three sources supplied the project name. */
 export type VoterProjectSource = 'input' | 'derived' | 'default';
@@ -231,4 +251,26 @@ export function resolveVoterProject(args: {
   }
 
   return { name: DEFAULT_VOTER_PROJECT, source: 'default', rejected };
+}
+
+/**
+ * Resolve the project a panel judges and log it once per run: the chosen name
+ * and source at info, and every candidate the pattern refused at warn with its
+ * reason, so a `default` next to a verdict is explained. Shared by every tool
+ * that runs a voter panel (#6123); each resolves ONCE per run.
+ */
+export function resolveAndLogVoterProject(
+  input: string | undefined,
+  logger: ILogger
+): ResolvedVoterProject {
+  const { name, source, rejected } = resolveVoterProject({ input, cwd: process.cwd() });
+  for (const r of rejected) {
+    logger.warn('Voter project candidate rejected', {
+      origin: r.origin,
+      candidate: r.candidate,
+      reason: r.reason,
+    });
+  }
+  logger.info('Voter project resolved', { project: name, source });
+  return { name, source };
 }

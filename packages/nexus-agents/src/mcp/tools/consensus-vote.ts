@@ -34,7 +34,7 @@ import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../
 import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
-import { resolveVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
+import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
@@ -681,27 +681,6 @@ export async function maybeEscalateContrarian(
     escalated: await executeVoting({ ...input, quickMode: false }, logger, opts),
     contrarianCheck,
   };
-}
-
-/**
- * Resolve the project the panel judges (#6110) and log it once per vote: the
- * chosen name and source at info, and every candidate the pattern refused at
- * warn with its reason, so a `default` next to a verdict is explained.
- */
-function resolveAndLogVoterProject(
-  input: string | undefined,
-  logger: ILogger
-): ResolvedVoterProject {
-  const { name, source, rejected } = resolveVoterProject({ input, cwd: process.cwd() });
-  for (const r of rejected) {
-    logger.warn('Voter project candidate rejected', {
-      origin: r.origin,
-      candidate: r.candidate,
-      reason: r.reason,
-    });
-  }
-  logger.info('Voter project resolved', { project: name, source });
-  return { name, source };
 }
 
 /*

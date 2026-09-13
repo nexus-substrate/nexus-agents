@@ -30,6 +30,11 @@ import {
 } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import {
+  resolveAndLogVoterProject,
+  VoterProjectInputSchema,
+  type ResolvedVoterProject,
+} from '../../cli/voter-project.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -112,6 +117,8 @@ export const SupplyChainTradeoffPanelInputSchema = z.object({
     .default(false)
     .describe('Use 3 voters (architect, security, scope_steward) instead of 7'),
   simulate: z.boolean().optional().default(false).describe('Use simulated voters (testing only)'),
+  // #6123: same field as consensus_vote — the panel judges the caller's project.
+  project: VoterProjectInputSchema,
   /**
    * Dispatch mode (#3731). `sync` (default) runs the panel inline and returns
    * the result — but a live fan-out (up to 7 voters) can exceed the MCP request
@@ -171,6 +178,12 @@ export interface SupplyChainTradeoffPanelResponse {
    */
   readonly voterUnverifiable: number;
   readonly durationMs: number;
+  /**
+   * The project the panel judged and how the name was decided (#6123): the
+   * caller's `project` input, else derived from the server's working
+   * directory, else `nexus-agents`. Always present.
+   */
+  readonly project: ResolvedVoterProject;
 }
 
 export type SupplyChainTradeoffPanelDeps = BaseMcpToolDeps;
@@ -416,11 +429,14 @@ async function executeTradeoffPanelBody(
   const start = Date.now();
 
   const proposal = buildTradeoffProposal(input);
+  // #6123: resolved ONCE per panel; every seat's system prompt names it.
+  const project = resolveAndLogVoterProject(input.project, logger);
   const voteResults = await collectRealVotes({
     roles,
     proposal,
     simulate: input.simulate,
     logger,
+    project: project.name,
   });
 
   const votes = voteResults.map((r) => toPanelVote(r, axes));
@@ -440,6 +456,7 @@ async function executeTradeoffPanelBody(
     voterErrors,
     voterUnverifiable,
     durationMs: Date.now() - start,
+    project,
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }
