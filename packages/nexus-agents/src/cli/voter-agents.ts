@@ -212,6 +212,7 @@ function resolveVoteExecution(options?: VoteExecutionOverrides): VoteExecutionSe
     maxRetries: options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries,
     allowSimulation: options?.allowSimulation ?? false,
     declaredOptions: options?.declaredOptions,
+    project: options?.project,
   };
 }
 
@@ -220,28 +221,16 @@ export async function executeAgentVote(
   proposal: string,
   adapter: IModelAdapter,
   logger: ILogger,
-  options?: {
-    timeoutMs?: number;
-    maxRetries?: number;
-    allowSimulation?: boolean;
-    /** Declared options for a multi-option proposal (#4472). */
-    declaredOptions?: readonly string[] | undefined;
-  }
+  options?: VoteExecutionOverrides
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
-  const { timeoutMs, maxRetries, allowSimulation, declaredOptions } = resolveVoteExecution(options);
+  const { timeoutMs, maxRetries, allowSimulation, declaredOptions, project } =
+    resolveVoteExecution(options);
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
-  const result = await executeWithRetries({
-    role,
-    proposal,
-    adapter,
-    logger,
-    timeoutMs,
-    maxRetries,
-    options: declaredOptions,
-  });
+  const retryOptions = { role, proposal, adapter, logger, timeoutMs, maxRetries, project };
+  const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
@@ -295,6 +284,11 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
   /** Named alternatives for a multi-option proposal (#4472); each voter picks one. */
   readonly declaredOptions?: readonly string[] | undefined;
+  /**
+   * The project the panel is judging, already resolved and validated by the
+   * caller (#6110). Reaches every seat's system prompt. Absent ⇒ `nexus-agents`.
+   */
+  readonly project?: string | undefined;
   /**
    * Cancellation for an in-flight panel (#5393). Stops LAUNCHING voters that
    * have not started; votes already in flight settle. Absent changes nothing.
@@ -489,7 +483,10 @@ export interface VoteExecutionOverrides {
   timeoutMs?: number;
   maxRetries?: number;
   allowSimulation?: boolean;
+  /** Declared options for a multi-option proposal (#4472). */
   declaredOptions?: readonly string[] | undefined;
+  /** Target project for the system prompts (#6110); absent ⇒ `nexus-agents`. */
+  project?: string | undefined;
 }
 
 /** Resolved per-call vote execution settings. */
@@ -498,6 +495,8 @@ interface VoteExecutionSettings {
   maxRetries: number;
   allowSimulation: boolean;
   declaredOptions?: readonly string[] | undefined;
+  /** Required KEY (#6110): a hop that drops the target project fails to compile. */
+  project: string | undefined;
 }
 
 interface StaggeredVoteInput {
@@ -594,6 +593,8 @@ export async function collectRealVotes(
     // #4472: reaches executeAgentVote, which puts the declared options in the
     // prompt and resolves each voter's selection against them.
     declaredOptions: options.declaredOptions,
+    // #6110: likewise the target project, into every seat's system prompt.
+    project: options.project,
   };
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 

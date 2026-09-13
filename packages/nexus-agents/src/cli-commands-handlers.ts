@@ -333,6 +333,7 @@ function buildVoteCommandOptions(args: ParsedCliArgs): VoteCommandOptions {
     ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
     ...(args.options.onNoQuorum !== undefined && { onNoQuorum: args.options.onNoQuorum }),
     ...(args.options.timeoutMs !== undefined && { timeoutMs: args.options.timeoutMs }),
+    ...(args.options.project !== undefined && { project: args.options.project }),
     dryRun: args.options.dryRun,
     quick: args.options.quick,
     verbose: args.options.verbose,

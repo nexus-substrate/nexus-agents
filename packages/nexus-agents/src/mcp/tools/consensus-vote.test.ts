@@ -454,6 +454,7 @@ describe('ConsensusVoteResponse structure', () => {
       threshold: 'majority',
       strategy: 'simple_majority',
       decision: 'approved',
+      project: { name: 'nexus-agents', source: 'default' },
       approvalPercentage: 80,
       voteCounts: {
         approve: 4,
@@ -493,6 +494,7 @@ describe('ConsensusVoteResponse structure', () => {
       threshold: 'unanimous',
       strategy: 'unanimous',
       decision: 'rejected',
+      project: { name: 'nexus-agents', source: 'default' },
       approvalPercentage: 60,
       voteCounts: {
         approve: 3,
@@ -1712,6 +1714,8 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     threshold: 'majority',
     strategy: 'higher_order',
     decision: 'approved',
+    // #6110: always present on the response; the key-parity guard covers it.
+    project: { name: 'acme/widgets', source: 'input' },
     approvalPercentage: 66.7,
     voteCounts: { approve: 2, reject: 0, abstain: 0, error: 1, unverifiable: 0 },
     // #6111: always present on a completed vote.

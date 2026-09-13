@@ -12,7 +12,7 @@ import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
 import { delay, withTimeout } from '../utils/async-utils.js';
-import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
+import { getVoterPrompts, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import {
   buildVotePrompt,
   parseVoteResponse,
@@ -256,16 +256,19 @@ export function extractTextFromResponse(content: unknown): string {
  * The `parseVoteResponse` regex/Zod path below accepts prose-wrapped JSON, so
  * omitting `responseFormat` is safe — it just loses the schema-enforced shape.
  */
-function buildVoteRequest(
-  role: VoterRole,
-  proposal: string,
-  timeoutMs: number,
-  withResponseFormat: boolean,
-  options?: readonly string[]
-): CompletionRequest {
+function buildVoteRequest({
+  role,
+  proposal,
+  timeoutMs,
+  withResponseFormat,
+  options,
+  project,
+}: VoteCompletionArgs): CompletionRequest {
   const base: CompletionRequest = {
     messages: [
-      { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
+      // #6110: the seat judges the caller's target project, not this
+      // repository's. `undefined` renders the `nexus-agents` default.
+      { role: 'system', content: getVoterPrompts(project)[role] },
       { role: 'user', content: buildVotePrompt(proposal, options) },
     ],
     // 4000 (#4131): headroom so a findings-bearing verdict (JSON envelope +
@@ -327,20 +330,22 @@ interface VoteCompletionArgs {
   readonly withResponseFormat: boolean;
   /** Declared options for a multi-option proposal (#4472). */
   readonly options?: readonly string[] | undefined;
+  /**
+   * The target project named in the system prompt (#6110). Required as a KEY
+   * so a hop that forgets to pass it fails to compile; `undefined` is the
+   * `nexus-agents` default.
+   */
+  readonly project: string | undefined;
 }
 
-async function runVoteCompletion({
-  role,
-  proposal,
-  adapter,
-  timeoutMs,
-  withResponseFormat,
-  options,
-}: VoteCompletionArgs): Promise<
+async function runVoteCompletion(
+  args: VoteCompletionArgs
+): Promise<
   | { ok: true; output: string; usage: VoteUsage; cliStderr: string | undefined }
   | { ok: false; error: string }
 > {
-  const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat, options);
+  const { role, adapter, timeoutMs } = args;
+  const request = buildVoteRequest(args);
   const timeoutResult = await withTimeout(
     adapter.complete(request),
     timeoutMs,
@@ -391,14 +396,22 @@ interface VoteAttemptSuccess {
   readonly cliStderr: string | undefined;
 }
 
+/** What the prompt carries beyond the proposal: declared options (#4472) and the target project (#6110). */
+interface VotePromptContext {
+  readonly options?: readonly string[] | undefined;
+  /** Target project for the system prompt; omitted ⇒ `nexus-agents`. */
+  readonly project?: string | undefined;
+}
+
 export async function executeSingleVoteAttempt(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   timeoutMs: number,
-  options?: readonly string[]
+  context: VotePromptContext = {}
 ): Promise<VoteAttemptSuccess | { ok: false; error: string }> {
-  const completionArgs = { role, proposal, adapter, timeoutMs, options };
+  const { options, project } = context;
+  const completionArgs = { role, proposal, adapter, timeoutMs, options, project };
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
@@ -436,6 +449,8 @@ export interface RetryOptions {
   readonly maxRetries: number;
   /** Declared options for a multi-option proposal (#4472); absent for yes/no. */
   readonly options?: readonly string[] | undefined;
+  /** Target project for the system prompt (#6110); absent ⇒ `nexus-agents`. */
+  readonly project?: string | undefined;
 }
 
 /**
@@ -472,7 +487,7 @@ export async function executeWithRetries(
   | { vote: Vote; usage: VoteUsage; cliStderr: string | undefined; ok: true }
   | { error: string; ok: false }
 > {
-  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options } = opts;
+  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options, project } = opts;
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -488,7 +503,10 @@ export async function executeWithRetries(
     // retry succeeded (or which attempt blew the cap). Total vote time
     // is already captured at the call-site; this fills the per-attempt gap.
     const attemptStart = Date.now();
-    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, options);
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, {
+      options,
+      project,
+    });
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
       logger.info('Vote attempt timing', {

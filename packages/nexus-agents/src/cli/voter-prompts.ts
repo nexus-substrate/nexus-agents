@@ -9,8 +9,24 @@
 
 import type { VoterRole } from './vote-types.js';
 
-/** Default project name used in voter prompts when no context is provided. */
-const DEFAULT_PROJECT = 'nexus-agents';
+/**
+ * Default project name used in voter prompts when no context is provided —
+ * this repository's own name. Exported so the resolver in `voter-project.ts`
+ * (#6110) falls back to the same literal the prompts are snapshotted against.
+ */
+export const DEFAULT_VOTER_PROJECT = 'nexus-agents';
+
+/**
+ * Where a voter is told the target project's governance rules live (#6110).
+ *
+ * This repository keeps them in `CLAUDE.md`, and the seven default prompts are
+ * pinned byte-for-byte to that wording (`voter-prompts-project.test.ts`). A
+ * consuming repository may have no such file, so a foreign target gets the
+ * neutral phrase instead of a pointer at a file that may not exist.
+ */
+function governanceRulesRef(project: string): string {
+  return project === DEFAULT_VOTER_PROJECT ? 'CLAUDE.md' : "the target project's governance rules";
+}
 
 /**
  * Generate voter system prompts with optional project context.
@@ -141,7 +157,7 @@ Your evaluation criteria:
 - Risk assessment and mitigation
 - Priority relative to roadmap
 - Success metrics and validation approach
-- Alignment with project goals in CLAUDE.md
+- Alignment with project goals in ${governanceRulesRef(project)}
 ${voterFooter()}
 
 Balance value against effort. Be pragmatic.`;
@@ -189,14 +205,16 @@ ${prReviewModeAddendum()}`;
  * Reuse-ladder check for the scope_steward (#4007, ponytail-inspired). Gates the
  * SIZE of a justified build by altitude — stop at the first rung that holds —
  * while hard-fencing the safety concerns that are never the thing cut. Hoisted to
- * module scope to keep {@link scopeStewardPrompt} within its line budget.
+ * module scope to keep {@link scopeStewardPrompt} within its line budget. Rung 3
+ * names the target project (#6110): the default renders the pre-#6110 text.
  */
-const REUSE_LADDER_CHECK = `6. **Reuse ladder (implementation altitude).** When building IS justified,
+function reuseLadderCheck(project: string): string {
+  return `6. **Reuse ladder (implementation altitude).** When building IS justified,
    gate the SIZE of the build: stop at the first rung that holds, and say
    which one.
      1. Does this need to exist at all? → no: skip it (YAGNI).
      2. Standard library / language built-in? → use it.
-     3. Native platform feature or an existing nexus-agents substrate
+     3. Native platform feature or an existing ${project} substrate
         primitive (a canonical-path module, an existing voter/pipeline/
         store)? → use it.
      4. An already-installed dependency? → use it.
@@ -206,6 +224,7 @@ const REUSE_LADDER_CHECK = `6. **Reuse ladder (implementation altitude).** When 
    and accessibility are NEVER the thing cut. The code is small because it is
    necessary, not golfed. Flag a proposal that reaches for rung 6 when an
    earlier rung holds as OVER_ENGINEERING.`;
+}
 
 function scopeStewardPrompt(project: string): string {
   return `You are a Scope Steward voting on proposals for the ${project} project.
@@ -238,10 +257,10 @@ Your evaluation criteria — work through these mandatory checks in your reasoni
 
 5. **Sprawl audit.** Check whether similar functionality already exists
    in the codebase. If it does, recommend extending — not forking. The
-   anti-sprawl policy in CLAUDE.md is specifically the rule this role
+   anti-sprawl policy in ${governanceRulesRef(project)} is specifically the rule this role
    enforces.
 
-${REUSE_LADDER_CHECK}
+${reuseLadderCheck(project)}
 
 Default bias: REJECT proposals where an existing tool fits, even if our
 own implementation would be marginally nicer. Only approve when the
@@ -269,7 +288,9 @@ You CAN approve. But your default posture is: "this should not be built;
 prove me wrong with the build-vs-buy math."`;
 }
 
-export function getVoterPrompts(project: string = DEFAULT_PROJECT): Record<VoterRole, string> {
+export function getVoterPrompts(
+  project: string = DEFAULT_VOTER_PROJECT
+): Record<VoterRole, string> {
   return {
     architect: architectPrompt(project),
     security: securityPrompt(project),

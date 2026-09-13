@@ -228,6 +228,8 @@ export interface ParsedCliArgs {
     onNoQuorum?: NoQuorumPolicy;
     /** #4472 / #4941 — repeatable `--option`, the named alternatives to tally. */
     options?: string[];
+    /** #6110 — `--project`, the project the panel judges (replaces `nexus-agents` in the prompts). */
+    project?: string;
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
@@ -437,6 +439,10 @@ export const PARSE_ARGS_CONFIG = {
     },
     // #4135 — how the vote command maps a no_quorum decision (fail|exit2|retry).
     'on-no-quorum': {
+      type: 'string' as const,
+    },
+    // #6110 — the project the voter prompts name; derived from the cwd when absent.
+    project: {
       type: 'string' as const,
     },
     // SWE-bench command options

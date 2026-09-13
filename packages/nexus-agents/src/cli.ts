@@ -135,6 +135,8 @@ interface ParsedValues {
   timeout?: string;
   'error-policy'?: string;
   'on-no-quorum'?: string;
+  /** #6110: the project the voter prompts name. */
+  project?: string;
   // SWE-bench options
   variant?: string;
   limit?: string;
@@ -232,8 +234,7 @@ function parseErrorPolicy(value: string | undefined): ErrorPolicy | undefined {
  * values fall through to `undefined` → the command default (`fail`).
  */
 function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefined {
-  if (value === 'fail' || value === 'exit2' || value === 'retry') return value;
-  return undefined;
+  return value === 'fail' || value === 'exit2' || value === 'retry' ? value : undefined;
 }
 
 /** Builds vote-specific options. */
@@ -244,7 +245,7 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
   const errorPolicy = parseErrorPolicy(values['error-policy']);
   const onNoQuorum = parseNoQuorumPolicy(values['on-no-quorum']);
-  const options = values.option;
+  const { option: options, project } = values;
   return {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
     ...(options !== undefined && options.length > 0 && { options }),
@@ -252,6 +253,9 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
     ...(timeoutMs !== undefined && { timeoutMs }),
     ...(errorPolicy !== undefined && { errorPolicy }),
     ...(onNoQuorum !== undefined && { onNoQuorum }),
+    // #6110: validated by the resolver, not here — an invalid name is logged
+    // and falls through to derivation rather than silently vanishing.
+    ...(project !== undefined && { project }),
   };
 }
 
@@ -319,10 +323,7 @@ function buildLearningMetricsOptions(values: ParsedValues): {
 
 /** Validates scope option for setup command. */
 function parseSetupScope(value: string | undefined): 'user' | 'project' | undefined {
-  if (value === 'user' || value === 'project') {
-    return value;
-  }
-  return undefined;
+  return value === 'user' || value === 'project' ? value : undefined;
 }
 
 /** Builds setup-specific options. */
