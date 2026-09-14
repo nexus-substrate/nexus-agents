@@ -1154,7 +1154,7 @@ describe('the governor section is bounded by dedicated directives, not the human
    * The governor set parsed from origin/main at 32c14595b6, BEFORE the
    * directives landed, plus the two #6000 step-3 entries (the pure decision
    * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
-   * script. The migration must not change what
+   * script, plus the #5130 step-2 ledger-evidence module. The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1167,6 +1167,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/.github/workflows/governor-review.yml',
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
+    '/scripts/governor-ledger-evidence.ts',
     '/scripts/check-codeowners-errors.ts',
     '/.github/CODEOWNERS',
     '/docs/CODEOWNERS',
@@ -1199,13 +1200,15 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (19 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (20 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // Entries for files that must NOT exist: creating one is a governor change.
     expect(set).toContain('/.github/CODEOWNERS');
     expect(set).toContain('/docs/CODEOWNERS');
-    expect(set).toHaveLength(19);
+    // #5130 step 2: the committed-ledger half of the ratification gate.
+    expect(set).toContain('/scripts/governor-ledger-evidence.ts');
+    expect(set).toHaveLength(20);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

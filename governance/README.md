@@ -7,9 +7,12 @@ by `verifyVoteRecordSet` / `verifyPrReviewRecordSet` (a hash-covered monotonic
 carry `merge=union` in `.gitattributes`, so two PRs that each append a record
 merge without conflict; the duplicated sequence they leave behind is a benign
 fork signal, not corruption. Two branches appending the same record `id` merge
-the same way — two lines under one id, tolerated by the verifier today and
-reported as `already-present` by a later append; whether that is a refusal is
-step 2's decision.
+the same way — two lines under one id, tolerated by the verifier and reported
+as `already-present` by a later append. The ratification gate REFUSES that
+state (#5130 step 2, `duplicate-id`): one id naming two contents is ambiguous,
+and a resolver that accepted either would let a fabricated line shadow the
+panel's. Byte-identical copies collapse to one record; different content is a
+refusal until the line that is not the panel's is removed.
 
 A JSONL reader treats every non-blank line as a record and fails closed on one
 it cannot parse, so the ledgers cannot carry a header comment. This file is
@@ -64,6 +67,22 @@ record is a gate finding (#5131), not an empty-ledger condition.
 4. The caller commits the ledger in the ratified PR. The ledger-only tip
    commit is expected; the gate (step 2, #5779 / #5131) treats
    `headSha ∈ {head, head^}` as bound when `head` touches only the ledger.
+
+### How the gate reads it (#5130 step 2)
+
+`scripts/check-governor-ratification.ts` prints a second evidence line for
+every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
+`ratified` (a record binds this PR at `head` or, for a ledger-only tip,
+`head^`; `decision === 'approved'`; `panelCoverage` absent or `errored === 0`),
+or one of `no-record` (an empty ledger is this, never `ratified`),
+`sha-mismatch`, `not-approved`, `degraded-panel`, `ledger-invalid`,
+`duplicate-id`. The post-merge backstop keys on the PR number only — the
+squash commit is not the head the panel saw — and says the sha was not
+checked. **Warn-first:** the line is an annotation and the exit code is still
+the label/approval verdict's; #5131 flips it to a failure. The record does not
+carry `errorPolicy`; an approved record with errored seats is the only
+ledger-observable trace of a policy other than `absolute_quorum`, which is why
+`degraded-panel` is the check and there is no separate policy verdict.
 
 ## pr-review-records.jsonl
 

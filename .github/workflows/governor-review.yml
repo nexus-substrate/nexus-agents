@@ -25,6 +25,11 @@
 # the sha under review. It lives here rather than in a sibling workflow so the
 # gate is itself governor-owned: a CODEOWNERS validity check an agent could
 # quietly delete without ratification is not a gate.
+#
+# The ratification jobs also read the committed VOTE ledger
+# (governance/vote-records.jsonl, #5130 step 2 / #5779): a panel record bound to
+# `{pr, headSha}` that is approved and ran whole. That verdict is printed as an
+# annotation and does not affect the exit code yet — #5131 flips it to a failure.
 
 name: Governor Review Gate
 
@@ -44,6 +49,7 @@ on:
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/governor-ledger-evidence.ts'
       - 'scripts/check-codeowners-errors.ts'
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
@@ -65,6 +71,7 @@ on:
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/governor-ledger-evidence.ts'
       - 'scripts/check-codeowners-errors.ts'
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
@@ -197,6 +204,19 @@ jobs:
           # push, and the pusher cannot forge it.
           HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
             --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
+          # #5130 step 2: the committed vote ledger binds a ratification to
+          # `{pr, headSha}`. The caller appends the record in a ledger-only
+          # commit ON TOP of the head the panel saw, so the gate accepts
+          # `head^` as bound only when `head` touches exactly the ledger file.
+          # Both values are computed from the checkout (fetch-depth: 0); a
+          # root commit has no parent and yields empty strings, which the gate
+          # reads as "only head is accepted".
+          HEAD_PARENT_SHA=$(git rev-parse --verify --quiet "${HEAD_SHA}^" || echo '')
+          if [ -n "${HEAD_PARENT_SHA}" ]; then
+            HEAD_COMMIT_FILES=$(git diff --name-only "${HEAD_PARENT_SHA}" "${HEAD_SHA}")
+          else
+            HEAD_COMMIT_FILES=""
+          fi
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -207,6 +227,10 @@ jobs:
             echo "label_time=${LABEL_TIME}"
             echo "head_time=${HEAD_TIME}"
             echo "base=${BASE_SHA}"
+            echo "head_parent=${HEAD_PARENT_SHA}"
+            echo 'head_commit_files<<FILES_EOF'
+            echo "${HEAD_COMMIT_FILES}"
+            echo 'FILES_EOF'
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate
@@ -217,6 +241,15 @@ jobs:
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
           HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
+          # #5130 step 2 / #5779: the committed-ledger evidence line. The gate
+          # looks up `governance/vote-records.jsonl` for a record with
+          # `ratifiesPr.pr == PR_NUMBER` bound to PR_HEAD_SHA (or its parent
+          # for a ledger-only tip) and prints the verdict as an annotation.
+          # WARN-FIRST: the exit code is unchanged until #5131.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.head_parent }}
+          HEAD_COMMIT_FILES: ${{ steps.evidence.outputs.head_commit_files }}
           # #5944: lets the gate read CLAUDE.md / AGENTS.md as of base and
           # exempt a diff whose only change is inside a generated span. Absent
           # or malformed, the exemption is simply never granted — fail-closed.
@@ -327,6 +360,7 @@ jobs:
             echo "label_time=${LABEL_TIME}"
             echo "head_time=${HEAD_TIME}"
             echo "base=${BASE_SHA}"
+            echo "pr_number=${PR_NUMBER}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
@@ -337,6 +371,12 @@ jobs:
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
           RATIFICATION_LABEL_TIME: ${{ steps.evidence.outputs.label_time }}
           HEAD_OBSERVED_AT: ${{ steps.evidence.outputs.head_time }}
+          # #5130 step 2: the ledger evidence line, keyed on the PR NUMBER
+          # ONLY. ${SHA} is the squash commit, which no panel saw, so the sha
+          # binding is not checked here and the annotation says so. No
+          # PR_HEAD_SHA on purpose. A direct push has no PR number, and the
+          # gate reports the ledger as unmeasured rather than as "no record".
+          PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
           # #6029: the backstop set NO base at all, so its exemption was
           # unreachable by a second mechanism. Both jobs must grant the same
           # exemption or a stamp-only PR turns main red after merging green.

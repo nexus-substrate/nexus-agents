@@ -41,6 +41,15 @@
  * `unratified`, or a broken CODEOWNERS parse would blame the PR. Both are the
  * empty-case discipline from `.rules/development-disciplines.md` (#4580).
  *
+ * ## The committed vote ledger (second evidence line, #5130 step 2)
+ *
+ * When governor paths are touched, the gate ALSO reads
+ * `governance/vote-records.jsonl` and prints whether a panel record binds this
+ * PR (`ratifiesPr: { pr, headSha }`), is approved and ran whole — the rule
+ * #5779 states. `governor-ledger-evidence.ts` computes that verdict; it is
+ * printed as an annotation and does NOT touch the exit code yet. #5131 flips
+ * it to a failure once records are flowing.
+ *
  * @module scripts/check-governor-ratification
  */
 
@@ -56,9 +65,12 @@ import {
   injectorIsClean,
   EXEMPT_SPAN_NAMES,
 } from './governance-stamp-exemption.js';
+import { reportLedgerEvidence } from './governor-ledger-evidence.js';
+import { VOTE_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
+const LEDGER_FILE = join(ROOT, VOTE_RECORDS_REL_PATH);
 
 /** The one label that asserts out-of-band owner ratification. */
 export const RATIFICATION_LABEL = 'owner-ratified';
@@ -448,10 +460,29 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     ...labelEvidenceFromEnv(env),
   });
 
-  // stderr for every verdict, matching check-governor-review.ts — CI annotations
-  // and the human-readable line belong on the same stream.
-  console.error(formatVerdict(verdict));
+  printVerdicts(verdict, env);
   return verdict.kind === 'unratified' || verdict.kind === 'indeterminate' ? 1 : 0;
+}
+
+/**
+ * Print the label/approval verdict and, when a governor path was touched, the
+ * committed-ledger evidence line beneath it.
+ *
+ * stderr for every verdict, matching check-governor-review.ts — CI annotations
+ * and the human-readable line belong on the same stream.
+ *
+ * #5130 step 2 (#5779): the ledger line is printed only for `ratified` and
+ * `unratified` — there is nothing for a panel to have ratified otherwise, and
+ * an `indeterminate` gate has already said it cannot measure. WARN-FIRST: the
+ * exit code is still the label/approval verdict's alone. #5131 flips the
+ * ledger verdict to a failure once records are flowing;
+ * `governor-ledger-evidence.test.ts` holds the `todo` named for that flip.
+ */
+function printVerdicts(verdict: RatificationVerdict, env: NodeJS.ProcessEnv): void {
+  console.error(formatVerdict(verdict));
+  if (verdict.kind === 'ratified' || verdict.kind === 'unratified') {
+    reportLedgerEvidence(env, LEDGER_FILE);
+  }
 }
 
 if (process.argv[1]?.endsWith('check-governor-ratification.ts') === true) {
