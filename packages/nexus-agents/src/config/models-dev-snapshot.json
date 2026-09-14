@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-09-07",
+  "fetchedAt": "2026-09-14",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1970,6 +1970,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "deepseek-flash",
+      "vendor": "deepseek",
+      "family": "deepseek-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-deepseek",
+      "source": "models-dev",
+      "displayName": "DeepSeek V4.1 Flash",
+      "verifiedAt": "2026-09-10",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.6
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "deepseek-v4-flash",
       "vendor": "deepseek",
       "family": "deepseek-flash",
@@ -1982,14 +2006,14 @@
       "profileId": "models-dev-deepseek",
       "source": "models-dev",
       "displayName": "DeepSeek V4 Flash",
-      "verifiedAt": "2026-07-31",
+      "verifiedAt": "2026-09-10",
       "contextWindow": 1000000,
       "maxOutputTokens": 384000,
-      "inputModalities": ["text"],
+      "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.14,
-        "outputPer1M": 0.28
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.6
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2006,14 +2030,14 @@
       "profileId": "models-dev-deepseek",
       "source": "models-dev",
       "displayName": "DeepSeek V4 Flash Vision Exp",
-      "verifiedAt": "2026-08-21",
+      "verifiedAt": "2026-09-10",
       "contextWindow": 1000000,
       "maxOutputTokens": 384000,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.14,
-        "outputPer1M": 0.28
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.6
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -3959,6 +3983,150 @@
       "pricing": {
         "inputPer1M": 0.22,
         "outputPer1M": 0.88
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.1-fast-non-reasoning",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.1 Fast",
+      "verifiedAt": "2025-11-19",
+      "contextWindow": 128000,
+      "maxOutputTokens": 30000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.2,
+        "outputPer1M": 0.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.1-fast-reasoning",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.1 Fast (Reasoning)",
+      "verifiedAt": "2025-11-19",
+      "contextWindow": 128000,
+      "maxOutputTokens": 30000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.2,
+        "outputPer1M": 0.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.20-non-reasoning",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.20 (Non-Reasoning)",
+      "verifiedAt": "2026-03-09",
+      "contextWindow": 2000000,
+      "maxOutputTokens": 30000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.25,
+        "outputPer1M": 2.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.20-reasoning",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.20 (Reasoning)",
+      "verifiedAt": "2026-03-09",
+      "contextWindow": 2000000,
+      "maxOutputTokens": 30000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.25,
+        "outputPer1M": 2.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.3",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.3",
+      "verifiedAt": "2026-04-17",
+      "contextWindow": 200000,
+      "maxOutputTokens": 30000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.25,
+        "outputPer1M": 2.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "xai/grok-4.6",
+      "vendor": "google",
+      "family": "grok",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Grok 4.6",
+      "verifiedAt": "2026-08-12",
+      "contextWindow": 524288,
+      "maxOutputTokens": 500000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 6
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -7358,6 +7526,30 @@
       "contextWindow": 1000000,
       "maxOutputTokens": 131072,
       "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "z-ai/glm-5.3-flash",
+      "vendor": "nvidia",
+      "family": "glm",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "GLM-5.3-Flash",
+      "verifiedAt": "2026-08-26",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "video", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 0,
