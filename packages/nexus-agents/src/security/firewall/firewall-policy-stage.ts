@@ -164,5 +164,6 @@ export function policyRefusal(
     message:
       `Refused by firewall policy: ` + blocking.map((v) => `${v.rule} — ${v.message}`).join('; '),
     stage: 'policy',
+    violations: blocking,
   };
 }

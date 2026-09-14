@@ -1028,6 +1028,14 @@ describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () =
       expect(result.error.stage).toBe('policy');
       expect(result.error.message).toContain('UNTRUSTED_INFLUENCE');
       expect(result.error.message).toContain('INSUFFICIENT_TRUST');
+      // #5383: the structured form travels with the refusal, so a consumer can
+      // record the rule ids without parsing the message — and only the blocking
+      // ones, since those are what refused.
+      expect(result.error.violations?.map((v) => v.rule)).toEqual([
+        'INSUFFICIENT_TRUST',
+        'UNTRUSTED_INFLUENCE',
+      ]);
+      expect(result.error.violations?.every((v) => v.severity === 'block')).toBe(true);
     });
 
     it('off keeps the signal and reports no would-be refusal', () => {
