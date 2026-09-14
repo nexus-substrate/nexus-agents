@@ -55,6 +55,15 @@
 # claimed it required ratification. Keep it inside the directives.
 /.rules/ @williamzujkowski
 
+# The pure decision computation (#6000, step 3 — panel option D, refined). `.rules/`
+# declares the bar; these modules are the code that turns a tally plus a strategy
+# into approved/rejected/no_quorum, and the voter-role set that decides who sits on
+# the panel. Governing the NARROW extraction, not `src/consensus/` (which stays an
+# ordinary review-request above): engine.ts is IO/orchestration and must not need
+# ratification, while a one-line edit here changes what "approved" means.
+/packages/nexus-agents/src/consensus/decision/ @williamzujkowski
+/packages/nexus-agents/src/cli/voter-roles.ts @williamzujkowski
+
 # Project governance
 /CLAUDE.md @williamzujkowski
 /AGENTS.md @williamzujkowski
