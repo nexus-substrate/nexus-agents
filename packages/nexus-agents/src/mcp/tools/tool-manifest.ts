@@ -275,8 +275,8 @@ export const TOOL_MANIFEST = [
       { category: 'implicit', description: 'Fetches metadata from arXiv API' },
     ],
     idempotencyBasis:
-      'Dedupes on arxivId: `paperExists` short-circuits before any write and the '
-      + 'second call returns "already exists in registry" (#5504).',
+      'Dedupes on arxivId: `paperExists` short-circuits before any write and the ' +
+      'second call returns "already exists in registry" (#5504).',
   },
   {
     name: 'research_add_source',
@@ -489,8 +489,8 @@ export const TOOL_MANIFEST = [
     },
     sideEffects: [{ category: 'explicit', description: 'Generates draft model registry entry' }],
     idempotencyBasis:
-      'Never persists — the tool returns a draft ModelCapability entry for human '
-      + 'review, so a repeat produces the same draft and no state (#5504).',
+      'Never persists — the tool returns a draft ModelCapability entry for human ' +
+      'review, so a repeat produces the same draft and no state (#5504).',
   },
   {
     name: 'query_trace',
@@ -582,8 +582,8 @@ export const TOOL_MANIFEST = [
     // job, so it is low-usage BY DESIGN, not dead weight. Never auto-deprecate.
     neverDeprecate: true,
     idempotencyBasis:
-      'A second cancellation against the same job returns `already_cancelled` '
-      + 'against the already-written record rather than cancelling twice (#5504).',
+      'A second cancellation against the same job returns `already_cancelled` ' +
+      'against the already-written record rather than cancelling twice (#5504).',
   },
   {
     name: 'ci_health_check',
@@ -831,9 +831,9 @@ export const TOOL_MANIFEST = [
       },
     ],
     idempotencyBasis:
-      'Re-runs the checks and returns the current verdict; writes no record of its '
-      + 'own, and the build artifacts a check produces are overwritten rather '
-      + 'than appended (#5504).',
+      'Re-runs the checks and returns the current verdict; writes no record of its ' +
+      'own, and the build artifacts a check produces are overwritten rather ' +
+      'than appended (#5504).',
   },
   {
     name: 'suggest_research_tasks',
@@ -952,4 +952,47 @@ export function isDeclaredNeverDeprecate(tool: string): boolean {
  */
 export function declaredOrthogonalityGroup(tool: string): string | undefined {
   return TOOL_ORTHOGONALITY_GROUPS.get(tool);
+}
+
+// ============================================================================
+// Execution classification (#5114)
+// ============================================================================
+
+/**
+ * What a call to a tool may do to state, as the policy firewall sees it.
+ *
+ * - `read-only`: the manifest entry declares `readOnlyHint: true`.
+ * - `mutation`: the manifest entry declares `readOnlyHint: false`.
+ * - `unclassified`: no manifest entry, or an entry with no boolean hint. A
+ *   legible state the `deny-mutations-without-mode` rule REPORTS as such —
+ *   still denied when enforcing (fail closed), but never recorded as a
+ *   mutation it did not measure.
+ */
+export type ToolExecutionClass = 'read-only' | 'mutation' | 'unclassified';
+
+/**
+ * Tool name → execution class, derived from each entry's `readOnlyHint` so the
+ * manifest stays the ONE source (#5114). Before this the firewall's rule kept
+ * its own two hand-edited sets naming six generic tools and guessed "mutation"
+ * for the other 45 registered tools; the prerequisite gate
+ * (`scripts/inject-governance.ts`) already read `readOnlyHint` for the same
+ * question, so there were two answers and one of them was a default.
+ */
+const TOOL_EXECUTION_CLASSES: ReadonlyMap<string, ToolExecutionClass> = new Map(
+  (TOOL_MANIFEST as readonly ToolManifestEntry[]).map((t) => {
+    const hint = t.annotations.readOnlyHint;
+    const cls: ToolExecutionClass =
+      hint === true ? 'read-only' : hint === false ? 'mutation' : 'unclassified';
+    return [t.name, cls];
+  })
+);
+
+/**
+ * The execution class of a REGISTERED tool per {@link TOOL_MANIFEST}, or
+ * `unclassified` for a name the manifest does not carry. Generic agent /
+ * filesystem names (`write_file`, `bash`, …) are not the manifest's to
+ * classify; `mcp/middleware/policy-rules.ts` keeps that fallback.
+ */
+export function classifyRegisteredTool(name: string): ToolExecutionClass {
+  return TOOL_EXECUTION_CLASSES.get(name) ?? 'unclassified';
 }
