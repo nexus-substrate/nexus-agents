@@ -262,6 +262,15 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     const workDir = task.options?.['workDir'];
     args.push('--add-dir', typeof workDir === 'string' && workDir !== '' ? workDir : process.cwd());
 
+    // #6277: agy's own print-mode wait defaults to 5m0s regardless of the
+    // budget the caller gave us. Measured on the #6260 governor panels: a
+    // contrarian seat with a 600 s budget hit agy's 5-minute default, agy
+    // exited 0 with {"status":"SUCCESS","response":""}, and the vote path
+    // read the empty answer as a parse failure for the rest of the budget.
+    // Derive the CLI's wait from the task timeout, a little below the guard
+    // so agy's own timeout fires first and its stderr is readable.
+    args.push(...agyPrintTimeoutArgs(task.timeoutMs));
+
     // agy has no system-prompt flag. The old CLI's `--policy <file>` preserved
     // system-role framing (#1886); agy offers only `--agent`, which selects a
     // preconfigured agent rather than accepting inline instructions. So the
@@ -349,4 +358,20 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 /** Creates a Gemini CLI adapter with reliability features. */
 export function createGeminiAdapter(options?: GeminiConfig): GeminiCliAdapter {
   return new GeminiCliAdapter(options);
+}
+
+/** Headroom between agy's print-mode wait and the subprocess guard (#6277). */
+const AGY_PRINT_TIMEOUT_HEADROOM_MS = 5_000;
+/** Shortest wait handed to agy; below this a seat cannot answer at all. */
+const AGY_PRINT_TIMEOUT_FLOOR_S = 30;
+
+/**
+ * agy's `--print-timeout` argv (Go duration, whole seconds) for a task
+ * budget: the guard minus a fixed headroom, never below the floor. No
+ * budget → no flag, so agy's own default applies.
+ */
+function agyPrintTimeoutArgs(timeoutMs: number | undefined): readonly string[] {
+  if (timeoutMs === undefined) return [];
+  const seconds = Math.floor((timeoutMs - AGY_PRINT_TIMEOUT_HEADROOM_MS) / 1000);
+  return ['--print-timeout', `${String(Math.max(AGY_PRINT_TIMEOUT_FLOOR_S, seconds))}s`];
 }

@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.58.8
+
+### Patch Changes
+
+- [#6284](https://github.com/nexus-substrate/nexus-agents/pull/6284) [`8574333`](https://github.com/nexus-substrate/nexus-agents/commit/8574333cb406587694a8b31b5fc5adac4bd34c2e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A Rule-of-Two violation in the security policy gate is refused, never routed to human approval ([#4735](https://github.com/nexus-substrate/nexus-agents/issues/4735), panel option A). When an agent simultaneously processes untrusted input (Tier 3+), has write access, and holds a secret/token, `evaluatePolicy` returns `allowed: false` with `requiresApproval: false`, as it always did; what changes is the `RULE_OF_TWO` violation message, which now names all three legs (including the input's tier) and the remedy, dropping a leg: dry-run, run without the token, or split the agent. Callers that log the violation message therefore carry the diagnosis without any new logging dependency.
+
+## 8.58.7
+
+### Patch Changes
+
+- [#6285](https://github.com/nexus-substrate/nexus-agents/pull/6285) [`7f90bb5`](https://github.com/nexus-substrate/nexus-agents/commit/7f90bb5dbe52dc3d3b8c06957a16edca11242ebe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The gemini seat (`agy`) now receives `--print-timeout` derived from the task's timeout budget (guard minus 5 s, never below 30 s) instead of agy's fixed 5-minute default. Before, a voter seat given a 600 s budget hit agy's own 5-minute wait first, agy exited 0 with an empty response, and the vote path reported a parse failure for the rest of the budget; the seat's full budget now reaches the CLI, and a task with no timeout keeps agy's default.
+
 ## 8.58.6
 
 ### Patch Changes

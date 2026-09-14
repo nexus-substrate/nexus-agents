@@ -353,6 +353,28 @@ describe('GeminiCliAdapter hands agy the working tree (#6254)', () => {
     expect(args[args.indexOf('--add-dir') + 1]).toBe(process.cwd());
   });
 
+  it('derives --print-timeout from the task timeout so agy gives up before the guard (#6277)', () => {
+    // Measured on the #6260 panels: agy's --print-timeout defaults to 5m0s, the
+    // same length as the 300 s vote guard, so a seat that needs longer than
+    // five minutes returns {"status":"SUCCESS","response":""} and the vote
+    // path reads it as a parse failure. A 600 s seat budget must reach agy.
+    const { args } = getCommand({ content: 'hi', timeoutMs: 600_000 });
+
+    expect(args[args.indexOf('--print-timeout') + 1]).toBe('595s');
+  });
+
+  it('never derives a --print-timeout below the floor', () => {
+    const { args } = getCommand({ content: 'hi', timeoutMs: 1_000 });
+
+    expect(args[args.indexOf('--print-timeout') + 1]).toBe('30s');
+  });
+
+  it('omits --print-timeout when the task carries no timeout (agy default applies)', () => {
+    const { args } = getCommand({ content: 'hi' });
+
+    expect(args).not.toContain('--print-timeout');
+  });
+
   it('puts --add-dir before --print, which must stay last', () => {
     const { args } = getCommand({ content: 'hi' });
 
