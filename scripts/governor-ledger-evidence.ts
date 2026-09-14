@@ -27,7 +27,7 @@
  * | Kind | Meaning |
  * | --- | --- |
  * | `ratified` | one record binds this PR at an accepted head, is `approved`, and its recorded panel was whole |
- * | `ratified-rebased` | as `ratified`, but the record binds an EARLIER head of this PR whose non-ledger patch is byte-identical to the current head's — see "The head moved" below (#6256) |
+ * | `ratified-rebased` | as `ratified`, but the record binds an EARLIER head of this PR (an ancestor of the head, or a head the workflow saw this PR have) whose non-ledger patch is byte-identical to the current head's — see "The head moved" below (#6256, #6301) |
  * | `no-record` | no record carries `ratifiesPr.pr === PR`; an EMPTY ledger is this case with `recordCount: 0`, never `ratified` |
  * | `sha-mismatch` | records bind this PR, but none at an accepted head and none passes the moved-head rule — lists the shas found and, per sha, why the rule did not apply |
  * | `not-approved` | a bound record's `decision` is not `approved` |
@@ -59,22 +59,45 @@
  *
  * So a record whose `ratifiesPr.headSha` is neither `head` nor `head^` is
  * still accepted — as the distinct kind `ratified-rebased`, so the log says
- * the head moved and why it still counts — when ALL of:
+ * the head moved and why it still counts — when ALL of (#6256, tightened
+ * by the #6301 review):
  *
- * 1. the ratified sha's commit object is present in the checkout. A merge
- *    from main keeps it as an ancestor; a rebase orphans it, so the probe
- *    fetches it from `origin` by sha when missing (GitHub serves any object
- *    by sha — measured on a fresh clone against the rebased-away heads of
- *    #6252). Still missing ⇒ `sha-mismatch` naming "object not found".
- * 2. the NON-LEDGER PATCH IDENTITY is equal for the ratified sha and the
- *    head: `sha256` over `git diff -U0 <merge-base(sha, PR base)> <sha> --
- *    . ':!governance/vote-records.jsonl'` with the `index` lines and the
- *    `@@` hunk headers removed. `-U0`, not the default 3 lines of context:
- *    #6282's SKILL.md hunk differs at -U3 only in a trailing context line
- *    (main's newer PIPELINE NOTE), and every workflow PR appends there.
- *    Not `git patch-id`: it strips whitespace before hashing, so a
- *    whitespace-only edit inside a string literal would be "the same patch".
- * 3. the ledger at the ratified sha is an ordered subsequence of the head
+ * 1. the ratified sha is RELATED to this PR: an ancestor of the head (a
+ *    merge from main kept it), or a head this PR had before — as the
+ *    workflow measured it (`PR_PRIOR_HEADS`: the `synchronize` event's
+ *    `before` and the head shas of the workflow's own runs on the PR branch
+ *    since the PR opened), or the first parent of such a head when it
+ *    touched only the ledger (the tip a force-push replaces is A1, the
+ *    record binds A = A1^). Anything else is `sha-mismatch` naming the
+ *    relation: a byte-identical patch on an unrelated branch used to pass
+ *    (#6301 item 4). The commit object must be present; a prior head a
+ *    rebase orphaned is fetched from `origin` by sha (GitHub serves any
+ *    object by sha — measured against the rebased-away heads of #6252),
+ *    and NO other sha is fetched, because that fetch reaches the whole
+ *    fork network. Still missing ⇒ `sha-mismatch` naming "object not found".
+ * 2. the NON-LEDGER PATCH IDENTITY is non-empty and equal for the ratified
+ *    sha and the head: `sha256` over `git diff --text -U0 <merge-base(sha,
+ *    PR base)> <sha> -- . ':!governance/vote-records.jsonl'` with the
+ *    `index` lines and the `@@` hunk headers removed, hashed byte-for-byte.
+ *    `--text` (#6301 item 1): without it a binary-detected file — a `.bin`,
+ *    a `.ts` holding a NUL byte, any path under a `.gitattributes` `-diff`
+ *    rule — diffs as `Binary files … differ` plus the `index` line the
+ *    identity strips, so two contents were one patch. `-U0`, not the
+ *    default 3 lines of context: #6282's SKILL.md hunk differs at -U3 only
+ *    in a trailing context line (main's newer PIPELINE NOTE), and every
+ *    workflow PR appends there. Not `git patch-id`: it strips whitespace
+ *    before hashing, so a whitespace-only edit inside a string literal
+ *    would be "the same patch". The EMPTY identity is refused on either
+ *    side (#6301 item 2): a ledger-only PR's head and any commit at or
+ *    before its fork point both diff to nothing, and "equal" there binds
+ *    the record to no patch — a ledger-only PR binds to `head`/`head^` only.
+ * 3. the ORDER-SENSITIVE files are byte-equal at both shas (#6301 item 3):
+ *    `CODEOWNERS` and `.rules/*.md` (`ORDER_SENSITIVE_FILES`, with the
+ *    reason per entry). The identity is position-insensitive within a
+ *    file, and for these files position is the meaning — a CODEOWNERS
+ *    entry added inside the governor section and moved below the end
+ *    directive is the same `+line` and a different governor set.
+ * 4. the ledger at the ratified sha is an ordered subsequence of the head
  *    ledger (the #6218 rule, applied between the two heads) — otherwise
  *    `ledger-rewritten` naming the ratified sha.
  *
@@ -84,14 +107,15 @@
  * record bound at the moved sha must still ratify (a dissent there is
  * `not-approved`), and the per-record checks are unchanged.
  *
- * What the identity does NOT catch, disclosed: `-U0` and a line-number-free
- * hunk header make the identity position-insensitive WITHIN a file — the
- * same added and removed lines at a different location in the same file are
- * the same patch. A change that moves a ratified hunk to another function
- * is therefore not detected by this rule alone; the head still has to pass
- * the label/approval gate, and the panel's record still names the sha it
- * saw. Anything else — a changed, added or removed byte in any non-ledger
- * file, a file added or dropped, a mode change — changes the identity.
+ * What the identity does NOT catch, disclosed: outside the order-sensitive
+ * files, `-U0` and a line-number-free hunk header make the identity
+ * position-insensitive WITHIN a file — the same added and removed lines at
+ * a different location in the same file are the same patch. A change that
+ * moves a ratified hunk to another function is therefore not detected by
+ * this rule alone; the head still has to pass the label/approval gate, and
+ * the panel's record still names the sha it saw. Anything else — a
+ * changed, added or removed byte in any non-ledger file, binary or text, a
+ * file added or dropped, a mode change — changes the identity.
  *
  * ## Append-only against the base (#6213)
  *
@@ -231,7 +255,7 @@
  * the `ratified` line must not be read as proving more than it measures.
  *
  * @module scripts/governor-ledger-evidence
- * (Source: Issue #5130, #5779, #5131, #5118)
+ * (Source: Issue #5130, #5779, #5131, #5118, #6256, #6301)
  */
 
 import type {
@@ -243,7 +267,11 @@ import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
-import type { PatchIdentity, PatchIdentityProbe } from './governor-patch-identity.js';
+import type {
+  MovedHeadRelation,
+  PatchIdentity,
+  PatchIdentityProbe,
+} from './governor-patch-identity.js';
 
 /**
  * The head the record must bind to. The pre-merge job passes the PR head; the
@@ -355,8 +383,12 @@ export type LedgerEvidence =
       readonly ratifiedSha: string;
       /** The current head, which no record binds. */
       readonly headSha: string;
-      /** `ancestor`: a merge from main kept the ratified commit in the head's history; `rewritten-history`: a rebase did not. */
-      readonly relation: 'ancestor' | 'rewritten-history';
+      /**
+       * `ancestor`: a merge from main kept the ratified commit in the head's
+       * history; `prior-head`: a rebase did not, and the sha is a head this
+       * PR had as the workflow measured it (`PR_PRIOR_HEADS`, #6301 item 4).
+       */
+      readonly relation: MovedHeadRelation;
       /** The identity both shas share. */
       readonly patchIdentity: string;
       /** As on `ratified`; the sha binding was checked by construction. */
@@ -387,6 +419,14 @@ export type LedgerEvidence =
       readonly againstRatifiedSha?: string;
     }
   | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
+
+/**
+ * The identity of a diff that touches nothing outside the ledger — named,
+ * not the hash of `''`, so a ledger-only PR reads as such in the log. The
+ * moved-head rule REFUSES it on either side (#6301 item 2): it equals
+ * itself, and says nothing about what the panel saw.
+ */
+export const EMPTY_PATCH_IDENTITY = 'empty (no non-ledger change)';
 
 /** The kinds that pass the gate (#5131): `ratified`, and `ratified-rebased` under the #6256 rule. */
 export function isRatifiedKind(kind: LedgerEvidence['kind']): boolean {
@@ -632,16 +672,45 @@ function judgeMovedSha(
   if (identity.kind !== 'measured') {
     return { kind: 'refused', refusal: { sha, reason: identity.detail } };
   }
+  const refuse = (reason: string): ShaOutcome => ({ kind: 'refused', refusal: { sha, reason } });
+  // #6301 item 2: the empty identity equals itself. A ledger-only PR's head
+  // and ANY commit at or before its fork point both diff to nothing, so
+  // "equal" would bind the record to no patch at all.
+  if (
+    identity.patchIdentity === EMPTY_PATCH_IDENTITY &&
+    head.patchIdentity === EMPTY_PATCH_IDENTITY
+  ) {
+    return refuse(
+      'empty non-ledger patch on both sides — a ledger-only PR binds to head/head^ only; ' +
+        'an empty identity says nothing about what the panel saw'
+    );
+  }
+  if (
+    identity.patchIdentity === EMPTY_PATCH_IDENTITY ||
+    head.patchIdentity === EMPTY_PATCH_IDENTITY
+  ) {
+    const where = identity.patchIdentity === EMPTY_PATCH_IDENTITY ? 'the ratified sha' : 'the head';
+    return refuse(
+      `the non-ledger patch is empty at ${where} and not at the other — an empty identity is ` +
+        'never compared; a ledger-only PR binds to head/head^ only'
+    );
+  }
   if (identity.patchIdentity !== head.patchIdentity) {
-    return {
-      kind: 'refused',
-      refusal: {
-        sha,
-        reason:
-          `its non-ledger patch differs from the head's (${identity.patchIdentity} at the ` +
-          `ratified sha, ${head.patchIdentity} at the head) — the panel saw a different diff`,
-      },
-    };
+    return refuse(
+      `its non-ledger patch differs from the head's (${identity.patchIdentity} at the ` +
+        `ratified sha, ${head.patchIdentity} at the head) — the panel saw a different diff`
+    );
+  }
+  // #6301 item 3: for a file whose meaning is which section a line sits in,
+  // the position-insensitive identity is not enough — the full blob must
+  // be byte-equal at both shas.
+  const moved = orderSensitiveDifference(identity.orderSensitiveBlobs, head.orderSensitiveBlobs);
+  if (moved !== undefined) {
+    return refuse(
+      `${moved.path} differs between the ratified sha (${moved.atRatified}) and the head ` +
+        `(${moved.atHead}) although the patch identity is equal — its meaning is section-bounded ` +
+        '(the same lines at another position are a different file), so the full content must match'
+    );
   }
   // Condition 3: what the panel's ledger held must still be in the head's,
   // in order. A dropped or altered line between the two heads is a rewrite
@@ -651,6 +720,26 @@ function judgeMovedSha(
     return { kind: 'rewritten', verdict: { ...rewritten, againstRatifiedSha: sha } };
   }
   return { kind: 'passing', identity };
+}
+
+/**
+ * The first order-sensitive file whose blob differs between the two shas —
+ * present on one side only, or a different object — or `undefined` when
+ * every path matches on both (#6301 item 3).
+ */
+function orderSensitiveDifference(
+  atRatified: Readonly<Record<string, string>>,
+  atHead: Readonly<Record<string, string>>
+): { readonly path: string; readonly atRatified: string; readonly atHead: string } | undefined {
+  const label = (blob: string | undefined): string =>
+    blob === undefined ? 'absent' : `blob ${blob}`;
+  const paths = [...new Set([...Object.keys(atRatified), ...Object.keys(atHead)])].sort();
+  for (const path of paths) {
+    const a = atRatified[path];
+    const b = atHead[path];
+    if (a !== b) return { path, atRatified: label(a), atHead: label(b) };
+  }
+  return undefined;
 }
 
 /** The head's own identity, or why the rule cannot run at all (no probe, no head, head unmeasurable). */
@@ -703,20 +792,22 @@ function rebasedVerdict(
     record: verdict.record,
     ratifiedSha,
     headSha,
-    relation: identity.ancestorOfHead ? 'ancestor' : 'rewritten-history',
+    relation: identity.relation,
     patchIdentity: identity.patchIdentity,
     appendOnlyChecked,
   };
 }
 
 /**
- * The moved-head rule (#6256), reached only when no record binds an accepted
- * head. Each recorded sha is probed once; a sha passes when its commit is
- * present, its non-ledger patch identity equals the head's, and its ledger
- * is an ordered subsequence of the head ledger. The records bound at passing
- * shas go through the same per-record checks as a head-bound set, and a
- * `ratified` result over them is reported as `ratified-rebased`. No passing
- * sha ⇒ `sha-mismatch`, with one named reason per recorded sha.
+ * The moved-head rule (#6256, #6301), reached only when no record binds an
+ * accepted head. Each recorded sha is probed once; a sha passes when it is
+ * an ancestor of the head or a prior head of this PR, its commit is present,
+ * its non-ledger patch identity is non-empty and equals the head's, the
+ * order-sensitive files are byte-equal at both, and its ledger is an ordered
+ * subsequence of the head ledger. The records bound at passing shas go
+ * through the same per-record checks as a head-bound set, and a `ratified`
+ * result over them is reported as `ratified-rebased`. No passing sha ⇒
+ * `sha-mismatch`, with one named reason per recorded sha.
  */
 function movedHeadVerdict(
   forPr: readonly VoteRecord[],

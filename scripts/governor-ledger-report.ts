@@ -22,9 +22,11 @@
  *   to, whether that was a merge from main or a rebase, and why it still
  *   counts (#6256);
  * - `sha-mismatch` lists, per recorded sha, why the moved-head rule did not
- *   accept it — "object not found", the identity "differs", or "not
- *   measured" — so a rebase that changed the patch is distinguishable from
- *   a checkout that could not see the ratified commit.
+ *   accept it — "object not found", "not an ancestor … not a head this PR
+ *   had", the identity "differs", "empty non-ledger patch", an
+ *   order-sensitive file that "differs", or "not measured" — so a rebase
+ *   that changed the patch is distinguishable from a checkout that could
+ *   not see the ratified commit.
  *
  * @module scripts/governor-ledger-report
  * (Source: Issue #5131, #6219, #6256)
@@ -81,11 +83,12 @@ function ratifiedHeadClause(evidence: RatifiedEvidence): string {
     const how =
       evidence.relation === 'ancestor'
         ? 'a merge from main; the ratified commit is an ancestor of the head'
-        : 'a rebase; the ratified commit is not in the head’s history but its object is present';
+        : 'a rebase; the ratified commit is not in the head’s history but is a head this PR had (PR_PRIOR_HEADS)';
     return (
       `at ${evidence.ratifiedSha}; the head moved to ${evidence.headSha} (${how}) and still counts ` +
-      `because the non-ledger patch identity is unchanged (${evidence.patchIdentity}) and the ` +
-      'ledger at the ratified sha is a subsequence of the head ledger'
+      `because the non-ledger patch identity is unchanged (${evidence.patchIdentity}), the ` +
+      'order-sensitive files (CODEOWNERS, .rules/*.md) are byte-equal, and the ledger at the ' +
+      'ratified sha is a subsequence of the head ledger'
     );
   }
   return evidence.shaChecked
@@ -168,9 +171,11 @@ function refusalBody(evidence: Exclude<LedgerEvidence, RatifiedEvidence>): strin
       return `${evidence.kind}: ${noRecordBody(evidence.recordCount)}`;
     case 'sha-mismatch':
       // #6256: per recorded sha, why the moved-head rule did not accept it —
-      // "object not found", "patch differs", or "not measured" — so the
-      // operator can tell a rebase that changed the patch from a checkout
-      // that could not see the ratified commit.
+      // "object not found", "not an ancestor … not a head this PR had",
+      // "patch differs", "empty non-ledger patch", an order-sensitive file
+      // that "differs", or "not measured" — so the operator can tell a
+      // rebase that changed the patch from a checkout that could not see
+      // the ratified commit.
       return (
         `${evidence.kind}: record(s) ratify this PR at ${evidence.found.join(', ')}, not at the ` +
         `accepted head(s) ${evidence.accepted.join(', ')} — the panel saw a different diff; ` +
@@ -268,6 +273,9 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * `PR_BASE_SHA` (the merge-base both jobs already pass for the stamp
  * exemption) enables the moved-head probe over the checkout (#6256); absent
  * or malformed, a moved head is `sha-mismatch` with the reason "not measured".
+ * `PR_PRIOR_HEADS` names the heads this PR had (#6301 item 4); absent, a
+ * ratified sha that is not an ancestor of the head is `sha-mismatch` naming
+ * the relation.
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
@@ -303,9 +311,28 @@ export function ledgerEvidenceFromEnv(
 }
 
 /**
+ * The heads this PR had before the current one, as the workflow measured
+ * them (#6301 item 4): `PR_PRIOR_HEADS`, whitespace-separated 40-hex shas —
+ * the `synchronize` event's `github.event.before` and the head shas of this
+ * workflow's own runs on the PR's head branch since the PR was opened.
+ * Absent or empty ⇒ no prior head is known, and only an ancestor of the
+ * head is related. A token that is not a 40-hex sha is dropped, not
+ * passed to git.
+ */
+export const PRIOR_HEADS_ENV = 'PR_PRIOR_HEADS';
+
+function priorHeadsFromEnv(env: NodeJS.ProcessEnv): string[] {
+  return (env[PRIOR_HEADS_ENV] ?? '')
+    .split(/\s+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => isFullSha(s));
+}
+
+/**
  * The moved-head probe (#6256) over `RATIFICATION_REPO_DIR` (default: the
- * working directory) with `PR_BASE_SHA` as the PR base; `undefined` when
- * the base is absent or not a 40-hex sha, which the verdict names.
+ * working directory) with `PR_BASE_SHA` as the PR base and `PR_PRIOR_HEADS`
+ * as the heads this PR had; `undefined` when the base is absent or not a
+ * 40-hex sha, which the verdict names.
  */
 function patchIdentityProbeFromEnv(
   env: NodeJS.ProcessEnv,
@@ -314,7 +341,12 @@ function patchIdentityProbeFromEnv(
   const baseSha = (env['PR_BASE_SHA'] ?? '').trim();
   if (!isFullSha(baseSha)) return undefined;
   const repoDir = (env[REPO_DIR_ENV] ?? '').trim() || process.cwd();
-  return gitPatchIdentityProbe({ repoDir, baseSha, headSha });
+  return gitPatchIdentityProbe({
+    repoDir,
+    baseSha,
+    headSha,
+    priorHeadShas: priorHeadsFromEnv(env),
+  });
 }
 
 /** `PR_NUMBER` as a positive integer, or the `unmeasured` report that says why it is not one. */
