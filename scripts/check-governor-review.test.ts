@@ -854,6 +854,30 @@ describe('the governor path set matches what the docs claim (#5997)', () => {
     // be a ratified decision, so pin it rather than leave it implicit.
     expect(REAL_PATTERNS).not.toContain('/packages/nexus-agents/src/consensus/');
   });
+
+  it('includes the pure decision computation and the voter-role set (#6000 step 3)', () => {
+    // The #5997 contrarian's gap: `.rules/` declares the bar, but the code that
+    // turns a tally into approved/rejected was an ordinary review-request. The
+    // #6000 panel (option D, refined) governs the NARROW extraction — not the
+    // directory — so `engine.ts` stays routine while the verdict path does not.
+    expect(REAL_PATTERNS).toContain('/packages/nexus-agents/src/consensus/decision/');
+    expect(REAL_PATTERNS).toContain('/packages/nexus-agents/src/cli/voter-roles.ts');
+  });
+
+  it.each([
+    ['packages/nexus-agents/src/consensus/decision/verdict.ts', true],
+    ['packages/nexus-agents/src/consensus/decision/thresholds.ts', true],
+    ['packages/nexus-agents/src/consensus/decision/strategy.ts', true],
+    ['packages/nexus-agents/src/cli/voter-roles.ts', true],
+    ['packages/nexus-agents/src/consensus/engine.ts', false],
+    ['packages/nexus-agents/src/consensus/types-core.ts', false],
+    ['packages/nexus-agents/src/cli/vote-types.ts', false],
+    ['packages/nexus-agents/src/mcp/tools/consensus-vote.ts', false],
+  ])('%s is a governor path: %s (#6000 step 3)', (file, expected) => {
+    // Both gates route through this one matcher, so the boundary between the
+    // governed modules and their re-export homes is decided here, once.
+    expect(isGovernorPath(file, REAL_PATTERNS)).toBe(expected);
+  });
 });
 
 describe('CODEOWNERS governor section and the workflow paths filters stay in lockstep (#5997)', () => {
@@ -1117,8 +1141,10 @@ describe('the governor section is bounded by dedicated directives, not the human
 
   /**
    * The governor set parsed from origin/main at 32c14595b6, BEFORE the
-   * directives landed. The migration must not change what is governed: this
-   * is the identical-set proof, pinned as data rather than recomputed.
+   * directives landed, plus the two #6000 step-3 entries (the pure decision
+   * computation and the voter-role set). The migration must not change what
+   * is governed: this is the identical-set proof, pinned as data rather than
+   * recomputed, so an addition to the section is a reviewed act here too.
    */
   const PINNED_SET = [
     '/packages/nexus-agents/src/audit/',
@@ -1132,6 +1158,8 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/governance-stamp-exemption.ts',
     '/scripts/governor-section.ts',
     '/.rules/',
+    '/packages/nexus-agents/src/consensus/decision/',
+    '/packages/nexus-agents/src/cli/voter-roles.ts',
     '/CLAUDE.md',
     '/AGENTS.md',
     '/CODEOWNERS',

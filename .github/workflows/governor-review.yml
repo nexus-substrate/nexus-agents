@@ -40,6 +40,8 @@ on:
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
       - '.rules/**'
+      - 'packages/nexus-agents/src/consensus/decision/**'
+      - 'packages/nexus-agents/src/cli/voter-roles.ts'
   push:
     branches: [main]
     paths:
@@ -56,6 +58,8 @@ on:
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
       - '.rules/**'
+      - 'packages/nexus-agents/src/consensus/decision/**'
+      - 'packages/nexus-agents/src/cli/voter-roles.ts'
 
 permissions:
   contents: read
