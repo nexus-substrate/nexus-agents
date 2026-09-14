@@ -15,6 +15,8 @@ import type {
 } from './types.js';
 import { VOTING_THRESHOLDS } from './types.js';
 import { HigherOrderVotingStrategy } from './higher-order-voting.js';
+// The ratio-vs-bar comparison lives in the governed decision module (#6000 step 1).
+import { evaluateThreshold } from './decision/verdict.js';
 
 /**
  * Interface for voting strategy implementations.
@@ -62,28 +64,6 @@ function deriveWeightBasis(votes: Map<string, Vote>, weights: Map<string, number
   // 0 === 0 report a full performance basis over nothing measured.
   if (withRecord === 0) return 'unweighted';
   return withRecord === votes.size ? 'performance' : 'partial';
-}
-
-/**
- * Evaluates an approval ratio against a threshold — the shared math behind
- * the simple-majority, supermajority and proof-of-learning strategies.
- *
- * `inclusive` selects the comparison: `>=` for supermajority (an exact 2/3
- * passes), strict `>` for simple-majority and proof-of-learning (a tie at the
- * threshold is not enough). Callers apply their own zero-denominator guard
- * before calling this.
- */
-function evaluateThreshold(
-  approveCount: number,
-  votingTotal: number,
-  threshold: number,
-  inclusive: boolean
-): { approved: boolean; approvalPercentage: number } {
-  const ratio = approveCount / votingTotal;
-  return {
-    approved: inclusive ? ratio >= threshold : ratio > threshold,
-    approvalPercentage: ratio * 100,
-  };
 }
 
 /**
