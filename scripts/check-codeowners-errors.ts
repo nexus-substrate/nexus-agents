@@ -20,6 +20,17 @@
  * (`{ message: "Not Found" }`) has no `errors` field; a gate that read that as
  * "no errors" could not fail, and a check that cannot fail is not a check.
  *
+ * ## Shadow locations
+ *
+ * GitHub also reads `.github/CODEOWNERS` (which takes precedence over the root
+ * file) and `docs/CODEOWNERS` (which the root file takes precedence over). The
+ * gate fails closed if either exists in the checkout — see
+ * {@link SHADOW_CODEOWNERS_PATHS}. This lives here rather than in
+ * `governor-section.ts` because the question is "what does GitHub read", which
+ * is this gate's question; the two ratification gates keep parsing the root
+ * file, and any PR that creates a shadow file reaches this job through the
+ * workflow's `paths:` filter.
+ *
  * ## What it does NOT verify
  *
  * Match semantics. GitHub could parse a pattern and still match a different
@@ -33,6 +44,53 @@
  * @module scripts/check-codeowners-errors
  * (Source: Issue #6174)
  */
+
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { MUST_NOT_EXIST_GOVERNOR_PATHS } from './governor-section.js';
+import { ROOT } from './script-paths.js';
+
+/**
+ * Locations GitHub reads CODEOWNERS from OTHER than the repo root, in the order
+ * GitHub consults them: `.github/CODEOWNERS` wins over the root file, which
+ * wins over `docs/CODEOWNERS`. Derived from the governor-section constant (the
+ * CODEOWNERS-pattern spelling, root-anchored) so the gate, the #6034 exemption
+ * and the CODEOWNERS entries cannot drift apart.
+ */
+export const SHADOW_CODEOWNERS_PATHS: readonly string[] = MUST_NOT_EXIST_GOVERNOR_PATHS.map((p) =>
+  p.replace(/^\//, '')
+);
+
+/** Which shadow CODEOWNERS files exist under `root` (repo-relative paths, in precedence order). */
+export function findShadowCodeowners(root: string = ROOT): readonly string[] {
+  return SHADOW_CODEOWNERS_PATHS.filter((p) => existsSync(join(root, p)));
+}
+
+/**
+ * Judge the shadow-file finding. Empty means "no shadow file exists", which is
+ * the pass — it is a measured absence (each candidate path was probed), not a
+ * default.
+ */
+export function summarizeShadowCodeowners(found: readonly string[]): CodeownersVerdict {
+  if (found.length === 0) {
+    return {
+      ok: true,
+      lines: [
+        `CODEOWNERS check: no shadow file at ${SHADOW_CODEOWNERS_PATHS.join(' or ')}; GitHub reads the root file the governor gates parse.`,
+      ],
+    };
+  }
+  return {
+    ok: false,
+    lines: [
+      `CODEOWNERS check: shadow CODEOWNERS present — ${found.join(', ')}. ` +
+        'GitHub reads .github/CODEOWNERS over the root file, and the root file over docs/CODEOWNERS; ' +
+        'the governor gates parse only the root file, so a shadow file changes what GitHub enforces ' +
+        'without changing what the gates measure. Delete it, or move its content into /CODEOWNERS.',
+    ],
+  };
+}
 
 /** One entry of GitHub's `errors` array, every field optional because it is untrusted input. */
 interface CodeownersErrorEntry {
@@ -248,11 +306,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  const verdict = await checkCodeownersErrors(read.input);
-  for (const line of verdict.lines) console.log(line);
-  if (!verdict.ok) {
-    console.log(`::error::${verdict.lines[0] ?? 'CODEOWNERS check failed'}`);
-    process.exitCode = 1;
+  // Both checks run so the log shows every defect; either failing fails the job.
+  const shadow = summarizeShadowCodeowners(findShadowCodeowners());
+  const endpoint = await checkCodeownersErrors(read.input);
+  for (const verdict of [shadow, endpoint]) {
+    for (const line of verdict.lines) console.log(line);
+    if (!verdict.ok) {
+      console.log(`::error::${verdict.lines[0] ?? 'CODEOWNERS check failed'}`);
+      process.exitCode = 1;
+    }
   }
 }
 

@@ -4,6 +4,10 @@
  * @module scripts/check-codeowners-errors.test
  */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -12,7 +16,11 @@ import {
   checkCodeownersErrors,
   parseRefArg,
   readCheckInput,
+  findShadowCodeowners,
+  summarizeShadowCodeowners,
+  SHADOW_CODEOWNERS_PATHS,
 } from './check-codeowners-errors.js';
+import { ROOT } from './script-paths.js';
 
 /** Two entries in the shape GitHub documents for `GET /repos/{o}/{r}/codeowners/errors`. */
 const TWO_ERRORS = {
@@ -219,5 +227,60 @@ describe('parseRefArg', () => {
     expect(parseRefArg([])).toBeUndefined();
     expect(parseRefArg(['--ref'])).toBeUndefined();
     expect(parseRefArg(['--ref', ''])).toBeUndefined();
+  });
+});
+
+describe('shadow CODEOWNERS locations', () => {
+  const dirs: string[] = [];
+  const fixture = (shadow: readonly string[]): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'codeowners-shadow-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'CODEOWNERS'), '/CODEOWNERS @owner\n');
+    for (const p of shadow) {
+      mkdirSync(join(dir, p, '..'), { recursive: true });
+      writeFileSync(join(dir, p), '/CODEOWNERS @someone-else\n');
+    }
+    return dir;
+  };
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('names the two locations GitHub reads besides the root file', () => {
+    expect(SHADOW_CODEOWNERS_PATHS).toEqual(['.github/CODEOWNERS', 'docs/CODEOWNERS']);
+  });
+
+  it('FAILS when .github/CODEOWNERS exists, naming the file and the precedence rule', () => {
+    const found = findShadowCodeowners(fixture(['.github/CODEOWNERS']));
+    expect(found).toEqual(['.github/CODEOWNERS']);
+    const verdict = summarizeShadowCodeowners(found);
+    expect(verdict.ok).toBe(false);
+    const text = verdict.lines.join('\n');
+    expect(text).toContain('.github/CODEOWNERS');
+    expect(text).toMatch(/over the root file/);
+  });
+
+  it('FAILS when docs/CODEOWNERS exists', () => {
+    const found = findShadowCodeowners(fixture(['docs/CODEOWNERS']));
+    expect(found).toEqual(['docs/CODEOWNERS']);
+    expect(summarizeShadowCodeowners(found).ok).toBe(false);
+  });
+
+  it('reports both when both exist, in precedence order', () => {
+    const found = findShadowCodeowners(fixture(['docs/CODEOWNERS', '.github/CODEOWNERS']));
+    expect(found).toEqual(['.github/CODEOWNERS', 'docs/CODEOWNERS']);
+  });
+
+  it('passes when only the root file exists', () => {
+    const found = findShadowCodeowners(fixture([]));
+    expect(found).toEqual([]);
+    const verdict = summarizeShadowCodeowners(found);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.lines.join('\n')).toMatch(/no shadow file/);
+  });
+
+  it('the real tree has no shadow file', () => {
+    expect(findShadowCodeowners(ROOT)).toEqual([]);
+    expect(summarizeShadowCodeowners(findShadowCodeowners(ROOT)).ok).toBe(true);
   });
 });

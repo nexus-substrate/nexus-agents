@@ -33,6 +33,7 @@ import {
   governorPathsFromCodeowners,
   governorSectionLines,
   unresolvedGovernorPatterns,
+  MUST_NOT_EXIST_GOVERNOR_PATHS,
   matchesCodeownersPattern,
   isGovernorPath,
   GovernorSectionError,
@@ -1111,6 +1112,15 @@ describe('a governor pattern that matches nothing is not a governed path (#6034)
     expect(result).toHaveLength(1);
   });
 
+  it('a must-not-exist entry matching nothing is NOT unresolved (#6174)', () => {
+    // The shadow CODEOWNERS locations are governed so that creating one is a
+    // governor change; for them, matching no tracked file is the healthy state.
+    expect(MUST_NOT_EXIST_GOVERNOR_PATHS).toEqual(['/.github/CODEOWNERS', '/docs/CODEOWNERS']);
+    expect(unresolvedGovernorPatterns(MUST_NOT_EXIST_GOVERNOR_PATHS, TRACKED, LINES)).toEqual([]);
+    // The exemption is by exact pattern — a near miss is still reported.
+    expect(unresolvedGovernorPatterns(['/.github/CODEOWNER'], TRACKED, LINES)).toHaveLength(1);
+  });
+
   it('the REAL CODEOWNERS resolves against the REAL tracked tree', () => {
     // The regression that matters: this is the assertion that fires if someone
     // renames a governed directory without updating its entry.
@@ -1157,6 +1167,8 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
     '/scripts/check-codeowners-errors.ts',
+    '/.github/CODEOWNERS',
+    '/docs/CODEOWNERS',
     '/scripts/governance-stamp-exemption.ts',
     '/scripts/governor-section.ts',
     '/.rules/',
@@ -1186,10 +1198,13 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script is governor-owned (17 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (19 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
-    expect(set).toHaveLength(17);
+    // Entries for files that must NOT exist: creating one is a governor change.
+    expect(set).toContain('/.github/CODEOWNERS');
+    expect(set).toContain('/docs/CODEOWNERS');
+    expect(set).toHaveLength(19);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {
