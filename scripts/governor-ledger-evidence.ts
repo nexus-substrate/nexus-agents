@@ -10,10 +10,13 @@
  * ledger a record shape that can say so: `ratifiesPr: { pr, headSha }`
  * inside the self-hash, appended to `governance/vote-records.jsonl` by the
  * caller in the PR it ratifies. This module reads that ledger and returns a
- * typed verdict the gate prints — WARN-FIRST. The exit code is still the
- * label/approval verdict's; **#5131 flips this verdict to a failure** once
- * records are flowing, and `governor-ledger-evidence.test.ts` carries the
- * `todo` for that flip.
+ * typed verdict the gate prints AND EXITS ON (#5131): only `ratified` passes;
+ * every other kind, and an `unmeasured` report, is a `::error::` and exit 1.
+ * The label/approval verdict is still required alongside it — both must
+ * hold. Warn-first ended on 2026-09-14, when the first bound record reached
+ * the committed ledger (PR #6241, `vote-1789376500996-fxkw4uk`); the flip is
+ * step 2 of the #5118 decision and was filed as #5131 before the transport
+ * existed, so it could not sit in a comment the way #3991 did.
  *
  * ## The verdict names its cases
  *
@@ -66,9 +69,23 @@
  *
  * Precedence puts `ledger-rewritten` right after `ledger-invalid`: a rewrite
  * outranks `duplicate-id` and `no-record` because the ledger it is computed
- * over is not the ledger main will carry. No base supplied (the post-merge
- * backstop, a local run) leaves the check NOT MADE, and the `ratified` line
- * says so (`appendOnlyChecked: false`) rather than reading absence as health.
+ * over is not the ledger main will carry. No base supplied (a local run;
+ * both workflow jobs supply one since #6218) leaves the check NOT MADE, and
+ * the `ratified` line says so (`appendOnlyChecked: false`) rather than
+ * reading absence as health.
+ *
+ * ## The backstop binds to the PR's pre-squash head (#6249)
+ *
+ * The post-merge job runs on the squash commit, which no panel saw, so it
+ * used to key on the PR number alone (`shaChecked: false`). The #6249 panel's
+ * contrarian showed what that accepts: a record bound to sha1, a later push
+ * of sha2 past the red pre-merge gate, an admin merge — and the backstop,
+ * the one signal that cannot be bypassed, exits 0. So the backstop now
+ * resolves the merged PR's final head (`pulls/{n}` → `head.sha`), fetches
+ * `refs/pull/{n}/head` so that commit's parent and file list resolve, and
+ * passes the same `PR_HEAD_SHA` / parent / files the pre-merge job does.
+ * A head that cannot be resolved is `unmeasured` (exit 1), never "PR number
+ * matched".
  *
  * ## Coverage is required on a bound record (#6213)
  *
@@ -139,6 +156,19 @@
  * records, so a dissenting record in the committed ledger is itself a
  * finding.
  *
+ * ## Report order: the misconfiguration is named before the rejection
+ *
+ * The verdict `kind` follows the precedence table (`not-approved` first,
+ * so a dissent is never outranked). The PRINTED line does not stop at the
+ * first check: it lists EVERY failing check over the bound records, and
+ * orders the misconfiguration kinds — `wrong-error-policy`,
+ * `wrong-strategy`, `unmeasured-panel`, `degraded-panel` — ahead of
+ * `not-approved`. The #6219 confirming panel asked for this at flip time: a
+ * run that was rejected AND misconfigured is a misconfigured run, and a log
+ * that names it as a plain rejection sends the operator to re-run the same
+ * misconfiguration. Both are non-ratified either way; only the report
+ * changes. The `failures` field on a bound refusal carries that list.
+ *
  * ## Residual trust (disclosed)
  *
  * The self-hash makes a record tamper-EVIDENT, not tamper-PROOF. A record
@@ -174,7 +204,13 @@ export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
  */
 export const BASE_LEDGER_PATH_ENV = 'RATIFICATION_BASE_LEDGER_PATH';
 
-/** The PR head as the pre-merge job sees it. Absent on the post-merge backstop. */
+/**
+ * The head the record must bind to. The pre-merge job passes the PR head; the
+ * post-merge backstop passes the merged PR's FINAL pre-squash head
+ * (`pulls/{n}` → `head.sha`), fetched via `refs/pull/{n}/head` so its parent
+ * and file list resolve (#6249 panel). The squash commit itself is never a
+ * binding target — no panel saw it.
+ */
 export interface HeadBinding {
   readonly sha: string;
   /** `head^`. Absent when it could not be resolved; then only `sha` is accepted. */
@@ -189,9 +225,12 @@ export interface LedgerEvidenceInputs {
   /** The PR under review. */
   readonly pr: number;
   /**
-   * The head to bind against. Omitted by the post-merge backstop, which runs
-   * on the squash commit — a sha the panel never saw — and so keys on the PR
-   * number alone; the verdict then says the sha was not checked.
+   * The head to bind against. The workflow ALWAYS supplies one (#6249): the
+   * backstop used to key on the PR number alone, which accepted a record
+   * bound to sha1 for a PR whose final head was sha2 — a later push past a
+   * red pre-merge gate, admin-merged, exited 0. `ledgerEvidenceFromEnv`
+   * reports `unmeasured` when it is absent. A caller of this pure function
+   * that omits it gets `shaChecked: false` on the ratified line, named.
    */
   readonly head?: HeadBinding | undefined;
   /**
@@ -203,22 +242,11 @@ export interface LedgerEvidenceInputs {
   readonly baseLedgerText?: string | undefined;
 }
 
-/** The verdict. See the module header for what each kind means. */
-export type LedgerEvidence =
-  | {
-      readonly kind: 'ratified';
-      readonly record: VoteRecord;
-      /** False on the post-merge backstop: the PR number matched, the sha was not compared. */
-      readonly shaChecked: boolean;
-      /** False when no base ledger was supplied: append-only was not compared (#6213). */
-      readonly appendOnlyChecked: boolean;
-    }
-  | { readonly kind: 'no-record'; readonly recordCount: number }
-  | {
-      readonly kind: 'sha-mismatch';
-      readonly accepted: readonly string[];
-      readonly found: readonly string[];
-    }
+/**
+ * One failing per-record check — the `BOUND_RECORD_CHECKS` kinds, each naming
+ * the bound record it was computed over.
+ */
+export type BoundRecordFailure =
   | { readonly kind: 'not-approved'; readonly record: VoteRecord }
   | {
       readonly kind: 'wrong-error-policy';
@@ -237,7 +265,40 @@ export type LedgerEvidence =
       readonly kind: 'degraded-panel';
       readonly record: VoteRecord;
       readonly coverage: VoteRecordPanelCoverage;
+    };
+
+/**
+ * A refusal over the bound records: the precedence-first failure, plus EVERY
+ * failing check in report order (#6219 panel note) — the misconfiguration
+ * kinds before `not-approved`, so the printed line names a misconfigured run
+ * as such. Never empty: the first entry in precedence order is the refusal's
+ * own `kind`.
+ */
+export type BoundRecordRefusal = BoundRecordFailure & {
+  readonly failures: readonly BoundRecordFailure[];
+};
+
+/** The verdict. See the module header for what each kind means. */
+export type LedgerEvidence =
+  | {
+      readonly kind: 'ratified';
+      readonly record: VoteRecord;
+      /**
+       * False only when the caller passed no head: the PR number matched and
+       * the sha was not compared. Neither workflow job takes that path since
+       * #6249 — `ledgerEvidenceFromEnv` refuses to run without `PR_HEAD_SHA`.
+       */
+      readonly shaChecked: boolean;
+      /** False when no base ledger was supplied: append-only was not compared (#6213). */
+      readonly appendOnlyChecked: boolean;
     }
+  | { readonly kind: 'no-record'; readonly recordCount: number }
+  | {
+      readonly kind: 'sha-mismatch';
+      readonly accepted: readonly string[];
+      readonly found: readonly string[];
+    }
+  | BoundRecordRefusal
   | { readonly kind: 'ledger-invalid'; readonly detail: string }
   | {
       readonly kind: 'ledger-rewritten';
@@ -360,14 +421,8 @@ const GOVERNOR_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set<VoteRec
   'unanimous',
 ]);
 
-/** A refusal that names the bound record it was computed over. */
-type BoundRecordRefusal = Exclude<
-  Extract<LedgerEvidence, { readonly record: VoteRecord }>,
-  { readonly kind: 'ratified' }
->;
-
 /** `unmeasured-panel` / `degraded-panel` from the record's coverage; `undefined` for a whole panel. */
-function panelVerdict(record: VoteRecord): BoundRecordRefusal | undefined {
+function panelVerdict(record: VoteRecord): BoundRecordFailure | undefined {
   const reason = panelUnmeasuredReason(record);
   if (reason !== undefined) return { kind: 'unmeasured-panel', record, reason };
   // Narrowed above: `reason` is undefined only when coverage is present.
@@ -384,7 +439,7 @@ function panelVerdict(record: VoteRecord): BoundRecordRefusal | undefined {
  * judged on the following one, so a dissent beside an approval is
  * `not-approved` whatever else the approval says.
  */
-const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordRefusal | undefined)[] = [
+const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordFailure | undefined)[] = [
   (record) => (record.decision === 'approved' ? undefined : { kind: 'not-approved', record }),
   // #6211: a RECORDED policy is read before the panel-coverage inference —
   // the policy is the cause, the errored seat only its symptom. An absent
@@ -402,17 +457,38 @@ const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordRefusal 
   panelVerdict,
 ];
 
-/** The bound records' verdict: every one must be approved and whole; the latest is reported. */
+/**
+ * Report order (#6219 panel note): the misconfiguration kinds first, in
+ * precedence order among themselves, then `not-approved`. A stable partition
+ * of the precedence-ordered list, so the first entry is the first
+ * misconfiguration when there is one.
+ */
+function inReportOrder(failures: readonly BoundRecordFailure[]): BoundRecordFailure[] {
+  const rejections = failures.filter((f) => f.kind === 'not-approved');
+  const misconfigurations = failures.filter((f) => f.kind !== 'not-approved');
+  return [...misconfigurations, ...rejections];
+}
+
+/**
+ * The bound records' verdict: every one must be approved and whole; the
+ * latest is reported. A refusal's `kind` is the first failure in PRECEDENCE
+ * order (every check over the whole bound set before the next), and its
+ * `failures` list carries every failing check in REPORT order, so the
+ * annotation can name all of them rather than the first.
+ */
 function verdictOverBound(
   bound: readonly VoteRecord[],
   checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean }
 ): LedgerEvidence {
+  const failures: BoundRecordFailure[] = [];
   for (const check of BOUND_RECORD_CHECKS) {
     for (const record of bound) {
-      const refusal = check(record);
-      if (refusal !== undefined) return refusal;
+      const failure = check(record);
+      if (failure !== undefined) failures.push(failure);
     }
   }
+  const first = failures[0];
+  if (first !== undefined) return { ...first, failures: inReportOrder(failures) };
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
   const latest = bound.reduce((a, b) => (b.sequence > a.sequence ? b : a));
   return { kind: 'ratified', record: latest, ...checked };
@@ -452,15 +528,17 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked });
 }
 
-const FLIP_NOTE = '(warn-first; #5131 flips this to a failure)';
 const TAG = '[governor-ledger]';
+/** What a refusal costs, on every failing line: the flip (#5131) is stated where it bites. */
+const FAIL_NOTE =
+  'A governor-path PR fails without a ratifying record in the committed ledger (#5131).';
 
 function formatRatified(evidence: Extract<LedgerEvidence, { kind: 'ratified' }>): string {
   const b = evidence.record.ratifiesPr;
   const recordedHead = b?.headSha ?? '(unbound)';
   const sha = evidence.shaChecked
     ? `at ${recordedHead}`
-    : `— sha not checked (post-merge: the squash commit is not the head the panel saw; recorded head ${recordedHead})`;
+    : `— sha NOT checked (the caller supplied no head; recorded head ${recordedHead})`;
   const coverage = evidence.record.panelCoverage;
   const panel =
     coverage === undefined
@@ -489,8 +567,8 @@ function noRecordBody(recordCount: number): string {
     : `none of the ${String(recordCount)} record(s) in the committed ledger ratifies this PR`;
 }
 
-/** The reason text for a refusal that names its record — the `BOUND_RECORD_CHECKS` kinds. */
-function boundRecordBody(evidence: BoundRecordRefusal): string {
+/** The reason text for one failing per-record check — the `BOUND_RECORD_CHECKS` kinds. */
+function boundRecordBody(evidence: BoundRecordFailure): string {
   const id = `record '${evidence.record.id}'`;
   switch (evidence.kind) {
     case 'not-approved':
@@ -520,43 +598,51 @@ function boundRecordBody(evidence: BoundRecordRefusal): string {
   }
 }
 
-/** The reason text for every non-ratified kind; the caller adds the annotation prefix and the flip note. */
-function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): string {
+/**
+ * `<kind>: <reason>` for every non-ratified kind; the caller adds the
+ * annotation prefix and the fail note. A bound refusal renders EVERY failing
+ * check in report order — the misconfiguration before the rejection (#6219
+ * panel note) — joined with `; `, so the line leads with the kind that names
+ * the cause even when the verdict's own `kind` is `not-approved`.
+ */
+function refusalBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): string {
   switch (evidence.kind) {
     case 'no-record':
-      return noRecordBody(evidence.recordCount);
+      return `${evidence.kind}: ${noRecordBody(evidence.recordCount)}`;
     case 'sha-mismatch':
       return (
-        `record(s) ratify this PR at ${evidence.found.join(', ')}, not at the accepted head(s) ` +
-        `${evidence.accepted.join(', ')} — the panel saw a different diff`
+        `${evidence.kind}: record(s) ratify this PR at ${evidence.found.join(', ')}, not at the ` +
+        `accepted head(s) ${evidence.accepted.join(', ')} — the panel saw a different diff`
       );
     case 'ledger-invalid':
-      return evidence.detail;
+      return `${evidence.kind}: ${evidence.detail}`;
     case 'ledger-rewritten':
       return (
-        `the ledger at head is not the base ledger plus appended lines: base line ${String(evidence.divergesAt)} ` +
-        `of ${String(evidence.baseLineCount)} is missing, changed or moved (head has ${String(evidence.headLineCount)} ` +
-        'record line(s)) — the ledger is append-only; restore the base lines verbatim, in their order'
+        `${evidence.kind}: the ledger at head is not the base ledger plus appended lines: base line ` +
+        `${String(evidence.divergesAt)} of ${String(evidence.baseLineCount)} is missing, changed or moved ` +
+        `(head has ${String(evidence.headLineCount)} record line(s)) — the ledger is append-only; ` +
+        'restore the base lines verbatim, in their order'
       );
     case 'duplicate-id':
       return (
-        `${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one record with different ` +
-        "content; the ledger is ambiguous until the line that is not the panel's is removed"
+        `${evidence.kind}: ${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one ` +
+        "record with different content; the ledger is ambiguous until the line that is not the panel's is removed"
       );
     default:
-      // Narrowed to the kinds that carry a record: every `BOUND_RECORD_CHECKS` refusal.
-      return boundRecordBody(evidence);
+      // Narrowed to the bound refusals: every `BOUND_RECORD_CHECKS` kind carries `failures`.
+      return evidence.failures.map((f) => `${f.kind}: ${boundRecordBody(f)}`).join('; ');
   }
 }
 
 /**
  * Render the verdict as a GitHub annotation: `::notice::` for `ratified`,
- * `::warning::` for everything else. Names the record id or the reason so the
- * line stands on its own in the job log.
+ * `::error::` for everything else (#5131 — every other kind fails the gate).
+ * Names the record id or the reason so the line stands on its own in the
+ * job log.
  */
 export function formatLedgerEvidence(evidence: LedgerEvidence): string {
   if (evidence.kind === 'ratified') return formatRatified(evidence);
-  return `::warning::${TAG} ${evidence.kind}: ${warningBody(evidence)} ${FLIP_NOTE}`;
+  return `::error::${TAG} ${refusalBody(evidence)}. ${FAIL_NOTE}`;
 }
 
 /** The ledger verdict, or an explicit "not measured" when the inputs to compute it are absent. */
@@ -578,11 +664,13 @@ type ReadResult = { ok: true; text: string } | { ok: false; reason: string };
 
 /**
  * Read a ledger file, naming the failure instead of throwing (#6213). An
- * EISDIR or EACCES here used to crash the gate, which turned a would-be
- * exit 0 into a non-zero exit — a change to the exit code the warn-first
- * contract forbids. `missingIsEmpty` is the head ledger's rule: a file that
- * does not exist is the empty ledger, a measurement; the base ledger is
- * written by the workflow unconditionally, so its absence is an error.
+ * EISDIR or EACCES here used to crash the gate with a stack trace; now it is
+ * the `unmeasured` report, which the gate fails on by name (#5131) — the
+ * exit code is the same 1, but the log says what could not be read.
+ * `missingIsEmpty` is the head ledger's rule: a file that does not exist is
+ * the empty ledger, a measurement (`no-record`, which also fails); the base
+ * ledger is written by the workflow unconditionally, so its absence is an
+ * error.
  */
 function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): ReadResult {
   if (missingIsEmpty && !existsSync(path)) return { ok: true, text: '' };
@@ -602,9 +690,12 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * ratified this". A missing ledger FILE is the empty ledger (`no-record`,
  * count 0) — that is a measurement; an UNREADABLE one (a directory at the
  * path, a permissions error) is `unmeasured` naming the error (#6213).
- * `PR_HEAD_SHA` absent is the post-merge shape (PR number only).
- * `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the merge-base; absent,
- * append-only is not checked and the verdict says so.
+ * `PR_HEAD_SHA` absent is `unmeasured` too (#6249): without a head the
+ * binding cannot be checked, and the backstop that once ran that way
+ * accepted a record for sha1 on a PR whose final head was sha2. Both jobs
+ * supply it — the pre-merge job the PR head, the backstop the merged PR's
+ * pre-squash head. `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the
+ * merge-base; absent, append-only is not checked and the verdict says so.
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
@@ -621,10 +712,18 @@ export function ledgerEvidenceFromEnv(
   if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
 
   const head = headFromEnv(env);
+  if (head === undefined) {
+    return {
+      kind: 'unmeasured',
+      reason:
+        'PR_HEAD_SHA is not set; a record cannot be bound to a head that was not supplied ' +
+        "(the backstop must resolve the merged PR's pre-squash head, #6249)",
+    };
+  }
   return evaluateLedgerEvidence({
     ledgerText: ledger.text,
     pr,
-    ...(head !== undefined ? { head } : {}),
+    head,
     ...(base !== undefined ? { baseLedgerText: base.text } : {}),
   });
 }
@@ -649,12 +748,22 @@ function baseLedgerFromEnv(env: NodeJS.ProcessEnv): ReadResult | undefined {
   return readLedgerFile(basePath, 'base ledger', false);
 }
 
-/** Print the report to stderr, next to the label/approval verdict. Never changes the exit code (#5131). */
-export function reportLedgerEvidence(env: NodeJS.ProcessEnv, defaultLedgerPath: string): void {
+/**
+ * Print the report to stderr, next to the label/approval verdict, and say
+ * whether the ledger RATIFIED the PR (#5131). The caller folds the answer
+ * into its exit code: `true` only for `ratified`. `unmeasured` — an
+ * unreadable ledger, no PR number — is `false` and a `::error::`: a gate
+ * that cannot read its evidence has not found a ratification, and reporting
+ * absence of measurement as a pass is the shape #5131 removes.
+ */
+export function reportLedgerEvidence(env: NodeJS.ProcessEnv, defaultLedgerPath: string): boolean {
   const report = ledgerEvidenceFromEnv(env, defaultLedgerPath);
   if (report.kind === 'unmeasured') {
-    console.error(`[governor-ledger] unmeasured: ${report.reason}.`);
-    return;
+    console.error(
+      `::error::${TAG} unmeasured: ${report.reason} — the gate fails closed on evidence it cannot read. ${FAIL_NOTE}`
+    );
+    return false;
   }
   console.error(formatLedgerEvidence(report));
+  return report.kind === 'ratified';
 }
