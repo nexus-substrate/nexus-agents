@@ -893,12 +893,20 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
   // and one parser; the two jobs that should not run on an ordinary PR read a
   // detector output computed from that parse.
   const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+  interface Step {
+    id?: string;
+    name?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+  }
   interface Job {
     name?: string;
     needs?: string | string[];
     if?: string;
     outputs?: Record<string, string>;
-    steps?: Array<{ id?: string; run?: string }>;
+    steps?: Step[];
   }
   const parsed = parseYaml(WORKFLOW) as {
     on?: Record<string, Record<string, unknown>>;
@@ -935,10 +943,73 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
         `\${{ steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} }}`
       );
       const detector = (job?.steps ?? []).find((s) => s.id === 'touched');
+      // The `run:` body — not the script — writes the `governor_touched=`
+      // line, so the #4698 wiring test can resolve the producer (#6260). The
+      // script prints only the value; `bash -e` turns its exit 1 into a
+      // failed assignment, so an unmeasured detector writes no line at all.
       expect(detector?.run, id).toBe(
-        'npx tsx scripts/governor-paths-touched.ts >> "${GITHUB_OUTPUT}"'
+        [
+          'TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)',
+          `echo "${GOVERNOR_TOUCHED_OUTPUT_KEY}=\${TOUCHED}" >> "\${GITHUB_OUTPUT}"`,
+          '',
+        ].join('\n')
       );
     }
+  });
+
+  describe('the detector runs BEFORE the GitHub API is touched, and gates it (#6260)', () => {
+    // Scope steward, #6260 panel: with evidence collected first, a transient
+    // `gh api` failure would block an ORDINARY PR once this context is
+    // required. The order is checkout → setup → changed files → detector →
+    // (evidence → gate, both gated on the detector) → the not-touched verdict.
+    const job = jobs['governor-ratification'];
+    const steps = job?.steps ?? [];
+    const ids = steps.map((s) => s.id);
+    const at = (id: string): number => ids.indexOf(id);
+    const gatedOnDetector = `steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} == 'true'`;
+
+    it('the detector consumes the changed-files step, which precedes it', () => {
+      expect(at('changed')).toBeGreaterThanOrEqual(0);
+      expect(at('touched')).toBeGreaterThan(at('changed'));
+      const detector = steps[at('touched')];
+      expect(detector?.env?.['CHANGED_FILES']).toBe('${{ steps.changed.outputs.files }}');
+      // The detector itself makes no API call — its only input is the diff.
+      expect(detector?.run ?? '').not.toContain('gh api');
+      expect(detector?.if).toBeUndefined();
+    });
+
+    it('the evidence step runs AFTER the detector and only when a governor path is touched', () => {
+      expect(at('evidence')).toBeGreaterThan(at('touched'));
+      const evidence = steps[at('evidence')];
+      expect(evidence?.if).toBe(gatedOnDetector);
+      // This is the step that reaches the API; nothing before it does.
+      expect(evidence?.run ?? '').toContain('gh api');
+      for (const step of steps.slice(0, at('evidence'))) {
+        expect(step.run ?? '', step.id ?? step.name ?? step.uses ?? '?').not.toContain('gh api');
+      }
+    });
+
+    it('the gate step is gated the same way and reads the diff from the changed-files step', () => {
+      const gate = steps.find((s) => s.run?.includes('check-governor-ratification.ts') === true);
+      expect(gate).toBeDefined();
+      expect(steps.indexOf(gate as Step)).toBeGreaterThan(at('evidence'));
+      expect(gate?.if).toBe(gatedOnDetector);
+      expect(gate?.env?.['CHANGED_FILES']).toBe('${{ steps.changed.outputs.files }}');
+      expect(gate?.env?.['PR_BASE_SHA']).toBe('${{ steps.changed.outputs.base }}');
+    });
+
+    it('the final step names the not-touched verdict and is reached even when the detector failed', () => {
+      const last = steps[steps.length - 1];
+      expect(last?.if).toBe(
+        `\${{ always() && steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} != 'true' }}`
+      );
+      expect(last?.run).toContain('not-applicable');
+      // `false` exits 0; an empty (unmeasured) value exits 1 — the empty
+      // case is named, not defaulted to a pass.
+      expect(last?.run).toContain('exit 0');
+      expect(last?.run).toContain('exit 1');
+      expect(last?.run).toContain('unmeasured');
+    });
   });
 
   it.each([

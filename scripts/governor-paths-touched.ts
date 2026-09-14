@@ -20,23 +20,33 @@
  *
  * ## The empty cases are named
  *
- * | Input | Output line | Exit |
+ * | Input | stdout | Exit |
  * | --- | --- | --- |
- * | governor path in the list | `governor_touched=true` | 0 |
- * | no governor path in the list (an empty list included) | `governor_touched=false` | 0 |
- * | `CHANGED_FILES` absent | none | 1 |
- * | governor section unparseable | none | 1 |
+ * | governor path in the list | `true` | 0 |
+ * | no governor path in the list (an empty list included) | `false` | 0 |
+ * | `CHANGED_FILES` absent | nothing | 1 |
+ * | governor section unparseable | nothing | 1 |
  *
- * An absent list is not "nothing touched": the evidence step that supplies it
- * broke, and `false` would skip the dependent jobs while reading as a measured
+ * An absent list is not "nothing touched": the step that supplies it broke,
+ * and `false` would skip the dependent jobs while reading as a measured
  * verdict. The step fails instead, which fails the ratification job (its own
  * gate would report `indeterminate` on the same input), and the dependent
  * jobs see an empty output and do not run — fail-closed in the same direction
  * as the gate.
  *
- * Usage (the workflow appends stdout to `$GITHUB_OUTPUT`):
- *   CHANGED_FILES="$(git diff --name-only base head)" \
- *     npx tsx scripts/governor-paths-touched.ts >> "$GITHUB_OUTPUT"
+ * ## stdout is the VALUE, not the output line
+ *
+ * The workflow step writes `governor_touched=<stdout>` to `$GITHUB_OUTPUT`
+ * itself. The #4698 wiring test (`workflow-output-wiring.test.ts`) resolves
+ * every consumed `steps.<id>.outputs.<name>` to a `name=` written INSIDE that
+ * step's `run:` body; a key written by a script is invisible to it, so the
+ * producer lives in the YAML where the check can see it (#6260). Under the
+ * runner's `bash -e` a non-zero exit here fails the substitution, the
+ * assignment and the step, so no `governor_touched=` line is written at all.
+ *
+ * Usage (the workflow step body):
+ *   TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)
+ *   echo "governor_touched=${TOUCHED}" >> "$GITHUB_OUTPUT"
  *
  * @module scripts/governor-paths-touched
  */
@@ -53,22 +63,26 @@ const ROOT = join(HERE, '..');
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
 
 /**
- * The `$GITHUB_OUTPUT` key. Dereferenced by the workflow as
- * `needs.governor-ratification.outputs.governor_touched` (and the backstop's
- * twin); pinned by the workflow test so the two sides cannot drift apart.
+ * The `$GITHUB_OUTPUT` key the WORKFLOW writes (`governor_touched=<stdout>`).
+ * Dereferenced as `needs.governor-ratification.outputs.governor_touched` (and
+ * the backstop's twin); pinned by the workflow test so the two sides cannot
+ * drift apart. This script never prints the key itself — see the header.
  */
 export const GOVERNOR_TOUCHED_OUTPUT_KEY = 'governor_touched';
 
-/** The one line the workflow appends to `$GITHUB_OUTPUT`. */
-export function governorTouchedOutputLine(touched: boolean): string {
-  return `${GOVERNOR_TOUCHED_OUTPUT_KEY}=${touched ? 'true' : 'false'}`;
+/** The two values the detector can print; anything else is unmeasured. */
+export type GovernorTouchedValue = 'true' | 'false';
+
+/** The value the workflow step assigns to `governor_touched`. */
+export function governorTouchedValue(touched: boolean): GovernorTouchedValue {
+  return touched ? 'true' : 'false';
 }
 
 /** What the step prints and how it exits. */
 export interface GovernorTouchedReport {
   readonly exitCode: 0 | 1;
-  /** For stdout → `$GITHUB_OUTPUT`. Absent when nothing was measured. */
-  readonly outputLine: string | undefined;
+  /** For stdout, the bare value the workflow assigns. Absent when nothing was measured. */
+  readonly value: GovernorTouchedValue | undefined;
   /** For stderr: what was measured, or why it could not be. */
   readonly messages: readonly string[];
 }
@@ -87,11 +101,11 @@ export function governorPathsTouchedReport(
   if (raw === undefined) {
     return {
       exitCode: 1,
-      outputLine: undefined,
+      value: undefined,
       messages: [
         '[governor-paths-touched] No CHANGED_FILES in the environment: nothing was measured, ' +
           'so no output is written. The workflow supplies the changed-file list from its ' +
-          'evidence step; a missing list is a broken step, not an empty diff.',
+          'changed-files step; a missing list is a broken step, not an empty diff.',
       ],
     };
   }
@@ -107,7 +121,7 @@ export function governorPathsTouchedReport(
     const reason = error instanceof Error ? error.message : String(error);
     return {
       exitCode: 1,
-      outputLine: undefined,
+      value: undefined,
       messages: [
         `[governor-paths-touched] the governor path set could not be derived, so nothing is ` +
           `reported: ${reason}`,
@@ -121,7 +135,7 @@ export function governorPathsTouchedReport(
     `file(s) match the ${String(patterns.length)} governor pattern(s) in CODEOWNERS.`;
   return {
     exitCode: 0,
-    outputLine: governorTouchedOutputLine(touched.length > 0),
+    value: governorTouchedValue(touched.length > 0),
     messages: touched.length === 0 ? [summary] : [summary, ...touched.map((f) => `  - ${f}`)],
   };
 }
@@ -136,8 +150,8 @@ function main(): number {
   }
   const report = governorPathsTouchedReport(process.env, codeowners);
   for (const line of report.messages) console.error(line);
-  // stdout IS the contract: the workflow appends it to $GITHUB_OUTPUT.
-  if (report.outputLine !== undefined) process.stdout.write(`${report.outputLine}\n`);
+  // stdout IS the contract: the workflow assigns it to `governor_touched`.
+  if (report.value !== undefined) process.stdout.write(`${report.value}\n`);
   return report.exitCode;
 }
 

@@ -23,12 +23,15 @@
 # `expected` forever on an ordinary PR. The workflow therefore runs on every
 # pull_request and every push to main. The governor-path verdict is computed
 # INSIDE the run from the one parse of /CODEOWNERS (`scripts/governor-section.ts`):
-#   - `governor-ratification` runs on every PR. Its gate script returns
-#     `not-applicable` → exit 0 when no governor path is touched (~60 s on an
-#     ordinary PR, of which ~35 s is the full-history checkout and ~5 s the
-#     injector spawn, #6250), and fails closed on a governor PR without a bound
-#     record. Its job name — `Governor-path ratification gate` — is the context
-#     branch protection requires; renaming it un-requires the gate.
+#   - `governor-ratification` runs on every PR. It computes the changed-file
+#     list and runs the detector BEFORE any GitHub API call; on an ordinary PR
+#     the evidence and gate steps are skipped and a final step reports
+#     `not-applicable` → exit 0 (~60 s, of which ~35 s is the full-history
+#     checkout and ~5 s the injector spawn, #6250), so an API outage cannot
+#     block a PR the gate has nothing to say about (#6260). On a governor PR
+#     it fails closed without a bound record. Its job name —
+#     `Governor-path ratification gate` — is the context branch protection
+#     requires; renaming it un-requires the gate.
 #   - `governor-review` and `codeowners-errors` do NOT run on an ordinary PR.
 #     They read the `governor_touched` output the ratification jobs compute
 #     (`scripts/governor-paths-touched.ts`, the same parser and matcher the
@@ -125,7 +128,7 @@ jobs:
         # No continue-on-error: the script encodes warn (exit 0) vs fail-closed
         # integrity break (exit 1) in its exit code. A non-zero exit here is a
         # tampered ledger and SHOULD surface as a job failure.
-        run: npx tsx scripts/check-governor-review.ts
+        run: pnpm exec tsx scripts/check-governor-review.ts
 
   # ---------------------------------------------------------------------------
   # RATIFICATION gate (#4635).
@@ -137,8 +140,17 @@ jobs:
   # Runs on EVERY pull request (#4802 part 1): this job's name is the status
   # context branch protection requires, and a required context must be
   # reported on every PR or the PR can never merge. On a PR that touches no
-  # governor path the gate prints `not-applicable` and exits 0. Do not add a
+  # governor path the job reports `not-applicable` and exits 0. Do not add a
   # `paths:` filter, a `needs:`, or a narrower `if:` here.
+  #
+  # STEP ORDER (#6260 panel, scope steward): the detector runs BEFORE any
+  # GitHub API call, and the evidence and gate steps are gated on its output.
+  # The first cut collected evidence first, so once this context is required a
+  # transient `gh api` failure would have blocked an ORDINARY PR — one that
+  # touches nothing this gate governs. Now an ordinary PR performs exactly one
+  # `git diff` and one CODEOWNERS parse; the API is reached only when there is
+  # a governor path to ratify. The final step names the not-touched case so the
+  # job's success is a stated verdict, never a job with nothing left to run.
   # ---------------------------------------------------------------------------
   governor-ratification:
     name: Governor-path ratification gate
@@ -163,12 +175,51 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      - name: Compute changed files (base..head)
+        id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
+            exit 1
+          fi
+          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          {
+            echo "base=${BASE_SHA}"
+            echo 'files<<FILES_EOF'
+            echo "${FILES}"
+            echo 'FILES_EOF'
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Which governor paths does this PR touch?
+        id: touched
+        env:
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
+        # The script prints exactly `true` or `false` to stdout, or nothing and
+        # exit 1 when the set could not be measured (no file list, unparseable
+        # governor section). The `run:` body — not the script — writes the
+        # output line, so the #4698 wiring test can see the producer. Under the
+        # runner's `bash -e`, a failing substitution fails the assignment and
+        # the step: a failed detector fails this job and leaves the dependents'
+        # condition empty, never `false`. Same parser and matcher as the gate
+        # below; this is the `paths:` filter's replacement, not a second copy
+        # of the set (#4802 part 1).
+        run: |
+          TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)
+          echo "governor_touched=${TOUCHED}" >> "${GITHUB_OUTPUT}"
+
       - name: Collect ratification evidence
         id: evidence
+        # Gated on the detector: an ordinary PR never reaches the GitHub API,
+        # so an API outage cannot block a PR this gate has nothing to say about.
+        if: steps.touched.outputs.governor_touched == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ steps.changed.outputs.base }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # pipefail: a failed `gh api` below must fail the step, not yield an
@@ -176,12 +227,6 @@ jobs:
           # LABEL_ACTOR keeps its tolerant `|| echo ''` — empty is its documented
           # indeterminate, and the trailing `||` still catches a failure there.
           set -o pipefail
-          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
-          if [ -z "${BASE_SHA}" ]; then
-            echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
-            exit 1
-          fi
-          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
           APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
             --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
           LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
@@ -223,12 +268,17 @@ jobs:
           else
             HEAD_COMMIT_FILES=""
           fi
-          # #6213: the ledger AS OF THE MERGE-BASE, so the gate can require the
-          # head ledger to be the base plus appended lines (a PR that deletes
-          # or rewrites a recorded line is `ledger-rewritten`). Written to a
-          # file, not an output: a 100-record ledger exceeds the single-string
-          # env limit. Absent at base → an EMPTY file (a measured, empty base);
-          # present but unreadable → `git show` fails this step under -e.
+          # #6213: the ledger AS OF THE MERGE-BASE (BASE_SHA, from the
+          # `changed` step), so the gate can require the head ledger to be the
+          # base plus appended lines (a PR that deletes or rewrites a recorded
+          # line is `ledger-rewritten`). Written to a file, not an output: a
+          # 100-record ledger exceeds the single-string env limit. Absent at
+          # base → an EMPTY file (a measured, empty base); present but
+          # unreadable → `git show` fails this step under -e.
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::error::the merge-base from the changed-files step is empty; the ledger base cannot be read"
+            exit 1
+          fi
           LEDGER_BASE_SHA="${BASE_SHA}"
           BASE_LEDGER_PATH="${RUNNER_TEMP}/base-vote-records.jsonl"
           # The commit must exist: an unknown sha would otherwise read as
@@ -241,15 +291,11 @@ jobs:
             : > "${BASE_LEDGER_PATH}"
           fi
           {
-            echo 'files<<FILES_EOF'
-            echo "${FILES}"
-            echo 'FILES_EOF'
             echo "approvals=${APPROVALS}"
             echo "labels=${LABELS}"
             echo "label_actor=${LABEL_ACTOR}"
             echo "label_time=${LABEL_TIME}"
             echo "head_time=${HEAD_TIME}"
-            echo "base=${BASE_SHA}"
             echo "head_parent=${HEAD_PARENT_SHA}"
             echo 'head_commit_files<<FILES_EOF'
             echo "${HEAD_COMMIT_FILES}"
@@ -257,21 +303,12 @@ jobs:
             echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Which governor paths does this PR touch?
-        id: touched
-        env:
-          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
-        # Prints exactly one `governor_touched=true|false` line to stdout, or
-        # nothing and exit 1 when the set could not be measured (no file list,
-        # unparseable governor section) — a failed detector fails this job and
-        # leaves the dependents' condition empty, never `false`. Same parser
-        # and matcher as the gate below; this is the `paths:` filter's
-        # replacement, not a second copy of the set (#4802 part 1).
-        run: npx tsx scripts/governor-paths-touched.ts >> "${GITHUB_OUTPUT}"
-
       - name: Run ratification gate
+        # Same gate as the detector: runs only for a governor-path PR. The
+        # not-touched verdict is the final step's.
+        if: steps.touched.outputs.governor_touched == 'true'
         env:
-          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
           APPROVALS: ${{ steps.evidence.outputs.approvals }}
           PR_LABELS: ${{ steps.evidence.outputs.labels }}
           RATIFICATION_LABEL_ACTOR: ${{ steps.evidence.outputs.label_actor }}
@@ -296,18 +333,37 @@ jobs:
           # exempt a diff whose only change is inside a generated span. Absent
           # or malformed, the exemption is simply never granted — fail-closed.
           #
-          # #6029: this read `steps.changed.outputs.base`, but `id: changed` is
-          # in the SIBLING `governor-review` job and step outputs are JOB-SCOPED,
-          # so it resolved to the empty string on every run and the exemption
-          # never fired. The merge-base is already computed in THIS job's
-          # `evidence` step; it simply was not emitted.
+          # #6029: this once read `steps.changed.outputs.base` when `id: changed`
+          # lived only in the SIBLING `governor-review` job; step outputs are
+          # JOB-SCOPED, so it resolved to the empty string on every run and
+          # the exemption never fired. THIS job now has its own `changed`
+          # step (#6260), and the #4698 wiring test would report a cross-job
+          # reference.
           #
           # The merge-base, not `pull_request.base.sha`: the base-branch TIP
           # would fold in whatever else landed on main since the branch
           # diverged, so an unrelated PR touching a governed file could revoke
           # this PR's exemption.
-          PR_BASE_SHA: ${{ steps.evidence.outputs.base }}
-        run: npx tsx scripts/check-governor-ratification.ts
+          PR_BASE_SHA: ${{ steps.changed.outputs.base }}
+        run: pnpm exec tsx scripts/check-governor-ratification.ts
+
+      - name: Verdict when no governor path is touched
+        # `always()` so this step is reached even if the detector failed, and
+        # then the verdict is NAMED rather than left to a skipped-steps job
+        # summary. `false` is the measured empty case: `not-applicable`, exit
+        # 0 (the same verdict and exit the gate script itself renders for an
+        # empty touched set). Anything else here means the detector did not
+        # report — the job is already failing, and this line says why.
+        if: ${{ always() && steps.touched.outputs.governor_touched != 'true' }}
+        env:
+          TOUCHED: ${{ steps.touched.outputs.governor_touched }}
+        run: |
+          if [ "${TOUCHED}" = "false" ]; then
+            echo "not-applicable: this PR touches no governance-of-the-governor path — ratification not required."
+            exit 0
+          fi
+          echo "::error::[governor-ratification] unmeasured: the governor-path detector reported '${TOUCHED}', not true or false; the gate cannot tell whether ratification is required."
+          exit 1
 
   # ---------------------------------------------------------------------------
   # BACKSTOP: the same question, asked after the merge.
@@ -479,7 +535,12 @@ jobs:
           CHANGED_FILES: ${{ steps.evidence.outputs.files }}
         # See the pre-merge job's twin step. Over the push's own file list, so
         # the CODEOWNERS parse runs on the sha that landed a governor change.
-        run: npx tsx scripts/governor-paths-touched.ts >> "${GITHUB_OUTPUT}"
+        # The backstop keeps evidence-first: after a merge there is no
+        # ordinary-PR path to protect from an API outage, and a red backstop
+        # on an unmeasured governor merge is the durable signal it exists for.
+        run: |
+          TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)
+          echo "governor_touched=${TOUCHED}" >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
         env:
@@ -513,7 +574,7 @@ jobs:
           # unreachable by a second mechanism. Both jobs must grant the same
           # exemption or a stamp-only PR turns main red after merging green.
           PR_BASE_SHA: ${{ steps.evidence.outputs.base }}
-        run: npx tsx scripts/check-governor-ratification.ts
+        run: pnpm exec tsx scripts/check-governor-ratification.ts
 
   # ---------------------------------------------------------------------------
   # CODEOWNERS parses under GitHub's own parser (#6174).

@@ -17,7 +17,7 @@ import {
 import {
   GOVERNOR_TOUCHED_OUTPUT_KEY,
   governorPathsTouchedReport,
-  governorTouchedOutputLine,
+  governorTouchedValue,
 } from './governor-paths-touched.js';
 
 const REPO_ROOT = join(import.meta.dirname, '..');
@@ -31,13 +31,15 @@ const CODEOWNERS = [
   GOVERNOR_SECTION_END_DIRECTIVE,
 ].join('\n');
 
-describe('governorTouchedOutputLine', () => {
-  it('renders the GITHUB_OUTPUT line the workflow jobs read', () => {
+describe('governorTouchedValue', () => {
+  it('is the bare value the workflow assigns to the pinned output key (#6260)', () => {
     // The key is what `needs.governor-ratification.outputs.governor_touched`
     // dereferences; a drift here silently skips the dependent jobs forever.
+    // The script prints only the VALUE: the `governor_touched=` producer is
+    // written by the workflow step body, where the #4698 wiring test can see it.
     expect(GOVERNOR_TOUCHED_OUTPUT_KEY).toBe('governor_touched');
-    expect(governorTouchedOutputLine(true)).toBe('governor_touched=true');
-    expect(governorTouchedOutputLine(false)).toBe('governor_touched=false');
+    expect(governorTouchedValue(true)).toBe('true');
+    expect(governorTouchedValue(false)).toBe('false');
   });
 });
 
@@ -48,7 +50,7 @@ describe('governorPathsTouchedReport', () => {
       CODEOWNERS
     );
     expect(report.exitCode).toBe(0);
-    expect(report.outputLine).toBe('governor_touched=false');
+    expect(report.value).toBe('false');
     expect(report.messages.join('\n')).toContain('0 of 2 changed file(s)');
   });
 
@@ -58,7 +60,7 @@ describe('governorPathsTouchedReport', () => {
       CODEOWNERS
     );
     expect(report.exitCode).toBe(0);
-    expect(report.outputLine).toBe('governor_touched=true');
+    expect(report.value).toBe('true');
     expect(report.messages.join('\n')).toContain('packages/nexus-agents/src/audit/chain.ts');
     expect(report.messages.join('\n')).toContain('1 of 2 changed file(s)');
   });
@@ -66,7 +68,7 @@ describe('governorPathsTouchedReport', () => {
   it('an EMPTY change set is `false` and says so — the empty case is named, not defaulted', () => {
     const report = governorPathsTouchedReport({ CHANGED_FILES: '\n  \n' }, CODEOWNERS);
     expect(report.exitCode).toBe(0);
-    expect(report.outputLine).toBe('governor_touched=false');
+    expect(report.value).toBe('false');
     expect(report.messages.join('\n')).toContain('0 of 0 changed file(s)');
   });
 
@@ -75,7 +77,7 @@ describe('governorPathsTouchedReport', () => {
     // every PR whose evidence step broke, and read as "not a governor PR".
     const report = governorPathsTouchedReport({}, CODEOWNERS);
     expect(report.exitCode).toBe(1);
-    expect(report.outputLine).toBeUndefined();
+    expect(report.value).toBeUndefined();
     expect(report.messages.join('\n')).toContain('No CHANGED_FILES in the environment');
   });
 
@@ -88,7 +90,7 @@ describe('governorPathsTouchedReport', () => {
       noEnd
     );
     expect(report.exitCode).toBe(1);
-    expect(report.outputLine).toBeUndefined();
+    expect(report.value).toBeUndefined();
     expect(report.messages.join('\n')).toContain('end directive');
   });
 
@@ -104,11 +106,8 @@ describe('governorPathsTouchedReport', () => {
     expect(patterns).toContain(`/${governorFile}`);
 
     expect(
-      governorPathsTouchedReport({ CHANGED_FILES: `${ordinaryFile}\n${governorFile}` }, real)
-        .outputLine
-    ).toBe('governor_touched=true');
-    expect(governorPathsTouchedReport({ CHANGED_FILES: ordinaryFile }, real).outputLine).toBe(
-      'governor_touched=false'
-    );
+      governorPathsTouchedReport({ CHANGED_FILES: `${ordinaryFile}\n${governorFile}` }, real).value
+    ).toBe('true');
+    expect(governorPathsTouchedReport({ CHANGED_FILES: ordinaryFile }, real).value).toBe('false');
   });
 });

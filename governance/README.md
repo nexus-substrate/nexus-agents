@@ -171,7 +171,11 @@ governor set, so its jobs never reported on an ordinary PR. The workflow-level
 `paths:` filter is gone: the `Governor-path ratification gate` job runs on
 every `pull_request`, computes the governor-path verdict itself from the one
 parse of `CODEOWNERS`, and exits 0 with `not-applicable` when no governor path
-is touched. On an ordinary PR that costs about 60 s of runner time, ~35 s of
+is touched. The detector runs before any GitHub API call, and the evidence
+and gate steps are gated on its output (#6260): an ordinary PR performs one
+`git diff` and one `CODEOWNERS` parse and never reaches the API, so a
+transient `gh api` failure cannot block a PR the gate has nothing to say
+about. On an ordinary PR that costs about 60 s of runner time, ~35 s of
 it the full-history checkout and ~5 s the injector spawn (#6250). The
 post-merge backstop runs on every push to `main` the same way. The pr_review
 audit gate and the CODEOWNERS parse do not run on an ordinary PR: they read a
