@@ -1,5 +1,0 @@
----
-'nexus-agents': patch
----
-
-Internal governance gate; no behaviour change; public exports unchanged. Two lint checks now keep consensus verdict computation inside the governed decision modules (#6000 step 2). An ESLint `no-restricted-imports` block refuses any file under `src/consensus`, `src/cli` or `src/mcp/tools` that imports a governed decision symbol (`VOTING_THRESHOLDS`, `SUPERMAJORITY_THRESHOLD`, `ERROR_FLOOR_FRACTION`, `resolveStrategy`, `strategyToAlgorithm`, `getDefaultErrorPolicy`, `evaluateThreshold`, `determineFinalStatus`, `mapOutcomeToDecision`, `resolveVoteDecision`, `VOTER_ROLES`) from a legacy re-export home instead of `consensus/decision/` or `cli/voter-roles.ts`; the thirteen in-tree importers that still did so were moved to the governed modules. An `arch-lint` ratchet (`inline-verdict`) fails on any new comparison against a threshold literal (`>= 0.667`, `> 0.5`, `2 / 3`, `=== 1.0`) in those directories outside `consensus/decision/`, with the nine pre-existing non-voting comparisons baselined per file. Neither check sees control flow that overrides an imported verdict; that remains a review concern.
