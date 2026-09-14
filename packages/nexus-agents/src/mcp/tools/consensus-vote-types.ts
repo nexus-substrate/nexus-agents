@@ -593,6 +593,17 @@ export interface ExtendedVotingResult extends VotingResult {
   /** Reason an error policy short-circuited the vote (#3124); surfaced on the response. */
   policyReason?: string;
   /**
+   * #6211: the error policy the panel actually ran under — the EFFECTIVE value
+   * `executeVoting` resolved (`input.errorPolicy ?? getDefaultErrorPolicy(strategy)`),
+   * stamped on every path it returns through (the short-circuit and the
+   * finalized result; an escalated re-vote carries its own). The persisted
+   * vote record reads it from here so the ledger states the policy the vote
+   * ran under rather than the raw input, which is absent whenever the caller
+   * took the default. Absent only on results built by paths that never ran
+   * `executeVoting` (direct unit constructions), where no policy was applied.
+   */
+  errorPolicy?: ErrorPolicy;
+  /**
    * #4132: the FULL requested panel size (`roles.length`) — the absolute_quorum
    * predicate in {@link buildResponse} needs it to compute the absolute approval
    * floor `ceil(fraction * panelSize)`. Distinct from `votes.length`, which can

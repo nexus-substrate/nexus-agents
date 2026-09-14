@@ -9,6 +9,11 @@
  * canned; everything downstream is real, with the ledger pointed at a temp
  * file via `NEXUS_VOTE_RECORDS_PATH`.
  *
+ * The second block (#6211) rides the same harness for the same hop in the
+ * other direction: the EFFECTIVE error policy — resolved inside
+ * `executeVoting` from the input or the per-strategy default — must reach the
+ * record, not the raw input the caller may have omitted.
+ *
  * @module mcp/tools/consensus-vote-ratifies-pr.test
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -17,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 import { VOTE_RECORDS_PATH_ENV } from '../../audit/vote-record-store.js';
+import type { VoteRecord } from '../../audit/vote-record.js';
 import { verifyVoteRecordSet } from '../../audit/vote-record.js';
 import { parseVoteRecordsText } from '../../audit/vote-record-store.js';
 
@@ -122,7 +128,9 @@ describe('ratifiesPr reaches the persisted vote record and the id reaches the ca
     expect(records).toHaveLength(1);
     const record = records[0]!;
     expect(record.ratifiesPr).toEqual({ pr: 6200, headSha: HEAD });
-    expect(record.version).toBe('1.10');
+    // 1.11, not 1.10: every record the live producer writes now carries the
+    // effective error policy (#6211), which outranks the binding tier.
+    expect(record.version).toBe('1.11');
     expect(verifyVoteRecordSet(records).ok).toBe(true);
 
     // The caller-commits script is keyed on the record id; the response must
@@ -160,5 +168,76 @@ describe('ratifiesPr reaches the persisted vote record and the id reaches the ca
     expect(accepts({ pr: 0, headSha: HEAD })).toBe(false);
     expect(accepts({ pr: 6200 })).toBe(false);
     expect(accepts({ headSha: HEAD })).toBe(false);
+  });
+});
+
+describe('the persisted record carries the error policy the panel ran under (#6211, schema 1.11)', () => {
+  let tmpDir: string;
+  let ledger: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const originalLedger = process.env[VOTE_RECORDS_PATH_ENV];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-vote-error-policy-'));
+    ledger = join(tmpDir, 'vote-records.jsonl');
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    process.env[VOTE_RECORDS_PATH_ENV] = ledger;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    collectRealVotesMock.mockReset();
+    collectRealVotesMock.mockResolvedValue([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'ok' },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DATA_DIR');
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    if (originalLedger === undefined) Reflect.deleteProperty(process.env, VOTE_RECORDS_PATH_ENV);
+    else process.env[VOTE_RECORDS_PATH_ENV] = originalLedger;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  async function recordFor(input: Record<string, unknown>): Promise<VoteRecord> {
+    const handler = captureHandler();
+    const result = await handler({ quickMode: true, ...input }, CTX);
+    expect(result.isError).not.toBe(true);
+    const { records, invalidLines } = parseVoteRecordsText(readFileSync(ledger, 'utf-8'));
+    expect(invalidLines).toEqual([]);
+    expect(records).toHaveLength(1);
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+    return records[0]!;
+  }
+
+  it('records the policy the caller passed', async () => {
+    const record = await recordFor({
+      proposal: 'Ratify PR #6211',
+      strategy: 'supermajority',
+      errorPolicy: 'absolute_quorum',
+      ratifiesPr: { pr: 6211, headSha: HEAD },
+    });
+    expect(record.errorPolicy).toBe('absolute_quorum');
+    expect(record.version).toBe('1.11');
+  });
+
+  it('records the RESOLVED default when the caller passed none — the effective policy, not the raw input', async () => {
+    // `executeVoting` runs `input.errorPolicy ?? getDefaultErrorPolicy(strategy)`;
+    // a record that carried the raw input would be ABSENT here and read as
+    // "unrecorded" to the ledger gate, when the panel in fact ran under
+    // `reduce_denominator` — the policy the gate exists to catch.
+    const record = await recordFor({ proposal: 'Yes or no', strategy: 'supermajority' });
+    expect(record.errorPolicy).toBe('reduce_denominator');
+  });
+
+  it('the resolved default is per strategy: unanimous runs under fail_closed', async () => {
+    const record = await recordFor({ proposal: 'Yes or no', strategy: 'unanimous' });
+    expect(record.errorPolicy).toBe('fail_closed');
   });
 });

@@ -17,6 +17,7 @@ import {
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
 import type { VoteRecord, VoteRecordPrBinding } from '../../audit/vote-record.js';
+import type { ErrorPolicy } from './consensus-vote-types.js';
 import {
   persistVoteRecord,
   resolveVoteRecordsPath,
@@ -182,6 +183,19 @@ interface RecordAuthenticVoteArgs {
    * resolved decision must hand it over rather than let the store guess.
    */
   resolvedDecision: VoteRecord['decision'] | undefined;
+  /**
+   * The error policy the panel ran under (#6211, schema 1.11) — the EFFECTIVE
+   * policy `executeVoting` stamped on its result, not the raw tool input.
+   *
+   * Required — including its `undefined` case — on the `resolvedDecision`
+   * rule: both producers (the MCP handler and the CLI `vote` command) narrow
+   * `ExtendedVotingResult` before reaching here, and an optional field is
+   * exactly how #5362 lost `optionGate` at that narrowing with no compile
+   * error. `undefined` is honest only for a result built without
+   * `executeVoting`, where no policy was applied; the record then carries no
+   * key and the ledger gate reports it as `unrecorded`.
+   */
+  errorPolicy: ErrorPolicy | undefined;
 }
 
 export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPersistOutcome {
@@ -221,6 +235,7 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
+    ...(args.errorPolicy !== undefined ? { errorPolicy: args.errorPolicy } : {}),
     logger,
   });
   if (record === undefined) {

@@ -191,6 +191,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
+      errorPolicy: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
       result: consensusResult(),
@@ -221,6 +222,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
+      errorPolicy: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -240,6 +242,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
+      errorPolicy: undefined,
       proposal: 'Promote loop X to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -263,6 +266,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
+      errorPolicy: undefined,
       proposal: 'Promote auto-remediation to enforce',
       strategy: 'higher_order',
       result: consensusResult(),
@@ -285,6 +289,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
+      errorPolicy: undefined,
       proposal: 'p',
       strategy: 'simple_majority',
       result: consensusResult(),
@@ -322,6 +327,7 @@ describe('declared options reach the persisted record (#6049, the seam)', () => 
     const outcome = recordAuthenticVote({
       declaredOptions: ['A - do it', 'B - do not'],
       resolvedDecision: 'rejected',
+      errorPolicy: undefined,
       proposal: 'p',
       strategy: 'supermajority',
       result: consensusResult(),
@@ -342,6 +348,7 @@ describe('declared options reach the persisted record (#6049, the seam)', () => 
     const outcome = recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
+      errorPolicy: undefined,
       proposal: 'p',
       strategy: 'supermajority',
       result: consensusResult(),

@@ -15,6 +15,7 @@ import { describe, it, expect, expectTypeOf } from 'vitest';
 import { createHash } from 'node:crypto';
 
 import type { FallbackReason } from '../cli/vote-types.js';
+import type { ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecord, VoterSummary } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
 
@@ -856,5 +857,128 @@ describe('schema 1.10: `ratifiesPr` PR-ratification binding (#5130 step 1)', () 
     expect(accepts({ pr: '6200', headSha: 'a'.repeat(40) })).toBe(false);
     // An extra key: the binding is exactly {pr, headSha}, nothing wider.
     expect(accepts({ pr: 1, headSha: 'a'.repeat(40), baseSha: 'b'.repeat(40) })).toBe(false);
+  });
+});
+
+describe('schema 1.11: `errorPolicy` — the policy the panel ran under (#6211)', () => {
+  // Record-level, present-only, folded AFTER `ratifiesPr` — the new last key
+  // in the canonical projection — so every 1.10-and-earlier record projects
+  // byte-identically. The 1.10 golden above is the guard for that; this block
+  // pins the new maximal RECORD form and proves the policy is tamper-evident.
+  const MAXIMAL_1_10_PAYLOAD = {
+    version: '1.10' as const,
+    id: 'vote-max-110',
+    sequence: 3,
+    recordedAt: '2026-09-14T00:00:00.000Z',
+    proposalHash: 'f'.repeat(64),
+    proposal: 'Ratify PR #6200 at its head',
+    strategy: 'supermajority' as const,
+    decision: 'approved' as const,
+    approvalPercentage: 100,
+    voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+    voters: [
+      {
+        role: 'architect' as const,
+        decision: 'approve' as const,
+        confidence: 0.9,
+        reasoning: 'grounds',
+        model: 'claude-opus',
+        assignedCli: 'claude',
+      },
+    ],
+    correlationId: 'consensus-1-abcdef01',
+    optionTally: [{ option: 'A', count: 1 }],
+    optionCoverage: { approverCount: 1, selectedCount: 1, unattributedApprovals: 0 },
+    panelCoverage: { requested: 2, responded: 1, errored: 1, erroredRoles: ['security'] },
+    ratifies: 'loop:dev-pipeline',
+    ratifiesPr: { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' },
+    previousHash: '9'.repeat(64),
+  };
+  const MAXIMAL_1_11 = {
+    ...MAXIMAL_1_10_PAYLOAD,
+    version: '1.11' as const,
+    id: 'vote-max-111',
+    errorPolicy: 'absolute_quorum' as const,
+  };
+  const GOLDEN_1_10 = '587422106245586745a76eb3a3deb5f7121beef80912abb9cf80384d6a8df3b2';
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    const parsed = VoteRecordSchema.safeParse({
+      ...MAXIMAL_1_11,
+      hash: computeVoteRecordHash(MAXIMAL_1_11),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('pins the MAXIMAL 1.11 record to a golden captured by execution', () => {
+    // Captured by running `computeVoteRecordHash` on this exact fixture once
+    // the projection carried `errorPolicy`, then pinned — and reproduced by
+    // hand-deriving the canonical string (`errorPolicy` last, after
+    // `ratifiesPr`) with `node -e` + sha256. If it moves, the record-level
+    // canonical order or the present-only rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_11)).toBe(
+      'a8cbec584f9c341125e5378cb5f541ecf53b4e8ce8b162f35f494c63483098cf'
+    );
+  });
+
+  it('a 1.10 record with `errorPolicy` explicitly undefined still hashes to the 1.10 golden', () => {
+    // Against the PINNED literal, not a self-computed value: a record that
+    // lacks the new key must project exactly as it did before the key existed.
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_10_PAYLOAD, errorPolicy: undefined })).toBe(
+      GOLDEN_1_10
+    );
+  });
+
+  it('dropping `errorPolicy` alone moves the hash — the policy is folded, not decorative', () => {
+    const { errorPolicy: _dropped, ...without } = MAXIMAL_1_11;
+    expect(computeVoteRecordHash(without)).not.toBe(computeVoteRecordHash(MAXIMAL_1_11));
+  });
+
+  it('editing the policy is a hash_mismatch — a record cannot be relabelled absolute_quorum after the fact', () => {
+    const record: VoteRecord = { ...MAXIMAL_1_11, hash: computeVoteRecordHash(MAXIMAL_1_11) };
+    const relabelled: VoteRecord = { ...record, errorPolicy: 'reduce_denominator' };
+    const result = verifyVoteRecordSet([relabelled]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('detects ADDING a policy to a record that had none, and REMOVING one that had it', () => {
+    const unpolicied = makeRecord('vote-1', 0, { version: '1.2', ratifies: 'loop:x' });
+    const forgedIn: VoteRecord = { ...unpolicied, errorPolicy: 'absolute_quorum' };
+    expect(verifyVoteRecordSet([forgedIn]).ok).toBe(false);
+
+    const policied: VoteRecord = { ...MAXIMAL_1_11, hash: computeVoteRecordHash(MAXIMAL_1_11) };
+    const forgedOut: VoteRecord = { ...policied };
+    delete forgedOut.errorPolicy;
+    const result = verifyVoteRecordSet([forgedOut]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('the read schema accepts exactly the four policies the tool accepts and nothing else', () => {
+    const base = { ...MAXIMAL_1_11, hash: computeVoteRecordHash(MAXIMAL_1_11) };
+    const accepts = (errorPolicy: unknown): boolean =>
+      VoteRecordSchema.safeParse({ ...base, errorPolicy }).success;
+    for (const policy of [
+      'reduce_denominator',
+      'count_as_abstain',
+      'fail_closed',
+      'absolute_quorum',
+    ]) {
+      expect(accepts(policy)).toBe(true);
+    }
+    expect(accepts('absolute-quorum')).toBe(false);
+    expect(accepts('')).toBe(false);
+    expect(accepts(true)).toBe(false);
+    expect(accepts({ policy: 'absolute_quorum' })).toBe(false);
+  });
+
+  it('the recorded vocabulary IS the live ErrorPolicy — neither side can drift alone', () => {
+    // A policy added to `ErrorPolicySchema` without the record learning it
+    // would make the #6054 write-time validation refuse every record that
+    // carries it; one the record accepts that the tool never runs would let a
+    // ledger line claim a policy no panel can be configured with. Checked by
+    // `pnpm typecheck`, not at runtime.
+    expectTypeOf<NonNullable<VoteRecord['errorPolicy']>>().toEqualTypeOf<ErrorPolicy>();
   });
 });

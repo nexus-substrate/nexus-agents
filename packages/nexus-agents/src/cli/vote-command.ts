@@ -35,6 +35,7 @@ import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type {
   ConsensusVoteInput,
   ContrarianCheckStatus,
+  ErrorPolicy,
   ExtendedVotingResult,
   VoteDecisionStatus,
 } from '../mcp/tools/consensus-vote-types.js';
@@ -502,6 +503,8 @@ type CliVoteResult = VotingResult & {
   readonly contrarianCheck: ContrarianCheckStatus;
   /** #6110: the project the panel judged, for the summary and the comment. */
   readonly project?: ResolvedVoterProject | undefined;
+  /** #6211: the effective error policy `executeVoting` stamped, for the record. */
+  readonly errorPolicy?: ErrorPolicy | undefined;
 };
 
 /**
@@ -537,6 +540,10 @@ function toCliVoteResult(result: ExtendedVotingResult): CliVoteResult {
     // genuinely did not run.
     contrarianCheck: result.contrarianCheck ?? 'skipped',
     ...(result.project !== undefined ? { project: result.project } : {}),
+    // #6211: the record states the policy the panel ran under; this is the
+    // same narrowing that dropped `optionGate` (#5362), so it is carried
+    // explicitly and asserted at the recorder hop.
+    ...(result.errorPolicy !== undefined ? { errorPolicy: result.errorPolicy } : {}),
   };
 }
 
@@ -615,6 +622,8 @@ function persistToAuditChain(
     // `resolveVoteDecision`. Typed here so the record gets the same answer the
     // CLI printed and exited on, rather than a second derivation.
     readonly decision?: VoteDecisionStatus;
+    /** #6211: the effective error policy, from the same stamp. */
+    readonly errorPolicy?: ErrorPolicy | undefined;
   }
 ): void {
   if (options.dryRun === true) return;
@@ -633,6 +642,8 @@ function persistToAuditChain(
         // chain records `rejected` while the CLI exits `no_quorum` (#4953).
         errorVoided: result.policyReason !== undefined,
         resolvedDecision: toRecordDecision(result.decision),
+        // #6211: the policy the panel ran under, as `executeVoting` resolved it.
+        errorPolicy: result.errorPolicy,
       })
     )
   );

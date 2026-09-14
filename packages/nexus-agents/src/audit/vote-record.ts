@@ -426,6 +426,22 @@ export function projectPrBinding(b: VoteRecordPrBinding): VoteRecordPrBinding {
 }
 
 /**
+ * The error policy a panel ran under, as recorded (#6211, schema 1.11).
+ * Module-private on the `SeatFallbackRecordSchema` rule: only
+ * `VoteRecordSchema` consumes it. The enum is the live `ErrorPolicy`
+ * (`mcp/tools/consensus-vote-types.ts`) spelled out — an `enum` rather than a
+ * bare string so a record cannot claim a policy the tool never runs — and the
+ * two are held equal by a type test in vote-record.test.ts, so neither side
+ * can drift alone.
+ */
+const VoteRecordErrorPolicySchema = z.enum([
+  'reduce_denominator',
+  'count_as_abstain',
+  'fail_closed',
+  'absolute_quorum',
+]);
+
+/**
  * One authentic, self-hashed vote record. The `hash` covers every authenticity
  * field INCLUDING `sequence` but EXCLUDING `previousHash`, so the record is
  * tamper-EVIDENT and POSITION-INDEPENDENT: any edit to a persisted line is
@@ -437,13 +453,26 @@ export const VoteRecordSchema = z
     /**
      * Schema version. '1.1' marked the chain→record-set+sequence model (#3927);
      * '1.2' adds the optional `ratifies` subject-binding field (#3927 item 1);
-     * '1.10' adds the optional `ratifiesPr` PR-binding (#5130). Every tier is
-     * accepted — a 1.1 record (no `ratifies`) verifies unchanged because each
-     * optional is folded into the self-hash ONLY when present (see
-     * {@link computeVoteRecordHash}). Tiers are labels, not ordered numbers:
-     * '1.10' follows '1.9' by convention only and nothing compares them.
+     * '1.10' adds the optional `ratifiesPr` PR-binding (#5130); '1.11' the
+     * optional `errorPolicy` (#6211). Every tier is accepted — a 1.1 record
+     * (no `ratifies`) verifies unchanged because each optional is folded into
+     * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
+     * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
+     * convention only and nothing compares them.
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9', '1.10']),
+    version: z.enum([
+      '1.1',
+      '1.2',
+      '1.3',
+      '1.4',
+      '1.5',
+      '1.6',
+      '1.7',
+      '1.8',
+      '1.9',
+      '1.10',
+      '1.11',
+    ]),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -552,6 +581,24 @@ export const VoteRecordSchema = z
      */
     ratifiesPr: VoteRecordPrBindingSchema.optional(),
     /**
+     * The error policy the panel actually ran under (#6211, schema 1.11): the
+     * EFFECTIVE policy after `consensus_vote` applied the per-strategy default
+     * (`input.errorPolicy ?? getDefaultErrorPolicy(strategy)`), not the raw
+     * input the caller may have omitted. Hash-covered, present-only.
+     *
+     * Before this tier the policy reached the RESPONSE only, so the governor
+     * ledger gate (`scripts/governor-ledger-evidence.ts`) could not say which
+     * policy a whole-panel ratification was configured with: under
+     * `absolute_quorum` an errored seat voids the vote, so the one
+     * ledger-observable trace of a different policy was an approved record
+     * with `panelCoverage.errored > 0` — and a whole panel under
+     * `reduce_denominator` looked exactly like one under `absolute_quorum`.
+     * The gate's `wrong-error-policy` verdict reads this field; a record
+     * without it (every pre-1.11 record) keeps the panel-coverage inference
+     * and is reported as `errorPolicy: unrecorded`.
+     */
+    errorPolicy: VoteRecordErrorPolicySchema.optional(),
+    /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
      * the record-set model is position-independent (#3927).
@@ -628,13 +675,20 @@ function foldOptionalFields(base: object, payload: VoteRecordPayload): object {
       : withCoverage;
   const withRatifies =
     payload.ratifies !== undefined ? { ...withPanel, ratifies: payload.ratifies } : withPanel;
-  // `ratifiesPr` (#5130, schema 1.10) is the LAST key on the same rule: present-
-  // only, after `ratifies`, rebuilt field-by-field (`pr`, then `headSha`) so
-  // the hash does not depend on the binding's key order. Absent ⇒ byte-
-  // identical to the 1.9 form; the pinned 1.9 golden is the guard.
-  return payload.ratifiesPr !== undefined
-    ? { ...withRatifies, ratifiesPr: projectPrBinding(payload.ratifiesPr) }
-    : withRatifies;
+  // `ratifiesPr` (#5130, schema 1.10) follows on the same rule: present-only,
+  // after `ratifies`, rebuilt field-by-field (`pr`, then `headSha`) so the
+  // hash does not depend on the binding's key order. Absent ⇒ byte-identical
+  // to the 1.9 form; the pinned 1.9 golden is the guard.
+  const withPrBinding =
+    payload.ratifiesPr !== undefined
+      ? { ...withRatifies, ratifiesPr: projectPrBinding(payload.ratifiesPr) }
+      : withRatifies;
+  // `errorPolicy` (#6211, schema 1.11) is the LAST key: present-only, after
+  // `ratifiesPr`, a scalar carried as-is. Absent ⇒ byte-identical to the 1.10
+  // form; the pinned 1.10 golden is the guard.
+  return payload.errorPolicy !== undefined
+    ? { ...withPrBinding, errorPolicy: payload.errorPolicy }
+    : withPrBinding;
 }
 
 /**
