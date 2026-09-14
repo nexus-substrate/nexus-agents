@@ -1142,7 +1142,8 @@ describe('the governor section is bounded by dedicated directives, not the human
   /**
    * The governor set parsed from origin/main at 32c14595b6, BEFORE the
    * directives landed, plus the two #6000 step-3 entries (the pure decision
-   * computation and the voter-role set). The migration must not change what
+   * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
+   * script. The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1155,6 +1156,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/.github/workflows/governor-review.yml',
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
+    '/scripts/check-codeowners-errors.ts',
     '/scripts/governance-stamp-exemption.ts',
     '/scripts/governor-section.ts',
     '/.rules/',
@@ -1182,6 +1184,12 @@ describe('the governor section is bounded by dedicated directives, not the human
 
   it('the real file parses to exactly the pre-migration set', () => {
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
+  });
+
+  it('the #6174 CODEOWNERS-parses gate script is governor-owned (17 entries)', () => {
+    const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
+    expect(set).toContain('/scripts/check-codeowners-errors.ts');
+    expect(set).toHaveLength(17);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {
