@@ -19,12 +19,14 @@
  *
  * | Kind | Meaning |
  * | --- | --- |
- * | `ratified` | one record binds this PR at an accepted head, is `approved`, and the panel was whole |
+ * | `ratified` | one record binds this PR at an accepted head, is `approved`, and its recorded panel was whole |
  * | `no-record` | no record carries `ratifiesPr.pr === PR`; an EMPTY ledger is this case with `recordCount: 0`, never `ratified` |
  * | `sha-mismatch` | records bind this PR, but none at an accepted head — lists the shas found |
  * | `not-approved` | a bound record's `decision` is not `approved` |
+ * | `unmeasured-panel` | a bound record has no `panelCoverage`, or one that names no seats — it cannot show the panel ran whole |
  * | `degraded-panel` | a bound record's `panelCoverage.errored > 0` |
  * | `ledger-invalid` | a line does not parse, or `verifyVoteRecordSet` fails (tamper, gap) |
+ * | `ledger-rewritten` | the head ledger is not the base ledger plus appended lines — see below |
  * | `duplicate-id` | one id names two DIFFERENT records — refused, see below |
  *
  * The accepted heads are the PR head and, when the head commit touches ONLY
@@ -32,6 +34,43 @@
  * commit on top of the head the panel saw (#5130 panel Q1). A tip that
  * touches anything else — including a merge from main — is a new head the
  * panel did not see, so only `head` itself is accepted.
+ *
+ * ## Append-only against the base (#6213)
+ *
+ * The self-hash makes a record tamper-evident, but a PR can DELETE a line —
+ * a recorded dissent, say — or edit one and re-hash it, and the remaining
+ * ledger still verifies as a set. So the pre-merge job also reads the ledger
+ * at the merge-base (`git show <base>:governance/vote-records.jsonl`, empty
+ * when the file did not exist there) and the verdict requires the base's
+ * record lines to be a strict PREFIX of the head's: every base line present,
+ * byte-identical, in order, before anything appended. Blank lines are not
+ * records and are ignored on both sides.
+ *
+ * Prefix, not subsequence, is the measured shape of every ledger git itself
+ * produces. For the #6194 fork (two branches each append one line, A merges
+ * first): B un-rebased is compared to its merge-base, which is still the old
+ * base, so `base + B1` is a prefix match; B rebased onto `base + A1` is
+ * union-merged with the upstream side first, `base + A1 + B1`, again a prefix
+ * match; and merging un-rebased B into main yields the same order. A union
+ * merge does not interleave. An interleave (`base + B1 + A1` against
+ * `base + A1`) can therefore only come from a hand edit, and it is refused as
+ * `ledger-rewritten` like any other reorder — the remedy is to move the line.
+ *
+ * Precedence puts `ledger-rewritten` right after `ledger-invalid`: a rewrite
+ * outranks `duplicate-id` and `no-record` because the ledger it is computed
+ * over is not the ledger main will carry. No base supplied (the post-merge
+ * backstop, a local run) leaves the check NOT MADE, and the `ratified` line
+ * says so (`appendOnlyChecked: false`) rather than reading absence as health.
+ *
+ * ## Coverage is required on a bound record (#6213)
+ *
+ * `degraded-panel` fired only on `panelCoverage.errored > 0`, so a bound
+ * record that OMITTED `panelCoverage` cleared the check by absence. The
+ * producer omits the field for an unbound whole panel to keep the pre-1.5
+ * hash projection, but a bound record is 1.10 by construction and now always
+ * carries it (`buildVoteRecord`, #6213). A bound record without coverage, or
+ * with coverage naming zero seats, is `unmeasured-panel`: the record cannot
+ * show the panel ran whole, and the gate does not say it did.
  *
  * ## `errorPolicy` is not on the record — what `degraded-panel` proves instead
  *
@@ -99,6 +138,14 @@ import {
 /** Overrides the committed ledger path; for tests that drive the real gate over a temp ledger. */
 export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
 
+/**
+ * Path to the ledger AS OF THE MERGE-BASE, written by the workflow's evidence
+ * step (`git show <base>:governance/vote-records.jsonl`, or an empty file when
+ * the path did not exist at base). Absent ⇒ append-only is not checked, and
+ * the verdict says so; present but unreadable ⇒ `unmeasured` (#6213).
+ */
+export const BASE_LEDGER_PATH_ENV = 'RATIFICATION_BASE_LEDGER_PATH';
+
 /** The PR head as the pre-merge job sees it. Absent on the post-merge backstop. */
 export interface HeadBinding {
   readonly sha: string;
@@ -119,6 +166,13 @@ export interface LedgerEvidenceInputs {
    * number alone; the verdict then says the sha was not checked.
    */
   readonly head?: HeadBinding | undefined;
+  /**
+   * The ledger's bytes at the merge-base; `''` when the file did not exist
+   * there. Omitted when the caller has no base (post-merge backstop, local
+   * run): then append-only is NOT checked and `ratified` reports
+   * `appendOnlyChecked: false` (#6213).
+   */
+  readonly baseLedgerText?: string | undefined;
 }
 
 /** The verdict. See the module header for what each kind means. */
@@ -128,6 +182,8 @@ export type LedgerEvidence =
       readonly record: VoteRecord;
       /** False on the post-merge backstop: the PR number matched, the sha was not compared. */
       readonly shaChecked: boolean;
+      /** False when no base ledger was supplied: append-only was not compared (#6213). */
+      readonly appendOnlyChecked: boolean;
     }
   | { readonly kind: 'no-record'; readonly recordCount: number }
   | {
@@ -136,12 +192,21 @@ export type LedgerEvidence =
       readonly found: readonly string[];
     }
   | { readonly kind: 'not-approved'; readonly record: VoteRecord }
+  | { readonly kind: 'unmeasured-panel'; readonly record: VoteRecord; readonly reason: string }
   | {
       readonly kind: 'degraded-panel';
       readonly record: VoteRecord;
       readonly coverage: VoteRecordPanelCoverage;
     }
   | { readonly kind: 'ledger-invalid'; readonly detail: string }
+  | {
+      readonly kind: 'ledger-rewritten';
+      /** Record lines at the base and at the head. */
+      readonly baseLineCount: number;
+      readonly headLineCount: number;
+      /** 1-based index of the first base line that is missing, changed or moved at the head. */
+      readonly divergesAt: number;
+    }
   | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
 
 /** A ledger-only tip: the head commit touches exactly the ledger file. Empty ⇒ false. */
@@ -195,34 +260,92 @@ function loadLedger(text: string): Loaded {
   return { ok: true, records: [...byId.values()] };
 }
 
+/** The ledger's record lines: every non-blank line, bytes untouched. */
+function recordLines(text: string): string[] {
+  return text.split('\n').filter((line) => line.trim() !== '');
+}
+
+/**
+ * Append-only against the base (#6213): the base's record lines must be a
+ * strict prefix of the head's. Returns the verdict on the first base line
+ * that is missing, changed or moved; `undefined` when the head is the base
+ * plus appended lines (an empty base is a prefix of everything).
+ */
+function appendOnlyVerdict(
+  headText: string,
+  baseText: string
+): Extract<LedgerEvidence, { kind: 'ledger-rewritten' }> | undefined {
+  const base = recordLines(baseText);
+  const head = recordLines(headText);
+  for (let i = 0; i < base.length; i++) {
+    if (head[i] !== base[i]) {
+      return {
+        kind: 'ledger-rewritten',
+        baseLineCount: base.length,
+        headLineCount: head.length,
+        divergesAt: i + 1,
+      };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Why a bound record cannot show its panel ran whole, or `undefined` when it
+ * can. Absence is the case #6213 names; a coverage naming zero seats is the
+ * empty panel, named rather than passed.
+ */
+function panelUnmeasuredReason(record: VoteRecord): string | undefined {
+  if (record.panelCoverage === undefined) return 'no panelCoverage on the record';
+  if (record.panelCoverage.requested === 0) return 'panelCoverage names 0 requested seats';
+  return undefined;
+}
+
 /** The bound records' verdict: every one must be approved and whole; the latest is reported. */
-function verdictOverBound(bound: readonly VoteRecord[], shaChecked: boolean): LedgerEvidence {
+function verdictOverBound(
+  bound: readonly VoteRecord[],
+  checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean }
+): LedgerEvidence {
   for (const record of bound) {
     if (record.decision !== 'approved') return { kind: 'not-approved', record };
   }
   for (const record of bound) {
-    if (record.panelCoverage !== undefined && record.panelCoverage.errored > 0) {
-      return { kind: 'degraded-panel', record, coverage: record.panelCoverage };
+    const reason = panelUnmeasuredReason(record);
+    if (reason !== undefined) return { kind: 'unmeasured-panel', record, reason };
+    // Narrowed above: `reason` is undefined only when coverage is present.
+    const coverage = record.panelCoverage;
+    if (coverage !== undefined && coverage.errored > 0) {
+      return { kind: 'degraded-panel', record, coverage };
     }
   }
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
   const latest = bound.reduce((a, b) => (b.sequence > a.sequence ? b : a));
-  return { kind: 'ratified', record: latest, shaChecked };
+  return { kind: 'ratified', record: latest, ...checked };
 }
 
 /**
- * Compute the ledger verdict for a PR. Pure — the ledger bytes and the head
- * are passed in. Precedence: `ledger-invalid` → `duplicate-id` → `no-record`
- * → `sha-mismatch` → `not-approved` → `degraded-panel` → `ratified`.
+ * Compute the ledger verdict for a PR. Pure — the ledger bytes, the base
+ * ledger bytes and the head are passed in. Precedence: `ledger-invalid` →
+ * `ledger-rewritten` → `duplicate-id` → `no-record` → `sha-mismatch` →
+ * `not-approved` → `unmeasured-panel` → `degraded-panel` → `ratified`.
  */
 export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvidence {
   const loaded = loadLedger(inputs.ledgerText);
+  if (!loaded.ok && loaded.verdict.kind === 'ledger-invalid') return loaded.verdict;
+
+  const appendOnlyChecked = inputs.baseLedgerText !== undefined;
+  if (inputs.baseLedgerText !== undefined) {
+    const rewritten = appendOnlyVerdict(inputs.ledgerText, inputs.baseLedgerText);
+    if (rewritten !== undefined) return rewritten;
+  }
   if (!loaded.ok) return loaded.verdict;
 
   const forPr = loaded.records.filter((r) => r.ratifiesPr?.pr === inputs.pr);
   if (forPr.length === 0) return { kind: 'no-record', recordCount: loaded.records.length };
 
-  if (inputs.head === undefined) return verdictOverBound(forPr, false);
+  if (inputs.head === undefined) {
+    return verdictOverBound(forPr, { shaChecked: false, appendOnlyChecked });
+  }
 
   const accepted = acceptedHeadShas(inputs.head);
   const bound = forPr.filter((r) => accepted.includes(r.ratifiesPr?.headSha ?? ''));
@@ -230,7 +353,7 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
     const found = [...new Set(forPr.map((r) => r.ratifiesPr?.headSha ?? ''))];
     return { kind: 'sha-mismatch', accepted, found };
   }
-  return verdictOverBound(bound, true);
+  return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked });
 }
 
 const FLIP_NOTE = '(warn-first; #5131 flips this to a failure)';
@@ -242,9 +365,17 @@ function formatRatified(evidence: Extract<LedgerEvidence, { kind: 'ratified' }>)
   const sha = evidence.shaChecked
     ? `at ${recordedHead}`
     : `— sha not checked (post-merge: the squash commit is not the head the panel saw; recorded head ${recordedHead})`;
+  const coverage = evidence.record.panelCoverage;
+  const panel =
+    coverage === undefined
+      ? 'panel whole'
+      : `panel whole (${String(coverage.responded)} of ${String(coverage.requested)} seats responded)`;
+  const appendOnly = evidence.appendOnlyChecked
+    ? 'ledger append-only against base'
+    : 'base ledger not supplied — append-only not checked';
   return (
     `::notice::${TAG} ratified: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
-    `${sha}, decision ${evidence.record.decision}, panel whole.`
+    `${sha}, decision ${evidence.record.decision}, ${panel}, ${appendOnly}.`
   );
 }
 
@@ -262,6 +393,11 @@ function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): s
       );
     case 'not-approved':
       return `record '${evidence.record.id}' binds this PR with decision '${evidence.record.decision}'`;
+    case 'unmeasured-panel':
+      return (
+        `record '${evidence.record.id}' binds this PR but ${evidence.reason} — the record cannot ` +
+        'show the panel ran whole, and absence is not measured as whole'
+      );
     case 'degraded-panel':
       return (
         `record '${evidence.record.id}' was approved with ${String(evidence.coverage.errored)} of ` +
@@ -270,6 +406,12 @@ function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): s
       );
     case 'ledger-invalid':
       return evidence.detail;
+    case 'ledger-rewritten':
+      return (
+        `the ledger at head is not the base ledger plus appended lines: base line ${String(evidence.divergesAt)} ` +
+        `of ${String(evidence.baseLineCount)} is missing, changed or moved (head has ${String(evidence.headLineCount)} ` +
+        'record line(s)) — the ledger is append-only; restore the base lines verbatim and append after them'
+      );
     case 'duplicate-id':
       return (
         `${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one record with different ` +
@@ -303,31 +445,79 @@ function headFromEnv(env: NodeJS.ProcessEnv): HeadBinding | undefined {
   return { sha, ...(parent !== '' ? { parentSha: parent } : {}), commitFiles };
 }
 
+type ReadResult = { ok: true; text: string } | { ok: false; reason: string };
+
+/**
+ * Read a ledger file, naming the failure instead of throwing (#6213). An
+ * EISDIR or EACCES here used to crash the gate, which turned a would-be
+ * exit 0 into a non-zero exit — a change to the exit code the warn-first
+ * contract forbids. `missingIsEmpty` is the head ledger's rule: a file that
+ * does not exist is the empty ledger, a measurement; the base ledger is
+ * written by the workflow unconditionally, so its absence is an error.
+ */
+function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): ReadResult {
+  if (missingIsEmpty && !existsSync(path)) return { ok: true, text: '' };
+  try {
+    return { ok: true, text: readFileSync(path, 'utf-8') };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `the ${what} at ${path} could not be read (${message})` };
+  }
+}
+
 /**
  * Read the inputs from the workflow's environment and compute the verdict.
  *
  * `PR_NUMBER` absent or malformed is `unmeasured`, not `no-record`: a local
  * run has no PR, and "nothing was measured" must not print as "no panel
  * ratified this". A missing ledger FILE is the empty ledger (`no-record`,
- * count 0) — that is a measurement. `PR_HEAD_SHA` absent is the post-merge
- * shape (PR number only).
+ * count 0) — that is a measurement; an UNREADABLE one (a directory at the
+ * path, a permissions error) is `unmeasured` naming the error (#6213).
+ * `PR_HEAD_SHA` absent is the post-merge shape (PR number only).
+ * `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the merge-base; absent,
+ * append-only is not checked and the verdict says so.
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
   defaultLedgerPath: string
 ): LedgerEvidenceReport {
-  const prText = (env['PR_NUMBER'] ?? '').trim();
-  const pr = /^[1-9]\d*$/.test(prText) ? Number(prText) : undefined;
-  if (pr === undefined) {
-    return {
-      kind: 'unmeasured',
-      reason: `PR_NUMBER is ${prText === '' ? 'not set' : `'${prText}', not a positive integer`}; the committed ledger was not consulted`,
-    };
-  }
+  const pr = prNumberFromEnv(env);
+  if (typeof pr !== 'number') return pr;
+
   const ledgerPath = (env[LEDGER_PATH_ENV] ?? '').trim() || defaultLedgerPath;
-  const ledgerText = existsSync(ledgerPath) ? readFileSync(ledgerPath, 'utf-8') : '';
+  const ledger = readLedgerFile(ledgerPath, 'committed ledger', true);
+  if (!ledger.ok) return { kind: 'unmeasured', reason: ledger.reason };
+
+  const base = baseLedgerFromEnv(env);
+  if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
+
   const head = headFromEnv(env);
-  return evaluateLedgerEvidence({ ledgerText, pr, ...(head !== undefined ? { head } : {}) });
+  return evaluateLedgerEvidence({
+    ledgerText: ledger.text,
+    pr,
+    ...(head !== undefined ? { head } : {}),
+    ...(base !== undefined ? { baseLedgerText: base.text } : {}),
+  });
+}
+
+/** `PR_NUMBER` as a positive integer, or the `unmeasured` report that says why it is not one. */
+function prNumberFromEnv(
+  env: NodeJS.ProcessEnv
+): number | Extract<LedgerEvidenceReport, { kind: 'unmeasured' }> {
+  const prText = (env['PR_NUMBER'] ?? '').trim();
+  if (/^[1-9]\d*$/.test(prText)) return Number(prText);
+  const what = prText === '' ? 'not set' : `'${prText}', not a positive integer`;
+  return {
+    kind: 'unmeasured',
+    reason: `PR_NUMBER is ${what}; the committed ledger was not consulted`,
+  };
+}
+
+/** The base ledger named by `RATIFICATION_BASE_LEDGER_PATH`; `undefined` when the variable is unset. */
+function baseLedgerFromEnv(env: NodeJS.ProcessEnv): ReadResult | undefined {
+  const basePath = (env[BASE_LEDGER_PATH_ENV] ?? '').trim();
+  if (basePath === '') return undefined;
+  return readLedgerFile(basePath, 'base ledger', false);
 }
 
 /** Print the report to stderr, next to the label/approval verdict. Never changes the exit code (#5131). */

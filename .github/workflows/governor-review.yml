@@ -217,6 +217,22 @@ jobs:
           else
             HEAD_COMMIT_FILES=""
           fi
+          # #6213: the ledger AS OF THE MERGE-BASE, so the gate can require the
+          # head ledger to be the base plus appended lines (a PR that deletes
+          # or rewrites a recorded line is `ledger-rewritten`). Written to a
+          # file, not an output: a 100-record ledger exceeds the single-string
+          # env limit. Absent at base → an EMPTY file (a measured, empty base);
+          # present but unreadable → `git show` fails this step under -e.
+          BASE_LEDGER_PATH="${RUNNER_TEMP}/base-vote-records.jsonl"
+          # The commit must exist: an unknown sha would otherwise read as
+          # "no ledger at base" and the append-only check would pass over
+          # an empty base. Fails the step under -e.
+          git cat-file -e "${BASE_SHA}^{commit}"
+          if git cat-file -e "${BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
+            git show "${BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
+          else
+            : > "${BASE_LEDGER_PATH}"
+          fi
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -231,6 +247,7 @@ jobs:
             echo 'head_commit_files<<FILES_EOF'
             echo "${HEAD_COMMIT_FILES}"
             echo 'FILES_EOF'
+            echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate
@@ -250,6 +267,9 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.head_parent }}
           HEAD_COMMIT_FILES: ${{ steps.evidence.outputs.head_commit_files }}
+          # #6213: the ledger at the merge-base; the gate requires the head
+          # ledger to be this plus appended lines (`ledger-rewritten` otherwise).
+          RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
           # #5944: lets the gate read CLAUDE.md / AGENTS.md as of base and
           # exempt a diff whose only change is inside a generated span. Absent
           # or malformed, the exemption is simply never granted — fail-closed.
@@ -350,6 +370,22 @@ jobs:
               HEAD_TIME=""
             fi
           fi
+          # #6213: the ledger AS OF THE PARENT of what landed, so the gate can require the
+          # head ledger to be the base plus appended lines (a PR that deletes
+          # or rewrites a recorded line is `ledger-rewritten`). Written to a
+          # file, not an output: a 100-record ledger exceeds the single-string
+          # env limit. Absent at base → an EMPTY file (a measured, empty base);
+          # present but unreadable → `git show` fails this step under -e.
+          BASE_LEDGER_PATH="${RUNNER_TEMP}/base-vote-records.jsonl"
+          # The commit must exist: an unknown sha would otherwise read as
+          # "no ledger at base" and the append-only check would pass over
+          # an empty base. Fails the step under -e.
+          git cat-file -e "${BASE_SHA}^{commit}"
+          if git cat-file -e "${BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
+            git show "${BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
+          else
+            : > "${BASE_LEDGER_PATH}"
+          fi
           {
             echo 'files<<FILES_EOF'
             echo "${FILES}"
@@ -361,6 +397,7 @@ jobs:
             echo "head_time=${HEAD_TIME}"
             echo "base=${BASE_SHA}"
             echo "pr_number=${PR_NUMBER}"
+            echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run ratification gate against what actually landed
@@ -377,6 +414,9 @@ jobs:
           # PR_HEAD_SHA on purpose. A direct push has no PR number, and the
           # gate reports the ledger as unmeasured rather than as "no record".
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
+          # #6213: the ledger at `${SHA}~1`; the squash commit's ledger must be
+          # that plus appended lines, the same rule the pre-merge job applies.
+          RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
           # #6029: the backstop set NO base at all, so its exemption was
           # unreachable by a second mechanism. Both jobs must grant the same
           # exemption or a stamp-only PR turns main red after merging green.
