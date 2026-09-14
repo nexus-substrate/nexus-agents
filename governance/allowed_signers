@@ -1,0 +1,14 @@
+# governance/allowed_signers — the public keys a vote-record `signature` is verified against (#3927 item 4).
+#
+# OpenSSH allowed_signers format (ssh-keygen(1), "ALLOWED SIGNERS"): principal, ONE comma-joined options
+# token, key type, key. `namespaces` restricts the key to vote-record signatures (a git or file
+# signature by the same key cannot be replayed as a ratification). The validity window is how a key
+# is rotated: add `valid-before` to the old line rather than deleting it, and add the new key on its
+# own line. Governor path: a change here needs ratification, like the ledger it vouches for.
+#
+# What a listed key proves when it signs: access to the private key from the environment that ran
+# the append — not a human's presence. See docs/security/audit-hash-chain-threat-model.md and #6257.
+#
+# williamzujkowski@nexus-agents — SHA256:6lUiTo0SwQSY2XFa8wIkrBXR2SQLr3uNo6Q9HSSnwgk (ed25519), the
+# operator's GitHub key ("Framework 24.04lts"). Valid from the phase-2 cutover date.
+williamzujkowski@nexus-agents namespaces="nexus-vote-record",valid-after="20260914" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHI8k/GB259AoMP060lHV7jXAR3Ay4SZEA/D4zVhqk80

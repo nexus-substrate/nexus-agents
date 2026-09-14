@@ -21,9 +21,12 @@ import type { ConsensusResult, Vote } from '../packages/nexus-agents/src/consens
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
 import {
+  VOTE_RECORD_SIGNATURE_NAMESPACE,
   computeVoteRecordHash,
   verifyVoteRecordSet,
 } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
+import { signVoteRecordHash } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
 import {
   buildVoteRecord,
   parseVoteRecordsText,
@@ -45,7 +48,9 @@ import {
   PRIOR_HEADS_ENV,
   formatLedgerEvidence,
   ledgerEvidenceFromEnv,
+  reportLedgerEvidence,
 } from './governor-ledger-report.js';
+import { ALLOWED_SIGNERS_PATH_ENV } from './governor-ledger-signature.js';
 import { gitMovedHeadProbe, type MovedHeadProbe } from './governor-patch-identity.js';
 import { runRatificationGate } from './check-governor-ratification.js';
 
@@ -1567,7 +1572,11 @@ describe('report order: misconfiguration before not-approved, every failing chec
     expect(at('wrong-error-policy')).toBeLessThan(at('wrong-strategy'));
     expect(at('wrong-strategy')).toBeLessThan(at('degraded-panel'));
     expect(at('degraded-panel')).toBeLessThan(at('not-approved'));
-    expect(line.split('; ')).toHaveLength(4);
+    // Four failures, then the signature segment (#3927 item 4), always last.
+    const segments = line.split('; ');
+    expect(segments).toHaveLength(5);
+    expect(segments[4]?.startsWith('signature: ')).toBe(true);
+    expect(at('not-approved')).toBeLessThan(at('signature'));
   });
 
   it('two bound records: the dissent and the OTHER record’s misconfiguration are both named, misconfiguration first', () => {
@@ -1691,6 +1700,10 @@ describe('the committed ledger: the first real record (PR #6241, #5131 acceptanc
       expect(lines.join('\n')).toContain(
         `::notice::[governor-ledger] ratified: record '${RECORD_ID}' ratifies PR #${String(PR_6241)} at ${PR_6241_HEAD}`
       );
+      // #3927 item 4, phase 1: the record predates signing, and the line says
+      // so — verified against the REAL governance/allowed_signers, exit still 0.
+      expect(lines.join('\n')).toContain('signature: unsigned-record');
+      expect(lines.join('\n')).not.toContain('signature-not-measured');
 
       lines.length = 0;
       expect(runRatificationGate({ ...env, PR_HEAD_SHA: OTHER })).toBe(1);
@@ -1905,6 +1918,39 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     expect(
       git(dir, 'diff-tree', '-r', '--name-only', e.replayedTree, `${inputs.headSha}^{tree}`)
     ).toBe(VOTE_RECORDS_REL_PATH);
+  });
+
+  it('(a′) the rebased record is a bound record: its signature verdict rides on `ratified-rebased` and its line (#3927 item 4)', () => {
+    const { dir, A } = ratifiedBranch();
+    advanceMain(dir);
+    mergeMain(dir);
+    const inputs = inputsFor(dir);
+    // No verifier supplied: no `signatures` field, and the line says the
+    // check was not made — absence is not `unsigned-record`.
+    const unmeasured = evaluateLedgerEvidence(inputs);
+    expect(unmeasured.kind).toBe('ratified-rebased');
+    if (unmeasured.kind !== 'ratified-rebased') throw new Error('unreachable');
+    expect(unmeasured.signatures).toBeUndefined();
+    expect(formatLedgerEvidence(unmeasured)).toContain(
+      'signature: unmeasured (no verifier supplied)'
+    );
+    // A verifier supplied: it is run over the record bound at the ratified
+    // sha (not the head, which no record binds), and its verdict is printed.
+    const seen: string[] = [];
+    const e = evaluateLedgerEvidence({
+      ...inputs,
+      signatureVerifier: (r) => {
+        seen.push(r.ratifiesPr?.headSha ?? '');
+        return { code: 'signed', keyId: 'rebased@test' };
+      },
+    });
+    expect(e.kind).toBe('ratified-rebased');
+    if (e.kind !== 'ratified-rebased') throw new Error('unreachable');
+    expect(seen).toEqual([A]);
+    expect(e.signatures).toEqual([
+      { recordId: 'v-pr', verdict: { code: 'signed', keyId: 'rebased@test' } },
+    ]);
+    expect(formatLedgerEvidence(e)).toContain('signature: signed by rebased@test.');
   });
 
   it('(b) rebase onto main: the ratified sha is orphaned but was a head of THIS PR, the patch is unchanged → ratified-rebased, prior-head', () => {
@@ -2327,5 +2373,222 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     } finally {
       err.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signature reporting (#3927 item 4, phases 1-2): informational this phase.
+// ---------------------------------------------------------------------------
+
+describe('signature verdicts on the evidence line (#3927 item 4) — reported, not yet enforced', () => {
+  const OPERATOR = 'operator@test';
+  let dir: string;
+  let keyPath: string;
+  let allowedSignersPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ledger-evidence-signature-'));
+    keyPath = join(dir, 'operator_key');
+    execFileSync(
+      'ssh-keygen',
+      ['-q', '-t', 'ed25519', '-N', '', '-C', 'ephemeral', '-f', keyPath],
+      {
+        stdio: 'ignore',
+      }
+    );
+    allowedSignersPath = join(dir, 'allowed_signers');
+    writeFileSync(
+      allowedSignersPath,
+      `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf-8')}`,
+      'utf-8'
+    );
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A real signature over the record's committed hash. */
+  function signed(r: VoteRecord): VoteRecord {
+    const out = signVoteRecordHash({
+      hash: r.hash,
+      keyPath,
+      allowedSigners: readFileSync(allowedSignersPath, 'utf-8'),
+    });
+    if (!out.ok) throw new Error(out.reason);
+    return { ...r, signature: out.signature };
+  }
+
+  const constant =
+    (verdict: VoteRecordSignatureVerdict): ((r: VoteRecord) => VoteRecordSignatureVerdict) =>
+    () =>
+      verdict;
+
+  it('no verifier supplied → the verdict carries no `signatures` key, and the line says unmeasured', () => {
+    const e = evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('v0', { sequence: 0 })]),
+      pr: PR,
+      head: AT_HEAD,
+    });
+    expect(e.kind).toBe('ratified');
+    expect('signatures' in e).toBe(false);
+    expect(formatLedgerEvidence(e)).toContain('signature: unmeasured (no verifier supplied)');
+  });
+
+  it('a verifier supplied → every bound record is reported, on ratified AND on a bound refusal', () => {
+    const ok = evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('v0', { sequence: 0 })]),
+      pr: PR,
+      head: AT_HEAD,
+      signatureVerifier: constant({ code: 'signed', keyId: OPERATOR }),
+    });
+    expect(ok.kind).toBe('ratified');
+    if (ok.kind !== 'ratified') throw new Error('unreachable');
+    expect(ok.signatures).toEqual([
+      { recordId: 'v0', verdict: { code: 'signed', keyId: OPERATOR } },
+    ]);
+    expect(formatLedgerEvidence(ok)).toContain(`signature: signed by ${OPERATOR}`);
+
+    const refused = evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('v0', { sequence: 0, decision: 'rejected' })]),
+      pr: PR,
+      head: AT_HEAD,
+      signatureVerifier: constant({ code: 'unsigned-record' }),
+    });
+    expect(refused.kind).toBe('not-approved');
+    if (refused.kind !== 'not-approved') throw new Error('unreachable');
+    expect(refused.signatures).toEqual([{ recordId: 'v0', verdict: { code: 'unsigned-record' } }]);
+    expect(formatLedgerEvidence(refused)).toContain('signature: unsigned-record');
+  });
+
+  it("every code renders distinctly, with ssh-keygen's reason where there is one", () => {
+    const r = record('v0', { sequence: 0 });
+    const line = (verdict: VoteRecordSignatureVerdict): string =>
+      formatLedgerEvidence({
+        kind: 'ratified',
+        record: r,
+        shaChecked: true,
+        appendOnlyChecked: true,
+        signatures: [{ recordId: 'v0', verdict }],
+      });
+    expect(line({ code: 'signed', keyId: OPERATOR })).toContain(`signature: signed by ${OPERATOR}`);
+    expect(line({ code: 'unsigned-record' })).toContain('signature: unsigned-record');
+    expect(line({ code: 'unknown-signer', keyId: 'x@y', reason: 'key has expired' })).toContain(
+      "signature: unknown-signer 'x@y' (key has expired)"
+    );
+    expect(line({ code: 'bad-signature', keyId: 'x@y', reason: 'incorrect signature' })).toContain(
+      "signature: bad-signature 'x@y' (incorrect signature)"
+    );
+    expect(line({ code: 'signature-not-measured', reason: 'spawn ssh-keygen ENOENT' })).toContain(
+      'signature: signature-not-measured (spawn ssh-keygen ENOENT)'
+    );
+  });
+
+  it('two bound records are each named', () => {
+    const line = formatLedgerEvidence({
+      kind: 'ratified',
+      record: record('v1', { sequence: 1 }),
+      shaChecked: true,
+      appendOnlyChecked: true,
+      signatures: [
+        { recordId: 'v0', verdict: { code: 'unsigned-record' } },
+        { recordId: 'v1', verdict: { code: 'signed', keyId: OPERATOR } },
+      ],
+    });
+    expect(line).toContain(`signature: 'v0' unsigned-record; 'v1' signed by ${OPERATOR}`);
+  });
+
+  it('INFORMATIONAL THIS PHASE: unsigned-record and bad-signature leave the verdict `ratified`', () => {
+    for (const verdict of [
+      { code: 'unsigned-record' } as const,
+      { code: 'bad-signature', keyId: OPERATOR, reason: 'incorrect signature' } as const,
+      { code: 'unknown-signer', keyId: 'mallory@else', reason: 'No principal matched.' } as const,
+      { code: 'signature-not-measured', reason: 'spawn ssh-keygen ENOENT' } as const,
+    ]) {
+      const e = evaluateLedgerEvidence({
+        ledgerText: ledgerText([record('v0', { sequence: 0 })]),
+        pr: PR,
+        head: AT_HEAD,
+        signatureVerifier: constant(verdict),
+      });
+      expect(e.kind).toBe('ratified');
+    }
+  });
+
+  it.todo(
+    'phase 3 (#3927 item 4): enforce for sequence >= SIGNATURE_CUTOVER_SEQUENCE — a committed constant, not an env knob; ' +
+      'a bound record at or past the cutover that is not `signed` is a refusal naming its code; the grandfathered range is named on the ratified line'
+  );
+
+  it(`ledgerEvidenceFromEnv reads ${ALLOWED_SIGNERS_PATH_ENV} and runs the REAL verifier: a signed record is 'signed by', an unsigned one is 'unsigned-record'`, () => {
+    const path = join(dir, 'vote-records.jsonl');
+    const r0 = signed(record('v0', { sequence: 0 }));
+    writeFileSync(path, ledgerText([r0]), 'utf-8');
+    const env = {
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+      RATIFICATION_LEDGER_PATH: path,
+      [ALLOWED_SIGNERS_PATH_ENV]: allowedSignersPath,
+    };
+    const e = ledgerEvidenceFromEnv(env, path);
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.signatures).toEqual([
+      { recordId: 'v0', verdict: { code: 'signed', keyId: OPERATOR } },
+    ]);
+
+    // Same key, hash edited and re-hashed after signing: the set verifies,
+    // the signature is what says so — and this phase still ratifies.
+    const { hash: _h, ...payload } = r0;
+    const relabelled = { ...payload, proposal: 'edited after signing' };
+    writeFileSync(
+      path,
+      ledgerText([{ ...relabelled, hash: computeVoteRecordHash(relabelled) }]),
+      'utf-8'
+    );
+    const bad = ledgerEvidenceFromEnv(env, path);
+    expect(bad.kind).toBe('ratified');
+    if (bad.kind !== 'ratified') throw new Error('unreachable');
+    expect(bad.signatures?.[0]?.verdict.code).toBe('bad-signature');
+  });
+
+  it('an unreadable allowed_signers is signature-not-measured naming the path — the gate exit is unchanged', () => {
+    const path = join(dir, 'vote-records.jsonl');
+    writeFileSync(path, ledgerText([signed(record('v0', { sequence: 0 }))]), 'utf-8');
+    const missing = join(dir, 'no-such-allowed_signers');
+    const lines: string[] = [];
+    const err = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    try {
+      const ratified = reportLedgerEvidence(
+        {
+          PR_NUMBER: String(PR),
+          PR_HEAD_SHA: HEAD,
+          RATIFICATION_LEDGER_PATH: path,
+          [ALLOWED_SIGNERS_PATH_ENV]: missing,
+        },
+        path
+      );
+      expect(ratified).toBe(true);
+      const out = lines.join('\n');
+      expect(out).toContain('::notice::[governor-ledger] ratified:');
+      expect(out).toContain('signature: signature-not-measured (');
+      expect(out).toContain(missing);
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it('the default allowed_signers path is beside the ledger: governance/allowed_signers for the committed one', () => {
+    // No env override: the real committed file is read, and the two real
+    // records are pre-phase-2, so the answer is unsigned-record for both —
+    // not signature-not-measured, which would mean the file was not found.
+    const e = ledgerEvidenceFromEnv(
+      { PR_NUMBER: '6241', PR_HEAD_SHA: '208f885b3f4ad0b6456f8ff9bf4bce750d3b3a1a' },
+      join(REPO_ROOT, VOTE_RECORDS_REL_PATH)
+    );
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.signatures?.map((s) => s.verdict.code)).toEqual(['unsigned-record']);
   });
 });

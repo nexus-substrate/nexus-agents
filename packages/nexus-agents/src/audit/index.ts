@@ -63,7 +63,9 @@ export { FileAuditStorage, InMemoryAuditStorage } from './audit-storage.js';
 // Authentic vote record (#3897, model revised #3927) — committable,
 // tamper-evident record SET + monotonic sequence (merge-safe; not a chain).
 export {
+  VOTE_RECORD_SIGNATURE_NAMESPACE,
   VoteRecordSchema,
+  VoteRecordSignatureSchema,
   VoterSummarySchema,
   VoteRecordCountsSchema,
   VoteRecordDecisionSchema,
@@ -78,8 +80,13 @@ export type {
   VoteRecordCounts,
   VoteRecordDecision,
   VoteRecordPrBinding,
+  VoteRecordSignature,
   VoteRecordVerification,
 } from './vote-record.js';
+// Per-record SSH signature over the committed hash (#3927 item 4): sign and
+// verify, both through an injectable ssh-keygen runner.
+export { signVoteRecordHash, verifyVoteRecordSignature } from './vote-record-signature.js';
+export type { SshKeygenRunner, VoteRecordSignatureVerdict } from './vote-record-signature.js';
 export {
   VOTE_RECORDS_REL_PATH,
   buildVoteRecord,

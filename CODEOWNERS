@@ -36,6 +36,9 @@
 # registry once it exists; it is a no-op (no dangling match required) until then.
 /governance/ @williamzujkowski
 /governance/claims-registry.* @williamzujkowski
+# The keys a vote-record signature is verified against (#3927 item 4). Covered
+# by the directory pattern above; named so the entry is a reviewed act.
+/governance/allowed_signers @williamzujkowski
 
 # The governor's own gates (#4635). A gate an agent can quietly weaken without
 # tripping it is not a gate — these must route through ratification like the
@@ -50,6 +53,8 @@
 # moved-head rule measures in the checkout, and the verdict the log reports.
 /scripts/governor-ledger-report.ts @williamzujkowski
 /scripts/governor-patch-identity.ts @williamzujkowski
+# #3927 item 4 — the signature half of that evidence: verifier and rendering.
+/scripts/governor-ledger-signature.ts @williamzujkowski
 # #6174 — asks GitHub's own parser whether this file is valid at the sha under review.
 /scripts/check-codeowners-errors.ts @williamzujkowski
 # #4802 — decides whether the pr_review audit gate and the CODEOWNERS parse run

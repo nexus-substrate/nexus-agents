@@ -224,6 +224,10 @@ const NexusEnvSchema = z.object({
   NEXUS_SENSITIVE_REFS: z.string().optional(),
   NEXUS_SUBPROCESS_EXTRA_ENV: z.string().optional(),
   NEXUS_VOTE_RECORDS_PATH: z.string().optional(),
+  // #3927 item 4: the SSH key `scripts/append-ratification-record.ts` signs a
+  // committed vote record's hash with (`--signing-key` overrides it). A path;
+  // unset ⇒ the record is appended unsigned and the script says so.
+  NEXUS_VOTE_SIGNING_KEY: z.string().optional(),
 
   // parseIntEnv / parseInt consumers: a non-integer is discarded in favour of
   // the default, so reporting it as invalid tells the user their setting was

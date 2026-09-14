@@ -26,13 +26,24 @@
  * removed, the surviving partner still occupies that sequence, so no gap appears
  * and verification still returns `ok`. So a concurrent fork that resolved
  * `approved` + `rejected` can have its `rejected` partner silently dropped. This
- * is consistent with the residual-trust boundary (records are author-typed and
- * NOT yet cryptographically signed — signing is #3927 item 4): a commit-access
+ * is consistent with the residual-trust boundary (records are author-typed;
+ * a signature is OPTIONAL until the #3927 item 4 phase-3 cutover): a commit-access
  * actor could equally have just never written the rejecting record, so this grants
  * no new capability. Closing it (cross-checking `forks`/`recordCount`, or
  * requiring fork partners to be co-present) is only meaningful once signing raises
  * the overall bar, and folds into #3927 item 4. See the audit-hash-chain threat
  * model for the disclosed boundary.
+ *
+ * SIGNATURE (#3927 item 4, phases 1-2). A record MAY carry `signature`: a
+ * detached `ssh-keygen -Y sign` signature, namespace
+ * {@link VOTE_RECORD_SIGNATURE_NAMESPACE}, over the record's committed `hash`
+ * string. It is OUTSIDE the self-hash (it is made over the hash) and is
+ * verified separately by `vote-record-signature.ts` against the committed
+ * `governance/allowed_signers`. `verifyVoteRecordSet` does NOT check it: the
+ * set verifier answers "was any record edited", the signature verifier answers
+ * "did a listed key sign this hash", and the gate reports the two side by side.
+ * What a signature proves is key ACCESS from the signing environment, not a
+ * human's presence — see the threat model and #6257.
  *
  * WHY A DEDICATED PAYLOAD-COVERING HASH (and not the audit-event head hash).
  * The audit-event chain (`computeEventHash` in audit-logger.ts) hashes only the
@@ -605,6 +616,48 @@ const VoteRecordErrorPolicySchema = z.enum([
 ]);
 
 /**
+ * The `ssh-keygen -Y` namespace every vote-record signature is made and
+ * verified under (#3927 item 4). A namespace binds a signature to ONE
+ * purpose: a key that also signs git commits (`git`) or files (`file`) cannot
+ * have one of those signatures replayed as a ratification, and the committed
+ * `governance/allowed_signers` restricts the operator's key to this namespace
+ * alone. Pinned by a literal test; a drift here turns every existing
+ * signature into `bad-signature` (ssh-keygen: "namespace does not match").
+ */
+export const VOTE_RECORD_SIGNATURE_NAMESPACE = 'nexus-vote-record';
+
+/**
+ * A detached SSH signature over the record's committed `hash` (#3927 item 4,
+ * phase 1; panel decision option B, 5 of 6).
+ *
+ * `keyId` is the principal the signature claims — the identity the verifier
+ * looks up in `governance/allowed_signers` (`ssh-keygen -Y verify -I`).
+ * `namespace` is the literal above, carried on the record so a reader can see
+ * what the signature was made under without re-deriving it. `sig` is the
+ * armored `-----BEGIN SSH SIGNATURE-----` block exactly as `ssh-keygen -Y
+ * sign` emits it.
+ *
+ * The SIGNED MESSAGE IS THE `hash` STRING (64 lowercase hex characters, no
+ * newline) — never a re-serialised JSON form of the record. The #3927 re-vote's
+ * contrarian objected that JSON canonicalisation is brittle across runtimes;
+ * signing the hash makes that moot, because one TypeScript projection already
+ * produces the hash and every gate consumes it, and a second verifier in any
+ * language verifies the signature over that string without re-canonicalising.
+ * Signing the hash also signs everything the hash covers, `sequence` included,
+ * so the chain position is signed too.
+ */
+export const VoteRecordSignatureSchema = z
+  .object({
+    /** The allowed_signers principal, e.g. `williamzujkowski@nexus-agents`. */
+    keyId: z.string().min(1).max(200),
+    namespace: z.literal(VOTE_RECORD_SIGNATURE_NAMESPACE),
+    /** The armored SSH signature block, verbatim. */
+    sig: z.string().min(1).max(8192),
+  })
+  .strict();
+export type VoteRecordSignature = z.infer<typeof VoteRecordSignatureSchema>;
+
+/**
  * One authentic, self-hashed vote record. The `hash` covers every authenticity
  * field INCLUDING `sequence` but EXCLUDING `previousHash`, so the record is
  * tamper-EVIDENT and POSITION-INDEPENDENT: any edit to a persisted line is
@@ -773,7 +826,27 @@ export const VoteRecordSchema = z
      * the record-set model is position-independent (#3927).
      */
     previousHash: z.string().length(64).optional(),
-    /** SHA-256 over every field above EXCEPT `previousHash` (and except `hash`). */
+    /**
+     * Detached SSH signature over the committed `hash` (#3927 item 4, phase
+     * 1). The SECOND field outside the self-hash, on `previousHash`'s rule
+     * but for the opposite reason: `previousHash` is excluded because it is
+     * positional, this because it is made OVER the hash and cannot be inside
+     * it. Present-only; absent on every record appended before phase 2 and
+     * on any appended without a configured signing key.
+     *
+     * NOT a schema tier. `version` is hash-covered, and the signature is
+     * applied after the committed hash is final (the append script
+     * re-sequences, re-hashes, then signs), so a signed 1.11 record is still a
+     * 1.11 record and hashes identically with or without this field. A record
+     * that lacks it is `unsigned-record` to the verifier
+     * (`vote-record-signature.ts`), and the gate reports that informationally
+     * until the phase-3 cutover constant makes it a refusal.
+     */
+    signature: VoteRecordSignatureSchema.optional(),
+    /**
+     * SHA-256 over every field above EXCEPT `previousHash` and `signature`
+     * (and except `hash`).
+     */
     hash: z.string().length(64),
   })
   .strict()
@@ -879,7 +952,8 @@ function foldOptionalFields(base: object, payload: VoteRecordPayload): object {
  * flipped `decision` or altered `approvalPercentage` changes the hash — the
  * core #3897 property) AND the monotonic `sequence` (#3927) — but it EXCLUDES
  * `previousHash`, so the hash is position-independent and stable across
- * concurrent-branch merges and file reorders. The projection is built
+ * concurrent-branch merges and file reorders, and it EXCLUDES `signature`,
+ * which is made over the hash and so cannot be inside it. The projection is built
  * field-by-field (not `JSON.stringify(record)`) so key-order is deterministic
  * regardless of how the object was constructed — and the NESTED objects
  * (`voteCounts` and each `voters[]` element) are likewise rebuilt field-by-field
