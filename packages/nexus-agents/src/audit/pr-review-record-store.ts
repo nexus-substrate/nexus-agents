@@ -31,7 +31,9 @@ import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
+  PrReviewPanelCoverage,
   PrReviewSanitization,
   PrReviewRecord,
   PrReviewVerdict,
@@ -85,6 +87,14 @@ export interface BuildPrReviewRecordInput {
    */
   readonly sanitization?: PrReviewSanitization | undefined;
   /**
+   * What the panel READ (#6190). Optional because the schema field is: a
+   * producer that never packs (the local-ledger script) has nothing to state.
+   * The pr_review producer passes it whenever its packer measured coverage.
+   */
+  readonly coverage?: PrReviewPanelCoverage | undefined;
+  /** How far the hash BINDS (#6190). Passed together with `coverage`. */
+  readonly bindingBounds?: PrReviewBindingBounds | undefined;
+  /**
    * Monotonic sequence number for this record. Defaults to 0 (first record)
    * when omitted; the future producer supplies (max existing sequence)+1.
    */
@@ -109,7 +119,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       ? input.summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
       : input.summary;
   const payload: Omit<PrReviewRecord, 'hash'> = {
-    version: '1.3',
+    version: '1.4',
     sequence: input.sequence ?? 0,
     prNumber: input.prNumber,
     baseSha: input.baseSha,
@@ -127,6 +137,8 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
     summary: summaryTruncated,
     ...(input.diffProvenance !== undefined ? { diffProvenance: input.diffProvenance } : {}),
     ...(input.sanitization !== undefined ? { sanitization: input.sanitization } : {}),
+    ...(input.coverage !== undefined ? { coverage: input.coverage } : {}),
+    ...(input.bindingBounds !== undefined ? { bindingBounds: input.bindingBounds } : {}),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };

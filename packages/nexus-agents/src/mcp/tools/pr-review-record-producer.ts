@@ -21,8 +21,10 @@ import {
 } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
 import type {
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
   PrReviewDiffSource,
+  PrReviewPanelCoverage,
   PrReviewSanitization,
 } from '../../audit/pr-review-record.js';
 import {
@@ -83,10 +85,14 @@ export interface PrReviewCounts {
 }
 
 /**
- * Large-diff review coverage stamped onto the record (#4140, #6003). Present when
- * the panel read was partial OR the hash binds only a prefix. Folded into the
- * (hash-covered) record `summary` for honest completeness — the `reviewedDiffHash`
- * binding is UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of
+ * Large-diff review coverage stamped onto the record (#4140, #6003, #6190).
+ * Present when the panel read was partial OR the hash binds only a prefix.
+ * Written to the record TWICE, on purpose: as the structured, hash-covered
+ * `coverage` / `bindingBounds` fields (the evidence — every dropped path, uncapped)
+ * and as a human-readable stamp in the (also hash-covered, 500-char-capped)
+ * `summary`, which lists at most {@link SUMMARY_DROPPED_FILES_LISTED} of the
+ * dropped paths and counts the rest. The `reviewedDiffHash` binding is
+ * UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of
  * `input.prDiff`); the gate matches on `{prNumber, reviewedDiffHash}`, never on
  * the summary text. The byte fields are UTF-8 (see `PrReviewBindingCoverage`).
  */
@@ -127,20 +133,69 @@ function bindingStamp(coverage: PrReviewCoverageStamp): string {
 }
 
 /**
+ * How many dropped paths the SUMMARY stamp lists (#6190). The full list is in
+ * the record's `coverage.droppedFiles`; the summary is capped at 500 chars by
+ * the store, and before this a review that dropped forty 22-char paths kept
+ * seventeen of them and lost the binding stamp. Three keeps the stamp bounded
+ * (≈ 273 fixed chars + three paths) so the cap reaches the title first.
+ */
+const SUMMARY_DROPPED_FILES_LISTED = 3;
+
+/**
+ * `40 dropped (3 listed): a, b, c` — or `2 dropped: a, b` when every path
+ * fits. The count is always the TOTAL, so a reader of the summary alone knows
+ * how much the field holds that the stamp does not.
+ */
+function droppedFilesClause(dropped: readonly string[]): string {
+  const listed = dropped.slice(0, SUMMARY_DROPPED_FILES_LISTED);
+  const qualifier = listed.length < dropped.length ? ` (${String(listed.length)} listed)` : '';
+  return `${String(dropped.length)} dropped${qualifier}: ${listed.join(', ')}`;
+}
+
+/**
  * Both coverage stamps, or `''` when there is nothing to disclose. Order is
  * load-bearing: the store caps the summary at 500 chars, so the stamps go
- * BEFORE the title, and the #4140 file stamp — whose dropped-file list is the
- * one unbounded, per-review fact — goes before the fixed-width binding stamp
- * so it is the last thing truncated. The file stamp fires only on a partial
- * PANEL read: a full read over a prefix binding dropped no file, and must not
- * be recorded as if it had.
+ * BEFORE the title, and the #4140 file stamp goes before the fixed-width
+ * binding stamp. Since #6190 the file stamp is bounded too (it lists at most
+ * {@link SUMMARY_DROPPED_FILES_LISTED} paths; the structured `coverage` field
+ * carries them all), so the cap now reaches the title first and never the
+ * evidence. The file stamp fires only on a partial PANEL read: a full read
+ * over a prefix binding dropped no file, and must not be recorded as if it had.
  */
 function coverageStamps(coverage: PrReviewCoverageStamp | undefined): string {
   if (coverage === undefined) return '';
   const files = coverage.partial
-    ? `[partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}] `
+    ? `[partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, ${droppedFilesClause(coverage.droppedFiles)}] `
     : '';
   return ` ${files}${bindingStamp(coverage)}`;
+}
+
+/**
+ * The structured record fields (#6190), rebuilt field-by-field from the
+ * packer's coverage so the audit schema — which cannot import this module's
+ * types (governor path, dependency-minimal) — is satisfied by construction:
+ * a field the packer adds is not silently written, and a value the schema
+ * would reject (`budgetSource`) is a compile error here, not a refused write.
+ * `undefined` in ⇒ `undefined` out: a both-full review states nothing, and
+ * the record must not carry zero-filled fields that read as a measurement.
+ */
+function coverageFieldsOf(
+  coverage: PrReviewCoverageStamp | undefined
+): { coverage: PrReviewPanelCoverage; bindingBounds: PrReviewBindingBounds } | undefined {
+  if (coverage === undefined) return undefined;
+  return {
+    coverage: {
+      panelRead: coverage.panelRead,
+      reviewedFiles: coverage.reviewedFiles,
+      totalFiles: coverage.totalFiles,
+      droppedFiles: [...coverage.droppedFiles],
+      reviewedBytes: coverage.reviewedBytes,
+      totalBytes: coverage.totalBytes,
+      budgetSource: coverage.budgetSource,
+      budgetDetail: coverage.budgetDetail,
+    },
+    bindingBounds: { kind: coverage.binding, boundBytes: coverage.boundBytes },
+  };
 }
 
 /**
@@ -197,9 +252,11 @@ export interface PersistReviewRecordArgs {
    */
   readonly diffSource: PrReviewDiffSource;
   /**
-   * #4140/#6003: large-diff coverage; stamped into the record summary whenever
+   * #4140/#6003/#6190: large-diff coverage; written as the structured
+   * `coverage` / `bindingBounds` record fields AND stamped into the summary whenever
    * present (the packer supplies it only when the panel read was partial or the
-   * binding is a prefix — absent means both were full).
+   * binding is a prefix — absent means both were full, and the record then
+   * carries neither field).
    */
   readonly coverage?: PrReviewCoverageStamp | undefined;
 }
@@ -301,12 +358,14 @@ function buildAndPersist(
   // door, whose diff comes straight from git and was never sanitized, so
   // `input.prDiff` already IS the canonical bytes.
   const reviewedDiffHash = sanitization?.rawDiffHash ?? computeReviewedDiffHash(input.prDiff);
-  // #4140/#6003: honest completeness — stamp what the panel read and what the
-  // hash binds into the (hash-covered) summary so an auditor reading the ledger
-  // sees both. Does NOT touch reviewedDiffHash (the gate's binding), so gate
-  // parity is preserved. Stamped BEFORE the title: the store caps the summary at
-  // 500 chars, and a title can be 500 chars on its own.
+  // #4140/#6003/#6190: honest completeness — what the panel read and what the
+  // hash binds go on the record as structured, hash-covered fields (every
+  // dropped path) and, human-readably, into the summary stamp. Does NOT touch
+  // reviewedDiffHash (the gate's binding), so gate parity is preserved. Stamped
+  // BEFORE the title: the store caps the summary at 500 chars, and a title can
+  // be 500 chars on its own.
   const stamps = coverageStamps(coverage);
+  const coverageFields = coverageFieldsOf(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(input.prDiff, prNumber, logger);
   const record = persistPrReviewRecord({
@@ -315,6 +374,7 @@ function buildAndPersist(
     reviewedDiffHash,
     diffProvenance: diffProvenanceOf(diffSource, input.prDiff),
     ...(disclosure !== undefined ? { sanitization: disclosure } : {}),
+    ...(coverageFields ?? {}),
     verdict: aggregate.decision,
     verified: aggregate.verified,
     voteCounts: {

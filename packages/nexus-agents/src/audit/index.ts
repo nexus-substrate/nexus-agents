@@ -94,8 +94,11 @@ export type { BuildVoteRecordInput, PersistVoteRecordOptions } from './vote-reco
 // SHA-BOUND record SET + monotonic sequence (mirrors the #3927 vote-record
 // model). Read by the warn-first governor-review gate.
 export {
+  PrReviewBindingBoundsSchema,
+  PrReviewBudgetSourceSchema,
   PrReviewDiffProvenanceSchema,
   PrReviewDiffSourceSchema,
+  PrReviewPanelCoverageSchema,
   PrReviewRecordSchema,
   PrReviewSanitizationSchema,
   PrReviewVerdictSchema,
@@ -104,8 +107,10 @@ export {
   verifyPrReviewRecordSet,
 } from './pr-review-record.js';
 export type {
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
   PrReviewDiffSource,
+  PrReviewPanelCoverage,
   PrReviewRecord,
   PrReviewSanitization,
   PrReviewVerdict,

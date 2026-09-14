@@ -46,6 +46,7 @@ import {
 } from './governor-section.js';
 
 import { ROOT } from './script-paths.js';
+import { panelCoverageCaveat } from './governor-review-panel-coverage.js';
 import {
   readPrReviewRecords,
   ledgerIntegrityFailure,
@@ -280,6 +281,7 @@ function matchedRecordOutcome(
       `(reviewedDiffHash=${inputs.reviewedDiffHash.slice(0, 12)}…${comparable ? ', baseSha consistent' : ''}, ` +
       `verdict=${match.verdict})${truncationCaveat(inputs.reviewedDiffTruncated)}` +
       sanitizationCaveat(match) +
+      panelCoverageCaveat(match) +
       ledgerCoverage(verification),
   };
 }

@@ -1273,7 +1273,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
 
     it('panel partial + binding prefix: both stamps, file stamp FIRST, in one summary', () => {
       const { summary } = summaryFor(6004, coverageRow('partial', 'prefix'));
-      const files = summary.indexOf('[partial coverage: 2/3 files reviewed, dropped: src/z.ts]');
+      const files = summary.indexOf('[partial coverage: 2/3 files reviewed, 1 dropped: src/z.ts]');
       const binding = summary.indexOf(
         '[panel read 40,000/61,204 bytes; binding covers first 50,000 bytes'
       );
@@ -1281,30 +1281,112 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       expect(binding).toBeGreaterThan(files);
     });
 
-    it('both-partial with the production stamp: every dropped path survives the 500-char cap, then the title', () => {
-      // The review’s arithmetic: with the production budget detail the
-      // binding stamp is fixed-width; the dropped-file list is the one
-      // per-review fact that grows. It goes first so the cap truncates the
-      // title (and only then the binding stamp), never the list.
-      const dropped = Array.from({ length: 6 }, (_, i) => `src/dropped-file-${String(i)}.ts`);
+    it('forty dropped files: every path is in the hash-covered coverage field, the summary counts them (#6190)', () => {
+      // RED before #6190: the store caps `summary` at 500 chars and the fixed
+      // part of the two stamps is ~273 of them, so a review that dropped forty
+      // 22+-char paths lost most of the list and, past the cap, the binding
+      // stamp. Now the full list travels as `coverage.droppedFiles` (hash-
+      // covered), the summary says `40 dropped (3 listed)`, and the cap can
+      // no longer cut evidence — only the title.
+      const dropped = Array.from({ length: 40 }, (_, i) => `src/dropped-file-${String(i)}.ts`);
       const title = 'A title long enough to be what the cap eats first — '.repeat(4);
-      const { summary } = summaryFor(
-        6008,
-        {
-          ...coverageRow('partial', 'prefix'),
-          reviewedFiles: 3,
-          totalFiles: 15,
-          droppedFiles: dropped,
-        },
-        { prTitle: title }
+      const parsed = input({ prNumber: 6190, baseSha: BASE_SHA, prTitle: title });
+      const coverage = {
+        ...coverageRow('partial', 'prefix'),
+        reviewedFiles: 2,
+        totalFiles: 42,
+        droppedFiles: dropped,
+        totalBytes: 161_204,
+      };
+      const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
+        sanitization: undefined,
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+        coverage,
+      });
+      expect(outcome.persisted).toBe(true);
+      const record = readRecords(6190);
+
+      // The evidence: all forty, in the record, inside the hash.
+      expect(record.coverage).toEqual({
+        panelRead: 'partial',
+        reviewedFiles: 2,
+        totalFiles: 42,
+        droppedFiles: dropped,
+        reviewedBytes: 40_000,
+        totalBytes: 161_204,
+        budgetSource: 'registry',
+        budgetDetail: coverage.budgetDetail,
+      });
+      expect(record.bindingBounds).toEqual({ kind: 'prefix', boundBytes: 50_000 });
+      expect(verifyPrReviewRecordSet([record]).ok).toBe(true);
+
+      // The summary stays human-readable and bounded: a count, the first three,
+      // then the binding stamp, then the title — which is what the cap eats.
+      expect(record.summary.length).toBeLessThanOrEqual(503); // store cap + '...'
+      expect(record.summary).toContain(
+        '[partial coverage: 2/42 files reviewed, 40 dropped (3 listed): src/dropped-file-0.ts, src/dropped-file-1.ts, src/dropped-file-2.ts]'
       );
-      expect(summary.length).toBeLessThanOrEqual(503); // store cap + '...'
-      for (const path of dropped) expect(summary).toContain(path);
-      expect(summary).toContain('binding covers first 50,000 bytes');
-      expect(summary).toContain('budget: registry');
-      // The title is what got truncated: present as a prefix, cut with the marker.
-      expect(summary.endsWith('...')).toBe(true);
-      expect(summary).toContain('— A title long enough');
+      expect(record.summary).not.toContain('src/dropped-file-3.ts');
+      expect(record.summary).toContain(
+        '[panel read 40,000/161,204 bytes; binding covers first 50,000 bytes'
+      );
+      expect(record.summary).toContain('budget: registry');
+      expect(record.summary.endsWith('...')).toBe(true);
+      expect(record.summary).toContain('— A title long enough');
+    });
+
+    it('three or fewer dropped files are all listed, without a "(k listed)" qualifier', () => {
+      const { summary } = summaryFor(6009, {
+        ...coverageRow('partial', 'prefix'),
+        reviewedFiles: 2,
+        totalFiles: 5,
+        droppedFiles: ['src/a.ts', 'src/b.ts', 'src/c.ts'],
+      });
+      expect(summary).toContain(
+        '[partial coverage: 2/5 files reviewed, 3 dropped: src/a.ts, src/b.ts, src/c.ts]'
+      );
+      expect(summary).not.toContain('listed');
+    });
+
+    it('a full panel read over a prefix binding carries the fields but no dropped list', () => {
+      const parsed = input({ prNumber: 6010, baseSha: BASE_SHA });
+      const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
+        sanitization: undefined,
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+        coverage: coverageRow('full', 'prefix'),
+      });
+      expect(outcome.persisted).toBe(true);
+      const record = readRecords(6010);
+      expect(record.coverage?.panelRead).toBe('full');
+      expect(record.coverage?.droppedFiles).toEqual([]);
+      expect(record.bindingBounds).toEqual({ kind: 'prefix', boundBytes: 50_000 });
+    });
+
+    it('a both-full review (coverage undefined) writes NEITHER field — absence, not zeros', () => {
+      const parsed = input({ prNumber: 6011, baseSha: BASE_SHA });
+      const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
+        sanitization: undefined,
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+      });
+      expect(outcome.persisted).toBe(true);
+      const record = readRecords(6011);
+      expect(record.coverage).toBeUndefined();
+      expect(record.bindingBounds).toBeUndefined();
     });
 
     it('panel partial + binding full: the binding is stated as covering every byte', () => {
