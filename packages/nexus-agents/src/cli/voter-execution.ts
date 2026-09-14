@@ -263,13 +263,16 @@ function buildVoteRequest({
   withResponseFormat,
   options,
   project,
+  workspace,
 }: VoteCompletionArgs): CompletionRequest {
   const base: CompletionRequest = {
     messages: [
       // #6110: the seat judges the caller's target project, not this
       // repository's. `undefined` renders the `nexus-agents` default.
       { role: 'system', content: getVoterPrompts(project)[role] },
-      { role: 'user', content: buildVotePrompt(proposal, options) },
+      // #6254: and the working directory the seats run in, so a seat with
+      // file tools knows where the artifact is and that reading it is expected.
+      { role: 'user', content: buildVotePrompt(proposal, options, workspace) },
     ],
     // 4000 (#4131): headroom so a findings-bearing verdict (JSON envelope +
     // reasoning + structured findings) isn't cut mid-JSON by the token cap and
@@ -336,6 +339,12 @@ interface VoteCompletionArgs {
    * `nexus-agents` default.
    */
   readonly project: string | undefined;
+  /**
+   * The working directory every seat's tools run in (#6254), named in the
+   * user prompt. Required as a KEY for the same reason as `project`;
+   * `undefined` renders no REPOSITORY ACCESS block.
+   */
+  readonly workspace: string | undefined;
 }
 
 async function runVoteCompletion(args: VoteCompletionArgs): Promise<
@@ -405,11 +414,13 @@ interface VoteAttemptSuccess {
   readonly fallbackFrom: string | undefined;
 }
 
-/** What the prompt carries beyond the proposal: declared options (#4472) and the target project (#6110). */
+/** What the prompt carries beyond the proposal: declared options (#4472), the target project (#6110) and the working directory (#6254). */
 interface VotePromptContext {
   readonly options?: readonly string[] | undefined;
   /** Target project for the system prompt; omitted ⇒ `nexus-agents`. */
   readonly project?: string | undefined;
+  /** Working directory named in the user prompt; omitted ⇒ no REPOSITORY ACCESS block. */
+  readonly workspace?: string | undefined;
 }
 
 export async function executeSingleVoteAttempt(
@@ -419,8 +430,8 @@ export async function executeSingleVoteAttempt(
   timeoutMs: number,
   context: VotePromptContext = {}
 ): Promise<VoteAttemptSuccess | { ok: false; error: string }> {
-  const { options, project } = context;
-  const completionArgs = { role, proposal, adapter, timeoutMs, options, project };
+  const { options, project, workspace } = context;
+  const completionArgs = { role, proposal, adapter, timeoutMs, options, project, workspace };
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
@@ -461,6 +472,8 @@ export interface RetryOptions {
   readonly options?: readonly string[] | undefined;
   /** Target project for the system prompt (#6110); absent ⇒ `nexus-agents`. */
   readonly project?: string | undefined;
+  /** Working directory named in the user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
+  readonly workspace?: string | undefined;
 }
 
 /**
@@ -506,7 +519,8 @@ export interface VoteOutcome {
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<(VoteOutcome & { ok: true }) | { error: string; ok: false }> {
-  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options, project } = opts;
+  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options, project, workspace } =
+    opts;
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -525,6 +539,7 @@ export async function executeWithRetries(
     const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, {
       options,
       project,
+      workspace,
     });
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {

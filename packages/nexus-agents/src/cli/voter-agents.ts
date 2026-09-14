@@ -226,6 +226,7 @@ function resolveVoteExecution(options?: VoteExecutionOverrides): VoteExecutionSe
     allowSimulation: options?.allowSimulation ?? false,
     declaredOptions: options?.declaredOptions,
     project: options?.project,
+    workspace: options?.workspace,
   };
 }
 
@@ -237,12 +238,12 @@ export async function executeAgentVote(
   options?: VoteExecutionOverrides
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
-  const { timeoutMs, maxRetries, allowSimulation, declaredOptions, project } =
-    resolveVoteExecution(options);
+  // `settings` is timeoutMs, maxRetries, project and workspace — the retry hop's own fields.
+  const { allowSimulation, declaredOptions, ...settings } = resolveVoteExecution(options);
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
-  const retryOptions = { role, proposal, adapter, logger, timeoutMs, maxRetries, project };
+  const retryOptions = { role, proposal, adapter, logger, ...settings };
   const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;
 
@@ -490,6 +491,8 @@ export interface VoteExecutionOverrides {
   declaredOptions?: readonly string[] | undefined;
   /** Target project for the system prompts (#6110); absent ⇒ `nexus-agents`. */
   project?: string | undefined;
+  /** Working directory named in every user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
+  workspace?: string | undefined;
 }
 
 /** Resolved per-call vote execution settings. */
@@ -500,6 +503,8 @@ interface VoteExecutionSettings {
   declaredOptions?: readonly string[] | undefined;
   /** Required KEY (#6110): a hop that drops the target project fails to compile. */
   project: string | undefined;
+  /** Required KEY (#6254), for the same reason. */
+  workspace: string | undefined;
 }
 
 interface StaggeredVoteInput {
@@ -585,8 +590,6 @@ export async function collectRealVotes(
 ): Promise<readonly AgentVoteResult[]> {
   const logger = options.logger ?? defaultLogger;
   const { roles, proposal, simulate, allowSimulation } = options;
-  const timeoutMs = options.timeoutMs ?? resolveVoteTimeout();
-  const maxRetries = options.maxRetries ?? VOTE_TIMEOUTS.maxRetries;
 
   if (simulate === true) {
     logger.info('Using simulation mode (explicitly requested)');
@@ -601,16 +604,14 @@ export async function collectRealVotes(
 
   warnIfCodexConcurrencyExceeded(roleAdapters, logger);
 
-  const voteOptions = {
-    timeoutMs,
-    maxRetries,
-    allowSimulation: allowSimulation ?? false,
-    // #4472: reaches executeAgentVote, which puts the declared options in the
-    // prompt and resolves each voter's selection against them.
-    declaredOptions: options.declaredOptions,
-    // #6110: likewise the target project, into every seat's system prompt.
-    project: options.project,
-  };
+  // The same resolver executeAgentVote applies, so the two paths cannot drift
+  // on a default. Carried through: timeoutMs / maxRetries / allowSimulation;
+  // declaredOptions (#4472) into the prompt and the selection resolver; the
+  // target project (#6110) into every system prompt; and the working
+  // directory (#6254) — the one every subprocess seat inherits, which the
+  // gemini arm now also gets as --add-dir — read once so every seat of the
+  // panel names the same tree in its REPOSITORY ACCESS block.
+  const voteOptions = resolveVoteExecution({ ...options, workspace: process.cwd() });
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
   const launchInput: StaggeredVoteInput = {

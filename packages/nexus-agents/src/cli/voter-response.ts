@@ -279,12 +279,16 @@ Example PR-review request_changes response with structured findings:
  * Includes workflow-test evaluation criteria (Issue #1212) and
  * rejection category instructions (Issue #1213).
  */
-export function buildVotePrompt(proposal: string, options?: readonly string[]): string {
+export function buildVotePrompt(
+  proposal: string,
+  options?: readonly string[],
+  workspace?: string
+): string {
   return `Evaluate the following proposal and provide your vote.
 
 PROPOSAL:
 ${proposal}
-${buildOptionsBlock(options)}
+${buildOptionsBlock(options)}${buildWorkspaceBlock(workspace)}
 In addition to your role-specific criteria, assess these workflow-test dimensions:
 - Testability: Can the proposed changes be verified with automated tests?
 - Workflow integration: Does this fit into existing CI/make/test workflows?
@@ -313,6 +317,31 @@ function buildOptionsBlock(options?: readonly string[]): string {
   return `
 OPTIONS — choose exactly ONE of these and name it verbatim in \`selectedOption\`:
 ${list}
+`;
+}
+
+/**
+ * The REPOSITORY ACCESS block, present only when the caller names the
+ * working directory the seats run in (#6254).
+ *
+ * On CLI-run governor panels a gemini seat abstained "UNVERIFIABLE: could not
+ * read the artifact ... no repository or accessible sandbox was provided"
+ * while the claude seats on the same panel read the head: nothing in either
+ * prompt said where the tree was or that reading it was expected. This block
+ * says both. It does not weaken the UNVERIFIABLE rule — a seat whose tools
+ * genuinely cannot read the directory is still told to say so — and a
+ * proposal that names nothing in the repository is still judged as written.
+ *
+ * Empty string when no workspace is given, so a caller with no tree to offer
+ * (a direct `executeAgentVote`, a unit test) produces a prompt byte-identical
+ * to the two-argument form and claims nothing it cannot back.
+ */
+function buildWorkspaceBlock(workspace?: string): string {
+  if (workspace === undefined || workspace === '') return '';
+  return `
+REPOSITORY ACCESS:
+The repository under review is the working directory of this panel: ${workspace}
+Every seat's file and shell tools run there, and reading it is expected. When the proposal refers to something in that repository — a PR head, a diff, the files it touches — read it there before you vote: the proposal text describes the artifact and is not a substitute for it. If your tools cannot read that directory, follow the UNVERIFIABLE rule in your instructions.
 `;
 }
 
