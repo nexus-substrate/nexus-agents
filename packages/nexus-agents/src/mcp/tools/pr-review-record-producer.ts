@@ -25,7 +25,11 @@ import type {
   PrReviewDiffSource,
   PrReviewSanitization,
 } from '../../audit/pr-review-record.js';
-import { hasFileBoundaries, looksLikeUnifiedDiff } from './pr-review-diff-budget.js';
+import {
+  hasFileBoundaries,
+  looksLikeUnifiedDiff,
+  type PanelBudgetSource,
+} from './pr-review-diff-budget.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -79,17 +83,64 @@ export interface PrReviewCounts {
 }
 
 /**
- * Large-diff review coverage stamped onto the record (#4140). Present only when the
- * review was over-budget and partially reviewed. Folded into the (hash-covered)
- * record `summary` for honest completeness — the `reviewedDiffHash` binding is
- * UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of `input.prDiff`);
- * the gate matches on `{prNumber, reviewedDiffHash}`, never on the summary text.
+ * Large-diff review coverage stamped onto the record (#4140, #6003). Present when
+ * the panel read was partial OR the hash binds only a prefix. Folded into the
+ * (hash-covered) record `summary` for honest completeness — the `reviewedDiffHash`
+ * binding is UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of
+ * `input.prDiff`); the gate matches on `{prNumber, reviewedDiffHash}`, never on
+ * the summary text. The byte fields are UTF-8 (see `PrReviewBindingCoverage`).
  */
 export interface PrReviewCoverageStamp {
   readonly reviewedFiles: number;
   readonly totalFiles: number;
   readonly droppedFiles: readonly string[];
   readonly partial: boolean;
+  readonly panelRead: 'full' | 'partial';
+  readonly binding: 'full' | 'prefix';
+  readonly reviewedBytes: number;
+  readonly boundBytes: number;
+  readonly totalBytes: number;
+  readonly budgetSource: PanelBudgetSource;
+  readonly budgetDetail: string;
+}
+
+/** `61204` → `61,204`: the record is read by people; group the digits. */
+function bytes(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+/**
+ * The #6003 summary stamp: what the PANEL read and what the BINDING covers, as
+ * two statements, plus the budget's source. No hash here — the record's own
+ * `reviewedDiffHash` field already carries it, and 71 chars of the store's
+ * 500-char summary cap are better spent on the dropped-file list.
+ */
+function bindingStamp(coverage: PrReviewCoverageStamp): string {
+  const binding =
+    coverage.binding === 'prefix'
+      ? `binding covers first ${bytes(coverage.boundBytes)} bytes`
+      : `binding covers all ${bytes(coverage.boundBytes)} bytes`;
+  return (
+    `[panel read ${bytes(coverage.reviewedBytes)}/${bytes(coverage.totalBytes)} bytes; ` +
+    `${binding}; budget: ${coverage.budgetSource} (${coverage.budgetDetail})]`
+  );
+}
+
+/**
+ * Both coverage stamps, or `''` when there is nothing to disclose. Order is
+ * load-bearing: the store caps the summary at 500 chars, so the stamps go
+ * BEFORE the title, and the #4140 file stamp — whose dropped-file list is the
+ * one unbounded, per-review fact — goes before the fixed-width binding stamp
+ * so it is the last thing truncated. The file stamp fires only on a partial
+ * PANEL read: a full read over a prefix binding dropped no file, and must not
+ * be recorded as if it had.
+ */
+function coverageStamps(coverage: PrReviewCoverageStamp | undefined): string {
+  if (coverage === undefined) return '';
+  const files = coverage.partial
+    ? `[partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}] `
+    : '';
+  return ` ${files}${bindingStamp(coverage)}`;
 }
 
 /**
@@ -145,7 +196,11 @@ export interface PersistReviewRecordArgs {
    * opaque input) and `scripts/pr-review-local-ledger.ts` (`canonical-git`).
    */
   readonly diffSource: PrReviewDiffSource;
-  /** #4140: large-diff coverage; stamped into the record summary when partial. */
+  /**
+   * #4140/#6003: large-diff coverage; stamped into the record summary whenever
+   * present (the packer supplies it only when the panel read was partial or the
+   * binding is a prefix — absent means both were full).
+   */
   readonly coverage?: PrReviewCoverageStamp | undefined;
 }
 
@@ -240,24 +295,24 @@ function buildAndPersist(
 ): PrReviewRecordOutcome {
   const { input, aggregate, counts, reviewCount, logger, coverage, diffSource, sanitization } =
     args;
-  // #4140: honest completeness — stamp partial coverage into the (hash-covered)
-  // summary so an auditor reading the ledger sees the review was partial. Does NOT
-  // touch reviewedDiffHash (the gate's binding), so gate parity is preserved.
-  const coverageSuffix =
-    coverage?.partial === true
-      ? ` [partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}]`
-      : '';
+  // #5385: the RAW hash when the caller had one, so producer and gate agree by
+  // construction. After the `raw-hash-absent` guard above, the fallback has
+  // exactly ONE way to fire — `sanitization === undefined`, the local-ledger
+  // door, whose diff comes straight from git and was never sanitized, so
+  // `input.prDiff` already IS the canonical bytes.
+  const reviewedDiffHash = sanitization?.rawDiffHash ?? computeReviewedDiffHash(input.prDiff);
+  // #4140/#6003: honest completeness — stamp what the panel read and what the
+  // hash binds into the (hash-covered) summary so an auditor reading the ledger
+  // sees both. Does NOT touch reviewedDiffHash (the gate's binding), so gate
+  // parity is preserved. Stamped BEFORE the title: the store caps the summary at
+  // 500 chars, and a title can be 500 chars on its own.
+  const stamps = coverageStamps(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(input.prDiff, prNumber, logger);
   const record = persistPrReviewRecord({
     prNumber,
     baseSha,
-    // #5385: the RAW hash when the caller had one, so producer and gate agree by
-    // construction. After the `raw-hash-absent` guard above, the fallback has
-    // exactly ONE way to fire — `sanitization === undefined`, the local-ledger
-    // door, whose diff comes straight from git and was never sanitized, so
-    // `input.prDiff` already IS the canonical bytes.
-    reviewedDiffHash: sanitization?.rawDiffHash ?? computeReviewedDiffHash(input.prDiff),
+    reviewedDiffHash,
     diffProvenance: diffProvenanceOf(diffSource, input.prDiff),
     ...(disclosure !== undefined ? { sanitization: disclosure } : {}),
     verdict: aggregate.decision,
@@ -269,7 +324,7 @@ function buildAndPersist(
       error: counts.errorCount,
       total: reviewCount,
     },
-    summary: `${aggregate.decision} (${String(counts.approveCount)} approve / ${String(counts.requestChangesCount)} request_changes / ${String(counts.abstainCount)} abstain) — ${input.prTitle}${coverageSuffix}`,
+    summary: `${aggregate.decision} (${String(counts.approveCount)} approve / ${String(counts.requestChangesCount)} request_changes / ${String(counts.abstainCount)} abstain)${stamps} — ${input.prTitle}`,
     // #4278: lets a caller (e.g. an MCP server whose cwd has no `.git`
     // ancestor) say where the repo is, so the record isn't silently dropped.
     ...(input.repoPath !== undefined ? { repoPathOverride: input.repoPath } : {}),

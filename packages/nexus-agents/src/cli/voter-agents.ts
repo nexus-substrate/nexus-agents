@@ -314,6 +314,13 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    * every error policy, per the #5578 design panel (option b, 6 of 6).
    */
   readonly erroredRoleBackoffMs?: number | undefined;
+  /**
+   * Seats already assigned by {@link assignPanelSeats} (#6003): a caller that
+   * must know the panel's models BEFORE the vote (the pr_review budget reads
+   * their windows) resolves the seats once and hands them back, so the panel
+   * runs on exactly what it was budgeted for. Ignored when `adapter` is set.
+   */
+  readonly roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined;
 }
 
 /** Assigns a single adapter to all roles (fallback path). */
@@ -557,6 +564,22 @@ async function launchStaggeredVotes(
  * available and simulation is not explicitly enabled, throws NoAdapterError.
  * Per Issue #845: Uses diverse CLIs when multiple are available.
  */
+/**
+ * The panel's seat → adapter assignment — ONE definition, used by the vote and
+ * by anything that must know the panel's models before it runs (#6003). An
+ * explicit `adapter` is uniform (Issue #280); pre-resolved `roleAdapters` are
+ * used verbatim; else roles spread across gateway models / CLIs (Issue #845).
+ */
+export async function assignPanelSeats(
+  fallbackAdapter: IModelAdapter,
+  options: Pick<CollectRealVotesOptions, 'roles' | 'adapter' | 'gatewayAdapters' | 'roleAdapters'>,
+  logger: ILogger
+): Promise<Map<VoterRole, IModelAdapter>> {
+  if (options.adapter !== undefined) return assignUniformAdapter(options.roles, fallbackAdapter);
+  if (options.roleAdapters !== undefined) return new Map(options.roleAdapters);
+  return resolveDiverseAdapters(options.roles, logger, fallbackAdapter, options.gatewayAdapters);
+}
+
 export async function collectRealVotes(
   options: CollectRealVotesOptions
 ): Promise<readonly AgentVoteResult[]> {
@@ -574,11 +597,7 @@ export async function collectRealVotes(
   if ('simulated' in adapterResult)
     return createSimulatedVotes(roles, proposal, 'No adapter available');
 
-  // Per Issue #845: Use diverse adapters when no explicit adapter is provided
-  const roleAdapters =
-    options.adapter !== undefined
-      ? assignUniformAdapter(roles, adapterResult.adapter)
-      : await resolveDiverseAdapters(roles, logger, adapterResult.adapter, options.gatewayAdapters);
+  const roleAdapters = await assignPanelSeats(adapterResult.adapter, options, logger);
 
   warnIfCodexConcurrencyExceeded(roleAdapters, logger);
 

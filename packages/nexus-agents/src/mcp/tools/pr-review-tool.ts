@@ -54,14 +54,16 @@ import {
   type PrReviewRecordOutcome,
   type ReviewSanitizationInput,
 } from './pr-review-record-producer.js';
-import { removalsBefore, sanitizationViewOf } from './pr-review-sanitization-view.js';
+import { sanitizationViewOf } from './pr-review-sanitization-view.js';
 // prettier-ignore
 import {
   applyPartialCoverageGate,
   looksLikeUnifiedDiff,
-  packDiffForReview,
+  type PrReviewBindingCoverage,
   type PrReviewCoverage,
 } from './pr-review-diff-budget.js';
+// #6003: what the panel reads is decided against the voters' context windows.
+import { preparePanelForReview } from './pr-review-panel-budget.js';
 // #4278: split out of this file to stay under the max-lines budget (no behavior change).
 import { toPrReviewVote, summarizeReviews } from './pr-review-result-mapping.js';
 
@@ -82,18 +84,22 @@ export const PR_REVIEW_ROLES: readonly VoterRole[] = [
   'scope_steward',
 ];
 
-/** Voter PANEL budget: the max diff bytes packed into the proposal sent to the
- * 5-voter panel. Diffs above this are NOT rejected — they are security-prioritized
- * and PARTIALLY reviewed (whole-file packing via `pr-review-diff-budget.ts`, #4140).
- * Also the byte cap the canonical `reviewedDiffHash` binds to (unchanged, #3831). */
+/** The BINDING cap, mirrored: the UTF-8 byte cap the canonical `reviewedDiffHash`
+ * binds to (`MAX_REVIEWED_DIFF_BYTES`, #3831). Since #6003 this is NOT the panel
+ * budget: what the 5-voter panel reads is bounded by the voters' context windows
+ * (`pr-review-panel-budget.ts`), and this cap is only the panel budget when that
+ * derivation fails closed. A diff over this cap is never rejected; the record
+ * states that the hash binds a prefix. Still the local-ledger script's diff cap. */
 export const MAX_DIFF_LENGTH = 50_000;
 /** DoS bound on `prDiff` INPUT (#4140). Diffs up to this size are ACCEPTED (no
- * hard-fail, no caller-side truncation); those over `MAX_DIFF_LENGTH` are packed
+ * hard-fail, no caller-side truncation); those over the panel budget are packed
  * to a security-prioritized, partially-reviewed subset. Two-number contract:
- * `MAX_DIFF_INPUT_LENGTH` gates acceptance, `MAX_DIFF_LENGTH` gates the panel. */
+ * `MAX_DIFF_INPUT_LENGTH` gates acceptance, the panel budget gates the panel. */
 export const MAX_DIFF_INPUT_LENGTH = 2_000_000;
 /** Max `repoContext` length; over-limit input hard-fails Zod validation (#4133). */
 export const MAX_REPO_CONTEXT_LENGTH = 2000;
+/** Max `prTitle` length (read back from the schema by the #6003 overhead test). */
+const MAX_TITLE_LENGTH = 500;
 
 /** Hard cap on PR description. */
 export const MAX_DESCRIPTION_LENGTH = 10_000;
@@ -113,7 +119,7 @@ const PR_REVIEW_ASYNC_HINT =
 // ============================================================================
 
 export const PrReviewInputSchema = z.object({
-  prTitle: z.string().min(1).max(500).describe('PR title'),
+  prTitle: z.string().min(1).max(MAX_TITLE_LENGTH).describe('PR title'),
   prDescription: z
     .string()
     .max(MAX_DESCRIPTION_LENGTH)
@@ -135,7 +141,7 @@ export const PrReviewInputSchema = z.object({
         'and would be recorded as though it were (#4451).',
     })
     .describe(
-      `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). REQUIRED SHAPE (#4451): must contain a \`diff --git\` header, an \`@@ … @@\` hunk header backed by +/- lines, or a \`---\`/\`+++\` header pair — a prose summary of the change is REJECTED, because reviewing a summary is not reviewing the code and would be recorded as though it were. (Stated here because Zod refinements do not survive JSON-schema generation, so this constraint is otherwise invisible to clients.) No need to truncate before calling: diffs over ${String(MAX_DIFF_LENGTH)} chars are security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; coverage reported on the response, and a partial review can block but never verified-approve).`
+      `Unified diff text (max ${String(MAX_DIFF_INPUT_LENGTH)} chars). REQUIRED SHAPE (#4451): must contain a \`diff --git\` header, an \`@@ … @@\` hunk header backed by +/- lines, or a \`---\`/\`+++\` header pair — a prose summary of the change is REJECTED, because reviewing a summary is not reviewing the code and would be recorded as though it were. (Stated here because Zod refinements do not survive JSON-schema generation, so this constraint is otherwise invisible to clients.) No need to truncate before calling: the panel reads the whole diff whenever it fits the voters' context windows (#6003); a diff larger than that is security-prioritized and PARTIALLY reviewed (lowest-priority whole files dropped; a partial panel read can block but never verified-approve). Separately, the audit record's hash binds only the first ${String(MAX_DIFF_LENGTH)} UTF-8 bytes; the response \`coverage\` and the record summary state both what the panel read and what the hash binds.`
     ),
   repoContext: z
     .string()
@@ -295,11 +301,12 @@ export interface PrReviewResponse {
    */
   readonly recordOutcome?: PrReviewRecordOutcome;
   /**
-   * Large-diff review coverage (#4140). Present only when the input diff exceeded
-   * `MAX_DIFF_LENGTH` and was security-prioritized + partially reviewed; absent for
-   * a whole-diff (≤`MAX_DIFF_LENGTH`) review.
+   * Large-diff review coverage (#4140, #6003). Present when the panel read a
+   * packed subset (`panelRead: 'partial'`) OR the audit hash binds only a prefix
+   * of the diff (`binding: 'prefix'`); absent when both are full. Byte fields
+   * are UTF-8.
    */
-  readonly coverage?: PrReviewCoverage;
+  readonly coverage?: PrReviewBindingCoverage;
 }
 
 export interface PrReviewDeps extends BaseMcpToolDeps {
@@ -441,7 +448,6 @@ function absoluteQuorumApprove(
 // ============================================================================
 
 export { buildPrReviewProposal } from './pr-review-proposal.js';
-import { buildPrReviewProposal } from './pr-review-proposal.js';
 
 // ============================================================================
 // Handler
@@ -481,30 +487,6 @@ function resolveAggregate(
     );
   }
   return aggregate;
-}
-
-/**
- * #4140 large-diff affordance: within budget → byte-identical proposal (no pack, no
- * note, `coverage: undefined`); over budget → security-first packed subset with a
- * prepended partial-review NOTE. Logs an over-budget warning when partial.
- */
-function preparePanelProposal(
-  input: PrReviewInput,
-  logger: ILogger,
-  removedBefore: { comments: number; fields: number; tags: number } = {
-    comments: 0,
-    fields: 0,
-    tags: 0,
-  }
-): { proposal: string; coverage: PrReviewCoverage | undefined } {
-  const { coverage, packedDiff, note } = packDiffForReview(input.prDiff, MAX_DIFF_LENGTH);
-  const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
-  if (coverage?.partial === true) {
-    logger.warn(
-      `pr_review diff over budget — reviewed ${String(coverage.reviewedFiles)} of ${String(coverage.totalFiles)} files, dropped ${String(coverage.droppedFiles.length)}`
-    );
-  }
-  return { proposal: note + buildPrReviewProposal(body, removedBefore), coverage };
 }
 
 /**
@@ -549,23 +531,23 @@ async function executePrReviewBody(
 ): Promise<ToolResult> {
   const start = Date.now();
   const { gatewayAdapters: adapters, sanitization } = opts;
-  const removedBefore = removalsBefore(sanitization);
-  const { proposal, coverage } = preparePanelProposal(input, logger, removedBefore);
+  // #6003: seats resolved ONCE, budgeted, then handed to the vote below.
+  const panel = await preparePanelForReview(input, PR_REVIEW_ROLES, opts, logger);
   // #6123: resolved ONCE per review; every seat's system prompt names it.
   const project = resolveAndLogVoterProject(input.project, logger);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
-    proposal,
+    proposal: panel.proposal,
     simulate: input.simulate,
     logger,
     project: project.name,
     ...(adapters !== undefined && { gatewayAdapters: adapters }),
+    ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
   });
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
-  const aggregate = resolveAggregate(reviews, input, counts, coverage, logger);
-
+  const aggregate = resolveAggregate(reviews, input, counts, panel.coverage, logger);
   const costSummary = rollUpDecisionCost(voteResults, logger);
 
   // #4031: best-effort Option-C audit-record persistence. The producer surfaces
@@ -585,7 +567,7 @@ async function executePrReviewBody(
     counts,
     reviewCount: reviews.length,
     logger,
-    ...(coverage !== undefined ? { coverage } : {}),
+    ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
   });
 
   const response: PrReviewResponse = {
@@ -597,7 +579,7 @@ async function executePrReviewBody(
     project,
     ...(costSummary !== undefined ? { costSummary } : {}),
     recordOutcome,
-    ...(coverage !== undefined ? { coverage } : {}),
+    ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }

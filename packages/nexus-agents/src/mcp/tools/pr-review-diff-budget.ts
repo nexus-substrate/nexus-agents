@@ -2,7 +2,9 @@
  * nexus-agents/mcp — PR-Review Large-Diff Budget Packer (#4140, epic #4130).
  *
  * Option A of the large-diff affordance: when a PR diff exceeds the voter PANEL
- * budget (`MAX_DIFF_LENGTH`), pack it down to a REAL, security-prioritized subset
+ * budget (since #6003 derived from the panel's context windows in
+ * `pr-review-panel-budget.ts`; the hash cap `MAX_DIFF_LENGTH` is a separate
+ * budget, see `packDiffForPanelAndBinding`), pack it down to a REAL, security-prioritized subset
  * of WHOLE files instead of hard-failing at the schema or lossily hand-truncating
  * mid-hunk. A packed review is honestly labeled PARTIAL and (per the #4140 C1
  * gate wired in pr-review-tool.ts) is BARRED from a verified-approve — it can
@@ -308,6 +310,11 @@ export function securityFirstPack(files: DiffFile[], budget: number): DiffPackRe
  * input diff exceeded the panel budget and was packed; ABSENT for a whole-diff
  * review (a within-budget diff is byte-identical to pre-#4140). `partial: true`
  * means the verdict was BARRED from a verified-approve (the C1 gate below).
+ *
+ * pr_review itself now reports the {@link PrReviewBindingCoverage} extension
+ * (#6003), which is also present when the panel read everything but the hash
+ * binds only a prefix; this base shape is what the single-budget
+ * {@link packDiffForReview} callers (triangulated review) still get.
  */
 export interface PrReviewCoverage {
   /** Number of files whose full diff the panel actually reviewed. */
@@ -364,6 +371,125 @@ export function packDiffForReview(prDiff: string, budget: number): DiffReviewPac
   return { coverage, packedDiff: pack.packed, note };
 }
 
+/** Where the panel-read budget came from (#6003). */
+export type PanelBudgetSource = 'registry' | 'binding-cap-fallback';
+
+/**
+ * The TWO budgets a pr_review packs against (#6003). They answer different
+ * questions and are named separately so one comparison can never decide both:
+ *
+ *  - `bindingCapBytes` — how many UTF-8 bytes the `reviewedDiffHash` binds
+ *    (`MAX_REVIEWED_DIFF_BYTES`). A byte question: the hash truncates on bytes.
+ *  - `panelReadBudgetBytes` — how many UTF-8 bytes the voter PANEL is sent. A
+ *    TOKEN question (the #6003 contrarian seat): bounded by the smallest context
+ *    window on the panel, converted with the shared estimator's most
+ *    conservative ratio. See `pr-review-panel-budget.ts`.
+ *
+ * `source` / `detail` record how the panel budget was derived, so the ledger
+ * can name the estimator it relied on — or the reason it fell back to the cap.
+ */
+export interface ReviewBudgets {
+  readonly bindingCapBytes: number;
+  readonly panelReadBudgetBytes: number;
+  readonly source: PanelBudgetSource;
+  /** Human-readable derivation (registry) or fallback reason; stamped into the record. */
+  readonly detail: string;
+}
+
+/**
+ * Coverage of a pr_review whose panel read and hash binding are decided
+ * SEPARATELY (#6003). Extends {@link PrReviewCoverage}: `partial` keeps its
+ * meaning — the PANEL did not read every file — and is what the C1 gate keys on.
+ * `binding` is a different fact: whether the record's `reviewedDiffHash` covers
+ * every byte or only a prefix. All four combinations are reachable.
+ *
+ * Every byte field is UTF-8 (`Buffer.byteLength(text, 'utf-8')`), the same unit
+ * the hash truncates on — never UTF-16 code units (#5818).
+ */
+export interface PrReviewBindingCoverage extends PrReviewCoverage {
+  /** `'full'` — the panel was sent the whole diff; `'partial'` — a packed subset. */
+  readonly panelRead: 'full' | 'partial';
+  /** `'full'` — the hash covers every byte; `'prefix'` — only the first `boundBytes`. */
+  readonly binding: 'full' | 'prefix';
+  /** UTF-8 bytes of the diff text the panel actually read (`packedDiff`). */
+  readonly reviewedBytes: number;
+  /** UTF-8 bytes the hash binds: `min(totalBytes, bindingCapBytes)`. */
+  readonly boundBytes: number;
+  /** UTF-8 bytes of the raw input diff. */
+  readonly totalBytes: number;
+  /** Where the panel-read budget came from. */
+  readonly budgetSource: PanelBudgetSource;
+  /** The budget derivation or the fallback reason, verbatim from {@link ReviewBudgets.detail}. */
+  readonly budgetDetail: string;
+}
+
+/** {@link packDiffForPanelAndBinding}'s result — {@link DiffReviewPacking} with binding coverage. */
+export interface PanelReviewPacking {
+  /** Coverage; `undefined` only when the panel read is full AND the binding is full. */
+  readonly coverage: PrReviewBindingCoverage | undefined;
+  readonly packedDiff: string;
+  readonly note: string;
+}
+
+/** File tally for a diff the panel read WHOLE — from the packer's own split, not assumed. */
+function wholeDiffFileCoverage(prDiff: string): PrReviewCoverage {
+  const fileCount = splitByFile(prDiff).length;
+  return {
+    reviewedFiles: fileCount,
+    totalFiles: fileCount,
+    droppedFiles: [],
+    partial: false,
+    strategy: 'budget',
+  };
+}
+
+/**
+ * Decide what the PANEL reads and what the BINDING covers as two separate
+ * questions (#6003). Before this, one `byteLen(prDiff) <= budget` comparison
+ * answered both, so a diff over the hash cap was packed down even when every
+ * voter could have read it whole.
+ *
+ *  - The panel read is decided by `panelReadBudgetBytes` via {@link packDiffForReview}.
+ *  - The binding is `'prefix'` iff the diff exceeds `bindingCapBytes` — the same
+ *    UTF-8 test `reviewedDiffWasTruncated` applies.
+ *
+ * Returns `coverage: undefined` (byte-identical proposal, no note) ONLY when both
+ * are full — the pre-#4140 contract for a small diff. The empty diff is that
+ * case: zero bytes fit every budget, so it is both-full, not an error here (the
+ * MCP schema rejects it upstream; the local-ledger door does not call this).
+ * Pure — no I/O, no model call.
+ */
+export function packDiffForPanelAndBinding(
+  prDiff: string,
+  budgets: ReviewBudgets
+): PanelReviewPacking {
+  const totalBytes = byteLen(prDiff);
+  const binding: PrReviewBindingCoverage['binding'] =
+    totalBytes > budgets.bindingCapBytes ? 'prefix' : 'full';
+  const boundBytes = Math.min(totalBytes, budgets.bindingCapBytes);
+  const panel = packDiffForReview(prDiff, budgets.panelReadBudgetBytes);
+  const panelRead: PrReviewBindingCoverage['panelRead'] =
+    panel.coverage?.partial === true ? 'partial' : 'full';
+  if (panelRead === 'full' && binding === 'full') {
+    return { coverage: undefined, packedDiff: prDiff, note: '' };
+  }
+  // A full panel read over a prefix binding: the packer had nothing to pack, so
+  // the file tally is "every file reviewed" — derived from the same split the
+  // packer would have used, not assumed.
+  const fileCoverage: PrReviewCoverage = panel.coverage ?? wholeDiffFileCoverage(prDiff);
+  const coverage: PrReviewBindingCoverage = {
+    ...fileCoverage,
+    panelRead,
+    binding,
+    reviewedBytes: byteLen(panel.packedDiff),
+    boundBytes,
+    totalBytes,
+    budgetSource: budgets.source,
+    budgetDetail: budgets.detail,
+  };
+  return { coverage, packedDiff: panel.packedDiff, note: panel.note };
+}
+
 /**
  * #4140 C1 gate (LOAD-BEARING). A PARTIAL review (some files dropped) MUST NOT
  * produce a `{ approve, verified: true }` verdict — the panel never saw the dropped
@@ -374,6 +500,11 @@ export function packDiffForReview(prDiff: string, budget: number): DiffReviewPac
  * (run first), and this gate only rewrites a would-be verified APPROVE — so a partial
  * review can BLOCK but never verified-APPROVE. A whole-diff review (`coverage`
  * undefined or not partial) is returned unchanged.
+ *
+ * #6003: `partial` means the PANEL read was partial. A {@link PrReviewBindingCoverage}
+ * whose panel read is full but whose `binding` is a prefix passes through — the
+ * voters read everything, so the approve stands; the record discloses the prefix
+ * binding in its summary stamp instead.
  */
 export function applyPartialCoverageGate(
   aggregate: PrReviewAggregate,

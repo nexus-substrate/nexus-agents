@@ -7,13 +7,18 @@
 import { describe, it, expect } from 'vitest';
 import {
   SENSITIVE_PATH_PATTERNS,
+  applyPartialCoverageGate,
   hasFileBoundaries,
   looksLikeUnifiedDiff,
+  packDiffForPanelAndBinding,
   packDiffForReview,
   securityFirstPack,
   splitByFile,
   type DiffFile,
+  type PrReviewBindingCoverage,
+  type ReviewBudgets,
 } from './pr-review-diff-budget.js';
+import type { PrReviewAggregate } from './pr-review-tool.js';
 import {
   MAX_REVIEWED_DIFF_BYTES,
   computeReviewedDiffHash,
@@ -386,5 +391,161 @@ describe('the review budget and the hash cap measure the same unit (#5818)', () 
     const truncated = reviewedDiffWasTruncated(diff);
     const partial = packDiffForReview(diff, MAX_REVIEWED_DIFF_BYTES).coverage !== undefined;
     expect(partial).toBe(truncated);
+  });
+});
+
+describe('packDiffForPanelAndBinding — the panel read and the binding are two decisions (#6003)', () => {
+  const CAP = 1_000;
+  /** Budgets with a registry-derived panel read of `panelReadBudgetBytes`. */
+  const budgets = (panelReadBudgetBytes: number): ReviewBudgets => ({
+    bindingCapBytes: CAP,
+    panelReadBudgetBytes,
+    source: 'registry',
+    detail: 'test budget',
+  });
+  // Two whole files, ~1,300 bytes: over the 1,000-byte binding cap, under a
+  // 4,000-byte panel budget. `fileDiff` is ASCII, so bytes == length here.
+  const twoFiles = fileDiff('src/a.ts', 60) + fileDiff('src/b.ts', 60);
+
+  it('pins the fixture: the diff is over the binding cap and under the panel budget', () => {
+    const bytes = Buffer.byteLength(twoFiles, 'utf-8');
+    expect(bytes).toBeGreaterThan(CAP);
+    expect(bytes).toBeLessThanOrEqual(4_000);
+  });
+
+  it('panel reads FULL, binding is a PREFIX: the whole diff goes to the panel', () => {
+    // Before #6003 one comparison decided both, so this diff was packed down
+    // and the panel read less than it could have.
+    const { coverage, packedDiff, note } = packDiffForPanelAndBinding(twoFiles, budgets(4_000));
+    expect(packedDiff).toBe(twoFiles);
+    expect(note).toBe('');
+    const total = Buffer.byteLength(twoFiles, 'utf-8');
+    const expected: PrReviewBindingCoverage = {
+      reviewedFiles: 2,
+      totalFiles: 2,
+      droppedFiles: [],
+      partial: false,
+      strategy: 'budget',
+      panelRead: 'full',
+      binding: 'prefix',
+      reviewedBytes: total,
+      boundBytes: CAP,
+      totalBytes: total,
+      budgetSource: 'registry',
+      budgetDetail: 'test budget',
+    };
+    expect(coverage).toEqual(expected);
+  });
+
+  it('panel reads PARTIAL, binding is FULL: a small window packs a diff the hash covers whole', () => {
+    // The registry can put the panel budget UNDER the hash cap. The panel then
+    // reads a packed subset while the binding covers every byte.
+    const oneFile = fileDiff('src/a.ts', 60);
+    const oneFileBytes = Buffer.byteLength(oneFile, 'utf-8');
+    expect(oneFileBytes).toBeLessThanOrEqual(CAP);
+    const { coverage, packedDiff } = packDiffForPanelAndBinding(oneFile, budgets(oneFileBytes - 1));
+    expect(coverage?.panelRead).toBe('partial');
+    expect(coverage?.binding).toBe('full');
+    expect(coverage?.partial).toBe(true);
+    expect(coverage?.boundBytes).toBe(oneFileBytes);
+    expect(coverage?.reviewedBytes).toBe(Buffer.byteLength(packedDiff, 'utf-8'));
+    expect(coverage?.reviewedBytes).toBeLessThan(coverage?.totalBytes ?? 0);
+  });
+
+  it('BOTH partial: over the panel budget and over the binding cap', () => {
+    const { coverage, note } = packDiffForPanelAndBinding(twoFiles, budgets(CAP));
+    expect(coverage?.panelRead).toBe('partial');
+    expect(coverage?.binding).toBe('prefix');
+    expect(coverage?.partial).toBe(true);
+    expect(coverage?.droppedFiles).toEqual(['src/b.ts']);
+    expect(coverage?.boundBytes).toBe(CAP);
+    expect(note).toContain('partial review');
+  });
+
+  it('BOTH full: a diff under both budgets is byte-identical with NO coverage (pre-#4140 contract)', () => {
+    const small = fileDiff('src/a.ts', 3);
+    const packing = packDiffForPanelAndBinding(small, budgets(4_000));
+    expect(packing.coverage).toBeUndefined();
+    expect(packing.packedDiff).toBe(small);
+    expect(packing.note).toBe('');
+  });
+
+  it('names the empty case: an empty diff is both-full with no coverage', () => {
+    const packing = packDiffForPanelAndBinding('', budgets(4_000));
+    expect(packing.coverage).toBeUndefined();
+    expect(packing.packedDiff).toBe('');
+  });
+
+  it('measures every byte field in UTF-8, not UTF-16 code units', () => {
+    // 20 three-byte arrows: 20 code units, 60 bytes. Cap the binding between
+    // the two so a code-unit measurement reads "full" where bytes read "prefix".
+    const multibyte = 'diff --git a/x.ts b/x.ts\n@@ -1 +1 @@\n+// ' + '→'.repeat(20) + '\n';
+    const units = multibyte.length;
+    const bytes = Buffer.byteLength(multibyte, 'utf-8');
+    expect(bytes).toBeGreaterThan(units);
+    const between = { ...budgets(bytes + 100), bindingCapBytes: units + 1 };
+    const { coverage } = packDiffForPanelAndBinding(multibyte, between);
+    expect(coverage?.binding).toBe('prefix');
+    expect(coverage?.totalBytes).toBe(bytes);
+    expect(coverage?.reviewedBytes).toBe(bytes);
+    expect(coverage?.boundBytes).toBe(units + 1);
+  });
+
+  it('carries the binding-cap fallback source through to the coverage object', () => {
+    const fallback: ReviewBudgets = {
+      bindingCapBytes: CAP,
+      panelReadBudgetBytes: CAP,
+      source: 'binding-cap-fallback',
+      detail: 'context window unknown for "x"',
+    };
+    const { coverage } = packDiffForPanelAndBinding(twoFiles, fallback);
+    expect(coverage?.budgetSource).toBe('binding-cap-fallback');
+    expect(coverage?.budgetDetail).toContain('context window unknown');
+    // A fallback budget equals the cap, so the panel read is partial exactly
+    // when the binding is a prefix — the pre-#6003 behaviour, by construction.
+    expect(coverage?.panelRead).toBe('partial');
+    expect(coverage?.binding).toBe('prefix');
+  });
+});
+
+describe('applyPartialCoverageGate over the four #6003 rows', () => {
+  const approve: PrReviewAggregate = { decision: 'approve', verified: true };
+  const row = (
+    panelRead: 'full' | 'partial',
+    binding: 'full' | 'prefix'
+  ): PrReviewBindingCoverage => ({
+    reviewedFiles: panelRead === 'full' ? 2 : 1,
+    totalFiles: 2,
+    droppedFiles: panelRead === 'full' ? [] : ['src/b.ts'],
+    partial: panelRead === 'partial',
+    strategy: 'budget',
+    panelRead,
+    binding,
+    reviewedBytes: panelRead === 'full' ? 1_100 : 550,
+    boundBytes: binding === 'full' ? 1_100 : 1_000,
+    totalBytes: 1_100,
+    budgetSource: 'registry',
+    budgetDetail: 'test',
+  });
+
+  it('panel full + binding prefix: the verified approve STANDS (the record discloses the prefix)', () => {
+    expect(applyPartialCoverageGate(approve, row('full', 'prefix'))).toEqual(approve);
+  });
+
+  it('panel partial + binding full: the verified approve is DEGRADED — the panel did not read it all', () => {
+    const out = applyPartialCoverageGate(approve, row('partial', 'full'));
+    expect(out.decision).toBe('abstain');
+    expect(out.verified).toBe(false);
+    expect(out.reason).toContain('partial diff');
+  });
+
+  it('both partial: degraded', () => {
+    const out = applyPartialCoverageGate(approve, row('partial', 'prefix'));
+    expect(out.decision).toBe('abstain');
+    expect(out.verified).toBe(false);
+  });
+
+  it('both full: unchanged', () => {
+    expect(applyPartialCoverageGate(approve, row('full', 'full'))).toEqual(approve);
   });
 });

@@ -67,6 +67,14 @@ vi.mock('../../cli/voter-agents.js', async (importOriginal) => {
       }),
   };
 });
+// #6003: the tool resolves the panel's seats before the vote, and the CLI
+// path of that resolution probes for installed CLIs. None is, under the spawn
+// guard; answer "none" so every seat is the registry default (pending
+// detection) and the budget falls back to the binding cap.
+vi.mock('../../cli-adapters/factory.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../cli-adapters/factory.js')>()),
+  getAvailableClis: () => Promise.resolve([]),
+}));
 vi.mock('../middleware/tool-wrapper.js', () => ({
   wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
   toSdkCallback: (fn: unknown) => fn,
