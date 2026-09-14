@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.55.4
+
+### Patch Changes
+
+- [#6214](https://github.com/nexus-substrate/nexus-agents/pull/6214) [`3f0ff0a`](https://github.com/nexus-substrate/nexus-agents/commit/3f0ff0ab7190ba0cf21b5be8f777a83f34ebca20) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cli-adapters): the stateless `run*Stage` scoring runners and `StageDependencies` now live in `cli-adapters/composite-router-scoring-stages.ts`, leaving `runPipeline` and its gating in `composite-router-stages.ts` — a pure move with no routing behaviour change ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148)).
+
 ## 8.55.3
 
 ### Patch Changes
