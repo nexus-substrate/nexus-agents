@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.55.2
+
+### Patch Changes
+
+- [#6207](https://github.com/nexus-substrate/nexus-agents/pull/6207) [`3b6a528`](https://github.com/nexus-substrate/nexus-agents/commit/3b6a52802cc363fb783231434ac0d5c0a2a6ea6f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Move the execute_expert MCP Tasks async handler out of `execute-expert.ts` into a sibling `execute-expert-task-handler.ts` ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148)); no behaviour change.
+
 ## 8.55.1
 
 ### Patch Changes
