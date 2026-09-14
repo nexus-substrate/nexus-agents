@@ -610,7 +610,7 @@ function detectDimensionBreaches(audit: FitnessAudit): readonly DimensionBreach[
 function buildDimensionSignal(breach: DimensionBreach): ImprovementSignal {
   const sortedIds = breach.findings.map(findingIdentifier).sort();
   const dedup = createHash('sha256')
-    .update([breach.dimension, ...sortedIds].join(' '))
+    .update([breach.dimension, ...sortedIds].join('\0'))
     .digest('hex')
     .slice(0, 12);
 

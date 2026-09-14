@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import {
   ImprovementReviewInputSchema,
   filterByLookback,
@@ -495,6 +496,37 @@ describe('detectFitnessDimensionSignals (#3227)', () => {
     const keyB = detectFitnessDimensionSignals(make())[0]?.signalKey;
     expect(keyA).toBeDefined();
     expect(keyA).toBe(keyB);
+  });
+
+  it('dedup key is sha256 over (dimension, sorted ids) joined by a NUL byte (#6149)', () => {
+    // #6149 rewrote the separator from a raw byte in the source to the escape
+    // `\0`. The hash pins the byte: a separator that is not exactly one
+    // U+0000 (the `'|'` and `''` rows below) produces a different key.
+    const separator = '\0';
+    expect(separator.length).toBe(1);
+    expect(separator.charCodeAt(0)).toBe(0);
+
+    const audit = dimAudit(fullDimensions({ determinism: 3 }), [
+      finding({ dimension: 'determinism', description: 'finding B' }),
+      finding({ dimension: 'determinism', description: 'finding A', location: 'src/x.ts' }),
+    ]);
+    const keyFor = (sep: string): string =>
+      'tech-debt:fitness-dimension:determinism:' +
+      createHash('sha256')
+        .update(
+          [
+            'determinism',
+            'determinism|warning|finding A|src/x.ts',
+            'determinism|warning|finding B|',
+          ].join(sep)
+        )
+        .digest('hex')
+        .slice(0, 12);
+
+    const key = detectFitnessDimensionSignals(audit)[0]?.signalKey;
+    expect(key).toBe(keyFor(separator));
+    expect(key).not.toBe(keyFor('|'));
+    expect(key).not.toBe(keyFor(''));
   });
 
   it('dedup key CHANGES when the dimension findings change (re-emit on real change)', () => {

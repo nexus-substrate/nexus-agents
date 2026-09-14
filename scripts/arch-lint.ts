@@ -19,6 +19,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
 import { checkSuppressionReason } from './arch-lint-suppression.js';
+import { checkControlBytes, checkControlByteBaselineCoverage } from './arch-lint-control-bytes.js';
 
 export interface Violation {
   readonly file: string;
@@ -490,6 +491,17 @@ function collectScriptTargets(): string[] {
 }
 
 /**
+ * Every `.ts` file under package source and `scripts/`, tests INCLUDED.
+ *
+ * #6149: a raw control byte makes `grep` skip the file as binary whatever the
+ * file is for, and one of the three files carrying one was a test, so the
+ * control-byte rule cannot use the test-excluding collectors above.
+ */
+export function collectControlByteTargets(): string[] {
+  return [...getAllTsFiles(SRC_ROOT), ...getAllTsFiles(join(ROOT, 'scripts'))];
+}
+
+/**
  * Main linting function.
  */
 function lint(): LintResult {
@@ -523,6 +535,17 @@ function lint(): LintResult {
       // Skip files that can't be read
     }
   }
+
+  // #6149: control bytes are checked over tests too (see collectControlByteTargets).
+  const controlByteFiles = collectControlByteTargets();
+  for (const filePath of controlByteFiles) {
+    try {
+      violations.push(...checkControlBytes(filePath, readFileSync(filePath, 'utf-8')));
+    } catch {
+      // Skip files that can't be read
+    }
+  }
+  violations.push(...checkControlByteBaselineCoverage(controlByteFiles));
 
   // Add governance checks
   violations.push(...checkGovernance());
