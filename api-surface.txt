@@ -1327,14 +1327,20 @@ TypeAliasDeclaration CircuitBreakerFailureCategory
   = 'authentication' | 'connection' | 'crash' | 'rate_limit' | 'timeout' | 'unknown'
 ClassDeclaration CircuitBreakerRegistry
   addGlobalStateChangeListener(listener: CircuitStateChangeListener) => void
-  getAllSnapshots() => Map<RoutingArmId, CircuitBreakerSnapshot>
-  getBreaker(cliName: RoutingArmId, config?: Partial<CircuitBreakerConfig>) => CliCircuitBreaker
-  getHealthyClis() => RoutingArmId[]
-  getUnhealthyClis() => RoutingArmId[]
-  isOpen(cliName: RoutingArmId) => boolean
+  getAllArmSnapshots() => Map<RoutingArmId, CircuitBreakerSnapshot>
+  getAllSnapshots() => Map<CliName, CircuitBreakerSnapshot>
+  getArmBreaker(armId: RoutingArmId, config?: Partial<CircuitBreakerConfig>) => CliCircuitBreaker
+  getBreaker(cliName: CliName, config?: Partial<CircuitBreakerConfig>) => CliCircuitBreaker
+  getHealthyArms() => RoutingArmId[]
+  getHealthyClis() => CliName[]
+  getUnhealthyArms() => RoutingArmId[]
+  getUnhealthyClis() => CliName[]
+  isArmOpen(armId: RoutingArmId) => boolean
+  isOpen(cliName: CliName) => boolean
   removeGlobalStateChangeListener(listener: CircuitStateChangeListener) => void
-  reset(cliName: RoutingArmId) => void
+  reset(cliName: CliName) => void
   resetAll() => void
+  resetArm(armId: RoutingArmId) => void
 InterfaceDeclaration CircuitBreakerSnapshot
   readonly config: CircuitBreakerConfig
   readonly failureCount: number
@@ -1344,9 +1350,10 @@ InterfaceDeclaration CircuitBreakerSnapshot
   readonly state: CircuitState
   readonly successCount: number
 ClassDeclaration CircuitError
+  readonly armId: RoutingArmId
   readonly circuitErrorCode: CircuitErrorCode
   readonly circuitState: CircuitState
-  readonly cliName: RoutingArmId
+  readonly cliName: "claude" | "codex" | "gemini" | "opencode"
   readonly failureCategory?: FailureCategory | undefined
 TypeAliasDeclaration|VariableDeclaration CircuitErrorCode
   : { readonly CIRCUIT_HALF_OPEN_REJECTED: "CIRCUIT_HALF_OPEN_REJECTED"; readonly CIRCUIT_OPEN: "CIRCUIT_OPEN"; readonly EXECUTION_FAILED: "EXECUTION_FAILED"; }
@@ -1359,7 +1366,8 @@ InterfaceDeclaration CircuitProtectedResult
 TypeAliasDeclaration CircuitState
   = 'closed' | 'half-open' | 'open'
 InterfaceDeclaration CircuitStateChangeEvent
-  readonly cliName: RoutingArmId
+  readonly armId: RoutingArmId
+  readonly cliName: "claude" | "codex" | "gemini" | "opencode"
   readonly failureCount: number
   readonly newState: CircuitState
   readonly previousState: CircuitState
@@ -1503,7 +1511,7 @@ ClassDeclaration CliCircuitBreakerIntegration
   getCircuitSnapshots() => Map<CliName, CircuitBreakerSnapshot>
   getHealthStatus() => CliCircuitHealthStatus
   resetAllCircuits() => void
-  resetCircuit(cliName: RoutingArmId) => void
+  resetCircuit(cliName: CliName) => void
 InterfaceDeclaration CliCircuitHealthStatus
   readonly clis: readonly { readonly circuitState: "closed" | "half-open" | "open"; readonly failureCount: number; readonly healthy: boolean; readonly lastFailureTime: null | number; readonly name: CliName; }[]
   readonly healthyCount: number
@@ -4447,7 +4455,7 @@ InterfaceDeclaration ICliCircuitBreakerIntegration
   getCircuitSnapshots() => Map<CliName, CircuitBreakerSnapshot>
   getHealthStatus() => CliCircuitHealthStatus
   resetAllCircuits() => void
-  resetCircuit(cliName: RoutingArmId) => void
+  resetCircuit(cliName: CliName) => void
 InterfaceDeclaration ICliDetectionCache
   get(cli: CliName) => CliHealthResult | undefined
   getAll() => ReadonlyMap<CliName, CliHealthResult>
@@ -7156,7 +7164,8 @@ InterfaceDeclaration RegistryScanner
   readonly relationships?: readonly RegistryRelationship[] | undefined
 InterfaceDeclaration RegistrySnapshot
   readonly availableModels: number
-  readonly cachedAdapters: readonly RoutingArmId[]
+  readonly cachedAdapters: readonly ("claude" | "codex" | "gemini" | "opencode")[]
+  readonly cachedArms: readonly RoutingArmId[]
   readonly taskRouting: readonly TaskRoutingEntry[]
 InterfaceDeclaration RegistryStats
   byCapability: Record<string, number>

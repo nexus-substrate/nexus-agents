@@ -10,8 +10,7 @@
  * @see Issue #456 - Real API rate limit tracking
  */
 
-import type { CliName, RoutingArmId, TokenUsage, CapacityStatus } from './types-core.js';
-import { routingArmDisplaySlot } from './types-core.js';
+import type { CliName, TokenUsage, CapacityStatus } from './types-core.js';
 import { getTimeProvider } from '../core/index.js';
 import { clampPercent } from '../utils/math-utils.js';
 
@@ -64,15 +63,9 @@ interface UsageEntry {
 }
 
 /**
- * Creates default configuration for a routing arm from environment or defaults.
- *
- * Limits are per display SLOT (#4392): an `api:*` arm reads the defaults and
- * the `NEXUS_<SLOT>_*` overrides of the slot it displays under, which is what
- * it received before when callers could only pass the slot name. Identity for
- * a CLI name.
+ * Creates default configuration for a CLI from environment or defaults.
  */
-export function getDefaultConfig(arm: RoutingArmId): CapacityTrackerConfig {
-  const cli: CliName = routingArmDisplaySlot(arm);
+export function getDefaultConfig(cli: CliName): CapacityTrackerConfig {
   const envPrefix = `NEXUS_${cli.toUpperCase()}`;
   const tokenEnv = process.env[`${envPrefix}_TOKEN_LIMIT`];
   const requestEnv = process.env[`${envPrefix}_REQUEST_LIMIT`];
@@ -343,8 +336,8 @@ export class CapacityTracker {
 }
 
 /**
- * Creates a capacity tracker for a specific routing arm (CLI slot or `api:*`).
+ * Creates a capacity tracker for a specific CLI.
  */
-export function createCapacityTracker(arm: RoutingArmId): CapacityTracker {
-  return new CapacityTracker(getDefaultConfig(arm));
+export function createCapacityTracker(cli: CliName): CapacityTracker {
+  return new CapacityTracker(getDefaultConfig(cli));
 }

@@ -8,7 +8,8 @@
 
 import { NexusError, ErrorCode } from '../core/errors.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import type { RoutingArmId } from './types.js';
+import type { CliName, RoutingArmId } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 
 // ============================================================================
 // Types
@@ -74,8 +75,14 @@ export interface CircuitBreakerSnapshot {
  * Event emitted on circuit state changes.
  */
 export interface CircuitStateChangeEvent {
+  /**
+   * Display slot of the guarded arm: identity for a CLI slot, the collapsed
+   * slot for an `api:*` arm (#4392). Always `routingArmDisplaySlot(armId)`;
+   * read {@link armId} to tell an endpoint arm from the slot it displays under.
+   */
+  readonly cliName: CliName;
   /** Routing arm the breaker guards — a CLI slot or an `api:*` arm (#4392). */
-  readonly cliName: RoutingArmId;
+  readonly armId: RoutingArmId;
   /** Previous state */
   readonly previousState: CircuitState;
   /** New state */
@@ -152,7 +159,10 @@ export type CircuitErrorCode = (typeof CircuitErrorCode)[keyof typeof CircuitErr
  */
 export class CircuitError extends NexusError {
   readonly circuitErrorCode: CircuitErrorCode;
-  readonly cliName: RoutingArmId;
+  /** Display slot of {@link armId} — `routingArmDisplaySlot(armId)`, never the raw `api:*` id. */
+  readonly cliName: CliName;
+  /** Routing arm whose circuit blocked the request — a CLI slot or an `api:*` arm (#4392). */
+  readonly armId: RoutingArmId;
   readonly circuitState: CircuitState;
   readonly failureCategory?: FailureCategory;
 
@@ -160,17 +170,19 @@ export class CircuitError extends NexusError {
     message: string,
     options: {
       circuitErrorCode: CircuitErrorCode;
-      cliName: RoutingArmId;
+      armId: RoutingArmId;
       circuitState: CircuitState;
       failureCategory?: FailureCategory;
       cause?: Error;
     }
   ) {
+    const cliName = routingArmDisplaySlot(options.armId);
     const baseOptions: { code: ErrorCode; cause?: Error; context: Record<string, unknown> } = {
       code: ErrorCode.INTERNAL_ERROR,
       context: {
         circuitErrorCode: options.circuitErrorCode,
-        cliName: options.cliName,
+        cliName,
+        armId: options.armId,
         circuitState: options.circuitState,
       },
     };
@@ -183,7 +195,8 @@ export class CircuitError extends NexusError {
     super(message, baseOptions);
     this.name = 'CircuitError';
     this.circuitErrorCode = options.circuitErrorCode;
-    this.cliName = options.cliName;
+    this.cliName = cliName;
+    this.armId = options.armId;
     this.circuitState = options.circuitState;
     if (options.failureCategory !== undefined) {
       this.failureCategory = options.failureCategory;

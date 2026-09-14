@@ -7,7 +7,7 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import { z } from 'zod';
 
 /**
@@ -17,16 +17,36 @@ import { z } from 'zod';
 export type CliName = CliNameLiteral;
 
 /**
+ * Runtime guard for {@link CliName}: true iff `value` is one of the four CLI
+ * slots. The `CliName`-typed readers on the circuit-breaker registry and the
+ * adapter registry are filtered views over arm-keyed maps (#6290 panel), and
+ * this is the one predicate they filter on.
+ */
+export function isCliName(value: string): value is CliName {
+  return (CLI_NAMES as readonly string[]).includes(value);
+}
+
+/**
  * Built-in API-vendor identifiers an `AdapterSelection{source:'api'}` reports
  * (#3422). Distinct from the four CLI slots: a direct vendor API and the same
  * vendor's CLI binary have different latency/failure profiles, so they must
  * NOT share a routing/bandit arm (would pollute the learned model).
  *
- * Deliberately still a closed union: the per-vendor selection switch in
- * `adapters/auto-adapter.ts` is exhaustive over it. Endpoint identity lives
- * one level up, in {@link ApiArmId} (#4392).
+ * Deliberately a closed union: the per-vendor selection switch in
+ * `adapters/auto-adapter.ts` is exhaustive over it. It no longer enumerates
+ * the `api:*` arms — endpoint identity lives one level up, in
+ * {@link ApiArmId} (#4392).
  */
-export type ApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
+export type BuiltInApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
+
+/**
+ * @deprecated Renamed {@link BuiltInApiVendor} in #4392 increment 1: since
+ * `ApiArmId` became `api:${string}`, this union names the four built-in
+ * vendors, not the set of API arms. Kept so every pre-#4392 binding still
+ * compiles and still narrows the template (`api:${ApiVendor}` is a subset of
+ * `ApiArmId`). Removed in 9.0 — #6291.
+ */
+export type ApiVendor = BuiltInApiVendor;
 
 /**
  * Endpoint-identity segment of an {@link ApiArmId} (#4392): a built-in vendor
@@ -34,8 +54,8 @@ export type ApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
  * `-`; must start alphanumeric; 1–64 chars. `:`, `/`, `@` and whitespace are
  * excluded ON PURPOSE so a base URL — and any userinfo credential inside one —
  * can never become an arm id, telemetry key or display string. The four
- * {@link ApiVendor} names all satisfy it, so every pre-#4392 id survives
- * byte-identical.
+ * {@link BuiltInApiVendor} names all satisfy it, so every pre-#4392 id
+ * survives byte-identical.
  */
 const API_ENDPOINT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -69,7 +89,7 @@ export const ApiArmIdSchema = z.templateLiteral([
 export type RoutingArmId = CliName | ApiArmId;
 
 /** Build the routing arm id for a built-in API vendor. */
-export function apiArmId(vendor: ApiVendor): ApiArmId {
+export function apiArmId(vendor: BuiltInApiVendor): ApiArmId {
   return `api:${vendor}`;
 }
 

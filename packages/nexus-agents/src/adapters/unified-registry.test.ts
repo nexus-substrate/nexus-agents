@@ -488,21 +488,26 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
 
     expect(registry.getAdapterForArm('claude')).toBe(viaCli);
     expect(registry.getSnapshot().cachedAdapters).toEqual(['claude']);
+    expect(registry.getSnapshot().cachedArms).toEqual(['claude']);
   });
 
   it('getAdapterForArm on an unregistered api arm is undefined, not a CLI fallback', () => {
     expect(registry.getAdapterForArm('api:gw-prod')).toBeUndefined();
     // Asking did not create anything.
     expect(registry.getSnapshot().cachedAdapters).toEqual([]);
+    expect(registry.getSnapshot().cachedArms).toEqual([]);
   });
 
-  it('a registered api arm is returned by id and listed in the snapshot', () => {
+  it('a registered api arm is returned by id and listed in cachedArms, NOT cachedAdapters', () => {
     const stub = stubResilientAdapter('gw-prod');
 
     registry.registerApiArm('api:gw-prod', stub);
 
     expect(registry.getAdapterForArm('api:gw-prod')).toBe(stub);
-    expect(registry.getSnapshot().cachedAdapters).toEqual(['api:gw-prod']);
+    // `cachedAdapters` keeps its `CliName[]` type (#6290 panel): it is the
+    // CLI-slot view of the one arm-keyed cache that `cachedArms` reports whole.
+    expect(registry.getSnapshot().cachedArms).toEqual(['api:gw-prod']);
+    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
   });
 
   it('registering an api arm leaves CLI-slot behaviour untouched', () => {
@@ -513,7 +518,8 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
 
     expect(opencode).not.toBe(stub);
     expect(opencode.getCircuitBreakerRegistry?.()).toBe(getDefaultCliCircuitBreakerRegistry());
-    expect(registry.getSnapshot().cachedAdapters).toEqual(['api:gw-prod', 'opencode']);
+    expect(registry.getSnapshot().cachedArms).toEqual(['api:gw-prod', 'opencode']);
+    expect(registry.getSnapshot().cachedAdapters).toEqual(['opencode']);
   });
 
   it('rejects an id that fails the endpoint validator, even through a cast', () => {
@@ -534,6 +540,7 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
     registry.dispose();
 
     expect(stub.dispose).toHaveBeenCalledTimes(1);
+    expect(registry.getSnapshot().cachedArms).toEqual([]);
     expect(registry.getSnapshot().cachedAdapters).toEqual([]);
   });
 });

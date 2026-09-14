@@ -19,7 +19,7 @@ import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
-import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
+import type { CliName, ICliAdapter, BuiltInApiVendor, ApiArmId } from '../cli-adapters/types.js';
 import { apiArmId } from '../cli-adapters/types.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
@@ -248,7 +248,7 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
  * arm id, which stays distinct (`api:<vendor>`) so CLI and API telemetry never
  * merge. Exhaustive switch (concrete literals, no index-access undefined).
  */
-function resolveApiVendor(name: string): { vendor: ApiVendor; slot: CliName } | undefined {
+function resolveApiVendor(name: string): { vendor: BuiltInApiVendor; slot: CliName } | undefined {
   switch (name) {
     case 'anthropic':
       return { vendor: 'anthropic', slot: 'claude' };
@@ -289,7 +289,10 @@ export function wrapApiSelectionForRouter(
  * are present, else null. Reuses the same adapter constructors as
  * {@link tryApiAdapter} but is key-presence-only and never calls out (#3422).
  */
-function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): AdapterSelection | null {
+function buildApiSelectionForVendor(
+  vendor: BuiltInApiVendor,
+  logger: ILogger
+): AdapterSelection | null {
   switch (vendor) {
     case 'anthropic': {
       const key = resolveApiKeyFromEnv(undefined, 'ANTHROPIC_API_KEY');
@@ -334,7 +337,7 @@ function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): Adapter
 }
 
 /** API vendors enumerated in routing-arm order (#3422). */
-const API_ROUTING_VENDORS: readonly ApiVendor[] = [
+const API_ROUTING_VENDORS: readonly BuiltInApiVendor[] = [
   'anthropic',
   'openai',
   'google',

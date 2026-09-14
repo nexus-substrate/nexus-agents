@@ -872,8 +872,10 @@ describe('categorizeError', () => {
 });
 
 // #4392 increment 1: the breaker and its registry were typed around `CliName`,
-// so an `api:*` routing arm could get no health tracking at all. They are now
-// keyed by `RoutingArmId`; CLI names behave exactly as before.
+// so an `api:*` routing arm could get no health tracking at all. The registry
+// is now keyed by `RoutingArmId` underneath; the `CliName`-typed readers keep
+// their types and become FILTERED VIEWS over the arm-typed siblings (panel on
+// #6290: additive now, removals in #6291).
 describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
   let registry: CircuitBreakerRegistry;
 
@@ -889,28 +891,41 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
   it('creates a distinct breaker for an endpoint-identity arm', () => {
     const arm: RoutingArmId = 'api:gw-prod';
 
-    const breaker = registry.getBreaker(arm);
+    const breaker = registry.getArmBreaker(arm);
 
     expect(breaker).toBeInstanceOf(CliCircuitBreaker);
-    expect(registry.getBreaker(arm)).toBe(breaker);
-    expect(registry.getBreaker('opencode')).not.toBe(breaker);
+    expect(registry.getArmBreaker(arm)).toBe(breaker);
+    expect(registry.getArmBreaker('opencode')).not.toBe(breaker);
   });
 
-  it('carries the arm id, not a collapsed slot, on state-change events', async () => {
+  it('getBreaker on a CLI name is the SAME breaker getArmBreaker returns (one map)', () => {
+    expect(registry.getBreaker('claude')).toBe(registry.getArmBreaker('claude'));
+  });
+
+  it('carries armId AND the collapsed display slot on state-change events', async () => {
     const events: CircuitStateChangeEvent[] = [];
     registry.addGlobalStateChangeListener((e) => events.push(e));
-    const breaker = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+    const breaker = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
 
     await breaker.execute(() => Promise.reject(new Error('boom')));
 
-    expect(events.map((e) => e.cliName)).toEqual(['api:gw-prod']);
-    expect(registry.isOpen('api:gw-prod')).toBe(true);
-    expect(registry.getUnhealthyClis()).toEqual(['api:gw-prod']);
-    expect(registry.getAllSnapshots().has('api:gw-prod')).toBe(true);
+    expect(events.map((e) => [e.armId, e.cliName])).toEqual([['api:gw-prod', 'opencode']]);
+    expect(registry.isArmOpen('api:gw-prod')).toBe(true);
+    expect(registry.getAllArmSnapshots().has('api:gw-prod')).toBe(true);
   });
 
-  it('names the arm on the CircuitError it raises', async () => {
-    const breaker = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+  it('a CLI arm reports armId === cliName on events', async () => {
+    const events: CircuitStateChangeEvent[] = [];
+    registry.addGlobalStateChangeListener((e) => events.push(e));
+    const breaker = registry.getBreaker('gemini', { failureThreshold: 1 });
+
+    await breaker.execute(() => Promise.reject(new Error('boom')));
+
+    expect(events.map((e) => [e.armId, e.cliName])).toEqual([['gemini', 'gemini']]);
+  });
+
+  it('names the arm AND its display slot on the CircuitError it raises', async () => {
+    const breaker = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
     await breaker.execute(() => Promise.reject(new Error('boom')));
 
     const blocked = await breaker.execute(() => Promise.resolve('never'));
@@ -918,16 +933,67 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) {
       expect(blocked.error).toBeInstanceOf(CircuitError);
-      expect(blocked.error.cliName).toBe('api:gw-prod');
+      expect(blocked.error.armId).toBe('api:gw-prod');
+      expect(blocked.error.cliName).toBe('opencode');
     }
   });
 
   it('an api arm opening never touches a CLI slot sharing its display slot', async () => {
-    const api = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+    const api = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
     await api.execute(() => Promise.reject(new Error('boom')));
 
+    expect(registry.isArmOpen('opencode')).toBe(false);
     expect(registry.isOpen('opencode')).toBe(false);
-    expect(registry.getHealthyClis()).toEqual([]);
     expect(registry.getBreaker('opencode').getState()).toBe('closed');
+  });
+
+  describe('CliName-typed readers are filtered views over the arm-typed ones', () => {
+    it('a registered api arm is absent from getHealthyClis() and present in getHealthyArms()', () => {
+      registry.getBreaker('claude');
+      registry.getArmBreaker('api:gw-prod');
+
+      expect(registry.getHealthyArms()).toEqual(['claude', 'api:gw-prod']);
+      expect(registry.getHealthyClis()).toEqual(['claude']);
+    });
+
+    it('an open api arm is absent from getUnhealthyClis() and present in getUnhealthyArms()', async () => {
+      const api = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
+      const cli = registry.getBreaker('codex', { failureThreshold: 1 });
+      await api.execute(() => Promise.reject(new Error('boom')));
+      await cli.execute(() => Promise.reject(new Error('boom')));
+
+      expect(registry.getUnhealthyArms()).toEqual(['api:gw-prod', 'codex']);
+      expect(registry.getUnhealthyClis()).toEqual(['codex']);
+    });
+
+    it('getAllSnapshots() omits the api arm that getAllArmSnapshots() carries', () => {
+      registry.getBreaker('claude');
+      registry.getArmBreaker('api:gw-prod');
+
+      expect([...registry.getAllArmSnapshots().keys()]).toEqual(['claude', 'api:gw-prod']);
+      expect([...registry.getAllSnapshots().keys()]).toEqual(['claude']);
+    });
+
+    it('empty registry: both views are empty (named empty case)', () => {
+      expect(registry.getHealthyArms()).toEqual([]);
+      expect(registry.getHealthyClis()).toEqual([]);
+      expect(registry.getUnhealthyArms()).toEqual([]);
+      expect(registry.getUnhealthyClis()).toEqual([]);
+      expect(registry.getAllSnapshots().size).toBe(0);
+      expect(registry.getAllArmSnapshots().size).toBe(0);
+    });
+
+    it('resetArm resets an api arm; reset (CLI-typed) reaches the same map', async () => {
+      const api = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
+      const cli = registry.getBreaker('codex', { failureThreshold: 1 });
+      await api.execute(() => Promise.reject(new Error('boom')));
+      await cli.execute(() => Promise.reject(new Error('boom')));
+
+      registry.resetArm('api:gw-prod');
+      registry.reset('codex');
+
+      expect(registry.getUnhealthyArms()).toEqual([]);
+      expect(registry.getHealthyArms()).toEqual(['api:gw-prod', 'codex']);
+    });
   });
 });

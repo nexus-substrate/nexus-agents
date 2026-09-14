@@ -12,14 +12,7 @@ import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import type { FallbackTaskType } from './task-classifier.js';
 import { getFallbackChainForCategory } from './fallback-chains.js';
-import type {
-  ICliAdapter,
-  CliName,
-  CliTask,
-  CliResponse,
-  CliError,
-  RoutingArmId,
-} from './types.js';
+import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import {
   CircuitBreakerRegistry,
   CircuitError,
@@ -81,10 +74,8 @@ export interface ICliCircuitBreakerIntegration {
     taskCategory?: TaskCategory
   ): Promise<Result<CircuitProtectedResult, CircuitError | CliError>>;
   getHealthStatus(): CliCircuitHealthStatus;
-  /** Snapshots for the CLI adapters THIS integration wraps — CLI-keyed by construction. */
   getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot>;
-  /** Resets any arm on the shared registry, `api:*` arms included (#4392). */
-  resetCircuit(cliName: RoutingArmId): void;
+  resetCircuit(cliName: CliName): void;
   resetAllCircuits(): void;
   addStateChangeListener(listener: CircuitStateChangeListener): void;
 }
@@ -119,13 +110,11 @@ export function getDefaultCliCircuitBreakerRegistry(): CircuitBreakerRegistry {
 }
 
 /**
- * Reads the current snapshot for a routing arm without creating a new breaker.
+ * Reads the current snapshot for a CLI without creating a new breaker.
  *
  * `undefined` means no circuit state is known yet, so callers should fail open.
  */
-export function getCliCircuitBreakerSnapshot(
-  cliName: RoutingArmId
-): CircuitBreakerSnapshot | undefined {
+export function getCliCircuitBreakerSnapshot(cliName: CliName): CircuitBreakerSnapshot | undefined {
   return defaultCliCircuitBreakerRegistry.getAllSnapshots().get(cliName);
 }
 
@@ -234,7 +223,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     return snapshots;
   }
 
-  resetCircuit(cliName: RoutingArmId): void {
+  resetCircuit(cliName: CliName): void {
     this.registry.reset(cliName);
     this.logger.info('Circuit reset', { cliName });
   }

@@ -23,15 +23,13 @@ import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
 import type { ApiArmId, CliName, RoutingArmId } from '../cli-adapters/types.js';
-import { isApiArmId } from '../cli-adapters/types.js';
+import { isApiArmId, isCliName } from '../cli-adapters/types.js';
 import { TASK_SPECIALIZATION_MATRIX, detectTaskCategory } from '../config/task-specialization.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import {
   getDefaultModelForCli,
   getInTreeCapabilitiesMatrix,
 } from '../config/model-config-helpers.js';
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
-import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -56,8 +54,14 @@ export interface TaskRoutingEntry {
 /** Snapshot of registry state for observability. */
 export interface RegistrySnapshot {
   readonly taskRouting: readonly TaskRoutingEntry[];
+  /**
+   * CLI-slot view of {@link cachedArms}: the lazily created CLI slots only.
+   * A registered `api:*` arm is never listed here (#6290 panel: this field
+   * keeps its `CliName[]` type; it is retired in 9.0, #6291).
+   */
+  readonly cachedAdapters: readonly CliName[];
   /** Every cached arm: lazily created CLI slots and registered `api:*` arms (#4392). */
-  readonly cachedAdapters: readonly RoutingArmId[];
+  readonly cachedArms: readonly RoutingArmId[];
   readonly availableModels: number;
 }
 
@@ -176,8 +180,8 @@ export class UnifiedAdapterRegistry {
     // Split on CLI-slot membership, not on the validator: an `api:` string
     // that fails validation must read as "not registered", never be handed
     // to getAdapterForCli to mint a slot adapter under a garbage name.
-    if ((CLI_NAMES as readonly string[]).includes(arm)) {
-      return this.getAdapterForCli(arm as CliName);
+    if (isCliName(arm)) {
+      return this.getAdapterForCli(arm);
     }
     return this.cliAdapters.get(arm);
   }
@@ -268,7 +272,8 @@ export class UnifiedAdapterRegistry {
   getSnapshot(): RegistrySnapshot {
     return {
       taskRouting: TASK_SPECIALIZATION_MATRIX.map((spec) => this.resolveRouting(spec)),
-      cachedAdapters: [...this.cliAdapters.keys()],
+      cachedAdapters: [...this.cliAdapters.keys()].filter(isCliName),
+      cachedArms: [...this.cliAdapters.keys()],
       availableModels: getInTreeCapabilitiesMatrix().models.length,
     };
   }
@@ -343,8 +348,8 @@ const ROLE_TO_CATEGORY: Record<string, TaskCategory> = {
 
 /** Resolve the default model name for a CLI from the canonical registry. */
 function resolveDefaultModel(cli: string): string {
-  if ((CLI_NAMES as readonly string[]).includes(cli)) {
-    return getDefaultModelForCli(cli as CliNameLiteral);
+  if (isCliName(cli)) {
+    return getDefaultModelForCli(cli);
   }
   return cli;
 }

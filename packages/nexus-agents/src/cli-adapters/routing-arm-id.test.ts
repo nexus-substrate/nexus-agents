@@ -22,8 +22,10 @@ import {
   apiArmId,
   isApiArmId,
   routingArmDisplaySlot,
+  isCliName,
   type ApiArmId,
   type ApiVendor,
+  type BuiltInApiVendor,
   type RoutingArmId,
 } from './types-core.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
@@ -37,7 +39,7 @@ const PRE_WIDENING_API_ARM_IDS = [
   'api:custom-openai',
 ] as const;
 
-const VENDORS: readonly ApiVendor[] = ['anthropic', 'openai', 'google', 'custom-openai'];
+const VENDORS: readonly BuiltInApiVendor[] = ['anthropic', 'openai', 'google', 'custom-openai'];
 
 describe('ApiArmIdSchema (#4392)', () => {
   it('accepts every pre-widening literal, byte-identical to apiArmId()', () => {
@@ -152,6 +154,37 @@ describe('persisted outcome records keyed on an arm id (#4392 migration)', () =>
     const parsed: ApiArmId = ApiArmIdSchema.parse('api:gw-prod');
 
     expect([endpoint, slot, bare, parsed]).toHaveLength(4);
+  });
+});
+
+// #6290 panel (additive shape): `ApiVendor` stays exported as a deprecated
+// alias of `BuiltInApiVendor`, so every pre-#4392 binding still compiles and
+// still narrows the `api:${string}` template. Removal is #6291.
+describe('ApiVendor deprecated alias (#6290 additive shape)', () => {
+  it('is assignable both ways with BuiltInApiVendor and narrows ApiArmId (compile-time)', () => {
+    /* eslint-disable @typescript-eslint/no-deprecated -- the alias under test is the deprecated one */
+    const legacy: ApiVendor = 'anthropic';
+    const current: BuiltInApiVendor = legacy;
+    const back: ApiVendor = current;
+    const narrowed: ApiArmId = `api:${legacy}`;
+    // @ts-expect-error — the alias is still the closed four-literal union.
+    const notAVendor: ApiVendor = 'gw-prod';
+    /* eslint-enable @typescript-eslint/no-deprecated */
+
+    expect(apiArmId(legacy)).toBe('api:anthropic');
+    expect([current, back, narrowed, notAVendor]).toHaveLength(4);
+  });
+});
+
+describe('isCliName (#6290 filtered views)', () => {
+  it('is true for exactly the four CLI slots', () => {
+    for (const cli of CLI_NAMES) expect(isCliName(cli)).toBe(true);
+  });
+
+  it('is false for api arms, the unknown marker and garbage', () => {
+    for (const value of ['api:anthropic', 'api:gw-prod', 'unknown', '', 'Claude']) {
+      expect(isCliName(value)).toBe(false);
+    }
   });
 });
 
