@@ -1,13 +1,26 @@
-name: Remediation Audit Soak
+name: Remediation Audit Smoke (no readiness evidence)
 
-# Scheduled AUDIT-mode auto-remediation cycle (#4224).
+# Scheduled AUDIT-mode auto-remediation cycle (#4224) — SMOKE ONLY (#4279).
 #
-# Why this exists: the enforce-readiness soak (`learning/remediation-soak.jsonl`,
-# read by `remediation-readiness-collector.ts`) only accrued when a human ran
-# `nexus-agents auto-remediate`. It is NOT a byproduct of normal work, so the
-# evidence the enforce gate depends on structurally could not accumulate — the
-# soak flatlined on 2026-06-17. This workflow gives it an organic, scheduled feed
-# (mirroring how the code-PR guards soak accrues from CI on every PR).
+# WHAT THIS IS: a daily end-to-end smoke test of the audit path. It proves the
+# built CLI can collect signals, research, vote (degrading to no_quorum — no LLM
+# credentials are wired), and append to a soak sink without error.
+#
+# WHAT THIS IS NOT: readiness evidence for #3769 (the audit -> enforce flip).
+# It produces NONE, and a green run here is NOT progress toward that gate:
+#   * The file it appends to lives under the workspace `NEXUS_DATA_DIR` and is
+#     persisted only in the actions/cache (evicted after 7 idle days). The gate
+#     reads the OPERATOR store — `~/.nexus-agents/learning/remediation-soak.jsonl`
+#     via `remediation-readiness-collector.ts` — which this job never touches.
+#   * Even if the records were bridged, they would arrive un-judged: readiness
+#     requires a NAMED evaluator and owner (`remediation-review mark` / `sign-off`),
+#     which are human acts by design, and 43 daily runs against a near-identical
+#     checkout are correlated near-duplicates, not the diverse signal `volume` wants.
+# The panel on #4279 (5–2, Option B) therefore declared the CI soak non-evidence:
+# the evidence path is an operator running `nexus-agents auto-remediate` where
+# real telemetry lives, then judging records with `nexus-agents remediation-review`.
+# `remediation-review readiness` now prints a staleness/flatline alarm on that
+# store so a stalled evidence path is visible instead of hidden behind this job.
 #
 # SAFETY: this runs in AUDIT mode ONLY. Audit is the default
 # (`NEXUS_AUTO_REMEDIATE` unset -> audit) and produces vote/plan soak evidence with
@@ -19,15 +32,16 @@ name: Remediation Audit Soak
 
 on:
   schedule:
-    # Daily at 07:17 UTC. Daily cadence keeps the soak accruing steadily without
-    # excess CI cost; the readiness gate needs volume over a soak *window*, and a
-    # once-a-day cycle gives a predictable run-over-run drip. The offset minute
-    # (:17, not :00) avoids the well-known top-of-hour GitHub-cron congestion that
-    # delays or drops scheduled runs.
+    # Daily at 07:17 UTC. Once a day is enough to catch a regression in the audit
+    # path within a day without excess CI cost. The offset minute (:17, not :00)
+    # avoids the well-known top-of-hour GitHub-cron congestion that delays or
+    # drops scheduled runs.
     - cron: '17 7 * * *'
   workflow_dispatch: {}
 
 # No writes are needed: audit mode opens no PRs and this workflow commits nothing.
+# Keep this read-only (#4279): widening it so CI could commit its records would
+# let the automation seeking enforce authority author the evidence that grants it.
 permissions:
   contents: read
 
@@ -42,13 +56,14 @@ concurrency:
 
 jobs:
   soak:
-    name: Audit-mode remediation soak
+    name: Audit-mode remediation smoke (not readiness evidence)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       # Belt-and-braces: force AUDIT (default) so this can never remediate in CI.
       NEXUS_AUTO_REMEDIATE: audit
-      # Persist the soak/review evidence under a workspace path the cache covers.
+      # Workspace-local data dir: keeps the smoke's records in the cache-backed
+      # scratch store, disjoint from the operator store the readiness gate reads.
       NEXUS_DATA_DIR: ${{ github.workspace }}/.nexus-soak-data
       # This is a frozen CI checkout — never touch the tree or route state per-repo.
       NEXUS_GITIGNORE_AUTO: '0'
@@ -65,14 +80,16 @@ jobs:
             echo "::error::NEXUS_AUTO_REMEDIATE must be 'audit' in this workflow (got '${NEXUS_AUTO_REMEDIATE}')"
             exit 1
           fi
-          echo "AUDIT mode confirmed — zero writes, soak-only."
+          echo "AUDIT mode confirmed — zero writes, smoke-only."
 
       - name: Build nexus-agents
         run: pnpm build
 
-      # Restore the prior soak + review evidence so this run APPENDS to it. The
-      # JSONL soak sink hydrates-on-construct and appends-on-write, so a restored
-      # `remediation-soak.jsonl` grows rather than being overwritten.
+      # Restore the prior smoke records so this run APPENDS to them. The JSONL
+      # soak sink hydrates-on-construct and appends-on-write, so a restored
+      # `remediation-soak.jsonl` grows rather than being overwritten. This
+      # exercises the hydrate + append path of the sink; the accumulated file is
+      # cache-only scratch (see the header) and is NOT readiness evidence.
       #
       # Accumulation strategy — ROLLING key + restore-keys prefix (NOT a fixed key):
       #   * `key` embeds `github.run_id`, so it is UNIQUE per run and the post-job
@@ -113,10 +130,15 @@ jobs:
           [ -f "$SOAK" ] && after=$(wc -l < "$SOAK" | tr -d ' ')
           before="${{ steps.pre.outputs.before }}"
           {
-            echo "### Remediation audit soak (#4224)"
+            echo "### Remediation audit smoke (#4224) — NOT readiness evidence (#4279)"
             echo ""
-            echo "- Mode: \`audit\` (zero writes, soak-only)"
-            echo "- Soak records before: **${before:-0}**"
-            echo "- Soak records after:  **${after}**"
-            echo "- Accrued this run:    **$(( after - ${before:-0} ))**"
+            echo "- Mode: \`audit\` (zero writes, smoke-only)"
+            echo "- Cache-scratch records before: **${before:-0}**"
+            echo "- Cache-scratch records after:  **${after}**"
+            echo "- Appended this run:            **$(( after - ${before:-0} ))**"
+            echo ""
+            echo "These records live only in the actions/cache and are never read by the"
+            echo "enforce-readiness gate (#3769). A green run here proves the audit path"
+            echo "runs end to end; it is not progress toward the readiness gate. The"
+            echo "evidence path is the operator store — run \`nexus-agents remediation-review readiness\`."
           } >> "$GITHUB_STEP_SUMMARY"
