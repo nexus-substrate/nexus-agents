@@ -36,3 +36,34 @@ describe('repo index has no wall-clock stamp (#5461)', () => {
     expect(md).toMatch(/\*\*Package Version:\*\*/);
   });
 });
+
+/**
+ * The handler `file` column names the module the dispatcher actually imports
+ * the handler from, not a constant (#6148). Before this, every row said
+ * `src/cli-commands-handlers.ts`, which became false the moment the init /
+ * setup handlers moved to `cli-commands-handlers-setup.ts`.
+ */
+describe('repo index resolves each handler to the module the dispatcher imports (#6148)', () => {
+  const index = JSON.parse(readFileSync(join(ROOT, 'artifacts/repo-index.json'), 'utf-8')) as {
+    cli: {
+      commands: ReadonlyArray<{ name: string; type: string; handler: string; file: string }>;
+    };
+  };
+  const byName = new Map(index.cli.commands.map((c) => [c.name, c] as const));
+
+  it('names cli-commands-handlers-setup.ts for init and setup', () => {
+    expect(byName.get('init')).toEqual({
+      name: 'init',
+      type: 'async',
+      handler: 'handleInitCommand',
+      file: 'src/cli-commands-handlers-setup.ts',
+    });
+    expect(byName.get('setup')?.file).toBe('src/cli-commands-handlers-setup.ts');
+  });
+
+  it('keeps the flat-table handlers on cli-commands-handlers.ts', () => {
+    // Proves the resolver differentiates rather than relabelling every row.
+    expect(byName.get('doctor')?.file).toBe('src/cli-commands-handlers.ts');
+    expect(byName.get('auth')?.file).toBe('src/cli-auth-handler.ts');
+  });
+});

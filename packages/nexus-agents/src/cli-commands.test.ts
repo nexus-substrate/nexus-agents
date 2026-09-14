@@ -39,8 +39,6 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleAtbenchCommand: vi.fn(DELEGATED_ASYNC),
   handleVerifyCommand: vi.fn(DELEGATED_ASYNC),
   handleDoctorCommand: vi.fn(DELEGATED_ASYNC),
-  handleSetupCommand: vi.fn(DELEGATED),
-  handleSetupCommandAsync: vi.fn(DELEGATED_ASYNC),
   handleHelloCommand: vi.fn(DELEGATED),
   handleHooksCommand: vi.fn(DELEGATED_ASYNC),
   handleDemoCommand: vi.fn(DELEGATED_ASYNC),
@@ -54,7 +52,13 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleE2EEvalCommand: vi.fn(DELEGATED),
   handleRoutingABCommand: vi.fn(DELEGATED),
   handleMemoryEvalCommand: vi.fn(DELEGATED),
+}));
+
+// #6148: init / setup handlers moved to their own sibling module
+vi.mock('./cli-commands-handlers-setup.js', () => ({
   handleInitCommand: vi.fn(DELEGATED_ASYNC),
+  handleSetupCommand: vi.fn(DELEGATED),
+  handleSetupCommandAsync: vi.fn(DELEGATED_ASYNC),
 }));
 
 vi.mock('./cli-auth-handler.js', () => ({

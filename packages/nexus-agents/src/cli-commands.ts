@@ -41,9 +41,6 @@ export {
   handleAtbenchCommand,
   handleVerifyCommand,
   handleDoctorCommand,
-  handleInitCommand,
-  handleSetupCommand,
-  handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
@@ -61,6 +58,12 @@ export {
   handleRoutingABCommand,
   handleMemoryEvalCommand,
 } from './cli-commands-handlers.js';
+// #6148: init / setup handlers live in their own sibling module
+export {
+  handleInitCommand,
+  handleSetupCommand,
+  handleSetupCommandAsync,
+} from './cli-commands-handlers-setup.js';
 // Issue #739: Auth command
 export { handleAuthCommand } from './cli-auth-handler.js';
 // Issue #637: Release Automation Suite
@@ -108,8 +111,6 @@ import {
   handleResearchCommand,
   handleSweBenchCommand,
   handleAtbenchCommand,
-  handleInitCommand,
-  handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
@@ -127,6 +128,8 @@ import {
   handleRoutingABCommand,
   handleMemoryEvalCommand,
 } from './cli-commands-handlers.js';
+// #6148: init / setup handlers live in their own sibling module
+import { handleInitCommand, handleSetupCommandAsync } from './cli-commands-handlers-setup.js';
 // Issue #739: Auth command
 import { handleAuthCommand } from './cli-auth-handler.js';
 // Issue #2447: nexus-agents login — guided per-CLI auth status

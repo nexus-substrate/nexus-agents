@@ -15,19 +15,19 @@
         "name": "auth",
         "type": "async",
         "handler": "handleAuthCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-auth-handler.ts"
       },
       {
         "name": "auto-remediate",
         "type": "async",
         "handler": "handleAutoRemediateCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/auto-remediate-command.ts"
       },
       {
         "name": "capabilities",
         "type": "sync",
         "handler": "handleCapabilitiesCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/capabilities-command.ts"
       },
       {
         "name": "config",
@@ -75,7 +75,7 @@
         "name": "health",
         "type": "sync",
         "handler": "handleHealthCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/health-command.ts"
       },
       {
         "name": "hello",
@@ -93,7 +93,7 @@
         "name": "improvement-review",
         "type": "async",
         "handler": "handleImprovementReviewCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/improvement-review-command.ts"
       },
       {
         "name": "index",
@@ -105,7 +105,7 @@
         "name": "init",
         "type": "async",
         "handler": "handleInitCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-commands-handlers-setup.ts"
       },
       {
         "name": "issue",
@@ -123,13 +123,13 @@
         "name": "login",
         "type": "async",
         "handler": "handleLoginCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/login-command.ts"
       },
       {
         "name": "memory-benchmark",
         "type": "async",
         "handler": "handleMemoryBenchmarkCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/memory-benchmark-command.ts"
       },
       {
         "name": "memory-eval",
@@ -141,13 +141,13 @@
         "name": "migrate",
         "type": "async",
         "handler": "handleMigrateCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/migrate-command.ts"
       },
       {
         "name": "mode",
         "type": "sync",
         "handler": "handleModeCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/mode-command.ts"
       },
       {
         "name": "orchestrate",
@@ -165,25 +165,25 @@
         "name": "release-announce",
         "type": "async",
         "handler": "handleReleaseAnnounceCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-release-handlers.ts"
       },
       {
         "name": "release-notes",
         "type": "async",
         "handler": "handleReleaseNotesCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-release-handlers.ts"
       },
       {
         "name": "release-validate",
         "type": "async",
         "handler": "handleReleaseValidateCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-release-handlers.ts"
       },
       {
         "name": "remediation-review",
         "type": "async",
         "handler": "handleRemediationReviewCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/remediation-review-command.ts"
       },
       {
         "name": "research",
@@ -213,13 +213,13 @@
         "name": "scaffold",
         "type": "sync",
         "handler": "handleScaffoldCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-scaffold-handler.ts"
       },
       {
         "name": "scenario",
         "type": "async",
         "handler": "handleScenarioCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/scenario-command.ts"
       },
       {
         "name": "server",
@@ -237,7 +237,7 @@
         "name": "setup",
         "type": "async",
         "handler": "handleSetupCommandAsync",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli-commands-handlers-setup.ts"
       },
       {
         "name": "sprint",
@@ -249,7 +249,7 @@
         "name": "status",
         "type": "sync",
         "handler": "handleStatusCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/status-command.ts"
       },
       {
         "name": "swe-bench",
@@ -273,13 +273,13 @@
         "name": "usage",
         "type": "async",
         "handler": "handleUsageCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/usage-command.ts"
       },
       {
         "name": "validate",
         "type": "async",
         "handler": "handleValidateCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/validate-command.ts"
       },
       {
         "name": "validation",
@@ -297,7 +297,7 @@
         "name": "visualize",
         "type": "async",
         "handler": "handleVisualizeCommand",
-        "file": "src/cli-commands-handlers.ts"
+        "file": "src/cli/visualize-command.ts"
       },
       {
         "name": "vote",
