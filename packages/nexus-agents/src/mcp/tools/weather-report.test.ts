@@ -9,8 +9,6 @@ import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js'
 import {
   generateWeatherReport,
   getAdaptiveBonus,
-  getModelWeatherSummary,
-  MODEL_WEATHER_MIN_SAMPLES,
   shouldExplore,
   queryWithLookback,
 } from './weather-report.js';
@@ -310,98 +308,11 @@ describe('getAdaptiveBonus', () => {
 });
 
 // ============================================================================
-// Per-model weather lens (#4194)
+// Per-model weather lens seam (#4194) — the lens itself is tested in
+// weather-report-model-lens.test.ts; these cases prove the report wires it.
 // ============================================================================
 
-describe('getModelWeatherSummary (#4194)', () => {
-  it('computes per-model summaries from mixed-model outcomes', () => {
-    seedOutcomes(6, { model: 'claude-opus-4', cli: 'claude', success: true, durationMs: 100 });
-    seedOutcomes(3, { model: 'gemini-2.5-flash', cli: 'gemini', success: true, durationMs: 200 });
-    seedOutcomes(3, { model: 'gemini-2.5-flash', cli: 'gemini', success: false, durationMs: 200 });
-
-    const entries = getModelWeatherSummary();
-
-    const opus = entries.find((e) => e.model === 'claude-opus-4');
-    expect(opus).toMatchObject({
-      scope: 'literal',
-      sampleCount: 6,
-      successRate: 1,
-      avgDurationMs: 100,
-      vendor: 'anthropic',
-      family: 'claude-opus',
-    });
-    const flash = entries.find((e) => e.model === 'gemini-2.5-flash');
-    expect(flash).toMatchObject({ sampleCount: 6, successRate: 0.5, avgDurationMs: 200 });
-  });
-
-  it('excludes models below the min-sample threshold', () => {
-    seedOutcomes(6, { model: 'claude-opus-4', cli: 'claude' });
-    seedOutcomes(MODEL_WEATHER_MIN_SAMPLES - 1, { model: 'gpt-5', cli: 'codex' });
-
-    const entries = getModelWeatherSummary();
-
-    expect(entries.some((e) => e.model === 'claude-opus-4')).toBe(true);
-    expect(entries.some((e) => e.model === 'gpt-5')).toBe(false);
-  });
-
-  it('broadens cold-start models to family siblings via the #2548 fallback path', () => {
-    seedOutcomes(2, { model: 'claude-sonnet-4-5', cli: 'claude', success: true });
-    seedOutcomes(4, { model: 'claude-sonnet-4', cli: 'claude', success: false });
-
-    const entries = getModelWeatherSummary();
-
-    const cold = entries.find((e) => e.model === 'claude-sonnet-4-5');
-    expect(cold).toMatchObject({ scope: 'family', sampleCount: 6, family: 'claude-sonnet' });
-  });
-
-  it('excludes placeholder and worker-role model ids', () => {
-    seedOutcomes(6, { model: 'unknown' });
-    seedOutcomes(6, { model: 'pipeline' });
-    seedOutcomes(6, { model: 'worker-code' });
-
-    expect(getModelWeatherSummary()).toEqual([]);
-  });
-
-  it('does not pool unrecognized models through the unknown/unknown family bucket', () => {
-    // Both ids resolve to vendor/family 'unknown' — family fallback would
-    // otherwise merge unrelated models into one bucket.
-    seedOutcomes(6, { model: 'model-a', success: true });
-    seedOutcomes(2, { model: 'model-b', success: false });
-
-    const entries = getModelWeatherSummary();
-
-    const a = entries.find((e) => e.model === 'model-a');
-    expect(a).toMatchObject({ scope: 'literal', sampleCount: 6, successRate: 1 });
-    expect(entries.some((e) => e.model === 'model-b')).toBe(false);
-  });
-
-  it('prefers the lookback window and falls back to all history when sparse', () => {
-    const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const cfg = { outcomeLookbackMs: 60 * 60 * 1000 };
-    // claude-opus-4: enough recent samples — old failures fall out of the window
-    seedOutcomes(5, { model: 'claude-opus-4', cli: 'claude', success: false, timestamp: old });
-    seedOutcomes(5, { model: 'claude-opus-4', cli: 'claude', success: true });
-    // gpt-5: only old samples — all-history fallback keeps it visible
-    seedOutcomes(6, { model: 'gpt-5', cli: 'codex', success: true, timestamp: old });
-
-    const entries = getModelWeatherSummary(undefined, cfg);
-
-    expect(entries.find((e) => e.model === 'claude-opus-4')).toMatchObject({
-      sampleCount: 5,
-      successRate: 1,
-    });
-    expect(entries.find((e) => e.model === 'gpt-5')).toMatchObject({ sampleCount: 6 });
-  });
-
-  it('respects cli/category filters', () => {
-    seedOutcomes(6, { model: 'claude-opus-4', cli: 'claude', category: 'testing' });
-    seedOutcomes(6, { model: 'gemini-2.5-flash', cli: 'gemini', category: 'research' });
-
-    const entries = getModelWeatherSummary({ cli: 'claude', category: 'testing' });
-
-    expect(entries.map((e) => e.model)).toEqual(['claude-opus-4']);
-  });
-
+describe('modelWeather section of the report (#4194)', () => {
   it('rides the report payload without changing routing-visible bonuses', () => {
     seedOutcomes(15, { model: 'claude-opus-4', cli: 'claude', category: 'code_generation' });
 
