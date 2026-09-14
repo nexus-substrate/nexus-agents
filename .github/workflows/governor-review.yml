@@ -27,9 +27,14 @@
 # quietly delete without ratification is not a gate.
 #
 # The ratification jobs also read the committed VOTE ledger
-# (governance/vote-records.jsonl, #5130 step 2 / #5779): a panel record bound to
-# `{pr, headSha}` that is approved and ran whole. That verdict is printed as an
-# annotation and does not affect the exit code yet — #5131 flips it to a failure.
+# (governance/vote-records.jsonl, #5130 step 2 / #5779) and REQUIRE it (#5131,
+# since 2026-09-14): a panel record bound to `{pr, headSha}`, approved at
+# supermajority or unanimous, under errorPolicy absolute_quorum, on a whole
+# panel, in a ledger that is append-only against the base. Every other ledger
+# verdict — including `no-record` over the empty ledger and `unmeasured` when
+# the ledger or the PR number cannot be read — is a ::error:: and exit 1. The
+# label/approval verdict is still required alongside it; both must hold. The
+# warn-first posture above applies to the pr_review AUDIT gate only.
 
 name: Governor Review Gate
 
@@ -262,8 +267,11 @@ jobs:
           # #5130 step 2 / #5779: the committed-ledger evidence line. The gate
           # looks up `governance/vote-records.jsonl` for a record with
           # `ratifiesPr.pr == PR_NUMBER` bound to PR_HEAD_SHA (or its parent
-          # for a ledger-only tip) and prints the verdict as an annotation.
-          # WARN-FIRST: the exit code is unchanged until #5131.
+          # for a ledger-only tip). #5131: that verdict is PART OF the exit
+          # code — only `ratified` passes, alongside the label/approval
+          # verdict; `no-record` (the empty ledger included), every other
+          # kind, and `unmeasured` are ::error:: and exit 1. A governor-path
+          # PR is red until the orchestrator appends its ratifying record.
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.head_parent }}
@@ -295,7 +303,8 @@ jobs:
   # above cannot actually stop the merge it is meant to stop — which is exactly
   # how a48aa881d8 landed. This job runs on push to main and turns an unratified
   # governor-path merge into a red X on main that nobody can bypass, because by
-  # then there is nothing left to bypass.
+  # then there is nothing left to bypass. Since #5131 "unratified" includes a
+  # merge whose landed ledger carries no ratifying record for the PR.
   # ---------------------------------------------------------------------------
   governor-ratification-backstop:
     name: Governor-path ratification backstop (post-merge)
@@ -425,6 +434,11 @@ jobs:
           # binding is not checked here and the annotation says so. No
           # PR_HEAD_SHA on purpose. A direct push has no PR number, and the
           # gate reports the ledger as unmeasured rather than as "no record".
+          # #5131: the same flip as the pre-merge job — a merged governor-path
+          # PR with no bound, approved, whole, supermajority, absolute_quorum
+          # record in the landed ledger is exit 1, and so is `unmeasured` (the
+          # direct-push case). A red backstop is the durable signal: the
+          # pre-merge job can be admin-bypassed, this cannot.
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
           # #6213: the ledger at `github.event.before` (`${SHA}~1` only when
           # `before` is the null sha); what landed must be that plus appended

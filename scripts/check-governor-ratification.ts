@@ -41,14 +41,21 @@
  * `unratified`, or a broken CODEOWNERS parse would blame the PR. Both are the
  * empty-case discipline from `.rules/development-disciplines.md` (#4580).
  *
- * ## The committed vote ledger (second evidence line, #5130 step 2)
+ * ## The committed vote ledger (second evidence line, #5130 step 2 — REQUIRED since #5131)
  *
  * When governor paths are touched, the gate ALSO reads
- * `governance/vote-records.jsonl` and prints whether a panel record binds this
- * PR (`ratifiesPr: { pr, headSha }`), is approved and ran whole — the rule
- * #5779 states. `governor-ledger-evidence.ts` computes that verdict; it is
- * printed as an annotation and does NOT touch the exit code yet. #5131 flips
- * it to a failure once records are flowing.
+ * `governance/vote-records.jsonl` and requires a panel record that binds this
+ * PR (`ratifiesPr: { pr, headSha }`), is `approved` at `supermajority` or
+ * `unanimous`, under `errorPolicy: absolute_quorum`, on a whole panel, in a
+ * ledger that is append-only against the base — the rule #5779 states.
+ * `governor-ledger-evidence.ts` computes that verdict. BOTH evidence lines
+ * must hold for exit 0: a label or approval without a ledger record is exit 1,
+ * and so is a ledger record without a label or approval. Every non-`ratified`
+ * ledger kind is a `::error::`, including `no-record` over the EMPTY ledger
+ * (the `verifyChain([])` → ok shape #5131 names as the whole defect) and
+ * `unmeasured` (the ledger could not be read, or no PR number was supplied).
+ * Warn-first ended on 2026-09-14 when the first bound record reached the
+ * committed ledger (PR #6241).
  *
  * @module scripts/check-governor-ratification
  */
@@ -460,28 +467,36 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     ...labelEvidenceFromEnv(env),
   });
 
-  printVerdicts(verdict, env);
-  return verdict.kind === 'unratified' || verdict.kind === 'indeterminate' ? 1 : 0;
+  return exitCodeFor(verdict, env);
 }
 
 /**
  * Print the label/approval verdict and, when a governor path was touched, the
- * committed-ledger evidence line beneath it.
+ * committed-ledger evidence line beneath it; return the exit code.
  *
  * stderr for every verdict, matching check-governor-review.ts — CI annotations
  * and the human-readable line belong on the same stream.
  *
  * #5130 step 2 (#5779): the ledger line is printed only for `ratified` and
  * `unratified` — there is nothing for a panel to have ratified otherwise, and
- * an `indeterminate` gate has already said it cannot measure. WARN-FIRST: the
- * exit code is still the label/approval verdict's alone. #5131 flips the
- * ledger verdict to a failure once records are flowing;
- * `governor-ledger-evidence.test.ts` holds the `todo` named for that flip.
+ * an `indeterminate` gate has already said it cannot measure. Since #5131 the
+ * ledger verdict is PART OF the exit code: a governor-path PR passes only when
+ * the label/approval verdict is `ratified` AND the ledger says `ratified`.
+ * The ledger is still printed for an `unratified` PR so the log shows both
+ * missing pieces at once rather than one per push.
  */
-function printVerdicts(verdict: RatificationVerdict, env: NodeJS.ProcessEnv): void {
+function exitCodeFor(verdict: RatificationVerdict, env: NodeJS.ProcessEnv): number {
   console.error(formatVerdict(verdict));
-  if (verdict.kind === 'ratified' || verdict.kind === 'unratified') {
-    reportLedgerEvidence(env, LEDGER_FILE);
+  switch (verdict.kind) {
+    case 'not-applicable':
+      return 0;
+    case 'indeterminate':
+      return 1;
+    case 'unratified':
+      reportLedgerEvidence(env, LEDGER_FILE);
+      return 1;
+    case 'ratified':
+      return reportLedgerEvidence(env, LEDGER_FILE) ? 0 : 1;
   }
 }
 

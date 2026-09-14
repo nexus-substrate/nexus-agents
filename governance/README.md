@@ -40,8 +40,9 @@ by its record id from the PR comment that cites it.
 **An empty ledger and a broken transport must stay distinguishable** (#5130,
 Q2 condition 3). This note is the anchor: the ledger is empty before the first
 record because it was cut over on the date above, not because the transport
-failed. Once the first record is in, a later governor-path PR that carries no
-record is a gate finding (#5131), not an empty-ledger condition.
+failed. The first record went in on 2026-09-14 (PR #6241), and from that
+point a governor-path PR that carries no record is a gate FAILURE (#5131),
+not an empty-ledger condition — the gate now refuses the empty ledger too.
 
 ### How a record gets here (#5130 step 1)
 
@@ -71,7 +72,8 @@ record is a gate finding (#5131), not an empty-ledger condition.
 ### How the gate reads it (#5130 step 2)
 
 `scripts/check-governor-ratification.ts` prints a second evidence line for
-every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
+every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`,
+and exits on it (#5131 — see "Fail-closed" below):
 `ratified` (a record binds this PR at `head` or, for a ledger-only tip,
 `head^`; `decision === 'approved'`; `strategy` is `supermajority` or
 `unanimous`; `panelCoverage` present with `errored === 0`; and the ledger is
@@ -117,15 +119,36 @@ append-only against the base), or one of:
 - `duplicate-id` — one id names two different records.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
-`unmeasured` naming the error instead of crashing the gate (#6213). The
-post-merge backstop keys on the PR number only — the squash commit is not the
-head the panel saw — and says the sha was not checked; it does check
-append-only against the landed commit's parent. **Warn-first:** the line is
-an annotation and the exit code is still the label/approval verdict's; #5131
-flips every non-`ratified` verdict above, and `unmeasured`, to a failure.
-Precedence: `ledger-invalid` → `ledger-rewritten` → `duplicate-id` →
-`no-record` → `sha-mismatch` → `not-approved` → `wrong-error-policy` →
-`wrong-strategy` → `unmeasured-panel` → `degraded-panel` → `ratified`.
+`unmeasured` naming the error instead of crashing the gate (#6213); so does a
+run with no PR number (a direct push to `main`). The post-merge backstop keys
+on the PR number only — the squash commit is not the head the panel saw — and
+says the sha was not checked; it does check append-only against the tip
+before the push (`github.event.before`, #6218).
+
+**Fail-closed since 2026-09-14 (#5131).** The ledger verdict is part of the
+gate's exit code: a governor-path PR passes only when the label/approval
+verdict is `ratified` AND the ledger verdict is `ratified`. Every other
+ledger kind above, and `unmeasured`, is a `::error::` and exit 1 — including
+`no-record` over the empty ledger, which is the defect #5131 names (three
+gates once read a 0-byte ledger, found nothing to refuse, and exited 0). The
+same rule runs on the post-merge backstop, so a merge that bypassed the
+pre-merge job turns `main` red. There is no bootstrap allowlist, by the
+#5118 panel's decision: a PR that touches a governor path carries its own
+record or it does not merge. The flip was measured against the first real
+record (PR #6241, `vote-1789376500996-fxkw4uk`) before it landed, and
+warn-first ended when it did.
+
+Precedence (the verdict's `kind`): `ledger-invalid` → `ledger-rewritten` →
+`duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
+`wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
+`degraded-panel` → `ratified`. **Report order differs from precedence** for
+the per-record checks (the #6219 panel's note, applied at flip time): the
+printed line lists EVERY failing check over the bound records, with the
+misconfiguration kinds — `wrong-error-policy`, `wrong-strategy`,
+`unmeasured-panel`, `degraded-panel` — named before `not-approved`, so a
+run that was rejected under the wrong policy reads as a misconfigured run
+rather than a plain rejection. The verdict's `kind` stays `not-approved` in
+that case; its `failures` list carries the full set.
 
 ## pr-review-records.jsonl
 
