@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */ // Consensus voting — cohesive single module (governance: 400-600 OK)
+/* eslint-disable max-lines -- 969 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); one consensus_vote tool surface: strategy resolution, cascade, contrarian escalation, option gate and async dispatch; split tracked in #6148 */
 /**
  * nexus-agents/mcp - Consensus Vote Tool
  * @module mcp/tools/consensus-vote

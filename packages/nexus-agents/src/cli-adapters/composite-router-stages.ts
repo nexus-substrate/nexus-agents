@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 925 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); every routing-pipeline stage runner plus the runPipeline orchestrator that sequences them; split tracked in #6148 */
 /**
  * CompositeRouter pipeline stage execution functions.
  * @module cli-adapters/composite-router-stages

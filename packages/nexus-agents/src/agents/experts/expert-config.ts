@@ -1,10 +1,12 @@
-/* eslint-disable max-lines */
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
+// 475 lines as eslint counts them (blanks and comments skipped), inside the
+// 400-600 band .rules/governance.md preserves for a cohesive file — the schema plus the 12 built-in expert definitions it validates, one concern.
 /**
  * nexus-agents/agents - Expert Configuration
  *
  * Configuration schema and types for dynamically creating expert agents.
  * Experts are specialized agents with specific capabilities and prompts.
- * 10 built-in expert definitions — cohesive, single-concern file.
+ * 12 built-in expert definitions — cohesive, single-concern file.
  */
 
 import { z } from 'zod';

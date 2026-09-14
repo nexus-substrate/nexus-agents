@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 661 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); a flat table of ~30 independent handle*Command functions with no shared state, so any cut is by line count rather than by seam; split tracked in #6148 */
 /**
  * nexus-agents CLI Command Handlers
  *

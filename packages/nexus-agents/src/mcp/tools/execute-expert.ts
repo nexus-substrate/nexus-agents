@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 669 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the synchronous execute path (lookup, access policy, fallback, classification) plus its MCP Tasks async handler; split tracked in #6148 */
 /**
  * nexus-agents/mcp - Execute Expert Tool
  *

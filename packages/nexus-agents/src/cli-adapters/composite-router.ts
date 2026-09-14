@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 890 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the canonical CompositeRouter class (CLAUDE.md entry point): construction, the route/execute path and outcome recording for the whole chain; split tracked in #6148 */
 /**
  * CompositeRouter — chains the full routing pipeline.
  *

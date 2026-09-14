@@ -18,7 +18,7 @@
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- 928 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); signal detection (floor, rejection, failure concentration, fitness dimensions, self-eval) and gh issue filing for one tool; split tracked in #6148 */
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
