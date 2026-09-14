@@ -22,15 +22,14 @@ import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, EndpointArmId, ObservedArmId } from '../cli-adapters/types.js';
+import { isCliName, isEndpointArmId } from '../cli-adapters/types.js';
 import { TASK_SPECIALIZATION_MATRIX, detectTaskCategory } from '../config/task-specialization.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import {
   getDefaultModelForCli,
   getInTreeCapabilitiesMatrix,
 } from '../config/model-config-helpers.js';
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
-import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -55,7 +54,14 @@ export interface TaskRoutingEntry {
 /** Snapshot of registry state for observability. */
 export interface RegistrySnapshot {
   readonly taskRouting: readonly TaskRoutingEntry[];
+  /**
+   * CLI-slot view of {@link cachedArms}: the lazily created CLI slots only.
+   * A registered `api:*` arm is never listed here (#6290 panel: this field
+   * keeps its `CliName[]` type; it is retired in 9.0, #6291).
+   */
   readonly cachedAdapters: readonly CliName[];
+  /** Every cached arm: lazily created CLI slots and registered `api:*` endpoint arms (#4392). */
+  readonly cachedArms: readonly ObservedArmId[];
   readonly availableModels: number;
 }
 
@@ -79,8 +85,12 @@ export class UnifiedAdapterRegistry {
   private readonly logger: ILogger;
   private readonly defaultCliTimeoutMs: number | undefined;
 
-  /** Per-CLI adapter cache — max 3 entries (claude/gemini/codex). */
-  private readonly cliAdapters = new Map<CliName, IResilientAdapter>();
+  /**
+   * Per-arm adapter cache. CLI slots are created lazily by
+   * {@link getAdapterForCli}; `api:*` arms enter only through
+   * {@link registerApiArm} and are never synthesised (#4392).
+   */
+  private readonly cliAdapters = new Map<ObservedArmId, IResilientAdapter>();
 
   /** Default adapter for unscoped requests. */
   private defaultAdapter: IResilientAdapter | undefined;
@@ -161,6 +171,41 @@ export class UnifiedAdapterRegistry {
   }
 
   /**
+   * Get the adapter for a routing arm (#4392). A CLI slot resolves exactly as
+   * {@link getAdapterForCli} (created lazily, cached, armed with the shared
+   * breaker registry). An `api:*` arm resolves to what {@link registerApiArm}
+   * supplied, or `undefined` — never to a CLI slot, and never by creating one.
+   */
+  getAdapterForArm(arm: ObservedArmId): IResilientAdapter | undefined {
+    // Split on CLI-slot membership, not on the validator: an `api:` string
+    // that fails validation must read as "not registered", never be handed
+    // to getAdapterForCli to mint a slot adapter under a garbage name.
+    if (isCliName(arm)) {
+      return this.getAdapterForCli(arm);
+    }
+    return this.cliAdapters.get(arm);
+  }
+
+  /**
+   * Register an `api:*` arm's adapter under its endpoint identity (#4392).
+   * Accepts a built-in `ApiArmId` or a dynamic `EndpointArmId`; the id is
+   * re-validated at runtime because the `EndpointArmId` type admits any `api:`
+   * string, so a cast from an unvalidated name is exactly what this refuses.
+   * Registering an id twice replaces (and disposes) the earlier adapter.
+   * CLI-slot behaviour is untouched. A registered endpoint arm is observable
+   * here and in the breaker registry but is NOT a `RoutingArmId`: it cannot
+   * enter outcome records until #6291.
+   */
+  registerApiArm(arm: EndpointArmId, adapter: IResilientAdapter): void {
+    if (!isEndpointArmId(arm)) {
+      throw new Error(`Invalid api arm id: ${JSON.stringify(arm)} (expected api:<endpoint>)`);
+    }
+    this.cliAdapters.get(arm)?.dispose();
+    this.cliAdapters.set(arm, adapter);
+    this.logger.info('Registered api arm adapter', { arm });
+  }
+
+  /**
    * Get adapter for a model preference string (e.g., "claude-opus-4-6").
    * Resolves the model to its CLI via the canonical registry.
    * Falls back to default adapter if model not recognized.
@@ -230,7 +275,8 @@ export class UnifiedAdapterRegistry {
   getSnapshot(): RegistrySnapshot {
     return {
       taskRouting: TASK_SPECIALIZATION_MATRIX.map((spec) => this.resolveRouting(spec)),
-      cachedAdapters: [...this.cliAdapters.keys()],
+      cachedAdapters: [...this.cliAdapters.keys()].filter(isCliName),
+      cachedArms: [...this.cliAdapters.keys()],
       availableModels: getInTreeCapabilitiesMatrix().models.length,
     };
   }
@@ -305,8 +351,8 @@ const ROLE_TO_CATEGORY: Record<string, TaskCategory> = {
 
 /** Resolve the default model name for a CLI from the canonical registry. */
 function resolveDefaultModel(cli: string): string {
-  if ((CLI_NAMES as readonly string[]).includes(cli)) {
-    return getDefaultModelForCli(cli as CliNameLiteral);
+  if (isCliName(cli)) {
+    return getDefaultModelForCli(cli);
   }
   return cli;
 }

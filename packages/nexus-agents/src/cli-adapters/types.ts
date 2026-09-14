@@ -25,10 +25,18 @@ export type {
   ApiVendor,
   ApiArmId,
   RoutingArmId,
+  EndpointArmId,
+  ObservedArmId,
 } from './types-core.js';
 
 // Routing arm id helpers (#3422)
-export { apiArmId, routingArmDisplaySlot } from './types-core.js';
+export {
+  apiArmId,
+  isCliName,
+  isEndpointArmId,
+  observedArmDisplaySlot,
+  routingArmDisplaySlot,
+} from './types-core.js';
 
 // Capability types
 export type {
