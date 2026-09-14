@@ -1,33 +1,59 @@
 /**
- * ClawGuard reachability contract (#5022).
+ * Inbound MCP dispatch has ONE authorization mechanism: PolicyFirewall (#5107).
  *
- * Every other test in this directory establishes the access policy itself,
- * with `withAccessPolicy(...)`, and then asserts what the enforcer decides.
- * That is the one input production never supplies: `withAccessPolicy` has
- * exactly two production callers, both wrapping in-process orchestrator /
- * expert execution, and an inbound MCP request is a SIBLING async context
- * rather than a descendant of either. So 124 tests passed over a subsystem
- * that was a pass-through for every real dispatch.
+ * History, because the shape of this file only makes sense with it. The
+ * ClawGuard chain adapter was mounted on every `withMiddleware` chain (#1977)
+ * and read its policy from AsyncLocalStorage — a store only the two in-process
+ * orchestrator / expert callers of `withAccessPolicy` ever populate, and an
+ * inbound MCP request is a SIBLING async context of both. So 124 tests passed
+ * over a guard that was a pass-through for every real dispatch. The #5022
+ * panel retired ClawGuard as enforcement, #5106 made it advisory, and this
+ * step (#5107) deletes the mount.
  *
- * These tests therefore assert REACHABILITY rather than verdicts: they run a
- * handler through the real middleware stack the way the server does, with no
- * policy in scope, and record what the guard actually does.
+ * The first version of this file pinned "mounted, but no policy in scope" so
+ * the defect could not be fixed in the wrong direction by accident. It now
+ * pins the inverse, in two halves that must both hold:
  *
- * WHY THIS PINS THE CURRENT (BROKEN) BEHAVIOUR ON PURPOSE. #5022 asks which
- * boundary ClawGuard should guard, and a 7-voter panel split 2-2-1-1 without
- * reaching the supermajority bar, so the question is open. Until it is
- * answered, the failure mode to prevent is a SILENT change: someone
- * establishing a policy at dispatch without deciding the boundary would flip
- * enforcement on for every registered tool. If a change here turns these red,
- * that is the signal — resolve #5022 and rewrite this file to state the new
- * contract. Do not relax an assertion to make it green.
+ *   1. the mount is GONE — a ClawGuard policy in scope is no longer consulted
+ *      by the chain, and the chain reports no authorization stage at all for
+ *      the wrapper every registered tool goes through;
+ *   2. PolicyFirewall — the mechanism the consolidation lands on — evaluates a
+ *      real registered tool call through the REAL server wiring, with no
+ *      injected firewall and no stub rule set.
+ *
+ * A deletion whose only evidence is "tests still pass" cannot distinguish
+ * "consolidated onto PolicyFirewall" from "dropped, and nothing took its
+ * place". These tests can. Do not delete this file to make a refactor green.
+ *
+ * WHY THE FIREWALL TEST ASSERTS EVALUATION, NOT DENIAL (#5114, #4988).
+ * `stagePolicyFirewallForRollout` forces every wired firewall to `warn`, and
+ * in warn mode a rule's denial is rewritten to an allow. Enforce stays closed
+ * until #4988 decides the rollout now that #5114 has classified every tool
+ * from its manifest. A test asserting a denial would fail today, and the
+ * tempting repair would be to weaken it into something that passes. So the
+ * assertion is that the real default rules RAN against the real call and
+ * returned a decision — the thing ClawGuard's mount never did for any
+ * dispatch. When #4988 reopens enforce, add the denial test beside this one;
+ * do not replace it.
  *
  * @module security/access-constraint-deriver/access-policy-reachability.test
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { withMiddleware } from '../../mcp/middleware/middleware-chain.js';
-import { getActivePolicy, withAccessPolicy, withAuditTrail } from './mcp-guard.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import type { ILogger } from '../../core/index.js';
+import { createServer, connectTransport } from '../../mcp/server.js';
+import { registerMcpTools } from '../../cli-server-tools.js';
+import { logSecurityConfig } from '../../cli-server-audit.js';
+import {
+  getGlobalPolicyFirewall,
+  resetGlobalPolicyFirewall,
+} from '../../mcp/middleware/policy-registry.js';
+import { createDefaultPolicyFirewall } from '../../mcp/middleware/policy.js';
+import { createMiddlewareChain, withMiddleware } from '../../mcp/middleware/middleware-chain.js';
+import { wrapToolWithTimeout } from '../../mcp/middleware/tool-wrapper.js';
+import { withAccessPolicy, withAuditTrail } from './mcp-guard.js';
 import type { AuditEvent, AuditTrail } from '../audit-trail.js';
 import type { TaskAccessPolicy } from './types.js';
 
@@ -48,45 +74,38 @@ function okResult(): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text' as const, text: 'handler-ran' }] };
 }
 
-describe('ClawGuard reachability at inbound MCP dispatch (#5022)', () => {
-  it('observes no policy in scope when a wrapped tool is dispatched normally', async () => {
-    const seen: Array<TaskAccessPolicy | undefined> = [];
-    const wrapped = withMiddleware('exec_shell', () => {
-      seen.push(getActivePolicy());
-      return Promise.resolve(okResult());
-    });
+/** A logger that keeps every call so a test can read what a component reported. */
+interface CapturingLogger extends ILogger {
+  readonly calls: Array<{ level: string; message: string; context: unknown }>;
+}
 
-    await wrapped({});
+function capturingLogger(): CapturingLogger {
+  const calls: CapturingLogger['calls'] = [];
+  const record =
+    (level: string) =>
+    (message: string, context?: unknown): void => {
+      calls.push({ level, message, context });
+    };
+  const logger: CapturingLogger = {
+    calls,
+    debug: record('debug'),
+    info: record('info'),
+    warn: record('warn'),
+    error: (message, _error, context) => calls.push({ level: 'error', message, context }),
+    child: () => logger,
+    setLevel: () => undefined,
+  };
+  return logger;
+}
 
-    // This is the whole defect in one assertion. When it starts failing,
-    // a policy reaches dispatch — which is a #5022 decision, not a refactor.
-    expect(seen).toEqual([undefined]);
-  });
+/** The stage list the chain reports when it is built; `undefined` if it never reported one. */
+function reportedStages(logger: CapturingLogger): unknown {
+  const built = logger.calls.find((c) => c.message === 'Middleware chain built');
+  return (built?.context as { stages?: unknown } | undefined)?.stages;
+}
 
-  it('runs the handler for a tool that `enforce` would deny, because the guard never evaluates', async () => {
-    const handler = vi.fn(() => Promise.resolve(okResult()));
-    const wrapped = withMiddleware('exec_shell', handler);
-
-    const result = (await wrapped({})) as { isError?: boolean };
-
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(result.isError).toBeUndefined();
-  });
-
-  it('does not gate an unbypassable denylisted tool at this boundary', async () => {
-    const handler = vi.fn(() => Promise.resolve(okResult()));
-    const wrapped = withMiddleware('git_push_force', handler);
-
-    const result = (await wrapped({})) as { isError?: boolean };
-
-    // `denylist.ts` calls these patterns unbypassable and `mcp-guard.ts` once
-    // claimed even `off` mode denied them. Neither holds here: the denylist
-    // lives inside `checkAccess`, which a missing policy short-circuits before.
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(result.isError).toBeUndefined();
-  });
-
-  it('still EVALUATES once a policy is in scope — the mount is live (#5106)', async () => {
+describe('the ClawGuard mount is gone from inbound MCP dispatch (#5107)', () => {
+  it('no longer consults a ClawGuard policy in scope: the chain does not record or evaluate', async () => {
     const handler = vi.fn(() => Promise.resolve(okResult()));
     const wrapped = withMiddleware('git_push_force', handler);
     const events: AuditEvent[] = [];
@@ -96,32 +115,115 @@ describe('ClawGuard reachability at inbound MCP dispatch (#5022)', () => {
       withAuditTrail(trail, () => wrapped({}))
     )) as { isError?: boolean };
 
-    // The contrast with the previous test is the point, and it is what keeps
-    // the three above from passing for a boring reason such as the mount
-    // having been removed. Since #5106 the evidence is the RECORD rather than
-    // a blocked call: ClawGuard is advisory, so it forwards and reports.
-    //
-    // This assertion is deliberately still here, and must stay until #5107
-    // deletes the mount — at which point it inverts to pin PolicyFirewall.
-    // Do not delete it to make a refactor green.
-    expect(events).toHaveLength(1);
+    // This is the assertion that inverted. While the adapter was mounted and
+    // advisory (#5106), a policy in scope produced exactly ONE audit record
+    // for a denylisted tool; that record was the proof the mount was live.
+    // Zero records with the policy still in scope is the proof it is not.
+    expect(events).toEqual([]);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(result.isError).toBeUndefined();
   });
+});
 
-  it('an empty allowlist is unmeasured, so a policy in scope does not deny everything', async () => {
-    const handler = vi.fn(() => Promise.resolve(okResult()));
-    const wrapped = withMiddleware('exec_shell', handler);
+describe('single authorization mechanism on the inbound MCP boundary (#5107)', () => {
+  // The chain reports the stages it actually built, from the array it
+  // composes — not from a hand-kept list — so a stage cannot be mounted
+  // without appearing here. Exact equality on purpose: a new observability
+  // stage means editing this list, while a new AUTHORIZATION stage is a
+  // #5022-class decision and must not land as a test edit.
 
-    const result = (await withAccessPolicy(policy({ mode: 'enforce' }), () => wrapped({}))) as {
-      isError?: boolean;
-    };
+  it('the wrapper every registered tool uses mounts no authorization stage', () => {
+    const logger = capturingLogger();
 
-    // Before #5022, establishing a policy at dispatch would have denied every
-    // guarded call under `enforce`, since no producer emits tool names. This
-    // is the assertion that makes fixing the scope safe rather than an outage.
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(result.isError).toBeUndefined();
+    // `wrapToolWithTimeout(name, createSecureHandler(...))` is the production
+    // shape (e.g. `list-experts.ts`). Authorization for that shape lives in
+    // `createSecureHandler` → `runPolicyCheck` → the process PolicyFirewall,
+    // which the real-server test below exercises. The chain itself must be
+    // observability and runaway-guarding only.
+    wrapToolWithTimeout('list_experts', () => Promise.resolve(okResult()), { logger });
+
+    expect(reportedStages(logger)).toEqual(['metrics', 'audit', 'timeout']);
+  });
+
+  it('the only authorization stage the chain can mount is the PolicyFirewall one', () => {
+    const logger = capturingLogger();
+
+    createMiddlewareChain({
+      toolName: 'single_mechanism_probe',
+      policyFirewall: createDefaultPolicyFirewall(),
+      logger,
+      skip: { audit: true, rateLimit: true, validation: true, timeout: true },
+    });
+
+    // Every optional stage off, the firewall on: what remains besides the
+    // unconditional metrics stage is the one authorization stage, and it is
+    // PolicyFirewall's. A second mechanism re-mounted here — ClawGuard or a
+    // successor — appears as a fourth name and fails this line.
+    expect(reportedStages(logger)).toEqual(['metrics', 'policy']);
+  });
+});
+
+describe('PolicyFirewall evaluates a real registered tool call through the real server wiring (#5107)', () => {
+  afterEach(() => {
+    // Module-level state: `registerMcpTools` wires the firewall for the
+    // process, and leaving it would leak into every later test in the file.
+    resetGlobalPolicyFirewall();
+    vi.restoreAllMocks();
+  });
+
+  it('runs the real default rules against list_experts and returns a decision', async () => {
+    const serverResult = createServer();
+    if (!serverResult.ok) throw new Error(serverResult.error.message);
+    const { server } = serverResult.value;
+    const logger = capturingLogger();
+
+    // The startup path, minus stdio: `startServer` → `logSecurityConfig`
+    // builds the configured firewall → `registerMcpTools` stages it into the
+    // process registry and registers every tool. No firewall is injected and
+    // no rule set is stubbed — the seam that `policy-registry.test.ts` and
+    // `cli-server-tools.test.ts` each mock one half of.
+    registerMcpTools({
+      server,
+      logger,
+      builtInTemplates: new Map(),
+      policyFirewall: logSecurityConfig(logger),
+    });
+
+    const firewall = getGlobalPolicyFirewall();
+    if (firewall === undefined) throw new Error('registerMcpTools did not wire a firewall');
+    // The real instance with the real rules; the spy only records.
+    const evaluate = vi.spyOn(firewall, 'evaluate');
+    expect(firewall.getRules().length).toBeGreaterThan(0);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const connected = await connectTransport(server, serverTransport, logger);
+    if (!connected.ok) throw new Error(connected.error.message);
+    const client = new Client({ name: 'reachability-test', version: '1.0.0' });
+    await client.connect(clientTransport);
+
+    try {
+      const response = (await client.callTool({ name: 'list_experts', arguments: {} })) as {
+        isError?: boolean;
+      };
+
+      // Evaluation, not denial — see the module note. The rules ran once for
+      // this call, named the tool, and produced a decision.
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(evaluate.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({ toolName: 'list_experts' })
+      );
+      const decision = evaluate.mock.results[0]?.value as { allowed: boolean; reason: string };
+      expect(decision.allowed).toBe(true);
+      expect(decision.reason).toEqual(expect.any(String));
+      // `warn` is what `stagePolicyFirewallForRollout` forces; enforce is
+      // #4988's decision. Pinning it here keeps the "not denial" reasoning
+      // above honest: the day this reads `enforce`, the denial test is due.
+      expect(firewall.getMode()).toBe('warn');
+      expect(response.isError).not.toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });
 

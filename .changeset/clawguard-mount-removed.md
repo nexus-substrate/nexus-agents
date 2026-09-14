@@ -1,0 +1,9 @@
+---
+'nexus-agents': patch
+---
+
+The ClawGuard access-policy middleware is no longer mounted on the MCP tool middleware chain (#5107, step 2 of epic #5105; #5022 decision). It had been advisory since #5106 and, for every inbound MCP request, a pass-through: it read its policy from an AsyncLocalStorage store that only the in-process `orchestrate` / `execute_expert` callers populate, never an inbound dispatch. PolicyFirewall, consulted from `createSecureHandler` against the process-wide firewall wired at startup, is now the only authorization mechanism on that boundary — and it still runs in forced `warn` mode, so no boundary can deny a tool call yet; #4988 owns reopening enforce now that #5114 has classified every tool.
+
+What changes for operators: the `MiddlewareSkipConfig.accessPolicy` flag is gone (no production caller ever set it; it was not part of the published API). `NEXUS_ACCESS_POLICY_MODE` is still read — by `orchestrate` and `execute_expert`, which derive a ClawGuard policy (an LLM call under `audit` / `enforce` when a model adapter is present) and place it in ALS, and by the reputation-model and firewall-policy-mode resolvers that document coercing identically to it — but after this change nothing on the dispatch path consumes the derived policy or writes ClawGuard audit-mode violations to the durable trail. The `access-policy: advisory violation` log line and the ClawGuard `unbypassable` denylist verdicts no longer appear for any tool call. Step 3 (#5108) decides what to delete.
+
+The middleware chain now reports the stages it built at debug level (`Middleware chain built`, with the ordered `stages` list) so the composition of the dispatch boundary is observable rather than inferred; a test pins that list and fails if a second authorization stage is ever mounted.
