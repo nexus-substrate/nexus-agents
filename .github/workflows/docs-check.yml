@@ -170,7 +170,11 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Escape hatch \`[skip-docs]\` detected. Documentation check bypassed." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ This usage has been logged to \`docs/.audit/escape-hatch.log\`" >> $GITHUB_STEP_SUMMARY
+          # #5350 removed the ledger this line used to name; nothing writes
+          # docs/.audit/escape-hatch.log. Say what is actually recorded: the
+          # ::warning:: annotation in the step above. Whether a real rate limit
+          # is rebuilt is #5352 (#4927 finding 5).
+          echo "⚠️ This usage is recorded as a \`::warning::\` annotation on this run, attributed to the PR author. No rate limit is enforced (#5352)." >> $GITHUB_STEP_SUMMARY
 
       - name: Get changed source files
         id: changed

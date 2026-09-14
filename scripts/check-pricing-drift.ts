@@ -14,6 +14,11 @@
  * zero drift — so a litellm outage was indistinguishable from clean pricing
  * (#4927). Mirrors `check-parameter-drift.ts`, which already had this shape.
  *
+ * The verdict is computed by {@link pricingDriftVerdict}, a pure function over
+ * a {@link PricingDriftMeasurement}, so the three outcomes — unmeasured,
+ * measured-zero, measured-N — are tested as values rather than by scraping
+ * this file for the strings that happen to follow each `console.error`.
+ *
  * Run periodically (e.g. after a model provider price change) or as a
  * pre-release sanity check.
  *
@@ -63,7 +68,7 @@ async function fetchLitellmCatalog(): Promise<LitellmCatalog> {
   return (await res.json()) as LitellmCatalog;
 }
 
-interface DriftReport {
+export interface DriftReport {
   modelId: string;
   litellmKey: string;
   field: 'contextWindow' | 'inputPer1M' | 'outputPer1M';
@@ -138,6 +143,41 @@ function compareModel(
   return reports;
 }
 
+export type PricingDriftStatus = 'clean' | 'drift' | 'skipped';
+
+/** What the run established, before it is rendered as a verdict. */
+export type PricingDriftMeasurement =
+  | { readonly kind: 'unmeasured'; readonly reason: string }
+  | { readonly kind: 'measured'; readonly reports: readonly DriftReport[] };
+
+export interface PricingDriftVerdict {
+  readonly status: PricingDriftStatus;
+  /**
+   * Drifted fields. Always 0 when `status` is `skipped`, but that 0 is not a
+   * measurement — consumers must branch on `status` first.
+   */
+  readonly count: number;
+}
+
+/**
+ * The one place a measurement becomes a verdict.
+ *
+ * `unmeasured` never renders as `clean`: absence of a catalog is not absence
+ * of drift. `measured` with no reports is a genuine zero.
+ */
+export function pricingDriftVerdict(measurement: PricingDriftMeasurement): PricingDriftVerdict {
+  if (measurement.kind === 'unmeasured') {
+    return { status: 'skipped', count: 0 };
+  }
+  const count = measurement.reports.length;
+  return { status: count === 0 ? 'clean' : 'drift', count };
+}
+
+/** The two stdout lines the workflow greps for. */
+export function formatVerdict(verdict: PricingDriftVerdict): string {
+  return `PRICING_DRIFT_STATUS=${verdict.status}\nPRICING_DRIFT_COUNT=${String(verdict.count)}`;
+}
+
 async function main(): Promise<void> {
   console.log('Fetching litellm catalog…');
   let catalog: LitellmCatalog;
@@ -147,8 +187,7 @@ async function main(): Promise<void> {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`⚠️  SKIP: litellm catalog fetch failed (non-blocking): ${msg}`);
     console.error('   A provider outage must not mask real pricing drift. Re-run when reachable.');
-    console.log('PRICING_DRIFT_STATUS=skipped');
-    console.log('PRICING_DRIFT_COUNT=0');
+    console.log(formatVerdict(pricingDriftVerdict({ kind: 'unmeasured', reason: msg })));
     process.exit(0);
   }
   console.log(`Catalog has ${String(Object.keys(catalog).length)} entries.\n`);
@@ -169,10 +208,10 @@ async function main(): Promise<void> {
 }
 
 function printReports(allReports: DriftReport[], missing: string[]): void {
+  const verdict = pricingDriftVerdict({ kind: 'measured', reports: allReports });
   if (allReports.length === 0 && missing.length === 0) {
     console.log('✅ No drift — our pricing matches litellm for all tracked models.');
-    console.log('PRICING_DRIFT_STATUS=clean');
-    console.log('PRICING_DRIFT_COUNT=0');
+    console.log(formatVerdict(verdict));
     return;
   }
 
@@ -196,15 +235,17 @@ function printReports(allReports: DriftReport[], missing: string[]): void {
     'Review and update packages/nexus-agents/src/config/in-tree-data.ts if drift is real.'
   );
   console.log('Non-blocking: script always exits 0 — read PRICING_DRIFT_STATUS instead.');
-  console.log(`PRICING_DRIFT_STATUS=${allReports.length === 0 ? 'clean' : 'drift'}`);
-  console.log(`PRICING_DRIFT_COUNT=${String(allReports.length)}`);
+  console.log(formatVerdict(verdict));
 }
 
-main().catch((e: unknown) => {
-  const msg = e instanceof Error ? e.message : String(e);
-  // Even an unexpected error is a LOUD skip, never a silent "clean".
-  console.error(`⚠️  SKIP: pricing-drift check errored (non-blocking): ${msg}`);
-  console.log('PRICING_DRIFT_STATUS=skipped');
-  console.log('PRICING_DRIFT_COUNT=0');
-  process.exit(0);
-});
+// Entry guard so the test can import the verdict function without running the
+// fetch. Same shape as check-deploy-stale.ts.
+if (process.argv[1]?.endsWith('check-pricing-drift.ts') === true) {
+  main().catch((e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Even an unexpected error is a LOUD skip, never a silent "clean".
+    console.error(`⚠️  SKIP: pricing-drift check errored (non-blocking): ${msg}`);
+    console.log(formatVerdict(pricingDriftVerdict({ kind: 'unmeasured', reason: msg })));
+    process.exit(0);
+  });
+}
