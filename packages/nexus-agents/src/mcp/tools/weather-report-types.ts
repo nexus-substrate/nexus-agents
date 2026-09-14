@@ -366,3 +366,15 @@ export type WeatherReportConfig = z.infer<typeof WeatherReportConfigSchema>;
 export function createDefaultWeatherConfig(): WeatherReportConfig {
   return WeatherReportConfigSchema.parse({});
 }
+
+// ============================================================================
+// Shared helpers
+// ============================================================================
+
+/** Round to 3 decimal places. */
+export function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Worker model prefix used by recordWorkerOutcomes (Issue #1323). */
+export const WORKER_MODEL_PREFIX = 'worker-';
