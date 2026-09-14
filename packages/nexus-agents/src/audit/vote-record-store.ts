@@ -47,7 +47,7 @@ import { createLogger, getErrorMessage } from '../core/index.js';
 import { serializeValidatedRecord } from './ledger-append.js';
 import { assertNotSourceCheckoutWrite } from './source-checkout-guard.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
-import type { AgentVoteResult, SeatFallback } from '../cli/vote-types.js';
+import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
@@ -63,6 +63,7 @@ import {
   computeVoteRecordHash,
   hashProposal,
   MAX_VOTER_REASONING_CHARS,
+  projectSeatFallback,
 } from './vote-record.js';
 
 /**
@@ -181,23 +182,10 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       // the fallback the live result stated. `model` alone showed seven
       // identical values on a panel assigned three ways and could not say so.
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
-      ...(v.fallback !== undefined ? { fallback: recordedFallback(v.fallback) } : {}),
+      ...(v.fallback !== undefined ? { fallback: projectSeatFallback(v.fallback) } : {}),
     });
   }
   return summaries;
-}
-
-/**
- * The live `SeatFallback` as the record carries it: the same three fields,
- * `fromModel` present-only so an explicitly-undefined one on the live result
- * does not become a key on the ledger line (#6115).
- */
-function recordedFallback(f: SeatFallback): NonNullable<VoterSummary['fallback']> {
-  return {
-    fromCli: f.fromCli,
-    ...(f.fromModel !== undefined ? { fromModel: f.fromModel } : {}),
-    reason: f.reason,
-  };
 }
 
 /**

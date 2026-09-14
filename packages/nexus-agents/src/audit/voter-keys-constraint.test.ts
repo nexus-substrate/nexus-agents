@@ -27,6 +27,9 @@ import type { CompleteKeys } from './voter-keys-constraint.js';
 
 type Universe = 'a' | 'b';
 
+/** The record's nested fallback shape, derived the way the projector sees it. */
+type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
+
 /** Mirror of the private `VOTER_SUMMARY_KEYS` literal in vote-record.ts. */
 type VoterSummaryKeysMirror = readonly [
   'role',
@@ -79,5 +82,17 @@ describe('CompleteKeys (#6092)', () => {
     // Direction 1 of the vote-record.ts contract. If a schema field were
     // renamed, this line fails before the CompleteKeys probes go stale.
     expectTypeOf<VoterSummaryKeysMirror[number]>().toEqualTypeOf<keyof VoterSummary>();
+  });
+
+  it('the nested fallback projection is exhaustive: nothing is left after its three keys (#6179)', () => {
+    // Mirror of `projectSeatFallback`'s destructure. `noUnprojectedKeys` in
+    // vote-record.ts is the binding check (a schema key the destructure does
+    // not name fails `tsc` at the projection); this probe pins that the
+    // remainder type is exactly empty, so a TypeScript release that widened
+    // rest-object inference would fail here rather than silently pass there.
+    expectTypeOf<Omit<VoterSummaryFallback, 'fromCli' | 'fromModel' | 'reason'>>().toEqualTypeOf<
+      Record<never, never>
+    >();
+    expectTypeOf<keyof VoterSummaryFallback>().toEqualTypeOf<'fromCli' | 'fromModel' | 'reason'>();
   });
 });

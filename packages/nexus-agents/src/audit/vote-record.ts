@@ -308,19 +308,40 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'fallback',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
+/** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
+type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
+
+/**
+ * Identity at runtime; an exhaustiveness constraint at compile time, on the
+ * {@link defineVoterKeys} rule. `rest` is what {@link projectSeatFallback}'s
+ * destructure did NOT name, and only `{}` is assignable to
+ * `Record<string, never>` — so a key added to `SeatFallbackRecordSchema`
+ * without the projector learning it is a `tsc` error at the projection, not a
+ * silently unhashed nested field (ratification note on #6179).
+ */
+function noUnprojectedKeys(rest: Record<string, never>): Record<string, never> {
+  return rest;
+}
+
 /**
  * Rebuild a seat's fallback in canonical order — `fromCli`, `fromModel` (only
  * when present), `reason` — so the hash does not depend on how the nested
  * object's keys were ordered (#3962, the `voteCounts` rule applied one level
- * deeper). Undefined passes through so the caller's present-only test covers
- * the whole key.
+ * deeper). Shared with the builder (`vote-record-store.ts`), so the entry the
+ * ledger line carries and the entry the hash covers are the same projection.
+ *
+ * The destructure is exhaustive: {@link noUnprojectedKeys} makes the
+ * remainder a compile error unless it is empty. Add a field to the fallback
+ * schema and this function stops compiling until the field is placed in the
+ * canonical order below.
  */
-function projectSeatFallback(f: VoterSummary['fallback']): VoterSummary['fallback'] {
-  if (f === undefined) return undefined;
+export function projectSeatFallback(f: VoterSummaryFallback): VoterSummaryFallback {
+  const { fromCli, fromModel, reason, ...rest } = f;
+  noUnprojectedKeys(rest);
   return {
-    fromCli: f.fromCli,
-    ...(f.fromModel !== undefined ? { fromModel: f.fromModel } : {}),
-    reason: f.reason,
+    fromCli,
+    ...(fromModel !== undefined ? { fromModel } : {}),
+    reason,
   };
 }
 
@@ -336,7 +357,12 @@ function projectSeatFallback(f: VoterSummary['fallback']): VoterSummary['fallbac
 function projectVoterSummary(v: VoterSummary): Partial<VoterSummary> {
   const out: Record<string, unknown> = {};
   for (const key of VOTER_SUMMARY_KEYS) {
-    const value = key === 'fallback' ? projectSeatFallback(v.fallback) : v[key];
+    const value =
+      key === 'fallback'
+        ? v.fallback === undefined
+          ? undefined
+          : projectSeatFallback(v.fallback)
+        : v[key];
     if (value !== undefined) out[key] = value;
   }
   return out;
